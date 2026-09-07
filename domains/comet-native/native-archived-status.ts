@@ -9,6 +9,8 @@ import { parseNativePortableState } from './native-portable-state.js';
 import type { NativePortableState } from './native-portable-types.js';
 import type { NativeProjectPaths } from './native-types.js';
 
+class NativeHistoricalArchiveSchemaError extends Error {}
+
 export interface NativeStatusRecord {
   projectRoot: string;
   file: string;
@@ -25,10 +27,13 @@ export async function readNativeStatusRecord(
     maxBytes: 4 * 1024 * 1024,
     includeHash: false,
   });
+  const parsed = parse(source.text);
+  if (['comet.native.v1', 'comet.native.v2', 'comet.native.v3'].includes(parsed?.schema))
+    throw new NativeHistoricalArchiveSchemaError('Historical Native schema');
   return {
     projectRoot: paths.projectRoot,
     file,
-    state: parseNativePortableState(parse(source.text)),
+    state: parseNativePortableState(parsed),
   };
 }
 
@@ -54,7 +59,7 @@ export async function listNativeArchivedStatusRecords(
     } catch (error) {
       // Archives from older protocols are historical documents, not v4 candidates.
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
-      if ((error as Error).message.includes('schema')) continue;
+      if (error instanceof NativeHistoricalArchiveSchemaError) continue;
       const name = entry.name.replace(/^\d{4}-\d{2}-\d{2}-/u, '');
       onError?.(name, `Native archive ${entry.name} is unreadable: ${(error as Error).message}`);
     }

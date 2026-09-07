@@ -80,6 +80,7 @@ export interface NativeSupervisorTask {
     status: 'running' | 'completed' | 'interrupted';
     ownerPid: number;
     startedAt: string;
+    expiresAt?: string;
     receiptRef?: string;
   };
 }
@@ -1334,9 +1335,19 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
   const checks: NativeSupervisorIntegrationCheck[] = results.map((result) => ({
     name: result.name,
     status: result.status === 'interrupted' ? 'incomplete' : result.status,
-    reason: result.exitCode === 0 ? null : 'exit ' + result.exitCode,
+    reason:
+      result.status === 'passed'
+        ? null
+        : result.timedOut
+          ? 'timed out'
+          : `exit ${result.exitCode ?? result.signal ?? 'interrupted'}`,
     receiptRef,
   }));
+  const unsuccessful = checks.filter(({ status }) => status !== 'passed');
+  if (unsuccessful.length > 0)
+    throw new Error(
+      `Native Supervisor integration checks did not pass (${unsuccessful.map(({ name, reason }) => `${name}: ${reason}`).join('; ')}); receipt ${receiptRef}`,
+    );
   return withNativeMutationLock(
     options.paths,
     'complete Supervisor integration checks',

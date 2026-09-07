@@ -111,7 +111,10 @@ export async function executeNativeSupervisorChecks(options: {
         } catch (error) {
           alive = (error as NodeJS.ErrnoException).code !== 'ESRCH';
         }
-        if (alive) {
+        // The bounded lease also recovers a dead owner's PID reused by another process.
+        const expiresAt =
+          Date.parse(previous.expiresAt ?? '') || Date.parse(previous.startedAt) + 30000;
+        if (alive && Date.now() < expiresAt) {
           if (previous.key !== key)
             throw new Error(
               'Native Supervisor check plan is already running with different inputs',
@@ -132,6 +135,9 @@ export async function executeNativeSupervisorChecks(options: {
         status: 'running',
         ownerPid: process.pid,
         startedAt: new Date().toISOString(),
+        expiresAt: new Date(
+          Date.now() + options.plans.reduce((total, plan) => total + plan.timeoutMs, 0) + 30000,
+        ).toISOString(),
       };
       task.checksReason = 'running';
       state!.stateVersion += 1;

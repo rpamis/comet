@@ -190,6 +190,19 @@ describe('Native reliability issue regressions', () => {
         expect.objectContaining({ name: 'change', status: 'done' }),
       ]),
     );
+    for (const schema of ['comet.native.v99', 'missing']) {
+      await fs.writeFile(
+        path.join(bad, 'comet-state.yaml'),
+        schema === 'missing' ? 'name: broken' : `schema: ${schema}`,
+      );
+      expect((await listDiscoveredNativeStatusPage({ projectRoot: root })).items).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'broken', status: 'blocked' })]),
+      );
+    }
+    await fs.writeFile(path.join(bad, 'comet-state.yaml'), 'schema: comet.native.v3');
+    expect(
+      (await listDiscoveredNativeStatusPage({ projectRoot: root })).items.map(({ name }) => name),
+    ).not.toContain('broken');
     const staleFile = path.join(old, path.relative(root, changeDir), 'comet-state.yaml');
     await fs.writeFile(
       staleFile,
@@ -276,7 +289,7 @@ describe('Native reliability issue regressions', () => {
   it.each(['fail', 'blocked'] as const)(
     'records %s without a check receipt and rejects unsafe check plans',
     async (verdict) => {
-      const { root, paths, changeDir } = await project();
+      const { paths, changeDir } = await project();
       await fs.writeFile(
         path.join(changeDir, 'children.yaml'),
         'schema: comet.native.children.v2\nacceptance_index:\n  A1:\n    source: brief.md\n    text: The first behavior works.\n  A2:\n    source: brief.md\n    text: The second behavior works.\nchildren:\n  - name: core\n    depends_on: []\n    covers: [A1, A2]\n',
@@ -401,9 +414,18 @@ describe('Native reliability issue regressions', () => {
       plans: [plan()],
       materials: [{ name: 'probe', content: 'Current candidate probe.' }],
     };
-    const receipt = await executeNativeSupervisorChecks(options);
+    let receipt = await executeNativeSupervisorChecks(options);
     expect(receipt.status).toBe('completed');
     expect(await executeNativeSupervisorChecks(options)).toEqual(receipt);
+    const expired = JSON.parse(await fs.readFile(legacyFile, 'utf8'));
+    expired.children[0].task.checkExecution.status = 'running';
+    expired.children[0].task.checkExecution.ownerPid = process.pid;
+    expired.children[0].task.checkExecution.expiresAt = '2000-01-01T00:00:00.000Z';
+    await fs.writeFile(legacyFile, JSON.stringify(expired));
+    const recovered = await executeNativeSupervisorChecks(options);
+    expect(recovered.status).toBe('completed');
+    expect(recovered.operationId).not.toBe(receipt.operationId);
+    receipt = recovered;
     const evidence = {
       summary: 'Verified both behaviors.',
       checks: ['non-formal note'],
@@ -478,6 +500,18 @@ describe('Native reliability issue regressions', () => {
       }),
     ).rejects.toThrow('repeatable');
     expect(git(integrationState!.integration.worktree, 'rev-parse', 'HEAD')).toBe(integrationHead);
+    await expect(
+      applyNativeRunnerInput({
+        paths,
+        name: 'change',
+        maxVerifyFailures: 5,
+        input: parseNativeRunnerInput({
+          kind: 'supervisor-integrate',
+          child: 'core',
+          checks: [plan('failed-integration', 'process.exit(7)')],
+        }),
+      }),
+    ).rejects.toThrow(/failed-integration: exit 7.*receipt runtime\/evidence/);
     const integrated = await applyNativeRunnerInput({
       paths,
       name: 'change',
