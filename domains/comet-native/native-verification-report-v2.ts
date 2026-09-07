@@ -59,6 +59,13 @@ function verdictLabel(state: NativePortableState): string {
 }
 
 function verificationStatusLabel(state: NativePortableState): string {
+  if (state.verification?.assurance === 'semantic-verification-unavailable') {
+    return nativeLocalizedText(
+      state.language,
+      'Full verification was unavailable; only automatic checks completed',
+      '无法完成完整验证，只完成了自动检查',
+    );
+  }
   if (state.verification_result === 'fail') {
     return nativeLocalizedText(
       state.language,
