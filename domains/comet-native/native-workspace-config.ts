@@ -7,7 +7,7 @@ import { atomicWriteJson } from './native-atomic-file.js';
 
 const CONFIG = '.comet/config.yaml';
 const snapshotFile = (root: string) =>
-  path.join(root, '.comet/runtime/native/workspace-config.json');
+  path.join(root, '.comet', 'runtime', 'native', 'workspace-config.json');
 const digest = (content: Buffer) => createHash('sha256').update(content).digest('hex');
 
 /** Only an unchanged, untracked configuration created by Runtime is exempt. */
