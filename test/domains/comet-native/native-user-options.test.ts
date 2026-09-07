@@ -180,6 +180,7 @@ describe('Native public user-option paths', () => {
         const status = await cli(root, ['status', 'parent']);
         const resumed = await follow(root, status.continuation.commandArgs);
         expect(resumed.supervisorTasks).toEqual(dispatched.supervisorTasks);
+        expect(resumed.readyChildren).toEqual([]);
         const cancelled = await input(root, 'parent', {
           kind: 'supervisor-cancel',
           child: name,

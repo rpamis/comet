@@ -424,6 +424,7 @@ export async function nativeNextCommand(
             ReturnType<typeof dispatchNativeSupervisorReadyTasks>
           >['tasks'];
           let supervisorBlockers: Array<{ child: string; message: string }> = [];
+          let readySupervisorChildren: string[] | null = null;
           const supervisor = await readNativeSupervisorState(configured.paths, name);
           if (supervisor && !children.allDone) {
             const dispatched = await dispatchNativeSupervisorReadyTasks({
@@ -432,6 +433,7 @@ export async function nativeNextCommand(
               maxParallel: current.coordination_mode === 'single-session' ? 1 : maxParallel,
             });
             supervisorTasks = dispatched.state.children.flatMap(({ task }) => (task ? [task] : []));
+            readySupervisorChildren = dispatched.tasks.map(({ child }) => child);
             supervisorBlockers = dispatched.state.children.flatMap(({ name: child, blocker }) =>
               blocker ? [{ child, message: blocker }] : [],
             );
@@ -464,10 +466,7 @@ export async function nativeNextCommand(
                 }),
                 { total: effectiveChildren.children.length },
               ),
-              readyChildren:
-                supervisorTasks.length > 0
-                  ? supervisorTasks.map(({ child }) => child)
-                  : effectiveChildren.readyChildren,
+              readyChildren: readySupervisorChildren ?? effectiveChildren.readyChildren,
               ...(supervisorTasks.length > 0 ? { supervisorTasks } : {}),
               ...(supervisorBlockers.length > 0 ? { supervisorBlockers } : {}),
               continuation: nativePortableContinuation(current, effectiveChildren),
