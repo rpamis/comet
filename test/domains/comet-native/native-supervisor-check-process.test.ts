@@ -83,7 +83,8 @@ async function setup() {
   });
   const marker = path.join(root, 'starts.txt');
   const release = path.join(root, 'release');
-  const code = `require('fs').appendFileSync(${JSON.stringify(marker)},String(process.pid)+'\\n');setInterval(()=>{if(require('fs').existsSync(${JSON.stringify(release)}))process.exit(0)},25)`;
+  const code =
+    "require('fs').appendFileSync(process.argv[1],String(process.pid)+'\\n');setInterval(()=>{if(require('fs').existsSync(process.argv[2]))process.exit(0)},25)";
   const options = {
     paths,
     parent: 'change',
@@ -94,7 +95,7 @@ async function setup() {
         id: 'slow',
         name: 'Slow check',
         executable: process.execPath,
-        argv: ['-e', code],
+        argv: ['-e', code, marker, release],
         cwdRef: '.',
         timeoutMs: 10000,
         repeatable: true,
@@ -131,7 +132,7 @@ describe('Supervisor check process recovery', () => {
       });
       const resumed = await executeNativeSupervisorChecks(options);
       expect(resumed.status).toBe('running');
-      expect((await fs.readFile(marker, 'utf8')).trim().split('\\n')).toHaveLength(1);
+      expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/u)).toHaveLength(1);
     } finally {
       await fs.writeFile(release, 'done');
       await running;

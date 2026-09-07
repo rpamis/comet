@@ -3,8 +3,19 @@ import path from 'node:path';
 
 import { runExternalCommand } from './external-command.js';
 
+let ownIdentity: string | null = null;
+
 /** OS process creation identity; null means inspection was unavailable, never proof of exit. */
 export async function readProcessIdentity(pid: number): Promise<string | null> {
+  if (pid === process.pid && ownIdentity !== null) return ownIdentity;
+  const identity = await inspectProcessIdentity(pid);
+  // Our own creation identity cannot change within this process. Avoid repeatedly
+  // starting PowerShell for the same owner, especially on cold Windows hosts.
+  if (pid === process.pid && identity !== null) ownIdentity = identity;
+  return identity;
+}
+
+async function inspectProcessIdentity(pid: number): Promise<string | null> {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
   try {
     if (process.platform === 'linux') {
@@ -36,7 +47,7 @@ export async function readProcessIdentity(pid: number): Promise<string | null> {
           '-Command',
           `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks.ToString()`,
         ],
-        { timeoutMs: 5000, maxBufferBytes: 4096 },
+        { timeoutMs: 15000, maxBufferBytes: 4096 },
       ).trim();
       return /^\d+$/u.test(started) ? `win32:${started}` : null;
     }

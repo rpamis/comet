@@ -30,11 +30,11 @@ const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
-const plan = (id: string, code = 'process.exit(0)') => ({
+const plan = (id: string, code = 'process.exit(0)', args: string[] = []) => ({
   id,
   name: id,
   executable: process.execPath,
-  argv: ['-e', code],
+  argv: ['-e', code, ...args],
   cwdRef: '.',
   timeoutMs: 20000,
   repeatable: true,
@@ -135,7 +135,8 @@ describe('Supervisor integration check execution', () => {
       checkPlans: [
         plan(
           'first',
-          `const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(marker)},'started');const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(release)})){clearInterval(timer);process.exit(0)}},20)`,
+          "const fs=require('node:fs');fs.writeFileSync(process.argv[1],'started');const timer=setInterval(()=>{if(fs.existsSync(process.argv[2])){clearInterval(timer);process.exit(0)}},20)",
+          [marker, release],
         ),
       ],
     });
