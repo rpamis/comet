@@ -253,23 +253,21 @@ export class PluginRuntime {
   public async enable(id: string, target?: PluginScopeContext): Promise<void> {
     const descriptor = this.requireDescriptor(id);
     this.assertCompatible(descriptor);
-    await this.requireInstalled(descriptor);
     if (target?.scope === 'project' && target.projectId !== undefined) {
       await this.setProjectPause(descriptor, target.projectId, false);
       return;
     }
-    await this.setRecord(descriptor, 'enabled', false);
+    await this.setRecord(descriptor, 'enabled', false, true);
   }
 
   public async disable(id: string, target?: PluginScopeContext): Promise<void> {
     const descriptor = this.requireDescriptor(id);
-    await this.requireInstalled(descriptor);
     if (target?.scope === 'project' && target.projectId !== undefined) {
       await this.setProjectPause(descriptor, target.projectId, true);
       await this.disposeActive(id, target.projectId);
       return;
     }
-    await this.setRecord(descriptor, 'disabled', false);
+    await this.setRecord(descriptor, 'disabled', false, true);
     await this.disposeActive(id);
   }
 
@@ -543,9 +541,13 @@ export class PluginRuntime {
     descriptor: PluginDescriptor,
     status: PluginStatus,
     explicitRemoval: boolean,
+    requireInstalled = false,
   ): Promise<void> {
     await this.store.update((state) => {
       const existing = state.plugins.find((record) => record.id === descriptor.id);
+      if (requireInstalled && (existing === undefined || existing.status === 'uninstalled')) {
+        throw new PluginRuntimeError(`Plugin is not installed: ${descriptor.id}`, 'missing');
+      }
       const next = this.record(
         descriptor.id,
         descriptor.version,

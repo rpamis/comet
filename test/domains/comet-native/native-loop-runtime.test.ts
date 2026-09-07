@@ -679,6 +679,16 @@ describe('Native portable Build/Verify loop', () => {
       verification_result: 'pass',
       loop: { stage: 'await-user', next_action: 'confirm-skill-coordinated-pass' },
     });
+    expect(nativePortableContinuation(state)).toMatchObject({
+      requiresUserDecision: true,
+      disposition: 'await-user',
+    });
+    // A parser-compatible but inconsistent recovery state must not ask for a
+    // decision while its continuation tells the host to keep executing.
+    expect(nativePortableContinuation({ ...state, status: 'active' })).toMatchObject({
+      requiresUserDecision: false,
+      disposition: 'continue',
+    });
   });
 
   it('runs a new final full verification even when the repair scope already contains every item', () => {

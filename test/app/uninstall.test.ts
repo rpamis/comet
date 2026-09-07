@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import { execFileSync } from 'child_process';
 import path from 'path';
 import os from 'os';
+import * as updateCommands from '../../app/commands/update.js';
 
 const { rmdirMock, writeFileMock } = vi.hoisted(() => ({
   rmdirMock: vi.fn(),
@@ -1605,6 +1606,28 @@ describe('uninstallCommand interactive selection', () => {
     homedirSpy.mockRestore();
     process.exitCode = 0;
     await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('reports indexed project inspection failure without treating it as an unselected project', async () => {
+    await upsertProjectInstallation(tmpDir, [{ platform: 'claude', language: 'en' }], 'init');
+    const inspect = vi
+      .spyOn(updateCommands, 'detectInstalledCometTargets')
+      .mockRejectedValueOnce(new Error('inspection unavailable'));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(tmpDir, { allProjects: true, force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.projects).toEqual([
+        expect.objectContaining({
+          status: 'failed',
+          reason: 'unable to inspect project: inspection unavailable',
+        }),
+      ]);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      inspect.mockRestore();
+      log.mockRestore();
+    }
   });
 
   it.each([true, false])(

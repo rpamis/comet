@@ -639,7 +639,7 @@ async function uninstallAllIndexedProjects(
     } catch (error) {
       results.push({
         projectPath,
-        status: 'skipped',
+        status: 'failed',
         reason: `unable to inspect project: ${(error as Error).message}`,
         targets: [],
       });

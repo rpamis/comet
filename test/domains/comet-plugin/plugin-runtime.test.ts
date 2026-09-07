@@ -80,6 +80,42 @@ function descriptor(
 }
 
 describe('PluginRuntime', () => {
+  it.each(['enable', 'disable'] as const)(
+    'does not undo an uninstall committed before %s acquires its lock',
+    async (action) => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lifecycle-race-'));
+      try {
+        const storeA = new JsonPluginStateStore(
+          new JsonFileTextStore(path.join(root, 'state.json')),
+        );
+        const createRuntime = (store: JsonPluginStateStore) =>
+          new PluginRuntime({
+            cometVersion: '1.0.0',
+            store,
+            descriptors: [descriptor('memory', 'first-party')],
+          });
+        const a = createRuntime(storeA);
+        const b = createRuntime(
+          new JsonPluginStateStore(new JsonFileTextStore(path.join(root, 'state.json'))),
+        );
+        await a.reconcileFirstParty();
+        const update = storeA.update.bind(storeA);
+        vi.spyOn(storeA, 'update').mockImplementationOnce(async (change) => {
+          await b.uninstall('memory');
+          await update(change);
+        });
+        await expect(a[action]('memory')).rejects.toThrow('Plugin is not installed');
+        expect(await b.get('memory')).toMatchObject({
+          status: 'uninstalled',
+          explicitRemoval: true,
+        });
+        await a.install('memory');
+        expect(await b.get('memory')).toMatchObject({ status: 'enabled', explicitRemoval: false });
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    },
+  );
   it('preserves other projects across independent file stores and concurrent lifecycle writes', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-concurrent-'));
     try {

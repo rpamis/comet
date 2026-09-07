@@ -269,6 +269,7 @@ function nativePortableUserCommunication(
 
   if (
     state.phase === 'verify' &&
+    state.status === 'await-user' &&
     state.verification_result === 'pass' &&
     state.loop.next_action === 'confirm-skill-coordinated-pass'
   ) {

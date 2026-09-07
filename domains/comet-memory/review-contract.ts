@@ -151,7 +151,7 @@ export function validateMemoryReviewPacket(
     const memoryClass = optionalMemoryClass(item.memoryClass, `memories[${index}].memoryClass`);
     validateSafeText(category, `memories[${index}].category`);
     validateSafeText(text, `memories[${index}].text`);
-    // Existing global memories can come from a project using another language.
+    // Historical memories can predate a change to the project's language.
     // Only newly proposed actions must use the current review language.
     if (title !== undefined) validateSafeText(title, `memories[${index}].title`);
     if (reason !== undefined) validateSafeText(reason, `memories[${index}].reason`);

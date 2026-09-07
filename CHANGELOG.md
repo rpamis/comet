@@ -6,9 +6,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
-- **Plugin settings**: Preserve each project's enabled or disabled state when multiple Dashboard or CLI instances update shared plugin settings.
+- **Plugin settings**: Preserve each project's enabled or disabled state when multiple Dashboard or CLI instances update shared plugin settings, and prevent concurrent enable or disable operations from undoing an uninstall.
 - **Personal Memory**: Allow users to forget global memories created in a project using another language while preserving validation of newly proposed content.
-- **Uninstall status**: Return a failing exit status when current-project or all-projects cleanup is incomplete, so automation can reliably detect failures.
+- **Uninstall status**: Return a failing exit status when current-project or all-projects cleanup is incomplete, including project inspection failures, so automation can reliably detect failures.
 - **Native result confirmation**: Explicitly request the user's decision after a Skill-coordinated verification passes, with clear choices to accept the result, revise the implementation, or adjust requirements.
 
 ### Security
