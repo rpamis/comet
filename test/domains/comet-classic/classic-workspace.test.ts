@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import { selectCurrentChange } from '../../../domains/comet-classic/classic-current-change.js';
 import { classicStateCommand } from '../../../domains/comet-classic/classic-state-command.js';
+import { readClassicArtifactLayout } from '../../../domains/comet-classic/classic-layout.js';
+import { assertClassicOpenSpecRootHealthy } from '../../../domains/comet-classic/classic-openspec-root.js';
 import {
   prepareClassicWorkspace,
   resolveClassicWorkspace,
@@ -118,6 +120,73 @@ describe('Classic workspace preparation and routing', () => {
       fs.access(path.join(prepared.projectRoot, '.comet', 'current-change.json')),
     ).resolves.toBeUndefined();
     await expect(fs.access(path.join(root, '.comet', 'current-change.json'))).rejects.toThrow();
+  });
+
+  it('preserves an uncommitted project configuration when preparing a worktree', async () => {
+    git(root, 'rm', '--cached', '.comet/config.yaml');
+    git(root, 'commit', '-m', 'leave project configuration local');
+    const source = await fs.readFile(path.join(root, '.comet/config.yaml'), 'utf8');
+    await fs.writeFile(path.join(root, 'openspec/config.yaml'), 'schema: spec-driven\n');
+    const prepared = await prepareClassicWorkspace({
+      projectRoot: root,
+      name: 'local-config',
+      isolation: 'worktree',
+    });
+    worktrees.push(prepared.projectRoot);
+    expect(await fs.readFile(path.join(prepared.projectRoot, '.comet/config.yaml'), 'utf8')).toBe(
+      source,
+    );
+    expect(await fs.readFile(path.join(root, '.comet/config.yaml'), 'utf8')).toBe(source);
+    expect(await readClassicArtifactLayout(prepared.projectRoot)).toBe('legacy');
+    expect((await assertClassicOpenSpecRootHealthy(prepared.projectRoot)).schema).toBe(
+      'spec-driven',
+    );
+    await fs.unlink(path.join(prepared.projectRoot, '.comet/config.yaml'));
+    await prepareClassicWorkspace({
+      projectRoot: root,
+      name: 'local-config',
+      isolation: 'worktree',
+    });
+    expect(await readClassicArtifactLayout(prepared.projectRoot)).toBe('legacy');
+  });
+
+  it('rejects a reused worktree with a different Classic configuration without overwriting it', async () => {
+    const prepared = await prepareClassicWorkspace({
+      projectRoot: root,
+      name: 'different-config',
+      isolation: 'worktree',
+    });
+    worktrees.push(prepared.projectRoot);
+    const file = path.join(prepared.projectRoot, '.comet/config.yaml');
+    const changed = (await fs.readFile(file, 'utf8')).replace(
+      'artifact_layout: legacy',
+      'artifact_layout: docs',
+    );
+    await fs.writeFile(file, changed);
+    await expect(
+      prepareClassicWorkspace({
+        projectRoot: root,
+        name: 'different-config',
+        isolation: 'worktree',
+      }),
+    ).rejects.toThrow('configuration differs');
+    expect(await fs.readFile(file, 'utf8')).toBe(changed);
+  });
+
+  it('keeps a managed worktree out of primary status without hiding neighboring user files', async () => {
+    const prepared = await prepareClassicWorkspace({
+      projectRoot: root,
+      name: 'clean-parent',
+      isolation: 'worktree',
+    });
+    worktrees.push(prepared.projectRoot);
+    await fs.writeFile(path.join(root, '.worktrees', 'user-notes.txt'), 'keep visible\n');
+    const status = git(root, 'status', '--porcelain', '--untracked-files=all');
+    expect(status).not.toContain('.worktrees/clean-parent/');
+    expect(status).toContain('.worktrees/user-notes.txt');
+    expect(
+      git(root, 'check-ignore', path.relative(root, prepared.projectRoot).replaceAll('\\', '/')),
+    ).toBe('.worktrees/clean-parent');
   });
 
   it('recreates a linked worktree when its branch remains but registration is gone', async () => {

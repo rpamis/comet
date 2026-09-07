@@ -14,6 +14,92 @@ import {
   type GitWorktreeEntry,
 } from '../../platform/paths/git-worktree.js';
 import { assertOpenSpecChangeName, inspectClassicActiveChangeDirectory } from './classic-paths.js';
+import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
+import { writeWorkflowProjectConfigSource } from '../workflow-contract/project-config-writer.js';
+import {
+  inspectProtectedProjectPath,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
+import { WORKFLOW_PROJECT_CONFIG_MAX_BYTES } from '../workflow-contract/project-config.js';
+import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
+import { classicLayoutPaths, readClassicArtifactLayout } from './classic-layout.js';
+
+async function ensureWorkspaceConfig(sourceRoot: string, targetRoot: string): Promise<void> {
+  if (samePath(sourceRoot, targetRoot)) return;
+  const options = { allowPartialProject: true, allowMissingNativeFields: true };
+  const source = await readWorkflowProjectConfigDocument(sourceRoot, options);
+  if (!source) return;
+  const target = await readWorkflowProjectConfigDocument(targetRoot, options);
+  if (target) {
+    if (JSON.stringify(source.classic) !== JSON.stringify(target.classic)) {
+      throw new Error(
+        `Classic worktree configuration differs from the source project: ${targetRoot}`,
+      );
+    }
+  } else {
+    const content = await readProtectedProjectFile(
+      sourceRoot,
+      '.comet/config.yaml',
+      WORKFLOW_PROJECT_CONFIG_MAX_BYTES,
+      { label: 'Classic workspace configuration' },
+    );
+    await writeWorkflowProjectConfigSource(targetRoot, content.bytes.toString('utf8'), {
+      allowPartialProject: true,
+      expectedIdentity: { exists: false, sha256: null },
+    });
+  }
+  await readClassicArtifactLayout(targetRoot);
+  const layout = classicLayoutPaths(sourceRoot, await readClassicArtifactLayout(sourceRoot));
+  const relativeConfig = path.relative(sourceRoot, path.join(layout.openSpecRoot, 'config.yaml'));
+  const targetConfig = await inspectProtectedProjectPath(targetRoot, relativeConfig, {
+    expected: 'file',
+    label: 'Classic OpenSpec workspace configuration',
+  });
+  if (targetConfig.exists) return;
+  let openSpecContent;
+  try {
+    openSpecContent = await readProtectedProjectFile(sourceRoot, relativeConfig, 1024 * 1024, {
+      label: 'Classic OpenSpec workspace configuration',
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  await atomicWriteContainedText(
+    path.join(targetRoot, relativeConfig),
+    openSpecContent.bytes.toString('utf8'),
+    {
+      containedRoot: targetRoot,
+      exclusive: true,
+    },
+  );
+}
+
+async function excludeWorktree(primaryRoot: string, worktreeRoot: string): Promise<void> {
+  const relative = path.relative(primaryRoot, worktreeRoot).replaceAll('\\', '/');
+  if (!relative || relative.startsWith('../') || path.isAbsolute(relative)) return;
+  if (/[\r\n]/u.test(relative)) throw new Error('Classic worktree path must not contain newlines');
+  const escaped = relative
+    .replaceAll('[', '\\[')
+    .replaceAll(']', '\\]')
+    .replaceAll('*', '\\*')
+    .replaceAll('?', '\\?');
+  const pattern = `/${escaped}/`;
+  const common = path.resolve(
+    primaryRoot,
+    runGitCommand(primaryRoot, ['rev-parse', '--git-common-dir']),
+  );
+  const file = path.join(common, 'info', 'exclude');
+  let source = '';
+  try {
+    source = await fs.readFile(file, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  if (source.split(/\r?\n/u).includes(pattern)) return;
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.appendFile(file, `${source && !source.endsWith('\n') ? '\n' : ''}${pattern}\n`, 'utf8');
+}
 
 export type ClassicWorkspaceIsolation = 'current' | 'branch' | 'worktree';
 
@@ -210,6 +296,7 @@ export async function prepareClassicWorkspace(options: {
         `Classic worktree path ${requested} does not match the current worktree ${context.currentWorktreeRoot}`,
       );
     }
+    await excludeWorktree(primaryRoot, context.currentWorktreeRoot);
     return preparation({
       isolation: 'worktree',
       projectRoot: initialRoot,
@@ -237,6 +324,8 @@ export async function prepareClassicWorkspace(options: {
       );
     }
     await fs.access(existing.root);
+    await ensureWorkspaceConfig(initialRoot, existing.root);
+    await excludeWorktree(primaryRoot, existing.root);
     return preparation({
       isolation: 'worktree',
       projectRoot: existing.root,
@@ -262,6 +351,8 @@ export async function prepareClassicWorkspace(options: {
   if (!entries.some((entry) => samePath(entry.root, worktreePath))) {
     throw new Error(`Classic worktree was created but is not registered: ${worktreePath}`);
   }
+  await ensureWorkspaceConfig(initialRoot, worktreePath);
+  await excludeWorktree(primaryRoot, worktreePath);
   return preparation({
     isolation: 'worktree',
     projectRoot: worktreePath,
@@ -350,6 +441,8 @@ async function recreateWorktree(
   await assertPathAbsent(target);
   runGitCommand(primaryRoot, ['worktree', 'prune']);
   runGitCommand(primaryRoot, ['worktree', 'add', target, branch]);
+  await ensureWorkspaceConfig(projectRoot, target);
+  await excludeWorktree(primaryRoot, target);
   return target;
 }
 
