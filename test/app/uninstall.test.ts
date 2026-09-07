@@ -1603,8 +1603,40 @@ describe('uninstallCommand interactive selection', () => {
 
   afterEach(async () => {
     homedirSpy.mockRestore();
+    process.exitCode = 0;
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
+
+  it.each([true, false])(
+    'reports partial failure with a nonzero exit status (json=%s)',
+    async (json) => {
+      await fs.mkdir(path.join(tmpDir, '.claude/skills/comet-native'), { recursive: true });
+      await fs.writeFile(
+        path.join(tmpDir, '.claude/skills/comet-native/SKILL.md'),
+        '# Comet Native\n',
+      );
+      await fs.writeFile(path.join(tmpDir, '.claude/settings.local.json'), '{broken-json');
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await uninstallCommand(tmpDir, {
+          scope: 'project',
+          currentProject: true,
+          force: true,
+          json,
+        });
+        expect(process.exitCode).toBe(1);
+        if (json) {
+          const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+          expect(result.summary.totalFailures).toBeGreaterThan(0);
+        }
+        await expect(
+          fs.access(path.join(tmpDir, '.claude/skills/comet-native/SKILL.md')),
+        ).resolves.toBeUndefined();
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
 
   it('uninstalls an explicitly scoped canonical global Codex install without a detection path', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
@@ -1853,6 +1885,7 @@ describe('uninstallCommand interactive selection', () => {
         skillsRemoved: 0,
       });
       expect(result.summary.totalFailures).toBeGreaterThan(0);
+      expect(process.exitCode).toBe(1);
     } finally {
       log.mockRestore();
     }
@@ -2373,6 +2406,7 @@ describe('uninstallCommand interactive selection', () => {
       await uninstallCommand(project, { allProjects: true, force: true, json: true });
       const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
       expect(result.projects[0].status).toBe('failed');
+      expect(process.exitCode).toBe(1);
       expect(result.projects[0].summary.totalFailures).toBeGreaterThan(0);
     } finally {
       log.mockRestore();

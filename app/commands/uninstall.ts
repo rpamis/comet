@@ -739,6 +739,8 @@ async function uninstallAllIndexedProjects(
     }
   }
 
+  if (results.some((result) => result.status === 'failed')) process.exitCode = 1;
+
   if (options.json) {
     console.log(
       JSON.stringify(
@@ -811,6 +813,8 @@ export async function uninstallCommand(
   }
 
   await refreshRegistryAfterProjectUninstall(result);
+
+  if (result.summary.totalFailures > 0) process.exitCode = 1;
 
   if (options.json) {
     console.log(JSON.stringify(currentProjectJson(result), null, 2));

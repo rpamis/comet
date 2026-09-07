@@ -40,6 +40,28 @@ function actionSet(actions: readonly unknown[]) {
 }
 
 describe('semantic memory review contract', () => {
+  it('allows forgetting historical global memories written in another language', () => {
+    const result = reviewMemoryPacket(
+      packet({
+        memories: [
+          {
+            id: 'global-english',
+            scope: 'global',
+            category: 'preference',
+            title: 'Personal memory',
+            reason: 'Explicit user request',
+            text: 'Use focused tests.',
+            kind: 'explicit',
+            memoryType: 'core-profile',
+            state: 'proven',
+          },
+        ],
+        userEvidence: [],
+        explicitRequest: { action: 'forget', targetId: 'global-english' },
+      }),
+    );
+    expect(result.actions[0]).toMatchObject({ action: 'forget', targetId: 'global-english' });
+  });
   it('validates a versioned packet and action set', () => {
     const validated = validateMemoryReviewPacket(packet());
     expect(

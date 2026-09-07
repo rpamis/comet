@@ -267,6 +267,27 @@ function nativePortableUserCommunication(
         };
   }
 
+  if (
+    state.phase === 'verify' &&
+    state.verification_result === 'pass' &&
+    state.loop.next_action === 'confirm-skill-coordinated-pass'
+  ) {
+    return {
+      required: true,
+      message: localized(
+        state,
+        'The reported verification passed, but this platform cannot confirm an independent Verifier execution. Review the result and choose whether to accept it for Archive, revise the implementation, or revise the requirements.',
+        '当前验收报告已通过，但当前平台无法确认验收是否独立执行。请检查结果，并选择接受结果进入归档、继续修改实现，或调整需求。',
+      ),
+      suggestedReply: localized(state, 'Accept the result', '接受结果'),
+      agentInstruction: localized(
+        state,
+        'Summarize the result and verification evidence, relay the message, and wait for an explicit user decision. Only then execute the matching commandAlternative. Do not accept the result on the user’s behalf.',
+        '简要说明交付结果和验收证据，转述 message，并等待用户明确选择后再执行对应的 commandAlternative。不要替用户接受结果。',
+      ),
+    };
+  }
+
   return noUserUpdate(
     localized(
       state,

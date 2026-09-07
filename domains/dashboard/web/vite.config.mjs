@@ -23,7 +23,18 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:4399',
+      '/api': {
+        target: 'http://localhost:4399',
+        changeOrigin: true,
+        configure(proxy) {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            // Forward only the dev UI's own origin as the backend origin.
+            if (req.headers.origin === `http://${req.headers.host}`) {
+              proxyReq.setHeader('origin', 'http://localhost:4399');
+            }
+          });
+        },
+      },
     },
   },
 });

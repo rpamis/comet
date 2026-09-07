@@ -767,6 +767,15 @@ Run applicable focused checks.
     ).state.builder_handoff.candidate_id;
     await runnerStep(name, { kind: 'dispatch-verifier', checks: [] });
     const awaitingPassDecision = await runnerStep(name, finalResponse(1, 1, ['A1']));
+    expect(awaitingPassDecision.data?.continuation).toMatchObject({
+      disposition: 'await-user',
+      requiresUserDecision: true,
+      userCommunication: {
+        required: true,
+        message: expect.any(String),
+        suggestedReply: expect.any(String),
+      },
+    });
     const oldAcceptResultAlternative = (
       awaitingPassDecision.data as {
         continuation: {

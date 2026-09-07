@@ -151,8 +151,10 @@ export function validateMemoryReviewPacket(
     const memoryClass = optionalMemoryClass(item.memoryClass, `memories[${index}].memoryClass`);
     validateSafeText(category, `memories[${index}].category`);
     validateSafeText(text, `memories[${index}].text`);
-    if (title !== undefined) validateLanguageText(title, language, `memories[${index}].title`);
-    if (reason !== undefined) validateLanguageText(reason, language, `memories[${index}].reason`);
+    // Existing global memories can come from a project using another language.
+    // Only newly proposed actions must use the current review language.
+    if (title !== undefined) validateSafeText(title, `memories[${index}].title`);
+    if (reason !== undefined) validateSafeText(reason, `memories[${index}].reason`);
     const kind: MemoryKind =
       item.kind === 'explicit' || item.kind === 'inferred' ? item.kind : invalid('kind');
     const memoryType =

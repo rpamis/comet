@@ -163,6 +163,30 @@ async function handleRequest(
   webRoot: string,
   pluginHostAccess?: DashboardPluginHostAccess,
 ): Promise<void> {
+  const authority = req.headers.host;
+  const localPort = req.socket.localPort;
+  if (authority !== `localhost:${localPort}` && authority !== `127.0.0.1:${localPort}`) {
+    respondError(res, 403, 'Untrusted dashboard host');
+    return;
+  }
+  if (
+    (req.headers.origin !== undefined && req.headers.origin !== `http://${authority}`) ||
+    (req.headers['sec-fetch-site'] !== undefined &&
+      req.headers['sec-fetch-site'] !== 'same-origin' &&
+      req.headers['sec-fetch-site'] !== 'none')
+  ) {
+    respondError(res, 403, 'Untrusted dashboard origin');
+    return;
+  }
+  // Non-browser JSON clients may omit Origin. Browser cross-origin simple
+  // requests cannot use this content type without a successful CORS preflight.
+  if (
+    req.method === 'POST' &&
+    req.headers['content-type']?.split(';', 1)[0].trim().toLowerCase() !== 'application/json'
+  ) {
+    respondError(res, 415, 'Dashboard mutations require application/json');
+    return;
+  }
   if (!req.url) {
     respondError(res, 400, 'Bad request');
     return;

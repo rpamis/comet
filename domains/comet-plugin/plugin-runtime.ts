@@ -72,6 +72,10 @@ export class MemoryPluginStateStore implements PluginStateStore {
   public async write(state: PluginState): Promise<void> {
     this.state = cloneState(state);
   }
+
+  public async update(change: (state: PluginState) => PluginState): Promise<void> {
+    this.state = cloneState(change(cloneState(this.state)));
+  }
 }
 
 export class JsonPluginStateStore implements PluginStateStore {
@@ -97,6 +101,14 @@ export class JsonPluginStateStore implements PluginStateStore {
 
   public async write(state: PluginState): Promise<void> {
     await this.file.write(`${JSON.stringify(cloneState(state), null, 2)}\n`);
+  }
+
+  public async update(change: (state: PluginState) => PluginState): Promise<void> {
+    await this.file.withLock(async () => {
+      const current = await this.read();
+      const next = change(current);
+      if (next !== current) await this.write(next);
+    });
   }
 }
 
@@ -134,7 +146,6 @@ export class PluginRuntime {
   private readonly learningCoordinators: readonly AgentLearningCoordinator[];
   private readonly active = new Map<string, ActivePlugin>();
   private readonly diagnosticEntries: PluginDiagnostic[] = [];
-  private state: PluginState | null = null;
 
   public constructor(options: PluginRuntimeOptions) {
     const descriptors = new Map<string, PluginDescriptor>();
@@ -177,31 +188,36 @@ export class PluginRuntime {
   }
 
   public async reconcileFirstParty(): Promise<void> {
-    const state = await this.ensureState();
-    const records = new Map(state.plugins.map((record) => [record.id, record]));
-    let changed = false;
-    for (const descriptor of this.descriptors.values()) {
-      if (descriptor.kind !== 'first-party') continue;
-      const existing = records.get(descriptor.id);
-      if (existing === undefined) {
-        records.set(descriptor.id, this.record(descriptor.id, descriptor.version, 'enabled'));
-        changed = true;
-        continue;
+    await this.store.update((state) => {
+      const records = new Map(state.plugins.map((record) => [record.id, record]));
+      let changed = false;
+      for (const descriptor of this.descriptors.values()) {
+        if (descriptor.kind !== 'first-party') continue;
+        const existing = records.get(descriptor.id);
+        if (existing === undefined) {
+          records.set(descriptor.id, this.record(descriptor.id, descriptor.version, 'enabled'));
+          changed = true;
+          continue;
+        }
+        if (existing.version !== descriptor.version) {
+          records.set(descriptor.id, {
+            ...existing,
+            version: descriptor.version,
+            updatedAt: this.timestamp(),
+          });
+          changed = true;
+        }
+        if (existing.status === 'uninstalled' && !existing.explicitRemoval) {
+          records.set(descriptor.id, {
+            ...existing,
+            status: 'enabled',
+            updatedAt: this.timestamp(),
+          });
+          changed = true;
+        }
       }
-      if (existing.version !== descriptor.version) {
-        records.set(descriptor.id, {
-          ...existing,
-          version: descriptor.version,
-          updatedAt: this.timestamp(),
-        });
-        changed = true;
-      }
-      if (existing.status === 'uninstalled' && !existing.explicitRemoval) {
-        records.set(descriptor.id, { ...existing, status: 'enabled', updatedAt: this.timestamp() });
-        changed = true;
-      }
-    }
-    if (changed) await this.persist({ plugins: [...records.values()] });
+      return changed ? { plugins: [...records.values()] } : state;
+    });
   }
 
   public async list(scope?: PluginScope): Promise<PluginView[]> {
@@ -267,17 +283,18 @@ export class PluginRuntime {
     const descriptor = this.requireDescriptor(id);
     this.assertUserInitiatedThirdParty(descriptor, source);
     this.assertCompatible(descriptor);
-    const state = await this.ensureState();
-    const existing = state.plugins.find((record) => record.id === id);
-    if (existing === undefined || existing.status === 'uninstalled') {
-      throw new PluginRuntimeError(`Plugin is not installed: ${id}`, 'missing');
-    }
-    await this.persist({
-      plugins: state.plugins.map((record) =>
-        record.id === id
-          ? { ...record, version: descriptor.version, updatedAt: this.timestamp() }
-          : record,
-      ),
+    await this.store.update((state) => {
+      const existing = state.plugins.find((record) => record.id === id);
+      if (existing === undefined || existing.status === 'uninstalled') {
+        throw new PluginRuntimeError(`Plugin is not installed: ${id}`, 'missing');
+      }
+      return {
+        plugins: state.plugins.map((record) =>
+          record.id === id
+            ? { ...record, version: descriptor.version, updatedAt: this.timestamp() }
+            : record,
+        ),
+      };
     });
     await this.disposeActive(id);
   }
@@ -527,20 +544,21 @@ export class PluginRuntime {
     status: PluginStatus,
     explicitRemoval: boolean,
   ): Promise<void> {
-    const state = await this.ensureState();
-    const existing = state.plugins.find((record) => record.id === descriptor.id);
-    const next = this.record(
-      descriptor.id,
-      descriptor.version,
-      status,
-      explicitRemoval,
-      existing?.disabledProjects,
-    );
-    const found = existing !== undefined;
-    await this.persist({
-      plugins: found
-        ? state.plugins.map((record) => (record.id === descriptor.id ? next : record))
-        : [...state.plugins, next],
+    await this.store.update((state) => {
+      const existing = state.plugins.find((record) => record.id === descriptor.id);
+      const next = this.record(
+        descriptor.id,
+        descriptor.version,
+        status,
+        explicitRemoval,
+        existing?.disabledProjects,
+      );
+      const found = existing !== undefined;
+      return {
+        plugins: found
+          ? state.plugins.map((record) => (record.id === descriptor.id ? next : record))
+          : [...state.plugins, next],
+      };
     });
   }
 
@@ -549,25 +567,26 @@ export class PluginRuntime {
     projectId: string,
     paused: boolean,
   ): Promise<void> {
-    const state = await this.ensureState();
-    const existing = state.plugins.find((record) => record.id === descriptor.id);
-    if (existing === undefined || existing.status === 'uninstalled') {
-      throw new PluginRuntimeError(`Plugin is not installed: ${descriptor.id}`, 'missing');
-    }
-    const current = existing;
-    const disabledProjects = new Set(current.disabledProjects);
-    if (paused) disabledProjects.add(projectId);
-    else disabledProjects.delete(projectId);
-    const next = {
-      ...current,
-      version: descriptor.version,
-      disabledProjects: [...disabledProjects].sort(),
-      updatedAt: this.timestamp(),
-    };
-    await this.persist({
-      plugins: existing
-        ? state.plugins.map((record) => (record.id === descriptor.id ? next : record))
-        : [...state.plugins, next],
+    await this.store.update((state) => {
+      const existing = state.plugins.find((record) => record.id === descriptor.id);
+      if (existing === undefined || existing.status === 'uninstalled') {
+        throw new PluginRuntimeError(`Plugin is not installed: ${descriptor.id}`, 'missing');
+      }
+      const current = existing;
+      const disabledProjects = new Set(current.disabledProjects);
+      if (paused) disabledProjects.add(projectId);
+      else disabledProjects.delete(projectId);
+      const next = {
+        ...current,
+        version: descriptor.version,
+        disabledProjects: [...disabledProjects].sort(),
+        updatedAt: this.timestamp(),
+      };
+      return {
+        plugins: existing
+          ? state.plugins.map((record) => (record.id === descriptor.id ? next : record))
+          : [...state.plugins, next],
+      };
     });
   }
 
@@ -684,13 +703,7 @@ export class PluginRuntime {
   }
 
   private async ensureState(): Promise<PluginState> {
-    if (this.state === null) this.state = cloneState(await this.store.read());
-    return this.state;
-  }
-
-  private async persist(state: PluginState): Promise<void> {
-    this.state = cloneState(state);
-    await this.store.write(this.state);
+    return cloneState(await this.store.read());
   }
 
   private timestamp(): string {

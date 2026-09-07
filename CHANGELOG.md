@@ -2,6 +2,19 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.0] - 2026-09-08
+
+### Fixed
+
+- **Plugin settings**: Preserve each project's enabled or disabled state when multiple Dashboard or CLI instances update shared plugin settings.
+- **Personal Memory**: Allow users to forget global memories created in a project using another language while preserving validation of newly proposed content.
+- **Uninstall status**: Return a failing exit status when current-project or all-projects cleanup is incomplete, so automation can reliably detect failures.
+- **Native result confirmation**: Explicitly request the user's decision after a Skill-coordinated verification passes, with clear choices to accept the result, revise the implementation, or adjust requirements.
+
+### Security
+
+- **Dashboard request validation**: Reject untrusted hosts and browser origins, and require JSON for state-changing requests to prevent cross-origin pages from changing local settings.
+
 ## What's Changed [0.4.0-rc.6] - 2026-09-07
 
 ### Added

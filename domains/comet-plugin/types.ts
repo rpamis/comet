@@ -122,11 +122,13 @@ export interface PluginState {
 export interface PluginStateStore {
   read(): Promise<PluginState>;
   write(state: PluginState): Promise<void>;
+  update(change: (state: PluginState) => PluginState): Promise<void>;
 }
 
 export interface PluginStateFile {
   read(): Promise<string | null>;
   write(content: string): Promise<void>;
+  withLock<T>(operation: () => Promise<T>): Promise<T>;
 }
 
 export interface PluginView extends PluginRecord {

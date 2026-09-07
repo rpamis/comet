@@ -24,6 +24,7 @@ function request(
   pathname: string,
   method: 'GET' | 'POST' = 'GET',
   body?: unknown,
+  headers: http.OutgoingHttpHeaders = {},
 ): Promise<ResponsePayload> {
   return new Promise((resolve, reject) => {
     const content = body === undefined ? undefined : JSON.stringify(body);
@@ -33,9 +34,12 @@ function request(
         port,
         path: pathname,
         method,
-        headers: content
-          ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(content) }
-          : undefined,
+        headers: {
+          ...(content
+            ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(content) }
+            : {}),
+          ...headers,
+        },
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -67,6 +71,93 @@ describe('Dashboard plugin HTTP API', () => {
     close = null;
     await fs.rm(projectPath, { recursive: true, force: true });
     await fs.rm(webRoot, { recursive: true, force: true });
+  });
+
+  it('rejects untrusted browser writes before changing plugin state', async () => {
+    const runtime = new PluginRuntime({
+      cometVersion: '0.4.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [
+        {
+          id: 'test.origin',
+          kind: 'first-party',
+          version: '1.0.0',
+          scopes: ['project'],
+          compatible: () => true,
+          create: () => ({}),
+        },
+      ],
+    });
+    await runtime.reconcileFirstParty();
+    const server = await startDashboardServer({
+      projectPath,
+      webRoot,
+      port: 0,
+      pluginHost: async (projectId) =>
+        new DashboardPluginHost({
+          runtime,
+          projectId,
+          pages: [
+            {
+              pluginId: 'test.origin',
+              label: 'Origin test',
+              route: '/plugins/origin',
+            },
+          ],
+        }),
+    });
+    close = server.close;
+    const { currentProjectId } = JSON.parse(
+      (await request(server.port, '/api/dashboard/projects')).body,
+    );
+    const endpoint = `/api/dashboard/projects/${currentProjectId}/plugins/test.origin/lifecycle`;
+    for (const headers of [
+      { origin: 'http://untrusted.example', 'content-type': 'text/plain' },
+      { origin: 'null' },
+      { origin: `http://127.0.0.1:${server.port + 1}` },
+      { host: 'untrusted.example' },
+      { host: 'localhost:1' },
+      { 'sec-fetch-site': 'cross-site' },
+      { 'sec-fetch-site': 'same-site' },
+    ]) {
+      expect(
+        (await request(server.port, endpoint, 'POST', { action: 'disable' }, headers)).status,
+      ).toBe(403);
+      expect((await runtime.get('test.origin'))?.disabledProjects).toEqual([]);
+    }
+    expect(
+      (
+        await request(
+          server.port,
+          endpoint,
+          'POST',
+          { action: 'disable' },
+          { 'content-type': 'text/plain' },
+        )
+      ).status,
+    ).toBe(415);
+    expect(
+      (
+        await request(server.port, '/api/dashboard/projects', 'GET', undefined, {
+          host: 'untrusted.example',
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(
+          server.port,
+          endpoint,
+          'POST',
+          { action: 'disable' },
+          {
+            origin: `http://127.0.0.1:${server.port}`,
+            'sec-fetch-site': 'same-origin',
+          },
+        )
+      ).status,
+    ).toBe(200);
+    expect((await runtime.get('test.origin'))?.disabledProjects).toEqual([currentProjectId]);
   });
 
   it('lists pages, returns a page snapshot, and invokes a capability', async () => {
