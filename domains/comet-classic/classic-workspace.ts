@@ -55,7 +55,6 @@ async function ensureWorkspaceConfig(sourceRoot: string, targetRoot: string): Pr
     expected: 'file',
     label: 'Classic OpenSpec workspace configuration',
   });
-  if (targetConfig.exists) return;
   let openSpecContent;
   try {
     openSpecContent = await readProtectedProjectFile(sourceRoot, relativeConfig, 1024 * 1024, {
@@ -64,6 +63,17 @@ async function ensureWorkspaceConfig(sourceRoot: string, targetRoot: string): Pr
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
+  }
+  if (targetConfig.exists) {
+    const targetContent = await readProtectedProjectFile(targetRoot, relativeConfig, 1024 * 1024, {
+      label: 'Classic OpenSpec workspace configuration',
+    });
+    if (!openSpecContent.bytes.equals(targetContent.bytes)) {
+      throw new Error(
+        `Classic OpenSpec configuration differs from the source project: ${targetRoot}`,
+      );
+    }
+    return;
   }
   await atomicWriteContainedText(
     path.join(targetRoot, relativeConfig),
@@ -438,10 +448,24 @@ async function recreateWorktree(
   if (!context.primaryWorktreeRoot) throw new Error('Classic Git primary worktree is unavailable');
   const primaryRoot = context.primaryWorktreeRoot;
   const target = resolveWorktreePath(primaryRoot, name);
-  await assertPathAbsent(target);
   runGitCommand(primaryRoot, ['worktree', 'prune']);
-  runGitCommand(primaryRoot, ['worktree', 'add', target, branch]);
+  const existing = findWorktreeByBranch(listGitWorktrees(primaryRoot), branch);
+  if (existing) {
+    if (!samePath(existing.root, target)) {
+      throw new Error(
+        `Classic worktree branch ${branch} is already checked out at ${existing.root}`,
+      );
+    }
+    // A failed configuration copy can leave a registered worktree without a
+    // change state. Retry setup in place, preserving all existing files.
+  } else {
+    await assertPathAbsent(target);
+    runGitCommand(primaryRoot, ['worktree', 'add', target, branch]);
+  }
   await ensureWorkspaceConfig(projectRoot, target);
+  if (existing && (await inspectClassicActiveChangeDirectory(name, target)).stateExists) {
+    throw new Error(`Classic worktree contains a conflicting change binding: ${target}`);
+  }
   await excludeWorktree(primaryRoot, target);
   return target;
 }
@@ -451,7 +475,7 @@ export async function resolveClassicWorkspace(options: {
   name: string;
 }): Promise<ClassicWorkspaceResolution> {
   const requestedRoot = path.resolve(options.projectRoot);
-  const { entries, candidates } = await workspaceCandidates(requestedRoot, options.name);
+  const { candidates } = await workspaceCandidates(requestedRoot, options.name);
   if (candidates.length === 0) {
     throw new Error(
       `Classic change '${options.name}' was not found in any registered Git worktree`,
@@ -495,8 +519,7 @@ export async function resolveClassicWorkspace(options: {
     source?.isolation === 'worktree' &&
     boundBranch &&
     currentContext.primaryWorktreeRoot &&
-    isLocalGitBranch(requestedRoot, boundBranch) &&
-    !entries.some((entry) => entry.branch === boundBranch)
+    isLocalGitBranch(requestedRoot, boundBranch)
   ) {
     const recreated = await recreateWorktree(requestedRoot, options.name, boundBranch);
     return {

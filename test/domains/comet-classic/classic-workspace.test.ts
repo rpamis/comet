@@ -189,6 +189,48 @@ describe('Classic workspace preparation and routing', () => {
     ).toBe('.worktrees/clean-parent');
   });
 
+  it('rejects conflicting OpenSpec configuration when reusing a worktree', async () => {
+    await fs.writeFile(path.join(root, 'openspec/config.yaml'), 'schema: spec-driven\n');
+    const options = {
+      projectRoot: root,
+      name: 'openspec-conflict',
+      isolation: 'worktree' as const,
+    };
+    const prepared = await prepareClassicWorkspace(options);
+    worktrees.push(prepared.projectRoot);
+    const file = path.join(prepared.projectRoot, 'openspec/config.yaml');
+    await fs.writeFile(file, 'schema: custom\n');
+    await expect(prepareClassicWorkspace(options)).rejects.toThrow(
+      'OpenSpec configuration differs',
+    );
+    expect(await fs.readFile(file, 'utf8')).toBe('schema: custom\n');
+  });
+
+  it('retries configuration setup after worktree recreation fails', async () => {
+    const prepared = await prepareClassicWorkspace({
+      projectRoot: root,
+      name: 'config-retry',
+      isolation: 'worktree',
+    });
+    worktrees.push(prepared.projectRoot);
+    git(root, 'worktree', 'remove', '--force', prepared.projectRoot);
+    await seedChange(root, 'config-retry', prepared.changeBranch!);
+    const config = path.join(root, 'openspec/config.yaml');
+    await fs.writeFile(config, 'x'.repeat(1024 * 1024 + 1));
+    await expect(
+      resolveClassicWorkspace({ projectRoot: root, name: 'config-retry' }),
+    ).rejects.toThrow();
+    expect(listGitWorktrees(root).some((entry) => entry.branch === prepared.changeBranch)).toBe(
+      true,
+    );
+    await fs.writeFile(config, 'schema: spec-driven\n');
+    const recovered = await resolveClassicWorkspace({ projectRoot: root, name: 'config-retry' });
+    expect(recovered.projectRoot).toBe(prepared.projectRoot);
+    expect((await assertClassicOpenSpecRootHealthy(recovered.projectRoot)).schema).toBe(
+      'spec-driven',
+    );
+  });
+
   it('recreates a linked worktree when its branch remains but registration is gone', async () => {
     const prepared = await prepareClassicWorkspace({
       projectRoot: root,
@@ -212,6 +254,26 @@ describe('Classic workspace preparation and routing', () => {
     expect(listGitWorktrees(root).find((entry) => entry.branch === branch)?.root).toBe(
       resolved.projectRoot,
     );
+  });
+
+  it('preserves a registered worktree with a conflicting change binding during recovery', async () => {
+    const prepared = await prepareClassicWorkspace({
+      projectRoot: root,
+      name: 'binding-conflict',
+      isolation: 'worktree',
+    });
+    worktrees.push(prepared.projectRoot);
+    await seedChange(root, 'binding-conflict', prepared.changeBranch!);
+    await seedChange(prepared.projectRoot, 'binding-conflict', 'another-branch');
+    await expect(
+      resolveClassicWorkspace({ projectRoot: root, name: 'binding-conflict' }),
+    ).rejects.toThrow('conflicting change binding');
+    expect(
+      await fs.readFile(
+        path.join(prepared.projectRoot, 'openspec/changes/binding-conflict/.comet.yaml'),
+        'utf8',
+      ),
+    ).toContain('bound_branch: another-branch');
   });
 
   it('rejects traversal in the change name and worktree path', async () => {
