@@ -3,7 +3,7 @@ name: rc6-native-389-390-391
 language: zh-CN
 phase: verify
 status: active
-state_version: 7
+state_version: 10
 brief: brief.md
 shape_confirmation_hash: 3094cba664fa99516899b4c2e95bd96519c54dda00080bf01dc8d2edec7a3531
 spec_changes:
@@ -18,14 +18,13 @@ workspace:
 loop:
   stage: verify-ready
   goal_cycle: 1
-  iteration: 2
+  iteration: 3
   attempt: 0
   retry_epoch: 0
-  failed_iteration_count: 1
+  failed_iteration_count: 2
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids:
-    - A1
     - A2
     - A7
   next_action: run-required-checks-and-dispatch-verifier
@@ -34,8 +33,10 @@ acceptance:
     source: brief.md
     text: A1：Supervisor 子任务按已确认范围逐项验收，遗漏、重复、未知 ID、结论矛盾及缺少实际通过检查的 pass
       均被拒绝；单会话与多会话使用同一规则。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: Runtime回归通过；失败阻塞无需回执，通过仍严格检查覆盖及正式回执。
+      truncated: false
   - id: A2
     source: brief.md
     text: A2：子任务正式检查由 Runtime
@@ -46,8 +47,10 @@ acceptance:
     source: brief.md
     text: A3：主工作区归档后，旧 linked worktree 的活跃副本不能覆盖最终完成状态；只有身份和 Git
       历史证明替代关系才自动选归档，无法确认时报告冲突。
-    result: pending
-    reason: null
+    result: passed
+    reason:
+      text: 身份/Git归档替代及unknownschema冲突Runtime回归通过。
+      truncated: false
   - id: A4
     source: brief.md
     text: A4：当前 change 通过受控入口同步规格交叉引用，记录原因、操作者、内容变更和影响范围；需求变化仍回 Shape，正式项目规格通过当前
@@ -77,61 +80,53 @@ acceptance:
     result: pending
     reason: null
 builder_handoff:
-  candidate_id: c2af4b12-2e86-4f0f-ac29-d0733f16a644
+  candidate_id: 432725f8-093e-4a2a-a838-5acaa0ddbf6d
   identity_provider: skill-coordinated
-  builder_execution_ref: skill-coordinated:builder:1551bf9c-25e5-4b48-8e82-8f8c601d1598
-  iteration: 2
+  builder_execution_ref: skill-coordinated:builder:ba7ad13b-0960-4d79-be71-c270a3b650e3
+  iteration: 3
   summary:
-    text: 修复独立验收发现的失败/阻塞无回执回报，以及不可重复 Supervisor 检查的恢复重放风险；同步 rc.6
-      版本断言。归档未知schema明确诊断；检查租约避免PID复用无限等待；保留集成失败诊断。
+    text: 存活owner的检查租约过期时报告恢复阻塞并保留operation，仅确认进程已退出才重跑；补齐公开CLI/Runner和实际失败路径的覆盖。
     truncated: false
   addressed_acceptance_ids:
-    - A1
     - A2
-    - A3
     - A7
   checks:
     - name:
-        text: Supervisor review regressions and Skill/release contracts
+        text: Final public Runtime reliability regressions with coverage collection
         truncated: false
       result: passed
       note:
-        text: 4 files / 37 tests passed，修前3项失败复现
+        text: 5 scenarios passed；CLI invalid/oversize、实际exit2拒绝自报pass、dirty
+          candidate中断恢复、live owner不接管及dead owner恢复
         truncated: false
     - name:
-        text: pnpm build + pnpm check:generated
+        text: Native rebuild / check:generated / tsc / ESLint
         truncated: false
       result: passed
       note:
-        text: 完整构建和生成物一致性通过
+        text: 最终源码和生成资产一致，定向静态检查通过
         truncated: false
     - name:
-        text: first-head CI
+        text: Previous-head online checks
         truncated: false
       result: failed
       note:
-        text: 4500 passed，两个rc5硬编码断言失败已修；新head必须重新全绿
-        truncated: false
-    - name:
-        text: Final recovery regressions, TypeScript and generated assets
-        truncated: false
-      result: passed
-      note:
-        text: 5 Runtime regression scenarios passed; Native/Entry build and
-          check:generated passed.
+        text: 全量测试和Quality已通过；Codecov patch64.52%低于70%，新增真实路径覆盖后等待最终head再验证
         truncated: false
   checks_truncated: false
   known_limits:
-    - text: Supervisor checks要求repeatable:true；真实外部多会话模型Eval未运行。
+    - text: 存活或无法确认身份的owner过期时安全阻塞，不自动终止进程或并发重跑。
+      truncated: false
+    - text: 真实外部多会话模型Eval未运行。
       truncated: false
   known_limits_truncated: false
   review:
     status: passed
     summary:
-      text: 新的只读复核通过，CLI及发布元数据16项独立验证通过。
+      text: 第3轮新的只读复核通过，确认live owner状态不变、ESRCH恢复以及真实CLI/Runner失败路径测试。
       truncated: false
-    reviewer_execution_ref: /root/repair_candidate_review
-  submitted_at: 2026-09-07T03:44:43.875Z
+    reviewer_execution_ref: /root/lease_safety_review
+  submitted_at: 2026-09-07T03:57:50.422Z
 blockers: []
 verification: null
 history:
@@ -147,6 +142,17 @@ history:
       text: 独立 Verifier 确认 A1/A2 缺口，修复后重验 A1/A2/A7 并执行最终全量验收。
       truncated: false
     completed_at: 2026-09-07T03:36:50.931Z
+  - goal_cycle: 1
+    iteration: 2
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A2
+      - A7
+    summary:
+      text: 修复存活进程过期接管，重验A2/A7后最终全量验收。
+      truncated: false
+    completed_at: 2026-09-07T03:51:05.196Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null

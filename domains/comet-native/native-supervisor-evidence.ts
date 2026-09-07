@@ -111,10 +111,14 @@ export async function executeNativeSupervisorChecks(options: {
         } catch (error) {
           alive = (error as NodeJS.ErrnoException).code !== 'ESRCH';
         }
-        // The bounded lease also recovers a dead owner's PID reused by another process.
+        // An expired lease cannot prove a live owner stopped; never start overlapping checks.
         const expiresAt =
           Date.parse(previous.expiresAt ?? '') || Date.parse(previous.startedAt) + 30000;
-        if (alive && Date.now() < expiresAt) {
+        if (alive) {
+          if (!(Date.now() < expiresAt))
+            throw new Error(
+              'Native Supervisor check lease expired while owner PID is alive; inspect the original execution before retrying',
+            );
           if (previous.key !== key)
             throw new Error(
               'Native Supervisor check plan is already running with different inputs',

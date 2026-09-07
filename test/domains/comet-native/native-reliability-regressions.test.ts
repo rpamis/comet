@@ -44,6 +44,15 @@ import {
 } from '../../../domains/comet-native/native-supervisor.js';
 import { executeNativeSupervisorChecks } from '../../../domains/comet-native/native-supervisor-evidence.js';
 
+function requireStoppedPid(): number {
+  // Reap a real short-lived process, then prove its PID is not currently alive.
+  const pid = Number(
+    execFileSync(process.execPath, ['-p', 'process.pid'], { encoding: 'utf8' }).trim(),
+  );
+  expect(() => process.kill(pid, 0)).toThrow();
+  return pid;
+}
+
 const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
@@ -234,7 +243,50 @@ describe('Native reliability issue regressions', () => {
       affectedAcceptanceIds: ['A2'],
       replacements: [{ from: 'old.md', to: 'new.md' }],
     };
-    const synced = await syncNativePortableSpecReferences(input);
+    const syncFile = path.join(root, 'spec-sync-input.json');
+    const commandInput = {
+      actor: input.actor,
+      reason: input.reason,
+      expectedStateVersion: input.expectedStateVersion,
+      affectedAcceptanceIds: input.affectedAcceptanceIds,
+      replacements: input.replacements,
+    };
+    const syncCli = async () =>
+      JSON.parse(
+        (
+          await runNativeCli([
+            'spec',
+            'sync',
+            'change',
+            'feature',
+            '--input',
+            syncFile,
+            '--project-root',
+            root,
+            '--json',
+          ])
+        ).stdout!,
+      );
+    for (const invalid of [
+      { ...commandInput, unexpected: true },
+      { ...commandInput, expectedStateVersion: 'old' },
+      { ...commandInput, replacements: [{ from: 'old.md' }] },
+    ]) {
+      await fs.writeFile(syncFile, JSON.stringify(invalid));
+      expect(await syncCli()).toMatchObject({ exitCode: 64 });
+      expect((await readNativePortableChange(paths, 'change')).state_version).toBe(
+        before.state_version,
+      );
+    }
+    await fs.writeFile(syncFile, 'x'.repeat(1024 * 1024 + 1));
+    expect(await syncCli()).toMatchObject({ exitCode: 64 });
+    expect((await readNativePortableChange(paths, 'change')).state_version).toBe(
+      before.state_version,
+    );
+    await fs.writeFile(syncFile, JSON.stringify(commandInput));
+    expect(await syncCli()).toMatchObject({ exitCode: 0 });
+    await fs.rm(syncFile);
+    const synced = await readNativePortableChange(paths, 'change');
     expect(synced).toMatchObject({
       phase: 'build',
       acceptance: [
@@ -414,13 +466,77 @@ describe('Native reliability issue regressions', () => {
       plans: [plan()],
       materials: [{ name: 'probe', content: 'Current candidate probe.' }],
     };
-    let receipt = await executeNativeSupervisorChecks(options);
+    await expect(executeNativeSupervisorChecks({ ...options, runId: 'stale-run' })).rejects.toThrow(
+      'runId is not current',
+    );
+    await expect(
+      executeNativeSupervisorChecks({
+        ...options,
+        materials: [{ name: 'oversize', content: 'x'.repeat(1024 * 1024 + 1) }],
+      }),
+    ).rejects.toThrow('size is invalid');
+    const failing = await executeNativeSupervisorChecks({
+      ...options,
+      plans: [plan('failing', 'process.exit(2)')],
+    });
+    await expect(
+      applyNativeRunnerInput({
+        paths,
+        name: 'change',
+        maxVerifyFailures: 5,
+        input: parseNativeRunnerInput({
+          kind: 'supervisor-verifier-result',
+          child: 'core',
+          runId: task.runId,
+          verdict: 'pass',
+          evidence: {
+            summary: 'Self-reported pass',
+            checks: ['claimed pass'],
+            receiptRef: failing.receiptRef,
+            acceptance: [
+              { id: 'A1', result: 'passed', reason: 'claimed' },
+              { id: 'A2', result: 'passed', reason: 'claimed' },
+            ],
+          },
+        }),
+      }),
+    ).rejects.toThrow('every Runtime check succeeds');
+    await expect(
+      executeNativeSupervisorChecks({
+        ...options,
+        plans: [
+          plan('dirty', "require('fs').writeFileSync('unexpected-check-output.txt','changed')"),
+        ],
+      }),
+    ).rejects.toThrow('clean current candidate');
+    expect(
+      (await readNativeSupervisorState(paths, 'change'))!.children[0].task!.checkExecution?.status,
+    ).toBe('interrupted');
+    await fs.rm(path.join(task.projectRoot, 'unexpected-check-output.txt'));
+    const checked = await applyNativeRunnerInput({
+      paths,
+      name: 'change',
+      maxVerifyFailures: 5,
+      input: parseNativeRunnerInput({
+        kind: 'supervisor-checks',
+        child: 'core',
+        runId: task.runId,
+        checks: options.plans,
+        materials: options.materials,
+      }),
+    });
+    let receipt = checked.checkExecution!;
     expect(receipt.status).toBe('completed');
     expect(await executeNativeSupervisorChecks(options)).toEqual(receipt);
     const expired = JSON.parse(await fs.readFile(legacyFile, 'utf8'));
     expired.children[0].task.checkExecution.status = 'running';
     expired.children[0].task.checkExecution.ownerPid = process.pid;
     expired.children[0].task.checkExecution.expiresAt = '2000-01-01T00:00:00.000Z';
+    await fs.writeFile(legacyFile, JSON.stringify(expired));
+    await expect(executeNativeSupervisorChecks(options)).rejects.toThrow('owner PID is alive');
+    expect(JSON.parse(await fs.readFile(legacyFile, 'utf8'))).toEqual(expired);
+    const stopped = requireStoppedPid();
+    expired.children[0].task.checkExecution.ownerPid = stopped;
     await fs.writeFile(legacyFile, JSON.stringify(expired));
     const recovered = await executeNativeSupervisorChecks(options);
     expect(recovered.status).toBe('completed');
