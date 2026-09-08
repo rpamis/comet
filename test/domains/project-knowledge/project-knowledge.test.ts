@@ -1112,6 +1112,49 @@ describe('project knowledge configuration', () => {
 });
 
 describe('project knowledge corpus and local provider', () => {
+  test('discovers documents through a project ancestor alias without admitting external links', async () => {
+    const temporaryRoot = await tempProject();
+    let provider: LocalProjectKnowledgeProvider | undefined;
+    try {
+      const physicalParent = path.join(temporaryRoot, 'physical');
+      const projectRoot = path.join(physicalParent, 'project');
+      const aliasParent = path.join(temporaryRoot, 'alias');
+      const outside = path.join(temporaryRoot, 'outside');
+      await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+      await fs.mkdir(path.join(projectRoot, 'docs/comet/specs'), { recursive: true });
+      await fs.mkdir(outside);
+      await fs.writeFile(
+        path.join(projectRoot, '.comet/config.yaml'),
+        'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n',
+      );
+      await fs.writeFile(
+        path.join(projectRoot, 'docs/comet/specs/ledger.md'),
+        '# Ledger\n\nLedger transactions support rollback recovery.\n',
+      );
+      await fs.writeFile(path.join(outside, 'secret.md'), '# Ledger rollback secret');
+      const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+      await fs.symlink(physicalParent, aliasParent, linkType);
+      await fs.symlink(outside, path.join(projectRoot, 'docs/comet/archive'), linkType);
+      const aliasedRoot = path.join(aliasParent, 'project');
+      const corpus = await discoverProjectKnowledgeCorpus({ projectRoot: aliasedRoot });
+      expect(corpus.map((document) => document.source)).toEqual(['docs/comet/specs/ledger.md']);
+      provider = new LocalProjectKnowledgeProvider({
+        projectRoot: aliasedRoot,
+        corpus,
+        cacheRoot: path.join(temporaryRoot, 'cache'),
+      });
+      const results = await search(
+        provider,
+        createProjectKnowledgeQuery({ task: 'ledger rollback' }),
+      );
+      expect(results.map((result) => result.source)).toContain('docs/comet/specs/ledger.md');
+      expect(results.some((result) => result.source.includes('secret'))).toBe(false);
+    } finally {
+      provider?.close();
+      await fs.rm(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
   test('discovers declared Native, Classic, and referenced Superpowers documents only', async () => {
     const root = await tempProject();
     try {

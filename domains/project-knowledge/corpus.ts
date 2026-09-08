@@ -68,8 +68,11 @@ async function safeDirectory(
   try {
     const stat = await fs.lstat(root);
     if (!stat.isDirectory() || stat.isSymbolicLink()) return false;
-    const realRoot = await fs.realpath(root);
-    return isInside(projectRoot, realRoot);
+    const [realRoot, realProjectRoot] = await Promise.all([
+      fs.realpath(root),
+      fs.realpath(projectRoot),
+    ]);
+    return isInside(realProjectRoot, realRoot);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       report(

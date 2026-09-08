@@ -10,6 +10,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Knowledge discovery**: Preserve Markdown retrieval when a project's parent directory is accessed through a filesystem alias, including macOS temporary directories, while continuing to exclude project-external links.
+
 - **Plugin settings**: Preserve each project's enabled or disabled state when multiple Dashboard or CLI instances update shared plugin settings, and prevent concurrent enable or disable operations from undoing an uninstall.
 - **Personal Memory**: Allow users to forget global memories created in a project using another language while preserving validation of newly proposed content.
 - **Uninstall status**: Return a failing exit status when current-project or all-projects cleanup is incomplete, including project inspection failures, so automation can reliably detect failures.
