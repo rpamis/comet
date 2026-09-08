@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { classicStateCommand } from '../../../domains/comet-classic/classic-state-command.js';
 import { classicGuardCommand } from '../../../domains/comet-classic/classic-guard.js';
+import { classicHandoffCommand } from '../../../domains/comet-classic/classic-handoff.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 
 describe('Classic public argument safety', () => {
@@ -43,6 +44,20 @@ describe('Classic public argument safety', () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain('Usage: comet guard');
     expect(result.stderr).not.toContain('ALL CHECKS PASSED');
+  });
+
+  it.each([
+    ['demo'],
+    ['demo', 'design'],
+    ['demo', 'design', '--write', '--bogus'],
+    ['demo', '--hash-only', '--write'],
+  ])('rejects unsupported handoff form %j before looking up artifacts', async (...args) => {
+    const stateFile = path.join(root, 'openspec/changes/demo/.comet.yaml');
+    const before = await fs.readFile(stateFile, 'utf8');
+    const result = await classicHandoffCommand(args, options());
+    expect(result.exitCode).toBe(64);
+    expect(result.stderr).toContain('Usage: comet handoff');
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
   });
 
   it.each(['state', 'guard', 'handoff', 'archive', 'validate', 'workspace'])(

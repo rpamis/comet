@@ -3254,6 +3254,12 @@ describe('comet scripts', () => {
     expect(handled.status).toBe(0);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toContain('ALL CHECKS PASSED');
+    expect(result.stderr).toContain('archive completeness verified; no further phase transition');
+    expect(result.stderr).not.toContain('To advance');
+    const appliedArchive = runNode(tmpDir, guardScript, ['done-change', 'archive', '--apply']);
+    expect(appliedArchive.status, appliedArchive.stderr).toBe(0);
+    expect(appliedArchive.stderr).toContain('no further phase transition');
+    expect(appliedArchive.stderr).not.toContain('undefined');
   });
 
   it('resolves OpenSpec date-prefixed archive directories from the original change name', async () => {

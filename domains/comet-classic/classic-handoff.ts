@@ -540,7 +540,12 @@ async function completedHandoffIsCurrent(
 export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(async (args) => {
   const output = new HandoffOutput();
   const [change, phase, mode, fullFlag] = args;
-  if (args.length > 4 || (phase === '--hash-only' && args.length !== 2)) {
+  const hashOnly = args.length === 2 && phase === '--hash-only';
+  const writeHandoff =
+    phase === 'design' &&
+    mode === '--write' &&
+    (args.length === 3 || (args.length === 4 && fullFlag === '--full'));
+  if (!hashOnly && !writeHandoff) {
     return {
       exitCode: 64,
       stderr:
@@ -575,14 +580,7 @@ export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(a
       return output.toResult(0);
     }
 
-    if (phase !== 'design' || mode !== '--write') {
-      throw new HandoffFailure(red('Usage: comet handoff <change-name> design --write [--full]'));
-    }
-    let handoffMode: string;
-    if (fullFlag === undefined || fullFlag === '') handoffMode = 'compact';
-    else if (fullFlag === '--full') handoffMode = 'full';
-    else
-      throw new HandoffFailure(red('Usage: comet handoff <change-name> design --write [--full]'));
+    let handoffMode = fullFlag === '--full' ? 'full' : 'compact';
 
     if (!active.exists) {
       throw new HandoffFailure(red(`ERROR: change directory not found: ${changeRef}`));

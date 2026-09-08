@@ -578,6 +578,45 @@ children:`,
     });
   });
 
+  it('preserves parent child progress while blocking a mismatched workspace', async () => {
+    const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-parent-recovery-'));
+    repositories.push(repository);
+    git(repository, ['init', '-b', 'integration']);
+    git(repository, ['config', 'user.email', 'native@example.test']);
+    git(repository, ['config', 'user.name', 'Native Test']);
+    await writeProjectConfig(repository, defaultProjectConfig('docs', 'en'));
+    git(repository, ['add', '.']);
+    git(repository, ['commit', '-m', 'seed parent']);
+    expect((await nativeNewCommand(['parent'], repository)).exitCode).toBe(0);
+    const paths = await nativeProjectPaths(repository, 'docs');
+    const directory = nativePortableChangeDir(paths, 'parent');
+    await fs.writeFile(path.join(directory, 'brief.md'), PARENT_BRIEF);
+    await fs.writeFile(path.join(directory, 'children.yaml'), CHILDREN);
+    const prepared = await nativeNextCommand(['parent', '--summary', 'Prepare parent'], repository);
+    const previous = prepared.data as {
+      childSummary: Record<string, number>;
+      readyChildren: string[];
+    };
+    expect(previous.childSummary.total).toBe(3);
+    expect(previous.readyChildren).toBeInstanceOf(Array);
+    git(repository, ['switch', '-c', 'wrong-parent-workspace']);
+    const blocked = await nativeNextCommand(['parent', '--summary', 'Resume parent'], repository);
+    expect(blocked).toMatchObject({
+      exitCode: 0,
+      data: {
+        childSummary: previous.childSummary,
+        readyChildren: previous.readyChildren,
+        recovery: { reason: 'workspace-mismatch' },
+        continuation: {
+          disposition: 'blocked',
+          action: 'repair',
+          commandArgs: null,
+          commandAlternatives: [],
+        },
+      },
+    });
+  });
+
   it('downgrades a drifted children copy to a confirmation prompt instead of blocking status', async () => {
     const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-children-'));
     repositories.push(repository);

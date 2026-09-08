@@ -7,6 +7,7 @@ description: "Comet Native workflow. Use when the user explicitly invokes /comet
 
 Native stores the requirements, complete target specifications, current progress, and verification conclusions in the project. After completing each phase, return to the Runtime for the next action and handle only the phase it specifies. CLI text starts with a user-facing `summary` and one `NEXT:` step; use `--json` for the additive `summary`/`next`/`user_message` envelope and `--verbose` only for machine-state troubleshooting, and relay `userCommunication` before waiting for a required user decision.
 ## Inviolable boundaries
+- Replace `<change-name>` with the current change name before executing command examples; command prefixes and change names are not filled in automatically.
 - The on-disk `.comet/config.yaml`, current change, `comet-state.yaml`, and formal artifacts are the working source; chat memory is only supplementary.
 - The Runtime manages workflow state, local execution state, logs, locks, and transactions. Advance every phase through the public `comet native` commands on PATH; users do not run these commands manually.
 - If a command is unavailable, report an incomplete Comet installation and stop. Treat `comet native <command> --help` as authoritative for arguments and output.
@@ -15,7 +16,7 @@ Native stores the requirements, complete target specifications, current progress
 
 ## Start or resume
 1. When the change name is known, first run the compact query `comet native status <change-name> --json`. Only run `comet native status --json` when the name is unknown, then query the selected change.
-2. Add `--details` only when the current action needs acceptance text, the Builder handoff, history, or verification details, and follow returned `nextPageArgs` page by page. Read only pages covering the current `scopeIds`; do not repeat the complete state in the same step. Run `show --json` or read the corresponding brief/Spec only when editing or checking formal content.
+2. Add `--details` only when the current action needs acceptance text, the Builder handoff, history, or verification details, and follow returned `nextPageArgs` page by page. Read only pages covering the current `scopeIds`; do not repeat the complete state in the same step. Run `comet native show <change-name> --json` or read the corresponding brief/Spec only when editing or checking formal content.
 3. When an active change already exists, enter the returned `workspace.projectRoot` and run `select`. Runtime scans registered `worktree`s and prefers a workspace whose bound branch matches; ask the user only when multiple equally aligned candidates remain.
 4. Create a change only when no matching active change exists, using the artifact directory from configuration. `comet init` initializes `native.language` from the selected Skill language; after that, artifacts follow the project setting, and `--language` is only for an explicit user override.
 ### Memory integration
@@ -109,4 +110,4 @@ After every command, handle only the latest `continuation` and apply the CLI aud
 - `blocked`: resolve the listed blocker or recovery action first.
 - `done`: finish.
 
-After a state-changing command, normally run the compact status query again and confirm the current phase, acceptance Loop, state version, and working directory. For Archive dry-run or confirmed, consume only the latest `continuation` in that same response and do not insert another `status` query. Read paged details only when the current action needs long fields, and run `show --json` only when formal content is needed.
+After a state-changing command, normally run the compact status query again and confirm the current phase, acceptance Loop, state version, and working directory. For Archive dry-run or confirmed, consume only the latest `continuation` in that same response and do not insert another `status` query. Read paged details only when the current action needs long fields, and run `comet native show <change-name> --json` only when formal content is needed.

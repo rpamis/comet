@@ -1074,10 +1074,15 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
       }
       output.stderr.push('');
       output.stderr.push(envelope.summary);
-      output.stderr.push(green('ALL CHECKS PASSED — ready for next phase'));
-      if (flag === '--apply') {
+      if (phase === 'archive') {
+        output.stderr.push(
+          green('ALL CHECKS PASSED — archive completeness verified; no further phase transition.'),
+        );
+      } else if (flag === '--apply') {
+        output.stderr.push(green('ALL CHECKS PASSED — ready for next phase'));
         await applyStateUpdate(output, change, changeDir, phase);
       } else {
+        output.stderr.push(green('ALL CHECKS PASSED — ready for next phase'));
         output.stderr.push(
           `Check only: phase unchanged. To advance, run comet guard ${change} ${phase} --apply`,
         );

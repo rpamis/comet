@@ -25,6 +25,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'root move <artifact-root>    Move the configured artifact root.',
       'new <change-name>            Create a change and prepare its workspace.',
       'spec remove                  Record a complete capability removal intent.',
+      'spec sync <change-name> <capability> --input <json-file>  Audit local Markdown reference corrections.',
       'show <change-name>           Read formal artifacts and portable state.',
       'status [<change-name>]       Discover stable boundaries and Runner actions.',
       'select <change-name>         Select a change in its bound workspace.',

@@ -206,6 +206,7 @@ export async function nativeNextCommand(
         : `Restore the workspace and branch bound to this change, then run comet native status ${name} --json for the next action. No transition occurred; do not request acceptance again.`;
     return success('next', {
       state: nativePortableStateSummary(initialState, configured.paths),
+      ...(await portableParentView(configured.paths, initialState)),
       recovery: {
         action: 'await-user',
         reason: 'workspace-mismatch',

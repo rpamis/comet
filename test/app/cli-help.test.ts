@@ -137,6 +137,7 @@ describe('CLI help text', () => {
     expect(help.stdout).toMatch(/^\s+native \[args\.\.\.\]\s+Manage the self-contained/mu);
     expect(nativeHelp.stdout).toContain('Usage: comet native <command> [options]');
     expect(nativeHelp.stdout).toContain('root move <artifact-root>');
+    expect(nativeHelp.stdout).toContain('spec sync <change-name> <capability> --input <json-file>');
     expect(nativeHelp.stdout).toContain('doctor [<change-name>]');
     expect(nativeHelp.stdout).not.toContain('hook-guard');
 

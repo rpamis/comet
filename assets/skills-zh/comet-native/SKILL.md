@@ -7,6 +7,7 @@ description: "Comet Native 工作流。当用户明确调用 /comet-native、要
 
 Native 把需求、完整目标规格、当前进度和验收结论保存在项目中。每完成一个阶段都回到 Runtime 读取下一步，当前只处理 Runtime 指定的阶段。CLI 文本先给出面向用户的 `summary` 和唯一 `NEXT:`；需要稳定解析时使用 `--json` 读取新增的 `summary`/`next`/`user_message` Envelope，只有排查机器状态才使用 `--verbose`，并在等待用户决定前先转述 `userCommunication`。
 ## 硬性边界
+- 执行命令示例前，将 `<change-name>` 替换为当前需求名；命令前缀和需求名不会自动补全。
 - 磁盘中的 `.comet/config.yaml`、当前 change、`comet-state.yaml` 和正式产物是工作依据，聊天记忆只作辅助。
 - Runtime 管理工作流状态、本机执行状态、日志、锁和事务；所有阶段推进都通过 PATH 中公开的 `comet native` 命令完成，用户不手工执行这些命令。
 - 命令不可用时报告 Comet 安装不完整并停止。参数和输出以 `comet native <command> --help` 为准。
@@ -15,7 +16,7 @@ Native 把需求、完整目标规格、当前进度和验收结论保存在项�
 
 ## 开始或恢复
 1. 已知 change 名称时，先运行紧凑查询 `comet native status <change-name> --json`；名称未知时才运行 `comet native status --json`，确定目标后再查询该 change。
-2. 只有当前动作需要验收文字、Builder 交接、历史或验证详情时才加 `--details`，并按返回的 `nextPageArgs` 逐页读取；只读取覆盖当前 `scopeIds` 的页面，不在同一步重复读取完整状态。需要编辑或核对正式正文时才运行 `show --json` 或读取对应 brief/Spec。
+2. 只有当前动作需要验收文字、Builder 交接、历史或验证详情时才加 `--details`，并按返回的 `nextPageArgs` 逐页读取；只读取覆盖当前 `scopeIds` 的页面，不在同一步重复读取完整状态。需要编辑或核对正式正文时才运行 `comet native show <change-name> --json` 或读取对应 brief/Spec。
 3. active change 已存在时，进入返回的 `workspace.projectRoot` 并 `select`。Runtime 会扫描已登记的 `worktree`，优先返回绑定分支匹配的工作区；只有多个同样匹配的候选才让用户选择。
 4. 没有对应 active change 时才创建，并使用配置指定的产物目录。`comet init` 会按所选 Skill 语言初始化 `native.language`；之后产物跟随项目配置，只有用户明确要求覆盖时才传入 `--language`。
 ### 记忆接入
@@ -109,4 +110,4 @@ Supervisor 最终交付后，Runtime 只自动清理确认没有未提交修改�
 - `blocked`：先处理列出的阻塞原因或恢复动作；
 - `done`：结束。
 
-执行会修改状态的命令后，通常重新运行紧凑状态查询，确认当前阶段、验收循环、状态版本和工作目录；但 Archive dry-run 或 confirmed 必须只消费同一响应里的最新 `continuation`，不得插入额外 `status` 查询。只有当前动作确实需要长字段时才分页读取详情，只有需要正式正文时才运行 `show --json`。
+执行会修改状态的命令后，通常重新运行紧凑状态查询，确认当前阶段、验收循环、状态版本和工作目录；但 Archive dry-run 或 confirmed 必须只消费同一响应里的最新 `continuation`，不得插入额外 `status` 查询。只有当前动作确实需要长字段时才分页读取详情，只有需要正式正文时才运行 `comet native show <change-name> --json`。
