@@ -7,10 +7,9 @@ description: "Comet Native 工作流。当用户明确调用 /comet-native、要
 
 Native 把需求、完整目标规格、当前进度和验收结论保存在项目中。每完成一个阶段都回到 Runtime 读取下一步，当前只处理 Runtime 指定的阶段。CLI 文本先给出面向用户的 `summary` 和唯一 `NEXT:`；需要稳定解析时使用 `--json` 读取新增的 `summary`/`next`/`user_message` Envelope，只有排查机器状态才使用 `--verbose`，并在等待用户决定前先转述 `userCommunication`。
 ## 硬性边界
-- 执行命令示例前，将 `<change-name>` 替换为当前需求名；命令前缀和需求名不会自动补全。
 - 磁盘中的 `.comet/config.yaml`、当前 change、`comet-state.yaml` 和正式产物是工作依据，聊天记忆只作辅助。
 - Runtime 管理工作流状态、本机执行状态、日志、锁和事务；所有阶段推进都通过 PATH 中公开的 `comet native` 命令完成，用户不手工执行这些命令。
-- 命令不可用时报告 Comet 安装不完整并停止。参数和输出以 `comet native <command> --help` 为准。
+- 命令不可用时报告 Comet 安装不完整并停止。参数和输出以 `comet native <command> --help` 为准；执行示例前，将 `<change-name>` 替换为当前需求名。
 - Builder 提交候选，由新的只读 Verifier 作出验收判断；Verifier 的启动方式服从用户选择的推进方式和 Runtime 返回的 `continuation`。
 - Native 主流程由本 Skill 和 Runtime 完成，不依赖任何外部 Skill。
 

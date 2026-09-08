@@ -7,10 +7,9 @@ description: "Comet Native workflow. Use when the user explicitly invokes /comet
 
 Native stores the requirements, complete target specifications, current progress, and verification conclusions in the project. After completing each phase, return to the Runtime for the next action and handle only the phase it specifies. CLI text starts with a user-facing `summary` and one `NEXT:` step; use `--json` for the additive `summary`/`next`/`user_message` envelope and `--verbose` only for machine-state troubleshooting, and relay `userCommunication` before waiting for a required user decision.
 ## Inviolable boundaries
-- Replace `<change-name>` with the current change name before executing command examples; command prefixes and change names are not filled in automatically.
 - The on-disk `.comet/config.yaml`, current change, `comet-state.yaml`, and formal artifacts are the working source; chat memory is only supplementary.
 - The Runtime manages workflow state, local execution state, logs, locks, and transactions. Advance every phase through the public `comet native` commands on PATH; users do not run these commands manually.
-- If a command is unavailable, report an incomplete Comet installation and stop. Treat `comet native <command> --help` as authoritative for arguments and output.
+- If a command is unavailable, report an incomplete Comet installation and stop. Treat `comet native <command> --help` as authoritative for arguments and output; replace `<change-name>` with the current change name before executing examples.
 - The Builder submits a candidate, and a fresh read-only Verifier makes the verification judgment. How the Verifier starts follows the user's coordination choice and the Runtime's latest `continuation`.
 - This Skill and the Runtime complete the Native workflow; Native does not depend on any external Skill.
 
