@@ -118,7 +118,8 @@ async function runOpenSpecInit(
     execFileSync(invocation.command, initArgs, {
       cwd: targetPath,
       env,
-      stdio: ['inherit', 'inherit', 'pipe'],
+      // External progress must not contaminate the CLI's structured stdout.
+      stdio: ['inherit', 2, 'pipe'],
       timeout: 120_000,
       shell: useShell,
     });
@@ -156,7 +157,7 @@ async function runOpenSpecInit(
     execFileSync(fallbackInvocation.command, fallbackArgs, {
       cwd: targetPath,
       env,
-      stdio: 'inherit',
+      stdio: ['inherit', 2, 'inherit'],
       timeout: 120_000,
       shell: useShell,
     });
@@ -554,7 +555,7 @@ async function ensureOpenSpecCli(
     const npmArgs = ['install', '-g', '@fission-ai/openspec@latest'];
     execFileSync(getNpmExecutable(), npmArgs, {
       cwd: os.homedir() || projectPath,
-      stdio: 'inherit',
+      stdio: ['inherit', 2, 'inherit'],
       timeout: 120_000,
       shell: process.platform === 'win32',
     });

@@ -717,6 +717,78 @@ describe('comet init E2E', () => {
     });
   });
 
+  it('removes the working directories created by a fresh Native init', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });
+    const { initCommand } = await import('../../app/commands/init.js');
+    const { removeWorkingDirs } = await import('../../domains/skill/uninstall.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        workflow: 'native',
+        language: 'en',
+        codegraph: 'skip',
+      }),
+    );
+    expect(result.status).toBe('complete');
+    await expect(removeWorkingDirs(tmpDir)).resolves.toEqual({ removed: 1, failed: 0 });
+    await expect(fs.stat(path.join(tmpDir, '.comet'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('preserves global workflows and policy settings when init does not explicitly replace them', async () => {
+    mockExternalSuccess();
+    const fakeHome = path.join(tmpDir, 'global-preservation');
+    await fs.mkdir(path.join(fakeHome, '.comet'), { recursive: true });
+    vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const configPath = path.join(fakeHome, '.comet', 'config.yaml');
+    await fs.writeFile(
+      configPath,
+      [
+        'schema: comet.global.v1',
+        'default_workflow: classic',
+        'workflows: [native, classic]',
+        'ambient_resume: false',
+        'memory:',
+        '  learning: false',
+        '  retrieval: false',
+        'native:',
+        '  artifact_root: docs',
+        '  language: en',
+        'classic:',
+        '  artifact_layout: docs',
+        '  language: en',
+        '  context_compression: beta',
+        '  review_mode: standard',
+        '  auto_transition: false',
+        '',
+      ].join('\n'),
+    );
+    const { initCommand } = await import('../../app/commands/init.js');
+    const result = await captureJsonOutput(() =>
+      initCommand(tmpDir, {
+        yes: true,
+        json: true,
+        scope: 'global',
+        platform: 'codex',
+        language: 'en',
+      }),
+    );
+    expect(result.status).toBe('complete');
+    expect(parse(await fs.readFile(configPath, 'utf8'))).toMatchObject({
+      default_workflow: 'classic',
+      workflows: ['native', 'classic'],
+      ambient_resume: false,
+      memory: { learning: false, retrieval: false },
+      classic: { context_compression: 'beta', auto_transition: false },
+    });
+    const initCall = mockedExecFileSync.mock.calls.find(
+      ([command, args]) => command === 'openspec' && Array.isArray(args) && args.includes('init'),
+    );
+    expect(initCall).toBeDefined();
+    expect((initCall?.[2] as { stdio?: unknown }).stdio).toEqual(['inherit', 2, 'pipe']);
+  });
+
   it('keeps a Classic-only config lossless when reinitializing it as Both', async () => {
     mockExternalSuccess();
     await fs.mkdir(path.join(tmpDir, '.claude'), { recursive: true });

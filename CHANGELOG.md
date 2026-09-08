@@ -10,6 +10,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Global initialization**: Preserve configured workflows, the default workflow, and memory and workflow policies when repeating initialization without explicitly replacing them.
+- **Native uninstall**: Clean up empty Native runtime directories, including sequential uninstall of a mixed Native and Classic installation, while preserving user content and active state.
+- **Memory command failures**: Report remote memory retrieval, management, and policy-update failures instead of empty results or false success, while keeping automatic context collection nonblocking.
+- **Context expansion guidance**: Include the required task argument in the command shown for expanding a context manifest entry.
+- **Installation JSON output**: Keep OpenSpec and Superpowers progress on stderr so external tool notices cannot corrupt structured CLI results.
 - **Knowledge discovery**: Preserve Markdown retrieval when a project's parent directory is accessed through a filesystem alias, including macOS temporary directories, while continuing to exclude project-external links.
 
 - **Plugin settings**: Preserve each project's enabled or disabled state when multiple Dashboard or CLI instances update shared plugin settings, and prevent concurrent enable or disable operations from undoing an uninstall.
@@ -25,6 +30,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Security
 
+- **Memory repository isolation**: Initialize and use a dedicated memory Git repository when the user's home belongs to another repository, preventing memory configuration from changing the parent remote or synchronizing unrelated parent history.
 - **Dashboard request validation**: Reject untrusted hosts and browser origins, and require JSON for state-changing requests to prevent cross-origin pages from changing local settings.
 
 ## What's Changed [0.4.0-rc.6] - 2026-09-07

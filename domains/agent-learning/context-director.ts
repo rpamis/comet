@@ -415,6 +415,7 @@ export class ContextDirector {
     const manifest: AgentContextManifestItem[] = [];
     const applications: AgentContextApplicationRecord[] = [];
     const budget = positive(request.charBudget, this.defaultCharBudget);
+    const expandHint = 'comet task --task "<original task>" --expand-context <id>';
     const appliedAt = this.now().toISOString();
     for (const entry of ranked) {
       const { candidate, whyApplied } = entry;
@@ -448,7 +449,7 @@ export class ContextDirector {
           nextCore,
           nextPolicies,
           nextManifest,
-          'comet task --expand-context <id>',
+          expandHint,
           [...applications, application],
           budget >= 1500,
         );
@@ -462,7 +463,6 @@ export class ContextDirector {
       if (fullDelivery && attempt('full')) continue;
       if ([320, 160, 80, 32, 0].some((limit) => attempt('manifest', limit))) continue;
     }
-    const expandHint = 'comet task --expand-context <id>';
     for (const application of applications) {
       await this.applications.append(application);
       delivered.set(

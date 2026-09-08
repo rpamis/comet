@@ -83,4 +83,37 @@ describe('real memory Git synchronization', () => {
     await local.sync.configureRemote(path.join(root, 'missing.git'));
     expect(await local.sync.sync()).toMatchObject({ status: 'failed' });
   });
+
+  it('isolates memory inside a parent repository without changing or pushing parent history', async () => {
+    const parent = await client('home', 'main');
+    await fs.writeFile(path.join(parent.directory, 'private.txt'), 'Unrelated home document\n');
+    git(parent.directory, 'add', 'private.txt');
+    git(parent.directory, 'commit', '-m', 'Private history');
+    const parentHead = git(parent.directory, 'rev-parse', 'HEAD');
+    const directory = path.join(parent.directory, '.comet', 'memory');
+    await fs.mkdir(directory, { recursive: true });
+    const sync = new GitMemorySync(directory);
+    expect(await sync.remote()).toBeNull();
+    expect(await sync.sync()).toMatchObject({ status: 'local-only' });
+    git(directory, 'config', 'user.name', 'Memory test');
+    git(directory, 'config', 'user.email', 'memory@example.invalid');
+    const memoryRemote = path.join(root, 'memory.git');
+    git(root, 'init', '--bare', memoryRemote);
+    await sync.configureRemote(memoryRemote);
+    await fs.writeFile(path.join(directory, 'profile.md'), 'Memory preference\n');
+    expect(await sync.sync()).toMatchObject({ status: 'synced' });
+    expect(git(parent.directory, 'remote', 'get-url', 'origin').trim()).toBe(remote);
+    expect(git(parent.directory, 'rev-parse', 'HEAD')).toBe(parentHead);
+    expect(git(root, '--git-dir', memoryRemote, 'log', '--all', '--format=%s')).not.toContain(
+      'Private history',
+    );
+    expect(
+      git(root, '--git-dir', memoryRemote, 'ls-tree', '-r', '--name-only', '--full-tree', 'HEAD'),
+    ).not.toContain('private.txt');
+    const another = path.join(parent.directory, 'second-memory');
+    const configured = new GitMemorySync(another);
+    await configured.configureRemote(memoryRemote);
+    expect(await configured.remote()).toBe(memoryRemote);
+    expect(git(parent.directory, 'remote', 'get-url', 'origin').trim()).toBe(remote);
+  });
 });

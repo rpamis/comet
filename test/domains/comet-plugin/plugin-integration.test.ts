@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createServer } from 'node:http';
 
 import { describe, expect, test, vi } from 'vitest';
 import {
@@ -29,6 +30,51 @@ interface WorkflowExperienceFixture {
   readonly userEvidence?: readonly string[];
   readonly operations?: readonly string[];
 }
+
+test('remote memory failures reject explicit operations but leave automatic context nonblocking', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-unavailable-'));
+  const server = createServer((_request, response) => {
+    response.writeHead(503, { 'content-type': 'application/json' });
+    response.end('{"error":"unavailable"}');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing test server address');
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(projectRoot);
+    const bridge = await createDefaultCometPluginBridge({
+      projectRoot,
+      projectId: 'unavailable-memory',
+      homeDirectory: root,
+      stateRoot: path.join(root, 'plugins'),
+      memoryProviderConfig: {
+        provider: 'remote',
+        profileCharLimit: 2000,
+        taskContextCharLimit: 6000,
+        remote: { endpoint: `http://127.0.0.1:${address.port}/memory`, timeoutMs: 1000 },
+      },
+    });
+    for (const operation of [
+      () => bridge.retrieve({ task: 'inspect memory' }),
+      () => bridge.manage(),
+      () => bridge.pauseProjectLearning(true),
+      () => bridge.pauseProjectRetrieval(true),
+    ]) {
+      await expect(operation()).rejects.toThrow(/503/);
+    }
+    await expect(
+      bridge.configureMemoryRemote('https://example.invalid/memory.git'),
+    ).rejects.toThrow();
+    await expect(bridge.collectContext({ task: 'inspect memory' })).resolves.toEqual([]);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
 
 function createDefaultCometPluginBridge(
   options: Parameters<typeof createProductionCometPluginBridge>[0],

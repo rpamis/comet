@@ -1160,6 +1160,53 @@ describe('uninstall', () => {
       expect(await fileExists(cometDir)).toBe(false);
     });
 
+    it.each(['native', 'classic'] as const)(
+      'preserves the other workflow runtime when removing only %s',
+      async (workflow) => {
+        await writeNativeProjectConfig('docs', 'both');
+        await createNativeWorkingTree('docs');
+        const runtime = path.join(tmpDir, '.comet', 'runtime');
+        for (const directory of ['changes', 'locks', 'transactions']) {
+          await fs.mkdir(path.join(runtime, 'native', directory), { recursive: true });
+        }
+        await fs.mkdir(path.join(runtime, 'classic'), { recursive: true });
+        await fs.writeFile(path.join(runtime, 'classic', 'user-state.json'), '{}');
+        const result = await removeWorkingDirs(tmpDir, { workflows: [workflow] });
+        expect(result.failed).toBe(0);
+        expect(await fileExists(path.join(runtime, 'native'))).toBe(workflow === 'classic');
+        expect(await fs.readFile(path.join(runtime, 'classic', 'user-state.json'), 'utf8')).toBe(
+          '{}',
+        );
+      },
+    );
+
+    it('preserves unrecognized files inside the current Native runtime', async () => {
+      await writeNativeProjectConfig('docs');
+      await createNativeWorkingTree('docs');
+      const runtime = path.join(tmpDir, '.comet', 'runtime', 'native');
+      await fs.mkdir(runtime, { recursive: true });
+      const file = path.join(runtime, 'user-notes.md');
+      await fs.writeFile(file, 'Keep this content');
+      await removeWorkingDirs(tmpDir);
+      expect(await fs.readFile(file, 'utf8')).toBe('Keep this content');
+    });
+
+    it('fully uninstalls Classic after selectively uninstalling Native', async () => {
+      const configPath = await writeNativeProjectConfig('docs', 'both');
+      await createNativeWorkingTree('docs');
+      const runtime = path.join(tmpDir, '.comet', 'runtime', 'native');
+      for (const directory of ['changes', 'locks', 'transactions']) {
+        await fs.mkdir(path.join(runtime, directory), { recursive: true });
+      }
+      expect((await removeWorkingDirs(tmpDir, { workflows: ['native'] })).failed).toBe(0);
+      await fs.writeFile(
+        configPath,
+        'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: docs\n',
+      );
+      expect((await removeWorkingDirs(tmpDir)).failed).toBe(0);
+      expect(await fileExists(path.join(tmpDir, '.comet'))).toBe(false);
+    });
+
     it('removes empty docs/superpowers directories', async () => {
       const specsDir = path.join(tmpDir, 'docs', 'superpowers', 'specs');
       const plansDir = path.join(tmpDir, 'docs', 'superpowers', 'plans');

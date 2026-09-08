@@ -269,7 +269,9 @@ export class CometPluginBridge {
   }
 
   public async status(): Promise<unknown> {
-    return this.runtime.invoke('comet.personal-memory', 'status', {}, 'user');
+    return this.runtime.invoke('comet.personal-memory', 'status', {}, 'user', {
+      throwOnError: true,
+    });
   }
 
   public async retrieve(query: MemoryQuery): Promise<MemoryRetrieval> {
@@ -278,6 +280,7 @@ export class CometPluginBridge {
       'retrieve',
       scopedMemoryQuery(query, this.projectId),
       'user',
+      { throwOnError: true },
     )) as MemoryRetrieval;
   }
 
@@ -287,6 +290,7 @@ export class CometPluginBridge {
       'manage',
       scopedMemoryQuery(query, this.projectId),
       'user',
+      { throwOnError: true },
     )) as MemoryManagementView;
   }
 
@@ -321,15 +325,19 @@ export class CometPluginBridge {
   }
 
   public async syncMemory(): Promise<unknown> {
-    return this.runtime.invoke('comet.personal-memory', 'sync', {}, 'user');
+    return this.runtime.invoke('comet.personal-memory', 'sync', {}, 'user', { throwOnError: true });
   }
 
   public async memoryRemote(): Promise<unknown> {
-    return this.runtime.invoke('comet.personal-memory', 'remote', {}, 'user');
+    return this.runtime.invoke('comet.personal-memory', 'remote', {}, 'user', {
+      throwOnError: true,
+    });
   }
 
   public async configureMemoryRemote(url: string): Promise<unknown> {
-    return this.runtime.invoke('comet.personal-memory', 'configure-remote', { url }, 'user');
+    return this.runtime.invoke('comet.personal-memory', 'configure-remote', { url }, 'user', {
+      throwOnError: true,
+    });
   }
 
   public async pauseProjectLearning(
@@ -342,6 +350,7 @@ export class CometPluginBridge {
       'pause-project-learning',
       { projectKey, paused },
       'user',
+      { throwOnError: true },
     );
   }
 
@@ -355,6 +364,7 @@ export class CometPluginBridge {
       'pause-project-retrieval',
       { projectKey, paused },
       'user',
+      { throwOnError: true },
     );
   }
 

@@ -1928,10 +1928,15 @@ describe('PersonalMemoryService', () => {
         '# 个人画像\n\n## 沟通偏好\n\n- 使用中文回复\n',
       );
       const calls: string[][] = [];
+      let initialized = false;
       const sync = new GitMemorySync(root, {
         run: async (args) => {
           calls.push([...args]);
-          if (args[0] === 'rev-parse') throw new Error('not a git repository');
+          if (args[0] === 'init') initialized = true;
+          if (args[0] === 'rev-parse') {
+            if (args[1] === '--show-toplevel' && initialized) return { stdout: root, stderr: '' };
+            throw new Error('not a git repository');
+          }
           if (args[0] === 'diff' || args[0] === 'ls-remote') return { stdout: '', stderr: '' };
           if (args[0] === 'symbolic-ref') return { stdout: 'main\n', stderr: '' };
           if (args[0] === 'status') return { stdout: ' M profile.md\n', stderr: '' };
@@ -1942,6 +1947,7 @@ describe('PersonalMemoryService', () => {
       expect(calls.map((entry) => entry[0])).toEqual([
         'rev-parse',
         'init',
+        'rev-parse',
         'remote',
         'diff',
         'symbolic-ref',

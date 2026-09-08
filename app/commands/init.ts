@@ -540,13 +540,20 @@ export async function initCommand(
           initialProjectConfigSnapshot!,
         )
       : null;
-  const configuredWorkflows = initialProjectConfigSnapshot?.document?.config?.workflows ?? [];
+  const initialGlobalConfig =
+    scope === 'global'
+      ? await readWorkflowGlobalConfigForLifecycle(getBaseDir(scope, projectPath))
+      : null;
+  const configuredWorkflows =
+    initialProjectConfigSnapshot?.document?.config?.workflows ??
+    initialGlobalConfig?.workflows ??
+    [];
   const suggestedWorkflowSelection: InitWorkflowSelection =
     options.workflow === undefined &&
     configuredWorkflows.includes('native') &&
     configuredWorkflows.includes('classic')
       ? 'both'
-      : (suggestedWorkflowDecision?.workflow ?? 'native');
+      : (suggestedWorkflowDecision?.workflow ?? initialGlobalConfig?.default_workflow ?? 'native');
   const workflowSelection = await selectWorkflow(options, lang, suggestedWorkflowSelection);
   if (
     scope === 'global' &&
@@ -1277,8 +1284,14 @@ export async function initCommand(
       const selectedWorkflows =
         workflowSelection === 'both' ? (['native', 'classic'] as const) : [workflowSelection];
       const config: WorkflowGlobalConfig = {
+        ...existingGlobalConfig,
         schema: 'comet.global.v1',
-        default_workflow: workflow,
+        default_workflow:
+          options.workflow === undefined &&
+          existingGlobalConfig &&
+          selectedWorkflows.includes(existingGlobalConfig.default_workflow)
+            ? existingGlobalConfig.default_workflow
+            : workflow,
         workflows: [...selectedWorkflows],
         ambient_resume: existingGlobalConfig?.ambient_resume ?? true,
         ...(includesWorkflow(workflowSelection, 'native')
@@ -1287,7 +1300,7 @@ export async function initCommand(
                 ? { ...existingGlobalConfig.native }
                 : defaults.native,
             }
-          : {}),
+          : { native: undefined }),
         ...(includesWorkflow(workflowSelection, 'classic')
           ? {
               classic: {
@@ -1296,9 +1309,10 @@ export async function initCommand(
                 context_compression: 'off',
                 review_mode: 'standard',
                 auto_transition: true,
+                ...existingGlobalConfig?.classic,
               },
             }
-          : {}),
+          : { classic: undefined }),
       };
       await writeWorkflowGlobalConfig(baseDir, config);
     }

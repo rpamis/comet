@@ -413,7 +413,7 @@ async function stageAndCopySuperpowers(
   try {
     execFileSync(stageCommand.command, stageCommand.args, {
       cwd: tempDir,
-      stdio: 'inherit',
+      stdio: ['inherit', 2, 'inherit'],
       timeout: SUPERPOWERS_INSTALL_TIMEOUT_MS,
       shell: process.platform === 'win32',
     });
@@ -471,7 +471,7 @@ async function installSuperpowersForPlatforms(
     try {
       execFileSync(command.command, command.args, {
         cwd: projectPath,
-        stdio: 'inherit',
+        stdio: ['inherit', 2, 'inherit'],
         timeout: SUPERPOWERS_INSTALL_TIMEOUT_MS,
         shell: process.platform === 'win32',
       });

@@ -160,14 +160,10 @@ async function createModule(
   };
 
   const retrieveWithoutNotice = async (query: MemoryQuery): Promise<MemoryRetrieval> => {
-    try {
-      return (await provider.query({
-        view: retrievalView(query.view),
-        query,
-      })) as MemoryRetrieval;
-    } catch {
-      return { records: [], text: '', truncated: false, disabled: false };
-    }
+    return (await provider.query({
+      view: retrievalView(query.view),
+      query,
+    })) as MemoryRetrieval;
   };
 
   const retrieveWithNotice = async (query: MemoryQuery): Promise<MemoryRetrieval> => {

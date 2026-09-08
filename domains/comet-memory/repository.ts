@@ -229,13 +229,9 @@ export class GitMemorySync implements MemoryGitSync {
   public async sync(): Promise<MemorySyncResult> {
     await fs.mkdir(this.root, { recursive: true });
     try {
-      await this.runCommand(['rev-parse', '--git-dir']);
-    } catch {
-      try {
-        await this.runCommand(['init']);
-      } catch (error) {
-        return failedSync(error, false);
-      }
+      await this.ensureDedicatedRepository();
+    } catch (error) {
+      return failedSync(error, false);
     }
 
     try {
@@ -379,8 +375,8 @@ export class GitMemorySync implements MemoryGitSync {
 
   public async remote(): Promise<string | null> {
     await fs.mkdir(this.root, { recursive: true });
+    if (!(await this.isDedicatedRepository())) return null;
     try {
-      await this.runCommand(['rev-parse', '--git-dir']);
       const result = await this.runCommand(['remote', 'get-url', this.remoteName]);
       return result.stdout.trim() || null;
     } catch {
@@ -392,16 +388,33 @@ export class GitMemorySync implements MemoryGitSync {
     const normalized = url.trim();
     if (!normalized) throw new Error('Memory Git remote must not be empty');
     await fs.mkdir(this.root, { recursive: true });
-    try {
-      await this.runCommand(['rev-parse', '--git-dir']);
-    } catch {
-      await this.runCommand(['init']);
-    }
+    await this.ensureDedicatedRepository();
     try {
       await this.runCommand(['remote', 'get-url', this.remoteName]);
       await this.runCommand(['remote', 'set-url', this.remoteName, normalized]);
     } catch {
       await this.runCommand(['remote', 'add', this.remoteName, normalized]);
+    }
+  }
+
+  private async isDedicatedRepository(): Promise<boolean> {
+    try {
+      const result = await this.runCommand(['rev-parse', '--show-toplevel']);
+      const [repositoryRoot, memoryRoot] = await Promise.all([
+        fs.realpath(result.stdout.trim()),
+        fs.realpath(this.root),
+      ]);
+      return path.relative(repositoryRoot, memoryRoot) === '';
+    } catch {
+      return false;
+    }
+  }
+
+  private async ensureDedicatedRepository(): Promise<void> {
+    if (await this.isDedicatedRepository()) return;
+    await this.runCommand(['init']);
+    if (!(await this.isDedicatedRepository())) {
+      throw new Error('Personal memory must use its own Git repository root');
     }
   }
 }

@@ -119,6 +119,12 @@ const SUPERPOWERS_WORKING_TREE: ManagedWorkingTree = {
 };
 const COMET_WORKING_TREE: ManagedWorkingTree = {
   'config.yaml': 'file',
+  runtime: EMPTY_MANAGED_WORKING_TREE,
+};
+const NATIVE_RUNTIME_WORKING_TREE: ManagedWorkingTree = {
+  changes: EMPTY_MANAGED_WORKING_TREE,
+  locks: EMPTY_MANAGED_WORKING_TREE,
+  transactions: EMPTY_MANAGED_WORKING_TREE,
 };
 const NATIVE_WORKING_TREE: ManagedWorkingTree = {
   specs: EMPTY_MANAGED_WORKING_TREE,
@@ -1562,6 +1568,9 @@ async function removeWorkingDirs(
         ? COMET_WORKING_TREE
         : EMPTY_MANAGED_WORKING_TREE,
     );
+    if (nativeEnabled && !selectiveWorkflowRemoval) {
+      mergeManagedWorkingTree(cometTree, ['runtime', 'native'], NATIVE_RUNTIME_WORKING_TREE);
+    }
     const docsTree: ManagedWorkingTree = removingClassicWorkingDirs
       ? { superpowers: cloneManagedWorkingTree(SUPERPOWERS_WORKING_TREE) }
       : {};
@@ -1626,6 +1635,13 @@ async function removeWorkingDirs(
     }
     if (separateNativeRoot) {
       candidates.push([separateNativeRoot, NATIVE_WORKING_TREE, false]);
+    }
+    if (nativeEnabled && selectiveWorkflowRemoval) {
+      candidates.push([
+        path.join(cometDir, 'runtime', 'native'),
+        NATIVE_RUNTIME_WORKING_TREE,
+        false,
+      ]);
     }
     if (Object.keys(cometTree).length > 0) candidates.push([cometDir, cometTree, true]);
 
