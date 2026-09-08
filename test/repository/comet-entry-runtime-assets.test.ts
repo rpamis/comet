@@ -126,8 +126,12 @@ describe('Comet entry resolver runtime release asset', () => {
     const result = runSkillOnly(projectRoot);
 
     expect(result.status).toBe(65);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('.comet/config.yaml is missing');
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'failed',
+      exitCode: 65,
+      error: expect.stringContaining('.comet/config.yaml is missing'),
+    });
+    expect(result.stderr).toBe('');
   });
 
   it('fails closed on malformed config instead of falling back to Classic', async () => {
@@ -143,8 +147,12 @@ describe('Comet entry resolver runtime release asset', () => {
     const result = runSkillOnly(projectRoot);
 
     expect(result.status).toBe(65);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toMatch(/Invalid \.comet\/config\.yaml/iu);
-    expect(result.stderr).not.toContain('legacy-fallback');
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'failed',
+      exitCode: 65,
+      error: expect.stringMatching(/Invalid \.comet\/config\.yaml/iu),
+    });
+    expect(result.stdout).not.toContain('legacy-fallback');
+    expect(result.stderr).toBe('');
   });
 });

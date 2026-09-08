@@ -32,11 +32,28 @@ describe('built CLI smoke', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('runs doctor through bin/comet.js after the CLI build', async () => {
-    const result = runCli('doctor', projectRoot, '--scope', 'project');
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain('Comet Doctor (scope: project)');
+  it('returns an unhealthy Doctor result and nonzero exit through the built CLI', async () => {
+    for (const json of [false, true]) {
+      const result = spawnSync(
+        process.execPath,
+        [cli, 'doctor', projectRoot, '--scope', 'project', ...(json ? ['--json'] : [])],
+        {
+          cwd: repositoryRoot,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            HOME: projectRoot,
+            USERPROFILE: projectRoot,
+            APPDATA: path.join(projectRoot, 'AppData/Roaming'),
+            LOCALAPPDATA: path.join(projectRoot, 'AppData/Local'),
+          },
+        },
+      );
+      expect(result.status, result.stderr).toBe(1);
+      if (json)
+        expect(JSON.parse(result.stdout)).toMatchObject({ status: 'failed', healthy: false });
+      else expect(result.stdout).toContain('Comet Doctor (scope: project)');
+    }
   });
 
   it('runs status through bin/comet.js after the CLI build', async () => {
