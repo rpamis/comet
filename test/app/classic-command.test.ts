@@ -15,6 +15,19 @@ vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
 }));
 
 describe('Classic command facade', () => {
+  it.each(['--help', '-h'])(
+    'does not collect context or record workflow success for %s',
+    async (flag) => {
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      runClassicCli.mockResolvedValue({ exitCode: 0, stdout: 'Usage: comet state\n' });
+      const { runClassicFacade, runClassicGroupFacade } =
+        await import('../../app/commands/classic.js');
+      expect(await runClassicFacade('state', [flag, '--comet-task', 'repair'])).toBe(0);
+      expect(await runClassicGroupFacade(['workspace', flag, '--comet-task', 'repair'])).toBe(0);
+      expect(collectCometPluginContext).not.toHaveBeenCalled();
+      expect(recordCometWorkflowResult).not.toHaveBeenCalled();
+    },
+  );
   afterEach(() => {
     vi.restoreAllMocks();
     runClassicCli.mockReset();

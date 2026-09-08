@@ -74,6 +74,7 @@ async function recordClassicResult(
   workflowOverride?: string,
   projectRoot = process.cwd(),
 ): Promise<void> {
+  if (args.includes('--help') || args.includes('-h')) return;
   if (!['state', 'guard', 'handoff', 'archive', 'workspace'].includes(command)) return;
   if (result.exitCode !== 0 && command !== 'guard') return;
   try {
@@ -154,6 +155,7 @@ function splitIntegrationArgs(args: readonly string[]): ClassicIntegrationArgs {
 }
 
 async function emitContext(projectRoot: string, options: ClassicIntegrationArgs): Promise<void> {
+  if (options.cliArgs.includes('--help') || options.cliArgs.includes('-h')) return;
   if (!options.task?.trim()) return;
   try {
     const contributions =
