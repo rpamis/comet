@@ -355,7 +355,7 @@ async function buildEvalArgs(
 
   const suite = resolveSuite(options);
   const args = ['run'];
-  if (suite === 'langfuse') args.push('--extra', 'langfuse');
+  if (suite === 'langfuse' || suite === 'langsmith') args.push('--extra', suite);
   args.push('pytest', `${suite}/tests/tasks/test_tasks.py`);
   if (options.task) args.push(`--task=${options.task}`);
 

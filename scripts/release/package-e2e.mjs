@@ -127,6 +127,8 @@ async function main() {
       COMET_NO_HINTS: '1',
       HOME: homeDir,
       USERPROFILE: homeDir,
+      LOCALAPPDATA: path.join(homeDir, 'AppData', 'Local'),
+      XDG_CACHE_HOME: path.join(homeDir, '.cache'),
       NPM_CONFIG_CACHE: npmCache,
       npm_config_cache: npmCache,
     };
@@ -210,6 +212,40 @@ async function main() {
     }
 
     const installedSkills = path.join(projectDir, '.agents', 'skills');
+    const knowledge = parseJsonPayload(
+      run(process.execPath, [cli, 'knowledge', 'status', projectDir, '--json'], {
+        cwd: consumerDir,
+        env: environment,
+      }),
+    );
+    if (!knowledge.status?.healthy || !knowledge.status?.writable) {
+      throw new Error(`Packaged knowledge storage is unavailable: ${JSON.stringify(knowledge)}`);
+    }
+    const knowledgeSource = 'docs/comet/specs/package-verification.md';
+    await fs.mkdir(path.dirname(path.join(projectDir, knowledgeSource)), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDir, knowledgeSource),
+      '# Ledger recovery\n\nLedger transactions support rollback recovery.\n',
+    );
+    const knowledgeQuery = parseJsonPayload(
+      run(
+        process.execPath,
+        [cli, 'knowledge', 'query', projectDir, '--task', 'ledger rollback', '--json'],
+        { cwd: consumerDir, env: environment },
+      ),
+    );
+    const knowledgeDiagnostics = [
+      ...(knowledgeQuery.diagnostics ?? []),
+      ...(knowledgeQuery.result?.diagnostics ?? []),
+    ];
+    if (
+      !knowledgeQuery.result?.results?.some((result) => result.source === knowledgeSource) ||
+      knowledgeDiagnostics.some((diagnostic) => diagnostic.code === 'index-unavailable')
+    ) {
+      throw new Error(
+        `Packaged knowledge search is unavailable: ${JSON.stringify(knowledgeQuery)}`,
+      );
+    }
     const installedNativeNew = path.join(
       installedSkills,
       'comet-native',

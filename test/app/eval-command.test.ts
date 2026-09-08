@@ -72,17 +72,14 @@ vi.mock('../../domains/eval/user-environment.js', () => ({
 
 function expectUvRun(args: string[], cwd = evalCwd): string {
   expect(execFileSync).toHaveBeenCalledWith('uv', ['--version'], { stdio: 'pipe' });
-  expect(execFileSync).toHaveBeenCalledWith('uv', args, {
-    cwd,
-    stdio: 'inherit',
-    env: expect.objectContaining({
-      COMET_EVAL_EXPERIMENT_ID: expect.stringMatching(/^comet-eval-[0-9a-f-]+$/u),
-    }),
-  });
   const runCall = execFileSync.mock.calls.find(
     ([command, callArgs]) => command === 'uv' && Array.isArray(callArgs) && callArgs[0] === 'run',
   );
   const experimentId = runCall?.[2]?.env?.COMET_EVAL_EXPERIMENT_ID;
+  // Compare public launch fields separately so failures never print the inherited environment.
+  expect(runCall?.[1]).toEqual(args);
+  expect(runCall?.[2]?.cwd).toBe(cwd);
+  expect(runCall?.[2]?.stdio).toBe('inherit');
   expect(experimentId).toMatch(/^comet-eval-[0-9a-f-]+$/u);
   return experimentId as string;
 }
@@ -453,6 +450,8 @@ describe('eval command', () => {
 
     const experimentId = expectUvRun([
       'run',
+      '--extra',
+      'langsmith',
       'pytest',
       'langsmith/tests/tasks/test_tasks.py',
       '--task=generic-skill-smoke',

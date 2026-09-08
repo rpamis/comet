@@ -256,6 +256,13 @@ export async function personalMemorySyncCommand(
 ): Promise<unknown> {
   const bridge = await createBridge(targetPath, options);
   const result = await bridge.syncMemory();
+  if (
+    result !== null &&
+    typeof result === 'object' &&
+    'status' in result &&
+    (result.status === 'failed' || result.status === 'conflict')
+  )
+    process.exitCode = 1;
   if (options.json) print(result, options);
   else printSyncResult(result, await resolveDisplayLanguage(targetPath, options));
   return result;

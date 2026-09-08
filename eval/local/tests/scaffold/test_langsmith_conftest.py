@@ -60,6 +60,16 @@ def test_langsmith_env_derives_claude_code_plugin_settings(monkeypatch):
     assert module.os.environ["CC_LANGSMITH_PROJECT"] == "comet-tests"
 
 
+def test_langsmith_run_rejects_missing_sdk_before_running_agent(monkeypatch):
+    module = _load_langsmith_task_tests()
+    monkeypatch.setattr(module, "_LANGSMITH_AVAILABLE", False)
+    calls = []
+    monkeypatch.setattr(module, "_run_local_task_treatment", lambda *args: calls.append(args))
+    with pytest.raises(pytest.fail.Exception, match="LangSmith SDK is unavailable"):
+        module.test_task_treatment("task", "treatment")
+    assert calls == []
+
+
 def test_langsmith_env_preserves_explicit_claude_code_overrides(monkeypatch):
     module = _load_langsmith_conftest()
     monkeypatch.setenv("LANGSMITH_API_KEY", "lsv2_pt_eval")

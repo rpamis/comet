@@ -144,7 +144,7 @@ Many Comet capabilities have parallels in current industry practice.
 
 Requirements:
 
-- Node.js 22+
+- Node.js 22.16+ (22.x), or 24+
 - npm/npx
 - Git
 

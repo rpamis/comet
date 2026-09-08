@@ -62,7 +62,9 @@ describe('CI workflows', () => {
       'uv run pytest -q local/tests/scaffold local/tests/tasks/test_validation_scripts.py',
     );
     expect(workflow).toContain('ci-required:');
-    expect(packageJson.engines?.node).toBe('>=22');
+    expect(packageJson.engines?.node).toBe('^22.16.0 || >=24.0.0');
+    expect(workflow).toContain('node-version: 22.16.0');
+    expect(workflow).toContain('Verify package on the minimum supported Node version');
     expect(packageJson.scripts?.['test:package-e2e']).toBe('node scripts/release/package-e2e.mjs');
 
     const ci = parse(workflow) as {

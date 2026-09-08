@@ -74,7 +74,7 @@ export async function projectKnowledgeQueryCommand(
     });
     const output = { provider: providerName(provider), result, diagnostics };
     if (options.json) print(output, options);
-    else
+    else if (!reportCommandFailure(output, options))
       console.log(
         result.kind === 'search' ? JSON.stringify(result.results, null, 2) : '没有匹配的项目知识。',
       );
@@ -269,7 +269,38 @@ function requiredOutcome(value: AgentContextOutcomeStatus | undefined): AgentCon
   return value;
 }
 
-function print(value: unknown, _options: ProjectKnowledgeCommandOptions): void {
+function reportCommandFailure(value: unknown, options: ProjectKnowledgeCommandOptions): boolean {
+  const output = value as {
+    diagnostics?: ProjectKnowledgeDiagnostic[];
+    status?: { healthy?: boolean };
+    result?: { changed?: boolean; diagnostics?: ProjectKnowledgeDiagnostic[] };
+  };
+  const diagnostics = [...(output.diagnostics ?? []), ...(output.result?.diagnostics ?? [])];
+  const failed =
+    output.status?.healthy === false ||
+    diagnostics.some(({ code }) =>
+      [
+        'remote-token',
+        'remote-unavailable',
+        'remote-schema',
+        'remote-request-size',
+        'remote-status',
+        'remote-json',
+        'remote-failed',
+      ].includes(code),
+    ) ||
+    (output.result?.changed === false && (output.result.diagnostics?.length ?? 0) > 0);
+  if (failed) process.exitCode = 1;
+  if (!options.json) {
+    for (const message of new Set(diagnostics.map(({ code, message }) => `[${code}] ${message}`))) {
+      console.error(message);
+    }
+  }
+  return failed;
+}
+
+function print(value: unknown, options: ProjectKnowledgeCommandOptions): void {
+  reportCommandFailure(value, options);
   console.log(JSON.stringify(value, null, 2));
 }
 

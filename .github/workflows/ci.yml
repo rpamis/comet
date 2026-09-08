@@ -129,6 +129,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test:package-e2e
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          node-version: 22.16.0
+      - name: Verify package on the minimum supported Node version
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm test:package-e2e
 
   eval-static:
     name: Eval static tests

@@ -4,6 +4,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.4.0] - 2026-09-08
 
+### Changed
+
+- **Node.js compatibility**: Require Node.js 22.16 or later within the 22.x line, or Node.js 24 or later, so supported installations include the APIs required by project knowledge and CLI dependencies.
+
 ### Fixed
 
 - **Plugin settings**: Preserve each project's enabled or disabled state when multiple Dashboard or CLI instances update shared plugin settings, and prevent concurrent enable or disable operations from undoing an uninstall.
@@ -13,6 +17,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **CLI argument safety and help**: Reject unsupported Classic arguments before execution, document usable public command syntax, and preserve task-context options when resolving workflows.
 - **Workflow recovery guidance**: Report Classic status scan failures instead of empty change lists, stop repeating Native acceptance requests in the wrong workspace, and direct current Native changes away from legacy verification commands.
 - **CLI automation results**: Emit JSON workflow-resolution errors, return a failing exit status for unhealthy Doctor results, and expose Classic workspace results as structured data while retaining the existing output fields.
+- **Memory Git synchronization**: Support the first push to an empty remote and the first connection to an existing memory branch, preserve remote content, and distinguish actual merge conflicts from connection failures.
+- **LangSmith evaluation**: Install the selected suite's Python dependencies automatically and report missing SDKs before running an evaluation without its expected experiment records and scores.
+- **Knowledge command failures**: Show remote service diagnostics instead of presenting outages as empty search results, and return failing exit statuses for unsuccessful knowledge operations and memory synchronization.
 
 ### Security
 

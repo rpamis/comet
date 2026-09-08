@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createServer } from 'node:http';
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
@@ -44,9 +45,70 @@ async function projectFixture(): Promise<{ root: string; cacheRoot: string; sour
   return { root, cacheRoot, source };
 }
 
-afterEach(() => vi.restoreAllMocks());
+const originalExitCode = process.exitCode;
+afterEach(() => {
+  process.exitCode = originalExitCode;
+  vi.restoreAllMocks();
+});
 
 describe('comet knowledge commands', () => {
+  test.each([false, true])(
+    'reports remote outages without pretending a query succeeded (json=%s)',
+    async (json) => {
+      const { root, cacheRoot } = await projectFixture();
+      const server = createServer((_request, response) => {
+        response.writeHead(503);
+        response.end();
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const port = (server.address() as { port: number }).port;
+      await fs.writeFile(
+        path.join(root, '.comet', 'config.yaml'),
+        `schema: comet.project.v1\ndefault_workflow: native\nworkflows: [native]\nnative:\n  artifact_root: docs\nknowledge:\n  provider: remote\n  remote:\n    endpoint: http://127.0.0.1:${port}\n`,
+      );
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        await projectKnowledgeQueryCommand(root, { task: 'ledger', json });
+        expect(process.exitCode).toBe(1);
+        if (json) {
+          expect(JSON.parse(String(log.mock.calls[0][0])).diagnostics).toEqual(
+            expect.arrayContaining([expect.objectContaining({ code: 'remote-status' })]),
+          );
+          expect(error).not.toHaveBeenCalled();
+        } else {
+          expect(log).not.toHaveBeenCalled();
+          expect(error).toHaveBeenCalledWith(expect.stringContaining('503'));
+        }
+        process.exitCode = originalExitCode;
+        await projectKnowledgeCorrectCommand(root, {
+          id: 'record',
+          text: 'Correction',
+          json: true,
+        });
+        expect(process.exitCode).toBe(1);
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await fs.rm(root, { recursive: true, force: true });
+        await fs.rm(cacheRoot, { recursive: true, force: true });
+      }
+    },
+  );
+  test('keeps a successful empty query successful', async () => {
+    const { root, cacheRoot } = await projectFixture();
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await projectKnowledgeQueryCommand(root, {
+        task: 'no-matching-vocabulary-xyz',
+        cacheRoot,
+        json: true,
+      });
+      expect(process.exitCode).toBe(originalExitCode);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
   test('rejects oversized and non-regular review action inputs before submission', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-review-input-'));
     try {

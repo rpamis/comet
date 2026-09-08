@@ -1932,6 +1932,8 @@ describe('PersonalMemoryService', () => {
         run: async (args) => {
           calls.push([...args]);
           if (args[0] === 'rev-parse') throw new Error('not a git repository');
+          if (args[0] === 'diff' || args[0] === 'ls-remote') return { stdout: '', stderr: '' };
+          if (args[0] === 'symbolic-ref') return { stdout: 'main\n', stderr: '' };
           if (args[0] === 'status') return { stdout: ' M profile.md\n', stderr: '' };
           return { stdout: 'origin-url', stderr: '' };
         },
@@ -1941,10 +1943,13 @@ describe('PersonalMemoryService', () => {
         'rev-parse',
         'init',
         'remote',
+        'diff',
+        'symbolic-ref',
+        'ls-remote',
+        'rev-parse',
         'add',
         'status',
         'commit',
-        'pull',
         'push',
       ]);
       expect(calls.every((entry) => !entry.includes('D:\\Project\\Comet'))).toBe(true);

@@ -277,6 +277,12 @@ def _log_outputs_and_feedback(result):
 @pytest.mark.langsmith
 def test_task_treatment(task_name, treatment_name):
     """Run a task+treatment via the local runner and log results to LangSmith."""
+    if not _LANGSMITH_AVAILABLE:
+        pytest.fail(
+            "LangSmith SDK is unavailable. Run with uv run --extra langsmith "
+            "or use comet eval --suite langsmith to install the required dependencies.",
+            pytrace=False,
+        )
     _log_inputs_and_reference(task_name, treatment_name)
     _set_parent_run_env()
     try:

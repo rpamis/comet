@@ -21,8 +21,10 @@ import {
 
 describe('personal memory commands', () => {
   const roots: string[] = [];
+  const originalExitCode = process.exitCode;
 
   afterEach(async () => {
+    process.exitCode = originalExitCode;
     vi.restoreAllMocks();
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
