@@ -28,6 +28,7 @@ import { removeLegacyCometSkillsForPlatform } from '../../domains/skill/uninstal
 import { syncCometProjectInstructions } from '../../domains/skill/project-instructions.js';
 import {
   artifactLanguageToSkillLanguage,
+  detectSkillDescriptionLanguage,
   LANGUAGES,
   type SkillLanguageId,
 } from '../../domains/skill/languages.js';
@@ -424,7 +425,12 @@ async function detectInstalledCometLanguage(
 ): Promise<SkillLanguage> {
   for (const skillsDir of getInstalledCometSkillsDirs(baseDir, platform, scope)) {
     if (!(await targetPathExists(skillsDir))) continue;
-    const entries = (await readTargetDir(skillsDir)).filter((entry) => entry.startsWith('comet'));
+    const entries = (await readTargetDir(skillsDir))
+      .filter((entry) => entry.startsWith('comet'))
+      .sort((left, right) => {
+        const rank = (entry: string) => (entry === 'comet' ? 0 : entry === 'comet-native' ? 1 : 2);
+        return rank(left) - rank(right) || left.localeCompare(right);
+      });
 
     for (const entry of entries) {
       const skillPath = path.join(skillsDir, entry, 'SKILL.md');
@@ -432,7 +438,8 @@ async function detectInstalledCometLanguage(
 
       try {
         const content = await fs.readFile(skillPath, 'utf-8');
-        if (/[㐀-鿿]/u.test(content)) return 'zh';
+        const language = detectSkillDescriptionLanguage(content);
+        if (language !== null) return language;
       } catch (error) {
         if (!isMissingInspectionError(error)) throw error;
       }

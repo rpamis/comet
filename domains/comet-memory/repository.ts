@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { constants as fsConstants, promises as fs } from 'node:fs';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import { independentGitEnvironment } from '../../platform/process/git-environment.js';
 
 import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 
@@ -219,6 +220,7 @@ export class GitMemorySync implements MemoryGitSync {
       (async (args) => {
         const result = await execFileAsync('git', [...args], {
           cwd: this.root,
+          env: independentGitEnvironment(),
           windowsHide: true,
           maxBuffer: 1024 * 1024,
         });

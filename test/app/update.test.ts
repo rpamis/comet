@@ -423,6 +423,25 @@ describe('update command helpers', () => {
     await expect(detectInstalledCometLanguage(tmpDir, claudePlatform)).resolves.toBe('en');
   });
 
+  it.each(['en', 'zh'] as const)(
+    'preserves %s for published Native assets including bilingual examples',
+    async (language) => {
+      const skillsDir = path.join(tmpDir, '.claude', 'skills');
+      for (const name of ['comet', 'comet-native', 'comet-memory']) {
+        await fs.mkdir(path.join(skillsDir, name), { recursive: true });
+        await fs.copyFile(
+          path.resolve('assets', language === 'en' ? 'skills' : 'skills-zh', name, 'SKILL.md'),
+          path.join(skillsDir, name, 'SKILL.md'),
+        );
+      }
+      expect(await detectInstalledCometLanguage(tmpDir, claudePlatform)).toBe(language);
+      // Partial installations still use description metadata, not examples in the body.
+      await fs.rm(path.join(skillsDir, 'comet'), { recursive: true });
+      await fs.rm(path.join(skillsDir, 'comet-native'), { recursive: true });
+      expect(await detectInstalledCometLanguage(tmpDir, claudePlatform)).toBe(language);
+    },
+  );
+
   it('finds only scopes and platforms that already have comet skills installed', async () => {
     const projectDir = path.join(tmpDir, 'project');
     const globalDir = path.join(tmpDir, 'home');

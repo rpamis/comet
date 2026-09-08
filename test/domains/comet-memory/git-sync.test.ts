@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { buildSync } from 'esbuild';
 import { GitMemorySync } from '../../../domains/comet-memory/repository.js';
 
 describe('real memory Git synchronization', () => {
@@ -82,6 +83,49 @@ describe('real memory Git synchronization', () => {
     await fs.writeFile(path.join(local.directory, 'profile.md'), 'Preference\n');
     await local.sync.configureRemote(path.join(root, 'missing.git'));
     expect(await local.sync.sync()).toMatchObject({ status: 'failed' });
+  });
+
+  it('synchronizes from a real Git commit hook without touching its inherited index', async () => {
+    const memory = await client('memory', 'main');
+    await fs.writeFile(path.join(memory.directory, 'profile.md'), 'Initial memory\n');
+    expect(await memory.sync.sync()).toMatchObject({ status: 'synced' });
+    const parent = await client('parent', 'main');
+    await fs.writeFile(path.join(parent.directory, 'private.txt'), 'Initial parent\n');
+    git(parent.directory, 'add', 'private.txt');
+    git(parent.directory, 'commit', '-m', 'Initial parent');
+    const probe = path.join(root, 'sync.cjs');
+    const resultPath = path.join(root, 'sync-result.json');
+    buildSync({
+      stdin: {
+        contents: `import { writeFileSync } from 'node:fs';
+import { GitMemorySync } from './domains/comet-memory/repository.ts';
+new GitMemorySync(${JSON.stringify(memory.directory)}).sync().then(result =>
+  writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify({ result, inheritedIndex: process.env.GIT_INDEX_FILE })));
+`,
+        resolveDir: process.cwd(),
+      },
+      outfile: probe,
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+    });
+    const quote = (value: string) => `'${value.replaceAll('\\', '/').replaceAll("'", "'\\''")}'`;
+    const hook = path.join(parent.directory, '.git', 'hooks', 'pre-commit');
+    await fs.writeFile(hook, `#!/bin/sh\n${quote(process.execPath)} ${quote(probe)}\nexit 0\n`, {
+      mode: 0o755,
+    });
+    await fs.writeFile(path.join(memory.directory, 'profile.md'), 'Updated memory\n');
+    await fs.writeFile(path.join(parent.directory, 'private.txt'), 'Updated parent\n');
+    git(parent.directory, 'commit', '-am', 'Update parent');
+    const observed = JSON.parse(await fs.readFile(resultPath, 'utf8'));
+    expect(observed.inheritedIndex).toBeTruthy();
+    expect(observed.result).toMatchObject({ status: 'synced' });
+    expect(git(parent.directory, 'ls-tree', '-r', '--name-only', 'HEAD').trim()).toBe(
+      'private.txt',
+    );
+    expect(git(parent.directory, 'status', '--porcelain')).toBe('');
+    expect(git(memory.directory, 'status', '--porcelain')).toBe('');
+    expect(git(root, '--git-dir', remote, 'show', 'main:profile.md')).toBe('Updated memory\n');
   });
 
   it('isolates memory inside a parent repository without changing or pushing parent history', async () => {

@@ -415,7 +415,13 @@ export class ContextDirector {
     const manifest: AgentContextManifestItem[] = [];
     const applications: AgentContextApplicationRecord[] = [];
     const budget = positive(request.charBudget, this.defaultCharBudget);
-    const expandHint = 'comet task --task "<original task>" --expand-context <id>';
+    const expandHint = [
+      'comet task "<project-root>" --task "<original task>"',
+      ...(request.path === undefined ? [] : ['--path "<original path>"']),
+      ...(request.phase === undefined ? [] : ['--phase "<original phase>"']),
+      ...(request.operation === undefined ? [] : ['--operation "<original operation>"']),
+      '--expand-context <id>',
+    ].join(' ');
     const appliedAt = this.now().toISOString();
     for (const entry of ranked) {
       const { candidate, whyApplied } = entry;
