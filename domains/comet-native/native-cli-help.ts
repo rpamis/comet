@@ -30,7 +30,6 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'select <change-name>         Select a change in its bound workspace.',
       'next <change-name>           Confirm or recover a stable workflow boundary.',
       'archive <change-name>        Preview and execute Archive plus workspace finish.',
-      'check <change-name>          Run the read-only Native verification check.',
       'doctor [<change-name>]       Diagnose, migrate, or rebuild local execution state.',
     ],
     options: GLOBAL_OPTIONS,
@@ -122,7 +121,13 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     usage: 'comet native show <change-name>',
     purpose: 'Read formal artifacts and portable state for one Native change.',
     output:
-      'The portable state, brief, complete proposed Specs, and continuation; legacy state is reported as migration-required.',
+      'A compact summary and NEXT action by default. Use --json to read the portable state, brief, complete proposed Specs, and continuation; legacy state is reported as migration-required. Fill command-template placeholders before executing NEXT commands.',
+  },
+  check: {
+    usage: 'comet native check <change-name>',
+    purpose: 'Legacy-only verification command; not supported for current portable changes.',
+    output:
+      'For current changes, run comet native status <change-name> --json and follow the continuation to dispatch verification through comet native next.',
   },
   status: {
     usage: 'comet native status [<change-name>] [--cursor <token>] [--details]',

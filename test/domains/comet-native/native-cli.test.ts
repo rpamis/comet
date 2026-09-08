@@ -806,7 +806,7 @@ describe('Comet Native CLI dispatcher', () => {
 
     const help = await runNativeCli(['--help', ...projectArgs()]);
     expect(help.stdout).toContain('next <change-name>');
-    expect(help.stdout).toContain('check <change-name>');
+    expect(help.stdout).not.toContain('check <change-name>');
     const nextHelp = await runNativeCli(['next', '--help', ...projectArgs()]);
     expect(nextHelp.stdout).toContain('--confirmed');
     expect(nextHelp.stdout).toContain('--runner-input <file>');

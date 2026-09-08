@@ -10,6 +10,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Personal Memory**: Allow users to forget global memories created in a project using another language while preserving validation of newly proposed content.
 - **Uninstall status**: Return a failing exit status when current-project or all-projects cleanup is incomplete, including project inspection failures, so automation can reliably detect failures.
 - **Native result confirmation**: Explicitly request the user's decision after a Skill-coordinated verification passes, with clear choices to accept the result, revise the implementation, or adjust requirements.
+- **CLI argument safety and help**: Reject unsupported Classic arguments before execution, document usable public command syntax, and preserve task-context options when resolving workflows.
+- **Workflow recovery guidance**: Report Classic status scan failures instead of empty change lists, stop repeating Native acceptance requests in the wrong workspace, and direct current Native changes away from legacy verification commands.
+- **CLI automation results**: Emit JSON workflow-resolution errors, return a failing exit status for unhealthy Doctor results, and expose Classic workspace results as structured data while retaining the existing output fields.
 
 ### Security
 

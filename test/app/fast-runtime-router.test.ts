@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { resolveFastRuntime } from '../../bin/fast-runtime-router.js';
 
 describe('CLI fast runtime router', () => {
+  it.each(['--task', '--path', '--phase', '--task=repair'])(
+    'keeps contextual option %s on the full public CLI',
+    (option) => {
+      expect(
+        resolveFastRuntime(['workflow', 'resolve', '.', option, 'value', '--json']),
+      ).toBeNull();
+    },
+  );
   it('maps public high-frequency commands to their package-owned runtime bundles', () => {
     expect(resolveFastRuntime(['state', 'current', '--json'])).toEqual({
       assetPath: 'assets/skills/comet/scripts/comet-state.mjs',

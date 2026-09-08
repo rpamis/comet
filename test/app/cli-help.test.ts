@@ -15,6 +15,25 @@ function runCli(...args: string[]) {
 }
 
 describe('CLI help text', () => {
+  it.each(['state', 'guard', 'handoff', 'archive'])(
+    'documents executable public %s syntax',
+    (command) => {
+      const help = runCli(command, '--help');
+      expect(help.status, help.stderr).toBe(0);
+      expect(help.stdout).toContain(`Usage: comet ${command}`);
+      expect(help.stdout).toContain('<change-name>');
+      expect(help.stdout).not.toContain('.mjs');
+    },
+  );
+
+  it('keeps unknown-option failures machine readable with --json', () => {
+    const result = runCli('status', '--bogus', '--json');
+    expect(result.status).not.toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('--bogus'),
+    });
+  });
   beforeAll(async () => {
     await ensureCliBuilt(repositoryRoot);
   }, 120_000);

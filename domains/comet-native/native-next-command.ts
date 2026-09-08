@@ -199,6 +199,11 @@ export async function nativeNextCommand(
   const initialState = await readNativePortableChange(configured.paths, name);
   const initialWorkspaceMismatch = nativePortableWorkspaceMismatch(configured.paths, initialState);
   if (initialWorkspaceMismatch) {
+    const continuation = nativePortableContinuation(initialState);
+    const instruction =
+      initialState.language === 'zh-CN'
+        ? `先恢复此需求绑定的工作区和分支，再运行 comet native status ${name} --json 获取下一步；当前操作未推进状态，不要重复请求验收确认。`
+        : `Restore the workspace and branch bound to this change, then run comet native status ${name} --json for the next action. No transition occurred; do not request acceptance again.`;
     return success('next', {
       state: nativePortableStateSummary(initialState, configured.paths),
       recovery: {
@@ -206,7 +211,23 @@ export async function nativeNextCommand(
         reason: 'workspace-mismatch',
         message: initialWorkspaceMismatch,
       },
-      ...(await portableParentView(configured.paths, initialState)),
+      continuation: {
+        ...continuation,
+        disposition: 'blocked',
+        requiresUserDecision: false,
+        action: 'repair',
+        commandArgs: null,
+        commandAlternatives: [],
+        requiredInputs: [],
+        inputOptions: [],
+        runnerAction: { ...continuation.runnerAction, kind: 'none' },
+        userCommunication: {
+          required: true,
+          message: `${initialWorkspaceMismatch}. ${instruction}`,
+          suggestedReply: null,
+          agentInstruction: instruction,
+        },
+      },
     });
   }
 

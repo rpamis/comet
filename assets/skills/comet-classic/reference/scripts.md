@@ -20,7 +20,7 @@ comet state current
 comet state clear-selection
 comet state check <change-name> <phase>
 comet guard <change-name> <phase> --apply
-comet handoff <change-name>
+comet handoff <change-name> design --write
 comet archive <change-name>
 comet resume-probe . --stdin --json
 comet classic intent route --stdin

@@ -330,6 +330,9 @@ async function verifyMainSpecsClean(projectRoot: string, specsRoot: string): Pro
 }
 
 export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
+  if (args.length < 1 || args.length > 2 || (args[1] !== undefined && args[1] !== '--dry-run')) {
+    return { exitCode: 64, stderr: 'Usage: comet archive <change-name> [--dry-run]' };
+  }
   const output = new ArchiveOutput();
   const change = args[0];
   const dryRun = args[1] === '--dry-run';

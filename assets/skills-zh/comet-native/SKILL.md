@@ -15,7 +15,7 @@ Native 把需求、完整目标规格、当前进度和验收结论保存在项�
 
 ## 开始或恢复
 1. 已知 change 名称时，先运行紧凑查询 `comet native status <change-name> --json`；名称未知时才运行 `comet native status --json`，确定目标后再查询该 change。
-2. 只有当前动作需要验收文字、Builder 交接、历史或验证详情时才加 `--details`，并按返回的 `nextPageArgs` 逐页读取；只读取覆盖当前 `scopeIds` 的页面，不在同一步重复读取完整状态。需要编辑或核对正式正文时才运行 `show` 或读取对应 brief/Spec。
+2. 只有当前动作需要验收文字、Builder 交接、历史或验证详情时才加 `--details`，并按返回的 `nextPageArgs` 逐页读取；只读取覆盖当前 `scopeIds` 的页面，不在同一步重复读取完整状态。需要编辑或核对正式正文时才运行 `show --json` 或读取对应 brief/Spec。
 3. active change 已存在时，进入返回的 `workspace.projectRoot` 并 `select`。Runtime 会扫描已登记的 `worktree`，优先返回绑定分支匹配的工作区；只有多个同样匹配的候选才让用户选择。
 4. 没有对应 active change 时才创建，并使用配置指定的产物目录。`comet init` 会按所选 Skill 语言初始化 `native.language`；之后产物跟随项目配置，只有用户明确要求覆盖时才传入 `--language`。
 ### 记忆接入
@@ -109,4 +109,4 @@ Supervisor 最终交付后，Runtime 只自动清理确认没有未提交修改�
 - `blocked`：先处理列出的阻塞原因或恢复动作；
 - `done`：结束。
 
-执行会修改状态的命令后，通常重新运行紧凑状态查询，确认当前阶段、验收循环、状态版本和工作目录；但 Archive dry-run 或 confirmed 必须只消费同一响应里的最新 `continuation`，不得插入额外 `status` 查询。只有当前动作确实需要长字段时才分页读取详情，只有需要正式正文时才运行 `show`。
+执行会修改状态的命令后，通常重新运行紧凑状态查询，确认当前阶段、验收循环、状态版本和工作目录；但 Archive dry-run 或 confirmed 必须只消费同一响应里的最新 `continuation`，不得插入额外 `status` 查询。只有当前动作确实需要长字段时才分页读取详情，只有需要正式正文时才运行 `show --json`。

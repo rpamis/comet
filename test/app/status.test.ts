@@ -93,6 +93,23 @@ describe('status command', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it('reports a Classic root scan failure instead of claiming there are no changes', async () => {
+    const specs = path.join(tmpDir, 'docs/openspec/specs');
+    await fs.rmdir(specs);
+    await fs.writeFile(specs, 'directory conflict');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await statusCommand(tmpDir);
+      const text = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      const classic = text.split('Classic Changes:')[1].split('Unmanaged OpenSpec Changes:')[0];
+      expect(classic).toContain('must be a real directory');
+      expect(classic).not.toContain('No active changes');
+      expect(classic).toContain('comet doctor');
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('classifies mixed Comet and OpenSpec changes in sorted JSON output', async () => {
     const changesDir = classicChangesDir(tmpDir);
     state(tmpDir, 'init', 'z-comet-ready', 'full');
@@ -593,6 +610,21 @@ describe('status command', () => {
     expect(output).toContain('native-text [Native] [phase: shape]');
     expect(output).toContain('Classic Changes:');
     expect(output).toContain('Unmanaged OpenSpec Changes:');
+  });
+
+  it('localizes the overview labels for a Chinese project', async () => {
+    await writeProjectConfig(tmpDir, defaultProjectConfig('docs', 'zh-CN'));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await statusCommand(tmpDir);
+      const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      expect(output).toContain('默认入口');
+      expect(output).toContain('Native 需求');
+      expect(output).toContain('Classic 需求');
+      expect(output).toContain('没有进行中的需求');
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('renders the compact Native portable projection in text output', async () => {

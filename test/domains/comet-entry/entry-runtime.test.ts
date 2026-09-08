@@ -16,6 +16,24 @@ function io() {
 }
 
 describe('Comet entry runtime', () => {
+  it('emits machine-readable usage and resolution failures in JSON mode', async () => {
+    const output = io();
+    expect(await runCometEntryRuntime(['--unknown', '--json'], output)).toBe(64);
+    expect(JSON.parse(output.stdout.mock.calls[0][0])).toMatchObject({
+      status: 'failed',
+      exitCode: 64,
+      error: expect.stringContaining('--unknown'),
+    });
+    output.stdout.mockClear();
+    vi.mocked(resolveCometWorkflowResolution).mockRejectedValue(new Error('unreadable project'));
+    expect(await runCometEntryRuntime(['project', '--json'], output)).toBe(65);
+    expect(JSON.parse(output.stdout.mock.calls[0][0])).toMatchObject({
+      status: 'failed',
+      exitCode: 65,
+      error: 'unreadable project',
+    });
+    expect(output.stderr).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -42,11 +60,11 @@ describe('Comet entry runtime', () => {
     expect(resolveCometWorkflowResolution).not.toHaveBeenCalled();
     expect(output.stdout).toHaveBeenNthCalledWith(
       1,
-      'Usage: comet-entry-runtime [path] [--json]\n',
+      'Usage: comet workflow resolve [path] [--json]\n',
     );
     expect(output.stdout).toHaveBeenNthCalledWith(
       2,
-      'Usage: comet-entry-runtime [path] [--json]\n',
+      'Usage: comet workflow resolve [path] [--json]\n',
     );
   });
 
@@ -71,7 +89,7 @@ describe('Comet entry runtime', () => {
 
     await expect(runCometEntryRuntime(args, output)).resolves.toBe(64);
     expect(output.stderr).toHaveBeenCalledWith(
-      `${message}\nUsage: comet-entry-runtime [path] [--json]\n`,
+      `${message}\nUsage: comet workflow resolve [path] [--json]\n`,
     );
   });
 

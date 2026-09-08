@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'url';
+import { classicCommandHelp } from './classic-cli-help.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import { classicArchiveCommand } from './classic-archive.js';
 import { classicGuardCommand } from './classic-guard.js';
@@ -16,6 +17,7 @@ export interface ClassicCommandResult {
   exitCode: number;
   stdout?: string;
   stderr?: string;
+  data?: unknown;
   /**
    * Audience-split output envelope: `summary`/`user_message` speak user
    * language, `next` is the agent's single follow-up. Text output keeps its
@@ -92,6 +94,8 @@ async function dispatch(
   handlers: ClassicCommandHandlers,
 ): Promise<ClassicCommandResult> {
   if (!command || !isClassicCommand(command)) return commandError(command);
+  const help = classicCommandHelp(command, args);
+  if (help) return { exitCode: 0, stdout: help };
   const handler = handlers[command];
   if (!handler) {
     return {
@@ -120,6 +124,7 @@ function jsonResult(
       JSON.stringify({
         command: command ?? null,
         exitCode: result.exitCode,
+        ...(result.data === undefined ? {} : { data: result.data }),
         ...(result.envelope === undefined
           ? {}
           : {

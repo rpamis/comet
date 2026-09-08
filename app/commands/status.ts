@@ -42,10 +42,17 @@ function displayChangeSection(
   title: string,
   changes: ChangeStatus[],
   locale: CliOutputLocale,
+  error?: string,
 ): void {
   console.log(`${title}:\n`);
+  if (error) {
+    console.log(locale === 'zh-CN' ? '  状态读取失败：' : '  Could not read changes:');
+    console.log(`  ${error}\n`);
+    console.log('  NEXT: comet doctor\n');
+    return;
+  }
   if (changes.length === 0) {
-    console.log('  No active changes.\n');
+    console.log(locale === 'zh-CN' ? '  没有进行中的需求。\n' : '  No active changes.\n');
     return;
   }
 
@@ -116,14 +123,14 @@ function displayNativeChanges(
   section: CometProjectStatus['workflows']['native'],
   locale: CliOutputLocale,
 ): void {
-  console.log('Native Changes:\n');
+  console.log(locale === 'zh-CN' ? 'Native 需求：\n' : 'Native Changes:\n');
   if (section.error) {
     console.log(`     ${nativeSummaryLocaleText('section-error', locale)}`);
     console.log(`  error: ${section.error}\n`);
     return;
   }
   if (section.changes.length === 0) {
-    console.log('  No active changes.\n');
+    console.log(locale === 'zh-CN' ? '  没有进行中的需求。\n' : '  No active changes.\n');
     return;
   }
   for (let index = 0; index < section.changes.length; index++) {
@@ -198,21 +205,34 @@ function displayPortableNativeChange(
   console.log();
 }
 
-function displayDefaultEntry(defaultEntry: CometProjectStatus['defaultEntry']): void {
+function displayDefaultEntry(
+  defaultEntry: CometProjectStatus['defaultEntry'],
+  locale: CliOutputLocale,
+): void {
+  const label = locale === 'zh-CN' ? '默认入口' : 'Default Entry';
   if ('error' in defaultEntry) {
-    console.log(`Default Entry: error (${defaultEntry.error})\n`);
+    console.log(`${label}: error (${defaultEntry.error})\n`);
     return;
   }
   console.log(
-    `Default Entry: ${defaultEntry.workflow} -> /${defaultEntry.skill} [${defaultEntry.source}]\n`,
+    `${label}: ${defaultEntry.workflow} -> /${defaultEntry.skill} [${defaultEntry.source}]\n`,
   );
 }
 
 function displayStatus(status: CometProjectStatus, locale: CliOutputLocale): void {
-  displayDefaultEntry(status.defaultEntry);
+  displayDefaultEntry(status.defaultEntry, locale);
   displayNativeChanges(status.workflows.native, locale);
-  displayChangeSection('Classic Changes', status.workflows.classic.changes, locale);
-  displayChangeSection('Unmanaged OpenSpec Changes', status.unmanagedOpenSpec, locale);
+  displayChangeSection(
+    locale === 'zh-CN' ? 'Classic 需求' : 'Classic Changes',
+    status.workflows.classic.changes,
+    locale,
+    status.workflows.classic.error,
+  );
+  displayChangeSection(
+    locale === 'zh-CN' ? '未由 Comet 管理的 OpenSpec 需求' : 'Unmanaged OpenSpec Changes',
+    status.unmanagedOpenSpec,
+    locale,
+  );
 }
 
 interface StatusOptions {

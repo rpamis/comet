@@ -5,7 +5,7 @@ import {
   resolveCometWorkflowResolution,
 } from './workflow-resolution.js';
 
-const USAGE = 'Usage: comet-entry-runtime [path] [--json]';
+const USAGE = 'Usage: comet workflow resolve [path] [--json]';
 
 interface EntryRuntimeIo {
   stdout: (value: string) => void;
@@ -55,7 +55,10 @@ export async function runCometEntryRuntime(
   try {
     parsed = parseEntryRuntimeArgs(args);
   } catch (error) {
-    io.stderr(`${error instanceof Error ? error.message : String(error)}\n${USAGE}\n`);
+    const message = `${error instanceof Error ? error.message : String(error)}\n${USAGE}`;
+    if (args.includes('--json')) {
+      io.stdout(`${JSON.stringify({ status: 'failed', exitCode: 64, error: message })}\n`);
+    } else io.stderr(`${message}\n`);
     return 64;
   }
 
@@ -73,7 +76,10 @@ export async function runCometEntryRuntime(
     );
     return 0;
   } catch (error) {
-    io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+    const message = error instanceof Error ? error.message : String(error);
+    if (parsed.json) {
+      io.stdout(`${JSON.stringify({ status: 'failed', exitCode: 65, error: message })}\n`);
+    } else io.stderr(`${message}\n`);
     return 65;
   }
 }

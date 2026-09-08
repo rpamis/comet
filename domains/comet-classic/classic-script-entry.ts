@@ -3,6 +3,7 @@ import type {
   ClassicCommandName,
   ClassicCommandResult,
 } from './classic-cli.js';
+import { classicCommandHelp } from './classic-cli-help.js';
 
 function jsonResult(
   command: ClassicCommandName,
@@ -14,6 +15,7 @@ function jsonResult(
       JSON.stringify({
         command,
         exitCode: result.exitCode,
+        ...(result.data === undefined ? {} : { data: result.data }),
         ...(result.envelope === undefined
           ? {}
           : {
@@ -39,7 +41,8 @@ export async function runClassicScript(
   const args = argv.filter((argument) => argument !== '--json');
   let result: ClassicCommandResult;
   try {
-    result = await handler(args, { json });
+    const help = classicCommandHelp(command, args);
+    result = help ? { exitCode: 0, stdout: help } : await handler(args, { json });
   } catch (error) {
     result = {
       exitCode: 70,

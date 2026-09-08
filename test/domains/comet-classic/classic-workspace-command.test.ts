@@ -111,6 +111,7 @@ describe('classicWorkspaceCommand', () => {
       branch: 'main',
       routed: false,
     });
+    expect(result.data).toEqual(parsed);
   });
 
   it('surfaces the underlying business error instead of a context error for an unknown change', async () => {

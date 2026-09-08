@@ -495,8 +495,8 @@ async function setField(
   if (field === 'phase' && !options.internal && process.env.COMET_FORCE_PHASE !== '1') {
     fail(
       "ERROR: Setting 'phase' directly is not allowed; it bypasses state machine evidence checks.\n" +
-        '  Use: comet-state.mjs transition <change-name> <event>\n' +
-        '  Repair-only escape hatch: COMET_FORCE_PHASE=1 comet-state.mjs set <change-name> phase <value>',
+        '  Use: comet state transition <change-name> <event>\n' +
+        '  Repair-only escape hatch: COMET_FORCE_PHASE=1 comet state set <change-name> phase <value>',
     );
   }
   await validateSetValue(field, value);
@@ -575,7 +575,7 @@ async function setField(
   if (field === 'phase' && !options.internal) {
     output.stderr.push(
       yellow("WARNING: Setting 'phase' directly bypasses state machine constraints."),
-      yellow('  Consider using: comet-state.mjs transition <change-name> <event>'),
+      yellow('  Consider using: comet state transition <change-name> <event>'),
     );
   }
   output.stderr.push(green(`[SET] ${field}=${value}`));
@@ -1577,10 +1577,10 @@ async function currentChange(output: CommandOutput): Promise<void> {
     return;
   }
   if (resolution.status === 'missing') {
-    fail('ERROR: no current change selected\nUse: comet-state.mjs select <change-name>');
+    fail('ERROR: no current change selected\nUse: comet state select <change-name>');
   }
   fail(
-    `ERROR: current change selection is stale: ${resolution.reason}\nUse: comet-state.mjs select <change-name>`,
+    `ERROR: current change selection is stale: ${resolution.reason}\nUse: comet state select <change-name>`,
   );
 }
 
@@ -1593,35 +1593,60 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(asy
   const output = new CommandOutput();
   try {
     const [subcommand, ...rest] = args;
+    const arity: Record<string, number> = {
+      get: 2,
+      set: 3,
+      transition: 2,
+      scale: 1,
+      'task-checkoff': 2,
+      rebind: 1,
+      select: 1,
+      current: 0,
+      'clear-selection': 0,
+      next: 1,
+    };
+    if (subcommand && Object.hasOwn(arity, subcommand)) {
+      requiredExact(
+        rest,
+        arity[subcommand],
+        `Invalid arguments for comet state ${subcommand}; run comet state --help`,
+      );
+    }
+    if (
+      subcommand === 'check' &&
+      (rest.length < 2 || rest.length > 3 || (rest.length === 3 && rest[2] !== '--recover'))
+    ) {
+      fail('Usage: comet state check <change-name> <phase> [--recover]');
+    }
     await assertStateCommandWritable(subcommand);
     if (subcommand === 'init') {
-      required(rest, 2, 'Usage: comet-state.mjs init <change-name> <workflow>');
+      required(rest, 2, 'Usage: comet state init <change-name> <workflow>');
       const initOptions = rest.slice(2);
       let isolation: string | null = null;
       if (initOptions.length > 0) {
         if (initOptions.length !== 2 || initOptions[0] !== '--isolation') {
-          fail('Usage: comet-state.mjs init <change-name> <workflow> [--isolation <mode>]');
+          fail('Usage: comet state init <change-name> <workflow> [--isolation <mode>]');
         }
         isolation = initOptions[1];
       }
       await init(output, rest[0], rest[1], isolation);
     } else if (subcommand === 'get') {
-      required(rest, 2, 'Usage: comet-state.mjs get <change-name> <field>');
+      required(rest, 2, 'Usage: comet state get <change-name> <field>');
       validateChangeName(rest[0]);
       output.stdout.push(await readField(rest[0], rest[1]));
     } else if (subcommand === 'set') {
-      required(rest, 3, 'Usage: comet-state.mjs set <change-name> <field> <value>');
+      required(rest, 3, 'Usage: comet state set <change-name> <field> <value>');
       validateChangeName(rest[0]);
       await setField(output, rest[0], rest[1], rest[2]);
     } else if (subcommand === 'transition') {
-      required(rest, 2, 'Usage: comet-state.mjs transition <change-name> <event>');
+      required(rest, 2, 'Usage: comet state transition <change-name> <event>');
       await transition(output, rest[0], rest[1]);
     } else if (subcommand === 'check') {
-      required(rest, 2, 'Usage: comet-state.mjs check <change-name> <phase> [--recover]');
+      required(rest, 2, 'Usage: comet state check <change-name> <phase> [--recover]');
       if (rest[2] === '--recover') await recover(output, rest[0]);
       else await check(output, rest[0], rest[1]);
     } else if (subcommand === 'scale') {
-      required(rest, 1, 'Usage: comet-state.mjs scale <change-name>');
+      required(rest, 1, 'Usage: comet state scale <change-name>');
       await scale(output, rest[0]);
     } else if (subcommand === 'record-check') {
       required(
@@ -1631,22 +1656,22 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(asy
       );
       await recordCheck(output, rest[0], rest[1], rest.slice(2));
     } else if (subcommand === 'task-checkoff') {
-      required(rest, 2, 'Usage: comet-state.mjs task-checkoff <file> <task-text>');
+      required(rest, 2, 'Usage: comet state task-checkoff <file> <task-text>');
       await taskCheckoff(output, rest[0], rest[1]);
     } else if (subcommand === 'rebind') {
-      requiredExact(rest, 1, 'Usage: comet-state.mjs rebind <change-name>');
+      requiredExact(rest, 1, 'Usage: comet state rebind <change-name>');
       await rebind(output, rest[0]);
     } else if (subcommand === 'select') {
-      requiredExact(rest, 1, 'Usage: comet-state.mjs select <change-name>');
+      requiredExact(rest, 1, 'Usage: comet state select <change-name>');
       await selectChange(output, rest[0]);
     } else if (subcommand === 'current') {
-      requiredExact(rest, 0, 'Usage: comet-state.mjs current');
+      requiredExact(rest, 0, 'Usage: comet state current');
       await currentChange(output);
     } else if (subcommand === 'clear-selection') {
-      requiredExact(rest, 0, 'Usage: comet-state.mjs clear-selection');
+      requiredExact(rest, 0, 'Usage: comet state clear-selection');
       await clearSelection(output);
     } else if (subcommand === 'next') {
-      required(rest, 1, 'Usage: comet-state.mjs next <change-name>');
+      required(rest, 1, 'Usage: comet state next <change-name>');
       await next(output, rest[0]);
     } else {
       fail(`Unknown subcommand: ${subcommand ?? ''}`);

@@ -231,11 +231,14 @@ function nextHintFromContinuation(
   }
   if (continuation.disposition === 'blocked') {
     return {
-      ask_user: phrase(
-        locale,
-        'Resolve the paused condition before continuing; run with --json for the structured diagnosis.',
-        '先解除暂停原因再继续；结构化诊断信息以 --json 输出为准。',
-      ),
+      ask_user:
+        communication.required && communication.message
+          ? communication.agentInstruction
+          : phrase(
+              locale,
+              'Resolve the paused condition before continuing; run with --json for the structured diagnosis.',
+              '先解除暂停原因再继续；结构化诊断信息以 --json 输出为准。',
+            ),
     };
   }
   return undefined;

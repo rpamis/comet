@@ -72,9 +72,11 @@ async function collectDoctorPayload(
 ): Promise<DoctorPayload> {
   const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   try {
-    await doctorCommand(targetPath, { json: true, scope, homeDir });
+    const exitCode = await doctorCommand(targetPath, { json: true, scope, homeDir });
     const output = log.mock.calls.map((call) => call.join(' ')).join('\n');
-    return JSON.parse(output) as DoctorPayload;
+    const payload = JSON.parse(output) as DoctorPayload;
+    expect(exitCode).toBe(payload.healthy ? 0 : 1);
+    return payload;
   } finally {
     log.mockRestore();
   }
@@ -231,6 +233,18 @@ describe('doctor command', () => {
       `comet-doctor-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     await fs.mkdir(tmpDir, { recursive: true });
+  });
+
+  it('returns a failing exit status for an unhealthy installation', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const code = await doctorCommand(tmpDir, { json: true, scope: 'project', homeDir: tmpDir });
+      const payload = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(payload).toMatchObject({ status: 'failed', healthy: false });
+      expect(code).toBe(1);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('reports a secondary worktree using a complete global fallback without calling it broken', async () => {

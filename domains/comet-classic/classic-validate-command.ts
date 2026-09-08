@@ -60,6 +60,8 @@ function text(value: unknown): string {
 }
 
 export const classicValidateCommand: ClassicCommandHandler = withProjectContext(async (args) => {
+  if (args.length !== 1)
+    return { exitCode: 64, stderr: 'Usage: comet classic validate <change-name>' };
   const name = args[0];
   const nameError = openSpecChangeNameError(name);
   if (nameError) {
