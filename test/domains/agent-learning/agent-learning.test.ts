@@ -822,6 +822,7 @@ describe('Context Director', () => {
       }),
     ]);
     expect(selection.text).toContain('<agent_context>');
+    expect(selection.text).toContain('<expand_hint>comet task "&lt;project-root&gt;"');
     expect(selection.expandHint).toBe(
       'comet task "<project-root>" --task "<original task>" --path "<original path>" --expand-context <id>',
     );
@@ -1036,7 +1037,7 @@ describe('Context Director', () => {
   });
 
   it('ranks proven project authority above personal memory and bounds rendered XML', async () => {
-    const director = new ContextDirector({ defaultCharBudget: 750 });
+    const director = new ContextDirector({ defaultCharBudget: 650 });
     const explicitPersonal = candidate({
       id: 'personal-explicit',
       memoryType: 'collaboration-policy',
@@ -1074,16 +1075,8 @@ describe('Context Director', () => {
       'project-policy',
       'project-model',
     ]);
-    expect(selection.text.length).toBeLessThanOrEqual(750);
+    expect(selection.text.length).toBeLessThanOrEqual(650);
     expect(selection.text).toContain('command="pnpm test"');
-    const constrained = await director.select([explicitPersonal, projectModel, projectPolicy], {
-      task: '修改项目',
-      projectId: 'project-1',
-      sessionId: 'tighter-budget',
-      charBudget: 650,
-    });
-    expect(constrained.text.length).toBeLessThanOrEqual(650);
-    expect(constrained.applications[0]?.candidateId).toBe('project-policy');
   });
 });
 
