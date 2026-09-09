@@ -60,6 +60,8 @@ export async function checkInputFingerprint(root: string, changeDir: string): Pr
   const reportPath = report && report.endsWith('.md') ? path.resolve(root, report) : null;
   const omitted = (absolute: string) =>
     absolute === path.join(changeDir, '.comet.yaml') ||
+    absolute === path.join(changeDir, '.comet-state.lock') ||
+    absolute === path.join(changeDir, '.comet-state-transaction.json') ||
     absolute.startsWith(path.join(changeDir, '.comet') + path.sep) ||
     absolute === reportPath ||
     absolute === path.join(root, '.comet', 'current-change.json');

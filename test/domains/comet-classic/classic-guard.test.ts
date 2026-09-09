@@ -102,7 +102,10 @@ describe('Classic guard command', () => {
       source: 'comet-guard',
       from: { workflow: 'hotfix', phase: 'open' },
       to: { workflow: 'hotfix', phase: 'build' },
-      effects: [{ field: 'phase', from: 'open', to: 'build' }],
+      effects: [
+        { field: 'checkEpoch', to: 1 },
+        { field: 'phase', from: 'open', to: 'build' },
+      ],
     });
     const trajectory = (await fs.readFile(path.join(changeDir, runState!.trajectoryRef), 'utf8'))
       .trim()
@@ -111,47 +114,47 @@ describe('Classic guard command', () => {
     expect(trajectory.filter((event) => event.type === 'state_transitioned')).toHaveLength(1);
   });
 
-  it('resolves delta specs from the project root when invoked from a nested cwd', async () => {
-    const dir = await makeProject();
-    expect(run(dir, 'state', 'init', 'demo', 'full').status).toBe(0);
+  it.each(['docs/superpowers/specs/demo-design.md', 'openspec/changes/demo/design.md'])(
+    'resolves delta specs from nested cwd with design authority %s',
+    async (designPath) => {
+      const dir = await makeProject();
+      expect(run(dir, 'state', 'init', 'demo', 'full').status).toBe(0);
 
-    const changeDir = path.join(dir, 'openspec', 'changes', 'demo');
-    await fs.mkdir(path.join(changeDir, 'specs', 'feature'), { recursive: true });
-    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
-    await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
-    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] implement guard\n');
-    await fs.writeFile(path.join(changeDir, 'specs', 'feature', 'spec.md'), '# Feature\n');
-    await fs.mkdir(path.join(dir, 'docs', 'superpowers', 'specs'), { recursive: true });
-    await fs.writeFile(
-      path.join(dir, 'docs', 'superpowers', 'specs', 'demo-design.md'),
-      [
-        '---',
-        'comet_change: demo',
-        'role: technical-design',
-        'canonical_spec: openspec',
-        '---',
-        '',
-        '# Design',
-        '',
-      ].join('\n'),
-    );
+      const changeDir = path.join(dir, 'openspec', 'changes', 'demo');
+      await fs.mkdir(path.join(changeDir, 'specs', 'feature'), { recursive: true });
+      await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+      await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
+      await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] implement guard\n');
+      await fs.writeFile(path.join(changeDir, 'specs', 'feature', 'spec.md'), '# Feature\n');
+      await fs.mkdir(path.join(dir, 'docs', 'superpowers', 'specs'), { recursive: true });
+      await fs.writeFile(
+        path.join(dir, designPath),
+        [
+          '---',
+          'comet_change: demo',
+          'role: technical-design',
+          'canonical_spec: openspec',
+          '---',
+          '',
+          '# Design',
+          '',
+        ].join('\n'),
+      );
 
-    expect(run(dir, 'state', 'set', 'demo', 'phase', 'design').status).toBe(0);
-    expect(
-      run(dir, 'state', 'set', 'demo', 'design_doc', 'docs/superpowers/specs/demo-design.md')
-        .status,
-    ).toBe(0);
-    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
+      expect(run(dir, 'state', 'set', 'demo', 'phase', 'design').status).toBe(0);
+      expect(run(dir, 'state', 'set', 'demo', 'design_doc', designPath).status).toBe(0);
+      expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
 
-    const nestedCwd = path.join(dir, 'agent', 'workspace');
-    await fs.mkdir(nestedCwd, { recursive: true });
-    const result = run(nestedCwd, 'guard', 'demo', 'design', '--apply');
+      const nestedCwd = path.join(dir, 'agent', 'workspace');
+      await fs.mkdir(nestedCwd, { recursive: true });
+      const result = run(nestedCwd, 'guard', 'demo', 'design', '--apply');
 
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain('ALL CHECKS PASSED — ready for next phase');
-    expect(result.stderr).not.toContain('ENOENT: no such file or directory, scandir');
-    expect(run(dir, 'state', 'get', 'demo', 'phase').stdout.trim()).toBe('build');
-  });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain('ALL CHECKS PASSED — ready for next phase');
+      expect(result.stderr).not.toContain('ENOENT: no such file or directory, scandir');
+      expect(run(dir, 'state', 'get', 'demo', 'phase').stdout.trim()).toBe('build');
+    },
+  );
 
   it('fails closed for an unknown phase without running checks', async () => {
     const dir = await makeProject();

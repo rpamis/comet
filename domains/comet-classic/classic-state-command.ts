@@ -1,5 +1,4 @@
 import { spawnSync } from 'child_process';
-import { promises as fs } from 'fs';
 import path from 'path';
 import { Document, parseDocument } from 'yaml';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
@@ -21,6 +20,7 @@ import {
 } from './classic-branch-binding.js';
 import { collectClassicEvidence } from './classic-evidence.js';
 import {
+  collectClassicSpecFiles,
   ensureClassicActiveChangeDirectory,
   openSpecChangeNameError,
   resolveClassicChangeDirectory,
@@ -36,7 +36,7 @@ import { reconcileClassicRuntimeRun, transitionClassicRuntimeRun } from './class
 import { appendClassicStateEvent } from './classic-state-events.js';
 import { parseClassicStateDocument, type ClassicState } from './classic-state.js';
 import { FIELD_ENUMS, MACHINE_OWNED_FIELDS, SETTABLE_FIELDS } from './classic-state-options.js';
-import { readClassicState, writeClassicState } from './classic-store.js';
+import { readClassicState, writeClassicState, withClassicStateLock } from './classic-store.js';
 import {
   CLASSIC_TRANSITION_EVENTS,
   applyClassicTransition,
@@ -46,7 +46,7 @@ import { readRunState } from '../../domains/engine/state.js';
 import { appendTrajectory, readTrajectory } from '../../domains/engine/run-store.js';
 import {
   recordCommandCheck,
-  invalidateCommandChecks,
+  recoverCommandChecks,
   type CommandCheckScope,
 } from './classic-command-checks.js';
 import { classicGuardCommand } from './classic-guard.js';
@@ -71,6 +71,13 @@ import {
   type ClassicPlanReadiness,
 } from './classic-plan-readiness.js';
 import { resolveClassicWorkspace } from './classic-workspace.js';
+import { readClassicArtifactRequirements } from './classic-artifact-requirements.js';
+import {
+  assignClassicTaskIds,
+  classicTaskRevision,
+  completeClassicTask,
+  parseClassicTasks,
+} from './classic-tasks.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -93,6 +100,7 @@ const CLASSIC_FIELD_WIRE_NAMES: Partial<Record<keyof ClassicState, string>> = {
   archiveConfirmation: 'archive_confirmation',
   verifyResult: 'verify_result',
   verifyFailures: 'verify_failures',
+  checkEpoch: 'check_epoch',
   workflow: 'workflow',
 };
 
@@ -309,6 +317,7 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
       'pending',
     )!,
     verifyFailures: nonNegativeRecordInteger(record, 'verify_failures'),
+    checkEpoch: nonNegativeRecordInteger(record, 'check_epoch'),
     verificationReport: nullableRecordString(record, 'verification_report'),
     branchStatus: enumRecordValue(record, 'branch_status', ['pending', 'handled'] as const, null),
     createdAt: nullableRecordString(record, 'created_at'),
@@ -408,6 +417,10 @@ async function readField(name: string, field: string): Promise<string> {
   // undefined for null-valued keys, erasing the distinction between "present but
   // null" and "absent" that the frozen 0.3.8 behavior preserves.
   const record = document.toJS() as Record<string, unknown>;
+  return readRecordField(record, field);
+}
+
+async function readRecordField(record: Record<string, unknown>, field: string): Promise<string> {
   const value = record[field];
   if (field === 'language') {
     if (value === null || value === undefined || value === '') return projectLanguageDefault();
@@ -449,61 +462,82 @@ async function validateSetValue(field: string, value: string): Promise<void> {
   }
 }
 
-async function setField(
+async function setFields(
   output: CommandOutput,
   name: string,
-  field: string,
-  value: string,
+  updates: Array<[string, string]>,
   options: { internal?: boolean; machineOwned?: boolean } = {},
 ): Promise<void> {
-  if (MACHINE_OWNED_FIELDS.has(field) && !options.machineOwned) {
-    fail(`ERROR: '${field}' is a machine-owned field and cannot be set directly`);
+  const { directory } = await stateFile(name);
+  return withClassicStateLock(directory, () => setFieldsLocked(output, name, updates, options));
+}
+
+async function setFieldsLocked(
+  output: CommandOutput,
+  name: string,
+  updates: Array<[string, string]>,
+  options: { internal?: boolean; machineOwned?: boolean },
+): Promise<void> {
+  const seen = new Set<string>();
+  for (const [field, value] of updates) {
+    if (seen.has(field)) fail(`ERROR: Duplicate field: '${field}'`);
+    seen.add(field);
+    if (MACHINE_OWNED_FIELDS.has(field) && !options.machineOwned) {
+      fail(`ERROR: '${field}' is a machine-owned field and cannot be set directly`);
+    }
+    if (!SETTABLE_FIELDS.has(field) && !MACHINE_OWNED_FIELDS.has(field)) {
+      fail(`ERROR: Unknown field: '${field}'`);
+    }
+    if (field === 'phase' && !options.internal && process.env.COMET_FORCE_PHASE !== '1') {
+      fail(
+        "ERROR: Setting 'phase' directly is not allowed; it bypasses state machine evidence checks.\n" +
+          '  Use: comet state transition <change-name> <event>\n' +
+          '  Repair-only escape hatch: COMET_FORCE_PHASE=1 comet state set <change-name> phase <value>',
+      );
+    }
+    await validateSetValue(field, value);
   }
-  if (!SETTABLE_FIELDS.has(field) && !MACHINE_OWNED_FIELDS.has(field)) {
-    fail(`ERROR: Unknown field: '${field}'`);
-  }
-  if (field === 'phase' && !options.internal && process.env.COMET_FORCE_PHASE !== '1') {
-    fail(
-      "ERROR: Setting 'phase' directly is not allowed; it bypasses state machine evidence checks.\n" +
-        '  Use: comet state transition <change-name> <event>\n' +
-        '  Repair-only escape hatch: COMET_FORCE_PHASE=1 comet state set <change-name> phase <value>',
-    );
-  }
-  await validateSetValue(field, value);
   const { file, directory } = await stateFile(name);
   const document = await readDocument(file);
   const previousRecord = (document.toJS() ?? {}) as Record<string, unknown>;
-  document.set(field, parsedValue(field, value));
-  if (field === 'isolation') {
-    if (requiresBranchBinding(value)) {
-      const previousIsolation =
-        typeof previousRecord.isolation === 'string' ? previousRecord.isolation : null;
-      const existing = previousRecord.bound_branch;
-      const alreadyBound = typeof existing === 'string' && existing !== '';
-      // Switching between workspace modes is an explicit new workspace
-      // decision and re-points the binding; repeating the same mode keeps
-      // the sticky binding that drift checks rely on.
-      if (!alreadyBound || previousIsolation !== value) {
-        const invocationCwd = classicCommandInvocationCwd();
-        const currentBranch = liveGitBranch(invocationCwd);
-        const verdict = evaluateBranchBinding({
-          isolation: value,
-          boundBranch: null,
-          currentBranch,
-          gitWorkTree: currentBranch === null ? isGitWorkTree(invocationCwd) : true,
-        });
-        if (verdict.status === 'needs-heal') {
-          document.set('bound_branch', verdict.branch);
-        } else if (verdict.status === 'unbound-detached') {
-          fail(
-            `ERROR: cannot bind isolation=${value} while HEAD is detached; checkout a branch first`,
-          );
-        } else {
-          document.set('bound_branch', null);
+  for (const [field, value] of updates) {
+    document.set(field, parsedValue(field, value));
+    if (field === 'phase' && previousRecord.phase !== value) {
+      const epoch = nonNegativeRecordInteger(previousRecord, 'check_epoch');
+      if (!Number.isSafeInteger(epoch + 1)) fail('ERROR: Invalid Classic check epoch');
+      document.set('check_epoch', epoch + 1);
+    }
+    if (field === 'isolation') {
+      if (requiresBranchBinding(value)) {
+        const previousIsolation =
+          typeof previousRecord.isolation === 'string' ? previousRecord.isolation : null;
+        const existing = previousRecord.bound_branch;
+        const alreadyBound = typeof existing === 'string' && existing !== '';
+        // Switching between workspace modes is an explicit new workspace
+        // decision and re-points the binding; repeating the same mode keeps
+        // the sticky binding that drift checks rely on.
+        if (!alreadyBound || previousIsolation !== value) {
+          const invocationCwd = classicCommandInvocationCwd();
+          const currentBranch = liveGitBranch(invocationCwd);
+          const verdict = evaluateBranchBinding({
+            isolation: value,
+            boundBranch: null,
+            currentBranch,
+            gitWorkTree: currentBranch === null ? isGitWorkTree(invocationCwd) : true,
+          });
+          if (verdict.status === 'needs-heal') {
+            document.set('bound_branch', verdict.branch);
+          } else if (verdict.status === 'unbound-detached') {
+            fail(
+              `ERROR: cannot bind isolation=${value} while HEAD is detached; checkout a branch first`,
+            );
+          } else {
+            document.set('bound_branch', null);
+          }
         }
+      } else {
+        document.set('bound_branch', null);
       }
-    } else {
-      document.set('bound_branch', null);
     }
   }
   const run = await readRunState(directory);
@@ -533,7 +567,9 @@ async function setField(
         runId: run.runId,
         data: {
           kind: 'classic-config',
-          field,
+          ...(updates.length === 1
+            ? { field: updates[0][0] }
+            : { fields: updates.map(([field]) => field) }),
           fromStep: projection.run.currentStep,
           toStep: currentStep,
         },
@@ -542,13 +578,17 @@ async function setField(
   } else {
     await atomicWrite(file, document.toString());
   }
-  if (field === 'phase' && !options.internal) {
+  if (seen.has('phase') && !options.internal) {
     output.stderr.push(
       yellow("WARNING: Setting 'phase' directly bypasses state machine constraints."),
       yellow('  Consider using: comet state transition <change-name> <event>'),
     );
   }
-  output.stderr.push(green(`[SET] ${field}=${value}`));
+  output.data = {
+    change: name,
+    updated: Object.fromEntries(updates.map(([field]) => [field, document.get(field)])),
+  };
+  for (const [field, value] of updates) output.stderr.push(green(`[SET] ${field}=${value}`));
 }
 
 async function init(
@@ -658,6 +698,11 @@ async function requireBuildDecisions(name: string): Promise<void> {
 async function requireOpenArtifacts(name: string): Promise<void> {
   const { directory } = await stateFile(name);
   const workflow = await readField(name, 'workflow');
+  const requirements = await readClassicArtifactRequirements(
+    classicCommandProjectRoot(),
+    directory,
+  );
+  if (requirements.problems.length) fail(`ERROR: ${requirements.problems.join('\n')}`);
   for (const artifact of ['proposal.md', 'tasks.md']) {
     if (!(await nonempty(path.join(directory, artifact)))) {
       fail(
@@ -665,7 +710,11 @@ async function requireOpenArtifacts(name: string): Promise<void> {
       );
     }
   }
-  if (workflow === 'full' && !(await nonempty(path.join(directory, 'design.md')))) {
+  if (
+    workflow === 'full' &&
+    requirements.designRequired &&
+    !(await nonempty(path.join(directory, 'design.md')))
+  ) {
     fail(
       `ERROR: Cannot transition '${name}': design.md must exist and be non-empty before leaving open`,
     );
@@ -743,6 +792,12 @@ async function applyTransitionEvent(
 
 async function transition(output: CommandOutput, name: string, event: string): Promise<void> {
   validateChangeName(name);
+  const { directory } = await stateFile(name);
+  return withClassicStateLock(directory, () => transitionLocked(output, name, event));
+}
+
+async function transitionLocked(output: CommandOutput, name: string, event: string): Promise<void> {
+  validateChangeName(name);
   validateEnum(event, EVENTS);
   if (event === 'open-complete') {
     await requirePhase(name, 'open');
@@ -753,10 +808,16 @@ async function transition(output: CommandOutput, name: string, event: string): P
   } else if (event === 'build-complete') {
     await requirePhase(name, 'build');
     await requireBuildDecisions(name);
+    const guarded = await classicGuardCommand([name, 'build', '--apply'], { json: false });
+    if (guarded.exitCode !== 0) fail(guarded.stderr ?? `ERROR: Cannot complete build '${name}'`);
+    if (guarded.stderr) output.stderr.push(guarded.stderr);
+    return;
   } else if (event === 'verify-pass') {
     await requirePhase(name, 'verify');
-    const verification = await classicGuardCommand([name, 'verify'], { json: false });
+    const verification = await classicGuardCommand([name, 'verify', '--apply'], { json: false });
     if (verification.exitCode !== 0) fail(verification.stderr ?? `ERROR: Cannot verify '${name}'`);
+    if (verification.stderr) output.stderr.push(verification.stderr);
+    return;
   } else if (event === 'verify-fail') {
     await requirePhase(name, 'verify');
   } else if (event === 'archive-confirm') {
@@ -811,11 +872,13 @@ async function next(output: CommandOutput, name: string): Promise<void> {
   validateChangeName(name);
   const { file, label } = await stateFile(name);
   if (!(await exists(file))) fail(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
-  const phase = await readField(name, 'phase');
-  const workflow = await readField(name, 'workflow');
-  const automatic = await readField(name, 'auto_transition');
-  const locale = classicLocale(await readField(name, 'language'));
-  if ((await readField(name, 'archived')) === 'true') {
+  const record = (await readDocument(file)).toJS() as Record<string, unknown>;
+  const phase = scalar(record.phase);
+  const workflow = scalar(record.workflow);
+  const automatic = await readRecordField(record, 'auto_transition');
+  const locale = classicLocale(await readRecordField(record, 'language'));
+  output.data = { change: name, phase, configuration: sparseClassicState(record) };
+  if (scalar(record.archived) === 'true') {
     const envelope = classicNextEnvelope({
       name,
       phase: 'done',
@@ -888,12 +951,62 @@ async function taskCheckoff(
   output.stdout.push('TASK_CHECKOFF: PASS', `FILE: ${taskFile}`, `TASK: ${taskText}`);
 }
 
+async function taskState(
+  output: CommandOutput,
+  name: string,
+  action: { kind: 'list' | 'assign' } | { kind: 'complete'; id: string; revision: string },
+): Promise<void> {
+  validateChangeName(name);
+  const { file, directory } = await stateFile(name);
+  const operation = async () => {
+    const record = (await readDocument(file)).toJS() as Record<string, unknown>;
+    if (
+      action.kind !== 'list' &&
+      (record.archived === true || !['open', 'design', 'build'].includes(String(record.phase)))
+    ) {
+      fail('ERROR: task updates require an active Open, Design or Build phase');
+    }
+    if (action.kind === 'complete' && record.phase !== 'build')
+      fail('ERROR: task completion requires Build phase');
+    const tasksFile = path.join(directory, 'tasks.md');
+    const source = await readClassicProjectFile(classicCommandProjectRoot(), tasksFile, {
+      label: 'Classic task authority',
+    });
+    const updated =
+      action.kind === 'assign'
+        ? assignClassicTaskIds(source)
+        : action.kind === 'complete'
+          ? completeClassicTask(source, action.id, action.revision)
+          : source;
+    const tasks = parseClassicTasks(updated);
+    if (!tasks.length) fail('ERROR: tasks.md has no implementation tasks');
+    if (updated !== source)
+      await writeClassicProjectText(classicCommandProjectRoot(), tasksFile, updated, {
+        label: 'Classic task authority',
+      });
+    output.data = {
+      change: name,
+      authority: path.relative(classicCommandProjectRoot(), tasksFile).replaceAll('\\', '/'),
+      revision: classicTaskRevision(updated),
+      needsIds: tasks.some((task) => !task.id),
+      tasks,
+      progress: { total: tasks.length, completed: tasks.filter((task) => task.completed).length },
+    };
+    output.stdout.push(
+      `Tasks: ${tasks.filter((task) => task.completed).length}/${tasks.length} complete. Use --json for task IDs and revision.`,
+    );
+  };
+  if (action.kind === 'list') await operation();
+  else await withClassicStateLock(directory, operation);
+}
+
 async function check(output: CommandOutput, name: string, phase: string): Promise<void> {
   validateChangeName(name);
   validateEnum(phase, PHASES);
   const { file, directory, label } = await stateFile(name);
   output.stdout.push(`=== Entry Check: comet-${phase} ===`);
   if (!(await exists(file))) fail(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
+  const record = (await readDocument(file)).toJS() as Record<string, unknown>;
   let blocked = false;
   let passed = 0;
   let total = 0;
@@ -908,25 +1021,29 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
     total += 1;
   };
   const expectField = async (field: string, expected: string) => {
-    const actual = await readField(name, field);
+    const actual = await readRecordField(record, field);
     (actual === expected ? pass : reject)(`${field}=${actual} (expected: ${expected})`);
   };
   pass('.comet.yaml exists');
   await expectField('phase', phase);
   if (phase === 'design') {
     await expectField('workflow', 'full');
-    const designDoc = await readField(name, 'design_doc');
+    const designDoc = scalar(record.design_doc);
     (!designDoc || designDoc === 'null' ? pass : reject)(
       designDoc ? `design_doc=${designDoc} (expected: empty/null)` : 'design_doc is empty/null',
     );
-    for (const artifact of ['proposal.md', 'design.md', 'tasks.md']) {
-      ((await nonempty(path.join(directory, artifact))) ? pass : reject)(
-        `${artifact} ${(await nonempty(path.join(directory, artifact))) ? 'non-empty' : 'missing or empty'}`,
-      );
+    const requirements = await readClassicArtifactRequirements(
+      classicCommandProjectRoot(),
+      directory,
+    );
+    for (const problem of requirements.problems) reject(problem);
+    for (const artifact of requirements.files) {
+      const present = await nonempty(artifact);
+      (present ? pass : reject)(`${artifact} ${present ? 'non-empty' : 'missing or empty'}`);
     }
   } else if (phase === 'build') {
-    const workflow = await readField(name, 'workflow');
-    const designDoc = await readField(name, 'design_doc');
+    const workflow = scalar(record.workflow);
+    const designDoc = scalar(record.design_doc);
     if (workflow === 'full') {
       (designDoc && designDoc !== 'null' && (await exists(path.resolve(designDoc)))
         ? pass
@@ -935,18 +1052,17 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
       pass(`workflow=${workflow} (design_doc not required)`);
     }
     for (const artifact of ['proposal.md', 'tasks.md']) {
-      ((await nonempty(path.join(directory, artifact))) ? pass : reject)(
-        `${artifact} ${(await nonempty(path.join(directory, artifact))) ? 'non-empty' : 'missing or empty'}`,
-      );
+      const present = await nonempty(path.join(directory, artifact));
+      (present ? pass : reject)(`${artifact} ${present ? 'non-empty' : 'missing or empty'}`);
     }
   } else if (phase === 'verify') {
-    const value = await readField(name, 'verify_result');
+    const value = scalar(record.verify_result);
     (['', 'null', 'pending'].includes(value) ? pass : reject)(
       `verify_result=${value} (expected: pending or null)`,
     );
   } else if (phase === 'archive') {
     await expectField('verify_result', 'pass');
-    const archived = await readField(name, 'archived');
+    const archived = scalar(record.archived);
     (archived !== 'true' ? pass : reject)(`archived=${archived} (expected: not true)`);
   }
   const binding = await resolveBranchBinding(directory, {
@@ -962,6 +1078,7 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
         reject(unboundDetachedMessage(name));
         break;
       case 'healed':
+        record.bound_branch = binding.branch;
         pass(`bound_branch lazily set to ${binding.branch}`);
         break;
       case 'needs-heal':
@@ -976,7 +1093,14 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
     }
   }
   output.stdout.push('');
-  const locale = classicLocale(await readField(name, 'language'));
+  const locale = classicLocale(await readRecordField(record, 'language'));
+  output.data = {
+    change: name,
+    phase: record.phase,
+    requestedPhase: phase,
+    configuration: sparseClassicState(record),
+    checks: { passed, total, blocked },
+  };
   output.envelope = classicEntryCheckEnvelope({ name, phase, passed, total, locale });
   output.stdout.push(output.envelope.summary);
   if (blocked) {
@@ -994,17 +1118,31 @@ async function fieldStatus(field: string, value: string, file?: string): Promise
   return `  - ${field}: DONE (${value})`;
 }
 
-async function recoverOpen(output: CommandOutput, directory: string): Promise<void> {
+async function recoveryArtifacts(output: CommandOutput, directory: string) {
+  const requirements = await readClassicArtifactRequirements(
+    classicCommandProjectRoot(),
+    directory,
+  );
   output.stdout.push('  Artifacts:');
   let complete = 0;
-  for (const artifact of ['proposal.md', 'design.md', 'tasks.md']) {
-    const done = await nonempty(path.join(directory, artifact));
+  for (const file of requirements.files) {
+    const done = await nonempty(file);
     if (done) complete += 1;
-    output.stdout.push(`  - ${artifact}: ${done ? 'DONE' : 'PENDING'}`);
+    output.stdout.push(`  - ${path.relative(directory, file)}: ${done ? 'DONE' : 'PENDING'}`);
   }
+  for (const skipped of requirements.skipped) output.stdout.push(`  - ${skipped}: SKIPPED`);
+  for (const problem of requirements.problems) output.stdout.push(`  - ${problem}`);
+  return {
+    complete,
+    ready: complete === requirements.files.length && !requirements.problems.length,
+  };
+}
+
+async function recoverOpen(output: CommandOutput, directory: string): Promise<void> {
+  const { complete, ready } = await recoveryArtifacts(output, directory);
   output.stdout.push(
     '',
-    complete === 3
+    ready
       ? 'Recovery action: All artifacts complete. Run /comet-open user confirmation, then guard to transition.'
       : complete === 0
         ? 'Recovery action: No artifacts created yet. Start from /comet-open Step 1 (explore and clarify).'
@@ -1017,11 +1155,12 @@ async function recoverDesign(
   name: string,
   directory: string,
 ): Promise<void> {
-  output.stdout.push('  Artifacts:');
-  for (const artifact of ['proposal.md', 'design.md', 'tasks.md']) {
+  const { ready } = await recoveryArtifacts(output, directory);
+  if (!ready) {
     output.stdout.push(
-      `  - ${artifact}: ${(await nonempty(path.join(directory, artifact))) ? 'DONE' : 'MISSING (unexpected in design phase)'}`,
+      'Recovery action: Required artifacts are incomplete. Repair the reported dependency or file before continuing design.',
     );
+    return;
   }
   const handoff = await readField(name, 'handoff_context');
   const hash = await readField(name, 'handoff_hash');
@@ -1034,11 +1173,19 @@ async function recoverDesign(
     await fieldStatus('design_doc', design, design),
     '',
   );
-  if (design && design !== 'null' && (await exists(path.resolve(design)))) {
+  if (
+    design &&
+    design !== 'null' &&
+    (await exists(path.resolve(classicCommandProjectRoot(), design)))
+  ) {
     output.stdout.push(
       'Recovery action: Design Doc already created and linked. Run guard to transition to build.',
     );
-  } else if (handoff && handoff !== 'null' && (await exists(path.resolve(handoff)))) {
+  } else if (
+    handoff &&
+    handoff !== 'null' &&
+    (await exists(path.resolve(classicCommandProjectRoot(), handoff)))
+  ) {
     output.stdout.push(
       'Recovery action: Handoff generated but Design Doc not yet created. Resume from brainstorming confirmation (Step 1c).',
     );
@@ -1087,24 +1234,24 @@ async function recoverBuild(
     );
     return;
   }
-  const lines = (
+  const recoveredTasks = parseClassicTasks(
     await readClassicProjectFile(classicCommandProjectRoot(), tasks, {
       label: 'Classic change tasks',
-    })
-  ).split(/\r?\n/u);
-  const total = lines.filter((line) => /^\s*- \[[ xX]\] /u.test(line)).length;
-  const done = lines.filter((line) => /^\s*- \[[xX]\] /u.test(line)).length;
+    }),
+  );
+  const total = recoveredTasks.length;
+  const done = recoveredTasks.filter((task) => task.completed).length;
   const pending = total - done;
   let planTotal = 0;
   let planDone = 0;
   if (planReadiness.status === 'ready') {
-    const planLines = (
+    const planTasks = parseClassicTasks(
       await readClassicProjectFile(classicCommandProjectRoot(), plan, {
         label: 'Classic build plan',
-      })
-    ).split(/\r?\n/u);
-    planTotal = planLines.filter((line) => /^\s*- \[[ xX]\] /u.test(line)).length;
-    planDone = planLines.filter((line) => /^\s*- \[[xX]\] /u.test(line)).length;
+      }),
+    );
+    planTotal = planTasks.length;
+    planDone = planTasks.filter((task) => task.completed).length;
   }
   const planPending = planTotal - planDone;
   output.stdout.push(`  Tasks: ${done}/${total} done, ${pending} pending`);
@@ -1311,12 +1458,15 @@ async function recover(output: CommandOutput, name: string): Promise<void> {
   const workflow = await readField(name, 'workflow');
   const locale = classicLocale(await readField(name, 'language'));
   const projection = await readClassicState(directory, { migrate: false });
-  if (projection.run) await invalidateCommandChecks(directory, projection.run);
+  const evidenceScopes = projection.run
+    ? await recoverCommandChecks(classicCommandProjectRoot(), directory, projection.run)
+    : { build: 'rerun-required', verify: 'rerun-required' };
   const checkpoint = path.join(directory, '.comet', 'subagent-progress.md');
   const tasks = path.join(directory, 'tasks.md');
   const taskText = (await exists(tasks))
     ? await readClassicProjectFile(classicCommandProjectRoot(), tasks, { label: 'Recovery tasks' })
     : '';
+  const parsedTasks = parseClassicTasks(taskText);
   const plan = await readField(name, 'plan');
   output.data = {
     change: name,
@@ -1326,7 +1476,8 @@ async function recover(output: CommandOutput, name: string): Promise<void> {
     changeDir: directory,
     currentStep: projection.run?.currentStep ?? null,
     configuration: projection.classic,
-    nextTask: taskText.split(/\r?\n/u).find((line) => /^- \[ \]/u.test(line)) ?? null,
+    nextTask: parsedTasks.find((task) => !task.completed)?.text ?? null,
+    taskState: { authority: tasks, revision: classicTaskRevision(taskText), tasks: parsedTasks },
     checkpoint: (await exists(checkpoint))
       ? {
           path: checkpoint,
@@ -1335,7 +1486,11 @@ async function recover(output: CommandOutput, name: string): Promise<void> {
           }),
         }
       : null,
-    evidence: { status: 'rerun-required', reason: 'cold-recovery' },
+    evidence: {
+      status: evidenceScopes[phase === 'build' ? 'build' : 'verify'],
+      reason: 'cold-recovery',
+      scopes: evidenceScopes,
+    },
     requiredFiles: [
       file,
       tasks,
@@ -1373,21 +1528,14 @@ async function scale(output: CommandOutput, name: string): Promise<void> {
   if (!(await exists(file))) fail(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
   const tasksFile = path.join(directory, 'tasks.md');
   const taskCount = (await exists(tasksFile))
-    ? (
+    ? parseClassicTasks(
         await readClassicProjectFile(classicCommandProjectRoot(), tasksFile, {
           label: 'Classic scale task file',
-        })
-      )
-        .split(/\r?\n/u)
-        .filter((line) => /^- \[/u.test(line)).length
+        }),
+      ).length
     : 0;
   const specs = path.join(directory, 'specs');
-  let deltaSpecs = 0;
-  if (await exists(specs)) {
-    for (const entry of await fs.readdir(specs)) {
-      if (await exists(path.join(specs, entry, 'spec.md'))) deltaSpecs += 1;
-    }
-  }
+  const deltaSpecs = (await collectClassicSpecFiles(classicCommandProjectRoot(), specs)).length;
   const plan = await readField(name, 'plan');
   let baseRef = '';
   if (plan && plan !== 'null' && (await exists(plan))) {
@@ -1406,7 +1554,13 @@ async function scale(output: CommandOutput, name: string): Promise<void> {
   ]);
   const changedFiles = changed ? changed.split(/\r?\n/u).filter(Boolean).length : 0;
   const result = taskCount > 3 || deltaSpecs > 1 || changedFiles > 8 ? 'full' : 'light';
-  await setField(new CommandOutput(), name, 'verify_mode', result);
+  const selected = await readField(name, 'verify_mode');
+  output.data = {
+    change: name,
+    recommendation: result,
+    selected: selected === 'light' || selected === 'full' ? selected : null,
+    metrics: { tasks: taskCount, deltaSpecs, changedFiles },
+  };
   const locale = classicLocale(await readField(name, 'language'));
   output.envelope = classicScaleEnvelope({ name, result, locale });
   output.stderr.push(
@@ -1416,7 +1570,7 @@ async function scale(output: CommandOutput, name: string): Promise<void> {
     `  Delta specs: ${deltaSpecs} capabilities (threshold: 1)`,
     `  Changed files: ${changedFiles} (threshold: 8)`,
     `  → Result: ${result}`,
-    green(`[SCALE] verify_mode=${result}`),
+    green(`[SCALE] recommendation=${result}; selected=${selected || 'null'} (unchanged)`),
   );
 }
 
@@ -1503,6 +1657,7 @@ function requiredExact(args: string[], count: number, usage: string): void {
 const MUTATING_STATE_COMMANDS = new Set([
   'init',
   'set',
+  'task-complete',
   'transition',
   'check',
   'scale',
@@ -1593,7 +1748,6 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(asy
     const [subcommand, ...rest] = args;
     const arity: Record<string, number> = {
       get: 2,
-      set: 3,
       transition: 2,
       scale: 1,
       'task-checkoff': 2,
@@ -1602,6 +1756,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(asy
       current: 0,
       'clear-selection': 0,
       next: 1,
+      artifacts: 1,
     };
     if (subcommand && Object.hasOwn(arity, subcommand)) {
       requiredExact(
@@ -1617,6 +1772,8 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(asy
       fail('Usage: comet state check <change-name> <phase> [--recover]');
     }
     await assertStateCommandWritable(subcommand);
+    if (subcommand === 'tasks' && rest.includes('--assign-ids'))
+      await assertStateCommandWritable('set');
     if (subcommand === 'init') {
       required(rest, 2, 'Usage: comet state init <change-name> <workflow>');
       const initOptions = rest.slice(2);
@@ -1633,9 +1790,14 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(asy
       validateChangeName(rest[0]);
       output.stdout.push(await readField(rest[0], rest[1]));
     } else if (subcommand === 'set') {
-      required(rest, 3, 'Usage: comet state set <change-name> <field> <value>');
+      if (rest.length < 3 || rest.length % 2 !== 1) {
+        fail('Usage: comet state set <change-name> <field> <value> [<field> <value> ...]');
+      }
       validateChangeName(rest[0]);
-      await setField(output, rest[0], rest[1], rest[2]);
+      const updates: Array<[string, string]> = [];
+      for (let index = 1; index < rest.length; index += 2)
+        updates.push([rest[index], rest[index + 1]]);
+      await setFields(output, rest[0], updates);
     } else if (subcommand === 'transition') {
       required(rest, 2, 'Usage: comet state transition <change-name> <event>');
       await transition(output, rest[0], rest[1]);
@@ -1646,6 +1808,33 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(asy
     } else if (subcommand === 'scale') {
       required(rest, 1, 'Usage: comet state scale <change-name>');
       await scale(output, rest[0]);
+    } else if (subcommand === 'artifacts') {
+      validateChangeName(rest[0]);
+      const { directory } = await stateFile(rest[0]);
+      const requirements = await readClassicArtifactRequirements(
+        classicCommandProjectRoot(),
+        directory,
+      );
+      if (requirements.source === 'legacy') {
+        const full = (await readField(rest[0], 'workflow')) === 'full';
+        requirements.designRequired = full;
+        if (!full) {
+          requirements.required = requirements.required.filter((id) => id !== 'design');
+          requirements.files = requirements.files.filter(
+            (file) => path.basename(file) !== 'design.md',
+          );
+        }
+        for (const file of requirements.files)
+          if (!(await nonempty(file)))
+            requirements.problems.push(`Required Classic artifact is missing or empty: ${file}`);
+      }
+      output.data = requirements;
+      output.stdout.push(
+        requirements.problems.length
+          ? requirements.problems.join('\n')
+          : 'Required artifact dependency closure is ready',
+      );
+      if (requirements.problems.length) throw new CommandFailure('', 1);
     } else if (subcommand === 'record-check') {
       required(
         rest,
@@ -1656,6 +1845,15 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(asy
     } else if (subcommand === 'task-checkoff') {
       required(rest, 2, 'Usage: comet state task-checkoff <file> <task-text>');
       await taskCheckoff(output, rest[0], rest[1]);
+    } else if (subcommand === 'tasks') {
+      if (rest.length !== 1 && !(rest.length === 2 && rest[1] === '--assign-ids')) {
+        fail('Usage: comet state tasks <change-name> [--assign-ids]');
+      }
+      await taskState(output, rest[0], { kind: rest.length === 2 ? 'assign' : 'list' });
+    } else if (subcommand === 'task-complete') {
+      if (rest.length !== 4 || rest[2] !== '--expect')
+        fail('Usage: comet state task-complete <change-name> <task-id> --expect <revision>');
+      await taskState(output, rest[0], { kind: 'complete', id: rest[1], revision: rest[3] });
     } else if (subcommand === 'rebind') {
       requiredExact(rest, 1, 'Usage: comet state rebind <change-name>');
       await rebind(output, rest[0]);

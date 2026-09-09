@@ -2,7 +2,8 @@ import { spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as checkSnapshot from '../../../domains/comet-classic/classic-check-snapshot.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
@@ -26,6 +27,7 @@ describe('Classic executed check evidence', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
@@ -149,7 +151,7 @@ describe('Classic executed check evidence', () => {
     expect((await cli('state', 'transition', 'demo', 'verify-pass')).exitCode).not.toBe(0);
   });
 
-  it('invalidates previous evidence on cold recovery and returns structured context', async () => {
+  it('revalidates local evidence on cold recovery and returns structured context', async () => {
     await readyVerify();
     await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');
     const result = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
@@ -157,8 +159,75 @@ describe('Classic executed check evidence', () => {
     expect(JSON.parse(result.stdout!).data).toMatchObject({
       change: 'demo',
       phase: 'verify',
-      evidence: { status: 'rerun-required' },
+      evidence: { status: 'revalidated', scopes: { verify: 'revalidated' } },
     });
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+  });
+
+  it('shares one input scan across recovery scopes but refreshes it on the next recovery', async () => {
+    await readyVerify();
+    for (const scope of ['build', 'verify']) {
+      const check = await cli(
+        'check',
+        'run',
+        'demo',
+        scope,
+        '--local',
+        '--',
+        process.execPath,
+        'check.cjs',
+      );
+      expect(check.exitCode, check.stderr).toBe(0);
+    }
+    const scan = vi.spyOn(checkSnapshot, 'checkInputFingerprint');
+    const first = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
+    expect(first.exitCode, first.stderr).toBe(0);
+    expect(JSON.parse(first.stdout!).data.evidence.scopes).toEqual({
+      build: 'revalidated',
+      verify: 'revalidated',
+    });
+    expect(scan).toHaveBeenCalledTimes(1);
+    await fs.writeFile(path.join(root, 'input.txt'), 'bad');
+    const second = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
+    expect(JSON.parse(second.stdout!).data.evidence.scopes).toEqual({
+      build: 'rerun-required',
+      verify: 'rerun-required',
+    });
+    expect(scan).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['non-local', 'changed-input', 'damaged-log'])(
+    'requires new evidence after recovery of %s checks',
+    async (reason) => {
+      await readyVerify();
+      const result = await cli(
+        'check',
+        'run',
+        'demo',
+        'verify',
+        ...(reason === 'non-local' ? [] : ['--local']),
+        '--json',
+        '--',
+        process.execPath,
+        'check.cjs',
+      );
+      expect(result.exitCode).toBe(0);
+      if (reason === 'changed-input') await fs.writeFile(path.join(root, 'input.txt'), 'bad');
+      if (reason === 'damaged-log') {
+        await fs.writeFile(path.join(root, JSON.parse(result.stdout!).data.logRef), 'tampered');
+      }
+      const recovered = await cli('state', 'check', 'demo', 'verify', '--recover', '--json');
+      expect(JSON.parse(recovered.stdout!).data.evidence.scopes.verify).toBe('rerun-required');
+      expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+    },
+  );
+
+  it('does not resurrect stale evidence when inputs are restored after recovery', async () => {
+    await readyVerify();
+    await cli('check', 'run', 'demo', 'verify', '--local', '--', process.execPath, 'check.cjs');
+    await fs.writeFile(path.join(root, 'input.txt'), 'bad');
+    await cli('state', 'check', 'demo', 'verify', '--recover');
+    await fs.writeFile(path.join(root, 'input.txt'), 'good');
     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
   });
 
@@ -251,13 +320,47 @@ describe('Classic executed check evidence', () => {
     },
   );
 
-  it('uses non-local evidence once and never turns it into a cache entry', async () => {
+  it('keeps non-local evidence for previews and consumes it on the atomic phase update', async () => {
     await readyVerify();
     expect(
       (await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs')).exitCode,
     ).toBe(0);
     expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+    expect((await cli('guard', 'demo', 'verify', '--apply')).exitCode).toBe(0);
+    expect((await cli('state', 'get', 'demo', 'check_epoch')).stdout?.trim()).toBe('1');
+    expect((await cli('state', 'transition', 'demo', 'archive-reopen')).exitCode).toBe(0);
     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+  });
+
+  it('allows only one of two concurrent guarded phase transitions to succeed', async () => {
+    await readyVerify();
+    await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs');
+    const results = await Promise.all([
+      cli('guard', 'demo', 'verify', '--apply'),
+      cli('guard', 'demo', 'verify', '--apply'),
+    ]);
+    expect(results.filter((result) => result.exitCode === 0)).toHaveLength(1);
+    expect((await cli('state', 'get', 'demo', 'check_epoch')).stdout?.trim()).toBe('1');
+  });
+
+  it('preserves non-local evidence if a different guard prerequisite fails', async () => {
+    await readyVerify();
+    await cli('check', 'run', 'demo', 'verify', '--', process.execPath, 'check.cjs');
+    await cli('state', 'set', 'demo', 'verification_report', 'null');
+    expect((await cli('guard', 'demo', 'verify', '--apply')).exitCode).not.toBe(0);
+    await cli(
+      'state',
+      'set',
+      'demo',
+      'verification_report',
+      'openspec/changes/demo/verification-report.md',
+    );
+    expect((await cli('guard', 'demo', 'verify', '--apply')).exitCode).toBe(0);
+  });
+
+  it('prevents manual writes to the check epoch', async () => {
+    expect((await cli('state', 'set', 'demo', 'check_epoch', '0')).exitCode).not.toBe(0);
   });
 
   it('does not expose older success after a failed executable launch', async () => {

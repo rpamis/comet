@@ -2,7 +2,8 @@ import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as runStore from '../../../domains/engine/run-store.js';
 import { parse } from 'yaml';
 import { annotatedMarkdown } from '../../../domains/comet-classic/classic-archive.js';
 import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-runtime-run.js';
@@ -174,6 +175,36 @@ async function fakeOpenSpec(
 }
 
 describe('Classic archive command', () => {
+  it('preserves a configuration update committed while preparing the pending action', async () => {
+    const dir = await makeProject();
+    await seedArchiveChange(dir);
+    confirmArchiveChange(dir);
+    const fake = await fakeOpenSpec(dir, 'success');
+    const original = runStore.writePendingAction;
+    const previous = process.cwd();
+    const previousOpenSpec = process.env.COMET_OPENSPEC;
+    const spy = vi.spyOn(runStore, 'writePendingAction').mockImplementationOnce(async (...args) => {
+      await original(...args);
+      const update = await runClassicCli(['state', 'set', 'demo', 'review_mode', 'thorough']);
+      expect(update.exitCode, update.stderr).toBe(0);
+    });
+    process.chdir(dir);
+    process.env.COMET_OPENSPEC = fake.command;
+    try {
+      const result = await runClassicCli(['archive', 'demo']);
+      expect(result.exitCode, result.stderr).toBe(0);
+      const archiveRoot = path.join(dir, 'openspec/changes/archive');
+      const [entry] = await fs.readdir(archiveRoot);
+      const state = parse(await fs.readFile(path.join(archiveRoot, entry, '.comet.yaml'), 'utf8'));
+      expect(state.review_mode).toBe('thorough');
+    } finally {
+      spy.mockRestore();
+      process.chdir(previous);
+      if (previousOpenSpec === undefined) delete process.env.COMET_OPENSPEC;
+      else process.env.COMET_OPENSPEC = previousOpenSpec;
+    }
+  });
+
   async function makeConfiguredSourceProject(): Promise<string> {
     const dir = await makeProject();
     await fs.mkdir(path.join(dir, 'openspec', 'changes', 'archive'), { recursive: true });
@@ -323,6 +354,9 @@ describe('Classic archive command', () => {
   it('rewrites active change handoff pointers and passes the final archive guard', async () => {
     const dir = await makeProject();
     const changeDir = await seedArchiveChange(dir);
+    expect(
+      run(dir, ['state', 'set', 'demo', 'design_doc', 'openspec/changes/demo/design.md']).status,
+    ).toBe(0);
     const contextRef = 'openspec/changes/demo/.comet/handoff/design-context.json';
     const markdownRef = 'openspec/changes/demo/.comet/handoff/design-context.md';
     const handoffHash = 'a'.repeat(64);
@@ -366,6 +400,10 @@ describe('Classic archive command', () => {
     ) as Record<string, unknown>;
     expect(archivedState.handoff_context).toBe(`${archiveRef}/.comet/handoff/design-context.json`);
     expect(archivedState.handoff_hash).toBe(handoffHash);
+    expect(archivedState.design_doc).toBe(`${archiveRef}/design.md`);
+    expect(await fs.readFile(path.join(archiveDir, 'design.md'), 'utf8')).toContain(
+      'status: final',
+    );
 
     const archivedRun = await readRunState(archiveDir);
     expect(archivedRun).not.toBeNull();

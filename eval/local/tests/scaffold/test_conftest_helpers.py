@@ -20,6 +20,28 @@ else:
     msvcrt = None
 
 
+@pytest.mark.parametrize(
+    ("files", "expected"),
+    [
+        (["comet-hook-router.mjs", "comet-hook-guard.mjs"], "comet-hook-router.mjs"),
+        (["comet-hook-guard.mjs"], "comet-hook-guard.mjs"),
+        (["comet-hook-guard.sh"], "comet-hook-guard.sh"),
+        ([], None),
+    ],
+)
+def test_comet_hook_prefers_router_and_preserves_historical_fallback(tmp_path, files, expected):
+    scripts = tmp_path / ".claude" / "skills" / "comet" / "scripts"
+    scripts.mkdir(parents=True)
+    for name in files:
+        (scripts / name).write_text("// fixture", encoding="utf-8")
+    command = conftest._comet_hook_command(tmp_path)
+    if expected is None:
+        assert command is None
+    else:
+        program = "bash" if expected.endswith(".sh") else "node"
+        assert command == f"{program} /workspace/.claude/skills/comet/scripts/{expected}"
+
+
 def test_file_lock_context_manager_allows_exclusive_writes(tmp_path: Path):
     lock_file = tmp_path / "coordination.lock"
     data_file = tmp_path / "coordination.txt"
@@ -28,6 +50,45 @@ def test_file_lock_context_manager_allows_exclusive_writes(tmp_path: Path):
         data_file.write_text("held")
 
     assert data_file.read_text() == "held"
+
+
+def test_current_cli_snapshot_uses_explicit_source_root(tmp_path, monkeypatch):
+    source = tmp_path / "baseline"
+    files = {
+        "package.json": '{}',
+        "bin/comet.js": '// baseline entry',
+        "assets/manifest.json": '{}',
+        "assets/skills/comet/SKILL.md": '# Baseline',
+        "app/index.ts": 'export {};',
+        "domains/example.ts": 'export {};',
+        "platform/example.ts": 'export {};',
+        "tsconfig.json": '{}',
+    }
+    for relative, content in files.items():
+        target = source / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    environment = tmp_path / "environment"
+    environment.mkdir()
+    (environment / conftest.CURRENT_COMET_CLI_MARKER).touch()
+
+    def compile_source(checkout, output):
+        assert checkout == source.resolve()
+        for relative in ["app/cli/index.js", "domains/dashboard/native-adapter.js"]:
+            target = output / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text('// compiled baseline', encoding="utf-8")
+        return "test-compiler"
+
+    monkeypatch.setenv("BENCH_COMET_SOURCE_ROOT", str(source))
+    monkeypatch.setattr(conftest, "_build_current_comet_dist", compile_source)
+    workspace = tmp_path / "workspace"
+    conftest._copy_current_comet_cli_snapshot(environment, workspace)
+    snapshot = workspace / "_eval_current_comet"
+    assert (snapshot / "bin/comet.js").read_text() == '// baseline entry'
+    identity = json.loads((snapshot / "build-identity.json").read_text())
+    assert identity["compilerVersion"] == "test-compiler"
+    assert identity["sourceHash"]
 
 
 @pytest.mark.skipif(msvcrt is None, reason="Windows locking API only")

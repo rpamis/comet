@@ -1,6 +1,6 @@
 ---
 name: comet-tweak
-description: "Comet preset — handle a lightweight or medium change that fits one OpenSpec change."
+description: 'Comet preset — handle a lightweight or medium change that fits one OpenSpec change.'
 ---
 
 # Comet Preset Path: Tweak
@@ -12,6 +12,7 @@ Tweak is a preset workflow of Comet's five-phase capabilities, not an independen
 Applicable for OpenSpec-chained lightweight changes, such as configuration adjustments, documentation or prompt optimization, and spec-driven (including delta spec) medium changes that do not need the full `/comet-classic` deep design workflow. Delta spec is a first-class normal artifact in tweak; needing delta spec alone does not constitute an upgrade reason.
 
 **Applicable conditions** (all must be met):
+
 1. Can fit a **single OpenSpec change**
 2. Does not need a Superpowers Design Doc and full plan to clarify the approach
 3. Does not involve cross-module or cross-layer architecture coordination
@@ -42,13 +43,15 @@ Reuse Comet open capability to create change, but use tweak defaults: do not exe
 **Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
 
 <!-- external-openspec-skill-override -->
+
 **External OpenSpec Skill override:** Do not execute its direct official CLI, fixed-cwd, or fixed physical OpenSpec path instructions. Route every OpenSpec command through `comet classic openspec -- <args...>` and use the `<classic-*>` logical roots bound for this run for every change and artifact path.
 
 After the skill loads, follow its guidance to create streamlined artifacts:
-  - `proposal.md` — change motivation + goals + scope
-  - `design.md` — brief implementation description (no solution comparison needed)
-  - `tasks.md` — task list (keep to a reasonable size; count itself does not trigger upgrade, see "Upgrade Assessment")
-  - `delta spec` (optional) — if the change affects existing spec acceptance scenarios, create it as a normal artifact (only `## MODIFIED Requirements` or `## ADDED Requirements`). Delta spec is the core artifact of OpenSpec brownfield changes; needing delta spec alone does not constitute an upgrade reason
+
+- `proposal.md` — change motivation + goals + scope
+- `design.md` — brief implementation description (no solution comparison needed)
+- `tasks.md` — task list (keep to a reasonable size; count itself does not trigger upgrade, see "Upgrade Assessment")
+- `delta spec` (optional) — if the change affects existing spec acceptance scenarios, create it as a normal artifact (only `## MODIFIED Requirements` or `## ADDED Requirements`). Delta spec is the core artifact of OpenSpec brownfield changes; needing delta spec alone does not constitute an upgrade reason
 
 Initialize Comet state file:
 
@@ -96,6 +99,7 @@ Before continuing or starting changes, handle uncommitted changes through `comet
 **Immediately execute:** Use the Skill tool to load the `openspec-apply-change` skill. Skipping this step is prohibited.
 
 <!-- external-openspec-skill-override -->
+
 **External OpenSpec Skill override:** Use only its apply semantics. Replace every direct official CLI, fixed-cwd, or fixed physical OpenSpec path instruction with `comet classic openspec -- <args...>` and the `<classic-*>` logical roots.
 
 After the skill loads, use the current `<change-name>` as input and follow `openspec-apply-change` to execute the OpenSpec apply flow:
@@ -171,7 +175,7 @@ After each phase completes, immediately enter next phase. Within each phase, mus
 
 ## Upgrade Assessment
 
-Tweak upgrade assessment only decides whether to move from the lightweight preset to full; delta spec alone is not an upgrade reason, file count never upgrades automatically, and `comet state scale` only decides verification weight.
+Tweak upgrade assessment only decides whether to move from the lightweight preset to full; delta spec alone is not an upgrade reason and file count never upgrades automatically. `comet state scale` recommends verification depth without changing configuration; Verify selects based on actual risk.
 
 If `/comet-classic` passes an intent frame from the entry, tweak must recheck `risk_signal` and escalation signals only before build: new capability, public API, schema change, cross-module coordination, or deep architecture work. When any signal matches, enter the existing escalation decision point. Delta spec remains a normal tweak artifact and must not trigger escalation by itself; do not reimplement entry intent recognition.
 

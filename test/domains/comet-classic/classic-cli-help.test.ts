@@ -30,9 +30,10 @@ describe('Classic operational help', () => {
     expect(help).not.toContain('task-checkoff');
   });
 
-  it('warns that recovery invalidates evidence', () => {
+  it('explains selective recovery revalidation', () => {
     const help = classicCommandHelp('state', ['check', '--help'])!;
     expect(help).toContain('invalidates');
+    expect(help).toContain('revalidates reusable local evidence');
     expect(help).toContain('cold recovery');
     expect(help).not.toContain('record-check');
   });
@@ -40,8 +41,8 @@ describe('Classic operational help', () => {
   it('does not describe guard preview as read-only', () => {
     const help = classicCommandHelp('guard', ['--help'])!;
     expect(help).toContain('may execute');
-    expect(help).toContain('consumes single-use');
-    expect(help).toContain('even without --apply');
+    expect(help).toContain('does not consume single-use');
+    expect(help).toContain('consumes it atomically');
   });
 
   it('leaves child help untouched', () => {
@@ -54,6 +55,8 @@ describe('Classic operational help', () => {
     const fields = classicCommandHelp('state', ['set', '--help'])!;
     expect(fields).toContain('verify_mode: light|full');
     expect(fields).not.toContain('archive_confirmation:');
+    expect(fields).toContain('atomic state update');
+    expect(fields).toContain('data.updated');
     expect(classicCommandHelp('state', ['transition', '--help'])).toContain('archive-confirm');
   });
 

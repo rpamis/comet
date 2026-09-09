@@ -1,6 +1,6 @@
 ---
 name: comet-hotfix
-description: "Comet 预设 —— 通过 open-build-verify-archive 短流程修复已有行为 bug。"
+description: 'Comet 预设 —— 通过 open-build-verify-archive 短流程修复已有行为 bug。'
 ---
 
 # Comet 预设路径：Hotfix
@@ -10,6 +10,7 @@ description: "Comet 预设 —— 通过 open-build-verify-archive 短流程修�
 快速 bug fix 工作流：open → build → 根因消除检查 → verify → archive。跳过 brainstorming 和完整 plan，适用于行为修复、不涉及新 capability 设计的场景。
 
 **适用条件**（必须全部满足）：
+
 1. 修复已有功能的 bug，不新增 capability
 2. 不涉及接口变更或架构调整
 3. 改动范围可预估（文件数仅作提示，不作为硬性升级条件，见下方升级判定）
@@ -39,6 +40,7 @@ description: "Comet 预设 —— 通过 open-build-verify-archive 短流程修�
 **立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
 
 <!-- external-openspec-skill-override -->
+
 **外部 OpenSpec Skill 覆写：** 加载后不得执行其中直接官方 CLI、固定 cwd 或固定物理 OpenSpec 路径的指令；所有 OpenSpec 命令改用 `comet classic openspec -- <args...>`，所有 change 与 artifact 路径改用本轮绑定的 `<classic-*>` 逻辑根。
 
 技能加载后先创建 change 骨架，立即初始化可恢复状态并绑定当前 change：
@@ -64,9 +66,10 @@ comet state select <name>
 ```
 
 随后按指引创建精简版产物：
-  - `proposal.md` — 问题描述 + 根因分析 + 修复目标（无需方案对比）
-  - `design.md` — 修复方案（1 个即可，无需多方案对比）
-  - `tasks.md` — 修复任务清单
+
+- `proposal.md` — 问题描述 + 根因分析 + 修复目标（无需方案对比）
+- `design.md` — 修复方案（1 个即可，无需多方案对比）
+- `tasks.md` — 修复任务清单
 - **无需 delta spec**（除非修复改变了已有 spec 的验收场景）
 
 阶段守卫完成 open → build 过渡：
@@ -112,6 +115,7 @@ comet state next <name>
 具体调查、最小失败测试、修复验证和保持当前 change 验证闭环的要求，按 `comet-classic/reference/debug-gate.md` 执行。
 
 **如修复影响已有 spec 验收场景**：
+
 - 在 `<classic-change-dir>/specs/<capability>/spec.md` 创建 delta spec
 - 仅包含 `## MODIFIED Requirements` 部分
 
@@ -124,6 +128,7 @@ comet state next <name>
 3. 如根因未消除，回到 Step 2 继续修复（此时仍在 build 阶段，无需状态回退）
 
 **升级判定信号**：
+
 - 根因消除检查发现深层架构问题 → 命中质变信号，按「升级判定」章节暂停交用户决定
 - 修复需要额外接口变更 → 命中质变信号（引入新的 public API），按「升级判定」章节暂停交用户决定
 
@@ -172,7 +177,7 @@ Hotfix 流程默认 **一次性连续执行**。调用 `/comet-hotfix` 后，age
 
 ## 升级判定
 
-hotfix 的升级判定只决定是否从预设流程转为 full；文件数不自动升级，`comet state scale` 只决定验证轻重。
+hotfix 的升级判定只决定是否从预设流程转为 full；文件数不自动升级，`comet state scale` 只提供验证轻重建议，不写入配置，Verify 根据实际风险选择。
 
 若由 `/comet-classic` 入口传入 intent frame，hotfix 在 build 前只复核 `risk_signal` 和升级信号：新增 capability、public API、schema 变更、跨模块协调或深层架构问题。命中时进入现有升级决策点；不得重新实现入口意图识别。
 

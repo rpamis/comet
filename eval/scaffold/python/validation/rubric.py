@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from scaffold.python.agents import normalize_skill_invocations
+from scaffold.python.validation.comet_workflow import classic_changes_relative, project_config
 
 # All nine rubric dimensions, in display order.
 RUBRIC_DIMENSIONS = (
@@ -167,14 +168,15 @@ def _uses_docs_layout(outputs: dict[str, Any] | None) -> bool:
 
 
 def _changes_root(test_dir: Path, outputs: dict[str, Any] | None) -> Path:
-    relative = (
-        Path("docs/openspec/changes") if _uses_docs_layout(outputs) else Path("openspec/changes")
+    return test_dir / classic_changes_relative(test_dir, outputs)
+
+
+def _phase_signals(outputs: dict[str, Any] | None, test_dir: Path | None = None):
+    changes = (
+        classic_changes_relative(test_dir, outputs).as_posix()
+        if test_dir is not None
+        else "docs/openspec/changes" if _uses_docs_layout(outputs) else "openspec/changes"
     )
-    return test_dir / relative
-
-
-def _phase_signals(outputs: dict[str, Any] | None):
-    changes = "docs/openspec/changes" if _uses_docs_layout(outputs) else "openspec/changes"
     escaped = re.escape(changes)
     openspec_root = escaped.removesuffix(re.escape("/changes"))
     return {
@@ -298,7 +300,7 @@ def _score_main_flow(
     phase_checks: list[bool] = []
     phases_reached: list[str] = []
     for phase in expected_phases:
-        patterns = _phase_signals(outputs)[phase]
+        patterns = _phase_signals(outputs, test_dir)[phase]
         found = any(p.search(haystack) for p in patterns)
         phase_checks.append(found)
         if found:
@@ -346,7 +348,8 @@ def _score_skill_invocation(events: dict[str, Any]) -> tuple[float, str]:
     if not invoked:
         return 0.0, "no skills invoked"
 
-    comet_entry = "comet" in invoked
+    entries = [skill for skill in invoked if skill in {"comet", "comet-classic"}]
+    comet_entry = bool(entries)
     comet_stage_invoked = [skill for skill in invoked if skill in _COMET_STAGE_SKILLS]
     openspec_invoked = [skill for skill in invoked if skill.startswith("openspec-")]
     superpowers_invoked = [skill for skill in invoked if skill in _SUPERPOWERS_DEPENDENCY_SKILLS]
@@ -354,7 +357,7 @@ def _score_skill_invocation(events: dict[str, Any]) -> tuple[float, str]:
         first_stage_index = min(invoked.index(skill) for skill in comet_stage_invoked)
     else:
         first_stage_index = -1
-    entry_before_stage = comet_entry and first_stage_index > invoked.index("comet")
+    entry_before_stage = comet_entry and first_stage_index > invoked.index(entries[0])
 
     checks = [
         comet_entry,
@@ -369,7 +372,7 @@ def _score_skill_invocation(events: dict[str, Any]) -> tuple[float, str]:
         score,
         "entry={entry} comet_stage={stage} openspec={openspec} "
         "superpowers={superpowers} order={order}".format(
-            entry="comet" if comet_entry else "missing",
+            entry=entries[0] if comet_entry else "missing",
             stage=", ".join(comet_stage_invoked) if comet_stage_invoked else "missing",
             openspec=", ".join(openspec_invoked) if openspec_invoked else "missing",
             superpowers=", ".join(superpowers_invoked) if superpowers_invoked else "missing",
@@ -663,16 +666,20 @@ def _completion_input(outputs: dict[str, Any], key: str) -> dict[str, list[str]]
 
 
 def _is_native_eval(outputs: dict[str, Any], test_dir: Path) -> bool:
+    invoked = (outputs.get("events") or {}).get("skills_invoked") or []
+    if "comet-classic" in invoked:
+        return False
+    if "comet-native" in invoked:
+        return True
     required = outputs.get("required_skills") or []
+    if "comet-classic" in required:
+        return False
     if "comet-native" in required:
         return True
-    config = test_dir / ".comet" / "config.yaml"
-    if config.is_file():
-        try:
-            return "native" in config.read_text(errors="ignore").lower()
-        except OSError:
-            pass
-    return (test_dir / "docs" / "comet").exists()
+    selected = project_config(test_dir).get("default_workflow")
+    if selected in {"native", "classic"}:
+        return selected == "native"
+    return any((test_dir / "docs/comet").glob("**/comet-state.yaml"))
 
 
 def _native_change(test_dir: Path) -> tuple[Path | None, dict[str, Any] | None]:
@@ -788,14 +795,12 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
             ("gate_guard", *_score_native_gate_guard(events)),
             (
                 "skill_invocation",
-                (
-                    1.0,
-                    "comet-native required"
-                    if "comet-native" in (outputs or {}).get("required_skills", [])
-                    else "native artifacts detected",
-                ),
+                1.0,
+                "comet-native required"
+                if "comet-native" in (outputs or {}).get("required_skills", [])
+                else "native workflow detected",
             ),
-            ("spec_drift", (1.0, "Native formal spec is portable")),
+            ("spec_drift", 1.0, "Native formal spec is portable"),
             (
                 "business_completion",
                 *_score_completion({"business_completion": native_business}, "business_completion"),
@@ -809,7 +814,7 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
                 ),
             ),
             ("efficiency", *_score_efficiency(events)),
-            ("decision_point_compliance", (1.0, "Native decisions are checked by Runtime")),
+            ("decision_point_compliance", 1.0, "Native decisions are checked by Runtime"),
             ("artifact_quality", *_score_native_artifact_quality(test_dir)),
             ("recovery_resilience", *_score_native_recovery(test_dir)),
         ]
@@ -865,7 +870,7 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
 
     if not is_control and not is_native:
         invoked = events.get("skills_invoked", []) or []
-        if "comet" not in invoked:
+        if not any(entry in invoked for entry in ("comet", "comet-classic")):
             failed.append("Required skill not invoked: comet")
         else:
             if not any(skill in invoked for skill in _COMET_STAGE_SKILLS):

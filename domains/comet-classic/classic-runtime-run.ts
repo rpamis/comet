@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { collectClassicEvidence } from './classic-evidence.js';
 import { ensureClassicRun, type ClassicRunContext } from './classic-migrate.js';
 import { resolveClassicStepId } from './classic-resolver.js';
-import { readClassicState, writeClassicState } from './classic-store.js';
+import { readClassicState, writeClassicState, withClassicStateLock } from './classic-store.js';
 import {
   CLASSIC_MIGRATION_VERSION,
   type ClassicState,
@@ -389,7 +389,19 @@ export async function reconcileClassicRuntimeRun(
   changeDir: string,
   existingProjection?: ClassicStateProjection,
 ): Promise<ClassicRuntimeReconciliation> {
-  const projection = existingProjection ?? (await readClassicState(changeDir, { migrate: false }));
+  return withClassicStateLock(changeDir, () =>
+    reconcileClassicRuntimeRunLocked(changeDir, existingProjection),
+  );
+}
+
+async function reconcileClassicRuntimeRunLocked(
+  changeDir: string,
+  existingProjection?: ClassicStateProjection,
+): Promise<ClassicRuntimeReconciliation> {
+  const projection = await readClassicState(changeDir, { migrate: false });
+  if (existingProjection?.run && existingProjection.run.runId !== projection.run?.runId) {
+    throw new Error('Classic reconciliation Run changed; reload the current state');
+  }
   const validated = await loadValidatedClassicRuntime(changeDir, projection);
   const evidence = await collectClassicEvidence(changeDir, projection);
   const currentStep = resolveClassicStepId(validated.classic, evidence);
@@ -438,9 +450,27 @@ export async function transitionClassicRuntimeRun(
   run: RunState,
   data: Record<string, unknown>,
 ): Promise<RunState> {
+  return withClassicStateLock(changeDir, () =>
+    transitionClassicRuntimeRunLocked(changeDir, classic, run, data),
+  );
+}
+
+async function transitionClassicRuntimeRunLocked(
+  changeDir: string,
+  classic: ClassicState,
+  run: RunState,
+  data: Record<string, unknown>,
+): Promise<RunState> {
   const projection = await readClassicState(changeDir);
   if (!projection.classic || !projection.run) {
     throw new Error('Classic transition requires synchronized Classic and Run projections');
+  }
+  if (
+    projection.run.runId !== run.runId ||
+    projection.run.iteration !== run.iteration ||
+    (classic.checkEpoch ?? 0) < (projection.classic.checkEpoch ?? 0)
+  ) {
+    throw new Error('Classic transition became stale; reload the current state');
   }
 
   const evidence = await collectClassicEvidence(changeDir, {

@@ -9,10 +9,10 @@ description: 'Comet Classic 阶段 2 —— 为 change 产出深度技术 Design
 
 ## 前置条件
 
-- 活跃 change 已存在（proposal.md、design.md、tasks.md）
-- 无 Design Doc（`docs/superpowers/specs/` 下无对应文件）
+- 活跃 change 已存在，Open 必需产物检查通过
+- 当前 Runtime phase 为 design；已有设计时恢复，不因文件存在跳过用户确认
 
-> 职责边界：open 阶段的 `design.md` 给出**高层方案框架**（架构决策方向、方案选型、数据流）；design 阶段的 Design Doc 是对它的**深度技术细化**（详细实现设计、技术风险、测试策略、边界条件），是深化而非替代或重写。
+> 职责边界：proposal 保存目标与范围，spec 保存行为和验收，Design Doc 保存技术决策，plan 保存实施步骤，tasks.md 保存完成状态。已有 `design.md` 时在同一文件补充必要设计，不另外复制技术方案。`design_doc` 是正式技术设计的唯一入口；旧 change 已记录其他路径时保持该路径，其他文件只引用，不双写同一决策。
 
 ## 步骤
 
@@ -22,10 +22,10 @@ description: 'Comet Classic 阶段 2 —— 为 change 产出深度技术 Design
 
 ```bash
 comet state select <change-name>
-comet state check <name> design
+comet state check <name> design --json
 ```
 
-验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
+验证通过后使用 `data.configuration` 的语言和上下文配置继续 Step 1，不逐字段查询。验证失败时处理具体失败原因。
 
 **幂等性**：所有 design 阶段操作可以安全重试。如果 `handoff_context` 和 `handoff_hash` 已存在，先确认它们与当前产物一致再决定是否重新生成。
 
@@ -81,9 +81,9 @@ comet handoff <change-name> design --write --full
 交接包来源来自 OpenSpec open 阶段产物：
 
 - `proposal.md`：目标、动机、范围、非目标
-- `design.md`：高层架构决策、方案约束
+- `design.md`（存在时）：已有技术决策、方案约束
 - `tasks.md`：初始任务边界
-- `specs/*/spec.md`：delta 能力规格
+- `specs/**/spec.md`：delta 能力规格，保留嵌套 capability 的完整路径
 
 ### 1b. 执行 Brainstorming（带上下文）
 
@@ -92,7 +92,7 @@ comet handoff <change-name> design --write --full
 技能加载时，ARGUMENTS 必须包含：
 
 ```text
-Language: 使用 `comet state get <name> language` 读取到的 Comet 配置产物语言输出
+Language: 使用入口 configuration.language 中的 Comet 配置产物语言输出
 ```
 
 技能加载后，按其指引使用以下上下文：
@@ -133,7 +133,7 @@ canonical_spec: openspec
 - 需求/范围缺口与需回写的 Spec Patch
 - 如需补充验收场景，标明将回写的 delta spec 变更
 
-brainstorming 阶段不写入 Design Doc 文件，仅产出设计方案供 Step 1c 用户确认。确认后才创建 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` 并回写 delta spec。
+brainstorming 阶段不把候选写为正式 Design Doc，仅产出设计方案供 Step 1c 用户确认。确认后才创建或更新正式设计及 delta spec。既有 Open design.md 保留原内容，待确认的修改先记录在检查点，不提前覆盖已确认决策。
 
 但为了上下文压缩恢复，brainstorming 过程中必须增量更新 `brainstorm-summary.md`。每轮澄清或方案迭代后，只要产生新的已确认事实、关键约束、候选方案、取舍/风险、测试策略或 Spec Patch 候选，就更新该文件；未确认内容必须标注为“待确认”或“候选”。该文件是恢复检查点，不是 Design Doc，也不得替代 Step 1c 的用户确认。
 
@@ -205,27 +205,28 @@ canonical_spec: openspec
 ---
 ```
 
-将 Design Doc 写入 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`。
-如需回写 delta spec（Spec Patch），同时编辑对应的 `specs/*/spec.md`。
+按以下顺序确定唯一 `<design-doc-path>`：已有 `design_doc` 时沿用；否则优先使用 `<classic-change-dir>/design.md` 并在同一文件深化 Open 的技术决策。只有既有项目约定要求独立 Superpowers 文档时才使用 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`，此时 Open design.md 只保留 schema 所需摘要及正式设计链接，不复制详细技术内容。模型按风险决定篇幅，不强制生成空章节或重复备选方案。
+
+如需回写 delta spec（Spec Patch），同时编辑对应的 `specs/**/spec.md`。行为需求只在 spec 中维护；正式设计引用相关 capability/验收条款，不能创建第二份需求规格。
 
 **上下文压缩恢复**：若上下文已被压缩，从 `brainstorm-summary.md` + handoff 上下文恢复。若用户尚未确认设计方案，回到 Step 1b/1c 继续 brainstorming；若用户已确认，继续创建 Design Doc。brainstorm-summary.md 是压缩恢复的落盘点，不是 Design Doc 的唯一输入——创建时应尽可能利用恢复后的完整上下文。
 
 ### 3. 更新 Comet 状态
 
-先记录 design_doc 路径。如果 Spec Patch 回写了 delta spec（新增、修改或删除了 `specs/*/spec.md`），必须重新生成 handoff 以更新 hash：
+先记录 design_doc 路径。任何 handoff 来源内容变化（proposal、design、任务语义、delta spec 或 OpenSpec metadata）都必须重新生成 handoff；不能只检查 Spec Patch：
 
 ```bash
 # 记录 design_doc 路径
-comet state set <name> design_doc docs/superpowers/specs/YYYY-MM-DD-topic-design.md
+comet state set <name> design_doc <design-doc-path>
 
-# 如有 delta spec 变更，重新生成 handoff（更新 hash）
+# 如有来源内容变更，重新生成 handoff（更新 hash）
 comet handoff <change-name> design --write
 
 # 阶段守卫推进 phase 到下一阶段
 comet guard <change-name> design --apply
 ```
 
-delta spec 的增、改、删都会改变 handoff hash，因此删除 delta spec 同样必须重新生成 handoff；否则记录的 `handoff_hash` 与当前 OpenSpec artifacts 不再匹配，design guard 将拒绝推进。如果没有 delta spec 变更，跳过 handoff 重新生成步骤。状态文件自动更新，无需手动编辑其他字段。
+delta spec 的增、改、删和 design.md 的技术设计更新都会改变 handoff hash；否则 design guard 将拒绝推进。只有所有来源内容均未变化时才跳过重新生成；单纯勾选任务完成状态不改变需求 hash。状态文件自动更新，无需手动编辑其他字段。
 
 ### 3a. 可选主动式上下文压缩
 

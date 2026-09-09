@@ -6,10 +6,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Classic execution and recovery**: Keep one authoritative task checklist and technical design, reuse checks only after Runtime validates their evidence, and resume unfinished work without repeating completed implementation or review. Preserve five-phase responsibilities and user confirmations while recommending lightweight presets for suitable new tasks.
+- **Classic planning and review**: Plan around independently verifiable outcomes, apply related configuration together, and use bounded risk-based task reviews with one final integrated review. Resolve required OpenSpec artifacts from their full dependency graph instead of generating every optional document.
 - **Single-project updates**: Update the Comet npm package by default when refreshing one project, including interactive and JSON updates. Use `--skip-self-update` to refresh assets without upgrading the package; other projects' assets remain unchanged.
 
 ### Fixed
 
+- **Workflow evaluation**: Recognize explicit Classic entry points and configured artifact layouts without mistaking enabled Native settings for the workflow being evaluated; generate Native rubric results without a scoring exception.
 - **Platform-specific instructions**: Create or refresh `CLAUDE.md` only for selected Claude Code targets during initialization and updates, while preserving existing user files for other platforms.
 
 ## What's Changed [0.4.0] - 2026-09-08

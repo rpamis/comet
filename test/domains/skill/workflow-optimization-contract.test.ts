@@ -15,8 +15,8 @@ function descriptionOf(skill: string): string {
 
 describe('Comet workflow optimization contracts', () => {
   it.each([
-    ['中文', zhSkillRoot, 'OpenSpec >= 1.5.0', 'OpenSpec 状态驱动产物循环'],
-    ['English', skillRoot, 'OpenSpec >= 1.5.0', 'OpenSpec status-driven artifact loop'],
+    ['中文', zhSkillRoot, '兼容性以实际能力而非版本号猜测为准', 'OpenSpec 状态驱动产物循环'],
+    ['English', skillRoot, 'Check actual capabilities', 'OpenSpec status-driven artifact loop'],
   ])(
     '%s open flow initializes recoverable state before artifact generation',
     async (_language, root, versionMarker, loopMarker) => {
@@ -329,7 +329,7 @@ describe('Comet workflow optimization contracts', () => {
       '不得在 Build 再创建 Worktree',
       '计划写入后只提供**一个联合决策点**',
       'Superpowers `subagent-driven-development`',
-      'comet state set <name> review_mode <off|standard|thorough>',
+      'comet state set <name> build_pause null build_mode executing-plans subagent_dispatch null tdd_mode tdd review_mode standard --json',
       '不得自动选择',
     ],
     [
@@ -340,7 +340,7 @@ describe('Comet workflow optimization contracts', () => {
       'do not create a Worktree',
       'provide exactly **one joint decision point**',
       'Superpowers `subagent-driven-development`',
-      'comet state set <name> review_mode <off|standard|thorough>',
+      'comet state set <name> build_pause null build_mode executing-plans subagent_dispatch null tdd_mode tdd review_mode standard --json',
       'Do not auto-select',
     ],
   ])(
@@ -432,15 +432,15 @@ describe('Comet workflow optimization contracts', () => {
     [
       '中文',
       zhSkillRoot,
-      '子代理派发操作失败属于运行停止条件',
-      '不得继续派发或由主会话代写实现',
+      '派发失败或会话不可用时记录真实原因，停止对应循环',
+      '不以主会话接管实现绕过用户选定方式',
       '暂停并等待用户改选 `build_mode: executing-plans`',
     ],
     [
       'English',
       skillRoot,
-      'A subagent-dispatch failure is a runtime stop condition',
-      'stop dispatching and do not let the main session implement the task',
+      'Record dispatch/session failures and stop the affected loop',
+      'do not bypass the selected method by implementing in the main session',
       'pause and wait for the user to choose `build_mode: executing-plans`',
     ],
   ])(

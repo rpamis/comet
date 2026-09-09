@@ -1,18 +1,22 @@
 import { createHash } from 'crypto';
-import { promises as fs } from 'fs';
+import {
+  classicArchivedRequirementsProblems,
+  recordClassicArchiveRequirements,
+} from './classic-artifact-requirements.js';
 import path from 'path';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import { executeClassicOpenSpec } from './classic-openspec-command.js';
 import { classicArchiveEnvelope, classicLocale } from './classic-output-language.js';
 import type { CliOutputEnvelope, CliOutputLocale } from '../workflow-contract/output-envelope.js';
 import {
+  collectClassicSpecFiles,
   findClassicArchiveChangeDirectory,
   inspectClassicActiveChangeDirectory,
   openSpecChangeNameError,
 } from './classic-paths.js';
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
-import { readClassicState, writeClassicState } from './classic-store.js';
+import { readClassicState, withClassicStateLock, writeClassicState } from './classic-store.js';
 import { applyClassicTransition } from './classic-transitions.js';
 import { clearCurrentChangeIf } from './classic-current-change.js';
 import {
@@ -169,6 +173,8 @@ async function verifyFinalArchiveIntegrity(projectRoot: string, archiveDir: stri
   if (!projection.classic || !projection.run || !projection.classic.archived) {
     throw new ArchiveFailure(red('  [FAIL] Final archived state is incomplete'));
   }
+  const requiredProblems = await classicArchivedRequirementsProblems(projectRoot, archiveDir);
+  if (requiredProblems.length) throw new ArchiveFailure(red(requiredProblems.join('\n')));
   const statePointers = [
     ['design_doc', projection.classic.designDoc],
     ['plan', projection.classic.plan],
@@ -296,24 +302,10 @@ async function verifyMainSpecsClean(projectRoot: string, specsRoot: string): Pro
   });
   if (!rootInspection.exists) return;
   let found = false;
-  const entries = await fs.readdir(specsRoot, { withFileTypes: true });
-  for (const entry of entries) {
-    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-    const specFile = `${specsRoot}/${entry.name}/spec.md`;
-    const content = await (async () => {
-      if (
-        !(await classicProjectTargetExists(projectRoot, specFile, {
-          label: `Classic main spec ${entry.name}`,
-          expected: 'file',
-        }))
-      ) {
-        return null;
-      }
-      return readClassicProjectFile(projectRoot, specFile, {
-        label: `Classic main spec ${entry.name}`,
-      });
-    })();
-    if (content === null) continue;
+  for (const specFile of await collectClassicSpecFiles(projectRoot, specsRoot)) {
+    const content = await readClassicProjectFile(projectRoot, specFile, {
+      label: `Classic main spec ${specFile}`,
+    });
     const matches = content
       .split(/\r?\n/u)
       .map((line, index) => ({ line, number: index + 1 }))
@@ -410,43 +402,69 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
         `${changeDir}/.comet`,
         'Classic change runtime directory',
       );
-      const runtime = await ensureClassicRuntimeRun(changeDir);
       const actionId = `classic-archive:${change}`;
-      const pendingAction = await readPendingAction(changeDir, runtime.run.pendingRef);
-      const recovering =
-        Boolean(recoveredArchive) ||
-        (pendingAction?.id === actionId &&
-          pendingAction.type === 'checkpoint' &&
-          pendingAction.ref === change);
-      if (runtime.run.pending && runtime.run.pending !== actionId) {
-        throw new ArchiveFailure(red(`FATAL: another action is pending: ${runtime.run.pending}`));
-      }
-      if (!recovering && !classic.archived && classic.archiveConfirmation !== 'confirmed') {
-        throw new ArchiveFailure(
-          red(
-            `FATAL: archive_confirmation is '${classic.archiveConfirmation ?? 'null'}', expected 'confirmed'. Run final archive confirmation first.`,
-          ),
-        );
-      }
+      const recovering = await withClassicStateLock(changeDir, async () => {
+        const runtime = await ensureClassicRuntimeRun(changeDir);
+        if (runtime.classic.phase !== 'archive' || runtime.classic.verifyResult !== 'pass') {
+          throw new ArchiveFailure(
+            red('FATAL: Archive state changed before preparing the pending action.'),
+          );
+        }
+        const pendingAction = await readPendingAction(changeDir, runtime.run.pendingRef);
+        const recovering =
+          Boolean(recoveredArchive) ||
+          (pendingAction?.id === actionId &&
+            pendingAction.type === 'checkpoint' &&
+            pendingAction.ref === change);
+        if (runtime.run.pending && runtime.run.pending !== actionId) {
+          throw new ArchiveFailure(red(`FATAL: another action is pending: ${runtime.run.pending}`));
+        }
+        if (
+          !recovering &&
+          !runtime.classic.archived &&
+          runtime.classic.archiveConfirmation !== 'confirmed'
+        ) {
+          throw new ArchiveFailure(
+            red(
+              `FATAL: archive_confirmation is '${classic.archiveConfirmation ?? 'null'}', expected 'confirmed'. Run final archive confirmation first.`,
+            ),
+          );
+        }
 
-      if (!recovering) {
-        const action: EngineAction = {
-          id: actionId,
-          stepId: runtime.run.currentStep,
-          type: 'checkpoint',
-          ref: change,
-        };
-        await writePendingAction(changeDir, runtime.run.pendingRef, action);
-        await writeClassicState(changeDir, {
-          classic: runtime.classic,
-          run: {
-            ...runtime.run,
-            pending: actionId,
-            status: 'waiting',
-          },
-          unknownKeys: (await readClassicState(changeDir)).unknownKeys,
-        });
-      }
+        if (!recovering) {
+          await recordClassicArchiveRequirements(layout.projectRoot, changeDir);
+          const action: EngineAction = {
+            id: actionId,
+            stepId: runtime.run.currentStep,
+            type: 'checkpoint',
+            ref: change,
+          };
+          await writePendingAction(changeDir, runtime.run.pendingRef, action);
+          const current = await readClassicState(changeDir);
+          if (
+            !current.classic ||
+            !current.run ||
+            current.run.runId !== runtime.run.runId ||
+            current.classic.phase !== 'archive' ||
+            current.classic.verifyResult !== 'pass' ||
+            current.classic.archiveConfirmation !== 'confirmed'
+          ) {
+            throw new ArchiveFailure(
+              red('FATAL: Archive state changed while preparing the pending action.'),
+            );
+          }
+          await writeClassicState(changeDir, {
+            classic: current.classic,
+            run: {
+              ...current.run,
+              pending: actionId,
+              status: 'waiting',
+            },
+            unknownKeys: current.unknownKeys,
+          });
+        }
+        return recovering;
+      });
 
       if (!recoveredArchive) {
         const archiveRun = await executeClassicOpenSpec(
@@ -492,114 +510,123 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
         await annotateFrontmatter(
           output,
           layout.projectRoot,
-          designDoc,
+          archivedPointer(layout.projectRoot, activeDir, archiveDir, designDoc)!,
           archiveName,
           'status: final',
           false,
         );
       }
       if (planPath) {
-        await annotateFrontmatter(output, layout.projectRoot, planPath, archiveName, '', false);
-      }
-
-      const archivedProjection = await readClassicState(archiveDir);
-      if (!archivedProjection.classic || !archivedProjection.run) {
-        throw new ArchiveFailure(red('  [FAIL] archived state projection is incomplete'));
-      }
-      const artifacts = {
-        ...archivedArtifacts(
+        await annotateFrontmatter(
+          output,
           layout.projectRoot,
-          activeDir,
-          archiveDir,
-          await readArtifacts(archiveDir, archivedProjection.run.artifactsRef),
-        ),
-        archive_directory: classicProjectRelative(layout.projectRoot, archiveDir),
-      };
-      await writeArtifacts(archiveDir, archivedProjection.run.artifactsRef, artifacts);
-
-      const archiveTransition = applyClassicTransition(
-        recovering && archivedProjection.classic.archiveConfirmation !== 'confirmed'
-          ? { ...archivedProjection.classic, archiveConfirmation: 'confirmed' }
-          : archivedProjection.classic,
-        'archived',
-      );
-      const archivedClassic = {
-        ...archiveTransition.classic,
-        designDoc: archivedPointer(
-          layout.projectRoot,
-          activeDir,
-          archiveDir,
-          archiveTransition.classic.designDoc,
-        ),
-        plan: archivedPointer(
-          layout.projectRoot,
-          activeDir,
-          archiveDir,
-          archiveTransition.classic.plan,
-        ),
-        verificationReport: archivedPointer(
-          layout.projectRoot,
-          activeDir,
-          archiveDir,
-          archiveTransition.classic.verificationReport,
-        ),
-        handoffContext: archivedPointer(
-          layout.projectRoot,
-          activeDir,
-          archiveDir,
-          archiveTransition.classic.handoffContext,
-        ),
-      };
-      let transitionedRun = archivedProjection.run;
-      if (
-        archivedProjection.run.currentStep !== 'completed' ||
-        archivedProjection.run.status !== 'completed'
-      ) {
-        transitionedRun = await transitionClassicRuntimeRun(
-          archiveDir,
-          archivedClassic,
-          archivedProjection.run,
-          {
-            actionId,
-            archiveDirectory: classicProjectRelative(layout.projectRoot, archiveDir),
-            event: 'archived',
-            source: 'comet-archive',
-          },
+          archivedPointer(layout.projectRoot, activeDir, archiveDir, planPath)!,
+          archiveName,
+          '',
+          false,
         );
       }
-      if (recovering) {
-        await appendRecoveryEvent(archiveDir, transitionedRun, actionId);
-      }
-      const trajectory = await readTrajectory(archiveDir, transitionedRun.trajectoryRef);
-      const context = await readContext(archiveDir, transitionedRun.contextRef);
-      const checkpoint: Checkpoint = {
-        runId: transitionedRun.runId,
-        stateVersion: transitionedRun.iteration,
-        trajectoryOffset: trajectory.length,
-        contextHash: context === null ? null : hashText(context),
-        artifactsHash: artifactsHash(artifacts),
-        createdAt: new Date().toISOString(),
-      };
-      await writeCheckpoint(archiveDir, transitionedRun.checkpointRef, checkpoint);
-      const completedRun: RunState = {
-        ...transitionedRun,
-        pending: null,
-        status: 'completed',
-      };
-      await writeClassicState(archiveDir, {
-        classic: archivedClassic,
-        run: completedRun,
-        unknownKeys: archivedProjection.unknownKeys,
+
+      await withClassicStateLock(archiveDir, async () => {
+        const archivedProjection = await readClassicState(archiveDir);
+        if (!archivedProjection.classic || !archivedProjection.run) {
+          throw new ArchiveFailure(red('  [FAIL] archived state projection is incomplete'));
+        }
+        const artifacts = {
+          ...archivedArtifacts(
+            layout.projectRoot,
+            activeDir,
+            archiveDir,
+            await readArtifacts(archiveDir, archivedProjection.run.artifactsRef),
+          ),
+          archive_directory: classicProjectRelative(layout.projectRoot, archiveDir),
+        };
+        await writeArtifacts(archiveDir, archivedProjection.run.artifactsRef, artifacts);
+
+        const archiveTransition = applyClassicTransition(
+          recovering && archivedProjection.classic.archiveConfirmation !== 'confirmed'
+            ? { ...archivedProjection.classic, archiveConfirmation: 'confirmed' }
+            : archivedProjection.classic,
+          'archived',
+        );
+        const archivedClassic = {
+          ...archiveTransition.classic,
+          designDoc: archivedPointer(
+            layout.projectRoot,
+            activeDir,
+            archiveDir,
+            archiveTransition.classic.designDoc,
+          ),
+          plan: archivedPointer(
+            layout.projectRoot,
+            activeDir,
+            archiveDir,
+            archiveTransition.classic.plan,
+          ),
+          verificationReport: archivedPointer(
+            layout.projectRoot,
+            activeDir,
+            archiveDir,
+            archiveTransition.classic.verificationReport,
+          ),
+          handoffContext: archivedPointer(
+            layout.projectRoot,
+            activeDir,
+            archiveDir,
+            archiveTransition.classic.handoffContext,
+          ),
+        };
+        let transitionedRun = archivedProjection.run;
+        if (
+          archivedProjection.run.currentStep !== 'completed' ||
+          archivedProjection.run.status !== 'completed'
+        ) {
+          transitionedRun = await transitionClassicRuntimeRun(
+            archiveDir,
+            archivedClassic,
+            archivedProjection.run,
+            {
+              actionId,
+              archiveDirectory: classicProjectRelative(layout.projectRoot, archiveDir),
+              event: 'archived',
+              source: 'comet-archive',
+            },
+          );
+        }
+        if (recovering) {
+          await appendRecoveryEvent(archiveDir, transitionedRun, actionId);
+        }
+        const trajectory = await readTrajectory(archiveDir, transitionedRun.trajectoryRef);
+        const context = await readContext(archiveDir, transitionedRun.contextRef);
+        const checkpoint: Checkpoint = {
+          runId: transitionedRun.runId,
+          stateVersion: transitionedRun.iteration,
+          trajectoryOffset: trajectory.length,
+          contextHash: context === null ? null : hashText(context),
+          artifactsHash: artifactsHash(artifacts),
+          createdAt: new Date().toISOString(),
+        };
+        await writeCheckpoint(archiveDir, transitionedRun.checkpointRef, checkpoint);
+        const completedRun: RunState = {
+          ...transitionedRun,
+          pending: null,
+          status: 'completed',
+        };
+        await writeClassicState(archiveDir, {
+          classic: archivedClassic,
+          run: completedRun,
+          unknownKeys: archivedProjection.unknownKeys,
+        });
+        await appendClassicStateEvent(archiveDir, {
+          change: archiveName,
+          event: 'archived',
+          source: 'comet-archive',
+          from: archivedProjection.classic,
+          to: archivedClassic,
+          effects: archiveTransition.effects,
+        });
+        await clearPendingAction(archiveDir, completedRun.pendingRef);
       });
-      await appendClassicStateEvent(archiveDir, {
-        change: archiveName,
-        event: 'archived',
-        source: 'comet-archive',
-        from: archivedProjection.classic,
-        to: archivedClassic,
-        effects: archiveTransition.effects,
-      });
-      await clearPendingAction(archiveDir, completedRun.pendingRef);
       output.stderr.push(green('  [OK] archived: true'));
       output.stepsOk += 1;
       output.stepsTotal += 1;

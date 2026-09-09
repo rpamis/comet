@@ -1,6 +1,6 @@
 ---
 name: comet-design
-description: "Phase 2 of Comet Classic — produce the deep technical Design Doc behind a change."
+description: 'Phase 2 of Comet Classic — produce the deep technical Design Doc behind a change.'
 ---
 
 # Comet Phase 2: Deep Design (Design)
@@ -9,10 +9,10 @@ Before starting or recovering, read and follow `comet-classic/reference/classic-
 
 ## Prerequisites
 
-- Active change exists (proposal.md, design.md, tasks.md)
-- No Design Doc (no corresponding file under `docs/superpowers/specs/`)
+- Active change exists and required Open artifact checks pass
+- Runtime phase is design; resume an existing design without skipping user confirmation
 
-> Responsibility boundary: the open-phase `design.md` gives the **high-level solution framework** (architecture decision direction, approach selection, data flow); the design-phase Design Doc is its **deep technical refinement** (detailed implementation design, technical risks, test strategy, edge cases) — a deepening, not a replacement or rewrite.
+> Responsibility boundary: proposal owns goals and scope, spec owns behavior and acceptance, Design Doc owns technical decisions, plan owns implementation steps, and tasks.md owns completion. Deepen an existing `design.md` in place. `design_doc` is the single entry to the formal technical design; preserve an older change's recorded path and reference it from other documents instead of duplicating decisions.
 
 ## Steps
 
@@ -22,10 +22,10 @@ Locate scripts via `comet-classic/reference/scripts.md`, then run entry verifica
 
 ```bash
 comet state select <change-name>
-comet state check <name> design
+comet state check <name> design --json
 ```
 
-Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
+After verification passes, use language and context settings from `data.configuration` without individual field queries. Otherwise resolve the specific failure.
 
 **Idempotency**: All design phase operations can be safely re-executed. If `handoff_context` and `handoff_hash` already exist, confirm they match current artifacts before deciding whether to regenerate.
 
@@ -61,11 +61,13 @@ handoff_hash: <sha256>
 ```
 
 The default handoff package is a **compact traceable excerpt**, not an agent summary:
+
 - `design-context.json`: machine index containing change, phase, canonical spec, source paths, hash
 - `design-context.md`: context for Superpowers to read, containing script markers, source path, line range, sha256, deterministic excerpts
 - When exceeding excerpt budget, marks `[TRUNCATED]` and retains Full source path
 
 The beta handoff package is a **structured spec projection** that reduces OpenSpec token load without replacing the canonical spec:
+
 - `spec-context.json`: machine index containing change, phase, canonical spec, source paths, hash, and file roles
 - `spec-context.md`: context for Superpowers to read, verbatim-projecting delta spec files and referencing supporting artifacts by hash
 - OpenSpec delta specs remain canonical; if the projection is missing, stale, or unclear, regenerate the handoff or read the source spec directly instead of writing an agent summary
@@ -77,10 +79,11 @@ comet handoff <change-name> design --write --full
 ```
 
 Handoff package sources come from OpenSpec open phase artifacts:
+
 - `proposal.md`: goals, motivation, scope, non-goals
-- `design.md`: high-level architecture decisions, approach constraints
+- `design.md`, when present: existing technical decisions and constraints
 - `tasks.md`: initial task boundaries
-- `specs/*/spec.md`: delta capability specs
+- `specs/**/spec.md`: delta capability specs, preserving complete nested capability paths
 
 ### 1b. Execute Brainstorming (with Context)
 
@@ -89,7 +92,7 @@ Handoff package sources come from OpenSpec open phase artifacts:
 When loading the skill, ARGUMENTS must include:
 
 ```text
-Language: Use the configured Comet artifact language from `comet state get <name> language`
+Language: Use the Comet artifact language from entry configuration.language
 ```
 
 After the skill loads, follow its guidance and use the following context:
@@ -123,12 +126,13 @@ Proceeding without loading this skill is prohibited.
 If the Superpowers `brainstorming` skill is unavailable, stop the process and prompt to install or enable Superpowers skills. Do not substitute this step with normal conversation.
 
 After the skill loads, follow its guidance to produce design proposals (presented as conversation):
+
 - Technical approach: architecture, data flow, key technology choices and risks
 - Testing strategy
 - Requirement/scope gaps and Spec Patches to be written back
 - If acceptance scenarios need supplementing, indicate delta spec changes to be written back
 
-The brainstorming phase does not write to the Design Doc file; it only produces design proposals for Step 1c user confirmation. Only after confirmation should `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` be created and delta spec written back.
+Brainstorming produces candidates for Step 1c confirmation, not the formal Design Doc. Create or update the formal design and delta spec only after confirmation. Preserve existing Open design.md content; keep proposed changes in the checkpoint until approved.
 
 For context compaction recovery, the agent must incrementally update `brainstorm-summary.md` during brainstorming. After each clarification round or proposal iteration, update the file whenever new confirmed facts, key constraints, candidate approaches, trade-offs/risks, testing strategy, or Spec Patch candidates emerge; mark unconfirmed items as "pending" or "candidate". This file is a recovery checkpoint, not the Design Doc, and must not replace the Step 1c user confirmation.
 
@@ -137,6 +141,7 @@ For context compaction recovery, the agent must incrementally update `brainstorm
 After brainstorming produces a design proposal, **must follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for the user to explicitly confirm the design proposal**. Must not create the final Design Doc, write `design_doc`, run design guard, or enter `/comet-build` before user confirmation.
 
 When pausing, only present essential summary:
+
 - Technical approach adopted
 - Key trade-offs and risks
 - Testing strategy
@@ -176,6 +181,7 @@ Use the file tool to ensure `<classic-change-dir>/.comet/handoff/` exists; do no
 ```
 
 **Context compaction note**: Each incremental update to `brainstorm-summary.md` is a relatively safe recovery point. After brainstorming completes, if the context window is tight, prefer compacting here. After compaction, reload the following files to continue Step 2:
+
 - `<classic-change-dir>/.comet/handoff/brainstorm-summary.md`
 - `<classic-change-dir>/.comet/handoff/design-context.md` (or `spec-context.md` in beta mode)
 - `<classic-change-dir>/.comet/handoff/design-context.json` (or `spec-context.json` in beta mode)
@@ -198,27 +204,28 @@ canonical_spec: openspec
 ---
 ```
 
-Write the Design Doc to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`.
-If Spec Patches need to be written back, also edit the corresponding `specs/*/spec.md`.
+Choose one `<design-doc-path>`: preserve an existing `design_doc`; otherwise prefer `<classic-change-dir>/design.md` and deepen the Open technical decisions in place. Use `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` only when an established project convention requires it; then Open design.md keeps only schema-required summary and a link, not duplicate technical detail. Match document depth to risk without empty sections or repeated alternatives.
+
+Write approved Spec Patches to the corresponding `specs/**/spec.md`. Maintain behavioral requirements only in specs; the formal design references capability and acceptance clauses rather than creating another requirements specification.
 
 **Context compaction recovery**: If context has been compacted, resume from `brainstorm-summary.md` + handoff context. If the user has not confirmed the design proposal yet, return to Step 1b/1c and continue brainstorming; if the user has confirmed it, continue creating the Design Doc. brainstorm-summary.md is the compaction checkpoint, not the sole input for the Design Doc — when creating, leverage the full recovered context as much as possible.
 
 ### 3. Update Comet State
 
-First record the design_doc path. If Spec Patches wrote back delta spec (added, modified, or removed `specs/*/spec.md`), must regenerate handoff to update hash:
+Record design_doc first. Any changed handoff source (proposal, design, task semantics, delta spec, or OpenSpec metadata) requires regenerating handoff, not only Spec Patches:
 
 ```bash
 # Record design_doc path
-comet state set <name> design_doc docs/superpowers/specs/YYYY-MM-DD-topic-design.md
+comet state set <name> design_doc <design-doc-path>
 
-# If delta spec changes exist, regenerate handoff (update hash)
+# If source content changed, regenerate handoff (update hash)
 comet handoff <change-name> design --write
 
 # Auto-transition to next phase
 comet guard <change-name> design --apply
 ```
 
-Adding, modifying, or removing a delta spec changes the handoff hash, so deleting a delta spec also requires regenerating the handoff; otherwise the recorded `handoff_hash` no longer matches the current OpenSpec artifacts and the design guard blocks progress. If there are no delta spec changes, skip the handoff regeneration step. The state file updates automatically; no manual editing of other fields needed.
+Delta spec additions, edits, deletions, and design.md technical updates change the handoff hash; stale evidence blocks design Guard. Skip regeneration only when all source content is unchanged. Task checkbox updates alone do not change the requirements hash. Runtime updates state; do not edit other fields manually.
 
 ### 3a. Optional Active Context Compaction
 

@@ -95,13 +95,13 @@ export function classicScaleEnvelope(options: {
     result === 'full'
       ? phrase(
           locale,
-          'this change touches more tasks, specs, or files, so it will use full verification',
-          '本改动涉及的任务、规格或文件较多，将采用完整验证',
+          'this change touches more tasks, specs, or files; full verification is recommended, existing selection is unchanged',
+          '本改动涉及的任务、规格或文件较多，建议完整验证，已选配置保持不变',
         )
       : phrase(
           locale,
-          'this change stays small, so it will use light verification',
-          '本改动规模较小，将采用轻量验证',
+          'this change stays small; light verification is recommended unless risk requires more, existing selection is unchanged',
+          '本改动规模较小，建议轻量验证，但仍需评估风险，已选配置保持不变',
         );
   return {
     summary: phrase(

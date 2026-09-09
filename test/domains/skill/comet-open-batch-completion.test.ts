@@ -24,7 +24,8 @@ describe('comet-open 批量拆分完成协议', () => {
     );
 
     expect(skill).toContain('comet classic openspec -- status --change "<name>" --json');
-    expect(skill).toContain('`applyRequires` 列出的每个 artifact');
+    expect(skill).toContain('完整依赖闭包');
+    expect(skill).toContain('comet state artifacts <name> --json');
     expect(skill).toContain('`isComplete` 仅作诊断信息');
     expect(skill).toContain('任一拆分项未通过检查时，不得宣告拆分完成');
   });

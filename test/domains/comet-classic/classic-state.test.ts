@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as engineState from '../../../domains/engine/state.js';
+import { healBoundBranch } from '../../../domains/comet-classic/classic-branch-binding.js';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -73,7 +75,55 @@ describe('Classic state projection', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(changeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+
+  it('rolls back a Run write failure without advancing phase or consuming the check epoch', async () => {
+    const before = { classic: { ...classicState(), checkEpoch: 0 }, run: runState() };
+    await writeClassicState(changeDir, before);
+    const originalWrite = engineState.writeRunState;
+    vi.spyOn(engineState, 'writeRunState').mockImplementationOnce(async (...args) => {
+      await originalWrite(...args);
+      throw new Error('simulated I/O failure after Run write');
+    });
+    await expect(
+      writeClassicState(changeDir, {
+        classic: { ...before.classic, phase: 'verify', checkEpoch: 1 },
+        run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },
+      }),
+    ).rejects.toThrow('simulated I/O failure');
+    expect(await readClassicState(changeDir)).toMatchObject(before);
+    expect(
+      await fs.stat(path.join(changeDir, '.comet-state-transaction.json')).catch(() => null),
+    ).toBeNull();
+  });
+
+  it('recovers an interrupted rollback from its journal before returning state', async () => {
+    const before = { classic: { ...classicState(), checkEpoch: 0 }, run: runState() };
+    await writeClassicState(changeDir, before);
+    const originalWrite = engineState.writeRunState;
+    const spy = vi
+      .spyOn(engineState, 'writeRunState')
+      .mockImplementationOnce(async (...args) => {
+        await originalWrite(...args);
+        throw new Error('first failure');
+      })
+      .mockRejectedValueOnce(new Error('rollback unavailable'));
+    await expect(
+      writeClassicState(changeDir, {
+        classic: { ...before.classic, phase: 'verify', checkEpoch: 1 },
+        run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },
+      }),
+    ).rejects.toThrow('first failure');
+    expect(await fs.stat(path.join(changeDir, '.comet-state-transaction.json'))).toBeTruthy();
+    spy.mockRestore();
+    await healBoundBranch(changeDir, 'main');
+    before.classic.boundBranch = 'main';
+    expect(await readClassicState(changeDir)).toMatchObject(before);
+    expect(
+      await fs.stat(path.join(changeDir, '.comet-state-transaction.json')).catch(() => null),
+    ).toBeNull();
   });
 
   it('round-trips every Classic field and Run projection', async () => {
@@ -86,6 +136,40 @@ describe('Classic state projection', () => {
       classic: classicState(),
       run: runState(),
       unknownKeys: [],
+    });
+  });
+
+  it('commits the check epoch with the phase and rejects stale writers', async () => {
+    const original = { ...classicState(), checkEpoch: 0 };
+    await writeClassicState(changeDir, { classic: original, run: runState() });
+    await expect(
+      writeClassicState(
+        changeDir,
+        {
+          classic: { ...original, phase: 'verify', checkEpoch: 1 },
+          run: runState(),
+        },
+        {
+          beforeCommit: () => {
+            throw new Error('simulated interruption');
+          },
+        },
+      ),
+    ).rejects.toThrow('simulated interruption');
+    expect((await readClassicState(changeDir)).classic).toMatchObject({
+      phase: 'build',
+      checkEpoch: 0,
+    });
+    await writeClassicState(changeDir, {
+      classic: { ...original, phase: 'verify', checkEpoch: 1 },
+      run: runState(),
+    });
+    await expect(
+      writeClassicState(changeDir, { classic: original, run: runState() }),
+    ).rejects.toThrow('state changed');
+    expect((await readClassicState(changeDir)).classic).toMatchObject({
+      phase: 'verify',
+      checkEpoch: 1,
     });
   });
 

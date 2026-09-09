@@ -16,6 +16,44 @@ export interface ClassicChangeDirectory {
   directory: string;
 }
 
+export async function collectClassicSpecFiles(
+  projectRoot: string,
+  specsDir: string,
+): Promise<string[]> {
+  const files: string[] = [];
+  const ancestors = new Set<string>();
+  async function visit(directory: string, capability: boolean): Promise<void> {
+    const inspection = await inspectClassicProjectTarget(projectRoot, directory, {
+      label: 'Classic capability directory',
+      expected: 'directory',
+    });
+    if (!inspection.exists) return;
+    const real = await fs.realpath(inspection.target);
+    if (ancestors.has(real)) throw new Error(`Classic capability directory cycle: ${directory}`);
+    ancestors.add(real);
+    if (capability) {
+      const spec = `${directory}/spec.md`;
+      const target = await inspectClassicProjectTarget(projectRoot, spec, {
+        label: 'Classic capability spec',
+        expected: 'file',
+      });
+      if (target.exists) files.push(spec);
+    }
+    const entries = (await fs.readdir(inspection.target, { withFileTypes: true })).sort(
+      (left, right) => left.name.localeCompare(right.name),
+    );
+    for (const entry of entries) {
+      if (entry.isDirectory() || entry.isSymbolicLink()) {
+        if (entry.name === 'spec.md') continue;
+        await visit(`${directory}/${entry.name}`, true);
+      }
+    }
+    ancestors.delete(real);
+  }
+  await visit(specsDir.replaceAll('\\', '/'), false);
+  return files;
+}
+
 export interface FindClassicArchiveChangeDirectoryOptions {
   preferredArchiveName?: string;
   skipExactCompatibility?: boolean;

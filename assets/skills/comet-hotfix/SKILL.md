@@ -1,6 +1,6 @@
 ---
 name: comet-hotfix
-description: "Comet preset — fix an existing behavior bug through a short open-build-verify-archive flow."
+description: 'Comet preset — fix an existing behavior bug through a short open-build-verify-archive flow.'
 ---
 
 # Comet Preset Path: Hotfix
@@ -10,6 +10,7 @@ Before starting or recovering, read and follow `comet-classic/reference/classic-
 Quick bug fix workflow: open → build → root cause check → verify → archive. Skip brainstorming and full plan, applicable for behavior fixes not involving new capability design.
 
 **Applicable conditions** (all must be met):
+
 1. Fix bugs in existing functionality, no new capability
 2. No interface changes or architecture adjustments
 3. Change scope is predictable (file count is a hint only, not a hard upgrade condition; see Upgrade Assessment below)
@@ -39,6 +40,7 @@ Reuse Comet open capability to create change, but use hotfix defaults: do not ex
 **Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
 
 <!-- external-openspec-skill-override -->
+
 **External OpenSpec Skill override:** Do not execute its direct official CLI, fixed-cwd, or fixed physical OpenSpec path instructions. Route every OpenSpec command through `comet classic openspec -- <args...>` and use the `<classic-*>` logical roots bound for this run for every change and artifact path.
 
 After the skill loads, create the change skeleton first, then immediately initialize recoverable state and bind the current change:
@@ -64,9 +66,10 @@ comet state select <name>
 ```
 
 Then create the streamlined artifacts:
-  - `proposal.md` — problem description + root cause analysis + fix goal (no solution comparison needed)
-  - `design.md` — fix solution (one is enough, no multi-solution comparison needed)
-  - `tasks.md` — fix task list
+
+- `proposal.md` — problem description + root cause analysis + fix goal (no solution comparison needed)
+- `design.md` — fix solution (one is enough, no multi-solution comparison needed)
+- `tasks.md` — fix task list
 - **No delta spec needed** (unless fix changes existing spec acceptance scenarios)
 
 Run phase guard to transition open → build:
@@ -108,6 +111,7 @@ After RED evidence exists, execute tasks one by one according to tasks.md:
 3. After all tasks complete, explicitly run relevant project tests and build commands
 
 **If fix affects existing spec acceptance scenarios**:
+
 - Create delta spec in `<classic-change-dir>/specs/<capability>/spec.md`
 - Only include `## MODIFIED Requirements` section
 
@@ -124,6 +128,7 @@ For specific investigation, minimal failing test, fix verification, and keeping 
 3. If root cause not eliminated, return to Step 2 to continue fix (still in build phase, no state transition needed)
 
 **Upgrade assessment signals**:
+
 - Root cause check reveals deep architecture issues → Hits a qualitative-change signal; pause per the "Upgrade Assessment" section and let the user decide
 - Fix requires additional interface changes → Hits a qualitative-change signal (introduces new public API); pause per the "Upgrade Assessment" section and let the user decide
 
@@ -176,7 +181,7 @@ After each step completes, immediately enter next step. Within each phase, must 
 
 ## Upgrade Assessment
 
-Hotfix upgrade assessment only decides whether to move from the preset workflow to full; file count never upgrades automatically, and `comet state scale` only decides verification weight.
+Hotfix upgrade assessment only decides whether to move from the preset workflow to full; file count never upgrades automatically. `comet state scale` recommends verification depth without changing configuration; Verify selects based on actual risk.
 
 If `/comet-classic` passes an intent frame from the entry, hotfix must recheck `risk_signal` and escalation signals only before build: new capability, public API, schema change, cross-module coordination, or deep architecture work. When any signal matches, enter the existing escalation decision point; do not reimplement entry intent recognition.
 

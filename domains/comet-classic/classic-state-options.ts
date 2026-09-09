@@ -4,6 +4,7 @@ export const MACHINE_OWNED_FIELDS = new Set<string>([
   ...RUN_WIRE_KEYS,
   'archive_confirmation',
   'verify_failures',
+  'check_epoch',
   'classic_profile',
   'classic_migration',
   'bound_branch',

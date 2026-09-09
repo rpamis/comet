@@ -14,7 +14,8 @@ describe('comet-open 恢复语义', () => {
     expect(skill).toContain('`ready`：依赖已经满足，可以生成');
     expect(skill).toContain('`blocked`：读取 `missingDeps`');
     expect(skill).toContain('先完成属于 `applyRequires` 依赖闭包的依赖 artifact');
-    expect(skill).toContain('直到 `applyRequires` 全部为 `done`');
+    expect(skill).toContain('直到完整必需闭包为 done 或合法 skipped');
+    expect(skill).toContain('comet state artifacts <name> --json');
     expect(skill).toContain('非 `applyRequires` 的可选 artifact');
   });
 });

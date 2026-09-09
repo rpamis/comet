@@ -295,6 +295,26 @@ describe('comet guard', () => {
         ].join('\n'),
       );
 
+      await writeFile(path.join(tmpDir, 'plan.md'), '- [x] done\n');
+      await fs.appendFile(
+        path.join(tmpDir, 'openspec', 'changes', 'review-off-guard', '.comet.yaml'),
+        'verified_at: null\n',
+      );
+      runNode(tmpDir, stateScript, ['set', 'review-off-guard', 'plan', 'plan.md']);
+      runNode(tmpDir, guardScript, ['review-off-guard', 'build']);
+      expect(
+        runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+          'run',
+          'review-off-guard',
+          'build',
+          '--local',
+          '--',
+          process.execPath,
+          '-e',
+          'process.exit(0)',
+        ]).status,
+      ).toBe(0);
+
       const result = runNode(tmpDir, stateScript, [
         'transition',
         'review-off-guard',
@@ -324,6 +344,24 @@ describe('comet guard', () => {
           '',
         ].join('\n'),
       );
+
+      await fs.appendFile(
+        path.join(tmpDir, 'openspec', 'changes', 'hotfix-guard', '.comet.yaml'),
+        'verified_at: null\n',
+      );
+      runNode(tmpDir, guardScript, ['hotfix-guard', 'build']);
+      expect(
+        runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+          'run',
+          'hotfix-guard',
+          'build',
+          '--local',
+          '--',
+          process.execPath,
+          '-e',
+          'process.exit(0)',
+        ]).status,
+      ).toBe(0);
 
       const result = runNode(tmpDir, stateScript, ['transition', 'hotfix-guard', 'build-complete']);
 

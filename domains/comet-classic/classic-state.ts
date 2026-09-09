@@ -41,6 +41,7 @@ export interface ClassicState {
   plan: string | null;
   verifyResult: (typeof VERIFY_RESULTS)[number];
   verifyFailures: number;
+  checkEpoch?: number;
   verificationReport: string | null;
   branchStatus: (typeof BRANCH_STATUSES)[number] | null;
   createdAt: string | null;
@@ -79,6 +80,7 @@ export const CLASSIC_WIRE_KEYS = [
   'plan',
   'verify_result',
   'verify_failures',
+  'check_epoch',
   'verification_report',
   'branch_status',
   'created_at',
@@ -160,7 +162,7 @@ function booleanValue(doc: StateDocument, key: string, nullable = true): boolean
 function nonNegativeInteger(doc: StateDocument, key: string, fallback = 0): number {
   const value = doc[key];
   if (value === null || value === undefined || value === '') return fallback;
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
     throw new Error(`Invalid Classic state: ${key} must be a non-negative integer`);
   }
   return value;
@@ -221,6 +223,7 @@ function classicStateFromDocument(doc: StateDocument): ClassicState | null {
     plan: relativePath(doc, 'plan'),
     verifyResult: enumValue(doc, 'verify_result', VERIFY_RESULTS, false)!,
     verifyFailures: nonNegativeInteger(doc, 'verify_failures'),
+    ...(has(doc, 'check_epoch') ? { checkEpoch: nonNegativeInteger(doc, 'check_epoch') } : {}),
     verificationReport: relativePath(doc, 'verification_report'),
     branchStatus: enumValue(doc, 'branch_status', BRANCH_STATUSES),
     createdAt: nullableString(doc, 'created_at'),
@@ -311,6 +314,7 @@ export function classicStateToDocument(state: ClassicState): StateDocument {
     plan: state.plan,
     verify_result: state.verifyResult,
     verify_failures: state.verifyFailures,
+    ...(state.checkEpoch === undefined ? {} : { check_epoch: state.checkEpoch }),
     verification_report: state.verificationReport,
     branch_status: state.branchStatus,
     created_at: state.createdAt,

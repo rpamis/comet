@@ -2279,7 +2279,7 @@ describe('skills', () => {
         expect(enOpen).toContain(field);
       }
       expect(enOpen).toContain('must not copy them into artifact content');
-      expect(enOpen).toContain('Re-run status after creating each artifact');
+      expect(enOpen).toContain('Refresh status once after creating each artifact');
       expect(enOpen).toContain('comet classic openspec -- status --change "<name>" --json');
       expect(enOpen).toContain('Also stop if status/instructions fails');
       expect(enOpen).toContain('Must not fall back to hard-coded artifact prose');
@@ -2486,7 +2486,10 @@ describe('skills', () => {
       expect(zhTweak).toContain('归档前在一个最终确认中选择是否归档及归档提交的交付方式');
 
       // MEDIUM: comet-design brainstorming does not write Design Doc before confirmation
-      expect(zhDesign).toContain('brainstorming 阶段不写入 Design Doc 文件');
+      expect(zhDesign).toContain('brainstorming 阶段不把候选写为正式 Design Doc');
+      expect(zhDesign).toContain('`design_doc` 是正式技术设计的唯一入口');
+      expect(zhDesign).toContain('优先使用 `<classic-change-dir>/design.md`');
+      expect(zhDesign).toContain('不能只检查 Spec Patch');
       expect(zhDesign).toContain('增量更新 `brainstorm-summary.md`');
       expect(zhDesign).toContain('### 3a. 可选主动式上下文压缩');
 
@@ -2581,7 +2584,10 @@ describe('skills', () => {
       expect(zhOpen).toContain(
         '批量拆分模式下，单个拆分项完成 open 阶段后不得自动流转到 `/comet-design`',
       );
-      expect(zhOpen).toContain('只有所有拆分项都通过两项 CLI 检查后');
+      expect(zhOpen).toContain('只有所有拆分项都通过入口检查后');
+      expect(zhOpen).toContain('该入口已校验 OpenSpec 必需依赖闭包、实际输出和 Comet 状态');
+      expect(zhOpen).toContain('顶层 tasks 已完成不能掩盖未完成依赖');
+      expect(zhOpen).toContain('不在闭包中的 design 不强制生成');
       expect(zhOpen).toContain('断点恢复时先读取 `.comet/batches/<batch-id>.json`');
 
       // IMPORTANT: main entry and build subskill agree scope expansion is blocking
@@ -2605,10 +2611,15 @@ describe('skills', () => {
       expect(zhBuild).not.toContain('不得预检、推断或筛除');
       expect(zhBuild).not.toContain('真实异步派发、独立上下文、结果回收和所需交接能力');
       expect(zhBuild).not.toContain('`platform-default`');
-      expect(zhBuild).toContain('`comet state set <name> subagent_dispatch confirmed`');
+      expect(zhBuild).toContain('同一更新中设置 `subagent_dispatch confirmed`');
       expect(zhBuild).not.toContain('使用 Skill 工具加载对应技能');
       expect(zhBuild).toContain('tdd_mode');
-      expect(zhBuild).toContain('comet state set <name> tdd_mode <tdd|direct>');
+      expect(zhBuild).toContain(
+        'comet state set <name> build_pause null build_mode executing-plans subagent_dispatch null tdd_mode tdd review_mode standard --json',
+      );
+      expect(zhComet).toContain('不静默降级已有 full change');
+      expect(zhComet).toContain('产物存在不代表用户已批准');
+      expect(zhComet).toContain('文件只作证据，不覆盖 Runtime 阶段');
       expect(zhBuild).toContain('若 `tdd_mode: tdd`');
       expect(zhBuild).toContain(
         'TDD 约束和证据门槛已在 `comet-classic/reference/subagent-dispatch.md` 中定义',
@@ -2895,7 +2906,9 @@ describe('skills', () => {
       expect(enTweak).toContain(
         'One final pre-archive confirmation chooses whether to archive and how to deliver the archive commit',
       );
-      expect(enDesign).toContain('The brainstorming phase does not write to the Design Doc file');
+      expect(enDesign).toContain(
+        'Create or update the formal design and delta spec only after confirmation',
+      );
       expect(enVerify).toContain(
         'pause, present the handling methods as a single-select question, and wait for the user to choose',
       );
@@ -2928,27 +2941,17 @@ describe('skills', () => {
         'Fix CRITICAL/IMPORTANT findings from task-level or segmented review in Build',
       );
       expect(enBuild).toContain(
-        'comet state record-check <change-name> build --command "<actual build command>" --exit-code 0',
+        'comet check run <change-name> build --local -- <program> [args...]',
       );
       expect(enVerify).toContain(
-        'comet state record-check <change-name> verify --command "<actual verification command>" --exit-code 0',
+        'comet check run <change-name> verify --local -- <program> [args...]',
       );
-      expect(enBuild).toContain(
-        '`--command` records command text only; Comet **never executes it**',
-      );
-      expect(enVerify).toContain(
-        '`--command` records command text only; Comet **never executes it**',
-      );
-      expect(enBuild).toContain(
-        'Build and verify evidence are separate and cannot substitute for each other',
-      );
-      expect(enVerify).toContain(
-        'Verify and build evidence are separate and cannot substitute for each other',
-      );
-      expect(enBuild).toContain(
-        '`COMET_SKIP_BUILD=1` is only a compatibility bypass for legacy workflows, not auditable build evidence',
-      );
-      expect(enVerify).toContain('cannot be treated as auditable verification or build evidence');
+      expect(enBuild).toContain('Comet never executes that text or advances from it automatically');
+      expect(enVerify).toContain('Manual `record-check` claims cannot advance automatically');
+      expect(enBuild).toContain('Build and Verify evidence remain independent');
+      expect(enVerify).toContain('Build and Verify evidence remain separate');
+      expect(enBuild).toContain('`COMET_SKIP_BUILD=1` is a legacy bypass, not auditable evidence');
+      expect(enVerify).toContain('`COMET_SKIP_BUILD=1` is not auditable evidence');
       expect(enVerify).toContain('Do not manufacture a "whether to fix" decision');
       expect(enVerify).toContain('CRITICAL/IMPORTANT findings are never waivable');
       expect(enVerify).toContain(
@@ -2990,7 +2993,7 @@ describe('skills', () => {
       expect(enOpen).toContain(
         'In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase',
       );
-      expect(enOpen).toContain('Only after every split item passes both CLI checks');
+      expect(enOpen).toContain('Only after every split item passes the entry check');
       expect(enOpen).toContain('On resume, read `.comet/batches/<batch-id>.json` first');
       expect(enComet).toContain(
         'Build phase scope expansion requiring redesign or new change split',
@@ -3133,11 +3136,9 @@ describe('skills', () => {
         '传递给 OpenSpec 的所有提问和产物要求都必须包含解析后的 Comet 产物语言',
       );
       expect(zhSkills['comet-design']).toContain(
-        'Language: 使用 `comet state get <name> language` 读取到的 Comet 配置产物语言输出',
+        'Language: 使用入口 configuration.language 中的 Comet 配置产物语言输出',
       );
-      expect(zhSkills['comet-build']).toContain(
-        '计划必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言',
-      );
+      expect(zhSkills['comet-build']).toContain('计划使用入口 configuration.language 的产物语言');
       expect(zhSkills['comet-build']).toContain('ARGUMENTS 必须包含与 Step 1 相同的 Language 约束');
       expect(zhSkills['comet-verify']).toContain(
         '验证报告必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言',
@@ -3156,11 +3157,9 @@ describe('skills', () => {
         'Every prompt and artifact request passed to OpenSpec must include the resolved Comet artifact language',
       );
       expect(enSkills['comet-design']).toContain(
-        'Language: Use the configured Comet artifact language from `comet state get <name> language`',
+        'Language: Use the Comet artifact language from entry configuration.language',
       );
-      expect(enSkills['comet-build']).toContain(
-        'The plan must use the configured Comet artifact language from `comet state get <name> language`',
-      );
+      expect(enSkills['comet-build']).toContain("in the entry's configuration.language");
       expect(enSkills['comet-build']).toContain(
         'ARGUMENTS must include the same Language constraint as Step 1',
       );
@@ -3238,65 +3237,39 @@ describe('skills', () => {
       expect(zhBuild).not.toContain('不得预检、推断或筛除');
       expect(zhBuild).not.toContain('无子agent环境');
       expect(zhBuild).not.toContain('#### Subagent 调度协议');
-      expect(zhDispatch).toContain('发生冲突时，以本文档中更具体的 Comet 约束为准');
-      expect(zhDispatch).toContain(
-        'Superpowers `subagent-driven-development` 技能提供基础连续派发循环',
-      );
-      expect(zhDispatch).toContain('Comet 的 `review_mode` 接管 reviewer 阶段');
-      expect(zhDispatch).not.toContain('按 `review_mode` 决定所需审查与修复流程');
-      expect(zhDispatch).toContain(
-        '派发第一个 task 前，必须完成 Superpowers `subagent-driven-development` 技能的预检计划审查',
-      );
-      expect(zhDispatch).toContain('不得把多个 task 打包给同一个 agent');
-      expect(zhDispatch).toContain('为每个新 task 派发全新的后台 implementer');
-      expect(zhDispatch).toContain('同一 task 的审查修复优先恢复原 implementer');
-      expect(zhDispatch).toContain('reviewer 始终独立于 implementer');
-      expect(zhDispatch).toContain('任务级审查/修复预算');
-      expect(zhDispatch).toContain('整个 change 的最终集成审查由 `comet-verify` 统一执行');
-      expect(zhDispatch).toContain('通过已加载的 Superpowers `subagent-driven-development` 技能');
-      expect(zhDispatch).not.toContain('其他平台');
-      expect(zhDispatch).not.toContain('工具名称相似不等于满足异步派发');
-      expect(zhDispatch).not.toContain('platform-default');
-      expect(zhDispatch).toContain(
-        'Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出',
-      );
-      expect(zhDispatch).toContain('允许修改的文件范围');
-      expect(zhDispatch).toContain('必须执行的测试命令');
-      expect(zhDispatch).toContain('提交哈希');
-      expect(zhDispatch).toContain('确认提交和文件在当前工作树可见');
-      expect(zhDispatch).toContain('实现提交或差异以及 RED/GREEN 证据');
-      expect(zhDispatch).toContain(
-        '大型 task 文本、实现报告和审查材料必须通过已加载的 Superpowers `subagent-driven-development` 技能提供的文件交接机制传递',
-      );
-      expect(zhDispatch).toContain(
-        '不得要求 reviewer 重新运行 implementer 已经运行并报告的同一批测试',
-      );
-      expect(zhDispatch).toContain('不得在 reviewer prompt 中预判、压低或禁止报告某个发现');
-      expect(zhDispatch).toContain('implementer 不得勾选 plan 或 OpenSpec task');
-      expect(zhDispatch).toContain('协调者唯一允许的文件修改');
-      expect(zhDispatch).toContain('plan、OpenSpec task 和 subagent 进度检查点');
-      expect(zhDispatch).toContain('<classic-change-dir>/.comet/subagent-progress.md');
-      expect(zhDispatch).not.toContain('final-review | final-fix');
-      expect(zhDispatch).toContain('当前审查-修复轮次');
-      expect(zhDispatch).toContain('已通过的审查阶段');
-      expect(zhDispatch).toContain('所有 task 完成后直接返回 `comet-build`');
-      expect(zhDispatch).toContain(
-        '使用 Skill 工具加载 Superpowers `test-driven-development` 技能',
-      );
-      expect(zhDispatch).toContain(
-        '当 `review_mode: standard` 时，默认不为每个 task 派发 reviewer，而是按**风险触发**决定',
-      );
-      expect(zhDispatch).toContain(
-        '当 `review_mode: thorough` 时，**每个 task 派发一个每任务 reviewer，同时检查 spec compliance 与 code quality**',
-      );
-      expect(zhDispatch).toContain('当 reviewer 返回无法仅从审查材料验证的发现时');
-      expect(zhDispatch).toContain(
-        '若已加载的 Superpowers `subagent-driven-development` 技能通过自己的进度记录报告某个 task 已完成',
-      );
-      expect(zhDispatch).toContain('当 `review_mode: off` 时');
-      expect(zhDispatch).toContain(
-        'Comet 不读取、不写入、也不要求任何 Superpowers `subagent-driven-development` 内部脚本或工作区路径',
-      );
+      for (const required of [
+        '再应用本文的 Comet 调用契约',
+        '做一次计划预检',
+        'tasks.md\` 是唯一完成状态来源',
+        'comet state tasks <name> --json',
+        '同类微任务',
+        '每项及整批均不命中下方风险信号',
+        '逐项报告、验收和记录完成',
+        '同一任务/批次的修复优先恢复原 implementer',
+        'reviewer 始终独立于 implementer',
+        '子代理不得再次派发',
+        '配置产物语言',
+        '允许修改范围',
+        '必跑检查及回报契约',
+        '上游支持的文件交接',
+        '确认文件和提交在当前工作区可见',
+        '它只实现和自测，不勾选任务',
+        '主会话协调派发、整合和验收，不代写',
+        'RED 失败及 GREEN 通过的命令和摘要',
+        '此预算接管上游默认 reviewer 节点',
+        '初审读取真实需求、diff 和证据',
+        '复查只覆盖未解决问题、修复及新增风险',
+        '不能只依赖自报',
+        'reviewer 保持中立，不预先禁止发现',
+        'off\` 不豁免测试失败',
+        '唯一最终集成审查',
+        '不重置轮次',
+        '<classic-change-dir>/.comet/subagent-progress.md',
+        '<classic-change-dir>/.comet/rulings.md',
+        '扩大范围、修改规格或验收、接受重要缺陷、安全例外及外部副作用仍需用户授权',
+        '在上游临时文件被清理前保留必要结论',
+      ])
+        expect(zhDispatch).toContain(required);
       for (const forbidden of [
         'spec reviewer',
         'code quality reviewer',
@@ -3314,20 +3287,18 @@ describe('skills', () => {
       ]) {
         expect(zhDispatch, `zh dispatch should not bind to ${forbidden}`).not.toContain(forbidden);
       }
-      expect(zhDispatch).toContain('comet state task-checkoff "<plan-file>" "<plan-task-text>"');
       expect(zhDispatch).toContain(
-        'comet state task-checkoff "<classic-change-dir>/tasks.md" "<openspec-task-text>"',
+        'comet state task-complete <name> <task-id> --expect <revision> --json',
       );
-      expect(zhDispatch).not.toContain('PLAN_MATCHES="$(grep -cF');
-      expect(zhDispatch).toContain('RED 失败命令与失败摘要');
-      expect(zhDispatch).toContain('GREEN 通过命令与通过摘要');
-      expect(zhDispatch).not.toContain("grep -n '\\- \\[ \\]' <classic-change-dir>/tasks.md");
-      expect(zhDispatch).toContain('禁止总结、禁止询问用户是否继续、禁止在任务之间等待用户输入');
-      expect(zhDispatch).toContain('存在无法从仓库、计划或既有上下文消除的真实歧义');
-      expect(zhDispatch).toContain('子代理派发操作失败属于运行停止条件');
-      expect(zhDispatch).toContain('将当前任务记录为 `BLOCKED` 并写明失败原因');
-      expect(zhDispatch).toContain('不得加载 `finishing-a-development-branch`');
-      expect(zhDispatch).toContain('返回 `comet-build` 继续执行退出条件、阶段守卫和后续阶段衔接');
+      expect(zhDispatch).toContain('不能仅取新 revision 盲目重试');
+      expect(zhDispatch).toContain('不为每个微任务机械追加单独进度提交');
+      expect(zhDispatch).toContain('不能删除未完成项来让检查通过');
+      expect(zhDispatch).toContain('不在任务间反复询问是否继续');
+      expect(zhDispatch).toContain('真实需求歧义');
+      expect(zhDispatch).toContain('派发失败或会话不可用时记录真实原因');
+      expect(zhDispatch).toContain('不以主会话接管实现绕过用户选定方式');
+      expect(zhDispatch).toContain('所有任务验收完成后立即返回');
+      expect(zhDispatch).toContain('不恢复旧的 Build final-review/final-fix 状态');
       expect(zhRecovery).toContain('重新加载 Superpowers `subagent-driven-development` 技能');
       expect(zhRecovery).toContain('重新阅读 `comet-classic/reference/subagent-dispatch.md`');
       expect(zhRecovery).toContain('读取 `<classic-change-dir>/.comet/subagent-progress.md`');
@@ -3380,67 +3351,51 @@ describe('skills', () => {
       expect(enBuild).not.toContain(
         'ask the user to choose both workspace isolation ' + 'and execution method',
       );
-      expect(enBuild).toContain('current execution branch and `review_mode`');
-      expect(enBuild).toContain('dispatches no per-task reviewer under `off`');
-      expect(enBuild).toContain('every task gets a per-task reviewer');
+      expect(enBuild).toContain('complete acceptance under the execution branch and `review_mode`');
+      expect(enBuild).toContain('risk-based for `standard`');
+      expect(enBuild).toContain('per-task for `thorough`');
       expect(enBuild).not.toContain('must wait for both reviews to pass');
-      expect(enDispatch).toContain(
-        'If the Superpowers skill conflicts with this document, the more specific Comet constraints here take precedence',
-      );
-      expect(enDispatch).toContain(
-        'Before dispatching the first task, complete the Superpowers `subagent-driven-development` skill pre-flight plan review',
-      );
-      expect(enDispatch).toContain('Never bundle multiple tasks into one agent');
-      expect(enDispatch).toContain('comet state task-checkoff "<plan-file>" "<plan-task-text>"');
-      expect(enDispatch).toContain(
-        'comet state task-checkoff "<classic-change-dir>/tasks.md" "<openspec-task-text>"',
-      );
-      expect(enDispatch).toContain('fresh background implementer agent for every task');
-      expect(enDispatch).toContain('task-level review/fix budgets');
-      expect(enDispatch).toContain('`comet-verify` owns the final integrated review');
-      expect(enDispatch).toContain(
-        'Through the loaded Superpowers `subagent-driven-development` skill',
-      );
-      expect(enDispatch).not.toContain('Other platforms');
-      expect(enDispatch).not.toContain(
-        'real asynchronous execution, isolated context, result collection',
-      );
-      expect(enDispatch).not.toContain('platform-default');
-      expect(enDispatch).toContain(
-        'Language: Use the configured Comet artifact language from comet state get <name> language',
-      );
-      expect(enDispatch).toContain('allowed file scope');
-      expect(enDispatch).toContain('required test commands');
-      expect(enDispatch).toContain('commit hash');
-      expect(enDispatch).toContain('verify that the commit and changed files are visible');
-      expect(enDispatch).toContain('implementation commit or diff, and the RED/GREEN evidence');
-      expect(enDispatch).toContain(
-        'Large task text, implementation reports, and review material must move through the file-handoff mechanism exposed by the loaded Superpowers `subagent-driven-development` skill',
-      );
-      expect(enDispatch).toContain(
-        'Do not ask a reviewer to re-run the same tests the implementer already ran and reported',
-      );
-      expect(enDispatch).toContain(
-        'Do not pre-judge, suppress, or down-rank findings in the reviewer prompt',
-      );
-      expect(enDispatch).toContain('The coordinator may modify only');
-      expect(enDispatch).toContain('plan, OpenSpec task, and subagent progress checkpoint');
-      expect(enDispatch).toContain('<classic-change-dir>/.comet/subagent-progress.md');
-      expect(enDispatch).not.toContain('final-review | final-fix');
-      expect(enDispatch).toContain('current review-fix round');
-      expect(enDispatch).toContain('review stages already passed');
-      expect(enDispatch).toContain('After all tasks complete, return directly to `comet-build`');
-      expect(enDispatch).toContain(
-        'use the Skill tool to load the Superpowers `test-driven-development` skill',
-      );
-      expect(enDispatch).toContain('Do NOT summarize');
-      expect(enDispatch).toContain('irreducible ambiguity');
-      expect(enDispatch).toContain('A subagent-dispatch failure is a runtime stop condition');
-      expect(enDispatch).toContain('Record the current task as `BLOCKED` with the failure reason');
-      expect(enDispatch).toContain('must not load `finishing-a-development-branch`');
-      expect(enDispatch).toContain(
-        'return control to `comet-build` for exit checks, the phase guard, and phase handoff',
-      );
+      for (const required of [
+        'Comet invocation contract',
+        'Preflight the plan once',
+        '2-3 same-pattern microtasks',
+        'individual IDs and acceptance evidence',
+        'one passing member does not complete the batch',
+        'Reviewers remain independent',
+        'Subagents do not dispatch',
+        'artifact language',
+        'allowed write scope',
+        'required checks',
+        'upstream file handoffs',
+        'files and commits are visible',
+        'implement and self-test without checking off tasks',
+        'it does not implement assigned subagent tasks',
+        'RED failure and GREEN success',
+        'replaces upstream default reviewer nodes',
+        'Initial review reads actual requirements',
+        'Re-review covers unresolved issues, fixes, and new risks',
+        'Inspect both implementer reports and actual diffs',
+        'Reviewers remain neutral',
+        '`off` does not waive failing tests',
+        'only final integrated review',
+        'without repeating full analysis or resetting rounds',
+        '<classic-change-dir>/.comet/subagent-progress.md',
+        '<classic-change-dir>/.comet/rulings.md',
+        'Scope/spec/acceptance changes, important defect acceptance, security exceptions, and external side effects still require authorization',
+        'before upstream temporary files disappear',
+        'comet state task-complete <name> <task-id> --expect <revision> --json',
+        'do not merely fetch a fresh revision and retry',
+        'without mechanical per-microtask progress commits',
+        'never by deleting unfinished items',
+        'without asking between tasks',
+        'genuine requirement ambiguity',
+        'Record dispatch/session failures',
+        'do not bypass the selected method by implementing in the main session',
+        'After all task acceptance, immediately return',
+        'do not restore obsolete Build final-review/final-fix states',
+      ]) {
+        expect(enDispatch, required).toContain(required);
+      }
       expect(enRecovery).toContain('reload the Superpowers `subagent-driven-development` skill');
       expect(enRecovery).toContain('Re-read `comet-classic/reference/subagent-dispatch.md`');
       expect(enRecovery).toContain('Read `<classic-change-dir>/.comet/subagent-progress.md`');
@@ -3449,27 +3404,7 @@ describe('skills', () => {
         'Re-read `comet-classic/reference/subagent-dispatch.md` for Comet-specific extensions',
       );
       expect(enGuard).toContain('Read `<classic-change-dir>/.comet/subagent-progress.md`');
-      expect(enGuard).toContain('according to the current `review_mode`');
-      expect(enGuard).toContain('validated according to `review_mode`');
       expect(enGuard).not.toContain('wait for both spec compliance and code quality reviews');
-      expect(enGuard).not.toContain('passed both reviews');
-      expect(enGuard).not.toContain('After dual review');
-      expect(enDispatch).toContain(
-        'Superpowers `subagent-driven-development` skill provides the base continuous dispatch loop',
-      );
-      expect(enDispatch).toContain("Comet's `review_mode` takes over the reviewer stage");
-      expect(enDispatch).not.toContain('with review and fix flow determined by `review_mode`');
-      expect(enDispatch).toContain('The selected `review_mode`');
-      expect(enDispatch).toContain('After `review_mode` validation');
-      expect(enDispatch).toContain(
-        'When a reviewer returns an item that cannot be verified from review material alone',
-      );
-      expect(enDispatch).toContain(
-        'If the loaded Superpowers `subagent-driven-development` skill reports a task complete through its own progress record',
-      );
-      expect(enDispatch).toContain(
-        'Comet does not read, write, or require any Superpowers `subagent-driven-development` internal scripts or workspace paths',
-      );
       for (const forbidden of [
         'spec reviewer',
         'code quality reviewer',

@@ -702,18 +702,20 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
     if not (environment_dir / CURRENT_COMET_CLI_MARKER).is_file():
         return
 
+    source_root = Path(os.environ.get("BENCH_COMET_SOURCE_ROOT", str(REPOSITORY_ROOT))).resolve()
+
     target = test_dir / "_eval_current_comet"
     if target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True)
-    package_file = REPOSITORY_ROOT / "package.json"
-    bin_dir = REPOSITORY_ROOT / "bin"
-    assets_dir = REPOSITORY_ROOT / "assets"
+    package_file = source_root / "package.json"
+    bin_dir = source_root / "bin"
+    assets_dir = source_root / "assets"
     assets_manifest = assets_dir / "manifest.json"
     source_roots = [
-        REPOSITORY_ROOT / "app",
-        REPOSITORY_ROOT / "domains",
-        REPOSITORY_ROOT / "platform",
+        source_root / "app",
+        source_root / "domains",
+        source_root / "platform",
     ]
     source_files = [
         path
@@ -724,9 +726,9 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
     source_files.extend(
         path
         for path in (
-            REPOSITORY_ROOT / "tsconfig.json",
+            source_root / "tsconfig.json",
             package_file,
-            REPOSITORY_ROOT / "bin/comet.js",
+            source_root / "bin/comet.js",
         )
         if path.is_file()
     )
@@ -740,10 +742,10 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
         or not source_files
     ):
         raise FileNotFoundError("Current Comet source snapshot is incomplete")
-    source_hash, source_count = _tree_digest(REPOSITORY_ROOT, sorted(set(source_files)))
+    source_hash, source_count = _tree_digest(source_root, sorted(set(source_files)))
     with tempfile.TemporaryDirectory(prefix="comet-eval-source-build-") as temporary:
         built_dist = Path(temporary) / "dist"
-        compiler_version = _build_current_comet_dist(REPOSITORY_ROOT, built_dist)
+        compiler_version = _build_current_comet_dist(source_root, built_dist)
         shutil.copytree(built_dist, target / "dist")
     shutil.copytree(bin_dir, target / "bin")
     shutil.copytree(assets_dir, target / "assets")
@@ -1342,8 +1344,11 @@ def _build_eval_claude_md(profile_name: str, treatment_claude_md: str | None = N
 def _comet_hook_command(test_dir: Path, agent: str = "claude-code") -> str | None:
     project_root = _agent_project_root(agent)
     scripts_dir = test_dir / project_root / "skills" / "comet" / "scripts"
+    router_hook = scripts_dir / "comet-hook-router.mjs"
     mjs_hook = scripts_dir / "comet-hook-guard.mjs"
     shell_hook = scripts_dir / "comet-hook-guard.sh"
+    if router_hook.exists():
+        return f"node /workspace/{project_root}/skills/comet/scripts/comet-hook-router.mjs"
     if mjs_hook.exists():
         return f"node /workspace/{project_root}/skills/comet/scripts/comet-hook-guard.mjs"
     if shell_hook.exists():

@@ -1,6 +1,11 @@
 import { createHash } from 'crypto';
-import { promises as fs } from 'fs';
+import { handoffSourceHash } from './classic-handoff-source.js';
+import {
+  classicArchivedRequirementsProblems,
+  readClassicArtifactRequirements,
+} from './classic-artifact-requirements.js';
 import path from 'path';
+import { parseClassicTasks, validateClassicTaskPlan } from './classic-tasks.js';
 import { parseDocument } from 'yaml';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import { classicGuardCheckEnvelope, classicLocale } from './classic-output-language.js';
@@ -9,27 +14,29 @@ import {
   usableCommandCheck,
   latestCommandCheck,
   executeCommandCheck,
-  consumeCommandCheck,
   type CommandCheckScope,
   type RecordedCommandCheck,
 } from './classic-command-checks.js';
 import { inspectClassicChange } from './classic-diagnostics.js';
 import { assertClassicLayoutWritable, classicProjectRelative } from './classic-layout.js';
-import { openSpecChangeNameError, resolveClassicChangeDirectory } from './classic-paths.js';
+import {
+  collectClassicSpecFiles,
+  openSpecChangeNameError,
+  resolveClassicChangeDirectory,
+} from './classic-paths.js';
 import { ensureClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import type { ClassicRunContext } from './classic-migrate.js';
 import type { ClassicPhase, ClassicState } from './classic-state.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
 import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classic-transitions.js';
 import { classicValidateCommand } from './classic-validate-command.js';
-import { readClassicState } from './classic-store.js';
+import { readClassicState, withClassicStateLock } from './classic-store.js';
 import { readClassicConfigValue } from './classic-project-config.js';
 import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
 import {
   classicProjectFileNonempty,
   classicProjectTargetExists,
   inspectClassicProjectTarget,
-  readClassicProjectBytes,
   readClassicProjectFile,
 } from './classic-protected-path.js';
 import {
@@ -64,6 +71,7 @@ const APPLY_MESSAGE: Record<string, string> = {
 };
 const CLASSIC_FIELD_WIRE_NAMES: Partial<Record<keyof ClassicState, string>> = {
   branchStatus: 'branch_status',
+  checkEpoch: 'check_epoch',
   phase: 'phase',
   verificationReport: 'verification_report',
   verifiedAt: 'verified_at',
@@ -227,13 +235,12 @@ async function documentLanguageMatchesConfigured(
 }
 
 async function hashFile(file: string): Promise<string> {
-  return createHash('sha256')
-    .update(
-      await readClassicProjectBytes(classicCommandProjectRoot(), file, {
-        label: `Classic handoff source ${file}`,
-      }),
-    )
-    .digest('hex');
+  return handoffSourceHash(
+    file,
+    await readClassicProjectFile(classicCommandProjectRoot(), file, {
+      label: `Classic handoff source ${file}`,
+    }),
+  );
 }
 
 async function handoffSourceFiles(changeDir: string): Promise<string[]> {
@@ -243,17 +250,8 @@ async function handoffSourceFiles(changeDir: string): Promise<string[]> {
   // path (openspec/changes/<name>); forward slashes are readable on Windows too.
   const changeRef = classicProjectRelative(classicCommandProjectRoot(), changeDir);
   const files = [`${changeRef}/proposal.md`, `${changeRef}/design.md`, `${changeRef}/tasks.md`];
-  const specs = `${changeRef}/specs`;
-  if (await exists(specs)) {
-    const specsInspection = await inspectClassicProjectTarget(classicCommandProjectRoot(), specs, {
-      label: `Classic delta-spec directory ${specs}`,
-      expected: 'directory',
-    });
-    for (const entry of (await fs.readdir(specsInspection.target)).sort()) {
-      const spec = `${specs}/${entry}/spec.md`;
-      if (await exists(spec)) files.push(spec);
-    }
-  }
+  if (await exists(`${changeRef}/.openspec.yaml`)) files.push(`${changeRef}/.openspec.yaml`);
+  files.push(...(await collectClassicSpecFiles(classicCommandProjectRoot(), `${changeRef}/specs`)));
   return files;
 }
 
@@ -490,7 +488,6 @@ async function commandCheckPasses(
       output: `Latest recorded ${scope} check failed with exit code ${recorded.exitCode}.\n${evidenceDetail(recorded)}\nNext: rerun the command successfully, then record it with:\n${recoveryCommand(change, scope, recorded.command)}`,
     };
   }
-  await consumeCommandCheck(changeDir, run, recorded);
   return { status: 0, output: evidenceDetail(recorded) };
 }
 
@@ -504,18 +501,16 @@ async function tasksAllDone(changeDir: string): Promise<CheckResult> {
   const source = await readClassicProjectFile(classicCommandProjectRoot(), tasks, {
     label: `Classic tasks ${tasks}`,
   });
-  if (!/- \[x\]/u.test(source)) {
+  const entries = parseClassicTasks(source);
+  if (!entries.some((task) => task.completed)) {
     return fail(
       "tasks.md has no completed tasks.\nNext: complete implementation tasks and mark them with '- [x]'.",
     );
   }
-  const unfinished = source
-    .split(/\r?\n/u)
-    .map((line, index) => ({ line, number: index + 1 }))
-    .filter((entry) => /^- \[ \]/u.test(entry.line));
+  const unfinished = entries.filter((task) => !task.completed);
   if (unfinished.length > 0) {
     return fail(
-      `Unfinished tasks:\n${unfinished.map((entry) => `${entry.number}:${entry.line}`).join('\n')}\nNext: complete or explicitly remove unfinished tasks, then mark tasks.md with '- [x]'.`,
+      `Unfinished tasks:\n${unfinished.map((entry) => `${entry.line}:${entry.text}`).join('\n')}\nNext: complete or explicitly remove unfinished tasks, then mark tasks.md with '- [x]'.`,
     );
   }
   return pass();
@@ -524,10 +519,12 @@ async function tasksAllDone(changeDir: string): Promise<CheckResult> {
 async function tasksHasAny(changeDir: string): Promise<boolean> {
   const tasks = path.join(changeDir, 'tasks.md');
   if (!(await exists(tasks))) return false;
-  return /- \[/u.test(
-    await readClassicProjectFile(classicCommandProjectRoot(), tasks, {
-      label: `Classic tasks ${tasks}`,
-    }),
+  return (
+    parseClassicTasks(
+      await readClassicProjectFile(classicCommandProjectRoot(), tasks, {
+        label: `Classic tasks ${tasks}`,
+      }),
+    ).length > 0
   );
 }
 
@@ -542,13 +539,18 @@ async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
   const source = await readClassicProjectFile(classicCommandProjectRoot(), plan, {
     label: `Classic plan ${plan}`,
   });
-  const unfinished = source
-    .split(/\r?\n/u)
-    .map((line, index) => ({ line, number: index + 1 }))
-    .filter((entry) => /^\s*- \[ \]/u.test(entry.line));
+  const taskFile = path.join(changeDir, 'tasks.md');
+  const tasks = parseClassicTasks(
+    await readClassicProjectFile(classicCommandProjectRoot(), taskFile, {
+      label: 'Classic plan task authority',
+    }),
+  );
+  const authority = path.relative(classicCommandProjectRoot(), taskFile).replaceAll('\\', '/');
+  if (validateClassicTaskPlan(source, authority, tasks) === 'canonical') return pass();
+  const unfinished = parseClassicTasks(source).filter((task) => !task.completed);
   if (unfinished.length > 0) {
     return fail(
-      `Unfinished Superpowers plan tasks:\n${unfinished.map((entry) => `${entry.number}:${entry.line}`).join('\n')}\nNext: check off corresponding completed plan tasks, then commit the plan update.`,
+      `Unfinished Superpowers plan tasks:\n${unfinished.map((entry) => `${entry.line}:${entry.text}`).join('\n')}\nNext: complete the legacy plan tasks, or explicitly migrate the reviewed plan to task-ID references in tasks.md.`,
     );
   }
   return pass();
@@ -798,7 +800,14 @@ async function betaSpecJsonStructurallyValid(changeDir: string): Promise<CheckRe
 
 async function guardOpenChecks(output: GuardOutput, changeDir: string): Promise<boolean> {
   const workflow = await readField(changeDir, 'workflow');
+  const requirements = await readClassicArtifactRequirements(
+    classicCommandProjectRoot(),
+    changeDir,
+  );
   const checks: Array<() => Promise<CheckOutcome>> = [
+    check('OpenSpec required dependency closure is ready', async () =>
+      requirements.problems.length ? fail(requirements.problems.join('\n')) : pass(),
+    ),
     check('proposal.md exists and non-empty', async () =>
       (await nonempty(path.join(changeDir, 'proposal.md'))) ? pass() : fail(''),
     ),
@@ -815,7 +824,10 @@ async function guardOpenChecks(output: GuardOutput, changeDir: string): Promise<
       (await tasksHasAny(changeDir)) ? pass() : fail(''),
     ),
   ];
-  if (workflow === 'full') {
+  if (
+    workflow === 'full' &&
+    (requirements.designRequired || (await exists(path.join(changeDir, 'design.md'))))
+  ) {
     checks.splice(
       1,
       0,
@@ -837,7 +849,16 @@ async function guardDesignChecks(
 ): Promise<boolean> {
   const designDoc = await readField(changeDir, 'design_doc');
   const workflow = await readField(changeDir, 'workflow');
+  const requirements = await readClassicArtifactRequirements(
+    classicCommandProjectRoot(),
+    changeDir,
+  );
+  const checkDesign =
+    requirements.designRequired || (await exists(path.join(changeDir, 'design.md')));
   const builders: Array<() => Promise<CheckOutcome>> = [
+    check('OpenSpec required dependency closure is ready', async () =>
+      requirements.problems.length ? fail(requirements.problems.join('\n')) : pass(),
+    ),
     check('proposal.md exists', async () =>
       (await nonempty(path.join(changeDir, 'proposal.md'))) ? pass() : fail(''),
     ),
@@ -845,10 +866,12 @@ async function guardDesignChecks(
       documentLanguageMatchesConfigured(changeDir, path.join(changeDir, 'proposal.md')),
     ),
     check('design.md exists', async () =>
-      (await nonempty(path.join(changeDir, 'design.md'))) ? pass() : fail(''),
+      !checkDesign || (await nonempty(path.join(changeDir, 'design.md'))) ? pass() : fail(''),
     ),
-    check('design.md matches configured language', () =>
-      documentLanguageMatchesConfigured(changeDir, path.join(changeDir, 'design.md')),
+    check('design.md matches configured language', async () =>
+      checkDesign
+        ? documentLanguageMatchesConfigured(changeDir, path.join(changeDir, 'design.md'))
+        : pass(),
     ),
     check('tasks.md exists', async () =>
       (await nonempty(path.join(changeDir, 'tasks.md'))) ? pass() : fail(''),
@@ -983,9 +1006,13 @@ async function guardArchiveChecks(
     check('proposal.md exists', async () =>
       (await nonempty(path.join(changeDir, 'proposal.md'))) ? pass() : fail(''),
     ),
-    check('design.md exists', async () =>
-      (await nonempty(path.join(changeDir, 'design.md'))) ? pass() : fail(''),
-    ),
+    check('archived required artifacts exist', async () => {
+      const problems = await classicArchivedRequirementsProblems(
+        classicCommandProjectRoot(),
+        changeDir,
+      );
+      return problems.length ? fail(problems.join('\n')) : pass();
+    }),
     check('tasks.md all tasks checked', () => tasksAllDone(changeDir)),
     check('branch_status=handled', async () =>
       (await branchStatusHandled(changeDir)) ? pass() : fail(''),
@@ -999,6 +1026,17 @@ async function applyStateUpdate(
   changeDir: string,
   phase: string,
 ): Promise<void> {
+  return withClassicStateLock(changeDir, () =>
+    applyStateUpdateLocked(output, change, changeDir, phase),
+  );
+}
+
+async function applyStateUpdateLocked(
+  output: GuardOutput,
+  change: string,
+  changeDir: string,
+  phase: string,
+): Promise<void> {
   const event = CLASSIC_GUARD_TRANSITION_EVENT[phase as ClassicPhase];
   if (!event) return;
 
@@ -1006,6 +1044,20 @@ async function applyStateUpdate(
   // boundBranchMatches may have lazily healed bound_branch on disk, and a
   // stale projection would write the pre-heal null back over it.
   const context = await ensureClassicRuntimeRun(changeDir);
+  if ((phase === 'build' || phase === 'verify') && process.env.COMET_SKIP_BUILD !== '1') {
+    const record = await usableCommandCheck(
+      classicCommandProjectRoot(),
+      changeDir,
+      context.run,
+      phase,
+    );
+    if (
+      !record ||
+      path.resolve(classicCommandProjectRoot(), record.cwd) !==
+        path.resolve(classicCommandInvocationCwd())
+    )
+      throw new GuardFailure('Check evidence changed before transition; rerun the check.');
+  }
   const result = applyClassicTransition(context.classic, event);
   await transitionClassicRuntimeRun(changeDir, result.classic, context.run, {
     event,

@@ -7,6 +7,7 @@ import { terminateProcessTree } from '../../platform/process/terminate-process-t
 import { spawnCommand } from '../../platform/process/spawn-command.js';
 import { checkEnvironmentFingerprint, checkInputFingerprint } from './classic-check-snapshot.js';
 import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
+import { readClassicState } from './classic-store.js';
 
 export type CommandCheckScope = 'build' | 'verify';
 
@@ -27,6 +28,7 @@ export interface RecordedCommandCheck {
   logHash?: string;
   reusable?: boolean;
   reused?: boolean;
+  checkEpoch?: number;
 }
 
 export interface RecordCommandCheckInput {
@@ -91,6 +93,7 @@ function validRecord(projectRoot: string, event: TrajectoryEvent): RecordedComma
           logRef: (data as RecordedCommandCheck).logRef,
           logHash: (data as RecordedCommandCheck).logHash,
           reusable: (data as RecordedCommandCheck).reusable,
+          checkEpoch: (data as RecordedCommandCheck).checkEpoch,
         }
       : {}),
   };
@@ -145,7 +148,11 @@ export async function latestCommandCheck(
   for (let index = trajectory.length - 1; index >= 0; index -= 1) {
     const event = trajectory[index];
     if (event.runId !== run.runId) continue;
-    if (event.type === 'command_checks_invalidated') return null;
+    if (
+      event.type === 'command_checks_invalidated' &&
+      (!Array.isArray(event.data?.scopes) || event.data.scopes.includes(scope))
+    )
+      return null;
     if (event.type === 'command_check_started' && event.data?.scope === scope) return null;
     if (event.type === 'command_check_consumed' && event.data?.scope === scope) return null;
     const record = validRecord(projectRoot, event);
@@ -156,6 +163,31 @@ export async function latestCommandCheck(
 
 export async function invalidateCommandChecks(changeDir: string, run: RunState): Promise<void> {
   await checkEvent(changeDir, run, 'command_checks_invalidated', { reason: 'cold-recovery' });
+}
+
+export async function recoverCommandChecks(root: string, changeDir: string, run: RunState) {
+  let snapshot: Promise<string> | undefined;
+  const inputFingerprint = () => (snapshot ??= checkInputFingerprint(root, changeDir));
+  const scopes: Record<CommandCheckScope, 'revalidated' | 'rerun-required'> = {
+    build: 'rerun-required',
+    verify: 'rerun-required',
+  };
+  const invalidated: CommandCheckScope[] = [];
+  for (const scope of ['build', 'verify'] as const) {
+    const record = await usableCommandCheck(root, changeDir, run, scope, inputFingerprint).catch(
+      () => null,
+    );
+    if (record?.reusable === true) scopes[scope] = 'revalidated';
+    else invalidated.push(scope);
+  }
+  // Persist rejected scopes so restoring old inputs cannot resurrect stale evidence.
+  if (invalidated.length) {
+    await checkEvent(changeDir, run, 'command_checks_invalidated', {
+      reason: 'cold-recovery',
+      scopes: invalidated,
+    });
+  }
+  return scopes;
 }
 
 async function checkEvent(
@@ -207,6 +239,8 @@ export async function executeCommandCheck(
   }
   // A failed launch, snapshot, or log write must not expose an older success.
   await checkEvent(changeDir, run, 'command_check_started', { scope: input.scope });
+  const checkEpoch =
+    (await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0;
   const inputBefore = await checkInputFingerprint(root, changeDir);
   const environment = await checkEnvironmentFingerprint(input.argv, path.resolve(root, cwd));
   const logPath = path.join(changeDir, '.comet', 'checks', `${randomUUID()}.log`);
@@ -238,12 +272,18 @@ export async function executeCommandCheck(
     });
   });
   let inputAfter = await checkInputFingerprint(root, changeDir).catch(() => 'unavailable');
+  if (
+    checkEpoch !==
+    ((await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0)
+  )
+    inputAfter = 'phase-changed';
   if (environment !== (await checkEnvironmentFingerprint(input.argv, path.resolve(root, cwd))))
     inputAfter = 'environment-changed';
   await writeClassicProjectText(root, logPath, result.output, { label: 'Classic check log' });
   const data = {
     scope: input.scope,
     command: JSON.stringify(input.argv),
+    checkEpoch,
     argv: input.argv,
     exitCode: result.exitCode,
     cwd,
@@ -264,8 +304,16 @@ export async function usableCommandCheck(
   changeDir: string,
   run: RunState,
   scope: CommandCheckScope,
+  inputFingerprint: () => Promise<string> = () => checkInputFingerprint(root, changeDir),
 ): Promise<RecordedCommandCheck | null> {
   const record = await latestCommandCheck(root, changeDir, run, scope);
+  if (
+    record &&
+    !record.reusable &&
+    (record.checkEpoch ?? 0) !==
+      ((await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0)
+  )
+    return null;
   if (
     !record ||
     record.provenance !== 'runtime' ||
@@ -276,7 +324,7 @@ export async function usableCommandCheck(
     record.inputBefore !== record.inputAfter ||
     record.environment !==
       (await checkEnvironmentFingerprint(record.argv, path.resolve(root, record.cwd))) ||
-    record.inputAfter !== (await checkInputFingerprint(root, changeDir))
+    record.inputAfter !== (await inputFingerprint())
   )
     return null;
   if (typeof record.logRef !== 'string' || typeof record.logHash !== 'string') return null;

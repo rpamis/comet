@@ -1,10 +1,12 @@
 import { execFileSync } from 'child_process';
-import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument } from 'yaml';
 
 import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
+import { withClassicStateLock } from './classic-store.js';
+import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 
 export function liveGitBranch(cwd: string): string | null {
   try {
@@ -96,6 +98,15 @@ export async function resolveBranchBinding(
   changeDir: string,
   options: { heal: boolean; cwd: string },
 ): Promise<BranchBindingOutcome> {
+  if (options.heal)
+    return withClassicStateLock(changeDir, () => resolveBranchBindingLocked(changeDir, options));
+  return resolveBranchBindingLocked(changeDir, options);
+}
+
+async function resolveBranchBindingLocked(
+  changeDir: string,
+  options: { heal: boolean; cwd: string },
+): Promise<BranchBindingOutcome> {
   const file = path.join(changeDir, '.comet.yaml');
   const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: false });
   if (document.errors.length > 0) {
@@ -122,17 +133,20 @@ export async function resolveBranchBinding(
 }
 
 export async function healBoundBranch(changeDir: string, branch: string): Promise<void> {
+  return withClassicStateLock(changeDir, () => healBoundBranchLocked(changeDir, branch));
+}
+
+async function healBoundBranchLocked(changeDir: string, branch: string): Promise<void> {
   const file = path.join(changeDir, '.comet.yaml');
-  const document = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: false });
+  const source = (
+    await readProtectedProjectFile(changeDir, '.comet.yaml', 2 * 1024 * 1024, {
+      label: 'Classic branch binding',
+    })
+  ).bytes.toString('utf8');
+  const document = parseDocument(source, { uniqueKeys: false });
+  if (document.errors.length) throw new Error(`Invalid .comet.yaml: ${document.errors[0].message}`);
   document.set('bound_branch', branch);
-  const temporary = `${file}.${randomUUID()}.tmp`;
-  try {
-    await fs.writeFile(temporary, document.toString(), 'utf8');
-    await fs.rename(temporary, file);
-  } catch (error) {
-    await fs.rm(temporary, { force: true });
-    throw error;
-  }
+  await atomicWriteContainedText(file, document.toString(), { containedRoot: changeDir });
 }
 
 function branchLabel(currentBranch: string | null): string {

@@ -31,7 +31,7 @@ comet state check <change-name> verify
 
 若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
-**幂等性**：如 `verify_result` 已为 `pass`，应进入 archive；`branch_status` 在归档提交和最终分支处理完成前保持 `pending`。如为 `pending`，核对已有报告和证据，从未完成检查继续；冷恢复须重跑命令，但不重复已完成的需求分析与审查。外部检查不假定幂等或环境稳定。
+**幂等性**：如 `verify_result` 已为 `pass`，应进入 archive；`branch_status` 在归档提交和最终分支处理完成前保持 `pending`。如为 `pending`，核对已有报告和证据，从未完成检查继续。冷恢复按 `evidence.scopes` 处理：`revalidated` 的本地证据可复用，`rerun-required` 的范围重新检查，不重复已完成且仍有效的需求分析与审查。外部检查不假定幂等或环境稳定。
 
 ### 1. 改动规模评估
 
@@ -41,7 +41,7 @@ comet state check <change-name> verify
 comet state scale <change-name>
 ```
 
-脚本自动统计任务数、增量规格数、变更文件数，判断使用 light 或 full 验证模式，并设置 verify_mode 字段。判定规则（满足任一即 full）：任务数 > 3、delta spec 能力数 > 1、变更文件数 > 8。
+脚本统计任务数、增量规格数和变更文件数，只返回 light/full 建议，不修改 `verify_mode`。使用 `--json` 读取 `data.recommendation`、`data.selected` 和 `data.metrics`。保留已选验证深度；尚未选择时结合风险确定模式，再用 `comet state set <change-name> verify_mode <light|full>` 明确记录。规模建议为 full 的条件：任务数 > 3、delta spec 能力数 > 1、变更文件数 > 8。
 
 `comet state scale` 会自行从 plan 的 `base-ref` 解析提交基线，并在 plan 不可用时回退到状态中的 `base_ref`；Verify 不再重复读取 plan frontmatter 或手工拼接第二套规模评估。
 
@@ -126,7 +126,7 @@ comet state set <change-name> verification_report docs/superpowers/reports/YYYY-
 comet check run <change-name> verify --local -- <program> [args...]
 ```
 
-仅确定性本地检查使用 `--local`。外部服务检查省略该参数，证据只使用一次；直接用于本次 Guard `--apply`，预览消耗后必须重跑。Windows 普通 npm/pnpm shim 由平台适配器处理，包含 shell 元字符的 batch 参数会被拒绝。多条必要命令通过项目已有验证入口统一执行并传播任一失败，不得用最后一条成功掩盖先前失败。手工 `record-check` 仅是声明，不能自动放行。verify 与 build 证据彼此独立，不能互相替代；`COMET_SKIP_BUILD=1` 不是可审计证据。日志按 `logRef` 按需读取。
+仅确定性本地检查使用 `--local`。外部服务检查省略该参数，证据只用于一次成功的阶段转换；Guard 预览不消费证据，`--apply` 会重新核对并在成功转换时使其不可再次使用。冷恢复或输入、环境变化后仍按 Runtime 结果重跑。Windows 普通 npm/pnpm shim 由平台适配器处理，包含 shell 元字符的 batch 参数会被拒绝。多条必要命令通过项目已有验证入口统一执行并传播任一失败，不得用最后一条成功掩盖先前失败。手工 `record-check` 仅是声明，不能自动放行。verify 与 build 证据彼此独立，不能互相替代；`COMET_SKIP_BUILD=1` 不是可审计证据。日志按 `logRef` 按需读取。
 
 集成代码审查的输入限定为本次改动 diff、tasks.md 和必要测试结果；它不替代 spec 覆盖率、Design Doc 一致性或漂移检查。`review_mode: off` 只跳过自动 code review，不跳过构建、测试、安全检查或异常调试协议。
 

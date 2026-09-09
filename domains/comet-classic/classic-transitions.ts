@@ -118,6 +118,11 @@ export function applyClassicTransition(
 
   const classic: ClassicState = { ...current };
   const effects: ClassicTransitionEffect[] = [];
+  const epoch = current.checkEpoch ?? 0;
+  if (!Number.isSafeInteger(epoch) || epoch < 0 || epoch === Number.MAX_SAFE_INTEGER) {
+    throw new Error('Invalid Classic check epoch');
+  }
+  setField(classic, effects, 'checkEpoch', epoch + 1);
   const now = options.now ?? new Date();
 
   if (event === 'open-complete') {

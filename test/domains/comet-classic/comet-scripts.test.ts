@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { parseDocument } from 'yaml';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const classicRuntimeRoot = path.resolve('assets', 'skills', 'comet', 'runtime', 'classic');
@@ -91,6 +92,29 @@ async function createChange(tmpDir: string, name: string, yaml: string, tasks = 
   await writeFile(path.join(changeDir, 'design.md'), 'design\n');
   await writeFile(path.join(changeDir, 'tasks.md'), tasks);
   return changeDir;
+}
+
+async function prepareBuildEvidence(tmpDir: string, name: string) {
+  const file = path.join(tmpDir, 'openspec', 'changes', name, '.comet.yaml');
+  const document = parseDocument(await fs.readFile(file, 'utf8'));
+  if (!document.has('verified_at')) document.set('verified_at', null);
+  document.set('isolation', 'current');
+  if (!document.get('plan')) {
+    document.set('plan', `docs/${name}-plan.md`);
+    await writeFile(path.join(tmpDir, `docs/${name}-plan.md`), '- [x] done\n');
+  }
+  await fs.writeFile(file, document.toString());
+  const checked = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+    'run',
+    name,
+    'build',
+    '--local',
+    '--',
+    process.execPath,
+    '-e',
+    'process.exit(0)',
+  ]);
+  expect(checked.status, checked.stderr).toBe(0);
 }
 
 async function createFakeOpenSpecArchive(
@@ -254,6 +278,21 @@ describe('comet scripts', () => {
     expect(yaml).toContain('verification_report: null');
     expect(yaml).toContain('branch_status: pending');
   }, 20_000);
+
+  it('validates the optional machine-owned check epoch in generated commands', async () => {
+    expect(runNode(tmpDir, stateScript, ['init', 'epoch-check', 'full']).status).toBe(0);
+    const state = path.join(tmpDir, 'openspec', 'changes', 'epoch-check', '.comet.yaml');
+    const original = await fs.readFile(state, 'utf8');
+    await fs.writeFile(state, `${original}\ncheck_epoch: 2\n`);
+    const valid = runNode(tmpDir, validateScript, ['epoch-check']);
+    expect(valid.status, valid.stderr).toBe(0);
+    expect(valid.stderr).not.toContain("unknown field 'check_epoch'");
+    expect(
+      runNode(tmpDir, stateScript, ['set', 'epoch-check', 'check_epoch', '0']).status,
+    ).not.toBe(0);
+    await fs.writeFile(state, `${original}\ncheck_epoch: -1\n`);
+    expect(runNode(tmpDir, validateScript, ['epoch-check']).status).not.toBe(0);
+  });
 
   it.each(['hotfix', 'tweak'])(
     'initializes %s with isolation pending until the user chooses a workspace mode',
@@ -2442,7 +2481,7 @@ describe('comet scripts', () => {
     ]);
 
     expect(guard.status).toBe(0);
-    expect(transition.status).toBe(0);
+    expect(transition.status, transition.stderr).toBe(0);
     expect(transition.stderr).toContain('[SET] phase=verify');
     expect(transition.stderr).toContain('[TRANSITION] build-complete');
   }, 20_000);
@@ -2837,7 +2876,7 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('[FAIL] Superpowers plan all tasks checked');
     expect(result.stderr).toContain('Unfinished Superpowers plan tasks:');
     expect(result.stderr).toContain('pending plan task');
-    expect(result.stderr).toContain('Next: check off corresponding completed plan tasks');
+    expect(result.stderr).toContain('Next: complete the legacy plan tasks');
   }, 20_000);
 
   it('rejects direct build mode for full workflow during state transition', async () => {
@@ -3564,7 +3603,8 @@ describe('comet scripts', () => {
     const mode = runNode(tmpDir, stateScript, ['get', 'large-change', 'verify_mode']);
 
     expect(result.status).toBe(0);
-    expect(mode.stdout.trim()).toBe('full');
+    expect(result.stderr).toContain('recommendation=full');
+    expect(mode.stdout.trim()).toBe('null');
   }, 20_000);
 
   it('scale defaults to light when no tasks.md, no specs, and no git diff', async () => {
@@ -3591,7 +3631,8 @@ describe('comet scripts', () => {
     const mode = runNode(tmpDir, stateScript, ['get', 'tiny-change', 'verify_mode']);
 
     expect(result.status).toBe(0);
-    expect(mode.stdout.trim()).toBe('light');
+    expect(result.stderr).toContain('recommendation=light');
+    expect(mode.stdout.trim()).toBe('null');
   });
 
   it('scale returns full when tasks exceed threshold', async () => {
@@ -3620,7 +3661,8 @@ describe('comet scripts', () => {
     const mode = runNode(tmpDir, stateScript, ['get', 'many-tasks', 'verify_mode']);
 
     expect(result.status).toBe(0);
-    expect(mode.stdout.trim()).toBe('full');
+    expect(result.stderr).toContain('recommendation=full');
+    expect(mode.stdout.trim()).toBe('null');
   });
 
   it('scale uses base_ref from .comet.yaml when plan has no base-ref header', async () => {
@@ -3664,7 +3706,8 @@ describe('comet scripts', () => {
     const mode = runNode(tmpDir, stateScript, ['get', 'base-ref-change', 'verify_mode']);
 
     expect(result.status).toBe(0);
-    expect(mode.stdout.trim()).toBe('full');
+    expect(result.stderr).toContain('recommendation=full');
+    expect(mode.stdout.trim()).toBe('null');
   }, 20_000);
 
   it('blocks build-complete when review_mode is null for full workflow', async () => {
@@ -3715,6 +3758,7 @@ describe('comet scripts', () => {
       ].join('\n'),
     );
 
+    await prepareBuildEvidence(tmpDir, 'review-off');
     const result = runNode(tmpDir, stateScript, ['transition', 'review-off', 'build-complete']);
 
     expect(result.status).toBe(0);
@@ -3741,6 +3785,7 @@ describe('comet scripts', () => {
       ].join('\n'),
     );
 
+    await prepareBuildEvidence(tmpDir, 'review-standard');
     const result = runNode(tmpDir, stateScript, [
       'transition',
       'review-standard',
@@ -3771,6 +3816,7 @@ describe('comet scripts', () => {
       ].join('\n'),
     );
 
+    await prepareBuildEvidence(tmpDir, 'hotfix-no-review');
     const result = runNode(tmpDir, stateScript, [
       'transition',
       'hotfix-no-review',
@@ -4593,7 +4639,7 @@ describe('comet scripts', () => {
           'archived: false',
           '',
         ].join('\n'),
-        ['- [x] done task', '- [ ] pending task'].join('\n'),
+        ['* [x] done task', '- [ ] pending task', '```md', '- [ ] example only', '```'].join('\n'),
       );
 
       const result = runNode(tmpDir, stateScript, ['check', 'recover-build', 'build', '--recover']);
@@ -5165,6 +5211,7 @@ describe('comet scripts', () => {
       await fs.mkdir(path.join(tmpDir, 'docs'), { recursive: true });
       await fs.writeFile(path.join(tmpDir, 'docs', 'report.md'), 'verify report');
 
+      await prepareBuildEvidence(tmpDir, 'reverify-test');
       const result = runNode(tmpDir, stateScript, [
         'transition',
         'reverify-test',

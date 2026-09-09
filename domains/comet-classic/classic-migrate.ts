@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { collectClassicEvidence, type ClassicEvidence } from './classic-evidence.js';
 import { resolveClassicStepId } from './classic-resolver.js';
-import { readClassicState, writeClassicState } from './classic-store.js';
+import { readClassicState, writeClassicState, withClassicStateLock } from './classic-store.js';
 import {
   CLASSIC_MIGRATION_VERSION,
   type ClassicProfile,
@@ -128,6 +128,13 @@ async function removeCreatedFiles(files: readonly string[]): Promise<void> {
 }
 
 export async function ensureClassicRun(
+  changeDir: string,
+  options: EnsureClassicRunOptions,
+): Promise<ClassicRunContext> {
+  return withClassicStateLock(changeDir, () => ensureClassicRunLocked(changeDir, options));
+}
+
+async function ensureClassicRunLocked(
   changeDir: string,
   options: EnsureClassicRunOptions,
 ): Promise<ClassicRunContext> {

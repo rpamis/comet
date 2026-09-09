@@ -752,7 +752,10 @@ describe('Classic script bundles', () => {
       source: 'comet-state',
       from: { phase: 'open' },
       to: { phase: 'design' },
-      effects: [{ field: 'phase', from: 'open', to: 'design' }],
+      effects: [
+        { field: 'checkEpoch', to: 1 },
+        { field: 'phase', from: 'open', to: 'design' },
+      ],
     });
     expect(next.stdout).toContain('SKILL: comet-design');
     expect(validate.status).toBe(0);

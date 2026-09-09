@@ -24,8 +24,9 @@ describe('comet-open English batch completion protocol', () => {
     );
 
     expect(skill).toContain('comet classic openspec -- status --change "<name>" --json');
-    expect(skill).toContain('Every artifact listed in `applyRequires` must be `done`');
-    expect(skill).toContain('Treat `isComplete` as diagnostic only');
+    expect(skill).toContain('validates the full required closure');
+    expect(skill).toContain('comet state artifacts <name> --json');
+    expect(skill).toContain('isComplete is diagnostic');
     expect(skill).toContain('If any split item fails these checks');
     expect(skill).toContain('comet state check <name> design');
   });
@@ -41,7 +42,7 @@ describe('comet-open English batch completion protocol', () => {
     expect(skill).toContain('`ready`: fetch its instructions');
     expect(skill).toContain('`blocked`: follow `missingDeps`');
     expect(skill).toContain('dependencies in the `applyRequires` closure');
-    expect(skill).toContain('until every item in `applyRequires` is `done`');
+    expect(skill).toContain('until the full required closure is done or legitimately skipped');
     expect(skill).toContain('an optional artifact outside `applyRequires` must not block');
   });
 });

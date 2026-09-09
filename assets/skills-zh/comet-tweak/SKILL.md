@@ -1,6 +1,6 @@
 ---
 name: comet-tweak
-description: "Comet 预设 —— 处理可收敛为单一 OpenSpec change 的轻量或中等变更。"
+description: 'Comet 预设 —— 处理可收敛为单一 OpenSpec change 的轻量或中等变更。'
 ---
 
 # Comet 预设路径：Tweak
@@ -12,6 +12,7 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 适用于串联 OpenSpec 的轻量改动，例如配置调整、文档或 prompt 优化，以及需 spec 驱动（含 delta spec）但不需要完整 `/comet-classic` 深度设计流程的中等变更。delta spec 在 tweak 中是一等公民正常产物，需要 delta spec 本身不构成升级理由。
 
 **适用条件**（必须全部满足）：
+
 1. 可收敛为**单一 OpenSpec change**
 2. 不需要 Superpowers Design Doc 和完整 plan 才能澄清方案
 3. 不涉及跨模块、跨层级的架构协调
@@ -42,13 +43,15 @@ Tweak 是 Comet 五阶段能力的预设工作流，不是独立的平行流程�
 **立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
 
 <!-- external-openspec-skill-override -->
+
 **外部 OpenSpec Skill 覆写：** 加载后不得执行其中直接官方 CLI、固定 cwd 或固定物理 OpenSpec 路径的指令；所有 OpenSpec 命令改用 `comet classic openspec -- <args...>`，所有 change 与 artifact 路径改用本轮绑定的 `<classic-*>` 逻辑根。
 
 技能加载后，按其指引创建精简版产物：
-  - `proposal.md` — 变更动机 + 目标 + 范围
-  - `design.md` — 简短实现说明（无需方案对比）
-  - `tasks.md` — 任务清单（建议控制在合理规模，数量本身不触发升级，见「升级判定」）
-  - `delta spec`（可选）— 若变更影响已有 spec 的验收场景，作为正常产物创建（仅含 `## MODIFIED Requirements` 或 `## ADDED Requirements`）。delta spec 是 OpenSpec brownfield 改动的核心产物，需要 delta spec 本身不构成升级理由
+
+- `proposal.md` — 变更动机 + 目标 + 范围
+- `design.md` — 简短实现说明（无需方案对比）
+- `tasks.md` — 任务清单（建议控制在合理规模，数量本身不触发升级，见「升级判定」）
+- `delta spec`（可选）— 若变更影响已有 spec 的验收场景，作为正常产物创建（仅含 `## MODIFIED Requirements` 或 `## ADDED Requirements`）。delta spec 是 OpenSpec brownfield 改动的核心产物，需要 delta spec 本身不构成升级理由
 
 初始化 Comet 状态文件：
 
@@ -96,6 +99,7 @@ comet guard <change-name> open --apply
 **立即执行：** 使用 Skill 工具加载 `openspec-apply-change` 技能。禁止跳过此步骤。
 
 <!-- external-openspec-skill-override -->
+
 **外部 OpenSpec Skill 覆写：** 加载后只采用其 apply 语义；其中任何直接官方 CLI、固定 cwd 或固定物理 OpenSpec 路径都必须替换为 `comet classic openspec -- <args...>` 与 `<classic-*>` 逻辑根。
 
 技能加载后，以当前 `<change-name>` 作为输入，按 `openspec-apply-change` 的指引执行 OpenSpec apply 流程：
@@ -168,7 +172,7 @@ Tweak 流程默认 **一次性连续执行**。调用 `/comet-tweak` 后，agent
 
 ## 升级判定
 
-tweak 的升级判定只决定是否从轻量预设转为 full；delta spec 本身不是升级理由，文件数不自动升级，`comet state scale` 只决定验证轻重。
+tweak 的升级判定只决定是否从轻量预设转为 full；delta spec 本身不是升级理由，文件数不自动升级，`comet state scale` 只提供验证轻重建议，不写入配置，Verify 根据实际风险选择。
 
 若由 `/comet-classic` 入口传入 intent frame，tweak 在 build 前只复核 `risk_signal` 和升级信号：新增 capability、public API、schema 变更、跨模块协调或深层架构问题。命中时进入现有升级决策点；delta spec 仍是 tweak 的正常产物，不因存在 delta spec 自动升级；不得重新实现入口意图识别。
 

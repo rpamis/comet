@@ -1,5 +1,6 @@
-import { promises as fs } from 'fs';
 import path from 'path';
+import { parseClassicTasks } from './classic-tasks.js';
+import { collectClassicSpecFiles } from './classic-paths.js';
 import type { ClassicStateProjection } from './classic-state.js';
 import {
   assertClassicLayoutReadable,
@@ -146,17 +147,9 @@ async function directFileEvidence(
 
 async function deltaSpecEvidence(projectRoot: string, changeDir: string): Promise<ClassicEvidence> {
   const specsDir = path.join(changeDir, 'specs');
-  let entries: string[];
+  let existing: string[];
   try {
-    const relativeSpecs = relativeSource(projectRoot, specsDir);
-    const inspection = await inspectProtectedProjectPath(projectRoot, relativeSpecs, {
-      label: 'OpenSpec delta-spec directory',
-      expected: 'directory',
-    });
-    if (!inspection.exists) {
-      return { code: 'openspec.delta-spec', satisfied: false };
-    }
-    entries = await fs.readdir(specsDir);
+    existing = await collectClassicSpecFiles(projectRoot, specsDir);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return { code: 'openspec.delta-spec', satisfied: false };
@@ -167,22 +160,6 @@ async function deltaSpecEvidence(projectRoot: string, changeDir: string): Promis
       detail: `unsafe delta-spec path: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  const candidates = entries.map((entry) => path.join(specsDir, entry, 'spec.md'));
-  const existing = (
-    await Promise.all(
-      candidates.map(async (file) => {
-        try {
-          return (await protectedProjectFileExists(projectRoot, relativeSource(projectRoot, file), {
-            label: 'OpenSpec delta spec',
-          }))
-            ? file
-            : null;
-        } catch {
-          return null;
-        }
-      }),
-    )
-  ).filter((file): file is string => file !== null);
   return {
     code: 'openspec.delta-spec',
     satisfied: existing.length > 0,
@@ -211,8 +188,8 @@ async function taskEvidence(projectRoot: string, tasksFile: string): Promise<Cla
       detail: `unsafe tasks artifact: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  const tasks = [...source.matchAll(/^\s*[-*]\s+\[([ xX])\]\s+/gmu)];
-  const complete = tasks.filter((match) => match[1].toLowerCase() === 'x').length;
+  const tasks = parseClassicTasks(source);
+  const complete = tasks.filter((task) => task.completed).length;
   return {
     code: 'build.tasks-complete',
     satisfied: tasks.length > 0 && complete === tasks.length,

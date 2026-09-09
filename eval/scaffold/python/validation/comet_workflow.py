@@ -14,6 +14,8 @@ import json
 import re
 from pathlib import Path
 
+import yaml
+
 WORKSPACE = Path("/workspace")
 RESULTS_FILE = "_test_results.json"
 DOCS_LAYOUT_TREATMENT = "COMET_CLASSIC_DOCS_LAYOUT"
@@ -27,6 +29,22 @@ def _failed(name: str, message: str) -> dict:
     return {"check": name, "status": "failed", "message": message}
 
 
+def project_config(workspace: Path) -> dict:
+    try:
+        config = yaml.safe_load((workspace / ".comet/config.yaml").read_text(encoding="utf-8"))
+    except (OSError, ValueError, yaml.YAMLError):
+        return {}
+    return config if isinstance(config, dict) else {}
+
+
+def classic_changes_relative(workspace: Path, context: dict | None = None) -> Path:
+    classic = project_config(workspace).get("classic")
+    layout = classic.get("artifact_layout") if isinstance(classic, dict) else None
+    if layout not in {"docs", "legacy"}:
+        layout = "docs" if (context or {}).get("treatment_name") == DOCS_LAYOUT_TREATMENT else "legacy"
+    return Path("docs/openspec/changes" if layout == "docs" else "openspec/changes")
+
+
 def _uses_docs_layout() -> bool:
     """Return whether the current eval treatment selects the docs catalogue."""
     try:
@@ -37,11 +55,8 @@ def _uses_docs_layout() -> bool:
 
 
 def _changes_relative() -> Path:
-    return (
-        Path("docs/openspec/changes")
-        if _uses_docs_layout()
-        else Path("openspec/changes")
-    )
+    context = {"treatment_name": DOCS_LAYOUT_TREATMENT} if _uses_docs_layout() else {}
+    return classic_changes_relative(WORKSPACE, context)
 
 
 def check_openspec_artifacts() -> dict:

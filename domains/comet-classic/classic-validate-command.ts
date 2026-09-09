@@ -133,10 +133,11 @@ export const classicValidateCommand: ClassicCommandHandler = withProjectContext(
       fail(`bound_branch='${text(value)}' is not a string or null`);
     }
   }
-  if (Object.prototype.hasOwnProperty.call(record, 'verify_failures')) {
-    const value = record.verify_failures;
-    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-      fail(`verify_failures='${text(value)}' is not a non-negative integer`);
+  for (const field of ['verify_failures', 'check_epoch']) {
+    if (!Object.prototype.hasOwnProperty.call(record, field)) continue;
+    const value = record[field];
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+      fail(`${field}='${text(value)}' is not a non-negative safe integer`);
     }
   }
   for (const field of ['design_doc', 'plan', 'handoff_context', 'verification_report'] as const) {
