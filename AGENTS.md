@@ -112,6 +112,7 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 ```
 comet-runtime.mjs ← domains/comet-classic/*
 comet-state.mjs ← domains/comet-classic/classic-state-entry.ts
+comet-check.mjs ← domains/comet-classic/classic-check-entry.ts (执行并绑定验证证据)
 comet-guard.mjs ← domains/comet-classic/classic-guard-entry.ts
 comet-handoff.mjs ← domains/comet-classic/classic-handoff-entry.ts (写入 handoff_context/handoff_hash)
 comet-archive.mjs ← domains/comet-classic/classic-archive-entry.ts

@@ -45,6 +45,10 @@ export interface TrajectoryEvent {
     | 'state_migrated'
     | 'state_transitioned'
     | 'command_check_recorded'
+    | 'command_check_executed'
+    | 'command_check_started'
+    | 'command_checks_invalidated'
+    | 'command_check_consumed'
     | 'recovery_reconciled';
   runId: string;
   data: Record<string, unknown>;

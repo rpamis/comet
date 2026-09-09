@@ -1084,7 +1084,7 @@ describe('update command helpers', () => {
     );
   });
 
-  it('does not self-update the global package for an explicit current-project refresh', async () => {
+  it('self-updates the package by default for an explicit current-project refresh', async () => {
     await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
     await fs.writeFile(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'), '# Comet');
 
@@ -1095,18 +1095,16 @@ describe('update command helpers', () => {
       await updateCommand(tmpDir, { currentProject: true, json: true });
       const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
       expect(result.npm).toMatchObject({
-        scope: 'skipped',
-        status: 'skipped',
-        command: null,
-        reason: 'self-update disabled for current-project updates; pass --self-update to opt in',
+        scope: 'global',
+        status: 'updated',
       });
     } finally {
       log.mockRestore();
       homedirSpy.mockRestore();
     }
 
-    expect(mockedGetLatestVersion).not.toHaveBeenCalled();
-    expect(mockedSpawn).not.toHaveBeenCalled();
+    expect(mockedGetLatestVersion).toHaveBeenCalled();
+    expect(mockedSpawn.mock.calls.some((call) => (call[1] ?? []).includes('install'))).toBe(true);
   });
 
   it('does not suppress the CodeGraph prompt when only package self-update is skipped', async () => {
@@ -1118,7 +1116,11 @@ describe('update command helpers', () => {
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
-      await updateCommand(tmpDir, { currentProject: true, installMode: 'copy' });
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        skipSelfUpdate: true,
+        installMode: 'copy',
+      });
     } finally {
       log.mockRestore();
       homedirSpy.mockRestore();
@@ -1131,7 +1133,32 @@ describe('update command helpers', () => {
     expect(mockedSpawn).not.toHaveBeenCalled();
   });
 
-  it('does not self-update for implicit JSON current-project mode even with global scope', async () => {
+  it('does not recreate Claude instructions when updating a Codex-only project', async () => {
+    const home = path.join(tmpDir, 'instructions-home');
+    vi.spyOn(os, 'homedir').mockReturnValue(home);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+      await fs.mkdir(path.join(tmpDir, '.agents', 'skills', 'comet'), { recursive: true });
+      await fs.writeFile(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md'), '# Comet\n');
+      await updateCommand(tmpDir, {
+        currentProject: true,
+        platform: 'codex',
+        skipSelfUpdate: true,
+        json: true,
+      });
+      await expect(fs.access(path.join(tmpDir, 'CLAUDE.md'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain(
+        '<comet-ambient-resume>',
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('self-updates for implicit JSON current-project mode with global scope', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-implicit-current-global-scope');
     const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -1139,17 +1166,16 @@ describe('update command helpers', () => {
       await updateCommand(tmpDir, { json: true, scope: 'global' });
       const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
       expect(result.npm).toMatchObject({
-        scope: 'skipped',
-        status: 'skipped',
-        reason: 'self-update disabled for current-project updates; pass --self-update to opt in',
+        scope: 'global',
+        status: 'updated',
       });
     } finally {
       log.mockRestore();
       homedirSpy.mockRestore();
     }
 
-    expect(mockedGetLatestVersion).not.toHaveBeenCalled();
-    expect(mockedSpawn).not.toHaveBeenCalled();
+    expect(mockedGetLatestVersion).toHaveBeenCalled();
+    expect(mockedSpawn).toHaveBeenCalled();
   });
 
   it('blocks registry prerelease downgrade when current-project explicitly opts into self-update', async () => {
@@ -1975,13 +2001,11 @@ describe('update command helpers', () => {
     expect(result.mode).toBeUndefined();
     expect(result.skills.targets).toHaveLength(1);
     expect(result.npm).toMatchObject({
-      scope: 'skipped',
-      status: 'skipped',
-      command: null,
-      reason: 'self-update disabled for current-project updates; pass --self-update to opt in',
+      scope: 'global',
+      status: 'updated',
     });
-    expect(mockedGetLatestVersion).not.toHaveBeenCalled();
-    expect(mockedSpawn).not.toHaveBeenCalled();
+    expect(mockedGetLatestVersion).toHaveBeenCalled();
+    expect(mockedSpawn).toHaveBeenCalled();
   });
 
   it('does not update global targets when the interactive scope selects current project', async () => {
@@ -2000,7 +2024,7 @@ describe('update command helpers', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     mockedSelect.mockResolvedValueOnce('current-project' as never);
     try {
-      await updateCommand(tmpDir, { skipNpm: true, installMode: 'copy' });
+      await updateCommand(tmpDir, { installMode: 'copy' });
     } finally {
       log.mockRestore();
       homedirSpy.mockRestore();
@@ -2010,6 +2034,7 @@ describe('update command helpers', () => {
       'comet workflow resolve . --activate --json',
     );
     await expect(fs.readFile(globalSkill, 'utf8')).resolves.toBe('# Stale global Comet\n');
+    expect(mockedGetLatestVersion).toHaveBeenCalled();
   });
 
   it('does not fall back to global targets when bare update has no indexed projects', async () => {

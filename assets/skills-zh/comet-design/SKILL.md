@@ -1,6 +1,6 @@
 ---
 name: comet-design
-description: "Comet Classic 阶段 2 —— 为 change 产出深度技术 Design Doc。"
+description: 'Comet Classic 阶段 2 —— 为 change 产出深度技术 Design Doc。'
 ---
 
 # Comet 阶段 2：深度设计（Design）
@@ -61,11 +61,13 @@ handoff_hash: <sha256>
 ```
 
 默认交接包是 **compact 可追溯摘录**，不是 agent summary：
+
 - `design-context.json`：机器索引，包含 change、phase、canonical spec、source paths、hash
 - `design-context.md`：供 Superpowers 阅读的上下文，包含脚本标记、source path、line range、sha256、确定性摘录
 - 超出摘录预算时标记 `[TRUNCATED]`，并保留 Full source 路径
 
 beta 交接包是 **结构化 spec projection**，用于减少 OpenSpec 原文 token 占用但避免实现漂移：
+
 - `spec-context.json`：机器索引，包含 change、phase、mode=beta、source paths、context_hash、files 角色
 - `spec-context.md`：供 Superpowers 阅读的紧凑上下文，verbatim 投影 delta spec 文件并按 hash 引用支撑产物
 - OpenSpec delta spec 仍是 canonical spec；projection 缺失或过期时必须重新生成或读取源 spec，不得用 agent summary 替代
@@ -77,6 +79,7 @@ comet handoff <change-name> design --write --full
 ```
 
 交接包来源来自 OpenSpec open 阶段产物：
+
 - `proposal.md`：目标、动机、范围、非目标
 - `design.md`：高层架构决策、方案约束
 - `tasks.md`：初始任务边界
@@ -103,9 +106,9 @@ Machine handoff: <classic-change-dir>/.comet/handoff/design-context.json
 OpenSpec Context Pack: <classic-change-dir>/.comet/handoff/spec-context.md
 Machine handoff: <classic-change-dir>/.comet/handoff/spec-context.json
 
-OpenSpec 产物是上游事实源，但不得用“跳过重复上下文探索”削弱 Superpowers `brainstorming` 的澄清流程。
+OpenSpec 产物是上游事实源。引用已确认需求，brainstorming 只深入尚未解决的技术选择，不重新访谈已确认需求。
 你的任务是基于交接包做深度技术设计：实现方案、技术风险、测试策略、边界条件。
-如发现目标、范围、非目标、验收场景或关键约束仍不清楚，必须先继续提问并形成设计方案，不得只进行一轮问答就创建 Design Doc。
+如发现目标、范围、非目标、验收场景或关键约束仍不清楚，先澄清缺口；信息已足够时直接形成设计方案，不设置最低问答轮数。
 不要重写 proposal/spec；如发现 OpenSpec delta spec 缺少验收场景，只能提出 Spec Patch，并回写 OpenSpec delta spec；不要在 Design Doc 中创建第二份需求 spec。Spec Patch 仅限于补充验收场景、修正歧义描述或添加边界条件，不得大幅重写 delta spec 的结构或范围——如需大幅修改，应标记为设计发现并回到 brainstorming 确认。
 
 Design Doc frontmatter 必须最小化，只包含：
@@ -115,7 +118,8 @@ role: technical-design
 canonical_spec: openspec
 ---
 
-按 Superpowers `brainstorming` 技能原流程推进：澄清问题、2-3 个方案、分段确认设计。不得提前写入 Design Doc。
+按风险决定设计深度：存在真实取舍时比较 2-3 个方案；既有架构已决定方案时说明依据，不为凑数编造替代方案。高风险接口、迁移、安全与并发必须说明失败路径及验证策略。
+只采用 brainstorming 的探索与设计方法；相邻设计段合并展示，Comet Step 1c 是正式设计确认边界。外部 Skill 不得额外要求整份设计文档再次批准，不得自动调用 writing-plans、切换工作区或进入实施。不得提前写入 Design Doc。
 ```
 
 禁止在未加载该技能的情况下继续。
@@ -123,6 +127,7 @@ canonical_spec: openspec
 如 Superpowers `brainstorming` 技能不可用，停止流程并提示安装或启用 Superpowers 技能，不要用普通对话替代该步骤。
 
 技能加载后，按其指引产出设计方案（以对话形式呈现）：
+
 - 技术方案：架构、数据流、关键技术选型与风险
 - 测试策略
 - 需求/范围缺口与需回写的 Spec Patch
@@ -137,13 +142,13 @@ brainstorming 阶段不写入 Design Doc 文件，仅产出设计方案供 Step 
 brainstorming 产出设计方案后，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户明确确认设计方案**。不得在用户确认前创建最终 Design Doc、写入 `design_doc`、运行 design guard，或进入 `/comet-build`。
 
 暂停时只展示必要摘要：
+
 - 采用的技术方案
 - 关键取舍与风险
 - 测试策略
 - 如有 Spec Patch，列出将回写的 delta spec 变更
 
 用户明确确认后，才继续 Step 2。若用户要求调整，继续 brainstorming 迭代，直到用户确认。
-
 
 ### 1d. Brainstorming 检查点定稿
 
@@ -177,6 +182,7 @@ brainstorming 产出设计方案后，**必须按 `comet-classic/reference/decis
 ```
 
 **上下文压缩说明**：每次增量更新 `brainstorm-summary.md` 后，都是相对安全的压缩恢复点。Brainstorming 完成后，如上下文窗口紧张，应优先在此处进行压缩。压缩后重新加载以下文件继续 Step 2：
+
 - `<classic-change-dir>/.comet/handoff/brainstorm-summary.md`
 - `<classic-change-dir>/.comet/handoff/design-context.md`（或 beta 模式的 `spec-context.md`）
 - `<classic-change-dir>/.comet/handoff/design-context.json`（或 beta 模式的 `spec-context.json`）

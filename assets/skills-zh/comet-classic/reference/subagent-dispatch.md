@@ -9,6 +9,7 @@
 > 当一个 task 按 `review_mode` 完成验收并被勾选后，**立即派发下一个 task**，不得停止、总结或询问用户是否继续。用户期望所有 task 按顺序自动执行，无需手动干预。任务之间暂停会中断工作流，导致用户每次都需要手动恢复。
 >
 > 仅在以下情况才停止并等待用户输入：
+>
 > - 任务处于 **BLOCKED** 状态（`review_mode: standard` 下风险任务 1 轮 review-fix 仍未通过，或 `review_mode: thorough` 下任务级审查 2 轮审查-修复仍未通过）
 > - 存在无法从仓库、计划或既有上下文消除的真实歧义
 > - 用户**明确**要求暂停
@@ -30,9 +31,10 @@
 
 ### 0. 派发强制约束（关键）
 
-主会话**仅负责协调**，禁止直接执行 task。主会话禁止修改源代码。协调者唯一允许的文件修改是 plan、OpenSpec task 和 subagent 进度检查点的持久化更新。不得把多个 task 打包给同一个 agent。通过已加载的 Superpowers `subagent-driven-development` 技能，为每个 task 派发一个全新的后台 implementer agent；当 `review_mode` 需要审查或修复时，分别派发全新的 task reviewer 和修复 agent：
+主会话**仅负责协调**，禁止直接执行 task。主会话禁止修改源代码。协调者唯一允许的文件修改是 plan、OpenSpec task 和 subagent 进度检查点的持久化更新。不得把多个 task 打包给同一个 agent。一个 task 应是含实现与测试的独立验收结果；为每个新 task 派发全新的后台 implementer，需要审查时派发独立 reviewer：
 
-- **禁止**跨 task 或角色复用 implementer、reviewer 或修复 agent。每个 agent 拥有全新的隔离上下文，并且只接收当前角色所需的单个 task 上下文。
+- **禁止**跨 task 或角色复用 agent。同一 task 的审查修复优先恢复原 implementer，并补充未解决反馈及最新 diff；仅在会话不可恢复或没有实际进展时新建修复 agent。reviewer 始终独立于 implementer。
+- 复查只覆盖修复内容、未解决反馈及新增风险；不重启已经完成的需求分析或全量审查。原有审查轮次上限不重置。
 - 若子代理派发操作失败，不得继续派发或由主会话代写实现；将当前任务记录为 `BLOCKED` 并写明失败原因，按当前 change 的阻塞与恢复流程处理。
 
 ### 1. 派发 Prompt 与回报契约
@@ -73,12 +75,13 @@ reviewer prompt 必须保持中立：
 - **reviewer（任务级/最终）**：按 diff 大小、复杂度和风险缩放。小机械 diff 不需要最高档；微妙并发改动才上高档。
 - **final whole-branch review**：使用可用的最高档 model，不用会话默认档。
 
-
 ### 2. Implementer 范围限制
 
 implementer 只负责实现、测试和提交代码。**implementer 不得勾选 plan 或 OpenSpec task**，也不得只更新内置 Todo 或对话 checklist。
 
 ### 3. TDD 硬约束
+
+以下加载要求按独立上下文执行一次：恢复同一 implementer 会话且技能内容仍完整存在时不重复加载；发生上下文压缩后重新加载。预期 RED 按异常调试协议的例外处理。
 
 若 `tdd_mode: tdd`，每个 implementer 和修复 agent 必须先使用 Skill 工具加载 Superpowers `test-driven-development` 技能，并在 prompt 中同时注入：
 
@@ -95,6 +98,7 @@ implementer 或修复 agent 回报必须提供 **RED 失败命令与失败摘要
 - 当前 plan task 唯一文本及映射的 OpenSpec task 文本
 - 当前阶段：`implementing | task-review | checkoff | done | blocked`
 - 本次派发使用的 model（可以识别时）
+- 原 implementer 的可恢复会话标识（平台提供时）与交接产物路径；缺失时不能假定会话仍存在
 - 实现提交哈希、变更文件和 RED/GREEN 证据
 - 已选择的 `review_mode`
 - 已通过的审查阶段及尚未解决的 reviewer 反馈
@@ -115,11 +119,11 @@ Comet 不读取、不写入、也不要求任何 Superpowers `subagent-driven-de
 
 **build 阶段任务审查预算**（仅这些，不得额外增加）：
 
-| `review_mode` | build 阶段每任务 reviewer |
-|---------------|--------------------------|
-| `off` | 0 |
-| `standard` | 仅风险任务（见下方规则） |
-| `thorough` | 每个任务（spec + quality） |
+| `review_mode` | build 阶段每任务 reviewer  |
+| ------------- | -------------------------- |
+| `off`         | 0                          |
+| `standard`    | 仅风险任务（见下方规则）   |
+| `thorough`    | 每个任务（spec + quality） |
 
 所有任务完成后直接返回 `comet-build`；不得追加 final reviewer。整个 change 的唯一最终集成代码审查由 `comet-verify` 按 `review_mode` 执行。
 

@@ -1,6 +1,6 @@
 ---
 name: comet-open
-description: "Comet Classic 阶段 1 —— 开启 OpenSpec change 并建立 proposal/design/tasks/.comet.yaml 产物。"
+description: 'Comet Classic 阶段 1 —— 开启 OpenSpec change 并建立 proposal/design/tasks/.comet.yaml 产物。'
 ---
 
 # Comet 阶段 1：开启（Open）
@@ -65,9 +65,11 @@ comet classic openspec -- --version
 **立即执行：** 使用 Skill 工具加载 `openspec-explore` 技能。禁止跳过此步骤。
 
 <!-- external-openspec-skill-override -->
+
 **外部 OpenSpec Skill 覆写：** 加载后只采用其探索方法；其中任何直接运行官方 CLI、切换到固定 cwd 或读写固定物理 OpenSpec 路径的指令都不得执行。所有 CLI 调用改用 `comet classic openspec -- <args...>`，所有文件路径改用本轮绑定的 `<classic-*>` 逻辑根。
 
-技能加载后，按其指引探索问题空间，但不得把一次问答视为足够澄清。必须围绕下列内容继续提问、对齐并形成澄清摘要：
+技能加载后，先复用用户提供的 PRD、设计与已确认事实，围绕下列内容检查缺口并形成澄清摘要。只对会改变范围、方案或验收的未知项提问；信息已足够时可以不追加问答，不设置最低澄清轮数：
+
 - 目标：用户真正要解决的问题和期望结果
 - 非目标：本次明确不做的内容
 - 范围边界：涉及/不涉及的模块、用户、平台或数据
@@ -76,11 +78,14 @@ comet classic openspec -- --version
 
 澄清摘要必须包含：目标、非目标、范围边界、关键未知项、验收场景草案。
 
+完整 PRD 以路径和相关章节引用，不复制全文。已确认事实不重复征求同意；发现矛盾时只澄清矛盾点。OpenSpec 技能仍为强依赖，探索结束必须返回 Comet；不得由外部 Skill 自行进入设计、实施或归档。Open 最终产物确认保持独立。
+
 ### 1a. PRD 拆分预检（阻塞点）
 
 当用户输入是大型 PRD、路线图、完整产品方案，或澄清摘要显示包含多个独立能力、模块、用户路径或里程碑时，必须在创建 OpenSpec artifacts 前评估是否需要拆分为多个 change。
 
 拆分预检必须基于已澄清的信息，输出候选拆分清单。每个候选拆分项必须包含：
+
 - 建议 change 名称
 - 目标与范围边界
 - 明确非目标
@@ -88,6 +93,7 @@ comet classic openspec -- --version
 - 对应的核心验收场景
 
 满足任一条件时，应推荐拆分：
+
 - PRD 包含多个可独立设计、构建、验证、归档的 capability
 - 涉及多个模块或用户路径，且其中一部分可独立交付
 - 存在明显分阶段里程碑
@@ -97,6 +103,7 @@ comet classic openspec -- --version
 如推荐拆分，必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户选择。
 
 用户选择必须包含：
+
 - 「创建多个 OpenSpec changes」— 按候选拆分逐个创建独立 change
 - 「保持为一个 change」— 继续单 change 流程，并在 proposal/design/tasks 中记录不拆分原因
 - 「调整拆分方案后继续」— 用户说明调整方向后，重新输出候选拆分清单并再次确认
@@ -119,6 +126,7 @@ comet state check <name> design
 ```
 
 解析 OpenSpec JSON 时必须同时确认：
+
 - `changeRoot` 解析后必须等于 resolver 绑定的 `<classic-change-dir>`；不匹配时停止，Classic runtime 不支持仓库外 change root
 - schema 必须包含核心 artifact ID `proposal`、`design`、`tasks`；允许存在额外 artifacts，但核心 ID 缺失时停止并报告不兼容 schema
 - `applyRequires` 列出的每个 artifact 在 `artifacts` 中都必须为 `done`
@@ -149,11 +157,13 @@ resolved brief 或 change 名称仍不明确时不得运行 `comet classic opens
 **立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
 
 <!-- external-openspec-skill-override -->
+
 **外部 OpenSpec Skill 覆写：** 加载后只采用其 change 创建语义；其中任何直接运行官方 CLI、切换到固定 cwd 或把 change 写到固定物理 OpenSpec 根的指令都不得执行。创建、status 与 instructions 全部改用 `comet classic openspec -- <args...>`，文件路径全部改用 `<classic-change-dir>` 等本轮逻辑根。
 
 完整 `/comet-classic` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能；只有用户明确要求一次性生成提案和 artifacts 时才允许加载。
 
 <!-- external-openspec-skill-override -->
+
 **外部 OpenSpec Skill 覆写：** 对 `openspec-propose` 同样不得采用其直接官方 CLI、固定 cwd 或固定物理 OpenSpec 路径；命令必须通过 adapter，产物必须写入 resolver 返回的 `<classic-*>` 逻辑根。
 
 技能加载后，按其指引创建 change 骨架；当 Step 1b 已形成范围明确的 resolved brief 时，覆盖其"STOP and wait for user direction"行为，避免重复询问。
@@ -248,6 +258,7 @@ comet state check <name> open
 用户确认问题必须以单选题形式呈现，包含以下摘要和选项：
 
 **摘要内容**：
+
 - **change 名称与 resolved brief**：最终名称、目标、非目标、范围边界和关键未知项
 - **proposal.md**：问题背景、目标、范围
 - **specs 等 schema artifacts**：能力、需求和关键验收场景
@@ -255,6 +266,7 @@ comet state check <name> open
 - **tasks.md**：任务数量和关键任务描述
 
 **选项**：
+
 - 「确认，继续下一阶段」— 产物符合预期，执行阶段守卫流转
 - 「需要调整」— 附带调整说明，修改后重新请求确认
 

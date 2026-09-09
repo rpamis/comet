@@ -2419,6 +2419,7 @@ async function createWorkingDirs(
   language: string = 'en',
   artifactLayout: 'legacy' | 'docs' = 'docs',
   initializationPermit?: ClassicLayoutInitializationPermit,
+  platformIds: readonly string[] = ['claude'],
 ): Promise<void> {
   const layout = await assertClassicLayoutInitializationSafe(
     projectPath,
@@ -2442,7 +2443,11 @@ async function createWorkingDirs(
   }
   await checkpointClassicLayoutInitialization(projectPath, layout.initializationPermit);
 
-  await installCometProjectInstructions(projectPath, language === 'zh-CN' ? 'zh' : 'en');
+  await installCometProjectInstructions(
+    projectPath,
+    language === 'zh-CN' ? 'zh' : 'en',
+    platformIds,
+  );
 }
 
 export {

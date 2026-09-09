@@ -1935,6 +1935,7 @@ async function updateSingleProject(
         projectPath,
         projectLanguageId,
         projectConfigDocument?.ambient_resume ?? true,
+        targets.filter((target) => target.scope === 'project').map((target) => target.platform.id),
       );
       projectInstructionsUpdated = projectInstructionResult.changed;
       if (projectInstructionsUpdated > 0) {
@@ -2295,10 +2296,7 @@ async function updateAllIndexedProjects(
   };
 }
 
-function resolveSelfUpdateOptions(
-  options: UpdateOptions,
-  refreshesOnlyCurrentProject: boolean,
-): UpdateOptions {
+function resolveSelfUpdateOptions(options: UpdateOptions): UpdateOptions {
   if (options.selfUpdate && (options.skipSelfUpdate || options.skipNpm)) {
     throw new Error('--self-update cannot be combined with --skip-self-update or --skip-npm');
   }
@@ -2310,18 +2308,6 @@ function resolveSelfUpdateOptions(
       npmSkipReason: options.skipSelfUpdate
         ? 'self-update disabled by --skip-self-update'
         : 'self-update disabled by --skip-npm',
-    };
-  }
-  // A current-project refresh touches one project only, so it must not upgrade
-  // the shared npm package by default; an explicit --self-update opts back in.
-  // The default project/global `comet update` keeps upgrading the package and
-  // refreshing assets together, matching the documented update contract.
-  if (refreshesOnlyCurrentProject && !options.selfUpdate) {
-    return {
-      ...options,
-      skipPackageSelfUpdate: true,
-      npmSkipReason:
-        'self-update disabled for current-project updates; pass --self-update to opt in',
     };
   }
   return { ...options, skipPackageSelfUpdate: false };
@@ -2390,10 +2376,7 @@ export async function updateCommand(
   }
 
   const scopeMode = await resolveProjectScopeMode('update', options, registryProjects.length);
-  options = resolveSelfUpdateOptions(
-    options,
-    options.currentProject === true || scopeMode === 'current-project',
-  );
+  options = resolveSelfUpdateOptions(options);
   if (scopeMode === 'all-projects') {
     return updateAllIndexedProjects(registryProjects, options, log);
   }

@@ -37,8 +37,10 @@ export async function runClassicScript(
   handler: ClassicCommandHandler,
   argv: readonly string[] = process.argv.slice(2),
 ): Promise<number> {
-  const json = argv.includes('--json');
-  const args = argv.filter((argument) => argument !== '--json');
+  const boundary = argv.indexOf('--');
+  const owns = (index: number) => boundary < 0 || index < boundary;
+  const json = argv.some((arg, index) => owns(index) && arg === '--json');
+  const args = argv.filter((argument, index) => !owns(index) || argument !== '--json');
   let result: ClassicCommandResult;
   try {
     const help = classicCommandHelp(command, args);

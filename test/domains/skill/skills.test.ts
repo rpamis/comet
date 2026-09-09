@@ -2424,9 +2424,7 @@ describe('skills', () => {
       expect(zhDesign).toContain(
         '必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户明确确认设计方案',
       );
-      expect(zhDesign).toContain(
-        '不得用“跳过重复上下文探索”削弱 Superpowers `brainstorming` 的澄清流程',
-      );
+      expect(zhDesign).toContain('brainstorming 只深入尚未解决的技术选择');
       expect(zhDesign).not.toContain('跳过重复上下文探索，直接进入设计提问');
       expect(zhOpen).toContain('comet-classic/reference/workspace.md');
       expect(zhOpen).toContain('推荐只作说明');
@@ -2517,19 +2515,19 @@ describe('skills', () => {
       expect(zhBuild).toContain('完成任务验收后进入 Verify');
       expect(zhBuild).toContain('分段或任务级审查发现 CRITICAL/IMPORTANT 问题时必须在 Build 修复');
       expect(zhBuild).toContain(
-        'comet state record-check <change-name> build --command "<实际运行的构建命令>" --exit-code 0',
+        'comet check run <change-name> build --local -- <program> [args...]',
       );
       expect(zhVerify).toContain(
-        'comet state record-check <change-name> verify --command "<实际运行的验证命令>" --exit-code 0',
+        'comet check run <change-name> verify --local -- <program> [args...]',
       );
-      expect(zhBuild).toContain('`--command` 只记录命令文本，Comet **绝不会执行该文本**');
-      expect(zhVerify).toContain('`--command` 只记录命令文本，Comet **绝不会执行该文本**');
-      expect(zhBuild).toContain('build 与 verify 证据彼此独立，不能互相替代');
+      expect(zhBuild).toContain('Comet **绝不会执行该文本**，也不能据此自动推进');
+      expect(zhVerify).toContain('手工 `record-check` 仅是声明，不能自动放行');
+      expect(zhBuild).toContain('构建通过不替代测试和验收场景');
       expect(zhVerify).toContain('verify 与 build 证据彼此独立，不能互相替代');
       expect(zhBuild).toContain(
         '`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据',
       );
-      expect(zhVerify).toContain('不能把该绕过标记视为可审计的验证或构建证据');
+      expect(zhVerify).toContain('`COMET_SKIP_BUILD=1` 不是可审计证据');
 
       // MEDIUM: comet-verify Step 1b auto-repairs CRITICAL/IMPORTANT findings
       // without turning mandatory work into a user decision.
@@ -2626,9 +2624,7 @@ describe('skills', () => {
       // CRITICAL: implementation-time crashes must enter systematic debugging and keep tests in the current change.
       expect(zhBuild).toContain('必须使用 Skill 工具加载 Superpowers `systematic-debugging` 技能');
       expect(zhBuild).toContain('`comet-classic/reference/debug-gate.md`');
-      expect(zhBuild).toContain(
-        '运行程序、测试、构建或手动验证时出现崩溃、异常行为、测试失败或构建失败',
-      );
+      expect(zhBuild).toContain('出现非预期的崩溃、异常行为、测试失败或构建失败');
       expect(zhHotfix).toContain('必须使用 Skill 工具加载 Superpowers `systematic-debugging` 技能');
       expect(zhHotfix).toContain('`comet-classic/reference/debug-gate.md`');
       expect(zhTweak).toContain('`comet-classic/reference/debug-gate.md`');
@@ -3252,7 +3248,9 @@ describe('skills', () => {
         '派发第一个 task 前，必须完成 Superpowers `subagent-driven-development` 技能的预检计划审查',
       );
       expect(zhDispatch).toContain('不得把多个 task 打包给同一个 agent');
-      expect(zhDispatch).toContain('每个 task 派发一个全新的后台 implementer agent');
+      expect(zhDispatch).toContain('为每个新 task 派发全新的后台 implementer');
+      expect(zhDispatch).toContain('同一 task 的审查修复优先恢复原 implementer');
+      expect(zhDispatch).toContain('reviewer 始终独立于 implementer');
       expect(zhDispatch).toContain('任务级审查/修复预算');
       expect(zhDispatch).toContain('整个 change 的最终集成审查由 `comet-verify` 统一执行');
       expect(zhDispatch).toContain('通过已加载的 Superpowers `subagent-driven-development` 技能');
@@ -3798,7 +3796,12 @@ describe('skills', () => {
       );
 
       expect(stateScript).toContain('review_mode: reviewMode');
-      expect(stateScript).toContain("review_mode: ['off', 'standard', 'thorough']");
+      const stateOptions = await fs.readFile(
+        path.resolve('domains', 'comet-classic', 'classic-state-options.ts'),
+        'utf-8',
+      );
+      expect(stateOptions).toContain("review_mode: ['off', 'standard', 'thorough']");
+      expect(stateScript).toContain("from './classic-state-options.js'");
       expect(stateScript).toContain("projectConfigValue('review_mode')");
       expect(stateScript).toContain('review_mode must be selected before leaving build');
       expect(guardScript).toContain('reviewModeSelected');

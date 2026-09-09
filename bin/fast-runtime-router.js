@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 
 const CLASSIC_ASSETS = {
   state: 'assets/skills/comet/scripts/comet-state.mjs',
+  check: 'assets/skills/comet/scripts/comet-check.mjs',
   guard: 'assets/skills/comet/scripts/comet-guard.mjs',
   handoff: 'assets/skills/comet/scripts/comet-handoff.mjs',
   archive: 'assets/skills/comet/scripts/comet-archive.mjs',

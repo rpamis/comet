@@ -32,6 +32,25 @@ describe('Comet project instructions', () => {
     }
   });
 
+  it('does not create or edit Claude instructions for non-Claude targets', async () => {
+    await syncCometProjectInstructions(tmpDir, 'en', true, ['codex']);
+    await expect(fs.access(path.join(tmpDir, 'CLAUDE.md'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain(
+      '<comet-ambient-resume>',
+    );
+    await fs.writeFile(path.join(tmpDir, 'CLAUDE.md'), '# User rules\n');
+    await syncCometProjectInstructions(tmpDir, 'zh', true, ['codex']);
+    await expect(fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8')).resolves.toBe(
+      '# User rules\n',
+    );
+    await syncCometProjectInstructions(tmpDir, 'zh', true, ['codex', 'claude']);
+    await expect(fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8')).resolves.toContain(
+      '<comet-ambient-resume>',
+    );
+  });
+
   it('preserves existing user rules and updates only the managed block', async () => {
     const agents = path.join(tmpDir, 'AGENTS.md');
     await fs.writeFile(agents, '# User Rules\n\n必须中文回答。\n', 'utf8');

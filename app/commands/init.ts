@@ -1150,6 +1150,7 @@ export async function initCommand(
           language.artifactLanguage,
           workflowDecision.classicArtifactLayout,
           classicLayoutInitializationPermit,
+          selectedPlatformIds,
         );
       }
       workingDirsCreated = true;
@@ -1158,6 +1159,7 @@ export async function initCommand(
         projectPath,
         language.id,
         initialProjectConfigDocument?.ambient_resume ?? true,
+        selectedPlatformIds,
       );
 
       const successfulCometPlatforms = new Set(

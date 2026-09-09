@@ -34,12 +34,8 @@ import {
 import { resolveClassicStepId } from './classic-resolver.js';
 import { reconcileClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
-import {
-  CLASSIC_WIRE_KEYS,
-  RUN_WIRE_KEYS,
-  parseClassicStateDocument,
-  type ClassicState,
-} from './classic-state.js';
+import { parseClassicStateDocument, type ClassicState } from './classic-state.js';
+import { FIELD_ENUMS, MACHINE_OWNED_FIELDS, SETTABLE_FIELDS } from './classic-state-options.js';
 import { readClassicState, writeClassicState } from './classic-store.js';
 import {
   CLASSIC_TRANSITION_EVENTS,
@@ -48,7 +44,12 @@ import {
 } from './classic-transitions.js';
 import { readRunState } from '../../domains/engine/state.js';
 import { appendTrajectory, readTrajectory } from '../../domains/engine/run-store.js';
-import { recordCommandCheck, type CommandCheckScope } from './classic-command-checks.js';
+import {
+  recordCommandCheck,
+  invalidateCommandChecks,
+  type CommandCheckScope,
+} from './classic-command-checks.js';
+import { classicGuardCommand } from './classic-guard.js';
 import { readClassicConfigValue } from './classic-project-config.js';
 import {
   classicEntryCheckEnvelope,
@@ -79,39 +80,6 @@ const PROFILES = ['full', 'hotfix', 'tweak'] as const;
 const PHASES = ['open', 'design', 'build', 'verify', 'archive'] as const;
 const ARTIFACT_LANGUAGES = ['en', 'zh-CN'] as const;
 const EVENTS = CLASSIC_TRANSITION_EVENTS;
-const MACHINE_OWNED_FIELDS = new Set<string>([
-  ...RUN_WIRE_KEYS,
-  'archive_confirmation',
-  'verify_failures',
-  'classic_profile',
-  'classic_migration',
-  'bound_branch',
-]);
-const SETTABLE_FIELDS = new Set<string>(
-  CLASSIC_WIRE_KEYS.filter((field) => !MACHINE_OWNED_FIELDS.has(field)),
-);
-
-const FIELD_ENUMS: Record<string, readonly string[]> = {
-  workflow: PROFILES,
-  phase: PHASES,
-  context_compression: ['off', 'beta'],
-  build_mode: ['subagent-driven-development', 'executing-plans', 'direct'],
-  build_pause: ['null', 'plan-ready'],
-  subagent_dispatch: ['null', 'confirmed'],
-  tdd_mode: ['tdd', 'direct'],
-  review_mode: ['off', 'standard', 'thorough'],
-  isolation: ['current', 'branch', 'worktree'],
-  verify_mode: ['light', 'full'],
-  auto_transition: ['true', 'false'],
-  verify_result: ['pending', 'pass', 'fail'],
-  branch_status: ['pending', 'handled'],
-  archive_confirmation: ['pending', 'confirmed'],
-  archived: ['true', 'false'],
-  direct_override: ['true', 'false'],
-  classic_profile: PROFILES,
-  classic_migration: ['1'],
-};
-
 const PATH_FIELDS = new Set(['design_doc', 'plan', 'verification_report', 'handoff_context']);
 const CLASSIC_FIELD_WIRE_NAMES: Partial<Record<keyof ClassicState, string>> = {
   archived: 'archived',
@@ -141,10 +109,12 @@ class CommandOutput {
   stdout: string[] = [];
   stderr: string[] = [];
   envelope?: CliOutputEnvelope;
+  data?: unknown;
 
   result(exitCode = 0): ClassicCommandResult {
     return {
       exitCode,
+      ...(this.data === undefined ? {} : { data: this.data }),
       ...(this.stdout.length > 0 ? { stdout: this.stdout.join('\n') + '\n' } : {}),
       ...(this.stderr.length > 0 ? { stderr: this.stderr.join('\n') } : {}),
       ...(this.envelope === undefined ? {} : { envelope: this.envelope }),
@@ -785,12 +755,8 @@ async function transition(output: CommandOutput, name: string, event: string): P
     await requireBuildDecisions(name);
   } else if (event === 'verify-pass') {
     await requirePhase(name, 'verify');
-    const report = await readField(name, 'verification_report');
-    if (!report || !(await exists(path.resolve(report)))) {
-      fail(
-        `ERROR: Cannot transition '${name}': verification_report must point to an existing report file`,
-      );
-    }
+    const verification = await classicGuardCommand([name, 'verify'], { json: false });
+    if (verification.exitCode !== 0) fail(verification.stderr ?? `ERROR: Cannot verify '${name}'`);
   } else if (event === 'verify-fail') {
     await requirePhase(name, 'verify');
   } else if (event === 'archive-confirm') {
@@ -1022,7 +988,7 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
 
 async function fieldStatus(field: string, value: string, file?: string): Promise<string> {
   if (!value || value === 'null') return `  - ${field}: PENDING`;
-  if (file && !(await exists(path.resolve(file)))) {
+  if (file && !(await exists(path.resolve(classicCommandProjectRoot(), file)))) {
     return `  - ${field}: BROKEN (path ${value} does not exist)`;
   }
   return `  - ${field}: DONE (${value})`;
@@ -1344,6 +1310,38 @@ async function recover(output: CommandOutput, name: string): Promise<void> {
   const phase = await readField(name, 'phase');
   const workflow = await readField(name, 'workflow');
   const locale = classicLocale(await readField(name, 'language'));
+  const projection = await readClassicState(directory, { migrate: false });
+  if (projection.run) await invalidateCommandChecks(directory, projection.run);
+  const checkpoint = path.join(directory, '.comet', 'subagent-progress.md');
+  const tasks = path.join(directory, 'tasks.md');
+  const taskText = (await exists(tasks))
+    ? await readClassicProjectFile(classicCommandProjectRoot(), tasks, { label: 'Recovery tasks' })
+    : '';
+  const plan = await readField(name, 'plan');
+  output.data = {
+    change: name,
+    phase,
+    workflow,
+    projectRoot: classicCommandProjectRoot(),
+    changeDir: directory,
+    currentStep: projection.run?.currentStep ?? null,
+    configuration: projection.classic,
+    nextTask: taskText.split(/\r?\n/u).find((line) => /^- \[ \]/u.test(line)) ?? null,
+    checkpoint: (await exists(checkpoint))
+      ? {
+          path: checkpoint,
+          content: await readClassicProjectFile(classicCommandProjectRoot(), checkpoint, {
+            label: 'Recovery checkpoint',
+          }),
+        }
+      : null,
+    evidence: { status: 'rerun-required', reason: 'cold-recovery' },
+    requiredFiles: [
+      file,
+      tasks,
+      ...(plan && plan !== 'null' ? [path.resolve(classicCommandProjectRoot(), plan)] : []),
+    ],
+  };
   output.envelope = classicRecoveryEnvelope({ name, phase, locale });
   output.stdout.push(
     output.envelope.summary,

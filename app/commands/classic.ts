@@ -9,7 +9,7 @@ import {
   recordCometWorkflowResult,
 } from '../../domains/comet-entry/plugin-context.js';
 
-export const PUBLIC_CLASSIC_COMMANDS = ['state', 'guard', 'handoff', 'archive'] as const;
+export const PUBLIC_CLASSIC_COMMANDS = ['state', 'guard', 'handoff', 'archive', 'check'] as const;
 
 export type PublicClassicCommand = (typeof PUBLIC_CLASSIC_COMMANDS)[number];
 
@@ -40,12 +40,24 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
         'Usage: comet classic <command> [args]',
         '',
         'Commands:',
+        '  state current | state next <name>    Inspect the current change or next workflow action',
+        '  check run <name> <build|verify> ...  Execute a check and record evidence',
+        '',
+        'Advanced workflow operations (may write state or execute checks):',
+        '  state <command>                     Read or update workflow state',
+        '  guard <name> <phase> [--apply]        Validate requirements; optionally advance',
+        '  handoff <name> design --write        Write the Design handoff',
+        '  archive <name> [--dry-run]           Archive a completed change',
+        '  validate <name>                     Validate the Classic state schema',
         '  workspace prepare <name> --isolation <mode>  Prepare or reuse the Classic workspace',
         '  workspace resolve <name>                    Route to the selected Classic workspace',
         '  openspec -- <openspec-args...>       Run OpenSpec from the configured Classic root',
         '  root show                            Print the configured Classic artifact roots',
         '  root move docs --dry-run              Inspect the legacy-to-docs migration',
         '  root move docs --apply                Apply the migration immediately',
+        '',
+        'Use comet classic <command> --help for details and side effects.',
+        'Public shortcuts: comet state, comet check, comet guard, comet handoff, comet archive.',
         '',
       ].join('\n'),
     );
@@ -125,6 +137,10 @@ function splitIntegrationArgs(args: readonly string[]): ClassicIntegrationArgs {
   let summary: string | undefined;
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
+    if (value === '--') {
+      cliArgs.push(...args.slice(index));
+      break;
+    }
     const next = args[index + 1];
     if (
       value === '--comet-task' ||

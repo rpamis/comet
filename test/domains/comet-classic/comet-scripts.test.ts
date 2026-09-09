@@ -217,6 +217,7 @@ describe('comet scripts', () => {
       'comet-guard.mjs',
       'comet-handoff.mjs',
       'comet-state.mjs',
+      'comet-check.mjs',
       'comet-intent.mjs',
       'comet-yaml-validate.mjs',
       'comet-hook-guard.mjs',
@@ -3999,6 +4000,7 @@ describe('comet scripts', () => {
         'branch_status: pending',
         'verified_at: null',
         'archived: false',
+        'auto_transition: true',
         '',
       ].join('\n'),
     );
@@ -4042,6 +4044,27 @@ describe('comet scripts', () => {
       'verification_report',
       'docs/superpowers/reports/verify-change.md',
     ]);
+    const missingEvidence = runNode(tmpDir, stateScript, [
+      'transition',
+      'verify-change',
+      'verify-pass',
+    ]);
+    expect(missingEvidence.status).not.toBe(0);
+    await writeFile(
+      path.join(tmpDir, 'openspec', 'changes', 'verify-change', 'tasks.md'),
+      '- [x] verified implementation\n',
+    );
+    const check = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+      'run',
+      'verify-change',
+      'verify',
+      '--local',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    ]);
+    expect(check.status, check.stderr).toBe(0);
     const pass = runNode(tmpDir, stateScript, ['transition', 'verify-change', 'verify-pass']);
     const passedPhase = runNode(tmpDir, stateScript, ['get', 'verify-change', 'phase']);
     const passedResult = runNode(tmpDir, stateScript, ['get', 'verify-change', 'verify_result']);
@@ -4053,7 +4076,7 @@ describe('comet scripts', () => {
       'archive_confirmation',
     ]);
 
-    expect(pass.status).toBe(0);
+    expect(pass.status, pass.stderr).toBe(0);
     expect(passedPhase.stdout.trim()).toBe('archive');
     expect(passedResult.stdout.trim()).toBe('pass');
     expect(passedCount.stdout.trim()).toBe('0');
@@ -4282,14 +4305,15 @@ describe('comet scripts', () => {
       JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
     );
     expect(runNode(tmpDir, guardScript, ['guard-verify', 'verify']).status).not.toBe(0);
-    const recorded = runNode(tmpDir, stateScript, [
-      'record-check',
+    const recorded = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+      'run',
       'guard-verify',
       'verify',
-      '--command',
-      'pnpm test',
-      '--exit-code',
-      '0',
+      '--local',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
     ]);
     expect(recorded.status, recorded.stderr).toBe(0);
 

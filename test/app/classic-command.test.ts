@@ -15,6 +15,16 @@ vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
 }));
 
 describe('Classic command facade', () => {
+  it('offers a concise Classic command overview with drill-down help', async () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const { runClassicGroupFacade } = await import('../../app/commands/classic.js');
+    expect(await runClassicGroupFacade(['--help'])).toBe(0);
+    const help = String(stdout.mock.calls[0][0]);
+    expect(help).toContain('check run');
+    expect(help).toContain('Advanced workflow operations');
+    expect(help).toContain('<command> --help');
+    expect(runClassicCli).not.toHaveBeenCalled();
+  });
   it.each(['--help', '-h'])(
     'does not collect context or record workflow success for %s',
     async (flag) => {
@@ -35,10 +45,10 @@ describe('Classic command facade', () => {
     collectCometPluginContext.mockReset();
   });
 
-  it('exposes exactly the four stable public Classic commands', async () => {
+  it('exposes the stable public Classic commands including executed checks', async () => {
     const { PUBLIC_CLASSIC_COMMANDS } = await import('../../app/commands/classic.js');
 
-    expect(PUBLIC_CLASSIC_COMMANDS).toEqual(['state', 'guard', 'handoff', 'archive']);
+    expect(PUBLIC_CLASSIC_COMMANDS).toEqual(['state', 'guard', 'handoff', 'archive', 'check']);
   });
 
   it('registers the Classic facade from its single public command source', async () => {
@@ -47,7 +57,7 @@ describe('Classic command facade', () => {
     // The facade command list is inlined in the CLI entry so that importing
     // the Classic CLI graph is deferred to the action (lazy load). The four
     // stable names must still drive the command registration loop.
-    expect(source).toContain("= ['state', 'guard', 'handoff', 'archive'] as const");
+    expect(source).toContain("= ['state', 'guard', 'handoff', 'archive', 'check'] as const");
     expect(source).toContain('for (const command of PUBLIC_CLASSIC_COMMANDS)');
     expect(source).toContain(
       "const { runClassicFacade } = await import('../commands/classic.js');",

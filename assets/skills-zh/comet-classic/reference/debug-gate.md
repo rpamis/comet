@@ -6,6 +6,8 @@
 
 ## 核心规则
 
+例外：已核对失败原因、确实因尚未实现目标行为而失败的 TDD RED 属于正常开发证据，继续 RED-GREEN-REFACTOR，不加载调试技能。环境错误、测试加载失败、无关回归或原因不明的 RED 不属于此例外。
+
 - 立即使用 Skill 工具加载 Superpowers `systematic-debugging` 技能
 - 在完成根因调查前，不得提出或实施源码修复
 

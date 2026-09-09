@@ -68,11 +68,13 @@ export function renderCometAmbientResumeContent(languageId: SkillLanguageId): st
 export async function installCometProjectInstructions(
   projectPath: string,
   languageId: SkillLanguageId,
+  platformIds: readonly string[] = ['claude'],
 ): Promise<ProjectInstructionResult> {
   const content = renderCometAmbientResumeContent(languageId);
   const files = [];
 
   for (const file of PROJECT_INSTRUCTION_FILES) {
+    if (file === 'CLAUDE.md' && !platformIds.includes('claude')) continue;
     const instruction = await resolveProtectedProjectInstructionPath(projectPath, file);
     const result = await mergeManagedMarkdownBlock(instruction.target, {
       tagName: COMET_AMBIENT_RESUME_TAG,
@@ -91,13 +93,14 @@ export async function syncCometProjectInstructions(
   projectPath: string,
   languageId: SkillLanguageId,
   ambientResumeEnabled: boolean,
+  platformIds: readonly string[] = ['claude'],
 ): Promise<{ changed: number }> {
   if (!ambientResumeEnabled) {
     const result = await removeCometProjectInstructions(projectPath);
     return { changed: result.removed };
   }
 
-  const result = await installCometProjectInstructions(projectPath, languageId);
+  const result = await installCometProjectInstructions(projectPath, languageId, platformIds);
   return { changed: result.changed };
 }
 

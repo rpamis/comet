@@ -1,6 +1,6 @@
 ---
 name: comet-build
-description: "Comet Classic 阶段 3 —— 恢复或创建实施计划并执行其任务。"
+description: 'Comet Classic 阶段 3 —— 恢复或创建实施计划并执行其任务。'
 ---
 
 # Comet 阶段 3：计划与构建（Build）
@@ -42,7 +42,12 @@ comet state check <name> build
 
 只使用 `writing-plans` 的计划编写与自检流程；计划完成后返回 Comet Build，由 Comet 统一处理后续执行配置。若 Skill 加载或计划生成失败，停止 Build 并报告原因。
 
+**Comet 调用契约**：将以下要求一并传入 `writing-plans`，覆盖其通用的细粒度步骤和完整代码模板：每个任务以一个独立可验收结果为单位，列明文件范围、依赖、约束和验收命令/场景；相关准备、实现、测试和文档归为同一任务。不得按分钟数、文件数或 RED/GREEN 步骤机械拆任务。默认不预写完整实现和测试代码；只有必须预审的接口、算法或高风险逻辑才提供必要代码片段。计划引用已确认设计，不重复需求正文。
+
+恢复时先核对已有计划、任务完成证据和已确认配置；有效计划不重新生成，已确认的工作方式不重新询问。未勾选但已有匹配提交的任务先核对审查和验收，再补齐进度，不重做实现。
+
 计划要求：
+
 - 保存至指令中给定的计划路径，不更改文件名
 - 只覆盖 tasks.md 列出的任务，不扩展范围
 - 引用设计文档，拆分为可执行任务
@@ -78,10 +83,10 @@ comet state set <name> plan docs/superpowers/plans/YYYY-MM-DD-feature.md
 
 计划写入后只提供**一个联合决策点**，一次收集：是否现在继续、执行方式、TDD 模式和代码审查模式。不得先询问“继续/暂停”，继续后又创建第二个配置阻塞点。
 
-| 选项 | 行为 | 说明 |
-|------|------|------|
-| A | 继续执行并提交配置 | 在同一次回复中选择 Step 3 的执行、TDD 和审查配置 |
-| B | 暂停切换模型 | 记录 `build_pause: plan-ready`，本次 `/comet-build` 停止，用户稍后可从 `/comet-classic` 或 `/comet-build` 恢复 |
+| 选项 | 行为               | 说明                                                                                                           |
+| ---- | ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| A    | 继续执行并提交配置 | 在同一次回复中选择 Step 3 的执行、TDD 和审查配置                                                               |
+| B    | 暂停切换模型       | 记录 `build_pause: plan-ready`，本次 `/comet-build` 停止，用户稍后可从 `/comet-classic` 或 `/comet-build` 恢复 |
 
 这是用户决策点。**必须按 `comet-classic/reference/decision-point.md` 的协议一次性展示计划摘要、暂停选项和 Step 3 全部可执行配置**。不得自动选择，也不得把暂停写入 `build_mode`。
 
@@ -119,14 +124,15 @@ comet state get <name> isolation
 
 **执行方式**：
 
-| 选项 | 技能 | 适用场景 |
-|------|------|---------|
-| A | Superpowers `subagent-driven-development` | 任务独立、复杂度高；每个任务在隔离的 implementer subagent 中执行，审查由 `review_mode` 驱动 |
-| B | Superpowers `executing-plans` | 由主会话按计划顺序执行，适合任务较少或紧密关联的改动 |
+| 选项 | 技能                                      | 适用场景                                                                                    |
+| ---- | ----------------------------------------- | ------------------------------------------------------------------------------------------- |
+| A    | Superpowers `subagent-driven-development` | 任务独立、复杂度高；每个任务在隔离的 implementer subagent 中执行，审查由 `review_mode` 驱动 |
+| B    | Superpowers `executing-plans`             | 由主会话按计划顺序执行，适合任务较少或紧密关联的改动                                        |
 
 **执行方式推荐规则**：
-- 任务数 ≥ 3 → 推荐 A
-- 任务数 ≤ 2 且无跨模块依赖 → 推荐 B
+
+- 独立可验收任务、隔离上下文收益高且交接成本低 → 推荐 A
+- 任务紧密关联、共享上下文较多或交接成本高 → 推荐 B
 - 来自 hotfix 路径 → 推荐 B
 
 执行方式、TDD 和审查表格是 Step 2 联合决策的一部分，不再单独暂停。不得用推荐规则替代用户确认。
@@ -138,20 +144,20 @@ comet state get <name> isolation
 
 **TDD 模式**：
 
-| 选项 | 含义 | 适用场景 |
-|------|------|---------|
-| `tdd` | 每个任务先写失败测试再写实现 | 推荐。变更涉及业务逻辑、新功能、API |
+| 选项     | 含义                                      | 适用场景                                                                      |
+| -------- | ----------------------------------------- | ----------------------------------------------------------------------------- |
+| `tdd`    | 每个任务先写失败测试再写实现              | 推荐。变更涉及业务逻辑、新功能、API                                           |
 | `direct` | 实现优先，不强制逐任务 Red-Green-Refactor | 仍需运行相关测试并为 bug 修复保留回归证据；hotfix/tweak 预设默认使用 `direct` |
 
 运行 `comet state set <name> tdd_mode <tdd|direct>`
 
 **代码审查模式**：
 
-| 选项 | 含义 | 适用场景 |
-|------|------|---------|
-| `off` | 不自动派发代码审查 | 文档、配置、文案、小范围低风险任务 |
-| `standard` | 任务命中风险信号时派发任务级审查，并在 Verify 执行一次最终整合审查 | 默认推荐，适合大多数普通改动 |
-| `thorough` | 每个任务派发任务级审查，并在 Verify 执行一次最终整合审查 | 高风险、多模块、架构或安全相关改动 |
+| 选项       | 含义                                                               | 适用场景                           |
+| ---------- | ------------------------------------------------------------------ | ---------------------------------- |
+| `off`      | 不自动派发代码审查                                                 | 文档、配置、文案、小范围低风险任务 |
+| `standard` | 任务命中风险信号时派发任务级审查，并在 Verify 执行一次最终整合审查 | 默认推荐，适合大多数普通改动       |
+| `thorough` | 每个任务派发任务级审查，并在 Verify 执行一次最终整合审查           | 高风险、多模块、架构或安全相关改动 |
 
 运行 `comet state set <name> review_mode <off|standard|thorough>`
 
@@ -178,6 +184,8 @@ Open 阶段已经根据 `isolation` 准备好当前目录、分支或 Worktree�
 
 **执行计划**：必须按 `build_mode` 的真实运行位置处理。
 
+向外部执行 Skill 明确传入返回边界：只能执行当前计划和已确认配置，不得因“平台支持子代理”更改 `executing-plans`，不得重新创建 Worktree、选择隔离方式、触发阶段确认、追加最终审查或调用 `finishing-a-development-branch`。完成任务后返回 Comet Build；五阶段生命周期由 Comet 独占。
+
 - `build_mode: executing-plans`：**立即执行：** 使用 Skill 工具加载 Superpowers `executing-plans` 技能。禁止跳过此步骤。若加载失败，停止并报告错误，不要用普通对话替代该步骤。技能加载后，ARGUMENTS 必须包含与 Step 1 相同的 Language 约束：`Language: 使用 comet state get <name> language 读取到的 Comet 配置产物语言输出`。按计划执行。
 - `build_mode: subagent-driven-development`：主会话只负责协调，禁止直接编写实现代码。**立即执行：** 使用 Skill 工具加载 Superpowers `subagent-driven-development` 技能。技能加载后，读取 `comet-classic/reference/subagent-dispatch.md` 获取 Comet 专属扩展（子代理派发、任务隔离、勾选验证、TDD 约束、连续执行、上下文恢复），与技能工作流配合应用。若两者发生冲突，以更具体的 Comet 扩展为准。
 - 若子代理派发操作失败，按 `comet-classic/reference/subagent-dispatch.md` 将当前任务记录为 `BLOCKED` 并带上失败原因；主会话不得接管实现。
@@ -185,6 +193,7 @@ Open 阶段已经根据 `isolation` 准备好当前目录、分支或 Worktree�
 **TDD 模式执行约束**：
 
 若 `tdd_mode: tdd`：
+
 - `build_mode: executing-plans`：加载执行技能后、执行第一个任务前，**立即执行：** 使用 Skill 工具加载 Superpowers `test-driven-development` 技能一次。禁止跳过此步骤。技能加载后，从第一个未勾选任务开始，对每个任务遵循已加载的 TDD Red-Green-Refactor 循环执行。不得跳过失败测试验证阶段。后续任务不再重新加载该技能，直接遵循已加载流程。若上下文压缩后恢复，重新运行本步骤加载 TDD 技能一次，然后从第一个未勾选任务继续。
 - `build_mode: subagent-driven-development`：主会话不加载 TDD skill；TDD 约束和证据门槛已在 `comet-classic/reference/subagent-dispatch.md` 中定义，每个后台 implementer 和修复 agent 必须自行使用 Skill 工具加载 Superpowers `test-driven-development` 技能，并遵循 Comet 注入的 TDD 硬约束。
 
@@ -200,7 +209,7 @@ Open 阶段已经根据 `isolation` 准备好当前目录、分支或 Worktree�
 
 ### 3b. 执行中异常调试（异常调试协议）
 
-执行任务期间，只要运行程序、测试、构建或手动验证时出现崩溃、异常行为、测试失败或构建失败，必须使用 Skill 工具加载 Superpowers `systematic-debugging` 技能。在完成根因调查前，不得提出或实施源码修复。
+执行任务期间，出现非预期的崩溃、异常行为、测试失败或构建失败，必须使用 Skill 工具加载 Superpowers `systematic-debugging` 技能。在完成根因调查前，不得提出或实施源码修复。TDD 中因待实现行为而产生、且失败原因已核对的预期 RED 是正常证据，不触发异常调试；加载错误、环境错误、无关回归或原因不明的 RED 仍须调查。
 
 具体调查、最小失败测试、修复验证和保持当前 change 验证闭环的要求，按 `comet-classic/reference/debug-gate.md` 执行。
 
@@ -208,21 +217,25 @@ Open 阶段已经根据 `isolation` 准备好当前目录、分支或 Worktree�
 
 实施过程中发现初版 spec 不完整时，按变更规模分级处理：
 
-| 规模 | 触发条件 | 做法 |
-|------|---------|------|
-| 小 | 遗漏验收场景、边界条件 | 直接编辑 delta spec + design.md，追加 tasks.md 任务 |
-| 中 | 接口变更、新增组件、数据流变化 | **暂停、展示选择并等待用户明确确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming` 更新 Design Doc + delta spec |
-| 大 | 全新 capability 需求 | **暂停、展示拆分选择并等待用户明确确认**；用户确认后，通过 `/comet-open` 创建独立 change |
+已确认范围内、不改变公开行为和验收约束的实现细节调整，只更新实施计划及理由，不重新开启 Open/Design。下面的分级规则仅用于真实规格或范围变化。
+
+| 规模 | 触发条件                       | 做法                                                                                                                     |
+| ---- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| 小   | 遗漏验收场景、边界条件         | 直接编辑 delta spec + design.md，追加 tasks.md 任务                                                                      |
+| 中   | 接口变更、新增组件、数据流变化 | **暂停、展示选择并等待用户明确确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming` 更新 Design Doc + delta spec |
+| 大   | 全新 capability 需求           | **暂停、展示拆分选择并等待用户明确确认**；用户确认后，通过 `/comet-open` 创建独立 change                                 |
 
 **50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户决定是否拆分为新 change**。
 
 创建独立 change 时必须调用 `/comet-open`，不得直接调用 `/opsx:new`。`/comet-open` 会同时创建 OpenSpec 产物和 `.comet.yaml`，避免新 change 脱离 Comet 状态机。
 
 **用户选择必须包含**：
+
 - 「拆分为新 change」— 通过 `/comet-open` 创建独立 change
 - 「继续在当前 change 内完成」— 记录范围扩展决策，更新 tasks.md 和 delta spec 后继续
 
 **原则**：
+
 - delta spec 是活文档，本阶段期间随时可修改
 - 每次更新应提交，commit message 说明变更原因
 - 不提前同步到 main spec，归档时统一同步
@@ -244,7 +257,7 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - **上下文压缩后恢复**：按 `comet-classic/reference/context-recovery.md` 执行，phase 参数为 `build`。
 - **用户手动修改恢复**：按 `comet-classic/reference/dirty-worktree.md` 协议处理未提交改动。该协议定义了检查步骤、归因分类和禁令。build 阶段的特殊处理：
   1. 归因后，若 diff 暗示计划或 spec 已变化，按 Step 4「Spec 增量更新」分级处理
-- **长任务拆分**：单任务超过 200 行代码变更时，考虑拆分为多个子任务分别提交
+- **长任务拆分**：以独立验收结果和依赖边界拆分；行数只提示审查风险，不单独决定任务数量
 
 ## 退出条件
 
@@ -258,15 +271,17 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 - 已完成 `review_mode` 要求的任务级或分段审查；不在 Build 重复 Verify 的最终集成审查
 - **阶段守卫**：运行 `comet guard <change-name> build --apply`，全部 PASS 后由守卫推进到 `phase: verify`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
-Guard 会运行自动探测到的项目构建检查（检测到时使用 `npm run build`、Maven 或 Cargo）。构建失败时 guard 会打印失败命令输出，作为排查证据。
+优先用 Runtime 执行并记录检查，避免手动运行后 Guard 再跑一次：
 
-若项目没有可自动探测的构建命令，用户或 Agent 必须先自行运行真实构建命令，再单独记录构建证据：
+仅对确定性本地检查使用 `--local`；外部服务或环境不确定的检查省略该参数，证据只使用一次。Windows 的普通 npm/pnpm shim 由平台适配器处理；包含 shell 元字符的 batch 参数会被拒绝，复杂检查应使用 `node <script>` 等明确入口，不把整段 shell 字符串当作程序名。
 
 ```bash
-comet state record-check <change-name> build --command "<实际运行的构建命令>" --exit-code 0
+comet check run <change-name> build --local -- <program> [args...]
 ```
 
-`--command` 只记录命令文本，Comet **绝不会执行该文本**。build 与 verify 证据彼此独立，不能互相替代。`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据。
+Guard 先检查配置、任务和产物，再复用相同输入与环境下的 Runtime 证据；没有有效证据时才运行可探测的构建。源文件、测试、配置、依赖、子模块变化或冷恢复均要求重跑。执行期间输入变化也不得复用。失败日志保存在返回的 `logRef`，按需读取，不把全部构建日志重复放入上下文。
+
+`state record-check --command` 仍只保存手工声明，Comet **绝不会执行该文本**，也不能据此自动推进。build 与 verify 证据彼此独立：Verify 可引用已验证的同一构建结果，但构建通过不替代测试和验收场景。`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据。
 
 退出前运行阶段守卫推进 phase（此步骤与 `auto_transition` 无关）：
 

@@ -19,6 +19,8 @@ comet state select <change-name>
 comet state current
 comet state clear-selection
 comet state check <change-name> <phase>
+comet state check <change-name> <phase> --recover --json
+comet check run <change-name> <build|verify> --local -- <program> [args...]
 comet guard <change-name> <phase> --apply
 comet handoff <change-name> design --write
 comet archive <change-name>

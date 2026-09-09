@@ -1,4 +1,3 @@
-import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -7,7 +6,10 @@ import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.
 import { classicGuardCheckEnvelope, classicLocale } from './classic-output-language.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import {
+  usableCommandCheck,
   latestCommandCheck,
+  executeCommandCheck,
+  consumeCommandCheck,
   type CommandCheckScope,
   type RecordedCommandCheck,
 } from './classic-command-checks.js';
@@ -390,22 +392,6 @@ function removedProjectCommandRun(field: 'build_command' | 'verify_command'): Co
   };
 }
 
-function runInferred(command: string): CommandRun {
-  // Inferred build/verify commands (npm run build, mvn, cargo, …) run through
-  // the platform's default shell so .cmd shims resolve on Windows without
-  // requiring bash. Output is returned raw (no `+ ` prefix).
-  const result = spawnSync(command, {
-    shell: true,
-    cwd: classicCommandInvocationCwd(),
-    encoding: 'utf8',
-    timeout: 300_000,
-  });
-  return {
-    status: result.status ?? 1,
-    output: `${result.stdout ?? ''}${result.stderr ?? ''}`.replace(/\n+$/u, ''),
-  };
-}
-
 function invocationTarget(relative: string): string {
   return path.resolve(classicCommandInvocationCwd(), relative);
 }
@@ -439,7 +425,7 @@ function evidenceDetail(record: RecordedCommandCheck): string {
 }
 
 function recoveryCommand(change: string, scope: CommandCheckScope, command: string): string {
-  return `comet state record-check ${change} ${scope} --command "${command}" --exit-code 0`;
+  return `comet check run ${change} ${scope} --local -- ${command}`;
 }
 
 async function commandCheckPasses(
@@ -458,17 +444,44 @@ async function commandCheckPasses(
       return removedProjectCommandRun(removedField);
     }
   }
-  const inferred = scope === 'build' ? await inferredBuildCommand() : null;
-  if (inferred) return runInferred(inferred);
-
-  const recorded = await latestCommandCheck(classicCommandProjectRoot(), changeDir, run, scope);
+  const root = classicCommandProjectRoot();
+  let recorded = await usableCommandCheck(root, changeDir, run, scope);
+  if (recorded && path.resolve(root, recorded.cwd) !== path.resolve(classicCommandInvocationCwd()))
+    recorded = null;
+  const inferred = scope === 'build' && !recorded ? await inferredBuildCommand() : null;
+  if (inferred) {
+    // Only this fixed, Runtime-inferred command is shell syntax. Attestations
+    // and check-run argv never enter this path.
+    recorded = await executeCommandCheck(root, changeDir, run, {
+      scope,
+      reusable: true,
+      cwd: path.relative(root, classicCommandInvocationCwd()) || '.',
+      argv:
+        process.platform === 'win32'
+          ? [process.env.ComSpec || 'cmd.exe', '/d', '/s', '/c', inferred]
+          : ['/bin/sh', '-c', inferred],
+    });
+    if (recorded.exitCode !== 0)
+      return { status: recorded.exitCode, output: `Build failed. Log: ${recorded.logRef}` };
+    if (recorded.inputBefore !== recorded.inputAfter)
+      return {
+        status: 1,
+        output: 'Build changed check inputs; rerun after the workspace is stable.',
+      };
+  }
   if (!recorded) {
+    const previous = await latestCommandCheck(root, changeDir, run, scope);
+    if (previous && previous.exitCode !== 0)
+      return {
+        status: previous.exitCode,
+        output: `Latest recorded ${scope} check failed with exit code ${previous.exitCode}.\n${evidenceDetail(previous)}\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`,
+      };
     return {
       status: 1,
       output:
         scope === 'build'
-          ? `No inferred build command or recorded build check. Detection searched: ${INFERRED_COMMAND_SOURCES.join(', ')}.\nNext: run the required command, then record it with:\n${recoveryCommand(change, scope, '<command>')}`
-          : `No recorded verify check.\nNext: run the required verification command, then record it with:\n${recoveryCommand(change, scope, '<command>')}`,
+          ? `No current Runtime build evidence. Detection searched: ${INFERRED_COMMAND_SOURCES.join(', ')}.\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`
+          : `No current Runtime verify evidence. Manual attestations, stale inputs and recovered checks require a new execution.\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`,
     };
   }
   if (recorded.exitCode !== 0) {
@@ -477,6 +490,7 @@ async function commandCheckPasses(
       output: `Latest recorded ${scope} check failed with exit code ${recorded.exitCode}.\n${evidenceDetail(recorded)}\nNext: rerun the command successfully, then record it with:\n${recoveryCommand(change, scope, recorded.command)}`,
     };
   }
+  await consumeCommandCheck(changeDir, run, recorded);
   return { status: 0, output: evidenceDetail(recorded) };
 }
 
@@ -900,7 +914,7 @@ async function guardBuildChecks(
   change: string,
   run: ClassicRunContext['run'],
 ): Promise<boolean> {
-  return runChecks(output, [
+  const blocked = await runChecks(output, [
     check('bound branch matches workspace mode', () => boundBranchMatches(changeDir, change)),
     check('isolation selected', () => isolationSelected(changeDir, change)),
     check('build_mode selected', () => buildModeSelected(changeDir, change)),
@@ -921,8 +935,9 @@ async function guardBuildChecks(
       if (!plan || plan === 'null' || !(await exists(plan))) return pass();
       return documentLanguageMatchesConfigured(changeDir, plan);
     }),
-    // Build check runs last — only after all config checks pass — to avoid
-    // wasting time on a build that would be rejected by a config failure.
+  ]);
+  if (blocked) return true;
+  return runChecks(output, [
     check('Build passes', async () => {
       const buildResult = await commandCheckPasses(changeDir, change, run, 'build');
       return buildResult.status === 0 ? pass(buildResult.output) : fail(buildResult.output);
@@ -936,15 +951,9 @@ async function guardVerifyChecks(
   change: string,
   run: ClassicRunContext['run'],
 ): Promise<boolean> {
-  return runChecks(output, [
+  const blocked = await runChecks(output, [
     check('bound branch matches workspace mode', () => boundBranchMatches(changeDir, change)),
     check('tasks.md all tasks checked', () => tasksAllDone(changeDir)),
-    // Verification command runs after tasks check — no point running tests
-    // if tasks.md is incomplete.
-    check('Verification passes', async () => {
-      const verifyResult = await commandCheckPasses(changeDir, change, run, 'verify');
-      return verifyResult.status === 0 ? pass(verifyResult.output) : fail(verifyResult.output);
-    }),
     check('verification_report exists', async () =>
       (await verificationReportExists(changeDir)) ? pass() : fail(''),
     ),
@@ -952,6 +961,13 @@ async function guardVerifyChecks(
       const report = await readField(changeDir, 'verification_report');
       if (!report || report === 'null' || !(await exists(report))) return pass();
       return documentLanguageMatchesConfigured(changeDir, report);
+    }),
+  ]);
+  if (blocked) return true;
+  return runChecks(output, [
+    check('Verification passes', async () => {
+      const result = await commandCheckPasses(changeDir, change, run, 'verify');
+      return result.status === 0 ? pass(result.output) : fail(result.output);
     }),
   ]);
 }

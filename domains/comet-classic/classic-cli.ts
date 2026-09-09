@@ -12,6 +12,7 @@ import { classicRootCommand } from './classic-root-command.js';
 import { classicStateCommand } from './classic-state-command.js';
 import { classicValidateCommand } from './classic-validate-command.js';
 import { classicWorkspaceCommand } from './classic-workspace-command.js';
+import { classicCheckCommand } from './classic-check-command.js';
 
 export interface ClassicCommandResult {
   exitCode: number;
@@ -42,6 +43,7 @@ export type ClassicCommandHandlers = Partial<Record<ClassicCommandName, ClassicC
 
 export const CLASSIC_COMMANDS = [
   'state',
+  'check',
   'validate',
   'guard',
   'handoff',
@@ -58,6 +60,7 @@ export type ClassicCommandName = (typeof CLASSIC_COMMANDS)[number];
 
 const DEFAULT_HANDLERS: ClassicCommandHandlers = {
   state: classicStateCommand,
+  check: classicCheckCommand,
   validate: classicValidateCommand,
   guard: classicGuardCommand,
   handoff: classicHandoffCommand,
@@ -145,8 +148,10 @@ export async function runClassicCli(
   argv: readonly string[],
   handlers: ClassicCommandHandlers = DEFAULT_HANDLERS,
 ): Promise<ClassicCommandResult> {
-  const json = argv[0] !== 'openspec' && argv.includes('--json');
-  const args = json ? argv.filter((argument) => argument !== '--json') : [...argv];
+  const boundary = argv.indexOf('--');
+  const owns = (index: number) => boundary < 0 || index < boundary;
+  const json = argv[0] !== 'openspec' && argv.some((arg, index) => owns(index) && arg === '--json');
+  const args = argv.filter((argument, index) => !json || !owns(index) || argument !== '--json');
   const command = args.shift();
   const result = await dispatch(command, args, { json, invocationCwd: process.cwd() }, handlers);
   return json ? jsonResult(command, result) : result;

@@ -423,15 +423,25 @@ describe('comet guard', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('[FAIL] Build passes');
-      expect(result.stderr).toContain('No inferred build command or recorded build check');
+      expect(result.stderr).toContain('No current Runtime build evidence');
       expect(result.stderr).toContain(
-        'comet state record-check commandless-build build --command "<command>" --exit-code 0',
+        'comet check run commandless-build build --local -- <program> [args...]',
       );
     });
 
     it('accepts successful build evidence and prints its source, time, and command', async () => {
       await createChange(tmpDir, 'recorded-build', buildYaml);
-      const recorded = await recordCheck('recorded-build', 'build', 'pnpm lint', 0);
+      runNode(tmpDir, guardScript, ['recorded-build', 'build']);
+      const recorded = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+        'run',
+        'recorded-build',
+        'build',
+        '--local',
+        '--',
+        process.execPath,
+        '-e',
+        'process.exit(0)',
+      ]);
       expect(recorded.status, recorded.stderr).toBe(0);
 
       const result = runNode(tmpDir, guardScript, ['recorded-build', 'build']);
@@ -439,7 +449,7 @@ describe('comet guard', () => {
       expect(result.status).toBe(0);
       expect(result.stderr).toContain('[PASS] Build passes');
       expect(result.stderr).toContain('recorded command-check');
-      expect(result.stderr).toContain('pnpm lint');
+      expect(result.stderr).toContain('process.exit(0)');
       expect(result.stderr).toMatch(/2026|2027/u);
     });
 
@@ -449,13 +459,25 @@ describe('comet guard', () => {
         path.join(tmpDir, 'reports', 'verification.md'),
         '# Verification\n\nPassed.\n',
       );
-      expect((await recordCheck('recorded-verify', 'verify', 'pnpm test', 0)).status).toBe(0);
+      runNode(tmpDir, guardScript, ['recorded-verify', 'verify']);
+      expect(
+        runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
+          'run',
+          'recorded-verify',
+          'verify',
+          '--local',
+          '--',
+          process.execPath,
+          '-e',
+          'process.exit(0)',
+        ]).status,
+      ).toBe(0);
 
       const result = runNode(tmpDir, guardScript, ['recorded-verify', 'verify']);
 
       expect(result.status).toBe(0);
       expect(result.stderr).toContain('[PASS] Verification passes');
-      expect(result.stderr).toContain('pnpm test');
+      expect(result.stderr).toContain('process.exit(0)');
     });
 
     it('requires recorded verify evidence even when an inferred build succeeds', async () => {
@@ -514,7 +536,7 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['cross-scope', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('No inferred build command or recorded build check');
+      expect(result.stderr).toContain('No current Runtime build evidence');
     });
 
     it('uses the latest same-run evidence even when an older check succeeded', async () => {
@@ -527,7 +549,7 @@ describe('comet guard', () => {
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('Latest recorded build check failed with exit code 2');
       expect(result.stderr).toContain(
-        'comet state record-check latest-build build --command "pnpm lint" --exit-code 0',
+        'comet check run latest-build build --local -- <program> [args...]',
       );
     });
 
@@ -539,7 +561,7 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['target-build', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('No inferred build command or recorded build check');
+      expect(result.stderr).toContain('No current Runtime build evidence');
     });
 
     it('ignores evidence recorded for another run', async () => {
@@ -563,7 +585,7 @@ describe('comet guard', () => {
       const result = runNode(tmpDir, guardScript, ['other-run', 'build']);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain('No inferred build command or recorded build check');
+      expect(result.stderr).toContain('No current Runtime build evidence');
     });
 
     it('does not let successful stored evidence override an inferred npm failure', async () => {
@@ -587,6 +609,7 @@ describe('comet guard', () => {
         JSON.stringify({ scripts: { build: 'node -e "process.exit(23)"' } }),
       );
       const nested = path.join(tmpDir, 'packages', 'app');
+      await writeFile(path.join(tmpDir, '.gitignore'), 'nested-build-ran\n');
       await writeFile(
         path.join(nested, 'package.json'),
         JSON.stringify({

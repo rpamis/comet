@@ -9,6 +9,7 @@
     "entries": {
       "runtime": "domains/comet-classic/classic-cli.ts",
       "state": "domains/comet-classic/classic-state-entry.ts",
+      "check": "domains/comet-classic/classic-check-entry.ts",
       "validate": "domains/comet-classic/classic-validate-entry.ts",
       "guard": "domains/comet-classic/classic-guard-entry.ts",
       "handoff": "domains/comet-classic/classic-handoff-entry.ts",
@@ -20,6 +21,7 @@
     "outputs": {
       "runtime": "assets/skills/comet/scripts/comet-runtime.mjs",
       "state": "assets/skills/comet/scripts/comet-state.mjs",
+      "check": "assets/skills/comet/scripts/comet-check.mjs",
       "validate": "assets/skills/comet/scripts/comet-yaml-validate.mjs",
       "guard": "assets/skills/comet/scripts/comet-guard.mjs",
       "handoff": "assets/skills/comet/scripts/comet-handoff.mjs",

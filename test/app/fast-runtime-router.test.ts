@@ -31,6 +31,22 @@ describe('CLI fast runtime router', () => {
 
   it('preserves the command tail without parsing it', () => {
     expect(
+      resolveFastRuntime([
+        'check',
+        'run',
+        'demo',
+        'verify',
+        '--',
+        'node',
+        'test.js',
+        '--json',
+        '--help',
+      ]),
+    ).toEqual({
+      assetPath: 'assets/skills/comet/scripts/comet-check.mjs',
+      args: ['run', 'demo', 'verify', '--', 'node', 'test.js', '--json', '--help'],
+    });
+    expect(
       resolveFastRuntime(['native', 'next', 'change', '--summary', 'ready', '--confirmed']),
     ).toEqual({
       assetPath: 'assets/skills/comet-native/scripts/comet-native-next.mjs',

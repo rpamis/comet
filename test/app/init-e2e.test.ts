@@ -1553,32 +1553,39 @@ describe('comet init E2E', () => {
     expect(platformSelectPrompt).not.toHaveBeenCalled();
   });
 
-  it('initializes only the explicit native platform target', async () => {
-    mockExternalSuccess();
-    const { platformSelectPrompt } = await import('../../app/commands/platform-select-prompt.js');
-    const { initCommand } = await import('../../app/commands/init.js');
+  it.each(['native', 'classic', 'both'] as const)(
+    'initializes only the explicit platform target for %s',
+    async (workflow) => {
+      mockExternalSuccess();
+      const { platformSelectPrompt } = await import('../../app/commands/platform-select-prompt.js');
+      const { initCommand } = await import('../../app/commands/init.js');
 
-    const result = await captureJsonOutput(() =>
-      initCommand(tmpDir, {
-        yes: true,
-        json: true,
-        platform: 'codex',
-      }),
-    );
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, {
+          yes: true,
+          json: true,
+          platform: 'codex',
+          workflow,
+        }),
+      );
 
-    expect(result).toMatchObject({
-      status: 'complete',
-      selectedPlatforms: ['codex'],
-      results: [expect.objectContaining({ platform: 'codex', comet: 'installed' })],
-    });
-    expect(platformSelectPrompt).not.toHaveBeenCalled();
-    await expect(
-      fs.access(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md')),
-    ).resolves.toBeUndefined();
-    await expect(
-      fs.access(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
-  });
+      expect(result).toMatchObject({
+        status: 'complete',
+        selectedPlatforms: ['codex'],
+        results: [expect.objectContaining({ platform: 'codex', comet: 'installed' })],
+      });
+      expect(platformSelectPrompt).not.toHaveBeenCalled();
+      await expect(fs.access(path.join(tmpDir, 'CLAUDE.md'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      await expect(
+        fs.access(path.join(tmpDir, '.agents', 'skills', 'comet', 'SKILL.md')),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
 
   it('initializes project-scoped custom platform workflow assets', async () => {
     mockExternalSuccess();

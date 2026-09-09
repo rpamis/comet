@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.1] - 2026-09-09
+
+### Changed
+
+- **Single-project updates**: Update the Comet npm package by default when refreshing one project, including interactive and JSON updates. Use `--skip-self-update` to refresh assets without upgrading the package; other projects' assets remain unchanged.
+
+### Fixed
+
+- **Platform-specific instructions**: Create or refresh `CLAUDE.md` only for selected Claude Code targets during initialization and updates, while preserving existing user files for other platforms.
+
 ## What's Changed [0.4.0] - 2026-09-08
 
 ### Changed
