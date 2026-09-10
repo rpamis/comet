@@ -178,6 +178,299 @@ test.describe('Dashboard project selection', () => {
   }
 });
 
+test('uses each project default workflow during startup and project switching', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const projects = [
+    {
+      id: 'native-project',
+      name: 'native-project',
+      path: '/worktrees/native-project',
+      lastSeenAt: null,
+      availability: 'available',
+      isCurrent: true,
+      defaultWorkflow: 'native',
+      workflowSource: 'configured',
+    },
+    {
+      id: 'classic-project',
+      name: 'classic-project',
+      path: '/worktrees/classic-project',
+      lastSeenAt: null,
+      availability: 'available',
+      isCurrent: false,
+      defaultWorkflow: 'classic',
+      workflowSource: 'configured',
+    },
+  ];
+  const overview = (project: (typeof projects)[number]) => ({
+    project: {
+      name: project.name,
+      path: project.path,
+      generatedAt: '2026-09-10T00:00:00.000Z',
+    },
+    summary: {
+      activeChanges: 0,
+      archivedChanges: 0,
+      verifyFailed: 0,
+      tasksIncomplete: 0,
+      dirtyFiles: 0,
+    },
+    initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+    git: {
+      branch: project.name,
+      head: 'abc1234',
+      dirtyFiles: 0,
+      dirtyFileList: [],
+      recentCommits: [],
+    },
+    risks: [],
+    native: {
+      activeChangeCount: 0,
+      archivedChangeCount: 0,
+      totalChangeCount: 0,
+      changes: [],
+    },
+  });
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({ json: { currentProjectId: 'native-project', projects } });
+    } else if (url.pathname.endsWith('/overview')) {
+      const project = projects.find((entry) => url.pathname.includes(entry.id));
+      await route.fulfill({ json: overview(project ?? projects[0]) });
+    } else if (url.pathname.endsWith('/changes') || url.pathname.endsWith('/native-changes')) {
+      await route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
+    } else if (url.pathname.endsWith('/plugins')) {
+      await route.fulfill({ json: { pages: [] } });
+    } else {
+      await route.fulfill({ json: {} });
+    }
+  });
+
+  await page.goto('/');
+  await expect(page.locator('.dashboard-workflow-menu .ant-menu-item-selected')).toContainText(
+    'Native 工作流',
+  );
+  await expect(page.locator('[aria-label="项目默认工作流来源：configured"]')).toBeVisible();
+
+  await page.locator('.comet-project-select').click();
+  await page.getByText('/worktrees/classic-project', { exact: true }).click();
+  await expect(page.locator('.dashboard-workflow-menu .ant-menu-item-selected')).toContainText(
+    'Classic 工作流',
+  );
+});
+
+test('revalidates a cached plugin page when it is first entered', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const project = {
+    id: 'fresh-project',
+    name: 'fresh-project',
+    path: '/worktrees/fresh-project',
+    lastSeenAt: null,
+    availability: 'available',
+    isCurrent: true,
+    defaultWorkflow: 'classic',
+    workflowSource: 'configured',
+  };
+  let pluginPageLoads = 0;
+  await page.addInitScript(
+    ({ cacheKey, cachedPage }) => {
+      localStorage.setItem(cacheKey, JSON.stringify({ version: 1, value: cachedPage }));
+    },
+    {
+      cacheKey: `comet-dashboard-plugin:${project.id}:test.plugin`,
+      cachedPage: {
+        pluginId: 'test.plugin',
+        label: '测试插件',
+        route: '/plugins/test',
+        status: 'enabled',
+        globallyDisabled: false,
+        projectPaused: false,
+        diagnostics: [],
+        data: { version: 'cached' },
+      },
+    },
+  );
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({ json: { currentProjectId: project.id, projects: [project] } });
+    } else if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: project.name, path: project.path, generatedAt: '2026-09-10' },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+          native: null,
+        },
+      });
+    } else if (url.pathname.endsWith('/changes')) {
+      await route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
+    } else if (url.pathname.endsWith('/plugins')) {
+      await route.fulfill({
+        json: {
+          pages: [
+            {
+              pluginId: 'test.plugin',
+              label: '测试插件',
+              route: '/plugins/test',
+              status: 'enabled',
+              globallyDisabled: false,
+              projectPaused: false,
+              diagnostics: [],
+            },
+          ],
+        },
+      });
+    } else if (url.pathname.endsWith('/plugins/test.plugin')) {
+      pluginPageLoads += 1;
+      await route.fulfill({
+        json: {
+          pluginId: 'test.plugin',
+          label: '测试插件',
+          route: '/plugins/test',
+          status: 'enabled',
+          globallyDisabled: false,
+          projectPaused: false,
+          diagnostics: [],
+          data: { version: 'fresh' },
+        },
+      });
+    } else {
+      await route.fulfill({ json: {} });
+    }
+  });
+
+  await page.goto('/');
+  await expect(page.getByRole('menuitem', { name: '测试插件' })).toBeVisible();
+  await page.getByRole('menuitem', { name: '测试插件' }).click();
+  await expect(page.getByText('该插件暂未提供可视化中心页。')).toBeVisible();
+  await expect.poll(() => pluginPageLoads).toBe(1);
+});
+
+test('keeps cached settings visible when fresh revalidation fails', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const project = {
+    id: 'settings-fresh-project',
+    name: 'settings-fresh-project',
+    path: '/worktrees/settings-fresh-project',
+    lastSeenAt: null,
+    availability: 'available',
+    isCurrent: true,
+    defaultWorkflow: 'native',
+    workflowSource: 'configured',
+  };
+  const cachedConfig = {
+    path: '.comet/config.yaml',
+    revision: 'cached-revision',
+    schema: 'comet.project.v1',
+    defaultWorkflow: 'native',
+    workflows: ['native', 'classic'],
+    ambientResume: true,
+    hookAllowPaths: [],
+    knowledge: { provider: 'local', localInclude: [] },
+    native: {
+      artifactRoot: 'docs',
+      language: 'zh-CN',
+      clarificationMode: 'sequential',
+      archiveConfirmation: 'required',
+      maxVerifyFailures: 3,
+    },
+    classic: {
+      artifactLayout: 'docs',
+      language: 'zh-CN',
+      contextCompression: 'off',
+      reviewMode: 'standard',
+      autoTransition: false,
+    },
+  };
+  let configLoads = 0;
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({ json: { currentProjectId: project.id, projects: [project] } });
+    } else if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: project.name, path: project.path, generatedAt: '2026-09-10' },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+          native: null,
+        },
+      });
+    } else if (url.pathname.endsWith('/changes')) {
+      await route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
+    } else if (url.pathname.endsWith('/plugins')) {
+      await route.fulfill({ json: { pages: [] } });
+    } else if (url.pathname.endsWith('/config')) {
+      configLoads += 1;
+      if (configLoads === 1) await route.fulfill({ json: cachedConfig });
+      else await route.fulfill({ status: 503, json: { message: 'fresh settings unavailable' } });
+    } else {
+      await route.fulfill({ json: {} });
+    }
+  });
+
+  await page.goto('/');
+  await expect(page.locator('.dashboard-workflow-menu .ant-menu-item-selected')).toContainText(
+    'Native 工作流',
+  );
+  await expect.poll(() => configLoads).toBe(1);
+  const settingsDialog = page.getByRole('dialog', { name: /Comet 设置/u });
+  await page.getByRole('button', { name: '设置' }).click();
+  await expect(
+    settingsDialog
+      .locator('.dashboard-config-control')
+      .first()
+      .getByText('Native', { exact: true }),
+  ).toBeVisible();
+  await expect.poll(() => configLoads).toBe(2);
+  await expect(
+    settingsDialog.getByText('最新数据同步失败，当前显示缓存', { exact: true }),
+  ).toBeVisible();
+  await settingsDialog.getByRole('button', { name: /重\s*试/u }).click();
+  await expect.poll(() => configLoads).toBe(3);
+  await expect(
+    settingsDialog
+      .locator('.dashboard-config-control')
+      .first()
+      .getByText('Native', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    settingsDialog.getByText('最新数据同步失败，当前显示缓存', { exact: true }),
+  ).toBeVisible();
+});
+
 test('shows Project Knowledge status and project pause transitions', async ({ page }) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 1600, height: 900 });

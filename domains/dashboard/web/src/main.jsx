@@ -81,6 +81,10 @@ import {
   shouldAutoLoadDashboardDetail,
   shouldShowDashboardDetailLoading,
 } from './dashboard-web-state.js';
+import {
+  createDashboardRequestCoordinator,
+  resolveDashboardProjectWorkflow,
+} from './dashboard-data.js';
 import './styles.css';
 
 const AUTO_REFRESH_MS = 30_000;
@@ -459,7 +463,8 @@ function DashboardApp({
   const useDemo = forceDemo || new URLSearchParams(window.location.search).has('demo');
   const [snapshot, setSnapshot] = useState(null);
   const [activeProjectId, setActiveProjectId] = useState(null);
-  const [workflow, setWorkflow] = useState('classic');
+  const [workflow, setWorkflow] = useState(() => (useDemo ? 'classic' : null));
+  const [workflowSource, setWorkflowSource] = useState(null);
   const [pluginSelection, setPluginSelection] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState('comet.personal-memory');
@@ -479,9 +484,15 @@ function DashboardApp({
   const settingsOpenRef = useRef(settingsOpen);
   const pluginProjectRef = useRef(null);
   const pluginPageCacheRef = useRef(new Map());
-  const pluginPageRequestRef = useRef(new Map());
   const projectConfigCacheRef = useRef(new Map());
-  const projectConfigRequestRef = useRef(new Map());
+  const pluginPageCoordinatorRef = useRef(null);
+  const projectConfigCoordinatorRef = useRef(null);
+  if (pluginPageCoordinatorRef.current === null) {
+    pluginPageCoordinatorRef.current = createDashboardRequestCoordinator();
+  }
+  if (projectConfigCoordinatorRef.current === null) {
+    projectConfigCoordinatorRef.current = createDashboardRequestCoordinator();
+  }
   const [projects, setProjects] = useState([]);
   const [projectsReady, setProjectsReady] = useState(false);
   const [pages, setPages] = useState({ active: null, archived: null, all: null });
@@ -658,6 +669,9 @@ function DashboardApp({
 
     const timer = window.setInterval(() => {
       void refresh(false);
+      if (!useDemo && (pluginSelectionRef.current || settingsOpenRef.current)) {
+        setPluginRefreshToken((value) => value + 1);
+      }
     }, AUTO_REFRESH_MS);
 
     return () => window.clearInterval(timer);
@@ -690,6 +704,10 @@ function DashboardApp({
           available[0]?.id ??
           null;
         setActiveProjectId((previous) => previous ?? next);
+        const initialProject = available.find((project) => project.id === next) ?? null;
+        const initialWorkflow = resolveDashboardProjectWorkflow(initialProject);
+        setWorkflow(initialWorkflow.workflow);
+        setWorkflowSource(initialWorkflow.source);
         setProjectsReady(true);
       })
       .catch((error) => {
@@ -702,7 +720,7 @@ function DashboardApp({
     };
   }, [useDemo]);
 
-  const loadCachedPluginPage = useCallback(async (projectId, pluginId, force = false) => {
+  const loadCachedPluginPage = useCallback(async (projectId, pluginId, force = false, owner) => {
     const cacheKey = `${projectId}:${pluginId}`;
     let cached = pluginPageCacheRef.current.get(cacheKey);
     if (!cached) {
@@ -710,21 +728,19 @@ function DashboardApp({
       if (cached) pluginPageCacheRef.current.set(cacheKey, cached);
     }
     if (!force && cached) return cached;
-    const pending = pluginPageRequestRef.current.get(cacheKey);
-    if (pending) return pending;
-    const request = fetchDashboardPluginPage(projectId, pluginId)
-      .then((page) => {
-        pluginPageCacheRef.current.set(cacheKey, page);
-        writeDashboardCache(pluginPageStorageKey(projectId, pluginId), page);
-        return page;
-      })
-      .finally(() => {
-        if (pluginPageRequestRef.current.get(cacheKey) === request) {
-          pluginPageRequestRef.current.delete(cacheKey);
-        }
-      });
-    pluginPageRequestRef.current.set(cacheKey, request);
-    return request;
+    return pluginPageCoordinatorRef.current.load(
+      cacheKey,
+      (signal) => fetchDashboardPluginPage(projectId, pluginId, signal),
+      {
+        force,
+        owner,
+        readPersisted: () => readDashboardCache(pluginPageStorageKey(projectId, pluginId)),
+        writePersisted: (page) => {
+          pluginPageCacheRef.current.set(cacheKey, page);
+          writeDashboardCache(pluginPageStorageKey(projectId, pluginId), page);
+        },
+      },
+    );
   }, []);
 
   const readCachedPluginPage = useCallback((projectId, pluginId) => {
@@ -736,28 +752,34 @@ function DashboardApp({
     return persisted;
   }, []);
 
-  const loadCachedProjectConfig = useCallback(async (projectId, force = false) => {
+  const readCachedProjectConfig = useCallback((projectId) => {
+    const memory = projectConfigCacheRef.current.get(projectId);
+    if (memory) return memory;
+    const persisted = readDashboardCache(projectConfigStorageKey(projectId));
+    if (persisted) projectConfigCacheRef.current.set(projectId, persisted);
+    return persisted;
+  }, []);
+
+  const loadCachedProjectConfig = useCallback(async (projectId, force = false, owner) => {
     let cached = projectConfigCacheRef.current.get(projectId);
     if (!cached) {
       cached = readDashboardCache(projectConfigStorageKey(projectId));
       if (cached) projectConfigCacheRef.current.set(projectId, cached);
     }
     if (!force && cached) return cached;
-    const pending = projectConfigRequestRef.current.get(projectId);
-    if (pending) return pending;
-    const request = fetchDashboardProjectConfig(projectId)
-      .then((config) => {
-        projectConfigCacheRef.current.set(projectId, config);
-        writeDashboardCache(projectConfigStorageKey(projectId), config);
-        return config;
-      })
-      .finally(() => {
-        if (projectConfigRequestRef.current.get(projectId) === request) {
-          projectConfigRequestRef.current.delete(projectId);
-        }
-      });
-    projectConfigRequestRef.current.set(projectId, request);
-    return request;
+    return projectConfigCoordinatorRef.current.load(
+      projectId,
+      (signal) => fetchDashboardProjectConfig(projectId, signal),
+      {
+        force,
+        owner,
+        readPersisted: () => readDashboardCache(projectConfigStorageKey(projectId)),
+        writePersisted: (config) => {
+          projectConfigCacheRef.current.set(projectId, config);
+          writeDashboardCache(projectConfigStorageKey(projectId), config);
+        },
+      },
+    );
   }, []);
 
   const preloadDashboardSettings = useCallback(
@@ -820,17 +842,18 @@ function DashboardApp({
   useEffect(() => {
     if (useDemo || !activeProjectId || !pluginSelection) return undefined;
     let cancelled = false;
+    const owner = `plugin-page:${activeProjectId}:${pluginSelection}`;
     const cachedPage = readCachedPluginPage(activeProjectId, pluginSelection);
     if (cachedPage) setPluginPage(cachedPage);
-    setPluginLoading(!cachedPage);
+    setPluginLoading(true);
     setPluginError(null);
-    void loadCachedPluginPage(activeProjectId, pluginSelection, Boolean(cachedPage))
+    void loadCachedPluginPage(activeProjectId, pluginSelection, Boolean(cachedPage), owner)
       .then((page) => {
         if (!cancelled) setPluginPage(page);
       })
       .catch((error) => {
         if (!cancelled) {
-          setPluginPage(null);
+          if (!cachedPage) setPluginPage(null);
           setPluginError(error instanceof Error ? error.message : String(error));
         }
       })
@@ -839,6 +862,7 @@ function DashboardApp({
       });
     return () => {
       cancelled = true;
+      pluginPageCoordinatorRef.current.release(`${activeProjectId}:${pluginSelection}`, owner);
     };
   }, [
     activeProjectId,
@@ -927,21 +951,22 @@ function DashboardApp({
   useEffect(() => {
     if (useDemo || !activeProjectId || !settingsOpen || !settingsSection) return undefined;
     let cancelled = false;
+    const owner = `settings:${activeProjectId}:${settingsSection}`;
     const cached =
       settingsSection === 'comet.config'
-        ? (projectConfigCacheRef.current.get(activeProjectId) ?? null)
+        ? readCachedProjectConfig(activeProjectId)
         : readCachedPluginPage(activeProjectId, settingsSection);
     if (settingsSection === 'comet.config') {
       if (cached) setSettingsConfig(cached);
     } else if (cached) {
       setSettingsPage(cached);
     }
-    setSettingsLoading(!cached);
+    setSettingsLoading(true);
     setSettingsError(null);
     const request =
       settingsSection === 'comet.config'
-        ? loadCachedProjectConfig(activeProjectId, Boolean(cached))
-        : loadCachedPluginPage(activeProjectId, settingsSection, Boolean(cached));
+        ? loadCachedProjectConfig(activeProjectId, Boolean(cached), owner)
+        : loadCachedPluginPage(activeProjectId, settingsSection, Boolean(cached), owner);
     void request
       .then((result) => {
         if (cancelled) return;
@@ -950,8 +975,11 @@ function DashboardApp({
       })
       .catch((error) => {
         if (!cancelled) {
-          if (settingsSection === 'comet.config') setSettingsConfig(null);
-          else setSettingsPage(null);
+          if (settingsSection === 'comet.config') {
+            if (!cached) setSettingsConfig(null);
+          } else if (!cached) {
+            setSettingsPage(null);
+          }
           setSettingsError(error instanceof Error ? error.message : String(error));
         }
       })
@@ -960,6 +988,11 @@ function DashboardApp({
       });
     return () => {
       cancelled = true;
+      if (settingsSection === 'comet.config') {
+        projectConfigCoordinatorRef.current.release(activeProjectId, owner);
+      } else {
+        pluginPageCoordinatorRef.current.release(`${activeProjectId}:${settingsSection}`, owner);
+      }
     };
   }, [
     activeProjectId,
@@ -967,6 +1000,7 @@ function DashboardApp({
     loadCachedProjectConfig,
     pluginRefreshToken,
     readCachedPluginPage,
+    readCachedProjectConfig,
     settingsOpen,
     settingsSection,
     useDemo,
@@ -1276,6 +1310,10 @@ function DashboardApp({
   const nativeVisibleTotal = useDemo
     ? (snapshot?.native?.changes?.length ?? 0)
     : (nativePage?.total ?? nativeOverviewTotal);
+  const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
+  const activeWorkflowSource = useDemo
+    ? null
+    : (activeProject?.workflowSource ?? workflowSource ?? 'fallback');
 
   useEffect(() => {
     if (
@@ -1374,6 +1412,7 @@ function DashboardApp({
           if (nextWorkflow !== workflow) setTab('active');
           setWorkflow(nextWorkflow);
         }}
+        workflowSource={activeWorkflowSource}
         pluginPages={pluginPages}
         pluginSelection={pluginSelection}
         settingsOpen={settingsOpen}
@@ -1396,7 +1435,7 @@ function DashboardApp({
             useDemo
               ? settingsConfig
               : activeProjectId
-                ? (projectConfigCacheRef.current.get(activeProjectId) ?? null)
+                ? (readCachedProjectConfig(activeProjectId) ?? null)
                 : null,
           );
           setSettingsError(null);
@@ -1458,6 +1497,10 @@ function DashboardApp({
             setPluginError(null);
             setSettingsConfig(null);
             setRailOpen(false);
+            const nextProject = projects.find((project) => project.id === nextProjectId) ?? null;
+            const nextWorkflow = resolveDashboardProjectWorkflow(nextProject);
+            setWorkflow(nextWorkflow.workflow);
+            setWorkflowSource(nextWorkflow.source);
           }}
           loading={loading}
           query={query}
@@ -1466,7 +1509,7 @@ function DashboardApp({
           onRefresh={async () => {
             await refresh(true);
             await reloadPluginPages();
-            if (activePluginPageId) setPluginRefreshToken((value) => value + 1);
+            if (activePluginPageId || settingsOpen) setPluginRefreshToken((value) => value + 1);
           }}
           theme={theme}
           onToggleTheme={onToggleTheme}
@@ -1497,7 +1540,6 @@ function DashboardApp({
                 error={pluginError}
                 readOnly={embedded}
                 onRetry={() => {
-                  setPluginPage(null);
                   setPluginError(null);
                   setPluginRefreshToken((value) => value + 1);
                 }}
@@ -1533,7 +1575,7 @@ function DashboardApp({
                     .catch(() => toast('复制 Change 名称失败', 'error'))
                 }
               />
-            ) : (
+            ) : workflow === 'classic' ? (
               <Dashboard
                 snapshot={snapshot}
                 visible={visible}
@@ -1551,6 +1593,8 @@ function DashboardApp({
                 onRetryDetail={() => selectedId && selectChange(selectedId)}
                 onPreview={setArtifact}
               />
+            ) : (
+              <LoadingState />
             )}
           </div>
         </div>
@@ -1577,21 +1621,12 @@ function DashboardApp({
               useDemo && pluginId === 'comet.config'
                 ? settingsConfig
                 : activeProjectId && pluginId === 'comet.config'
-                  ? (projectConfigCacheRef.current.get(activeProjectId) ?? null)
+                  ? readCachedProjectConfig(activeProjectId)
                   : null,
             );
             setSettingsError(null);
           }}
           onRetry={() => {
-            if (activeProjectId) {
-              if (settingsSection === 'comet.config') {
-                projectConfigCacheRef.current.delete(activeProjectId);
-              } else if (settingsSection) {
-                pluginPageCacheRef.current.delete(`${activeProjectId}:${settingsSection}`);
-              }
-            }
-            setSettingsPage(null);
-            setSettingsConfig(null);
             setSettingsError(null);
             setPluginRefreshToken((value) => value + 1);
           }}
@@ -1624,6 +1659,24 @@ function DashboardApp({
                 config,
               });
               projectConfigCacheRef.current.set(activeProjectId, next);
+              projectConfigCoordinatorRef.current.set(activeProjectId, next);
+              const nextWorkflow = resolveDashboardProjectWorkflow({
+                defaultWorkflow: next.defaultWorkflow,
+                workflowSource: 'configured',
+              });
+              setWorkflow(nextWorkflow.workflow);
+              setWorkflowSource(nextWorkflow.source);
+              setProjects((current) =>
+                current.map((project) =>
+                  project.id === activeProjectId
+                    ? {
+                        ...project,
+                        defaultWorkflow: next.defaultWorkflow,
+                        workflowSource: 'configured',
+                      }
+                    : project,
+                ),
+              );
               writeDashboardCache(projectConfigStorageKey(activeProjectId), next);
               setSettingsConfig(next);
               if (knowledgePathsChanged) {
@@ -2620,7 +2673,7 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m-4.5 0L15 9m5.25 11.25h-4.5m4.5 0v-4.5m4.5 4.5L15 15"
+                    d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m-4.5 0L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
                   />
                 </svg>
               )}
@@ -3579,18 +3632,19 @@ async function fetchDashboardPluginPages(projectId) {
   return res.json();
 }
 
-async function fetchDashboardPluginPage(projectId, pluginId) {
+async function fetchDashboardPluginPage(projectId, pluginId, signal) {
   const res = await fetch(
     `/api/dashboard/projects/${encodeURIComponent(projectId)}/plugins/${encodeURIComponent(pluginId)}`,
-    { cache: 'no-store' },
+    { cache: 'no-store', signal },
   );
   if (!res.ok) throw await dashboardResponseError(res);
   return res.json();
 }
 
-async function fetchDashboardProjectConfig(projectId) {
+async function fetchDashboardProjectConfig(projectId, signal) {
   const res = await fetch(`/api/dashboard/projects/${encodeURIComponent(projectId)}/config`, {
     cache: 'no-store',
+    signal,
   });
   if (!res.ok) throw await dashboardResponseError(res);
   return res.json();
@@ -3959,6 +4013,7 @@ function AntSidebar({
   open,
   collapsed,
   workflow,
+  workflowSource,
   onWorkflow,
   pluginPages,
   pluginSelection,
@@ -3972,13 +4027,23 @@ function AntSidebar({
   const navigation = (
     <>
       <div className="dashboard-sidebar-group">
-        <div className="dashboard-sidebar-label">工作流</div>
+        <div
+          className="dashboard-sidebar-label"
+          aria-label={workflowSource ? `项目默认工作流来源：${workflowSource}` : undefined}
+        >
+          <span>工作流</span>
+          {workflowSource ? (
+            <Tag color={workflowSource === 'configured' ? 'success' : 'warning'}>
+              {workflowSource}
+            </Tag>
+          ) : null}
+        </div>
         <Menu
           className="dashboard-sidebar-menu dashboard-workflow-menu"
           mode="inline"
           inlineCollapsed={collapsed}
           inlineIndent={12}
-          selectedKeys={pluginSelection ? [] : [workflow]}
+          selectedKeys={pluginSelection || !workflow ? [] : [workflow]}
           items={[
             { key: 'classic', icon: <BranchesOutlined />, label: 'Classic 工作流' },
             { key: 'native', icon: <FileTextOutlined />, label: 'Native 工作流' },
@@ -4123,14 +4188,34 @@ function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onI
     );
   }
   if (!page) return <LoadingState />;
+  const syncState = (
+    <>
+      {loading ? (
+        <Alert className="mb-3" type="info" showIcon banner message="正在同步最新数据…" />
+      ) : null}
+      {error ? (
+        <Alert
+          className="mb-3"
+          type="warning"
+          showIcon
+          message="最新数据同步失败，当前显示缓存"
+          description={error}
+          action={<Button onClick={onRetry}>重试</Button>}
+        />
+      ) : null}
+    </>
+  );
   if (page.pluginId === 'comet.project-knowledge') {
     return (
-      <ProjectKnowledgeCenter
-        page={page}
-        data={page.data}
-        readOnly={readOnly}
-        onInvoke={onInvoke}
-      />
+      <>
+        {syncState}
+        <ProjectKnowledgeCenter
+          page={page}
+          data={page.data}
+          readOnly={readOnly}
+          onInvoke={onInvoke}
+        />
+      </>
     );
   }
   if (page.status === 'disabled') {
@@ -4150,13 +4235,21 @@ function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onI
     );
   }
   if (page.pluginId === 'comet.personal-memory') {
-    return <PersonalMemoryCenter data={page.data} readOnly={readOnly} onInvoke={onInvoke} />;
+    return (
+      <>
+        {syncState}
+        <PersonalMemoryCenter data={page.data} readOnly={readOnly} onInvoke={onInvoke} />
+      </>
+    );
   }
   return (
-    <div className="mx-auto max-w-dashboard">
-      <SectionHead title={page.label} hint="插件中心" />
-      <AntCard size="small">该插件暂未提供可视化中心页。</AntCard>
-    </div>
+    <>
+      {syncState}
+      <div className="mx-auto max-w-dashboard">
+        <SectionHead title={page.label} hint="插件中心" />
+        <AntCard size="small">该插件暂未提供可视化中心页。</AntCard>
+      </div>
+    </>
   );
 }
 
@@ -4263,6 +4356,19 @@ function DashboardSettingsPage({
           aria-disabled={readOnly || undefined}
         >
           <div className="dashboard-settings-content">
+            {loading && currentData ? (
+              <Alert className="mb-3" type="info" showIcon banner message="正在同步最新数据…" />
+            ) : null}
+            {error && currentData ? (
+              <Alert
+                className="mb-3"
+                type="warning"
+                showIcon
+                message="最新数据同步失败，当前显示缓存"
+                description={error}
+                action={<Button onClick={onRetry}>重试</Button>}
+              />
+            ) : null}
             {loading && !currentData ? (
               <LoadingState />
             ) : error && !currentData ? (

@@ -77,7 +77,8 @@ describe('Native dashboard web source contracts', () => {
     ]);
 
     expect(source).toContain("from './native-workflow-panel.jsx'");
-    expect(source).toContain("useState('classic')");
+    expect(source).toContain("useState(() => (useDemo ? 'classic' : null))");
+    expect(source).toContain("workflow === 'classic'");
     expect(source).toContain("workflow === 'native'");
     expect(source).toContain('native={snapshot.native}');
     expect(source).toContain('git={snapshot.git}');

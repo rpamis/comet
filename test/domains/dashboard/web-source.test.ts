@@ -62,6 +62,33 @@ async function readWorkspaceLayoutSource(): Promise<string> {
 }
 
 describe('dashboard web source contracts', () => {
+  it('waits for the project directory before selecting a workflow', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain("useState(() => (useDemo ? 'classic' : null))");
+    expect(source).toContain('pluginSelection || !workflow ? [] : [workflow]');
+    expect(source).toContain("workflow === 'classic' ? (");
+    expect(source).toContain('setWorkflow(initialWorkflow.workflow)');
+  });
+
+  it('keeps cached plugin and settings data visible during fresh synchronization', async () => {
+    const source = await readDashboardSource();
+
+    expect(source).toContain('setPluginLoading(true)');
+    expect(source).toContain('if (!cachedPage) setPluginPage(null)');
+    expect(source).toMatch(/else if \(!cached\) \{\s+setSettingsPage\(null\)/u);
+    expect(source).toContain('message="正在同步最新数据…"');
+    expect(source).toContain('message="最新数据同步失败，当前显示缓存"');
+    expect(source).toContain('pluginPageCoordinatorRef.current.release');
+    expect(source).toContain('projectConfigCoordinatorRef.current.release');
+    expect(source).not.toContain('pluginPageCoordinatorRef.current.cancel');
+    expect(source).not.toContain('projectConfigCoordinatorRef.current.cancel');
+    expect(source).toContain('readCachedProjectConfig(activeProjectId) ?? null');
+    expect(source).not.toMatch(/onRetry=\{\(\) => \{\s+setPluginPage\(null\);/u);
+    expect(source).not.toContain('projectConfigCacheRef.current.delete(activeProjectId)');
+    expect(source).not.toContain('pluginPageCacheRef.current.delete(cacheKey)');
+  });
+
   it('keeps the change workspace grid responsive inside the left navigation rail', async () => {
     const [source, layout, styles] = await Promise.all([
       readDashboardSource(),
@@ -295,6 +322,8 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('useDashboardModalState,');
     expect(source).toContain('<DashboardModal');
     expect(source).toContain("aria-label={fullscreen ? '退出全屏' : '全屏展示'}");
+    expect(source).toContain('m0 4.5L15 15');
+    expect(source).not.toContain('m4.5 4.5L15 15');
     expect(modal).toContain('mask={{ closable: true }}');
     expect(modal).toContain('dashboard-settings-modal-title-row');
     expect(modal).toContain('const fullscreenRef = useRef(false)');

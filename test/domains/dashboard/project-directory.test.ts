@@ -90,6 +90,71 @@ describe('collectDashboardProjectDirectory', () => {
     ]);
   });
 
+  it('returns each available project default workflow and fallback source', async () => {
+    const nativeProject = path.join(tempDir, 'native-project');
+    const classicProject = path.join(tempDir, 'classic-project');
+    await fs.mkdir(path.join(nativeProject, '.comet'), { recursive: true });
+    await fs.mkdir(path.join(classicProject, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(nativeProject, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+    );
+    await fs.writeFile(
+      path.join(classicProject, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic]',
+        'classic:',
+        '  artifact_layout: docs',
+        '',
+      ].join('\n'),
+    );
+    await upsertProjectInstallation(nativeProject, [], 'init', { homeDir });
+    await upsertProjectInstallation(classicProject, [], 'init', { homeDir });
+
+    const directory = await collectDashboardProjectDirectory(currentProject, { homeDir });
+
+    expect(directory.projects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: nativeProject,
+          defaultWorkflow: 'native',
+          workflowSource: 'configured',
+        }),
+        expect.objectContaining({
+          path: classicProject,
+          defaultWorkflow: 'classic',
+          workflowSource: 'configured',
+        }),
+        expect.objectContaining({
+          path: currentProject,
+          defaultWorkflow: 'classic',
+          workflowSource: 'fallback',
+        }),
+      ]),
+    );
+  });
+
+  it('falls back to Classic when a project config is invalid', async () => {
+    await fs.mkdir(path.join(currentProject, '.comet'), { recursive: true });
+    await fs.writeFile(path.join(currentProject, '.comet', 'config.yaml'), 'schema: [broken\n');
+
+    const directory = await collectDashboardProjectDirectory(currentProject, { homeDir });
+
+    expect(directory.projects[0]).toMatchObject({
+      defaultWorkflow: 'classic',
+      workflowSource: 'fallback',
+    });
+  });
+
   it('uses the registered identity when launched through a directory alias', async () => {
     const alias = path.join(tempDir, 'project-alias');
     await fs.symlink(currentProject, alias, process.platform === 'win32' ? 'junction' : 'dir');

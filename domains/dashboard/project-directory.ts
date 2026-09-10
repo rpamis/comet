@@ -7,8 +7,11 @@ import {
   readProjectRegistry,
   type ProjectRegistryEntry,
 } from '../../platform/install/project-registry.js';
+import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
+import type { CometProjectWorkflow } from '../workflow-contract/types.js';
 
 export type DashboardProjectAvailability = 'available' | 'missing' | 'unreadable';
+export type DashboardProjectWorkflowSource = 'configured' | 'fallback';
 
 export interface DashboardProjectEntry {
   id: string;
@@ -17,6 +20,8 @@ export interface DashboardProjectEntry {
   lastSeenAt: string | null;
   availability: DashboardProjectAvailability;
   isCurrent: boolean;
+  defaultWorkflow: CometProjectWorkflow;
+  workflowSource: DashboardProjectWorkflowSource;
 }
 
 export interface DashboardProjectDirectory {
@@ -70,6 +75,24 @@ function sortEntries(left: DashboardProjectEntry, right: DashboardProjectEntry):
   return left.name.localeCompare(right.name);
 }
 
+async function projectWorkflow(
+  projectPath: string,
+  availability: DashboardProjectAvailability,
+): Promise<Pick<DashboardProjectEntry, 'defaultWorkflow' | 'workflowSource'>> {
+  if (availability !== 'available') {
+    return { defaultWorkflow: 'classic', workflowSource: 'fallback' };
+  }
+  try {
+    const config = await readWorkflowProjectConfig(projectPath);
+    if (config?.default_workflow === 'native' || config?.default_workflow === 'classic') {
+      return { defaultWorkflow: config.default_workflow, workflowSource: 'configured' };
+    }
+  } catch {
+    // The project directory remains usable when an optional workflow hint cannot be read.
+  }
+  return { defaultWorkflow: 'classic', workflowSource: 'fallback' };
+}
+
 export async function collectDashboardProjectDirectory(
   currentProjectPath: string,
   options: DashboardProjectDirectoryOptions = {},
@@ -100,6 +123,7 @@ export async function collectDashboardProjectDirectory(
   const projects = await Promise.all(
     [...candidates.entries()].map(async ([key, candidate]) => {
       const availability = await availabilityOf(candidate.path);
+      const workflow = await projectWorkflow(candidate.path, availability);
       return {
         id: projectId(key),
         name: projectName(candidate.path),
@@ -107,6 +131,7 @@ export async function collectDashboardProjectDirectory(
         lastSeenAt: candidate.lastSeenAt,
         availability,
         isCurrent: key === currentKey,
+        ...workflow,
       };
     }),
   );
