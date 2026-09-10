@@ -2,8 +2,8 @@ schema: comet.native.v4
 name: dashboard-workflow-and-plugin-freshness
 language: zh-CN
 phase: archive
-status: active
-state_version: 16
+status: done
+state_version: 17
 brief: brief.md
 shape_confirmation_hash: a61ccdc2051d1ac111227498d9c8bf83ca3f32ffea5b5a0db9513a63f866bc5a
 spec_changes:
@@ -16,7 +16,7 @@ workspace:
   target_branch: 0.4.1
   finish: null
 loop:
-  stage: archive-ready
+  stage: done
   goal_cycle: 1
   iteration: 3
   attempt: 2
@@ -25,7 +25,7 @@ loop:
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: archive
+  next_action: null
 acceptance:
   - id: A1
     source: brief.md
@@ -381,5 +381,5 @@ history_overflow:
     recovery: 0
 verification_result: pass
 verification_report: verification.md
-archived: false
+archived: true
 created_at: 2026-09-10T14:07:07.791Z
