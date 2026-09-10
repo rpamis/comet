@@ -67,6 +67,64 @@ async function classicGuidanceFiles(
 }
 
 describe('Classic layout Skill contract', () => {
+  it.each(LANGUAGE_CASES)(
+    'keeps $label entry layout bindings and commands aligned',
+    async ({ languageRoot }) => {
+      const reference = await fs.readFile(
+        path.resolve('assets', languageRoot, 'comet-classic/reference/classic-layout.md'),
+        'utf8',
+      );
+      const entry = reference.indexOf('comet state check <change-name> <phase> --json');
+      expect(entry).toBeGreaterThanOrEqual(0);
+      expect(reference.indexOf('comet classic root show')).toBeGreaterThan(entry);
+      for (const field of [
+        'comet.classic-layout.v1',
+        'openSpecRoot',
+        'changesRoot',
+        'archiveRoot',
+        'specsRoot',
+        'superpowersRoot',
+        'changeDir',
+      ]) {
+        expect(reference, field).toContain(field);
+      }
+      for (const phase of ['design', 'build', 'verify', 'archive']) {
+        const source = await fs.readFile(
+          path.resolve('assets', languageRoot, `comet-${phase}/SKILL.md`),
+          'utf8',
+        );
+        expect(source, phase).toContain('comet-classic/reference/classic-layout.md');
+        expect(source, phase).toMatch(
+          new RegExp(`comet state check <(?:change-name|name)> ${phase} --json`, 'u'),
+        );
+      }
+    },
+  );
+
+  it('uses the Chinese entry layout without duplicate root probes and resolves archived change paths', async () => {
+    const reference = await fs.readFile(
+      path.resolve('assets/skills-zh/comet-classic/reference/classic-layout.md'),
+      'utf8',
+    );
+    expect(reference).toContain('state check <change-name> <phase> --json');
+    expect(reference).toContain('无需再单独查询布局');
+    expect(reference).toContain('尚未选择 change、入口未提供 layout');
+    expect(reference).toContain('使用入口返回的实际 changeDir');
+    expect(reference).toContain('已归档 change 不拼接 active 路径');
+    expect(reference).toContain('冷恢复或工作区变化后由入口重新解析');
+    for (const skill of ['comet-design', 'comet-build', 'comet-verify', 'comet-archive']) {
+      const content = await fs.readFile(
+        path.resolve('assets/skills-zh', skill, 'SKILL.md'),
+        'utf8',
+      );
+      expect(content, skill).toContain('入口返回 layout 后');
+      expect(content, skill).toContain('不先额外运行 root show');
+      expect(content, skill).toMatch(
+        /comet state check <(?:change-name|name)> (?:design|build|verify|archive) --json/u,
+      );
+    }
+  });
+
   it.each(['skills-zh', 'skills'])(
     'ships the layout resolver and adapter protocol in %s',
     async (languageRoot) => {

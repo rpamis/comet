@@ -66,17 +66,23 @@ import {
   readClassicProjectFile,
   writeClassicProjectText,
 } from './classic-protected-path.js';
-import {
-  inspectClassicPlanReadiness,
-  type ClassicPlanReadiness,
-} from './classic-plan-readiness.js';
 import { resolveClassicWorkspace } from './classic-workspace.js';
+import { classicRecoveryContext } from './classic-recovery.js';
+import {
+  readClassicCheckpoint,
+  writeClassicCheckpoint,
+  readClassicDelivery,
+  writeClassicDelivery,
+  invalidateClassicDelivery,
+} from './classic-progress.js';
 import { readClassicArtifactRequirements } from './classic-artifact-requirements.js';
 import {
   assignClassicTaskIds,
   classicTaskRevision,
   completeClassicTask,
   parseClassicTasks,
+  inspectClassicPlanTasks,
+  synchronizeClassicPlanTasks,
 } from './classic-tasks.js';
 
 const GREEN = '\u001b[32m';
@@ -286,7 +292,7 @@ function sparseClassicState(record: Record<string, unknown>): ClassicState {
     buildMode: enumRecordValue(
       record,
       'build_mode',
-      ['subagent-driven-development', 'executing-plans', 'direct'] as const,
+      ['subagent-driven-development', 'executing-plans', 'autonomous', 'direct'] as const,
       null,
     ),
     buildPause: enumRecordValue(record, 'build_pause', ['plan-ready'] as const, null),
@@ -664,7 +670,9 @@ async function requireBuildDecisions(name: string): Promise<void> {
       `ERROR: Cannot transition '${name}': isolation must be current, branch, or worktree, got '${isolation || 'null'}'`,
     );
   }
-  if (!['subagent-driven-development', 'executing-plans', 'direct'].includes(buildMode)) {
+  if (
+    !['subagent-driven-development', 'executing-plans', 'autonomous', 'direct'].includes(buildMode)
+  ) {
     fail(
       `ERROR: Cannot transition '${name}': build_mode must be selected before leaving build, got '${buildMode || 'null'}'`,
     );
@@ -760,6 +768,8 @@ async function applyTransitionEvent(
   }
 
   const result = applyClassicTransition(classic, event);
+  if (event === 'archive-reopen')
+    await invalidateClassicDelivery(classicCommandProjectRoot(), directory);
   if (projection.run) {
     await transitionClassicRuntimeRun(directory, result.classic, projection.run, {
       event,
@@ -870,7 +880,7 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
 
 async function next(output: CommandOutput, name: string): Promise<void> {
   validateChangeName(name);
-  const { file, label } = await stateFile(name);
+  const { file, label, directory } = await stateFile(name);
   if (!(await exists(file))) fail(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
   const record = (await readDocument(file)).toJS() as Record<string, unknown>;
   const phase = scalar(record.phase);
@@ -879,16 +889,29 @@ async function next(output: CommandOutput, name: string): Promise<void> {
   const locale = classicLocale(await readRecordField(record, 'language'));
   output.data = { change: name, phase, configuration: sparseClassicState(record) };
   if (scalar(record.archived) === 'true') {
+    const delivery = await readClassicDelivery(classicCommandProjectRoot(), directory);
+    const complete = ['complete', 'local-verified'].includes(delivery.verification.status);
+    output.data = {
+      change: name,
+      phase,
+      configuration: sparseClassicState(record),
+      delivery,
+      nextAction: { kind: complete ? 'done' : 'delivery' },
+    };
     const envelope = classicNextEnvelope({
       name,
-      phase: 'done',
-      skill: '',
+      phase: complete ? 'done' : 'archive',
+      skill: complete ? '' : 'comet-archive',
       automatic: true,
       locale,
     });
     output.envelope = envelope;
     output.stdout.push(envelope.summary);
-    output.stdout.push('NEXT: done');
+    output.stdout.push(
+      complete
+        ? 'NEXT: done'
+        : 'NEXT: delivery\nSKILL: comet-archive\nInspect authorized delivery and actual results; do not archive again.',
+    );
     return;
   }
   const skill =
@@ -954,19 +977,33 @@ async function taskCheckoff(
 async function taskState(
   output: CommandOutput,
   name: string,
-  action: { kind: 'list' | 'assign' } | { kind: 'complete'; id: string; revision: string },
+  action:
+    { kind: 'list' | 'assign' | 'sync-plan' } | { kind: 'complete'; id: string; revision: string },
 ): Promise<void> {
   validateChangeName(name);
-  const { file, directory } = await stateFile(name);
+  const { directory } = await stateFile(name);
   const operation = async () => {
-    const record = (await readDocument(file)).toJS() as Record<string, unknown>;
+    const projection = await readClassicState(directory, { migrate: false });
+    if (!projection.classic) fail('ERROR: Classic state is missing');
+    if (projection.unknownKeys.length)
+      fail(`ERROR: Unknown Classic state fields: ${projection.unknownKeys.join(', ')}`);
+    const state = projection.classic;
+    if (action.kind !== 'list') {
+      const binding = await resolveBranchBinding(directory, {
+        heal: false,
+        cwd: classicCommandInvocationCwd(),
+      });
+      if (binding.status === 'drift')
+        fail(driftBlockedMessage(name, binding.boundBranch, binding.currentBranch));
+      if (binding.status === 'unbound-detached') fail(unboundDetachedMessage(name));
+    }
     if (
       action.kind !== 'list' &&
-      (record.archived === true || !['open', 'design', 'build'].includes(String(record.phase)))
+      (state.archived || !['open', 'design', 'build'].includes(state.phase))
     ) {
       fail('ERROR: task updates require an active Open, Design or Build phase');
     }
-    if (action.kind === 'complete' && record.phase !== 'build')
+    if (action.kind === 'complete' && state.phase !== 'build')
       fail('ERROR: task completion requires Build phase');
     const tasksFile = path.join(directory, 'tasks.md');
     const source = await readClassicProjectFile(classicCommandProjectRoot(), tasksFile, {
@@ -980,15 +1017,52 @@ async function taskState(
           : source;
     const tasks = parseClassicTasks(updated);
     if (!tasks.length) fail('ERROR: tasks.md has no implementation tasks');
+    const planPath = state.plan;
+    let planSync: 'none' | 'synced' | 'mapping-required' = 'none';
+    let planUpdate: { file: string; source: string; updated: string } | null = null;
+    if (
+      planPath &&
+      planPath !== 'null' &&
+      (await exists(path.resolve(classicCommandProjectRoot(), planPath)))
+    ) {
+      const planFile = path.resolve(classicCommandProjectRoot(), planPath);
+      const planSource = await readClassicProjectFile(classicCommandProjectRoot(), planFile, {
+        label: 'Classic plan task mapping',
+      });
+      const mapping = inspectClassicPlanTasks(planSource, tasks);
+      if (mapping.unmapped.length) {
+        planSync = 'mapping-required';
+        if (action.kind === 'sync-plan')
+          fail(
+            'ERROR: reconcile legacy plan tasks and assign explicit matching IDs before syncing',
+          );
+      } else if (mapping.total && ['complete', 'sync-plan'].includes(action.kind)) {
+        planUpdate = {
+          file: planFile,
+          source: planSource,
+          updated: synchronizeClassicPlanTasks(planSource, tasks),
+        };
+        planSync = 'synced';
+      }
+    }
     if (updated !== source)
       await writeClassicProjectText(classicCommandProjectRoot(), tasksFile, updated, {
         label: 'Classic task authority',
       });
+    // Authority is committed first; retrying completion repairs an interrupted plan projection.
+    if (planUpdate && planUpdate.source !== planUpdate.updated)
+      await writeClassicProjectText(
+        classicCommandProjectRoot(),
+        planUpdate.file,
+        planUpdate.updated,
+        { label: 'Classic plan task projection' },
+      );
     output.data = {
       change: name,
       authority: path.relative(classicCommandProjectRoot(), tasksFile).replaceAll('\\', '/'),
       revision: classicTaskRevision(updated),
       needsIds: tasks.some((task) => !task.id),
+      planSync,
       tasks,
       progress: { total: tasks.length, completed: tasks.filter((task) => task.completed).length },
     };
@@ -1000,7 +1074,71 @@ async function taskState(
   else await withClassicStateLock(directory, operation);
 }
 
-async function check(output: CommandOutput, name: string, phase: string): Promise<void> {
+async function progressCommand(
+  output: CommandOutput,
+  kind: 'checkpoint' | 'delivery',
+  args: string[],
+) {
+  if (
+    args.length !== 1 &&
+    !(args.length === 3 && args[1] === '--file') &&
+    !(kind === 'delivery' && args.length === 2 && args[1] === '--verify')
+  )
+    fail(
+      `Usage: comet state ${kind} <change-name> [--file <json>${kind === 'delivery' ? ' | --verify' : ''}]`,
+    );
+  validateChangeName(args[0]);
+  const { directory, file } = await stateFile(args[0]);
+  const root = classicCommandProjectRoot();
+  const write = args[1] === '--file';
+  const operation = async () => {
+    const state = sparseClassicState((await readDocument(file)).toJS() as Record<string, unknown>);
+    const input = write
+      ? JSON.parse(
+          await readClassicProjectFile(root, args[2], {
+            label: 'Classic progress input',
+            maxBytes: 64 * 1024,
+          }),
+        )
+      : null;
+    if (kind === 'checkpoint') {
+      if (write && (state.phase !== 'build' || state.archived))
+        fail('ERROR: checkpoint updates require active Build phase');
+      const source = await readClassicProjectFile(root, path.join(directory, 'tasks.md'), {
+        label: 'Classic checkpoint task authority',
+      });
+      output.data = write
+        ? await writeClassicCheckpoint(root, directory, input, source)
+        : await readClassicCheckpoint(root, directory, source);
+    } else {
+      output.data = write
+        ? await writeClassicDelivery(root, directory, input, state)
+        : await readClassicDelivery(root, directory, { verifyRemote: args[1] === '--verify' });
+    }
+    output.stdout.push(
+      `${kind}: ${write ? 'recorded' : 'inspected'}. Use --json for exact state and verification.`,
+    );
+  };
+  if (write) {
+    await assertStateCommandWritable('set');
+    const binding = await resolveBranchBinding(directory, {
+      heal: false,
+      cwd: classicCommandInvocationCwd(),
+    });
+    if (binding.status === 'drift' || binding.status === 'unbound-detached')
+      fail(
+        'ERROR: progress update requires the bound branch; inspect the workspace before retrying',
+      );
+    await withClassicStateLock(directory, operation);
+  } else await operation();
+}
+
+async function check(
+  output: CommandOutput,
+  name: string,
+  phase: string,
+  details = false,
+): Promise<void> {
   validateChangeName(name);
   validateEnum(phase, PHASES);
   const { file, directory, label } = await stateFile(name);
@@ -1063,7 +1201,11 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
   } else if (phase === 'archive') {
     await expectField('verify_result', 'pass');
     const archived = scalar(record.archived);
-    (archived !== 'true' ? pass : reject)(`archived=${archived} (expected: not true)`);
+    pass(
+      archived === 'true'
+        ? 'archived=true; resume delivery only, do not archive again'
+        : `archived=${archived} (ready for archive confirmation)`,
+    );
   }
   const binding = await resolveBranchBinding(directory, {
     heal: true,
@@ -1095,6 +1237,12 @@ async function check(output: CommandOutput, name: string, phase: string): Promis
   output.stdout.push('');
   const locale = classicLocale(await readRecordField(record, 'language'));
   output.data = {
+    ...(await classicRecoveryContext(
+      classicCommandProjectRoot(),
+      directory,
+      sparseClassicState(record),
+      details,
+    )),
     change: name,
     phase: record.phase,
     requestedPhase: phase,
@@ -1198,218 +1346,29 @@ async function recoverDesign(
 
 async function recoverBuild(
   output: CommandOutput,
-  name: string,
-  directory: string,
-  workflow: string,
+  state: ClassicState,
+  context: Awaited<ReturnType<typeof classicRecoveryContext>>,
 ): Promise<void> {
-  const isolation = await readField(name, 'isolation');
-  const buildMode = await readField(name, 'build_mode');
-  const pause = await readField(name, 'build_pause');
-  const subagentDispatch = await readField(name, 'subagent_dispatch');
-  const tdd = await readField(name, 'tdd_mode');
-  const review = await readField(name, 'review_mode');
-  const plan = await readField(name, 'plan');
-  const planReadiness = await inspectClassicPlanReadiness(classicCommandProjectRoot(), plan);
-  const decisions = [
+  const value = (input: string | null) => input ?? 'null';
+  output.stdout.push(
     '  Build decisions:',
-    await fieldStatus('isolation', isolation),
-    await fieldStatus('build_mode', buildMode),
-    await fieldStatus('build_pause', pause),
-    await fieldStatus('tdd_mode', tdd),
-    await fieldStatus('review_mode', review),
-  ];
-  if (
-    buildMode === 'subagent-driven-development' ||
-    (subagentDispatch && subagentDispatch !== 'null')
-  ) {
-    decisions.push(await fieldStatus('subagent_dispatch', subagentDispatch));
-  }
-  output.stdout.push(...decisions, '', '  Plan:', await fieldStatus('plan', plan, plan), '');
-  const tasks = path.join(directory, 'tasks.md');
-  if (!(await exists(tasks))) {
-    output.stdout.push(
-      '  Tasks: tasks.md MISSING',
-      '',
-      'Recovery action: tasks.md missing. Verify change directory integrity.',
-    );
-    return;
-  }
-  const recoveredTasks = parseClassicTasks(
-    await readClassicProjectFile(classicCommandProjectRoot(), tasks, {
-      label: 'Classic change tasks',
-    }),
+    await fieldStatus('isolation', value(state.isolation)),
+    await fieldStatus('build_mode', value(state.buildMode)),
+    await fieldStatus('build_pause', value(state.buildPause)),
+    await fieldStatus('tdd_mode', value(state.tddMode)),
+    await fieldStatus('review_mode', value(state.reviewMode)),
+    await fieldStatus('subagent_dispatch', value(state.subagentDispatch)),
+    '',
+    '  Plan:',
+    await fieldStatus('plan', value(state.plan), state.plan ?? undefined),
+    '',
+    context.taskState.exists
+      ? `  Tasks: ${context.taskState.completed}/${context.taskState.total} done, ${context.taskState.total - context.taskState.completed} pending`
+      : '  Tasks: tasks.md MISSING',
+    `  Plan task mapping: ${context.planMapping.status}`,
+    '',
+    `Recovery action: ${context.nextAction.reason}`,
   );
-  const total = recoveredTasks.length;
-  const done = recoveredTasks.filter((task) => task.completed).length;
-  const pending = total - done;
-  let planTotal = 0;
-  let planDone = 0;
-  if (planReadiness.status === 'ready') {
-    const planTasks = parseClassicTasks(
-      await readClassicProjectFile(classicCommandProjectRoot(), plan, {
-        label: 'Classic build plan',
-      }),
-    );
-    planTotal = planTasks.length;
-    planDone = planTasks.filter((task) => task.completed).length;
-  }
-  const planPending = planTotal - planDone;
-  output.stdout.push(`  Tasks: ${done}/${total} done, ${pending} pending`);
-  if (planTotal > 0) {
-    output.stdout.push(`  Plan tasks: ${planDone}/${planTotal} done, ${planPending} pending`);
-  }
-  output.stdout.push('');
-
-  const action = resolveBuildRecoveryAction(
-    name,
-    path.relative(classicCommandProjectRoot(), directory).replaceAll('\\', '/'),
-    workflow,
-    isolation,
-    buildMode,
-    pause,
-    subagentDispatch,
-    tdd,
-    review,
-    planReadiness,
-    pending,
-    planPending,
-  );
-  output.stdout.push(action);
-}
-
-function isMissingStateValue(value: string): boolean {
-  return !value || value === 'null';
-}
-
-function resolveBuildRecoveryAction(
-  name: string,
-  changeDirectory: string,
-  workflow: string,
-  isolation: string,
-  buildMode: string,
-  pause: string,
-  subagentDispatch: string,
-  tdd: string,
-  review: string,
-  planReadiness: ClassicPlanReadiness,
-  pending: number,
-  planPending: number,
-): string {
-  const planReady = planReadiness.status === 'ready';
-  const missingBuildConfiguration =
-    isMissingStateValue(buildMode) ||
-    (workflow === 'full' && (isMissingStateValue(tdd) || isMissingStateValue(review))) ||
-    (buildMode === 'subagent-driven-development' && isMissingStateValue(subagentDispatch));
-  if (
-    pause === 'plan-ready' &&
-    planReady &&
-    (isMissingStateValue(isolation) || missingBuildConfiguration)
-  ) {
-    return isMissingStateValue(isolation)
-      ? 'Recovery action: Plan-ready pause detected, but workspace isolation is missing. Resume /comet-open to resolve and prepare the workspace without regenerating the plan.'
-      : 'Recovery action: Plan-ready pause detected. Resume /comet-build and use the single joint decision to choose the supported execution, TDD, and code-review configuration without regenerating the plan.';
-  }
-  if (workflow === 'full' && !planReady) {
-    return buildPlanRecoveryAction(name, changeDirectory, planReadiness);
-  }
-  if (pause === 'plan-ready') {
-    if (buildMode === 'subagent-driven-development' && (pending > 0 || planPending > 0)) {
-      return subagentDispatch === 'confirmed'
-        ? 'Recovery action: Resume the explicit plan-ready pause by clearing build_pause to null, then inspect the first unchecked task (OpenSpec or plan additions) against recent git history/diff. If implemented, check it off; otherwise dispatch a subagent. Do not execute the pending task directly in the main window.'
-        : 'Recovery action: Resume the explicit plan-ready pause by clearing build_pause to null, record the selected subagent policy with comet state set <change-name> subagent_dispatch confirmed, then continue through subagent execution.';
-    }
-    if (pending > 0 || planPending > 0) {
-      return 'Recovery action: Resume the explicit plan-ready pause by clearing build_pause to null, then continue from the first unchecked task.';
-    }
-    return 'Recovery action: Resume the explicit plan-ready pause by clearing build_pause to null, then run guard to transition to verify because all tasks are done.';
-  }
-  if (isMissingStateValue(isolation)) {
-    return 'Recovery action: Isolation is missing. Resume /comet-open to resolve and prepare the workspace; Build must not choose or create it.';
-  }
-  if (isMissingStateValue(buildMode)) {
-    return 'Recovery action: Build mode is missing. Resume /comet-build and use the single joint decision to choose the supported execution method.';
-  }
-  if (workflow === 'full' && isMissingStateValue(tdd)) {
-    return 'Recovery action: TDD mode is missing. Resume /comet-build and use the single joint decision to choose tdd or direct.';
-  }
-  if (workflow === 'full' && isMissingStateValue(review)) {
-    return 'Recovery action: Review mode is missing. Resume /comet-build and use the single joint decision to choose the supported code-review mode.';
-  }
-  if (buildMode === 'subagent-driven-development' && isMissingStateValue(subagentDispatch)) {
-    return 'Recovery action: Selected subagent execution is not recorded. Resume /comet-build and use the single joint decision to confirm the supported execution configuration.';
-  }
-  if (pending > 0) {
-    if (buildMode === 'subagent-driven-development') {
-      return subagentDispatch === 'confirmed'
-        ? 'Recovery action: Read tasks.md and the Superpowers plan (which may include additions beyond OpenSpec), then inspect the first unchecked task against recent git history/diff. If implemented, check it off; otherwise dispatch a subagent. Do not execute the pending task directly in the main window.'
-        : 'Recovery action: Selected subagent execution is not recorded. Run comet state set <change-name> subagent_dispatch confirmed, then continue from the first unchecked task through subagent execution.';
-    }
-    return 'Recovery action: Read tasks.md and continue from first unchecked task.';
-  }
-  if (planPending > 0) {
-    if (buildMode === 'subagent-driven-development') {
-      return subagentDispatch === 'confirmed'
-        ? 'Recovery action: Read the Superpowers plan, then inspect the first unchecked Superpowers plan task against recent git history/diff. If implemented, check it off; otherwise dispatch a subagent. Do not execute the pending task directly in the main window.'
-        : 'Recovery action: Selected subagent execution is not recorded. Run comet state set <change-name> subagent_dispatch confirmed, then continue from the first unchecked task through subagent execution.';
-    }
-    return 'Recovery action: Read the Superpowers plan and continue from the first unchecked plan task.';
-  }
-  return 'Recovery action: All tasks done. Run guard to transition to verify.';
-}
-
-function buildPlanRecoveryAction(
-  name: string,
-  changeDirectory: string,
-  planReadiness: Exclude<ClassicPlanReadiness, { status: 'ready' }>,
-): string {
-  const missing = planReadiness.status === 'missing';
-  const errorCode = missing ? 'classic-build-plan-missing' : 'classic-build-plan-broken';
-  const state = missing
-    ? 'plan is not recorded'
-    : 'the recorded plan path does not resolve to a file';
-  const recorded = missing ? [] : [`RECORDED_PLAN: ${planReadiness.recordedPath}`];
-  const createCommand = missing
-    ? `comet state set ${name} plan <repository-relative-plan-path>`
-    : `comet state set ${name} plan <new-repository-relative-plan-path>`;
-  const repair = missing
-    ? [
-        '2. Load the Superpowers writing-plans Skill.',
-        `3. Read the Design Doc path from "comet state get ${name} design_doc" and read ${changeDirectory}/tasks.md.`,
-        '4. Create the implementation plan under docs/superpowers/plans/.',
-        '5. Record the plan path:',
-        `   ${createCommand}`,
-      ]
-    : [
-        `2. Restore the plan file at ${planReadiness.recordedPath}, or load the Superpowers writing-plans Skill and create a replacement under docs/superpowers/plans/.`,
-        '3. When creating a replacement, record its path:',
-        `   ${createCommand}`,
-      ];
-
-  return [
-    'COMET_RECOVERY: required',
-    `ERROR_CODE: ${errorCode}`,
-    `CHANGE: ${name}`,
-    'WORKFLOW: full',
-    'PHASE: build',
-    `STATE: ${state}`,
-    ...recorded,
-    '',
-    'ALLOWED_RECOVERY_WRITES:',
-    '- docs/superpowers/plans/<plan-file>.md',
-    '- Comet state updates performed by the comet CLI',
-    `- ${changeDirectory} artifacts allowed by the build phase`,
-    '',
-    'RECOVERY:',
-    `1. Resume /comet-build for ${name} and return to Step 1.`,
-    ...repair,
-    `${missing ? '6' : '4'}. Verify recovery:`,
-    `   comet state check ${name} build --recover`,
-    '',
-    'SUCCESS: plan is reported as DONE and recovery no longer returns classic-build-plan-missing or classic-build-plan-broken.',
-    'RETRY: resume build configuration or retry the blocked Write/Edit only after SUCCESS.',
-    'PROHIBITED: do not execute tasks.md or write project source before SUCCESS; tasks.md is not a substitute for the implementation plan.',
-    'If writing-plans is unavailable, stop and report the missing Skill instead of bypassing this recovery.',
-  ].join('\n');
 }
 
 async function recoverVerify(output: CommandOutput, name: string): Promise<void> {
@@ -1450,40 +1409,51 @@ async function recoverArchive(output: CommandOutput, name: string): Promise<void
   );
 }
 
-async function recover(output: CommandOutput, name: string): Promise<void> {
+async function recover(
+  output: CommandOutput,
+  name: string,
+  details = false,
+  json = false,
+): Promise<void> {
   validateChangeName(name);
   const { file, directory, label } = await stateFile(name);
   if (!(await exists(file))) fail(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
-  const phase = await readField(name, 'phase');
-  const workflow = await readField(name, 'workflow');
-  const locale = classicLocale(await readField(name, 'language'));
   const projection = await readClassicState(directory, { migrate: false });
+  const classic =
+    projection.classic ??
+    sparseClassicState((await readDocument(file)).toJS() as Record<string, unknown>);
+  const phase = classic.phase;
+  const workflow = classic.workflow;
+  const locale = classicLocale(classic.language);
   const evidenceScopes = projection.run
     ? await recoverCommandChecks(classicCommandProjectRoot(), directory, projection.run)
     : { build: 'rerun-required', verify: 'rerun-required' };
   const checkpoint = path.join(directory, '.comet', 'subagent-progress.md');
-  const tasks = path.join(directory, 'tasks.md');
-  const taskText = (await exists(tasks))
-    ? await readClassicProjectFile(classicCommandProjectRoot(), tasks, { label: 'Recovery tasks' })
-    : '';
-  const parsedTasks = parseClassicTasks(taskText);
-  const plan = await readField(name, 'plan');
+  const context = await classicRecoveryContext(
+    classicCommandProjectRoot(),
+    directory,
+    classic,
+    details,
+  );
   output.data = {
+    ...context,
     change: name,
     phase,
     workflow,
     projectRoot: classicCommandProjectRoot(),
     changeDir: directory,
     currentStep: projection.run?.currentStep ?? null,
-    configuration: projection.classic,
-    nextTask: parsedTasks.find((task) => !task.completed)?.text ?? null,
-    taskState: { authority: tasks, revision: classicTaskRevision(taskText), tasks: parsedTasks },
+    configuration: classic,
     checkpoint: (await exists(checkpoint))
       ? {
           path: checkpoint,
-          content: await readClassicProjectFile(classicCommandProjectRoot(), checkpoint, {
-            label: 'Recovery checkpoint',
-          }),
+          ...(details
+            ? {
+                content: await readClassicProjectFile(classicCommandProjectRoot(), checkpoint, {
+                  label: 'Recovery checkpoint',
+                }),
+              }
+            : {}),
         }
       : null,
     evidence: {
@@ -1491,13 +1461,10 @@ async function recover(output: CommandOutput, name: string): Promise<void> {
       reason: 'cold-recovery',
       scopes: evidenceScopes,
     },
-    requiredFiles: [
-      file,
-      tasks,
-      ...(plan && plan !== 'null' ? [path.resolve(classicCommandProjectRoot(), plan)] : []),
-    ],
+    requiredFiles: [file, ...context.requiredFiles],
   };
   output.envelope = classicRecoveryEnvelope({ name, phase, locale });
+  if (json) return;
   output.stdout.push(
     output.envelope.summary,
     `=== Recovery Context: ${name} ===`,
@@ -1511,7 +1478,7 @@ async function recover(output: CommandOutput, name: string): Promise<void> {
   } else if (phase === 'design') {
     await recoverDesign(output, name, directory);
   } else if (phase === 'build') {
-    await recoverBuild(output, name, directory, workflow);
+    await recoverBuild(output, classic, context);
   } else if (phase === 'verify') {
     await recoverVerify(output, name);
   } else if (phase === 'archive') {
@@ -1520,6 +1487,7 @@ async function recover(output: CommandOutput, name: string): Promise<void> {
     fail(`ERROR: Unknown phase: ${phase}`);
   }
   output.stdout.push('', '=== End Recovery Context ===');
+  output.stdout.push(`Next action: ${context.nextAction.kind}. ${context.nextAction.reason}`);
 }
 
 async function scale(output: CommandOutput, name: string): Promise<void> {
@@ -1658,6 +1626,7 @@ const MUTATING_STATE_COMMANDS = new Set([
   'init',
   'set',
   'task-complete',
+  'sync-plan',
   'transition',
   'check',
   'scale',
@@ -1742,146 +1711,159 @@ async function clearSelection(output: CommandOutput): Promise<void> {
   output.stderr.push(green('[CLEARED] current change selection'));
 }
 
-export const classicStateCommand: ClassicCommandHandler = withProjectContext(async (args) => {
-  const output = new CommandOutput();
-  try {
-    const [subcommand, ...rest] = args;
-    const arity: Record<string, number> = {
-      get: 2,
-      transition: 2,
-      scale: 1,
-      'task-checkoff': 2,
-      rebind: 1,
-      select: 1,
-      current: 0,
-      'clear-selection': 0,
-      next: 1,
-      artifacts: 1,
-    };
-    if (subcommand && Object.hasOwn(arity, subcommand)) {
-      requiredExact(
-        rest,
-        arity[subcommand],
-        `Invalid arguments for comet state ${subcommand}; run comet state --help`,
-      );
-    }
-    if (
-      subcommand === 'check' &&
-      (rest.length < 2 || rest.length > 3 || (rest.length === 3 && rest[2] !== '--recover'))
-    ) {
-      fail('Usage: comet state check <change-name> <phase> [--recover]');
-    }
-    await assertStateCommandWritable(subcommand);
-    if (subcommand === 'tasks' && rest.includes('--assign-ids'))
-      await assertStateCommandWritable('set');
-    if (subcommand === 'init') {
-      required(rest, 2, 'Usage: comet state init <change-name> <workflow>');
-      const initOptions = rest.slice(2);
-      let isolation: string | null = null;
-      if (initOptions.length > 0) {
-        if (initOptions.length !== 2 || initOptions[0] !== '--isolation') {
-          fail('Usage: comet state init <change-name> <workflow> [--isolation <mode>]');
+export const classicStateCommand: ClassicCommandHandler = withProjectContext(
+  async (args, options) => {
+    const output = new CommandOutput();
+    try {
+      const [subcommand, ...rest] = args;
+      const arity: Record<string, number> = {
+        get: 2,
+        transition: 2,
+        scale: 1,
+        'task-checkoff': 2,
+        rebind: 1,
+        select: 1,
+        current: 0,
+        'clear-selection': 0,
+        next: 1,
+        artifacts: 1,
+      };
+      if (subcommand && Object.hasOwn(arity, subcommand)) {
+        requiredExact(
+          rest,
+          arity[subcommand],
+          `Invalid arguments for comet state ${subcommand}; run comet state --help`,
+        );
+      }
+      if (
+        subcommand === 'check' &&
+        (rest.length < 2 ||
+          rest.length > 4 ||
+          rest.slice(2).some((option) => !['--recover', '--details'].includes(option)) ||
+          new Set(rest.slice(2)).size !== rest.length - 2)
+      ) {
+        fail('Usage: comet state check <change-name> <phase> [--recover] [--details]');
+      }
+      await assertStateCommandWritable(subcommand);
+      if (subcommand === 'tasks' && rest.includes('--assign-ids'))
+        await assertStateCommandWritable('set');
+      if (subcommand === 'init') {
+        required(rest, 2, 'Usage: comet state init <change-name> <workflow>');
+        const initOptions = rest.slice(2);
+        let isolation: string | null = null;
+        if (initOptions.length > 0) {
+          if (initOptions.length !== 2 || initOptions[0] !== '--isolation') {
+            fail('Usage: comet state init <change-name> <workflow> [--isolation <mode>]');
+          }
+          isolation = initOptions[1];
         }
-        isolation = initOptions[1];
-      }
-      await init(output, rest[0], rest[1], isolation);
-    } else if (subcommand === 'get') {
-      required(rest, 2, 'Usage: comet state get <change-name> <field>');
-      validateChangeName(rest[0]);
-      output.stdout.push(await readField(rest[0], rest[1]));
-    } else if (subcommand === 'set') {
-      if (rest.length < 3 || rest.length % 2 !== 1) {
-        fail('Usage: comet state set <change-name> <field> <value> [<field> <value> ...]');
-      }
-      validateChangeName(rest[0]);
-      const updates: Array<[string, string]> = [];
-      for (let index = 1; index < rest.length; index += 2)
-        updates.push([rest[index], rest[index + 1]]);
-      await setFields(output, rest[0], updates);
-    } else if (subcommand === 'transition') {
-      required(rest, 2, 'Usage: comet state transition <change-name> <event>');
-      await transition(output, rest[0], rest[1]);
-    } else if (subcommand === 'check') {
-      required(rest, 2, 'Usage: comet state check <change-name> <phase> [--recover]');
-      if (rest[2] === '--recover') await recover(output, rest[0]);
-      else await check(output, rest[0], rest[1]);
-    } else if (subcommand === 'scale') {
-      required(rest, 1, 'Usage: comet state scale <change-name>');
-      await scale(output, rest[0]);
-    } else if (subcommand === 'artifacts') {
-      validateChangeName(rest[0]);
-      const { directory } = await stateFile(rest[0]);
-      const requirements = await readClassicArtifactRequirements(
-        classicCommandProjectRoot(),
-        directory,
-      );
-      if (requirements.source === 'legacy') {
-        const full = (await readField(rest[0], 'workflow')) === 'full';
-        requirements.designRequired = full;
-        if (!full) {
-          requirements.required = requirements.required.filter((id) => id !== 'design');
-          requirements.files = requirements.files.filter(
-            (file) => path.basename(file) !== 'design.md',
-          );
+        await init(output, rest[0], rest[1], isolation);
+      } else if (subcommand === 'get') {
+        required(rest, 2, 'Usage: comet state get <change-name> <field>');
+        validateChangeName(rest[0]);
+        output.stdout.push(await readField(rest[0], rest[1]));
+      } else if (subcommand === 'set') {
+        if (rest.length < 3 || rest.length % 2 !== 1) {
+          fail('Usage: comet state set <change-name> <field> <value> [<field> <value> ...]');
         }
-        for (const file of requirements.files)
-          if (!(await nonempty(file)))
-            requirements.problems.push(`Required Classic artifact is missing or empty: ${file}`);
+        validateChangeName(rest[0]);
+        const updates: Array<[string, string]> = [];
+        for (let index = 1; index < rest.length; index += 2)
+          updates.push([rest[index], rest[index + 1]]);
+        await setFields(output, rest[0], updates);
+      } else if (subcommand === 'transition') {
+        required(rest, 2, 'Usage: comet state transition <change-name> <event>');
+        await transition(output, rest[0], rest[1]);
+      } else if (subcommand === 'check') {
+        required(rest, 2, 'Usage: comet state check <change-name> <phase> [--recover]');
+        validateEnum(rest[1], PHASES);
+        if (rest.includes('--recover'))
+          await recover(output, rest[0], rest.includes('--details'), options.json);
+        else await check(output, rest[0], rest[1], rest.includes('--details'));
+      } else if (subcommand === 'scale') {
+        required(rest, 1, 'Usage: comet state scale <change-name>');
+        await scale(output, rest[0]);
+      } else if (subcommand === 'artifacts') {
+        validateChangeName(rest[0]);
+        const { directory } = await stateFile(rest[0]);
+        const requirements = await readClassicArtifactRequirements(
+          classicCommandProjectRoot(),
+          directory,
+        );
+        if (requirements.source === 'legacy') {
+          const full = (await readField(rest[0], 'workflow')) === 'full';
+          requirements.designRequired = full;
+          if (!full) {
+            requirements.required = requirements.required.filter((id) => id !== 'design');
+            requirements.files = requirements.files.filter(
+              (file) => path.basename(file) !== 'design.md',
+            );
+          }
+          for (const file of requirements.files)
+            if (!(await nonempty(file)))
+              requirements.problems.push(`Required Classic artifact is missing or empty: ${file}`);
+        }
+        output.data = requirements;
+        output.stdout.push(
+          requirements.problems.length
+            ? requirements.problems.join('\n')
+            : 'Required artifact dependency closure is ready',
+        );
+        if (requirements.problems.length) throw new CommandFailure('', 1);
+      } else if (subcommand === 'record-check') {
+        required(
+          rest,
+          2,
+          'Usage: comet state record-check <change> <build|verify> --command <text> --exit-code <int> [--cwd <path>]',
+        );
+        await recordCheck(output, rest[0], rest[1], rest.slice(2));
+      } else if (subcommand === 'task-checkoff') {
+        required(rest, 2, 'Usage: comet state task-checkoff <file> <task-text>');
+        await taskCheckoff(output, rest[0], rest[1]);
+      } else if (subcommand === 'tasks') {
+        if (rest.length !== 1 && !(rest.length === 2 && rest[1] === '--assign-ids')) {
+          fail('Usage: comet state tasks <change-name> [--assign-ids]');
+        }
+        await taskState(output, rest[0], { kind: rest.length === 2 ? 'assign' : 'list' });
+      } else if (subcommand === 'sync-plan') {
+        requiredExact(rest, 1, 'Usage: comet state sync-plan <change-name>');
+        await taskState(output, rest[0], { kind: 'sync-plan' });
+      } else if (subcommand === 'checkpoint' || subcommand === 'delivery') {
+        await progressCommand(output, subcommand, rest);
+      } else if (subcommand === 'task-complete') {
+        if (rest.length !== 4 || rest[2] !== '--expect')
+          fail('Usage: comet state task-complete <change-name> <task-id> --expect <revision>');
+        await taskState(output, rest[0], { kind: 'complete', id: rest[1], revision: rest[3] });
+      } else if (subcommand === 'rebind') {
+        requiredExact(rest, 1, 'Usage: comet state rebind <change-name>');
+        await rebind(output, rest[0]);
+      } else if (subcommand === 'select') {
+        requiredExact(rest, 1, 'Usage: comet state select <change-name>');
+        await selectChange(output, rest[0]);
+      } else if (subcommand === 'current') {
+        requiredExact(rest, 0, 'Usage: comet state current');
+        await currentChange(output);
+      } else if (subcommand === 'clear-selection') {
+        requiredExact(rest, 0, 'Usage: comet state clear-selection');
+        await clearSelection(output);
+      } else if (subcommand === 'next') {
+        required(rest, 1, 'Usage: comet state next <change-name>');
+        await next(output, rest[0]);
+      } else {
+        fail(`Unknown subcommand: ${subcommand ?? ''}`);
       }
-      output.data = requirements;
-      output.stdout.push(
-        requirements.problems.length
-          ? requirements.problems.join('\n')
-          : 'Required artifact dependency closure is ready',
-      );
-      if (requirements.problems.length) throw new CommandFailure('', 1);
-    } else if (subcommand === 'record-check') {
-      required(
-        rest,
-        2,
-        'Usage: comet state record-check <change> <build|verify> --command <text> --exit-code <int> [--cwd <path>]',
-      );
-      await recordCheck(output, rest[0], rest[1], rest.slice(2));
-    } else if (subcommand === 'task-checkoff') {
-      required(rest, 2, 'Usage: comet state task-checkoff <file> <task-text>');
-      await taskCheckoff(output, rest[0], rest[1]);
-    } else if (subcommand === 'tasks') {
-      if (rest.length !== 1 && !(rest.length === 2 && rest[1] === '--assign-ids')) {
-        fail('Usage: comet state tasks <change-name> [--assign-ids]');
+      if (options.json && subcommand === 'check') output.stdout = [];
+      return output.result();
+    } catch (error) {
+      if (!(error instanceof CommandFailure)) throw error;
+      // The frozen 0.3.8 shell calls red() once per line and never embeds newlines
+      // inside a single color call. Mirror that contract by wrapping each line of
+      // the message in its own span so multi-line errors (e.g. validateEnum) render
+      // as separate colored lines rather than one span across a newline.
+      if (error.message) {
+        for (const line of error.message.split('\n')) output.stderr.push(red(line));
       }
-      await taskState(output, rest[0], { kind: rest.length === 2 ? 'assign' : 'list' });
-    } else if (subcommand === 'task-complete') {
-      if (rest.length !== 4 || rest[2] !== '--expect')
-        fail('Usage: comet state task-complete <change-name> <task-id> --expect <revision>');
-      await taskState(output, rest[0], { kind: 'complete', id: rest[1], revision: rest[3] });
-    } else if (subcommand === 'rebind') {
-      requiredExact(rest, 1, 'Usage: comet state rebind <change-name>');
-      await rebind(output, rest[0]);
-    } else if (subcommand === 'select') {
-      requiredExact(rest, 1, 'Usage: comet state select <change-name>');
-      await selectChange(output, rest[0]);
-    } else if (subcommand === 'current') {
-      requiredExact(rest, 0, 'Usage: comet state current');
-      await currentChange(output);
-    } else if (subcommand === 'clear-selection') {
-      requiredExact(rest, 0, 'Usage: comet state clear-selection');
-      await clearSelection(output);
-    } else if (subcommand === 'next') {
-      required(rest, 1, 'Usage: comet state next <change-name>');
-      await next(output, rest[0]);
-    } else {
-      fail(`Unknown subcommand: ${subcommand ?? ''}`);
+      return output.result(error.exitCode);
     }
-    return output.result();
-  } catch (error) {
-    if (!(error instanceof CommandFailure)) throw error;
-    // The frozen 0.3.8 shell calls red() once per line and never embeds newlines
-    // inside a single color call. Mirror that contract by wrapping each line of
-    // the message in its own span so multi-line errors (e.g. validateEnum) render
-    // as separate colored lines rather than one span across a newline.
-    if (error.message) {
-      for (const line of error.message.split('\n')) output.stderr.push(red(line));
-    }
-    return output.result(error.exitCode);
-  }
-});
+  },
+);

@@ -15,6 +15,7 @@ function state(overrides: Partial<ClassicState> = {}): ClassicState {
     buildPause: null,
     subagentDispatch: null,
     tddMode: null,
+    reviewMode: null,
     isolation: null,
     verifyMode: null,
     autoTransition: true,
@@ -64,7 +65,13 @@ const cases: ResolverCase[] = [
   },
   {
     name: 'full build plan',
-    classic: state({ phase: 'build' }),
+    classic: state({
+      phase: 'build',
+      buildMode: 'autonomous',
+      tddMode: 'direct',
+      reviewMode: 'standard',
+      isolation: 'current',
+    }),
     expected: 'full.build.plan',
   },
   {
@@ -86,6 +93,7 @@ const cases: ResolverCase[] = [
       plan: 'plan.md',
       buildMode: 'executing-plans',
       tddMode: 'tdd',
+      reviewMode: 'standard',
       isolation: 'worktree',
       verifyMode: 'full',
     }),
@@ -99,6 +107,7 @@ const cases: ResolverCase[] = [
       plan: 'plan.md',
       buildMode: 'executing-plans',
       tddMode: 'tdd',
+      reviewMode: 'standard',
       isolation: 'worktree',
       verifyMode: 'full',
     }),
@@ -115,6 +124,7 @@ const cases: ResolverCase[] = [
       isolation: 'worktree',
       verifyMode: 'full',
       verifyResult: 'fail',
+      reviewMode: 'standard',
     }),
     evidence: evidence('build.plan'),
     expected: 'full.build.fix',
@@ -218,6 +228,67 @@ const cases: ResolverCase[] = [
 ];
 
 describe('Classic Resolver', () => {
+  it.each(['autonomous', 'executing-plans'] as const)(
+    'configures full %s without an early verification choice',
+    (buildMode) => {
+      const configured = state({
+        phase: 'build',
+        buildMode,
+        tddMode: 'direct',
+        reviewMode: 'standard',
+        isolation: 'current',
+      });
+      expect(resolveClassicStepId(configured, evidence('build.plan'))).toBe('full.build.execute');
+      for (const field of ['buildMode', 'tddMode', 'reviewMode', 'isolation'] as const) {
+        expect(resolveClassicStepId({ ...configured, [field]: null }, evidence('build.plan'))).toBe(
+          'full.build.configure',
+        );
+      }
+    },
+  );
+
+  it('selects strategy before planning and preserves a valid legacy plan-ready pause', () => {
+    expect(resolveClassicStepId(state({ phase: 'build' }), [])).toBe('full.build.configure');
+    const autonomous = state({
+      phase: 'build',
+      buildMode: 'autonomous',
+      tddMode: 'direct',
+      reviewMode: 'off',
+      isolation: 'current',
+    });
+    expect(resolveClassicStepId(autonomous, evidence('build.plan'))).toBe('full.build.configure');
+    expect(resolveClassicStepId({ ...autonomous, reviewMode: 'standard' }, [])).toBe(
+      'full.build.plan',
+    );
+    expect(
+      resolveClassicStepId({ ...autonomous, buildPause: 'plan-ready' }, evidence('build.plan')),
+    ).toBe('full.build.plan-ready');
+    expect(
+      resolveClassicStepId({ ...autonomous, buildMode: 'executing-plans' }, evidence('build.plan')),
+    ).toBe('full.build.execute');
+  });
+
+  it.each(['hotfix', 'tweak'] as const)(
+    'allows explicit autonomous %s with preset configuration',
+    (workflow) => {
+      const configured = state({
+        workflow,
+        phase: 'build',
+        buildMode: 'autonomous',
+        tddMode: 'direct',
+        isolation: 'current',
+        verifyMode: 'light',
+      });
+      expect(resolveClassicStepId(configured, [])).toBe(`${workflow}.build.execute`);
+      expect(resolveClassicStepId(configured, evidence('build.tasks-complete'))).toBe(
+        `${workflow}.build.complete`,
+      );
+      expect(() => resolveClassicStepId({ ...configured, isolation: null }, [])).toThrow(
+        'configuration is incomplete',
+      );
+    },
+  );
+
   it.each(cases)('$name -> $expected', ({ classic, evidence: facts = [], expected }) => {
     expect(resolveClassicStepId(classic, facts)).toBe(expected);
   });

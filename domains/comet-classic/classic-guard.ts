@@ -1,11 +1,16 @@
 import { createHash } from 'crypto';
+import { inspectClassicAutonomousBuildProblems } from './classic-plan-readiness.js';
 import { handoffSourceHash } from './classic-handoff-source.js';
 import {
   classicArchivedRequirementsProblems,
   readClassicArtifactRequirements,
 } from './classic-artifact-requirements.js';
 import path from 'path';
-import { parseClassicTasks, validateClassicTaskPlan } from './classic-tasks.js';
+import {
+  inspectClassicPlanTasks,
+  parseClassicTasks,
+  validateClassicTaskPlan,
+} from './classic-tasks.js';
 import { parseDocument } from 'yaml';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import { classicGuardCheckEnvelope, classicLocale } from './classic-output-language.js';
@@ -528,12 +533,12 @@ async function tasksHasAny(changeDir: string): Promise<boolean> {
   );
 }
 
-async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
+async function planTaskMappingValid(changeDir: string): Promise<CheckResult> {
   const plan = await readField(changeDir, 'plan');
   if (!plan || plan === 'null') return pass();
   if (!(await exists(plan))) {
     return fail(
-      `plan file is missing at ${plan}\nNext: restore the Superpowers plan file or update .comet.yaml plan before leaving build.`,
+      `plan file is missing at ${plan}\nNext: restore the implementation plan or update .comet.yaml plan before leaving build.`,
     );
   }
   const source = await readClassicProjectFile(classicCommandProjectRoot(), plan, {
@@ -547,10 +552,10 @@ async function planTasksAllDone(changeDir: string): Promise<CheckResult> {
   );
   const authority = path.relative(classicCommandProjectRoot(), taskFile).replaceAll('\\', '/');
   if (validateClassicTaskPlan(source, authority, tasks) === 'canonical') return pass();
-  const unfinished = parseClassicTasks(source).filter((task) => !task.completed);
-  if (unfinished.length > 0) {
+  const { unmapped } = inspectClassicPlanTasks(source, tasks);
+  if (unmapped.length > 0) {
     return fail(
-      `Unfinished Superpowers plan tasks:\n${unfinished.map((entry) => `${entry.line}:${entry.text}`).join('\n')}\nNext: complete the legacy plan tasks, or explicitly migrate the reviewed plan to task-ID references in tasks.md.`,
+      `Unmapped implementation plan tasks:\n${unmapped.map((entry) => `${entry.line}:${entry.text}`).join('\n')}\nNext: reconcile these items against implementation and acceptance, map them to tasks.md IDs or add genuinely extra tasks. Checkbox state alone is not evidence of completion.`,
     );
   }
   return pass();
@@ -595,10 +600,12 @@ async function isolationSelected(changeDir: string, change: string): Promise<Che
 
 async function buildModeSelected(changeDir: string, change: string): Promise<CheckResult> {
   const buildMode = await readField(changeDir, 'build_mode');
-  if (['subagent-driven-development', 'executing-plans', 'direct'].includes(buildMode))
+  if (
+    ['subagent-driven-development', 'executing-plans', 'direct', 'autonomous'].includes(buildMode)
+  )
     return pass();
   return fail(
-    `build_mode must be selected before leaving build, got '${buildMode || 'null'}'\nNext: ask the user to choose an execution mode, then run:\n  comet state set ${change} build_mode <subagent-driven-development|executing-plans>`,
+    `build_mode must be selected before leaving build, got '${buildMode || 'null'}'\nNext: ask the user to choose an execution mode, then run:\n  comet state set ${change} build_mode <subagent-driven-development|executing-plans|autonomous>`,
   );
 }
 
@@ -942,11 +949,21 @@ async function guardBuildChecks(
     check('isolation selected', () => isolationSelected(changeDir, change)),
     check('build_mode selected', () => buildModeSelected(changeDir, change)),
     check('build_mode allowed for workflow', () => buildModeAllowedForWorkflow(changeDir)),
+    check('autonomous full build prerequisites', async () => {
+      const state = (await readClassicState(changeDir, { migrate: false })).classic;
+      if (!state) return fail('Classic state is missing');
+      const problems = await inspectClassicAutonomousBuildProblems(
+        classicCommandProjectRoot(),
+        change,
+        state,
+      );
+      return problems.length ? fail(problems.join('\n')) : pass();
+    }),
     check('subagent dispatch confirmed', () => subagentDispatchConfirmed(changeDir, change)),
     check('tdd_mode selected', () => tddModeSelected(changeDir, change)),
     check('review_mode selected', () => reviewModeSelected(changeDir, change)),
     check('tasks.md all tasks checked', () => tasksAllDone(changeDir)),
-    check('Superpowers plan all tasks checked', () => planTasksAllDone(changeDir)),
+    check('plan task mapping is valid', () => planTaskMappingValid(changeDir)),
     check('proposal.md exists', async () =>
       (await nonempty(path.join(changeDir, 'proposal.md'))) ? pass() : fail(''),
     ),

@@ -4,11 +4,17 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.4.1] - 2026-09-09
 
+### Added
+
+- **Classic autonomous execution**: Opt into an autonomous Build strategy with compact Agent-led implementation planning and execution, without mandatory external planning or execution Skills. Retain five-phase validation, explicit user decisions, and independent review for full workflows.
+- **Classic progress and delivery recovery**: Record structured work-package checkpoints and explicit local, push, or pull-request delivery choices. Inspect actual delivery results after interruption and resume only unfinished authorized actions.
+
 ### Changed
 
 - **Native Supervisor monitoring**: Pause unnecessary periodic monitoring while work awaits external input, explain blockers promptly, and resume when relevant input or dependencies become available while preserving independent work and completed results.
-- **Classic execution and recovery**: Keep one authoritative task checklist and technical design, reuse checks only after Runtime validates their evidence, and resume unfinished work without repeating completed implementation or review. Preserve five-phase responsibilities and user confirmations while recommending lightweight presets for suitable new tasks.
-- **Classic planning and review**: Plan around independently verifiable outcomes, apply related configuration together, and use bounded risk-based task reviews with one final integrated review. Resolve required OpenSpec artifacts from their full dependency graph instead of generating every optional document.
+- **Classic execution and recovery**: Keep one authoritative task checklist and technical design, reconcile existing implementation before completing unchecked tasks, and synchronize explicitly mapped legacy plan checkboxes. Use compact phase-entry summaries and load recovery details only when needed, without repeating accepted implementation or review. Preserve lightweight presets for suitable new tasks.
+- **Classic planning and review**: Confirm execution settings together before planning, plan around independently verifiable outcomes, and reuse implementers within bounded work packages. Apply risk-based task reviews with one final integrated review, and resolve required OpenSpec artifacts from their dependency graph instead of generating every optional document.
+- **Classic check reuse**: Reuse checks only after Runtime validates their evidence. Projects may explicitly bind a command's relevant inputs and environment to avoid invalidation by unrelated changes; commands without a matching policy retain conservative validation.
 - **Single-project updates**: Update the Comet npm package by default when refreshing one project, including interactive and JSON updates. Use `--skip-self-update` to refresh assets without upgrading the package; other projects' assets remain unchanged.
 
 ### Fixed

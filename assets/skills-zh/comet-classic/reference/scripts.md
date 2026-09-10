@@ -18,8 +18,15 @@ comet classic workspace resolve <change-name> --json
 comet state select <change-name>
 comet state current
 comet state clear-selection
-comet state check <change-name> <phase>
+comet state check <change-name> <phase> --json
 comet state check <change-name> <phase> --recover --json
+comet state check <change-name> <phase> --recover --details --json
+comet state checkpoint <change-name>
+comet state checkpoint <change-name> --file <json-path>
+comet state sync-plan <change-name>
+comet state delivery <change-name>
+comet state delivery <change-name> --verify
+comet state delivery <change-name> --file <json-path>
 comet check run <change-name> <build|verify> --local -- <program> [args...]
 comet guard <change-name> <phase> --apply
 comet handoff <change-name> design --write
@@ -28,7 +35,13 @@ comet resume-probe . --stdin --json
 comet classic intent route --stdin
 ```
 
-在 Open 阶段先运行 workspace prepare；恢复时运行 workspace resolve，它会扫描已登记 Worktree 并返回应进入的 `projectRoot`。进入明确的 change 后再运行 `comet state select <change-name>`。普通源码写入只受该选择管辖；尚未选择时 hook 会阻塞并要求选择。切换 branch/worktree 或选择失效后必须重新运行 resolve 和 select。
+在 Open 阶段先运行 workspace prepare；工作区未知、发生切换或选择失效时运行 workspace resolve，进入返回的 projectRoot 后 select。普通阶段衔接沿用已有效的选择，不重复扫描 Worktree；普通源码写入只受所选 change 管辖。
+
+入口 check --json 统一提供 layout、configuration、nextAction、任务摘要、coordination 和 delivery；已返回信息不逐字段重复查询。冷恢复先用 --recover 的紧凑包，需要全量任务/检查点/证据时才加 --details，具体见 context-recovery.md。
+
+checkpoint 输入必须有 schemaVersion:1，及 taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds；读取返回 `{checkpoint, stale}`，由 Runtime 验证并生成 Markdown。JSON 示例见 context-recovery.md。task-complete 自动同步有 comet-task ID 映射的旧计划；sync-plan 可单独同步，planSync mapping-required 只要求补映射，不要求重做实现。
+
+delivery 输入为 action（local|push|pr）、targetBranch、可选 remote、commit、prUrl，示例见 comet-archive。普通入口和 delivery 读取不触网；只有 `state delivery <change-name> --verify` 执行远端/PR 只读核对，返回 `{delivery, verification}`。写入成功不等于交付成功；命令不可用、拒绝或记录不一致时停止，不手改内部状态绕过。
 
 guard 的 `--apply` 在检查通过后推进状态。需要直接表达状态事件时使用 `comet state transition`；阶段推进后使用 `comet state next` 解析是否自动调用下一 Skill。
 

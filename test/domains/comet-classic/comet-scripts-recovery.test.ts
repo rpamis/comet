@@ -122,7 +122,7 @@ describe('check --recover', () => {
     expect(result.stdout).toContain('build_mode: PENDING');
     expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
     expect(result.stdout).toContain(
-      'Isolation is missing. Resume /comet-open to resolve and prepare the workspace; Build must not choose or create it.',
+      'Resume /comet-open to restore the missing isolation decision without regenerating valid artifacts.',
     );
   });
 
@@ -160,15 +160,10 @@ describe('check --recover', () => {
     ]);
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('ERROR_CODE: classic-build-plan-missing');
-    expect(result.stdout).toContain('CHANGE: recover-missing-plan');
-    expect(result.stdout).toContain(
-      'comet state set recover-missing-plan plan <repository-relative-plan-path>',
-    );
-    expect(result.stdout).toContain('comet state check recover-missing-plan build --recover');
-    expect(result.stdout).toContain('SUCCESS:');
-    expect(result.stdout).toContain('RETRY:');
-    expect(result.stdout).toContain('PROHIBITED:');
+    expect(result.stdout).toContain('plan: PENDING');
+    expect(result.stdout).toContain('Next action: plan.');
+    expect(result.stdout).toContain('configured plans directory');
+    expect(result.stdout).toContain('Preserve existing work and confirmed execution strategy');
     expect(result.stdout).not.toContain('Read tasks.md and continue');
   });
 
@@ -202,12 +197,11 @@ describe('check --recover', () => {
     ]);
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('ERROR_CODE: classic-build-plan-broken');
-    expect(result.stdout).toContain('RECORDED_PLAN: docs/superpowers/plans/missing-plan.md');
     expect(result.stdout).toContain(
-      'comet state set recover-broken-plan plan <new-repository-relative-plan-path>',
+      'plan: BROKEN (path docs/superpowers/plans/missing-plan.md does not exist)',
     );
-    expect(result.stdout).toContain('comet state check recover-broken-plan build --recover');
+    expect(result.stdout).toContain('Next action: plan.');
+    expect(result.stdout).toContain('Restore the implementation plan');
   });
 
   it('outputs plan-ready pause recovery context for build phase', async () => {
@@ -241,9 +235,9 @@ describe('check --recover', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('build_pause: DONE (plan-ready)');
-    expect(result.stdout).toContain('Plan-ready pause');
+    expect(result.stdout).toContain('Next action: workspace.');
     expect(result.stdout).toContain(
-      'workspace isolation is missing. Resume /comet-open to resolve and prepare the workspace without regenerating the plan',
+      'Resume /comet-open to restore the missing isolation decision without regenerating valid artifacts',
     );
   });
 
@@ -281,11 +275,11 @@ describe('check --recover', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      'Plan-ready pause detected. Resume /comet-build and use the single joint decision to choose the supported execution, TDD, and code-review configuration without regenerating the plan.',
+      'Complete only missing execution, TDD and review decisions in /comet-build before planning; retain confirmed settings and any valid plan.',
     );
   });
 
-  it('outputs subagent dispatch guidance when recovering build phase with pending tasks', async () => {
+  it('reconciles unmapped legacy plan tasks before dispatching more implementation', async () => {
     await writeFile(
       path.join(tmpDir, 'docs', 'superpowers', 'plans', 'subagent-plan.md'),
       '- [ ] pending task\n',
@@ -323,10 +317,10 @@ describe('check --recover', () => {
     expect(result.stdout).toContain('build_mode: DONE (subagent-driven-development)');
     expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
     expect(result.stdout).toContain(
-      'inspect the first unchecked task against recent git history/diff',
+      'Inspect implementation and acceptance, then map legacy plan items to task IDs or add genuinely extra tasks',
     );
-    expect(result.stdout).toContain('dispatch a subagent');
-    expect(result.stdout).toContain('Do not execute the pending task directly in the main window');
+    expect(result.stdout).toContain('Do not reimplement from checkbox state');
+    expect(result.stdout).toContain('Next action: reconcile-plan.');
   });
 
   it('outputs recovery context for verify phase', async () => {

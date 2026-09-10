@@ -2,58 +2,89 @@
 
 规范路径：`comet-classic/reference/context-recovery.md`
 
-本协议由所有可能触发上下文压缩的 comet 子 skill 共享。当 agent 怀疑发生上下文压缩（之前对话被摘要、找不到之前讨论的内容）时，按本协议恢复。
+## 阶段入口与按需恢复
 
-## 任意入口恢复原则
-
-用户可能直接从 `/comet-open`、`/comet-design`、`/comet-build`、`/comet-verify`、`/comet-archive`、`/comet-hotfix` 或 `/comet-tweak` 回到流程。进入任意子 Skill 时，都先按 `comet-classic/reference/scripts.md` 运行公开 CLI 命令，再用当前子 Skill 对应 phase 运行入口检查或恢复检查。不得依赖对话历史判断阶段。
+先按 scripts.md 确认公开 CLI 和所选工作区；普通阶段衔接只运行一次入口检查：
 
 ```bash
 comet state check <change-name> <phase> --json
 ```
 
-若检查结果显示实际 phase、workflow 或 evidence 应由其他 Skill 处理，按脚本输出和 `/comet-classic` 路由规则切换；不要在错误阶段继续补写状态。若存在未提交改动，先按 `comet-classic/reference/dirty-worktree.md` 归因。
+普通及冷恢复入口都提供 layout、configuration、nextAction、taskState、coordination 和 delivery。taskState 为 `{authority, revision, total, completed, needsIds, next}`；coordination 为 `{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}`。按 classic-layout.md 绑定逻辑路径，按实际 phase 路由；已返回的摘要不逐字段重复查询。写入或工作区、需求变化后刷新受影响状态。
 
-## 未显式 `/comet-classic` 的恢复
+nextAction 为 `{kind, reason, taskId?}`。先阅读 reason，再按 kind 续做：reconcile-task 核对实际成果，review 补审查，checkoff 补勾，check 补检查，reconcile-plan 补旧计划映射/同步，plan 补有效计划，configure 补配置，workspace 修复工作区归属，delivery 处理授权交付。它不是跳过验收的许可；taskId 必须与权威任务对齐。
 
-如果用户没有提 `/comet-classic`，但本仓库可能有 active Classic change，开始处理需要改动或调查的任务前先运行 Ambient Resume 探针。按 `comet-classic/reference/scripts.md` 运行公开 CLI 命令，然后把当前用户请求从 stdin 传入：
-
-```bash
-comet resume-probe . --stdin --json
-```
-
-只有返回 `auto_resume` 才自动恢复；`ask_user` 必须短问用户；`out_of_scope` 和 `none` 不进入 workflow。
-
-## 恢复步骤
+仅在冷启动、对话被压缩或恢复证据不足时使用：
 
 ```bash
 comet state check <change-name> <phase> --recover --json
 ```
 
-恢复包返回 change/workspace 身份、phase、configuration、taskState（权威 tasks.md 路径、revision、稳定任务 ID 与完成状态）、checkpoint、evidence.scopes 及必要文件路径。以实际 phase 路由，只读取当前恢复动作需要的文件；已返回的配置和检查点不再逐字段查询或重复读取。
+先用紧凑恢复包定位未完成动作。需要完整任务和检查点时，再显式加 `--details`，在 taskState 中增加 tasks，在 coordination 中增加 checkpoint：
 
-仅在冷启动或上下文确实丢失时运行 `--recover`，普通阶段衔接用不带该参数的入口检查。Runtime 逐个复核 build/verify 证据：`revalidated` 表示可复用本地证据已通过当前输入、环境和日志校验；`rerun-required` 表示该范围需要重新执行检查。不可复用证据仍须重跑，不能由 Agent 自行宣布有效。恢复不清空任务、计划和审查记录，也不无条件重跑全部检查。
+```bash
+comet state check <change-name> <phase> --recover --details --json
+```
 
-先核对真实文件、Git 提交、任务 ID 与未解决反馈。需求或实现变化后刷新入口并按新检查结果处理，不能沿用旧恢复包的结论；任务仅完成勾选不等于需求变化，也不能替代独立审查。
+只读取当前动作缺少的正文。Runtime 将检查证据标为 `revalidated` 或 `rerun-required`；只有前者可复用，本地输入、环境、日志或一次性证据不满足条件时只重跑对应检查。恢复不清空计划、任务、审查或已用轮次。
 
-## build 阶段特殊恢复
+用户未明确调用 Classic，但仓库可能存在活跃 change 时，按 scripts.md 将当前请求通过 stdin 传给 `comet resume-probe . --stdin --json`；只有 auto_resume 自动恢复，ask_user 短问用户，out_of_scope/none 不进入流程。
 
-若恢复脚本输出 `build_mode: subagent-driven-development`：
+## 任务核对与补勾
 
-1. 使用 Skill 工具重新加载 Superpowers `subagent-driven-development` 技能
-2. 重新阅读 `comet-classic/reference/subagent-dispatch.md` 获取 Comet 专属扩展
-3. 读取 `<classic-change-dir>/.comet/subagent-progress.md`，恢复当前 task、原 implementer 会话标识、实现提交、RED/GREEN 证据、已通过审查、未解决反馈和审查-修复轮次；不恢复 Build final review
-4. 禁止在主会话中直接执行 task
-5. 按稳定任务 ID 对齐 taskState、检查点与 `.comet/rulings.md` 中的决定，恢复原 implementer 和精确审查阶段。检查点缺失或不匹配时先核对现有实现、提交和审查证据，重建最小检查点；不能仅因第一个 task 未勾选就重复派发实现。旧任务没有 ID 时先按 Build 的显式迁移规则处理，不按序号猜测对应关系。
-6. task 按 `review_mode` 完成验收后，使用 task-complete 的 ID 与已核对 revision 记录完成；冲突时先重新核对任务语义，不盲目重试。不恢复旧的 Build final-review/final-fix 状态，最终集成审查归 Verify。正常任务衔接不询问是否继续。
+`tasks.md` 是任务完成状态的唯一权威，计划描述实施方法。未勾选不能直接作为重新实施的依据，已有勾选也不能替代当前验收证据。
 
-## design 阶段特殊恢复
+1. 按稳定 task ID、需求 revision 和 plan base-ref，核对当前文件、Git diff/提交、检查结果、审查与未解决反馈；未提交改动先按 dirty-worktree.md 归因。
+2. 实现、检查和所需审查均已满足：直接通过 task-complete 补勾，不重复实施。
+3. 实现已完成但证据不足：仅补缺失检查或独立审查；已有部分实现时仅补剩余部分。TDD 历史 RED 缺失要如实记录，不能回退代码伪造证据或自行宣布满足 TDD。
+4. 有效证据与当前输入不匹配时，只重新验证受影响部分；验收通过后再勾选。
+5. 使用 `comet state task-complete <name> <task-id> --expect <revision> --json`。revision 冲突时重新判断任务语义，不只是取新 revision 重试。
 
-- 若用户尚未确认设计方案，回到 brainstorming 继续
-- 若用户已确认，继续创建 Design Doc
-- 恢复时重新加载 `brainstorm-summary.md` + handoff 上下文文件
+旧计划保留 checkbox 时，先建立明确的 comet-task ID 对应关系。task-complete 会自动从 tasks.md 同步已有映射的旧计划；需要单独刷新显示时运行：
 
-## verify/archive 阶段恢复
+```bash
+comet state sync-plan <name>
+```
 
-- verify：脚本输出验证状态、分支状态和恢复动作
-- archive：若 `archived: true` 且归档目录存在，归档已完成，无需再次执行
+返回 `planSync: mapping-required` 时，只补明确的 ID 映射再运行 sync-plan，不重做实现，也不重新判定已完成任务。计划是显示投影，不是第二份完成判据。没有 ID 的任务先由 tasks --assign-ids 分配稳定 ID；禁止按序号、位置或相似标题猜测。旧计划额外的真实任务先核对范围并纳入 tasks.md；无法确定对应关系时记录 unresolved 并澄清，不删除条目换取通过。计划勾选本身不能证明实现完成。
+
+## Runtime 协调记录
+
+`state checkpoint` 管理的协调记录存储为 `<classic-change-dir>/.comet/coordination.json`，人读投影仍为 `.comet/subagent-progress.md`。`.comet/checkpoint.json` 属于 Engine，不是协调记录；不得人工修改或覆盖，也不能将其作为 --file 的输出目标。
+
+普通入口包的 coordination 摘要足够时不重复读取。需要完整记录或保存状态时：
+
+```bash
+comet state checkpoint <change-name>
+comet state checkpoint <change-name> --file <json-path>
+```
+
+JSON 必须包含 `schemaVersion: 1`，其余字段为 taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds。以下示例中的任务 ID、revision 和会话标识必须替换为本次实际值：
+
+```json
+{
+  "schemaVersion": 1,
+  "taskIds": ["task-1"],
+  "revision": "<task-revision>",
+  "stage": "implementing",
+  "sessionId": "<implementer-session-id>",
+  "evidence": [],
+  "unresolved": [],
+  "reviewRounds": 0
+}
+```
+
+evidence 保存实际提交、RED/GREEN 和审查证据引用；unresolved 保存未解决事项，不复制完整对话。stage 表示实际执行/审查/补勾步骤，reviewRounds 保留已用复查轮次。Runtime 验证并生成 Markdown；不手写 subagent-progress.md，不把协调记录当作任务完成清单。
+
+读取结果为 `{checkpoint, stale}`。stale 为 true 时先核对 revision、任务范围和真实成果，不直接重放原动作；checkpoint 为空也不表示尚未实施。补齐记录后重新读取确认，不能绕过验证手写内部状态。
+
+派发前持久化任务范围与协调会话；派发返回会话 ID 后立即保存 sessionId，再继续等待或处理回报。阶段交接、审查结果、验收和阻塞时保存新增证据与下一步；同一步骤的零碎消息可合并，不逐条复制对话。保存失败时停止后续派发和推进，保留现有文件供核对。
+
+记录缺失、会话失效或 revision 不匹配时先检查真实成果，重建最小记录；不能把“无检查点”解释为“无实现”。保留尚有效的审查与轮次，不因新会话重置预算。
+
+## 各阶段恢复
+
+- Build：有效计划和配置继续使用。autonomous 不加载外部执行 Skill；其他策略只在上下文缺少所需方法时加载。委派按 subagent-dispatch.md 恢复有界工作包和原 implementer；subagent-driven-development 主会话不接管实现。任务全完成即返回 Build 退出检查，不恢复旧 Build final-review/final-fix。
+- Design：尚未确认的方案继续澄清；已确认则只补正式 Design Doc 或未完成的状态写入。按需读 brainstorm-summary.md 和一个 Markdown handoff，机器 JSON 默认由 Runtime 校验；不重新读取全部重复上下文。
+- Verify：核对报告、实际 diff 和有效审查证据，只补缺失检查或受影响审查，不从规模评估重新启动整个阶段。
+- Archive：普通入口和 delivery 读取不触网；使用 `comet state delivery <change-name> --verify` 只读核对 Git、远端/PR，从返回 `{delivery, verification}` 中确认授权与实际结果。归档存在不再次归档，提交存在不再次提交，远端已完成不重复 push/创建 PR。handled 不能推出授权或成功；缺记录或目标变化时按 Archive 规则确认。

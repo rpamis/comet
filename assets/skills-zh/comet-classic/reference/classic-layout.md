@@ -1,12 +1,12 @@
 # Classic 产物布局协议
 
-每次进入或恢复任一 Classic 阶段，先在项目根运行：
+进入已选 change 的阶段时，使用本轮 `comet state check <change-name> <phase> --json` 返回的 layout；无需再单独查询布局。尚未选择 change、入口未提供 layout，或只处理根目录迁移时，才在项目根运行：
 
 ```bash
 comet classic root show
 ```
 
-只接受 `schema: comet.classic-layout.v1`。把返回的 `openSpecRoot`、`changesRoot`、`archiveRoot`、`specsRoot`、`superpowersRoot` 分别绑定为 `<classic-open-spec-root>`、`<classic-changes-root>`、`<classic-archive-root>`、`<classic-specs-root>`、`<classic-superpowers-root>`，并把 `<classic-change-dir>` 定义为 `<classic-changes-root>/<name>`。这些逻辑根是本轮事实源；恢复或上下文压缩后必须重新解析。
+只接受 `schema: comet.classic-layout.v1`。把 layout 的 `openSpecRoot`、`changesRoot`、`archiveRoot`、`specsRoot`、`superpowersRoot` 分别绑定为 `<classic-open-spec-root>`、`<classic-changes-root>`、`<classic-archive-root>`、`<classic-specs-root>`、`<classic-superpowers-root>`；`<classic-change-dir>` 使用入口返回的实际 changeDir，尚未创建 change 时才由 changesRoot 与 name 构成。已归档 change 不拼接 active 路径。布局是本轮事实源；冷恢复或工作区变化后由入口重新解析，不沿用旧绑定。
 
 ## 命令规则
 

@@ -5,7 +5,7 @@ description: 'Phase 4 of Comet Classic — verify a change, record evidence, and
 
 # Comet Phase 4: Verify
 
-Before starting or recovering, read and follow `comet-classic/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+After entry returns layout, bind logical roots under `comet-classic/reference/classic-layout.md`; do not reload the protocol if it is already in context. OpenSpec CLI calls use the adapter and paths use the bound `<classic-*>` roots, without a separate root show first.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Before starting or recovering, read and follow `comet-classic/reference/classic-
 
 ### 0a. Output Language Constraint
 
-Verification reports must use the configured Comet artifact language from `comet state get <name> language`.
+Verification reports use this entry's configuration.language without an extra field query.
 
 ### 0b. Entry State Verification (Entry Check)
 
@@ -24,10 +24,10 @@ Use the stable `comet` CLI described in `comet-classic/reference/scripts.md`, th
 
 ```bash
 comet state select <change-name>
-comet state check <change-name> verify
+comet state check <change-name> verify --json
 ```
 
-Proceed to Step 1 after verification passes. The script outputs specific failure reasons when verification fails.
+Continue using entry layout, configuration, nextAction, task and coordination summaries. With valid checks and integrated review already present, complete only missing actions without restarting the phase. For full cold-recovery records, use --recover --details --json. Resolve specific failures.
 
 If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet-classic/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
 
@@ -60,9 +60,11 @@ comet state transition <change-name> verify-fail
 
 **Override mechanism**: If the agent or user believes the automated assessment is inappropriate, override at any time with `comet state set <change-name> verify_mode <light|full>`.
 
+Scale does not waive risk checks: authentication/authorization, migration, concurrency, public APIs, and cross-module contracts require their risk acceptance even for small changes. Upgrade to full if coverage is insufficient.
+
 ### 1b. Automatic Verification Repair and Exception Decisions
 
-Run `comet state get <change-name> verify_failures` first to read the persisted consecutive failure count. Automatically return to build for the first 3 repairable failures: report the failures, run `comet state transition <change-name> verify-fail`, then invoke `/comet-build` without asking for confirmation.
+On failure, use the latest entry's consecutive failure count and nextAction. Query `comet state get <change-name> verify_failures` only if absent; missing is not zero. Automatically return to build for the first 3 repairable failures: report failures, run `comet state transition <change-name> verify-fail`, then invoke `/comet-build` to complete only missing implementation, checks, review, or checkoff, without repeated implementation or another confirmation.
 
 The report must list:
 
@@ -82,24 +84,23 @@ Only accepting WARNING/SUGGESTION deviations or choosing a strategy after the 4t
 
 ### 2. Artifact Context Loading (Hash On-Demand Read)
 
-When verification needs to read OpenSpec artifacts, first check whether they have changed since the design phase:
+Use handoff status already provided by entry. Only when current hash verification is absent, run:
 
 ```bash
-comet state get <change-name> handoff_hash
 comet handoff <change-name> --hash-only
 ```
 
-- Read the two standard outputs separately. Matching nonempty, non-`null` hashes mean artifacts are unchanged. Reuse already-loaded proposal, design, specs, and tasks only while their complete contents remain in context. Retain loaded paths and hashes, read missing sections for the current acceptance check, and still inspect task completion.
+- Compare current hash with the recorded entry value. Only if the recorded value is absent, query `comet state get <change-name> handoff_hash`. For matching nonempty, non-null values, reuse content only if that version remains in context; read missing acceptance sections and still inspect task checkoff.
 - If `RECORDED_HASH` is empty, is `null`, or differs from `CURRENT_HASH`: artifacts have changed or hash was never recorded. Read all required files in full normally.
 
 A matching hash does not mean the Agent remembers the contents. After cold recovery, summary truncation, or missing load records, read the relevant canonical sources again; a handoff summary cannot replace unseen acceptance clauses.
 
-**Immediately execute:** Use the Skill tool to load the Superpowers `verification-before-completion` skill. Skipping this step is prohibited.
+Autonomous directly follows this Skill's actual-check and evidence loop without a mandatory external verification Skill. Other strategies load Superpowers `verification-before-completion`. No strategy may declare success based only on self-assessment.
 
 Verify owns the only final integrated code review for the entire change. Build keeps only task-level or segmented reviews. Before following the `verify_mode` branch, run one integrated review over the final diff, including Build review fixes:
 
 - `review_mode: off`: skip automatic code review and record the reason in the verification report
-- `review_mode: standard|thorough`: use the Skill tool to load Superpowers `requesting-code-review` once, covering the whole change and focusing on correctness, security, and edge cases; do not dispatch a second final reviewer
+- `review_mode: standard|thorough`: dispatch an independent reviewer over the entire change, inspecting requirements, actual diff, checks, and fixes for correctness, security, and edge cases. Autonomous needs no external review Skill; other strategies load requesting-code-review once. Reuse valid review covering the current final diff; after input changes, review affected work instead of unconditionally repeating the whole review. Stop if review is unavailable; implementer self-review is not a substitute
 
 For CRITICAL/IMPORTANT findings, return to Build under Step 1b. Handle non-CRITICAL deviations under Step 1b's tradeoff rules. Then follow the `verify_mode` branch:
 
@@ -112,7 +113,7 @@ Run these 7 checks:
 3. Build passes (reuse Build evidence only when Runtime confirms it is still valid; rerun otherwise)
 4. Related tests pass
 5. No obvious security issues (no hardcoded keys, no new unsafe operations)
-6. The final integrated code review passed, or the `review_mode: off` skip reason is recorded
+6. The final integrated code review passed, or an off skip reason is recorded outside full autonomous; full autonomous cannot skip independent review
 7. Core success scenarios, critical failure/boundary scenarios, and applicable high-risk contracts pass; small changes do not waive them
 
 Limit integrated code review input to this change's diff, tasks.md, and necessary test results. It does not replace spec coverage, Design Doc consistency, or drift checks. `review_mode: off` only skips automatic code review, not build, test, security checks, or debug gate protocol.
@@ -219,4 +220,4 @@ comet state next <change-name>
 - `NEXT: manual` → do not invoke the next skill; return control with `HINT`, end the invocation, and do not create another confirmation point
 - `NEXT: done` → workflow is complete, no further action needed
 
-Note: after `comet-archive` starts, it must first execute the final archive confirmation blocking point and wait for the user to explicitly choose "Confirm archive" before running the archive script. Must not automatically archive just because verification passed.
+Note: both NEXT auto and manual require explicit archive authorization. Confirm first-time archive under comet-archive; on recovery inspect persisted delivery without asking again about valid choices. Verification success alone does not authorize archive.

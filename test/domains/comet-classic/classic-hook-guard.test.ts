@@ -100,6 +100,7 @@ async function seedChange(
     verificationReport?: string | null;
     isolation?: string;
     boundBranch?: string;
+    buildMode?: string;
   } = {},
 ): Promise<string> {
   const changeDir = path.join(dir, 'openspec', 'changes', name);
@@ -119,7 +120,7 @@ async function seedChange(
     `design_doc: ${designDoc ?? 'null'}`,
     `plan: ${options.plan ?? 'null'}`,
     `verification_report: ${options.verificationReport ?? 'null'}`,
-    `build_mode: ${phase === 'open' || phase === 'design' ? 'null' : 'executing-plans'}`,
+    `build_mode: ${options.buildMode ?? (phase === 'open' || phase === 'design' ? 'null' : 'executing-plans')}`,
     `isolation: ${isolation}`,
     `verify_mode: ${phase === 'verify' || phase === 'archive' ? 'light' : 'null'}`,
     `verify_result: ${phase === 'archive' ? 'pass' : 'pending'}`,
@@ -138,6 +139,128 @@ async function seedChange(
 }
 
 describe('Classic hook guard command', () => {
+  it.each(['Write', 'Edit'])(
+    'recovers an autonomous plan without external Skills for %s',
+    async (toolName) => {
+      const dir = await makeProject();
+      const changeDir = await seedChange(dir, 'auto', 'build', { buildMode: 'autonomous' });
+      await fs.appendFile(
+        path.join(changeDir, '.comet.yaml'),
+        'tdd_mode: direct\nreview_mode: standard\n',
+      );
+      const design = path.join(dir, 'docs/superpowers/specs/auto-design.md');
+      await fs.mkdir(path.dirname(design), { recursive: true });
+      await fs.writeFile(
+        design,
+        '---\ncomet_change: auto\nrole: technical-design\ncanonical_spec: openspec\n---\n# Design\n',
+      );
+      const inspect = (target: string) =>
+        inspectClassicHookGuard(dir, 'auto', {
+          intent: 'write',
+          targets: [path.join(dir, target)],
+          toolName,
+        });
+      const blocked = await inspect('src/feature.ts');
+      expect(blocked.allowed).toBe(false);
+      expect(blocked.reason).toContain('classic-build-plan-missing');
+      expect(blocked.reason).not.toContain('writing-plans');
+      expect((await inspect('docs/superpowers/plans/auto.md')).allowed).toBe(true);
+      await fs.mkdir(path.join(dir, 'docs/superpowers/plans'), { recursive: true });
+      await fs.writeFile(
+        path.join(dir, 'docs/superpowers/plans/auto.md'),
+        '# Implementation plan\n',
+      );
+      const statePath = path.join(changeDir, '.comet.yaml');
+      await fs.writeFile(
+        statePath,
+        (await fs.readFile(statePath, 'utf8')).replace(
+          'plan: null',
+          'plan: docs/superpowers/plans/auto.md',
+        ),
+      );
+      expect((await inspect('src/feature.ts')).allowed).toBe(true);
+      await fs.writeFile(
+        statePath,
+        (await fs.readFile(statePath, 'utf8')).replace(
+          'review_mode: standard',
+          'review_mode: null',
+        ),
+      );
+      expect((await inspect('src/feature.ts')).allowed).toBe(false);
+      await fs.writeFile(
+        statePath,
+        (await fs.readFile(statePath, 'utf8')).replace('review_mode: null', 'review_mode: off'),
+      );
+      const noReview = await inspect('src/feature.ts');
+      expect(noReview.allowed).toBe(false);
+      expect(noReview.reason).toContain('review_mode must be standard or thorough');
+      expect((await inspect('docs/superpowers/plans/auto.md')).allowed).toBe(true);
+    },
+  );
+
+  it('does not use autonomous plan recovery to bypass design or branch binding', async () => {
+    const dir = await makeProject();
+    await initializeGitProject(dir);
+    const changeDir = await seedChange(dir, 'auto', 'build', {
+      buildMode: 'autonomous',
+      designDoc: null,
+      boundBranch: 'main',
+    });
+    await fs.appendFile(
+      path.join(changeDir, '.comet.yaml'),
+      'tdd_mode: direct\nreview_mode: standard\n',
+    );
+    const request = {
+      intent: 'write' as const,
+      targets: [path.join(dir, 'docs/superpowers/plans/auto.md')],
+      toolName: 'Write',
+    };
+    const missingDesign = await inspectClassicHookGuard(dir, 'auto', request);
+    expect(missingDesign.allowed).toBe(false);
+    expect(missingDesign.reason).toContain('design_doc');
+    git(dir, ['checkout', '-b', 'other']);
+    const wrongBranch = await inspectClassicHookGuard(dir, 'auto', request);
+    expect(wrongBranch.allowed).toBe(false);
+    expect(wrongBranch.reason).toMatch(/branch|drift/iu);
+  });
+
+  it('blocks autonomous mixed-target writes and permits replacing a broken plan', async () => {
+    const dir = await makeProject();
+    const changeDir = await seedChange(dir, 'auto', 'build', {
+      buildMode: 'autonomous',
+      plan: 'docs/superpowers/plans/missing.md',
+      createPlanFile: false,
+    });
+    await fs.appendFile(
+      path.join(changeDir, '.comet.yaml'),
+      'tdd_mode: tdd\nreview_mode: thorough\n',
+    );
+    const design = path.join(dir, 'docs/superpowers/specs/auto-design.md');
+    await fs.mkdir(path.dirname(design), { recursive: true });
+    await fs.writeFile(
+      design,
+      '---\ncomet_change: auto\nrole: technical-design\ncanonical_spec: openspec\n---\n# Design\n',
+    );
+    const replacement = path.join(dir, 'docs/superpowers/plans/replacement.md');
+    expect(
+      (
+        await inspectClassicHookGuard(dir, 'auto', {
+          intent: 'write',
+          targets: [replacement],
+          toolName: 'Write',
+        })
+      ).allowed,
+    ).toBe(true);
+    const mixed = await inspectClassicHookGuard(dir, 'auto', {
+      intent: 'write',
+      targets: [replacement, path.join(dir, 'src/feature.ts')],
+      toolName: 'apply_patch',
+    });
+    expect(mixed.allowed).toBe(false);
+    expect(mixed.reason).toContain('classic-build-plan-broken');
+    expect(mixed.reason).not.toContain('writing-plans');
+  });
+
   it('allows a configured project-local path during Classic design', async () => {
     const dir = await makeProject();
     await addHookAllowPath(dir, '.agents/rules');

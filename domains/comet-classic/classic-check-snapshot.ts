@@ -3,8 +3,10 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { readClassicState } from './classic-store.js';
-import { readClassicProjectBytes } from './classic-protected-path.js';
+import { readClassicProjectBytes, inspectClassicProjectTarget } from './classic-protected-path.js';
 import { resolveWindowsCommand } from '../../platform/process/spawn-command.js';
+import { readCheckPolicy, type CheckPolicy, type CheckIdentity } from './classic-check-policy.js';
+import { classicTaskRequirements } from './classic-tasks.js';
 
 function git(root: string, args: string[]): string | null {
   const result = spawnSync('git', ['-C', root, ...args], {
@@ -16,7 +18,11 @@ function git(root: string, args: string[]): string | null {
   return result.status === 0 ? result.stdout : null;
 }
 
-export async function checkEnvironmentFingerprint(argv: string[], cwd: string): Promise<string> {
+export async function checkEnvironmentFingerprint(
+  argv: string[],
+  cwd: string,
+  policy?: CheckPolicy,
+): Promise<string> {
   const executable =
     process.platform === 'win32'
       ? resolveWindowsCommand(argv[0], process.env, cwd)
@@ -47,14 +53,31 @@ export async function checkEnvironmentFingerprint(argv: string[], cwd: string): 
         cwd,
         realExecutable,
         stat && [stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino],
-        Object.entries(process.env).sort(([a], [b]) => a.localeCompare(b)),
+        Object.entries(process.env)
+          .filter(
+            ([name]) =>
+              !policy?.env ||
+              policy.env.some((key) =>
+                process.platform === 'win32'
+                  ? key.toLowerCase() === name.toLowerCase()
+                  : key === name,
+              ),
+          )
+          .sort(([a], [b]) => a.localeCompare(b)),
+        ...(policy?.digest ? [policy.digest] : []),
       ]),
     )
     .digest('hex');
 }
 
-export async function checkInputFingerprint(root: string, changeDir: string): Promise<string> {
+export async function checkInputFingerprint(
+  root: string,
+  changeDir: string,
+  identity?: CheckIdentity,
+): Promise<string> {
   const hash = createHash('sha256');
+  const policy = await readCheckPolicy(root, identity);
+  hash.update(policy.digest);
   const state = await readClassicState(changeDir, { migrate: false });
   const report = state.classic?.verificationReport;
   const reportPath = report && report.endsWith('.md') ? path.resolve(root, report) : null;
@@ -76,17 +99,30 @@ export async function checkInputFingerprint(root: string, changeDir: string): Pr
     hash.update(
       JSON.stringify([relative, stat?.mode ?? 'missing', stat?.isFile() ? stat.size : null]),
     );
-    if (!stat) return;
+    if (!stat) {
+      await inspectClassicProjectTarget(root, absolute, {
+        label: 'Classic check input',
+        expected: 'any',
+      });
+      return;
+    }
     if (stat.isSymbolicLink()) throw new Error(`Check input is a symbolic link: ${relative}`);
     if (stat.isDirectory()) {
+      await inspectClassicProjectTarget(root, absolute, {
+        label: 'Classic check input',
+        expected: 'directory',
+      });
       await tree(absolute);
       return;
     }
+    const bytes = await readClassicProjectBytes(root, absolute, {
+      label: 'Classic check input',
+      maxBytes: 64 * 1024 * 1024,
+    });
     hash.update(
-      await readClassicProjectBytes(root, absolute, {
-        label: 'Classic check input',
-        maxBytes: 64 * 1024 * 1024,
-      }),
+      policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md')
+        ? classicTaskRequirements(bytes.toString('utf8'))
+        : bytes,
     );
   }
 
@@ -101,11 +137,11 @@ export async function checkInputFingerprint(root: string, changeDir: string): Pr
       ? git(directory, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
       : null;
     if (files !== null) {
-      hash.update(git(directory, ['rev-parse', 'HEAD']) ?? 'unborn');
+      if (policy.git === 'all') hash.update(git(directory, ['rev-parse', 'HEAD']) ?? 'unborn');
       // Include the index separately: staging a different version is a changed input too.
-      const index = git(directory, ['ls-files', '--stage', '-z']);
+      const index = policy.git === 'all' ? git(directory, ['ls-files', '--stage', '-z']) : '';
       if (index === null) throw new Error('Cannot inspect check input index');
-      for (const entry of index.split('\0').filter(Boolean)) {
+      for (const entry of policy.git === 'all' ? index.split('\0').filter(Boolean) : []) {
         const name = entry.slice(entry.indexOf('\t') + 1);
         if (!omitted(path.resolve(directory, name))) hash.update(entry);
       }
@@ -122,7 +158,23 @@ export async function checkInputFingerprint(root: string, changeDir: string): Pr
     }
   }
 
-  await tree(root);
+  if (policy.files) {
+    if (policy.git === 'all') {
+      hash.update(git(root, ['rev-parse', 'HEAD']) ?? 'unborn');
+      const index = git(root, ['ls-files', '--stage', '-z']);
+      if (index !== null) {
+        for (const entry of index.split('\0').filter(Boolean)) {
+          if (!omitted(path.resolve(root, entry.slice(entry.indexOf('\t') + 1))))
+            hash.update(entry);
+        }
+      }
+    }
+    for (const name of [...new Set(policy.files)].sort()) await file(path.resolve(root, name));
+    await file(path.join(root, '.comet', 'config.yaml'));
+  } else await tree(root);
+  // The declaration is always bound, even when it is ignored by Git or omitted from files.
+  if ((await readCheckPolicy(root, identity)).digest !== policy.digest)
+    throw new Error('Classic check policy changed during snapshot');
   // Package-manager installation metadata is normally ignored by Git.
   for (const name of [
     'node_modules/.package-lock.json',

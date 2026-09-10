@@ -3,7 +3,9 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parse } from 'yaml';
+import { parse, stringify } from 'yaml';
+import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import { readRunState } from '../../../domains/engine/state.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
@@ -43,6 +45,149 @@ async function makeProject(): Promise<string> {
 }
 
 describe('Classic guard command', () => {
+  it.each([
+    {
+      name: 'mapped unchecked projection',
+      plan: '- [ ] stale projection <!-- comet-task:a -->\n',
+      accepted: true,
+    },
+    { name: 'unmapped unchecked task', plan: '- [ ] extra work\n', accepted: false },
+    { name: 'unmapped checked task', plan: '- [x] extra work\n', accepted: false },
+    {
+      name: 'unknown checked ID',
+      plan: '- [x] extra work <!-- comet-task:extra -->\n',
+      accepted: false,
+    },
+    {
+      name: 'canonical reference',
+      plan: '<!-- comet-task-authority: openspec/changes/demo/tasks.md -->\n<!-- comet-task-ref:a -->\n',
+      accepted: true,
+    },
+    {
+      name: 'canonical missing reference',
+      plan: '<!-- comet-task-authority: openspec/changes/demo/tasks.md -->\n',
+      accepted: false,
+    },
+    {
+      name: 'canonical unknown reference',
+      plan: '<!-- comet-task-authority: openspec/changes/demo/tasks.md -->\n<!-- comet-task-ref:extra -->\n',
+      accepted: false,
+    },
+    {
+      name: 'canonical wrong authority',
+      plan: '<!-- comet-task-authority: openspec/changes/other/tasks.md -->\n<!-- comet-task-ref:a -->\n',
+      accepted: false,
+    },
+    {
+      name: 'canonical checkbox ledger',
+      plan: '<!-- comet-task-authority: openspec/changes/demo/tasks.md -->\n- [x] duplicate ledger <!-- comet-task:a -->\n',
+      accepted: false,
+    },
+  ])(
+    'validates plan mapping without a second completion authority: $name',
+    async ({ plan, accepted }) => {
+      const dir = await makeProject();
+      const cli = (...args: string[]) =>
+        withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
+          runClassicCli(args),
+        );
+      expect(
+        (await cli('state', 'init', 'demo', 'hotfix', '--isolation', 'current')).exitCode,
+      ).toBe(0);
+      const changeDir = path.join(dir, 'openspec/changes/demo');
+      const stateFile = path.join(changeDir, '.comet.yaml');
+      const state = parse(await fs.readFile(stateFile, 'utf8'));
+      await fs.writeFile(
+        stateFile,
+        stringify({ ...state, phase: 'build', plan: 'docs/superpowers/plans/demo.md' }),
+      );
+      const planFile = path.join(dir, 'docs/superpowers/plans/demo.md');
+      await fs.mkdir(path.dirname(planFile), { recursive: true });
+      await fs.writeFile(planFile, plan);
+      const tasksFile = path.join(changeDir, 'tasks.md');
+      await fs.writeFile(tasksFile, '- [x] accepted work <!-- comet-task:a -->\n');
+      await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+      expect(
+        (
+          await cli(
+            'check',
+            'run',
+            'demo',
+            'build',
+            '--',
+            process.execPath,
+            '-e',
+            'process.exit(0)',
+          )
+        ).exitCode,
+      ).toBe(0);
+      const result = await cli('guard', 'demo', 'build');
+      expect(result.exitCode, result.stderr).toBe(accepted ? 0 : 1);
+      expect(result.stderr).toContain(`[${accepted ? 'PASS' : 'FAIL'}] plan task mapping is valid`);
+      expect(await fs.readFile(planFile, 'utf8')).toBe(plan);
+      if (accepted) {
+        await fs.writeFile(tasksFile, '- [ ] accepted work <!-- comet-task:a -->\n');
+        const incomplete = await cli('guard', 'demo', 'build');
+        expect(incomplete.exitCode).toBe(1);
+        expect(incomplete.stderr).toContain('[FAIL] tasks.md all tasks checked');
+      }
+    },
+  );
+
+  it('requires ordinary build evidence for autonomous full without a direct override', async () => {
+    const dir = await makeProject();
+    const cli = (...args: string[]) =>
+      withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
+        runClassicCli(args),
+      );
+    expect((await cli('state', 'init', 'auto', 'full')).exitCode).toBe(0);
+    const changeDir = path.join(dir, 'openspec/changes/auto');
+    const statePath = path.join(changeDir, '.comet.yaml');
+    const state = {
+      ...parse(await fs.readFile(statePath, 'utf8')),
+      phase: 'build',
+      language: 'en',
+      build_mode: 'autonomous',
+      tdd_mode: 'direct',
+      review_mode: 'standard',
+      isolation: 'current',
+      plan: 'docs/superpowers/plans/auto.md',
+      design_doc: 'docs/superpowers/specs/auto.md',
+    };
+    await fs.writeFile(statePath, stringify(state));
+    await fs.mkdir(path.join(dir, 'docs/superpowers/plans'), { recursive: true });
+    await fs.mkdir(path.join(dir, 'docs/superpowers/specs'), { recursive: true });
+    await fs.writeFile(path.join(dir, state.plan), '# Implementation plan\n');
+    await fs.writeFile(
+      path.join(dir, state.design_doc),
+      '---\ncomet_change: auto\nrole: technical-design\ncanonical_spec: openspec\n---\n# Design\n',
+    );
+    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Implement feature\n');
+    const missingEvidence = await cli('guard', 'auto', 'build');
+    expect(missingEvidence.exitCode, missingEvidence.stderr).toBe(1);
+    expect(missingEvidence.stderr).toContain('[PASS] build_mode allowed for workflow');
+    expect(missingEvidence.stderr).toContain('[PASS] autonomous full build prerequisites');
+    expect(missingEvidence.stderr).toContain('[FAIL] Build passes');
+    expect(
+      (await cli('check', 'run', 'auto', 'build', '--', process.execPath, '-e', 'process.exit(0)'))
+        .exitCode,
+    ).toBe(0);
+    const ready = await cli('guard', 'auto', 'build');
+    expect(ready.exitCode, ready.stderr).toBe(0);
+    const migrated = parse(await fs.readFile(statePath, 'utf8'));
+    for (const field of ['plan', 'design_doc', 'tdd_mode', 'review_mode']) {
+      await fs.writeFile(statePath, stringify({ ...migrated, [field]: null }));
+      const blocked = await cli('guard', 'auto', 'build');
+      expect(blocked.exitCode, blocked.stderr).toBe(1);
+      expect(blocked.stderr).toContain('[FAIL] autonomous full build prerequisites');
+    }
+    await fs.writeFile(statePath, stringify({ ...migrated, review_mode: 'off' }));
+    const noReview = await cli('guard', 'auto', 'build');
+    expect(noReview.exitCode).toBe(1);
+    expect(noReview.stderr).toContain('review_mode must be standard or thorough');
+  });
+
   it('blocks the open guard when artifacts are missing and leaves state unchanged', async () => {
     const dir = await makeProject();
     expect(run(dir, 'state', 'init', 'demo', 'full').status).toBe(0);

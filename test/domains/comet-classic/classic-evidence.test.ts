@@ -113,6 +113,37 @@ describe('Classic evidence collection', () => {
     );
   });
 
+  it.each(['executing-plans', 'autonomous'] as const)(
+    'uses plan readiness for %s evidence',
+    async (buildMode) => {
+      projection.classic!.buildMode = buildMode;
+      for (const plan of [
+        'src/feature.ts',
+        'docs/superpowers/plans/nested/plan.md',
+        'docs/superpowers/plans/plan.txt',
+      ]) {
+        projection.classic!.plan = plan;
+        await writeProjectFile(plan, '# Not a standard plan\n');
+        expect(
+          evidenceSatisfied(await collectClassicEvidence(changeDir, projection), 'build.plan'),
+        ).toBe(false);
+      }
+      projection.classic!.plan = 'docs/superpowers/plans/demo-plan.md';
+      await writeProjectFile(projection.classic!.plan, '');
+      expect(
+        evidenceSatisfied(await collectClassicEvidence(changeDir, projection), 'build.plan'),
+      ).toBe(buildMode !== 'autonomous');
+      await writeProjectFile(projection.classic!.plan, ' \n\t');
+      expect(
+        evidenceSatisfied(await collectClassicEvidence(changeDir, projection), 'build.plan'),
+      ).toBe(buildMode !== 'autonomous');
+      await writeProjectFile(projection.classic!.plan, '# Plan\n');
+      expect(
+        evidenceSatisfied(await collectClassicEvidence(changeDir, projection), 'build.plan'),
+      ).toBe(true);
+    },
+  );
+
   it('reports incomplete task evidence without treating prose as a task', async () => {
     await fs.writeFile(
       path.join(changeDir, 'tasks.md'),

@@ -84,7 +84,12 @@ function hookStdin(filePath: string): string {
   });
 }
 
-async function createChange(tmpDir: string, name: string, yaml: string, tasks = '- [x] done\n') {
+async function createChange(
+  tmpDir: string,
+  name: string,
+  yaml: string,
+  tasks = '- [x] done <!-- comet-task:done -->\n',
+) {
   const changeDir = path.join(tmpDir, 'openspec', 'changes', name);
   await fs.mkdir(changeDir, { recursive: true });
   await writeFile(path.join(changeDir, '.comet.yaml'), yaml);
@@ -101,7 +106,10 @@ async function prepareBuildEvidence(tmpDir: string, name: string) {
   document.set('isolation', 'current');
   if (!document.get('plan')) {
     document.set('plan', `docs/${name}-plan.md`);
-    await writeFile(path.join(tmpDir, `docs/${name}-plan.md`), '- [x] done\n');
+    await writeFile(
+      path.join(tmpDir, `docs/${name}-plan.md`),
+      '- [x] done <!-- comet-task:done -->\n',
+    );
   }
   await fs.writeFile(file, document.toString());
   const checked = runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
@@ -1095,7 +1103,7 @@ describe('comet scripts', () => {
     expect(tweak.stdout).toContain('SKILL: comet-tweak');
   }, 20_000);
 
-  it('next reports done for an archived change', async () => {
+  it('next requires delivery reconciliation for an archived change without authorization', async () => {
     await createChange(
       tmpDir,
       'next-done',
@@ -1107,8 +1115,12 @@ describe('comet scripts', () => {
     const result = runNode(tmpDir, stateScript, ['next', 'next-done']);
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('NEXT: done');
-    expect(result.stdout).not.toContain('SKILL:');
+    expect(result.stdout).toContain('NEXT: delivery');
+    expect(result.stdout).toContain('SKILL: comet-archive');
+    expect(result.stdout).not.toContain('NEXT: done');
+    const structured = runNode(tmpDir, stateScript, ['next', 'next-done', '--json']);
+    expect(structured.status, structured.stderr).toBe(0);
+    expect(JSON.parse(structured.stdout).data.nextAction).toEqual({ kind: 'delivery' });
   }, 20_000);
 
   it('next maps each non-build phase to the owning skill', async () => {
@@ -2457,7 +2469,7 @@ describe('comet scripts', () => {
         'archived: false',
         '',
       ].join('\n'),
-      '- [x] done\n',
+      '- [x] done <!-- comet-task:full-current-task -->\n',
     );
     await fs.mkdir(path.join(tmpDir, 'docs', 'superpowers', 'specs'), { recursive: true });
     await writeFile(
@@ -2466,7 +2478,7 @@ describe('comet scripts', () => {
     );
     await writeFile(
       path.join(tmpDir, 'docs', 'superpowers', 'plans', 'full-current-plan.md'),
-      '- [x] done\n',
+      '- [x] done <!-- comet-task:full-current-task -->\n',
     );
     await writeFile(
       path.join(tmpDir, 'package.json'),
@@ -2480,7 +2492,7 @@ describe('comet scripts', () => {
       'build-complete',
     ]);
 
-    expect(guard.status).toBe(0);
+    expect(guard.status, guard.stderr).toBe(0);
     expect(transition.status, transition.stderr).toBe(0);
     expect(transition.stderr).toContain('[SET] phase=verify');
     expect(transition.stderr).toContain('[TRANSITION] build-complete');
@@ -2838,10 +2850,15 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('Next: complete or explicitly remove unfinished tasks');
   }, 20_000);
 
-  it('rejects unchecked Superpowers plan tasks in the build guard check', async () => {
+  it('rejects unmapped legacy plan tasks until their implementation and scope are reconciled', async () => {
     await writeFile(
       path.join(tmpDir, 'docs', 'superpowers', 'plans', 'plan-with-pending-task.md'),
-      ['# Plan', '', '- [x] completed task', '- [ ] pending plan task'].join('\n'),
+      [
+        '# Plan',
+        '',
+        '- [x] completed task <!-- comet-task:done -->',
+        '- [ ] pending plan task',
+      ].join('\n'),
     );
     await createChange(
       tmpDir,
@@ -2863,7 +2880,7 @@ describe('comet scripts', () => {
         'archived: false',
         '',
       ].join('\n'),
-      ['- [x] completed task'].join('\n'),
+      ['- [x] completed task <!-- comet-task:done -->'].join('\n'),
     );
     await writeFile(
       path.join(tmpDir, 'package.json'),
@@ -2873,10 +2890,11 @@ describe('comet scripts', () => {
     const result = runNode(tmpDir, guardScript, ['unfinished-plan-tasks', 'build']);
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('[FAIL] Superpowers plan all tasks checked');
-    expect(result.stderr).toContain('Unfinished Superpowers plan tasks:');
+    expect(result.stderr).toContain('[FAIL] plan task mapping is valid');
+    expect(result.stderr).toContain('Unmapped implementation plan tasks:');
     expect(result.stderr).toContain('pending plan task');
-    expect(result.stderr).toContain('Next: complete the legacy plan tasks');
+    expect(result.stderr).toContain('map them to tasks.md IDs or add genuinely extra tasks');
+    expect(result.stderr).toContain('Checkbox state alone is not evidence of completion');
   }, 20_000);
 
   it('rejects direct build mode for full workflow during state transition', async () => {
@@ -3343,7 +3361,10 @@ describe('comet scripts', () => {
     expect(get.status).toBe(0);
     expect(get.stdout.trim()).toBe('true');
     expect(next.status).toBe(0);
-    expect(next.stdout.trim().split('\n').at(-1)).toBe('NEXT: done');
+    expect(next.stdout).toContain('NEXT: delivery');
+    expect(next.stdout).toContain('SKILL: comet-archive');
+    expect(next.stdout).toContain('do not archive again');
+    expect(next.stdout).not.toContain('NEXT: done');
     expect(guard.status).toBe(0);
     expect(guard.stderr).toContain('ALL CHECKS PASSED');
     expect(validate.status, validate.stderr).toBe(0);
@@ -4585,6 +4606,19 @@ describe('comet scripts', () => {
   });
 
   describe('check --recover', () => {
+    function recoveryData(name: string) {
+      const result = runNode(tmpDir, stateScript, [
+        'check',
+        name,
+        'build',
+        '--recover',
+        '--details',
+        '--json',
+      ]);
+      expect(result.status, result.stderr).toBe(0);
+      return JSON.parse(result.stdout).data;
+    }
+
     it('outputs recovery context for open phase', async () => {
       await createChange(
         tmpDir,
@@ -4650,7 +4684,7 @@ describe('comet scripts', () => {
       expect(result.stdout).toContain('build_mode: PENDING');
       expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
       expect(result.stdout).toContain(
-        'Isolation is missing. Resume /comet-open to resolve and prepare the workspace; Build must not choose or create it.',
+        'Resume /comet-open to restore the missing isolation decision without regenerating valid artifacts.',
       );
     });
 
@@ -4684,10 +4718,14 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('build_pause: DONE (plan-ready)');
-      expect(result.stdout).toContain('Plan-ready pause');
-      expect(result.stdout).toContain(
-        'workspace isolation is missing. Resume /comet-open to resolve and prepare the workspace without regenerating the plan',
-      );
+      expect(recoveryData('recover-plan-ready').nextAction.kind).toBe('workspace');
+      expect(result.stdout).toContain('without regenerating valid artifacts');
+      expect(
+        await fs.readFile(
+          path.join(tmpDir, 'openspec/changes/recover-plan-ready/.comet.yaml'),
+          'utf8',
+        ),
+      ).toContain('build_pause: plan-ready');
     });
 
     it('outputs review mode selection guidance when recovering build phase', async () => {
@@ -4725,7 +4763,7 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('review_mode: PENDING');
       expect(result.stdout).toContain(
-        'Review mode is missing. Resume /comet-build and use the single joint decision to choose the supported code-review mode.',
+        'Complete only missing execution, TDD and review decisions in /comet-build before planning; retain confirmed settings and any valid plan.',
       );
     });
 
@@ -4753,7 +4791,10 @@ describe('comet scripts', () => {
           'archived: false',
           '',
         ].join('\n'),
-        ['- [x] done task', '- [ ] pending task'].join('\n'),
+        [
+          '- [x] done task <!-- comet-task:done -->',
+          '- [ ] pending task <!-- comet-task:pending -->',
+        ].join('\n'),
       );
 
       const result = runNode(tmpDir, stateScript, [
@@ -4766,25 +4807,27 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('build_mode: DONE (subagent-driven-development)');
       expect(result.stdout).toContain('Tasks: 1/2 done, 1 pending');
-      expect(result.stdout).toContain(
-        'inspect the first unchecked task against recent git history/diff',
+      const data = recoveryData('recover-subagent');
+      expect(data.nextAction).toMatchObject({ kind: 'reconcile-task', taskId: 'pending' });
+      expect(data.nextAction.reason).toContain('Check current code, checks and review evidence');
+      expect(data.nextAction.reason).toContain(
+        'finish only the missing implementation, checks or review',
       );
-      expect(result.stdout).toContain('dispatch a subagent');
-      expect(result.stdout).toContain(
-        'Do not execute the pending task directly in the main window',
-      );
+      expect(
+        data.taskState.tasks.find((task: { id: string }) => task.id === 'pending').completed,
+      ).toBe(false);
+      expect(result.stdout).not.toContain('first unchecked task');
     });
 
-    it('routes build recovery to additional unchecked Superpowers plan tasks', async () => {
-      // Scenario: OpenSpec has 2 tasks (both done), Superpowers plan adds a 3rd task (not done)
-      // This is valid plan enhancement but blocks leaving build until all plan tasks are checked
+    it('reconciles unmapped legacy plan additions without reimplementing completed tasks', async () => {
+      // Existing IDs map the completed work; the extra plan item needs scope/ID reconciliation.
       await writeFile(
         path.join(tmpDir, 'docs', 'superpowers', 'plans', 'plan-with-additions.md'),
         [
           '# Plan',
           '',
-          '- [x] task from OpenSpec 1',
-          '- [x] task from OpenSpec 2',
+          '- [x] task from OpenSpec 1 <!-- comet-task:task-1 -->',
+          '- [x] task from OpenSpec 2 <!-- comet-task:task-2 -->',
           '- [ ] additional task added in plan',
         ].join('\n'),
       );
@@ -4807,7 +4850,9 @@ describe('comet scripts', () => {
           'archived: false',
           '',
         ].join('\n'),
-        ['- [x] task 1', '- [x] task 2'].join('\n'),
+        ['- [x] task 1 <!-- comet-task:task-1 -->', '- [x] task 2 <!-- comet-task:task-2 -->'].join(
+          '\n',
+        ),
       );
 
       const result = runNode(tmpDir, stateScript, [
@@ -4819,9 +4864,19 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Tasks: 2/2 done, 0 pending');
-      expect(result.stdout).toContain('Plan tasks: 2/3 done, 1 pending');
-      expect(result.stdout).toContain('first unchecked Superpowers plan task');
-      expect(result.stdout).toContain('dispatch a subagent');
+      const data = recoveryData('recover-plan-additions');
+      expect(data.taskState).toMatchObject({ total: 2, completed: 2, next: null });
+      expect(data.planMapping).toMatchObject({
+        status: 'reconciliation-required',
+        unmappedCount: 1,
+      });
+      expect(data.planMapping.unmapped[0].text).toBe('additional task added in plan');
+      expect(data.nextAction.kind).toBe('reconcile-plan');
+      expect(data.nextAction.reason).toContain(
+        'map legacy plan items to task IDs or add genuinely extra tasks',
+      );
+      expect(data.nextAction.reason).toContain('Do not reimplement from checkbox state');
+      expect(result.stdout).not.toContain('first unchecked Superpowers plan task');
     });
 
     it('requires subagent dispatch confirmation when recovering subagent build mode', async () => {
@@ -4848,7 +4903,10 @@ describe('comet scripts', () => {
           'archived: false',
           '',
         ].join('\n'),
-        ['- [x] done task', '- [ ] pending task'].join('\n'),
+        [
+          '- [x] done task <!-- comet-task:done -->',
+          '- [ ] pending task <!-- comet-task:pending -->',
+        ].join('\n'),
       );
 
       const result = runNode(tmpDir, stateScript, [
@@ -4860,13 +4918,16 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('subagent_dispatch: PENDING');
-      expect(result.stdout).toContain('Selected subagent execution is not recorded');
-      expect(result.stdout).toContain(
-        'Resume /comet-build and use the single joint decision to confirm the supported execution configuration.',
-      );
+      const data = recoveryData('recover-subagent-unconfirmed');
+      expect(data.nextAction.kind).toBe('configure');
+      expect(data.nextAction.reason).toContain('before planning');
+      expect(data.configuration).toMatchObject({
+        buildMode: 'subagent-driven-development',
+        subagentDispatch: null,
+      });
     });
 
-    it('keeps subagent dispatch guidance when plan-ready pause is stale', async () => {
+    it('keeps explicit plan-ready pause until the user resumes pending subagent work', async () => {
       await writeFile(
         path.join(tmpDir, 'docs', 'superpowers', 'plans', 'stale-subagent-plan.md'),
         'plan\n',
@@ -4890,7 +4951,10 @@ describe('comet scripts', () => {
           'archived: false',
           '',
         ].join('\n'),
-        ['- [x] done task', '- [ ] pending task'].join('\n'),
+        [
+          '- [x] done task <!-- comet-task:done -->',
+          '- [ ] pending task <!-- comet-task:pending -->',
+        ].join('\n'),
       );
 
       const result = runNode(tmpDir, stateScript, [
@@ -4901,14 +4965,15 @@ describe('comet scripts', () => {
       ]);
 
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain('Resume the explicit plan-ready pause');
-      expect(result.stdout).toContain('dispatch a subagent');
-      expect(result.stdout).toContain(
-        'Do not execute the pending task directly in the main window',
-      );
+      const data = recoveryData('recover-stale-subagent');
+      expect(data.nextAction.kind).toBe('paused');
+      expect(data.nextAction.reason).toContain('only after the user asks to continue');
+      expect(data.configuration.buildPause).toBe('plan-ready');
+      expect(data.taskState).toMatchObject({ total: 2, completed: 1 });
+      expect(result.stdout).not.toContain('dispatch a subagent');
     });
 
-    it('suggests running guard when stale plan-ready pause has all tasks done', async () => {
+    it('keeps explicit plan-ready pause even when all authoritative tasks are done', async () => {
       await writeFile(
         path.join(tmpDir, 'docs', 'superpowers', 'plans', 'stale-all-done-plan.md'),
         'plan\n',
@@ -4943,8 +5008,12 @@ describe('comet scripts', () => {
       ]);
 
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain('all tasks are done');
-      expect(result.stdout).toContain('run guard to transition to verify');
+      const data = recoveryData('recover-stale-all-done');
+      expect(data.nextAction.kind).toBe('paused');
+      expect(data.nextAction.reason).toContain('only after the user asks to continue');
+      expect(data.configuration.buildPause).toBe('plan-ready');
+      expect(data.taskState).toMatchObject({ total: 1, completed: 1, next: null });
+      expect(result.stdout).not.toContain('guard to transition to verify');
     });
 
     it('outputs recovery context for verify phase with completed verification', async () => {
@@ -5069,6 +5138,12 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Phase: build');
       expect(result.stdout).toContain('Tasks: tasks.md MISSING');
+      expect(recoveryData('recover-no-tasks').taskState).toMatchObject({
+        exists: false,
+        total: 0,
+        completed: 0,
+      });
+      expect(result.stdout).not.toContain('All tasks done');
       expect(result.stdout).toContain('Recovery action');
       expect(result.stderr).not.toContain('unbound variable');
     });
@@ -5096,7 +5171,9 @@ describe('comet scripts', () => {
           'archived: false',
           '',
         ].join('\n'),
-        ['- [x] task 1', '- [x] task 2'].join('\n'),
+        ['- [x] task 1 <!-- comet-task:task-1 -->', '- [x] task 2 <!-- comet-task:task-2 -->'].join(
+          '\n',
+        ),
       );
 
       const result = runNode(tmpDir, stateScript, [
@@ -5110,7 +5187,8 @@ describe('comet scripts', () => {
       expect(result.stdout).toContain('Phase: build');
       expect(result.stdout).toContain('Tasks: 2/2 done, 0 pending');
       expect(result.stdout).toContain('All tasks done');
-      expect(result.stdout).toContain('guard to transition to verify');
+      expect(result.stdout).toContain('Revalidate or execute Build checks, then run guard --apply');
+      expect(recoveryData('recover-build-done').nextAction.kind).toBe('check');
     });
 
     it('outputs recovery context for archive phase', async () => {

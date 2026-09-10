@@ -6,9 +6,31 @@ import {
   completeClassicTask,
   parseClassicTasks,
   validateClassicTaskPlan,
+  inspectClassicPlanTasks,
+  synchronizeClassicPlanTasks,
 } from '../../../domains/comet-classic/classic-tasks.js';
 
 describe('Classic canonical tasks', () => {
+  it('synchronizes mapped legacy checkboxes by ID, never by order or task wording', () => {
+    const tasks = parseClassicTasks(
+      '- [x] renamed <!-- comet-task:a -->\n- [ ] second <!-- comet-task:b -->',
+    );
+    const plan = '- [x] second <!-- comet-task:b -->\n- [ ] old name <!-- comet-task:a -->\n';
+    expect(inspectClassicPlanTasks(plan, tasks).unmapped).toEqual([]);
+    const updated = synchronizeClassicPlanTasks(plan, tasks);
+    expect(parseClassicTasks(updated).map((task) => [task.id, task.completed])).toEqual([
+      ['b', false],
+      ['a', true],
+    ]);
+    expect(synchronizeClassicPlanTasks(updated, tasks)).toBe(updated);
+  });
+  it('preserves and reports unmapped or extra legacy plan tasks instead of guessing completion', () => {
+    const tasks = parseClassicTasks('- [x] done <!-- comet-task:a -->');
+    const plan = '- [ ] done\n- [ ] extra <!-- comet-task:other -->';
+    expect(inspectClassicPlanTasks(plan, tasks).unmapped).toHaveLength(2);
+    expect(() => synchronizeClassicPlanTasks(plan, tasks)).toThrow('mapping');
+    expect(synchronizeClassicPlanTasks('Plan references only', tasks)).toBe('Plan references only');
+  });
   it('uses canonical plan references without a second progress ledger and preserves legacy plans', () => {
     const tasks = parseClassicTasks('- [ ] one <!-- comet-task:a -->');
     const plan =

@@ -7,6 +7,8 @@ import * as checkSnapshot from '../../../domains/comet-classic/classic-check-sna
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+import { recoverCommandChecks } from '../../../domains/comet-classic/classic-command-checks.js';
+import { ensureClassicRuntimeRun } from '../../../domains/comet-classic/classic-runtime-run.js';
 
 describe('Classic executed check evidence', () => {
   let root: string;
@@ -29,6 +31,38 @@ describe('Classic executed check evidence', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+
+  it.each(['argv', 'cwd'])('compares %s before validating previous evidence', async (identity) => {
+    await cli(
+      'check',
+      'run',
+      'demo',
+      'verify',
+      '--local',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    );
+    const scan = vi.spyOn(checkSnapshot, 'checkInputFingerprint');
+    const environment = vi.spyOn(checkSnapshot, 'checkEnvironmentFingerprint');
+    const result = await cli(
+      'check',
+      'run',
+      'demo',
+      'verify',
+      '--local',
+      ...(identity === 'cwd' ? ['--cwd', 'openspec'] : []),
+      '--',
+      process.execPath,
+      '-e',
+      identity === 'cwd' ? 'process.exit(0)' : 'process.exit(1)',
+    );
+    // Only the new execution's before/after snapshots, not the unrelated old check.
+    expect(scan).toHaveBeenCalledTimes(2);
+    expect(environment).toHaveBeenCalledTimes(2);
+    expect(result.stdout).not.toContain('reused=true');
   });
 
   it('executes literal argv, preserves child JSON/help flags, and records runtime provenance', async () => {
@@ -121,6 +155,117 @@ describe('Classic executed check evidence', () => {
       (await fs.readFile(file, 'utf8')).replace('phase: open', 'phase: verify'),
     );
   }
+
+  it('reuses declared inputs through Guard but rejects policy changes and missing logs', async () => {
+    await readyVerify();
+    const policy = path.join(root, '.comet/check-policy.json');
+    await fs.writeFile(
+      policy,
+      JSON.stringify({
+        version: 1,
+        argv: [process.execPath, 'check.cjs'],
+        cwd: '.',
+        files: ['input.txt', 'check.cjs'],
+        git: 'none',
+        env: [],
+      }),
+    );
+    const check = await cli(
+      'check',
+      'run',
+      'demo',
+      'verify',
+      '--local',
+      '--json',
+      '--',
+      process.execPath,
+      'check.cjs',
+    );
+    expect(check.exitCode, check.stderr).toBe(0);
+    await fs.writeFile(path.join(root, 'unrelated.md'), 'unrelated');
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+    await fs.appendFile(policy, '\n');
+    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+    const fresh = await cli(
+      'check',
+      'run',
+      'demo',
+      'verify',
+      '--local',
+      '--json',
+      '--',
+      process.execPath,
+      'check.cjs',
+    );
+    expect(fresh.exitCode, fresh.stderr).toBe(0);
+    await fs.unlink(path.join(root, JSON.parse(fresh.stdout!).data.logRef));
+    expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
+  });
+
+  it('rejects declaration changes during execution even when source inputs are stable', async () => {
+    const code = 'require("fs").appendFileSync(".comet/check-policy.json", "\\n")';
+    await fs.writeFile(
+      path.join(root, '.comet/check-policy.json'),
+      JSON.stringify({
+        version: 1,
+        argv: [process.execPath, '-e', code],
+        cwd: '.',
+        files: ['input.txt'],
+        git: 'none',
+      }),
+    );
+    const result = await cli(
+      'check',
+      'run',
+      'demo',
+      'verify',
+      '--local',
+      '--',
+      process.execPath,
+      '-e',
+      code,
+    );
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  it('does not share a narrowed recovery snapshot with an unmatched security command', async () => {
+    await fs.writeFile(
+      path.join(root, '.comet/check-policy.json'),
+      JSON.stringify({
+        version: 1,
+        argv: [process.execPath, 'check.cjs'],
+        cwd: '.',
+        files: ['input.txt', 'check.cjs'],
+        git: 'none',
+      }),
+    );
+    expect(
+      (await cli('check', 'run', 'demo', 'build', '--local', '--', process.execPath, 'check.cjs'))
+        .exitCode,
+    ).toBe(0);
+    expect(
+      (
+        await cli(
+          'check',
+          'run',
+          'demo',
+          'verify',
+          '--local',
+          '--',
+          process.execPath,
+          '-e',
+          'process.exit(0)',
+        )
+      ).exitCode,
+    ).toBe(0);
+    await fs.writeFile(path.join(root, 'security.config'), 'changed');
+    const change = path.join(root, 'openspec/changes/demo');
+    const { run } = await ensureClassicRuntimeRun(change);
+    expect(await recoverCommandChecks(root, change, run)).toEqual({
+      build: 'revalidated',
+      verify: 'rerun-required',
+    });
+  });
 
   it('rejects manually attested success at both verification entry points', async () => {
     await readyVerify();

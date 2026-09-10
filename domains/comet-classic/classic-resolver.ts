@@ -13,19 +13,20 @@ function profileFor(classic: ClassicState): ClassicProfile {
 }
 
 function fullBuildConfigured(classic: ClassicState): boolean {
-  if (!classic.buildMode || !classic.tddMode || !classic.isolation || !classic.verifyMode) {
+  if (!classic.buildMode || !classic.tddMode || !classic.reviewMode || !classic.isolation) {
     return false;
   }
   if (classic.buildMode === 'subagent-driven-development') {
     return classic.subagentDispatch === 'confirmed';
   }
   if (classic.buildMode === 'direct') return classic.directOverride === true;
+  if (classic.buildMode === 'autonomous') return classic.reviewMode !== 'off';
   return true;
 }
 
 function presetBuildConfigured(classic: ClassicState): boolean {
   return Boolean(
-    classic.buildMode === 'direct' &&
+    (classic.buildMode === 'direct' || classic.buildMode === 'autonomous') &&
     classic.tddMode === 'direct' &&
     classic.isolation !== null &&
     classic.verifyMode === 'light',
@@ -37,14 +38,16 @@ function resolveBuild(
   classic: ClassicState,
   evidence: readonly ClassicEvidence[],
 ): string {
-  if (classic.verifyResult === 'fail') {
-    return profile === 'full' ? 'full.build.fix' : `${profile}.build.execute`;
+  if (profile !== 'full' && classic.verifyResult === 'fail') {
+    return `${profile}.build.execute`;
   }
 
   if (profile === 'full') {
-    if (!evidenceSatisfied(evidence, 'build.plan')) return 'full.build.plan';
-    if (classic.buildPause === 'plan-ready') return 'full.build.plan-ready';
+    if (evidenceSatisfied(evidence, 'build.plan') && classic.buildPause === 'plan-ready')
+      return 'full.build.plan-ready';
     if (!fullBuildConfigured(classic)) return 'full.build.configure';
+    if (!evidenceSatisfied(evidence, 'build.plan')) return 'full.build.plan';
+    if (classic.verifyResult === 'fail') return 'full.build.fix';
   } else if (!presetBuildConfigured(classic)) {
     throw new Error(`${profile} build configuration is incomplete`);
   }

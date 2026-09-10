@@ -6,7 +6,9 @@ This protocol is shared by comet sub-skills that directly modify code, including
 
 ## Core Rules
 
-- Immediately use the Skill tool to load the Superpowers `systematic-debugging` skill
+Exception: a TDD RED with a verified cause matching the not-yet-implemented target behavior is normal evidence; continue RED-GREEN-REFACTOR without loading debugging Skills. Environment errors, test loading failures, unrelated regressions, or unexplained RED are not exempt.
+
+- `build_mode: autonomous` follows the investigation and verification loop below directly without mandatory external Skills; other strategies immediately use the Skill tool to load Superpowers `systematic-debugging`
 - Do not propose or implement source fixes before the root cause investigation is complete
 
 ## Four-Stage Flow
@@ -25,7 +27,7 @@ Before entering the four-stage flow, run a failure-independence assessment to de
 
 When parallel conditions are met:
 
-1. Immediately use the Skill tool to load the Superpowers `dispatching-parallel-agents` skill
+1. Autonomous may organize bounded independent investigation directly; other strategies use the Skill tool to load Superpowers `dispatching-parallel-agents`
 2. Dispatch one background investigation agent per independent failure, grouped by problem domain, with all dispatches in a single response for concurrent execution. Each agent prompt must be self-contained (specific failure, error messages, allowed investigation scope, prohibition on touching other problem domains' code)
 3. All agents remain bound by this protocol's "no source changes before the root cause is identified" constraint; they only locate the root cause and return findings — **they do not submit fixes directly**
 4. Once all investigations return, the main session serially consolidates findings and performs fixes; fixes still go through the current `review_mode` verification and review loop

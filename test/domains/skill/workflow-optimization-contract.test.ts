@@ -13,6 +13,187 @@ function descriptionOf(skill: string): string {
   return skill.match(/^description:\s*"([^"]+)"/mu)?.[1] ?? '';
 }
 
+function section(source: string, start: string, end: string): string {
+  const from = source.indexOf(start);
+  const to = source.indexOf(end, from + start.length);
+  expect(from, `Missing section: ${start}`).toBeGreaterThanOrEqual(0);
+  expect(to, `Missing following section: ${end}`).toBeGreaterThan(from);
+  return source.slice(from, to);
+}
+
+async function readChineseReference(name: string): Promise<string> {
+  return fs.readFile(path.join(zhSkillRoot, 'comet-classic', 'reference', `${name}.md`), 'utf8');
+}
+
+// Approved Chinese semantics are synchronized to English; both languages retain safety contracts.
+describe('Chinese Classic efficiency contracts', () => {
+  it('confirms an atomic strategy before planning without silently replacing existing choices', async () => {
+    const build = await readSkill(zhSkillRoot, 'comet-build');
+    const configuration = section(build, '### 1. 先确认执行策略', '### 2. 创建或恢复计划');
+    const plan = section(build, '### 2. 创建或恢复计划', '### 3. 执行与验收');
+
+    expect(configuration).toContain('写计划前必须已有执行策略');
+    expect(configuration).toContain('提供一次联合决策');
+    expect(configuration).toContain('已有 change 的旧策略不自动替换');
+    expect(configuration).toContain('不写半套配置');
+    expect(configuration).toContain(
+      'build_mode autonomous subagent_dispatch null tdd_mode tdd review_mode standard --json',
+    );
+    expect(plan).toContain('autonomous：由当前 Agent 直接编写和自检，不加载 writing-plans');
+    expect(plan).toContain('其他计划执行策略：使用 `writing-plans` Skill');
+    expect(plan).toContain('有效计划与配置沿用');
+    expect(plan).toContain('只有用户明确要求继续才清除暂停');
+    expect(plan).toContain('计划完成后默认按已确认策略继续，不再追加配置确认点');
+    expect(build).not.toContain('计划写入后只提供**一个联合决策点**');
+  });
+
+  it('keeps autonomous planning, TDD evidence and independent review mandatory where configured', async () => {
+    const build = await readSkill(zhSkillRoot, 'comet-build');
+    const execution = section(build, '### 3. 执行与验收', '### 3b.');
+    const verify = await readSkill(zhSkillRoot, 'comet-verify');
+
+    expect(build).toContain('不能借自主策略跳过设计、计划、配置、验证或独立审查');
+    expect(build).toContain('full 的 autonomous 必须选择 standard 或 thorough');
+    expect(execution).toContain('每个实现任务必须有原因匹配的 RED 和对应 GREEN 命令及真实结果');
+    expect(execution).toContain('不倒退代码伪造 RED');
+    expect(execution).toContain('所需 reviewer 也必须独立');
+    expect(execution).toContain('审查不可用时停止，不以自评代替');
+    expect(verify).toContain('full autonomous 不允许跳过独立审查');
+    expect(verify).toContain('已有覆盖当前最终 diff 的有效审查时复用');
+  });
+
+  it('reconciles implementation and evidence before checkoff and treats old-plan sync as a projection', async () => {
+    const recovery = await readChineseReference('context-recovery');
+    const tasks = section(recovery, '## 任务核对与补勾', '## Runtime 协调记录');
+
+    expect(tasks).toContain('任务完成状态的唯一权威');
+    expect(tasks).toContain('核对当前文件、Git diff/提交、检查结果、审查与未解决反馈');
+    expect(tasks).toContain('实现、检查和所需审查均已满足：直接通过 task-complete 补勾');
+    expect(tasks).toContain('仅补缺失检查或独立审查');
+    expect(tasks).toContain('已有部分实现时仅补剩余部分');
+    expect(tasks.indexOf('核对当前文件')).toBeLessThan(tasks.indexOf('comet state task-complete'));
+    expect(tasks).toContain('--expect <revision> --json');
+    expect(tasks).toContain('revision 冲突时重新判断任务语义');
+    expect(tasks).toContain('task-complete 会自动从 tasks.md 同步已有映射的旧计划');
+    expect(tasks).toContain('comet state sync-plan <name>');
+    expect(tasks).toContain('mapping-required');
+    expect(tasks).toContain('只补明确的 ID 映射再运行 sync-plan，不重做实现');
+    expect(tasks).toContain('旧计划额外的真实任务先核对范围并纳入 tasks.md');
+    expect(tasks).toContain('禁止按序号、位置或相似标题猜测');
+  });
+
+  it('uses compact local entry summaries and requests full recovery details only when needed', async () => {
+    const recovery = await readChineseReference('context-recovery');
+    const entry = section(recovery, '## 阶段入口与按需恢复', '## 任务核对与补勾');
+
+    expect(entry).toContain('普通阶段衔接只运行一次入口检查');
+    expect(entry).toContain('{authority, revision, total, completed, needsIds, next}');
+    expect(entry).toContain('{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}');
+    expect(entry).toContain('{kind, reason, taskId?}');
+    expect(entry).toContain('先阅读 reason，再按 kind 续做');
+    for (const action of [
+      'reconcile-task',
+      'review',
+      'checkoff',
+      'check',
+      'reconcile-plan',
+      'plan',
+      'configure',
+      'workspace',
+      'delivery',
+    ]) {
+      expect(entry).toContain(action);
+    }
+    expect(entry).toContain('仅在冷启动、对话被压缩或恢复证据不足时使用');
+    expect(entry).toContain('需要完整任务和检查点时，再显式加 `--details`');
+    expect(entry).toContain('在 taskState 中增加 tasks，在 coordination 中增加 checkpoint');
+    expect(entry).toContain('comet state check <change-name> <phase> --recover --details --json');
+    expect(entry).toContain('恢复不清空计划、任务、审查或已用轮次');
+  });
+
+  it('publishes a usable checkpoint JSON shape and refuses stale or missing records as proof of missing implementation', async () => {
+    const recovery = await readChineseReference('context-recovery');
+    const checkpoint = section(recovery, '## Runtime 协调记录', '## 各阶段恢复');
+    const example = checkpoint.match(/```json\s*([\s\S]*?)```/u)?.[1];
+    expect(example).toBeDefined();
+    expect(JSON.parse(example!)).toEqual({
+      schemaVersion: 1,
+      taskIds: ['task-1'],
+      revision: '<task-revision>',
+      stage: 'implementing',
+      sessionId: '<implementer-session-id>',
+      evidence: [],
+      unresolved: [],
+      reviewRounds: 0,
+    });
+    expect(checkpoint).toContain('必须替换为本次实际值');
+    expect(checkpoint).toContain('comet state checkpoint <change-name> --file <json-path>');
+    expect(checkpoint).toContain('读取结果为 `{checkpoint, stale}`');
+    expect(checkpoint).toContain('stale 为 true 时先核对 revision、任务范围和真实成果');
+    expect(checkpoint).toContain('checkpoint 为空也不表示尚未实施');
+    expect(checkpoint).toContain('Runtime 验证并生成 Markdown');
+    expect(checkpoint).toContain('<classic-change-dir>/.comet/coordination.json');
+    expect(checkpoint).toContain('人读投影仍为 `.comet/subagent-progress.md`');
+    expect(checkpoint).toContain('`.comet/checkpoint.json` 属于 Engine，不是协调记录');
+    expect(checkpoint).toContain('不得人工修改或覆盖');
+    expect(checkpoint).toContain('保存失败时停止后续派发和推进');
+    expect(checkpoint).toContain('不因新会话重置预算');
+  });
+
+  it('bounds implementer reuse while preserving per-task acceptance and independent review', async () => {
+    const dispatch = await readChineseReference('subagent-dispatch');
+    const unit = section(dispatch, '## 派发单位', '## 交接与证据');
+
+    expect(unit).toContain('派发时固定 taskIds、允许修改范围、执行顺序、验收点和回报时机');
+    expect(unit).toContain('逐 ID 报告、验收和勾选');
+    expect(unit).toContain('thorough 允许复用 implementer，但仍逐任务独立审查');
+    expect(unit).toContain('范围变化、依赖冲突或新风险时暂停受影响成员');
+    expect(unit).toContain('上下文压力使约束不能可靠保留');
+    expect(unit).toContain('连续两次回报没有新增实现/证据且重复同一阻塞');
+    expect(unit).toContain('保存检查点并结束当前复用');
+    expect(unit).toContain('reviewer 始终独立于 implementer');
+    expect(unit).toContain('子代理不嵌套派发');
+    expect(unit).not.toContain('跨任务或角色不复用 agent');
+    expect(dispatch).toContain('不静默改变用户选定策略');
+  });
+
+  it('persists authorization before archive and explicitly verifies delivery before declaring success', async () => {
+    const archive = await readSkill(zhSkillRoot, 'comet-archive');
+    const authorize = section(archive, '### 1. 归档与交付前最终确认', '### 2. 执行归档');
+    const complete = section(archive, '### 5. 交付归档提交并完成', '## 退出条件');
+    const example = authorize.match(/```json\s*([\s\S]*?)```/u)?.[1];
+    expect(example).toBeDefined();
+    expect(JSON.parse(example!)).toEqual({
+      action: 'push',
+      targetBranch: '<confirmed-bound-branch>',
+      remote: '<confirmed-remote>',
+    });
+    expect(authorize.indexOf('comet state delivery <change-name> --file')).toBeLessThan(
+      authorize.indexOf('comet state transition <change-name> archive-confirm'),
+    );
+    expect(authorize).toContain('只有用户选择 A、B 或 C 后');
+    expect(authorize).toContain('未知的 commit/prUrl 不伪造');
+    expect(authorize).toContain(
+      '普通 `comet state delivery <change-name>` 只读取记录，入口摘要也不触网',
+    );
+    expect(authorize).toContain('comet state delivery <change-name> --verify');
+    expect(authorize).toContain('读取结果为 `{delivery, verification}`');
+    expect(authorize).toContain('尚未首次 push');
+    expect(authorize).toContain('授权和目标仍有效时，继续执行缺失动作，再用 --verify 核对');
+    expect(authorize).toContain('不能仅因 notVerified/needsVerification 就停止');
+    expect(authorize).toContain('unavailable（网络、权限或服务故障使真实结果无法确定）');
+    expect(authorize).toContain('先恢复只读核对能力，不盲目重试 push 或重复创建 PR');
+    expect(authorize).toContain('旧交付授权应失效');
+    expect(complete).toContain('超时或返回不确定时先查真实结果，不能盲目重试');
+    expect(complete).toContain('仅填写 commit/prUrl 不等于交付成功');
+    expect(complete).toContain('所选动作全部经 Runtime 核对完成后，才运行 clear-selection');
+    expect(archive).toContain('不依赖当前对话记得 A/B/C');
+    expect(archive).toContain(
+      '旧 change 只有 handled、授权缺失、目标变化或分支拓扑不一致时停止并明确确认',
+    );
+  });
+});
+
 describe('Comet workflow optimization contracts', () => {
   it.each([
     ['中文', zhSkillRoot, '兼容性以实际能力而非版本号猜测为准', 'OpenSpec 状态驱动产物循环'],
@@ -39,18 +220,18 @@ describe('Comet workflow optimization contracts', () => {
     [
       '中文',
       zhSkillRoot,
-      '使用 `writing-plans` Skill 创建实施计划',
-      '计划完成后返回 Comet Build',
-      '由 Comet 统一处理后续执行配置',
+      '其他计划执行策略：使用 `writing-plans` Skill',
+      '完成后返回 Comet Build',
+      '不再次选择执行策略或自动进入外部生命周期',
       '主会话直接创建实施计划',
       'Execution Handoff',
     ],
     [
       'English',
       skillRoot,
-      'Use the `writing-plans` Skill to create the implementation plan',
-      'return to Comet Build after the plan is complete',
-      'Comet owns the subsequent execution configuration',
+      'use the `writing-plans` Skill for writing and self-checking only',
+      'Return to Comet Build',
+      'without choosing the execution strategy again or entering an external lifecycle',
       'Create the implementation plan directly in the main session',
       'Execution Handoff',
     ],
@@ -169,7 +350,7 @@ describe('Comet workflow optimization contracts', () => {
       '「确认归档、立即推送并创建 PR」',
       '不运行 `archive-confirm` 或归档命令',
       '保留 active change、`phase: archive` 和 `branch_status: pending`',
-      '`handled` 只表示用户已经确认如何处理这次完整归档提交，包括仅保留本地、推送或推送并创建 PR；不表示 push 或 PR 创建已经成功',
+      'handled 仅为兼容状态，不承载 local/push/pr 的授权或成功证据',
       '归档阶段不再调用 Superpowers `finishing-a-development-branch`',
       '使用 Skill 工具加载 Superpowers',
     ],
@@ -183,7 +364,7 @@ describe('Comet workflow optimization contracts', () => {
       '"Confirm archive, push now, and create a PR"',
       'Do not run `archive-confirm` or the archive command',
       'keep the active change, `phase: archive`, and `branch_status: pending`',
-      '`handled` means only that the user confirmed how to handle this complete archive commit, including keeping it local, pushing it, or pushing it and creating a PR. It does not mean that push or PR creation has succeeded',
+      'handled is compatibility state, not evidence of local/push/pr authorization or success',
       'Archive no longer invokes Superpowers `finishing-a-development-branch`',
       'use the Skill tool to load Superpowers',
     ],
@@ -212,7 +393,7 @@ describe('Comet workflow optimization contracts', () => {
       );
       const commit = archive.indexOf('git commit -m "chore: archive <change-name>"', handled);
       const delivery = archive.indexOf(deliveryHeading, commit);
-      const clearSelection = archive.indexOf('comet state clear-selection', delivery);
+      const clearSelection = archive.indexOf('clear-selection', delivery);
 
       expect(confirmation).toBeGreaterThan(-1);
       expect(confirmation).toBeLessThan(execution);
@@ -324,23 +505,23 @@ describe('Comet workflow optimization contracts', () => {
     [
       '中文',
       zhSkillRoot,
-      '工作区已经在 Open 阶段准备并绑定',
-      '保留 Open 阶段已绑定的 `isolation`',
-      '不得在 Build 再创建 Worktree',
-      '计划写入后只提供**一个联合决策点**',
-      'Superpowers `subagent-driven-development`',
-      'comet state set <name> build_pause null build_mode executing-plans subagent_dispatch null tdd_mode tdd review_mode standard --json',
-      '不得自动选择',
+      '工作区必须已在 Open 准备并绑定',
+      '保留 isolation、bound_branch 和已有暂停状态',
+      '不能在 Build 新建或切换工作区',
+      '提供一次联合决策',
+      '`subagent-driven-development`',
+      'comet state set <name> build_mode autonomous subagent_dispatch null tdd_mode tdd review_mode standard --json',
+      '推荐不替代用户确认',
     ],
     [
       'English',
       skillRoot,
-      'The workspace was prepared and bound during Open',
-      'preserve the `isolation` and `bound_branch` established during Open',
-      'do not create a Worktree',
-      'provide exactly **one joint decision point**',
-      'Superpowers `subagent-driven-development`',
-      'comet state set <name> build_pause null build_mode executing-plans subagent_dispatch null tdd_mode tdd review_mode standard --json',
+      'The workspace must already be prepared and bound during Open',
+      'Preserve isolation, bound_branch, and an existing pause',
+      'Do not create or switch workspaces in Build',
+      'provide one joint decision',
+      '`subagent-driven-development`',
+      'comet state set <name> build_mode autonomous subagent_dispatch null tdd_mode tdd review_mode standard --json',
       'Do not auto-select',
     ],
   ])(
@@ -377,7 +558,7 @@ describe('Comet workflow optimization contracts', () => {
       '中文',
       zhSkillRoot,
       'Verify 负责整个 change 的唯一最终集成代码审查',
-      'Build 只保留任务级或分段审查',
+      'Build 只做任务或分段审查',
       '与 build 阶段审查的去重',
       '从 plan frontmatter 读取的 base-ref',
     ],
@@ -385,7 +566,7 @@ describe('Comet workflow optimization contracts', () => {
       'English',
       skillRoot,
       'Verify owns the only final integrated code review for the entire change',
-      'Build keeps only task-level or segmented reviews',
+      'Build performs only task-level or segmented review',
       'Deduplication with build-stage review',
       'base-ref read from plan frontmatter',
     ],
@@ -433,15 +614,15 @@ describe('Comet workflow optimization contracts', () => {
       '中文',
       zhSkillRoot,
       '派发失败或会话不可用时记录真实原因，停止对应循环',
-      '不以主会话接管实现绕过用户选定方式',
-      '暂停并等待用户改选 `build_mode: executing-plans`',
+      '不静默改变用户选定策略',
+      '暂停并等待用户改选 executing-plans:',
     ],
     [
       'English',
       skillRoot,
       'Record dispatch/session failures and stop the affected loop',
-      'do not bypass the selected method by implementing in the main session',
-      'pause and wait for the user to choose `build_mode: executing-plans`',
+      'without silently changing the selected strategy',
+      'pause and wait for the user to choose executing-plans:',
     ],
   ])(
     '%s dispatch failure records a blocked task without manufacturing a new choice',
@@ -599,5 +780,121 @@ describe('Comet workflow optimization contracts', () => {
         expect(workspace, `${variant.language}: ${term}`).toContain(term);
       }
     }
+  });
+});
+
+describe('Approved English Classic efficiency contracts', () => {
+  const reference = (name: string) =>
+    fs.readFile(path.join(skillRoot, 'comet-classic', 'reference', name + '.md'), 'utf8');
+
+  it('configures before planning and retains autonomous safety and explicit continuation', async () => {
+    const build = await readSkill(skillRoot, 'comet-build');
+    const config = section(build, '### 1. Confirm', '### 2. Create');
+    const plan = section(build, '### 2. Create', '### 3. Execute');
+    expect(config).toContain('An execution strategy must be confirmed before writing the plan');
+    expect(config).toContain("do not automatically replace an existing change's strategy");
+    expect(config).toContain('without writing partial configuration');
+    expect(config).toContain(
+      'build_mode autonomous subagent_dispatch null tdd_mode tdd review_mode standard --json',
+    );
+    expect(plan).toContain('without loading writing-plans');
+    expect(plan).toContain('only after the user explicitly asks to continue');
+    expect(build).toContain(
+      'autonomous cannot bypass design, planning, configuration, verification, or independent review',
+    );
+    expect(build).toContain('genuine RED and corresponding GREEN command with actual results');
+    expect(build).toContain(
+      'without reenacting verified implementation or reverting code to fabricate RED',
+    );
+    expect(build).toContain('Stop if review is unavailable; do not replace it with self-review');
+    expect(await readSkill(skillRoot, 'comet-verify')).toContain(
+      'full autonomous cannot skip independent review',
+    );
+  });
+
+  it('reconciles actual implementation before checkoff rather than rerunning an old plan', async () => {
+    const recovery = await reference('context-recovery');
+    const tasks = section(recovery, '## Task Reconciliation', '## Runtime Coordination');
+    expect(tasks).toContain('sole');
+    expect(tasks).toContain('Git diff');
+    expect(tasks).toContain('comet state task-complete');
+    expect(tasks.indexOf('Git diff')).toBeLessThan(tasks.indexOf('comet state task-complete'));
+    expect(tasks).toContain('--expect <revision> --json');
+    expect(tasks).toContain('mapping-required');
+    expect(tasks).toContain('comet state sync-plan <name>');
+    expect(tasks).toContain('comet-task');
+    expect(tasks).toContain('extra');
+  });
+
+  it('keeps normal entry compact and documents valid isolated coordination JSON for cold recovery', async () => {
+    const recovery = await reference('context-recovery');
+    expect(recovery).toContain('Ordinary phase handoffs run one entry check');
+    expect(recovery).toContain('{authority, revision, total, completed, needsIds, next}');
+    expect(recovery).toContain('{kind, reason, taskId?}');
+    expect(recovery).toContain('--recover --details --json');
+    expect(recovery).toContain('this adds tasks to taskState and checkpoint to coordination');
+    const checkpoint = section(recovery, '## Runtime Coordination', '## Phase-Specific');
+    expect(JSON.parse(checkpoint.match(/```json\s*([\s\S]*?)```/u)![1])).toEqual({
+      schemaVersion: 1,
+      taskIds: ['task-1'],
+      revision: '<task-revision>',
+      stage: 'implementing',
+      sessionId: '<implementer-session-id>',
+      evidence: [],
+      unresolved: [],
+      reviewRounds: 0,
+    });
+    expect(checkpoint).toContain('.comet/coordination.json');
+    expect(checkpoint).toContain('.comet/checkpoint.json');
+    expect(checkpoint).toContain('Engine');
+    expect(checkpoint).toContain('{checkpoint, stale}');
+  });
+
+  it('bounds reuse and retains independent review, per-ID acceptance and stalled-session exit', async () => {
+    const dispatch = await reference('subagent-dispatch');
+    const unit = section(dispatch, '## Dispatch Unit', '## Handoff');
+    for (const term of [
+      'Fix taskIds, allowed scope, execution order, acceptance points, and reporting boundaries',
+      'Report, accept, and check off each ID',
+      'independent per-task review',
+      'context pressure prevents reliable retention of constraints',
+      'two consecutive reports repeat the same blocker without new implementation/evidence',
+      'Save a checkpoint and end reuse',
+      'Reviewers remain independent of implementers',
+      'Subagents do not nest dispatch',
+    ])
+      expect(unit).toContain(term);
+  });
+
+  it('persists explicit authorization before archive and distinguishes missing delivery from unavailable verification', async () => {
+    const archive = await readSkill(skillRoot, 'comet-archive');
+    const authorize = section(archive, '### 1. Final', '### 2. Execute');
+    expect(authorize.indexOf('comet state delivery <change-name> --file')).toBeLessThan(
+      authorize.indexOf('comet state transition <change-name> archive-confirm'),
+    );
+    expect(JSON.parse(authorize.match(/```json\s*([\s\S]*?)```/u)![1])).toEqual({
+      action: 'push',
+      targetBranch: '<confirmed-bound-branch>',
+      remote: '<confirmed-remote>',
+    });
+    for (const term of [
+      'Only after the user selects A, B, or C',
+      'Do not fabricate unknown commit/prUrl',
+      'entry summaries do not access the network',
+      'comet state delivery <change-name> --verify',
+      '{delivery, verification}',
+      'before the first push',
+      'with valid authorization and target, execute the missing action',
+      'Do not stop solely because of notVerified/needsVerification',
+      'unavailable (network, permission, or service failure',
+      'do not blindly push or create duplicate PRs',
+      'old delivery authorization must expire',
+    ])
+      expect(authorize).toContain(term);
+    expect(archive).toContain('Filling commit/prUrl is not delivery success');
+    expect(archive).toContain('only after Runtime verifies every selected action');
+    expect(archive).toContain(
+      'Never infer archive, push, or PR authorization from branch_status: handled',
+    );
   });
 });

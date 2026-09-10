@@ -1,12 +1,12 @@
 # Classic Artifact Layout Protocol
 
-At the start or recovery of every Classic phase, run this from the project root:
+For a selected change, use layout from this turn's `comet state check <change-name> <phase> --json` without a separate root query. Run the following from the project root only before selecting a change, when entry does not provide layout, or when handling root migration alone:
 
 ```bash
 comet classic root show
 ```
 
-Accept only `schema: comet.classic-layout.v1`. Bind the returned `openSpecRoot`, `changesRoot`, `archiveRoot`, `specsRoot`, and `superpowersRoot` as `<classic-open-spec-root>`, `<classic-changes-root>`, `<classic-archive-root>`, `<classic-specs-root>`, and `<classic-superpowers-root>`, respectively, then define `<classic-change-dir>` as `<classic-changes-root>/<name>`. These logical roots are the source of truth for this turn. Resolve them again after recovery or context compaction.
+Accept only `schema: comet.classic-layout.v1`. Bind the returned `openSpecRoot`, `changesRoot`, `archiveRoot`, `specsRoot`, and `superpowersRoot` as `<classic-open-spec-root>`, `<classic-changes-root>`, `<classic-archive-root>`, `<classic-specs-root>`, and `<classic-superpowers-root>`, respectively, use the actual changeDir returned by entry for `<classic-change-dir>`. Construct it from changesRoot and name only before creating a change. Do not construct an active path for an archived change. Layout is the source of truth for this turn; refresh it through entry on cold recovery or workspace changes rather than retaining old bindings.
 
 ## Command rules
 

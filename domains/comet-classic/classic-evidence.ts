@@ -1,4 +1,5 @@
 import path from 'path';
+import { inspectClassicPlanReadiness } from './classic-plan-readiness.js';
 import { parseClassicTasks } from './classic-tasks.js';
 import { collectClassicSpecFiles } from './classic-paths.js';
 import type { ClassicStateProjection } from './classic-state.js';
@@ -236,7 +237,35 @@ export async function collectClassicEvidence(
       layout,
       layoutError,
     ),
-    linkedFileEvidence(projectRoot, 'build.plan', classic?.plan ?? null, layout, layoutError),
+    (async (): Promise<ClassicEvidence> => {
+      const item = await linkedFileEvidence(
+        projectRoot,
+        'build.plan',
+        classic?.plan ?? null,
+        layout,
+        layoutError,
+      );
+      if (!item.satisfied) return item;
+      try {
+        const readiness = await inspectClassicPlanReadiness(projectRoot, classic?.plan ?? null, {
+          requireNonempty: classic?.buildMode === 'autonomous',
+        });
+        if (readiness.status === 'ready') return item;
+        return {
+          code: item.code,
+          source: item.source,
+          satisfied: false,
+          detail: `Implementation plan is ${readiness.status}`,
+        };
+      } catch (error) {
+        return {
+          code: item.code,
+          source: item.source,
+          satisfied: false,
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+    })(),
     taskEvidence(projectRoot, tasks),
     linkedFileEvidence(
       projectRoot,

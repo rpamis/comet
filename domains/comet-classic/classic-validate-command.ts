@@ -27,7 +27,7 @@ const ENUMS: Record<string, readonly string[]> = {
   language: ['en', 'zh-CN'],
   phase: ['open', 'design', 'build', 'verify', 'archive'],
   context_compression: ['off', 'beta'],
-  build_mode: ['subagent-driven-development', 'executing-plans', 'direct'],
+  build_mode: ['subagent-driven-development', 'executing-plans', 'direct', 'autonomous'],
   build_pause: ['plan-ready'],
   subagent_dispatch: ['confirmed'],
   tdd_mode: ['tdd', 'direct'],

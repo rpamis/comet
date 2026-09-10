@@ -83,6 +83,32 @@ export function completeClassicTask(source: string, id: string, expectedRevision
   return lines.join('');
 }
 
+export function inspectClassicPlanTasks(plan: string, tasks: ClassicTask[]) {
+  const references = parseClassicTasks(plan);
+  const ids = new Set(tasks.map((task) => task.id).filter(Boolean));
+  return {
+    total: references.length,
+    unmapped: references.filter((task) => !task.id || !ids.has(task.id)),
+  };
+}
+
+/** Legacy checkboxes are a projection of explicitly mapped IDs, never a second authority. */
+export function synchronizeClassicPlanTasks(plan: string, tasks: ClassicTask[]): string {
+  if (inspectClassicPlanTasks(plan, tasks).unmapped.length)
+    throw new Error(
+      'Legacy plan requires explicit task ID mapping; reconcile extra work before syncing',
+    );
+  const states = new Map(tasks.map((task) => [task.id, task.completed]));
+  const lines = plan.split(/(?<=\n)/u);
+  for (const task of parseClassicTasks(plan)) {
+    lines[task.line - 1] = lines[task.line - 1].replace(
+      /^(\s*[-*]\s+\[)[ xX](\])/u,
+      `$1${states.get(task.id) ? 'x' : ' '}$2`,
+    );
+  }
+  return lines.join('');
+}
+
 export function validateClassicTaskPlan(
   plan: string,
   authority: string,

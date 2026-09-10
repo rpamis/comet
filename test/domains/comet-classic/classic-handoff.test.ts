@@ -352,13 +352,13 @@ describe('Classic handoff command', () => {
     expect(run(dir, 'state', 'get', 'demo', 'phase').stdout.trim()).toBe('build');
     const runStateBefore = await readRunState(changeDir);
     expect(runStateBefore).not.toBeNull();
-    expect(runStateBefore!.currentStep).toBe('full.build.plan');
+    expect(runStateBefore!.currentStep).toBe('full.build.configure');
 
     // Spec Patch the source evidence while in build.
     await fs.appendFile(path.join(changeDir, 'proposal.md'), 'build-phase change\n');
 
     const result = run(dir, 'handoff', 'demo', 'design', '--write');
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr).toBe(0);
     const afterHash = run(dir, 'state', 'get', 'demo', 'handoff_hash').stdout.trim();
     expect(afterHash).toMatch(/^[a-f0-9]{64}$/);
     expect(afterHash).not.toBe(beforeHash);
@@ -367,7 +367,7 @@ describe('Classic handoff command', () => {
     expect(run(dir, 'state', 'get', 'demo', 'phase').stdout.trim()).toBe('build');
     const runStateAfter = await readRunState(changeDir);
     expect(runStateAfter).not.toBeNull();
-    expect(runStateAfter!.currentStep).toBe('full.build.plan');
+    expect(runStateAfter!.currentStep).toBe('full.build.configure');
   });
 
   it('reconciles a matching pending handoff and records recovery once', async () => {

@@ -55,8 +55,12 @@ describe('internal Skill assets', () => {
       fs.readFile(path.resolve('assets/skills-zh/comet-build/SKILL.md'), 'utf8'),
       fs.readFile(path.resolve('assets/skills/comet-build/SKILL.md'), 'utf8'),
     ]);
-    expect(chineseBuild.match(/comet state select <change-name>/gu)).toHaveLength(2);
-    expect(englishBuild.match(/comet state select <change-name>/gu)).toHaveLength(2);
+    for (const build of [chineseBuild, englishBuild]) {
+      const selection = build.indexOf('comet state select <change-name>');
+      const entry = build.indexOf('comet state check <name> build --json');
+      expect(selection).toBeGreaterThanOrEqual(0);
+      expect(entry).toBeGreaterThan(selection);
+    }
   });
 
   it('includes internal Skills in managed lifecycle paths', () => {

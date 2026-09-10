@@ -25,6 +25,7 @@ import { readClassicState, readLegacyState } from './classic-store.js';
 import type { ClassicPhase, ClassicState } from './classic-state.js';
 import {
   inspectClassicPlanReadiness,
+  inspectClassicAutonomousBuildProblems,
   type ClassicPlanReadiness,
 } from './classic-plan-readiness.js';
 
@@ -295,7 +296,11 @@ async function allowsSuperpowersArtifactWrite(
   if (allowsFirstSuperpowersArtifactWrite(governing, slot)) return true;
   if (slot.field !== 'plan' || governing.phase !== 'build') return false;
   return (
-    (await hookPlanReadiness(projectRoot, governing.classic?.plan ?? null)).status === 'broken'
+    (
+      await hookPlanReadiness(projectRoot, governing.classic?.plan ?? null, {
+        requireNonempty: governing.classic?.buildMode === 'autonomous',
+      })
+    ).status === 'broken'
   );
 }
 
@@ -655,19 +660,24 @@ function blockedPlanNotReady(
     ? classicProjectRelative(projectRoot, governing.changeDir)
     : '<classic-change-dir>';
   const plansDirectory = classicProjectRelative(projectRoot, layout.superpowersPlansDir);
+  const autonomous = governing.classic?.buildMode === 'autonomous';
   const createCommand = missing
     ? `comet state set ${name} plan <repository-relative-plan-path>`
     : `comet state set ${name} plan <new-repository-relative-plan-path>`;
   const repair = missing
     ? [
-        '2. Load the Superpowers writing-plans Skill.',
+        autonomous
+          ? '2. Plan the implementation autonomously from the confirmed design and task IDs.'
+          : '2. Load the Superpowers writing-plans Skill.',
         `3. Read the Design Doc path from "comet state get ${name} design_doc" and read ${changeDirectory}/tasks.md.`,
         `4. Create the implementation plan under ${plansDirectory}/.`,
         '5. Record the plan path:',
         `   ${createCommand}`,
       ]
     : [
-        `2. Restore the plan file at ${planReadiness.recordedPath}, or load the Superpowers writing-plans Skill and create a replacement under ${plansDirectory}/.`,
+        autonomous
+          ? `2. Restore the plan file at ${planReadiness.recordedPath}, or create a replacement autonomously under ${plansDirectory}/.`
+          : `2. Restore the plan file at ${planReadiness.recordedPath}, or load the Superpowers writing-plans Skill and create a replacement under ${plansDirectory}/.`,
         '3. When creating a replacement, record its path:',
         `   ${createCommand}`,
       ];
@@ -688,7 +698,9 @@ function blockedPlanNotReady(
       `STATE: ${state}`,
       ...recorded,
       '',
-      'BLOCKED: project source writes require a ready Superpowers implementation plan.',
+      autonomous
+        ? 'BLOCKED: project source writes require a ready implementation plan.'
+        : 'BLOCKED: project source writes require a ready Superpowers implementation plan.',
       '',
       'ALLOWED_RECOVERY_WRITES:',
       `- ${plansDirectory}/<plan-file>.md`,
@@ -704,7 +716,9 @@ function blockedPlanNotReady(
       'SUCCESS: plan is reported as DONE and recovery advances beyond plan creation.',
       `RETRY: retry the original Write/Edit for ${relativePath} only after SUCCESS.`,
       'PROHIBITED: do not treat tasks.md as the implementation plan or write project source before SUCCESS.',
-      'If writing-plans is unavailable, stop and report the missing Skill instead of bypassing this check.',
+      autonomous
+        ? 'Autonomous planning does not require an external Skill; all normal acceptance checks still apply.'
+        : 'If writing-plans is unavailable, stop and report the missing Skill instead of bypassing this check.',
       '',
     ].join('\n'),
   );
@@ -863,6 +877,38 @@ async function inspectClassicHookTarget(
 
   const phase = governing.phase;
 
+  if (governing.classic?.buildMode === 'autonomous' && governing.changeDir) {
+    try {
+      const binding = await resolveBranchBinding(governing.changeDir, {
+        heal: false,
+        cwd: projectRoot,
+      });
+      const name = governingChangeName(governing) ?? '';
+      if (binding.status === 'drift')
+        return result(2, driftStaleReason(name, binding.boundBranch, binding.currentBranch));
+      if (binding.status === 'unbound-detached') return result(2, unboundDetachedMessage(name));
+    } catch (error) {
+      return result(2, error instanceof Error ? error.message : String(error));
+    }
+  }
+  const artifactSlot = standardSuperpowersArtifactSlot(
+    relativePath,
+    superpowersArtifactSlots(projectRoot, layout),
+  );
+  if (
+    phase === 'build' &&
+    governing.classic?.buildMode === 'autonomous' &&
+    artifactSlot?.field === 'plan'
+  ) {
+    const problems = await inspectClassicAutonomousBuildProblems(
+      projectRoot,
+      governingChangeName(governing) ?? '',
+      governing.classic,
+      { requirePlan: false },
+    );
+    if (problems.length) return result(2, problems.join('\n'));
+  }
+
   const openSpec = openSpecAllowed(
     relativePath,
     phase,
@@ -887,12 +933,22 @@ async function inspectClassicHookTarget(
     return blockedMissingDesignDoc(relativePath, classicLocale(governing.classic?.language));
   }
   if (phase === 'build' && governing.classic?.workflow === 'full') {
-    const planReadiness = await hookPlanReadiness(projectRoot, governing.classic.plan);
+    const planReadiness = await hookPlanReadiness(projectRoot, governing.classic.plan, {
+      requireNonempty: governing.classic.buildMode === 'autonomous',
+    });
     if (planReadiness.status !== 'ready') {
       return blockedPlanNotReady(relativePath, governing, planReadiness, projectRoot, layout);
     }
   }
   if (phase === 'build') {
+    if (governing.classic?.buildMode === 'autonomous') {
+      const problems = await inspectClassicAutonomousBuildProblems(
+        projectRoot,
+        governingChangeName(governing) ?? '',
+        governing.classic,
+      );
+      if (problems.length) return result(2, problems.join('\n'));
+    }
     return allowed(`${relativePath} (phase: ${phase})`);
   }
   return blocked(relativePath, phase, classicLocale(governing.classic?.language));

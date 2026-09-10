@@ -5,7 +5,7 @@ description: 'Comet Classic 阶段 2 —— 为 change 产出深度技术 Design
 
 # Comet 阶段 2：深度设计（Design）
 
-开始或恢复前必须先读取并执行 `comet-classic/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+入口返回 layout 后按 `comet-classic/reference/classic-layout.md` 绑定逻辑根；协议已在当前上下文时不重复加载。本文件的 OpenSpec CLI 使用 adapter，文件路径使用绑定的 `<classic-*>` 根，不先额外运行 root show。
 
 ## 前置条件
 
@@ -25,9 +25,9 @@ comet state select <change-name>
 comet state check <name> design --json
 ```
 
-验证通过后使用 `data.configuration` 的语言和上下文配置继续 Step 1，不逐字段查询。验证失败时处理具体失败原因。
+验证通过后使用入口 layout、configuration、nextAction 和协调摘要继续，不逐字段查询或重复 root show。普通衔接只做入口检查；冷恢复及详情读取按 context-recovery.md。验证失败时处理具体失败原因。
 
-**幂等性**：所有 design 阶段操作可以安全重试。如果 `handoff_context` 和 `handoff_hash` 已存在，先确认它们与当前产物一致再决定是否重新生成。
+**恢复**：先核对现有产物和用户确认，只补未完成步骤。已有效的 handoff 不重复生成；文档写入与阶段转换不假定可无条件重试。
 
 ### 1a. 生成 OpenSpec → Superpowers 交接包
 
@@ -100,13 +100,12 @@ Language: 使用入口 configuration.language 中的 Comet 配置产物语言输
 ```text
 Change: <change-name>
 OpenSpec Context Pack: <classic-change-dir>/.comet/handoff/design-context.md
-Machine handoff: <classic-change-dir>/.comet/handoff/design-context.json
 
 如 context_compression: beta，则使用：
 OpenSpec Context Pack: <classic-change-dir>/.comet/handoff/spec-context.md
-Machine handoff: <classic-change-dir>/.comet/handoff/spec-context.json
 
 OpenSpec 产物是上游事实源。引用已确认需求，brainstorming 只深入尚未解决的技术选择，不重新访谈已确认需求。
+默认只读取上述一个 Markdown 上下文包；机器 JSON 由 Runtime 校验，只有诊断索引问题才读取。截断或验收条款不足时按 source path/line range 补读相关原文，不同时通读 JSON、Markdown 和全部源文件。
 你的任务是基于交接包做深度技术设计：实现方案、技术风险、测试策略、边界条件。
 如发现目标、范围、非目标、验收场景或关键约束仍不清楚，先澄清缺口；信息已足够时直接形成设计方案，不设置最低问答轮数。
 不要重写 proposal/spec；如发现 OpenSpec delta spec 缺少验收场景，只能提出 Spec Patch，并回写 OpenSpec delta spec；不要在 Design Doc 中创建第二份需求 spec。Spec Patch 仅限于补充验收场景、修正歧义描述或添加边界条件，不得大幅重写 delta spec 的结构或范围——如需大幅修改，应标记为设计发现并回到 brainstorming 确认。
@@ -181,11 +180,10 @@ brainstorming 产出设计方案后，**必须按 `comet-classic/reference/decis
 <将回写的 delta spec 变更，无则写"无">
 ```
 
-**上下文压缩说明**：每次增量更新 `brainstorm-summary.md` 后，都是相对安全的压缩恢复点。Brainstorming 完成后，如上下文窗口紧张，应优先在此处进行压缩。压缩后重新加载以下文件继续 Step 2：
+**上下文压缩说明**：brainstorm-summary.md 提供中断恢复依据，但主动式压缩应等正式设计、状态和 handoff 落盘后再进行。此前若被动压缩，按需加载以下文件继续 Step 2：
 
 - `<classic-change-dir>/.comet/handoff/brainstorm-summary.md`
-- `<classic-change-dir>/.comet/handoff/design-context.md`（或 beta 模式的 `spec-context.md`）
-- `<classic-change-dir>/.comet/handoff/design-context.json`（或 beta 模式的 `spec-context.json`）
+- 按需补读 `<classic-change-dir>/.comet/handoff/design-context.md`（或 beta 的 `spec-context.md`）及缺失的原文段落；机器 JSON 不作为必读上下文
 
 ### 1e. 压缩策略（此处不阻塞）
 

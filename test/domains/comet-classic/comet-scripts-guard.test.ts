@@ -287,21 +287,33 @@ describe('comet guard', () => {
           'isolation: branch',
           'verify_mode: light',
           'review_mode: off',
-          'design_doc: null',
+          'design_doc: docs/superpowers/specs/review-off-guard.md',
           'plan: null',
           'verify_result: pending',
           'archived: false',
           '',
         ].join('\n'),
+        '- [x] done <!-- comet-task:review-off-task -->\n',
       );
 
-      await writeFile(path.join(tmpDir, 'plan.md'), '- [x] done\n');
+      const planPath = 'docs/superpowers/plans/review-off-guard.md';
+      await writeFile(
+        path.join(tmpDir, planPath),
+        '- [x] done <!-- comet-task:review-off-task -->\n',
+      );
+      await writeFile(
+        path.join(tmpDir, 'docs/superpowers/specs/review-off-guard.md'),
+        '---\ncomet_change: review-off-guard\nrole: technical-design\ncanonical_spec: openspec\n---\n# Design\n',
+      );
       await fs.appendFile(
         path.join(tmpDir, 'openspec', 'changes', 'review-off-guard', '.comet.yaml'),
         'verified_at: null\n',
       );
-      runNode(tmpDir, stateScript, ['set', 'review-off-guard', 'plan', 'plan.md']);
-      runNode(tmpDir, guardScript, ['review-off-guard', 'build']);
+      const recorded = runNode(tmpDir, stateScript, ['set', 'review-off-guard', 'plan', planPath]);
+      expect(recorded.status, recorded.stderr).toBe(0);
+      const preparation = runNode(tmpDir, guardScript, ['review-off-guard', 'build']);
+      expect(preparation.stderr).toContain('[PASS] review_mode selected');
+      expect(preparation.stderr).toContain('[PASS] plan task mapping is valid');
       expect(
         runNode(tmpDir, path.join(scriptsDir, 'comet-check.mjs'), [
           'run',
@@ -321,7 +333,10 @@ describe('comet guard', () => {
         'build-complete',
       ]);
 
-      expect(result.status).toBe(0);
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        runNode(tmpDir, stateScript, ['get', 'review-off-guard', 'review_mode']).stdout.trim(),
+      ).toBe('off');
     });
 
     it('allows build-complete without review_mode for hotfix workflow', async () => {

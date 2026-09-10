@@ -48,6 +48,32 @@ describe('Classic atomic configuration', () => {
     expect(JSON.parse(result.stdout!).data).toMatchObject({ change: 'demo', updated: expected });
   });
 
+  it('sets autonomous explicitly in an atomic configuration without changing defaults', async () => {
+    expect(parse(await fs.readFile(stateFile(), 'utf8')).build_mode).toBeNull();
+    const result = await cli(
+      'state',
+      'set',
+      'demo',
+      'build_mode',
+      'autonomous',
+      'tdd_mode',
+      'direct',
+      'review_mode',
+      'standard',
+      '--json',
+    );
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(parse(await fs.readFile(stateFile(), 'utf8'))).toMatchObject({
+      build_mode: 'autonomous',
+      tdd_mode: 'direct',
+      review_mode: 'standard',
+    });
+    expect((await readClassicState(path.dirname(stateFile()))).classic).toMatchObject({
+      buildMode: 'autonomous',
+      directOverride: null,
+    });
+  });
+
   it.each([
     ['review_mode', 'invalid'],
     ['check_epoch', '10'],

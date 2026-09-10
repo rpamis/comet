@@ -1,13 +1,15 @@
 import path from 'path';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { appendTrajectory, readTrajectory } from '../engine/run-store.js';
+import { appendTrajectory } from '../engine/run-store.js';
 import type { RunState, TrajectoryEvent } from '../engine/types.js';
 import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
 import { spawnCommand } from '../../platform/process/spawn-command.js';
 import { checkEnvironmentFingerprint, checkInputFingerprint } from './classic-check-snapshot.js';
 import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
-import { readClassicState } from './classic-store.js';
+import { readClassicState, withClassicStateLock } from './classic-store.js';
+import { readCheckIndex } from './classic-check-index.js';
+import { readCheckPolicy } from './classic-check-policy.js';
 
 export type CommandCheckScope = 'build' | 'verify';
 
@@ -112,29 +114,31 @@ export async function recordCommandCheck(
   if (!Number.isInteger(input.exitCode)) {
     throw new Error('Command check exitCode must be an integer');
   }
-  const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
-  const recorded: RecordedCommandCheck = {
-    sequence: trajectory.reduce((maximum, event) => Math.max(maximum, event.sequence), 0) + 1,
-    timestamp: new Date().toISOString(),
-    runId: run.runId,
-    scope: input.scope,
-    command: input.command,
-    exitCode: input.exitCode,
-    cwd: normalizedCwd(projectRoot, input.cwd),
-  };
-  await appendTrajectory(changeDir, run.trajectoryRef, {
-    sequence: recorded.sequence,
-    timestamp: recorded.timestamp,
-    type: 'command_check_recorded',
-    runId: recorded.runId,
-    data: {
-      scope: recorded.scope,
-      command: recorded.command,
-      exitCode: recorded.exitCode,
-      cwd: recorded.cwd,
-    },
+  return withClassicStateLock(changeDir, async () => {
+    const index = await readCheckIndex(changeDir, run.trajectoryRef);
+    const recorded: RecordedCommandCheck = {
+      sequence: index.maximumSequence + 1,
+      timestamp: new Date().toISOString(),
+      runId: run.runId,
+      scope: input.scope,
+      command: input.command,
+      exitCode: input.exitCode,
+      cwd: normalizedCwd(projectRoot, input.cwd),
+    };
+    await appendTrajectory(changeDir, run.trajectoryRef, {
+      sequence: recorded.sequence,
+      timestamp: recorded.timestamp,
+      type: 'command_check_recorded',
+      runId: recorded.runId,
+      data: {
+        scope: recorded.scope,
+        command: recorded.command,
+        exitCode: recorded.exitCode,
+        cwd: recorded.cwd,
+      },
+    });
+    return recorded;
   });
-  return recorded;
 }
 
 export async function latestCommandCheck(
@@ -144,7 +148,7 @@ export async function latestCommandCheck(
   scope: CommandCheckScope,
 ): Promise<RecordedCommandCheck | null> {
   validateScope(scope);
-  const trajectory = await readTrajectory(changeDir, run.trajectoryRef);
+  const trajectory = (await readCheckIndex(changeDir, run.trajectoryRef)).events;
   for (let index = trajectory.length - 1; index >= 0; index -= 1) {
     const event = trajectory[index];
     if (event.runId !== run.runId) continue;
@@ -166,8 +170,17 @@ export async function invalidateCommandChecks(changeDir: string, run: RunState):
 }
 
 export async function recoverCommandChecks(root: string, changeDir: string, run: RunState) {
-  let snapshot: Promise<string> | undefined;
-  const inputFingerprint = () => (snapshot ??= checkInputFingerprint(root, changeDir));
+  const snapshots = new Map<string, Promise<string>>();
+  const inputFingerprint = async (argv: string[], cwd: string) => {
+    const identity = { argv, cwd };
+    const key = JSON.stringify(await readCheckPolicy(root, identity));
+    let snapshot = snapshots.get(key);
+    if (!snapshot) {
+      snapshot = checkInputFingerprint(root, changeDir, identity);
+      snapshots.set(key, snapshot);
+    }
+    return snapshot;
+  };
   const scopes: Record<CommandCheckScope, 'revalidated' | 'rerun-required'> = {
     build: 'rerun-required',
     verify: 'rerun-required',
@@ -196,16 +209,18 @@ async function checkEvent(
   type: TrajectoryEvent['type'],
   data: Record<string, unknown>,
 ): Promise<TrajectoryEvent> {
-  const events = await readTrajectory(changeDir, run.trajectoryRef);
-  const event = {
-    sequence: events.reduce((maximum, item) => Math.max(maximum, item.sequence), 0) + 1,
-    timestamp: new Date().toISOString(),
-    runId: run.runId,
-    type,
-    data,
-  };
-  await appendTrajectory(changeDir, run.trajectoryRef, event);
-  return event;
+  return withClassicStateLock(changeDir, async () => {
+    const index = await readCheckIndex(changeDir, run.trajectoryRef);
+    const event = {
+      sequence: index.maximumSequence + 1,
+      timestamp: new Date().toISOString(),
+      runId: run.runId,
+      type,
+      data,
+    };
+    await appendTrajectory(changeDir, run.trajectoryRef, event);
+    return event;
+  });
 }
 
 export async function executeCommandCheck(
@@ -227,22 +242,29 @@ export async function executeCommandCheck(
   const realRoot = await fs.realpath(root);
   normalizedCwd(realRoot, await fs.realpath(path.resolve(root, cwd)));
   if (input.reusable) {
-    const previous = await usableCommandCheck(root, changeDir, run, input.scope);
+    const previous = await latestCommandCheck(root, changeDir, run, input.scope);
     if (
       previous &&
       previous.reusable &&
       previous.cwd === cwd &&
       JSON.stringify(previous.argv) === JSON.stringify(input.argv)
     ) {
-      return { ...previous, reused: true };
+      const usable = await usableCommandCheck(root, changeDir, run, input.scope);
+      if (usable?.sequence === previous.sequence && usable.timestamp === previous.timestamp)
+        return { ...usable, reused: true };
     }
   }
   // A failed launch, snapshot, or log write must not expose an older success.
-  await checkEvent(changeDir, run, 'command_check_started', { scope: input.scope });
+  const started = await checkEvent(changeDir, run, 'command_check_started', { scope: input.scope });
   const checkEpoch =
     (await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0;
-  const inputBefore = await checkInputFingerprint(root, changeDir);
-  const environment = await checkEnvironmentFingerprint(input.argv, path.resolve(root, cwd));
+  const identity = { argv: input.argv, cwd };
+  const inputBefore = await checkInputFingerprint(root, changeDir, identity);
+  const environment = await checkEnvironmentFingerprint(
+    input.argv,
+    path.resolve(root, cwd),
+    await readCheckPolicy(root, identity),
+  );
   const logPath = path.join(changeDir, '.comet', 'checks', `${randomUUID()}.log`);
   // The platform adapter preserves argv and rejects unsafe Windows batch arguments.
   const result = await new Promise<{ exitCode: number; output: string }>((resolve) => {
@@ -271,13 +293,22 @@ export async function executeCommandCheck(
       });
     });
   });
-  let inputAfter = await checkInputFingerprint(root, changeDir).catch(() => 'unavailable');
+  let inputAfter = await checkInputFingerprint(root, changeDir, identity).catch(
+    () => 'unavailable',
+  );
   if (
     checkEpoch !==
     ((await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0)
   )
     inputAfter = 'phase-changed';
-  if (environment !== (await checkEnvironmentFingerprint(input.argv, path.resolve(root, cwd))))
+  if (
+    environment !==
+    (await checkEnvironmentFingerprint(
+      input.argv,
+      path.resolve(root, cwd),
+      await readCheckPolicy(root, identity),
+    ))
+  )
     inputAfter = 'environment-changed';
   await writeClassicProjectText(root, logPath, result.output, { label: 'Classic check log' });
   const data = {
@@ -295,7 +326,19 @@ export async function executeCommandCheck(
     logHash: createHash('sha256').update(result.output).digest('hex'),
     reusable: input.reusable === true && inputBefore === inputAfter,
   };
-  const event = await checkEvent(changeDir, run, 'command_check_executed', data);
+  const event = await withClassicStateLock(changeDir, async () => {
+    const events = (await readCheckIndex(changeDir, run.trajectoryRef)).events;
+    const newer = events.some(
+      (event) =>
+        event.runId === run.runId &&
+        event.sequence > started.sequence &&
+        ((event.type === 'command_checks_invalidated' &&
+          (!Array.isArray(event.data?.scopes) || event.data.scopes.includes(input.scope))) ||
+          event.data?.scope === input.scope),
+    );
+    if (newer) throw new Error('Check superseded by a newer check or invalidation; rerun required');
+    return checkEvent(changeDir, run, 'command_check_executed', data);
+  });
   return { ...data, sequence: event.sequence, timestamp: event.timestamp, runId: run.runId };
 }
 
@@ -304,7 +347,8 @@ export async function usableCommandCheck(
   changeDir: string,
   run: RunState,
   scope: CommandCheckScope,
-  inputFingerprint: () => Promise<string> = () => checkInputFingerprint(root, changeDir),
+  inputFingerprint: (argv: string[], cwd: string) => Promise<string> = (argv, cwd) =>
+    checkInputFingerprint(root, changeDir, { argv, cwd }),
 ): Promise<RecordedCommandCheck | null> {
   const record = await latestCommandCheck(root, changeDir, run, scope);
   if (
@@ -323,8 +367,12 @@ export async function usableCommandCheck(
     !record.inputBefore ||
     record.inputBefore !== record.inputAfter ||
     record.environment !==
-      (await checkEnvironmentFingerprint(record.argv, path.resolve(root, record.cwd))) ||
-    record.inputAfter !== (await inputFingerprint())
+      (await checkEnvironmentFingerprint(
+        record.argv,
+        path.resolve(root, record.cwd),
+        await readCheckPolicy(root, { argv: record.argv, cwd: record.cwd }),
+      )) ||
+    record.inputAfter !== (await inputFingerprint(record.argv, record.cwd))
   )
     return null;
   if (typeof record.logRef !== 'string' || typeof record.logHash !== 'string') return null;
@@ -337,6 +385,13 @@ export async function usableCommandCheck(
   } catch {
     return null;
   }
+  const current = await latestCommandCheck(root, changeDir, run, scope);
+  if (
+    current?.sequence !== record.sequence ||
+    current.timestamp !== record.timestamp ||
+    JSON.stringify(current) !== JSON.stringify(record)
+  )
+    return null;
   return record;
 }
 

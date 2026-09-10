@@ -5,7 +5,7 @@ description: 'Comet Classic 阶段 4 —— 验证 change、记录证据并驱�
 
 # Comet 阶段 4：验证（Verify）
 
-开始或恢复前必须先读取并执行 `comet-classic/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+入口返回 layout 后按 `comet-classic/reference/classic-layout.md` 绑定逻辑根；协议已在当前上下文时不重复加载。本文件的 OpenSpec CLI 使用 adapter，文件路径使用绑定的 `<classic-*>` 根，不先额外运行 root show。
 
 ## 前置条件
 
@@ -16,7 +16,7 @@ description: 'Comet Classic 阶段 4 —— 验证 change、记录证据并驱�
 
 ### 0a. 输出语言约束
 
-验证报告必须使用 `comet state get <name> language` 读取到的 Comet 配置产物语言。
+验证报告使用本轮入口 configuration.language，不额外逐字段查询。
 
 ### 0b. 入口状态验证（Entry Check）
 
@@ -24,10 +24,10 @@ description: 'Comet Classic 阶段 4 —— 验证 change、记录证据并驱�
 
 ```bash
 comet state select <change-name>
-comet state check <change-name> verify
+comet state check <change-name> verify --json
 ```
 
-验证通过后继续 Step 1。验证失败时脚本会输出具体失败原因。
+使用入口 layout、configuration、nextAction、任务与协调摘要继续；已有有效检查和集成审查时仅补未完成动作，不重新执行整个阶段。冷恢复需要全量记录时使用 --recover --details --json。验证失败时处理具体原因。
 
 若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
@@ -64,7 +64,7 @@ comet state transition <change-name> verify-fail
 
 ### 1b. 验证失败自动修复与例外决策
 
-先运行 `comet state get <change-name> verify_failures` 读取已持久化的连续失败次数。前 3 次可修复失败自动回到 build：报告失败项后运行 `comet state transition <change-name> verify-fail`，再调用 `/comet-build` 修复，不需要用户确认。
+发生失败时使用最新入口返回的连续失败次数和 nextAction；字段缺失时才查询 `comet state get <change-name> verify_failures`，不把缺失当作零。前 3 次可修复失败自动回到 build：报告失败项后运行 `comet state transition <change-name> verify-fail`，再调用 `/comet-build` 只补缺失实现、检查、审查或勾选，不重复已完成实施。
 
 报告必须列出：
 
@@ -84,24 +84,23 @@ comet state transition <change-name> verify-fail
 
 ### 2. 产物上下文加载（Hash 按需读）
 
-验证需要读取 OpenSpec 产物时，先检查产物是否自 design 阶段以来发生变化：
+验证需要读取 OpenSpec 产物时，使用入口已提供的 handoff 状态；入口未提供当前 hash 核对结果时才执行：
 
 ```bash
-comet state get <change-name> handoff_hash
 comet handoff <change-name> --hash-only
 ```
 
-- 分别读取两条命令的标准输出；若记录值与当前值相等，且均非空、非 `null`：OpenSpec 产物未变化。仅当当前上下文中仍保留该版本完整内容时，复用已加载的 proposal、design、spec 和 tasks；记录已加载文件路径与 hash，按当前验收点读取缺失章节，tasks 仍需核对复选框。
+- 将当前 hash 与入口的记录值比较；记录值未提供时才运行 `comet state get <change-name> handoff_hash`。两者相等且均非空、非 null 时，仅在上下文仍保留该版本内容的前提下复用；按当前验收点补读缺失章节，tasks 仍须核对勾选。
 - 若 `RECORDED_HASH` 为空、为 `null`、或与 `CURRENT_HASH` 不一致：产物已变化或 hash 未记录，正常读取所有所需文件全文。
 
 hash 相等不代表 Agent 记得内容。冷恢复、摘要截断或缺少已加载记录时重新读取对应事实源；不得用 handoff 摘要替代未加载的验收条款。
 
-**立即执行：** 使用 Skill 工具加载 Superpowers `verification-before-completion` 技能。禁止跳过此步骤。
+autonomous 直接执行本 Skill 的真实检查与证据闭环，不强制加载外部验证 Skill；其他策略使用 Skill 工具加载 Superpowers `verification-before-completion`。任何策略都不能仅凭自评宣布验证通过。
 
 Verify 负责整个 change 的唯一最终集成代码审查。Build 只保留任务级或分段审查；在按 `verify_mode` 分支执行前，先对包含 Build 审查修复在内的最终 diff 执行一次集成审查：
 
 - `review_mode: off`：跳过自动代码审查，并在验证报告中记录原因
-- `review_mode: standard|thorough`：使用 Skill 工具加载 Superpowers `requesting-code-review` 一次，范围覆盖整个 change，聚焦正确性、安全和边界条件；不重复派发第二次 final reviewer
+- `review_mode: standard|thorough`：派发独立 reviewer，范围覆盖整个 change，核对需求、真实 diff、检查及修复，聚焦正确性、安全和边界条件；autonomous 无需外部审查 Skill，其他策略加载 requesting-code-review 一次。已有覆盖当前最终 diff 的有效审查时复用；输入变化后仅补受影响部分，不无条件重复整轮。审查不可用则停止，不以 implementer 自评替代
 
 集成审查发现 CRITICAL/IMPORTANT 问题时按 Step 1b 返回 Build；非 CRITICAL 偏差按 Step 1b 的取舍规则处理。然后按 `verify_mode` 分支执行：
 
@@ -114,7 +113,7 @@ Verify 负责整个 change 的唯一最终集成代码审查。Build 只保留�
 3. 编译通过（复用 Runtime 判定仍有效的 Build 证据；失效时重跑）
 4. 相关测试通过
 5. 无明显安全问题（无硬编码密钥、无新增 unsafe 操作）
-6. 最终集成代码审查已通过，或 `review_mode: off` 的跳过原因已记录
+6. 最终集成代码审查已通过，或非 full autonomous 的 `review_mode: off` 跳过原因已记录；full autonomous 不允许跳过独立审查
 7. 核心成功场景、关键失败/边界场景及命中的高风险契约通过；小改动也不可省略
 
 复用构建时，用 Build 相同的 cwd、程序和参数再次调用 `comet check run <change-name> build --local -- <program> [args...]`；Runtime 返回 `reused=true` 才算复用，输入或环境已变化时会真正重跑。不得仅凭旧对话中的“构建通过”跳过检查。
@@ -221,4 +220,4 @@ comet state next <change-name>
 - `NEXT: manual` → 不调用下一 skill，按 `HINT` 交还控制权并结束当前调用；不再创建确认点
 - `NEXT: done` → 流程已完成，无需继续
 
-注意：无论 `NEXT` 为 `auto` 还是 `manual`，`comet-archive` 进入后必须先执行归档前最终确认阻塞点，等待用户明确选择「确认归档」后才允许运行归档脚本。不得因为验证已通过就自动归档。
+注意：无论 NEXT 为 auto 还是 manual，归档必须有明确授权；首次归档按 comet-archive 确认，恢复时核对持久化 delivery，不重复询问有效选择。验证通过本身不代表归档授权。

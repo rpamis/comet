@@ -18,7 +18,16 @@ comet classic workspace resolve <change-name> --json
 comet state select <change-name>
 comet state current
 comet state clear-selection
-comet state check <change-name> <phase>
+comet state check <change-name> <phase> --json
+comet state check <change-name> <phase> --recover --json
+comet state check <change-name> <phase> --recover --details --json
+comet state checkpoint <change-name>
+comet state checkpoint <change-name> --file <json-path>
+comet state sync-plan <change-name>
+comet state delivery <change-name>
+comet state delivery <change-name> --verify
+comet state delivery <change-name> --file <json-path>
+comet check run <change-name> <build|verify> --local -- <program> [args...]
 comet guard <change-name> <phase> --apply
 comet handoff <change-name> design --write
 comet archive <change-name>
@@ -26,7 +35,13 @@ comet resume-probe . --stdin --json
 comet classic intent route --stdin
 ```
 
-During Open, run workspace prepare first; when resuming, run workspace resolve, which scans registered Worktrees and returns the `projectRoot` to enter. Then run `comet state select <change-name>`. Ordinary source writes are governed only by that selection; without one, the hook blocks and asks for a choice. A single active change retains automatic routing. Run resolve and select again after switching branch/worktree or when the recorded selection becomes stale.
+During Open, run workspace prepare first. Run workspace resolve when the workspace is unknown, has changed, or selection is stale; enter the returned projectRoot, then select. Ordinary phase handoffs retain a valid selection without rescanning Worktrees. Source writes are governed only by the selected change.
+
+Entry check --json provides layout, configuration, nextAction, task summary, coordination, and delivery together. Do not repeat individual queries for returned information. Cold recovery starts with compact --recover output; add --details only for full tasks/checkpoint/evidence. See context-recovery.md.
+
+Checkpoint input requires schemaVersion:1 and taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds. Reads return `{checkpoint, stale}`; Runtime validates and generates Markdown. See context-recovery.md for JSON examples. task-complete automatically synchronizes legacy plans with comet-task ID mappings; sync-plan synchronizes separately. planSync mapping-required requests mapping reconciliation, not reimplementation.
+
+Delivery input is action (local|push|pr), targetBranch, optional remote, commit, and prUrl; examples are in comet-archive. Ordinary entry and delivery reads do not access the network. Only `state delivery <change-name> --verify` performs remote/PR read-only verification and returns `{delivery, verification}`. Successful writes do not prove delivery. Stop if commands are unavailable, rejected, or records conflict; never bypass them by editing internal state.
 
 Guard `--apply` advances state after checks pass. Use `comet state transition` when expressing a state event directly, and `comet state next` after phase advancement to determine whether to invoke the next Skill automatically.
 

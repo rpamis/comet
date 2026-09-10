@@ -16,7 +16,7 @@ export const FIELD_ENUMS: Record<string, readonly string[]> = {
   workflow: ['full', 'hotfix', 'tweak'],
   phase: ['open', 'design', 'build', 'verify', 'archive'],
   context_compression: ['off', 'beta'],
-  build_mode: ['subagent-driven-development', 'executing-plans', 'direct'],
+  build_mode: ['subagent-driven-development', 'executing-plans', 'direct', 'autonomous'],
   build_pause: ['null', 'plan-ready'],
   subagent_dispatch: ['null', 'confirmed'],
   tdd_mode: ['tdd', 'direct'],

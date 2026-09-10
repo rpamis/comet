@@ -10,6 +10,7 @@ import {
 } from '../../../domains/comet-classic/classic-store.js';
 import type { ClassicState } from '../../../domains/comet-classic/classic-state.js';
 import type { RunState } from '../../../domains/engine/types.js';
+import { applyClassicTransition } from '../../../domains/comet-classic/classic-transitions.js';
 
 function classicState(): ClassicState {
   return {
@@ -77,6 +78,25 @@ describe('Classic state projection', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await fs.rm(changeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+
+  it('round-trips explicitly selected autonomous mode without a direct override', async () => {
+    const classic = { ...classicState(), buildMode: 'autonomous' as const, directOverride: null };
+    await writeClassicState(changeDir, { classic, run: runState() });
+    expect((await readClassicState(changeDir)).classic).toMatchObject({
+      buildMode: 'autonomous',
+      directOverride: null,
+    });
+    const completed = applyClassicTransition(classic, 'build-complete').classic;
+    expect(completed).toMatchObject({
+      phase: 'verify',
+      buildMode: 'autonomous',
+      directOverride: null,
+    });
+    expect(applyClassicTransition(completed, 'verify-fail').classic).toMatchObject({
+      phase: 'build',
+      buildMode: 'autonomous',
+    });
   });
 
   it('rolls back a Run write failure without advancing phase or consuming the check epoch', async () => {

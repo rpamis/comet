@@ -8,7 +8,7 @@
 
 例外：已核对失败原因、确实因尚未实现目标行为而失败的 TDD RED 属于正常开发证据，继续 RED-GREEN-REFACTOR，不加载调试技能。环境错误、测试加载失败、无关回归或原因不明的 RED 不属于此例外。
 
-- 立即使用 Skill 工具加载 Superpowers `systematic-debugging` 技能
+- `build_mode: autonomous` 直接执行下述调查与验证闭环，不强制加载外部 Skill；其他策略立即使用 Skill 工具加载 Superpowers `systematic-debugging`
 - 在完成根因调查前，不得提出或实施源码修复
 
 ## 四阶段流程
@@ -27,7 +27,7 @@
 
 当满足并发条件时：
 
-1. 立即使用 Skill 工具加载 Superpowers `dispatching-parallel-agents` 技能
+1. autonomous 可直接组织有界的独立调查；其他策略使用 Skill 工具加载 Superpowers `dispatching-parallel-agents`
 2. 按问题域为每个独立失败派发一个后台调查 agent，所有派发放在同一次回复里以并发执行；每个 agent 的 prompt 必须自包含（具体失败、错误信息、允许的调查范围、不得改动其他问题域的代码）
 3. 所有 agent 都受本协议“根因未明前不得动源码”的约束；它们只负责定位根因并返回调查结论，**不直接提交修复**
 4. 调查全部返回后，由主会话串行整合结论、串行执行修复，修复仍走当前 `review_mode` 的验证与评审闭环

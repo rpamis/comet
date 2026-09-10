@@ -5,7 +5,7 @@ description: 'Phase 2 of Comet Classic — produce the deep technical Design Doc
 
 # Comet Phase 2: Deep Design (Design)
 
-Before starting or recovering, read and follow `comet-classic/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+After entry returns layout, bind logical roots under `comet-classic/reference/classic-layout.md`; do not reload the protocol if it is already in context. OpenSpec CLI calls use the adapter and paths use the bound `<classic-*>` roots, without a separate root show first.
 
 ## Prerequisites
 
@@ -18,16 +18,16 @@ Before starting or recovering, read and follow `comet-classic/reference/classic-
 
 ### 0. Entry State Verification (Entry Check)
 
-Locate scripts via `comet-classic/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet-classic/reference/context-recovery.md`:
+Use the public Comet CLI under `comet-classic/reference/scripts.md`, then run entry verification. When resuming from any entry point, first run the recovery check in `comet-classic/reference/context-recovery.md`:
 
 ```bash
 comet state select <change-name>
 comet state check <name> design --json
 ```
 
-After verification passes, use language and context settings from `data.configuration` without individual field queries. Otherwise resolve the specific failure.
+Use entry layout, configuration, nextAction, and coordination summaries without field-by-field queries or duplicate root show. Ordinary handoffs use entry checks only; cold recovery and details follow context-recovery.md. Resolve specific failures before continuing.
 
-**Idempotency**: All design phase operations can be safely re-executed. If `handoff_context` and `handoff_hash` already exist, confirm they match current artifacts before deciding whether to regenerate.
+**Recovery**: Inspect existing artifacts and user confirmation, then complete only unfinished steps. Do not regenerate valid handoff or assume document writes and phase transitions are unconditionally safe to repeat.
 
 ### 1a. Generate OpenSpec → Superpowers Handoff Package
 
@@ -68,7 +68,7 @@ The default handoff package is a **compact traceable excerpt**, not an agent sum
 
 The beta handoff package is a **structured spec projection** that reduces OpenSpec token load without replacing the canonical spec:
 
-- `spec-context.json`: machine index containing change, phase, canonical spec, source paths, hash, and file roles
+- `spec-context.json`: machine index containing change, phase, mode=beta, source paths, context_hash, and file roles
 - `spec-context.md`: context for Superpowers to read, verbatim-projecting delta spec files and referencing supporting artifacts by hash
 - OpenSpec delta specs remain canonical; if the projection is missing, stale, or unclear, regenerate the handoff or read the source spec directly instead of writing an agent summary
 
@@ -100,15 +100,14 @@ After the skill loads, follow its guidance and use the following context:
 ```
 Change: <change-name>
 OpenSpec Context Pack: <classic-change-dir>/.comet/handoff/design-context.md
-Machine handoff: <classic-change-dir>/.comet/handoff/design-context.json
 
 If context_compression is beta, use:
 OpenSpec Context Pack: <classic-change-dir>/.comet/handoff/spec-context.md
-Machine handoff: <classic-change-dir>/.comet/handoff/spec-context.json
 
-OpenSpec artifacts are the upstream source of truth, but you must not weaken the Superpowers `brainstorming` clarification flow by "skipping redundant context exploration".
+OpenSpec artifacts are the upstream source of truth. Reference confirmed requirements; brainstorming explores only unresolved technical choices rather than interviewing again about confirmed requirements.
+Read only the one Markdown context pack above by default. Runtime validates machine JSON; read it only to diagnose index issues. If excerpts are truncated or acceptance clauses are insufficient, follow source paths/line ranges to the relevant original text rather than reading JSON, Markdown, and all sources together.
 Your task is to perform deep technical design based on the handoff package: implementation approach, technical risks, testing strategy, boundary conditions.
-If goals, scope, non-goals, acceptance scenarios, or key constraints remain unclear, you must continue asking questions and form the design proposal first; must not create the Design Doc after only one Q&A turn.
+Clarify missing goals, scope, non-goals, acceptance scenarios, or key constraints. If information is sufficient, form the design proposal directly without a minimum number of Q&A rounds.
 Do not rewrite proposal/spec; if you find OpenSpec delta spec missing acceptance scenarios, you may only propose Spec Patches and write them back to OpenSpec delta spec; do not create a second requirements spec in the Design Doc. Spec Patches are limited to supplementing acceptance scenarios, correcting ambiguous descriptions, or adding boundary conditions — they must not substantially rewrite the delta spec's structure or scope. If major changes are needed, flag them as design findings and return to brainstorming for confirmation.
 
 Design Doc frontmatter must be minimal, containing only:
@@ -118,7 +117,8 @@ role: technical-design
 canonical_spec: openspec
 ---
 
-Proceed through the original `brainstorming` skill flow: clarifying questions, 2-3 approaches, and step-by-step design confirmation. Do not write the Design Doc early.
+Match design depth to risk: compare 2-3 approaches when real trade-offs exist; when established architecture determines the approach, explain the basis without inventing alternatives. High-risk interfaces, migration, security, and concurrency require failure paths and verification strategy.
+Use only brainstorming's exploration and design methods. Present adjacent design sections together; Comet Step 1c is the formal design confirmation boundary. External Skills must not demand another full-document approval, invoke writing-plans automatically, switch workspaces, or enter implementation. Do not write the Design Doc early.
 ```
 
 Proceeding without loading this skill is prohibited.
@@ -180,11 +180,10 @@ Use the file tool to ensure `<classic-change-dir>/.comet/handoff/` exists; do no
 <delta spec changes to write back, or "None" if none>
 ```
 
-**Context compaction note**: Each incremental update to `brainstorm-summary.md` is a relatively safe recovery point. After brainstorming completes, if the context window is tight, prefer compacting here. After compaction, reload the following files to continue Step 2:
+**Context compaction note**: brainstorm-summary.md supports interrupted recovery, but proactive compaction waits until the formal design, state, and handoff are durable. If passive compaction happens sooner, load the following as needed to continue Step 2:
 
 - `<classic-change-dir>/.comet/handoff/brainstorm-summary.md`
-- `<classic-change-dir>/.comet/handoff/design-context.md` (or `spec-context.md` in beta mode)
-- `<classic-change-dir>/.comet/handoff/design-context.json` (or `spec-context.json` in beta mode)
+- Read `<classic-change-dir>/.comet/handoff/design-context.md` (or beta `spec-context.md`) and missing original passages as needed; machine JSON is not mandatory reading
 
 ### 1e. Compaction Policy (Non-blocking Here)
 

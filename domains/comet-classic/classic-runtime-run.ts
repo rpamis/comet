@@ -101,7 +101,7 @@ function embeddedClassicRuntimePackage(root: string): SkillPackage {
           {
             id: 'full.design.document',
             action: { type: 'invoke_skill', ref: 'comet-design' },
-            next: 'full.build.plan',
+            next: 'full.build.configure',
           },
           {
             id: 'full.build.plan',
@@ -111,12 +111,12 @@ function embeddedClassicRuntimePackage(root: string): SkillPackage {
           {
             id: 'full.build.plan-ready',
             action: { type: 'invoke_skill', ref: 'comet-build' },
-            next: 'full.build.configure',
+            next: 'full.build.execute',
           },
           {
             id: 'full.build.configure',
             action: { type: 'invoke_skill', ref: 'comet-build' },
-            next: 'full.build.execute',
+            next: 'full.build.plan',
           },
           {
             id: 'full.build.execute',

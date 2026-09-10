@@ -7,6 +7,8 @@ import { appendTrajectory, readTrajectory } from '../../../domains/engine/run-st
 import {
   latestCommandCheck,
   recordCommandCheck,
+  executeCommandCheck,
+  usableCommandCheck,
 } from '../../../domains/comet-classic/classic-command-checks.js';
 
 function runState(runId = 'run-current'): RunState {
@@ -69,6 +71,73 @@ describe('Classic command check evidence', () => {
         data: expect.objectContaining({ scope: 'build', exitCode: 0, cwd: 'packages/app' }),
       }),
     ]);
+  });
+
+  it('serializes concurrent evidence sequence allocation', async () => {
+    const results = await Promise.all(
+      Array.from({ length: 4 }, (_, index) =>
+        recordCommandCheck(projectRoot, changeDir, run, {
+          scope: 'verify',
+          command: `check-${index}`,
+          exitCode: index,
+        }),
+      ),
+    );
+    expect(results.map((record) => record.sequence).sort()).toEqual([1, 2, 3, 4]);
+    expect(await latestCommandCheck(projectRoot, changeDir, run, 'verify')).toEqual(
+      results.find((record) => record.sequence === 4),
+    );
+  });
+
+  it.each([
+    'command_check_started',
+    'command_check_consumed',
+    'command_checks_invalidated',
+  ] as const)('preserves %s fences after warming the index', async (type) => {
+    await recordCommandCheck(projectRoot, changeDir, run, {
+      scope: 'build',
+      command: 'check',
+      exitCode: 0,
+    });
+    expect(await latestCommandCheck(projectRoot, changeDir, run, 'build')).not.toBeNull();
+    await appendTrajectory(changeDir, run.trajectoryRef, {
+      sequence: 2,
+      timestamp: '',
+      runId: run.runId,
+      type,
+      data: { scope: 'build', scopes: ['build'] },
+    });
+    expect(await latestCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
+  });
+
+  it('does not resurrect an older execution over a newer start', async () => {
+    const execution = executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'verify',
+      argv: [process.execPath, '-e', 'setTimeout(() => {}, 1000)'],
+      reusable: true,
+    });
+    const outcome = execution.then(
+      () => 'unexpected success',
+      (error: Error) => error.message,
+    );
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (
+        (await readTrajectory(changeDir, run.trajectoryRef)).some(
+          (event) => event.type === 'command_check_started',
+        )
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await appendTrajectory(changeDir, run.trajectoryRef, {
+      sequence: 2,
+      timestamp: '',
+      runId: run.runId,
+      type: 'command_check_started',
+      data: { scope: 'verify' },
+    });
+    expect(await outcome).toMatch(/superseded/i);
+    expect(await usableCommandCheck(projectRoot, changeDir, run, 'verify')).toBeNull();
   });
 
   it('returns the newest valid matching record, including failures, for only the current run', async () => {

@@ -7,7 +7,12 @@ export const CLASSIC_MIGRATION_VERSION = 1;
 const PHASES = ['open', 'design', 'build', 'verify', 'archive'] as const;
 const ARTIFACT_LANGUAGES = ['en', 'zh-CN'] as const;
 const CONTEXT_COMPRESSION = ['off', 'beta'] as const;
-const BUILD_MODES = ['subagent-driven-development', 'executing-plans', 'direct'] as const;
+const BUILD_MODES = [
+  'subagent-driven-development',
+  'executing-plans',
+  'direct',
+  'autonomous',
+] as const;
 const BUILD_PAUSES = ['plan-ready'] as const;
 const SUBAGENT_DISPATCH = ['confirmed'] as const;
 const TDD_MODES = ['tdd', 'direct'] as const;
