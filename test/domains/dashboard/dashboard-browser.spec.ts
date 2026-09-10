@@ -1,5 +1,183 @@
 import { expect, test } from '@playwright/test';
 
+test.describe('Dashboard project selection', () => {
+  const projects = Array.from({ length: 45 }, (_, index) => ({
+    id: `path-${index}`,
+    name: index < 2 ? 'same-repository' : `project-${index}`,
+    path: `/worktrees/project-${index}`,
+    lastSeenAt: null,
+    availability: 'available',
+    isCurrent: index === 0,
+  }));
+  const overview = (index: number) => ({
+    project: {
+      name: projects[index].name,
+      path: projects[index].path,
+      generatedAt: '2026-09-10T00:00:00.000Z',
+    },
+    summary: {
+      activeChanges: 0,
+      archivedChanges: 0,
+      verifyFailed: 0,
+      tasksIncomplete: 0,
+      dirtyFiles: index,
+    },
+    initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+    git: {
+      branch: `branch-${index}`,
+      head: 'abc1234',
+      dirtyFiles: 0,
+      dirtyFileList: [],
+      recentCommits: [],
+    },
+    risks: [],
+    native: null,
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.addInitScript(() => localStorage.setItem('comet-dashboard-project', 'path-1'));
+    await page.route('**/api/dashboard/**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/api/dashboard/projects') {
+        await route.fulfill({ json: { currentProjectId: 'path-0', projects } });
+      } else if (url.pathname.endsWith('/overview')) {
+        const index = Number(url.pathname.split('/')[4].replace('path-', ''));
+        await route.fulfill({ json: overview(index) });
+      } else if (url.pathname.endsWith('/changes')) {
+        await route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
+      } else if (url.pathname.endsWith('/plugins')) {
+        await route.fulfill({ json: { pages: [] } });
+      } else {
+        await route.fulfill({ json: {} });
+      }
+    });
+  });
+
+  test('prefers the launch project over remembered selection and resets on reload', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: /^Git 未提交 0 / })).toBeVisible();
+    await page.locator('.comet-project-select').click();
+    const response = page.waitForResponse('**/projects/path-1/overview*');
+    await page
+      .locator('.comet-project-select-dropdown .comet-project-option')
+      .filter({ hasText: '/worktrees/project-1' })
+      .first()
+      .click();
+    expect((await (await response).json()).project.path).toBe('/worktrees/project-1');
+    await expect(page.getByRole('button', { name: /^Git 未提交 1 / })).toBeVisible();
+    const changes = page.waitForRequest('**/projects/path-1/changes*');
+    await page.getByRole('tab', { name: '已归档', exact: true }).click();
+    await changes;
+    await page.reload();
+    await expect(page.getByRole('button', { name: /^Git 未提交 0 / })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Git 未提交 1 / })).toHaveCount(0);
+  });
+
+  test('keeps option names and paths paired through scrolling and searching', async ({ page }) => {
+    await page.goto('/');
+    const selector = page.locator('.comet-project-select');
+    await selector.click();
+    const popup = page.locator('.comet-project-select-dropdown');
+    const scroller = popup.locator('.ant-select-dropdown-list-holder');
+    const assertLabels = async () => {
+      const visible = await popup.locator('.comet-project-option').evaluateAll((entries) =>
+        entries.map((entry) => ({
+          name: entry.querySelector('.comet-project-option-name')?.textContent,
+          path: entry.querySelector('.comet-project-option-path')?.textContent,
+        })),
+      );
+      expect(visible.length).toBeGreaterThan(1);
+      expect(new Set(visible.map((entry) => entry.path)).size).toBe(visible.length);
+      for (const entry of visible)
+        expect(projects.find((project) => project.path === entry.path)?.name).toBe(entry.name);
+    };
+    await assertLabels();
+    for (const fraction of [1, 0.5, 0]) {
+      await expect
+        .poll(async () => {
+          await scroller.evaluate((element, amount) => {
+            element.scrollTop = amount * element.scrollHeight;
+          }, fraction);
+          const target = fraction === 1 ? 44 : fraction === 0 ? 0 : 22;
+          return popup.getByText(`/worktrees/project-${target}`, { exact: true }).isVisible();
+        })
+        .toBe(true);
+      await assertLabels();
+    }
+    await selector.getByRole('combobox').fill('/worktrees/project-44');
+    await expect(popup.locator('.comet-project-option')).toHaveCount(1);
+    await popup.getByText('/worktrees/project-44', { exact: true }).click();
+    await expect(selector.locator('.comet-project-selected-label')).toHaveText('project-44');
+    await expect(page.getByRole('button', { name: /^Git 未提交 44 / })).toBeVisible();
+  });
+
+  test('ignores a slow overview response after switching back', async ({ page }) => {
+    let release!: () => void;
+    let finish!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const completed = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    await page.route('**/projects/path-1/overview*', async (route) => {
+      await held;
+      await route.fulfill({ json: overview(1) }).catch(() => undefined);
+      finish();
+    });
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: /^Git 未提交 0 / })).toBeVisible();
+    const selector = page.locator('.comet-project-select');
+    await selector.click();
+    const started = page.waitForRequest('**/projects/path-1/overview*');
+    await page.getByText('/worktrees/project-1', { exact: true }).click();
+    await started;
+    await selector.click();
+    await page.getByText('/worktrees/project-0', { exact: true }).click();
+    await expect(page.getByRole('button', { name: /^Git 未提交 0 / })).toBeVisible();
+    release();
+    await completed;
+    await expect(page.getByRole('button', { name: /^Git 未提交 1 / })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Git 未提交 0 / })).toBeVisible();
+  });
+
+  for (const noAvailable of [false, true]) {
+    test(`handles unavailable launch projects with ${noAvailable ? 'an empty state' : 'an available fallback'}`, async ({
+      page,
+    }) => {
+      await page.route('**/api/dashboard/projects', (route) =>
+        route.fulfill({
+          json: {
+            currentProjectId: 'path-0',
+            projects: [
+              { ...projects[0], availability: 'missing' },
+              { ...projects[1], availability: noAvailable ? 'unreadable' : 'available' },
+            ],
+          },
+        }),
+      );
+      const overviewRequests: string[] = [];
+      page.on('request', (request) => {
+        if (request.url().includes('/overview')) overviewRequests.push(request.url());
+      });
+      await page.goto('/');
+      if (noAvailable) {
+        await expect(page.getByText('暂无可用项目', { exact: true })).toBeVisible();
+        expect(overviewRequests).toHaveLength(0);
+      } else {
+        await expect(page.getByRole('button', { name: /^Git 未提交 1 / })).toBeVisible();
+      }
+      await page.locator('.comet-project-select').click();
+      await expect(
+        page.locator('.comet-project-select-dropdown .ant-select-item-option-disabled'),
+      ).toHaveCount(noAvailable ? 2 : 1);
+    });
+  }
+});
+
 test('shows Project Knowledge status and project pause transitions', async ({ page }) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 1600, height: 900 });

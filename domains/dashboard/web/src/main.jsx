@@ -685,9 +685,10 @@ function DashboardApp({
         const available = (directory.projects ?? []).filter(
           (project) => project.availability === 'available',
         );
-        const remembered = localStorage.getItem('comet-dashboard-project');
         const next =
-          available.find((project) => project.id === remembered)?.id ?? directory.currentProjectId;
+          available.find((project) => project.id === directory.currentProjectId)?.id ??
+          available[0]?.id ??
+          null;
         setActiveProjectId((previous) => previous ?? next);
         setProjectsReady(true);
       })
@@ -1431,7 +1432,6 @@ function DashboardApp({
           projects={projects}
           activeProjectId={activeProjectId}
           onProjectSelect={(nextProjectId) => {
-            localStorage.setItem('comet-dashboard-project', nextProjectId);
             snapshotRequestRef.current?.abort();
             pageRequestRef.current?.abort();
             nativePageRequestRef.current?.abort();
@@ -1486,7 +1486,9 @@ function DashboardApp({
                 : ''
             }`}
           >
-            {!snapshot ? (
+            {!useDemo && projectsReady && !activeProjectId ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可用项目" />
+            ) : !snapshot ? (
               <LoadingState />
             ) : pluginSelection ? (
               <PluginCenterPage

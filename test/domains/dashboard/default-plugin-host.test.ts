@@ -4,8 +4,59 @@ import os from 'os';
 import path from 'path';
 import { createDefaultCometPluginBridge } from '../../../domains/comet-plugin/index.js';
 import { createDefaultDashboardPluginHostFactory } from '../../../domains/dashboard/default-plugin-host.js';
+import { resolveStableProjectId } from '../../../platform/paths/project-identity.js';
 
 describe('default dashboard plugin host', () => {
+  it('preserves repository plugin pause state when the Dashboard uses a path ID', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-repository-state-'));
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(projectRoot);
+    try {
+      const repositoryId = resolveStableProjectId(projectRoot);
+      const options = {
+        homeDirectory: root,
+        stateRoot: path.join(root, 'plugins'),
+        memoryRoot: path.join(root, 'memory'),
+        knowledgeCacheRoot: path.join(root, 'knowledge'),
+      };
+      const bridge = await createDefaultCometPluginBridge({
+        ...options,
+        projectRoot,
+        projectId: repositoryId,
+      });
+      await bridge.pluginRuntime.disable('comet.project-knowledge', {
+        scope: 'project',
+        projectId: repositoryId,
+      });
+      const factory = createDefaultDashboardPluginHostFactory(options);
+      const host = await factory('dashboard-path-id', projectRoot);
+      await expect(host.list()).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ pluginId: 'comet.project-knowledge', projectPaused: true }),
+        ]),
+      );
+      await host.lifecycle('comet.project-knowledge', 'enable');
+      const reopened = await createDefaultCometPluginBridge({
+        ...options,
+        projectRoot,
+        projectId: repositoryId,
+      });
+      expect(
+        (await reopened.pluginRuntime.get('comet.project-knowledge'))?.disabledProjects,
+      ).not.toContain(repositoryId);
+      await host.lifecycle('comet.project-knowledge', 'disable');
+      const disabled = await createDefaultCometPluginBridge({
+        ...options,
+        projectRoot,
+        projectId: repositoryId,
+      });
+      expect(
+        (await disabled.pluginRuntime.get('comet.project-knowledge'))?.disabledProjects,
+      ).toEqual([repositoryId]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
   it('shares an isolated project knowledge cache with CLI plugin bridges', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-default-plugin-host-cache-'));
     const projectRoot = path.join(root, 'project');

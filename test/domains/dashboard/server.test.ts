@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import http from 'http';
 import { promises as fs } from 'fs';
 import net from 'net';
@@ -6,6 +7,7 @@ import os from 'os';
 import path from 'path';
 import { startDashboardServer } from '../../../domains/dashboard/server.js';
 import { resolveDashboardStaticPath } from '../../../domains/dashboard/server.js';
+import { upsertProjectInstallation } from '../../../platform/install/project-registry.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -51,6 +53,7 @@ describe('startDashboardServer', () => {
   beforeEach(async () => {
     projectDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-srv-proj-'));
     webDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-srv-web-'));
+    vi.spyOn(os, 'homedir').mockReturnValue(path.join(webDir, 'home'));
     await fs.writeFile(
       path.join(webDir, 'index.html'),
       '<!doctype html><title>Dashboard</title><p>hi</p>',
@@ -61,8 +64,79 @@ describe('startDashboardServer', () => {
   afterEach(async () => {
     await Promise.all(handles.map((h) => h.close().catch(() => undefined)));
     handles = [];
+    vi.restoreAllMocks();
     await fs.rm(projectDir, { recursive: true, force: true });
     await fs.rm(webDir, { recursive: true, force: true });
+  });
+
+  it('routes same-remote worktrees to their own overview and current change details', async () => {
+    const linked = path.join(webDir, 'linked');
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-C', projectDir, ...args], { stdio: 'pipe' });
+    git('init', '-b', 'main');
+    git(
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.com',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'fixture',
+    );
+    git('remote', 'add', 'origin', 'https://example.com/team/shared.git');
+    git('worktree', 'add', '-b', 'linked', linked);
+    await upsertProjectInstallation(linked, [], 'init', { homeDir: os.homedir() });
+    for (const [root, branch] of [
+      [projectDir, 'main'],
+      [linked, 'linked'],
+    ]) {
+      const changeDir = path.join(root, 'openspec', 'changes', 'same-name');
+      await fs.mkdir(changeDir, { recursive: true });
+      await fs.writeFile(
+        path.join(changeDir, '.comet.yaml'),
+        `phase: build\nbound_branch: ${branch}\n`,
+      );
+      await fs.writeFile(path.join(changeDir, 'proposal.md'), `# ${branch} proposal\n`);
+      await fs.writeFile(path.join(changeDir, 'tasks.md'), `- [ ] ${branch} task\n`);
+    }
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      webRoot: webDir,
+      port: 0,
+    });
+    handles.push(handle);
+    const directory = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body) as {
+      projects: Array<{ id: string; path: string }>;
+    };
+    expect(new Set(directory.projects.map(({ id }) => id)).size).toBe(2);
+    for (const entry of directory.projects) {
+      const branch = entry.path === projectDir ? 'main' : 'linked';
+      const base = `/api/dashboard/projects/${entry.id}`;
+      const overview = await request(handle.port, `${base}/overview`);
+      expect(overview.status).toBe(200);
+      expect(JSON.parse(overview.body)).toMatchObject({
+        project: { path: entry.path },
+        git: { branch },
+      });
+      const page = await request(handle.port, `${base}/changes?status=active`);
+      expect(page.status).toBe(200);
+      const current = JSON.parse(page.body).items.find(
+        (item: { workspace: { current: boolean } }) => item.workspace.current,
+      );
+      expect(current).toBeDefined();
+      const detail = await request(
+        handle.port,
+        `${base}/change?changeLocator=${encodeURIComponent(current.locator)}`,
+      );
+      expect(detail.status).toBe(200);
+      expect(JSON.parse(detail.body)).toMatchObject({
+        path: path.join(entry.path, 'openspec', 'changes', 'same-name'),
+        artifactPreviews: expect.arrayContaining([
+          expect.objectContaining({ key: 'proposal', content: `# ${branch} proposal\n` }),
+        ]),
+      });
+    }
   });
 
   it('serves /api/dashboard with a valid snapshot payload', async () => {

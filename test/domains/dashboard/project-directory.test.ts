@@ -1,17 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-const identity = vi.hoisted(() => ({
-  resolveStableProjectId: vi.fn(),
-  stableProjectId: vi.fn(),
-}));
-
-vi.mock('../../../platform/paths/project-identity.js', () => identity);
-
 import { collectDashboardProjectDirectory } from '../../../domains/dashboard/project-directory.js';
-import { getProjectRegistryPath } from '../../../platform/install/project-registry.js';
+import {
+  getProjectRegistryPath,
+  upsertProjectInstallation,
+} from '../../../platform/install/project-registry.js';
 
 describe('collectDashboardProjectDirectory', () => {
   let tempDir: string;
@@ -19,15 +16,64 @@ describe('collectDashboardProjectDirectory', () => {
   let currentProject: string;
 
   beforeEach(async () => {
-    vi.resetAllMocks();
-    identity.resolveStableProjectId.mockImplementation(
-      (projectPath: string) => `git:${projectPath}`,
-    );
-    identity.stableProjectId.mockImplementation((projectPath: string) => `path:${projectPath}`);
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-project-directory-'));
     homeDir = path.join(tempDir, 'home');
     currentProject = path.join(tempDir, 'current-project');
     await fs.mkdir(currentProject, { recursive: true });
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('distinguishes worktrees of the same repository and keeps IDs stable when unavailable', async () => {
+    const worktree = path.join(tempDir, 'linked-project');
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-C', currentProject, ...args], { stdio: 'pipe' });
+    git('init');
+    git(
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.com',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'fixture',
+    );
+    git('remote', 'add', 'origin', 'https://example.com/team/shared.git');
+    git('worktree', 'add', '-b', 'linked', worktree);
+    await upsertProjectInstallation(worktree, [], 'init', { homeDir });
+
+    const directory = await collectDashboardProjectDirectory(currentProject, { homeDir });
+    expect(new Set(directory.projects.map((entry) => entry.id)).size).toBe(2);
+    const linked = directory.projects.find((entry) => entry.path === worktree)!;
+    const fromLinked = await collectDashboardProjectDirectory(worktree, { homeDir });
+    expect(fromLinked.currentProjectId).toBe(linked.id);
+    const normalized = await collectDashboardProjectDirectory(
+      path.join(currentProject, 'unused', '..'),
+      { homeDir },
+    );
+    expect(normalized.currentProjectId).toBe(directory.currentProjectId);
+
+    const access = fs.access.bind(fs);
+    vi.spyOn(fs, 'access').mockImplementation(async (target, mode) => {
+      if (target === worktree) throw Object.assign(new Error('denied'), { code: 'EACCES' });
+      return access(target, mode);
+    });
+    const unreadable = await collectDashboardProjectDirectory(currentProject, { homeDir });
+    expect(unreadable.projects.find((entry) => entry.path === worktree)).toMatchObject({
+      id: linked.id,
+      availability: 'unreadable',
+    });
+    vi.restoreAllMocks();
+    git('worktree', 'remove', worktree);
+    const missing = await collectDashboardProjectDirectory(currentProject, { homeDir });
+    expect(missing.projects.find((entry) => entry.path === worktree)).toMatchObject({
+      id: linked.id,
+      availability: 'missing',
+    });
   });
 
   it('keeps the launch project when no project index exists', async () => {
@@ -42,6 +88,16 @@ describe('collectDashboardProjectDirectory', () => {
         isCurrent: true,
       }),
     ]);
+  });
+
+  it('uses the registered identity when launched through a directory alias', async () => {
+    const alias = path.join(tempDir, 'project-alias');
+    await fs.symlink(currentProject, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    await upsertProjectInstallation(currentProject, [], 'init', { homeDir });
+    const original = await collectDashboardProjectDirectory(currentProject, { homeDir });
+    const fromAlias = await collectDashboardProjectDirectory(alias, { homeDir });
+    expect(fromAlias.projects).toHaveLength(1);
+    expect(fromAlias.currentProjectId).toBe(original.currentProjectId);
   });
 
   it('sorts indexed projects by last seen time and retains missing projects as unavailable', async () => {
@@ -88,11 +144,10 @@ describe('collectDashboardProjectDirectory', () => {
     expect(directory.projects.at(-1)).toEqual(
       expect.objectContaining({
         availability: 'missing',
-        id: `path:${missingProject}`,
+        id: expect.any(String),
         isCurrent: false,
       }),
     );
-    expect(identity.resolveStableProjectId).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to the launch project when the project index is invalid', async () => {

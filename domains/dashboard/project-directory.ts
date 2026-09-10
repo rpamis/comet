@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -6,7 +7,6 @@ import {
   readProjectRegistry,
   type ProjectRegistryEntry,
 } from '../../platform/install/project-registry.js';
-import { resolveStableProjectId, stableProjectId } from '../../platform/paths/project-identity.js';
 
 export type DashboardProjectAvailability = 'available' | 'missing' | 'unreadable';
 
@@ -34,8 +34,9 @@ function canonicalKey(projectPath: string): string {
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
-function projectId(projectPath: string): string {
-  return resolveStableProjectId(projectPath);
+function projectId(canonicalPath: string): string {
+  // Dashboard routes address a working directory, not a repository shared by worktrees.
+  return `dashboard-${createHash('sha256').update(canonicalPath).digest('hex')}`;
 }
 
 function projectName(projectPath: string): string {
@@ -74,6 +75,7 @@ export async function collectDashboardProjectDirectory(
   options: DashboardProjectDirectoryOptions = {},
 ): Promise<DashboardProjectDirectory> {
   const currentPath = path.resolve(currentProjectPath);
+  const currentKey = canonicalKey(await fs.realpath(currentPath).catch(() => currentPath));
   let registryProjects: ProjectRegistryEntry[] = [];
   let warning: string | undefined;
 
@@ -85,7 +87,7 @@ export async function collectDashboardProjectDirectory(
   }
 
   const candidates = new Map<string, { path: string; lastSeenAt: string | null }>();
-  candidates.set(canonicalKey(currentPath), { path: currentPath, lastSeenAt: null });
+  candidates.set(currentKey, { path: currentPath, lastSeenAt: null });
   for (const entry of registryProjects) {
     const key = canonicalKey(entry.canonicalPath || entry.path);
     const existing = candidates.get(key);
@@ -95,15 +97,11 @@ export async function collectDashboardProjectDirectory(
     });
   }
 
-  const currentKey = canonicalKey(currentPath);
   const projects = await Promise.all(
     [...candidates.entries()].map(async ([key, candidate]) => {
       const availability = await availabilityOf(candidate.path);
       return {
-        id:
-          availability === 'available'
-            ? projectId(candidate.path)
-            : stableProjectId(candidate.path),
+        id: projectId(key),
         name: projectName(candidate.path),
         path: candidate.path,
         lastSeenAt: candidate.lastSeenAt,

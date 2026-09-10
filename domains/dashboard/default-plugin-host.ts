@@ -10,6 +10,7 @@ import {
 } from '../project-knowledge/index.js';
 import { DashboardPluginHost, type DashboardPluginHostFactory } from './plugin-host.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import {
   defaultProjectKnowledgeStorageRoot,
   resolveProjectKnowledgeStorageLocation,
@@ -67,7 +68,9 @@ export function createDefaultDashboardPluginHostFactory(
     options.knowledgeCacheRoot === undefined ? undefined : path.resolve(options.knowledgeCacheRoot);
   const cometVersion = options.cometVersion ?? getCurrentVersion();
 
-  return async (projectId, projectPath) => {
+  return async (_dashboardProjectId, projectPath) => {
+    // Keep persisted plugin state scoped to the repository, independently of Dashboard routes.
+    const projectId = resolveStableProjectId(projectPath);
     if (stateRoot === undefined && knowledgeCacheRoot === undefined) {
       importLegacyProjectKnowledgeState(
         projectPath,

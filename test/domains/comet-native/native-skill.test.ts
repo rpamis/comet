@@ -498,6 +498,54 @@ describe('Comet Native Skills', () => {
     }
   });
 
+  it('defines Chinese Supervisor monitoring pause and recovery boundaries', async () => {
+    const skill = await read('zh', 'SKILL.md');
+    const recovery = await read('zh', 'reference/recovery.md');
+    expect(skill).toContain('等待外部输入时，按恢复参考中的“等待外部输入与监控”处理');
+    for (const term of [
+      '没有可执行子任务、没有仍在执行的相关任务，也没有值得周期检查的外部状态',
+      '保留独立任务及其监控',
+      '实际暂停并核对返回状态',
+      '无法识别、权限不足或暂停失败时',
+      '监控尚未确认暂停',
+      '静默回复不等于暂停周期唤醒',
+      '首次进入等待时，一次性告知用户',
+      '既有协调记录',
+      '普通进度回报不解除阻塞',
+      '重新读取 Runtime，沿用原 change、任务身份和已完成结果',
+      '仅在仍需周期检查时恢复对应监控',
+      '不等同于 Runtime 的 `blocked` / `await-user`',
+      '不得直接修改状态文件或借用 Verifier 状态表示实施资料缺口',
+    ]) {
+      expect(recovery, term).toContain(term);
+    }
+  });
+
+  it('defines English Supervisor monitoring pause and recovery boundaries', async () => {
+    const skill = await read('en', 'SKILL.md');
+    const recovery = await read('en', 'reference/recovery.md');
+    expect(skill).toContain(
+      'When waiting for external input, follow “External input and monitoring” in the recovery reference',
+    );
+    for (const term of [
+      'no executable children, no related tasks still running, and no external state worth checking periodically',
+      'preserve independent tasks and their monitoring',
+      'actually pause it and verify the returned status',
+      'If identification is uncertain, permission is missing, or pausing fails',
+      'monitoring is not confirmed paused',
+      'A silent reply does not pause periodic wakeups',
+      'on first entering this waiting state, tell the user once',
+      'existing coordination records',
+      'Ordinary progress reports do not clear blockers',
+      'reread Runtime and retain the original change, task identity, and completed results',
+      'Resume the corresponding monitoring only when periodic checks are still needed',
+      'not equivalent to Runtime `blocked` / `await-user`',
+      'Do not edit state files directly or use Verifier state to represent missing implementation materials',
+    ]) {
+      expect(recovery, term).toContain(term);
+    }
+  });
+
   it('asks about workspace isolation only when it changes the user workflow', async () => {
     const variants = [
       {
