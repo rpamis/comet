@@ -23,7 +23,9 @@ describe('comet-open 批量拆分完成协议', () => {
       'utf8',
     );
 
-    expect(skill).toContain('comet classic openspec -- status --change "<name>" --json');
+    expect(skill).toContain(
+      'comet classic openspec --agent-json -- status --change "<name>" --json',
+    );
     expect(skill).toContain('完整依赖闭包');
     expect(skill).toContain('comet state artifacts <name> --json');
     expect(skill).toContain('`isComplete` 仅作诊断信息');

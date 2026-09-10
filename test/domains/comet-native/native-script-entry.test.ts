@@ -27,6 +27,13 @@ describe('Native direct script entry', () => {
     expect(JSON.parse(output)).toEqual({
       command: 'status',
       exitCode: 64,
+      agent: {
+        phase: null,
+        status: null,
+        stateVersion: null,
+        workspace: { cwd: null },
+        continuation: null,
+      },
       error: { code: 'usage', message: 'invalid status arguments' },
     });
   });

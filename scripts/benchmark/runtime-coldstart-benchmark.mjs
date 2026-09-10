@@ -1,219 +1,605 @@
-#!/usr/bin/env node
-/**
- * Cold-start micro-benchmark for the high-frequency Comet entry points.
- *
- * Each PreToolUse Hook and every CLI invocation pays a one-time Node process
- * startup cost before any logic runs. Issue #239 reported this as the main
- * source of "simple tasks slowing down". This benchmark measures that fixed
- * cost per entry point so regressions are visible.
- *
- * Run modes:
- *   node scripts/benchmark/runtime-coldstart-benchmark.mjs           # print medians
- *   node scripts/benchmark/runtime-coldstart-benchmark.mjs --record   # write/refresh baseline
- *   node scripts/benchmark/runtime-coldstart-benchmark.mjs --check    # compare to baseline, exit 1 on regression
- *
- * The baseline is intentionally machine-local (committed for trend tracking,
- * not as an absolute SLA). The --check threshold defaults to +30% over the
- * recorded median.
- */
-import { spawnSync } from 'child_process';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
-const REPO_ROOT = path.resolve(path.dirname(SCRIPT_PATH), '..', '..');
-const RUNTIME_SCRIPTS = path.join(REPO_ROOT, 'assets', 'skills', 'comet', 'scripts');
-const NATIVE_SCRIPTS = path.join(REPO_ROOT, 'assets', 'skills', 'comet-native', 'scripts');
-const BIN = path.join(REPO_ROOT, 'bin', 'comet.js');
-const BASELINE_FILE = path.join(
-  REPO_ROOT,
-  'scripts',
-  'benchmark',
-  'runtime-coldstart-baseline.json',
-);
-const DEFAULT_THRESHOLD = 0.3; // +30% over baseline median counts as a regression
-const RUNS = 9;
+const REPO_ROOT = path.resolve(path.dirname(SCRIPT_PATH), '../..');
+const BASELINE_FILE = path.join(path.dirname(SCRIPT_PATH), 'runtime-coldstart-baseline.json');
+const SCHEMA = 'comet.runtime-benchmark.v2';
+const DEFAULT_THRESHOLD = 0.3;
+const PROFILE_PREFIX = 'COMET_BENCHMARK_PROFILE=';
 
-const TARGETS = [
-  // High-frequency Hook path: triggered on every Write|Edit.
-  {
-    name: 'hook-router',
-    script: path.join(RUNTIME_SCRIPTS, 'comet-hook-router.mjs'),
-    args: ['--platform', 'claude'],
-  },
-  // Per-command Classic launchers (now self-contained bundles).
-  {
-    name: 'classic-state',
-    script: path.join(RUNTIME_SCRIPTS, 'comet-state.mjs'),
-    args: ['current', '--json'],
-  },
-  {
-    name: 'classic-hook-guard',
-    script: path.join(RUNTIME_SCRIPTS, 'comet-hook-guard.mjs'),
-    args: [],
-  },
-  {
-    name: 'classic-resume-probe',
-    script: path.join(RUNTIME_SCRIPTS, 'comet-resume-probe.mjs'),
-    args: ['--help'],
-  },
-  {
-    name: 'classic-intent',
-    script: path.join(RUNTIME_SCRIPTS, 'comet-intent.mjs'),
-    args: ['--help'],
-  },
-  // Native runtime.
-  {
-    name: 'native-runtime',
-    script: path.join(NATIVE_SCRIPTS, 'comet-native-runtime.mjs'),
-    args: ['--help'],
-  },
-  {
-    name: 'native-status',
-    script: path.join(NATIVE_SCRIPTS, 'comet-native-status.mjs'),
-    args: ['--json'],
-  },
-  {
-    name: 'entry-workflow-resolve',
-    script: path.join(RUNTIME_SCRIPTS, 'comet-entry-runtime.mjs'),
-    args: ['.', '--json'],
-  },
-  // Per-command Native launchers (self-contained bundles).
-  {
-    name: 'native-hook-guard',
-    script: path.join(NATIVE_SCRIPTS, 'comet-native-hook-guard.mjs'),
-    args: ['--hook-output', 'copilot'],
-  },
-  // CLI entry (npm bin).
-  { name: 'cli-version', script: BIN, args: ['--version'] },
-  { name: 'cli-help', script: BIN, args: ['--help'] },
-  // Public fast paths must be measured through `comet`, not by leaking the
-  // package-internal bundle paths into Skills or documentation.
-  { name: 'cli-classic-state', script: BIN, args: ['state', 'current', '--json'] },
-  { name: 'cli-native-status', script: BIN, args: ['native', 'status', '--json'] },
-  { name: 'cli-workflow-resolve', script: BIN, args: ['workflow', 'resolve', '.', '--json'] },
-];
+export function isolatedBenchmarkEnvironment(home, inherited = process.env) {
+  return {
+    ...inherited,
+    HOME: home,
+    USERPROFILE: home,
+    APPDATA: path.join(home, 'AppData/Roaming'),
+    LOCALAPPDATA: path.join(home, 'AppData/Local'),
+    XDG_CONFIG_HOME: path.join(home, '.config'),
+    XDG_CACHE_HOME: path.join(home, '.cache'),
+    XDG_DATA_HOME: path.join(home, '.local/share'),
+    GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'),
+    GIT_CONFIG_SYSTEM: path.join(home, 'git-system'),
+    NODE_OPTIONS: '',
+    COMET_TASK: '',
+    COMET_TASK_PHASE: '',
+    COMET_TASK_PATH: '',
+    COMET_SKIP_UPDATE_CHECK: '1',
+  };
+}
 
-function measureOne(script, args) {
+export function validateRuntimeProcess(target, result) {
+  if (result.error || result.signal || result.status !== 0) {
+    throw new Error(
+      `${target.name}: unsuccessful process (${result.error?.message ?? result.signal ?? result.status})\n${result.stderr ?? ''}\n${result.stdout ?? ''}`,
+    );
+  }
+  return target.validate?.(result.stdout ?? '', result);
+}
+
+/** Preparation and postcondition checks are deliberately outside the timed interval. */
+export async function measureRuntimeSample(target, env, options = {}) {
+  await target.prepare?.();
+  const spawn = options.spawn ?? spawnSync;
   const start = process.hrtime.bigint();
-  spawnSync(process.execPath, [script, ...args], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: 15000,
-    env: { ...process.env, COMET_SKIP_UPDATE_CHECK: '1' },
-  });
-  return Number(process.hrtime.bigint() - start) / 1e6;
+  const result = spawn(
+    process.execPath,
+    [...(options.profile ? ['--require', options.profile] : []), ...target.args],
+    {
+      cwd: target.cwd,
+      env,
+      encoding: 'utf8',
+      input: target.input,
+      timeout: options.timeout ?? 30_000,
+      maxBuffer: 8 * 1024 * 1024,
+      windowsHide: true,
+    },
+  );
+  const milliseconds = Number(process.hrtime.bigint() - start) / 1e6;
+  await validateRuntimeProcess(target, result);
+  await target.postcondition?.();
+  const profile = (result.stderr ?? '').split('\n').find((line) => line.startsWith(PROFILE_PREFIX));
+  if (options.profile && !profile) throw new Error(`${target.name}: missing Git instrumentation`);
+  return {
+    milliseconds,
+    exitCode: result.status,
+    stdoutBytes: Buffer.byteLength(result.stdout ?? ''),
+    stderrBytes: Buffer.byteLength(result.stderr ?? ''),
+    git: profile ? JSON.parse(profile.slice(PROFILE_PREFIX.length)) : null,
+  };
 }
 
-function median(values) {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
+function jsonSuccess(stdout) {
+  const result = JSON.parse(stdout);
+  if (result.exitCode !== undefined && result.exitCode !== 0)
+    throw new Error('Runtime envelope failed');
+  if (result.status === 'failed' || result.error)
+    throw new Error('Runtime returned a failure envelope');
+  return result;
 }
 
-async function measureAll() {
-  const results = {};
-  // Warm the filesystem cache with one untimed run so the first measurement
-  // does not dominate the median with a cold OS file cache.
-  for (const target of TARGETS) {
-    measureOne(target.script, target.args);
-  }
-  for (const target of TARGETS) {
-    const samples = [];
-    for (let i = 0; i < RUNS; i++) {
-      samples.push(measureOne(target.script, target.args));
+function expectedData(expected) {
+  return (stdout) => {
+    const result = jsonSuccess(stdout);
+    for (const [key, value] of Object.entries(expected)) {
+      if (result.data?.[key] !== value)
+        throw new Error(`Unexpected Runtime data.${key}: expected ${value}`);
     }
-    results[target.name] = { median: Number(median(samples).toFixed(1)), samples };
-  }
-  return results;
+  };
 }
 
-async function readBaseline() {
+async function directorySnapshot(root) {
+  const files = new Map();
+  async function walk(directory) {
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isSymbolicLink())
+        throw new Error('Benchmark fixtures must not contain symbolic links');
+      if (entry.isDirectory()) await walk(file);
+      else files.set(file, await fs.readFile(file));
+    }
+  }
+  await walk(root);
+  return files;
+}
+
+async function restoreSnapshot(root, snapshot) {
+  const current = await directorySnapshot(root);
+  for (const file of current.keys()) {
+    if (!snapshot.has(file)) await fs.unlink(file);
+  }
+  for (const [file, bytes] of snapshot) {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, bytes);
+  }
+}
+
+const PROFILE_LOADER = `const cp = require('node:child_process');
+const rows = [];
+for (const method of ['execFileSync', 'spawnSync']) {
+  const original = cp[method];
+  cp[method] = function (...args) {
+    const start = process.hrtime.bigint();
+    try { return original.apply(this, args); }
+    finally {
+      if (/(?:^|[\\\\/])git(?:\\.exe)?$/i.test(String(args[0]))) {
+        rows.push({ args: args[1], milliseconds: Number(process.hrtime.bigint() - start) / 1e6 });
+      }
+    }
+  };
+}
+require('node:module').syncBuiltinESMExports();
+process.on('exit', () => process.stderr.write('${PROFILE_PREFIX}' + JSON.stringify(rows) + '\\n'));
+`;
+
+async function createFixture(repoRoot, worktreeCounts) {
+  const temp = await fs.realpath(os.tmpdir());
+  const root = await fs.mkdtemp(path.join(temp, 'comet-runtime-benchmark-'));
+  const home = path.join(root, 'home');
+  const env = isolatedBenchmarkEnvironment(home);
+  const bin = path.join(repoRoot, 'bin/comet.js');
+  const native = path.join(root, 'native');
+  const classic = path.join(root, 'classic');
+  const targets = [];
+  const profile = path.join(root, 'profile.cjs');
+  await fs.mkdir(home, { recursive: true });
+  await fs.writeFile(profile, PROFILE_LOADER);
+  const cleanup = async () => {
+    const resolved = await fs.realpath(root);
+    if (
+      path.dirname(resolved).toLowerCase() !== temp.toLowerCase() ||
+      !path.basename(resolved).startsWith('comet-runtime-benchmark-')
+    ) {
+      throw new Error('Refusing to clean a benchmark directory outside its temporary root');
+    }
+    await fs.rm(resolved, { recursive: true, force: true });
+  };
+  function git(cwd, args) {
+    const result = spawnSync('git', args, {
+      cwd,
+      env,
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 30_000,
+    });
+    validateRuntimeProcess({ name: `fixture git ${args[0]}` }, result);
+    return result.stdout.trim();
+  }
+  async function initialize(cwd) {
+    await fs.mkdir(cwd, { recursive: true });
+    git(cwd, ['init', '-b', 'main']);
+    git(cwd, ['config', 'user.name', 'Comet benchmark']);
+    git(cwd, ['config', 'user.email', 'benchmark@example.test']);
+    await fs.writeFile(path.join(cwd, 'README.md'), '# Runtime fixture\n');
+    git(cwd, ['add', 'README.md']);
+    git(cwd, ['commit', '-m', 'fixture']);
+  }
+  const cli = (cwd, args, validate = jsonSuccess) =>
+    measureRuntimeSample(
+      { name: `fixture ${args.join(' ')}`, cwd, args: [bin, ...args], validate },
+      env,
+    );
+  const add = (name, cwd, args, validate = jsonSuccess, extra = {}) =>
+    targets.push({ name, cwd, args: [bin, ...args], validate, ...extra });
   try {
-    const content = await fs.readFile(BASELINE_FILE, 'utf8');
-    return JSON.parse(content);
+    await initialize(native);
+    await initialize(classic);
+    await cli(
+      native,
+      ['native', 'new', 'benchmark-native', '--json'],
+      expectedData({ phase: 'shape', state_version: 1 }),
+    );
+    await fs.mkdir(path.join(classic, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(classic, '.comet/config.yaml'),
+      'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n',
+    );
+    await fs.mkdir(path.join(classic, 'openspec/changes'), { recursive: true });
+    await fs.mkdir(path.join(classic, 'openspec/specs'), { recursive: true });
+    await cli(classic, ['state', 'init', 'benchmark-classic', 'tweak', '--json']);
+    await cli(classic, ['state', 'select', 'benchmark-classic', '--json']);
+    const changeDir = path.join(native, 'docs/comet/changes/benchmark-native');
+    const stateFile = path.join(changeDir, 'comet-state.yaml');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Outcome\nVerify a fixture behavior.\n# Scope\nOne minimal change.\n# Non-goals\nNo extra behavior.\n# Acceptance examples\n- The fixture behaves correctly.\n# Constraints and invariants\nKeep existing behavior.\n# Decisions\nUse the smallest implementation.\n# Open questions\nNone.\n# Verification expectations\nRun the focused check.\n',
+    );
+    const snapshotRoots = ['docs', '.comet'].map((part) => path.join(native, part));
+    const snapshots = await Promise.all(snapshotRoots.map(directorySnapshot));
+    const restore = async () => {
+      for (let i = 0; i < snapshots.length; i++)
+        await restoreSnapshot(snapshotRoots[i], snapshots[i]);
+      const state = parse(await fs.readFile(stateFile, 'utf8'));
+      if (state.phase !== 'shape' || state.state_version !== 1 || state.status !== 'active')
+        throw new Error('Native benchmark snapshot is not the original Shape');
+    };
+    const validateNext = (stdout) => {
+      const result = jsonSuccess(stdout);
+      if (
+        result.data?.state?.phase !== 'shape' ||
+        result.data?.state?.status !== 'await-user' ||
+        result.data?.continuation?.action !== 'confirm-shape'
+      )
+        throw new Error('Native next did not prepare the expected Shape confirmation');
+    };
+    const nextExtra = {
+      prepare: restore,
+      postcondition: async () => {
+        const state = parse(await fs.readFile(stateFile, 'utf8'));
+        if (state.phase !== 'shape' || state.status !== 'await-user' || state.state_version !== 2)
+          throw new Error('Native next failed its persisted postcondition');
+      },
+    };
+    targets.push({
+      name: 'node-empty',
+      cwd: native,
+      args: ['--eval', ''],
+      validate: (stdout) => {
+        if (stdout !== '') throw new Error('Node baseline produced output');
+      },
+    });
+    add('cli-version', native, ['--version'], (stdout) => {
+      if (!/^\d+\.\d+\.\d+/u.test(stdout)) throw new Error('Invalid CLI version');
+    });
+    add('cli-help', native, ['--help'], (stdout) => {
+      if (!stdout.includes('Usage: comet')) throw new Error('Invalid CLI help');
+    });
+    const resolution = (stdout) => {
+      if (jsonSuccess(stdout).workflow !== 'native') throw new Error('Wrong workflow');
+    };
+    add('entry-public', native, ['workflow', 'resolve', '.', '--json'], resolution);
+    add(
+      'entry-public-activate',
+      native,
+      ['workflow', 'resolve', '.', '--activate', '--json'],
+      resolution,
+    );
+    add('classic-current-public', classic, ['state', 'current', '--json'], (stdout) => {
+      if (!jsonSuccess(stdout).stdout?.includes('benchmark-classic'))
+        throw new Error('No selected Classic change');
+    });
+    add(
+      'classic-next-public',
+      classic,
+      ['state', 'next', 'benchmark-classic', '--json'],
+      expectedData({ change: 'benchmark-classic', phase: 'open' }),
+    );
+    add(
+      'native-show-public',
+      native,
+      ['native', 'show', 'benchmark-native', '--json'],
+      (stdout) => {
+        if (jsonSuccess(stdout).data?.state?.name !== 'benchmark-native')
+          throw new Error('Wrong Native show target');
+      },
+    );
+    const nextArgs = [
+      'native',
+      'next',
+      'benchmark-native',
+      '--summary',
+      'Fixture ready',
+      '--expected-state-version',
+      '1',
+      '--expected-action',
+      'prepare-shape-confirmation',
+      '--json',
+    ];
+    add('native-next-public', native, nextArgs, validateNext, nextExtra);
+    targets.push({
+      name: 'native-next-direct',
+      cwd: native,
+      args: [
+        path.join(repoRoot, 'assets/skills/comet-native/scripts/comet-native-next.mjs'),
+        ...nextArgs.slice(2),
+      ],
+      validate: validateNext,
+      ...nextExtra,
+    });
+    for (const origin of [false, true]) {
+      const taskRoot = path.join(root, origin ? 'task-origin' : 'task-no-origin');
+      await initialize(taskRoot);
+      await fs.mkdir(path.join(taskRoot, '.comet'), { recursive: true });
+      await fs.copyFile(
+        path.join(native, '.comet/config.yaml'),
+        path.join(taskRoot, '.comet/config.yaml'),
+      );
+      if (origin)
+        git(taskRoot, ['remote', 'add', 'origin', 'https://example.test/runtime-benchmark.git']);
+      const taskArgs = [
+        'task',
+        '.',
+        '--task',
+        'Inspect the fixture behavior',
+        '--session',
+        'benchmark-context',
+        '--json',
+      ];
+      // The empty-context scenario is a repeated task after its project knowledge
+      // was delivered once. The normal plugin and freshness paths still run.
+      await cli(taskRoot, taskArgs, (stdout) => {
+        const context = jsonSuccess(stdout).context;
+        if (
+          !Array.isArray(context) ||
+          !context.some((entry) =>
+            entry.manifest?.some((item) => item.owner === 'comet.project-knowledge'),
+          )
+        )
+          throw new Error(
+            `Task fixture did not deliver project knowledge: ${stdout.slice(0, 1600)}`,
+          );
+      });
+      add(
+        origin ? 'task-origin' : 'task-no-origin',
+        taskRoot,
+        taskArgs,
+        (stdout, result) => {
+          if (jsonSuccess(stdout).context?.length !== 0)
+            throw new Error('Expected empty fixture context');
+          if (result.stderr.includes('Project knowledge:'))
+            throw new Error('Task fixture reported degraded knowledge retrieval');
+        },
+        {
+          origin,
+          contextState:
+            'same explicit session after initial project-knowledge delivery; no unseen context',
+        },
+      );
+    }
+    let count = 1;
+    for (const size of [...new Set(worktreeCounts)].sort((a, b) => a - b)) {
+      add(
+        `native-status-public-${size}`,
+        native,
+        ['native', 'status', 'benchmark-native', '--json'],
+        expectedData({ name: 'benchmark-native', phase: 'shape' }),
+        {
+          worktreeCount: size,
+          prepare: async () => {
+            await restore();
+            while (count < size) {
+              count++;
+              const name = `scale-${count}`;
+              const worktree = path.join(root, name);
+              git(native, ['worktree', 'add', '-b', name, worktree, 'main']);
+              await cli(
+                worktree,
+                ['native', 'new', name, '--json'],
+                expectedData({ name, phase: 'shape' }),
+              );
+            }
+          },
+        },
+      );
+    }
+    return { root, home, env, profile, targets, cleanup };
   } catch (error) {
-    if (error.code === 'ENOENT') return null;
+    await cleanup();
     throw error;
   }
 }
 
-async function writeBaseline(results) {
-  const baseline = {
-    node: process.version,
-    platform: process.platform,
-    threshold: DEFAULT_THRESHOLD,
-    results,
+async function buildIdentity(repoRoot, suppliedSourceHead) {
+  const files = ['bin/comet.js', 'bin/fast-runtime-router.js', 'package.json'];
+  async function collect(relative) {
+    for (const entry of await fs.readdir(path.join(repoRoot, relative), { withFileTypes: true })) {
+      const file = path.join(relative, entry.name);
+      if (entry.isDirectory()) await collect(file);
+      else if (entry.isFile() && /\.(?:js|mjs)$/u.test(file)) files.push(file);
+    }
+  }
+  for (const directory of [
+    'dist/app',
+    'dist/domains',
+    'dist/platform',
+    'assets/skills/comet/scripts',
+    'assets/skills/comet-native/scripts',
+  ])
+    await collect(directory);
+  const digest = createHash('sha256');
+  for (const file of files.sort())
+    digest.update(file.replaceAll('\\', '/')).update(await fs.readFile(path.join(repoRoot, file)));
+  let sourceHead = suppliedSourceHead;
+  if (sourceHead !== undefined && !/^[a-f0-9]{40}$/u.test(sourceHead))
+    throw new Error('Invalid source HEAD; supply the complete Git commit SHA');
+  if (sourceHead === undefined) {
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    validateRuntimeProcess({ name: 'source identity' }, head);
+    sourceHead = head.stdout.trim();
+  }
+  return {
+    sourceHead,
+    sourceHeadOrigin:
+      suppliedSourceHead === undefined ? 'git-rev-parse' : 'supplied-for-frozen-package',
+    buildSha256: digest.digest('hex'),
+    fileCount: files.length,
   };
-  await fs.writeFile(BASELINE_FILE, `${JSON.stringify(baseline, null, 2)}\n`, 'utf8');
 }
 
-function formatRow(name, medianMs, note = '') {
-  return `${name.padEnd(22)} ${String(medianMs).padStart(7)} ms  ${note}`;
+export async function runRuntimeBenchmark(options = {}) {
+  const runs = options.runs ?? 9;
+  const worktreeCounts = options.worktreeCounts ?? [1, 10, 30];
+  if (
+    !Number.isSafeInteger(runs) ||
+    runs < 1 ||
+    worktreeCounts.some((value) => !Number.isSafeInteger(value) || value < 1 || value > 30)
+  )
+    throw new Error('Invalid benchmark runs or worktree counts');
+  const repoRoot = options.repoRoot ?? REPO_ROOT;
+  const fixture = await createFixture(repoRoot, worktreeCounts);
+  const report = {
+    schema: SCHEMA,
+    complete: false,
+    createdAt: new Date().toISOString(),
+    node: process.version,
+    platform: process.platform,
+    arch: os.arch(),
+    osRelease: os.release(),
+    cpu: os.cpus()[0]?.model,
+    logicalCpus: os.cpus().length,
+    threshold: DEFAULT_THRESHOLD,
+    timing: 'fresh-node-process-warm-filesystem; excludes fixture setup and postcondition checks',
+    warmups: 1,
+    runs,
+    gitBudgetsEnforced: options.enforceGitBudgets !== false,
+    results: {},
+  };
+  try {
+    report.benchmarkSha256 = createHash('sha256')
+      .update(await fs.readFile(SCRIPT_PATH))
+      .digest('hex');
+    Object.assign(report, await buildIdentity(repoRoot, options.sourceHead));
+    const unknownTargets =
+      options.targets?.filter((name) => !fixture.targets.some((target) => target.name === name)) ??
+      [];
+    if (unknownTargets.length)
+      throw new Error(`Unknown benchmark targets: ${unknownTargets.join(', ')}`);
+    for (const target of fixture.targets) {
+      if (options.targets?.length && !options.targets.includes(target.name)) continue;
+      await measureRuntimeSample(target, fixture.env);
+      const samples = [];
+      for (let i = 0; i < runs; i++) samples.push(await measureRuntimeSample(target, fixture.env));
+      const profile = await measureRuntimeSample(target, fixture.env, { profile: fixture.profile });
+      const gitBudget =
+        target.name === 'task-origin'
+          ? 1
+          : target.name === 'task-no-origin'
+            ? 2
+            : target.name.startsWith('native-status-public-')
+              ? 5
+              : target.name.startsWith('native-next-')
+                ? 7
+                : target.name === 'entry-public-activate'
+                  ? 0
+                  : null;
+      const gitBudgetMet = gitBudget === null || profile.git.length <= gitBudget;
+      if (report.gitBudgetsEnforced && !gitBudgetMet)
+        throw new Error(
+          `${target.name}: ${profile.git.length} Git processes exceeds budget ${gitBudget}`,
+        );
+      const times = samples.map(({ milliseconds }) => milliseconds).sort((a, b) => a - b);
+      report.results[target.name] = {
+        command: target.args.map((arg) =>
+          arg.replaceAll(repoRoot, '<package>').replaceAll(fixture.root, '<fixture>'),
+        ),
+        worktreeCount: target.worktreeCount ?? 1,
+        origin: target.origin ?? false,
+        ...(target.contextState ? { contextState: target.contextState } : {}),
+        median: times[Math.floor(times.length / 2)],
+        p95Observed: times[Math.ceil(times.length * 0.95) - 1],
+        samples,
+        gitCalls: profile.git?.length ?? 0,
+        gitBudget,
+        gitBudgetMet,
+        gitProfile: profile.git,
+        gitMilliseconds: profile.git?.reduce((sum, row) => sum + row.milliseconds, 0) ?? 0,
+        profileSource: 'separate instrumented successful process',
+      };
+      options.onResult?.(target.name, report.results[target.name]);
+    }
+    if (Object.keys(report.results).length === 0)
+      throw new Error('No benchmark targets were selected');
+    report.complete = true;
+    return report;
+  } finally {
+    await fixture.cleanup();
+  }
+}
+
+export async function writeRuntimeReport(file, report) {
+  if (
+    report.schema !== SCHEMA ||
+    !report.complete ||
+    Object.keys(report.results).length === 0 ||
+    Object.values(report.results).some(
+      (row) =>
+        !row.samples.length ||
+        row.samples.some(
+          (sample) =>
+            sample.exitCode !== 0 ||
+            !Number.isFinite(sample.milliseconds) ||
+            sample.milliseconds < 0,
+        ),
+    )
+  )
+    throw new Error('Refusing to record an incomplete or failed benchmark');
+  await fs.writeFile(file, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+}
+
+export async function writeRuntimeBaseline(file, report) {
+  if (
+    report.gitBudgetsEnforced !== true ||
+    Object.values(report.results).some((row) => row.gitBudgetMet !== true)
+  )
+    throw new Error('Refusing to record a baseline without passing Git budgets');
+  await writeRuntimeReport(file, report);
 }
 
 async function main() {
-  const mode = process.argv[2] ?? '--print';
-  const results = await measureAll();
-
-  if (mode === '--record') {
-    await writeBaseline(results);
-    console.log('Recorded cold-start baseline:');
-    for (const [name, data] of Object.entries(results)) {
-      console.log(formatRow(name, data.median));
+  const args = process.argv.slice(2);
+  const mode = args.includes('--record') ? 'record' : args.includes('--check') ? 'check' : 'print';
+  const runsArg = args.find((arg) => arg.startsWith('--runs='));
+  const targetsArg = args.find((arg) => arg.startsWith('--targets='));
+  const worktreesArg = args.find((arg) => arg.startsWith('--worktrees='));
+  const outputArg = args.find((arg) => arg.startsWith('--output='));
+  const packageArg = args.find((arg) => arg.startsWith('--package-root='));
+  const sourceArg = args.find((arg) => arg.startsWith('--source-head='));
+  const measureBefore = args.includes('--measure-before');
+  if (
+    args.some(
+      (arg) =>
+        !['--record', '--check', '--measure-before'].includes(arg) &&
+        !/^--(?:runs|targets|worktrees|output|package-root|source-head)=.+$/u.test(arg),
+    ) ||
+    (args.includes('--record') && args.includes('--check')) ||
+    (measureBefore && mode !== 'print')
+  )
+    throw new Error(
+      'Usage: runtime-coldstart-benchmark.mjs [--record|--check|--measure-before] [--runs=N] [--targets=name,...] [--worktrees=1,10,30] [--output=file] [--package-root=path] [--source-head=sha]',
+    );
+  const report = await runRuntimeBenchmark({
+    ...(runsArg ? { runs: Number(runsArg.slice(7)) } : {}),
+    ...(targetsArg ? { targets: targetsArg.slice(10).split(',') } : {}),
+    ...(worktreesArg ? { worktreeCounts: worktreesArg.slice(12).split(',').map(Number) } : {}),
+    ...(packageArg ? { repoRoot: path.resolve(packageArg.slice(15)) } : {}),
+    ...(sourceArg ? { sourceHead: sourceArg.slice(14) } : {}),
+    enforceGitBudgets: !measureBefore,
+    onResult: (name, row) =>
+      console.log(
+        `${name.padEnd(28)} ${row.median.toFixed(1)} ms median; ${row.gitCalls} Git; ${row.samples.length} samples`,
+      ),
+  });
+  if (mode === 'record') await writeRuntimeBaseline(BASELINE_FILE, report);
+  if (outputArg) await writeRuntimeReport(path.resolve(outputArg.slice(9)), report);
+  if (mode === 'check') {
+    const baseline = JSON.parse(await fs.readFile(BASELINE_FILE, 'utf8'));
+    if (
+      baseline.schema !== SCHEMA ||
+      !baseline.complete ||
+      baseline.gitBudgetsEnforced !== true ||
+      Object.values(baseline.results).some((row) => row.gitBudgetMet !== true)
+    )
+      throw new Error('Record a valid scenario baseline before checking performance');
+    for (const [name, row] of Object.entries(report.results)) {
+      const before = baseline.results[name];
+      if (!before || row.median > before.median * (1 + (baseline.threshold ?? DEFAULT_THRESHOLD)))
+        throw new Error(`Runtime benchmark regression or missing baseline: ${name}`);
     }
-    console.log(`\nWrote ${path.relative(REPO_ROOT, BASELINE_FILE)}`);
-    return;
-  }
-
-  if (mode === '--check') {
-    const baseline = await readBaseline();
-    if (!baseline) {
-      console.log('No baseline recorded; run with --record first.');
-      process.exitCode = 0;
-      return;
-    }
-    const threshold = baseline.threshold ?? DEFAULT_THRESHOLD;
-    let regressions = 0;
-    console.log('Cold-start vs baseline:');
-    for (const [name, data] of Object.entries(results)) {
-      const base = baseline.results[name]?.median;
-      if (base === undefined) {
-        console.log(formatRow(name, data.median, '(no baseline)'));
-        continue;
-      }
-      const ratio = data.median / base;
-      if (ratio > 1 + threshold) {
-        regressions++;
-        console.log(
-          formatRow(
-            name,
-            data.median,
-            `REGRESSION +${((ratio - 1) * 100).toFixed(0)}% over ${base}ms`,
-          ),
-        );
-      } else {
-        const delta =
-          data.median <= base
-            ? `-${((1 - ratio) * 100).toFixed(0)}%`
-            : `+${((ratio - 1) * 100).toFixed(0)}%`;
-        console.log(formatRow(name, data.median, `vs ${base}ms (${delta})`));
-      }
-    }
-    if (regressions > 0) {
-      console.error(
-        `\n${regressions} cold-start regression(s) above ${(threshold * 100).toFixed(0)}% threshold.`,
-      );
-      process.exitCode = 1;
-    }
-    return;
-  }
-
-  // Default: print medians.
-  console.log('Cold-start medians (ms):');
-  for (const [name, data] of Object.entries(results)) {
-    console.log(formatRow(name, data.median));
   }
 }
 
-await main();
+if (process.argv[1] && path.resolve(process.argv[1]) === SCRIPT_PATH) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}

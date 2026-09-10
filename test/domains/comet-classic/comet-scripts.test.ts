@@ -131,8 +131,7 @@ async function createFakeOpenSpecArchive(
 ) {
   // Cross-platform fake `openspec archive` (Node, not bash) so the archive tests
   // run identically on macOS, Linux, and Windows. Returns `command` — the value
-  // to assign to COMET_OPENSPEC — already shaped so the runtime's
-  // `spawnSync(command, args, { shell: win32 })` invokes node on every platform.
+  // to assign to COMET_OPENSPEC as a direct Node entry, without shell parsing.
   const binDir = path.join(tmpDir, 'fake-bin');
   await fs.mkdir(binDir, { recursive: true });
   const scriptPath = path.join(binDir, 'openspec-fake.mjs');
@@ -177,15 +176,10 @@ async function createFakeOpenSpecArchive(
     '',
   ].join('\n');
   await fs.writeFile(scriptPath, script);
-  let command: string;
-  if (process.platform === 'win32') {
-    // Runtime uses shell:true on Windows → cmd runs `node "<path>" archive change --yes`.
-    command = `node "${scriptPath.replace(/\\/g, '/')}"`;
-  } else {
+  if (process.platform !== 'win32') {
     await fs.chmod(scriptPath, 0o755);
-    command = scriptPath;
   }
-  return { command, logFile };
+  return { command: scriptPath, logFile };
 }
 
 describe('comet script contracts', () => {

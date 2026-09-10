@@ -2,7 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-worktree.js';
+import {
+  currentGitBranch,
+  inspectGitWorktree,
+  resolveGitRef,
+} from '../../platform/paths/git-worktree.js';
 
 import { atomicWriteText } from './native-atomic-file.js';
 import { nativeBriefHasBlockingQuestion } from './native-artifacts.js';
@@ -190,8 +194,7 @@ function portableWorkspace(binding?: NativeWorkspaceBinding): NativePortableWork
 }
 
 function currentBranch(projectRoot: string): string | null {
-  const inspection = inspectGitWorktree(projectRoot);
-  return inspection.currentBranch;
+  return currentGitBranch(projectRoot);
 }
 
 function assertPortableWorkspaceBindingCurrent(

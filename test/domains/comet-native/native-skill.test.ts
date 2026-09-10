@@ -29,6 +29,10 @@ function headings(source: string): string[] {
     .map((line) => line.replace(/^#+\s+/u, ''));
 }
 
+function contentLineCount(source: string): number {
+  return source.split(/\r?\n/u).filter((line) => line.trim().length > 0).length;
+}
+
 describe('Comet Native Skills', () => {
   it('keeps valid bilingual entry Skills with progressive references', async () => {
     for (const language of ['en', 'zh'] as const) {
@@ -57,10 +61,11 @@ describe('Comet Native Skills', () => {
   it('bounds permanent Native context and keeps bilingual file structure aligned', async () => {
     for (const language of ['en', 'zh'] as const) {
       const contents = await Promise.all(markdownFiles.map((file) => read(language, file)));
-      expect(contents[0].split(/\r?\n/u).length).toBeLessThanOrEqual(130);
+      // Exclude formatter-only blank lines; retain the baseline's 302 content lines plus one.
+      expect(contentLineCount(contents[0])).toBeLessThanOrEqual(100);
       expect(
-        contents.reduce((total, source) => total + source.split(/\r?\n/u).length, 0),
-      ).toBeLessThanOrEqual(425); // Includes the copyable Supervisor child-plan example.
+        contents.reduce((total, source) => total + contentLineCount(source), 0),
+      ).toBeLessThanOrEqual(303);
       expect(headings(contents[0])).toHaveLength(10);
     }
 

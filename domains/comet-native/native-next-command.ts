@@ -11,6 +11,7 @@ import { applyNativeRunnerInput, readNativeRunnerInput } from './native-runner-i
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import {
   dispatchNativeSupervisorReadyTasks,
+  projectNativeSupervisorTask,
   readNativeSupervisorState,
 } from './native-supervisor.js';
 import {
@@ -38,6 +39,7 @@ import {
 import {
   assertNoArguments,
   configuredPaths,
+  errorResult,
   NativeUsageError,
   requiredPositional,
   success,
@@ -81,7 +83,11 @@ function expectedContinuationOption(
   };
 }
 
-async function portableParentView(paths: NativeProjectPaths, state: NativePortableState) {
+async function portableParentView(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  verifierExecutionRef?: string,
+) {
   const children = await inspectNativeChildren({ paths, state });
   const supervisor = children?.confirmed
     ? await readNativeSupervisorState(paths, state.name, { diagnostics: true })
@@ -97,7 +103,7 @@ async function portableParentView(paths: NativeProjectPaths, state: NativePortab
           readyChildren: activeTasks.length > 0 ? activeTasks : children.readyChildren,
         }
       : {}),
-    continuation: nativePortableContinuation(state, children),
+    continuation: nativePortableContinuation(state, children, { verifierExecutionRef }),
   };
 }
 
@@ -299,7 +305,19 @@ export async function nativeNextCommand(
         );
       }
     }
-    const input = await readNativeRunnerInput(runnerInputFile, projectRoot);
+    let input;
+    try {
+      input = await readNativeRunnerInput(runnerInputFile, projectRoot);
+    } catch (error) {
+      const failure = errorResult('next', error);
+      return {
+        ...failure,
+        data: {
+          state: nativePortableStateSummary(current, configured.paths),
+          ...(await portableParentView(configured.paths, current)),
+        },
+      };
+    }
     const result = await applyNativeRunnerInput({
       paths: configured.paths,
       name,
@@ -309,7 +327,11 @@ export async function nativeNextCommand(
     return success('next', {
       ...compactRunnerResult(result),
       state: nativePortableStateSummary(result.state, configured.paths),
-      ...(await portableParentView(configured.paths, result.state)),
+      ...(await portableParentView(
+        configured.paths,
+        result.state,
+        result.verifierDispatch?.verifierExecutionRef,
+      )),
       coordination: NATIVE_SKILL_COORDINATION,
     });
   }
@@ -454,7 +476,9 @@ export async function nativeNextCommand(
               parent: name,
               maxParallel: current.coordination_mode === 'single-session' ? 1 : maxParallel,
             });
-            supervisorTasks = dispatched.state.children.flatMap(({ task }) => (task ? [task] : []));
+            supervisorTasks = dispatched.state.children.flatMap(({ task }) =>
+              task ? [projectNativeSupervisorTask(task, name, configured.paths.projectRoot)] : [],
+            );
             readySupervisorChildren = dispatched.tasks.map(({ child }) => child);
             supervisorBlockers = dispatched.state.children.flatMap(({ name: child, blocker }) =>
               blocker ? [{ child, message: blocker }] : [],

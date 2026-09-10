@@ -47,6 +47,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'init <change-name> <full|hotfix|tweak> [--isolation <current|branch|worktree>]',
       'get <change-name> <field>',
       'set <change-name> <field> <value> [<field> <value> ...]',
+      'complete-design <change-name> --design-doc <repo-relative-ref>',
       'transition <change-name> <event>',
       'check <change-name> <phase> [--recover] [--details]',
       'scale <change-name>',
@@ -64,6 +65,8 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'Start with current or next <change-name> to inspect workflow guidance.',
       'Advanced writes: init, set, transition, task-checkoff, select, rebind, clear-selection.',
       'Use comet state <command> --help for details. --recover is for cold recovery, not normal progression.',
+      'After explicit design confirmation, complete-design registers the reference, refreshes handoff, and applies the guard; interrupted retries retain completed work.',
+      'Use data.artifactRefs for state references and task-authority markers; absolute paths are for file operations.',
     ],
     guard: [
       'comet guard <change-name> <open|design|build|verify|archive> [--apply]',

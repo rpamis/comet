@@ -2,7 +2,9 @@
 
 import importlib
 import os
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 import dotenv
@@ -10,6 +12,42 @@ import pytest
 
 from scaffold.python import utils
 from scaffold.python.skill_parser import load_skill_content, parse_skill_md
+
+
+# The unchanged three-turn driver also takes about 16 s under Git Bash here;
+# this bounds fixture cleanup, not a product performance assertion.
+AGENT_FIXTURE_TIMEOUT = 30 if os.name == "nt" else 10
+
+
+def _isolated_fake_agent_env(fake_bin: Path, agent: str) -> dict[str, str]:
+    """Use only fixtures and Bash system tools, with no host Agent/auth fallback."""
+    env = {
+        key: value for key, value in os.environ.items()
+        if key.upper() in {"SYSTEMROOT", "WINDIR", "TEMP", "TMP"}
+    }
+    env["PATH"] = f"{utils._to_bash_path(fake_bin)}:/usr/bin:/bin"
+    env["HOME"] = utils._to_bash_path(fake_bin.parent / "home")
+    env["CODEX_HOME"] = f"{env['HOME']}/.codex"
+    (fake_bin.parent / "home").mkdir(exist_ok=True)
+    python_shim = fake_bin / "python3"
+    python_shim.write_text(
+        "#!/usr/bin/env bash\nexec "
+        + shlex.quote(utils._to_bash_path(Path(sys.executable))) + ' "$@"\n',
+        encoding="utf-8", newline="\n",
+    )
+    python_shim.chmod(0o755)
+    # A wrong Agent name must fail closed even if /usr/bin later gains a CLI.
+    for executable in ("claude", "codex", "qodercli", "codebuddy"):
+        target = fake_bin / executable
+        if not target.exists():
+            target.write_text("#!/usr/bin/env bash\nexit 125\n", encoding="utf-8", newline="\n")
+            target.chmod(0o755)
+    resolved = subprocess.run(
+        [utils.BASH_EXEC, "-c", 'command -v "$1"', "--", agent],
+        env=env, capture_output=True, text=True, check=True, timeout=5,
+    )
+    assert resolved.stdout.strip() == utils._to_bash_path(fake_bin / agent)
+    return env
 
 
 def test_import_does_not_read_dotenv(monkeypatch):
@@ -733,8 +771,7 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","re
     )
     fake_claude.chmod(0o755)
 
-    env = os.environ.copy()
-    env["PATH"] = f"{utils._to_bash_path(fake_bin)}:{env.get('PATH', '')}"
+    env = _isolated_fake_agent_env(fake_bin, "claude")
     result = subprocess.run(
         [
             utils.BASH_EXEC,
@@ -751,7 +788,7 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","re
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=10,
+        timeout=AGENT_FIXTURE_TIMEOUT,
         check=False,
         env=env,
     )
@@ -760,6 +797,11 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","re
     assert "resume failed stdout diagnostic" in result.stderr
     assert "resume failed diagnostic" in result.stderr
     assert "subject turn 2 failed" in result.stderr
+    from scaffold.python.logging import extract_events, parse_output
+
+    invocations = extract_events(parse_output(result.stdout))["invocations"]
+    assert [invocation["exit_code"] for invocation in invocations] == [0, 42]
+    assert len({invocation["invocation_id"] for invocation in invocations}) == 2
 
 
 def test_claude_loop_surfaces_simulator_failure(tmp_path: Path):
@@ -780,8 +822,7 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"subject-1","re
     )
     fake_claude.chmod(0o755)
 
-    env = os.environ.copy()
-    env["PATH"] = f"{utils._to_bash_path(fake_bin)}:{env.get('PATH', '')}"
+    env = _isolated_fake_agent_env(fake_bin, "claude")
     result = subprocess.run(
         [
             utils.BASH_EXEC,
@@ -794,7 +835,7 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"subject-1","re
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=10,
+        timeout=AGENT_FIXTURE_TIMEOUT,
         check=False,
         env=env,
     )
@@ -819,8 +860,7 @@ printf '%s\n' '{"type":"result","result":"Workflow completed through all phases 
     )
     fake_codex.chmod(0o755)
 
-    env = os.environ.copy()
-    env["PATH"] = f"{utils._to_bash_path(fake_bin)}:{env.get('PATH', '')}"
+    env = _isolated_fake_agent_env(fake_bin, "codex")
     env["ANTHROPIC_MODEL"] = "claude-only-model"
     env["CAPTURED_CODEX_ARGS"] = utils._to_bash_path(captured_args)
     result = subprocess.run(
@@ -837,7 +877,7 @@ printf '%s\n' '{"type":"result","result":"Workflow completed through all phases 
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=10,
+        timeout=AGENT_FIXTURE_TIMEOUT,
         check=False,
         env=env,
     )
@@ -878,8 +918,7 @@ esac
     )
     fake_claude.chmod(0o755)
 
-    env = os.environ.copy()
-    env["PATH"] = f"{utils._to_bash_path(fake_bin)}:{env.get('PATH', '')}"
+    env = _isolated_fake_agent_env(fake_bin, "claude")
     result = subprocess.run(
         [
             utils.BASH_EXEC,
@@ -896,7 +935,7 @@ esac
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=10,
+        timeout=AGENT_FIXTURE_TIMEOUT,
         check=False,
         env=env,
     )
@@ -926,8 +965,7 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","re
     simulator_prompt = tmp_path / ".eval-simulator-prompt.txt"
     simulator_prompt.write_text("private fixed decisions", encoding="utf-8")
 
-    env = os.environ.copy()
-    env["PATH"] = f"{utils._to_bash_path(fake_bin)}:{env.get('PATH', '')}"
+    env = _isolated_fake_agent_env(fake_bin, "claude")
     env["SIMULATOR_LEAK_PATH"] = utils._to_bash_path(simulator_prompt)
     result = subprocess.run(
         [
@@ -943,7 +981,7 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","re
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=10,
+        timeout=AGENT_FIXTURE_TIMEOUT,
         check=False,
         env=env,
     )

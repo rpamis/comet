@@ -1,7 +1,12 @@
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
 
-import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
+import {
+  gitWorktreeContextFromEntries,
+  inspectGitWorktree,
+  listGitWorktrees,
+  type GitWorktreeContext,
+} from '../../platform/paths/git-worktree.js';
 
 import { canonicalHash } from './native-canonical-hash.js';
 import { inspectNativeChangeStateDocument } from './native-change.js';
@@ -21,10 +26,11 @@ import {
 } from './native-archived-status.js';
 import {
   inspectNativePortableStatus,
+  projectNativePortableWorkspace,
   projectNativeArchivedStatus,
   type NativePortableStatusProjection,
 } from './native-portable-status.js';
-import { isNativePortableChange } from './native-portable-runtime.js';
+import { isNativePortableChange, readNativePortableChange } from './native-portable-runtime.js';
 import { projectNativeWorkspace } from './native-workspace.js';
 import type {
   CometProjectConfig,
@@ -40,6 +46,7 @@ interface NativeWorkspaceSource {
   projectRoot: string;
   config: CometProjectConfig;
   paths: NativeProjectPaths;
+  gitContext: GitWorktreeContext;
   changes: Array<{ name: string; kind: 'portable' | 'legacy' }>;
   archives?: NativeStatusRecord[];
   archiveErrors?: Array<{ name: string; message: string }>;
@@ -155,9 +162,11 @@ function displayCommandArgs(args: readonly string[]): string {
 
 async function discoverChanges(
   paths: NativeProjectPaths,
+  targetName?: string,
 ): Promise<NativeWorkspaceSource['changes']> {
   const changes: NativeWorkspaceSource['changes'] = [];
   for (const name of await listNativeChangeNames(paths)) {
+    if (targetName !== undefined && name !== targetName) continue;
     changes.push({
       name,
       kind: (await isNativePortableChange(paths, name)) ? 'portable' : 'legacy',
@@ -166,9 +175,13 @@ async function discoverChanges(
   return changes;
 }
 
-async function discoverSources(projectRoot: string): Promise<NativeWorkspaceSource[]> {
+async function discoverSources(
+  projectRoot: string,
+  targetName?: string,
+): Promise<NativeWorkspaceSource[]> {
   const requestedRoot = path.resolve(projectRoot);
-  const roots = listGitWorktreeRoots(projectRoot);
+  const worktrees = listGitWorktrees(projectRoot);
+  const roots = worktrees.map(({ root }) => root);
   const candidates = roots.length > 0 ? roots : [requestedRoot];
   if (!candidates.some((candidate) => samePath(candidate, requestedRoot))) {
     candidates.push(requestedRoot);
@@ -188,7 +201,9 @@ async function discoverSources(projectRoot: string): Promise<NativeWorkspaceSour
       projectRoot: candidate,
       config,
       paths,
-      changes: await discoverChanges(paths),
+      gitContext:
+        gitWorktreeContextFromEntries(candidate, worktrees) ?? inspectGitWorktree(candidate),
+      changes: await discoverChanges(paths, targetName),
     });
   }
   if (sources.length === 0) {
@@ -199,14 +214,22 @@ async function discoverSources(projectRoot: string): Promise<NativeWorkspaceSour
       projectRoot: path.resolve(projectRoot),
       config,
       paths,
-      changes: await discoverChanges(paths),
+      gitContext:
+        gitWorktreeContextFromEntries(projectRoot, worktrees) ?? inspectGitWorktree(projectRoot),
+      changes: await discoverChanges(paths, targetName),
     });
   }
   for (const source of sources) {
     source.archiveErrors = [];
-    source.archives = await listNativeArchivedStatusRecords(source.paths, (name, message) =>
-      source.archiveErrors!.push({ name, message }),
+    source.archives = await listNativeArchivedStatusRecords(
+      source.paths,
+      (name, message) => source.archiveErrors!.push({ name, message }),
+      targetName,
     );
+    if (targetName !== undefined) {
+      source.archives = source.archives.filter(({ state }) => state.name === targetName);
+      source.archiveErrors = source.archiveErrors.filter(({ name }) => name === targetName);
+    }
   }
   return sources;
 }
@@ -250,13 +273,13 @@ async function discoverCandidates(
       nameSources.map(async ({ source, kind }): Promise<NativeStatusCandidate> => {
         if (kind === 'portable') {
           try {
-            const portableStatus = await inspectNativePortableStatus({ paths: source.paths, name });
+            const state = await readNativePortableChange(source.paths, name);
             return {
               source,
               name,
               kind,
-              workspace: portableStatus.workspace,
-              portableStatus,
+              workspace: projectNativePortableWorkspace(source.paths, state, source.gitContext),
+              portableStatus: null,
               inspectionError: null,
             };
           } catch (error) {
@@ -266,7 +289,15 @@ async function discoverCandidates(
               source,
               name,
               kind,
-              workspace: await projectNativeWorkspace(source.paths, name),
+              workspace: {
+                projectRoot: source.projectRoot,
+                isolation: 'current',
+                bindingState: 'mismatch',
+                changeBranch: null,
+                targetBranch: null,
+                finish: null,
+                message: 'The portable state could not be inspected.',
+              },
               portableStatus: null,
               inspectionError: error instanceof Error ? error.message : String(error),
             };
@@ -276,7 +307,19 @@ async function discoverCandidates(
           source,
           name,
           kind,
-          workspace: await projectNativeWorkspace(source.paths, name),
+          workspace:
+            nameSources.length > 1
+              ? await projectNativeWorkspace(source.paths, name)
+              : {
+                  projectRoot: source.projectRoot,
+                  currentBranch: source.gitContext.currentBranch,
+                  isSecondaryWorktree: source.gitContext.isSecondaryWorktree,
+                  bindingState: 'legacy',
+                  isolation: null,
+                  changeBranch: null,
+                  targetBranch: null,
+                  finish: null,
+                },
           portableStatus: null,
           inspectionError: null,
         };
@@ -441,6 +484,7 @@ async function inspectLegacyCandidate(
   details: boolean,
   acceptanceCursor?: string,
 ): Promise<NativeStatusProjection | NativeLegacyMigrationStatusProjection> {
+  const workspace = await projectNativeWorkspace(candidate.source.paths, candidate.name);
   let inspection: Awaited<ReturnType<typeof inspectNativeChangeStateDocument>> | null = null;
   try {
     inspection = await inspectNativeChangeStateDocument(candidate.source.paths, candidate.name);
@@ -455,7 +499,7 @@ async function inspectLegacyCandidate(
       status: 'blocked',
       migrationRequired: true,
       legacySchema: inspection.schema,
-      workspace: candidate.workspace as NativeWorkspaceProjection,
+      workspace,
       continuation: {
         schema: 'comet.native.continuation.v2',
         skill: 'comet-native',
@@ -523,12 +567,25 @@ async function inspectCandidate(
         details,
         cursor: detailsCursor,
       });
-    return inspectNativePortableStatus({
-      paths: candidate.source.paths,
-      name: candidate.name,
-      details,
-      ...(detailsCursor ? { cursor: detailsCursor } : {}),
-    });
+    try {
+      return await inspectNativePortableStatus({
+        paths: candidate.source.paths,
+        name: candidate.name,
+        details,
+        gitContext: candidate.source.gitContext,
+        ...(detailsCursor ? { cursor: detailsCursor } : {}),
+      });
+    } catch (error) {
+      // A caller-supplied pagination cursor must retain its error contract.
+      if (detailsCursor) throw error;
+      return inspectCandidate(
+        {
+          ...candidate,
+          inspectionError: error instanceof Error ? error.message : String(error),
+        },
+        false,
+      );
+    }
   }
   return inspectLegacyCandidate(candidate, details, acceptanceCursor);
 }
@@ -536,17 +593,20 @@ async function inspectCandidate(
 export async function inspectDiscoveredNativeStatus(options: {
   projectRoot: string;
   name: string;
+  /** Execution context stays separate from the compact, relative display projection. */
+  onSelectedRoot?: (projectRoot: string) => void;
   details?: boolean;
   acceptanceCursor?: string;
   detailsCursor?: string;
 }): Promise<NativeDiscoveredStatusProjection> {
-  const sources = await discoverSources(options.projectRoot);
+  const sources = await discoverSources(options.projectRoot, options.name);
   const candidates = (await discoverCandidates(options.projectRoot, sources)).filter(
     (candidate) => candidate.name === options.name,
   );
   if (candidates.length === 0) {
     const current =
       sources.find((source) => samePath(source.projectRoot, options.projectRoot)) ?? sources[0];
+    options.onSelectedRoot?.(current.projectRoot);
     return inspectNativeStatus(current.paths, options.name, {
       details: options.details,
       ...(options.acceptanceCursor ? { acceptanceCursor: options.acceptanceCursor } : {}),
@@ -561,6 +621,7 @@ export async function inspectDiscoveredNativeStatus(options: {
         .join(', ')}`,
     );
   }
+  options.onSelectedRoot?.(candidates[0].source.projectRoot);
   return inspectCandidate(
     candidates[0],
     options.details ?? false,

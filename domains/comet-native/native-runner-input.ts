@@ -1,3 +1,5 @@
+import { assertNativeInputKeys as exactKeys } from './native-input-error.js';
+import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
 import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -12,7 +14,10 @@ import {
   readNativeSupervisorCheckEvidence,
   type NativeSupervisorMaterial,
 } from './native-supervisor-evidence.js';
-import { parseNativeVerifierAcceptance } from './native-verifier-protocol.js';
+import {
+  parseNativeVerifierAcceptance,
+  parseNativeVerifierResponse,
+} from './native-verifier-protocol.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import {
@@ -40,6 +45,7 @@ import {
   recordNativeSupervisorPortableFinalVerification,
   readNativeSupervisorState,
   reconnectNativeSupervisorTaskWithState,
+  projectNativeSupervisorTask,
   writeNativeSupervisorState,
   type NativeSupervisorState,
   type NativeSupervisorVerificationEvidence,
@@ -169,14 +175,6 @@ function record(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function exactKeys(value: Record<string, unknown>, keys: readonly string[], label: string): void {
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
-  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
-    throw new Error(`${label} fields are invalid`);
-  }
-}
-
 function text(value: unknown, label: string): string {
   if (typeof value !== 'string' || value.trim().length === 0 || value.includes('\u0000')) {
     throw new Error(`${label} must be non-empty text`);
@@ -193,7 +191,12 @@ function builderChecks(value: unknown): RunnerBuilderInput['checks'] {
   if (!Array.isArray(value)) throw new Error('Native Builder checks must be an array');
   return value.map((entry, index) => {
     const input = record(entry, `Native Builder check ${index}`);
-    exactKeys(input, ['name', 'result', 'note'], `Native Builder check ${index}`);
+    exactKeys(
+      input,
+      ['name', 'result', 'note'],
+      `Native Builder check ${index}`,
+      `/checks/${index}`,
+    );
     if (!['passed', 'failed', 'not-run'].includes(String(input.result))) {
       throw new Error(`Native Builder check ${index} result is invalid`);
     }
@@ -216,6 +219,7 @@ function checkPlans(value: unknown): NativeCheckPlan[] {
       input,
       ['id', 'name', 'executable', 'argv', 'cwdRef', 'timeoutMs', 'repeatable'],
       `Native Runtime check ${index}`,
+      `/checks/${index}`,
     );
     if (!Array.isArray(input.argv) || !input.argv.every((part) => typeof part === 'string')) {
       throw new Error(`Native Runtime check ${index} argv is invalid`);
@@ -267,11 +271,16 @@ function verifierAttemptBinding(
 
 function supervisorEvidence(value: unknown): NativeSupervisorVerificationEvidence {
   const input = record(value, 'Native Supervisor evidence');
-  exactKeys(input, ['summary', 'checks', 'acceptance', 'receiptRef'], 'Native Supervisor evidence');
+  exactKeys(
+    input,
+    ['summary', 'checks', 'acceptance', 'receiptRef'],
+    'Native Supervisor evidence',
+    '/evidence',
+  );
   return {
     summary: text(input.summary, 'Native Supervisor evidence summary'),
     checks: strings(input.checks, 'Native Supervisor evidence checks'),
-    acceptance: parseNativeVerifierAcceptance(input.acceptance),
+    acceptance: parseNativeVerifierAcceptance(input.acceptance, '/evidence/acceptance'),
     ...(input.receiptRef === null
       ? {}
       : { receiptRef: text(input.receiptRef, 'Native Supervisor receipt ref') }),
@@ -287,7 +296,12 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
       'Native Runner Builder input',
     );
     const review = record(input.review, 'Native Builder review');
-    exactKeys(review, ['status', 'summary', 'reviewer_execution_ref'], 'Native Builder review');
+    exactKeys(
+      review,
+      ['status', 'summary', 'reviewer_execution_ref'],
+      'Native Builder review',
+      '/review',
+    );
     if (review.status !== 'passed') {
       throw new Error('Native Builder review status must be passed');
     }
@@ -318,7 +332,7 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
     exactKeys(input, ['kind', 'response'], 'Native Runner Verifier input');
     return {
       kind: 'verifier-response',
-      response: input.response,
+      response: parseNativeVerifierResponse(input.response, '/response'),
     };
   }
   if (input.kind === 'verifier-execution-error') {
@@ -414,9 +428,14 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
       child: text(input.child, 'Native Supervisor child'),
       runId: text(input.runId, 'Native Supervisor runId'),
       checks: checkPlans(input.checks),
-      materials: input.materials.map((value) => {
+      materials: input.materials.map((value, index) => {
         const material = record(value, 'Native Supervisor material');
-        exactKeys(material, ['name', 'content'], 'Native Supervisor material');
+        exactKeys(
+          material,
+          ['name', 'content'],
+          'Native Supervisor material',
+          `/materials/${index}`,
+        );
         return {
           name: text(material.name, 'Native Supervisor material name'),
           content: text(material.content, 'Native Supervisor material content'),
@@ -446,7 +465,7 @@ export async function readNativeRunnerInput(
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await fs.readFile(target, 'utf8'));
+    parsed = JSON.parse(stripUtf8Bom(await fs.readFile(target, 'utf8')));
   } catch (error) {
     throw new Error('Native Runner input must be valid JSON', { cause: error });
   }
@@ -648,10 +667,15 @@ export async function applyNativeRunnerInput(options: {
       plans: input.checks,
       materials: input.materials,
     });
+    const updatedSupervisor = await readNativeSupervisorState(options.paths, options.name);
+    const updatedTask = updatedSupervisor?.children.find(({ name }) => name === input.child)?.task;
     return {
       state: portableBeforeInput,
-      supervisorState: await readNativeSupervisorState(options.paths, options.name),
-      supervisorTask: null,
+      supervisorState: updatedSupervisor,
+      supervisorTask:
+        updatedTask && updatedTask.runId === input.runId
+          ? projectNativeSupervisorTask(updatedTask, options.name, options.paths.projectRoot)
+          : null,
       checks: [],
       checkExecution: execution,
       requestChecks: null,
@@ -700,7 +724,11 @@ export async function applyNativeRunnerInput(options: {
         const portableState = await readNativePortableChange(options.paths, options.name);
         return {
           state: portableState,
-          supervisorTask: verifier.task,
+          supervisorTask: projectNativeSupervisorTask(
+            verifier.task,
+            options.name,
+            options.paths.projectRoot,
+          ),
           checks: [],
           requestChecks: null,
           verifierDispatch: null,
@@ -775,7 +803,11 @@ export async function applyNativeRunnerInput(options: {
         return {
           state: portableState,
           supervisorState: reconnected.state,
-          supervisorTask: reconnected.task,
+          supervisorTask: projectNativeSupervisorTask(
+            reconnected.task,
+            options.name,
+            options.paths.projectRoot,
+          ),
           checks: [],
           requestChecks: null,
           verifierDispatch: null,
@@ -1015,7 +1047,7 @@ export async function applyNativeRunnerInput(options: {
         verifierExecutionRef,
         supervisor: supervisorParentVerification ? supervisor : null,
       }),
-      continuation: nativePortableContinuation(state),
+      continuation: nativePortableContinuation(state, undefined, { verifierExecutionRef }),
     };
   }
   if (input.kind === 'verifier-execution-error') {
@@ -1131,6 +1163,8 @@ export async function applyNativeRunnerInput(options: {
             }),
             supervisor: supervisorParentVerification ? supervisor : null,
           }),
-    continuation: nativePortableContinuation(applied.state),
+    continuation: nativePortableContinuation(applied.state, undefined, {
+      verifierExecutionRef: executionRef,
+    }),
   };
 }

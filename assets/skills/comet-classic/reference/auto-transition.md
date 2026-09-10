@@ -10,7 +10,7 @@ This protocol is shared by all comet sub-skills. It defines the automatic handof
 
 ## Execution
 
-After exit conditions are met and the phase guard has advanced phase, run:
+After exit conditions are met and the phase guard has advanced phase, consume that successful JSON result's `agent.continuation`: invoke `skill` when `automatic: true`; otherwise prompt the user to run that Skill and return control. This observation is the next phase's entry, so do not repeat next, select, or check. Query only after recovery, external-state/workspace changes, or older results without this observation:
 
 ```bash
 comet state next <change-name>

@@ -23,10 +23,14 @@ export async function nativeStatusCommand(
     throw new NativeUsageError('--cursor for a named status requires --details');
   }
   assertNoArguments(args);
+  let executionCwd = projectRoot;
   const data = name
     ? await inspectDiscoveredNativeStatus({
         projectRoot,
         name,
+        onSelectedRoot: (selectedRoot) => {
+          executionCwd = selectedRoot;
+        },
         details,
         ...(cursor ? { detailsCursor: cursor } : {}),
       })
@@ -34,5 +38,5 @@ export async function nativeStatusCommand(
         projectRoot,
         ...(cursor ? { cursor } : {}),
       });
-  return success('status', data);
+  return { ...success('status', data), executionCwd };
 }

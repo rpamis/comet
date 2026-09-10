@@ -143,7 +143,7 @@ function handoffSourceReference(changeDir: string, changeRef: string, file: stri
   return `${changeRef}/${relative}`;
 }
 
-async function computeContextHash(
+export async function computeContextHash(
   projectRoot: string,
   changeDir: string,
   changeRef: string,

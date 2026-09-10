@@ -9,6 +9,9 @@ import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 vi.mock('child_process', () => ({
   spawnSync: vi.fn(),
 }));
+vi.mock('../../../platform/process/node-cli-command.js', () => ({
+  resolveNodeCliCommand: (command: string, args: string[]) => ({ command, args }),
+}));
 
 const mockedSpawnSync = vi.mocked(spawnSync);
 
@@ -123,6 +126,67 @@ describe('Classic OpenSpec adapter', () => {
       ['status'],
       expect.objectContaining({ cwd: path.join(projectRoot, 'docs') }),
     );
+  });
+
+  it('returns executable adapter next actions while preserving the raw upstream context', async () => {
+    mockedSpawnSync.mockReturnValue({
+      pid: 1,
+      output: [],
+      stdout: JSON.stringify({
+        changeName: 'demo',
+        nextSteps: ['openspec instructions proposal --change demo'],
+        artifacts: [{ id: 'proposal', status: 'ready' }],
+      }),
+      stderr: '',
+      status: 0,
+      signal: null,
+    });
+    const status = JSON.parse(
+      (
+        await runClassicCli([
+          'openspec',
+          '--agent-json',
+          '--',
+          'status',
+          '--change',
+          'demo',
+          '--json',
+        ])
+      ).stdout!,
+    );
+    expect(status.data.upstream.cwd).toBe(path.join(projectRoot, 'docs'));
+    expect(status.data.upstream.data.nextSteps).toEqual([
+      'openspec instructions proposal --change demo',
+    ]);
+    expect(status.data.nextAction.cwd).toBe(projectRoot);
+    expect(status.data.nextAction.argv).toEqual([
+      'comet',
+      'classic',
+      'openspec',
+      '--agent-json',
+      '--',
+      'instructions',
+      'proposal',
+      '--change',
+      'demo',
+      '--json',
+    ]);
+    mockedSpawnSync.mockReturnValue({
+      pid: 1,
+      output: [],
+      stdout: '{"template":"# Proposal"}',
+      stderr: '',
+      status: 0,
+      signal: null,
+    });
+    const instructions = await runClassicCli(status.data.nextAction.argv.slice(2));
+    expect(instructions.exitCode).toBe(0);
+    expect(mockedSpawnSync).toHaveBeenLastCalledWith(
+      'openspec',
+      ['instructions', 'proposal', '--change', 'demo', '--json'],
+      expect.objectContaining({ cwd: path.join(projectRoot, 'docs'), shell: false }),
+    );
+    expect(JSON.parse(instructions.stdout!).data.nextAction.argv).toContain('status');
   });
 
   it('fails closed when the configured OpenSpec root is missing', async () => {

@@ -1,18 +1,8 @@
 import { pathToFileURL } from 'url';
 import { classicCommandHelp } from './classic-cli-help.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
-import { classicArchiveCommand } from './classic-archive.js';
-import { classicGuardCommand } from './classic-guard.js';
-import { classicHandoffCommand } from './classic-handoff.js';
-import { classicHookGuardCommand } from './classic-hook-guard.js';
-import { classicIntentCommand } from './classic-intent-command.js';
-import { classicOpenSpecCommand } from './classic-openspec-command.js';
-import { classicResumeProbeCommand } from './classic-resume-probe-command.js';
-import { classicRootCommand } from './classic-root-command.js';
-import { classicStateCommand } from './classic-state-command.js';
-import { classicValidateCommand } from './classic-validate-command.js';
-import { classicWorkspaceCommand } from './classic-workspace-command.js';
-import { classicCheckCommand } from './classic-check-command.js';
+import { projectCliAgentObservation } from '../workflow-contract/output-envelope.js';
+import { classicIssue } from './classic-issues.js';
 
 export interface ClassicCommandResult {
   exitCode: number;
@@ -59,18 +49,30 @@ export const CLASSIC_COMMANDS = [
 export type ClassicCommandName = (typeof CLASSIC_COMMANDS)[number];
 
 const DEFAULT_HANDLERS: ClassicCommandHandlers = {
-  state: classicStateCommand,
-  check: classicCheckCommand,
-  validate: classicValidateCommand,
-  guard: classicGuardCommand,
-  handoff: classicHandoffCommand,
-  archive: classicArchiveCommand,
-  'hook-guard': classicHookGuardCommand,
-  intent: classicIntentCommand,
-  'resume-probe': classicResumeProbeCommand,
-  openspec: classicOpenSpecCommand,
-  root: classicRootCommand,
-  workspace: classicWorkspaceCommand,
+  state: async (args, options) =>
+    (await import('./classic-state-command.js')).classicStateCommand(args, options),
+  check: async (args, options) =>
+    (await import('./classic-check-command.js')).classicCheckCommand(args, options),
+  validate: async (args, options) =>
+    (await import('./classic-validate-command.js')).classicValidateCommand(args, options),
+  guard: async (args, options) =>
+    (await import('./classic-guard.js')).classicGuardCommand(args, options),
+  handoff: async (args, options) =>
+    (await import('./classic-handoff.js')).classicHandoffCommand(args, options),
+  archive: async (args, options) =>
+    (await import('./classic-archive.js')).classicArchiveCommand(args, options),
+  'hook-guard': async (args, options) =>
+    (await import('./classic-hook-guard.js')).classicHookGuardCommand(args, options),
+  intent: async (args, options) =>
+    (await import('./classic-intent-command.js')).classicIntentCommand(args, options),
+  'resume-probe': async (args, options) =>
+    (await import('./classic-resume-probe-command.js')).classicResumeProbeCommand(args, options),
+  openspec: async (args, options) =>
+    (await import('./classic-openspec-command.js')).classicOpenSpecCommand(args, options),
+  root: async (args, options) =>
+    (await import('./classic-root-command.js')).classicRootCommand(args, options),
+  workspace: async (args, options) =>
+    (await import('./classic-workspace-command.js')).classicWorkspaceCommand(args, options),
 };
 
 function isClassicCommand(value: string): value is ClassicCommandName {
@@ -113,6 +115,7 @@ async function dispatch(
     return {
       exitCode: 70,
       stderr: error instanceof Error ? error.message : String(error),
+      data: { issues: [classicIssue(error)] },
     };
   }
 }
@@ -127,6 +130,7 @@ function jsonResult(
       JSON.stringify({
         command: command ?? null,
         exitCode: result.exitCode,
+        agent: projectCliAgentObservation(result.data),
         ...(result.data === undefined ? {} : { data: result.data }),
         ...(result.envelope === undefined
           ? {}

@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as gitWorktree from '../../../platform/paths/git-worktree.js';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { createNativeChange } from '../../../domains/comet-native/native-change.js';
@@ -54,7 +55,41 @@ describe('Native v4 registered-worktree status discovery', () => {
   const roots: string[] = [];
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+  });
+
+  it('filters named discovery before inspecting unrelated Runtime and shares worktree observations', async () => {
+    const repository = await createRepository();
+    roots.push(repository.root);
+    const { runNativeCli } = await import('../../../domains/comet-native/native-cli.js');
+    for (const name of ['target', 'unrelated']) {
+      const root = addWorktree(repository, name, `comet/${name}`);
+      const result = await runNativeCli(['new', name, '--project-root', root, '--json']);
+      expect(result.exitCode).toBe(0);
+    }
+    const archiveDir = path.join(repository.root, 'docs/comet/archive/2026-09-10-unrelated');
+    await fs.mkdir(archiveDir, { recursive: true });
+    await fs.writeFile(path.join(archiveDir, 'comet-state.yaml'), 'corrupt: [');
+    const read = vi.spyOn(fs, 'readFile');
+    const list = vi.spyOn(gitWorktree, 'listGitWorktrees');
+    const inspect = vi.spyOn(gitWorktree, 'inspectGitWorktree');
+    const { inspectDiscoveredNativeStatus } =
+      await import('../../../domains/comet-native/native-status-discovery.js');
+    const status = await inspectDiscoveredNativeStatus({
+      projectRoot: repository.root,
+      name: 'target',
+    });
+    expect(status).toMatchObject({
+      name: 'target',
+      phase: 'shape',
+      workspace: { bindingState: 'aligned' },
+    });
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(inspect).not.toHaveBeenCalled();
+    const files = read.mock.calls.map(([file]) => String(file).replaceAll('\\', '/'));
+    expect(files.filter((file) => file.includes('/changes/unrelated/'))).toEqual([]);
+    expect(files.filter((file) => file.includes('/2026-09-10-unrelated/'))).toEqual([]);
   });
 
   it('uses the portable adapter for named and list status from another registered worktree', async () => {

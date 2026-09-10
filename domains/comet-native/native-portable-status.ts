@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
+import { inspectGitWorktree, type GitWorktreeContext } from '../../platform/paths/git-worktree.js';
 
 import { inspectNativeChildren } from './native-children.js';
 import { readNativeSupervisorState, type NativeSupervisorState } from './native-supervisor.js';
@@ -184,8 +184,11 @@ function counts(state: NativePortableState): NativePortableAcceptanceCounts {
   );
 }
 
-function workspaceProjection(paths: NativeProjectPaths, state: NativePortableState) {
-  const context = inspectGitWorktree(paths.projectRoot);
+export function projectNativePortableWorkspace(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  context: GitWorktreeContext = inspectGitWorktree(paths.projectRoot),
+) {
   let message: string | null = null;
   if (state.workspace.change_branch !== null) {
     if (!context.isGitWorktree) {
@@ -337,6 +340,7 @@ export async function inspectNativePortableStatus(options: {
   name: string;
   details?: boolean;
   cursor?: string;
+  gitContext?: GitWorktreeContext;
 }): Promise<NativePortableStatusProjection> {
   const runtime = await readNativePortableRuntime(options);
   const stateSummary = nativePortableStateSummary(runtime.state);
@@ -352,8 +356,11 @@ export async function inspectNativePortableStatus(options: {
       ? null
       : await readNativeSupervisorState(options.paths, options.name, { diagnostics: true });
   const workspace = supervisor
-    ? { ...workspaceProjection(options.paths, runtime.state), projectRoot: '.' }
-    : workspaceProjection(options.paths, runtime.state);
+    ? {
+        ...projectNativePortableWorkspace(options.paths, runtime.state, options.gitContext),
+        projectRoot: '.',
+      }
+    : projectNativePortableWorkspace(options.paths, runtime.state, options.gitContext);
   const continuation = nativePortableContinuation(runtime.state, children);
   const effectiveContinuation =
     workspace.bindingState === 'mismatch'

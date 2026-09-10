@@ -173,7 +173,7 @@ comet state select <name>
 comet state check <name> open
 ```
 
-任一命令失败都停止。随后运行一次 `comet classic openspec -- status --change "<name>" --json` 并执行兼容性预检：
+任一命令失败都停止。随后运行一次 `comet classic openspec --agent-json -- status --change "<name>" --json` 并执行兼容性预检：
 
 - `changeRoot` 解析后必须等于 resolver 绑定的 `<classic-change-dir>`，`planningHome`（如存在）也必须位于当前仓库；不支持仓库外 artifact 路径
 - `artifacts` 必须包含 Classic 必需 ID `proposal`、`tasks`，其他要求沿 `requires` 递归展开
@@ -182,15 +182,17 @@ comet state check <name> open
 
 预检通过后，按 OpenSpec CLI 返回的 schema 和依赖图生成实现所需 artifacts：
 
+Agent JSON 模式中的上游字段均从 `data.upstream.data` 读取，下一步只执行 `data.nextAction` 的完整 argv/cwd；上游原始 nextSteps 仅用于诊断。
+
 **OpenSpec 状态驱动产物循环**：
 
-1. 运行 `comet classic openspec -- status --change "<name>" --json` 并解析完整 JSON。
+1. 首轮复用 Step 2 兼容性预检刚返回的 status；后续复用上一轮写入后刷新的 status。只有恢复或外部产物变化时重新运行 `comet classic openspec --agent-json -- status --change "<name>" --json`，从 `data.upstream.data` 读取完整上游 JSON。
 2. 展开 `applyRequires` 加 proposal/tasks 的完整依赖闭包。闭包中每项都为 `done` 或合法 `skipped` 时运行 `comet state artifacts <name> --json`，仅校验通过才退出循环；顶层 tasks 已完成不能掩盖未完成依赖。`isComplete` 只作诊断。
 3. 从尚未完成且为 `status: "ready"` 的 artifacts 中，优先选择能够推进 `applyRequires` 依赖闭包的项，并按 CLI 返回顺序处理。不得硬编码生成顺序，也不得假设 schema 只有 proposal/design/tasks。
 4. 对每个 ready 的 `<artifact-id>` 获取实时指令：
 
    ```bash
-   comet classic openspec -- instructions <artifact-id> --change "<name>" --json
+   comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json
    ```
 
 5. 对返回的 JSON 指令载荷，必须：
@@ -230,9 +232,9 @@ comet state check <name> open
 **幂等恢复算法**：open 阶段所有操作可安全重复执行。恢复时按以下顺序处理：
 
 1. 状态文件缺失时先使用所选隔离方式准备工作区，再进入返回的 `projectRoot` 运行 `comet state init <name> full --isolation <selected-isolation>`；格式异常时停止并修复，不得覆盖。随后选择 change 并运行 `comet state check <name> open`。
-2. 运行 `comet classic openspec -- status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
+2. 运行 `comet classic openspec --agent-json -- status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
 3. `done`：该 artifact 已完成，保持原文件不变，不重复生成。
-4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后立刻重新运行 status。
+4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后立刻重新运行 status。
 5. `blocked`：读取 `missingDeps`，先完成属于 `applyRequires` 依赖闭包的依赖 artifact；每完成一个依赖都重新运行 status，不能直接生成 blocked artifact。
 6. 重复上述处理，直到完整必需闭包为 done 或合法 skipped，且 `comet state artifacts <name> --json` 校验通过。
 

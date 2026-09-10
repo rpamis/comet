@@ -29,7 +29,7 @@ export async function runNativeScript(
     explicitProjectRoot = takeOption(globalArgs, '--project-root');
     const dispatchArgs = [...globalArgs, ...commandTail];
     const projectRoot = await projectRootFrom(explicitProjectRoot);
-    result = await handler(dispatchArgs, projectRoot);
+    result = { executionCwd: projectRoot, ...(await handler(dispatchArgs, projectRoot)) };
   } catch (error) {
     result = errorResult(command, error);
   }

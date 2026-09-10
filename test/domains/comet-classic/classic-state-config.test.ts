@@ -45,7 +45,16 @@ describe('Classic atomic configuration', () => {
     expect(result.exitCode, result.stderr).toBe(0);
     const expected = { build_mode: 'executing-plans', tdd_mode: 'direct', review_mode: 'standard' };
     expect(parse(await fs.readFile(stateFile(), 'utf8'))).toMatchObject(expected);
-    expect(JSON.parse(result.stdout!).data).toMatchObject({ change: 'demo', updated: expected });
+    expect(JSON.parse(result.stdout!).data).toMatchObject({
+      change: 'demo',
+      updated: expected,
+      phase: 'open',
+      configuration: {
+        buildMode: 'executing-plans',
+        tddMode: 'direct',
+        reviewMode: 'standard',
+      },
+    });
   });
 
   it('sets autonomous explicitly in an atomic configuration without changing defaults', async () => {

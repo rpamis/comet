@@ -27,7 +27,7 @@ comet state check <name> design --json
 
 Use entry layout, configuration, nextAction, and coordination summaries without field-by-field queries or duplicate root show. Ordinary handoffs use entry checks only; cold recovery and details follow context-recovery.md. Resolve specific failures before continuing.
 
-**Recovery**: Inspect existing artifacts and user confirmation, then complete only unfinished steps. Do not regenerate valid handoff or assume document writes and phase transitions are unconditionally safe to repeat.
+**Recovery**: Inspect existing artifacts and user confirmation, then complete only unfinished steps. Both ordinary and recovery entry preserve registered valid designs. Read `data.designReadiness`, `data.issues`, and `data.nextAction`; repair missing files, incorrect ownership, or stale handoff without clearing `design_doc`. After design confirmation, execute the returned complete-design action. It retains completed steps and returns the current entry if Build has already begun.
 
 ### 1a. Generate OpenSpec → Superpowers Handoff Package
 
@@ -56,7 +56,7 @@ Beta mode (`classic.context_compression: beta` in project `.comet/config.yaml`, 
 And writes to `.comet.yaml`:
 
 ```yaml
-handoff_context: <classic-change-dir>/.comet/handoff/design-context.json
+handoff_context: <classic-change-ref>/.comet/handoff/design-context.json
 handoff_hash: <sha256>
 ```
 
@@ -211,20 +211,13 @@ Write approved Spec Patches to the corresponding `specs/**/spec.md`. Maintain be
 
 ### 3. Update Comet State
 
-Record design_doc first. Any changed handoff source (proposal, design, task semantics, delta spec, or OpenSpec metadata) requires regenerating handoff, not only Spec Patches:
+After explicit user confirmation and saving the formal design, bind the repository-relative `data.artifactRefs.designDoc` as `<design-doc-ref>`. For an approved alternative design file, use its reference relative to `projectRoot`. Keep absolute `<design-doc-path>` for file operations. One coordinated command registers the design, refreshes handoff as needed, and applies the existing Guard:
 
 ```bash
-# Record design_doc path
-comet state set <name> design_doc <design-doc-path>
-
-# If source content changed, regenerate handoff (update hash)
-comet handoff <change-name> design --write
-
-# Auto-transition to next phase
-comet guard <change-name> design --apply
+comet state complete-design <name> --design-doc "<design-doc-ref>" --json
 ```
 
-Delta spec additions, edits, deletions, and design.md technical updates change the handoff hash; stale evidence blocks design Guard. Skip regeneration only when all source content is unchanged. Task checkbox updates alone do not change the requirements hash. Runtime updates state; do not edit other fields manually.
+Any handoff source content change (proposal, design, task semantics, delta specs, or OpenSpec metadata) requires refreshing handoff; checking only Spec Patches is insufficient. Stale evidence blocks design Guard. Skip regeneration only when all source content is unchanged. Task checkbox updates alone do not change the requirements hash. Runtime updates state; do not edit other fields manually.
 
 ### 3a. Optional Active Context Compaction
 
@@ -246,11 +239,7 @@ Consider active compaction only **after the Design Doc and state evidence are pe
 - `design_doc` written to `.comet.yaml`
 - **Phase guard**: Run `comet guard <change-name> design --apply`; after all PASS, auto-transitions to `phase: build`
 
-Must use `--apply` before exit:
-
-```bash
-comet guard <change-name> design --apply
-```
+Step 3 returning `data.phase: build` means Guard has passed and applied; do not run it again. On failure, resolve `data.issues`, preserve artifacts, and retry the same complete-design command.
 
 ## Context Compression Recovery
 
@@ -258,7 +247,7 @@ Follow `comet-classic/reference/context-recovery.md` with phase set to `design`.
 
 ## Automatic Handoff to Next Phase
 
-Follow `comet-classic/reference/auto-transition.md`. Key command:
+Follow `comet-classic/reference/auto-transition.md` using the successful result's `agent.continuation` without querying next. Refresh only for cold recovery, external changes, or older results without an observation:
 
 ```bash
 comet state next <change-name>

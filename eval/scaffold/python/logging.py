@@ -19,6 +19,7 @@ from scaffold.python.report_outputs import (
     preferred_report_path,
     write_report_outputs,
 )
+from scaffold.python.tool_telemetry import extract_tool_telemetry
 
 
 def _without_credentials(value: Any) -> Any:
@@ -161,8 +162,6 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
         "peak_context_occupancy_pct": None,
     }
 
-    # Map tool_use_id -> index in tool_calls list for matching outputs
-    tool_id_to_index = {}
     duration_ms_total = 0.0
     duration_observed = False
     additive_metrics = {
@@ -271,10 +270,6 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
                 if isinstance(command, str) and command:
                     events["commands_run"].append(command)
                     record_skill_path(command)
-                tool_call = {"tool": "Bash", "input": {"command": command or ""}}
-                if item.get("aggregated_output") is not None:
-                    tool_call["output"] = item["aggregated_output"]
-                events["tool_calls"].append(tool_call)
             elif item.get("type") == "file_change":
                 for change in item.get("changes") or []:
                     if not isinstance(change, dict):
@@ -288,11 +283,6 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
                     else:
                         events["files_modified"].append(path)
                     record_skill_path(path)
-            elif item.get("type") in {"mcp_tool_call", "tool_call"}:
-                tool = item.get("name") or item.get("tool") or "unknown"
-                events["tool_calls"].append(
-                    {"tool": tool, "input": item.get("arguments") or item.get("input") or {}}
-                )
 
         if msg.get("type") == "assistant":
             message = msg.get("message", {})
@@ -317,11 +307,6 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
             for item in message.get("content", []):
                 if item.get("type") == "tool_use":
                     tool, inp = item.get("name", ""), item.get("input", {})
-                    tool_id = item.get("id")
-                    tool_call = {"tool": tool, "input": inp}
-                    if tool_id:
-                        tool_id_to_index[tool_id] = len(events["tool_calls"])
-                    events["tool_calls"].append(tool_call)
                     path = inp.get("file_path", "")
                     if tool == "Read" and path:
                         events["files_read"].append(path)
@@ -336,23 +321,6 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
                         record_skill_path(inp["command"])
                     elif tool == "Skill" and inp.get("skill"):
                         _record_skill_invocation(events, inp["skill"], explicit=True)
-
-        # Capture tool results and match to their tool_use calls
-        if msg.get("type") == "user":
-            for item in msg.get("message", {}).get("content", []):
-                if item.get("type") == "tool_result":
-                    tool_use_id = item.get("tool_use_id")
-                    if tool_use_id and tool_use_id in tool_id_to_index:
-                        idx = tool_id_to_index[tool_use_id]
-                        # Extract output content
-                        content = item.get("content", "")
-                        if isinstance(content, list):
-                            # Content can be a list of text blocks
-                            content = " ".join(
-                                c.get("text", str(c)) if isinstance(c, dict) else str(c)
-                                for c in content
-                            )
-                        events["tool_calls"][idx]["output"] = content
 
     if duration_observed:
         events["duration_seconds"] = duration_ms_total / 1000
@@ -383,7 +351,16 @@ def extract_events(parsed: dict[str, Any], *, agent: str | None = None) -> dict[
             events["peak_context_window_tokens"] = context_window
             events["peak_context_occupancy_pct"] = peak / context_window * 100
 
-    return events
+    # Retain the legacy tool/input/output shape, adding identity and timing.
+    # Pair by explicit IDs instead of assuming serial tool execution.
+    events["tool_calls"], events["invocations"] = extract_tool_telemetry(parsed.get("messages", []))
+    events["commands_run"] = [
+        call["input"]["command"]
+        for call in events["tool_calls"]
+        if call["tool"] == "Bash" and isinstance(call["input"], dict)
+        and isinstance(call["input"].get("command"), str) and call["input"]["command"]
+    ]
+    return redact_sensitive(events)
 
 
 # =============================================================================

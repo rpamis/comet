@@ -63,6 +63,26 @@ describe('Classic OpenSpec artifact adapter', () => {
       .spyOn(openspec, 'executeClassicOpenSpec')
       .mockResolvedValue({ exitCode: 0, stdout: JSON.stringify(data) });
   }
+  it('reuses upstream observations only inside one operation and refreshes after content or schema changes', async () => {
+    const query = mockStatus();
+    await withClassicCommandContext({ projectRoot: root, invocationCwd: root }, async () => {
+      await readClassicArtifactRequirements(root, directory);
+      await readClassicArtifactRequirements(root, directory);
+      expect(query).toHaveBeenCalledTimes(1);
+      const file = path.join(directory, 'proposal.md');
+      const stat = await fs.stat(file);
+      await fs.writeFile(file, '# Proposal\nUpdated current requirements.\n');
+      await fs.utimes(file, stat.atime, stat.mtime);
+      await readClassicArtifactRequirements(root, directory);
+      expect(query).toHaveBeenCalledTimes(2);
+      await fs.mkdir(path.join(root, 'openspec/schemas'));
+      await readClassicArtifactRequirements(root, directory);
+      await readClassicArtifactRequirements(root, directory);
+      expect(query).toHaveBeenCalledTimes(4);
+    });
+    await readClassicArtifactRequirements(root, directory);
+    expect(query).toHaveBeenCalledTimes(5);
+  });
   it.each(['off', 'beta'])(
     'accepts explicitly skipped specs and optional design through Open and %s handoff',
     async (mode) => {

@@ -1,13 +1,7 @@
 import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 
-const CLASSIC_ASSETS = {
-  state: 'assets/skills/comet/scripts/comet-state.mjs',
-  check: 'assets/skills/comet/scripts/comet-check.mjs',
-  guard: 'assets/skills/comet/scripts/comet-guard.mjs',
-  handoff: 'assets/skills/comet/scripts/comet-handoff.mjs',
-  archive: 'assets/skills/comet/scripts/comet-archive.mjs',
-};
+const CLASSIC_COMMANDS = new Set(['state', 'check', 'guard', 'handoff', 'archive']);
 
 const NATIVE_COMMANDS = new Set([
   'init',
@@ -37,11 +31,22 @@ export function resolveFastRuntime(argv) {
   if (argv.length === 0 || hasHelpFlag(argv)) return null;
 
   const [group, command, ...tail] = argv;
-  const classicAsset = CLASSIC_ASSETS[group];
-  if (classicAsset) return { assetPath: classicAsset, args: argv.slice(1) };
+  if (CLASSIC_COMMANDS.has(group))
+    return {
+      assetPath: 'dist/app/commands/classic.js',
+      args: argv.slice(1),
+      classicCommand: group,
+    };
 
   if (group === 'workflow' && command === 'resolve') {
-    if (tail.some((arg) => arg.startsWith('-') && arg !== '--json')) return null;
+    if (tail.some((arg) => arg.startsWith('-') && !['--json', '--activate'].includes(arg)))
+      return null;
+    if (tail.includes('--activate'))
+      return {
+        assetPath: 'dist/domains/comet-entry/entry-runtime.js',
+        args: tail,
+        configuredEntry: true,
+      };
     return {
       assetPath: 'assets/skills/comet/scripts/comet-entry-runtime.mjs',
       args: tail,
@@ -73,6 +78,21 @@ export async function tryRunFastRuntime(argv = process.argv.slice(2)) {
   const runtimeUrl = assetUrl(route.assetPath);
   const runtimePath = fileURLToPath(runtimeUrl);
   if (!existsSync(runtimePath)) return false;
+
+  if (route.classicCommand) {
+    const classicRuntimeUrl = assetUrl('assets/skills/comet/scripts/comet-runtime.mjs');
+    if (!existsSync(fileURLToPath(classicRuntimeUrl))) return false;
+    const [{ runClassicFacade }, { runClassicCli }] = await Promise.all([
+      import(runtimeUrl.href),
+      import(classicRuntimeUrl.href),
+    ]);
+    process.exitCode = await runClassicFacade(route.classicCommand, route.args, runClassicCli);
+    return true;
+  }
+  if (route.configuredEntry) {
+    const { tryRunConfiguredCometEntryRuntime } = await import(runtimeUrl.href);
+    return await tryRunConfiguredCometEntryRuntime(route.args);
+  }
 
   process.argv = [process.execPath, runtimePath, ...route.args];
   await import(runtimeUrl.href);

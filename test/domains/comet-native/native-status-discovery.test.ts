@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createNativeChange } from '../../../domains/comet-native/native-change.js';
 import {
@@ -35,7 +35,18 @@ describe('Native status discovery pagination', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('does not read per-change Runtime for names outside the requested page', async () => {
+    const read = vi.spyOn(fs, 'readFile');
+    const page = await listDiscoveredNativeStatusPage({ projectRoot });
+    expect(page.items).toHaveLength(24);
+    const files = read.mock.calls.map(([file]) => String(file).replaceAll('\\', '/'));
+    expect(
+      files.filter((file) => file.includes('/change-24/') && file.includes('/runtime/')),
+    ).toEqual([]);
   });
 
   it('keeps JSON mode in the public continuation command', async () => {

@@ -153,9 +153,19 @@ describe('Native CLI shared helpers', () => {
 
     expect(success('ok', { value: 1 })).toMatchObject({ text: '{\n  "value": 1\n}\n' });
     expect(success('ok', { value: 1 }, 'done\n')).toMatchObject({ text: 'done\n' });
-    expect(render({ command: 'ok', exitCode: 0, data: { value: 1 } }, true)).toMatchObject({
+    const rendered = render({ command: 'ok', exitCode: 0, data: { value: 1 } }, true);
+    expect(rendered.exitCode).toBe(0);
+    expect(JSON.parse(rendered.stdout!)).toEqual({
+      command: 'ok',
       exitCode: 0,
-      stdout: '{"command":"ok","exitCode":0,"data":{"value":1}}\n',
+      data: { value: 1 },
+      agent: {
+        phase: null,
+        status: null,
+        stateVersion: null,
+        workspace: { cwd: null },
+        continuation: null,
+      },
     });
     expect(
       render(

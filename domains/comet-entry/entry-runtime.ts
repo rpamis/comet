@@ -44,6 +44,32 @@ function parseEntryRuntimeArgs(args: readonly string[]): ParsedEntryRuntimeArgs 
   return { help, json, targetPath: path.resolve(targetPath ?? '.') };
 }
 
+/** Configured activation is read-only; all other cases retain the public facade. */
+export async function tryRunConfiguredCometEntryRuntime(
+  args: readonly string[],
+  io: EntryRuntimeIo = {
+    stdout: (value) => process.stdout.write(value),
+    stderr: (value) => process.stderr.write(value),
+  },
+): Promise<boolean> {
+  if (!args.includes('--activate')) return false;
+  let parsed: ParsedEntryRuntimeArgs;
+  let resolution: Awaited<ReturnType<typeof resolveCometWorkflowResolution>>;
+  try {
+    parsed = parseEntryRuntimeArgs(args.filter((arg) => arg !== '--activate'));
+    if (parsed.help) return false;
+    resolution = await resolveCometWorkflowResolution(parsed.targetPath);
+  } catch {
+    return false;
+  }
+  io.stdout(
+    parsed.json
+      ? `${JSON.stringify(resolution, null, 2)}\n`
+      : `${formatCometWorkflowResolution(resolution)}\n`,
+  );
+  return true;
+}
+
 export async function runCometEntryRuntime(
   args: readonly string[],
   io: EntryRuntimeIo = {

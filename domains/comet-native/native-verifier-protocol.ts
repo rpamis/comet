@@ -1,3 +1,4 @@
+import { assertNativeInputKeys as exactKeys } from './native-input-error.js';
 import {
   isNativeTrustedVerifierEnvelope,
   type NativeTrustedVerifierEnvelope,
@@ -59,14 +60,6 @@ function plainRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function exactKeys(value: Record<string, unknown>, keys: readonly string[], label: string): void {
-  const actual = Object.keys(value).sort();
-  const expected = [...keys].sort();
-  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
-    throw new Error(`${label} fields are invalid`);
-  }
-}
-
 function integer(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new Error(`${label} must be a non-negative integer`);
@@ -81,11 +74,19 @@ function text(value: unknown, label: string): string {
   return value;
 }
 
-export function parseNativeVerifierAcceptance(value: unknown): NativeVerifierAcceptanceResult[] {
+export function parseNativeVerifierAcceptance(
+  value: unknown,
+  inputPath = '/acceptance',
+): NativeVerifierAcceptanceResult[] {
   if (!Array.isArray(value)) throw new Error('Native Verifier acceptance must be an array');
   return value.map((entry, index) => {
     const item = plainRecord(entry, `Native Verifier acceptance ${index}`);
-    exactKeys(item, ['id', 'result', 'reason'], `Native Verifier acceptance ${index}`);
+    exactKeys(
+      item,
+      ['id', 'result', 'reason'],
+      `Native Verifier acceptance ${index}`,
+      `${inputPath}/${index}`,
+    );
     const id = text(item.id, `Native Verifier acceptance ${index} ID`);
     if (!['passed', 'failed', 'blocked'].includes(String(item.result))) {
       throw new Error(`Native Verifier acceptance ${id} result is invalid`);
@@ -98,12 +99,13 @@ export function parseNativeVerifierAcceptance(value: unknown): NativeVerifierAcc
   });
 }
 
-function parseFinalResult(value: unknown): NativeVerifierFinalResult {
+function parseFinalResult(value: unknown, inputPath: string): NativeVerifierFinalResult {
   const input = plainRecord(value, 'Native Verifier final result');
   exactKeys(
     input,
     ['iteration', 'attempt', 'verdict', 'acceptance', 'risks', 'summary'],
     'Native Verifier final result',
+    inputPath,
   );
   if (!['pass', 'fail', 'blocked'].includes(String(input.verdict))) {
     throw new Error('Native Verifier verdict is invalid');
@@ -115,18 +117,23 @@ function parseFinalResult(value: unknown): NativeVerifierFinalResult {
     iteration: integer(input.iteration, 'Native Verifier iteration'),
     attempt: integer(input.attempt, 'Native Verifier attempt'),
     verdict: input.verdict as NativeVerifierFinalResult['verdict'],
-    acceptance: parseNativeVerifierAcceptance(input.acceptance),
+    acceptance: parseNativeVerifierAcceptance(input.acceptance, `${inputPath}/acceptance`),
     risks: input.risks as string[],
     summary: text(input.summary, 'Native Verifier summary'),
   };
 }
 
-function parseCheckRequest(value: unknown, index: number): NativeVerifierCheckRequest {
+function parseCheckRequest(
+  value: unknown,
+  index: number,
+  inputPath: string,
+): NativeVerifierCheckRequest {
   const input = plainRecord(value, `Native Verifier check request ${index}`);
   exactKeys(
     input,
     ['id', 'name', 'executable', 'argv', 'cwdRef', 'timeoutMs', 'repeatable'],
     `Native Verifier check request ${index}`,
+    `${inputPath}/${index}`,
   );
   if (!Array.isArray(input.argv) || !input.argv.every((entry) => typeof entry === 'string')) {
     throw new Error(`Native Verifier check request ${index} argv is invalid`);
@@ -147,14 +154,22 @@ function parseCheckRequest(value: unknown, index: number): NativeVerifierCheckRe
   };
 }
 
-export function parseNativeVerifierResponse(value: unknown): NativeVerifierResponse {
+export function parseNativeVerifierResponse(
+  value: unknown,
+  inputPath = '',
+): NativeVerifierResponse {
   const input = plainRecord(value, 'Native Verifier response');
   if (input.kind === 'final-result') {
-    exactKeys(input, ['kind', 'result'], 'Native Verifier response');
-    return { kind: 'final-result', result: parseFinalResult(input.result) };
+    exactKeys(input, ['kind', 'result'], 'Native Verifier response', inputPath);
+    return { kind: 'final-result', result: parseFinalResult(input.result, `${inputPath}/result`) };
   }
   if (input.kind === 'request-checks') {
-    exactKeys(input, ['kind', 'iteration', 'attempt', 'checks'], 'Native Verifier response');
+    exactKeys(
+      input,
+      ['kind', 'iteration', 'attempt', 'checks'],
+      'Native Verifier response',
+      inputPath,
+    );
     if (!Array.isArray(input.checks) || input.checks.length === 0) {
       throw new Error('Native Verifier check request batch must be non-empty');
     }
@@ -162,7 +177,9 @@ export function parseNativeVerifierResponse(value: unknown): NativeVerifierRespo
       kind: 'request-checks',
       iteration: integer(input.iteration, 'Native Verifier iteration'),
       attempt: integer(input.attempt, 'Native Verifier attempt'),
-      checks: input.checks.map(parseCheckRequest),
+      checks: input.checks.map((entry, index) =>
+        parseCheckRequest(entry, index, `${inputPath}/checks`),
+      ),
     };
   }
   throw new Error('Native Verifier response kind is invalid');

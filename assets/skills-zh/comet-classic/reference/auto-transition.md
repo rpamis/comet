@@ -10,7 +10,7 @@
 
 ## 执行方式
 
-退出条件满足且阶段守卫推进 phase 后，运行：
+退出条件满足且阶段守卫推进 phase 后，优先消费该次成功 JSON 结果的 `agent.continuation`：`automatic: true` 时调用 `skill`；false 时提示用户手动运行该 Skill 并交还控制权。这个观察可直接用作下一阶段入口，不重复 next、select 或 check。只有恢复、外部状态或工作区变化，以及旧结果没有该观察时才运行：
 
 ```bash
 comet state next <change-name>

@@ -31,6 +31,39 @@ export interface CliOutputEnvelope {
   user_message?: string;
 }
 
+export interface CliAgentObservation {
+  phase: string | null;
+  status: string | null;
+  stateVersion: number | null;
+  workspace: { cwd: string | null };
+  continuation: Record<string, unknown> | null;
+}
+
+/** A bounded view of existing runtime facts, never a second state machine. */
+export function projectCliAgentObservation(data: unknown, cwd?: string): CliAgentObservation {
+  const record = (value: unknown): Record<string, unknown> =>
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const root = record(data);
+  const entry = record(root.entry);
+  const state = record(root.state ?? entry.state ?? root);
+  const workspace = record(root.preparation ?? root.workspace ?? entry.workspace);
+  const continuation = record(root.continuation ?? entry.continuation);
+  const executionCwd =
+    typeof workspace.projectRoot === 'string' && workspace.projectRoot !== '.'
+      ? workspace.projectRoot
+      : (cwd ?? null);
+  const version = state.stateVersion ?? state.state_version;
+  return {
+    phase: typeof state.phase === 'string' ? state.phase : null,
+    status: typeof state.status === 'string' ? state.status : null,
+    stateVersion: typeof version === 'number' ? version : null,
+    workspace: { cwd: executionCwd },
+    continuation: Object.keys(continuation).length ? { ...continuation, cwd: executionCwd } : null,
+  };
+}
+
 /**
  * Stable machine-line markers. Markers stay English so agents can pattern
  * match them across locales; only the content after each marker is localized.

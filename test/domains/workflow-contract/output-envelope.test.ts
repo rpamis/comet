@@ -6,9 +6,30 @@ import {
   formatCliErrorEnvelope,
   formatCliOutputEnvelope,
   isCliOutputEnvelope,
+  projectCliAgentObservation,
 } from '../../../domains/workflow-contract/output-envelope.js';
 
 describe('output envelope contract', () => {
+  it('projects current action and prepared cwd without copying evidence payloads', () => {
+    const observation = projectCliAgentObservation(
+      {
+        state: { phase: 'build', status: 'active', state_version: 3 },
+        preparation: { projectRoot: '/prepared' },
+        workspace: { isolation: 'worktree', change_branch: 'comet/change' },
+        continuation: { commandArgs: ['comet', 'native', 'next', 'change'] },
+        evidence: 'large evidence payload',
+      },
+      '/original',
+    );
+    expect(observation).toEqual({
+      phase: 'build',
+      status: 'active',
+      stateVersion: 3,
+      workspace: { cwd: '/prepared' },
+      continuation: { commandArgs: ['comet', 'native', 'next', 'change'], cwd: '/prepared' },
+    });
+  });
+
   it('renders a summary-only envelope as one line', () => {
     expect(formatCliOutputEnvelope({ summary: 'Done.' })).toBe('Done.\n');
   });

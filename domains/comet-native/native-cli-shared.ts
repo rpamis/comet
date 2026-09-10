@@ -8,6 +8,7 @@ import {
   CLI_OUTPUT_MARKERS,
   formatCliErrorEnvelope,
   formatCliOutputEnvelope,
+  projectCliAgentObservation,
   type CliOutputEnvelope,
 } from '../workflow-contract/output-envelope.js';
 
@@ -21,6 +22,7 @@ import { discoverNativeProject, nativeProjectPaths } from './native-paths.js';
 import { readProjectConfig, resolveNativeProject } from './native-config.js';
 import { deriveNativeOutputEnvelope, nativeErrorEnvelope } from './native-output-language.js';
 import { NativeReceiptScopeStaleError } from './native-receipt-errors.js';
+import { NativeInputValidationError, type NativeInputIssue } from './native-input-error.js';
 import { NativeVerificationReceiptBindingError } from './native-verification-runtime.js';
 import { NativeWorkspacePreparationError } from './native-workspace-preparation.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
@@ -44,9 +46,11 @@ export interface NativeCliErrorShape {
     | 'workspace-preparation-incomplete'
     | 'implementation-scope-stale';
   message: string;
+  issues?: NativeInputIssue[];
 }
 
 export interface DispatchResult {
+  executionCwd?: string;
   command: string | null;
   exitCode: number;
   data?: unknown;
@@ -250,6 +254,13 @@ export async function readBoundedEvidenceStdin(maxBytes: number): Promise<string
 }
 
 function rawErrorResult(command: string | null, error: unknown): DispatchResult {
+  if (error instanceof NativeInputValidationError) {
+    return {
+      command,
+      exitCode: 65,
+      error: { code: 'invalid-data', message: error.message, issues: error.issues },
+    };
+  }
   if (error instanceof NativeUsageError) {
     return {
       command,
@@ -407,6 +418,7 @@ export function render(
         JSON.stringify({
           command: result.command,
           exitCode: result.exitCode,
+          agent: projectCliAgentObservation(result.data, result.executionCwd),
           ...(envelope === undefined
             ? {}
             : {

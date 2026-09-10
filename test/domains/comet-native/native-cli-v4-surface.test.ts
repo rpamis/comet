@@ -25,6 +25,16 @@ function json(result: Awaited<ReturnType<typeof runNativeCli>>): JsonEnvelope {
   return JSON.parse(result.stdout!) as JsonEnvelope;
 }
 
+function inputTemplate(result: JsonEnvelope, name: string): Record<string, unknown> {
+  const continuation = result.data?.continuation as {
+    inputOptions: Array<{ name: string; template: Record<string, unknown> }>;
+  };
+  const option = continuation.inputOptions.find((option) => option.name === name);
+  expect(option).toBeDefined();
+  expect(Array.isArray(option!.template)).toBe(false);
+  return structuredClone(option!.template);
+}
+
 describe('Native v4 public CLI surface', () => {
   let projectRoot: string;
   let runnerInputSequence: number;
@@ -568,9 +578,15 @@ Run applicable focused checks.
         continuation: { inputOptions: Array<{ template: unknown }> };
       }
     ).continuation.inputOptions;
+    expect(responseInputs).toHaveLength(4);
+    for (const option of responseInputs) {
+      expect(Array.isArray(option.template)).toBe(false);
+      expect(option).toMatchObject({ exclusiveGroup: 'runner-input', name: expect.any(String) });
+    }
     expect(JSON.stringify(responseInputs)).toContain('request-checks');
     expect(JSON.stringify(responseInputs)).toContain('final-result');
     expect(JSON.stringify(responseInputs)).toContain('verifier-execution-error');
+    expect(JSON.stringify(responseInputs)).toContain(String(dispatch.verifierExecutionRef));
     expect(JSON.stringify(responseInputs)).not.toMatch(/identity|provider/iu);
 
     const forgedCandidate = await runnerStep(name, {
@@ -582,7 +598,27 @@ Run applicable focused checks.
       error: { message: expect.stringContaining('fields are invalid') },
     });
 
-    const awaitingConfirmation = await runnerStep(name, finalResponse(1, 1, ['A1', 'A2']));
+    const finalTemplate = inputTemplate(dispatched, 'final-result');
+    const responseTemplate = finalTemplate.response as {
+      kind: string;
+      result: Record<string, unknown>;
+    };
+    const awaitingConfirmation = await runnerStep(name, {
+      ...finalTemplate,
+      response: {
+        ...responseTemplate,
+        result: {
+          ...responseTemplate.result,
+          verdict: 'pass',
+          acceptance: ['A1', 'A2'].map((id) => ({
+            id,
+            result: 'passed',
+            reason: `Observed ${id}.`,
+          })),
+          summary: 'Reviewed all criteria.',
+        },
+      },
+    });
     expect(awaitingConfirmation).toMatchObject({
       exitCode: 0,
       data: {
@@ -1078,7 +1114,7 @@ Run applicable focused checks.
             },
           ]
         : [];
-      await runnerStep(name, { kind: 'dispatch-verifier', checks });
+      const dispatched = await runnerStep(name, { kind: 'dispatch-verifier', checks });
 
       const forged = await runnerStep(name, {
         kind: 'verifier-unavailable',
@@ -1091,7 +1127,7 @@ Run applicable focused checks.
       });
 
       const unavailable = await runnerStep(name, {
-        kind: 'verifier-unavailable',
+        ...inputTemplate(dispatched, 'verifier-unavailable'),
         summary: 'This platform cannot start an independent Agent execution.',
       });
       expect(unavailable).toMatchObject({
@@ -1264,12 +1300,8 @@ Run applicable focused checks.
       }
     ).verifierDispatch;
     const firstError = await runnerStep(name, {
-      kind: 'verifier-execution-error',
+      ...inputTemplate(firstDispatch, 'verifier-execution-error'),
       summary: 'The first Verifier execution ended.',
-      stateVersion: first.stateVersion,
-      iteration: first.iteration,
-      attempt: first.attempt,
-      verifierExecutionRef: first.verifierExecutionRef,
     });
     expect(firstError).toMatchObject({
       exitCode: 0,
@@ -1409,12 +1441,11 @@ Run applicable focused checks.
       dispatched.data as { verifierDispatch: { iteration: number; attempt: number } }
     ).verifierDispatch;
 
+    const requestTemplate = inputTemplate(dispatched, 'request-checks');
     const requested = await runnerStep(name, {
-      kind: 'verifier-response',
+      ...requestTemplate,
       response: {
-        kind: 'request-checks',
-        iteration: firstDispatch.iteration,
-        attempt: firstDispatch.attempt,
+        ...(requestTemplate.response as Record<string, unknown>),
         checks: [
           {
             id: 'verifier-extra',

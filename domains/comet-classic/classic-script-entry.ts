@@ -4,6 +4,8 @@ import type {
   ClassicCommandResult,
 } from './classic-cli.js';
 import { classicCommandHelp } from './classic-cli-help.js';
+import { projectCliAgentObservation } from '../workflow-contract/output-envelope.js';
+import { classicIssue } from './classic-issues.js';
 
 function jsonResult(
   command: ClassicCommandName,
@@ -15,6 +17,7 @@ function jsonResult(
       JSON.stringify({
         command,
         exitCode: result.exitCode,
+        agent: projectCliAgentObservation(result.data),
         ...(result.data === undefined ? {} : { data: result.data }),
         ...(result.envelope === undefined
           ? {}
@@ -49,6 +52,7 @@ export async function runClassicScript(
     result = {
       exitCode: 70,
       stderr: error instanceof Error ? error.message : String(error),
+      data: { issues: [classicIssue(error)] },
     };
   }
 

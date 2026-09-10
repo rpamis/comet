@@ -12,6 +12,8 @@ type NativePortableContinuationInputOption = {
   required: boolean;
   template: unknown | null;
   choices?: string[];
+  exclusiveGroup?: string;
+  description?: string;
 };
 
 type NativePortableCommandAlternative = {
@@ -74,6 +76,7 @@ export interface NativePortableContinuation {
 export type NativePortableArchiveContinuationMode = 'archive-ready' | 'preview' | 'blocked';
 
 export interface NativePortableContinuationOptions {
+  verifierExecutionRef?: string;
   archiveMode?: NativePortableArchiveContinuationMode;
   archiveBlockers?: readonly string[];
 }
@@ -502,6 +505,33 @@ function nativeNextRevisionAlternatives(options: {
       confirmationInput: 'user-decision',
     }),
   ];
+}
+
+function individualRunnerInputs(
+  options: NativePortableContinuationInputOption[],
+): NativePortableContinuationInputOption[] {
+  const descriptions: Record<string, string> = {
+    'request-checks': 'Choose when the Verifier needs additional Runtime checks.',
+    'final-result': 'Choose when the Verifier has a result for every current scope ID.',
+    'verifier-execution-error':
+      'Choose when a dispatched Verifier failed, was lost, or ended without a result.',
+    'verifier-unavailable':
+      'Choose only when the platform has no usable independent Verifier capability.',
+  };
+  return options.flatMap((option) => {
+    if (!Array.isArray(option.template)) return [option];
+    return option.template.map((template: { kind: string; response?: { kind: string } }) => {
+      const name = template.response?.kind ?? template.kind;
+      return {
+        ...option,
+        name,
+        required: false,
+        exclusiveGroup: 'runner-input',
+        description: descriptions[name],
+        template,
+      };
+    });
+  });
 }
 
 export function nativePortableContinuation(
@@ -943,7 +973,7 @@ export function nativePortableContinuation(
       requiredInputs: [
         awaiting ? 'verifier-response-or-error-json-file' : 'resolved-check-plan-json-file',
       ],
-      inputOptions: [
+      inputOptions: individualRunnerInputs([
         {
           name: 'runner-input',
           flag: '--runner-input',
@@ -986,7 +1016,7 @@ export function nativePortableContinuation(
                   stateVersion: state.state_version,
                   iteration: state.loop.iteration,
                   attempt: state.loop.attempt,
-                  verifierExecutionRef: '<from verifierDispatch>',
+                  verifierExecutionRef: options.verifierExecutionRef ?? '<from verifierDispatch>',
                 },
                 {
                   kind: 'verifier-unavailable',
@@ -994,12 +1024,12 @@ export function nativePortableContinuation(
                   stateVersion: state.state_version,
                   iteration: state.loop.iteration,
                   attempt: state.loop.attempt,
-                  verifierExecutionRef: '<from verifierDispatch>',
+                  verifierExecutionRef: options.verifierExecutionRef ?? '<from verifierDispatch>',
                 },
               ]
             : { kind: 'dispatch-verifier', checks: supervisor ? [checkTemplate] : [] },
         },
-      ],
+      ]),
       runnerAction: runner(awaiting ? 'await-verifier' : 'dispatch-verifier'),
     };
   }

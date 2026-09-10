@@ -171,7 +171,7 @@ comet state select <name>
 comet state check <name> open
 ```
 
-Stop if any command fails. Then run `comet classic openspec -- status --change "<name>" --json` once and perform compatibility preflight:
+Stop if any command fails. Then run `comet classic openspec --agent-json -- status --change "<name>" --json` once and perform compatibility preflight:
 
 - Resolved `changeRoot` must equal the resolver-bound `<classic-change-dir>`, and `planningHome` (when present) must remain inside the current repository
 - artifacts must contain mandatory proposal/tasks IDs; expand other requirements recursively through requires
@@ -180,15 +180,17 @@ Stop if any command fails. Then run `comet classic openspec -- status --change "
 
 After preflight, generate the implementation-required artifacts from the OpenSpec schema and dependency graph:
 
+In Agent JSON mode, read all upstream fields from `data.upstream.data` and execute only the complete argv/cwd in `data.nextAction`; raw upstream nextSteps are diagnostic.
+
 **OpenSpec status-driven artifact loop**:
 
-1. Run `comet classic openspec -- status --change "<name>" --json` and parse the complete JSON.
+1. Reuse the status just returned by Step 2 compatibility preflight on the first iteration, then reuse each post-write refreshed status. Rerun `comet classic openspec --agent-json -- status --change "<name>" --json` only for recovery or external artifact changes, reading the complete upstream JSON from `data.upstream.data`.
 2. Expand the full closure of applyRequires plus proposal/tasks. When every member is done or legitimately skipped, run `comet state artifacts <name> --json` and exit only if it passes. Completed tasks cannot conceal missing dependencies; isComplete is diagnostic.
 3. From unfinished `ready` artifacts, prioritize items that advance the `applyRequires` dependency closure and process them in CLI-returned order. Must not hard-code generation order or assume the schema contains only proposal/design/tasks.
 4. Fetch current instructions for each ready `<artifact-id>`:
 
    ```bash
-   comet classic openspec -- instructions <artifact-id> --change "<name>" --json
+   comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json
    ```
 
 5. For the returned JSON instruction payload, you must:

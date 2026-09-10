@@ -789,6 +789,75 @@ export function markNativeSupervisorChildVerified(
   return next;
 }
 
+/** Build return instructions from current task facts, including the latest receipt. */
+export function projectNativeSupervisorTask(
+  task: NativeSupervisorTask,
+  parent: string,
+  controlProjectRoot: string,
+) {
+  const identity = { child: task.child, runId: task.runId };
+  const templates =
+    task.role === 'builder'
+      ? [
+          { kind: 'supervisor-builder-result', ...identity, candidateCommit: '<candidate-commit>' },
+          { kind: 'supervisor-builder-failure', ...identity, reason: '<failure-reason>' },
+        ]
+      : [
+          {
+            kind: 'supervisor-checks',
+            ...identity,
+            checks: [
+              {
+                id: '<check-id>',
+                name: '<check-name>',
+                executable: '<executable>',
+                argv: [],
+                cwdRef: '.',
+                timeoutMs: 120000,
+                repeatable: true,
+              },
+            ],
+            materials: [],
+          },
+          {
+            kind: 'supervisor-verifier-result',
+            ...identity,
+            verdict: '<pass|fail|blocked>',
+            evidence: {
+              summary: '<verification-summary>',
+              checks: [],
+              acceptance: (task.acceptance ?? []).map(({ id }) => ({
+                id,
+                result: '<passed|failed|blocked>',
+                reason: '<evidence>',
+              })),
+              receiptRef: task.checkExecution?.receiptRef ?? null,
+            },
+          },
+        ];
+  return {
+    ...task,
+    controlProjectRoot,
+    returnAction: {
+      cwd: controlProjectRoot,
+      commandArgs: [
+        'comet',
+        'native',
+        'next',
+        parent,
+        '--runner-input',
+        '<temporary-json-file>',
+        '--json',
+      ],
+      inputOptions: templates.map((template) => ({
+        name: template.kind,
+        exclusiveGroup: 'runner-input',
+        template,
+      })),
+    },
+  };
+}
+
 export function createNativeSupervisorTask(
   state: NativeSupervisorState,
   options: Omit<NativeSupervisorTask, 'baseCommit'>,

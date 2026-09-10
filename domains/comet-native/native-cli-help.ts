@@ -168,6 +168,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--expected-state-version <n>  Continuation-issued guard that rejects stale public transition decisions.',
       '--expected-action <action>    Continuation-issued guard that binds the public transition decision to its intended action.',
       '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, verifier-response, verifier-execution-error, or verifier-unavailable. Identity/provider/execution/candidate fields are rejected.',
+      '  Choose one object template from an inputOptions exclusiveGroup and save it as UTF-8 JSON (BOM accepted). Field errors return issues with JSON pointer, missingFields and unknownFields. Execute agent.continuation in agent.workspace.cwd; Supervisor results use task.returnAction.',
       '  builder-handoff fields: kind, summary, addressed_acceptance_ids, checks, known_limits, review. review fields: status=passed, summary, reviewer_execution_ref from a separate read-only review.',
       '  dispatch-verifier fields: kind, checks (an explicitly resolved plan; [] is allowed).',
       '  verifier-response fields: kind, response (request-checks or final-result).',

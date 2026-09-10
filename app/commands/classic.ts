@@ -1,13 +1,10 @@
-import { runClassicCli } from '../../domains/comet-classic/classic-cli.js';
+import type { ClassicCommandResult } from '../../domains/comet-classic/classic-cli.js';
+import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
 import {
   classicChangeId,
   inferClassicWorkflow,
   parseClassicLifecycleEvidence,
 } from '../../domains/comet-classic/classic-experience.js';
-import {
-  collectCometPluginContext,
-  recordCometWorkflowResult,
-} from '../../domains/comet-entry/plugin-context.js';
 
 export const PUBLIC_CLASSIC_COMMANDS = ['state', 'guard', 'handoff', 'archive', 'check'] as const;
 
@@ -16,17 +13,21 @@ export type PublicClassicCommand = (typeof PUBLIC_CLASSIC_COMMANDS)[number];
 export async function runClassicFacade(
   command: PublicClassicCommand,
   args: readonly string[],
+  executor?: (argv: readonly string[]) => Promise<ClassicCommandResult>,
 ): Promise<number> {
-  const integration = splitIntegrationArgs(args);
+  let integration: ClassicIntegrationArgs;
+  try {
+    integration = splitIntegrationArgs(args);
+  } catch (error) {
+    return reportIntegrationFailure(command, args, error);
+  }
   const projectRoot = integration.projectRoot ?? process.cwd();
   await emitContext(projectRoot, integration);
-  const result = await runClassicCli([command, ...integration.cliArgs]);
-  await recordClassicResult(
-    command,
-    integration.cliArgs,
-    result,
-    integration.workflow,
-    projectRoot,
+  const execute =
+    executor ?? (await import('../../domains/comet-classic/classic-cli.js')).runClassicCli;
+  const result = await execute([command, ...integration.cliArgs]);
+  await withProjectIdentityScope(() =>
+    recordClassicResult(command, integration.cliArgs, result, integration.workflow, projectRoot),
   );
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
@@ -64,15 +65,23 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
     return 0;
   }
   const command = args[0] ?? 'classic';
-  const integration = splitIntegrationArgs(args.slice(1));
+  let integration: ClassicIntegrationArgs;
+  try {
+    integration = splitIntegrationArgs(args.slice(1));
+  } catch (error) {
+    return reportIntegrationFailure(command, args.slice(1), error);
+  }
   await emitContext(integration.projectRoot, integration);
+  const { runClassicCli } = await import('../../domains/comet-classic/classic-cli.js');
   const result = await runClassicCli([command, ...integration.cliArgs]);
-  await recordClassicResult(
-    command,
-    integration.cliArgs,
-    result,
-    integration.workflow,
-    integration.projectRoot,
+  await withProjectIdentityScope(() =>
+    recordClassicResult(
+      command,
+      integration.cliArgs,
+      result,
+      integration.workflow,
+      integration.projectRoot,
+    ),
   );
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
@@ -82,14 +91,16 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
 async function recordClassicResult(
   command: string,
   args: readonly string[],
-  result: Awaited<ReturnType<typeof runClassicCli>>,
+  result: ClassicCommandResult,
   workflowOverride?: string,
   projectRoot = process.cwd(),
 ): Promise<void> {
-  if (args.includes('--help') || args.includes('-h')) return;
+  if (hasOwnHelp(args)) return;
   if (!['state', 'guard', 'handoff', 'archive', 'workspace'].includes(command)) return;
   if (result.exitCode !== 0 && command !== 'guard') return;
   try {
+    const { recordCometWorkflowResult } =
+      await import('../../domains/comet-entry/plugin-context.js');
     const verificationCommand = command === 'guard' ? 'comet classic guard' : undefined;
     const evidence = parseClassicLifecycleEvidence(result.stdout);
     await recordCometWorkflowResult({
@@ -127,6 +138,43 @@ interface ClassicIntegrationArgs {
   readonly workflow?: string;
 }
 
+class ClassicIntegrationFailure extends Error {
+  constructor(readonly field: string) {
+    super(`${field} requires a value`);
+  }
+}
+
+function reportIntegrationFailure(
+  command: string,
+  args: readonly string[],
+  error: unknown,
+): number {
+  const message = error instanceof Error ? error.message : String(error);
+  const boundary = args.indexOf('--');
+  if ((boundary < 0 ? args : args.slice(0, boundary)).includes('--json')) {
+    process.stdout.write(
+      JSON.stringify({
+        command,
+        exitCode: 64,
+        data: {
+          issues: [
+            {
+              code: 'CLASSIC_INTEGRATION_ARGUMENT_MISSING',
+              field: error instanceof ClassicIntegrationFailure ? error.field : 'arguments',
+              message,
+              expected: 'a value before --',
+              remediation:
+                'Provide the integration option value before the child argument separator.',
+            },
+          ],
+        },
+        stderr: message,
+      }) + '\n',
+    );
+  } else process.stderr.write(message + '\n');
+  return 64;
+}
+
 function splitIntegrationArgs(args: readonly string[]): ClassicIntegrationArgs {
   const cliArgs: string[] = [];
   let projectRoot = process.cwd();
@@ -148,7 +196,7 @@ function splitIntegrationArgs(args: readonly string[]): ClassicIntegrationArgs {
       value === '--comet-phase' ||
       value === '--comet-workflow'
     ) {
-      if (next === undefined) throw new Error(`${value} requires a value`);
+      if (next === undefined || next === '--') throw new ClassicIntegrationFailure(value);
       if (value === '--comet-task') task = next;
       if (value === '--comet-path') contextPath = next;
       if (value === '--comet-phase') phase = next;
@@ -171,9 +219,11 @@ function splitIntegrationArgs(args: readonly string[]): ClassicIntegrationArgs {
 }
 
 async function emitContext(projectRoot: string, options: ClassicIntegrationArgs): Promise<void> {
-  if (options.cliArgs.includes('--help') || options.cliArgs.includes('-h')) return;
+  if (hasOwnHelp(options.cliArgs)) return;
   if (!options.task?.trim()) return;
   try {
+    const { collectCometPluginContext } =
+      await import('../../domains/comet-entry/plugin-context.js');
     const contributions =
       (await collectCometPluginContext(projectRoot, {
         task: options.task,
@@ -187,4 +237,10 @@ async function emitContext(projectRoot: string, options: ClassicIntegrationArgs)
   } catch {
     // Context injection is best effort and must not block the workflow.
   }
+}
+
+function hasOwnHelp(args: readonly string[]): boolean {
+  const boundary = args.indexOf('--');
+  const owned = boundary < 0 ? args : args.slice(0, boundary);
+  return owned.includes('--help') || owned.includes('-h');
 }

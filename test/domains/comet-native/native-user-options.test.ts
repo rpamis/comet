@@ -16,7 +16,7 @@ const git = (root: string, args: string[]) =>
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
-async function cli(root: string, args: string[]) {
+async function cliEnvelope(root: string, args: string[]) {
   const argv = [...args, '--project-root', root, '--json'];
   const result =
     process.env.COMET_TEST_NATIVE_RUNTIME === '1'
@@ -30,7 +30,10 @@ async function cli(root: string, args: string[]) {
       : await runNativeCli(argv);
   const payload = JSON.parse(result.stdout!);
   expect(payload.exitCode, JSON.stringify(payload)).toBe(0);
-  return payload.data;
+  return payload;
+}
+async function cli(root: string, args: string[]) {
+  return (await cliEnvelope(root, args)).data;
 }
 async function follow(root: string, args: string[]) {
   return cli(
@@ -171,7 +174,14 @@ describe('Native public user-option paths', () => {
       const completed: string[] = [];
       for (const name of ['alpha', 'beta']) {
         expect(state.continuation.commandArgs).not.toBeNull();
-        const dispatched = await follow(root, state.continuation.commandArgs);
+        const recovered = await cliEnvelope(primary, ['status', 'parent']);
+        expect(recovered.data.workspace.projectRoot).toBe('.');
+        expect(recovered.agent.workspace.cwd).toBe(root);
+        expect(recovered.agent.continuation.cwd).toBe(root);
+        const dispatched = await follow(
+          recovered.agent.workspace.cwd,
+          recovered.agent.continuation.commandArgs,
+        );
         expect(dispatched.supervisorTasks).toHaveLength(1);
         let task = dispatched.supervisorTasks[0];
         expect(dispatched.readyChildren).toContain(name);
@@ -197,24 +207,27 @@ describe('Native public user-option paths', () => {
         const candidateCommit = git(task.projectRoot, ['rev-parse', 'HEAD']);
         const verifier = (
           await input(root, 'parent', {
-            kind: 'supervisor-builder-result',
-            child: name,
-            runId: task.runId,
+            ...task.returnAction.inputOptions.find(
+              (option: { name: string }) => option.name === 'supervisor-builder-result',
+            ).template,
             candidateCommit,
           })
         ).supervisorTask;
         const checked = await input(root, 'parent', {
-          kind: 'supervisor-checks',
-          child: name,
-          runId: verifier.runId,
+          ...verifier.returnAction.inputOptions.find(
+            (option: { name: string }) => option.name === 'supervisor-checks',
+          ).template,
           checks: checks(name, [name]),
           materials: [],
         });
         expect(checked.checkExecution.status).toBe('completed');
+        expect(checked.supervisorTask.returnAction.cwd).toBe(root);
+        const resultTemplate = checked.supervisorTask.returnAction.inputOptions.find(
+          (option: { name: string }) => option.name === 'supervisor-verifier-result',
+        ).template;
+        expect(resultTemplate.evidence.receiptRef).toBe(checked.checkExecution.receiptRef);
         const verified = await input(root, 'parent', {
-          kind: 'supervisor-verifier-result',
-          child: name,
-          runId: verifier.runId,
+          ...resultTemplate,
           verdict: 'pass',
           evidence: {
             summary: 'File assertion passed',

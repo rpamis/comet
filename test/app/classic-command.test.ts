@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 
 const runClassicCli = vi.fn();
 const recordCometWorkflowResult = vi.fn();
@@ -15,6 +16,36 @@ vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
 }));
 
 describe('Classic command facade', () => {
+  it.each(['shortcut', 'group'])(
+    'shares identity only after the %s command has finished',
+    async (mode) => {
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      let remote = 'https://example.test/before.git';
+      const runGit = vi.fn(() => remote);
+      const beforeId = resolveStableProjectId(process.cwd(), { runGit });
+      runGit.mockClear();
+      runClassicCli.mockImplementation(async () => {
+        resolveStableProjectId(process.cwd(), { runGit });
+        remote = 'https://example.test/after.git';
+        return { exitCode: 0, stdout: '{}' };
+      });
+      recordCometWorkflowResult.mockImplementation(async () => {
+        const id = resolveStableProjectId(process.cwd(), { runGit });
+        expect(id).not.toBe(beforeId);
+        expect(resolveStableProjectId(process.cwd(), { runGit })).toBe(id);
+      });
+      const { runClassicFacade, runClassicGroupFacade } =
+        await import('../../app/commands/classic.js');
+      const args = ['next', 'change', '--comet-workflow', 'full', '--json'];
+      expect(
+        await (mode === 'shortcut'
+          ? runClassicFacade('state', args)
+          : runClassicGroupFacade(['state', ...args])),
+      ).toBe(0);
+      expect(runGit).toHaveBeenCalledTimes(2);
+      expect(recordCometWorkflowResult).toHaveBeenCalledTimes(1);
+    },
+  );
   it('offers a concise Classic command overview with drill-down help', async () => {
     const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const { runClassicGroupFacade } = await import('../../app/commands/classic.js');
@@ -39,6 +70,7 @@ describe('Classic command facade', () => {
     },
   );
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     runClassicCli.mockReset();
     recordCometWorkflowResult.mockReset();
@@ -216,4 +248,105 @@ describe('Classic command facade', () => {
       }),
     );
   });
+
+  it.each(['shortcut', 'group'] as const)(
+    'preserves integration, delimiter, and exactly one plugin event through the %s facade',
+    async (mode) => {
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      runClassicCli.mockResolvedValue({ exitCode: 0, stdout: '{}' });
+      const { runClassicFacade, runClassicGroupFacade } =
+        await import('../../app/commands/classic.js');
+      const args = [
+        'demo',
+        'design',
+        '--apply',
+        '--comet-task',
+        '修复 CLI',
+        '--comet-path',
+        'src/a b.ts',
+        '--comet-phase',
+        'design',
+        '--comet-workflow',
+        'hotfix',
+        '--',
+        '--comet-task',
+        'child',
+        '--help',
+      ];
+      const result =
+        mode === 'shortcut'
+          ? await runClassicFacade('guard', args)
+          : await runClassicGroupFacade(['guard', ...args]);
+      expect(result).toBe(0);
+      expect(runClassicCli).toHaveBeenCalledWith([
+        'guard',
+        'demo',
+        'design',
+        '--apply',
+        '--',
+        '--comet-task',
+        'child',
+        '--help',
+      ]);
+      expect(collectCometPluginContext).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
+        task: '修复 CLI',
+        path: 'src/a b.ts',
+        phase: 'design',
+      });
+      expect(recordCometWorkflowResult).toHaveBeenCalledTimes(1);
+      expect(recordCometWorkflowResult.mock.calls[0][0]).toMatchObject({
+        workflow: 'hotfix',
+        changeId: 'demo',
+        success: true,
+      });
+    },
+  );
+
+  it('uses COMET_TASK without explicit flags and isolates plugin failures from workflow success', async () => {
+    vi.stubEnv('COMET_TASK', 'environment task');
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    collectCometPluginContext.mockRejectedValue(new Error('context unavailable'));
+    recordCometWorkflowResult.mockRejectedValue(new Error('plugin unavailable'));
+    runClassicCli.mockResolvedValue({ exitCode: 0, stdout: 'result' });
+    const { runClassicFacade } = await import('../../app/commands/classic.js');
+    expect(await runClassicFacade('state', ['current', '--json'])).toBe(0);
+    expect(collectCometPluginContext).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
+      task: 'environment task',
+    });
+    expect(recordCometWorkflowResult).toHaveBeenCalledTimes(1);
+  });
+  it('injects the self-contained packaged executor through the same integration and plugin boundary', async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const execute = vi
+      .fn()
+      .mockResolvedValue({ exitCode: 0, stdout: '{"command":"state","exitCode":0}' });
+    const { runClassicFacade } = await import('../../app/commands/classic.js');
+    expect(
+      await runClassicFacade('state', ['current', '--comet-workflow', 'hotfix', '--json'], execute),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledExactlyOnceWith(['state', 'current', '--json']);
+    expect(runClassicCli).not.toHaveBeenCalled();
+    expect(recordCometWorkflowResult).toHaveBeenCalledTimes(1);
+    expect(recordCometWorkflowResult.mock.calls[0][0].workflow).toBe('hotfix');
+  });
+
+  it.each(['--comet-task', '--comet-path', '--comet-phase', '--comet-workflow'])(
+    'reports missing %s values in JSON before dispatch',
+    async (flag) => {
+      let stdout = '';
+      vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+        stdout += String(chunk);
+        return true;
+      });
+      const { runClassicFacade } = await import('../../app/commands/classic.js');
+      expect(await runClassicFacade('state', ['current', '--json', flag])).toBe(64);
+      expect(JSON.parse(stdout).data.issues[0]).toMatchObject({
+        code: 'CLASSIC_INTEGRATION_ARGUMENT_MISSING',
+        field: flag,
+      });
+      expect(runClassicCli).not.toHaveBeenCalled();
+      expect(recordCometWorkflowResult).not.toHaveBeenCalled();
+    },
+  );
 });

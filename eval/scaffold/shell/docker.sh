@@ -475,9 +475,10 @@ build_agent_runtime_mount_args() {
         --tmpfs "//home/agent/.qoder:rw,nosuid,nodev"
         --tmpfs "//home/agent/.codebuddy:rw,nosuid,nodev"
     )
-    local shell_host
+    local shell_host python_host
     shell_host=$(_winpath "$SCRIPT_DIR")
-    RUNTIME_CONFIG_MOUNT_ARGS=("-v" "$shell_host://opt/scaffold-shell:ro")
+    python_host=$(_winpath "$SCRIPT_DIR/../python")
+    RUNTIME_CONFIG_MOUNT_ARGS=("-v" "$shell_host://opt/scaffold-shell:ro" "-v" "$python_host://opt/python:ro")
     # Agent auth/config roots are container-local. The generated files use
     # env_key/apiKeyHelper references, never credential literals.
     ENV_ARGS+=("-e" "CODEX_HOME=/home/agent/.codex")

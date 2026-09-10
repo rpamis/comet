@@ -104,6 +104,12 @@ prepare_agent_runtime_config "$AGENT" "$MODEL"
 CODEBUDDY_SETTINGS_FLAG=()
 [[ -n "${CODEBUDDY_SETTINGS_PATH:-}" ]] && CODEBUDDY_SETTINGS_FLAG=(--settings "$CODEBUDDY_SETTINGS_PATH")
 
+capture_agent() {
+    local role="$1"
+    shift
+    capture_agent_runtime "$AGENT" "$role" "$@"
+}
+
 run_agent_turn() {
     local prompt="$1"
     local resume_id="${2:-}"
@@ -115,44 +121,44 @@ run_agent_turn() {
     case "$AGENT" in
         claude-code)
             if [[ -n "$resume_id" ]]; then
-                COMET_EVAL_AGENT_ROLE="$role" claude -p "$prompt" "${role_plugin_args[@]}" "${MODEL_FLAG[@]}" \
+                COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" claude -p "$prompt" "${role_plugin_args[@]}" "${MODEL_FLAG[@]}" \
                     --resume "$resume_id" --output-format stream-json --verbose \
                     --dangerously-skip-permissions
             else
-                COMET_EVAL_AGENT_ROLE="$role" claude -p "$prompt" "${role_plugin_args[@]}" "${MODEL_FLAG[@]}" \
+                COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" claude -p "$prompt" "${role_plugin_args[@]}" "${MODEL_FLAG[@]}" \
                     --output-format stream-json --verbose --dangerously-skip-permissions
             fi
             ;;
         codex)
             if [[ -n "$resume_id" ]]; then
-                COMET_EVAL_AGENT_ROLE="$role" codex exec resume "$resume_id" --json --yolo "${MODEL_FLAG[@]}" "$prompt"
+                COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" codex exec resume "$resume_id" --json --yolo "${MODEL_FLAG[@]}" "$prompt"
             else
-                COMET_EVAL_AGENT_ROLE="$role" codex exec --json --yolo "${MODEL_FLAG[@]}" "$prompt"
+                COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" codex exec --json --yolo "${MODEL_FLAG[@]}" "$prompt"
             fi
             ;;
         qoder)
             if [[ -n "$resume_id" ]]; then
-                COMET_EVAL_AGENT_ROLE="$role" qodercli -p "$prompt" --output-format stream-json --yolo \
+                COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" qodercli -p "$prompt" --output-format stream-json --yolo \
                     "${MODEL_FLAG[@]}" -r "$resume_id"
             else
-                COMET_EVAL_AGENT_ROLE="$role" qodercli -p "$prompt" --output-format stream-json --yolo "${MODEL_FLAG[@]}"
+                COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" qodercli -p "$prompt" --output-format stream-json --yolo "${MODEL_FLAG[@]}"
             fi
             ;;
         codebuddy)
             if [[ -n "$resume_id" ]]; then
-                COMET_EVAL_AGENT_ROLE="$role" codebuddy -p "$prompt" --output-format stream-json \
+                COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" codebuddy -p "$prompt" --output-format stream-json \
                     --dangerously-skip-permissions "${MODEL_FLAG[@]}" "${CODEBUDDY_SETTINGS_FLAG[@]}" -r "$resume_id"
             else
-                COMET_EVAL_AGENT_ROLE="$role" codebuddy -p "$prompt" --output-format stream-json \
+                COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" codebuddy -p "$prompt" --output-format stream-json \
                     --dangerously-skip-permissions "${MODEL_FLAG[@]}" "${CODEBUDDY_SETTINGS_FLAG[@]}"
             fi
             ;;
         *)
             if [[ -n "$resume_id" ]]; then
-                COMET_EVAL_AGENT_ROLE="$role" "$COMET_EVAL_CUSTOM_EXECUTABLE" -p "$prompt" \
+                COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" "$COMET_EVAL_CUSTOM_EXECUTABLE" -p "$prompt" \
                     --output-format stream-json "${MODEL_FLAG[@]}" --resume "$resume_id"
             else
-                COMET_EVAL_AGENT_ROLE="$role" "$COMET_EVAL_CUSTOM_EXECUTABLE" -p "$prompt" \
+                COMET_EVAL_AGENT_ROLE="$role" capture_agent "$role" "$COMET_EVAL_CUSTOM_EXECUTABLE" -p "$prompt" \
                     --output-format stream-json "${MODEL_FLAG[@]}"
             fi
             ;;
@@ -286,6 +292,7 @@ while [[ $TURN -lt $MAX_TURNS ]]; do
         fi
         cat "$SUBJECT_STDERR" >&2
         rm -f "$SUBJECT_STDERR"
+        printf '%s\n%s\n' "$COMBINED_OUT" "$RAW"
         exit "$SUBJECT_STATUS"
     fi
     rm -f "$SUBJECT_STDERR"

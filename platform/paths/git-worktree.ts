@@ -96,6 +96,35 @@ function listGitWorktreeRoots(projectPath: string): string[] {
   return listGitWorktrees(projectPath).map((entry) => entry.root);
 }
 
+/** A read-only projection of one already observed worktree list. */
+function gitWorktreeContextFromEntries(
+  projectPath: string,
+  entries: readonly GitWorktreeEntry[],
+): GitWorktreeContext | null {
+  const current = entries.find((entry) =>
+    samePath(path.resolve(entry.root), path.resolve(projectPath)),
+  );
+  if (!current) return null;
+  const primaryWorktreeRoot = path.resolve(entries[0].root);
+  const currentWorktreeRoot = path.resolve(current.root);
+  return {
+    isGitWorktree: true,
+    isSecondaryWorktree: !samePath(primaryWorktreeRoot, currentWorktreeRoot),
+    currentWorktreeRoot,
+    primaryWorktreeRoot,
+    currentBranch: current.branch,
+  };
+}
+
+/** Read the branch without paying for an unrelated worktree enumeration. */
+function currentGitBranch(projectPath: string): string | null {
+  try {
+    return runGit(projectPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']) || null;
+  } catch {
+    return null;
+  }
+}
+
 function isLocalGitBranch(projectPath: string, branch: string): boolean {
   try {
     runGit(projectPath, ['check-ref-format', '--branch', branch]);
@@ -121,6 +150,8 @@ function resolveGitRef(projectPath: string, ref: string): string | null {
 
 export {
   inspectGitWorktree,
+  currentGitBranch,
+  gitWorktreeContextFromEntries,
   isLocalGitBranch,
   listGitWorktreeRoots,
   listGitWorktrees,

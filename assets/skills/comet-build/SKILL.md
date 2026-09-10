@@ -23,7 +23,7 @@ comet state select <change-name>
 comet state check <name> build --json
 ```
 
-After verification passes, use language, execution, and review settings from `data.configuration` without repeated field queries. Refresh after configuration writes or transitions; resolve specific failures before continuing.
+If this turn already has a successful Design/Guard Build observation, consume its `data.configuration`, `artifactRefs`, tasks, and `agent.continuation` without repeating select/check. Run the entry above for recovery or workspace/external-state changes. Consume successful configuration-write results without field-by-field get calls; resolve `data.issues` on failure.
 
 If the `select` / `check` output is `BLOCKED` because `bound_branch` does not match the current branch, immediately pause under `comet-classic/reference/decision-point.md` and let the user choose one option: switch back to the bound branch and rerun entry verification, or run `comet state rebind <change-name>` after the user explicitly confirms the current branch should take over this change, then rerun entry verification. Do not switch branches or rebind on your own.
 
@@ -54,7 +54,6 @@ Write the complete selection atomically. For example, after explicit selection o
 
 ```bash
 comet state set <name> build_mode autonomous subagent_dispatch null tdd_mode tdd review_mode standard --json
-comet state check <name> build --json
 ```
 
 Use the actual selection. Set `subagent_dispatch confirmed` with subagent-driven-development, and null for other methods. Preserve isolation, bound_branch, and an existing pause. Stop on write failure without loading execution Skills. If the user has not decided or requests a pause, stop without writing partial configuration.
@@ -74,7 +73,7 @@ Retain a valid existing plan. Otherwise create `<classic-superpowers-root>/plans
 
 All strategies use the same plan contract: each item is an independently acceptable outcome with task ID, scope, dependencies, constraints, and acceptance commands/scenarios. Organize preparation, implementation, tests, and documentation around outcomes, not minutes, file counts, or RED/GREEN steps. Reference design and requirements without prewriting full implementations; include necessary snippets only for interfaces or high-risk algorithms requiring advance review.
 
-New plans do not create duplicate checkboxes. Write `<!-- comet-task-authority: <classic-change-dir>/tasks.md -->` and associate each task with `<!-- comet-task-ref:<task-id> -->`. Genuine additional tasks must first enter tasks.md and receive IDs; handle scope changes under Step 4.
+New plans do not create duplicate checkboxes. Write `<!-- comet-task-authority: <classic-task-authority-ref> -->` using the repository-relative `data.artifactRefs.tasks`, and associate each task with `<!-- comet-task-ref:<task-id> -->`. Genuine additional tasks must first enter tasks.md and receive IDs; handle scope changes under Step 4.
 
 Plan frontmatter:
 
@@ -86,10 +85,10 @@ base-ref: <git rev-parse HEAD before implementation>
 ---
 ```
 
-Preserve an existing plan's base-ref; do not replace it with current HEAD during recovery. Confirm the file exists, then record it:
+Preserve an existing plan's base-ref; do not replace it with current HEAD during recovery. Reuse `data.artifactRefs.plan` for `<plan-ref>`, or form a new repository-relative reference from `data.artifactRefs.plansRoot` and the chosen filename. Absolute paths are for file writes. Confirm the file exists, then record it:
 
 ```bash
-comet state set <name> plan <plan-path>
+comet state set <name> plan "<plan-ref>" --json
 ```
 
 After planning, continue under the confirmed strategy without another configuration confirmation. If the user explicitly requests switching models or pausing after planning, write `comet state set <name> build_pause plan-ready` and stop. Clear an existing plan-ready pause only after the user explicitly asks to continue. Retain valid plans and configuration; for older changes missing configuration, complete Step 1 without rewriting the plan.

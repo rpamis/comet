@@ -356,13 +356,16 @@ describe('skills', () => {
     });
 
     it('presents Native Archive finish choices with their actual effects', async () => {
-      const zhMain = await fs.readFile(
-        path.join(getAssetsDir(), 'skills-zh', 'comet-native', 'SKILL.md'),
-        'utf-8',
+      const normalizeTablePadding = (text: string) =>
+        text.replace(/[\t ]+\|/g, ' |').replace(/\|[\t ]+/g, '| ');
+      const zhMain = normalizeTablePadding(
+        await fs.readFile(
+          path.join(getAssetsDir(), 'skills-zh', 'comet-native', 'SKILL.md'),
+          'utf-8',
+        ),
       );
-      const enMain = await fs.readFile(
-        path.join(getAssetsDir(), 'skills', 'comet-native', 'SKILL.md'),
-        'utf-8',
+      const enMain = normalizeTablePadding(
+        await fs.readFile(path.join(getAssetsDir(), 'skills', 'comet-native', 'SKILL.md'), 'utf-8'),
       );
       expect(zhMain).toContain('| 选项 | 方式 | 实际影响 |');
       expect(zhMain).toContain(
@@ -2232,11 +2235,11 @@ describe('skills', () => {
       );
 
       expect(zhOpen).toContain(
-        'comet classic openspec -- instructions <artifact-id> --change "<name>" --json',
+        'comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json',
       );
       expect(zhOpen).toContain('不得硬编码生成顺序');
       expect(zhOpen).not.toContain(
-        'comet classic openspec -- instructions proposal --change "<name>" --json',
+        'comet classic openspec --agent-json -- instructions proposal --change "<name>" --json',
       );
       for (const field of [
         '`context`',
@@ -2250,7 +2253,9 @@ describe('skills', () => {
       }
       expect(zhOpen).toContain('不得复制到 artifact 内容中');
       expect(zhOpen).toContain('每创建一个 artifact 后');
-      expect(zhOpen).toContain('comet classic openspec -- status --change "<name>" --json');
+      expect(zhOpen).toContain(
+        'comet classic openspec --agent-json -- status --change "<name>" --json',
+      );
       expect(zhOpen).toContain('必须立即停止并报告 OpenSpec 错误');
       expect(zhOpen).toContain('不得回退为硬编码文档结构');
     });
@@ -2262,11 +2267,11 @@ describe('skills', () => {
       );
 
       expect(enOpen).toContain(
-        'comet classic openspec -- instructions <artifact-id> --change "<name>" --json',
+        'comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json',
       );
       expect(enOpen).toContain('Must not hard-code generation order');
       expect(enOpen).not.toContain(
-        'comet classic openspec -- instructions proposal --change "<name>" --json',
+        'comet classic openspec --agent-json -- instructions proposal --change "<name>" --json',
       );
       for (const field of [
         '`context`',
@@ -2280,7 +2285,9 @@ describe('skills', () => {
       }
       expect(enOpen).toContain('must not copy them into artifact content');
       expect(enOpen).toContain('Refresh status once after creating each artifact');
-      expect(enOpen).toContain('comet classic openspec -- status --change "<name>" --json');
+      expect(enOpen).toContain(
+        'comet classic openspec --agent-json -- status --change "<name>" --json',
+      );
       expect(enOpen).toContain('Also stop if status/instructions fails');
       expect(enOpen).toContain('Must not fall back to hard-coded artifact prose');
     });

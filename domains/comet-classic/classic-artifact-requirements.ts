@@ -1,4 +1,7 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { classicOperationObservation } from './classic-command-context.js';
+import { assertClassicLayoutReadable } from './classic-layout.js';
 import { parseDocument } from 'yaml';
 import { executeClassicOpenSpec } from './classic-openspec-command.js';
 import { collectClassicSpecFiles } from './classic-paths.js';
@@ -166,10 +169,41 @@ export async function readClassicArtifactRequirements(
   );
   if (metadata.errors.length)
     throw new Error(`Invalid OpenSpec metadata: ${metadata.errors[0].message}`);
-  const response = await executeClassicOpenSpec(
-    ['status', '--change', path.basename(changeDir), '--json'],
+  const layout = await assertClassicLayoutReadable(root);
+  const specFiles = await collectClassicSpecFiles(root, path.join(changeDir, 'specs'));
+  const fingerprint = createHash('sha256');
+  for (const file of [
+    path.join(layout.openSpecRoot, 'config.yaml'),
+    metadataFile,
+    ...['proposal.md', 'design.md', 'tasks.md'].map((name) => path.join(changeDir, name)),
+    ...specFiles,
+  ]) {
+    fingerprint.update(file);
+    if (
+      await classicProjectTargetExists(root, file, {
+        label: 'OpenSpec observation input',
+        expected: 'file',
+      })
+    )
+      fingerprint.update(
+        await readClassicProjectFile(root, file, { label: 'OpenSpec observation input' }),
+      );
+    else fingerprint.update('<missing>');
+  }
+  const observe = () =>
+    executeClassicOpenSpec(['status', '--change', path.basename(changeDir), '--json'], root);
+  // Local schemas can contain arbitrary dependency inputs. Keep them conservative instead of guessing their closure.
+  const hasLocalSchemas = await classicProjectTargetExists(
     root,
+    path.join(layout.openSpecRoot, 'schemas'),
+    { label: 'OpenSpec local schemas', expected: 'directory' },
   );
+  const response = hasLocalSchemas
+    ? await observe()
+    : await classicOperationObservation(
+        `openspec-status:${changeDir}:${fingerprint.digest('hex')}`,
+        observe,
+      );
   if (response.exitCode !== 0)
     throw new Error(
       `Cannot inspect OpenSpec artifact requirements: ${response.stderr ?? response.exitCode}`,
@@ -187,7 +221,7 @@ export async function readClassicArtifactRequirements(
   )
     throw new Error('OpenSpec status resolves outside the selected Classic change');
   const artifacts = requiredArtifactClosure(status);
-  const specs = await collectClassicSpecFiles(root, path.join(changeDir, 'specs'));
+  const specs = specFiles;
   const result: ClassicArtifactRequirements = {
     source: 'openspec',
     required: artifacts.map((artifact) => artifact.id),

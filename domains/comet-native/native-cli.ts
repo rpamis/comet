@@ -68,7 +68,7 @@ async function dispatch(
   if (!handler) {
     throw new NativeUsageError(`Unknown Native command: ${command}`);
   }
-  return handler(rawArgs, projectRoot);
+  return { executionCwd: projectRoot, ...(await handler(rawArgs, projectRoot)) };
 }
 
 export async function runNativeCli(argv: readonly string[]): Promise<NativeCommandResult> {

@@ -5,6 +5,9 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   inspectGitWorktree,
+  currentGitBranch,
+  gitWorktreeContextFromEntries,
+  listGitWorktrees,
   isLocalGitBranch,
   listGitWorktreeRoots,
 } from '../../platform/paths/git-worktree.js';
@@ -58,6 +61,13 @@ describe('Git worktree inspection', () => {
     expect(isLocalGitBranch(primary, 'feature/secondary')).toBe(true);
     expect(isLocalGitBranch(primary, 'missing')).toBe(false);
     expect(listGitWorktreeRoots(primary)).toEqual([path.resolve(primary), path.resolve(secondary)]);
+    expect(currentGitBranch(secondary)).toBe('feature/secondary');
+    expect(gitWorktreeContextFromEntries(secondary, listGitWorktrees(primary))).toEqual(
+      inspectGitWorktree(secondary),
+    );
+    expect(
+      gitWorktreeContextFromEntries(path.join(primary, 'missing'), listGitWorktrees(primary)),
+    ).toBeNull();
   });
 
   it('returns a stable non-Git result outside a repository', async () => {

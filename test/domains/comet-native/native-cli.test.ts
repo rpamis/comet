@@ -437,6 +437,13 @@ describe('Comet Native CLI dispatcher', () => {
             worktreePath: path.resolve(secondary),
           },
         },
+        agent: {
+          phase: 'shape',
+          status: 'active',
+          stateVersion: 1,
+          workspace: { cwd: path.resolve(secondary) },
+          continuation: { cwd: path.resolve(secondary) },
+        },
       });
       expect(
         json(

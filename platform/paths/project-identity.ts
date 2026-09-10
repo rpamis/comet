@@ -1,10 +1,73 @@
 import { createHash } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { runGitCommand } from '../process/git.js';
 import { resolvePortablePath } from './portable-path.js';
 
 export interface ProjectIdentityOptions {
   readonly runGit?: (projectRoot: string, args: readonly string[]) => string;
+}
+
+type IdentityObservation = { identity: string; name: string };
+type IdentityScope = {
+  active: boolean;
+  observations: Map<
+    string,
+    Map<NonNullable<ProjectIdentityOptions['runGit']>, IdentityObservation>
+  >;
+};
+const identityScope = new AsyncLocalStorage<IdentityScope>();
+
+/** Share only this request's observations; a later request always re-reads Git. */
+export function withProjectIdentityScope<T>(operation: () => T): T {
+  const scope: IdentityScope = { active: true, observations: new Map() };
+  const close = () => {
+    scope.active = false;
+    scope.observations.clear();
+  };
+  return identityScope.run(scope, () => {
+    try {
+      const result = operation();
+      if (result instanceof Promise) return result.finally(close) as T;
+      close();
+      return result;
+    } catch (error) {
+      close();
+      throw error;
+    }
+  });
+}
+
+function observeProjectIdentity(
+  projectRoot: string,
+  options: ProjectIdentityOptions,
+): IdentityObservation {
+  const root = resolvePortablePath(projectRoot);
+  const run = options.runGit ?? runGitCommand;
+  const currentScope = identityScope.getStore();
+  const scope = currentScope?.active ? currentScope.observations : undefined;
+  const cached = scope?.get(root)?.get(run);
+  if (cached) return cached;
+  let source = root;
+  try {
+    const remote = run(root, ['remote', 'get-url', 'origin']).trim();
+    if (remote) source = remote;
+    else throw new Error('No origin');
+  } catch {
+    try {
+      const commonDir = run(root, ['rev-parse', '--git-common-dir']).trim();
+      if (commonDir) source = resolvePortablePath(root, commonDir);
+    } catch {
+      // Non-Git directories retain the existing canonical path fallback.
+    }
+  }
+  const observation = { identity: normalizeIdentity(source), name: readableProjectName(source) };
+  if (scope) {
+    const roots = scope.get(root) ?? new Map();
+    roots.set(run, observation);
+    scope.set(root, roots);
+  }
+  return observation;
 }
 
 /**
@@ -16,21 +79,7 @@ export function resolveProjectIdentity(
   projectRoot: string,
   options: ProjectIdentityOptions = {},
 ): string {
-  const root = resolvePortablePath(projectRoot);
-  const run = options.runGit ?? runGitCommand;
-  try {
-    const remote = run(root, ['remote', 'get-url', 'origin']).trim();
-    if (remote) return normalizeIdentity(remote);
-  } catch {
-    // A repository may not have an origin; continue with its shared Git dir.
-  }
-  try {
-    const commonDir = run(root, ['rev-parse', '--git-common-dir']).trim();
-    if (commonDir) return normalizeIdentity(resolvePortablePath(root, commonDir));
-  } catch {
-    // Continue with the canonical project path for non-Git directories.
-  }
-  return normalizeIdentity(root);
+  return observeProjectIdentity(projectRoot, options).identity;
 }
 
 export function stableProjectId(identity: string): string {
@@ -52,21 +101,7 @@ export function resolveProjectName(
   projectRoot: string,
   options: ProjectIdentityOptions = {},
 ): string {
-  const root = resolvePortablePath(projectRoot);
-  const run = options.runGit ?? runGitCommand;
-  try {
-    const remote = run(root, ['remote', 'get-url', 'origin']).trim();
-    if (remote) return readableProjectName(remote);
-  } catch {
-    // Continue with the shared Git directory when no origin is configured.
-  }
-  try {
-    const commonDir = run(root, ['rev-parse', '--git-common-dir']).trim();
-    if (commonDir) return readableProjectName(resolvePortablePath(root, commonDir));
-  } catch {
-    // Continue with the current project path for non-Git directories.
-  }
-  return readableProjectName(root);
+  return observeProjectIdentity(projectRoot, options).name;
 }
 
 function readableProjectName(value: string): string {

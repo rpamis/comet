@@ -163,9 +163,7 @@ async function fakeOpenSpec(
     ].join('\n'),
   );
   if (process.platform === 'win32') {
-    const command = path.join(dir, 'fake-openspec.cmd');
-    await fs.writeFile(command, `@echo off\r\n"${process.execPath}" "${script}" %*\r\n`);
-    return { command, log };
+    return { command: script, log };
   }
   const command = path.join(dir, 'fake-openspec');
   await fs.writeFile(command, `#!/usr/bin/env node\nimport ${JSON.stringify(script)};\n`, {

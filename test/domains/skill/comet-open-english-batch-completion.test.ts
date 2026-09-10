@@ -23,7 +23,9 @@ describe('comet-open English batch completion protocol', () => {
       'utf8',
     );
 
-    expect(skill).toContain('comet classic openspec -- status --change "<name>" --json');
+    expect(skill).toContain(
+      'comet classic openspec --agent-json -- status --change "<name>" --json',
+    );
     expect(skill).toContain('validates the full required closure');
     expect(skill).toContain('comet state artifacts <name> --json');
     expect(skill).toContain('isComplete is diagnostic');

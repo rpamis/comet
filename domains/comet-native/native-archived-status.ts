@@ -40,6 +40,7 @@ export async function readNativeStatusRecord(
 export async function listNativeArchivedStatusRecords(
   paths: NativeProjectPaths,
   onError?: (name: string, message: string) => void,
+  targetName?: string,
 ): Promise<NativeStatusRecord[]> {
   let entries: import('node:fs').Dirent[];
   try {
@@ -52,6 +53,9 @@ export async function listNativeArchivedStatusRecords(
   const records: NativeStatusRecord[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const archiveName = /^\d{4}-\d{2}-\d{2}-(.+)$/u.exec(entry.name)?.[1];
+    if (targetName !== undefined && archiveName !== undefined && archiveName !== targetName)
+      continue;
     const file = path.join(paths.archiveDir, entry.name, 'comet-state.yaml');
     try {
       const record = await readNativeStatusRecord(paths, file);

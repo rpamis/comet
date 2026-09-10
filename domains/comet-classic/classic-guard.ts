@@ -1,5 +1,7 @@
 import { createHash } from 'crypto';
 import { inspectClassicAutonomousBuildProblems } from './classic-plan-readiness.js';
+import { classicIssue, type ClassicIssue } from './classic-issues.js';
+import { classicRecoveryContext } from './classic-recovery.js';
 import { handoffSourceHash } from './classic-handoff-source.js';
 import {
   classicArchivedRequirementsProblems,
@@ -121,10 +123,22 @@ class GuardOutput {
   envelope?: CliOutputEnvelope;
   checksPassed = 0;
   checksFailed = 0;
+  issues: ClassicIssue[] = [];
+  data?: Record<string, unknown>;
 
   toResult(exitCode = 0): ClassicCommandResult {
     return {
       exitCode,
+      data: {
+        ...this.data,
+        checks: {
+          passed: this.checksPassed,
+          total: this.checksPassed + this.checksFailed,
+          blocked: exitCode !== 0,
+        },
+        issues: this.issues,
+        ...(this.diagnostics ? { diagnostics: this.diagnostics } : {}),
+      },
       ...(this.diagnostics
         ? { stdout: JSON.stringify({ diagnostics: this.diagnostics }) + '\n' }
         : {}),
@@ -315,6 +329,16 @@ function pushCheck(output: GuardOutput, outcome: CheckOutcome): void {
     }
   } else {
     output.checksFailed += 1;
+    output.issues.push(
+      classicIssue(outcome.detail || outcome.description, {
+        code: 'CLASSIC_GUARD_CHECK_FAILED',
+        path: `checks.${outcome.description}`,
+        expected: 'pass',
+        actual: 'fail',
+        remediation:
+          'Repair this prerequisite using the reported detail, then retry the same guard. Preserve valid artifacts and evidence.',
+      }),
+    );
     output.stderr.push(red(`  [FAIL] ${outcome.description}`));
     if (outcome.detail) {
       for (const line of outcome.detail.split('\n')) output.stderr.push(red(`    ${line}`));
@@ -1120,6 +1144,12 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
       const changeDir = await resolveChangeDir(change);
       await preflight(changeDir, change);
       const runContext = await ensureClassicRuntimeRun(changeDir);
+      output.data = {
+        change,
+        phase: runContext.classic.phase,
+        projectRoot: classicCommandProjectRoot(),
+        changeDir,
+      };
       const diagnostic = await inspectClassicChange(changeDir, change);
       if (options.json) {
         output.diagnostics = {
@@ -1166,6 +1196,18 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
       } else if (flag === '--apply') {
         output.stderr.push(green('ALL CHECKS PASSED — ready for next phase'));
         await applyStateUpdate(output, change, changeDir, phase);
+        const updated = await readClassicState(changeDir, { migrate: false });
+        if (updated.classic)
+          output.data = {
+            ...(await classicRecoveryContext(
+              classicCommandProjectRoot(),
+              changeDir,
+              updated.classic,
+            )),
+            change,
+            phase: updated.classic.phase,
+            configuration: updated.classic,
+          };
       } else {
         output.stderr.push(green('ALL CHECKS PASSED — ready for next phase'));
         output.stderr.push(
@@ -1174,11 +1216,13 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
       }
       return output.toResult(0);
     } catch (error) {
+      output.issues.push(classicIssue(error));
       if (error instanceof GuardFailure) {
         for (const line of error.message.split('\n')) output.stderr.push(line);
         return output.toResult(error.exitCode);
       }
-      throw error;
+      output.stderr.push(error instanceof Error ? error.message : String(error));
+      return output.toResult(70);
     }
   },
 );

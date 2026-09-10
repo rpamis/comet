@@ -22,6 +22,36 @@ json_quote() {
     printf '"%s"' "$value"
 }
 
+# Keep the CLI's argv and shell execution unchanged. A per-invocation token
+# distinguishes our exit record from ordinary Agent output; it is not exported
+# to the Agent. The Python process only timestamps the received JSONL stream.
+capture_agent_runtime() {
+    local agent="$1" role="$2"
+    shift 2
+    local token agent_status
+    token=$(python3 "$SCRIPT_DIR/../python/stream_capture.py" --new-token) || return $?
+    local -a pipeline_status
+    if {
+        if "$@"; then
+            agent_status=0
+        else
+            agent_status=$?
+        fi
+        # A diagnostic may have no trailing newline. Start our record on its
+        # own line so a failed command cannot hide its observed exit status.
+        printf '\n{"type":"comet.eval.capture.end","token":"%s","exit_code":%s}\n' "$token" "$agent_status"
+        exit "$agent_status"
+    } | python3 "$SCRIPT_DIR/../python/stream_capture.py" --agent "$agent" --role "$role" --stream-token "$token"; then
+        pipeline_status=("${PIPESTATUS[@]}")
+    else
+        pipeline_status=("${PIPESTATUS[@]}")
+    fi
+    if [[ "${pipeline_status[0]}" -ne 0 ]]; then
+        return "${pipeline_status[0]}"
+    fi
+    return "${pipeline_status[1]}"
+}
+
 prepare_agent_runtime_config() {
     local agent="$1"
     local model="${2:-}"

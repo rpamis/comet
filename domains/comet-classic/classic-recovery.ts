@@ -9,11 +9,15 @@ import {
 } from './classic-tasks.js';
 import { readClassicCheckpoint, readClassicDelivery } from './classic-progress.js';
 import { inspectClassicPlanReadiness } from './classic-plan-readiness.js';
+import { inspectClassicDesignReadiness } from './classic-design-readiness.js';
+import { readClassicState } from './classic-store.js';
 
 export interface ClassicNextAction {
   kind: string;
   reason: string;
   taskId?: string | null;
+  cwd?: string;
+  argv?: string[];
 }
 
 /** A compact projection shared by normal entry and cold recovery, not another state machine. */
@@ -24,6 +28,7 @@ export async function classicRecoveryContext(
   details = false,
 ) {
   const paths = await assertClassicLayoutReadable(root);
+  const projection = await readClassicState(directory, { migrate: false });
   const taskFile = path.join(directory, 'tasks.md');
   const taskFileExists = await classicProjectTargetExists(root, taskFile, {
     label: 'Classic task authority',
@@ -53,7 +58,38 @@ export async function classicRecoveryContext(
     kind: 'continue-phase',
     reason: 'Continue the current phase using confirmed artifacts.',
   };
-  if (state.phase === 'build') {
+  const designReadiness =
+    state.phase === 'design' ? await inspectClassicDesignReadiness(root, directory, state) : null;
+  if (designReadiness) {
+    nextAction = {
+      kind:
+        designReadiness.design === 'invalid'
+          ? 'repair-design'
+          : designReadiness.design === 'missing'
+            ? 'design'
+            : 'complete-design',
+      reason:
+        designReadiness.design === 'invalid'
+          ? 'Repair only the reported Design Doc metadata or reference; preserve existing confirmed work.'
+          : designReadiness.design === 'missing'
+            ? 'Continue the existing design and obtain explicit confirmation before registering it.'
+            : `Retain the registered Design Doc. Handoff is ${designReadiness.handoff}; after confirming recorded user authorization, complete only the remaining Design steps.`,
+      ...(designReadiness.design === 'ready'
+        ? {
+            cwd: root,
+            argv: [
+              'comet',
+              'state',
+              'complete-design',
+              path.basename(directory),
+              '--design-doc',
+              state.designDoc!,
+              '--json',
+            ],
+          }
+        : {}),
+    };
+  } else if (state.phase === 'build') {
     if (state.workflow === 'full' && !state.isolation)
       nextAction = {
         kind: 'workspace',
@@ -158,7 +194,24 @@ export async function classicRecoveryContext(
   }
   return {
     projectRoot: root,
+    workspace: { projectRoot: root },
+    status: projection.run?.status ?? null,
+    stateVersion: null,
+    iteration: projection.run?.iteration ?? null,
     changeDir: directory,
+    artifactRefs: {
+      change: path.relative(root, directory).replaceAll('\\', '/'),
+      tasks: path.relative(root, taskFile).replaceAll('\\', '/'),
+      designDoc:
+        state.designDoc ??
+        path.relative(root, path.join(directory, 'design.md')).replaceAll('\\', '/'),
+      plan: state.plan,
+      plansRoot: path
+        .relative(root, path.join(paths.superpowersRoot, 'plans'))
+        .replaceAll('\\', '/'),
+      handoffContext: state.handoffContext,
+    },
+    ...(designReadiness ? { designReadiness, issues: designReadiness.issues } : {}),
     layout: {
       schema: 'comet.classic-layout.v1',
       openSpecRoot: paths.openSpecRoot,
@@ -168,6 +221,15 @@ export async function classicRecoveryContext(
       superpowersRoot: paths.superpowersRoot,
     },
     nextAction,
+    continuation: {
+      ...nextAction,
+      cwd: root,
+      skill:
+        state.phase === 'build' && ['hotfix', 'tweak'].includes(state.workflow)
+          ? `comet-${state.workflow}`
+          : `comet-${state.phase}`,
+      automatic: state.autoTransition ?? true,
+    },
     evidence: { status: 'not-revalidated', reason: 'entry' },
     nextTask: next?.text ?? null,
     taskState: {

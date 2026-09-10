@@ -23,7 +23,7 @@ comet state select <change-name>
 comet state check <name> build --json
 ```
 
-验证通过后使用 `data.configuration` 中的语言、执行与审查配置继续 Step 1，不逐字段重复调用 `get`。写入配置或推进阶段后重新读取；验证失败时处理具体失败原因。
+已有本轮成功 Design/Guard 返回的 Build 观察时，直接消费其 `data.configuration`、`artifactRefs`、任务和 `agent.continuation`，不重复 select/check。恢复、工作区或外部状态变化时才执行上方入口。写入配置后直接消费成功结果，不逐字段重复调用 get；验证失败时处理 `data.issues`。
 
 若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
@@ -54,7 +54,6 @@ full 的 autonomous 必须选择 standard 或 thorough，独立审查不能由�
 
 ```bash
 comet state set <name> build_mode autonomous subagent_dispatch null tdd_mode tdd review_mode standard --json
-comet state check <name> build --json
 ```
 
 替换为用户实际选择；subagent-driven-development 同时写入 `subagent_dispatch confirmed`，其他方式写入 null。保留 isolation、bound_branch 和已有暂停状态。写入失败时停止，不加载执行 Skill。用户尚未决定或要求暂停时停止，不写半套配置。
@@ -74,7 +73,7 @@ comet state check <name> build --json
 
 所有策略使用同一计划契约：每项是独立可验收结果，列明 task ID、范围、依赖、约束和验收命令/场景；准备、实现、测试和文档围绕结果组织，不按分钟、文件数量或 RED/GREEN 步骤拆任务。引用设计和需求，不预写完整实现；只有必须预审的接口或高风险算法提供必要片段。
 
-新计划不创建第二套 checkbox，写入 `<!-- comet-task-authority: <classic-change-dir>/tasks.md -->`，以 `<!-- comet-task-ref:<task-id> -->` 关联每个任务。计划新增实际任务必须先纳入 tasks.md 并分配 ID；范围变化按 Step 4 处理。
+新计划不创建第二套 checkbox，写入 `<!-- comet-task-authority: <classic-task-authority-ref> -->`（取自 `data.artifactRefs.tasks` 的仓库相对引用），以 `<!-- comet-task-ref:<task-id> -->` 关联每个任务。计划新增实际任务必须先纳入 tasks.md 并分配 ID；范围变化按 Step 4 处理。
 
 计划文件头：
 
@@ -86,10 +85,10 @@ base-ref: <git rev-parse HEAD before implementation>
 ---
 ```
 
-保留旧计划 base-ref，不在恢复时替换为当前 HEAD。确认文件存在后记录：
+保留旧计划 base-ref，不在恢复时替换为当前 HEAD。`<plan-ref>` 沿用 `data.artifactRefs.plan`，新计划使用 `data.artifactRefs.plansRoot` 与已选文件名组成的仓库相对引用；绝对路径仅用于写文件。确认文件存在后记录：
 
 ```bash
-comet state set <name> plan <plan-path>
+comet state set <name> plan "<plan-ref>" --json
 ```
 
 计划完成后默认按已确认策略继续，不再追加配置确认点。用户明确要求切换模型或计划后暂停时，写入 `comet state set <name> build_pause plan-ready` 并停止。恢复已有 plan-ready 暂停时，只有用户明确要求继续才清除暂停；有效计划与配置沿用，旧 change 缺配置时补 Step 1，不重写计划。

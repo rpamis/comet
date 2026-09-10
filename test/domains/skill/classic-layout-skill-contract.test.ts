@@ -20,7 +20,7 @@ const LANGUAGE_CASES = [
     ruleFiles: ['comet-phase-guard.md', 'comet-workflow-guard.md'],
     allowedLayoutDescriptionLines: new Set([
       '- 新 Classic 项目默认使用 `docs/openspec/`。',
-      '- 缺少 `classic.artifact_layout` 时默认使用 `docs/openspec/`；`comet update` 检测到已有根目录 `openspec/` 产物时会显式补为 `legacy`，不会移动产物。',
+      '- 缺少 `classic.artifact_layout` 的兼容读取使用根目录 `openspec/`（legacy）；新项目 init 会明确写入 docs。`comet update` 检测到已有根目录 `openspec/` 产物时会显式补为 `legacy`，不会移动产物。',
     ]),
   },
   {
@@ -29,7 +29,7 @@ const LANGUAGE_CASES = [
     ruleFiles: ['comet-phase-guard.en.md', 'comet-workflow-guard.en.md'],
     allowedLayoutDescriptionLines: new Set([
       '- New Classic projects default to `docs/openspec/`.',
-      '- A missing `classic.artifact_layout` defaults to `docs/openspec/`. When `comet update` detects existing root-level `openspec/` artifacts, it explicitly backfills `legacy` without moving them.',
+      '- Compatibility reads without `classic.artifact_layout` use root-level `openspec/` (legacy); new project init writes docs explicitly. When `comet update` detects existing root-level `openspec/` artifacts, it explicitly backfills `legacy` without moving them.',
     ]),
   },
 ] as const;

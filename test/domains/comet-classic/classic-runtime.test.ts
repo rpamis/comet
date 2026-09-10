@@ -544,6 +544,13 @@ describe('Classic runtime CLI adapter', () => {
     expect(JSON.parse(result.stdout ?? '')).toEqual({
       command: 'validate',
       exitCode: 2,
+      agent: {
+        phase: null,
+        status: null,
+        stateVersion: null,
+        workspace: { cwd: null },
+        continuation: null,
+      },
       stdout: 'structured',
       stderr: 'invalid state',
     });

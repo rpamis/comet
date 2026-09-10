@@ -17,6 +17,28 @@ describe('ordinary Comet task host', () => {
     vi.clearAllMocks();
   });
 
+  it('shares identity during the task request and refreshes it on the next invocation', async () => {
+    const { resolveProjectName, resolveStableProjectId } =
+      await import('../../platform/paths/project-identity.js');
+    const { cometTaskCommand } = await import('../../app/commands/comet-task.js');
+    let remote = 'https://example.com/first.git';
+    const runGit = vi.fn(() => remote);
+    const identities: string[] = [];
+    collectCometPluginContext.mockImplementation(async (root: string) => {
+      identities.push(resolveStableProjectId(root, { runGit }));
+      await Promise.resolve();
+      expect(resolveProjectName(root, { runGit })).toBe(
+        remote.includes('first') ? 'first' : 'second',
+      );
+      return [];
+    });
+    await cometTaskCommand('D:/repo', { task: 'Inspect the project' });
+    remote = 'https://example.com/second.git';
+    await cometTaskCommand('D:/repo', { task: 'Inspect the project' });
+    expect(identities[0]).not.toBe(identities[1]);
+    expect(runGit).toHaveBeenCalledTimes(2);
+  });
+
   it('records a completion checkpoint without selecting fresh context', async () => {
     collectCometPluginContext.mockResolvedValue([
       { pluginId: 'comet.personal-memory', text: '使用中文' },

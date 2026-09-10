@@ -46,4 +46,4 @@ if [[ "$AGENT" == "codex" ]]; then
     COMMAND+=("$PROMPT")
 fi
 COMMAND+=("${EXTRA_ARGS[@]}")
-exec "${COMMAND[@]}"
+capture_agent_runtime "$AGENT" "${COMET_EVAL_AGENT_ROLE:-subject}" "${COMMAND[@]}"

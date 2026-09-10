@@ -22,6 +22,13 @@ describe('Classic direct script entry', () => {
 
     expect(exitCode).toBe(64);
     expect(JSON.parse(output)).toEqual({
+      agent: {
+        phase: null,
+        status: null,
+        stateVersion: null,
+        workspace: { cwd: null },
+        continuation: null,
+      },
       command: 'state',
       exitCode: 64,
       stderr: 'invalid state arguments',
@@ -50,6 +57,13 @@ describe('Classic direct script entry', () => {
 
     expect(exitCode).toBe(0);
     expect(JSON.parse(output)).toEqual({
+      agent: {
+        phase: null,
+        status: null,
+        stateVersion: null,
+        workspace: { cwd: null },
+        continuation: null,
+      },
       command: 'state',
       exitCode: 0,
       summary: 'The change is ready to continue.',

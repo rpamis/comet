@@ -68,6 +68,8 @@ import {
 } from './classic-protected-path.js';
 import { resolveClassicWorkspace } from './classic-workspace.js';
 import { classicRecoveryContext } from './classic-recovery.js';
+import { classicHandoffCommand } from './classic-handoff.js';
+import { classicIssue, type ClassicIssue } from './classic-issues.js';
 import {
   readClassicCheckpoint,
   writeClassicCheckpoint,
@@ -114,6 +116,7 @@ class CommandFailure extends Error {
   constructor(
     message: string,
     readonly exitCode = 1,
+    readonly issue?: ClassicIssue,
   ) {
     super(message);
   }
@@ -173,10 +176,32 @@ function validateLanguage(value: string, source: string): string {
 function validateRelativePath(value: string, field: string): void {
   if (!value || value === 'null') return;
   if (/^(?:[A-Za-z]:|[\\/]|~)/u.test(value)) {
-    fail(`ERROR: ${field} must be a relative path within the repo: '${value}'`);
+    throw new CommandFailure(
+      `ERROR: ${field} must be a relative path within the repo: '${value}'`,
+      1,
+      {
+        code: 'CLASSIC_ARTIFACT_REF_INVALID',
+        field,
+        actual: value,
+        expected: 'repository-relative path',
+        message: `${field} must use a repository-relative reference.`,
+        remediation:
+          'Use entry.artifactRefs for state registration; absolute paths are for file operations.',
+      },
+    );
   }
   if (value.split(/[\\/]/u).includes('..')) {
-    fail(`ERROR: ${field} cannot contain '..' (path traversal not allowed): '${value}'`);
+    throw new CommandFailure(
+      `ERROR: ${field} cannot contain '..' (path traversal not allowed): '${value}'`,
+      1,
+      {
+        code: 'CLASSIC_ARTIFACT_REF_INVALID',
+        field,
+        actual: value,
+        expected: 'repository-relative path without traversal',
+        message: `${field} cannot traverse outside its artifact root.`,
+      },
+    );
   }
 }
 
@@ -450,7 +475,18 @@ async function validateSetValue(field: string, value: string): Promise<void> {
     return;
   }
   const enumValues = FIELD_ENUMS[field];
-  if (enumValues) validateEnum(value, enumValues);
+  if (enumValues && !enumValues.includes(value))
+    throw new CommandFailure(
+      `ERROR: Invalid value: '${value}'\nValid values: ${enumValues.join(' ')}`,
+      1,
+      {
+        code: 'CLASSIC_FIELD_VALUE_INVALID',
+        field,
+        actual: value,
+        expected: enumValues,
+        message: `Invalid value for ${field}.`,
+      },
+    );
   if (PATH_FIELDS.has(field)) {
     validateRelativePath(value, field);
     if (value && value !== 'null') {
@@ -492,7 +528,13 @@ async function setFieldsLocked(
       fail(`ERROR: '${field}' is a machine-owned field and cannot be set directly`);
     }
     if (!SETTABLE_FIELDS.has(field) && !MACHINE_OWNED_FIELDS.has(field)) {
-      fail(`ERROR: Unknown field: '${field}'`);
+      throw new CommandFailure(`ERROR: Unknown field: '${field}'`, 1, {
+        code: 'CLASSIC_FIELD_UNKNOWN',
+        field,
+        actual: field,
+        expected: [...SETTABLE_FIELDS],
+        message: `Unknown Classic state field: ${field}.`,
+      });
     }
     if (field === 'phase' && !options.internal && process.env.COMET_FORCE_PHASE !== '1') {
       fail(
@@ -731,7 +773,7 @@ async function requireOpenArtifacts(name: string): Promise<void> {
 
 async function requireDesignEvidence(name: string): Promise<void> {
   const designDoc = await readField(name, 'design_doc');
-  if (!designDoc || designDoc === 'null' || !(await nonempty(path.resolve(designDoc)))) {
+  if (!designDoc || designDoc === 'null' || !(await nonempty(designDoc))) {
     fail(
       `ERROR: Cannot transition '${name}': design_doc must point to an existing Design Doc before leaving design`,
     );
@@ -887,7 +929,16 @@ async function next(output: CommandOutput, name: string): Promise<void> {
   const workflow = scalar(record.workflow);
   const automatic = await readRecordField(record, 'auto_transition');
   const locale = classicLocale(await readRecordField(record, 'language'));
-  output.data = { change: name, phase, configuration: sparseClassicState(record) };
+  output.data = {
+    ...(await classicRecoveryContext(
+      classicCommandProjectRoot(),
+      directory,
+      sparseClassicState(record),
+    )),
+    change: name,
+    phase,
+    configuration: sparseClassicState(record),
+  };
   if (scalar(record.archived) === 'true') {
     const delivery = await readClassicDelivery(classicCommandProjectRoot(), directory);
     const complete = ['complete', 'local-verified'].includes(delivery.verification.status);
@@ -1148,27 +1199,39 @@ async function check(
   let blocked = false;
   let passed = 0;
   let total = 0;
+  const issues: ClassicIssue[] = [];
   const pass = (message: string) => {
     output.stdout.push(`  ${green('[PASS]')} ${message}`);
     passed += 1;
     total += 1;
   };
-  const reject = (message: string) => {
+  const reject = (message: string, issue?: Partial<ClassicIssue>) => {
     output.stdout.push(`  ${red('[FAIL]')} ${message}`);
     blocked = true;
     total += 1;
+    issues.push(
+      classicIssue(message, {
+        code: 'CLASSIC_ENTRY_CHECK_FAILED',
+        path: file,
+        remediation: 'Repair the reported prerequisite, then retry this entry check.',
+        ...issue,
+      }),
+    );
   };
   const expectField = async (field: string, expected: string) => {
     const actual = await readRecordField(record, field);
-    (actual === expected ? pass : reject)(`${field}=${actual} (expected: ${expected})`);
+    if (actual === expected) pass(`${field}=${actual} (expected: ${expected})`);
+    else reject(`${field}=${actual} (expected: ${expected})`, { field, actual, expected });
   };
   pass('.comet.yaml exists');
   await expectField('phase', phase);
   if (phase === 'design') {
     await expectField('workflow', 'full');
     const designDoc = scalar(record.design_doc);
-    (!designDoc || designDoc === 'null' ? pass : reject)(
-      designDoc ? `design_doc=${designDoc} (expected: empty/null)` : 'design_doc is empty/null',
+    pass(
+      designDoc && designDoc !== 'null'
+        ? `design_doc=${designDoc}; preserve registered Design work`
+        : 'design_doc is empty/null',
     );
     const requirements = await readClassicArtifactRequirements(
       classicCommandProjectRoot(),
@@ -1183,9 +1246,9 @@ async function check(
     const workflow = scalar(record.workflow);
     const designDoc = scalar(record.design_doc);
     if (workflow === 'full') {
-      (designDoc && designDoc !== 'null' && (await exists(path.resolve(designDoc)))
-        ? pass
-        : reject)(`design_doc=${designDoc} (expected: non-null and file exists)`);
+      (designDoc && designDoc !== 'null' && (await exists(designDoc)) ? pass : reject)(
+        `design_doc=${designDoc} (expected: non-null and file exists)`,
+      );
     } else {
       pass(`workflow=${workflow} (design_doc not required)`);
     }
@@ -1236,18 +1299,21 @@ async function check(
   }
   output.stdout.push('');
   const locale = classicLocale(await readRecordField(record, 'language'));
+  const recovery = await classicRecoveryContext(
+    classicCommandProjectRoot(),
+    directory,
+    sparseClassicState(record),
+    details,
+  );
+  for (const issue of recovery.issues ?? []) reject(issue.message, issue);
   output.data = {
-    ...(await classicRecoveryContext(
-      classicCommandProjectRoot(),
-      directory,
-      sparseClassicState(record),
-      details,
-    )),
+    ...recovery,
     change: name,
     phase: record.phase,
     requestedPhase: phase,
     configuration: sparseClassicState(record),
     checks: { passed, total, blocked },
+    issues,
   };
   output.envelope = classicEntryCheckEnvelope({ name, phase, passed, total, locale });
   output.stdout.push(output.envelope.summary);
@@ -1256,6 +1322,55 @@ async function check(
     throw new CommandFailure('', 1);
   }
   output.stderr.push(green('ALL CHECKS PASSED — ready to proceed'));
+}
+
+/** Coordinate only the already-authorized Design writes; each existing operation retains its lock and validation. */
+async function completeDesign(
+  output: CommandOutput,
+  name: string,
+  designRef: string,
+  options: Parameters<ClassicCommandHandler>[1],
+): Promise<void> {
+  validateChangeName(name);
+  validateRelativePath(designRef, 'design_doc');
+  const phase = await readField(name, 'phase');
+  const recorded = await readField(name, 'design_doc');
+  if (!['design', 'build'].includes(phase) || (await readField(name, 'workflow')) !== 'full')
+    fail(
+      'ERROR: complete-design requires the full workflow in design or its completed build phase',
+    );
+  if (recorded && recorded !== 'null' && recorded !== designRef)
+    fail(
+      'ERROR: complete-design must preserve the registered Design Doc; explicitly correct design_doc before retrying',
+    );
+  if (phase === 'build') {
+    if (recorded !== designRef) fail('ERROR: completed Design reference does not match');
+    await check(output, name, 'build');
+    return;
+  }
+  await check(output, name, 'design');
+  if (recorded !== designRef) await setFields(output, name, [['design_doc', designRef]]);
+  const handoff = await classicHandoffCommand([name, 'design', '--write'], options);
+  if (handoff.stderr) output.stderr.push(handoff.stderr);
+  if (handoff.exitCode !== 0) {
+    output.data = {
+      ...(output.data as Record<string, unknown>),
+      issues: [
+        classicIssue(handoff.stderr ?? 'Design handoff failed', {
+          code: 'CLASSIC_DESIGN_HANDOFF_FAILED',
+          field: 'handoff_context',
+          remediation:
+            'Preserve the registered design, repair the handoff cause, then retry complete-design.',
+        }),
+      ],
+    };
+    throw new CommandFailure('', handoff.exitCode);
+  }
+  const guard = await classicGuardCommand([name, 'design', '--apply'], options);
+  if (guard.stderr) output.stderr.push(guard.stderr);
+  output.data = guard.data;
+  output.envelope = guard.envelope;
+  if (guard.exitCode !== 0) throw new CommandFailure('', guard.exitCode);
 }
 
 async function fieldStatus(field: string, value: string, file?: string): Promise<string> {
@@ -1423,6 +1538,7 @@ async function recover(
     projection.classic ??
     sparseClassicState((await readDocument(file)).toJS() as Record<string, unknown>);
   const phase = classic.phase;
+  if (phase === 'design') await check(output, name, phase, details);
   const workflow = classic.workflow;
   const locale = classicLocale(classic.language);
   const evidenceScopes = projection.run
@@ -1634,6 +1750,7 @@ const MUTATING_STATE_COMMANDS = new Set([
   'rebind',
   'select',
   'clear-selection',
+  'complete-design',
 ]);
 
 async function assertStateCommandWritable(subcommand: string | undefined): Promise<void> {
@@ -1771,6 +1888,10 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         for (let index = 1; index < rest.length; index += 2)
           updates.push([rest[index], rest[index + 1]]);
         await setFields(output, rest[0], updates);
+      } else if (subcommand === 'complete-design') {
+        if (rest.length !== 3 || rest[1] !== '--design-doc')
+          fail('Usage: comet state complete-design <change-name> --design-doc <repo-relative-ref>');
+        await completeDesign(output, rest[0], rest[2], options);
       } else if (subcommand === 'transition') {
         required(rest, 2, 'Usage: comet state transition <change-name> <event>');
         await transition(output, rest[0], rest[1]);
@@ -1852,18 +1973,37 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       } else {
         fail(`Unknown subcommand: ${subcommand ?? ''}`);
       }
-      if (options.json && subcommand === 'check') output.stdout = [];
+      if (options.json && ['init', 'set', 'transition', 'select'].includes(subcommand)) {
+        const { directory } = await stateFile(rest[0]);
+        const state = (await readClassicState(directory, { migrate: false })).classic;
+        if (state)
+          output.data = {
+            ...(output.data && typeof output.data === 'object' ? output.data : {}),
+            ...(await classicRecoveryContext(classicCommandProjectRoot(), directory, state)),
+            change: rest[0],
+            phase: state.phase,
+            configuration: state,
+          };
+      }
+      if (options.json && ['check', 'complete-design'].includes(subcommand)) output.stdout = [];
       return output.result();
     } catch (error) {
-      if (!(error instanceof CommandFailure)) throw error;
+      const issue = error instanceof CommandFailure ? error.issue : undefined;
+      const previous =
+        output.data && typeof output.data === 'object'
+          ? (output.data as Record<string, unknown>)
+          : {};
+      if (!Array.isArray(previous.issues) || previous.issues.length === 0)
+        output.data = { ...previous, issues: [issue ?? classicIssue(error)] };
       // The frozen 0.3.8 shell calls red() once per line and never embeds newlines
       // inside a single color call. Mirror that contract by wrapping each line of
       // the message in its own span so multi-line errors (e.g. validateEnum) render
       // as separate colored lines rather than one span across a newline.
-      if (error.message) {
-        for (const line of error.message.split('\n')) output.stderr.push(red(line));
+      const message = error instanceof Error ? error.message : String(error);
+      if (message) {
+        for (const line of message.split('\n')) output.stderr.push(red(line));
       }
-      return output.result(error.exitCode);
+      return output.result(error instanceof CommandFailure ? error.exitCode : 70);
     }
   },
 );

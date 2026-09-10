@@ -11,6 +11,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Workflow CLI efficiency**: Reuse project identity within one task invocation, inspect only requested Native changes and visible status pages, and resolve configured workflow entries without loading activation machinery. Preserve workspace, state, and evidence checks while reducing repeated setup work.
+- **Evaluation tool telemetry**: Correlate tool events with their invocation and execution IDs, retain observed timing and structured errors, and distinguish missing measurements and explicit retries from inferred results.
 - **Native Supervisor monitoring**: Pause unnecessary periodic monitoring while work awaits external input, explain blockers promptly, and resume when relevant input or dependencies become available while preserving independent work and completed results.
 - **Classic execution and recovery**: Keep one authoritative task checklist and technical design, reconcile existing implementation before completing unchecked tasks, and synchronize explicitly mapped legacy plan checkboxes. Use compact phase-entry summaries and load recovery details only when needed, without repeating accepted implementation or review. Preserve lightweight presets for suitable new tasks.
 - **Classic planning and review**: Confirm execution settings together before planning, plan around independently verifiable outcomes, and reuse implementers within bounded work packages. Apply risk-based task reviews with one final integrated review, and resolve required OpenSpec artifacts from their dependency graph instead of generating every optional document.
@@ -19,6 +21,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Agent CLI operation**: Return workspace-aware actions, independently usable Native input templates, and precise field diagnostics. Preserve Classic artifact references and interrupted Design progress, keep shortcut plugin checkpoints consistent, and pass Windows OpenSpec arguments literally. Native also accepts valid UTF-8 BOM input files and provides complete Supervisor return instructions.
 - **Dashboard project selection**: Default to the launch project instead of a remembered selection, and distinguish working directories of the same repository so project switching and dropdown labels stay consistent while preserving shared plugin state.
 - **Workflow evaluation**: Recognize explicit Classic entry points and configured artifact layouts without mistaking enabled Native settings for the workflow being evaluated; generate Native rubric results without a scoring exception.
 - **Platform-specific instructions**: Create or refresh `CLAUDE.md` only for selected Claude Code targets during initialization and updates, while preserving existing user files for other platforms.

@@ -4,7 +4,10 @@ import {
   formatCometWorkflowResolution,
   resolveCometWorkflowResolution,
 } from '../../../domains/comet-entry/workflow-resolution.js';
-import { runCometEntryRuntime } from '../../../domains/comet-entry/entry-runtime.js';
+import {
+  runCometEntryRuntime,
+  tryRunConfiguredCometEntryRuntime,
+} from '../../../domains/comet-entry/entry-runtime.js';
 
 vi.mock('../../../domains/comet-entry/workflow-resolution.js', () => ({
   formatCometWorkflowResolution: vi.fn(),
@@ -16,6 +19,52 @@ function io() {
 }
 
 describe('Comet entry runtime', () => {
+  it('resolves configured activation without loading installation or changing its output', async () => {
+    const output = io();
+    const resolution = {
+      schema: 'comet.workflow-resolution.v1' as const,
+      workflow: 'native',
+      skill: 'comet-native',
+      source: 'project-config',
+    } as const;
+    vi.mocked(resolveCometWorkflowResolution).mockResolvedValue(resolution);
+    expect(
+      await tryRunConfiguredCometEntryRuntime(['project', '--activate', '--json'], output),
+    ).toBe(true);
+    expect(output.stdout).toHaveBeenCalledWith(`${JSON.stringify(resolution, null, 2)}\n`);
+    output.stdout.mockClear();
+    vi.mocked(formatCometWorkflowResolution).mockReturnValue('workflow: native');
+    expect(await tryRunConfiguredCometEntryRuntime(['project', '--activate'], output)).toBe(true);
+    expect(output.stdout).toHaveBeenCalledWith('workflow: native\n');
+    expect(output.stderr).not.toHaveBeenCalled();
+  });
+
+  it.each(['missing configuration', 'invalid configuration', 'incomplete configuration'])(
+    'returns to the full facade without output for %s',
+    async (message) => {
+      const output = io();
+      vi.mocked(resolveCometWorkflowResolution).mockRejectedValue(new Error(message));
+      expect(
+        await tryRunConfiguredCometEntryRuntime(['project', '--activate', '--json'], output),
+      ).toBe(false);
+      expect(output.stdout).not.toHaveBeenCalled();
+      expect(output.stderr).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['--json'],
+    ['--activate', '--help'],
+    ['--activate', '--task', 'x'],
+    ['--activate', 'one', 'two'],
+  ])('leaves unsupported activation arguments to the facade: %j', async (...args) => {
+    const output = io();
+    expect(await tryRunConfiguredCometEntryRuntime(args, output)).toBe(false);
+    expect(resolveCometWorkflowResolution).not.toHaveBeenCalled();
+    expect(output.stdout).not.toHaveBeenCalled();
+    expect(output.stderr).not.toHaveBeenCalled();
+  });
+
   it('emits machine-readable usage and resolution failures in JSON mode', async () => {
     const output = io();
     expect(await runCometEntryRuntime(['--unknown', '--json'], output)).toBe(64);

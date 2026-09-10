@@ -27,7 +27,7 @@ comet state check <name> design --json
 
 验证通过后使用入口 layout、configuration、nextAction 和协调摘要继续，不逐字段查询或重复 root show。普通衔接只做入口检查；冷恢复及详情读取按 context-recovery.md。验证失败时处理具体失败原因。
 
-**恢复**：先核对现有产物和用户确认，只补未完成步骤。已有效的 handoff 不重复生成；文档写入与阶段转换不假定可无条件重试。
+**恢复**：先核对现有产物和用户确认，只补未完成步骤。普通入口和恢复入口均保留已登记的有效设计；读取 `data.designReadiness`、`data.issues` 和 `data.nextAction`。修复缺失文件、错误归属或过期 handoff，不清空 `design_doc`。已确认设计后可执行返回的 complete-design 动作；该协调命令保留已完成步骤，已进入 Build 时只返回当前入口。
 
 ### 1a. 生成 OpenSpec → Superpowers 交接包
 
@@ -56,7 +56,7 @@ comet handoff <change-name> design --write
 并在 `.comet.yaml` 写入：
 
 ```yaml
-handoff_context: <classic-change-dir>/.comet/handoff/design-context.json
+handoff_context: <classic-change-ref>/.comet/handoff/design-context.json
 handoff_hash: <sha256>
 ```
 
@@ -211,20 +211,13 @@ canonical_spec: openspec
 
 ### 3. 更新 Comet 状态
 
-先记录 design_doc 路径。任何 handoff 来源内容变化（proposal、design、任务语义、delta spec 或 OpenSpec metadata）都必须重新生成 handoff；不能只检查 Spec Patch：
+用户已明确确认且正式设计已保存后，将仓库相对的 `data.artifactRefs.designDoc` 绑定为 `<design-doc-ref>`；如确认采用其他设计文件，使用以 `projectRoot` 为基准的相对引用。文件读写仍使用绝对 `<design-doc-path>`。用一次协调命令登记设计、刷新需要更新的 handoff 并执行原有 Guard：
 
 ```bash
-# 记录 design_doc 路径
-comet state set <name> design_doc <design-doc-path>
-
-# 如有来源内容变更，重新生成 handoff（更新 hash）
-comet handoff <change-name> design --write
-
-# 阶段守卫推进 phase 到下一阶段
-comet guard <change-name> design --apply
+comet state complete-design <name> --design-doc "<design-doc-ref>" --json
 ```
 
-delta spec 的增、改、删和 design.md 的技术设计更新都会改变 handoff hash；否则 design guard 将拒绝推进。只有所有来源内容均未变化时才跳过重新生成；单纯勾选任务完成状态不改变需求 hash。状态文件自动更新，无需手动编辑其他字段。
+任何 handoff 来源内容变化（proposal、design、任务语义、delta spec 或 OpenSpec metadata）都必须刷新 handoff，不能只检查 Spec Patch；否则 design guard 将拒绝推进。只有所有来源内容均未变化时才跳过重新生成；单纯勾选任务完成状态不改变需求 hash。状态文件自动更新，无需手动编辑其他字段。
 
 ### 3a. 可选主动式上下文压缩
 
@@ -246,11 +239,7 @@ delta spec 的增、改、删和 design.md 的技术设计更新都会改变 han
 - `design_doc` 已写入 `.comet.yaml`
 - **阶段守卫**：运行 `comet guard <change-name> design --apply`，全部 PASS 后由守卫推进到 `phase: build`（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
 
-退出前必须使用 `--apply`：
-
-```bash
-comet guard <change-name> design --apply
-```
+Step 3 成功返回 `data.phase: build` 即已通过并应用 Guard，不重复执行。失败时处理 `data.issues`，保留成果并重试同一 complete-design。
 
 ## 上下文压缩恢复
 
@@ -258,7 +247,7 @@ comet guard <change-name> design --apply
 
 ## 自动衔接下一阶段
 
-按 `comet-classic/reference/auto-transition.md` 执行。关键命令：
+按 `comet-classic/reference/auto-transition.md` 消费成功结果的 `agent.continuation`，不再查询 next。仅冷恢复、外部变更或旧结果没有观察时重新读取：
 
 ```bash
 comet state next <change-name>

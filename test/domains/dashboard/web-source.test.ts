@@ -30,10 +30,20 @@ async function readWebsiteDemoSnippet(): Promise<string> {
 }
 
 async function readWebsiteDemoStyles(): Promise<string> {
-  return fs.readFile(
-    path.resolve('website', 'assets', 'dashboard-website-demo', 'dashboard-website-demo.css'),
-    'utf8',
+  const asset = JSON.parse(
+    await fs.readFile(
+      path.resolve(
+        'website',
+        'assets',
+        'dashboard-website-demo',
+        'dashboard-website-demo.css.json',
+      ),
+      'utf8',
+    ),
   );
+  expect(typeof asset.css).toBe('string');
+  expect(asset.css.length).toBeGreaterThan(0);
+  return asset.css;
 }
 
 async function readWebsiteCustomStyles(): Promise<string> {

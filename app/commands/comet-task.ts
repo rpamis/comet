@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
 
 import {
   collectCometPluginContext,
@@ -40,6 +41,13 @@ export interface CometTaskCommandResult {
  */
 export async function cometTaskCommand(
   targetPath = '.',
+  options: CometTaskCommandOptions,
+): Promise<CometTaskCommandResult> {
+  return withProjectIdentityScope(() => runCometTaskCommand(targetPath, options));
+}
+
+async function runCometTaskCommand(
+  targetPath: string,
   options: CometTaskCommandOptions,
 ): Promise<CometTaskCommandResult> {
   const projectRoot = path.resolve(targetPath);

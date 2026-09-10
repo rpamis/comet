@@ -8,6 +8,7 @@ import { discoverClassicProject } from './classic-layout.js';
 export interface ClassicCommandContext {
   invocationCwd: string;
   projectRoot: string;
+  observations: Map<string, Promise<unknown>>;
 }
 
 export interface ClassicCommandContextOptions {
@@ -41,7 +42,7 @@ async function resolveCommandContext(
       `Classic command invocation cwd is outside the discovered project: ${invocationCwd}`,
     );
   }
-  return { invocationCwd, projectRoot };
+  return { invocationCwd, projectRoot, observations: new Map() };
 }
 
 export async function withClassicCommandContext<T>(
@@ -64,6 +65,25 @@ export function classicCommandInvocationCwd(): string {
   const active = commandContext.getStore();
   if (!active) throw new Error('Classic command invocation context is unavailable');
   return active.invocationCwd;
+}
+
+/** Operation-local reuse requires a caller-supplied content fingerprint, never a cross-command cache. */
+export async function classicOperationObservation<T>(
+  key: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const active = commandContext.getStore();
+  if (!active) return operation();
+  const existing = active.observations.get(key);
+  if (existing) return existing as Promise<T>;
+  const pending = operation();
+  active.observations.set(key, pending);
+  try {
+    return await pending;
+  } catch (error) {
+    active.observations.delete(key);
+    throw error;
+  }
 }
 
 /**
