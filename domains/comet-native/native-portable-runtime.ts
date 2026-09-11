@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -1176,7 +1177,7 @@ async function nativePhysicalCheckInputSnapshot(
     relativeDirectory: string,
     insideGeneratedDirectory: boolean,
   ): Promise<boolean> => {
-    let entries: Awaited<ReturnType<typeof fs.readdir>>;
+    let entries: Dirent<string>[];
     try {
       entries = await fs.readdir(directory, { withFileTypes: true });
     } catch {
