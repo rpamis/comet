@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   executeNativeCheck,
   nativePortableArgvDisplay,
+  preflightNativeCheckPlans,
   resolveNativeCheckCwd,
 } from '../../../domains/comet-native/native-check-executor.js';
 
@@ -151,5 +152,21 @@ describe('Native check executor', () => {
       '--safe',
       'visible-value',
     ]);
+  });
+
+  it('rejects a missing check working directory during preflight', () => {
+    expect(() =>
+      preflightNativeCheckPlans(root, [
+        {
+          id: 'missing-cwd',
+          name: 'Missing working directory',
+          executable: process.execPath,
+          argv: ['-e', 'process.exit(0)'],
+          cwdRef: 'missing-working-directory',
+          timeoutMs: 1_000,
+          repeatable: true,
+        },
+      ]),
+    ).toThrow(/working directory|cwd|directory|exist/iu);
   });
 });

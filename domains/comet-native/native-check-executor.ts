@@ -4,6 +4,7 @@ import {
   createWriteStream,
   existsSync,
   promises as fs,
+  statSync,
 } from 'node:fs';
 import path from 'node:path';
 
@@ -70,6 +71,15 @@ export function resolveNativeCheckCwd(projectRoot: string, cwdRef: string): stri
   const root = path.resolve(projectRoot);
   const target = path.resolve(root, ...cwdRef.split('/'));
   if (!inside(root, target)) throw new Error('Native check cwd escaped the project root');
+  let targetStat: ReturnType<typeof statSync>;
+  try {
+    targetStat = statSync(target);
+  } catch (error) {
+    throw new Error(`Native check cwd does not exist: ${cwdRef}`, { cause: error });
+  }
+  if (!targetStat.isDirectory()) {
+    throw new Error(`Native check cwd is not a directory: ${cwdRef}`);
+  }
   return target;
 }
 
