@@ -22,14 +22,14 @@ export async function collectGitSnapshot(projectPath: string): Promise<GitSnapsh
   const [branch, head, statusOut, log] = await Promise.all([
     runGit(projectPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']).then(emptyToNull),
     runGit(projectPath, ['log', '-1', '--pretty=format:%h %s']).then(emptyToNull),
-    runGit(projectPath, ['status', '--porcelain']),
+    // NUL-terminated porcelain keeps paths verbatim: git never quotes or
+    // octal-escapes them, so non-ASCII filenames stay readable regardless of
+    // the user's core.quotePath setting.
+    runGit(projectPath, ['status', '--porcelain=v1', '-z']),
     runGit(projectPath, ['log', `-${RECENT_COMMIT_LIMIT}`, '--pretty=format:%h %s']),
   ]);
 
-  const dirtyEntries = statusOut
-    .split(/\r?\n/u)
-    .filter((line) => line.length > 0)
-    .map(parsePorcelainLine);
+  const dirtyEntries = parsePorcelainRecords(statusOut);
 
   return {
     branch,
@@ -67,12 +67,21 @@ function emptyToNull(value: string): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
-function parsePorcelainLine(line: string): string {
-  // Porcelain v1 format: "XY <path>" or "XY <old> -> <new>".
-  // XY is the two-character status; column 3 is always a separator space.
-  // Trimming the leading status block lets us recover the path even when X
-  // or Y is a space (e.g. " M file.txt", "?? new.txt").
-  const body = line.slice(3);
-  const arrowIdx = body.indexOf(' -> ');
-  return (arrowIdx >= 0 ? body.slice(arrowIdx + 4) : body).trim();
+function parsePorcelainRecords(raw: string): string[] {
+  // Porcelain v1 with -z: "XY PATH\0" per entry. Renames and copies store the
+  // new path in the entry and the original path in the following NUL record;
+  // the snapshot keeps showing the new path. XY is two status characters and
+  // the third byte is always a separator, so shorter entries are malformed and
+  // skipped to keep the snapshot best-effort.
+  const records = raw.split('\0');
+  const paths: string[] = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (record.length < 4) continue;
+    paths.push(record.slice(3));
+    if (record[0] === 'R' || record[0] === 'C' || record[1] === 'R' || record[1] === 'C') {
+      index += 1;
+    }
+  }
+  return paths;
 }
