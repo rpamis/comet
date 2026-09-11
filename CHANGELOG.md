@@ -2,6 +2,13 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.1] - 2026-09-11
+
+### Fixed
+
+- **Memory content filter**: Accept ISO 8601 dates such as `2026-09-01` in memory text instead of misclassifying them as phone numbers, so remembering dated facts no longer fails.
+- **Memory filter diagnostics**: Name the matched content category (for example, `phone number` or `credential assignment`) when memory text is rejected, so callers can correct the text instead of guessing.
+
 ## What's Changed [0.4.0] - 2026-09-08
 
 ### Changed
