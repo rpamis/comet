@@ -67,12 +67,16 @@ function emptyToNull(value: string): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
+/**
+ * Parse dirty paths from NUL-terminated porcelain v1 status output.
+ *
+ * Each record is "XY PATH". Renames and copies store the new path in the
+ * entry and the original path in the following NUL record; the snapshot
+ * keeps showing the new path. XY is two status characters and the third
+ * byte is always a separator, so shorter entries are malformed and skipped
+ * to keep the snapshot best-effort.
+ */
 function parsePorcelainRecords(raw: string): string[] {
-  // Porcelain v1 with -z: "XY PATH\0" per entry. Renames and copies store the
-  // new path in the entry and the original path in the following NUL record;
-  // the snapshot keeps showing the new path. XY is two status characters and
-  // the third byte is always a separator, so shorter entries are malformed and
-  // skipped to keep the snapshot best-effort.
   const records = raw.split('\0');
   const paths: string[] = [];
   for (let index = 0; index < records.length; index += 1) {

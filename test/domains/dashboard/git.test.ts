@@ -98,21 +98,25 @@ describe('collectGitSnapshot', () => {
     expect(snap.dirtyFileList).toHaveLength(20);
   });
 
-  it('shows non-ASCII and spaced filenames verbatim regardless of core.quotePath', async () => {
-    await fs.mkdir(path.join(repo, 'docs'));
-    await fs.writeFile(path.join(repo, 'docs', 'kept.md'), 'kept');
-    git(repo, ['add', '.']);
-    git(repo, ['commit', '-q', '-m', 'seed']);
+  it.each(['true', 'false'] as const)(
+    'shows non-ASCII and spaced filenames verbatim with core.quotePath=%s',
+    async (quotepath) => {
+      await fs.mkdir(path.join(repo, 'docs'));
+      await fs.writeFile(path.join(repo, 'docs', 'kept.md'), 'kept');
+      git(repo, ['add', '.']);
+      git(repo, ['commit', '-q', '-m', 'seed']);
 
-    await fs.writeFile(path.join(repo, 'docs', '仪表盘快照测试-草稿.md'), 'zh');
-    await fs.writeFile(path.join(repo, 'name with spaces.txt'), 'space');
+      git(repo, ['config', 'core.quotepath', quotepath]);
+      await fs.writeFile(path.join(repo, 'docs', '仪表盘快照测试-草稿.md'), 'zh');
+      await fs.writeFile(path.join(repo, 'name with spaces.txt'), 'space');
 
-    const snap = await collectGitSnapshot(repo);
-    expect(snap.dirtyFiles).toBe(2);
-    expect(new Set(snap.dirtyFileList)).toEqual(
-      new Set(['docs/仪表盘快照测试-草稿.md', 'name with spaces.txt']),
-    );
-  });
+      const snap = await collectGitSnapshot(repo);
+      expect(snap.dirtyFiles).toBe(2);
+      expect(new Set(snap.dirtyFileList)).toEqual(
+        new Set(['docs/仪表盘快照测试-草稿.md', 'name with spaces.txt']),
+      );
+    },
+  );
 
   it('shows the new path for renamed files', async () => {
     await fs.writeFile(path.join(repo, 'old-name.txt'), 'content');
