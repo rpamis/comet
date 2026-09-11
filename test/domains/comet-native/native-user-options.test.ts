@@ -97,6 +97,8 @@ async function acceptCandidate(root: string, name: string, ids: string[], plans:
   const dispatched = await input(root, name, { kind: 'dispatch-verifier', checks: plans });
   const result = await input(root, name, {
     kind: 'verifier-response',
+    candidateId: dispatched.verifierDispatch.candidateId,
+    verifierExecutionRef: dispatched.verifierDispatch.verifierExecutionRef,
     response: {
       kind: 'final-result',
       result: {

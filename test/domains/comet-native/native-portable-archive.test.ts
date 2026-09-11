@@ -738,7 +738,7 @@ children:
     ).resolves.toMatchObject({ exitCode: 0, data: { state: { status: 'done' } } });
   });
 
-  it('reports isolated workspace blockers during dry-run and lets Archive commit change-owned files', async () => {
+  it('allows isolated keep finishes to preserve unrelated files while committing change-owned files', async () => {
     execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
     execFileSync('git', ['config', 'user.email', 'native-test@example.com'], { cwd: root });
     execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: root });
@@ -768,35 +768,23 @@ children:
     );
     await fs.writeFile(path.join(root, 'generated-output.txt'), 'created by a build\n');
 
-    const blocked = await nativeArchiveCommand([state.name, '--dry-run', '--finish', 'keep'], root);
-    expect(blocked).toMatchObject({
-      exitCode: 0,
-      data: {
-        ready: false,
-        blockers: [expect.stringContaining('generated-output.txt')],
-        continuation: {
-          disposition: 'blocked',
-          action: 'archive',
-          commandArgs: null,
-          requiredInputs: ['archive-blocker-resolution'],
-        },
-      },
-    });
-    expect(await fs.readFile(path.join(root, 'generated-output.txt'), 'utf8')).toContain('build');
-
-    await fs.rm(path.join(root, 'generated-output.txt'));
-    const ready = await nativeArchiveCommand([state.name, '--dry-run'], root);
-    expect(ready).toMatchObject({
+    const readyWithUnrelatedFile = await nativeArchiveCommand(
+      [state.name, '--dry-run', '--finish', 'keep'],
+      root,
+    );
+    expect(readyWithUnrelatedFile).toMatchObject({
       exitCode: 0,
       data: {
         ready: true,
         blockers: [],
         continuation: {
           disposition: 'continue',
+          action: 'archive',
           commandArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
         },
       },
     });
+    expect(await fs.readFile(path.join(root, 'generated-output.txt'), 'utf8')).toContain('build');
 
     const archived = await nativeArchiveCommand([state.name, '--confirmed'], root);
     expect(archived).toMatchObject({
@@ -806,10 +794,13 @@ children:
         workspaceFinishResult: { status: 'kept', commit: expect.any(String) },
       },
     });
-    expect(execFileSync('git', ['status', '--short'], { cwd: root, encoding: 'utf8' })).toBe('');
+    expect(await fs.readFile(path.join(root, 'generated-output.txt'), 'utf8')).toContain('build');
+    expect(execFileSync('git', ['status', '--short'], { cwd: root, encoding: 'utf8' })).toContain(
+      '?? generated-output.txt',
+    );
   });
 
-  it('reports current workspace blockers during dry-run and commits change-owned files', async () => {
+  it('allows current workspace finishes to preserve unrelated files while committing change-owned files', async () => {
     execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
     execFileSync('git', ['config', 'user.email', 'native-test@example.com'], { cwd: root });
     execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: root });
@@ -823,30 +814,15 @@ children:
     const state = await archiveReady('current-archive');
     await fs.writeFile(path.join(root, 'generated-output.txt'), 'created by a build\n');
 
-    const blocked = await nativeArchiveCommand([state.name, '--dry-run'], root);
-    expect(blocked).toMatchObject({
-      exitCode: 0,
-      data: {
-        ready: false,
-        blockers: [expect.stringContaining('generated-output.txt')],
-        workspaceFinishBlockers: [{ paths: [expect.stringContaining('generated-output.txt')] }],
-        continuation: {
-          disposition: 'blocked',
-          action: 'archive',
-          commandArgs: null,
-        },
-      },
-    });
-
-    await fs.rm(path.join(root, 'generated-output.txt'));
-    const ready = await nativeArchiveCommand([state.name, '--dry-run'], root);
-    expect(ready).toMatchObject({
+    const readyWithUnrelatedFile = await nativeArchiveCommand([state.name, '--dry-run'], root);
+    expect(readyWithUnrelatedFile).toMatchObject({
       exitCode: 0,
       data: {
         ready: true,
         blockers: [],
         continuation: {
           disposition: 'continue',
+          action: 'archive',
           commandArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
         },
       },
@@ -860,7 +836,10 @@ children:
         workspaceFinishResult: { status: 'kept', commit: expect.any(String) },
       },
     });
-    expect(execFileSync('git', ['status', '--short'], { cwd: root, encoding: 'utf8' })).toBe('');
+    expect(await fs.readFile(path.join(root, 'generated-output.txt'), 'utf8')).toContain('build');
+    expect(execFileSync('git', ['status', '--short'], { cwd: root, encoding: 'utf8' })).toContain(
+      '?? generated-output.txt',
+    );
   });
 
   it('detects capability owners in another registered Git worktree', async () => {

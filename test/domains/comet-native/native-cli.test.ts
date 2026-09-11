@@ -825,7 +825,9 @@ describe('Comet Native CLI dispatcher', () => {
     );
     expect(nextHelp.stdout).toContain('Supervisor task operations');
     expect(nextHelp.stdout).toContain('skill-coordinated JSON');
-    expect(nextHelp.stdout).toContain('Identity/provider/execution/candidate fields are rejected');
+    expect(nextHelp.stdout).toContain(
+      'Builder/dispatch identity fields are rejected; verifier responses must echo the current candidateId and verifierExecutionRef',
+    );
     expect(nextHelp.stdout).not.toMatch(/^\s+--(?:result|report|artifact)\b/mu);
     const specHelp = await runNativeCli(['spec', 'remove', '--help', ...projectArgs()]);
     expect(specHelp.stdout).toContain('spec remove <change-name> <capability>');

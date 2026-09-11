@@ -8,6 +8,7 @@ import {
   finishArchivedNativeWorkspace,
   NativeWorkspaceFinishError,
 } from '../../../domains/comet-native/native-workspace-finish.js';
+import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import type { NativeChangeState } from '../../../domains/comet-native/native-types.js';
 
@@ -83,4 +84,63 @@ describe('Native workspace finish recovery', () => {
       }),
     ).toThrow();
   });
+
+  it.each([
+    { finish: 'keep' as const, isolation: 'current' as const },
+    { finish: 'keep' as const, isolation: 'worktree' as const },
+  ])(
+    'preserves unrelated changes for $isolation/$finish finishes',
+    async ({ finish, isolation }) => {
+      const paths = await nativeProjectPaths(projectRoot, '.');
+      const name = `kept-${isolation}`;
+      const changeDir = nativeChangeDir(paths, name);
+      await fs.mkdir(changeDir, { recursive: true });
+      await fs.writeFile(path.join(changeDir, 'comet-state.yaml'), 'owned change\n');
+
+      const staged = path.join(projectRoot, `unrelated-${isolation}-staged.txt`);
+      const working = path.join(projectRoot, `unrelated-${isolation}-working.txt`);
+      const untracked = path.join(projectRoot, `unrelated-${isolation}-untracked.txt`);
+      await fs.writeFile(staged, 'staged content\n');
+      execFileSync('git', ['add', path.basename(staged)], { cwd: projectRoot, stdio: 'ignore' });
+      await fs.writeFile(working, 'working content\n');
+      await fs.writeFile(untracked, 'untracked content\n');
+
+      const result = await finishArchivedNativeWorkspace({
+        paths,
+        state: { name, spec_changes: [] } as NativeChangeState,
+        name,
+        archiveDir: path.join(projectRoot, 'archive', name),
+        transactionId: `transaction-${isolation}`,
+        plan: {
+          finish,
+          changeRoot: projectRoot,
+          primaryRoot: projectRoot,
+          changeBranch,
+          targetBranch,
+          targetRoot: projectRoot,
+          remote: null,
+          isolation,
+        },
+      });
+
+      expect(result).toMatchObject({ status: 'kept', pushed: false, merged: false });
+      expect(
+        execFileSync('git', ['diff', '--cached', '--name-only'], {
+          cwd: projectRoot,
+          encoding: 'utf8',
+        }).trim(),
+      ).toBe(path.basename(staged));
+      expect(await fs.readFile(staged, 'utf8')).toBe('staged content\n');
+      expect(await fs.readFile(working, 'utf8')).toBe('working content\n');
+      expect(await fs.readFile(untracked, 'utf8')).toBe('untracked content\n');
+      expect(
+        execFileSync('git', ['show', '--format=', '--name-only', result.commit!], {
+          cwd: projectRoot,
+          encoding: 'utf8',
+        }),
+      ).toContain(
+        path.relative(projectRoot, path.join(changeDir, 'comet-state.yaml')).replaceAll('\\', '/'),
+      );
+    },
+  );
 });

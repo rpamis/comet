@@ -15,7 +15,10 @@ import {
 import {
   createNativePortableChange,
   nativePortableChangeDir,
+  readNativePortableChange,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { inspectNativeChildren } from '../../../domains/comet-native/native-children.js';
+import { nativePortableContinuation } from '../../../domains/comet-native/native-portable-continuation.js';
 import {
   dispatchNativeSupervisorReadyTasks,
   integrateNativeSupervisorChildWorkspace,
@@ -226,6 +229,17 @@ describe('Supervisor integration check execution', () => {
       receiptRef: expect.stringContaining('runtime/evidence/reports/'),
       checks: [{ name: 'fails', status: 'failed' }],
     });
+    const samePlan = await integrateNativeSupervisorChildWorkspace({
+      paths,
+      state: failed,
+      name: 'core',
+      checks: [],
+      checkPlans: [plan('fails', 'process.exit(1)')],
+    });
+    expect(samePlan.integration.checkExecution).toMatchObject({
+      status: 'interrupted',
+      operationId: failed.integration.checkExecution!.operationId,
+    });
     const completed = await integrateNativeSupervisorChildWorkspace({
       paths,
       state: failed,
@@ -244,5 +258,32 @@ describe('Supervisor integration check execution', () => {
     expect(completed.integration.checkExecution!.operationId).not.toBe(
       failed.integration.checkExecution!.operationId,
     );
+  }, 120000);
+
+  it('exposes only interrupted integration checks as an explicit retry action', async () => {
+    const { paths, state } = await verifiedSupervisor();
+    await expect(
+      integrateNativeSupervisorChildWorkspace({
+        paths,
+        state,
+        name: 'core',
+        checks: [],
+        checkPlans: [{ ...plan('interrupted', 'setInterval(() => {}, 25)', []), timeoutMs: 50 }],
+      }),
+    ).rejects.toThrow('was interrupted');
+
+    const current = (await readNativeSupervisorState(paths, 'parent'))!;
+    const portable = await readNativePortableChange(paths, 'parent');
+    const children = await inspectNativeChildren({ paths, state: portable });
+    const continuation = nativePortableContinuation(portable, children, {
+      supervisorIntegrationRetryIds: current.integration.checkExecution?.checkStates
+        ?.filter(({ status }) => status === 'interrupted')
+        .map(({ id }) => id),
+    });
+    const template = continuation.inputOptions.find(
+      ({ template }) =>
+        !Array.isArray(template) && (template as { kind?: string }).kind === 'supervisor-integrate',
+    )?.template as { retry_check_ids?: string[] } | undefined;
+    expect(template?.retry_check_ids).toEqual(['interrupted']);
   }, 120000);
 });

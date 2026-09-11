@@ -31,15 +31,16 @@ Archive-ready 时先执行 continuation 给出的 `archive --dry-run`。隔离 w
 
 把 `inputOptions.template` 复制到系统临时 JSON 文件，只替换模板要求填写的内容，然后执行 `continuation.commandArgs` 或所选 `commandAlternative.commandArgs`。命令结束后删除临时文件。模板中已有的验收轮次、Verifier 尝试次数、状态版本和任务标识都原样保留；只填写模板公开的字段。
 
-- `builder-handoff`：提交本轮实现摘要、处理的验收 ID、Builder 实际做过的开发检查、已知限制，以及新的只读代码复核所产生的 `review.status=passed`、`review.summary` 和 `review.reviewer_execution_ref`。验收结论留给 Verifier。
+- `builder-handoff`：提交本轮实现摘要、处理的验收 ID、Builder 实际做过的开发检查和已知限制；`review` 可选，若提供则填写新的只读代码复核产生的 `review.status=passed`、`review.summary` 和 `review.reviewer_execution_ref`。验收结论留给 Verifier。
 - `dispatch-verifier`：列出当前候选需要由 Runtime 执行的检查。普通 change 确认没有适用的命令检查时可提交空列表；Supervisor 父级必须填写至少一项集成检查，`cwdRef` 相对于集成工作区。返回的是任务包和 attempt 标识，必须由 Agent 立即启动平台原生的只读 Verifier subagent；不存在需要另行启动或配置的 Verifier 服务、进程、地址或回调。
-- `verifier-response`：Verifier 请求补充检查，或提交恰好覆盖当前 `scopeIds` 的结果。修复范围通过后 Runtime 会再要求一次覆盖全部验收场景的最终验证。
+- `retry-checks`：只重试当前候选中由 Runtime 标记为中断且允许重复的检查；复制最新 continuation 的 `check_ids`，不要替换命令或候选。每项检查最多执行三次，成功检查和有效日志会保留。
+- `verifier-response`：Verifier 请求补充检查，或提交恰好覆盖当前 `scopeIds` 的结果。必须从本次 `verifierDispatch` 原样带回 `candidateId` 和 `verifierExecutionRef`，Runtime 会拒绝旧候选或旧执行的迟到回包。修复候选提交后，Runtime 会把下一次正式 Verifier 的范围设为全部验收场景；完整结果通过后不再追加相同的全量验证。
 - Supervisor 任务回报使用 `supervisor-builder-result`、`supervisor-builder-failure`、`supervisor-checks`、`supervisor-verifier-result`、`supervisor-reconnect`、`supervisor-cancel` 和 `supervisor-integrate`；Builder、Verifier、检查、重连和取消操作保留当前任务包的 `runId`。需要按顺序执行时，可用 `comet native next <change> --max-parallel 1`，默认上限为 2。
-- 子任务 Verifier 先读取任务包的 `acceptance`、`contractHash` 和 `verificationBoundary`，再提交 `supervisor-checks`：字段为 `kind`、`child`、`runId`、`checks`（非空、`repeatable: true` 的 Runtime 计划）、`materials`（可为空，每份材料为 `{name, content}`）。检查在干净的子任务候选工作区执行，Runtime 返回 `checkExecution.status`、`operationId` 和完成后的 `receiptRef`。相同运行中的计划复用执行句柄，重复的可重复检查复用已登记回执；失败或中断不算通过。外部报告通过 `materials` 登记内容快照，普通路径和口头报告仅是调查线索。 `supervisor-verifier-result` 的 `verdict` 为 `pass`、`fail` 或 `blocked`；`evidence` 包含 `summary`、`checks`（非正式备注）、`receiptRef`、`acceptance`（每项 `{id, result, reason}`）。任务包中每个验收 ID 必须恰好出现一次；总判定必须与逐项结论一致，正式检查以 Runtime 回执为准；失败或阻塞时 `receiptRef` 可为 null。报告遗漏或矛盾时按具体错误修正，不能自行补造通过项。子任务通过后父级仍执行最终全量验收。 `supervisor-integrate` 不携带 `runId`，其 `checks` 必须是非空、`repeatable: true` 的可执行 Runtime 检查计划，不能提交自行声明的通过状态。Runtime 在集成工作区合入候选后执行检查，只有全部通过才记录 integrated。已登记证据可校验内容和候选绑定；普通外部文件的写权限隔离仍由运行平台负责。
+- 子任务 Verifier 先读取任务包的 `acceptance`、`contractHash` 和 `verificationBoundary`，再提交 `supervisor-checks`：字段为 `kind`、`child`、`runId`、`checks`（非空、`repeatable: true` 的 Runtime 计划）、`materials`（可为空，每份材料为 `{name, content}`），中断后可选填最新模板中的 `retry_check_ids`。检查在干净的子任务候选工作区执行，Runtime 返回 `checkExecution.status`、`operationId` 和完成后的 `receiptRef`。相同候选、同一工作区、同一机器且输入和工具环境未变化时复用执行句柄或已登记回执；中断后只重试列出的可重复检查，已经通过的检查和有效日志保留，每项最多三次。失败或中断不算通过。外部报告通过 `materials` 登记内容快照，普通路径和口头报告仅是调查线索。 `supervisor-verifier-result` 的 `verdict` 为 `pass`、`fail` 或 `blocked`；`evidence` 包含 `summary`、`checks`（非正式备注）、`receiptRef`、`acceptance`（每项 `{id, result, reason}`）。任务包中每个验收 ID 必须恰好出现一次；总判定必须与逐项结论一致，正式检查以 Runtime 回执为准；失败或阻塞时 `receiptRef` 可为 null。报告遗漏或矛盾时按具体错误修正，不能自行补造通过项。子任务通过后父级仍执行最终全量验收。 `supervisor-integrate` 不携带 `runId`，其 `checks` 必须是非空、`repeatable: true` 的可执行 Runtime 检查计划，不能提交自行声明的通过状态；中断后同样只能使用当前候选的 `retry_check_ids`。Runtime 在集成工作区合入候选后执行检查，只有全部通过才记录 integrated。已登记证据可校验内容、候选、工作区、机器和输入绑定；普通外部文件的写权限隔离仍由运行平台负责。
 - `verifier-execution-error` / `verifier-unavailable`：平台支持 subagent，但本次任务未启动、执行失败、超时或结束后没有返回时使用前者；只有当前平台确实没有可用的 subagent 能力时才使用后者。模板中的任务关联字段必须原样保留，避免旧任务的迟到消息影响新的 Verifier。
 - `retry-verifier` / `confirm-verifier-unavailable`：Runtime 在 Verifier 不可用状态返回这两个 `commandAlternatives`。用户要求重试时选择前者，候选代码和已完成检查会保留；只有用户明确接受只有自动检查的降级结果时才选择后者。
 
-Runtime 负责执行并记录验收检查。Builder 在 handoff 中列出的开发检查只用于说明候选；Verifier 以 Runtime 的实际检查结果为准。是否补充检查、重试或启动新的 Verifier，由最新 `continuation` 决定。
+Runtime 负责执行并记录验收检查。Builder 在 handoff 中列出的开发检查只用于说明候选；Verifier 以 Runtime 的实际检查结果为准。是否补充检查、重试或启动新的 Verifier，由最新 `continuation` 决定。复制 Runner 输入后可先执行 `comet native next <change> --runner-input <file> --validate-only --json` 做无副作用的结构校验；校验不会写状态或启动检查，正式提交时仍需重新遵守当前 continuation 的绑定。
 
 ## 异常情况
 

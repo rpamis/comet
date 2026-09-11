@@ -1,7 +1,17 @@
-import { createWriteStream, promises as fs } from 'node:fs';
+import {
+  accessSync,
+  constants as fsConstants,
+  createWriteStream,
+  existsSync,
+  promises as fs,
+} from 'node:fs';
 import path from 'node:path';
 
-import { spawnCommand } from '../../platform/process/spawn-command.js';
+import {
+  assertSafeWindowsBatchArguments,
+  resolveWindowsCommand,
+  spawnCommand,
+} from '../../platform/process/spawn-command.js';
 import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
 import { redactNativeCredentialText } from './native-redaction.js';
 
@@ -71,6 +81,73 @@ export function nativeCheckPlanKey(plan: NativeCheckPlan): string {
     plan.timeoutMs,
     plan.repeatable,
   ]);
+}
+
+function executableCandidates(executable: string, cwd: string): string[] {
+  if (path.isAbsolute(executable) || /[\\/]/u.test(executable)) {
+    return [path.resolve(cwd, executable)];
+  }
+  return (process.env.PATH ?? '')
+    .split(path.delimiter)
+    .map((directory) => directory.trim().replace(/^"(.*)"$/u, '$1'))
+    .filter(Boolean)
+    .map((directory) => path.join(directory, executable));
+}
+
+function assertExecutableAvailable(executable: string, cwd: string): void {
+  if (process.platform === 'win32') {
+    const resolved = resolveWindowsCommand(executable, process.env, cwd);
+    const candidate = path.win32.isAbsolute(resolved)
+      ? resolved
+      : executableCandidates(executable, cwd).find((entry) => existsSync(entry));
+    if (!candidate || !existsSync(candidate)) {
+      throw new Error(`executable is not available: ${executable}`);
+    }
+    if (['.bat', '.cmd'].includes(path.win32.extname(candidate).toLowerCase())) {
+      // spawnCommand uses a PowerShell shim for batch files; validate its
+      // arguments at reservation time so an invalid plan cannot be persisted.
+      return;
+    }
+    return;
+  }
+  const candidate = executableCandidates(executable, cwd).find((entry) => existsSync(entry));
+  if (!candidate) throw new Error(`executable is not available: ${executable}`);
+  try {
+    accessSync(candidate, fsConstants.X_OK);
+  } catch (error) {
+    throw new Error(`executable is not executable: ${executable}`, { cause: error });
+  }
+}
+
+/** Validate every plan before the Runtime creates durable execution state. */
+export function preflightNativeCheckPlans(
+  projectRoot: string,
+  plans: readonly NativeCheckPlan[],
+): void {
+  const seenIds = new Set<string>();
+  plans.forEach((plan, index) => {
+    if (seenIds.has(plan.id)) {
+      throw new Error(`Native check plan duplicate ID ${plan.id} at /checks/${index}/id`);
+    }
+    seenIds.add(plan.id);
+    let cwd: string;
+    try {
+      cwd = validateNativeCheckPlan(projectRoot, plan);
+      if (process.platform === 'win32') {
+        const resolved = resolveWindowsCommand(plan.executable, process.env, cwd);
+        const extension = path.win32.extname(resolved).toLowerCase();
+        if (extension === '.bat' || extension === '.cmd') {
+          assertSafeWindowsBatchArguments(plan.argv);
+        }
+      }
+      assertExecutableAvailable(plan.executable, cwd);
+    } catch (error) {
+      throw new Error(
+        `Native check ${plan.id} is invalid at /checks/${index}: ${(error as Error).message}`,
+        { cause: error },
+      );
+    }
+  });
 }
 
 const SENSITIVE_VALUE_FLAG =

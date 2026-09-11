@@ -27,7 +27,13 @@ type NativePortableCommandAlternative = {
 };
 
 export interface NativePortableRunnerAction {
-  kind: 'builder-handoff' | 'dispatch-verifier' | 'await-verifier' | 'retry-verifier' | 'none';
+  kind:
+    | 'builder-handoff'
+    | 'dispatch-verifier'
+    | 'retry-checks'
+    | 'await-verifier'
+    | 'retry-verifier'
+    | 'none';
   candidateId: string | null;
   iteration: number;
   attempt: number;
@@ -60,6 +66,7 @@ export interface NativePortableContinuation {
     | 'advance-parent'
     | 'builder-handoff'
     | 'dispatch-verifier'
+    | 'retry-checks'
     | 'await-verifier'
     | 'repair'
     | 'retry-verifier'
@@ -77,6 +84,8 @@ export type NativePortableArchiveContinuationMode = 'archive-ready' | 'preview' 
 
 export interface NativePortableContinuationOptions {
   verifierExecutionRef?: string;
+  retryCheckIds?: readonly string[];
+  supervisorIntegrationRetryIds?: readonly string[];
   archiveMode?: NativePortableArchiveContinuationMode;
   archiveBlockers?: readonly string[];
 }
@@ -823,11 +832,6 @@ export function nativePortableContinuation(
                 addressed_acceptance_ids: ['<acceptance-id>'],
                 checks: [{ name: '<check-name>', result: 'not-run', note: null }],
                 known_limits: [],
-                review: {
-                  status: 'passed',
-                  summary: '<review-summary>',
-                  reviewer_execution_ref: '<reviewer-execution-ref>',
-                },
               },
             },
           ],
@@ -836,6 +840,7 @@ export function nativePortableContinuation(
       }
       const verified = children.children.find(({ status }) => status === 'verified');
       if (verified) {
+        const retryCheckIds = options.supervisorIntegrationRetryIds;
         return {
           ...base,
           disposition: 'continue',
@@ -869,6 +874,9 @@ export function nativePortableContinuation(
                     repeatable: true,
                   },
                 ],
+                ...(retryCheckIds && retryCheckIds.length > 0
+                  ? { retry_check_ids: [...retryCheckIds] }
+                  : {}),
               },
             },
           ],
@@ -924,11 +932,6 @@ export function nativePortableContinuation(
             addressed_acceptance_ids: ['<acceptance-id>'],
             checks: [{ name: '<check-name>', result: 'not-run', note: null }],
             known_limits: [],
-            review: {
-              status: 'passed',
-              summary: '<review-summary>',
-              reviewer_execution_ref: '<reviewer-execution-ref>',
-            },
           },
         },
       ],
@@ -947,6 +950,35 @@ export function nativePortableContinuation(
       timeoutMs: 120000,
       repeatable: true,
     };
+    if (!awaiting && options.retryCheckIds && options.retryCheckIds.length > 0) {
+      return {
+        ...base,
+        disposition: 'continue',
+        action: 'retry-checks',
+        commandArgs: [
+          'comet',
+          'native',
+          'next',
+          state.name,
+          '--runner-input',
+          '<temporary-json-file>',
+        ],
+        requiredInputs: ['retry-checks-json-file'],
+        inputOptions: [
+          {
+            name: 'runner-input',
+            flag: '--runner-input',
+            valueKind: 'json-file',
+            required: true,
+            template: {
+              kind: 'retry-checks',
+              check_ids: [...options.retryCheckIds],
+            },
+          },
+        ],
+        runnerAction: runner('retry-checks'),
+      };
+    }
     return {
       ...base,
       userCommunication:
@@ -983,6 +1015,8 @@ export function nativePortableContinuation(
             ? [
                 {
                   kind: 'verifier-response',
+                  candidateId: state.builder_handoff?.candidate_id ?? '<candidate-id>',
+                  verifierExecutionRef: options.verifierExecutionRef ?? '<from verifierDispatch>',
                   response: {
                     kind: 'request-checks',
                     iteration: state.loop.iteration,
@@ -992,6 +1026,8 @@ export function nativePortableContinuation(
                 },
                 {
                   kind: 'verifier-response',
+                  candidateId: state.builder_handoff?.candidate_id ?? '<candidate-id>',
+                  verifierExecutionRef: options.verifierExecutionRef ?? '<from verifierDispatch>',
                   response: {
                     kind: 'final-result',
                     result: {

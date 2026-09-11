@@ -329,6 +329,10 @@ describe('Native archived workspace finish', () => {
       '--cached',
       '--name-only',
       '-z',
+      '--',
+      'comet/changes/example',
+      'comet/archive/example',
+      '.comet/current-change.json',
     ]);
   });
 

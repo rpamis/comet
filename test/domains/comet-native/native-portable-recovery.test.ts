@@ -232,7 +232,7 @@ describe('Native portable recovery', () => {
     });
   });
 
-  it('preserves the current repair scope when a running Verifier is lost', async () => {
+  it('restarts the complete acceptance scope when a running repair Verifier is lost', async () => {
     const name = 'recover-repair-verifier';
     await createNativePortableChange({ paths, name, language: 'en' });
     await fs.writeFile(
@@ -321,7 +321,7 @@ describe('Native portable recovery', () => {
       verifierExecutionId: 'lost-repair-verifier',
     });
     expect(state.acceptance.map(({ id, result }) => ({ id, result }))).toEqual([
-      { id: 'A1', result: 'passed' },
+      { id: 'A1', result: 'pending' },
       { id: 'A2', result: 'pending' },
     ]);
 
@@ -335,7 +335,7 @@ describe('Native portable recovery', () => {
       },
     });
     expect(recovered.state.acceptance.map(({ id, result }) => ({ id, result }))).toEqual([
-      { id: 'A1', result: 'passed' },
+      { id: 'A1', result: 'pending' },
       { id: 'A2', result: 'pending' },
     ]);
   });

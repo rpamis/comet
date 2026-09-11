@@ -543,14 +543,14 @@ describe('Native reliability issue regressions', () => {
     await fs.writeFile(legacyFile, JSON.stringify(expired));
     const reused = await executeNativeSupervisorChecks(options);
     expect(reused.status).toBe('completed');
-    expect(reused.operationId).not.toBe(receipt.operationId);
+    expect(reused.operationId).toBe(receipt.operationId);
     receipt = reused;
     const stopped = requireStoppedPid();
     expired.children[0].task.checkExecution.ownerPid = stopped;
     await fs.writeFile(legacyFile, JSON.stringify(expired));
     const recovered = await executeNativeSupervisorChecks(options);
     expect(recovered.status).toBe('completed');
-    expect(recovered.operationId).not.toBe(receipt.operationId);
+    expect(recovered.operationId).toBe(receipt.operationId);
     receipt = recovered;
     const evidence = {
       summary: 'Verified both behaviors.',

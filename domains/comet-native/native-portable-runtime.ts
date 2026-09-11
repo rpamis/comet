@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import {
@@ -7,6 +8,7 @@ import {
   inspectGitWorktree,
   resolveGitRef,
 } from '../../platform/paths/git-worktree.js';
+import { runGitCommand } from '../../platform/process/git.js';
 
 import { atomicWriteText } from './native-atomic-file.js';
 import { nativeBriefHasBlockingQuestion } from './native-artifacts.js';
@@ -38,6 +40,7 @@ import {
   executeNativeCheck,
   nativeCheckPlanKey,
   nativePortableArgvDisplay,
+  preflightNativeCheckPlans,
   resolveNativeCheckCwd,
   validateNativeCheckPlan,
   type NativeCheckPlan,
@@ -866,8 +869,8 @@ export interface NativeSupervisorParentAdvance {
 }
 
 /**
- * Recompute whether every Child is integrated and the parent is ready for an
- * independent reviewed handoff. This inspection does not advance the phase.
+ * Recompute whether every Child is integrated and the parent is ready for a
+ * Builder handoff. This inspection does not advance the phase.
  */
 export async function inspectNativeSupervisorParentReviewReadiness(options: {
   paths: NativeProjectPaths;
@@ -909,8 +912,8 @@ export async function inspectNativeSupervisorParentReviewReadiness(options: {
   }
   const message =
     state.language === 'zh-CN'
-      ? '全部 Child 已完成；Supervisor 父级候选需要独立代码审查后再进入验证'
-      : 'All Children are complete; the Supervisor parent candidate needs an independent code review before verification.';
+      ? '全部 Child 已完成；Supervisor 父级候选可以提交并进入验证'
+      : 'All Children are complete; the Supervisor parent candidate can be submitted for verification.';
   return {
     state,
     parentAdvance: {
@@ -985,6 +988,15 @@ function resetInterruptedCheck(
       `Native check ${previous.id} was interrupted and is not repeatable; user resolution is required`,
     );
   }
+  return resetNativeCheckForExecution(previous, plan, operationId, projectRoot);
+}
+
+function resetNativeCheckForExecution(
+  previous: NativeLocalCheckState,
+  plan: NativeCheckPlan,
+  operationId: string,
+  projectRoot: string,
+): NativeLocalCheckState {
   return {
     ...localCheck(plan, operationId, projectRoot),
     executionCount: previous.executionCount,
@@ -1006,12 +1018,138 @@ function localCheckPlanKey(check: NativeLocalCheckState, projectRoot: string): s
   if (!executable) throw new Error(`Native local check ${check.id} has no executable`);
   return nativeCheckPlanKey({
     id: check.id,
-    name: check.id,
+    name: check.name,
     executable,
     argv,
     cwdRef: localCheckCwdRef(projectRoot, check.cwd),
     timeoutMs: check.timeoutMs,
     repeatable: check.repeatable,
+  });
+}
+
+function digestNativeCheckInput(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function nativeLocalCheckEvidenceDigest(
+  check: Pick<
+    NativeLocalCheckState,
+    | 'id'
+    | 'name'
+    | 'status'
+    | 'repeatable'
+    | 'timeoutMs'
+    | 'argv'
+    | 'cwd'
+    | 'exitCode'
+    | 'startedAt'
+    | 'completedAt'
+    | 'log'
+  >,
+  logContent: string,
+): string {
+  return canonicalHash('comet.native.local-check-evidence.v1', {
+    id: check.id,
+    name: check.name,
+    status: check.status,
+    repeatable: check.repeatable,
+    timeoutMs: check.timeoutMs,
+    argv: check.argv,
+    cwd: path.resolve(check.cwd),
+    exitCode: check.exitCode,
+    startedAt: check.startedAt,
+    completedAt: check.completedAt,
+    log: check.log,
+    logDigest: digestNativeCheckInput(logContent),
+  });
+}
+
+async function nativeCheckInputFingerprint(options: {
+  state: NativePortableState;
+  projectRoot: string;
+}): Promise<string> {
+  const gitSnapshot = {
+    head: null as string | null,
+    branch: null as string | null,
+    status: null as string | null,
+    diff: null as string | null,
+    stagedDiff: null as string | null,
+    submodules: null as string | null,
+    untracked: [] as Array<{ path: string; digest: string | null; size: number | null }>,
+  };
+  try {
+    gitSnapshot.head = runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
+    gitSnapshot.branch = runGitCommand(options.projectRoot, ['branch', '--show-current']);
+    gitSnapshot.status = runGitCommand(options.projectRoot, [
+      'status',
+      '--porcelain=v1',
+      '-z',
+      '--untracked-files=all',
+      '--ignore-submodules=none',
+    ]);
+    gitSnapshot.diff = digestNativeCheckInput(
+      runGitCommand(options.projectRoot, ['diff', '--binary', 'HEAD', '--submodule=diff', '--']),
+    );
+    gitSnapshot.stagedDiff = digestNativeCheckInput(
+      runGitCommand(options.projectRoot, [
+        'diff',
+        '--cached',
+        '--binary',
+        '--submodule=diff',
+        '--',
+      ]),
+    );
+    gitSnapshot.submodules = runGitCommand(options.projectRoot, [
+      'submodule',
+      'status',
+      '--recursive',
+    ]);
+    const untracked = runGitCommand(options.projectRoot, [
+      'ls-files',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+    ])
+      .split('\0')
+      .filter(Boolean)
+      .sort();
+    gitSnapshot.untracked = await Promise.all(
+      untracked.map(async (relative) => {
+        const target = path.resolve(options.projectRoot, ...relative.split('/'));
+        try {
+          const stat = await fs.stat(target);
+          const content = await fs.readFile(target);
+          return {
+            path: relative,
+            digest: digestNativeCheckInput(content.toString('base64')),
+            size: stat.size,
+          };
+        } catch {
+          return { path: relative, digest: null, size: null };
+        }
+      }),
+    );
+  } catch {
+    // Non-Git projects still receive a candidate/tool fingerprint. They do
+    // not receive cross-workspace evidence reuse without a stable Git view.
+  }
+  return canonicalHash('comet.native.check-input.v1', {
+    candidateId: options.state.builder_handoff?.candidate_id ?? null,
+    shapeConfirmationHash: options.state.shape_confirmation_hash ?? null,
+    acceptance: options.state.acceptance.map(({ id, source, text }) => ({ id, source, text })),
+    git: gitSnapshot,
+    projectRoot: path.resolve(options.projectRoot),
+    machineId: os.hostname(),
+    execPath: process.execPath,
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    path: process.env.PATH ?? null,
+    pathext: process.env.PATHEXT ?? null,
+    environment: Object.entries(process.env)
+      .map(([key, value]) => [key, value ?? null] as const)
+      .sort(([left], [right]) => left.localeCompare(right)),
   });
 }
 
@@ -1036,6 +1174,9 @@ function authoritativePortableChecks(options: {
   return options.local.checks.map((check) => {
     if (check.status === 'planned' || check.status === 'running') {
       throw new Error(`Native Runtime check ${check.id} has not completed`);
+    }
+    if (check.status === 'passed' && (check.evidence !== 'runtime' || !check.evidenceDigest)) {
+      throw new Error(`Native Runtime check ${check.id} has no Runtime execution evidence`);
     }
     const name = options.requestedNames?.get(check.id) ?? check.name;
     return {
@@ -1231,11 +1372,61 @@ function sameNativeCheckPlan(
   local: NativeLocalExecutionState,
   plans: readonly NativeCheckPlan[],
   projectRoot: string,
+  state: NativePortableState,
+  inputFingerprint: string,
 ): boolean {
+  if (
+    local.candidateId !== state.builder_handoff?.candidate_id ||
+    local.inputFingerprint !== inputFingerprint ||
+    path.resolve(local.workspace.projectRoot) !== path.resolve(projectRoot) ||
+    path.resolve(local.workspace.worktreeRoot) !== path.resolve(projectRoot) ||
+    local.workspace.branch !== currentBranch(projectRoot) ||
+    local.workspace.machineId !== os.hostname()
+  )
+    return false;
   if (local.checks.length !== plans.length) return false;
   return local.checks.every(
     (check, index) => localCheckPlanKey(check, projectRoot) === nativeCheckPlanKey(plans[index]),
   );
+}
+
+function sameNativeCheckCommands(
+  local: NativeLocalExecutionState,
+  plans: readonly NativeCheckPlan[],
+  projectRoot: string,
+): boolean {
+  return (
+    local.checks.length === plans.length &&
+    local.checks.every(
+      (check, index) => localCheckPlanKey(check, projectRoot) === nativeCheckPlanKey(plans[index]),
+    )
+  );
+}
+
+async function hasNativeRuntimeCheckEvidence(
+  local: NativeLocalExecutionState,
+  runtimeDir: string,
+): Promise<boolean> {
+  for (const check of local.checks) {
+    if (check.status !== 'passed') continue;
+    if (check.evidence !== 'runtime') return false;
+    try {
+      const logFile = await resolveContainedNativePath(
+        runtimeDir,
+        path.resolve(runtimeDir, ...check.log.split(/[\\/]/u)),
+      );
+      if (!(await fs.stat(logFile)).isFile()) return false;
+      const logContent = await fs.readFile(logFile, 'utf8');
+      if (
+        !check.evidenceDigest ||
+        check.evidenceDigest !== nativeLocalCheckEvidenceDigest(check, logContent)
+      )
+        return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }
 
 async function reserveNativePortableCheckPlan(options: {
@@ -1243,6 +1434,7 @@ async function reserveNativePortableCheckPlan(options: {
   name: string;
   plans: NativeCheckPlan[];
   projectRoot: string;
+  retryCheckIds?: readonly string[];
 }): Promise<
   | {
       kind: 'execute';
@@ -1262,7 +1454,7 @@ async function reserveNativePortableCheckPlan(options: {
         throw new Error('Native checks require Verify ready state');
       }
       const file = nativeLocalExecutionFile(options.paths, state.name);
-      const local = (
+      let local = (
         await readOrRebuildNativeLocalExecution({
           file,
           portableState: state,
@@ -1271,17 +1463,57 @@ async function reserveNativePortableCheckPlan(options: {
           containedRoot: options.paths.runtimeDir,
         })
       ).state;
+      const inputFingerprint = await nativeCheckInputFingerprint({
+        state,
+        projectRoot: options.projectRoot,
+      });
+      const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, state.name);
+      const runtimeEvidenceAvailable = await hasNativeRuntimeCheckEvidence(local, runtimeDir);
+      const allChecksPassed = local.checks.every((check) => check.status === 'passed');
+      const retryIds = options.retryCheckIds === undefined ? null : new Set(options.retryCheckIds);
+      const branch = currentBranch(options.projectRoot);
+      const sameBinding =
+        local.candidateId === state.builder_handoff?.candidate_id &&
+        path.resolve(local.workspace.projectRoot) === path.resolve(options.projectRoot) &&
+        path.resolve(local.workspace.worktreeRoot) === path.resolve(options.projectRoot) &&
+        local.workspace.branch === branch &&
+        local.workspace.machineId === os.hostname() &&
+        local.inputFingerprint === inputFingerprint;
+      const forceReexecuteForMissingEvidence =
+        sameBinding && allChecksPassed && !runtimeEvidenceAvailable;
+      if (retryIds && retryIds.size === 0) {
+        throw new Error('Native check retry list must contain at least one ID');
+      }
+      if (!sameBinding) {
+        // A local overlay from another candidate, workspace or host is not
+        // evidence for the current candidate. Rebuild the local overlay before
+        // reserving a new plan; the portable state remains untouched.
+        const rebuilt = rebuildNativeLocalExecution({
+          portableState: state,
+          projectRoot: options.projectRoot,
+          branch,
+        });
+        await writeNativeLocalExecution(file, rebuilt, { containedRoot: options.paths.runtimeDir });
+        local = rebuilt;
+      }
+      const planMatches = sameNativeCheckCommands(local, options.plans, options.projectRoot);
       if (
         local.execution?.stage === 'checking' &&
         local.execution.actor === 'runtime' &&
-        sameNativeCheckPlan(local, options.plans, options.projectRoot)
+        planMatches &&
+        sameNativeCheckPlan(local, options.plans, options.projectRoot, state, inputFingerprint)
       ) {
         const execution = local.execution;
         if (execution.status === 'running') {
           throw new Error('Native check plan is already in progress');
         }
         const interrupted = local.checks.filter((check) => check.status === 'interrupted');
-        if (interrupted.length === 0 && execution.status === 'completed') {
+        if (
+          interrupted.length === 0 &&
+          execution.status === 'completed' &&
+          allChecksPassed &&
+          !forceReexecuteForMissingEvidence
+        ) {
           const requestedNames = new Map(options.plans.map(({ id, name }) => [id, name] as const));
           return {
             kind: 'reuse',
@@ -1294,7 +1526,55 @@ async function reserveNativePortableCheckPlan(options: {
             }),
           };
         }
-        if (interrupted.length > 0 && interrupted.some((check) => !check.repeatable)) {
+        if (
+          interrupted.length === 0 &&
+          execution.status === 'completed' &&
+          !allChecksPassed &&
+          !forceReexecuteForMissingEvidence
+        ) {
+          throw new Error(
+            `Native check plan contains a failed check (${local.checks
+              .filter(({ status }) => status === 'failed')
+              .map(({ id }) => id)
+              .join(', ')}); submit a new Builder candidate`,
+          );
+        }
+        if (interrupted.length > 0 && retryIds === null && !forceReexecuteForMissingEvidence) {
+          const requestedNames = new Map(options.plans.map(({ id, name }) => [id, name] as const));
+          return {
+            kind: 'reuse',
+            state,
+            checks: authoritativePortableChecks({
+              local,
+              projectRoot: options.projectRoot,
+              supplied: [],
+              requestedNames,
+            }),
+          };
+        }
+        if (retryIds) {
+          const unknown = [...retryIds].filter(
+            (id) => !interrupted.some((check) => check.id === id),
+          );
+          if (unknown.length > 0) {
+            throw new Error(
+              `Native check retry IDs must refer to interrupted checks: ${unknown.join(', ')}`,
+            );
+          }
+          const exhausted = interrupted.filter(
+            (check) => retryIds.has(check.id) && check.executionCount >= 3,
+          );
+          if (exhausted.length > 0) {
+            throw new Error(
+              `Native check retry limit (3) reached: ${exhausted.map(({ id }) => id).join(', ')}`,
+            );
+          }
+        }
+        if (
+          interrupted.length > 0 &&
+          interrupted.some((check) => !check.repeatable) &&
+          !forceReexecuteForMissingEvidence
+        ) {
           const next = returnNativeCandidateToBuild({
             state,
             reason: `A non-repeatable Runtime check was interrupted (${interrupted
@@ -1326,16 +1606,28 @@ async function reserveNativePortableCheckPlan(options: {
           local.execution.stage === 'checking' &&
           local.execution.actor === 'runtime' &&
           local.checks.some((check) => check.status === 'interrupted') &&
-          sameNativeCheckPlan(local, options.plans, options.projectRoot);
-        if (!sameInterruptedPlan) {
+          planMatches;
+        if (!sameInterruptedPlan && !forceReexecuteForMissingEvidence) {
           throw new Error('Native check plan was already resolved with a different plan');
         }
-      } else if (local.execution !== null || local.checks.length > 0) {
+      } else if (
+        (local.execution !== null || local.checks.length > 0) &&
+        !forceReexecuteForMissingEvidence
+      ) {
         throw new Error('Native check plan was already resolved with a different plan');
       }
       const operationId = randomUUID();
       const operation: NativeLocalExecutionState = {
         ...local,
+        candidateId: state.builder_handoff?.candidate_id ?? null,
+        inputFingerprint,
+        workspace: {
+          ...local.workspace,
+          projectRoot: path.resolve(options.projectRoot),
+          worktreeRoot: path.resolve(options.projectRoot),
+          branch: currentBranch(options.projectRoot),
+          machineId: os.hostname(),
+        },
         execution: {
           operationId,
           stage: 'checking',
@@ -1347,7 +1639,13 @@ async function reserveNativePortableCheckPlan(options: {
         },
         checks: options.plans.map((plan) => {
           const previous = local.checks.find((check) => check.id === plan.id);
-          if (previous?.status === 'interrupted') {
+          if (forceReexecuteForMissingEvidence && previous) {
+            return resetNativeCheckForExecution(previous, plan, operationId, options.projectRoot);
+          }
+          if (
+            previous?.status === 'interrupted' &&
+            (retryIds === null || retryIds.has(previous.id))
+          ) {
             return resetInterruptedCheck(previous, plan, operationId, options.projectRoot);
           }
           if (previous) return { ...previous, operationId };
@@ -1361,7 +1659,11 @@ async function reserveNativePortableCheckPlan(options: {
         local: operation,
         plans: options.plans.filter((plan) => {
           const previous = local.checks.find((check) => check.id === plan.id);
-          return previous === undefined || previous.status === 'interrupted';
+          return (
+            forceReexecuteForMissingEvidence ||
+            previous === undefined ||
+            (previous.status === 'interrupted' && (retryIds === null || retryIds.has(previous.id)))
+          );
         }),
       };
     },
@@ -1410,11 +1712,10 @@ export async function executeNativePortableCheckPlan(options: {
   name: string;
   plans: NativeCheckPlan[];
   projectRoot?: string;
+  retryCheckIds?: readonly string[];
 }): Promise<{ state: NativePortableState; checks: NativePortableCheckSummary[] }> {
   const projectRoot = options.projectRoot ?? options.paths.projectRoot;
-  if (new Set(options.plans.map(({ id }) => id)).size !== options.plans.length) {
-    throw new Error('Native check plan contains duplicate IDs');
-  }
+  preflightNativeCheckPlans(projectRoot, options.plans);
   const normalizedPlans: NativeCheckPlan[] = [];
   const seenPlanKeys = new Set<string>();
   for (const plan of options.plans) {
@@ -1460,24 +1761,32 @@ export async function executeNativePortableCheckPlan(options: {
         operationId,
         plan,
       });
+      const logContent = await fs.readFile(
+        path.resolve(runtimeDir, ...result.logRef.split('/')),
+        'utf8',
+      );
       await updateReservedNativeCheckPlan({
         paths: options.paths,
         state: reservation.state,
         operationId,
         update: (local) => ({
           ...local,
-          checks: local.checks.map((check) =>
-            check.id === plan.id
-              ? {
-                  ...check,
-                  status: result.status,
-                  exitCode: result.exitCode,
-                  startedAt: result.startedAt,
-                  completedAt: result.completedAt,
-                  log: result.logRef,
-                }
-              : check,
-          ),
+          checks: local.checks.map((check) => {
+            if (check.id !== plan.id) return check;
+            const completed = {
+              ...check,
+              status: result.status,
+              exitCode: result.exitCode,
+              startedAt: result.startedAt,
+              completedAt: result.completedAt,
+              log: result.logRef,
+              evidence: 'runtime' as const,
+            };
+            return {
+              ...completed,
+              evidenceDigest: nativeLocalCheckEvidenceDigest(completed, logContent),
+            };
+          }),
         }),
       });
     }
@@ -1524,6 +1833,85 @@ export async function executeNativePortableCheckPlan(options: {
       supplied: [],
     }),
   };
+}
+
+/**
+ * Retry only repeatable interrupted checks for the current Builder candidate.
+ * The local overlay is read to reconstruct the exact original command, so an
+ * Agent cannot silently replace a failed command while claiming a retry.
+ */
+export async function retryNativePortableCheckPlan(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  checkIds: readonly string[];
+  projectRoot?: string;
+}): Promise<{ state: NativePortableState; checks: NativePortableCheckSummary[] }> {
+  if (options.checkIds.length === 0) {
+    throw new Error('Native check retry list must contain at least one ID');
+  }
+  const projectRoot = options.projectRoot ?? options.paths.projectRoot;
+  const state = await readNativePortableChange(options.paths, options.name);
+  if (
+    state.phase !== 'verify' ||
+    state.status !== 'active' ||
+    state.loop.stage !== 'verify-ready' ||
+    state.builder_handoff === null
+  ) {
+    throw new Error('Native check retry requires an active Verify-ready candidate');
+  }
+  const local = await readNativeLocalExecution(
+    nativeLocalExecutionFile(options.paths, options.name),
+  );
+  if (
+    local === null ||
+    local.change !== state.name ||
+    local.basedOnStateVersion !== state.state_version ||
+    local.execution === null ||
+    local.execution.stage !== 'checking' ||
+    local.execution.actor !== 'runtime'
+  ) {
+    throw new Error('Native check retry has no current Runtime check execution');
+  }
+  const requested = new Set(options.checkIds);
+  if (requested.size !== options.checkIds.length) {
+    throw new Error('Native check retry list contains duplicate IDs');
+  }
+  const checks = local.checks.filter((check) => requested.has(check.id));
+  const missing = options.checkIds.filter((id) => !checks.some((check) => check.id === id));
+  if (missing.length > 0) {
+    throw new Error(`Native check retry IDs are unknown: ${missing.join(', ')}`);
+  }
+  for (const check of checks) {
+    if (check.status !== 'interrupted') {
+      throw new Error(`Native check ${check.id} is not interrupted and cannot be retried`);
+    }
+    if (!check.repeatable) {
+      throw new Error(`Native check ${check.id} is not repeatable and cannot be retried`);
+    }
+    if (check.executionCount >= 3) {
+      throw new Error(`Native check retry limit (3) reached: ${check.id}`);
+    }
+  }
+  const plans = local.checks.map((check) => {
+    const [executable, ...argv] = check.argv;
+    if (!executable) throw new Error(`Native local check ${check.id} has no executable`);
+    return {
+      id: check.id,
+      name: check.name,
+      executable,
+      argv,
+      cwdRef: localCheckCwdRef(projectRoot, check.cwd),
+      timeoutMs: check.timeoutMs,
+      repeatable: check.repeatable,
+    } satisfies NativeCheckPlan;
+  });
+  return executeNativePortableCheckPlan({
+    paths: options.paths,
+    name: options.name,
+    plans,
+    projectRoot,
+    retryCheckIds: options.checkIds,
+  });
 }
 
 export interface NativePortableRequestChecksOutcome {
@@ -1608,8 +1996,13 @@ async function reserveVerifierRequestedChecks(options: {
         `Native check ${existing.id} was interrupted and is not repeatable; user resolution is required`,
       );
     }
+    if (existing?.status === 'interrupted' && existing.executionCount >= 3) {
+      throw new Error(`Native check retry limit (3) reached: ${existing.id}`);
+    }
     if (!requestedByKey.has(key)) requestedByKey.set(key, plan);
   }
+
+  preflightNativeCheckPlans(options.projectRoot, [...requestedByKey.values()]);
 
   const requested = [...requestedByKey.entries()];
   const novel = requested.filter(([key]) => !existingByKey.has(key));
@@ -1725,29 +2118,44 @@ async function executeReservedVerifierRequestedChecks(options: {
           ),
         }),
       });
+      const runtimeDir = nativePreferredChangeRuntimeDir(
+        options.paths,
+        options.reservation.state.name,
+      );
       const result = await executeNativeCheck({
         projectRoot: options.projectRoot,
-        runtimeDir: nativePreferredChangeRuntimeDir(options.paths, options.reservation.state.name),
+        runtimeDir,
         operationId: options.reservation.local.execution!.operationId,
         plan,
       });
+      const logContent = await fs.readFile(
+        await resolveContainedNativePath(
+          runtimeDir,
+          path.resolve(runtimeDir, ...result.logRef.split(/[\\/]/u)),
+        ),
+        'utf8',
+      );
       operation = await updateReservedVerifierRequestedChecks({
         paths: options.paths,
         reservation: options.reservation,
         update: (local) => ({
           ...local,
-          checks: local.checks.map((check) =>
-            check.id === plan.id
-              ? {
-                  ...check,
-                  status: result.status,
-                  exitCode: result.exitCode,
-                  startedAt: result.startedAt,
-                  completedAt: result.completedAt,
-                  log: result.logRef,
-                }
-              : check,
-          ),
+          checks: local.checks.map((check) => {
+            if (check.id !== plan.id) return check;
+            const completed = {
+              ...check,
+              status: result.status,
+              exitCode: result.exitCode,
+              startedAt: result.startedAt,
+              completedAt: result.completedAt,
+              log: result.logRef,
+              evidence: 'runtime' as const,
+            };
+            return {
+              ...completed,
+              evidenceDigest: nativeLocalCheckEvidenceDigest(completed, logContent),
+            };
+          }),
         }),
       });
     }

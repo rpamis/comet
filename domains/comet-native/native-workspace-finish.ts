@@ -314,13 +314,6 @@ export async function prepareNativePortableWorkspaceFinish(options: {
       throw new Error('Native current workspace finish requires a registered Git branch');
     }
     assertGitIdentity(paths.projectRoot);
-    const allowedBeforeArchive = portableArchiveOwnedPaths(
-      paths,
-      state,
-      options.archiveDir,
-      options.appliedSpecChanges,
-    );
-    assertFinishScopeClean(paths.projectRoot, allowedBeforeArchive);
     return {
       finish: 'keep',
       changeRoot: paths.projectRoot,
@@ -356,7 +349,12 @@ export async function prepareNativePortableWorkspaceFinish(options: {
     options.archiveDir,
     options.appliedSpecChanges,
   );
-  assertFinishScopeClean(paths.projectRoot, allowedBeforeArchive);
+  // Explicit `keep` is also a non-destructive local finish: only the change
+  // owned paths may be committed, while unrelated staged and working files
+  // stay in place. Merge, push and PR still require an isolated clean scope.
+  if (workspace.finish !== 'keep') {
+    assertFinishScopeClean(paths.projectRoot, allowedBeforeArchive);
+  }
   const targetRoot =
     workspace.isolation === 'branch'
       ? paths.projectRoot
@@ -463,12 +461,14 @@ export async function finishArchivedNativeWorkspace(options: {
       ),
       portableRelative(options.paths.projectRoot, nativeSelectionFile(options.paths)),
     ];
+    const preservesUnrelatedChanges =
+      options.plan.isolation === 'current' || options.plan.finish === 'keep';
     const unexpected = gitStatusPaths(options.plan.changeRoot).filter(
       (candidate) =>
         !pathCovered(candidate, allowedPaths) &&
         !(candidate === '.comet/config.yaml' && managedConfigMatches(options.plan.changeRoot)),
     );
-    if (unexpected.length > 0) {
+    if (unexpected.length > 0 && !preservesUnrelatedChanges) {
       result.blockedPaths = unexpected;
       throw new Error(
         `Native Archive produced or encountered paths outside the authorized finish scope: ${unexpected.join(', ')}`,
@@ -497,16 +497,35 @@ export async function finishArchivedNativeWorkspace(options: {
       '--cached',
       '--name-only',
       '-z',
+      '--',
+      ...allowedPaths,
     ]);
     if (staged) {
-      runGitCommand(options.plan.changeRoot, [
-        'commit',
-        '-m',
-        `chore(native): archive ${options.name}`,
-      ]);
+      const commitPaths = [...new Set([...trackedCandidates, ...untrackedPaths])];
+      runGitCommand(
+        options.plan.changeRoot,
+        preservesUnrelatedChanges
+          ? [
+              'commit',
+              '--only',
+              '-m',
+              `chore(native): archive ${options.name}`,
+              '--',
+              ...commitPaths,
+            ]
+          : ['commit', '-m', `chore(native): archive ${options.name}`],
+      );
     }
     result.commit = runGitCommand(options.plan.changeRoot, ['rev-parse', 'HEAD']);
-    if (!nativeWorkspaceIsClean(options.plan.changeRoot)) {
+    const remainingOwned = gitStatusPaths(options.plan.changeRoot).filter((candidate) =>
+      pathCovered(candidate, allowedPaths),
+    );
+    if (remainingOwned.length > 0) {
+      throw new Error(
+        `Native archive commit left change-owned working-tree changes: ${remainingOwned.join(', ')}`,
+      );
+    }
+    if (!preservesUnrelatedChanges && !nativeWorkspaceIsClean(options.plan.changeRoot)) {
       throw new Error('Native archive commit left unexpected working-tree changes');
     }
 

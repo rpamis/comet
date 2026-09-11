@@ -83,7 +83,11 @@ export function buildNativePortableAcceptance(options: {
   const seen = new Set<string>();
   for (const item of derived) {
     item.text = normalizeNativeAcceptanceText(item.text);
-    const duplicateKey = `${item.source}\u0000${item.text}`;
+    // A criterion is a user-visible behavior, not a source-file location.
+    // Brief and Spec can therefore not create two formal checks for the same
+    // normalized sentence. This runs only while preparing a new Shape; an
+    // archived state keeps its persisted A1..An identities unchanged.
+    const duplicateKey = item.text;
     if (seen.has(duplicateKey)) {
       throw new Error(`Native acceptance contains a duplicate criterion: ${item.text}`);
     }

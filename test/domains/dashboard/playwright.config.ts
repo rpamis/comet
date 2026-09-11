@@ -16,9 +16,9 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command:
-      'pnpm exec vite preview --config domains/dashboard/web/vite.config.mjs --host 127.0.0.1 --port 4173',
+    command: 'node ../../../scripts/dashboard-e2e-server.mjs',
     url: 'http://127.0.0.1:4173/?demo',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
+    timeout: 180_000,
   },
 });

@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { atomicWriteJson, type NativeAtomicWriteOptions } from './native-atomic-file.js';
@@ -97,6 +98,8 @@ function parseCheck(value: unknown, index: number): NativeLocalCheckState {
       'startedAt',
       'completedAt',
       'log',
+      'evidence',
+      'evidenceDigest',
     ]),
     label,
   );
@@ -141,6 +144,12 @@ function parseCheck(value: unknown, index: number): NativeLocalCheckState {
     startedAt,
     completedAt,
     log: stringValue(root.log, `${label}.log`),
+    ...(Object.hasOwn(root, 'evidence')
+      ? { evidence: enumValue(root.evidence, ['runtime'] as const, `${label}.evidence`) }
+      : {}),
+    ...(Object.hasOwn(root, 'evidenceDigest')
+      ? { evidenceDigest: stringValue(root.evidenceDigest, `${label}.evidenceDigest`) }
+      : {}),
   };
 }
 
@@ -149,7 +158,16 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
   const root = record(value, label);
   rejectUnknown(
     root,
-    new Set(['schema', 'change', 'basedOnStateVersion', 'workspace', 'execution', 'checks']),
+    new Set([
+      'schema',
+      'change',
+      'basedOnStateVersion',
+      'candidateId',
+      'inputFingerprint',
+      'workspace',
+      'execution',
+      'checks',
+    ]),
     label,
   );
   if (root.schema !== NATIVE_LOCAL_EXECUTION_SCHEMA) {
@@ -158,7 +176,7 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
   const workspaceRoot = record(root.workspace, 'Native local workspace');
   rejectUnknown(
     workspaceRoot,
-    new Set(['projectRoot', 'worktreeRoot', 'branch']),
+    new Set(['projectRoot', 'worktreeRoot', 'branch', 'machineId']),
     'Native local workspace',
   );
 
@@ -225,10 +243,21 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
       'Native local basedOnStateVersion',
       1,
     ),
+    ...(Object.hasOwn(root, 'candidateId')
+      ? { candidateId: nullableString(root.candidateId, 'Native local candidateId') }
+      : {}),
+    ...(Object.hasOwn(root, 'inputFingerprint')
+      ? {
+          inputFingerprint: nullableString(root.inputFingerprint, 'Native local inputFingerprint'),
+        }
+      : {}),
     workspace: {
       projectRoot: absolutePath(workspaceRoot.projectRoot, 'Native local workspace.projectRoot'),
       worktreeRoot: absolutePath(workspaceRoot.worktreeRoot, 'Native local workspace.worktreeRoot'),
       branch: nullableString(workspaceRoot.branch, 'Native local workspace.branch'),
+      ...(Object.hasOwn(workspaceRoot, 'machineId')
+        ? { machineId: stringValue(workspaceRoot.machineId, 'Native local workspace.machineId') }
+        : {}),
     },
     execution,
     checks,
@@ -245,10 +274,13 @@ export function rebuildNativeLocalExecution(options: {
     schema: NATIVE_LOCAL_EXECUTION_SCHEMA,
     change: options.portableState.name,
     basedOnStateVersion: options.portableState.state_version,
+    candidateId: options.portableState.builder_handoff?.candidate_id ?? null,
+    inputFingerprint: null,
     workspace: {
       projectRoot: path.resolve(options.projectRoot),
       worktreeRoot: path.resolve(options.worktreeRoot ?? options.projectRoot),
       branch: options.branch ?? null,
+      machineId: os.hostname(),
     },
     execution: null,
     checks: [],

@@ -7,8 +7,9 @@ import { atomicWriteJson } from './native-atomic-file.js';
 import { canonicalHash } from './native-canonical-hash.js';
 import {
   executeNativeCheck,
-  validateNativeCheckPlan,
+  preflightNativeCheckPlans,
   type NativeCheckPlan,
+  type NativeExecutedCheck,
 } from './native-check-executor.js';
 import {
   validateNativeVerifierFinalResultConsistency,
@@ -16,6 +17,13 @@ import {
 } from './native-verifier-protocol.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { nativePreferredChangeRuntimeDir } from './native-paths.js';
+import {
+  completedNativeSupervisorCheckState,
+  nativeSupervisorCheckInputFingerprint,
+  nativeSupervisorCheckMachineId,
+  nativeSupervisorExecutedCheckFromState,
+  plannedNativeSupervisorCheckState,
+} from './native-supervisor-check-binding.js';
 import { readProjectConfig } from './native-config.js';
 import {
   inspectGitWorktree,
@@ -69,6 +77,23 @@ export interface NativeSupervisorIntegrationCheck {
   receiptRef?: string;
 }
 
+export interface NativeSupervisorCheckExecutionState {
+  id: string;
+  name: string;
+  status: 'planned' | 'running' | 'passed' | 'failed' | 'interrupted';
+  repeatable: boolean;
+  executionCount: number;
+  argvDisplay: string[];
+  cwdRef: string;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  timedOut: boolean;
+  durationMs: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  logRef: string | null;
+}
+
 export interface NativeSupervisorTask {
   role: 'builder' | 'verifier';
   child: string;
@@ -92,6 +117,9 @@ export interface NativeSupervisorTask {
     startedAt: string;
     expiresAt?: string;
     receiptRef?: string;
+    machineId?: string;
+    inputFingerprint?: string;
+    checkStates?: NativeSupervisorCheckExecutionState[];
   };
 }
 
@@ -303,6 +331,7 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
     }
     assertCommit(execution.candidateCommit, 'Native Supervisor integration candidate commit');
     assertCommit(execution.integrationCommit, 'Native Supervisor integration check commit');
+    assertSupervisorCheckStates(execution.checkStates, 'Native Supervisor integration');
   }
   if (!Array.isArray(state.children)) throw new Error('Native Supervisor children are invalid');
   if (!Array.isArray(state.history)) throw new Error('Native Supervisor history is invalid');
@@ -403,6 +432,12 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
       }
       if (child.task.projectRoot !== child.projectRoot) {
         throw new Error(`Native Supervisor child ${child.name} task projectRoot is invalid`);
+      }
+      if (child.task.checkExecution) {
+        assertSupervisorCheckStates(
+          child.task.checkExecution.checkStates,
+          `Native Supervisor child ${child.name}`,
+        );
       }
       if (
         (child.task.role === 'builder' && child.status !== 'active') ||
@@ -505,6 +540,77 @@ export async function writeNativeSupervisorState(
 
 function assertCommit(value: string, label: string): void {
   if (!COMMIT_PATTERN.test(value)) throw new Error(`${label} must be a Git commit`);
+}
+
+function assertSupervisorCheckStates(
+  states: NativeSupervisorCheckExecutionState[] | undefined,
+  label: string,
+): void {
+  if (states === undefined) return;
+  if (!Array.isArray(states) || states.length === 0) {
+    throw new Error(`${label} check states are invalid`);
+  }
+  const ids = new Set<string>();
+  for (const state of states) {
+    if (
+      !state ||
+      typeof state.id !== 'string' ||
+      !state.id ||
+      ids.has(state.id) ||
+      typeof state.name !== 'string' ||
+      !['planned', 'running', 'passed', 'failed', 'interrupted'].includes(state.status) ||
+      typeof state.repeatable !== 'boolean' ||
+      !Number.isSafeInteger(state.executionCount) ||
+      state.executionCount < 0 ||
+      !Array.isArray(state.argvDisplay) ||
+      !state.argvDisplay.every((entry) => typeof entry === 'string') ||
+      typeof state.cwdRef !== 'string' ||
+      !Number.isSafeInteger(state.durationMs) ||
+      state.durationMs < 0 ||
+      (state.exitCode !== null && !Number.isSafeInteger(state.exitCode)) ||
+      (state.signal !== null && typeof state.signal !== 'string') ||
+      typeof state.timedOut !== 'boolean' ||
+      (state.startedAt !== null && typeof state.startedAt !== 'string') ||
+      (state.completedAt !== null && typeof state.completedAt !== 'string') ||
+      (state.logRef !== null && typeof state.logRef !== 'string')
+    ) {
+      throw new Error(`${label} check state is invalid`);
+    }
+    ids.add(state.id);
+  }
+}
+
+function supervisorRetryIds(value: readonly string[] | undefined): Set<string> | null {
+  if (value === undefined) return null;
+  const result = new Set(value);
+  if (result.size === 0 || result.size !== value.length) {
+    throw new Error('Native Supervisor retry IDs must be non-empty and unique');
+  }
+  return result;
+}
+
+function assertSupervisorRetryableStates(
+  states: readonly NativeSupervisorCheckExecutionState[] | undefined,
+  plans: readonly NativeCheckPlan[],
+  requested: ReadonlySet<string>,
+): void {
+  if (!states) {
+    throw new Error('Native Supervisor check retry requires per-check Runtime state');
+  }
+  const plansById = new Map(plans.map((plan) => [plan.id, plan]));
+  for (const id of requested) {
+    const state = states.find((entry) => entry.id === id);
+    const plan = plansById.get(id);
+    if (!state || !plan || state.status !== 'interrupted') {
+      throw new Error(`Native Supervisor retry ID is not an interrupted current check: ${id}`);
+    }
+    if (!state.repeatable || !plan.repeatable) {
+      throw new Error(`Native Supervisor check ${id} is not repeatable and cannot be retried`);
+    }
+    if (state.executionCount >= 3) {
+      throw new Error(`Native Supervisor check retry limit (3) reached: ${id}`);
+    }
+  }
 }
 
 function cloneState(state: NativeSupervisorState): NativeSupervisorState {
@@ -796,6 +902,9 @@ export function projectNativeSupervisorTask(
   controlProjectRoot: string,
 ) {
   const identity = { child: task.child, runId: task.runId };
+  const retryCheckIds = (task.checkExecution?.checkStates ?? [])
+    .filter(({ status }) => status === 'interrupted')
+    .map(({ id }) => id);
   const templates =
     task.role === 'builder'
       ? [
@@ -818,6 +927,7 @@ export function projectNativeSupervisorTask(
               },
             ],
             materials: [],
+            ...(retryCheckIds.length > 0 ? { retry_check_ids: retryCheckIds } : {}),
           },
           {
             kind: 'supervisor-verifier-result',
@@ -1294,7 +1404,9 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
   name: string;
   checks: NativeSupervisorIntegrationCheck[];
   checkPlans?: NativeCheckPlan[];
+  retryCheckIds?: readonly string[];
 }): Promise<NativeSupervisorState> {
+  const requestedRetryIds = supervisorRetryIds(options.retryCheckIds);
   const prepared = await withNativeMutationLock(
     options.paths,
     `integrate Native Supervisor child ${options.name}`,
@@ -1357,9 +1469,10 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
           throw new Error(
             'Native Supervisor integration requires non-empty checks with unique IDs',
           );
-        options.checkPlans.forEach((plan) =>
-          validateNativeCheckPlan(state.integration.worktree, plan),
-        );
+        // Do all command and platform validation before the integration check
+        // reservation is persisted. Invalid plans must not consume a lease or
+        // leave a recovery record behind.
+        preflightNativeCheckPlans(state.integration.worktree, options.checkPlans);
         if (!child.verification?.receiptRef || !child.verification.execution)
           throw new Error(
             'Native Supervisor integration requires current Runtime verification evidence; reverify the child',
@@ -1379,6 +1492,13 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
           throw new Error('Native Supervisor integration verification evidence is stale or failed');
       }
       let head = assertNativeSupervisorIntegrationWorkspace(state);
+      const resumeExistingCheck =
+        options.checkPlans !== undefined &&
+        previous?.status === 'interrupted' &&
+        previous.child === options.name &&
+        previous.candidateCommit === child.verifiedCommit &&
+        head !== state.integration.headCommit &&
+        head === previous.integrationCommit;
       if (head !== state.integration.headCommit) {
         // A process can die after Git has committed the merge but before the
         // atomic Supervisor state write. Reconcile that fact instead of
@@ -1427,7 +1547,7 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
           { cause: error },
         );
       }
-      if (head === state.integration.headCommit) {
+      if (head === state.integration.headCommit && !resumeExistingCheck) {
         try {
           runGitCommand(state.integration.worktree, [
             'merge',
@@ -1445,13 +1565,68 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
       }
       const integrationCommit = head;
       if (options.checkPlans) {
-        const operationId = randomUUID();
-        const key = canonicalHash('comet.native.supervisor-integration-plan.v1', {
+        const machineId = nativeSupervisorCheckMachineId();
+        const inputFingerprint = await nativeSupervisorCheckInputFingerprint({
+          kind: 'integration',
+          parent: state.parent,
           child: options.name,
+          runId: child.verification?.execution?.runId ?? `integration:${options.name}`,
+          projectRoot: state.integration.worktree,
           candidateCommit: child.verifiedCommit,
           integrationCommit,
+          contractHash: child.contractHash ?? null,
           plans: options.checkPlans,
+          materials: [],
         });
+        const key = canonicalHash('comet.native.supervisor-integration-plan.v2', {
+          machineId,
+          inputFingerprint,
+        });
+        const sameBinding =
+          previous?.key === key &&
+          previous.machineId === machineId &&
+          previous.inputFingerprint === inputFingerprint &&
+          previous.child === options.name &&
+          previous.candidateCommit === child.verifiedCommit &&
+          previous.integrationCommit === integrationCommit;
+        if (requestedRetryIds) {
+          if (!sameBinding || previous?.status !== 'interrupted') {
+            throw new Error(
+              'Native Supervisor integration retry requires the interrupted current plan on the same candidate, machine and workspace',
+            );
+          }
+          assertSupervisorRetryableStates(
+            previous.checkStates,
+            options.checkPlans,
+            requestedRetryIds,
+          );
+        } else if (previous?.status === 'interrupted' && sameBinding) {
+          return { completed: state };
+        }
+        const priorStates =
+          requestedRetryIds && previous?.checkStates
+            ? previous.checkStates.map((check) =>
+                requestedRetryIds.has(check.id)
+                  ? {
+                      ...check,
+                      status: 'planned' as const,
+                      exitCode: null,
+                      signal: null,
+                      timedOut: false,
+                      durationMs: 0,
+                      startedAt: null,
+                      completedAt: null,
+                      logRef: null,
+                    }
+                  : { ...check },
+              )
+            : options.checkPlans.map(plannedNativeSupervisorCheckState);
+        const checkStates = options.checkPlans.map(
+          (plan) =>
+            priorStates.find((check) => check.id === plan.id) ??
+            plannedNativeSupervisorCheckState(plan),
+        );
+        const operationId = randomUUID();
         state.integration.checkExecution = {
           operationId,
           key,
@@ -1463,6 +1638,9 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
           ownerIdentity: (await readProcessIdentity(process.pid)) ?? undefined,
           startedAt: new Date().toISOString(),
           activeProcess: null,
+          machineId,
+          inputFingerprint,
+          checkStates,
         };
         state.stateVersion += 1;
         await writeNativeSupervisorState(options.paths, state);
@@ -1473,6 +1651,11 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
             integrationCommit,
             operationId,
             key,
+            machineId,
+            inputFingerprint,
+            plansToExecute: options.checkPlans.filter(
+              (plan) => !requestedRetryIds || requestedRetryIds.has(plan.id),
+            ),
           },
         };
       }
@@ -1505,32 +1688,80 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
           execution.status !== 'running'
         )
           throw new Error('Native Supervisor integration check operation is stale');
+        if (activeProcess?.status === 'starting') {
+          const check = execution.checkStates?.find(({ id }) => id === activeProcess.checkId);
+          if (!check || check.status !== 'planned') {
+            throw new Error(`Native Supervisor check ${activeProcess.checkId} is not planned`);
+          }
+          check.status = 'running';
+          check.executionCount += 1;
+          check.startedAt = new Date().toISOString();
+          check.completedAt = null;
+          check.logRef = null;
+        }
         execution.activeProcess = activeProcess;
         current.stateVersion += 1;
         await writeNativeSupervisorState(options.paths, current);
       },
     );
+  const recordCheckResult = async (result: NativeExecutedCheck) =>
+    withNativeMutationLock(
+      options.paths,
+      'record Supervisor integration check result',
+      async () => {
+        const current = await readNativeSupervisorState(options.paths, state.parent);
+        const execution = current?.integration.checkExecution;
+        if (
+          !current ||
+          execution?.operationId !== operationId ||
+          execution.key !== key ||
+          execution.status !== 'running'
+        )
+          throw new Error('Native Supervisor integration check operation is stale');
+        const check = execution.checkStates?.find(({ id }) => id === result.id);
+        if (!check) throw new Error(`Native Supervisor check state is missing: ${result.id}`);
+        Object.assign(check, completedNativeSupervisorCheckState(check, result));
+        execution.activeProcess = null;
+        current.stateVersion += 1;
+        await writeNativeSupervisorState(options.paths, current);
+      },
+    );
   try {
-    const results = [];
-    for (const plan of options.checkPlans!) {
+    for (const plan of prepared.pending!.plansToExecute!) {
       await recordActiveProcess({ status: 'starting', checkId: plan.id });
-      results.push(
-        await executeNativeCheck({
-          projectRoot: state.integration.worktree,
-          runtimeDir: nativePreferredChangeRuntimeDir(options.paths, state.parent),
-          operationId,
-          plan,
-          onSpawn: async ({ pid }) =>
-            recordActiveProcess({
-              status: 'running',
-              checkId: plan.id,
-              pid,
-              identity: (await readProcessIdentity(pid)) ?? undefined,
-            }),
-        }),
-      );
-      await recordActiveProcess(null);
+      const result = await executeNativeCheck({
+        projectRoot: state.integration.worktree,
+        runtimeDir: nativePreferredChangeRuntimeDir(options.paths, state.parent),
+        operationId,
+        plan,
+        onSpawn: async ({ pid }) =>
+          recordActiveProcess({
+            status: 'running',
+            checkId: plan.id,
+            pid,
+            identity: (await readProcessIdentity(pid)) ?? undefined,
+          }),
+      });
+      await recordCheckResult(result);
+      if (result.status === 'interrupted') {
+        throw new Error(
+          `Native Supervisor integration check ${result.id} was interrupted; retry only the listed repeatable check after the process has exited`,
+        );
+      }
     }
+    const latest = await readNativeSupervisorState(options.paths, state.parent);
+    const latestExecution = latest?.integration.checkExecution;
+    const checkStates = latestExecution?.checkStates;
+    if (
+      !latest ||
+      !checkStates ||
+      checkStates.some(({ status }) => !['passed', 'failed'].includes(status))
+    ) {
+      throw new Error(
+        'Native Supervisor integration check plan remains incomplete; retry each interrupted check explicitly',
+      );
+    }
+    const results = checkStates.map(nativeSupervisorExecutedCheckFromState);
     const text = JSON.stringify({
       schema: 'comet.native.supervisor-integration-checks.v1',
       parent: state.parent,
@@ -1615,6 +1846,12 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
         ) {
           execution.status = 'interrupted';
           execution.error = (error as Error).message;
+          execution.activeProcess = null;
+          for (const check of execution.checkStates ?? []) {
+            if (check.status === 'planned' || check.status === 'running') {
+              check.status = 'interrupted';
+            }
+          }
           current.stateVersion += 1;
           await writeNativeSupervisorState(options.paths, current);
         }

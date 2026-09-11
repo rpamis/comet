@@ -7,7 +7,11 @@ import {
   type NativePortableRecoveryResult,
 } from './native-portable-recovery.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
-import { applyNativeRunnerInput, readNativeRunnerInput } from './native-runner-input.js';
+import {
+  applyNativeRunnerInput,
+  readNativeRunnerInput,
+  validateNativeRunnerInputBoundary,
+} from './native-runner-input.js';
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 import {
   dispatchNativeSupervisorReadyTasks,
@@ -93,6 +97,13 @@ async function portableParentView(
     ? await readNativeSupervisorState(paths, state.name, { diagnostics: true })
     : null;
   const activeTasks = supervisor?.children.flatMap(({ task }) => (task ? [task.child] : [])) ?? [];
+  const integrationExecution = supervisor?.integration.checkExecution;
+  const supervisorIntegrationRetryIds =
+    integrationExecution?.status === 'interrupted'
+      ? (integrationExecution.checkStates ?? [])
+          .filter(({ status }) => status === 'interrupted')
+          .map(({ id }) => id)
+      : undefined;
   return {
     ...(children
       ? {
@@ -103,7 +114,10 @@ async function portableParentView(
           readyChildren: activeTasks.length > 0 ? activeTasks : children.readyChildren,
         }
       : {}),
-    continuation: nativePortableContinuation(state, children, { verifierExecutionRef }),
+    continuation: nativePortableContinuation(state, children, {
+      verifierExecutionRef,
+      supervisorIntegrationRetryIds,
+    }),
   };
 }
 
@@ -130,6 +144,7 @@ export async function nativeNextCommand(
   const name = requiredPositional(args, 'change name');
   const summary = takeOption(args, '--summary');
   const runnerInputFile = takeOption(args, '--runner-input');
+  const validateOnly = takeFlag(args, '--validate-only');
   const confirmed = takeFlag(args, '--confirmed');
   const acceptResult = takeFlag(args, '--accept-result');
   const reviseImplementation = takeFlag(args, '--revise-implementation');
@@ -143,6 +158,9 @@ export async function nativeNextCommand(
     !(NATIVE_SUPERVISOR_COORDINATION_MODES as readonly string[]).includes(coordinationModeText)
   ) {
     throw new NativeUsageError('--coordination-mode must be multi-session or single-session');
+  }
+  if (validateOnly && runnerInputFile === undefined) {
+    throw new NativeUsageError('--validate-only requires --runner-input');
   }
   const maxParallelText = takeOption(args, '--max-parallel');
   const maxParallel = maxParallelText === undefined ? 2 : Number(maxParallelText);
@@ -203,6 +221,57 @@ export async function nativeNextCommand(
   }
 
   const initialState = await readNativePortableChange(configured.paths, name);
+  if (validateOnly) {
+    if (
+      summary ||
+      confirmed ||
+      acceptResult ||
+      reviseImplementation ||
+      reviseRequirements ||
+      retryVerifier ||
+      resolveVerifierBlocker ||
+      expectedContinuation ||
+      coordinationMode !== undefined
+    ) {
+      throw new NativeUsageError(
+        '--validate-only cannot be combined with --summary, continuation expectations, or coordination mode',
+      );
+    }
+    let input;
+    try {
+      input = await readNativeRunnerInput(runnerInputFile!, projectRoot);
+    } catch (error) {
+      return {
+        ...errorResult('next', error),
+        data: {
+          state: nativePortableStateSummary(initialState, configured.paths),
+          continuation: nativePortableContinuation(initialState),
+        },
+      };
+    }
+    try {
+      await validateNativeRunnerInputBoundary({
+        paths: configured.paths,
+        name,
+        state: initialState,
+        input,
+        projectRoot,
+      });
+    } catch (error) {
+      return {
+        ...errorResult('next', error),
+        data: {
+          state: nativePortableStateSummary(initialState, configured.paths),
+          continuation: nativePortableContinuation(initialState),
+        },
+      };
+    }
+    return success('next', {
+      validation: { valid: true, kind: input.kind },
+      state: nativePortableStateSummary(initialState, configured.paths),
+      continuation: nativePortableContinuation(initialState),
+    });
+  }
   const initialWorkspaceMismatch = nativePortableWorkspaceMismatch(configured.paths, initialState);
   if (initialWorkspaceMismatch) {
     const continuation = nativePortableContinuation(initialState);

@@ -30,11 +30,11 @@ export interface NativeBuilderCandidateInput {
   addressedAcceptanceIds: string[];
   checks?: Array<{ name: string; result: 'passed' | 'failed' | 'not-run'; note?: string | null }>;
   knownLimits?: string[];
-  review: {
+  review?: {
     status: 'passed';
     summary: string;
     reviewerExecutionRef: string;
-  };
+  } | null;
   candidateId?: string;
   now?: Date;
 }
@@ -166,32 +166,23 @@ export function submitNativeBuilderCandidate(options: {
   if (!isNativeTrustedExecutionIdentity(input.identity)) {
     throw new Error('Native Builder identity must come from the trusted Runner channel');
   }
-  if (!input.review || input.review.status !== 'passed') {
-    throw new Error('Native Builder candidate requires a passed read-only review');
-  }
-  if (input.review.reviewerExecutionRef === input.identity.executionRef) {
-    throw new Error('Native reviewer execution ref must differ from the Builder execution ref');
-  }
-  if (
-    state.loop.stage === 'repairing' &&
-    state.builder_handoff?.review?.reviewer_execution_ref === input.review.reviewerExecutionRef
-  ) {
-    throw new Error('Native repaired candidate requires a fresh read-only review');
+  if (input.review) {
+    if (input.review.status !== 'passed') {
+      throw new Error('Native Builder review status must be passed when supplied');
+    }
+    if (input.review.reviewerExecutionRef === input.identity.executionRef) {
+      throw new Error('Native reviewer execution ref must differ from the Builder execution ref');
+    }
   }
   const addressed = uniqueKnownIds(
     input.addressedAcceptanceIds,
     state.acceptance,
     'Native Builder addressed acceptance',
   );
-  const repairScope = new Set([...state.loop.previous_unresolved_ids, ...addressed]);
-  const acceptance =
-    state.loop.stage === 'repairing' && state.loop.previous_unresolved_ids.length > 0
-      ? state.acceptance.map((entry) =>
-          repairScope.has(entry.id)
-            ? { ...entry, result: 'pending' as const, reason: null }
-            : entry,
-        )
-      : pendingAcceptance(state.acceptance);
+  // A repaired candidate gets one independent Verifier pass over the complete
+  // acceptance set. The previous unresolved IDs remain a hint in the durable
+  // loop state, but must not narrow the formal scope or cause a second pass.
+  const acceptance = pendingAcceptance(state.acceptance);
   const now = (input.now ?? new Date()).toISOString();
   return parseNativePortableState({
     ...state,
@@ -213,11 +204,13 @@ export function submitNativeBuilderCandidate(options: {
       checks_truncated: false,
       known_limits: (input.knownLimits ?? []).map((entry) => toNativePortableText(entry)),
       known_limits_truncated: false,
-      review: {
-        status: 'passed',
-        summary: toNativePortableText(input.review.summary),
-        reviewer_execution_ref: input.review.reviewerExecutionRef,
-      },
+      review: input.review
+        ? {
+            status: 'passed',
+            summary: toNativePortableText(input.review.summary),
+            reviewer_execution_ref: input.review.reviewerExecutionRef,
+          }
+        : null,
       submitted_at: now,
     },
     loop: {
@@ -236,10 +229,9 @@ export function reserveNativeVerifierAttempt(stateInput: NativePortableState): N
     state.phase !== 'verify' ||
     state.status !== 'active' ||
     state.loop.stage !== 'verify-ready' ||
-    state.builder_handoff === null ||
-    state.builder_handoff.review === null
+    state.builder_handoff === null
   ) {
-    throw new Error('Native Verifier attempt requires a reviewed Builder candidate');
+    throw new Error('Native Verifier attempt requires a current Builder candidate');
   }
   return parseNativePortableState({
     ...state,
@@ -344,37 +336,6 @@ export function applyNativeVerifierEnvelope(options: {
   });
 
   if (response.result.verdict === 'pass') {
-    if (state.loop.previous_unresolved_ids.length > 0) {
-      const withHistory = appendNativePortableHistory(
-        { ...state, acceptance, verification } as NativePortableState,
-        historyEntry({
-          state,
-          outcome: 'recovery',
-          summary: `Repair verification passed for ${scopeIds.join(', ')}; final full verification is required.`,
-          completedAt,
-        }),
-      );
-      return {
-        response,
-        state: parseNativePortableState({
-          ...withHistory,
-          state_version: nextVersion(state),
-          status: 'active',
-          verification_result: 'pending',
-          verification_report: null,
-          blockers: [],
-          acceptance: pendingAcceptance(acceptance),
-          loop: {
-            ...state.loop,
-            stage: 'verify-ready',
-            execution_failure_count: 0,
-            previous_unresolved_ids: [],
-            no_progress_count: 0,
-            next_action: 'run-final-full-verification',
-          },
-        }),
-      };
-    }
     const withHistory = appendNativePortableHistory(
       { ...state, acceptance, verification } as NativePortableState,
       historyEntry({

@@ -147,7 +147,7 @@ describe('Supervisor check process recovery', () => {
     });
     const recovered = await executeNativeSupervisorChecks(options);
     expect(recovered.status).toBe('completed');
-    expect(recovered.operationId).not.toBe(completed.operationId);
+    expect(recovered.operationId).toBe(completed.operationId);
   }, 60000);
 
   it('does not replay an unregistered process and provides a candidate-preserving recovery route', async () => {
@@ -187,5 +187,56 @@ describe('Supervisor check process recovery', () => {
       before!.children[0].candidateCommit,
     );
     expect(cancelled.supervisorState!.children[0].status).toBe('needs-reverify');
+  }, 60000);
+
+  it('requires explicit retry for interrupted checks and preserves passed checks', async () => {
+    const { paths, release, options } = await setup();
+    const plans = [
+      {
+        ...options.plans[0],
+        id: 'passed',
+        name: 'Passed check',
+        argv: ['-e', 'process.exit(0)'],
+      },
+      {
+        ...options.plans[0],
+        id: 'interrupted',
+        name: 'Interrupted check',
+        timeoutMs: 1000,
+        argv: [
+          '-e',
+          "const fs=require('node:fs');const f=process.argv[1];if(fs.existsSync(f))process.exit(0);setInterval(()=>{},25)",
+          release,
+        ],
+      },
+    ];
+    await expect(executeNativeSupervisorChecks({ ...options, plans })).rejects.toThrow(
+      'was interrupted',
+    );
+    const interrupted = (await readNativeSupervisorState(paths, 'change'))!;
+    const firstExecution = interrupted.children[0].task!.checkExecution!;
+    expect(firstExecution.status).toBe('interrupted');
+    expect(firstExecution.checkStates).toMatchObject([
+      { id: 'passed', status: 'passed', executionCount: 1 },
+      { id: 'interrupted', status: 'interrupted', executionCount: 1 },
+    ]);
+
+    const awaitingRetry = await executeNativeSupervisorChecks({ ...options, plans });
+    expect(awaitingRetry).toMatchObject({
+      status: 'interrupted',
+      operationId: firstExecution.operationId,
+    });
+    await fs.writeFile(release, 'retry');
+    const completed = await executeNativeSupervisorChecks({
+      ...options,
+      plans,
+      retryCheckIds: ['interrupted'],
+    });
+    expect(completed.status).toBe('completed');
+    const finalState = (await readNativeSupervisorState(paths, 'change'))!;
+    expect(finalState.children[0].task!.checkExecution!.checkStates).toMatchObject([
+      { id: 'passed', status: 'passed', executionCount: 1 },
+      { id: 'interrupted', status: 'passed', executionCount: 2 },
+    ]);
   }, 60000);
 });
