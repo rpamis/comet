@@ -1057,6 +1057,30 @@ interface NativeIgnoredInputSnapshot {
   files: NativeIgnoredInputFile[];
 }
 
+const NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES = new Set([
+  '.agents',
+  '.cache',
+  '.claude',
+  '.codex',
+  '.comet',
+  '.git',
+  '.idea',
+  '.next',
+  '.nuxt',
+  '.output',
+  '.parcel-cache',
+  '.svelte-kit',
+  '.tmp',
+  '.turbo',
+  '.vscode',
+  '.worktrees',
+  'coverage',
+  'logs',
+  'node_modules',
+  'temp',
+  'tmp',
+]);
+
 function incompleteNativeIgnoredInputSnapshot(): NativeIgnoredInputSnapshot {
   return { complete: false, files: [] };
 }
@@ -1135,6 +1159,86 @@ async function nativeIgnoredCheckInputSnapshot(
   return { complete: true, files };
 }
 
+async function nativePhysicalCheckInputSnapshot(
+  projectRoot: string,
+  plans: readonly NativeCheckPlan[],
+): Promise<NativeIgnoredInputSnapshot> {
+  const cwdRefs = [...new Set(plans.map(({ cwdRef }) => cwdRef))];
+  const files = new Map<string, NativeIgnoredInputFile>();
+  let totalBytes = 0;
+  const isGeneratedDirectory = (name: string): boolean =>
+    NATIVE_GENERATED_INPUT_DIRECTORIES.includes(
+      name as (typeof NATIVE_GENERATED_INPUT_DIRECTORIES)[number],
+    );
+
+  const visit = async (
+    directory: string,
+    relativeDirectory: string,
+    insideGeneratedDirectory: boolean,
+  ): Promise<boolean> => {
+    let entries: Awaited<ReturnType<typeof fs.readdir>>;
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
+    for (const entry of entries) {
+      const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+      if (entry.isDirectory() && NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES.has(entry.name)) {
+        continue;
+      }
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (
+          !(await visit(
+            target,
+            relative,
+            insideGeneratedDirectory || isGeneratedDirectory(entry.name),
+          ))
+        ) {
+          return false;
+        }
+        continue;
+      }
+      if (!insideGeneratedDirectory) continue;
+      if (sensitiveNativeIgnoredInputPath(relative)) return false;
+      if (!entry.isFile()) return false;
+      try {
+        const before = await fs.lstat(target);
+        if (totalBytes + before.size > NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES) return false;
+        const content = await fs.readFile(target);
+        const after = await fs.lstat(target);
+        if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) return false;
+        totalBytes += before.size;
+        files.set(relative, {
+          path: relative,
+          digest: digestNativeCheckInput(content.toString('base64')),
+          size: before.size,
+        });
+        if (files.size > NATIVE_IGNORED_INPUT_MAX_FILES) return false;
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  for (const cwdRef of cwdRefs) {
+    const directory = resolveNativeCheckCwd(projectRoot, cwdRef);
+    const relativeDirectory = cwdRef === '.' ? '' : cwdRef;
+    if (
+      !(await visit(directory, relativeDirectory, isGeneratedDirectory(path.basename(directory))))
+    ) {
+      return incompleteNativeIgnoredInputSnapshot();
+    }
+  }
+  return {
+    complete: true,
+    files: [...files.values()].sort((left, right) => left.path.localeCompare(right.path, 'en')),
+  };
+}
+
 function nativeLocalCheckEvidenceDigest(
   check: Pick<
     NativeLocalCheckState,
@@ -1175,6 +1279,7 @@ async function nativeCheckInputFingerprint(options: {
 }): Promise<string> {
   const gitSnapshot = {
     complete: true,
+    capture: 'git' as 'git' | 'physical-tree',
     head: null as string | null,
     branch: null as string | null,
     status: null as string | null,
@@ -1183,6 +1288,7 @@ async function nativeCheckInputFingerprint(options: {
     submodules: null as string | null,
     untracked: [] as Array<{ path: string; digest: string | null; size: number | null }>,
     ignored: { complete: true, files: [] as NativeIgnoredInputFile[] },
+    physical: { complete: true, files: [] as NativeIgnoredInputFile[] },
     reuseNonce: null as string | null,
   };
   let stableGitView = false;
@@ -1251,10 +1357,18 @@ async function nativeCheckInputFingerprint(options: {
     }
   } catch {
     // Non-Git projects still receive a candidate/tool fingerprint. They do
-    // not receive cross-workspace evidence reuse without a stable Git view.
+    // not receive a Git view, so use a bounded physical snapshot instead.
     if (stableGitView) {
       gitSnapshot.complete = false;
       gitSnapshot.reuseNonce = randomUUID();
+    } else {
+      gitSnapshot.capture = 'physical-tree';
+      gitSnapshot.physical = await nativePhysicalCheckInputSnapshot(
+        options.projectRoot,
+        options.plans,
+      );
+      gitSnapshot.complete = gitSnapshot.physical.complete;
+      if (!gitSnapshot.physical.complete) gitSnapshot.reuseNonce = randomUUID();
     }
   }
   return canonicalHash('comet.native.check-input.v1', {
