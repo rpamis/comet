@@ -24,6 +24,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native Changes Explorer count**: Animate the change total on entry and when it changes, matching the Classic Dashboard count behavior.
+- **Dashboard fullscreen control**: Correct the default preview icon so its four corners render symmetrically when entering fullscreen mode.
 - **Agent CLI operation**: Return workspace-aware actions, independently usable Native input templates, and precise field diagnostics. Preserve Classic artifact references and interrupted Design progress, keep shortcut plugin checkpoints consistent, and pass Windows OpenSpec arguments literally. Native also accepts valid UTF-8 BOM input files and provides complete Supervisor return instructions.
 - **Dashboard project selection**: Default to the launch project instead of a remembered selection, and distinguish working directories of the same repository so project switching and dropdown labels stay consistent while preserving shared plugin state.
 - **Workflow evaluation**: Recognize explicit Classic entry points and configured artifact layouts without mistaking enabled Native settings for the workflow being evaluated; generate Native rubric results without a scoring exception.

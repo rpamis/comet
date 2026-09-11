@@ -93,6 +93,13 @@ describe('Native dashboard web source contracts', () => {
     expect(source).not.toContain('<NativeWorkflowPanel native={snapshot.native} />');
   });
 
+  it('animates the Native Changes Explorer total like the Classic count', async () => {
+    const source = await readNativePanelSource();
+
+    expect(source).toContain('const animatedTotal = useAnimatedNumber(total, 850, total)');
+    expect(source).toContain('{Math.round(animatedTotal)}');
+  });
+
   it('keeps the three-pane Native workspace visible when the selected view is empty', async () => {
     const [source, styles] = await Promise.all([
       readNativePanelSource(),
