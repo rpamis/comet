@@ -1039,6 +1039,76 @@ Ship the behavior.
     expect(completed.state.verification?.risks[0]).toMatchObject({ truncated: true });
   });
 
+  it('invalidates reusable checks when an ignored generated artifact changes', async () => {
+    execFileSync('git', ['-C', root, 'init', '-b', 'master'], { stdio: 'ignore' });
+    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n.comet/\n');
+    await fs.writeFile(path.join(root, 'baseline.txt'), 'baseline\n');
+    execFileSync('git', ['-C', root, 'add', '.gitignore', 'baseline.txt'], { stdio: 'ignore' });
+    execFileSync(
+      'git',
+      [
+        '-C',
+        root,
+        '-c',
+        'user.name=Comet Test',
+        '-c',
+        'user.email=comet-test@example.com',
+        'commit',
+        '-m',
+        'baseline',
+      ],
+      { stdio: 'ignore' },
+    );
+
+    await createNativePortableChange({ paths, name: 'ignored-generated-input', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'ignored-generated-input');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- Generated inputs invalidate reusable checks.\n',
+    );
+    let state = await confirmNativePortableShape({ paths, name: 'ignored-generated-input' });
+    const runner = createNativeRunnerChannel();
+    state = await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'ignored-generated-builder',
+        }),
+        candidateId: 'ignored-generated-candidate',
+        summary: 'Implemented the behavior.',
+        addressedAcceptanceIds: ['A1'],
+        review: passedReview('ignored-generated-reviewer'),
+      },
+    });
+    const plan = {
+      id: 'generated-input',
+      name: 'Generated input check',
+      executable: process.execPath,
+      argv: ['-e', 'process.exit(0)'],
+      cwdRef: '.',
+      timeoutMs: 10_000,
+      repeatable: true,
+    } as const;
+
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'passed' }] });
+    const firstLocal = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
+    await fs.mkdir(path.join(root, 'dist'));
+    await fs.writeFile(path.join(root, 'dist', 'generated.txt'), 'generated output v1\n');
+
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'passed' }] });
+    const secondLocal = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
+    expect(firstLocal?.execution?.operationId).toBeTruthy();
+    expect(secondLocal?.execution?.operationId).toBeTruthy();
+    expect(secondLocal?.execution?.operationId).not.toBe(firstLocal?.execution?.operationId);
+    expect(secondLocal?.checks).toMatchObject([{ id: plan.id, executionCount: 1 }]);
+  });
+
   it('does not hold the project mutation lock while a requested check is running', async () => {
     await createNativePortableChange({ paths, name: 'requested-check-lock', language: 'en' });
     const changeDir = nativePortableChangeDir(paths, 'requested-check-lock');

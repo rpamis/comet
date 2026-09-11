@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -1031,6 +1032,214 @@ function digestNativeCheckInput(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+const NATIVE_IGNORED_INPUT_MAX_FILES = 20_000;
+const NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+const NATIVE_GENERATED_INPUT_DIRECTORIES = [
+  'build',
+  'dist',
+  'gen',
+  'generated',
+  'out',
+  'target',
+  '.next',
+  '.nuxt',
+  '.output',
+  '.svelte-kit',
+] as const;
+
+interface NativeIgnoredInputFile {
+  path: string;
+  digest: string;
+  size: number;
+}
+
+interface NativeIgnoredInputSnapshot {
+  complete: boolean;
+  files: NativeIgnoredInputFile[];
+}
+
+const NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES = new Set([
+  '.agents',
+  '.cache',
+  '.claude',
+  '.codex',
+  '.comet',
+  '.git',
+  '.idea',
+  '.next',
+  '.nuxt',
+  '.output',
+  '.parcel-cache',
+  '.svelte-kit',
+  '.tmp',
+  '.turbo',
+  '.vscode',
+  '.worktrees',
+  'coverage',
+  'logs',
+  'node_modules',
+  'temp',
+  'tmp',
+]);
+
+function incompleteNativeIgnoredInputSnapshot(): NativeIgnoredInputSnapshot {
+  return { complete: false, files: [] };
+}
+
+function nativeGeneratedInputPathspecs(cwdRef: string): string[] {
+  const prefix = cwdRef === '.' ? '' : `${cwdRef}/`;
+  return NATIVE_GENERATED_INPUT_DIRECTORIES.flatMap((directory) => [
+    `:(glob)${prefix}${directory}/**`,
+    `:(glob)${prefix}**/${directory}/**`,
+  ]);
+}
+
+function sensitiveNativeIgnoredInputPath(relative: string): boolean {
+  return /(?:^|\/)(?:\.env(?:\..*)?|[^/]+\.(?:key|pem|p12|pfx))$/iu.test(relative);
+}
+
+async function nativeIgnoredCheckInputSnapshot(
+  projectRoot: string,
+  plans: readonly NativeCheckPlan[],
+): Promise<NativeIgnoredInputSnapshot> {
+  const cwdRefs = [...new Set(plans.map(({ cwdRef }) => cwdRef))];
+  if (cwdRefs.length === 0) return { complete: true, files: [] };
+
+  let ignoredPaths: string[];
+  try {
+    ignoredPaths = [
+      ...new Set(
+        runGitCommand(projectRoot, [
+          'ls-files',
+          '--others',
+          '--ignored',
+          '--exclude-standard',
+          '-z',
+          '--',
+          ...cwdRefs.flatMap(nativeGeneratedInputPathspecs),
+        ])
+          .split('\0')
+          .filter(Boolean)
+          .map((relative) => relative.replaceAll('\\', '/')),
+      ),
+    ].sort();
+  } catch {
+    return incompleteNativeIgnoredInputSnapshot();
+  }
+  if (ignoredPaths.length > NATIVE_IGNORED_INPUT_MAX_FILES) {
+    return incompleteNativeIgnoredInputSnapshot();
+  }
+
+  const files: NativeIgnoredInputFile[] = [];
+  let totalBytes = 0;
+  for (const relative of ignoredPaths) {
+    const target = path.resolve(projectRoot, ...relative.split('/'));
+    if (!isInsidePath(projectRoot, target) || sensitiveNativeIgnoredInputPath(relative)) {
+      return incompleteNativeIgnoredInputSnapshot();
+    }
+    try {
+      const before = await fs.lstat(target);
+      if (!before.isFile() || totalBytes + before.size > NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES) {
+        return incompleteNativeIgnoredInputSnapshot();
+      }
+      const content = await fs.readFile(target);
+      const after = await fs.lstat(target);
+      if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
+        return incompleteNativeIgnoredInputSnapshot();
+      }
+      totalBytes += before.size;
+      files.push({
+        path: relative,
+        digest: digestNativeCheckInput(content.toString('base64')),
+        size: before.size,
+      });
+    } catch {
+      return incompleteNativeIgnoredInputSnapshot();
+    }
+  }
+  return { complete: true, files };
+}
+
+async function nativePhysicalCheckInputSnapshot(
+  projectRoot: string,
+  plans: readonly NativeCheckPlan[],
+): Promise<NativeIgnoredInputSnapshot> {
+  const cwdRefs = [...new Set(plans.map(({ cwdRef }) => cwdRef))];
+  const files = new Map<string, NativeIgnoredInputFile>();
+  let totalBytes = 0;
+  const isGeneratedDirectory = (name: string): boolean =>
+    NATIVE_GENERATED_INPUT_DIRECTORIES.includes(
+      name as (typeof NATIVE_GENERATED_INPUT_DIRECTORIES)[number],
+    );
+
+  const visit = async (
+    directory: string,
+    relativeDirectory: string,
+    insideGeneratedDirectory: boolean,
+  ): Promise<boolean> => {
+    let entries: Dirent<string>[];
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
+    for (const entry of entries) {
+      const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+      if (entry.isDirectory() && NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES.has(entry.name)) {
+        continue;
+      }
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (
+          !(await visit(
+            target,
+            relative,
+            insideGeneratedDirectory || isGeneratedDirectory(entry.name),
+          ))
+        ) {
+          return false;
+        }
+        continue;
+      }
+      if (!insideGeneratedDirectory) continue;
+      if (sensitiveNativeIgnoredInputPath(relative)) return false;
+      if (!entry.isFile()) return false;
+      try {
+        const before = await fs.lstat(target);
+        if (totalBytes + before.size > NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES) return false;
+        const content = await fs.readFile(target);
+        const after = await fs.lstat(target);
+        if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) return false;
+        totalBytes += before.size;
+        files.set(relative, {
+          path: relative,
+          digest: digestNativeCheckInput(content.toString('base64')),
+          size: before.size,
+        });
+        if (files.size > NATIVE_IGNORED_INPUT_MAX_FILES) return false;
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  for (const cwdRef of cwdRefs) {
+    const directory = resolveNativeCheckCwd(projectRoot, cwdRef);
+    const relativeDirectory = cwdRef === '.' ? '' : cwdRef;
+    if (
+      !(await visit(directory, relativeDirectory, isGeneratedDirectory(path.basename(directory))))
+    ) {
+      return incompleteNativeIgnoredInputSnapshot();
+    }
+  }
+  return {
+    complete: true,
+    files: [...files.values()].sort((left, right) => left.path.localeCompare(right.path, 'en')),
+  };
+}
+
 function nativeLocalCheckEvidenceDigest(
   check: Pick<
     NativeLocalCheckState,
@@ -1067,8 +1276,11 @@ function nativeLocalCheckEvidenceDigest(
 async function nativeCheckInputFingerprint(options: {
   state: NativePortableState;
   projectRoot: string;
+  plans: readonly NativeCheckPlan[];
 }): Promise<string> {
   const gitSnapshot = {
+    complete: true,
+    capture: 'git' as 'git' | 'physical-tree',
     head: null as string | null,
     branch: null as string | null,
     status: null as string | null,
@@ -1076,9 +1288,14 @@ async function nativeCheckInputFingerprint(options: {
     stagedDiff: null as string | null,
     submodules: null as string | null,
     untracked: [] as Array<{ path: string; digest: string | null; size: number | null }>,
+    ignored: { complete: true, files: [] as NativeIgnoredInputFile[] },
+    physical: { complete: true, files: [] as NativeIgnoredInputFile[] },
+    reuseNonce: null as string | null,
   };
+  let stableGitView = false;
   try {
     gitSnapshot.head = runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
+    stableGitView = true;
     gitSnapshot.branch = runGitCommand(options.projectRoot, ['branch', '--show-current']);
     gitSnapshot.status = runGitCommand(options.projectRoot, [
       'status',
@@ -1130,9 +1347,30 @@ async function nativeCheckInputFingerprint(options: {
         }
       }),
     );
+    if (gitSnapshot.untracked.some(({ digest }) => digest === null)) {
+      gitSnapshot.complete = false;
+      gitSnapshot.reuseNonce = randomUUID();
+    }
+    gitSnapshot.ignored = await nativeIgnoredCheckInputSnapshot(options.projectRoot, options.plans);
+    if (!gitSnapshot.ignored.complete) {
+      gitSnapshot.complete = false;
+      gitSnapshot.reuseNonce = randomUUID();
+    }
   } catch {
     // Non-Git projects still receive a candidate/tool fingerprint. They do
-    // not receive cross-workspace evidence reuse without a stable Git view.
+    // not receive a Git view, so use a bounded physical snapshot instead.
+    if (stableGitView) {
+      gitSnapshot.complete = false;
+      gitSnapshot.reuseNonce = randomUUID();
+    } else {
+      gitSnapshot.capture = 'physical-tree';
+      gitSnapshot.physical = await nativePhysicalCheckInputSnapshot(
+        options.projectRoot,
+        options.plans,
+      );
+      gitSnapshot.complete = gitSnapshot.physical.complete;
+      if (!gitSnapshot.physical.complete) gitSnapshot.reuseNonce = randomUUID();
+    }
   }
   return canonicalHash('comet.native.check-input.v1', {
     candidateId: options.state.builder_handoff?.candidate_id ?? null,
@@ -1466,6 +1704,7 @@ async function reserveNativePortableCheckPlan(options: {
       const inputFingerprint = await nativeCheckInputFingerprint({
         state,
         projectRoot: options.projectRoot,
+        plans: options.plans,
       });
       const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, state.name);
       const runtimeEvidenceAvailable = await hasNativeRuntimeCheckEvidence(local, runtimeDir);
