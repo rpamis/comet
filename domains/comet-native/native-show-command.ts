@@ -5,7 +5,6 @@ import {
 } from './native-change.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { inspectNativeChildren } from './native-children.js';
-import { NATIVE_CONTRACT_FILE_LIMITS } from './native-contract-files.js';
 import { readNativeProposedSpecs } from './native-specs.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import {
@@ -84,7 +83,7 @@ export async function nativeShowCommand(
   const brief = await readNativeBoundedTextFile({
     root: changeDir,
     ref: state.brief,
-    maxBytes: NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes,
+    maxBytes: null,
   });
   const payload = {
     state,

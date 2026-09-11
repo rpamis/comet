@@ -74,10 +74,10 @@ children:
 每个 `specs/<capability>/spec.md` 描述归档后 capability 的完整行为，而不是只写相对旧文本的变化：
 
 - 新 capability：写完整规格；
-- 已有 capability：写修改后的完整规格；
+- 已有 capability：写修改后的完整规格；若由能力关联创建，则同时维护稳定 requirement ID 的 `delta.yaml`，只描述本次演进；
 - 删除 capability：使用 CLI 的 `spec remove`，不只删除文件。
 
-如果项目中已经归档的正式 Spec 与当前 change 发生冲突，先重读最新 Spec，再按用户意图改写当前 change 的完整目标规格，最后执行 Runtime 返回的重新对齐（rebase）动作。Spec 操作类型和工作流状态仍由 Runtime 管理。
+如果项目中已经归档的正式 Spec 与当前 change 发生冲突，先重读最新 Spec，再按用户意图改写当前 change 的完整目标规格；`delta.yaml` 的独立 requirement 增量可自动重新对齐，同一 requirement、删除/重命名、共享旧约束或不确定影响则要求重新 Verify，最后执行 Runtime 返回的 rebase 动作。`capability-association.yaml` 可删除以撤销关联；没有关联结果或没有 `delta.yaml` 的旧 Native change 继续按完整目标 Spec 兼容处理。Spec 操作类型和工作流状态仍由 Runtime 管理。
 
 ## Verification
 报告展示每个验收项的结果和原因、实际检查的脱敏命令预览与状态、阻塞项、风险以及精简的验收循环历史。完整命令输出只保留在本机日志中。

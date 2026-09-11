@@ -189,6 +189,64 @@ describe('Classic OpenSpec adapter', () => {
     expect(JSON.parse(instructions.stdout!).data.nextAction.argv).toContain('status');
   });
 
+  it('writes an explicit capability association draft when creating a change', async () => {
+    await fs.mkdir(path.join(projectRoot, 'docs', 'openspec', 'specs', 'authentication'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(projectRoot, 'docs', 'openspec', 'specs', 'authentication', 'spec.md'),
+      '# Authentication\n',
+      'utf8',
+    );
+    await fs.mkdir(path.join(projectRoot, 'docs', 'openspec', 'changes', 'demo'), {
+      recursive: true,
+    });
+    mockedSpawnSync.mockReturnValue({
+      pid: 1,
+      output: [],
+      stdout: '{"changeName":"demo"}',
+      stderr: '',
+      status: 0,
+      signal: null,
+    });
+
+    const result = await runClassicCli([
+      'openspec',
+      '--agent-json',
+      '--',
+      'new',
+      'change',
+      'demo',
+      '--capability',
+      'authentication',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const output = JSON.parse(result.stdout!);
+    expect(output.data.capabilityDiscovery.associationDraft).toMatchObject({
+      status: 'explicit',
+      capability: 'authentication',
+    });
+    await expect(
+      fs.readFile(
+        path.join(
+          projectRoot,
+          'docs',
+          'openspec',
+          'changes',
+          'demo',
+          'capability-association.yaml',
+        ),
+        'utf8',
+      ),
+    ).resolves.toContain('schema: comet.capability-association.v1');
+    expect(mockedSpawnSync).toHaveBeenCalledWith(
+      'openspec',
+      ['new', 'change', 'demo'],
+      expect.objectContaining({ cwd: path.join(projectRoot, 'docs') }),
+    );
+  });
+
   it('fails closed when the configured OpenSpec root is missing', async () => {
     await fs.rm(path.join(projectRoot, 'docs', 'openspec'), { recursive: true });
 

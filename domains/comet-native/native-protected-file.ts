@@ -160,18 +160,22 @@ async function verifyDirectoryChain(
 
 async function readHandleBounded(
   handle: Awaited<ReturnType<typeof fs.open>>,
-  maxBytes: number,
+  maxBytes: number | null,
   label: string,
 ): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
-  const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1));
+  const buffer = Buffer.allocUnsafe(
+    maxBytes === null ? 64 * 1024 : Math.min(64 * 1024, maxBytes + 1),
+  );
   while (true) {
-    const remaining = maxBytes + 1 - total;
+    const remaining = maxBytes === null ? buffer.length : maxBytes + 1 - total;
     const { bytesRead } = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
     if (bytesRead === 0) break;
     total += bytesRead;
-    if (total > maxBytes) throw new Error(`${label} exceeds ${maxBytes} bytes`);
+    if (maxBytes !== null && total > maxBytes) {
+      throw new Error(`${label} exceeds ${maxBytes} bytes`);
+    }
     chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
   }
   return Buffer.concat(chunks, total);
@@ -180,12 +184,12 @@ async function readHandleBounded(
 export async function readNativeProtectedFile(options: {
   root: string;
   file: string;
-  maxBytes: number;
+  maxBytes: number | null;
   label: string;
   forbiddenRoots?: readonly string[];
   hooks?: NativeProtectedFileHooks;
 }): Promise<NativeProtectedFile> {
-  const maxBytes = positiveLimit(options.maxBytes);
+  const maxBytes = options.maxBytes === null ? null : positiveLimit(options.maxBytes);
   const file = path.resolve(options.file);
   const chain = await captureDirectoryChain(options.root, path.dirname(file), options.label);
   const forbidden = await Promise.all(
@@ -199,7 +203,9 @@ export async function readNativeProtectedFile(options: {
   if (!before.isFile() || before.isSymbolicLink()) {
     throw new Error(`${options.label} must be a regular file`);
   }
-  if (before.size > maxBytes) throw new Error(`${options.label} exceeds ${maxBytes} bytes`);
+  if (maxBytes !== null && before.size > maxBytes) {
+    throw new Error(`${options.label} exceeds ${maxBytes} bytes`);
+  }
   const beforeIdentity = asFileIdentity(before);
   const beforeRealPath = await fs.realpath(file);
   if (!isInside(chain[0].realPath, beforeRealPath)) {
@@ -264,7 +270,7 @@ export async function readNativeProtectedFile(options: {
 export async function readNativeProtectedTextFile(options: {
   root: string;
   file: string;
-  maxBytes: number;
+  maxBytes: number | null;
   label: string;
   forbiddenRoots?: readonly string[];
   hooks?: NativeProtectedFileHooks;
@@ -653,7 +659,7 @@ export async function copyNativeProtectedFile(options: {
   source: string;
   targetRoot: string;
   target: string;
-  maxBytes: number;
+  maxBytes: number | null;
   label: string;
   expectedHash?: string;
   expectedTargetHash?: string | null;

@@ -12,3 +12,5 @@ export * from './plugin.js';
 export * from './deterministic-extractors.js';
 export * from './readiness.js';
 export * from './learning.js';
+export * from './capability-discovery.js';
+export * from './provider-factory.js';

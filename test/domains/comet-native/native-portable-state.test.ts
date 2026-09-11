@@ -134,6 +134,29 @@ describe('Native portable state', () => {
     );
   });
 
+  it('requires a concrete delta base hash instead of accepting null', () => {
+    const state = createNativePortableState({
+      name: 'delta-state',
+      language: 'en',
+      createdAt: '2026-08-09T00:00:00.000Z',
+    });
+
+    expect(() =>
+      parseNativePortableState({
+        ...state,
+        spec_changes: [
+          {
+            capability: 'authentication',
+            operation: 'modify',
+            source: 'specs/authentication/spec.md',
+            delta_source: 'specs/authentication/delta.yaml',
+            base_hash: null,
+          },
+        ],
+      }),
+    ).toThrow('non-null base_hash');
+  });
+
   it('keeps only 50 history entries and folds older facts into a non-decision overflow', () => {
     let state = createNativePortableState({
       name: 'bounded-history',

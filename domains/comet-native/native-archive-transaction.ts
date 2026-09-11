@@ -65,7 +65,6 @@ export interface NativeArchiveTransactionHooksV2 {
   ) => void | Promise<void>;
 }
 
-const NATIVE_ARCHIVE_COPY_MAX_BYTES = 16 * 1024 * 1024;
 const NATIVE_ARCHIVE_JOURNAL_MAX_BYTES = 256 * 1024;
 const NATIVE_ARCHIVE_CAS_RECORD_MAX_BYTES = 16 * 1024;
 const NATIVE_ARCHIVE_CAS_SCHEMA = 'comet.native.archive-cas.v1' as const;
@@ -602,7 +601,7 @@ async function ensureBackup(
     source: target,
     targetRoot: nativeStorageRoot(paths, backup),
     target: backup,
-    maxBytes: NATIVE_ARCHIVE_COPY_MAX_BYTES,
+    maxBytes: null,
     label: `Archive transaction backup ${operation.backup}`,
     expectedHash: operation.expectedTargetHash,
     expectedTargetHash: null,
@@ -731,7 +730,7 @@ async function ensureWriteCandidate(options: {
     source: options.staged,
     targetRoot: options.paths.runtimeDir,
     target: cas.candidate,
-    maxBytes: NATIVE_ARCHIVE_COPY_MAX_BYTES,
+    maxBytes: null,
     label: `Archive transaction staged file ${options.operation.staged}`,
     expectedHash: options.operation.stagedHash!,
     expectedTargetHash: null,

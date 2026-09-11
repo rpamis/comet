@@ -1,7 +1,4 @@
-import {
-  DEFAULT_NATIVE_ARTIFACT_MAX_BYTES,
-  readNativeBoundedTextFile,
-} from './native-bounded-file.js';
+import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import {
   buildNativeContractSnapshot,
   type NativeContractSnapshot,
@@ -11,8 +8,6 @@ import type { NativeSpecChange } from './native-types.js';
 
 export const NATIVE_CONTRACT_FILE_LIMITS = {
   maxSpecs: 64,
-  maxFileBytes: DEFAULT_NATIVE_ARTIFACT_MAX_BYTES,
-  maxTotalBytes: 4 * 1024 * 1024,
 } as const;
 
 export interface NativeCollectedContract {
@@ -38,7 +33,7 @@ export async function collectNativeContractFiles(options: {
   const brief = await readNativeBoundedTextFile({
     root: options.changeDir,
     ref: options.briefRef,
-    maxBytes: NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes,
+    maxBytes: null,
   });
   let totalBytes = brief.size;
   const specs: NativeContractSpecInput[] = [];
@@ -59,12 +54,9 @@ export async function collectNativeContractFiles(options: {
     const source = await readNativeBoundedTextFile({
       root: options.changeDir,
       ref: change.source,
-      maxBytes: NATIVE_CONTRACT_FILE_LIMITS.maxFileBytes,
+      maxBytes: null,
     });
     totalBytes += source.size;
-    if (totalBytes > NATIVE_CONTRACT_FILE_LIMITS.maxTotalBytes) {
-      throw new Error('Native contract exceeds its total byte budget');
-    }
     specs.push({
       capability: change.capability,
       operation: change.operation,

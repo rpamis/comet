@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import { nativeTotalSpecHash, parseNativeDelta } from './native-delta-spec.js';
 import {
   parseNativePortableMigrationTransaction,
   type NativePortableMigrationTransaction,
@@ -14,6 +15,14 @@ export const NATIVE_PORTABLE_ARCHIVE_TRANSACTION_SCHEMA =
 
 export interface NativePortableArchiveSpecChange extends NativePortableSpecChange {
   content: string | null;
+  /** Frozen delta manifest used to derive content; absent for legacy full Specs. */
+  delta_content?: string | null;
+  /** Frozen source proposal, kept separate from the merged canonical result. */
+  source_content?: string | null;
+  /** Canonical hash observed when this archive transaction was prepared. */
+  expected_target_hash?: string | null;
+  /** Hash of the canonical result, including legacy full-Spec changes. */
+  result_hash?: string | null;
 }
 
 export interface NativePortableArchiveTransaction {
@@ -74,7 +83,18 @@ const ARCHIVE_KEYS = new Set([
   'spec_changes',
   'created_at',
 ]);
-const SPEC_CHANGE_KEYS = new Set(['capability', 'operation', 'source', 'content']);
+const SPEC_CHANGE_KEYS = new Set([
+  'capability',
+  'operation',
+  'source',
+  'content',
+  'delta_source',
+  'base_hash',
+  'delta_content',
+  'source_content',
+  'expected_target_hash',
+  'result_hash',
+]);
 const CAPABILITY_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -91,9 +111,23 @@ function rejectUnknown(
 ): void {
   const unknown = Object.keys(value).filter((key) => !expected.has(key));
   if (unknown.length > 0) throw new Error(`${label} has unknown field(s): ${unknown.join(', ')}`);
-  if (Object.keys(value).length !== expected.size) {
-    throw new Error(`${label} fields are invalid`);
+}
+
+function optionalHash(value: unknown, label: string): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/iu.test(value)) {
+    throw new Error(`${label} must be a SHA-256 hash or null`);
   }
+  return value.toLowerCase();
+}
+
+function optionalNullableText(value: unknown, label: string): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value !== null && typeof value !== 'string') {
+    throw new Error(`${label} must be text or null`);
+  }
+  return value as string | null;
 }
 
 function parseSpecChange(value: unknown, index: number): NativePortableArchiveSpecChange {
@@ -107,11 +141,80 @@ function parseSpecChange(value: unknown, index: number): NativePortableArchiveSp
     throw new Error(`${label}.operation is invalid`);
   }
   const operation = input.operation as NativePortableSpecChange['operation'];
+  const delta_source = input.delta_source;
+  if (
+    delta_source !== undefined &&
+    (typeof delta_source !== 'string' ||
+      delta_source.length === 0 ||
+      delta_source.includes('\\') ||
+      delta_source.startsWith('/') ||
+      /^[A-Za-z]:/u.test(delta_source) ||
+      delta_source.split('/').some((segment) => segment === '.' || segment === '..'))
+  ) {
+    throw new Error(`${label}.delta_source is invalid`);
+  }
+  const base_hash = optionalHash(input.base_hash, `${label}.base_hash`);
+  const delta_content = optionalNullableText(input.delta_content, `${label}.delta_content`);
+  const source_content = optionalNullableText(input.source_content, `${label}.source_content`);
+  const expected_target_hash = optionalHash(
+    input.expected_target_hash,
+    `${label}.expected_target_hash`,
+  );
+  const result_hash = optionalHash(input.result_hash, `${label}.result_hash`);
+  const hasDelta = delta_source !== undefined;
+  if (hasDelta && (base_hash === undefined || base_hash === null)) {
+    throw new Error(`${label}.delta_source requires a non-null base_hash`);
+  }
+  if (
+    hasDelta &&
+    (delta_content === undefined ||
+      delta_content === null ||
+      source_content === undefined ||
+      source_content === null ||
+      result_hash === undefined ||
+      result_hash === null)
+  ) {
+    throw new Error(
+      `${label}.delta_source requires delta_content, source_content, and result_hash`,
+    );
+  }
+  if (!hasDelta && (delta_content !== undefined || source_content !== undefined)) {
+    throw new Error(`${label} delta transaction fields require delta_source`);
+  }
+  if (hasDelta) {
+    const parsedDelta = parseNativeDelta(delta_content!);
+    if (parsedDelta.capability !== input.capability) {
+      throw new Error(`${label}.delta_content capability does not match capability`);
+    }
+    if (parsedDelta.base_hash !== base_hash) {
+      throw new Error(`${label}.delta_content base_hash does not match base_hash`);
+    }
+    if (nativeTotalSpecHash(input.content as string) !== result_hash) {
+      throw new Error(`${label}.content does not match result_hash`);
+    }
+    if (nativeTotalSpecHash(source_content!) !== result_hash) {
+      throw new Error(`${label}.source_content does not match result_hash`);
+    }
+  }
   if (operation === 'remove') {
-    if (input.source !== null || input.content !== null) {
+    if (
+      input.source !== null ||
+      input.content !== null ||
+      delta_source !== undefined ||
+      delta_content !== undefined ||
+      source_content !== undefined ||
+      result_hash !== undefined
+    ) {
       throw new Error(`${label} remove requires source and content null`);
     }
-    return { capability: input.capability, operation, source: null, content: null };
+    return {
+      capability: input.capability,
+      operation,
+      source: null,
+      content: null,
+      ...(base_hash === undefined ? {} : { base_hash }),
+      ...(expected_target_hash === undefined ? {} : { expected_target_hash }),
+    };
   }
   if (
     typeof input.source !== 'string' ||
@@ -126,11 +229,22 @@ function parseSpecChange(value: unknown, index: number): NativePortableArchiveSp
   if (typeof input.content !== 'string') {
     throw new Error(`${label}.${operation} content is invalid`);
   }
+  if (result_hash !== undefined) {
+    if (result_hash === null || nativeTotalSpecHash(input.content) !== result_hash) {
+      throw new Error(`${label}.content does not match result_hash`);
+    }
+  }
   return {
     capability: input.capability,
     operation,
     source: input.source,
     content: input.content,
+    ...(delta_source === undefined ? {} : { delta_source }),
+    ...(base_hash === undefined ? {} : { base_hash }),
+    ...(delta_content === undefined ? {} : { delta_content }),
+    ...(source_content === undefined ? {} : { source_content }),
+    ...(expected_target_hash === undefined ? {} : { expected_target_hash }),
+    ...(result_hash === undefined ? {} : { result_hash }),
   };
 }
 

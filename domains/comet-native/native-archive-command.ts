@@ -4,6 +4,7 @@ import {
   hasNativePortableArchiveRecovery,
   inspectNativePortableArchive,
   NativePortableArchiveOrderRequiredError,
+  NativePortableArchiveRequiresReverificationError,
 } from './native-portable-archive.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
@@ -134,6 +135,26 @@ export async function nativeArchiveCommand(
         });
       }
       const preview = await inspectNativePortableArchive({ paths: configured.paths, name });
+      if (preview.requiresReverification) {
+        return success(
+          'archive --dry-run',
+          {
+            ...preview,
+            archived: false,
+            ready: false,
+            state,
+            blockers: preview.blockers,
+            recovery: {
+              action: 'reverify',
+              reason: 'stale',
+              message:
+                'The canonical Spec changed independently; the portable change returned to Verify and must be checked again after delta remerge.',
+            },
+            continuation: nativePortableContinuation(state),
+          },
+          'Native Archive preview requires fresh verification after delta remerge; no rebase was written during dry-run\n',
+        );
+      }
       const capabilityBlockerPrefix = 'capabilities are also declared by:';
       const blockers = preview.blockers.filter(
         (blocker) => !blocker.startsWith(capabilityBlockerPrefix),
@@ -324,6 +345,23 @@ export async function nativeArchiveCommand(
         ...(serialFirstOption ? { serialFirstChange: serialFirstOption } : {}),
       });
     } catch (error) {
+      if (error instanceof NativePortableArchiveRequiresReverificationError) {
+        return success(
+          'archive',
+          {
+            archived: false,
+            state: error.state,
+            recovery: {
+              action: 'reverify',
+              reason: 'stale',
+              message:
+                'The canonical Spec changed independently; the portable change returned to Verify and must be checked again after delta remerge.',
+            },
+            continuation: nativePortableContinuation(error.state),
+          },
+          'Native Archive requires fresh verification after delta remerge\n',
+        );
+      }
       if (!(error instanceof NativePortableArchiveOrderRequiredError)) throw error;
       if (!state) throw error;
       const preview = await inspectNativePortableArchive({ paths: configured.paths, name });

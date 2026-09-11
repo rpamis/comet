@@ -38,7 +38,7 @@ async function exists(target: string): Promise<boolean> {
 
 async function optionalBoundedHash(root: string, ref: string): Promise<string | null> {
   try {
-    return (await readNativeBoundedTextFile({ root, ref })).hash;
+    return (await readNativeBoundedTextFile({ root, ref, maxBytes: null })).hash;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
@@ -63,6 +63,7 @@ async function specFact(
       await readNativeBoundedTextFile({
         root: nativeChangeDir(paths, name),
         ref: change.source,
+        maxBytes: null,
       })
     ).hash;
   }

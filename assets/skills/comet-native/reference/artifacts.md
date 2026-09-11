@@ -74,10 +74,10 @@ children:
 Each `specs/<capability>/spec.md` describes the complete capability behavior after Archive, rather than only the difference from older text:
 
 - New capability: write the complete specification.
-- Existing capability: write the complete updated specification.
+- Existing capability: write the complete updated specification; when created from a capability association, also maintain a `delta.yaml` with stable requirement IDs describing only this evolution.
 - Removed capability: use CLI `spec remove`; do not only delete the file.
 
-If an archived canonical Spec changes in a way that conflicts with the current change, reread the latest Spec, rewrite the current change's complete target specification according to user intent, then execute the Runtime-provided rebase action. The Runtime continues to own Spec operation type and workflow state.
+If an archived canonical Spec changes in a way that conflicts with the current change, reread the latest Spec, rewrite the current change's complete target specification according to user intent; independent `delta.yaml` requirement edits can be rebased automatically, while edits to the same requirement, deletes/renames, shared legacy constraints, or uncertain impact require fresh Verify, then execute the Runtime-provided rebase action. Delete `capability-association.yaml` to revoke the association; an unassociated change or a legacy Native change without `delta.yaml` remains compatible with the complete-target Spec flow. The Runtime continues to own Spec operation type and workflow state.
 
 ## Verification
 The report shows the outcome and reason for every acceptance item, redacted command previews and states for checks that actually ran, blockers, risks, and compact acceptance Loop history. Full command output remains in local logs.

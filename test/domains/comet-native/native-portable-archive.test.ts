@@ -6,6 +6,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
+import { atomicWriteJson } from '../../../domains/comet-native/native-atomic-file.js';
 import {
   createNativeChange,
   writeNativeChange,
@@ -616,10 +617,113 @@ children:
     const edited = '# Sample\n\nConcurrent user change.\n';
     await fs.writeFile(file, edited);
     await expect(archiveNativePortableChange({ paths, name: state.name })).rejects.toThrow(
-      'changed after Archive',
+      /fresh verification/iu,
     );
     expect(await fs.readFile(file, 'utf8')).toBe(edited);
     expect((await readNativePortableChange(paths, state.name)).archived).toBe(false);
+  });
+
+  it('does not resume an old full-Spec journal without canonical target bindings', async () => {
+    const state = await archiveReady('legacy-full-journal');
+    await expect(
+      archiveNativePortableChange({
+        paths,
+        name: state.name,
+        hooks: { afterSpecApplied: () => Promise.reject(new Error('pause-after-spec')) },
+      }),
+    ).rejects.toThrow('pause-after-spec');
+    const transaction = await readNativePortableTransaction(paths, {
+      kind: 'archive',
+      change: state.name,
+    });
+    expect(transaction?.kind).toBe('archive');
+    if (!transaction || transaction.kind !== 'archive') throw new Error('transaction missing');
+    await atomicWriteJson(
+      transaction.file,
+      {
+        ...transaction.journal,
+        spec_changes: transaction.journal.spec_changes.map((change) => {
+          const legacy = { ...change };
+          delete legacy.expected_target_hash;
+          delete legacy.result_hash;
+          return legacy;
+        }),
+      },
+      { containedRoot: paths.runtimeDir },
+    );
+    const file = path.join(paths.specsDir, 'sample', 'spec.md');
+    const edited = '# Sample\n\nConcurrent legacy journal edit.\n';
+    await fs.writeFile(file, edited);
+
+    await expect(nativeArchiveCommand([state.name, '--dry-run'], root)).resolves.toMatchObject({
+      exitCode: 0,
+      data: {
+        archived: false,
+        ready: false,
+        recovery: { action: 'reverify' },
+      },
+    });
+    await expect(archiveNativePortableChange({ paths, name: state.name })).rejects.toThrow(
+      /fresh verification/iu,
+    );
+    expect(await fs.readFile(file, 'utf8')).toBe(edited);
+    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
+      phase: 'verify',
+      verification_result: 'pending',
+    });
+  });
+
+  it('does not treat an old remove journal as safe merely because the target is absent', async () => {
+    await fs.mkdir(path.join(paths.specsDir, 'sample'), { recursive: true });
+    await fs.writeFile(path.join(paths.specsDir, 'sample', 'spec.md'), '# Obsolete behavior\n');
+    await createNativePortableChange({ paths, name: 'legacy-remove-journal', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'legacy-remove-journal');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The obsolete capability is removed.\n',
+    );
+    await markNativePortableSpecRemoval({
+      paths,
+      name: 'legacy-remove-journal',
+      capability: 'sample',
+    });
+    const state = await verifyState(
+      await confirmNativePortableShape({ paths, name: 'legacy-remove-journal' }),
+    );
+    await expect(
+      archiveNativePortableChange({
+        paths,
+        name: state.name,
+        hooks: { afterSpecApplied: () => Promise.reject(new Error('pause-after-remove')) },
+      }),
+    ).rejects.toThrow('pause-after-remove');
+    const transaction = await readNativePortableTransaction(paths, {
+      kind: 'archive',
+      change: state.name,
+    });
+    expect(transaction?.kind).toBe('archive');
+    if (!transaction || transaction.kind !== 'archive') throw new Error('transaction missing');
+    await atomicWriteJson(
+      transaction.file,
+      {
+        ...transaction.journal,
+        spec_changes: transaction.journal.spec_changes.map((change) => {
+          const legacy = { ...change };
+          delete legacy.expected_target_hash;
+          return legacy;
+        }),
+      },
+      { containedRoot: paths.runtimeDir },
+    );
+
+    await expect(nativeArchiveCommand([state.name, '--dry-run'], root)).resolves.toMatchObject({
+      exitCode: 0,
+      data: {
+        archived: false,
+        ready: false,
+        recovery: { action: 'reverify' },
+      },
+    });
   });
 
   it('reports interrupted Archive transactions in named and project-wide Doctor and repairs them', async () => {

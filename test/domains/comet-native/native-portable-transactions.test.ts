@@ -1,8 +1,15 @@
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import {
+  applyNativeDelta,
+  nativeLegacySectionHash,
+  nativeTotalSpecHash,
+  parseNativeDelta,
+} from '../../../domains/comet-native/native-delta-spec.js';
 import {
   describeNativePortableTransactionEntry,
   isNativePortableTransactionUnfinished,
@@ -90,6 +97,59 @@ describe('Native portable transaction records', () => {
       change: 'portable-change',
     });
     expect(describeNativePortableTransactionEntry('unrelated.json')).toBeNull();
+  });
+
+  it('validates the frozen delta and complete target binding in an archive transaction', () => {
+    const baseline = '# Authentication\n';
+    const baseHash = createHash('sha256').update(baseline).digest('hex');
+    const deltaContent = `schema: comet.native.delta.v1\ncapability: authentication\nbase_hash: ${baseHash}\nbase_version: 1\nlegacy_hash: ${nativeLegacySectionHash(baseline)}\noperations:\n  - id: authentication.password\n    operation: add\n    title: Password login\n    body: Password login MUST be available.\n`;
+    const target = applyNativeDelta({
+      baselineMarkdown: baseline,
+      delta: parseNativeDelta(deltaContent),
+    }).markdown;
+    const parsed = parseNativePortableArchiveTransaction(
+      validJournal({
+        spec_changes: [
+          {
+            capability: 'authentication',
+            operation: 'create',
+            source: 'specs/authentication/spec.md',
+            content: target,
+            delta_source: 'specs/authentication/delta.yaml',
+            base_hash: baseHash,
+            delta_content: deltaContent,
+            source_content: target,
+            expected_target_hash: null,
+            result_hash: nativeTotalSpecHash(target),
+          },
+        ],
+      }),
+    );
+
+    expect(parsed.spec_changes[0]).toMatchObject({
+      capability: 'authentication',
+      result_hash: nativeTotalSpecHash(target),
+    });
+    expect(() =>
+      parseNativePortableArchiveTransaction(
+        validJournal({
+          spec_changes: [
+            {
+              capability: 'authentication',
+              operation: 'create',
+              source: 'specs/authentication/spec.md',
+              content: target,
+              delta_source: 'specs/authentication/delta.yaml',
+              base_hash: baseHash,
+              delta_content: deltaContent,
+              source_content: '# Different target\n',
+              expected_target_hash: null,
+              result_hash: nativeTotalSpecHash(target),
+            },
+          ],
+        }),
+      ),
+    ).toThrow('source_content does not match result_hash');
   });
 
   it.each([

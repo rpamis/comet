@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { spawnSync } from 'child_process';
 
 import { resolveNodeCliCommand } from '../../platform/process/node-cli-command.js';
@@ -5,11 +6,83 @@ import { projectCliAgentObservation } from '../workflow-contract/output-envelope
 import { classicIssue } from './classic-issues.js';
 
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
-import { assertClassicLayoutWritable, discoverClassicProject } from './classic-layout.js';
+import {
+  assertClassicLayoutWritable,
+  classicProjectRelative,
+  discoverClassicProject,
+} from './classic-layout.js';
 import { assertClassicOpenSpecRootHealthy } from './classic-openspec-root.js';
+import { writeClassicProjectText } from './classic-protected-path.js';
 
 function normalizedArguments(args: readonly string[]): string[] {
   return args[0] === '--' ? args.slice(1) : [...args];
+}
+
+function takeCustomOption(args: string[], name: string): string | undefined {
+  const indexes = args.flatMap((value, index) => (value === name ? [index] : []));
+  if (indexes.length > 1) throw new Error(`${name} may only be provided once`);
+  if (indexes.length === 0) return undefined;
+  const index = indexes[0];
+  const value = args[index + 1];
+  if (value === undefined || value.startsWith('--')) throw new Error(`${name} requires a value`);
+  args.splice(index, 2);
+  return value;
+}
+
+async function discoverClassicCapability(
+  root: string,
+  layout: Awaited<ReturnType<typeof assertClassicLayoutWritable>>,
+  task: string | undefined,
+  capability: string | undefined,
+) {
+  if (!task && !capability) return null;
+  const diagnostics: Array<{ code: string; message: string }> = [];
+  try {
+    const {
+      closeProjectKnowledgeProvider,
+      createProjectKnowledgeProvider,
+      discoverWorkflowCapabilityCandidates,
+    } = await import('../project-knowledge/index.js');
+    const provider = capability
+      ? undefined
+      : await createProjectKnowledgeProvider({
+          projectRoot: root,
+          reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+        });
+    try {
+      const result = await discoverWorkflowCapabilityCandidates({
+        projectRoot: root,
+        scope: {
+          workflow: 'classic',
+          currentSpecRoot: classicProjectRelative(root, layout.specsDir),
+          archiveRoot: classicProjectRelative(root, layout.archiveDir),
+        },
+        ...(provider ? { provider } : {}),
+        ...(task ? { task } : {}),
+        ...(capability ? { capability } : {}),
+      });
+      return { ...result, diagnostics: [...diagnostics, ...result.diagnostics] };
+    } finally {
+      if (provider) closeProjectKnowledgeProvider(provider);
+    }
+  } catch (error) {
+    if (capability) throw error;
+    return {
+      workflow: 'classic' as const,
+      query: null,
+      candidates: [],
+      associationDraft: null,
+      diagnostics: [
+        ...diagnostics,
+        {
+          code: 'capability-discovery',
+          message: `能力候选召回不可用，未自动关联：${error instanceof Error ? error.message : String(error)}`,
+        },
+      ],
+      searched: Boolean(task),
+      providerLimit: 40,
+    };
+  }
 }
 
 export async function executeClassicOpenSpec(
@@ -57,6 +130,13 @@ async function agentOpenSpec(args: string[]): Promise<ClassicCommandResult> {
   const forwarded = normalizedArguments(args.slice(1));
   const root = await discoverClassicProject(process.cwd());
   const layout = await assertClassicLayoutWritable(root);
+  const creatingChange = forwarded[0] === 'new' && forwarded[1] === 'change';
+  const task = creatingChange ? takeCustomOption(forwarded, '--task') : undefined;
+  const capability = creatingChange ? takeCustomOption(forwarded, '--capability') : undefined;
+  if (!creatingChange && (forwarded.includes('--task') || forwarded.includes('--capability'))) {
+    throw new Error('--task and --capability are only valid when creating a Classic change');
+  }
+  const capabilityDiscovery = await discoverClassicCapability(root, layout, task, capability);
   let result: ClassicCommandResult;
   try {
     result = await executeClassicOpenSpec(forwarded, root);
@@ -76,6 +156,17 @@ async function agentOpenSpec(args: string[]): Promise<ClassicCommandResult> {
       : changeIndex >= 0
         ? forwarded[changeIndex + 1]
         : undefined;
+  let associationPath: string | undefined;
+  if (result.exitCode === 0 && capabilityDiscovery?.associationDraft && change) {
+    associationPath = path.join(layout.changesDir, change, 'capability-association.yaml');
+    const { renderCapabilityAssociationDraft } = await import('../project-knowledge/index.js');
+    await writeClassicProjectText(
+      root,
+      associationPath,
+      renderCapabilityAssociationDraft(capabilityDiscovery.associationDraft),
+      { label: 'Classic capability association draft' },
+    );
+  }
   const status =
     upstream && typeof upstream === 'object' ? (upstream as Record<string, unknown>) : {};
   const artifacts = Array.isArray(status.artifacts)
@@ -108,6 +199,8 @@ async function agentOpenSpec(args: string[]): Promise<ClassicCommandResult> {
   const data = {
     projectRoot: root,
     workspace: { projectRoot: root },
+    ...(capabilityDiscovery === null ? {} : { capabilityDiscovery }),
+    ...(associationPath === undefined ? {} : { associationPath }),
     issues:
       result.exitCode === 0
         ? []

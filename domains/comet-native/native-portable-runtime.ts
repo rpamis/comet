@@ -75,6 +75,17 @@ import {
   sameNativePortableAcceptance,
 } from './native-portable-acceptance.js';
 import {
+  applyNativeDelta,
+  inspectNativeTotalSpec,
+  mergeNativeDeltaAgainstCurrent,
+  NATIVE_DELTA_FILE,
+  nativeDeltaAcceptanceMarkdown,
+  nativeLegacySectionHash,
+  nativeTotalSpecHash,
+  parseNativeDelta,
+  renderNativeDelta,
+} from './native-delta-spec.js';
+import {
   appendNativePortableHistory,
   compareAndSwapNativePortableState,
   createNativePortableState,
@@ -119,12 +130,14 @@ import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
 import type { NativeSupervisorCoordinationMode } from './native-portable-types.js';
 import type { NativeWorkspaceBinding } from './native-workspace.js';
 import { readProjectConfig, writeProjectConfig } from './native-config.js';
+import { parseCapabilityAssociationDraft } from '../project-knowledge/capability-discovery.js';
 
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 export const NATIVE_PORTABLE_STATE_FILE = 'comet-state.yaml';
 export const NATIVE_LOCAL_EXECUTION_FILE = 'state.json';
 
 export const NATIVE_PORTABLE_BRIEF_TEMPLATE = nativeBriefTemplate('en');
+const NATIVE_CAPABILITY_ASSOCIATION_FILE = 'capability-association.yaml';
 
 export type NativePortableExpectedContinuationAction =
   | 'prepare-shape-confirmation'
@@ -366,19 +379,262 @@ async function discoverNativePortableSpecChanges(options: {
     }
     const canonical = path.join(options.paths.specsDir, entry.name, 'spec.md');
     let operation: 'create' | 'modify' = 'create';
+    let canonicalHash: string | null = null;
     try {
       const canonicalStat = await fs.lstat(canonical);
       if (!canonicalStat.isFile() || canonicalStat.isSymbolicLink()) {
         throw new Error(`Canonical Native spec is unsafe: ${entry.name}`);
       }
       operation = 'modify';
+      canonicalHash = nativeTotalSpecHash(
+        (
+          await readNativeBoundedTextFile({
+            root: options.paths.specsDir,
+            ref: `${entry.name}/spec.md`,
+            maxBytes: null,
+            includeHash: false,
+          })
+        ).text,
+      );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
-    changes.push({ capability: entry.name, operation, source });
+    const deltaSource = `specs/${entry.name}/${NATIVE_DELTA_FILE}`;
+    const deltaFile = path.join(changeDir, ...deltaSource.split('/'));
+    let deltaMetadata: Pick<NativePortableSpecChange, 'delta_source' | 'base_hash'> = {};
+    try {
+      const deltaStat = await fs.lstat(deltaFile);
+      if (!deltaStat.isFile() || deltaStat.isSymbolicLink()) {
+        throw new Error(`Native delta manifest must be a regular file: ${deltaSource}`);
+      }
+      const deltaText = await readNativeBoundedTextFile({
+        root: changeDir,
+        ref: deltaSource,
+        maxBytes: null,
+        includeHash: false,
+      });
+      const delta = parseNativeDelta(deltaText.text);
+      if (delta.capability !== entry.name) {
+        throw new Error(
+          `Native delta capability ${delta.capability} does not match directory ${entry.name}`,
+        );
+      }
+      const expectedBaseHash = canonicalHash ?? nativeTotalSpecHash('');
+      const previous = options.state.spec_changes.find(
+        (change) => change.capability === entry.name,
+      );
+      if (previous?.delta_source !== undefined) {
+        if (previous.base_hash !== delta.base_hash) {
+          throw new Error(
+            `Native delta base changed for ${entry.name}; explicit conversion is required`,
+          );
+        }
+      } else if (delta.base_hash !== expectedBaseHash) {
+        throw new Error(
+          `Native delta base_hash does not match the current total Spec for ${entry.name}`,
+        );
+      }
+      deltaMetadata = { delta_source: deltaSource, base_hash: delta.base_hash };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    changes.push({ capability: entry.name, operation, source, ...deltaMetadata });
   }
   changes.push(...removals.values());
   return changes.sort((left, right) => left.capability.localeCompare(right.capability, 'en'));
+}
+
+/**
+ * Rebase independent canonical edits into the active delta before Verify is
+ * restarted. The caller must hold the Native mutation lock.
+ */
+export async function rebaseNativePortableDeltasLocked(options: {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+}): Promise<{ state: NativePortableState; rebased: boolean; capabilities: string[] }> {
+  const changeRoot = nativePortableChangeDir(options.paths, options.state.name);
+  const specChanges = await discoverNativePortableSpecChanges(options);
+  const nextSpecChanges = [...specChanges];
+  const capabilities: string[] = [];
+  const pending: Array<{
+    readonly index: number;
+    readonly spec: NativePortableSpecChange;
+    readonly originalDeltaText: string;
+    readonly originalSourceText: string;
+    readonly deltaText: string;
+    readonly sourceText: string;
+  }> = [];
+
+  for (const [index, spec] of specChanges.entries()) {
+    if (!spec.delta_source || !spec.source) continue;
+    const deltaText = await readNativeBoundedTextFile({
+      root: changeRoot,
+      ref: spec.delta_source,
+      maxBytes: null,
+      includeHash: false,
+    });
+    const delta = parseNativeDelta(deltaText.text);
+    let canonicalText = '';
+    try {
+      canonicalText = (
+        await readNativeBoundedTextFile({
+          root: options.paths.specsDir,
+          ref: `${spec.capability}/spec.md`,
+          maxBytes: null,
+          includeHash: false,
+        })
+      ).text;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const merged = mergeNativeDeltaAgainstCurrent({
+      currentMarkdown: canonicalText,
+      delta,
+    });
+    if (!merged.rebased) continue;
+
+    const currentSpec = inspectNativeTotalSpec(canonicalText);
+    const currentRequirementHashes = Object.fromEntries(
+      currentSpec.requirements.map((requirement) => [
+        requirement.id,
+        nativeTotalSpecHash(requirement.raw),
+      ]),
+    );
+    const rebasedIndependentRequirements =
+      delta.independent_requirements === undefined
+        ? undefined
+        : Object.fromEntries(
+            Object.keys(delta.independent_requirements).flatMap((id) => {
+              const requirement = currentSpec.requirements.find((candidate) => candidate.id === id);
+              return requirement ? [[id, nativeTotalSpecHash(requirement.raw)]] : [];
+            }),
+          );
+    const rebasedDelta = {
+      ...delta,
+      base_hash: nativeTotalSpecHash(canonicalText),
+      base_version: delta.base_version + 1,
+      legacy_hash: nativeLegacySectionHash(canonicalText),
+      base_requirements: currentRequirementHashes,
+      ...(rebasedIndependentRequirements === undefined
+        ? {}
+        : { independent_requirements: rebasedIndependentRequirements }),
+    };
+    const source = await readNativeBoundedTextFile({
+      root: changeRoot,
+      ref: spec.source,
+      maxBytes: null,
+      includeHash: false,
+    });
+    pending.push({
+      index,
+      spec,
+      originalDeltaText: deltaText.text,
+      originalSourceText: source.text,
+      deltaText: renderNativeDelta(rebasedDelta),
+      sourceText: merged.markdown,
+    });
+    nextSpecChanges[index] = {
+      ...spec,
+      base_hash: rebasedDelta.base_hash,
+    };
+    capabilities.push(spec.capability);
+  }
+
+  if (capabilities.length === 0) {
+    return { state: options.state, rebased: false, capabilities };
+  }
+  let stateWritten = false;
+  try {
+    for (const entry of pending) {
+      await atomicWriteText(
+        path.join(changeRoot, ...entry.spec.delta_source!.split('/')),
+        entry.deltaText,
+        { containedRoot: options.paths.nativeRoot },
+      );
+      await atomicWriteText(
+        path.join(changeRoot, ...entry.spec.source!.split('/')),
+        entry.sourceText,
+        {
+          containedRoot: options.paths.nativeRoot,
+        },
+      );
+    }
+    const rebasedStateForShape = { ...options.state, spec_changes: nextSpecChanges };
+    const shape = await readNativePortableAcceptance({
+      paths: options.paths,
+      state: rebasedStateForShape,
+      specChanges: nextSpecChanges,
+    });
+    if (!sameNativePortableAcceptance(options.state.acceptance, shape.acceptance)) {
+      throw new Error(
+        'Native delta rebase changed the confirmed acceptance scope; explicit Shape confirmation is required',
+      );
+    }
+    const children = await readNativeChildrenContract({
+      changeDir: changeRoot,
+      acceptanceIds: shape.acceptance.map(({ id }) => id),
+      validation: nativeChildrenAcceptanceValidation({
+        ...rebasedStateForShape,
+        acceptance: shape.acceptance,
+      }),
+    });
+    const state = await writePortableMutation({
+      paths: options.paths,
+      previous: options.state,
+      next: {
+        ...options.state,
+        state_version: options.state.state_version + 1,
+        spec_changes: nextSpecChanges,
+        shape_confirmation_hash: nativePortableShapeConfirmationHash({
+          formalHash: shape.formalHash,
+          childrenHash: children?.hash ?? null,
+          coordinationMode: options.state.coordination_mode,
+        }),
+      },
+    });
+    stateWritten = true;
+    return { state, rebased: true, capabilities };
+  } catch (error) {
+    if (!stateWritten) {
+      for (const entry of pending) {
+        await atomicWriteText(
+          path.join(changeRoot, ...entry.spec.delta_source!.split('/')),
+          entry.originalDeltaText,
+          { containedRoot: options.paths.nativeRoot },
+        );
+        await atomicWriteText(
+          path.join(changeRoot, ...entry.spec.source!.split('/')),
+          entry.originalSourceText,
+          { containedRoot: options.paths.nativeRoot },
+        );
+      }
+    }
+    throw error;
+  }
+}
+
+/** Rebase and return a passed Native change to the final Verify boundary. */
+export async function rebaseNativePortableDeltas(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  reason?: string;
+}): Promise<NativePortableState> {
+  return withNativeMutationLock(
+    options.paths,
+    `rebase portable deltas ${options.name}`,
+    async () => {
+      const state = await readNativePortableChange(options.paths, options.name);
+      const result = await rebaseNativePortableDeltasLocked({ paths: options.paths, state });
+      if (!result.rebased) return state;
+      return returnNativePortableStateToFinalVerificationLocked({
+        paths: options.paths,
+        state: result.state,
+        reason:
+          options.reason ??
+          'Native canonical Spec changed independently; the delta was re-based before fresh verification.',
+      });
+    },
+  );
 }
 
 async function readNativePortableAcceptance(options: {
@@ -409,11 +665,89 @@ async function readNativePortableAcceptance(options: {
       maxBytes: null,
       includeHash: false,
     });
-    specs.push({ capability: spec.capability, source: source.ref, markdown: source.text });
+    let acceptanceMarkdown = source.text;
+    let deltaContentHash: string | null = null;
+    if (spec.delta_source) {
+      const delta = await readNativeBoundedTextFile({
+        root: changeDir,
+        ref: spec.delta_source,
+        maxBytes: null,
+        includeHash: false,
+      });
+      const parsedDelta = parseNativeDelta(delta.text);
+      acceptanceMarkdown = nativeDeltaAcceptanceMarkdown(source.text, parsedDelta);
+      let canonicalMarkdown = '';
+      try {
+        canonicalMarkdown = (
+          await readNativeBoundedTextFile({
+            root: options.paths.specsDir,
+            ref: `${spec.capability}/spec.md`,
+            maxBytes: null,
+            includeHash: false,
+          })
+        ).text;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (nativeTotalSpecHash(canonicalMarkdown) === parsedDelta.base_hash) {
+        const expected = applyNativeDelta({
+          baselineMarkdown: canonicalMarkdown,
+          delta: parsedDelta,
+          allowAlreadyApplied: true,
+        });
+        if (nativeTotalSpecHash(source.text) !== expected.result_hash) {
+          throw new Error(
+            `Native full target Spec does not match delta result for ${spec.capability}; update the complete target before confirming Shape`,
+          );
+        }
+      }
+      deltaContentHash = canonicalHash('comet.native.shape-artifact-content.v1', delta.text);
+    }
+    specs.push({ capability: spec.capability, source: source.ref, markdown: acceptanceMarkdown });
     specArtifacts.push({
       ...spec,
       contentHash: canonicalHash('comet.native.shape-artifact-content.v1', source.text),
+      ...(deltaContentHash === null ? {} : { deltaContentHash }),
     });
+  }
+  let associationContentHash: string | null = null;
+  try {
+    const association = await readNativeBoundedTextFile({
+      root: changeDir,
+      ref: NATIVE_CAPABILITY_ASSOCIATION_FILE,
+      maxBytes: 64 * 1024,
+      includeHash: false,
+    });
+    const draft = parseCapabilityAssociationDraft(association.text);
+    if (draft.workflow !== 'native') {
+      throw new Error('Native capability association must use the native workflow');
+    }
+    const declared = options.specChanges.some(({ capability }) => capability === draft.capability);
+    if (!declared) {
+      throw new Error(
+        `Native capability association ${draft.capability} is not declared by this change`,
+      );
+    }
+    const expectedSource = path
+      .relative(
+        options.paths.projectRoot,
+        path.join(options.paths.specsDir, draft.capability, 'spec.md'),
+      )
+      .replaceAll(path.sep, '/');
+    if (draft.current_spec !== expectedSource) {
+      throw new Error(
+        `Native capability association points to ${draft.current_spec}, expected ${expectedSource}`,
+      );
+    }
+    // The hash is discovery evidence, not a second baseline. A later canonical
+    // edit is handled by the delta merge/reverification path below; treating a
+    // stale evidence hash as Shape drift would bypass that safe rebase path.
+    associationContentHash = canonicalHash(
+      'comet.native.shape-artifact-content.v1',
+      association.text,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   return {
     acceptance: buildNativePortableAcceptance({ briefMarkdown: brief.text, specs }),
@@ -423,6 +757,10 @@ async function readNativePortableAcceptance(options: {
         contentHash: canonicalHash('comet.native.shape-artifact-content.v1', brief.text),
       },
       specs: specArtifacts,
+      association: {
+        source: NATIVE_CAPABILITY_ASSOCIATION_FILE,
+        contentHash: associationContentHash,
+      },
     }),
   };
 }
@@ -748,6 +1086,8 @@ export async function inspectNativePortableAcceptanceDrift(options: {
         expected !== undefined &&
         actual.capability === expected.capability &&
         actual.source === expected.source &&
+        actual.delta_source === expected.delta_source &&
+        actual.base_hash === expected.base_hash &&
         (actual.operation === expected.operation ||
           ignoredOperations?.has(actual.capability) === true)
       );
@@ -3112,7 +3452,7 @@ export async function syncNativePortableSpecReferences(options: {
     const original = await readNativeBoundedTextFile({
       root: changeDir,
       ref: spec.source,
-      maxBytes: 4 * 1024 * 1024,
+      maxBytes: null,
       includeHash: false,
     });
     const replacements = new Map(options.replacements.map(({ from, to }) => [from, to]));

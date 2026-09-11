@@ -24,7 +24,7 @@ export async function readNativeStatusRecord(
   const source = await readNativeBoundedTextFile({
     root: paths.nativeRoot,
     ref: path.relative(paths.nativeRoot, file).replaceAll('\\', '/'),
-    maxBytes: 4 * 1024 * 1024,
+    maxBytes: null,
     includeHash: false,
   });
   const parsed = parse(source.text);

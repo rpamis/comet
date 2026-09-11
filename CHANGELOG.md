@@ -6,11 +6,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **Capability evolution discovery**: Suggest existing capabilities from Project Knowledge when creating Native or Classic changes, keep the association revocable, and let Native merge stable requirement deltas into canonical Specs without replaying historical implementation.
 - **Classic autonomous execution**: Opt into an autonomous Build strategy with compact Agent-led implementation planning and execution, without mandatory external planning or execution Skills. Retain five-phase validation, explicit user decisions, and independent review for full workflows.
 - **Classic progress and delivery recovery**: Record structured work-package checkpoints and explicit local, push, or pull-request delivery choices. Inspect actual delivery results after interruption and resume only unfinished authorized actions.
 
 ### Changed
 
+- **Native Spec authoring limits**: Remove arbitrary Delta and canonical Spec file-size, per-operation text, and operation-count hard limits while retaining structural and integrity validation.
 - **Workflow CLI efficiency**: Reuse project identity within one task invocation, inspect only requested Native changes and visible status pages, and resolve configured workflow entries without loading activation machinery. Preserve workspace, state, and evidence checks while reducing repeated setup work.
 - **Evaluation tool telemetry**: Correlate tool events with their invocation and execution IDs, retain observed timing and structured errors, and distinguish missing measurements and explicit retries from inferred results.
 - **Native Supervisor monitoring**: Pause unnecessary periodic monitoring while work awaits external input, explain blockers promptly, and resume when relevant input or dependencies become available while preserving independent work and completed results.

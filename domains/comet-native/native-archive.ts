@@ -70,8 +70,6 @@ import { inspectNativeVerificationFreshness } from './native-verification-runtim
 
 type AnyArchiveTransactionJournal = NativeTransactionJournal | NativeArchiveTransactionJournalV2;
 
-const NATIVE_ARCHIVE_COPY_MAX_BYTES = 16 * 1024 * 1024;
-
 export class NativeSpecConflictError extends Error {
   readonly code = 'native-spec-conflict';
 
@@ -209,7 +207,7 @@ async function buildArchiveJournal(options: {
       source,
       targetRoot: paths.runtimeDir,
       target: staged,
-      maxBytes: NATIVE_ARCHIVE_COPY_MAX_BYTES,
+      maxBytes: null,
       label: `Native Archive proposed spec ${change.capability}`,
       expectedHash: preview.proposedHash!,
       expectedTargetHash: null,

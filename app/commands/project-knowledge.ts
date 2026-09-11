@@ -4,17 +4,15 @@ import { ProjectKnowledgeHostReview } from '../../domains/project-knowledge/host
 import { createDefaultCometPluginBridge } from '../../domains/comet-plugin/integration.js';
 
 import {
-  discoverProjectKnowledgeCorpus,
-  LocalProjectKnowledgeProvider,
-  RemoteProjectKnowledgeProvider,
+  closeProjectKnowledgeProvider,
+  createProjectKnowledgeProvider,
   createProjectKnowledgeQuery,
   ensureProjectKnowledgeReady,
+  projectKnowledgeProviderName,
   type ProjectKnowledgeDiagnostic,
   type ProjectKnowledgeProvider,
 } from '../../domains/project-knowledge/index.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
-import { readWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-reader.js';
-import { DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG } from '../../domains/workflow-contract/project-config.js';
 import type { AgentContextOutcomeStatus } from '../../domains/agent-learning/index.js';
 
 export interface ProjectKnowledgeCommandOptions {
@@ -215,20 +213,8 @@ async function createProvider(
   options: ProjectKnowledgeCommandOptions,
   diagnostics: ProjectKnowledgeDiagnostic[],
 ): Promise<ProjectKnowledgeProvider> {
-  const config = await knowledgeConfig(projectRoot);
-  if (config.provider === 'remote') {
-    return new RemoteProjectKnowledgeProvider({
-      config: config.remote!,
-      projectRoot,
-      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-    });
-  }
-  return new LocalProjectKnowledgeProvider({
+  return createProjectKnowledgeProvider({
     projectRoot,
-    corpus: await discoverProjectKnowledgeCorpus({
-      projectRoot,
-      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-    }),
     ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
     reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
   });
@@ -246,17 +232,12 @@ async function readyProjectKnowledge(
   });
 }
 
-async function knowledgeConfig(projectRoot: string) {
-  const config = await readWorkflowProjectConfig(projectRoot);
-  return config?.knowledge ?? { ...DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG };
-}
-
 function closeProvider(provider: ProjectKnowledgeProvider): void {
-  if (provider instanceof LocalProjectKnowledgeProvider) provider.close();
+  closeProjectKnowledgeProvider(provider);
 }
 
 function providerName(provider: ProjectKnowledgeProvider): 'local' | 'remote' {
-  return provider instanceof LocalProjectKnowledgeProvider ? 'local' : 'remote';
+  return projectKnowledgeProviderName(provider);
 }
 
 function required(value: string | undefined, option: string): string {

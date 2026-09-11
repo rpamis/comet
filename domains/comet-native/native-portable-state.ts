@@ -178,7 +178,11 @@ function parsePortableText(value: unknown, label: string): NativePortableText {
 function parseSpecChange(value: unknown, index: number): NativePortableSpecChange {
   const label = `Native spec_changes[${index}]`;
   const root = record(value, label);
-  rejectUnknown(root, new Set(['capability', 'operation', 'source']), label);
+  rejectUnknown(
+    root,
+    new Set(['capability', 'operation', 'source', 'delta_source', 'base_hash']),
+    label,
+  );
   const capability = stringValue(root.capability, `${label}.capability`);
   if (!CAPABILITY_PATTERN.test(capability)) throw new Error(`${label}.capability is invalid`);
   const operation = enumValue(
@@ -187,12 +191,37 @@ function parseSpecChange(value: unknown, index: number): NativePortableSpecChang
     `${label}.operation`,
   );
   const source = root.source === null ? null : portableRef(root.source, `${label}.source`);
+  const delta_source =
+    root.delta_source === undefined
+      ? undefined
+      : portableRef(root.delta_source, `${label}.delta_source`);
+  const base_hash =
+    root.base_hash === undefined
+      ? undefined
+      : root.base_hash === null
+        ? null
+        : hashValue(root.base_hash, `${label}.base_hash`);
   if (operation === 'remove' && source !== null)
     throw new Error(`${label} remove requires source null`);
   if (operation !== 'remove' && source === null) {
     throw new Error(`${label} ${operation} requires a source`);
   }
-  return { capability, operation, source };
+  if (delta_source !== undefined && operation === 'remove') {
+    throw new Error(`${label} remove cannot contain delta_source`);
+  }
+  if (delta_source !== undefined && (base_hash === undefined || base_hash === null)) {
+    throw new Error(`${label} delta_source requires a non-null base_hash`);
+  }
+  if (base_hash !== undefined && delta_source === undefined && operation !== 'remove') {
+    throw new Error(`${label} base_hash requires delta_source for non-remove specs`);
+  }
+  return {
+    capability,
+    operation,
+    source,
+    ...(delta_source === undefined ? {} : { delta_source }),
+    ...(base_hash === undefined ? {} : { base_hash }),
+  };
 }
 
 function parseWorkspace(value: unknown): NativePortableWorkspace {

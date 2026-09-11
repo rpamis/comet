@@ -27,6 +27,10 @@ export interface NativePortableSpecChange {
   capability: string;
   operation: 'create' | 'modify' | 'remove';
   source: string | null;
+  /** Optional v1 delta manifest for cumulative capability Specs. */
+  delta_source?: string;
+  /** The canonical total-Spec hash bound by the delta manifest at Shape. */
+  base_hash?: string | null;
 }
 
 export interface NativePortableWorkspace {

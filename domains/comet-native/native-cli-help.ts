@@ -75,10 +75,12 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   new: {
     usage:
-      'comet native new <change-name> [--language en|zh-CN] [--isolation current|branch|worktree] [--change-branch <branch>] [--target-branch <branch>] [--worktree-path <path>]',
+      'comet native new <change-name> [--language en|zh-CN] [--task <text>] [--capability <id>] [--isolation current|branch|worktree] [--change-branch <branch>] [--target-branch <branch>] [--worktree-path <path>]',
     purpose: 'Create a portable Native change and prepare the requested branch or linked worktree.',
     options: [
       '--language en|zh-CN          Artifact language; defaults to project configuration.',
+      '--task <text>                Search Project Knowledge for an existing capability and save a revocable association draft.',
+      '--capability <id>            Directly validate and associate an existing capability without retrieval.',
       '--isolation <kind>           current, branch, or worktree; defaults to current.',
       '--change-branch <branch>     Change branch; defaults to comet/<change-name>.',
       '--target-branch <branch>     Local base branch; defaults to the current branch.',
@@ -88,6 +90,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'The portable state, workspace preparation result, and continuation with the next Runner action.',
     examples: [
       'comet native new session-timeout --language zh-CN',
+      'comet native new add-sms-login --task "add SMS login to authentication"',
       'comet native new session-timeout --isolation branch --target-branch main',
       'comet native new session-timeout --isolation worktree --target-branch main',
     ],

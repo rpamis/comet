@@ -38,6 +38,7 @@ comet task <project-root> --task "<original user request>" --phase "<phase>" --s
 ### Create a change
 
 Choose a lowercase kebab-case name, then use the [workspace selection reference](reference/workspace.md) to decide whether to use the current directory, create a branch, or create a worktree. Explicit parallel, simultaneous, or multi-session intent automatically selects `worktree` without asking for a three-way choice. Before creating the change, the CLI binds the branch or worktree, reuses or recreates a registered change worktree, maintains repository-local exclusions, validates configuration, and creates state that can be resumed across devices. Then enter the returned `preparation.projectRoot`; do not continue subsequent commands in the original directory.
+
 If preparation does not finish, keep the resources already created, show the failure reason from `preparation`, and continue with the recovery direction from the Runtime or user.
 
 ## Read on demand
