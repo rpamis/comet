@@ -79,6 +79,15 @@ describe('Native bounded artifact reader', () => {
     ).rejects.toThrow('changed while reading');
   });
 
+  it('reads and hashes a Spec larger than 4 MiB when no size limit is requested', async () => {
+    const content = 'x'.repeat(4 * 1024 * 1024 + 1);
+    await fs.writeFile(path.join(root, 'large-spec.md'), content);
+    const result = await readNativeBoundedTextFile({ root, ref: 'large-spec.md', maxBytes: null });
+    expect(result.text).toBe(content);
+    expect(result.size).toBe(content.length);
+    expect(result.hash).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
   it('detects replacement of a captured parent directory', async () => {
     const parent = path.join(root, 'nested');
     await fs.mkdir(parent);

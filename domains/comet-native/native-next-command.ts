@@ -323,6 +323,27 @@ export async function nativeNextCommand(
         '--runner-input cannot be combined with --summary, continuation expectations, or Agent transition flags',
       );
     }
+    // Reject incompatible input before recovery can mutate the confirmed Shape
+    // or invalidate an active candidate. Application still rechecks its boundary.
+    let input;
+    try {
+      input = await readNativeRunnerInput(runnerInputFile, projectRoot);
+      await validateNativeRunnerInputBoundary({
+        paths: configured.paths,
+        name,
+        state: initialState,
+        input,
+        projectRoot,
+      });
+    } catch (error) {
+      return {
+        ...errorResult('next', error),
+        data: {
+          state: nativePortableStateSummary(initialState, configured.paths),
+          continuation: nativePortableContinuation(initialState),
+        },
+      };
+    }
     const supervisorRecovery = await recoverNativeSupervisorFinalVerificationOnResume({
       paths: configured.paths,
       name,
@@ -374,19 +395,6 @@ export async function nativeNextCommand(
         );
       }
     }
-    let input;
-    try {
-      input = await readNativeRunnerInput(runnerInputFile, projectRoot);
-    } catch (error) {
-      const failure = errorResult('next', error);
-      return {
-        ...failure,
-        data: {
-          state: nativePortableStateSummary(current, configured.paths),
-          ...(await portableParentView(configured.paths, current)),
-        },
-      };
-    }
     const result = await applyNativeRunnerInput({
       paths: configured.paths,
       name,
@@ -404,6 +412,7 @@ export async function nativeNextCommand(
       coordination: NATIVE_SKILL_COORDINATION,
     });
   }
+  if (!summary) throw new NativeUsageError('--summary is required');
   const supervisorRecovery = await recoverNativeSupervisorFinalVerificationOnResume({
     paths: configured.paths,
     name,
@@ -419,7 +428,6 @@ export async function nativeNextCommand(
   if (coordinationMode !== undefined && current.phase !== 'shape') {
     throw new NativeUsageError('--coordination-mode is only valid when confirming Shape');
   }
-  if (!summary) throw new NativeUsageError('--summary is required');
   let state;
   let parentAdvance: Awaited<
     ReturnType<typeof inspectNativeSupervisorParentReviewReadiness>

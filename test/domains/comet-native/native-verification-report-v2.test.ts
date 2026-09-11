@@ -96,6 +96,34 @@ describe('Native verification report projection', () => {
     }).state;
   }
 
+  it.each(['en', 'zh-CN'] as const)(
+    'preserves Builder evidence and limitations without promoting them to Runtime checks in %s',
+    (language) => {
+      const state = passedState();
+      state.language = language;
+      state.verification!.checks = [];
+      state.builder_handoff!.checks = [
+        {
+          name: toNativePortableText('Targeted tests'),
+          result: 'passed',
+          note: toNativePortableText('23 passed before the final review.'),
+        },
+      ];
+      state.builder_handoff!.known_limits = [
+        toNativePortableText('Hook integration was not tested.'),
+      ];
+      const report = renderNativeVerificationReport(state);
+      expect(report).toContain('23 passed before the final review.');
+      expect(report).toContain('Hook integration was not tested.');
+      expect(report).toContain(
+        language === 'en' ? 'No Runtime checks were recorded.' : '没有记录 Runtime 检查。',
+      );
+      expect(report).toContain(
+        language === 'en' ? 'not Runtime check receipts' : '不等同于 Runtime 检查凭据',
+      );
+    },
+  );
+
   it('renders a human report bound only to the YAML state version', () => {
     const state = passedState();
     const report = renderNativeVerificationReport(state);
@@ -105,7 +133,7 @@ describe('Native verification report projection', () => {
     expect(report).toContain(
       'Verification status: **Checks completed, but your confirmation is required**',
     );
-    expect(report).not.toMatch(/sha-?256|receipt|snapshot|evidence hash/iu);
+    expect(report).not.toMatch(/sha-?256|snapshot|evidence hash/iu);
   });
 
   it.each(['fail', 'blocked'] as const)(

@@ -294,14 +294,12 @@ export async function readNativeProposedSpecs(
 ): Promise<Record<string, string>> {
   const changeDir = nativeChangeDir(paths, name);
   const result: Record<string, string> = {};
-  let totalBytes = 0;
   for (const capability of await proposedCapabilities(paths, name)) {
     const source = await readNativeBoundedTextFile({
       root: changeDir,
       ref: `specs/${capability}/spec.md`,
       maxBytes: null,
     });
-    totalBytes += source.size;
     result[capability] = source.text;
   }
   return result;

@@ -923,6 +923,10 @@ function verifierDispatch(options: {
         }
       : null,
     runtimeChecks: checks.map((check) => ({ ...check })),
+    builderReportedChecks: handoff.checks.map((check) => ({ ...check })),
+    builderKnownLimits: handoff.known_limits.map((limit) => ({ ...limit })),
+    evidenceInstruction:
+      'Independently inspect the current candidate against every acceptance criterion. Runtime checks are bound evidence; Builder-reported checks and review are claims to corroborate, not Runtime receipts. Reuse applicable completed evidence, request only missing or invalidated checks, and do not repeat full suites by default. Use one Verifier for this dispatch; keep it running across wait-tool timeouts. Return the actual per-criterion findings, risks, and incomplete checks without omitting limitations. Keep using the same CLI executable that produced this dispatch; do not switch to a different PATH installation.',
   };
 }
 

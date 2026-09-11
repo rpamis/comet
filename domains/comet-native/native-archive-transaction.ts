@@ -245,7 +245,7 @@ async function captureStableArchiveFile(options: {
   const snapshot = await readNativeProtectedFile({
     root: nativeStorageRoot(options.paths, options.file),
     file: options.file,
-    maxBytes: NATIVE_ARCHIVE_COPY_MAX_BYTES,
+    maxBytes: null,
     label: options.label,
   });
   const after = await fs.lstat(options.file);

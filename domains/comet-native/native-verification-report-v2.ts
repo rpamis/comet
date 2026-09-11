@@ -139,6 +139,29 @@ export function renderNativeVerificationReport(
             return `| ${tableCell(display(check.name))} | ${tableCell(command || '—')} | ${tableCell(check.cwd_ref)} | ${check.status} | ${check.exit_code ?? '—'} | ${check.duration_ms} ms |`;
           }),
         ].join('\n');
+  const builderEvidence = state.builder_handoff
+    ? [
+        `### ${localized('Builder-reported evidence', 'Builder 报告的证据')}`,
+        '',
+        localized(
+          'These are Builder reports, not Runtime check receipts or independent verification results.',
+          '以下为 Builder 报告，不等同于 Runtime 检查凭据或独立验收结果。',
+        ),
+        '',
+        ...state.builder_handoff.checks.map(
+          (check) => `- ${display(check.name)}: ${check.result} — ${display(check.note)}`,
+        ),
+        ...(state.builder_handoff.checks_truncated
+          ? [localized('Check list was truncated.', '检查列表已截断。')]
+          : []),
+        ...state.builder_handoff.known_limits.map(
+          (limit) => `- ${localized('Known limitation', '已知限制')}: ${display(limit)}`,
+        ),
+        ...(state.builder_handoff.known_limits_truncated
+          ? [localized('Limitations list was truncated.', '限制列表已截断。')]
+          : []),
+      ].join('\n')
+    : '';
   const blockers =
     state.blockers.length === 0
       ? `_${localized('None.', '无。')}_`
@@ -204,6 +227,8 @@ ${acceptance}
 ## ${heading('checks')}
 
 ${checks}
+
+${builderEvidence}
 
 ## ${heading('blockers')}
 

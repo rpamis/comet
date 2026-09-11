@@ -183,7 +183,7 @@ export function readNativeBoundedTextFile(
   options: NativeTextFileReadOptions & { includeHash: false },
 ): Promise<NativeUnhashedTextFile>;
 export function readNativeBoundedTextFile(
-  options: NativeTextFileReadOptions & { includeHash?: true; maxBytes?: number },
+  options: NativeTextFileReadOptions & { includeHash?: true },
 ): Promise<NativeBoundedTextFile>;
 export async function readNativeBoundedTextFile(
   options: NativeTextFileReadOptions,

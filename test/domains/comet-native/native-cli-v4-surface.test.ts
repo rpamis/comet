@@ -439,6 +439,32 @@ Run applicable focused checks.
     }
   });
 
+  it.each([
+    '{invalid-json',
+    JSON.stringify({ kind: 'unsupported-future-protocol' }),
+    JSON.stringify({ kind: 'dispatch-verifier', checks: [] }),
+  ])('rejects invalid Runner input before recovering Shape drift: %s', async (input) => {
+    const name = 'invalid-input-before-recovery';
+    await prepareBuild(name);
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const stateFile = nativePortableStateFile(paths, name);
+    const localFile = nativeLocalExecutionFile(paths, name);
+    const stateBefore = await fs.readFile(stateFile, 'utf8');
+    const localBefore = await fs.readFile(localFile, 'utf8');
+    await fs.appendFile(
+      path.join(projectRoot, 'docs/comet/changes', name, 'brief.md'),
+      '\nChanged requirements.\n',
+    );
+    const inputFile = path.join(projectRoot, 'invalid-input.json');
+    await fs.writeFile(inputFile, input);
+    const result = json(
+      await runNativeCli(['next', name, '--runner-input', inputFile, '--json', ...projectArgs()]),
+    );
+    expect(result.exitCode).not.toBe(0);
+    await expect(fs.readFile(stateFile, 'utf8')).resolves.toBe(stateBefore);
+    await expect(fs.readFile(localFile, 'utf8')).resolves.toBe(localBefore);
+  });
+
   it('validates Runner input without mutating the state or local execution overlay', async () => {
     const name = 'validate-only-boundary';
     await prepareBuild(name);
@@ -626,7 +652,11 @@ Run applicable focused checks.
       },
     });
 
-    const built = await runnerStep(name, builderHandoff(['A1', 'A2']));
+    const built = await runnerStep(name, {
+      ...builderHandoff(['A1', 'A2']),
+      checks: [{ name: 'Focused tests', result: 'passed', note: 'Existing command output' }],
+      known_limits: ['Host Hook not exercised'],
+    });
     expect(built).toMatchObject({
       exitCode: 0,
       data: {
@@ -679,6 +709,9 @@ Run applicable focused checks.
             summary: { text: 'A read-only reviewer found no blocking issues.' },
           },
           runtimeChecks: [],
+          builderReportedChecks: [{ name: { text: 'Focused tests' }, result: 'passed' }],
+          builderKnownLimits: [{ text: 'Host Hook not exercised' }],
+          evidenceInstruction: expect.stringContaining('not Runtime receipts'),
         },
       },
     });

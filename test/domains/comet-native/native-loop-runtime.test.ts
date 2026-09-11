@@ -971,6 +971,14 @@ describe('Native portable Build/Verify loop', () => {
       expect(communication).toMatchObject({ required: false });
       expect(communication.agentInstruction).toContain(executionError);
       expect(communication.agentInstruction).toContain(unavailable);
+      expect(communication.agentInstruction).toContain(
+        language === 'en'
+          ? 'A wait-tool timeout is not an execution timeout'
+          : '等待工具超时不等于执行超时',
+      );
+      expect(communication.agentInstruction).toContain(
+        language === 'en' ? 'including risks and incomplete checks' : '包括风险和未完成检查',
+      );
     },
   );
 
