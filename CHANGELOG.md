@@ -6,6 +6,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Memory content filter**: Accept ISO 8601 dates such as `2026-09-01` in memory text instead of misclassifying them as phone numbers, so remembering dated facts no longer fails.
+- **Memory filter diagnostics**: Name the matched content category (for example, `phone number` or `credential assignment`) when memory text is rejected, so callers can correct the text instead of guessing.
 - **Dashboard Git snapshot**: Show dirty-file paths verbatim for non-ASCII (e.g. Chinese) filenames and paths containing spaces, instead of git's quoted octal-escaped form, by reading status in NUL-terminated porcelain mode (#403).
 
 ## What's Changed [0.4.0] - 2026-09-08

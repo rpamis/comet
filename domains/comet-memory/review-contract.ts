@@ -18,24 +18,73 @@ export const MEMORY_REVIEW_LIMITS = {
   maxEvidenceAgeMs: 180 * 24 * 60 * 60 * 1000,
 } as const;
 
-const DANGEROUS_PATTERNS = [
-  /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/iu,
-  /\b(?:api[_ -]?key|access[_ -]?token|password|passwd|secret|authorization)\s*[:=]\s*\S+/iu,
-  /\b(?:sk|rk)-[a-z0-9]{16,}\b/iu,
-  /\b(?:ghp|gho|github_pat|xox[baprs]|AIza)[-_][a-z0-9_-]{8,}\b/iu,
-  /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/iu,
-  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/u,
-  /\b\d{3}-\d{2}-\d{4}\b/u,
-  /\b\+?\d[\d ()-]{7,}\d\b/u,
-  /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/u,
-  /\b(?:diff --git|git\s+(?:diff|log)|@@\s+-\d|\+\+\+\s+[ab]\/|---\s+[ab]\/)/imu,
-  /\b(?:stack trace|traceback|stderr|stdout|debug log|npm warn|npm ERR!|error log)\b/iu,
-  /(?:ignore|disregard|override|forget|do not follow)\s+(?:all\s+)?(?:my\s+|the\s+)?(?:prior|previous|earlier|above|following|these)?\s*(?:instructions?|rules?|policies?|system|prompt)/iu,
-  /(?:modify|change|edit|rewrite|disable|reveal)\s+(?:the\s+)?(?:skill|agent instructions?|project rules?|project policy files?|system prompt|guard|policy)/iu,
-  /(?:忽略|无视|跳过|不遵循|不要遵循).*(?:之前|先前|上面|以上|前面)?.*(?:指令|规则|提示|政策|系统)/u,
-  /(?:修改|更改|编辑|重写|禁用|绕过|泄露|显示).*(?:技能|skill|agent|代理|项目规范文件|项目规则|系统提示|守卫|策略|规则)/iu,
-  /<\/?(?:script|iframe|object|embed|style|svg)\b|(?:onerror|onload|onclick)\s*=|data:text\/html/iu,
-  /javascript:/iu,
+interface DangerousPattern {
+  readonly pattern: RegExp;
+  readonly category: string;
+}
+
+const DANGEROUS_PATTERNS: readonly DangerousPattern[] = [
+  { pattern: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/iu, category: 'private key material' },
+  {
+    pattern:
+      /\b(?:api[_ -]?key|access[_ -]?token|password|passwd|secret|authorization)\s*[:=]\s*\S+/iu,
+    category: 'credential assignment',
+  },
+  { pattern: /\b(?:sk|rk)-[a-z0-9]{16,}\b/iu, category: 'API key' },
+  {
+    pattern: /\b(?:ghp|gho|github_pat|xox[baprs]|AIza)[-_][a-z0-9_-]{8,}\b/iu,
+    category: 'access token',
+  },
+  { pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/iu, category: 'Bearer token' },
+  {
+    pattern: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/u,
+    category: 'JSON Web Token',
+  },
+  { pattern: /\b\d{3}-\d{2}-\d{4}\b/u, category: 'US social security number' },
+  // The lookahead blocks a match starting at the first digit of an ISO date,
+  // and the two lookbehinds block matches starting at the month or day inside
+  // one — the only word boundaries within a `YYYY-MM-DD` token. This keeps
+  // texts like `2026-09-01 2026-09-02` from matching as phone numbers while
+  // still detecting phone numbers elsewhere (e.g. after a label dash).
+  {
+    pattern: /\b(?<!\d{4}-)(?<!\d{4}-\d{2}-)\+?(?!\d{4}-\d{2}-\d{2}\b)\d[\d ()-]{7,}\d\b/u,
+    category: 'phone number',
+  },
+  { pattern: /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/u, category: 'email address' },
+  {
+    pattern: /\b(?:diff --git|git\s+(?:diff|log)|@@\s+-\d|\+\+\+\s+[ab]\/|---\s+[ab]\/)/imu,
+    category: 'diff or git output',
+  },
+  {
+    pattern: /\b(?:stack trace|traceback|stderr|stdout|debug log|npm warn|npm ERR!|error log)\b/iu,
+    category: 'log output',
+  },
+  {
+    pattern:
+      /(?:ignore|disregard|override|forget|do not follow)\s+(?:all\s+)?(?:my\s+|the\s+)?(?:prior|previous|earlier|above|following|these)?\s*(?:instructions?|rules?|policies?|system|prompt)/iu,
+    category: 'prompt injection',
+  },
+  {
+    pattern:
+      /(?:modify|change|edit|rewrite|disable|reveal)\s+(?:the\s+)?(?:skill|agent instructions?|project rules?|project policy files?|system prompt|guard|policy)/iu,
+    category: 'prompt injection',
+  },
+  {
+    pattern:
+      /(?:忽略|无视|跳过|不遵循|不要遵循).*(?:之前|先前|上面|以上|前面)?.*(?:指令|规则|提示|政策|系统)/u,
+    category: 'prompt injection',
+  },
+  {
+    pattern:
+      /(?:修改|更改|编辑|重写|禁用|绕过|泄露|显示).*(?:技能|skill|agent|代理|项目规范文件|项目规则|系统提示|守卫|策略|规则)/iu,
+    category: 'prompt injection',
+  },
+  {
+    pattern:
+      /<\/?(?:script|iframe|object|embed|style|svg)\b|(?:onerror|onload|onclick)\s*=|data:text\/html/iu,
+    category: 'HTML injection',
+  },
+  { pattern: /javascript:/iu, category: 'JavaScript URL' },
 ];
 
 export interface MemoryReviewValidationOptions {
@@ -733,8 +782,11 @@ function containsTechnicalLatinTokens(value: string): boolean {
 
 function validateSafeText(value: string, field: string): void {
   if (value.trim().length === 0) throw new Error(`${field} must not be empty`);
-  if (DANGEROUS_PATTERNS.some((pattern) => pattern.test(value))) {
-    throw new Error(`${field} contains unsafe or non-memory content`);
+  const matched = DANGEROUS_PATTERNS.find(({ pattern }) => pattern.test(value));
+  if (matched) {
+    throw new Error(
+      `${field} contains unsafe or non-memory content (matched: ${matched.category})`,
+    );
   }
 }
 
