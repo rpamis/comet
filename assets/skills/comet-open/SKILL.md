@@ -1,169 +1,173 @@
 ---
 name: comet-open
-description: 'Phase 1 of Comet Classic: clarify requirements, open a change, generate required dependency artifacts, and request confirmation.'
+description: 'Create a Classic change, clarify its requirements, and obtain user confirmation. Use when the user invokes /comet-open or Classic enters Open or resumes initialization.'
 ---
 
 # Comet Phase 1: Open
 
-Before starting or recovering, read and follow `comet-classic/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+Before starting or resuming, read and follow `comet-classic/reference/classic-layout.md`. All OpenSpec CLI calls in this file must use the adapter, and all paths must use the `<classic-*>` logical roots bound by that protocol.
 
 ## Prerequisites
 
-- No active change, or user wants to create a new change
+- There is no active change, or the user wants to create a new one.
 
 ## Steps
 
-### 0. Output Language Constraint
+### 0. Set the output language
 
-Every prompt and artifact request passed to OpenSpec must include the resolved Comet artifact language, using normalized ids such as `en` or `zh-CN`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; after the change is initialized, use `comet state get <name> language`. If no configured language exists, fall back to the current user request language. The generated `proposal.md`, `design.md`, and `tasks.md` must use that language as their main language.
+Every question and artifact-generation request passed to OpenSpec must specify the resolved Comet artifact language using a normalized ID such as `en` or `zh-CN`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then global `~/.comet/config.yaml`. After initialization, use `comet state get <name> language`. Fall back to the current request's language only when no language is configured. `proposal.md`, `design.md`, and `tasks.md` must primarily use that language.
 
-### 0a. Current Change Binding
+### 0a. Bind the current change
 
-When resuming an existing change, inspect `<classic-change-dir>/.comet.yaml` first:
+When resuming an existing change, first inspect `<classic-change-dir>/.comet.yaml`:
 
-- If it exists and parses, first run `comet classic workspace resolve <change-name> --json`, enter the returned `projectRoot`, then select the change
-- If it is missing but the change directory is valid, first prepare the workspace with the selected isolation mode, then run `comet state init <change-name> full --isolation <selected-isolation>` from the returned `projectRoot`, and select the change
-- If it is malformed, stop and report the parse error; repair it manually from version control, a backup, or verifiable artifacts before continuing, and never overwrite a damaged file with `state set`
+- If it exists and parses, run `comet classic workspace resolve <change-name> --json`, enter the returned `projectRoot`, and select the change there.
+- If state is missing but the change directory is valid, prepare the workspace using the selected isolation mode. Enter the returned `projectRoot`, run `comet state init <change-name> full --isolation <selected-isolation>`, and then select the change.
+- If state is malformed, stop and report the parse error. Resume only after manual repair using version control, a backup, or verifiable artifacts. Do not overwrite damaged state with `state set`.
 
 ```bash
 comet classic workspace resolve <change-name> --json
-# enter the returned projectRoot
+# Enter the returned projectRoot
 comet state select <change-name>
 ```
 
-When creating a new change, initialize `.comet.yaml` first, then immediately run the same command; never fabricate a selection before state exists.
+For a new change, initialize `.comet.yaml` first and immediately run the select command above. Do not manually write a selection before state exists.
 
-### 0b. Workspace Decision and Preparation Before Open
+### 0b. Choose and prepare the workspace before Open
 
-Read `comet-classic/reference/workspace.md` when creating a Classic change. The workspace decision must be completed before creating OpenSpec artifacts or `.comet.yaml`; it must not be deferred to Build:
+Read `comet-classic/reference/workspace.md` when creating a Classic change. Choose the workspace before creating OpenSpec artifacts or `.comet.yaml`; do not defer this to Build.
 
-- When parallel intent is explicit, use `worktree` directly so the independent workspace is ready before OpenSpec and state creation
-- When isolation is not specified, follow the reference: show the valid `current`, `branch`, and `worktree` choices when a decision is needed, and make the recommendation explanatory only
-- A user-selected `current` or `branch` remains a serial choice; do not describe it as safe for simultaneous sessions
+- If the user explicitly requests parallel work, use `worktree` directly. Prepare the independent workspace before creating OpenSpec artifacts or state.
+- If isolation is unspecified, follow the reference. When a choice is needed, present the available `current`, `branch`, and `worktree` options; a recommendation does not replace the user's choice.
+- `current` and `branch` still require serial work. Do not describe them as suitable for concurrent sessions.
 
-Prepare a new change before running OpenSpec `new`:
+Prepare the workspace before running OpenSpec `new`:
 
 ```bash
 comet classic workspace prepare <name> --isolation <current|branch|worktree> --json
-# enter the returned projectRoot; all later OpenSpec, state, and artifact writes run there
+# Enter projectRoot; run subsequent OpenSpec/state commands and artifact writes there
 ```
 
-The preparation command reuses a registered Worktree whose branch matches the change. If the branch still exists but its registered Worktree was removed, it recreates the Worktree. Ask for an explicit rebind only when the branch was renamed, taken over, or ownership is ambiguous.
+The prepare command reuses a registered worktree with the matching branch. If the branch remains but the registered worktree was removed, it recreates the worktree. Request an explicit rebind only if the branch was renamed, taken over for other work, or its ownership cannot be established.
 
-### 0c. OpenSpec Compatibility Check
+### 0c. Check OpenSpec compatibility
 
-Run once on first use or after the upstream installation changes; retain the version for diagnostics:
+Run this once on first use or after the upstream installation changes, and record the version for troubleshooting:
 
 ```bash
 comet classic openspec -- --version
 ```
 
-Check actual capabilities, not a guessed version boundary: status must expose changeRoot, applyRequires, and each artifact's requires, outputPath, and status; instructions must expose a usable resolvedOutputPath. Status contracts were checked against OpenSpec 1.11.0/1.12.0, not every historical version. Stop and show the error and upgrade guidance if the command is unavailable, exits nonzero, or lacks required capabilities; do not upgrade the user's environment automatically.
+Check actual capabilities rather than inferring compatibility from the version. Status must provide `changeRoot`, `applyRequires`, and each artifact's `requires`, `outputPath`, and `status`. Instructions must provide a usable `resolvedOutputPath`. The adapter has been checked against the state interfaces in OpenSpec 1.11.0/1.12.0; compatibility with every historical version is not guaranteed. If a command is unavailable, exits nonzero, or lacks a required capability, stop with the error and upgrade guidance. Do not upgrade the user's environment automatically.
 
-After change creation, `comet state artifacts <name> --json` validates paths, full dependency closure, and actual files. It expands applyRequires together with mandatory proposal/tasks. Required design cannot be skipped because instructions call it optional; design outside the closure is not mandatory. Skipping specs requires explicit `.openspec.yaml` `skip_specs: true`, no conflicting spec files, and no behavioral specification changes. Supported roles are proposal/specs/design/tasks; report unsupported required roles or output patterns instead of guessing.
+After creation, `comet state artifacts <name> --json` checks paths, all required dependencies, and actual files. It recursively expands `applyRequires` together with Classic's mandatory proposal/tasks into the full dependency closure. If that closure requires design, do not skip it because instructions call it optional; design outside the closure is not mandatory.
 
-### 1. Explore Ideas and Clarify Requirements
+Skipping specs is valid only when the request changes no behavioral specification, `.openspec.yaml` explicitly sets `skip_specs: true`, and no conflicting spec files exist. Supported roles are proposal/specs/design/tasks. Report unsupported mandatory roles or output patterns instead of guessing how to handle them.
 
-**Immediately execute:** Use the Skill tool to load the `openspec-explore` skill. Skipping this step is prohibited.
+### 1. Explore the idea and clarify requirements
+
+**Required now:** Load the `openspec-explore` skill using the Skill tool. Do not skip this step.
 
 <!-- external-openspec-skill-override -->
 
-**External OpenSpec Skill override:** After loading, use only its exploration method. Do not execute any instruction that invokes the official CLI directly, changes to a fixed cwd, or reads or writes a fixed physical OpenSpec path. Route every CLI call through `comet classic openspec -- <args...>` and replace every file path with the `<classic-*>` logical roots bound for this run.
+**Adapt external OpenSpec instructions:** Use its exploration method only. Do not follow instructions that directly invoke the official CLI, change to a fixed cwd, or read/write hard-coded OpenSpec directories. Use `comet classic openspec -- <args...>` for every CLI call and this invocation's bound `<classic-*>` roots for every path.
 
-After the skill loads, explore the problem space following its guidance, but do not treat one Q&A turn as sufficient clarification. You must continue asking, align with the user, and form a clarification summary covering:
+Reuse the user's PRD, designs, and confirmed facts first. Identify gaps in the following areas and produce a clarification summary. Ask only about unknowns that would change scope, the solution, or acceptance. If information is sufficient, proceed without additional questions; there is no minimum number of clarification rounds.
 
-- Goals: the problem the user truly wants to solve and the expected outcome
-- Non-goals: what is explicitly out of scope for this change
-- Scope boundaries: included/excluded modules, users, platforms, or data
-- Key unknowns: unresolved assumptions, risks, or dependencies
-- Draft acceptance scenarios: at least the core success scenario and important boundary scenarios
+- Goal: the user's actual problem and desired result.
+- Non-goals: what this change explicitly excludes.
+- Scope: included and excluded modules, users, platforms, or data.
+- Key unknowns: unresolved assumptions, risks, or dependencies.
+- Draft acceptance scenarios: at least the core success path and important edge cases.
 
-The clarification summary must include: goals, non-goals, scope boundaries, key unknowns, and draft acceptance scenarios.
+The summary must include all five areas: goal, non-goals, scope, key unknowns, and draft acceptance scenarios.
 
-### 1a. PRD Split Preflight (Blocking Point)
+Before asking the user, read `comet-classic/reference/decision-point.md`. State the question, recommendation and reasoning, and each option's impact; prefer an available `AskUserQuestion` tool. Ask only about current gaps. If missing facts or materials cannot support real options, explain what is missing and request it. Apply this protocol to questions from the external exploration skill as well; loading that skill does not permit omitting choices or deciding for the user.
 
-When the user input is a large PRD, roadmap, complete product plan, or the clarification summary shows multiple independent capabilities, modules, user journeys, or milestones, must evaluate whether it should be split into multiple changes before creating OpenSpec artifacts.
+Reference a full PRD by path and relevant sections rather than copying it. Do not reconfirm settled facts; clarify only actual contradictions. OpenSpec skills remain mandatory dependencies. Return to Comet when exploration ends; external skills must not independently enter design, implementation, or archive. Exploration approval does not replace Open's final artifact confirmation.
 
-The split preflight must be based on clarified information and output a proposed split list. Each proposed split item must include:
+### 1a. Confirm whether to split the PRD before creation
 
-- Suggested change name
-- Goals and scope boundaries
-- Explicit non-goals
-- Dependencies or recommended execution order
-- Core acceptance scenarios
+For a large PRD, roadmap, complete product proposal, or a clarification summary containing multiple independent features, modules, user journeys, or milestones, assess whether multiple changes are needed before creating OpenSpec artifacts.
 
-Recommend splitting when any condition applies:
+Use the clarified information to present a proposed split. Each item must include:
 
-- The PRD contains multiple capabilities that can be independently designed, built, verified, and archived
-- Multiple modules or user journeys are involved, and part of them can be delivered independently
-- Clear phased milestones exist
-- The work is expected to produce multiple delta specs or more than 3 large tasks
-- Failure or delay in one part should not block other parts from entering later phases
+- Suggested change name.
+- Goal and scope.
+- Explicit non-goals.
+- Dependencies or recommended execution order.
+- Core acceptance scenarios.
 
-When splitting is recommended, must follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for the user's choice.
+Recommend splitting when any of these apply:
 
-The user choices must include:
+- The PRD contains multiple features that can be designed, built, verified, and archived independently.
+- It spans multiple modules or user journeys, with a portion that can ship independently.
+- It has distinct delivery milestones.
+- Several delta specs serve independent goals that can be accepted and shipped separately. Document or task counts alone do not determine a split.
+- Failure or delay in one part should not prevent the others from proceeding.
 
-- "Create multiple OpenSpec changes" — create independent changes from the proposed split
-- "Keep everything as one change" — continue the single-change flow and record the reason for not splitting in proposal/design/tasks
-- "Adjust the split plan before continuing" — after the user describes the adjustment, output the revised proposed split list and ask for confirmation again
+If you recommend splitting, pause under `comet-classic/reference/decision-point.md` and wait for the user's choice. Include all these options:
 
-Every accepted split item must be created as an independent change through `/comet-open`, not by calling `/opsx:new` directly. `/comet-open` creates both OpenSpec artifacts and `.comet.yaml`, ensuring each change enters the Comet state machine.
+- “Create multiple OpenSpec changes”: create each proposed item as an independent change.
+- “Keep one change”: continue with one change and record the reason in proposal/design/tasks.
+- “Revise the split”: ask for the desired adjustments, revise the list, and obtain confirmation again.
 
-Must not create proposal.md, design.md, or tasks.md before the user completes the PRD split choice. If the user chooses to create multiple changes, the current `/comet-open` invocation only completes split confirmation and coordination, then enters `/comet-open` for each split item in the user-confirmed order.
+Create every accepted item through `/comet-open`, not directly through `/opsx:new`. `/comet-open` creates both OpenSpec artifacts and `.comet.yaml`, keeping each change under the Comet state machine.
 
-Immediately after the user confirms multiple changes, persist the accepted split to `.comet/batches/<batch-id>.json`. Use a stable kebab-case `batch-id`. The file must record at least `version`, the original goal summary, creation time, the ordered change names, and each item's goals, scope, non-goals, acceptance scenarios, and `pending|open-complete|selected` status. Atomically update it after each item is created or completed. This is a batch orchestration manifest, not a replacement for each change's `.comet.yaml`.
+Do not create proposal.md, design.md, or tasks.md before the user chooses how to split the PRD. If they choose multiple changes, this `/comet-open` invocation handles split confirmation and scheduling only, then invokes `/comet-open` for each item in the approved order.
 
-In batch split mode, entering `/comet-open` for each split item must explicitly mark it as a "confirmed split item" and carry that split item's goals, scope, non-goals, and acceptance scenarios. Confirmed split items skip the PRD split preflight by default, unless the split item itself still clearly contains multiple independent capabilities.
+Immediately save the confirmed batch to `.comet/batches/<batch-id>.json`. Use a stable kebab-case `batch-id`. Record at least `version`, the original goal summary, creation time, ordered change names, and each item's goal, scope, non-goals, acceptance scenarios, and `pending|open-complete|selected` status. Atomically update the file after each item is created or completed. This list tracks batch order and progress; it does not replace each change's `.comet.yaml`.
 
-In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase. After splitting is complete, must pause and ask the user which change to start; after the user chooses, advance only that change into `/comet-design`, while other changes remain active and can be resumed later through `/comet-classic`.
+When invoking `/comet-open` for a batch item, label it “confirmed split item” and pass its goal, scope, non-goals, and acceptance scenarios. Skip the PRD split assessment for a confirmed item unless that item still clearly contains multiple independent features.
 
-**Batch completion hard check (must not be skipped)**: after every split item completes its own open phase, run the following for each `<name>` in the user-confirmed list:
+Do not automatically move an individual batch item from Open to `/comet-design`. When the batch is complete, pause and ask which change to start. Advance only the selected change to `/comet-design`; leave the others unarchived for later recovery through `/comet-classic`.
+
+**Check every completed batch item; do not skip this:** After all items finish Open, run the following for every `<name>` on the confirmed list:
 
 ```bash
 comet state check <name> design --json
 ```
 
-This entry validates the full required closure, actual outputs, and Comet state without another status scan. isComplete is diagnostic; optional artifacts do not block advancement. Query status only to investigate failed dependencies or reported path/capability errors.
+This entry validates the full required closure, actual OpenSpec outputs, and Comet state. Do not repeat a separate status scan. `isComplete` is diagnostic; optional artifacts do not block progress. Query status only after a failed check to locate missing dependencies or diagnose reported path/capability errors.
 
-If any split item fails these checks, must not report splitting complete or ask which change to start. Stop and resume `/comet-open` from that change's first `ready` or `blocked` artifact. If OpenSpec passes but Comet state fails, repair `.comet.yaml` initialization or phase, then rerun the checks for the entire batch.
+If any split item fails these checks, do not announce batch completion or ask which change to start. Stop further advancement and resume `/comet-open` at that change's first `ready` or `blocked` artifact. If OpenSpec checks pass but Comet state checks fail, repair `.comet.yaml` initialization or phase first, then rerun the batch checks.
 
-Only after every split item passes the entry check may you ask which change to start. Mark that item selected and advance only it to comet-design; others remain active for later recovery.
+Only after every item passes entry checks may you ask which change to start. Mark the user's chosen item `selected` in the batch list and advance that change alone to `/comet-design`. Leave the others unarchived for later recovery through `/comet-classic`.
 
-On resume, read `.comet/batches/<batch-id>.json` first, then run the CLI checks above for already-created active changes. Do not recreate items that fully pass; resume incomplete items from the first `ready` artifact returned by OpenSpec. Create missing items from the persisted manifest. If the manifest is missing or damaged, stop and ask the user to rebuild/confirm it instead of inferring the original batch boundary from directory names.
+On recovery, read `.comet/batches/<batch-id>.json`, then run the checks above for its created, unarchived changes. Do not recreate items that already pass. Resume failed items from the first `ready` artifact returned by OpenSpec. Create the remaining items from the saved list. If the list is missing or damaged, stop and ask the user to rebuild or confirm it; do not infer the original batch from directory names.
 
-### 1b. Resolve Requirements and Change Name (Non-blocking by Default)
+### 1b. Summarize requirements and choose the change name
 
-Before creating OpenSpec artifacts, turn Step 1 clarification into a resolved brief containing the goal, non-goals, scope boundaries, key unknowns, and draft acceptance scenarios. Derive one kebab-case English change name that accurately represents that scope.
+Before creating artifacts, turn Step 1's findings into a resolved brief containing goal, non-goals, scope, key unknowns, and draft acceptance scenarios. Derive an English kebab-case change name that accurately describes that scope.
 
-- **Continue directly when scope and naming are both unambiguous**. Do not pause merely to approve a summary or name; final review confirms the change name, scope, and artifacts together
-- If the user supplied a name, normalize it to kebab-case and echo it in the progress update. Do not re-confirm when normalization preserves meaning
-- Reuse a confirmed batch item's persisted summary and name. Re-clarify only when scope drift or missing manifest data is detected
-- Use `comet-classic/reference/decision-point.md` for one joint question only when mutually exclusive choices still change scope or the target change identity. Naming preference alone is not a blocking point
+- **Continue directly when scope and name are clear.** Do not add a pause solely to approve the summary or name; final review confirms the name, scope, and artifact content together.
+- If the user supplied a name, normalize it to kebab-case and echo it in a progress update. No reconfirmation is needed when normalization preserves meaning.
+- Reuse a confirmed batch item's summary and name. Clarify again only if scope has changed or the list lacks needed information.
+- Ask a joint question under `comet-classic/reference/decision-point.md` only when mutually exclusive scope or target-change choices remain. Naming preference alone is not a reason to pause.
 
-OpenSpec names must be kebab-case English using lowercase letters, digits, and single hyphens. When a collision exists but the target remains clear, derive a stable non-conflicting name and continue. Ask only when Comet cannot determine whether to reuse the existing change or create a new one.
+OpenSpec change names must use English kebab-case: lowercase letters, digits, and single hyphens. If a name conflicts but the goal is clear, choose a nonconflicting name with the same meaning and continue. Ask the user only when you cannot determine whether to reuse an existing change or create a new one.
 
-Do not run `comet classic openspec -- new change` or create proposal/design/tasks while the resolved brief or name remains ambiguous. Continue clarification or resolve the genuine user decision before Step 2.
+While the resolved brief or change identity is still unclear, do not run `comet classic openspec -- new change` or create proposal/design/tasks. Resolve the missing information or genuine user decision before Step 2.
 
-### 2. Create Change Structure + Initialize State
+### 2. Create the change structure and initialize state
 
-**Immediately execute:** Use the Skill tool to load the `openspec-new-change` skill. Skipping this step is prohibited.
-
-<!-- external-openspec-skill-override -->
-
-**External OpenSpec Skill override:** After loading, use only its change-creation semantics. Do not execute any instruction that invokes the official CLI directly, changes to a fixed cwd, or writes the change under a fixed physical OpenSpec root. Run create, status, and instructions through `comet classic openspec -- <args...>`, and use `<classic-change-dir>` and the other logical roots for every file path.
-
-Full `/comet-classic` workflow must not use the Skill tool to load the `openspec-propose` skill by default; only load it when the user explicitly requests generating the proposal and artifacts in one pass.
+**Required now:** Load the `openspec-new-change` skill using the Skill tool. Do not skip this step.
 
 <!-- external-openspec-skill-override -->
 
-**External OpenSpec Skill override:** Apply the same rule to `openspec-propose`: ignore direct official CLI, fixed-cwd, and fixed physical OpenSpec path instructions; use the adapter and resolver-returned `<classic-*>` logical roots.
+**Adapt external OpenSpec instructions:** Use its change-creation method only. Do not directly invoke the official CLI, adopt a fixed cwd, or write to a fixed OpenSpec root. Route creation, status, and instructions through `comet classic openspec -- <args...>`. Use this invocation's logical roots, including `<classic-change-dir>`, for all paths.
 
-After the skill loads, follow its guidance to create the change skeleton. When Step 1b has produced an unambiguous resolved brief, override its "STOP and wait for user direction" behavior to avoid a duplicate question.
+Do not load `openspec-propose` by default in the full `/comet-classic` flow. Load it only if the user explicitly requests a proposal and artifacts generated together.
 
-Use the Step 1b resolved brief directly to populate artifact content. Fall back to the skill's question flow only when ambiguity remains that would change scope.
+<!-- external-openspec-skill-override -->
 
-Immediately after creating the change skeleton, initialize recoverable state instead of waiting until every artifact is generated:
+**Adapt external OpenSpec instructions:** The same restrictions apply to `openspec-propose`: no direct official CLI, fixed cwd, or fixed physical OpenSpec path. Commands must use the adapter and artifacts must use resolver-provided `<classic-*>` roots.
+
+Create the change's initial structure following the loaded skill. If Step 1b already produced a clear resolved brief, override its “STOP and wait for user direction” behavior and proceed without repeating the question.
+
+Use that resolved brief to populate the artifacts. Return to the skill's questions only if the brief still has ambiguity that would change scope.
+
+Initialize recoverable state immediately after creating the initial structure; do not wait for every artifact to be generated:
 
 ```bash
 comet state init <name> full --isolation <selected-isolation>
@@ -171,126 +175,126 @@ comet state select <name>
 comet state check <name> open
 ```
 
-Stop if any command fails. Then run `comet classic openspec --agent-json -- status --change "<name>" --json` once and perform compatibility preflight:
+Stop if any command fails. Then run `comet classic openspec --agent-json -- status --change "<name>" --json` once and check compatibility:
 
-- Resolved `changeRoot` must equal the resolver-bound `<classic-change-dir>`, and `planningHome` (when present) must remain inside the current repository
-- artifacts must contain mandatory proposal/tasks IDs; expand other requirements recursively through requires
-- applyRequires must be a parseable list; direct and transitive references must exist without cycles
-- Stop on missing fields, escaping paths, or missing required IDs; never guess fixed templates
+- Resolved `changeRoot` must equal the bound `<classic-change-dir>`. `planningHome`, when present, must also be inside the repository. External artifact paths are unsupported.
+- `artifacts` must include Classic's required IDs `proposal` and `tasks`; recursively follow their `requires`.
+- `applyRequires` must be a resolvable list of artifact IDs. All direct and transitive dependencies must exist and be acyclic.
+- Stop immediately for missing fields, out-of-repository paths, or missing required IDs. Do not fall back to guessed templates.
 
-After preflight, generate the implementation-required artifacts from the OpenSpec schema and dependency graph:
+Once the checks pass, generate the required artifacts from the schema and dependency graph returned by OpenSpec.
 
-In Agent JSON mode, read all upstream fields from `data.upstream.data` and execute only the complete argv/cwd in `data.nextAction`; raw upstream nextSteps are diagnostic.
+In Agent JSON mode, read upstream fields from `data.upstream.data`. Execute only the complete argv and cwd returned by `data.nextAction`; upstream raw nextSteps are diagnostic only.
 
-**OpenSpec status-driven artifact loop**:
+**Generate artifacts from OpenSpec state:**
 
-1. Reuse the status just returned by Step 2 compatibility preflight on the first iteration, then reuse each post-write refreshed status. Rerun `comet classic openspec --agent-json -- status --change "<name>" --json` only for recovery or external artifact changes, reading the complete upstream JSON from `data.upstream.data`.
-2. Expand the full closure of applyRequires plus proposal/tasks. When every member is done or legitimately skipped, run `comet state artifacts <name> --json` and exit only if it passes. Completed tasks cannot conceal missing dependencies; isComplete is diagnostic.
-3. From unfinished `ready` artifacts, prioritize items that advance the `applyRequires` dependency closure and process them in CLI-returned order. Must not hard-code generation order or assume the schema contains only proposal/design/tasks.
-4. Fetch current instructions for each ready `<artifact-id>`:
+1. Reuse the status from Step 2's compatibility check for the first iteration, and the refreshed status from the preceding write for later iterations. Rerun `comet classic openspec --agent-json -- status --change "<name>" --json` only on recovery or external artifact changes, reading the full upstream JSON from `data.upstream.data`.
+2. Expand the full dependency closure of `applyRequires` plus proposal/tasks. Once every item is `done` or legitimately `skipped`, run `comet state artifacts <name> --json` and exit the loop only if it passes. A completed top-level tasks artifact cannot hide incomplete dependencies. `isComplete` is diagnostic.
+3. From unfinished artifacts with `status: "ready"`, prioritize those that advance the `applyRequires` dependency closure, following CLI order. Do not hard-code generation order or assume the schema contains only proposal/design/tasks.
+4. Get current instructions for each ready `<artifact-id>`:
 
    ```bash
    comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json
    ```
 
-5. For the returned JSON instruction payload, you must:
-   - Read every completed dependency artifact listed in `dependencies`
-   - Use `template` as the artifact structure
-   - Follow `instruction` guidance
-   - Apply `context` and `rules` as constraints — **must not copy them into artifact content**
-   - Write to `resolvedOutputPath`; for wildcard outputs, create each concrete file required by the instruction
-   - Verify the concrete output files returned by the CLI exist and are non-empty
-6. Refresh status once after creating each artifact and reuse it for the next iteration, rechecking paths and closure. Preserve done artifacts; process only newly ready required members, not unrelated optional outputs.
+5. Follow the returned JSON instructions:
+   - Read every completed dependency in `dependencies`.
+   - Use `template` for the artifact's structure.
+   - Follow `instruction`.
+   - Apply `context` and `rules` as constraints; **do not copy them into the artifact**.
+   - Write to `resolvedOutputPath`. For wildcard outputs, create every actual file required by the instruction.
+   - Confirm the actual output files returned by the CLI exist and are nonempty.
+6. After each artifact is created, refresh status once, reuse it for the next iteration, and recheck paths and the full dependency closure. Do not regenerate `done` items. Process only newly ready items in the closure, not unrelated optional artifacts.
 
-**Blocking and failure handling**: if `applyRequires` is incomplete and no ready artifact can advance its dependency closure, report `missingDeps` for the relevant `blocked` artifacts and stop. Do not guess order or skip dependencies. Also stop if status/instructions fails, returns invalid JSON, escapes the repository, or provides no usable `resolvedOutputPath`. Must not fall back to hard-coded artifact prose.
+**Handle failures and blocked dependencies:** If `applyRequires` is incomplete but no required dependency is ready, report the relevant `blocked` artifacts and their `missingDeps`, then stop. Do not guess order or skip dependencies. Also stop and report the OpenSpec error if adapter `status` / `instructions` fails, returns invalid JSON, escapes the repository, or lacks a usable `resolvedOutputPath`. Do not substitute a hard-coded document structure.
 
-**Naming and scope guard**: Use the kebab-case English name resolved in Step 1b; never use a non-kebab-case name. Change scope must match the resolved brief and user request; do not expand or narrow it independently.
+**Check the name and scope:** Use the English kebab-case name resolved in Step 1b; non-kebab-case names, including Chinese names, are not allowed. Keep scope consistent with the resolved brief and the user's request. Do not expand or narrow it on your own.
 
-Confirm the following artifacts have been created:
+Confirm these artifacts exist:
 
-```
+```text
 <classic-change-dir>/
 ├── .openspec.yaml
 ├── .comet.yaml
-├── proposal.md       # Why + What: problem, goals, scope
-├── design.md         # Only when required or useful; technical decisions are not duplicated in another design
-└── tasks.md          # Task checklist (checkboxes)
+├── proposal.md       # Why + What: problem, goal, scope
+├── design.md         # When required or useful; keep technical decisions here without duplicating them
+└── tasks.md          # Task checklist
 ```
 
-### 3. Entry State Verification
+### 3. Validate entry state
 
-Verify state machine has been correctly initialized:
+Check that state was initialized correctly:
 
 ```bash
 comet state check <name> open
 ```
 
-Proceed to Step 4 after verification passes. The script outputs specific failure reasons when verification fails.
+Continue to Step 4 when it passes. On failure, the script reports the specific cause.
 
-**Idempotent recovery algorithm**: all open phase operations can be safely re-executed. On recovery, process the status in this order:
+**Resume unfinished creation steps:** Open operations can be safely retried. On recovery, process the status in this order, retaining completed work:
 
-1. If state is missing, first prepare the workspace with the selected isolation mode, then run `comet state init <name> full --isolation <selected-isolation>` from the returned `projectRoot`; if malformed, stop and repair it instead of overwriting it. Then select the change and run `comet state check <name> open`.
-2. Run status and revalidate `changeRoot`, core ids, `applyRequires`, `artifacts`, and `missingDeps`.
+1. If state is missing, prepare the selected isolation mode, enter the returned `projectRoot`, and run `comet state init <name> full --isolation <selected-isolation>`. Stop and repair malformed state instead of overwriting it. Then select the change and run `comet state check <name> open`.
+2. Run `comet classic openspec --agent-json -- status --change "<name>" --json` and recheck `changeRoot`, core IDs, `applyRequires`, `artifacts`, and `missingDeps`.
 3. `done`: keep the artifact unchanged and do not regenerate it.
-4. `ready`: fetch its instructions, write the returned output, and immediately rerun status.
-5. `blocked`: follow `missingDeps` and first complete dependencies in the `applyRequires` closure; never generate a blocked artifact directly.
+4. `ready`: fetch its instructions with `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`, write the artifact accordingly, and immediately refresh status.
+5. `blocked`: follow `missingDeps` and complete dependencies in the `applyRequires` closure first. Refresh status after each dependency; do not generate a blocked artifact directly.
 6. Repeat until the full required closure is done or legitimately skipped and `comet state artifacts <name> --json` passes.
 
-If the required dependency graph cannot advance, list the relevant blocked artifacts and `missingDeps`, then stop. Directory or fixed-file presence cannot replace the CLI decision; conversely, an optional artifact outside `applyRequires` must not block implementation solely because `isComplete` is false.
+If required dependencies cannot progress, list the relevant blocked artifacts and `missingDeps`, then stop and report. Existing directories or three fixed files do not replace the CLI's checks. Conversely, an optional artifact outside `applyRequires` must not block implementation merely because `isComplete: false`.
 
-### 4. Content Completeness Check
+### 4. Check content completeness
 
-Use the latest successful `comet state artifacts <name> --json` result to confirm required outputs. Rerun after file or schema changes. Resolve all reported issues before Step 5 or phase Guard.
+Use the most recent successful `comet state artifacts <name> --json` result to check required artifacts. Rerun it after file or schema changes. Do not enter Step 5 or run the phase guard while any issue remains.
 
-Then check key artifact content: proposal covers problem, goals, scope, and non-goals; design covers high-level decisions and data flow; tasks contains clear work items. If the schema returns specs or other artifacts, check their content against their instructions as well; the fixed three documents must not hide an incomplete schema artifact.
+Then inspect content: proposal must cover the problem, goals, scope, and non-goals; design must cover high-level decisions and data flow; tasks must be explicit. If the schema returns specs or other artifacts, check their content against their instructions too. The presence of proposal, design, and tasks does not make other required content optional.
 
-### 5. User Review and Confirmation (Blocking Point)
+### 5. Ask the user to confirm the artifacts
 
-After all OpenSpec artifacts are complete and the content check passes, **must follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for user confirmation**. Must not execute the phase guard or auto-transition before user confirmation.
+After all OpenSpec artifacts and content checks are complete, **pause under `comet-classic/reference/decision-point.md` and wait for explicit user confirmation**. Do not run the phase guard or advance automatically before confirmation.
 
-The final review confirms the change name, scope, and artifact content together. Do not skip it because Step 1b resolved the brief, and do not add another routine summary/name confirmation before it.
+This final review confirms the change name, scope, and artifact content together. Step 1b does not replace it; do not add a separate routine summary/name approval before it either.
 
-The user confirmation question must be presented as a single-select question with the following summary and options:
+Present a single-choice question with this summary and both options:
 
-**Summary content**:
+**Summary:**
 
-- **Change name and resolved brief**: final name, goal, non-goals, scope boundaries, and key unknowns
-- **proposal.md**: problem background, goals, scope
-- **specs and other schema artifacts**: capabilities, requirements, and key acceptance scenarios
-- **design.md**: high-level architecture decisions, approach selection
-- **tasks.md**: task count and key task descriptions
+- **Change name and resolved brief:** final name, goal, non-goals, scope, and key unknowns.
+- **proposal.md:** background, goal, and scope.
+- **Schema artifacts such as specs:** features, requirements, and key acceptance scenarios.
+- **design.md:** high-level architecture decisions and solution choices.
+- **tasks.md:** task count and key tasks.
 
-**Options**:
+**Options:**
 
-- "Confirm, proceed to next phase" — artifacts meet expectations, execute phase guard transition
-- "Needs adjustment" — include adjustment notes, modify and re-request confirmation
+- “Confirm and continue”: artifacts meet expectations; run the phase guard to advance.
+- “Adjust the artifacts”: collect the requested changes, apply them, and ask for confirmation again.
 
-After user selects "Confirm", proceed to exit conditions. When user selects "Needs adjustment", modify the corresponding files per their notes, then request confirmation again.
+After confirmation, complete the exit conditions. If adjustments are requested, update the relevant files and obtain confirmation again.
 
-## Exit Conditions
+## Exit conditions
 
-- `comet state artifacts <name> --json` passes: the complete required closure is done or legitimately skipped, and required concrete outputs are nonempty
-- **User has confirmed** all OpenSpec artifact content meets expectations
-- **Phase guard**: Run `comet guard <change-name> open --apply`; after all PASS, auto-transitions to next phase
+- `comet state artifacts <name> --json` passes: the full required closure is complete or legitimately skipped, and required outputs are nonempty.
+- **The user has confirmed** that all OpenSpec artifact content meets expectations.
+- **Phase guard:** run `comet guard <change-name> open --apply`. The guard advances only after every check passes; it updates `phase` independently of `auto_transition`.
 
-Must use `--apply` before exit, otherwise `.comet.yaml` remains at `phase: open` and the next phase entry check will fail.
+Use `--apply` before exiting. Without it, `.comet.yaml` remains at `phase: open` and the next entry check fails.
 
 ```bash
 comet guard <change-name> open --apply
 ```
 
-Full workflow auto-transitions to `phase: design`; hotfix/tweak presets auto-transition to `phase: build`.
+The full workflow moves to `phase: design`; hotfix/tweak presets move to `phase: build`.
 
-## Automatic Handoff to Next Phase
+## Continue to the next phase
 
-Follow `comet-classic/reference/auto-transition.md`. Key command:
+Follow `comet-classic/reference/auto-transition.md` and `agent.continuation` from the successful result. Do not repeat next, select, or check when valid state information is already available. Run the following only after context loss, external state changes, or when an older result lacks that information:
 
 ```bash
 comet state next <change-name>
 ```
 
-- `NEXT: auto` → invoke the skill pointed to by `SKILL` to enter the next phase
-- `NEXT: manual` → do not invoke the next skill; return control with `HINT`, end the invocation, and do not create another confirmation point
-- `NEXT: done` → workflow is complete, no further action needed
+- `NEXT: auto`: invoke the skill named by `SKILL` to continue.
+- `NEXT: manual`: do not invoke the next skill. Follow `HINT`, return control, and end this invocation without another confirmation question.
+- `NEXT: done`: the workflow is complete.
 
-hotfix/tweak presets are controlled by their corresponding preset skill (phase goes directly to build); their `next` returns the corresponding preset skill.
+Hotfix/tweak skills control their own continuation after phase moves directly to build. Their `next` result names the corresponding preset skill.

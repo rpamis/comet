@@ -1,5 +1,5 @@
 interface:
-  display_name: "Comet Classic 预设:Tweak"
-  short_description: "处理可收敛为单一 OpenSpec change 的轻量或中等变更"
+  display_name: 'Comet Classic 预设：Tweak'
+  short_description: '在单个 change 中完成轻量或中等调整，按需维护增量规格'
 policy:
   allow_implicit_invocation: true

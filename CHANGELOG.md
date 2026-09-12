@@ -12,6 +12,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Workflow guidance**: Use clearer Chinese and English instructions, load detailed guidance for the current action, and present related questions with stable numbering, recommendations, and concrete option effects. Required confirmations and independent verification remain explicit.
 - **Native Spec authoring limits**: Remove arbitrary Delta and canonical Spec file-size, per-operation text, and operation-count hard limits while retaining structural and integrity validation.
 - **Workflow CLI efficiency**: Reuse project identity and Native branch/workspace evidence within one task invocation, skip no-op learning writes for default read-only Classic state queries, and bound Native untracked-file fingerprint reads. Reuse unchanged work-package context and read verification logs on demand while preserving workspace, state, and evidence checks.
 - **Evaluation tool telemetry**: Correlate tool events with their invocation and execution IDs, retain observed timing and structured errors, and distinguish missing measurements and explicit retries from inferred results.

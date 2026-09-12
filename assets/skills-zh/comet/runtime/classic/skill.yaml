@@ -2,25 +2,25 @@ apiVersion: comet/v1alpha1
 kind: Skill
 metadata:
   name: comet-classic
-  version: "1"
-  description: Comet 经典 full、hotfix、tweak 工作流的内部兼容编排
+  version: '1'
+  description: 兼容现有 Classic 状态，按 full、hotfix、tweak 流程调度各阶段 Skill
 goal:
-  statement: 在不改变用户命令面的前提下稳定推进或恢复经典 Comet Run
+  statement: 保持现有 CLI 的用法，继续执行或恢复 Classic Run
   inputs:
     - name: classic-state
-      description: 已校验且与 Run 投影一致的 ClassicState
+      description: 已通过校验、且与 Run 中对应字段一致的 ClassicState
       required: true
     - name: evidence
-      description: Classic Evidence 收集器生成的结构化证据
+      description: Classic Evidence 收集器返回的结构化检查记录
       required: true
   outputs:
     - name: run-state
-      description: 原子同步后的 Classic 与 Run 状态
+      description: 已通过一次原子操作同步的 Classic 与 Run 状态
       required: true
   success:
-    - 旧字段与 Run 字段保持一致
+    - 现有 Classic 字段与 Run 中的对应字段保持一致
     - 每个步骤只调用声明的公开 Comet Skill
-    - completed 状态通过 completion eval
+    - 标记为 completed 前通过完成条件检查
 orchestration:
   mode: deterministic
   entry: full.open

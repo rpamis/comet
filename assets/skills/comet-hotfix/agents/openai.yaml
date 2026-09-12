@@ -1,5 +1,5 @@
 interface:
-  display_name: "Comet Classic Preset: Hotfix"
-  short_description: "Fix an existing behavior bug via a short open-build-verify-archive flow"
+  display_name: 'Comet Classic Preset: Hotfix'
+  short_description: 'Reproduce, fix, and verify a localized defect'
 policy:
   allow_implicit_invocation: true

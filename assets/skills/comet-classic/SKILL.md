@@ -1,315 +1,75 @@
 ---
 name: comet-classic
-description: 'Comet Classic workflow (OpenSpec + Superpowers). Use when the user invokes /comet-classic, asks to start or resume it, or resume-probe returns an unambiguous active Classic change.'
+description: 'Comet Classic workflow entry. Use when the user explicitly invokes /comet-classic, asks to start or resume Classic, or resume-probe returns auto_resume for one unambiguously recoverable active Classic change.'
 ---
 
-# Comet Classic — OpenSpec + Superpowers Dual-Star Development Workflow
+# Comet Classic — OpenSpec + Superpowers
 
-Before starting or recovering, read and follow `comet-classic/reference/classic-layout.md`. Every OpenSpec CLI call in this file must use the adapter, and every file path must use the `<classic-*>` logical roots bound by that protocol.
+Classic has five phases: Open → Design → Build → Verify → Archive. OpenSpec manages specifications and archiving. Superpowers provides design methods and the planning, execution, and review methods selected by the user. The full workflow requires brainstorming and design confirmation; hotfix/tweak follow their preset steps.
 
-OpenSpec and Superpowers orbit the same goal like a binary star system.
+## 1. Resolve the Target and Workspace
 
-```
-OpenSpec handles WHAT  — outline, proposal, spec lifecycle, archive
-Superpowers handles HOW — technical design, planning, execution, closing
-```
+Before starting or recovering, use `comet-classic/reference/classic-layout.md` to resolve logical artifact paths, and read “CLI Bootstrap” in `comet-classic/reference/scripts.md`. Call the public Comet CLI and use its OpenSpec adapter for OpenSpec commands. Read only the reference sections needed for the current action. Reuse instructions already in context that remain valid; a reference to one section does not require reading the rest of the file.
 
-**Core principle: brainstorming cannot be skipped. Every change must undergo deep design (except hotfix and tweak presets).**
-
----
-
-## Decision Core
-
-Agents need only read this section for decision-making. Refer to the Reference Appendix as needed.
-
-### Output Language Rule
-
-Use the configured Comet artifact language as the output language for every OpenSpec and Superpowers artifact. The configured value is a normalized language id, `en` or `zh-CN`. For an existing change, read `language` from `<classic-change-dir>/.comet.yaml` using `comet state get <name> language`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then fall back to global `~/.comet/config.yaml`; if neither exists, fall back to the current user request language. Include the resolved language explicitly in every prompt or ARGUMENTS passed to external OpenSpec/Superpowers skills.
-
-### Automatic Phase Detection
-
-**Step 0: Active Change Discovery and Intent Resolution**
-
-1. First follow `comet-classic/reference/scripts.md` and run the public `comet` CLI command directly.
-2. Run `comet classic openspec -- list --json` to collect active changes.
-3. Fill a `CometIntentFrame` from the user request, active change list, and necessary repository state.
-4. Prefer `comet classic intent route --stdin` to pass the frame JSON and get the runtime-normalized route. `CometIntentFrame + runtime scorer` is the source of truth; this prose is only for intent recognition slot extraction.
-5. Handle the runtime route:
-   - `hotfix` → invoke `/comet-hotfix` if explicitly selected; otherwise confirm the lightweight recommendation below
-   - `tweak` → invoke `/comet-tweak` if explicitly selected; otherwise confirm the lightweight recommendation below
-   - `full` → follow the active-change table to invoke `/comet-open` or ask for confirmation
-   - `resume` → continue to Step 1 and read the selected change `.comet.yaml`
-   - `ask_user` → pause through `comet-classic/reference/decision-point.md` and wait for the user's choice
-   - `out_of_scope` → explain that the input is not a Comet workflow start/resume request and do not initialize a change
-
-After the runtime route, Ambient Resume, or user choice resolves one explicit change, bind the current execution context before entering its phase Skill:
+- When Classic was not explicitly invoked and existing work may need to resume: read Ambient Resume in `comet-classic/reference/context-recovery.md` and follow `comet resume-probe . --stdin --json`. Only `auto_resume` enters automatically; `ask_user` waits for a choice; `out_of_scope`/`none` does not enter.
+- When starting a new request or the target change is unclear: read the minimal example and target-selection rules in `comet-classic/reference/intent-frame.md`. List active changes, fill a CometIntentFrame, and run `comet classic intent route --stdin`. The Agent extracts intent fields from evidence; Runtime computes the route. Follow its result without inventing a separate set of prose scoring rules.
+- When the target change is explicit: bind its workspace below. Do not bind early when several active changes exist and none has been selected.
 
 ```bash
 comet classic workspace resolve <change-name> --json
-# enter the returned projectRoot; state select writes the selection there
+# Enter the returned projectRoot before selecting the change
 comet state select <change-name>
+comet state next <name> --json
 ```
 
-Workspace decisions happen in `/comet-open` and follow `comet-classic/reference/workspace.md`: explicit parallel, simultaneous, or multi-session intent prepares a Worktree before binding; when isolation is unspecified, present `current`, `branch`, and `worktree` as a single-choice decision when needed, with recommendations as explanation only. Preparation and resume scan registered Worktrees and prefer the one whose branch matches. Ask for rebind when the branch was renamed, taken over, or its ownership cannot be confirmed.
-
-When multiple active changes exist and the user has not selected one, do not bind early; keep the existing `ask_user` decision point.
-
-### Lightweight Recommendations for Small Tasks
-
-For a new localized low-risk fix or single lightweight adjustment, recommend the existing hotfix/tweak preset with a brief rationale and ask the user to confirm; offer the full five-phase workflow as an alternative. Do not repeat confirmation when the user already selected a suitable preset. Few files alone do not justify a lightweight recommendation for public APIs, migrations, security, concurrency, or cross-module design.
-
-This recommendation selects a new change's workflow, never silently downgrades an existing full change or bypasses preset scope escalation. `verify_mode: light` is verification depth, not a lightweight workflow. When the user chooses full, preserve all five phase responsibilities and design confirmation; scale document depth to actual risk.
-
-### Memory integration
-
-After binding a Classic workspace and reading the current `.comet.yaml` `phase`, run `comet task <project-root> --task "<original user request>" --phase "<phase>" --session "<stable task id>" --json`. Inject only returned `text`; the Context Manifest (`manifest` / `<context_manifest>`) contains only summaries, application reasons, and stable IDs. Add `--expand-context "<id>"` when full content, sources, or verification is required. Select again with the same `--session` and updated `--path`, `--operation`, or `--phase` when those selectors change. When `<active_policies>` contains `<verification command="...">`, add those commands to the current Verify checks and record their real results; only commands that actually pass can promote the corresponding policy to enforced. Use `comet memory remember ... --scope global|project` when the user explicitly requests long-term retention; use `comet memory observe` only for implicit but reusable stable habits, never for task summaries, progress, command output, or test results. After actually using an item and learning its result, take `applications[].applicationId` from JSON (or `application_id` from Hook context) and run `comet task <project-root> --task "<original user request>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`; never report success for unused items. At task end still run `comet task` with `--complete --workflow <workflow> --change <change-id>` to record the checkpoint. Without Hooks the Skill uses the same interface and `comet memory context` is only a compatibility entry; plugin absence or failure does not block the workflow.
-
-### Comet Ambient Resume
-
-When the user did not explicitly invoke `/comet-classic`, but this repository may already have an active Comet change, run the read-only probe before starting work that may need code changes or investigation:
-
-```bash
-comet resume-probe . --stdin --json
-```
-
-The probe only reads repository state. Follow the returned action:
-
-- `auto_resume`: print one line, `[COMET] Detected active change <name>; resuming via <nextCommand>.`, then enter `nextCommand`.
-- `ask_user`: ask one short question and wait.
-- `out_of_scope` or `none`: do not enter the Comet workflow.
-
-Never attach unrelated work to an active Comet change only because `.comet.yaml` exists.
-
-**Minimal CometIntentFrame Skeleton**:
-
-```json
-{
-  "schema_version": "comet.intent.v1",
-  "utterance": "<user request>",
-  "intent": { "name": "start_change", "confidence": 0.8 },
-  "slots": {
-    "requested_action": "start",
-    "workflow_candidate": "full",
-    "user_explicit_workflow": null,
-    "change_id": null,
-    "existing_behavior": null,
-    "new_capability": null,
-    "public_api_change": null,
-    "schema_change": null,
-    "cross_module_change": null
-  },
-  "context": {
-    "active_changes_count": 0,
-    "active_change_names": []
-  },
-  "evidence": [],
-  "proposed_route": {
-    "name": "ask_user",
-    "confidence": 0.5
-  }
-}
-```
+Continue from the returned phase, configuration, and next route. Send a new full change to `/comet-open`, which prepares the workspace and creates OpenSpec artifacts and `.comet.yaml`. Send confirmed hotfix/tweak choices to `/comet-hotfix` or `/comet-tweak` for their own initialization steps. Do not call `/opsx:new` directly. If an existing change has no state file, follow “Entry Errors and Recovery” in context-recovery.md to establish its workflow and recover. Report malformed state rather than guessing a phase from existing artifacts.
 
-**Intent Recognition Slot Extraction**:
-See `comet-classic/reference/intent-frame.md` for complete field meanings; normal routing only needs the minimal skeleton above.
+A new full change must have its workspace selected before Open creates artifacts. Full-workflow `isolation` may be `current`, `branch`, or `worktree`; prepare a Worktree for explicit parallel-work requests, and otherwise follow `comet-classic/reference/workspace.md`. Hotfix/tweak confirm and bind workspaces during their own initialization. Resume in the bound workspace. If branch ownership has changed, rebind according to the user's confirmed choice; ask only when valid authorization is missing.
 
-- `fix_bug` + `existing_behavior: true` + no new capability/public API/schema/cross-module signal → prefer `hotfix`
-- User explicitly describes a lightweight/medium change that can fit in a single OpenSpec change, should be executed through OpenSpec apply, and does not need full `/comet-classic` deep design/plan → prefer `tweak`
-- Copy, config, docs, prompt, or a lightweight/medium single OpenSpec change → prefer `tweak`
-- New capability, public API, schema change, cross-module coordination, or architecture work → prefer `full`
-- Multiple active changes without an explicit change → `ask_user`
-- Low confidence, missing key evidence, or explicit workflow conflicting with risk signals → `ask_user`
-
-| Active changes | User input                           | Behavior                                                                              |
-| -------------- | ------------------------------------ | ------------------------------------------------------------------------------------- |
-| None           | `full` route                         | → Invoke `/comet-open`                                                                |
-| Exactly 1      | `/comet-classic <description>`       | → **Ask**: continue this change or create a new change                                |
-| Multiple       | `/comet-classic <description>`       | → **Ask**: continue existing or create new; if continuing, list changes for selection |
-| Exactly 1      | `/comet-classic` with no description | → Auto-select, enter Step 1                                                           |
-| Multiple       | `/comet-classic` with no description | → List changes for user selection                                                     |
+## 2. Load the Current Phase
 
-<IMPORTANT>
-When the user chooses "create a new change", **must invoke `/comet-open`**. Do not call `/opsx:new` directly.
-`/comet-open` performs dual initialization: OpenSpec artifacts (created by internal `/opsx:new`) plus `.comet.yaml` state file.
-Calling `/opsx:new` directly leaves `.comet.yaml` missing and breaks later phase detection.
-</IMPORTANT>
+While working on the same set of tasks, reuse state returned by the current commands and context already read. Refresh only as needed after a state write, workspace switch, session recovery, or external change; reuse valid state included in the successful result. Select checks according to the risk of the current changes; Verify still owns one final integrated review of the completed implementation.
 
-**Step 1: Read `.comet.yaml` state metadata**
+After binding the workspace and obtaining phase, read and follow [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language), and run `comet task`. Use the configured artifact language. Start from Context Manifest summaries and expand only information still missing for the current step. Report outcomes truthfully after actually using an item, and save a checkpoint at task end.
 
-When state exists, run `comet state next <name> --json` and use its phase, configuration, and next route instead of querying individual fields. Missing state follows `/comet-open` initialization recovery; malformed state is an error, not permission to infer and advance phase from files.
+| Runtime route or phase        | Entry and responsibility                                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| new full / open               | `/comet-open`: clarify scope, create required artifacts, and obtain the user's review and confirmation          |
+| design                        | `/comet-design`: resolve technical tradeoffs and confirm the formal design                                      |
+| build + full                  | `/comet-build`: recover configuration/plan, complete tasks and required reviews                                 |
+| hotfix / build + hotfix       | `/comet-hotfix`: repair a localized existing defect                                                             |
+| tweak / build + tweak         | `/comet-tweak`: make a lightweight adjustment within one change                                                 |
+| verify                        | `/comet-verify`: run acceptance checks, reverify repairs, and perform the only final integrated review          |
+| archive / verify_result: pass | `/comet-archive`: confirm archiving, commit only this change's files, and complete the selected delivery method |
 
-Within the same work package, reuse this structured response and loaded context. Query again after a state-writing command, a workspace switch, session recovery, or evidence of external changes. Run checks appropriate to the current change risk; Verify retains one integrated review covering the final implementation.
+Recommend a lightweight workflow only for a new request. Enter directly when its risk fits the preset and the user has explicitly selected it. When the Agent makes the recommendation, explain why, present hotfix/tweak and full with their effects, and wait for confirmation. Never silently downgrade an existing full change. Assess public APIs, data migrations, security, concurrency, and cross-module design by their actual risks; a small file count does not waive necessary steps.
 
-**Resume rules**:
+When running hotfix/tweak, read the chosen preset's escalation rules. If a listed condition occurs or the changed-file count exceeds the advisory threshold, present the choice to continue the preset or upgrade to full, and wait for an answer. Run `comet state transition <name> preset-escalate` only after the user chooses to upgrade. `verify_mode` determines verification depth; it does not select the workflow or replace escalation confirmation.
 
-- On every context resume, rerun Step 0 and Step 1; do not trust conversation history for phase detection
-- If there is an active change and the worktree has uncommitted changes, handle them through `comet-classic/reference/dirty-worktree.md`. That protocol defines checks, attribution, and prohibitions; this file does not repeat them
-- If `phase: build`, first check `build_pause`, `plan`, `isolation`, `build_mode`, `subagent_dispatch`, `tdd_mode`, and `review_mode`:
-  - If `build_pause: plan-ready` and the plan file exists, return to `/comet-build` and reissue the same joint decision; clear the pause only after the user provides the complete configuration. Do not regenerate the plan
-  - If `build_pause: plan-ready` but the plan file is missing, return to `/comet-build` to handle corrupted state or regenerate the plan
-  - If an older change has no `isolation`, return to `/comet-open` for workspace resolve/prepare; do not make the first workspace decision in Build
-  - If `build_mode`, `tdd_mode`, or `review_mode` is unset, or `build_mode: subagent-driven-development` has no `subagent_dispatch`, return to `/comet-build` and complete the same joint decision; do not fill values automatically from the plan or historical snapshot
-  - If all are set, read the next unchecked task from tasks.md and continue:
-    - If `build_mode: subagent-driven-development`, do not execute tasks directly in the main window; return to `/comet-build`'s background subagent dispatch rules, main window only coordinates
-    - Other execution modes follow `/comet-build`'s corresponding rules
-- If `verify_result: fail`, read `verify_failures`. At 3 or fewer failures, invoke `/comet-build` directly to continue the recorded repair loop without re-asking. Above the automatic limit, return to `/comet-verify` for the exception decision. User input is required only to accept a WARNING/SUGGESTION deviation or choose a strategy after the retry limit
-- If `phase: open` and artifacts are complete, return to `/comet-open` content checks and user confirmation. Existing artifacts do not prove approval; do not advance with Guard automatically
-- If `phase: archive`, only invoke `/comet-archive`. Archive and delivery method are combined into one final confirmation; after confirmation, archive, commit exact paths, and perform the selected delivery
+On session recovery, external changes, or discrepancies between actual work and plan, task, review, or delivery records, read `comet-classic/reference/context-recovery.md`. Use nextAction from the current phase entry to identify unfinished steps. Reuse valid configuration and work; an unchecked task is not proof that implementation is missing. Follow that reference for the recovery procedure.
 
-**Step 2: Phase Determination** (check in order, first match wins)
+## 3. Complete the Work Authorized for This Invocation
 
-1. `archived: true` or change moved to archive → Workflow complete
-2. `verify_result: pass` and `archived` is not `true` → Invoke `/comet-archive` (first perform final archive confirmation)
-3. `verify_result: fail` → Invoke `/comet-build` automatically to continue repair. If `verify_failures` exceeds the automatic limit, enter `/comet-verify`'s retry-limit strategy decision
-4. `phase: verify` → Invoke `/comet-verify`
-5. `phase: build` → Route by workflow: `hotfix` → `/comet-hotfix`, `tweak` → `/comet-tweak`, `full` → `/comet-build`; checked tasks still require Build checks and a valid transition
-6. `phase: design` → Invoke `/comet-design`
-7. `phase: open` or active change exists but `.comet.yaml` is missing → Invoke `/comet-open`
-8. No active change → Invoke `/comet-open`
+After phase exit checks pass, follow `comet-classic/reference/auto-transition.md`: read `agent.continuation` from the successful result and load only its next Skill. Query again only when reusable state is unavailable, session recovery lacks context, or external state changes. `auto_transition: false` controls the next Skill invocation, not the phase already advanced by Guard. For `NEXT: manual`, show HINT and end the invocation without adding a confirmation question.
 
-If metadata conflicts with files, run the current phase entry check and resolve its specific findings. Files are evidence, not a replacement for Runtime phase; never edit phase to bypass confirmation or verification.
+Decision points block dependent work until the user answers explicitly. Before the first clarification or confirmation, read `comet-classic/reference/decision-point.md` and follow its options, recommendation reasons, per-option effects, and `AskUserQuestion` priority. Reuse it when already in context. Automatic handoff or a single recommended solution cannot skip these confirmations:
 
-### Preset Upgrade Assessment
+- If the target change, PRD split, or workspace isolation still needs a choice, ask related questions together and wait.
+- At the end of Open, obtain final confirmation of the name, scope, and artifacts. After Design develops a proposal, obtain confirmation of the formal design. In both cases, present a reviewable result before waiting for approval or requested adjustments.
+- Before Build writes a plan, ask about execution/TDD/review configuration only when it is missing or the user requests a change. After a user-requested `plan-ready` pause, wait for an explicit instruction to continue.
+- In Verify, ask when accepting deviations, resolving implementation/Spec disagreement, or choosing how to proceed after the automatic-repair limit. In Archive, confirm archiving and the delivery method.
+- Ask when upgrading a preset to the full workflow, or when Build needs to expand scope, redesign, or split a change.
 
-hotfix/tweak scope assessment uses a three-layer division of labor, avoiding "using pure file count as a hard upgrade condition" that wrongly blocks normal small changes:
+Before an explicit choice, do not write state or execute branch operations that depend on it, and do not bypass phase Guards. Reuse valid authorization and configuration. Automatically handle in-scope failures with a known repair, state that can be reconciled from evidence, and other steps with only one valid action; do not add “continue?” questions.
 
-1. **Qualitative-change signals** (agent semantic recognition; hitting any one pauses and delegates a two-choice decision to the user): cross-module coordinated change, new capability needed, database schema change, introduces new public API, hits deep architecture issues (each preset reuses this core signal set and may add its own context-specific signal, such as tweak's "needing to split into multiple OpenSpec changes")
-2. **File-count tripwire** (user decides; not an automatic upgrade): when changed files exceed a hint threshold, pause and let the user decide whether to continue the preset or upgrade to full; do not auto-kick
-3. **Verification recommendation**: `comet state scale` reports size and a recommendation without writing `verify_mode` or upgrading workflow. Choose depth in Verify based on risk and preserve an explicit existing selection
+Archive and delivery method are combined into one final confirmation. `/comet-archive` checks authorization, actual Git state, and completion of the selected delivery actions. Passing verification does not authorize archiving; an archive directory does not prove that a commit, push, or PR is complete.
 
-**Upgrade decision point (user chooses one of two)**:
+## Rules for Every Phase
 
-- Continue the preset lightweight flow (user confirms scope is manageable)
-- Upgrade to full `/comet-classic` (use `comet state transition <name> preset-escalate` to legally rewind to design and clear preset-only build settings; after the Design Doc, let Build reissue the full joint configuration decision)
+- Use Runtime phase, Guard results, and the current workspace binding to determine workflow state. Files and conversation help reconcile it; they do not authorize editing phase by hand to bypass confirmation or verification.
+- proposal records goals and scope; spec defines behavior and acceptance; design_doc points to the single formal technical design; plan describes implementation; tasks.md records task completion.
+- Follow the confirmed execution, TDD, and review configuration. Autonomous still requires full-workflow design, planning, real verification, and independent review. Build confirms missing or user-requested configuration changes; never replace configuration based on a model name.
+- Attribute uncommitted changes using `comet-classic/reference/dirty-worktree.md`. Handle only the current change and protect unrelated work. For rejected state updates, path escapes, unavailable dependencies, or unclear ownership, read “Entry Errors and Recovery” in `comet-classic/reference/context-recovery.md`, report the original error, and follow the matching recovery rule.
+- For failures in the current phase, read `comet-classic/reference/debug-gate.md` and investigate before fixing. Claim a test or build result only after actually running it. Reuse an earlier pass only when Runtime confirms it is still valid.
 
-See the "Upgrade Assessment" section of each `comet-hotfix` / `comet-tweak` for detailed rules.
-
-### Error Handling Quick Reference
-
-| Scenario                                      | Handling                                                                                                                                                                     |
-| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `comet classic openspec -- list --json` fails | Check whether OpenSpec is installed; if the artifact root is missing or damaged, prompt the user to run `comet update --scope project` or rerun `comet init --scope project` |
-| Sub-skill unavailable                         | Stop workflow, prompt to install or enable the corresponding skill                                                                                                           |
-| `.comet.yaml` missing                         | Enter the relevant preset's `/comet-open` initialization, then run `comet state select`; never skip initialization                                                           |
-| `.comet.yaml` malformed                       | Stop and report the parse error; repair from version control, backup, or verifiable artifacts, never overwrite it with `comet state set`                                     |
-| Build/test fails                              | Return to build phase for fixes, do not enter verify                                                                                                                         |
-| Incomplete change directory structure         | Fill missing files according to `comet-open` artifact requirements                                                                                                           |
-
-### Phase Transitions
-
-<IMPORTANT>
-A single `/comet-classic` invocation starts from the detected phase and advances to the next phase when exit conditions are met.
-
-Flow chain: open → design → build → verify → archive
-
-**Continuous execution requirement**: starting from the detected phase, the agent automatically continues through all later phases. But **auto-advancing only applies at transition points without user decisions**. When encountering user decision points, pause, present clear options, and wait for the user's explicit response. Must not use recommendation rules, defaults, or historical preferences to substitute for user confirmation, and must not just output a text prompt and then continue executing.
-
-**Distinguish phase advancement vs automatic handoff**: each sub-skill runs phase guard `--apply` before exit to advance the `.comet.yaml` `phase` field. This step **always happens** and is not controlled by `auto_transition`. After that, the sub-skill runs `comet state next <name>` to resolve the next action: when `auto_transition` is not `false`, output is `NEXT: auto` (auto-invoke next skill); when `auto_transition` is `false`, output is `NEXT: manual` (do not invoke next skill; return control with `HINT`). `NEXT: manual` is not a user decision point and must not ask whether to continue. Therefore `auto_transition` **only controls next skill invocation, not phase advancement**. Regardless of `auto_transition`, genuine user decision points below remain blocking.
-
-**Decision points are blocking points**: whenever reaching any of the following nodes, the current `/comet-classic` invocation must stop, and follow the `comet-classic/reference/decision-point.md` protocol to obtain the user's explicit choice. Only after the user explicitly chooses can the corresponding state fields be written and operations executed, then auto-advance resumes.
-
-Nodes requiring user participation (pause only at these nodes):
-
-1. Workflow target selection: multiple active changes, continue an existing change versus create a new one, or choose which completed batch item starts first
-2. Open-phase final proposal/design/tasks review, including the change name and scope; clear requests have no pre-artifact summary/name confirmation
-3. Confirm the design approach during brainstorming
-4. Open-phase workspace decision: explicit parallel intent automatically uses a Worktree; when isolation is unclear, present the legal `current`, `branch`, and `worktree` choices as one decision
-5. One joint Build decision at plan-ready: pause, or choose the execution method, TDD mode, and code-review mode together
-6. Verify-phase acceptance of WARNING/SUGGESTION deviations, Spec drift handling, or continue/stop after the 4th failure; the first 3 clearly repairable failures close automatically
-7. One Archive confirmation that chooses both whether to archive and how to deliver the archive commit
-8. Encounter an upgrade-assessment signal (hotfix/tweak → user chooses one of two: continue preset / upgrade to full workflow)
-9. Build phase scope expansion requiring redesign or new change split
-10. Open phase large PRD split confirmation
-
-Agents should not skip these decision points; other unambiguous phase transitions must proceed automatically, must not exit midway. At decision points, **must not skip user confirmation or choose automatically — ask clear options and wait for the user's explicit choice before continuing**.
-
-**Red Flags** — when these thoughts appear, STOP and check:
-
-| Agent Thought                                       | Actual Risk                                                            |
-| --------------------------------------------------- | ---------------------------------------------------------------------- |
-| "The user would probably agree with this approach"  | Cannot decide for the user — present the choice and wait for the reply |
-| "This is a small change, confirmation isn't needed" | Decision points have no size exception — blocking points must wait     |
-| "The user chose A last time, so A again"            | Historical preference cannot substitute for current confirmation       |
-| "I explained the plan and the user didn't object"   | No objection ≠ consent — must use tool to get explicit choice          |
-| "The flow has reached this point, should be fine"   | Verification not passed ≠ passed — check verify_result                 |
-
-</IMPORTANT>
-
----
-
-## Subcommand Quick Reference
-
-| Command          | Phase                | Owner       | Artifacts                                                                                    |
-| ---------------- | -------------------- | ----------- | -------------------------------------------------------------------------------------------- |
-| `/comet-open`    | 1. Open              | OpenSpec    | proposal.md, design.md, tasks.md                                                             |
-| `/comet-design`  | 2. Deep Design       | Superpowers | Design Doc, delta spec                                                                       |
-| `/comet-build`   | 3. Plan and Build    | Superpowers | Implementation plan, code commits                                                            |
-| `/comet-verify`  | 4. Verify            | Both        | Verification report                                                                          |
-| `/comet-archive` | 5. Archive and Close | OpenSpec    | delta→main spec sync, design doc markup, archive commit and delivery                         |
-| `/comet-hotfix`  | Preset path          | Both        | Quick fix (skip brainstorming)                                                               |
-| `/comet-tweak`   | Preset path          | Both        | OpenSpec-chained medium change (delta spec is first-class, skip brainstorming and full plan) |
-
-```
-/comet-classic
-  ↓ Auto-detect
-/comet-open ──→ /comet-design ──→ /comet-build ──→ /comet-verify ──→ /comet-archive
-  (OpenSpec)      (Superpowers)     (Superpowers)     (Both)          (OpenSpec)
-
-/comet-hotfix (preset, skip brainstorming)
-  open ──→ build ──→ verify ──→ archive
-    ↑ Upgrade-assessment signal hit → user chooses one of two (continue preset / upgrade full) → if upgrade, transition preset-escalate → supplement Design Doc → return to full workflow
-
-/comet-tweak (lightweight preset, chains OpenSpec, delta spec is first-class)
-  open ──→ build ──→ verify ──→ archive
-    ↑ Upgrade-assessment signal hit → user chooses one of two (continue preset / upgrade full) → if upgrade, transition preset-escalate → supplement Design Doc → return to full workflow
-```
-
----
-
-## Reference Appendix
-
-### State Machine Hard Constraints
-
-- Full-workflow `isolation` may be `current`, `branch`, or `worktree`, and must be bound before `build → verify`
-- Before `build → verify`, `build_mode` must be selected
-- `build_mode: subagent-driven-development` must also have `subagent_dispatch: confirmed`
-- Before full workflow leaves build phase, `tdd_mode` must be selected as `tdd` or `direct`
-- Before full workflow leaves build phase, `review_mode` must be selected as `off`, `standard`, or `thorough`
-- `build_mode: direct` is allowed by default only for `hotfix` / `tweak`; full workflow requires `direct_override: true`
-- `build_pause` is not an execution method and must not be written to `build_mode`
-- These constraints are enforced by both `comet guard <name> build --apply` and `comet state transition <name> build-complete`
-
-### .comet.yaml Field Reference
-
-See `comet-classic/reference/comet-yaml-fields.md` for complete field reference with examples and descriptions.
-
-### File Structure
-
-See `comet-classic/reference/file-structure.md` for the complete directory layout and artifact organization.
-
-### Auto-Transition Protocol
-
-See `comet-classic/reference/auto-transition.md` for the complete automatic handoff workflow.
-
-### Context Recovery
-
-See `comet-classic/reference/context-recovery.md` for structured recovery after context compression.
-
-### Decision Point Protocol
-
-See `comet-classic/reference/decision-point.md` for the complete user decision point protocol.
-
-### Debug Gate Protocol
-
-See `comet-classic/reference/debug-gate.md` for the complete debug gate protocol.
-
-### Public CLI
-
-Follow `comet-classic/reference/scripts.md` once per session and use only the public `comet` CLI. Do not search for or invoke internal bundles. Key entry points:
-
-```bash
-comet guard <change-name> <phase> --apply             # phase guard + state update
-comet state transition <change-name> <event>          # open-complete | design-complete | build-complete | verify-pass | verify-fail
-comet state next <change-name>                        # NEXT: auto|manual|done + SKILL: <skill-name>
-comet archive <change-name>                           # full archive in one command
-```
+Read `comet-classic/reference/comet-yaml-fields.md` for state-field meanings and `comet-classic/reference/file-structure.md` for artifact directories. Read other references only when their triggers above apply.

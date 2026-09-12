@@ -83,11 +83,16 @@ async function readReachable(language: keyof typeof roots): Promise<string> {
 
 async function readAction(language: keyof typeof roots, chineseTarget: string): Promise<string> {
   const entry = await read(language, 'SKILL.md');
-  // English currently keeps these protocols in the entry; each language must expose
-  // the same contract through its actual entry or the explicitly linked action section.
-  if (language === 'en') return entry;
-  expect(markdownLinks(entry)).toContain(chineseTarget);
-  const [file, anchor] = chineseTarget.split('#');
+  const englishTargets: Record<string, string> = {
+    'reference/workspace.md#archive-收尾': 'reference/workspace.md#archive-completion',
+    'reference/workspace.md#创建-change': 'reference/workspace.md#create-a-change',
+    'reference/commands.md#supervisor-协作': 'reference/commands.md#supervisor-coordination',
+    'reference/clarification.md#澄清': 'reference/clarification.md#clarification',
+  };
+  const target = language === 'zh' ? chineseTarget : englishTargets[chineseTarget];
+  expect(target).toBeTruthy();
+  expect(markdownLinks(entry)).toContain(target);
+  const [file, anchor] = target.split('#');
   const content = await read(language, file);
   return `${entry}\n${section(content, anchor)}`;
 }
@@ -122,8 +127,7 @@ describe('Comet Native Skills', () => {
     async (language) => {
       // Character limits include whitespace so one long line cannot bypass the context budget.
       // Language-specific sizes are not token counts; both entrypoints retain the same contracts.
-      // Keep the current English baseline bounded until its separate content confirmation.
-      const budget = language === 'zh' ? 6_000 : 38_000;
+      const budget = language === 'zh' ? 6_000 : 12_000;
       expect((await read(language, 'SKILL.md')).length).toBeLessThanOrEqual(budget);
     },
   );
@@ -146,6 +150,19 @@ describe('Comet Native Skills', () => {
     expect(verify).not.toContain('Codex 独立会话');
     expect(`${skill}\n${verify}`.length).toBeLessThanOrEqual(8_500);
     expect(skill).toContain('不一次加载整份命令参考或所有参考');
+    const enEntry = await read('en', 'SKILL.md');
+    expect(markdownLinks(enEntry)).toContain('reference/commands.md#verify-protocol');
+    const enVerify = section(await read('en', 'reference/commands.md'), 'verify-protocol');
+    for (const term of [
+      'new read-only Verifier',
+      'every acceptance item',
+      '--accept-result',
+      'waiting for the same Verifier',
+    ])
+      expect(enEntry + enVerify, term).toContain(term);
+    expect(enEntry + enVerify).not.toContain('supervisor-cancel');
+    expect(enVerify).not.toContain('comet memory observe');
+    expect(enVerify).not.toContain('Codex independent sessions');
   });
 
   it('makes normal Runtime input rules available before template submission or returnAction', async () => {
@@ -157,16 +174,34 @@ describe('Comet Native Skills', () => {
     const input = section(await read('zh', 'reference/commands.md'), '填写命令输入');
     for (const term of [
       '`exclusiveGroup`',
-      '单个对象 `template`',
+      '`template` 作为单个 JSON 对象',
       '临时 JSON 文件',
       '任务标识都原样保留',
       '`error.issues`',
-      '`returnAction` 的控制目录、命令和模板',
+      '`returnAction` 指定的控制目录、命令和模板',
     ]) {
       expect(input, term).toContain(term);
     }
     expect(input).not.toContain('supervisor-cancel');
     expect(input).not.toContain('comet memory observe');
+    const enEntry = await read('en', 'SKILL.md');
+    const enTarget = 'reference/commands.md#filling-command-inputs';
+    const enTrigger = enEntry.split('\n').find((line) => line.includes('(' + enTarget + ')'));
+    expect(enTrigger).toContain(
+      'Before first filling a Runtime template or returning a result through `returnAction`',
+    );
+    const enInput = section(await read('en', 'reference/commands.md'), 'filling-command-inputs');
+    for (const term of [
+      'system temporary JSON file',
+      'Preserve all supplied iteration, attempt, state-version, and task identifiers exactly',
+      '`exclusiveGroup`',
+      'as a single JSON object',
+      '`error.issues`',
+      'controller directory, command, and template specified by `returnAction`',
+    ])
+      expect(enInput, term).toContain(term);
+    expect(enInput).not.toContain('supervisor-cancel');
+    expect(enInput).not.toContain('comet memory observe');
   });
 
   it('keeps current-candidate verification bindings and child receipts on their normal action routes', async () => {
@@ -194,7 +229,7 @@ describe('Comet Native Skills', () => {
 
     const supervisor = section(commands, 'supervisor-协作');
     for (const term of [
-      '子任务角色、任务包、worktree、基线提交、`runId`、验收范围、依赖和停止条件',
+      '子任务角色、任务包、worktree、基线提交、`runId`、验收项的编号与引用、依赖关系和停止条件',
       '`supervisor-checks`',
       '`contractHash`',
       '`verificationBoundary`',
@@ -202,13 +237,50 @@ describe('Comet Native Skills', () => {
       '`retry_check_ids`',
       '`receiptRef`',
       '每个验收 ID 必须恰好出现一次',
-      '只有全部通过才记录 integrated',
+      '全部通过才记录为 `integrated`',
       '`supervisor-cancel`',
     ]) {
       expect(supervisor, term).toContain(term);
     }
     expect(markdownLinks(supervisor)).toContain('#填写命令输入');
     expect(markdownLinks(supervisor)).toContain('recovery.md#等待外部输入与监控');
+    const enCommands = await read('en', 'reference/commands.md');
+    const enVerify = section(enCommands, 'verify-protocol');
+    for (const term of [
+      '`projectRoot`',
+      '`verificationRoot`',
+      '`changeDir`',
+      '`supervisorStateRef`',
+      '`--project-root`',
+      '`candidateId`',
+      '`verifierExecutionRef`',
+      'exactly once',
+      'at least one integration check',
+      'Add only missing or invalidated checks',
+      'waiting for the same Verifier',
+      '`verifier-execution-error`',
+      '`verifier-unavailable`',
+    ])
+      expect(enVerify, term).toContain(term);
+    expect(markdownLinks(enVerify)).toContain('#filling-command-inputs');
+    expect(markdownLinks(enVerify)).toContain('#command-inputs-and-exceptions');
+    const enSupervisor = section(enCommands, 'supervisor-coordination');
+    for (const term of [
+      'role, task package, worktree, baseline commit, `runId`, acceptance IDs and references, dependencies, and stopping conditions',
+      '`supervisor-checks`',
+      '`contractHash`',
+      '`verificationBoundary`',
+      'nonempty',
+      '`repeatable: true`',
+      '`retry_check_ids`',
+      '`receiptRef`',
+      'Every task-package acceptance ID must occur exactly once',
+      'records `integrated` only when all pass',
+      '`supervisor-cancel`',
+    ])
+      expect(enSupervisor, term).toContain(term);
+    expect(markdownLinks(enSupervisor)).toContain('#filling-command-inputs');
+    expect(markdownLinks(enSupervisor)).toContain('recovery.md#external-input-and-monitoring');
   });
 
   it('keeps the main Skill on decisions while delegating mechanics to public CLI output', async () => {
@@ -236,7 +308,7 @@ describe('Comet Native Skills', () => {
           '`readyChildren`',
           '`review.status=passed`',
           '`scopeIds`',
-          '最终全量验证',
+          '最终验收，覆盖全部验收项',
           '原先通过 `finish=merge` 完成的合入步骤现由 Runtime 负责',
           'Supervisor 统筹动作',
           '`repair-child`',
@@ -246,11 +318,11 @@ describe('Comet Native Skills', () => {
         language: 'en' as const,
         required: [
           'comet native <command> --help',
-          'When an active change already exists',
+          'When an active change exists',
           '`workspace.projectRoot`',
           '`preparation.projectRoot`',
-          'workspace selection reference',
-          'Apply the same rule when the user explicitly adds to the current scope',
+          'workspace selection',
+          'Apply the same rules when the user explicitly adds to the current scope',
           '`--revise-implementation`',
           '`commandArgs`',
           '`commandAlternatives`',
@@ -265,7 +337,7 @@ describe('Comet Native Skills', () => {
           '`readyChildren`',
           '`review.status=passed`',
           '`scopeIds`',
-          'final full verification',
+          'final verification of every Supervisor acceptance item',
           'Runtime now owns the integration step formerly performed through `finish=merge`',
           'Supervisor coordination actions',
           '`repair-child`',
@@ -281,7 +353,7 @@ describe('Comet Native Skills', () => {
       const statusMarker =
         variant.language === 'zh'
           ? '状态包含 `childSummary`'
-          : 'When status contains `childSummary`';
+          : 'When state contains `childSummary`';
       const entry = await read(variant.language, 'SKILL.md');
       expect(entry.match(new RegExp(statusMarker, 'gu')) ?? []).toHaveLength(1);
       expect(skill).not.toContain(
@@ -312,7 +384,7 @@ describe('Comet Native Skills', () => {
       {
         language: 'zh' as const,
         required: [
-          '普通 change 归档后，如有已经归档且没有未提交修改的 change worktree，向用户提供清理选项',
+          '普通 change 归档后，如果该 change 的 worktree 已没有未提交修改，向用户提供清理选项',
           '只有用户确认后才执行 `git worktree remove`',
           '存在未提交修改或仍在使用的 worktree 必须保留',
         ],
@@ -339,7 +411,11 @@ describe('Comet Native Skills', () => {
     const variants = [
       {
         language: 'zh' as const,
-        required: ['`comet init`', '产物跟随项目配置', '用户明确要求覆盖时才传入 `--language`'],
+        required: [
+          '`comet init`',
+          '后续文档使用项目配置中的语言',
+          '用户明确要求改用其他语言时，才传入 `--language`',
+        ],
       },
       {
         language: 'en' as const,
@@ -367,8 +443,8 @@ describe('Comet Native Skills', () => {
           'Build ↔ Verify Loop',
           'Builder 提交候选',
           '新的只读 Verifier',
-          '`iteration` 表示实现候选的轮次',
-          '`attempt` 表示同一候选启动 Verifier 的次数',
+          '`iteration` 表示提交实现的轮次',
+          '`attempt` 表示对同一份候选实现启动 Verifier 的次数',
           '所有计数都由 Runtime 更新',
         ],
       },
@@ -377,10 +453,10 @@ describe('Comet Native Skills', () => {
         required: [
           'Build ↔ Verify Loop',
           'the Builder submits a candidate',
-          'a fresh read-only Verifier',
-          '`iteration` is the implementation-candidate round',
-          '`attempt` is the number of times a Verifier has been started',
-          'The Runtime updates all counters',
+          'a new read-only Verifier',
+          '`iteration` counts implementation submissions',
+          '`attempt` counts Verifier launches for the same candidate',
+          'Runtime updates all counters',
         ],
       },
     ];
@@ -398,7 +474,7 @@ describe('Comet Native Skills', () => {
       {
         language: 'zh' as const,
         required: [
-          '拆分检测',
+          '检查是否需要由 Supervisor Change 统筹多个子任务',
           '可独立实现和验证',
           '最终 Shape 确认',
           '确认前不得创建子 change',
@@ -423,7 +499,7 @@ describe('Comet Native Skills', () => {
           'Single-session progression',
           'automatically switch to a subagent',
           'do not ask for the coordination mode again',
-          'must not automatically switch to single-session progression',
+          'do not automatically switch to single-session progression',
           'supervisor-cancel',
           'text length and task count alone must not trigger decomposition',
           'continue with one Native Change',
@@ -434,11 +510,15 @@ describe('Comet Native Skills', () => {
     for (const variant of variants) {
       const execution = await readAction(variant.language, 'reference/commands.md#supervisor-协作');
       const clarification = await readAction(variant.language, 'reference/clarification.md#澄清');
-      let shape = '';
-      if (variant.language === 'zh') {
-        expect(markdownLinks(clarification)).toContain('#supervisor-拆分与确认');
-        shape = section(await read('zh', 'reference/clarification.md'), 'supervisor-拆分与确认');
-      }
+      const shapeAnchor =
+        variant.language === 'zh'
+          ? 'supervisor-拆分与确认'
+          : 'supervisor-decomposition-and-confirmation';
+      expect(markdownLinks(clarification)).toContain('#' + shapeAnchor);
+      const shape = section(
+        await read(variant.language, 'reference/clarification.md'),
+        shapeAnchor,
+      );
       const skill = `${execution}\n${clarification}\n${shape}`;
       for (const term of variant.required) {
         expect(skill, `${variant.language}: ${term}`).toContain(term);
@@ -490,7 +570,7 @@ describe('Comet Native Skills', () => {
       }
       expect(reference).not.toContain('[blocking] CONFIRM');
       if (variant.language === 'zh') {
-        expect(reference).toContain('简单问题维护未决项和必要依赖即可');
+        expect(reference).toContain('简单问题列出未决项和必要的依赖关系即可');
         expect(reference).toContain('只有多个决定相互依赖、回答会改变后续分支时');
         expect(reference).not.toContain('在提出第一道用户问题前，先建立');
       }
@@ -505,7 +585,7 @@ describe('Comet Native Skills', () => {
       sequential.indexOf('一次只提出这一个问题'),
     );
     expect(sequential).toContain('立即把已确定的决定写入 Decisions、brief 和完整目标规格');
-    expect(sequential).toContain('更新问题依赖并重新确定当前可提问项');
+    expect(sequential).toContain('更新问题之间的依赖关系，重新确定下一轮可以提出的问题');
 
     const batch = section(clarification, 'batch-模式');
     expect(batch.indexOf('保存 `- [blocking] Q1:')).toBeGreaterThan(-1);
@@ -515,7 +595,35 @@ describe('Comet Native Skills', () => {
     expect(batch).toContain('每个独立决定保留为单独问题');
     expect(batch).toContain('后续轮次不把已有标识改用于其他问题');
     expect(batch).toContain('部分、模糊或未回答的问题保留原标识及 `[blocking]`');
-    expect(batch).toContain('再计算下一轮完整集合');
+    expect(batch).toContain('再确定下一轮需要一起提出的全部问题');
+    const en = await read('en', 'reference/clarification.md');
+    const enSequential = section(en, 'sequential-mode');
+    expect(enSequential.indexOf('first save `- [blocking]')).toBeGreaterThan(-1);
+    expect(enSequential.indexOf('first save `- [blocking]')).toBeLessThan(
+      enSequential.indexOf('Ask only this question'),
+    );
+    expect(enSequential).toContain(
+      'Immediately record confirmed decisions in Decisions, the brief, and complete target Specs',
+    );
+    const enBatch = section(en, 'batch-mode');
+    expect(enBatch.indexOf('Before asking, save all questions')).toBeLessThan(
+      enBatch.indexOf('Ask the complete current set at once'),
+    );
+    expect(enBatch).toContain('Keep each independent decision as a separate question');
+    expect(enBatch).toContain('Never reuse an existing ID for another question');
+    expect(enBatch).toContain('Preserve original IDs and `[blocking]`');
+    expect(enBatch).toContain('then determine the next complete set');
+    const format = section(en, 'batch-text-format');
+    for (const term of [
+      '`Q1`, `Q2`',
+      '💬 **Q1｜',
+      '💡 **Recommended answer:',
+      'single choice',
+      'Reason:',
+      'do not renumber later rounds',
+      'examples are not defaults',
+    ])
+      expect(format, term).toContain(term);
   });
 
   it('presents both Supervisor modes as intact three-column choices with an explicit decision boundary', async () => {
@@ -543,6 +651,29 @@ describe('Comet Native Skills', () => {
     expect(supervisor).toContain('不得把普通“确认”视为已选择');
     expect(supervisor).toContain('用户仍需再次明确确认完整 Shape');
     expect(markdownLinks(supervisor)).toContain('commands.md#supervisor-协作');
+    const enSupervisor = section(
+      await read('en', 'reference/clarification.md'),
+      'supervisor-decomposition-and-confirmation',
+    );
+    const enRows = enSupervisor
+      .split('\n')
+      .filter((line) => line.startsWith('|'))
+      .map((line) =>
+        line
+          .split('|')
+          .slice(1, -1)
+          .map((cell) => cell.trim()),
+      );
+    expect(enRows).toHaveLength(4);
+    expect(enRows.every((row) => row.length === 3)).toBe(true);
+    expect(enRows.slice(2).map((row) => row[0])).toEqual(['A', 'B']);
+    expect(enRows[2][2]).toContain('automatically switch to a subagent');
+    expect(enRows[3][2]).toContain('current session handles all children sequentially');
+    expect(enSupervisor).toContain('show both A and B');
+    expect(enSupervisor).toContain('wait for explicit selection');
+    expect(enSupervisor).toContain('a generic confirmation is insufficient');
+    expect(enSupervisor).toContain('The user must explicitly confirm the complete Shape');
+    expect(markdownLinks(enSupervisor)).toContain('commands.md#supervisor-coordination');
   });
 
   it('keeps Agent-authored formal artifacts separate from Runtime state and reports', async () => {
@@ -610,14 +741,17 @@ describe('Comet Native Skills', () => {
       expect(commands).toContain(
         language === 'zh'
           ? '它不会启动独立服务或进程，也不需要配置服务地址或回调'
-          : 'There is no separate Verifier service, process, endpoint, or callback',
+          : 'It does not start an independent service or process, and requires no service address or callback',
       );
       expect(commands).toContain(
         language === 'zh'
           ? '本次任务未启动、执行失败、超时或结束后没有返回'
-          : 'this task does not start, fails, times out, or ends without returning a result',
+          : 'this task did not start, failed, timed out, or ended without returning a result',
       );
-      const exceptions = language === 'zh' ? section(commands, '命令输入与异常') : commands;
+      const exceptions = section(
+        commands,
+        language === 'zh' ? '命令输入与异常' : 'command-inputs-and-exceptions',
+      );
       expect(exceptions.match(/comet native/gu)?.length ?? 0).toBeLessThanOrEqual(5);
       expect(commands).not.toContain('```json');
       expect(commands).not.toContain('| Exit code |');
@@ -705,19 +839,19 @@ describe('Comet Native Skills', () => {
     expect(skill).toContain('等待外部输入时，按恢复参考中的');
     expect(markdownLinks(skill)).toContain('reference/recovery.md#等待外部输入与监控');
     for (const term of [
-      '没有可执行子任务、没有仍在执行的相关任务，也没有值得周期检查的外部状态',
+      '没有可执行子任务、没有仍在执行的相关任务，也没有需要定期检查的外部状态',
       '保留独立任务及其监控',
-      '实际暂停并核对返回状态',
+      '实际暂停监控，并核对返回状态',
       '无法识别、权限不足或暂停失败时',
       '监控尚未确认暂停',
-      '静默回复不等于暂停周期唤醒',
+      '停止回复消息不等于停止定期触发任务',
       '首次进入等待时，一次性告知用户',
-      '既有协调记录',
-      '普通进度回报不解除阻塞',
-      '重新读取 Runtime，沿用原 change、任务身份和已完成结果',
-      '仅在仍需周期检查时恢复对应监控',
+      '已有的任务记录',
+      '普通进度消息不能解除阻塞',
+      '重新读取 Runtime 状态，沿用原 change、任务标识和已完成结果',
+      '只有仍需定期检查时，才恢复对应监控',
       '不等同于 Runtime 的 `blocked` / `await-user`',
-      '不得直接修改状态文件或借用 Verifier 状态表示实施资料缺口',
+      '不得直接修改状态文件，也不得用 Verifier 状态表示缺少实现所需的资料',
     ]) {
       expect(recovery, term).toContain(term);
     }
@@ -727,22 +861,22 @@ describe('Comet Native Skills', () => {
     const skill = await read('en', 'SKILL.md');
     const recovery = await read('en', 'reference/recovery.md');
     expect(skill).toContain(
-      'When waiting for external input, follow “External input and monitoring” in the recovery reference',
+      'When waiting for external input, follow [external input and monitoring]',
     );
     for (const term of [
-      'no executable children, no related tasks still running, and no external state worth checking periodically',
-      'preserve independent tasks and their monitoring',
-      'actually pause it and verify the returned status',
-      'If identification is uncertain, permission is missing, or pausing fails',
-      'monitoring is not confirmed paused',
-      'A silent reply does not pause periodic wakeups',
-      'on first entering this waiting state, tell the user once',
-      'existing coordination records',
-      'Ordinary progress reports do not clear blockers',
-      'reread Runtime and retain the original change, task identity, and completed results',
-      'Resume the corresponding monitoring only when periodic checks are still needed',
-      'not equivalent to Runtime `blocked` / `await-user`',
-      'Do not edit state files directly or use Verifier state to represent missing implementation materials',
+      'no child is ready, no relevant task is running, and no external state needs periodic checks',
+      'Keep independent tasks and their monitors',
+      'actually pause it through the platform and check the returned state',
+      'If it cannot be identified, permission is missing, or pausing fails',
+      'the pause is unconfirmed',
+      'Stopping chat replies does not stop recurring task triggers',
+      'on first entering the wait, explain the blocker',
+      'existing task records',
+      'An ordinary progress message does not resolve the blocker',
+      'retaining the change, task identifiers, and completed results',
+      'Resume the relevant monitor only if periodic checks are still needed',
+      'is not Runtime `blocked` / `await-user`',
+      'Do not edit state files directly or use Verifier status to represent missing implementation material',
     ]) {
       expect(recovery, term).toContain(term);
     }
@@ -768,8 +902,8 @@ describe('Comet Native Skills', () => {
         language: 'en' as const,
         required: [
           'current directory has uncommitted work',
-          'Another active Native change already exists',
-          'Runtime default, `current`',
+          'Another active Native change exists',
+          "Runtime's default `current`",
           'structured single-choice tool',
           '| A | Current directory (`current`)',
           '| B | New branch (`branch`)',

@@ -78,7 +78,7 @@ describe('comet-review 中文 Skill', () => {
 
     expect(diffScopeSection).toBeTruthy();
     expect(source).toContain('git status --short --untracked-files=all');
-    expect(diffScopeSection).toContain('完整枚举已暂存、未暂存和未跟踪的工作树状态');
+    expect(diffScopeSection).toContain('列出工作区中全部已暂存、未暂存和未跟踪的文件');
     expect(diffScopeSection).not.toContain('记录已提交');
     expect(source).toContain('当前 change 的需求、工作区绑定、Git 历史和工作树状态');
     expect(source).toContain('优先使用有效的 plan `base-ref`');
@@ -129,7 +129,7 @@ describe('comet-review bilingual contract', () => {
     expect(source).toContain('comet native status <change-name> --details --json');
     expect(source).toContain('git status --short --untracked-files=all');
     expect(diffScopeSection).toContain(
-      'fully enumerate staged, unstaged, and untracked worktree state',
+      'list all staged, unstaged, and untracked files in the worktree',
     );
     expect(source).toContain(
       "current change's requirements, workspace binding, Git history, and worktree state",

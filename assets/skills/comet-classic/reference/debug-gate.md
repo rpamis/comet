@@ -6,30 +6,25 @@ This protocol is shared by comet sub-skills that directly modify code, including
 
 ## Core Rules
 
-Exception: a TDD RED with a verified cause matching the not-yet-implemented target behavior is normal evidence; continue RED-GREEN-REFACTOR without loading debugging Skills. Environment errors, test loading failures, unrelated regressions, or unexplained RED are not exempt.
+Exception: a TDD RED whose verified failure cause is the not-yet-implemented target behavior is normal development evidence. Continue RED-GREEN-REFACTOR without loading debugging Skills. Environment errors, test-loading failures, unrelated regressions, and unexplained RED do not qualify.
 
-- `build_mode: autonomous` follows the investigation and verification loop below directly without mandatory external Skills; other strategies immediately use the Skill tool to load Superpowers `systematic-debugging`
-- Do not propose or implement source fixes before the root cause investigation is complete
+- `build_mode: autonomous` investigates, repairs, and verifies through the steps below without mandatory external Skills. Other strategies immediately use the Skill tool to load Superpowers `systematic-debugging`.
+- Do not propose or implement source fixes before completing the root-cause investigation.
 
 ## Four-Stage Flow
 
-1. Reproduce and locate the root cause first by reading the full error, checking recent changes, and tracing data flow
-2. If the root cause is a source bug, first add a minimal failing test that reproduces the crash or unexpected behavior, then modify the source
-3. After the fix, run that failing test, related tests, and the project's build or verification commands until all pass
-4. Keep the test, the source fix, and the tasks.md checkoff in the current change; do not replace the current change verification loop by starting a separate “write test cases” change
+1. Reproduce and locate the root cause: read the full error, inspect recent changes, and trace data flow.
+2. If the root cause is a source bug, add the smallest failing test that reproduces the crash or unexpected behavior before modifying the source.
+3. After fixing, run that test, related tests, and the project's build/verification commands, and confirm they all pass.
+4. Keep tests, source fixes, and tasks.md completion records in the current change. Complete repair and verification there; a separate “write test cases” change cannot replace them.
 
-## Parallel Investigation of Multiple Failures
+## Investigating and Fixing Multiple Failures
 
-Before entering the four-stage flow, run a failure-independence assessment to decide serial vs. parallel investigation:
+When several checks fail, first assess possible shared root causes, shared state, and overlapping files. Use those findings and investigation cost to choose sequential or parallel work. Failure count does not determine scheduling. If independence is not established, investigate enough to establish it before making concurrent changes.
 
-- **No parallelism (keep existing serial `systematic-debugging`)**: ≤ 2 failures; failures are related (fixing one might fix others); shared state; would touch the same set of files; failure independence not yet established
-- **Parallel (load the Superpowers `dispatching-parallel-agents` skill)**: ≥ 3 failures from distinct problem domains (different test files with different root causes, different subsystems broken independently), mutually independent and non-interfering
+- Related failures, shared state, or overlapping modification scope: investigate and integrate together to avoid repeatedly diagnosing the same cause.
+- Confirmed independent problems, with enough time saved to offset dispatch and integration costs: parallel investigation is allowed. Autonomous can assign clearly scoped investigation tasks directly; other strategies load Superpowers `dispatching-parallel-agents` when a parallel method is needed.
 
-When parallel conditions are met:
+Give every investigation agent the specific failure, error evidence, allowed investigation scope, and required findings. Investigation agents return root causes and evidence; **they do not submit fixes directly**. The main session checks conclusions and actual dependencies before assigning repairs.
 
-1. Autonomous may organize bounded independent investigation directly; other strategies use the Skill tool to load Superpowers `dispatching-parallel-agents`
-2. Dispatch one background investigation agent per independent failure, grouped by problem domain, with all dispatches in a single response for concurrent execution. Each agent prompt must be self-contained (specific failure, error messages, allowed investigation scope, prohibition on touching other problem domains' code)
-3. All agents remain bound by this protocol's "no source changes before the root cause is identified" constraint; they only locate the root cause and return findings — **they do not submit fixes directly**
-4. Once all investigations return, the main session serially consolidates findings and performs fixes; fixes still go through the current `review_mode` verification and review loop
-
-> Parallelism applies only to **investigation**. Fixes are always serial, avoiding conflicts from multiple agents editing the same set of files at once — consistent with the `subagent-driven-development` red flag of "never dispatch multiple implementation subagents in parallel."
+Repairs follow the selected build_mode, each agent's permitted files, and `comet-classic/reference/subagent-dispatch.md`. Implement and integrate sequentially when repairs share state or modification scope. Autonomous may implement concurrently only when tasks are independent, file scopes do not overlap, and each result can be accepted separately. Other execution strategies retain their selected method; debugging does not authorize a strategy change. Do not edit source before the cause is known. Every repair still requires tests, review, and acceptance within the current change.

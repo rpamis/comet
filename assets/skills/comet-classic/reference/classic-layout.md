@@ -1,36 +1,36 @@
-# Classic Artifact Layout Protocol
+# Classic Artifact Layout
 
-For a selected change, use layout from this turn's `comet state check <change-name> <phase> --json` without a separate root query. Run the following from the project root only before selecting a change, when entry does not provide layout, or when handling root migration alone:
+When entering the phase of a selected change, use layout returned by the current `comet state check <change-name> <phase> --json`; do not query layout separately. Run this command at the project root only before a change is selected, when entry omits layout, or when working only on root migration:
 
 ```bash
 comet classic root show
 ```
 
-Accept only `schema: comet.classic-layout.v1`. Bind the returned `openSpecRoot`, `changesRoot`, `archiveRoot`, `specsRoot`, and `superpowersRoot` as `<classic-open-spec-root>`, `<classic-changes-root>`, `<classic-archive-root>`, `<classic-specs-root>`, and `<classic-superpowers-root>`, respectively, use the actual changeDir returned by entry for `<classic-change-dir>`. Construct it from changesRoot and name only before creating a change. Do not construct an active path for an archived change. Layout is the source of truth for this turn; refresh it through entry on cold recovery or workspace changes rather than retaining old bindings.
+Accept only `schema: comet.classic-layout.v1`. Map layout's `openSpecRoot`, `changesRoot`, `archiveRoot`, `specsRoot`, and `superpowersRoot` to the actual directories for `<classic-open-spec-root>`, `<classic-changes-root>`, `<classic-archive-root>`, `<classic-specs-root>`, and `<classic-superpowers-root>`. Use the entry's changeDir for `<classic-change-dir>`; construct it from changesRoot and name only before the change exists. Do not construct archived paths using active-change directory rules. Use the returned layout for this invocation. Refresh it when session recovery lacks context or the workspace changes, rather than reusing old directory information.
 
-## Command rules
+## Command Rules
 
-- This and every other Comet-owned Classic Skill must call the official OpenSpec CLI directly through:
+- This Skill and other Comet-owned Classic Skills must invoke the official OpenSpec CLI through this adapter:
 
   ```bash
   comet classic openspec -- <args...>
   ```
 
-- The adapter runs the official CLI from the configured OpenSpec base and preserves stdout, stderr, and the exit code. Do not register or query an OpenSpec store for a root inside the same repository.
-- For executable follow-ups, use `comet classic openspec --agent-json -- <args...>`. Read upstream JSON from `data.upstream.data`, retaining `data.upstream.cwd/stdout/stderr/exitCode` for diagnostics. Execute the complete argv and cwd from `data.nextAction`. Raw nextSteps belong to the upstream base, so do not execute them at the project root. The ordinary adapter retains its existing passthrough contract.
-- Run `openspec` directly only when the user explicitly operates from the resolved OpenSpec base.
+- The adapter runs the official CLI in the configured OpenSpec root and preserves stdout, stderr, and exit code. Do not register or query a separate OpenSpec store for the same repository.
+- To obtain a directly executable next command, use `comet classic openspec --agent-json -- <args...>`. Read OpenSpec JSON from `data.upstream.data` and retain `data.upstream.cwd/stdout/stderr/exitCode` for diagnosis. Execute `data.nextAction` with its complete argv and cwd. Raw nextSteps assume the OpenSpec root as cwd and cannot be copied directly to the project root. Calls without `--agent-json` still return OpenSpec output unchanged.
+- Direct `openspec` use is allowed only when the user explicitly requests the official CLI in the resolved OpenSpec root.
 
-## Path rules
+## Path Rules
 
-- Absolute paths are for file operations. `data.artifactRefs` supplies repository-relative references: `change`, `tasks`, `designDoc`, `plan`, `plansRoot`, and `handoffContext`. Bind `change` as `<classic-change-ref>` and `tasks` as `<classic-task-authority-ref>`. State path fields and plan `comet-task-authority` markers must use these references, not absolute `<classic-change-dir>`. Form a new plan reference from `plansRoot` and its filename; resolve file-operation paths against `projectRoot`. Custom references must also be project-relative without traversal, cross-project links, or another change's task authority.
-- Express change, tasks, delta spec, handoff, and archive paths with the `<classic-*>` logical roots bound above; for example, use `<classic-change-dir>/tasks.md`. Do not wrap one physical layout in a logical-path convention and keep using it as filesystem guidance.
-- Resolve Superpowers files through `<classic-superpowers-root>/...`; do not derive them from the OpenSpec root or current cwd.
-- `comet state`, `comet guard`, `comet handoff`, and `comet archive` resolve the layout internally. Never persist a physical root in `.comet/current-change.json`.
-- If root show or a write command reports conflicting legacy/docs roots, invalid config, or an incomplete migration, stop. Use `comet doctor` for read-only inspection; do not scan both roots, guess change ownership, or dual-write.
+- Absolute paths are for file I/O only. `data.artifactRefs` supplies repository-relative paths: `change`, `tasks`, `designDoc`, `plan`, `plansRoot`, and `handoffContext`. Use `change` as `<classic-change-ref>` and `tasks` as `<classic-task-authority-ref>`. State path fields and plan `comet-task-authority` must use those relative paths, not absolute `<classic-change-dir>`. Construct a new plan's relative path from `plansRoot` and its filename, then resolve it through `projectRoot` for file I/O. Custom paths must also be project-root-relative and cannot include `..`, cross-project links, or another change's task list.
+- File paths for changes, tasks, delta specs, handoffs, and archives must use the resolved `<classic-*>` roots; for example, tasks use `<classic-change-dir>/tasks.md`. Renaming a hard-coded directory in prose does not suffice if actual I/O still uses that directory.
+- Superpowers files use `<classic-superpowers-root>/...`; do not derive that path from the OpenSpec root or current cwd.
+- `comet state`, `comet guard`, `comet handoff`, and `comet archive` resolve layout internally. Never write a physical root into `.comet/current-change.json`.
+- If root show or any write command reports conflicting legacy/docs roots, invalid configuration, or unfinished migration, stop writes immediately and run read-only `comet doctor`. Do not scan both roots and guess ownership, or write to both.
 
-## New, existing, and migrated projects
+## New Projects, Existing Projects, and Migration
 
 - New Classic projects default to `docs/openspec/`.
-- Compatibility reads without `classic.artifact_layout` use root-level `openspec/` (legacy); new project init writes docs explicitly. When `comet update` detects existing root-level `openspec/` artifacts, it explicitly backfills `legacy` without moving them.
-- Normal init/update never moves existing artifacts. Run `comet classic root move docs --dry-run` to inspect the current state; after confirmation, run `comet classic root move docs --apply` to migrate. The Runtime manages migration identity and locked revalidation internally.
-- Migration moves the complete legacy-layout tree as-is, including active, unmanaged, and incompletely archived changes; change state does not block a root move.
+- For backward compatibility, a project without `classic.artifact_layout` uses root-level `openspec/` (legacy). New-project init explicitly writes docs. If `comet update` finds existing `openspec/` artifacts, it records `legacy` without moving them.
+- Ordinary init/update does not move existing artifacts. Inspect with `comet classic root move docs --dry-run`; after user confirmation, migrate with `comet classic root move docs --apply`. Runtime records the migration identifier and rechecks migration conditions while holding the lock.
+- Migration moves the entire old-layout directory unchanged, including active, unmanaged, and incompletely archived changes. Those change states do not block root migration.

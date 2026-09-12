@@ -1,5 +1,5 @@
 interface:
-  display_name: "Comet Classic 阶段 5:Archive"
-  short_description: "确认归档、合并 delta spec 并完成分支收尾"
+  display_name: 'Comet Classic 阶段 5：归档'
+  short_description: '经用户确认后归档，并按所选方式提交、推送或创建 PR'
 policy:
   allow_implicit_invocation: true

@@ -1,5 +1,5 @@
 interface:
-  display_name: "Comet Classic Preset: Tweak"
-  short_description: "Handle a lightweight or medium change in one OpenSpec change"
+  display_name: 'Comet Classic Preset: Tweak'
+  short_description: 'Complete a light or moderate change with matching specs'
 policy:
   allow_implicit_invocation: true

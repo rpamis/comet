@@ -9,9 +9,9 @@ describe('comet-open 批量拆分完成协议', () => {
       'utf8',
     );
 
-    expect(skill).toContain('不得硬编码生成顺序');
-    expect(skill).toContain('从尚未完成且为 `status: "ready"` 的 artifacts 中');
-    expect(skill).toContain('推进 `applyRequires` 依赖闭包');
+    expect(skill).toContain('不得写死生成顺序');
+    expect(skill).toContain('在尚未完成、状态为 `status: "ready"` 的产物中');
+    expect(skill).toContain('优先处理 `applyRequires` 所需的依赖，并遵循 CLI 返回的顺序');
     expect(skill).not.toContain(
       '**标准产物循环**（对每个 `artifact-id`：`proposal` → `design` → `tasks`）',
     );
@@ -28,7 +28,7 @@ describe('comet-open 批量拆分完成协议', () => {
     );
     expect(skill).toContain('完整依赖闭包');
     expect(skill).toContain('comet state artifacts <name> --json');
-    expect(skill).toContain('`isComplete` 仅作诊断信息');
-    expect(skill).toContain('任一拆分项未通过检查时，不得宣告拆分完成');
+    expect(skill).toContain('`isComplete` 仅用于诊断');
+    expect(skill).toContain('任一拆分项未通过检查时，不能宣告拆分完成');
   });
 });

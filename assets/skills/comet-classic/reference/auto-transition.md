@@ -1,27 +1,27 @@
-# Automatic Handoff to Next Phase Protocol
+# Automatic Phase Handoff Protocol
 
 Canonical path: `comet-classic/reference/auto-transition.md`
 
-This protocol is shared by all comet sub-skills. It defines the automatic handoff rules after phase guard advancement.
+All comet sub-skills share these handoff rules after a phase Guard advances state.
 
-## Terminology Distinction
+## Phase Advancement and Skill Invocation
 
-"Phase advancement" is performed by guard `--apply`, which updates the `phase` field in `.comet.yaml` — this **always happens** and is independent of `auto_transition`. This protocol's "automatic handoff" only determines **whether to automatically invoke the next skill**, controlled by `auto_transition`.
+When guard `--apply` passes, it updates `.comet.yaml` `phase` to the next phase. This **always happens**, regardless of `auto_transition`. `auto_transition` controls only **whether to invoke the next Skill automatically** after that update.
 
 ## Execution
 
-After exit conditions are met and the phase guard has advanced phase, consume that successful JSON result's `agent.continuation`: invoke `skill` when `automatic: true`; otherwise prompt the user to run that Skill and return control. This observation is the next phase's entry, so do not repeat next, select, or check. Query only after recovery, external-state/workspace changes, or older results without this observation:
+After exit conditions pass and the phase Guard updates phase, prefer `agent.continuation` from the successful JSON result. For `automatic: true`, invoke its `skill`; for false, prompt the user to run that Skill manually and end this invocation. The next phase can use the returned state without repeating next, select, or check. Query only on session recovery, external-state or workspace changes, or older results missing this information:
 
 ```bash
 comet state next <change-name>
 ```
 
-The script outputs a deterministic next step based on `phase`, `workflow`, and `auto_transition`:
+The script determines the next step from `phase`, `workflow`, and `auto_transition`:
 
-- `NEXT: auto` → invoke the skill pointed to by `SKILL` to enter the next phase
-- `NEXT: manual` → do not invoke the next skill; prompt user to manually run `/<SKILL>` per `HINT`
-- `NEXT: done` → workflow is complete, no further action needed
+- `NEXT: auto` → invoke the Skill named by `SKILL` to enter the next phase.
+- `NEXT: manual` → do not invoke it; use `HINT` to prompt the user to run `/<SKILL>` manually.
+- `NEXT: done` → the workflow is complete; no further action is needed.
 
 ## Preset Routing
 
-When `workflow: hotfix`, `phase: build` returns `comet-hotfix`; when `workflow: tweak`, it returns `comet-tweak`. All other phases (`verify`, `archive`) return standard skill names (`comet-verify`, `comet-archive`) regardless of workflow type. The "continuous execution mode" within preset skills may override `auto_transition` behavior — see the corresponding preset's `<IMPORTANT>` block.
+With `workflow: hotfix`, `phase: build` returns `comet-hotfix`; with `workflow: tweak`, it returns `comet-tweak`. Other phases (`verify`, `archive`) return standard Skill names (`comet-verify`, `comet-archive`) regardless of workflow type. A preset's continuous execution mode may override `auto_transition`; see its `<IMPORTANT>` block.

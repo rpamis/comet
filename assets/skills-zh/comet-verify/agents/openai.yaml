@@ -1,5 +1,5 @@
 interface:
-  display_name: "Comet Classic 阶段 4:Verify"
-  short_description: "验证 change、记录证据并驱动修复循环"
+  display_name: 'Comet Classic 阶段 4：验证'
+  short_description: '验证 change 并记录结果，发现问题后返回构建阶段修复'
 policy:
   allow_implicit_invocation: true

@@ -20,7 +20,7 @@ const LANGUAGE_CASES = [
     ruleFiles: ['comet-phase-guard.md', 'comet-workflow-guard.md'],
     allowedLayoutDescriptionLines: new Set([
       '- 新 Classic 项目默认使用 `docs/openspec/`。',
-      '- 缺少 `classic.artifact_layout` 的兼容读取使用根目录 `openspec/`（legacy）；新项目 init 会明确写入 docs。`comet update` 检测到已有根目录 `openspec/` 产物时会显式补为 `legacy`，不会移动产物。',
+      '- 为兼容旧项目，缺少 `classic.artifact_layout` 时使用项目根下的 `openspec/`（legacy）；新项目 init 会明确写入 docs。`comet update` 检测到已有 `openspec/` 产物时，会把配置补为 `legacy`，不会移动产物。',
     ]),
   },
   {
@@ -29,7 +29,7 @@ const LANGUAGE_CASES = [
     ruleFiles: ['comet-phase-guard.en.md', 'comet-workflow-guard.en.md'],
     allowedLayoutDescriptionLines: new Set([
       '- New Classic projects default to `docs/openspec/`.',
-      '- Compatibility reads without `classic.artifact_layout` use root-level `openspec/` (legacy); new project init writes docs explicitly. When `comet update` detects existing root-level `openspec/` artifacts, it explicitly backfills `legacy` without moving them.',
+      '- For backward compatibility, a project without `classic.artifact_layout` uses root-level `openspec/` (legacy). New-project init explicitly writes docs. If `comet update` finds existing `openspec/` artifacts, it records `legacy` without moving them.',
     ]),
   },
 ] as const;
@@ -109,16 +109,16 @@ describe('Classic layout Skill contract', () => {
     expect(reference).toContain('state check <change-name> <phase> --json');
     expect(reference).toContain('无需再单独查询布局');
     expect(reference).toContain('尚未选择 change、入口未提供 layout');
-    expect(reference).toContain('使用入口返回的实际 changeDir');
-    expect(reference).toContain('已归档 change 不拼接 active 路径');
-    expect(reference).toContain('冷恢复或工作区变化后由入口重新解析');
+    expect(reference).toContain('使用入口返回的 changeDir');
+    expect(reference).toContain('对于已归档的 change，不要使用未归档 change 的目录规则拼接路径');
+    expect(reference).toContain('恢复会话时若缺少上下文，或工作区发生变化，应重新查询');
     for (const skill of ['comet-design', 'comet-build', 'comet-verify', 'comet-archive']) {
       const content = await fs.readFile(
         path.resolve('assets/skills-zh', skill, 'SKILL.md'),
         'utf8',
       );
-      expect(content, skill).toContain('入口返回 layout 后');
-      expect(content, skill).toContain('不先额外运行 root show');
+      expect(content, skill).toContain('收到入口返回的 layout 后');
+      expect(content, skill).toContain('无需先额外运行 root show');
       expect(content, skill).toMatch(
         /comet state check <(?:change-name|name)> (?:design|build|verify|archive) --json/u,
       );

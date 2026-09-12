@@ -1,67 +1,69 @@
 ---
 name: comet-archive
-description: 'Phase 5 of Comet Classic — confirm archiving, merge delta specs, and finish branch delivery.'
+description: 'Archive and deliver a Classic change. Use when the user invokes /comet-archive or Classic Runtime enters Archive or resumes delivery.'
 ---
 
 # Comet Phase 5: Archive
 
-After entry returns layout, bind logical roots under `comet-classic/reference/classic-layout.md`; do not reload the protocol if it is already in context. OpenSpec CLI calls use the adapter and paths use the bound `<classic-*>` roots, without a separate root show first.
+After entry returns layout, follow `comet-classic/reference/classic-layout.md` to bind each logical root to its directory. Do not reload the protocol if it is already in context. Use the adapter for OpenSpec CLI calls and the bound `<classic-*>` roots for paths; do not run an extra root show first.
 
 ## Prerequisites
 
-- Verification passed (Phase 4 complete)
-- Archive or selected delivery actions remain incomplete; recovery does not require branch_status to remain pending
-- `verify_result: pass` in `<classic-change-dir>/.comet.yaml`
+- Verification passed; Phase 4 is complete.
+- Archive or the selected delivery action is unfinished. Recovery does not require branch_status to remain pending.
+- `<classic-change-dir>/.comet.yaml` records `verify_result: pass`.
 
 ## Steps
 
-### 0. Output Language Constraint
+### 0. Set the output language
 
-Archive summaries and lifecycle closure notes use this entry's configuration.language without an extra language query.
+Use configuration.language from this invocation's entry result for the archive summary and completion message. Do not query the language separately.
 
-### 0b. Entry State Verification (Entry Check)
+### 0b. Validate entry state
 
-Use the stable public CLI under `comet-classic/reference/scripts.md`, then run entry verification. For recovery, follow `comet-classic/reference/context-recovery.md`:
+Use the supported `comet` CLI in `comet-classic/reference/scripts.md` for these checks. When resuming from any entry, first follow `comet-classic/reference/context-recovery.md`:
 
 ```bash
 comet state select <change-name>
 comet state check <name> archive --json
 ```
 
-Continue using entry layout, configuration, nextAction, and delivery summaries. Read cold-recovery details under context-recovery.md. If authorization remains valid and targets match, continue only unfinished actions without asking again. Resolve specific failures.
+Continue from returned layout, configuration, nextAction, and the delivery summary. After context loss, read details according to context-recovery.md. If authorization is still valid and the delivery target is unchanged, continue only unfinished actions without asking again. Handle the specific cause on failure.
 
-If select/check returns BLOCKED because bound_branch differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Let the user choose to return to the bound branch and rerun entry, or explicitly authorize the current branch to take over, then run `comet state rebind <change-name>` and rerun entry. Do not switch branches or rebind on your own.
+If select/check returns `BLOCKED` because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
 
-### 1. Final Archive and Delivery Confirmation (Blocking Point)
+### 1. Ask the user to confirm archive and delivery
 
-Use entry configuration.isolation and delivery. If authorization is absent or the delivery target changed, **pause under decision-point.md and confirm archive and delivery method**. With existing authorization, let Runtime inspect actual Git and delivery state before continuing from nextAction. Never infer archive, push, or PR authorization from branch_status: handled, or run archive-confirm/archive before authorization.
+Read configuration.isolation and delivery from entry. If valid authorization is absent or the delivery target changed, **pause under decision-point.md and ask the user to confirm archive and delivery**. If authorization exists, let Runtime verify actual Git state and delivery progress, then follow nextAction. Do not infer archive, push, or PR authorization solely from branch_status: handled. Do not run archive-confirm or archive before authorization.
 
-Before confirmation, show a short summary:
+Before asking, show a short summary:
 
-- Change name
-- Verification report path and result
-- Current branch/workspace and attribution of uncommitted changes
-- Irreversible archive actions: merge main specs using OpenSpec delta semantics, annotate design doc/plan, and move the change to archive
-- Commit handling: local only, push the bound branch, or push and create a PR
+- Change name.
+- Verification report path and conclusion.
+- Current branch/workspace and which work owns each uncommitted change.
+- The irreversible archive actions: merge delta changes into main spec, annotate the Design Doc/plan, and move the change to the archive directory.
+- How the archive commit will be handled: keep it local, push the bound branch, or push and create a PR.
 
-Use a single-select question containing every option below. Text fallback must use this table; structured questions use Method as the short label and Actual Impact as the description, without ambiguous abbreviations.
+Present a single-choice question containing every option below. Use this table in text fallback mode. With structured questions, use “Method” as the short label and “Effect” as its description; do not shorten options until their meaning is unclear.
 
-| Option | Method                                       | Actual Impact                                                                                                                                                                                                           |
-| ------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A      | Archive only (no push)                       | Archive and create the only archive commit; keep it on the bound branch locally, without pushing or creating a PR                                                                                                       |
-| B      | "Confirm archive and push now"               | Archive, create the only archive commit, then push the bound branch without creating a PR                                                                                                                               |
-| C      | "Confirm archive, push now, and create a PR" | Archive, create the only archive commit, push the bound branch, then create a PR                                                                                                                                        |
-| D      | "Adjust or re-verify"                        | Do not archive; run `comet state transition <change-name> archive-reopen` to return to `phase: verify`, then invoke `/comet-verify`; if repair is required, follow verification failure handling back to `/comet-build` |
-| E      | "Do not archive yet"                         | Do not run `archive-confirm` or the archive command, commit, or push; keep the active change, `phase: archive`, and `branch_status: pending` until a later `/comet-archive` invocation                                  |
+| Option | Method                                 | Effect                                                                                                                                                                                                                     |
+| ------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A      | Archive locally; do not push           | Archive and create the single archive commit. Keep it on the currently bound branch; do not push or create a PR.                                                                                                           |
+| B      | Confirm archive and push now           | Archive, create the single archive commit, and push the currently bound branch. Do not create a PR.                                                                                                                        |
+| C      | Confirm archive, push, and create a PR | Archive, create the single archive commit, push the bound branch, and create a PR.                                                                                                                                         |
+| D      | Adjust or verify again                 | Do not archive. Run `comet state transition <change-name> archive-reopen` to return to `phase: verify`, then invoke `/comet-verify`. If repairs are needed, return to `/comet-build` under the verification-failure rules. |
+| E      | Do not archive yet                     | Do not run archive-confirm or archive, commit, or push. Keep the unarchived change, `phase: archive`, and `branch_status: pending` for a later `/comet-archive` invocation.                                                |
 
-Only after the user selects A, B, or C, save the selection as JSON through Runtime, then confirm archive:
+Only after the user chooses A, B, or C, save the choice as JSON through Runtime, then confirm archive:
 
 ```bash
 comet state delivery <change-name> --file <json-path>
 comet state transition <change-name> archive-confirm
 ```
 
-JSON fields are action (A=local, B=push, C=pr), targetBranch, optional remote, commit, and prUrl. Initially provide only confirmed action and target. Do not fabricate unknown commit/prUrl; add them after actual completion. targetBranch is the bound branch receiving the archive commit, not the PR base. Use an explicitly configured PR base and clarify ambiguity. With multiple remotes, establish the destination instead of guessing. Example after the user confirms push:
+JSON contains action (A=local, B=push, C=pr), targetBranch, and optional remote, commit, and prUrl. Initially record only confirmed actions and targets. Do not fabricate unknown commit/prUrl values; add them after the operations actually complete.
+
+targetBranch is the bound branch receiving the archive commit, not the PR base branch. Use an explicit existing PR-base configuration; clarify ambiguity first. With multiple remotes, establish the destination rather than guessing. For example, after the user confirms push:
 
 ```json
 {
@@ -71,24 +73,22 @@ JSON fields are action (A=local, B=push, C=pr), targetBranch, optional remote, c
 }
 ```
 
-Save JSON with file tools and pass it to delivery --file. After confirming the archive commit, append `"commit": "<actual-archive-commit-sha>"` to the same complete record. For action pr, add the real prUrl after creation. Local needs only action:local and the confirmed targetBranch, not remote.
+Save JSON using file tools and pass it to delivery --file. Once the archive commit is confirmed, add `"commit": "<actual-archive-commit-sha>"` to the same complete record. For action pr, add the actual prUrl after PR creation. Local needs only action:local and the confirmed targetBranch; remote is not required.
 
-Ordinary `comet state delivery <change-name>` reads records only; entry summaries do not access the network. Before recovering remote delivery, resolving an uncertain response, or declaring completion, explicitly run:
+Plain `comet state delivery <change-name>` reads saved records only, and the entry summary does not access the network. Explicitly run the following when resuming remote delivery, resolving an uncertain call result, or preparing to announce completion:
 
 ```bash
 comet state delivery <change-name> --verify
 ```
 
-Reads return `{delivery, verification}`. delivery is the persisted selection/progress; verification is Runtime's read-only inspection of actual Git/remote/PR state. A delivery record or successful ordinary entry does not prove remote completion. Distinguish:
+The result is `{delivery, verification}`. delivery contains saved choices and progress; verification contains Runtime's read-only checks of actual Git, remote branches, and PRs. A delivery record or successful ordinary entry check alone does not prove remote delivery. Handle the result as follows:
 
-- Confirmed not-yet-delivered (for example, before the first push, or pushed but no PR yet): with valid authorization and target, execute the missing action, then --verify again. Do not stop solely because of notVerified/needsVerification.
-- unavailable (network, permission, or service failure prevents determining the real result), conflicting targets, or uncertain results: preserve records and stop. Restore read-only verification before retrying; do not blindly push or create duplicate PRs.
+- Confirmed not-yet-delivered, such as no first push or a completed push with no PR: if authorization and target remain valid, perform the missing action and check again with --verify. Do not stop solely because of notVerified/needsVerification.
+- unavailable, meaning network, permission, or service failures prevent determining the result, or a target conflict/uncertain outcome: keep the record and stop. Restore read-only verification first; do not blindly retry push or create duplicate PRs.
 
-Stop if delivery writes or transition fail; both must succeed before Step 2. For D, run archive-reopen; old delivery authorization must expire and require confirmation after re-verification. For E, stop without archive, commit, push, or setting handled.
+Stop if either the delivery write or transition fails. Proceed to Step 2 only after both succeed. For D, run archive-reopen; the old delivery authorization must be invalidated, and obtain new confirmation after verification. For E, stop without archiving, committing, pushing, or setting handled.
 
-### 2. Execute Archive
-
-Run:
+### 2. Run archive
 
 ```bash
 comet archive "<change-name>"
@@ -96,82 +96,90 @@ comet archive "<change-name>"
 
 The script automatically:
 
-1. Checks entry: phase=archive, verify_result=pass, archive_confirmation=confirmed, archived=false
-2. Annotates Design Doc frontmatter (archived-with, status)
-3. Annotates plan frontmatter (archived-with)
-4. Invokes OpenSpec archive to merge main specs using delta semantics and move the change
-5. Checks that main specs contain no delta-only section headings
-6. Updates archived state in the actual OpenSpec archive directory and coordinates pending recovery metadata
+1. Validates entry state: phase=archive, verify_result=pass, archive_confirmation=confirmed, archived=false.
+2. Updates Design Doc metadata before archive: archived-with, status.
+3. Updates Plan metadata before archive: archived-with.
+4. Calls OpenSpec archive to merge deltas into main spec and move the change to archive.
+5. Checks that main spec has no delta-only section headings.
+6. Updates archived state in the actual OpenSpec archive directory and reconciles pending recovery metadata so interrupted work can resume.
 
-Report nonzero exit and stop. Zero exit means archive completed. The `X/Y steps succeeded` summary counts actual steps without double-counting delta synchronization or document annotation. Main specs merge according to `ADDED/MODIFIED/REMOVED/RENAMED` semantics and are checked for residual delta-only headings. Use --dry-run to preview without executing.
+Report and stop on a nonzero exit code. A zero exit code means archive completed.
 
-### 3. Lifecycle Closure
+The script's `X/Y steps succeeded` counts actual steps, not duplicate counts for delta syncing or document annotations.
 
-The spec lifecycle completes here:
+It applies OpenSpec `ADDED/MODIFIED/REMOVED/RENAMED` delta semantics and verifies that main spec has no remaining delta-only section headings afterwards.
+
+Use `--dry-run` to preview without executing.
+
+### 3. Complete the spec workflow
+
+The full path from requirements discussion to archive is now complete:
 
 ```text
-brainstorming -> delta spec -> implementation -> verification -> main spec merge -> design doc annotation -> archive
+brainstorming → delta spec → implementation → verification → main spec merge → design doc annotation → archive
 ```
 
-### 4. Precisely Commit Archive Changes
+### 4. Commit only the archive changes
 
-Archive moves files and merges specs; it does not commit automatically. Expected uncommitted changes:
+Archive moves files and merges specs; it does not commit. Afterwards, expect these uncommitted changes:
 
-- Move from `<classic-change-dir>/` to `<classic-archive-root>/YYYY-MM-DD-<name>/`
-- Main spec content merged under delta semantics
-- Design doc/plan archive metadata
+- The change moves from `<classic-change-dir>/` to `<classic-archive-root>/YYYY-MM-DD-<name>/`.
+- Main spec contains the merged delta changes.
+- The Design Doc/plan contains archive metadata.
 
-Confirm actual delivery authorization remains valid, then write compatibility state and run the final archive guard:
+Confirm that delivery still records valid authorization, then write the compatibility field and run the final archive guard:
 
 ```bash
 comet state set <change-name> branch_status handled
 comet guard <change-name> archive
 ```
 
-handled is compatibility state, not evidence of local/push/pr authorization or success. Use delivery records and Runtime inspection of actual Git/remote state. Stop on state-write or guard failure. During recovery, first inspect whether the archive commit already exists; reuse it instead of creating a second archive commit.
+handled is only a legacy compatibility field. It neither authorizes local/push/pr nor proves those actions succeeded. Use delivery records and Runtime checks of actual Git/remotes for authorization and completion. Stop on state-write or guard failure. On recovery, check whether the archive commit already exists and reuse it rather than making a second one.
 
-Read `git status --short` after archive, using pre-archive dirty-worktree attribution as baseline. Stage only paths attributable to this change: original active path, actual archive path returned by the script, archived .comet.yaml with branch_status: handled, main specs changed by this delta, and current Design Doc/Plan archive metadata. Stop for user handling if paths cannot be attributed.
+Read `git status --short` after archive and reconcile it against the ownership records collected under dirty-worktree before archive. Stage only paths clearly belonging to this change: the original change path, actual archive path reported by the script, archived `.comet.yaml` containing `branch_status: handled`, main specs changed by this delta, and archive metadata in the current Design Doc/Plan. If ownership of any changed path is unclear, stop and ask the user to handle it.
 
-Stage explicit inspected pathspecs, then review staged diff. Do not stage the entire repository or include unrelated user changes:
+Use explicit pathspecs for the inspected paths, then inspect the staged diff. Do not stage the whole repository or include pre-existing user edits:
 
 ```bash
-git add -- <individually-inspected-archive-paths...>
+git add -- <individually-verified-archive-paths...>
 git diff --cached --stat
 git commit -m "chore: archive <change-name>"
 ```
 
-Stop on commit failure or unrelated staged paths; do not proceed to branch delivery.
+Stop if commit fails or the staged diff contains unrelated paths. Do not continue branch handling.
 
-### 5. Deliver the Archive Commit and Complete
+### 5. Deliver the archive commit and finish
 
-After committing, record the actual commit through state delivery --file and have Runtime inspect the archive commit and target. Execute only authorized, incomplete actions. If recording fails, stop delivery without recommitting; inspect existing Git facts before repairing the record on recovery. Do not repeatedly create archive commits to record the commit itself; Runtime owns delivery receipt storage.
+After commit succeeds, record its actual commit through `state delivery --file`, then let Runtime verify the archive commit and target. Perform only authorized, unfinished actions. Stop delivery if recording fails; do not commit again. On recovery, inspect existing Git commits and branch state before completing the record. Runtime stores delivery receipts; do not create more archive commits merely to record a commit hash.
 
-- A, archive only: no remote actions; retain the archive commit on the bound branch locally.
+- A, archive locally: perform no remote operation; keep the archive commit on the bound branch.
 - B, archive and push now: push the bound branch once.
-- C, archive, push, and create PR: push the bound branch once, then create a PR through the configured GitHub integration. Step 1 explicitly authorizes PR creation; do not replace it with another branch disposition.
+- C, archive, push, and create a PR: push the bound branch once, then create a PR through the configured GitHub integration. The explicit Step 1 choice authorizes PR creation; do not replace it with another branch-handling method.
 
-After push or PR calls, use delivery --verify to inspect actual remote branch and PR state. After successful PR creation, record actual prUrl through delivery --file while preserving action, target, and commit. After timeout or an uncertain response, inspect actual results before retrying. Preserve delivery and current selection on failure; continue only missing authorized actions. Do not rewrite, delete, or switch branches.
+After a push or PR call, use delivery --verify to check the actual remote branch and PR. After successful PR creation, record the actual prUrl through delivery --file while preserving action, target, and commit. On timeout or an uncertain response, inspect the actual result before retrying. Keep delivery and current selection on failure, and resume only missing authorized actions. Do not rewrite, delete, or switch branches.
 
-Runtime must verify the archive commit exists for local, that the remote contains it for push, and that the matching PR exists with the correct target for pr. Filling commit/prUrl is not delivery success. Run clear-selection and declare completion only after Runtime verifies every selected action.
+Local requires Runtime to confirm that the archive commit exists. Push additionally requires the remote to contain that commit. PR additionally requires the matching PR and target. Merely filling commit/prUrl does not prove delivery. Run clear-selection and announce completion only after Runtime verifies every selected action.
 
-Archive no longer invokes Superpowers `finishing-a-development-branch` or offers local merge, switch, delete, or rebase operations. Select A for local-only archive, or E to defer archiving.
+Do not invoke Superpowers `finishing-a-development-branch` in Archive. Do not offer local merges, branch switches/deletion, rebases, or other branch-topology changes. Choose A for local archive completion or E to defer archive.
 
-## Exit Conditions
+## Exit conditions
 
-- Archive script succeeded with exit code 0
-- `<classic-archive-root>/YYYY-MM-DD-<change-name>/` exists
-- Archived .comet.yaml contains `archived: true`
-- `branch_status: handled` is included in the only archive commit
-- `comet guard <change-name> archive` passes
-- The only archive commit was handled as confirmed before archive: A local-only, B pushed, C pushed with PR created
-- Current selection was cleared after the selected handling completed
+- The archive script succeeded with exit code 0.
+- `<classic-archive-root>/YYYY-MM-DD-<change-name>/` exists.
+- Archived `.comet.yaml` records `archived: true`.
+- The single archive commit includes `branch_status: handled` in archived state.
+- `comet guard <change-name> archive` passes.
+- The archive commit was handled as confirmed: A stays local, B was pushed successfully, or C was pushed and has a PR.
+- Current selection was cleared after the selected handling completed.
 
-The script moves `<classic-change-dir>/` to `<classic-archive-root>/YYYY-MM-DD-<name>/`. `comet guard <change-name> archive` resolves the actual archive directory from the original change name; do not construct dated directory names manually.
+The script moves `<classic-change-dir>/` to `<classic-archive-root>/YYYY-MM-DD-<name>/`.
+
+`comet guard <change-name> archive` resolves the actual archive directory from the original change name. Do not construct a dated directory manually.
 
 ## Completion
 
-The Comet Classic workflow is complete. Start another Classic task with `/comet-classic` or `/comet-open`.
+The Comet Classic workflow is complete. Start new Classic work with `/comet-classic` or `/comet-open`.
 
-## Context Compaction Recovery
+## Recover after context compaction
 
-Follow context-recovery.md with phase archive. Read persisted delivery without relying on the conversation remembering A/B/C. Runtime inspects archive, commit, remote, and PR facts, then continues only missing actions; local performs no remote actions. For old changes with only handled, absent authorization, changed targets, or conflicting branch topology, stop for explicit confirmation. Do not infer authorization or automatically repair topology.
+Follow context-recovery.md with phase archive. Read saved delivery records rather than recalling A/B/C from conversation. After Runtime checks the archive directory, commits, remote, and PR, continue only missing actions; local performs no remote operations. Stop for explicit confirmation if an older change has only handled, authorization is missing, the target changed, or branch relationships differ from the record. Do not infer authorization or repair branch relationships automatically.

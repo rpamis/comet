@@ -1,23 +1,23 @@
-# Classic workspace selection reference
+# Classic Workspace Selection
 
-Read this file only when creating a change. For an existing change, use its persisted workspace binding and route to the returned `projectRoot`.
+Read this reference only when creating a change. Existing changes use their saved workspace binding and enter the returned `projectRoot`.
 
-When the user explicitly says parallel, simultaneous, or multiple sessions, select `worktree` directly without asking for a three-way choice. When no isolation mode is specified and parallel intent is not explicit, ask the user only if any of these conditions is true:
+For explicit parallel, simultaneous, or multi-session work, select `worktree` directly without asking the three-way question again. When isolation is unspecified and parallel intent is not explicit, ask only if one of these applies:
 
 - The current directory has uncommitted work.
 - Another active Classic change already exists.
-- The user requested parallel or isolated work without choosing how.
+- The user requests parallel development or isolated work without specifying how.
 
-If none applies, use the Runtime default, `current`.
+Otherwise, use Runtime's default `current`.
 
-When asking, present isolation mode as one single-choice decision:
+When needed, ask for one workspace isolation choice:
 
-| Option | Mode | Actual impact |
-| --- | --- | --- |
-| A | Current directory (`current`) | Keep the current branch and directory; create no Git branch or working directory |
-| B | New branch (`branch`) | Switch the current directory to a new change branch; requires a clean worktree |
-| C | New worktree (`worktree`) | Create or reuse a separate branch and working directory; suitable for parallel changes or uncommitted work in the current directory |
+| Option | Method                        | Effect                                                                                                                               |
+| ------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| A      | Current directory (`current`) | Reuse the current branch and directory without creating a Git branch or working directory.                                           |
+| B      | New branch (`branch`)         | Switch the current directory to a new change branch; requires a clean workspace.                                                     |
+| C      | New worktree (`worktree`)     | Create or reuse a separate branch and working directory, suitable for parallel changes or uncommitted work in the current directory. |
 
-Show every valid option consistent with the current state and user request. Do not filter out an option merely because a later command might fail. Recommend A when the user explicitly wants to stay on the current branch; recommend B when an independent branch is needed without parallel work; recommend C for parallel work, uncommitted work in the current directory, or another active Classic change.
+Present all valid choices for the current state and request. Do not rule out choices by predicting later command failures. Recommend A when the user explicitly wants the current branch, B when a separate branch is needed without parallel work, and C for parallel development, existing local changes, or another active Classic change.
 
-A recommendation is explanatory only. Wait for the user's choice before creating anything. The Runtime reuses a registered Worktree for an existing change branch; if the branch still exists but its registered Worktree was removed, it recreates it. Ask for rebind only when the branch was renamed, taken over, or ownership is ambiguous. Follow the [clarification reference](decision-point.md) for the question: prefer a structured single-choice tool, or use numbered text and pause when the tool is unavailable. If only one valid option exists, explain why and adopt it directly.
+A recommendation is explanatory only: wait for the user's choice before creating the workspace. Runtime reuses a registered Worktree for an existing change's branch; if the branch remains but its registered Worktree was removed, Runtime recreates it. Request rebind through recovery only when the branch was renamed, taken over, or ownership cannot be established. Follow the [decision reference](decision-point.md): prefer a structured single-select tool; if unavailable, use numbered text options and wait. When only one valid option exists, explain why and apply it directly.

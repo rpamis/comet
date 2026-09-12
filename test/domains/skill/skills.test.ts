@@ -68,10 +68,14 @@ async function readLinkedSkillSection(
   entry: string,
   target: string,
   skill = 'comet-native',
+  languageRoot = 'skills-zh',
 ): Promise<string> {
   expect(entry).toContain(`](${target})`);
   const [relative, anchor] = target.split('#');
-  const source = await fs.readFile(path.join(getAssetsDir(), 'skills-zh', skill, relative), 'utf8');
+  const source = await fs.readFile(
+    path.join(getAssetsDir(), languageRoot, skill, relative),
+    'utf8',
+  );
   const lines = source.split(/\r?\n/u);
   let fenced = false;
   let start = -1;
@@ -156,10 +160,11 @@ describe('skills', () => {
       expect(zhContent).toContain(
         '当用户明确调用 /comet，或明确要求使用 Comet 但未指定 Native/Classic 时使用',
       );
-      expect(zhContent).toContain('一旦加载本 Skill，就视为已经选定 `/comet` 入口');
-      expect(zhContent).toContain('不得重新判断任务是否适合 Comet');
-      expect(zhContent).toContain('必须立即执行下方入口解析');
-      expect(zhContent).toContain('只按返回的 `skill` 选择下列一个入口');
+      expect(zhContent).toContain('此时用户已选择使用 Comet');
+      expect(zhContent).toContain('不再判断是否需要使用 Comet');
+      expect(zhContent).toContain('加载本 Skill 后，立即执行下方步骤');
+      expect(zhContent).toContain('根据返回的 `skill`，立即使用 Skill 工具加载对应入口');
+      expect(zhContent).toContain('两个入口只能加载一个');
       expect(zhContent).toContain(
         '**立即执行：** 使用 Skill 工具加载 `comet-native` 技能。禁止跳过此步骤。',
       );
@@ -167,26 +172,25 @@ describe('skills', () => {
         '**立即执行：** 使用 Skill 工具加载 `comet-classic` 技能。禁止跳过此步骤。',
       );
       expect(zhContent).toContain('不得搜索 Skill 文件、扫描平台配置目录或直接调用内部 bundle');
-      expect(zhContent).toContain('技能加载后，把用户原始请求完整交给已加载的入口 Skill');
+      expect(zhContent).toContain('加载后，把用户原始请求完整交给该 Skill 执行');
 
       expect(enContent).toContain(
         'Use when the user invokes /comet or asks to use Comet without choosing Native or Classic',
       );
+      expect(enContent).toContain('The user has already chosen Comet');
+      expect(enContent).toContain('without reconsidering whether to use it');
+      expect(enContent).toContain('Once this Skill is loaded, immediately follow the steps below');
       expect(enContent).toContain(
-        'Once this Skill is loaded, treat the `/comet` entry as selected',
+        'Immediately use the Skill tool to load the entry named by `skill`',
       );
-      expect(enContent).toContain('do not re-evaluate whether the task is suitable for Comet');
-      expect(enContent).toContain('Immediately perform the entry resolution below');
-      expect(enContent).toContain('Select exactly one entry based only on the returned `skill`');
+      expect(enContent).toContain('Load exactly one entry');
       expect(enContent).toContain(
         '**Execute immediately:** Use the Skill tool to load the `comet-native` skill. Do not skip this step.',
       );
       expect(enContent).toContain(
         '**Execute immediately:** Use the Skill tool to load the `comet-classic` skill. Do not skip this step.',
       );
-      expect(enContent).toContain(
-        "After the skill is loaded, pass the user's original request unchanged to the loaded entry Skill",
-      );
+      expect(enContent).toContain("Pass the user's original request unchanged to that Skill");
     });
 
     it('routes personal memory through every Comet entry skill', async () => {
@@ -212,10 +216,23 @@ describe('skills', () => {
         if (skill === 'comet-native') {
           zh += await readLinkedSkillSection(zh, 'reference/commands.md#记忆接入');
         }
-        const en = await fs.readFile(
-          path.join(getAssetsDir(), 'skills', skill, 'SKILL.md'),
-          'utf8',
-        );
+        let en = await fs.readFile(path.join(getAssetsDir(), 'skills', skill, 'SKILL.md'), 'utf8');
+        if (skill === 'comet-classic') {
+          en += await readLinkedSkillSection(
+            en,
+            'reference/scripts.md#task-context-and-artifact-language',
+            skill,
+            'skills',
+          );
+        }
+        if (skill === 'comet-native') {
+          en += await readLinkedSkillSection(
+            en,
+            'reference/commands.md#memory-integration',
+            skill,
+            'skills',
+          );
+        }
         expect(zh, `${name} zh`).toContain('comet memory context');
         expect(zh, `${name} zh`).not.toContain('comet rules');
         expect(en, `${name} en`).toContain('comet memory context');
@@ -260,10 +277,26 @@ describe('skills', () => {
         'comet-hotfix',
         'comet-tweak',
       ]) {
-        const content = await fs.readFile(
+        let content = await fs.readFile(
           path.join(getAssetsDir(), 'skills', skill, 'SKILL.md'),
           'utf8',
         );
+        if (skill === 'comet-classic') {
+          content += await readLinkedSkillSection(
+            content,
+            'reference/scripts.md#task-context-and-artifact-language',
+            skill,
+            'skills',
+          );
+        }
+        if (skill === 'comet-native') {
+          content += await readLinkedSkillSection(
+            content,
+            'reference/commands.md#memory-integration',
+            skill,
+            'skills',
+          );
+        }
         expect(content, `${skill} en`).toContain('Context Manifest');
         expect(content, `${skill} en`).toContain('--expand-context');
         expect(content, `${skill} en`).toContain('--application');
@@ -386,7 +419,7 @@ describe('skills', () => {
         'utf-8',
       );
       expect(zhMain).toContain('不依赖外部 Skill');
-      expect(enMain).toContain('does not depend on any external Skill');
+      expect(enMain).toContain('without an external Skill dependency');
     });
 
     it('requires Native Supervisor auto-advance to be consumed without a second user prompt', async () => {
@@ -395,16 +428,22 @@ describe('skills', () => {
         'utf-8',
       );
       const zhMain = await readLinkedSkillSection(zhEntry, 'reference/commands.md#supervisor-协作');
-      const enMain = await fs.readFile(
+      const enEntry = await fs.readFile(
         path.join(getAssetsDir(), 'skills', 'comet-native', 'SKILL.md'),
         'utf-8',
+      );
+      const enMain = await readLinkedSkillSection(
+        enEntry,
+        'reference/commands.md#supervisor-coordination',
+        'comet-native',
+        'skills',
       );
       expect(zhMain).toContain('parentAdvance');
       expect(zhMain).toContain('不要求用户再次说“推进”');
       expect(zhMain).toContain('最终 Archive、工作区收尾、merge、push 和 PR');
       expect(enMain).toContain('parentAdvance');
-      expect(enMain).toContain('without asking them to say “advance” again');
-      expect(enMain).toContain('final Archive, workspace finish, merge, push, and PR');
+      expect(enMain).toContain('Do not require another “continue.”');
+      expect(enMain).toContain('Final Archive, workspace finishing, merge, push, and PR creation');
     });
 
     it('presents Native Archive finish choices with their actual effects', async () => {
@@ -417,8 +456,17 @@ describe('skills', () => {
       const zhMain = normalizeTablePadding(
         await readLinkedSkillSection(zhEntry, 'reference/workspace.md#archive-收尾'),
       );
+      const enEntry = await fs.readFile(
+        path.join(getAssetsDir(), 'skills', 'comet-native', 'SKILL.md'),
+        'utf-8',
+      );
       const enMain = normalizeTablePadding(
-        await fs.readFile(path.join(getAssetsDir(), 'skills', 'comet-native', 'SKILL.md'), 'utf-8'),
+        await readLinkedSkillSection(
+          enEntry,
+          'reference/workspace.md#archive-completion',
+          'comet-native',
+          'skills',
+        ),
       );
       expect(zhMain).toContain('| 选项 | 方式 | 实际影响 |');
       expect(zhMain).toContain(
@@ -428,16 +476,16 @@ describe('skills', () => {
       expect(zhMain).toContain('| C | 归档并推送（`push`） |');
       expect(zhMain).toContain('| D | 归档、推送并创建 PR（`pull-request`） |');
       expect(zhMain).toContain('| E | 暂不归档 |');
-      expect(zhMain).toContain('`current` 不需要选择工作区收尾方式');
-      expect(enMain).toContain('| Option | Method | Actual effect |');
+      expect(zhMain).toContain('使用 `current` 工作区时，不需要选择收尾方式');
+      expect(enMain).toContain('| Option | Mode | Actual impact |');
       expect(enMain).toContain(
-        '| A | Archive and keep workspace (`keep`) | Complete Archive and create an archive commit on the change branch; do not merge, push, or create a PR, and keep the current branch and directory |',
+        '| A | Archive and keep workspace (`keep`) | Archive and create an archive commit on the change branch. Do not merge, push, or create a PR; retain the branch and directory. |',
       );
-      expect(enMain).toContain('| B | Merge locally (`merge`) |');
+      expect(enMain).toContain('| B | Local merge (`merge`) |');
       expect(enMain).toContain('| C | Archive and push (`push`) |');
-      expect(enMain).toContain('| D | Archive, push, and create a PR (`pull-request`) |');
-      expect(enMain).toContain('| E | Defer Archive |');
-      expect(enMain).toContain('`current` does not require a workspace finish choice');
+      expect(enMain).toContain('| D | Archive, push, and create PR (`pull-request`) |');
+      expect(enMain).toContain('| E | Do not archive yet |');
+      expect(enMain).toContain('A `current` workspace needs no finish choice');
     });
 
     it('requires clarification before Native Shape can modify implementation or enter Build', async () => {
@@ -453,13 +501,15 @@ describe('skills', () => {
         zhMain,
         'reference/clarification.md#澄清',
       );
-      const enClarification = await fs.readFile(
-        path.join(getAssetsDir(), 'skills', 'comet-native', 'reference', 'clarification.md'),
-        'utf-8',
+      const enClarification = await readLinkedSkillSection(
+        enMain,
+        'reference/clarification.md#clarification',
+        'comet-native',
+        'skills',
       );
 
       const zhSectionOffsets = [
-        zhMain.indexOf('## 硬性边界'),
+        zhMain.indexOf('## 必须遵守的规则'),
         zhMain.indexOf('## 开始或恢复'),
         zhMain.indexOf('## 按需读取'),
         zhMain.indexOf('## Shape'),
@@ -476,28 +526,28 @@ describe('skills', () => {
       expect(zhClarification).toContain('Sequential 模式一次提交一个单选或多选问题');
 
       const enSectionOffsets = [
-        enMain.indexOf('## Inviolable boundaries'),
+        enMain.indexOf('## Required rules'),
         enMain.indexOf('## Start or resume'),
-        enMain.indexOf('## Read on demand'),
+        enMain.indexOf('## Read only what the action needs'),
         enMain.indexOf('## Shape'),
       ];
       expect(enSectionOffsets.every((offset) => offset >= 0)).toBe(true);
       expect(enSectionOffsets).toEqual([...enSectionOffsets].sort((left, right) => left - right));
-      expect(enMain).toContain(
-        'After confirming the current `phase`, read the references needed for the current action',
-      );
-      expect(enMain).toContain('Shape: always read and execute the [clarification reference]');
-      expect(enMain).toContain(
-        'Keep unresolved questions `[blocking]`; do not modify implementation while a blocker remains',
-      );
-      expect(enMain).toContain(
-        'Advance with the continuation containing `--confirmed` only after explicit user confirmation',
-      );
-      expect(enClarification).toContain('You must read this file after entering Shape');
+      expect(enMain).toContain('Read the section for the current action');
+      expect(enMain).toContain('Shape: read and follow [clarification]');
       expect(enClarification).toContain(
-        'Do not modify project implementation or advance to Build until deciding whether questions are needed, checking unstated assumptions, and completing final requirements confirmation',
+        'Ambiguous, partial, or missing answers remain `[blocking]`',
       );
-      expect(enClarification).toContain('Ask exactly one currently askable node and wait');
+      expect(enClarification).toContain(
+        'Only after explicit confirmation may you execute the current `commandAlternatives` command with `--confirmed` and its state-version and expected-action guards',
+      );
+      expect(enClarification).toContain('Read this section on entering Shape');
+      expect(enClarification).toContain(
+        'Do not edit the project implementation or advance to Build until necessary questions, implicit assumptions, and final requirements confirmation are complete',
+      );
+      expect(enClarification).toContain(
+        'Sequential mode submits one single-choice or multiple-choice question at a time',
+      );
     });
   });
 
@@ -2289,7 +2339,7 @@ describe('skills', () => {
       expect(zhOpen).toContain(
         'comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json',
       );
-      expect(zhOpen).toContain('不得硬编码生成顺序');
+      expect(zhOpen).toContain('不得写死生成顺序');
       expect(zhOpen).not.toContain(
         'comet classic openspec --agent-json -- instructions proposal --change "<name>" --json',
       );
@@ -2303,13 +2353,15 @@ describe('skills', () => {
       ]) {
         expect(zhOpen).toContain(field);
       }
-      expect(zhOpen).toContain('不得复制到 artifact 内容中');
-      expect(zhOpen).toContain('每创建一个 artifact 后');
+      expect(zhOpen).toContain(
+        '遵守 `context` 和 `rules` 中的约束，**不得将这些内容复制到产物中**',
+      );
+      expect(zhOpen).toContain('每创建一个产物后');
       expect(zhOpen).toContain(
         'comet classic openspec --agent-json -- status --change "<name>" --json',
       );
       expect(zhOpen).toContain('必须立即停止并报告 OpenSpec 错误');
-      expect(zhOpen).toContain('不得回退为硬编码文档结构');
+      expect(zhOpen).toContain('不能改用写死的文档结构');
     });
 
     it('uses the OpenSpec status graph to drive English open artifacts', async () => {
@@ -2321,7 +2373,7 @@ describe('skills', () => {
       expect(enOpen).toContain(
         'comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json',
       );
-      expect(enOpen).toContain('Must not hard-code generation order');
+      expect(enOpen).toContain('Do not hard-code generation order');
       expect(enOpen).not.toContain(
         'comet classic openspec --agent-json -- instructions proposal --change "<name>" --json',
       );
@@ -2335,13 +2387,15 @@ describe('skills', () => {
       ]) {
         expect(enOpen).toContain(field);
       }
-      expect(enOpen).toContain('must not copy them into artifact content');
-      expect(enOpen).toContain('Refresh status once after creating each artifact');
+      expect(enOpen).toContain('do not copy them into the artifact');
+      expect(enOpen).toContain('After each artifact is created, refresh status once');
       expect(enOpen).toContain(
         'comet classic openspec --agent-json -- status --change "<name>" --json',
       );
-      expect(enOpen).toContain('Also stop if status/instructions fails');
-      expect(enOpen).toContain('Must not fall back to hard-coded artifact prose');
+      expect(enOpen).toContain(
+        'Also stop and report the OpenSpec error if adapter `status` / `instructions` fails',
+      );
+      expect(enOpen).toContain('Do not substitute a hard-coded document structure');
     });
 
     it('routes Chinese tweak build through OpenSpec apply without changing full workflow', async () => {
@@ -2359,7 +2413,7 @@ describe('skills', () => {
       expect(zhTweak).toContain(
         '完整 `/comet-classic` 或 `workflow: full` 不得套用 tweak 的 `openspec-apply-change` 构建路径',
       );
-      expect(zhTweak).toContain('单一 OpenSpec change');
+      expect(zhTweak).toContain('单个 OpenSpec change');
       expect(zhTweak).not.toContain('不新增 capability');
       expect(zhBuild).not.toContain('openspec-apply-change');
     });
@@ -2429,20 +2483,26 @@ describe('skills', () => {
       expect(zhComet).toContain('决策点是阻塞点');
       expect(zhComet).toContain('CometIntentFrame');
       expect(zhComet).toContain('comet classic intent route --stdin');
-      expect(zhComet).toContain('最小骨架与目标选择规则');
+      expect(zhComet).toContain('最小示例与目标选择规则');
       const frame = JSON.parse(zhIntentFrame.match(/```json\s*([\s\S]*?)```/u)![1]);
       expect(frame.schema_version).toBe('comet.intent.v1');
       expect(frame).toHaveProperty('slots');
       expect(frame).toHaveProperty('context.active_change_names');
       expect(frame.evidence).toEqual([]);
       expect(frame.proposed_route).toEqual({ name: 'ask_user', confidence: 0.5 });
-      for (const key of ['entities', 'target_area', 'scope', 'dirty_worktree', 'next_skill']) {
+      for (const key of [
+        'entities',
+        'slots.target_area',
+        'slots.scope',
+        'context.dirty_worktree',
+      ]) {
         expect(frame).not.toHaveProperty(key);
       }
       expect(zhComet).not.toContain('字段命名采用常见 NLU / Agent Router 术语');
       expect(zhComet).not.toContain('填槽指南');
       expect(zhComet).toContain('`ask_user`');
-      expect(zhComet).toContain('`CometIntentFrame + runtime scorer` 是事实源');
+      expect(zhComet).toContain('Agent 只负责按证据填写意图字段，路由由 Runtime 计算');
+      expect(zhComet).toContain('以返回结果为准，不另写一套自然语言评分规则');
       expect(zhComet).toContain('`comet-classic/reference/intent-frame.md`');
       expect(zhIntentFrame).toContain('`requested_action`');
       expect(zhIntentFrame).toContain('`workflow_candidate`');
@@ -2453,10 +2513,14 @@ describe('skills', () => {
       expect(zhIntentFrame).toContain('`schema_change`');
       expect(zhIntentFrame).toContain('`cross_module_change`');
       expect(zhIntentFrame).toContain('`proposed_route`');
-      expect(zhHotfix).toContain('入口传入 intent frame');
-      expect(zhHotfix).toContain('复核 `risk_signal` 和升级信号');
-      expect(zhTweak).toContain('入口传入 intent frame');
-      expect(zhTweak).toContain('复核 `risk_signal` 和升级信号');
+      expect(zhHotfix).toContain('入口已传入需求意图摘要（intent frame）');
+      expect(zhHotfix).toContain(
+        '复核 `risk_signal`，以及是否新增功能、引入公共 API、修改结构化数据格式（schema）、需要跨模块协调或涉及深层架构问题',
+      );
+      expect(zhTweak).toContain('入口已传入需求意图摘要（intent frame）');
+      expect(zhTweak).toContain(
+        '复核 `risk_signal`，以及是否新增功能、引入公共 API、修改结构化数据格式（schema）、需要跨模块协调或涉及深层架构问题',
+      );
       expect(zhScripts).toContain('comet classic intent route --stdin');
       expect(zhScripts).not.toContain('<comet-intent-script>');
       expect(zhComet).toContain('`comet-classic/reference/decision-point.md`');
@@ -2465,14 +2529,14 @@ describe('skills', () => {
       expect(zhDecisionPoint).toContain('本会话后续决策点不得反复重试它');
       expect(zhDecisionPoint).toContain('否则在对话中提出明确选项并等待用户回复');
       expect(zhDecisionPoint).toContain('不得用推荐规则、默认值、历史偏好');
-      expect(zhOpen).toContain('### 1b. 需求与 Change 名称解析（默认不阻塞）');
+      expect(zhOpen).toContain('### 1b. 整理需求并确定 Change 名称');
       expect(zhOpen).toContain('范围与命名都明确时直接继续');
       expect(zhOpen).toContain('`comet-classic/reference/decision-point.md`');
       expect(zhOpen).toContain(
         '完整 `/comet-classic` 流程默认不得使用 Skill 工具加载 `openspec-propose` 技能',
       );
       expect(zhOpen).toContain(
-        '当 Step 1b 已形成范围明确的 resolved brief 时，覆盖其"STOP and wait for user direction"行为',
+        'Step 1b 已形成范围明确的 resolved brief 时，不再执行其中的 "STOP and wait for user direction"',
       );
       expect(zhOpen).not.toContain('OpenSpec artifact 指令');
       expect(zhOpen).not.toContain('fast-forward');
@@ -2487,24 +2551,24 @@ describe('skills', () => {
       expect(zhDesign).toContain(
         '必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户明确确认设计方案',
       );
-      expect(zhDesign).toContain('brainstorming 只深入尚未解决的技术选择');
+      expect(zhDesign).toContain('brainstorming 引用这些需求，只讨论尚未解决的技术选择');
       expect(zhDesign).not.toContain('跳过重复上下文探索，直接进入设计提问');
       expect(zhOpen).toContain('comet-classic/reference/workspace.md');
-      expect(zhOpen).toContain('推荐只作说明');
-      expect(zhBuild).toContain('工作区必须已在 Open 准备并绑定');
-      expect(zhBuild).toContain('提供一次联合决策');
+      expect(zhOpen).toContain('推荐理由不能代替用户选择');
+      expect(zhBuild).toContain('工作区必须已在 Open 阶段准备并绑定');
+      expect(zhBuild).toContain('在同一轮提问中收集执行方式、TDD 和审查模式');
       expect(zhBuild).toContain('`comet-classic/reference/decision-point.md`');
-      expect(zhVerify).toContain('前 3 次可修复失败自动回到 build');
+      expect(zhVerify).toContain('前 3 次可修复的失败自动回到 build');
       expect(zhVerify).toContain(
         '只有接受 WARNING/SUGGESTION 偏差或第 4 次失败后的策略选择才是用户决策点',
       );
-      expect(zhVerify).toContain('不要在 verify 阶段处理、合并或丢弃分支');
-      expect(zhVerify).toContain('不要写入 `branch_status: handled`');
+      expect(zhVerify).toContain('verify 阶段不处理、合并或丢弃分支');
+      expect(zhVerify).toContain('不写入 `branch_status: handled`');
       expect(zhArchive).toContain('### 5. 交付归档提交并完成');
       expect(zhArchive).toContain('comet state set <change-name> branch_status handled');
-      expect(zhArchive).toContain('### 1. 归档与交付前最终确认（阻塞点）');
-      expect(zhArchive).toContain('不得在授权前运行 archive-confirm 或 archive');
-      expect(zhArchive).toContain('按 decision-point.md 暂停并确认归档和交付方式');
+      expect(zhArchive).toContain('### 1. 请用户确认归档与交付方式');
+      expect(zhArchive).toContain('不能在获得授权前运行 archive-confirm 或 archive');
+      expect(zhArchive).toContain('按 decision-point.md 暂停，请用户确认归档和交付方式');
       expect(zhArchive).toMatch(/\|\s*选项\s*\|\s*方式\s*\|\s*实际影响\s*\|/u);
       expect(zhArchive).toMatch(
         /\|\s*A\s*\|\s*仅归档（不推送）\s*\|\s*完成归档并创建唯一归档提交；提交只保留在当前绑定分支，不推送、不创建 PR\s*\|/u,
@@ -2514,18 +2578,20 @@ describe('skills', () => {
       expect(zhArchive).toContain('「需要调整或重新验证」');
       expect(zhArchive).toContain('「暂不归档」');
       expect(zhArchive).toContain('`comet state transition <change-name> archive-reopen`');
-      expect(zhArchive).toContain('handled 仅为兼容状态，不承载 local/push/pr 的授权或成功证据');
+      expect(zhArchive).toContain(
+        'handled 只是兼容旧流程的状态字段，不能表示用户已授权 local/push/pr，也不能证明这些动作已成功',
+      );
       expect(zhArchive).toContain('归档阶段不再调用 Superpowers `finishing-a-development-branch`');
       expect(zhArchive).not.toContain('使用 Skill 工具加载 Superpowers');
       expect(zhArchive).toContain('调用 `/comet-classic` 或 `/comet-open`');
       expect(zhArchive).not.toContain('调用 `/comet` 或 `/comet-open`');
-      expect(zhVerify).toContain('验证通过本身不代表归档授权');
+      expect(zhVerify).toContain('验证通过本身不代表用户已授权归档');
       expect(zhHotfix).toContain(
-        '命中质变信号或文件数 tripwire 时，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户明确选择**',
+        '出现上述变化，或改动文件数超过提示阈值时，**必须按 `comet-classic/reference/decision-point.md` 暂停并等待用户明确选择**',
       );
       expect(zhHotfix).toContain('不得直接进入 `/comet-design`');
       expect(zhTweak).toContain(
-        '命中质变信号或文件数 tripwire 时，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户明确选择**',
+        '出现上述变化，或改动文件数超过提示阈值时，**必须按 `comet-classic/reference/decision-point.md` 暂停并等待用户明确选择**',
       );
       expect(zhTweak).toContain('不得直接进入 `/comet-design`');
       expect(zhComet).toContain('comet-classic/reference/context-recovery.md');
@@ -2540,17 +2606,19 @@ describe('skills', () => {
       expect(zhTweak).toContain('带 delta spec 的验证分流');
 
       // HIGH: hotfix/tweak IMPORTANT blocks must acknowledge verify decision points
-      expect(zhHotfix).toContain('验证阶段（comet-verify）接受 WARNING/SUGGESTION 偏差');
-      expect(zhTweak).toContain('验证阶段（comet-verify）接受 WARNING/SUGGESTION 偏差');
+      expect(zhHotfix).toContain('验证阶段（comet-verify）需要接受 WARNING/SUGGESTION 偏差');
+      expect(zhTweak).toContain('验证阶段（comet-verify）需要接受 WARNING/SUGGESTION 偏差');
       expect(zhHotfix).toContain('归档前在一个最终确认中选择是否归档及归档提交的交付方式');
       expect(zhTweak).toContain('归档前在一个最终确认中选择是否归档及归档提交的交付方式');
 
       // MEDIUM: comet-design brainstorming does not write Design Doc before confirmation
-      expect(zhDesign).toContain('brainstorming 阶段不把候选写为正式 Design Doc');
-      expect(zhDesign).toContain('`design_doc` 是正式技术设计的唯一入口');
+      expect(zhDesign).toContain(
+        'brainstorming 阶段先提出候选方案，供用户在 Step 1c 确认，不直接写成正式 Design Doc',
+      );
+      expect(zhDesign).toContain('正式技术设计以 `design_doc` 指向的文件为准');
       expect(zhDesign).toContain('优先使用 `<classic-change-dir>/design.md`');
       expect(zhDesign).toContain('不能只检查 Spec Patch');
-      expect(zhDesign).toContain('增量更新 `brainstorm-summary.md`');
+      expect(zhDesign).toContain('持续更新 `brainstorm-summary.md`');
       expect(zhDesign).toContain('### 3a. 可选主动式上下文压缩');
 
       // MEDIUM: comet-verify Spec drift requires user choice
@@ -2565,15 +2633,15 @@ describe('skills', () => {
       for (const source of [zhComet, zhRecovery, zhBuild]) {
         expect(source).not.toContain('重新发起同一个联合决策；只有用户给出完整配置后才清除暂停');
       }
-      expect(zhBuild).toContain('提供一次联合决策');
-      expect(zhBuild).toContain('计划完成后默认按已确认策略继续，不再追加配置确认点');
+      expect(zhBuild).toContain('在同一轮提问中收集执行方式、TDD 和审查模式');
+      expect(zhBuild).toContain('计划完成后，默认按已确认的策略继续，不再追加配置确认');
       expect(zhBuild).toContain('executing-plans：使用 Skill 工具加载');
       expect(zhBuild).toContain('review_mode');
       expect(zhBuild).toContain('保留 isolation、bound_branch 和已有暂停状态');
       expect(zhBuild).toContain('Build 只做任务或分段审查，Verify 负责唯一最终集成审查');
       expect(zhBuild).toContain('不新建 Worktree、重新选择隔离、追加最终审查');
       expect(zhBuild).toContain('验收任务后进入 Verify');
-      expect(zhBuild).toContain('CRITICAL/IMPORTANT 发现必须解决');
+      expect(zhBuild).toContain('必须解决 CRITICAL/IMPORTANT 问题');
       expect(zhBuild).toContain(
         'comet check run <change-name> build --local -- <program> [args...]',
       );
@@ -2581,23 +2649,25 @@ describe('skills', () => {
         'comet check run <change-name> verify --local -- <program> [args...]',
       );
       expect(zhBuild).toContain('Comet **绝不会执行该文本**，也不能据此自动推进');
-      expect(zhVerify).toContain('手工 `record-check` 仅是声明，不能自动放行');
+      expect(zhVerify).toContain('手工 `record-check` 只保存声明，不能据此自动推进阶段');
       expect(zhBuild).toContain('构建通过不替代测试和验收场景');
-      expect(zhVerify).toContain('verify 与 build 证据彼此独立，不能互相替代');
+      expect(zhVerify).toContain('verify 与 build 的检查结果彼此独立，不能互相替代');
       expect(zhBuild).toContain(
         '`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据',
       );
-      expect(zhVerify).toContain('`COMET_SKIP_BUILD=1` 不是可审计证据');
+      expect(zhVerify).toContain('`COMET_SKIP_BUILD=1` 不能作为可核实的检查记录');
 
       // MEDIUM: comet-verify Step 1b auto-repairs CRITICAL/IMPORTANT findings
       // without turning mandatory work into a user decision.
-      expect(zhVerify).toContain('不得创建“是否修复”的伪决策');
+      expect(zhVerify).toContain('不额外询问“是否修复”');
       expect(zhVerify).toContain('CRITICAL/IMPORTANT 始终不可豁免');
       expect(zhVerify).toContain('Verify 负责整个 change 的唯一最终集成代码审查');
       expect(zhVerify).toContain('`review_mode: off`：跳过自动代码审查');
-      expect(zhVerify).toContain('`review_mode: standard|thorough`：派发独立 reviewer');
+      expect(zhVerify).toContain(
+        '`review_mode: standard|thorough`：安排独立审查者（reviewer）审查整个 change',
+      );
       expect(zhVerify).toContain('无 CRITICAL 或 IMPORTANT 问题');
-      expect(zhVerify).toContain('不影响正确性、安全、边界条件的 code pattern consistency 建议');
+      expect(zhVerify).toContain('不影响正确性、安全或边界条件的代码写法一致性建议');
       expect(zhVerify).toContain('它不替代 spec 覆盖率、Design Doc 一致性或漂移检查');
       expect(zhHotfix).toContain('默认 `review_mode: off`');
 
@@ -2611,7 +2681,7 @@ describe('skills', () => {
 
       // Task granularity alone cannot create an authorization boundary.
       expect(zhBuild).toContain('任务数量或增长比例本身不触发暂停');
-      expect(zhBuild).toContain('只有真实范围扩张、需要重新设计或出现可独立交付的新能力时');
+      expect(zhBuild).toContain('只有实际扩大范围、需要重新设计或出现可独立交付的新功能时');
       expect(zhBuild).not.toContain('50% 阈值判定');
 
       // LOW: comet-verify Step 2b disambiguates design.md vs Design Doc
@@ -2619,7 +2689,9 @@ describe('skills', () => {
       expect(zhTweak).not.toContain('停止 tweak，升级为完整 `/comet`');
 
       // IMPORTANT: main /comet preset detection must match the current tweak positioning.
-      expect(zhIntentFrame).toContain('用户明确描述为可收敛为单一 OpenSpec change 的轻量/中等变更');
+      expect(zhIntentFrame).toContain(
+        '用户明确说明这是一个可以在单一 OpenSpec change 内完成的轻量或中等变更',
+      );
       expect(zhIntentFrame).toContain('通过 OpenSpec apply 执行');
       expect(zhComet).not.toContain('用户明确描述为文案/配置/文档/prompt 小调整');
 
@@ -2628,7 +2700,7 @@ describe('skills', () => {
       expect(zhBuild).not.toContain('`/opsx:new` 创建独立 change');
 
       // CRITICAL: open phase PRD split must happen before OpenSpec artifacts are created
-      expect(zhOpen).toContain('### 1a. PRD 拆分预检（阻塞点）');
+      expect(zhOpen).toContain('### 1a. 创建前确认是否拆分 PRD');
       expect(zhOpen).toContain('创建多个 OpenSpec changes');
       expect(zhOpen).toContain('保持为一个 change');
       expect(zhOpen).toContain('调整拆分方案后继续');
@@ -2637,19 +2709,19 @@ describe('skills', () => {
       expect(zhOpen).toContain('已确认拆分项');
       expect(zhOpen).toContain('跳过 PRD 拆分预检');
       expect(zhOpen).toContain(
-        '批量拆分模式下，单个拆分项完成 open 阶段后不得自动流转到 `/comet-design`',
+        '批量拆分模式下，单个拆分项完成 open 阶段后，不得自动进入 `/comet-design`',
       );
       expect(zhOpen).toContain('只有所有拆分项都通过入口检查后');
-      expect(zhOpen).toContain('该入口已校验 OpenSpec 必需依赖闭包、实际输出和 Comet 状态');
+      expect(zhOpen).toContain('该入口已检查 OpenSpec 的全部必需依赖、实际输出和 Comet 状态');
       expect(zhOpen).toContain('顶层 tasks 已完成不能掩盖未完成依赖');
-      expect(zhOpen).toContain('不在闭包中的 design 不强制生成');
-      expect(zhOpen).toContain('断点恢复时先读取 `.comet/batches/<batch-id>.json`');
+      expect(zhOpen).toContain('闭包不要求 design 时，不强制生成');
+      expect(zhOpen).toContain('中断后恢复时，先读取 `.comet/batches/<batch-id>.json`');
 
       // The router exposes the decision protocol; phase-specific boundaries live there.
       expect(zhComet).toContain('comet-classic/reference/decision-point.md');
-      expect(zhDecisionPoint).toContain('公共行为/接口、验收或风险承担改变');
+      expect(zhDecisionPoint).toContain('公开行为或接口发生变化、验收要求或风险承担方式改变');
       expect(zhDecisionPoint).toContain('一次确认归档与 local/push/pr 交付方式');
-      expect(zhDecisionPoint).toContain('PRD 拆分');
+      expect(zhDecisionPoint).toContain('是否拆分 PRD');
 
       // IMPORTANT: accepted Spec drift edits must not loop back through dirty-worktree handling
       expect(zhVerify).toContain('选项 A 属于 verify 阶段允许产物');
@@ -2659,8 +2731,8 @@ describe('skills', () => {
       expect(zhBuild).not.toContain('using-git-worktrees');
       expect(zhBuild).not.toContain('或使用原生 `EnterWorktree` 工具');
       expect(zhBuild).toContain('必须使用 Skill 工具加载 Superpowers `brainstorming`');
-      expect(zhRecovery).toContain('subagent-driven-development 主会话不接管实现');
-      expect(zhBuild).toContain('主会话协调而不代写实现');
+      expect(zhRecovery).toContain('subagent-driven-development 模式下，主会话不接管实现');
+      expect(zhBuild).toContain('主会话负责协调，不代替实现代理编写代码');
       expect(zhBuild).toContain('保留 isolation、bound_branch 和已有暂停状态');
       expect(zhBuild).not.toContain('不得预检、推断或筛除');
       expect(zhBuild).not.toContain('真实异步派发、独立上下文、结果回收和所需交接能力');
@@ -2671,13 +2743,13 @@ describe('skills', () => {
       expect(zhBuild).toContain(
         'comet state set <name> build_mode autonomous subagent_dispatch null tdd_mode tdd review_mode standard --json',
       );
-      expect(zhComet).toContain('不静默降级已有 full change');
+      expect(zhComet).toContain('不得擅自把已有 full change 改成轻量流程');
       expect(zhRecovery).toContain('产物完整仍需核对 Open 用户确认');
-      expect(zhComet).toContain('文件与对话是核对证据');
-      expect(zhComet).toContain('不用于手改 phase 绕过确认或验证');
+      expect(zhComet).toContain('文件与对话用于核对');
+      expect(zhComet).toContain('不能据此手改 phase，绕过确认或验证');
       expect(zhBuild).toContain('配置为 tdd 时');
       expect(zhBuild).toContain(
-        '配置为 tdd 时，每个实现任务必须有原因匹配的 RED 和对应 GREEN 命令及真实结果',
+        '配置为 tdd 时，每个实现任务都必须记录 RED 和对应 GREEN 的命令及真实结果，并确认 RED 的失败原因就是待实现的行为',
       );
       expect(zhComet).toContain('comet-classic/reference/comet-yaml-fields.md');
       expect(zhFields).toContain('full workflow 离开 build 阶段前 `tdd_mode` 必须已选择');
@@ -2698,7 +2770,7 @@ describe('skills', () => {
       expect(zhTweak).toContain('`comet-classic/reference/debug-gate.md`');
       expect(zhDebugGate).toContain('先补充能复现该崩溃/异常的最小失败测试');
       expect(zhDebugGate).toContain(
-        '不得通过另起一个“写测试用例”的 change 来替代当前 change 的验证闭环',
+        '必须在当前 change 中完成修复和验证，不能另外创建一个“写测试用例”的 change 来代替',
       );
 
       // Entries may name the preferred tool; the shared protocol owns platform fallback.
@@ -2708,7 +2780,7 @@ describe('skills', () => {
         expect(phase).not.toContain('本会话结构化提问不可用');
       }
       expect(zhComet).toContain('`auto_transition: false`');
-      expect(zhComet).toContain('不改变 Guard 已推进的 phase');
+      expect(zhComet).toContain('不改变 Guard 已更新的 phase');
       expect(zhCometRule).toContain(
         'brainstorming in progress: incrementally update brainstorm-summary.md',
       );
@@ -2803,28 +2875,46 @@ describe('skills', () => {
         path.resolve('assets', 'skills', 'comet-classic', 'reference', 'debug-gate.md'),
         'utf-8',
       );
+      const enRecovery = await fs.readFile(
+        path.resolve('assets/skills/comet-classic/reference/context-recovery.md'),
+        'utf8',
+      );
+      const enFields = await fs.readFile(
+        path.resolve('assets/skills/comet-classic/reference/comet-yaml-fields.md'),
+        'utf8',
+      );
 
-      expect(enComet).toContain('Decision points are blocking points');
+      expect
+        .soft(enComet)
+        .toContain('Decision points block dependent work until the user answers explicitly');
       expect(enComet).toContain('CometIntentFrame');
       expect(enComet).toContain('comet classic intent route --stdin');
-      expect(enComet).toContain('**Minimal CometIntentFrame Skeleton**');
-      expect(enComet).toContain('"schema_version": "comet.intent.v1"');
-      expect(enComet).toContain('"slots": {');
-      expect(enComet).toContain('"context": {');
-      expect(enComet).toContain('"evidence": []');
-      expect(enComet).toContain('"proposed_route": {');
-      expect(enComet).not.toContain('"entities": []');
-      expect(enComet).not.toContain('"target_area":');
-      expect(enComet).not.toContain('"scope":');
-      expect(enComet).not.toContain('"dirty_worktree":');
-      expect(enComet).not.toContain('"next_skill": null');
-      expect(enComet).not.toContain('"requires_confirmation": true');
-      expect(enComet).not.toContain('"fallback_reason": null');
-      expect(enComet).toContain('**Intent Recognition Slot Extraction**');
+      expect
+        .soft(enComet)
+        .toContain(
+          'read the minimal example and target-selection rules in `comet-classic/reference/intent-frame.md`',
+        );
+      const frame = JSON.parse(enIntentFrame.match(/```json\s*([\s\S]*?)```/u)![1]);
+      expect(frame.schema_version).toBe('comet.intent.v1');
+      expect(frame).toHaveProperty('slots');
+      expect(frame).toHaveProperty('context.active_change_names');
+      expect(frame.evidence).toEqual([]);
+      expect(frame.proposed_route).toEqual({ name: 'ask_user', confidence: 0.5 });
+      for (const key of [
+        'entities',
+        'slots.target_area',
+        'slots.scope',
+        'context.dirty_worktree',
+      ]) {
+        expect(frame).not.toHaveProperty(key);
+      }
+      expect(enIntentFrame).toContain('## Target Selection and Routing');
       expect(enComet).not.toContain('Field names use common NLU / Agent Router terminology');
       expect(enComet).not.toContain('Slot-filling guide');
       expect(enComet).toContain('`ask_user`');
-      expect(enComet).toContain('`CometIntentFrame + runtime scorer` is the source of truth');
+      expect
+        .soft(enComet)
+        .toContain('The Agent extracts intent fields from evidence; Runtime computes the route');
       expect(enComet).toContain('`comet-classic/reference/intent-frame.md`');
       expect(enIntentFrame).toContain('`requested_action`');
       expect(enIntentFrame).toContain('`workflow_candidate`');
@@ -2835,316 +2925,427 @@ describe('skills', () => {
       expect(enIntentFrame).toContain('`schema_change`');
       expect(enIntentFrame).toContain('`cross_module_change`');
       expect(enIntentFrame).toContain('`proposed_route`');
-      expect(enHotfix).toContain('intent frame from the entry');
-      expect(enHotfix).toContain('recheck `risk_signal` and escalation signals');
-      expect(enTweak).toContain('intent frame from the entry');
-      expect(enTweak).toContain('recheck `risk_signal` and escalation signals');
+      expect(enHotfix).toContain('passes an intent frame');
+      expect(enHotfix).toContain('before Build recheck only `risk_signal`');
+      expect(enTweak).toContain('passes an intent frame');
+      expect(enTweak).toContain('before Build recheck only `risk_signal`');
       expect(enScripts).toContain('comet classic intent route --stdin');
       expect(enScripts).not.toContain('<comet-intent-script>');
-      expect(enDecisionPoint).toContain(
-        'Use `AskUserQuestion` for single-select or multi-select choices',
-      );
-      expect(enDecisionPoint).toContain('When `AskUserQuestion` cannot be used');
-      expect(enDecisionPoint).toContain('do not repeatedly retry it for later decision points');
-      expect(enDecisionPoint).toContain(
-        'otherwise ask clear options in the conversation and wait for the reply',
-      );
-      expect(enDecisionPoint).toContain(
-        'Never substitute recommendation rules, defaults, historical preferences',
-      );
-      expect(enOpen).toContain(
-        '### 1b. Resolve Requirements and Change Name (Non-blocking by Default)',
-      );
-      expect(enOpen).toContain(
-        'Do not run `comet classic openspec -- new change` or create proposal/design/tasks while the resolved brief or name remains ambiguous',
-      );
-      expect(enOpen).toContain(
-        'Full `/comet-classic` workflow must not use the Skill tool to load the `openspec-propose` skill',
-      );
+      expect
+        .soft(enDecisionPoint)
+        .toContain('Use `AskUserQuestion` for single-select or multi-select choices');
+      expect(enDecisionPoint).toContain('If `AskUserQuestion` cannot be used');
+      expect(enDecisionPoint).toContain('Do not repeatedly retry it at later decision points');
+      expect
+        .soft(enDecisionPoint)
+        .toContain('otherwise present clear text options and wait for the reply');
+      expect
+        .soft(enDecisionPoint)
+        .toContain('Never substitute recommendations, defaults, historical preferences');
+      expect(enOpen).toContain('### 1b. Summarize requirements and choose the change name');
+      expect
+        .soft(enOpen)
+        .toContain(
+          'While the resolved brief or change identity is still unclear, do not run `comet classic openspec -- new change` or create proposal/design/tasks',
+        );
+      expect
+        .soft(enOpen)
+        .toContain(
+          'Do not load `openspec-propose` by default in the full `/comet-classic` flow. Load it only if the user explicitly requests a proposal and artifacts generated together',
+        );
       expect(enOpen).toContain('`comet-classic/reference/decision-point.md`');
-      expect(enOpen).toContain(
-        'When Step 1b has produced an unambiguous resolved brief, override its "STOP and wait for user direction" behavior',
-      );
-      expect(enOpen).toContain(
-        'The clarification summary must include: goals, non-goals, scope boundaries, key unknowns, and draft acceptance scenarios',
-      );
-      expect(enDesign).toContain(
-        '**Immediately execute:** Use the Skill tool to load the Superpowers `brainstorming` skill. Skipping this step is prohibited.',
-      );
-      expect(enDesign).toContain(
-        'After the skill loads, follow its guidance and use the following context',
-      );
+      expect
+        .soft(enOpen)
+        .toContain(
+          'If Step 1b already produced a clear resolved brief, override its “STOP and wait for user direction” behavior',
+        );
+      expect
+        .soft(enOpen)
+        .toContain(
+          'The summary must include all five areas: goal, non-goals, scope, key unknowns, and draft acceptance scenarios',
+        );
+      expect
+        .soft(enDesign)
+        .toContain(
+          '**Immediately execute:** Use the Skill tool to load the Superpowers `brainstorming` skill. Skipping this step is prohibited.',
+        );
+      expect
+        .soft(enDesign)
+        .toContain('After the skill loads, follow its guidance and use the following context');
       expect(enDesign).not.toContain('ARGUMENTS containing');
-      expect(enDesign).toContain(
-        'must follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for the user to explicitly confirm',
-      );
-      expect(enDesign).toContain(
-        'brainstorming explores only unresolved technical choices rather than interviewing again about confirmed requirements',
-      );
+      expect
+        .soft(enDesign)
+        .toContain(
+          'follow `comet-classic/reference/decision-point.md` and wait for the user to explicitly confirm the design',
+        );
+      expect
+        .soft(enDesign)
+        .toContain(
+          'discuss only unresolved technical choices; do not ask again about confirmed requirements',
+        );
       expect(enDesign).not.toContain('Skip redundant context exploration');
-      expect(enBuild).toContain('An execution strategy must be confirmed before writing the plan.');
+      expect(enBuild).toContain('Confirm the execution strategy before writing a plan.');
       expect(enOpen).toContain('comet-classic/reference/workspace.md');
-      expect(enOpen).toContain('make the recommendation explanatory only');
-      expect(enBuild).toContain('The workspace must already be prepared and bound during Open');
+      expect(enOpen).toContain("a recommendation does not replace the user's choice");
+      expect(enBuild).toContain('Open must already have prepared and bound the workspace');
       expect(enBuild).toContain('`comet-classic/reference/decision-point.md`');
-      expect(enVerify).toContain(
-        'Automatically return to build for the first 3 repairable failures',
-      );
-      expect(enVerify).toContain(
-        'Only accepting WARNING/SUGGESTION deviations or choosing a strategy after the 4th failure is a user decision point',
-      );
-      expect(enVerify).toContain('Do not handle, merge, or discard branches in verify');
-      expect(enVerify).toContain('do not write `branch_status: handled`');
-      expect(enArchive).toContain('### 5. Deliver the Archive Commit and Complete');
+      expect
+        .soft(enVerify)
+        .toContain('Automatically return to Build for the first 3 repairable failures');
+      expect
+        .soft(enVerify)
+        .toContain(
+          'Accepting WARNING/SUGGESTION deviations or choosing a strategy after the fourth failure requires a user decision',
+        );
+      expect(enVerify).toContain('Do not handle, merge, or discard branches in Verify');
+      expect(enVerify).toContain('or write `branch_status: handled`');
+      expect(enArchive).toContain('### 5. Deliver the archive commit and finish');
       expect(enArchive).toContain('comet state set <change-name> branch_status handled');
-      expect(enTweak).toContain('Use the Skill tool to load the `openspec-apply-change` skill');
+      expect(enTweak).toContain('Load `openspec-apply-change` using the Skill tool');
       expect(enTweak).toContain('This apply path belongs only to tweak');
-      expect(enTweak).toContain(
-        "Full `/comet-classic` or `workflow: full` must not use tweak's `openspec-apply-change` build path",
-      );
-      expect(enTweak).toContain('single OpenSpec change');
+      expect
+        .soft(enTweak)
+        .toContain(
+          "Full `/comet-classic` or `workflow: full` must not use tweak's `openspec-apply-change` Build path",
+        );
+      expect(enTweak).toContain('one OpenSpec change');
       expect(enTweak).not.toContain('No new capability');
       expect(enBuild).not.toContain('openspec-apply-change');
-      expect(enArchive).toContain(
-        '### 1. Final Archive and Delivery Confirmation (Blocking Point)',
-      );
-      expect(enArchive).toContain(
-        'Never infer archive, push, or PR authorization from branch_status: handled, or run archive-confirm/archive before authorization',
-      );
+      expect(enArchive).toContain('### 1. Ask the user to confirm archive and delivery');
+      expect
+        .soft(enArchive)
+        .toContain(
+          'Do not infer archive, push, or PR authorization solely from branch_status: handled. Do not run archive-confirm or archive before authorization',
+        );
       expect(enArchive).toContain('`comet-classic/reference/decision-point.md`');
-      expect(enArchive).toMatch(/\|\s*Option\s*\|\s*Method\s*\|\s*Actual Impact\s*\|/u);
-      expect(enArchive).toMatch(
-        /\|\s*A\s*\|\s*Archive only \(no push\)\s*\|\s*Archive and create the only archive commit; keep it on the bound branch locally, without pushing or creating a PR\s*\|/u,
-      );
-      expect(enArchive).toContain('"Confirm archive and push now"');
-      expect(enArchive).toContain('"Confirm archive, push now, and create a PR"');
-      expect(enArchive).toContain('Adjust or re-verify');
+      expect(enArchive).toMatch(/\|\s*Option\s*\|\s*Method\s*\|\s*Effect\s*\|/u);
+      expect
+        .soft(enArchive)
+        .toMatch(
+          /\|\s*A\s*\|\s*Archive locally; do not push\s*\|\s*Archive and create the single archive commit\. Keep it on the currently bound branch; do not push or create a PR\.\s*\|/u,
+        );
+      expect(enArchive).toContain('Confirm archive and push now');
+      expect(enArchive).toContain('Confirm archive, push, and create a PR');
+      expect(enArchive).toContain('Adjust or verify again');
       expect(enArchive).toContain('Do not archive yet');
       expect(enArchive).toContain('`comet state transition <change-name> archive-reopen`');
-      expect(enArchive).toContain(
-        'handled is compatibility state, not evidence of local/push/pr authorization or success',
-      );
-      expect(enArchive).toContain(
-        'Archive no longer invokes Superpowers `finishing-a-development-branch`',
-      );
+      expect
+        .soft(enArchive)
+        .toContain(
+          'handled is only a legacy compatibility field. It neither authorizes local/push/pr nor proves those actions succeeded',
+        );
+      expect
+        .soft(enArchive)
+        .toContain('Do not invoke Superpowers `finishing-a-development-branch` in Archive');
       expect(enArchive).not.toContain('use the Skill tool to load Superpowers');
-      expect(enArchive).toContain(
-        'Start another Classic task with `/comet-classic` or `/comet-open`',
-      );
+      expect
+        .soft(enArchive)
+        .toContain('Start new Classic work with `/comet-classic` or `/comet-open`');
       expect(enArchive).not.toContain('invoke `/comet` or `/comet-open`');
-      expect(enVerify).toContain('Verification success alone does not authorize archive.');
-      expect(enHotfix).toContain(
-        "must pause under the `comet-classic/reference/decision-point.md` protocol and wait for the user's explicit choice",
-      );
-      expect(enHotfix).toContain('Do not directly enter `/comet-design`');
-      expect(enTweak).toContain(
-        'must pause per `comet-classic/reference/decision-point.md` and delegate the decision to the user',
-      );
-      expect(enTweak).toContain('Do not directly enter `/comet-design`');
+      expect(enVerify).toContain('Passing verification alone does not authorize archive.');
+      expect
+        .soft(enHotfix)
+        .toContain(
+          'pause under `comet-classic/reference/decision-point.md` and wait for an explicit choice',
+        );
+      expect
+        .soft(enHotfix)
+        .toContain('Do not enter `/comet-design` or create a Design Doc automatically');
+      expect
+        .soft(enTweak)
+        .toContain(
+          'pause under `comet-classic/reference/decision-point.md` and wait for an explicit choice',
+        );
+      expect
+        .soft(enTweak)
+        .toContain('Do not enter `/comet-design` or create a Design Doc automatically');
       expect(enTweak).toContain('`comet-classic/reference/debug-gate.md`');
-      expect(enComet).toContain(
-        '`verify_result: fail` → Invoke `/comet-build` automatically to continue repair',
-      );
-      expect(enComet).not.toContain(
-        '`verify_result: fail` → `comet state transition <name> verify-fail` then `/comet-build`',
-      );
+      expect(enComet).toContain('read `comet-classic/reference/context-recovery.md`');
+      expect
+        .soft(enRecovery)
+        .toContain(
+          '`verify_result: fail` automatically invokes `/comet-build` to continue repairing the recorded failure without recording verify-fail a second time',
+        );
+      expect
+        .soft(enRecovery)
+        .not.toContain(
+          '`verify_result: fail` → `comet state transition <name> verify-fail` then `/comet-build`',
+        );
 
-      expect(enHotfix).toContain('handle it through this file\'s "Upgrade Assessment"');
-      expect(enTweak).toContain('handle it through this file\'s "Upgrade Assessment"');
-      expect(enHotfix).toContain('Verify-phase acceptance of WARNING/SUGGESTION deviations');
-      expect(enTweak).toContain('Verify-phase acceptance of WARNING/SUGGESTION deviations');
-      expect(enHotfix).toContain(
-        'One final pre-archive confirmation chooses whether to archive and how to deliver the archive commit',
-      );
-      expect(enTweak).toContain(
-        'One final pre-archive confirmation chooses whether to archive and how to deliver the archive commit',
-      );
-      expect(enHotfix).toContain(
-        'One final pre-archive confirmation chooses whether to archive and how to deliver the archive commit',
-      );
-      expect(enTweak).toContain(
-        'One final pre-archive confirmation chooses whether to archive and how to deliver the archive commit',
-      );
-      expect(enDesign).toContain(
-        'Create or update the formal design and delta spec only after confirmation',
-      );
-      expect(enVerify).toContain(
-        'pause, present the handling methods as a single-select question, and wait for the user to choose',
-      );
-      expect(enComet).toContain(
-        'first check `build_pause`, `plan`, `isolation`, `build_mode`, `subagent_dispatch`, `tdd_mode`, and `review_mode`',
-      );
-      expect(enComet).toContain('`build_pause: plan-ready` and the plan file exists');
-      expect(enComet).toContain(
-        '`build_pause` is not an execution method and must not be written to `build_mode`',
-      );
-      expect(enComet).toContain(
-        'If `build_pause: plan-ready` and the plan file exists, return to `/comet-build`',
-      );
-      expect(enComet).toContain(
-        'reissue the same joint decision; clear the pause only after the user provides the complete configuration',
-      );
-      expect(enBuild).toContain('An execution strategy must be confirmed before writing the plan.');
-      expect(enBuild).toContain(
-        'After planning, continue under the confirmed strategy without another configuration confirmation.',
-      );
+      expect
+        .soft(enHotfix)
+        .toContain(
+          'apply “Escalation decisions” if the repair meets an escalation condition or exceeds the file-count prompt',
+        );
+      expect(enTweak).toContain('Escalation decisions');
+      expect
+        .soft(enTweak)
+        .toContain('must neither escalate nor decide to stay on tweak without the user');
+      expect(enHotfix).toContain('Verify needs acceptance of a WARNING/SUGGESTION deviation');
+      expect(enTweak).toContain('Verify needs acceptance of a WARNING/SUGGESTION deviation');
+      expect
+        .soft(enHotfix)
+        .toContain(
+          'The final pre-archive choice of whether to archive and how to deliver the archive commit',
+        );
+      expect
+        .soft(enTweak)
+        .toContain(
+          'The final pre-archive choice of whether to archive and how to deliver the archive commit',
+        );
+      expect
+        .soft(enHotfix)
+        .toContain(
+          'The final pre-archive choice of whether to archive and how to deliver the archive commit',
+        );
+      expect
+        .soft(enTweak)
+        .toContain(
+          'The final pre-archive choice of whether to archive and how to deliver the archive commit',
+        );
+      expect
+        .soft(enDesign)
+        .toContain('Create or update the formal design and delta spec only after confirmation');
+      expect
+        .soft(enVerify)
+        .toContain('pause, present a single-choice question, and wait for the user');
+      expect
+        .soft(enRecovery)
+        .toContain(
+          'Obtain current phase, configuration, and nextAction before entering the matching phase Skill',
+        );
+      expect
+        .soft(enRecovery)
+        .toContain('`build_pause: plan-ready` means the user requested a pause after planning');
+      expect
+        .soft(enComet)
+        .toContain('Read `comet-classic/reference/comet-yaml-fields.md` for state-field meanings');
+      expect
+        .soft(enFields)
+        .toContain('`build_pause` is not an execution mode; must not be written to `build_mode`');
+      expect
+        .soft(enRecovery)
+        .toContain(
+          'Reuse valid plan and configuration; clear the pause only after the user explicitly asks to continue',
+        );
+      expect
+        .soft(enRecovery)
+        .toContain(
+          "Return to Build's pre-plan configuration step only for missing configuration or an explicit request to change it",
+        );
+      expect(enRecovery).toContain('Recovery does not justify re-asking valid configuration');
+      expect
+        .soft(enRecovery)
+        .toContain(
+          'If the plan is missing, reconcile files and state, repair it, and retain the requested pause',
+        );
+      expect(enBuild).toContain('Confirm the execution strategy before writing a plan.');
+      expect
+        .soft(enBuild)
+        .toContain(
+          'Continue under the confirmed strategy after planning; do not add another configuration approval.',
+        );
       expect(enBuild).toContain('executing-plans:');
-      expect(enBuild).toContain('Build performs only task-level or segmented review');
-      expect(enBuild).toContain('Verify owns the only final integrated review');
-      expect(enBuild).toContain('enter Verify after task acceptance');
-      expect(enBuild).toContain('CRITICAL/IMPORTANT findings must be resolved.');
-      expect(enBuild).toContain(
-        'comet check run <change-name> build --local -- <program> [args...]',
-      );
-      expect(enVerify).toContain(
-        'comet check run <change-name> verify --local -- <program> [args...]',
-      );
-      expect(enBuild).toContain('Comet never executes that text or advances from it automatically');
-      expect(enVerify).toContain('Manual `record-check` claims cannot advance automatically');
-      expect(enBuild).toContain('Build and Verify evidence remain independent');
-      expect(enVerify).toContain('Build and Verify evidence remain separate');
-      expect(enBuild).toContain('`COMET_SKIP_BUILD=1` is a legacy bypass, not auditable evidence');
-      expect(enVerify).toContain('`COMET_SKIP_BUILD=1` is not auditable evidence');
-      expect(enVerify).toContain('Do not manufacture a "whether to fix" decision');
-      expect(enVerify).toContain('CRITICAL/IMPORTANT findings are never waivable');
-      expect(enVerify).toContain(
-        'Verify owns the only final integrated code review for the entire change',
-      );
+      expect(enBuild).toContain('Build reviews tasks or sections only');
+      expect(enBuild).toContain('Verify owns the single final integration review');
+      expect(enBuild).toContain('accept tasks and enter Verify');
+      expect(enBuild).toContain('Resolve CRITICAL/IMPORTANT findings.');
+      expect
+        .soft(enBuild)
+        .toContain('comet check run <change-name> build --local -- <program> [args...]');
+      expect
+        .soft(enVerify)
+        .toContain('comet check run <change-name> verify --local -- <program> [args...]');
+      expect
+        .soft(enBuild)
+        .toContain(
+          'Comet **never executes that text**, and it cannot automatically authorize advancement',
+        );
+      expect
+        .soft(enVerify)
+        .toContain(
+          'Manual `record-check` only stores a declaration and cannot automatically advance the phase',
+        );
+      expect(enBuild).toContain('Build and Verify evidence are separate');
+      expect
+        .soft(enVerify)
+        .toContain('Verify and Build evidence are separate and cannot substitute for one another');
+      expect
+        .soft(enBuild)
+        .toContain('`COMET_SKIP_BUILD=1` is a legacy bypass, not auditable build evidence');
+      expect(enVerify).toContain('`COMET_SKIP_BUILD=1` is not a verifiable check record');
+      expect(enVerify).toContain('Do not add “should I fix it?” approval');
+      expect(enVerify).toContain('CRITICAL/IMPORTANT findings can never be waived');
+      expect
+        .soft(enVerify)
+        .toContain('Verify owns the single final integration code review for the whole change');
       expect(enVerify).toContain('dispatch an independent reviewer');
-      expect(enVerify).toContain('checks, and fixes for correctness, security, and edge cases');
+      expect
+        .soft(enVerify)
+        .toContain('check results, and repairs, focusing on correctness, security, and edge cases');
       expect(enVerify).toContain('no CRITICAL or IMPORTANT issues');
-      expect(enVerify).toContain(
-        'It does not replace spec coverage, Design Doc consistency, or drift checks',
-      );
-      expect(enHotfix).toContain('6 quick checks');
-      expect(enHotfix).toContain('task count alone does not route to `/comet-build`');
-      expect(enBuild).toContain(
-        'Pause, present the choice, and wait for the user to explicitly confirm',
-      );
-      expect(enBuild).toContain(
-        'must follow the `comet-classic/reference/decision-point.md` protocol to pause and wait for the user to decide whether to split into a new change',
-      );
-      expect(enVerify).toContain(
-        'Implementation matches `<classic-change-dir>/design.md` high-level design decisions',
-      );
-      expect(enBuild).toContain('create independent change through `/comet-open`');
+      expect
+        .soft(enVerify)
+        .toContain(
+          'It does not replace spec coverage, Design Doc consistency, or divergence checks',
+        );
+      expect(enHotfix).toContain("Follow comet-verify's light-verification checklist");
+      expect(enHotfix).toContain('Task count alone does not trigger `/comet-build`');
+      expect(enBuild).toContain('Pause, present choices, and wait for explicit confirmation');
+      expect
+        .soft(enBuild)
+        .toContain(
+          'Only actual scope expansion, redesign, or a new independently shippable feature requires a decision under `comet-classic/reference/decision-point.md`: continue, adjust, or split',
+        );
+      expect
+        .soft(enVerify)
+        .toContain(
+          'Implementation follows the high-level decisions in `<classic-change-dir>/design.md`',
+        );
+      expect(enBuild).toContain('create an independent change through `/comet-open`');
       expect(enBuild).not.toContain('create independent change through `/opsx:new`');
-      expect(enOpen).toContain('### 1a. PRD Split Preflight (Blocking Point)');
+      expect(enOpen).toContain('### 1a. Confirm whether to split the PRD before creation');
       expect(enOpen).toContain('Create multiple OpenSpec changes');
-      expect(enOpen).toContain('Keep everything as one change');
-      expect(enOpen).toContain('Adjust the split plan before continuing');
-      expect(enOpen).toContain(
-        'Every accepted split item must be created as an independent change through `/comet-open`',
-      );
-      expect(enOpen).not.toContain(
-        'Every accepted split item must be created as an independent change through `/opsx:new`',
-      );
+      expect(enOpen).toContain('Keep one change');
+      expect(enOpen).toContain('Revise the split');
+      expect
+        .soft(enOpen)
+        .toContain(
+          'Create every accepted item through `/comet-open`, not directly through `/opsx:new`',
+        );
+      expect
+        .soft(enOpen)
+        .not.toContain(
+          'Every accepted split item must be created as an independent change through `/opsx:new`',
+        );
       expect(enOpen).toContain('confirmed split item');
-      expect(enOpen).toContain('skip the PRD split preflight');
-      expect(enOpen).toContain(
-        'In batch split mode, a single split item must not auto-advance to `/comet-design` after completing the open phase',
-      );
-      expect(enOpen).toContain('Only after every split item passes the entry check');
-      expect(enOpen).toContain('On resume, read `.comet/batches/<batch-id>.json` first');
-      expect(enComet).toContain(
-        'Build phase scope expansion requiring redesign or new change split',
-      );
-      expect(enComet).toContain(
-        'One Archive confirmation that chooses both whether to archive and how to deliver the archive commit',
-      );
-      expect(enComet).toContain('Open phase large PRD split confirmation');
-      expect(enVerify).toContain('Option A is a verify phase allowed artifact');
+      expect(enOpen).toContain('Skip the PRD split assessment for a confirmed item');
+      expect
+        .soft(enOpen)
+        .toContain(
+          'Do not automatically move an individual batch item from Open to `/comet-design`',
+        );
+      expect(enOpen).toContain('Only after every item passes entry checks');
+      expect(enOpen).toContain('On recovery, read `.comet/batches/<batch-id>.json`');
+      expect
+        .soft(enComet)
+        .toContain('when Build needs to expand scope, redesign, or split a change');
+      expect
+        .soft(enComet)
+        .toContain('Archive and delivery method are combined into one final confirmation');
+      expect
+        .soft(enComet)
+        .toContain('If the target change, PRD split, or workspace isolation still needs a choice');
+      expect(enVerify).toContain('This is an allowed Verify artifact');
       expect(enOpen).toContain('use `worktree` directly');
       expect(enBuild).not.toContain('using-git-worktrees');
       expect(enBuild).not.toContain('native `EnterWorktree` tool');
-      expect(enBuild).toContain(
-        'must use Skill tool to load the Superpowers `brainstorming` skill',
-      );
-      expect(enDesign).toContain(
-        'The script reads the change `.comet.yaml` `context_compression` snapshot',
-      );
-      expect(enDesign).toContain('Default `context_compression: off` generates');
-      expect(enDesign).toContain('If context_compression is beta, use:');
+      expect
+        .soft(enBuild)
+        .toContain('then load Superpowers `brainstorming` through the Skill tool');
+      expect
+        .soft(enDesign)
+        .toContain(
+          "The script generates and records the pack using the `context_compression` snapshot in the change's `.comet.yaml`",
+        );
+      expect(enDesign).toContain('The default `context_compression: off` generates');
+      expect(enDesign).toContain('For context_compression: beta, use:');
       expect(enDesign).toContain('<classic-change-dir>/.comet/handoff/spec-context.md');
-      expect(enDesign).toContain('In beta mode, `spec-context.json` must be structurally valid');
-      expect(enDesign).toContain('incrementally update `brainstorm-summary.md`');
-      expect(enDesign).toContain('### 3a. Optional Active Context Compaction');
-      expect(enHotfix).toContain('immediately use the Skill tool to load the `comet-design` skill');
-      expect(enTweak).toContain('immediately use the Skill tool to load the `comet-design` skill');
-      expect(enVerify).toContain(
-        'After user selects B, run `comet state transition <change-name> verify-fail`, then invoke `/comet-build`',
-      );
+      expect(enDesign).toContain('In beta mode, `spec-context.json` is structurally valid');
+      expect
+        .soft(enDesign)
+        .toContain('Keep `brainstorm-summary.md` updated throughout brainstorming');
+      expect(enDesign).toContain('### 3a. Optional Proactive Context Compression');
+      expect(enHotfix).toContain('Immediately load `comet-design` using the Skill tool');
+      expect(enTweak).toContain('Immediately load `comet-design` using the Skill tool');
+      expect
+        .soft(enVerify)
+        .toContain(
+          'run `comet state transition <change-name> verify-fail` after the user chooses B, then invoke `/comet-build`',
+        );
 
-      expect(enComet).toContain(
-        'User explicitly describes a lightweight/medium change that can fit in a single OpenSpec change',
-      );
-      expect(enComet).toContain('executed through OpenSpec apply');
-      expect(enComet).not.toContain(
-        'User explicitly describes copy/config/docs/prompt small adjustment',
-      );
+      expect
+        .soft(enIntentFrame)
+        .toContain(
+          'The user explicitly describes a lightweight or medium change that fits within one OpenSpec change',
+        );
+      expect(enIntentFrame).toContain('needs OpenSpec apply');
+      expect
+        .soft(enComet)
+        .not.toContain('User explicitly describes copy/config/docs/prompt small adjustment');
 
       expect(enBuild).toContain('other strategies load Superpowers `systematic-debugging`');
       expect(enBuild).toContain('`comet-classic/reference/debug-gate.md`');
-      expect(enBuild).toContain(
-        'unexpected crashes, behavior, test failures, or build failures require root-cause investigation first',
-      );
-      expect(enDebugGate).toContain(
-        'first add a minimal failing test that reproduces the crash or unexpected behavior',
-      );
-      expect(enHotfix).toContain(
-        'must use the Skill tool to load the Superpowers `systematic-debugging` skill',
-      );
+      expect
+        .soft(enBuild)
+        .toContain(
+          'Investigate the root cause of unexpected crashes, behavior, test failures, or build failures before changing source',
+        );
+      expect
+        .soft(enDebugGate)
+        .toContain(
+          'add the smallest failing test that reproduces the crash or unexpected behavior before modifying the source',
+        );
+      expect
+        .soft(enHotfix)
+        .toContain('requires loading Superpowers `systematic-debugging` through the Skill tool');
       expect(enHotfix).toContain('`comet-classic/reference/debug-gate.md`');
-      expect(enDebugGate).toContain(
-        'do not replace the current change verification loop by starting a separate “write test cases” change',
-      );
+      expect
+        .soft(enDebugGate)
+        .toContain('a separate “write test cases” change cannot replace them');
 
-      // Phase skills stay platform-neutral; the shared decision-point protocol owns AskUserQuestion fallback.
-      expect(
-        [enComet, enOpen, enDesign, enBuild, enVerify, enArchive, enHotfix, enTweak].join('\n'),
-      ).not.toContain('AskUserQuestion');
+      // Entry and clarification phases link the shared tool priority and fallback rules.
+      for (const content of [enComet, enOpen, enDesign]) {
+        expect(content).toContain('comet-classic/reference/decision-point.md');
+        expect(content).toContain('AskUserQuestion');
+      }
       expect(enComet).toContain('`comet-classic/reference/decision-point.md`');
-      expect(enComet).toContain('`auto_transition`');
-      expect(enComet).toContain('only controls next skill invocation, not phase advancement');
-      expect(enCometRule).toContain(
-        'brainstorming in progress: incrementally update brainstorm-summary.md',
-      );
-      expect(enCometRule).toContain(
-        'only after the Design Doc, state evidence, and latest handoff are persisted',
-      );
-      expect(enCometRule).toContain(
-        'Use the Skill tool to reload the Superpowers `subagent-driven-development` skill',
-      );
-      expect(enCometRule).toContain(
-        'Re-read `comet-classic/reference/subagent-dispatch.md` for Comet-specific extensions',
-      );
+      expect(enComet).toContain('`auto_transition: false`');
+      expect
+        .soft(enComet)
+        .toContain('controls the next Skill invocation, not the phase already advanced by Guard');
+      expect
+        .soft(enCometRule)
+        .toContain('brainstorming in progress: incrementally update brainstorm-summary.md');
+      expect
+        .soft(enCometRule)
+        .toContain('only after the Design Doc, state evidence, and latest handoff are persisted');
+      expect
+        .soft(enCometRule)
+        .toContain(
+          'Use the Skill tool to reload the Superpowers `subagent-driven-development` skill',
+        );
+      expect
+        .soft(enCometRule)
+        .toContain(
+          'Re-read `comet-classic/reference/subagent-dispatch.md` for Comet-specific extensions',
+        );
       expect(enCometRule).toContain('Do not execute tasks directly in the main session');
-      for (const content of [enOpen, enDesign]) {
-        expect(content).toContain('Automatic Handoff to Next Phase');
+      for (const content of [enOpen, enDesign, enBuild, enVerify]) {
+        expect(content).toContain('comet-classic/reference/auto-transition.md');
+        expect(content).toContain('agent.continuation');
         expect(content).toContain('comet state next <change-name>');
         expect(content).toContain('`NEXT: auto`');
         expect(content).toContain('`NEXT: manual`');
-        expect(content).toContain('return control with `HINT`');
+        expect(content).toContain('`HINT`');
+        expect(content).toMatch(/end this invocation without another confirmation/u);
       }
-      for (const content of [enBuild, enVerify]) {
-        expect(content).toContain('Automatic Handoff to Next Phase');
-        expect(content).toContain('comet state next <change-name>');
-        expect(content).toContain('`NEXT: auto`');
-        expect(content).toContain('`NEXT: manual`');
-        expect(content).toContain('return control with `HINT`');
-      }
-      expect(enHotfix).toContain('Automatic Handoff to Next Phase');
+      expect(enHotfix).toContain('## Continue to the next phase');
       expect(enHotfix).toContain('comet state next <name>');
       expect(enHotfix).toContain('`NEXT: auto`');
-      expect(enHotfix).toContain(
-        '`phase: build` returns `comet-hotfix`, `verify` returns `comet-verify`, `archive` returns `comet-archive`',
-      );
-      expect(enTweak).toContain('Automatic Handoff to Next Phase');
+      expect
+        .soft(enHotfix)
+        .toContain(
+          'build returns `comet-hotfix`, verify returns `comet-verify`, and archive returns `comet-archive`',
+        );
+      expect(enTweak).toContain('## Continue to the next phase');
       expect(enTweak).toContain('comet state next <name>');
       expect(enTweak).toContain('`NEXT: auto`');
-      expect(enTweak).toContain(
-        '`phase: build` returns `comet-tweak`, `verify` returns `comet-verify`, `archive` returns `comet-archive`',
-      );
+      expect
+        .soft(enTweak)
+        .toContain(
+          'build returns `comet-tweak`, verify returns `comet-verify`, and archive returns `comet-archive`',
+        );
     });
   });
 
@@ -3186,43 +3387,50 @@ describe('skills', () => {
         '所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言',
       );
       expect(zhSkills['comet-open']).toContain(
-        '传递给 OpenSpec 的所有提问和产物要求都必须包含解析后的 Comet 产物语言',
+        '向 OpenSpec 传递提问和文档生成要求时，都必须明确指定 Comet 配置的产物语言',
       );
       expect(zhSkills['comet-design']).toContain(
         'Language: 使用入口 configuration.language 中的 Comet 配置产物语言输出',
       );
       expect(zhSkills['comet-build']).toContain('使用 configuration.language');
       expect(zhSkills['comet-build']).toContain('传入入口 configuration.language');
-      expect(zhSkills['comet-verify']).toContain('验证报告使用本轮入口 configuration.language');
+      expect(zhSkills['comet-verify']).toContain(
+        '验证报告使用本轮入口返回的 configuration.language',
+      );
       expect(zhSkills['comet-archive']).toContain(
-        '归档摘要和生命周期闭环说明使用本轮入口 configuration.language',
+        '归档摘要和流程完成说明，使用本轮入口返回的 configuration.language',
       );
       expect(zhSkills['comet-hotfix']).toContain('精简版 OpenSpec 产物必须使用 Comet 配置产物语言');
       expect(zhSkills['comet-tweak']).toContain('精简版 OpenSpec 产物必须使用 Comet 配置产物语言');
 
-      expect(enSkills['comet-classic']).toContain('Output Language Rule');
-      expect(enSkills['comet-classic']).toContain(
-        'Use the configured Comet artifact language as the output language for every OpenSpec and Superpowers artifact',
+      const enLanguage = await readLinkedSkillSection(
+        enSkills['comet-classic'],
+        'reference/scripts.md#task-context-and-artifact-language',
+        'comet-classic',
+        'skills',
+      );
+      expect(enLanguage).toContain(
+        'Every OpenSpec and Superpowers artifact must use the configured Comet artifact language',
       );
       expect(enSkills['comet-open']).toContain(
-        'Every prompt and artifact request passed to OpenSpec must include the resolved Comet artifact language',
+        'Every question and artifact-generation request passed to OpenSpec must specify the resolved Comet artifact language',
       );
       expect(enSkills['comet-design']).toContain(
         'Language: Use the Comet artifact language from entry configuration.language',
       );
-      expect(enSkills['comet-build']).toContain('using configuration.language');
+      expect(enSkills['comet-build']).toContain('use configuration.language');
       expect(enSkills['comet-build']).toContain('pass entry configuration.language');
       expect(enSkills['comet-verify']).toContain(
-        "Verification reports use this entry's configuration.language",
+        "Use configuration.language from this invocation's entry result for the report",
       );
       expect(enSkills['comet-archive']).toContain(
-        "Archive summaries and lifecycle closure notes use this entry's configuration.language",
+        "Use configuration.language from this invocation's entry result for the archive summary and completion message",
       );
       expect(enSkills['comet-hotfix']).toContain(
-        'Streamlined OpenSpec artifacts must use the configured Comet artifact language',
+        "Use Comet's configured artifact language for the reduced OpenSpec artifacts",
       );
       expect(enSkills['comet-tweak']).toContain(
-        'Streamlined OpenSpec artifacts must use the configured Comet artifact language',
+        "Use Comet's configured artifact language for the reduced OpenSpec artifacts",
       );
     });
   });
@@ -3251,7 +3459,7 @@ describe('skills', () => {
       expect(zhPlanSection).not.toContain('subagent');
 
       expect(enPlanSection).toContain(
-        'use the `writing-plans` Skill for writing and self-checking only',
+        'use the `writing-plans` skill for writing and self-checking only',
       );
       expect(enPlanSection).not.toContain('Create the implementation plan through a subagent');
       expect(enPlanSection).not.toContain('**Subagent instructions**');
@@ -3279,43 +3487,43 @@ describe('skills', () => {
       );
 
       expect(zhBuild).toContain('subagent-driven-development：加载同名 Superpowers Skill');
-      expect(zhBuild).toContain('联合决策');
-      expect(zhBuild).toContain('工作区必须已在 Open 准备并绑定');
+      expect(zhBuild).toContain('在同一轮提问中收集执行方式、TDD 和审查模式');
+      expect(zhBuild).toContain('工作区必须已在 Open 阶段准备并绑定');
       expect(zhBuild).toContain('`comet-classic/reference/subagent-dispatch.md`');
       expect(zhBuild).not.toContain('不得预检、推断或筛除');
       expect(zhBuild).not.toContain('无子agent环境');
       expect(zhBuild).not.toContain('#### Subagent 调度协议');
       for (const required of [
-        '后应用本契约',
-        '做一次计划预检',
-        'tasks.md` 是唯一完成状态来源',
+        '先加载同名 Superpowers Skill，再执行这里的规则',
+        '开始前检查计划',
+        '任务完成状态只以 `tasks.md` 为准',
         'comet state tasks <name> --json',
-        '同模块、共享局部上下文且依赖已明确的关联任务可组成有界工作包',
-        '出现范围变化、依赖冲突或新风险时暂停受影响成员',
+        '同一模块中，使用相同局部上下文且依赖关系明确的关联任务，可以组成范围明确的一组任务',
+        '出现范围变化、依赖冲突或新风险时，暂停受影响的任务',
         '逐 ID 报告、验收和勾选',
         '修复优先返回原会话',
-        'reviewer 始终独立于 implementer',
-        '子代理不嵌套派发',
-        '配置产物语言',
-        '允许修改范围',
-        '必跑检查及回报契约',
-        '上游支持的文件交接',
-        '确认文件和提交在当前工作区可见',
-        '它只实现和自测，不勾选任务',
-        'subagent-driven-development 不由主会话代写',
-        '真实 RED 失败及 GREEN 通过命令和摘要',
-        '此预算接管上游默认 reviewer 节点',
-        '初审读取真实需求、diff 和证据',
+        '审查子代理（reviewer）始终独立于实现子代理',
+        '子代理不再向下派发任务',
+        '配置中的产物语言',
+        '允许修改的范围',
+        '必须执行的检查，以及反馈格式',
+        '通过外部 Skill 支持的文件方式交接',
+        '主会话确认文件和提交已出现在当前工作区后，才能验收',
+        '它只负责实现和自测，不勾选任务',
+        'subagent-driven-development 模式下，主会话不能代替子代理编写实现',
+        '实际执行的 RED 失败命令、GREEN 通过命令和结果摘要',
+        '这里的安排取代外部 Skill 默认的审查步骤，不另外叠加一套审查',
+        '初审必须读取实际需求、diff 和证据',
         '复查只覆盖未解决问题、修复及新增风险',
-        '主会话核对实际 diff 与自报',
-        'reviewer 保持中立，不预先禁止发现',
-        'off` 不豁免测试失败',
-        '唯一最终集成审查',
-        '不重置轮次',
+        '主会话必须同时核对实际 diff 和子代理报告',
+        '审查子代理应保持独立判断，不能预先要求它忽略某类问题',
+        '`off` 不允许忽略测试失败',
+        '唯一一次最终集成审查',
+        '也不重新计算已用复查次数',
         'comet state checkpoint <name> --file <json-path>',
         '<classic-change-dir>/.comet/rulings.md',
-        '扩大范围、修改规格或验收、接受重要缺陷、安全例外及外部副作用仍需用户授权',
-        '在上游临时文件被清理前保留必要结论',
+        '扩大范围、修改规格或验收要求、接受重要缺陷、安全例外，以及会改变外部系统的操作，仍需用户授权',
+        '在外部 Skill 的临时文件被清理前，保存必要结论和证据引用',
       ])
         expect(zhDispatch).toContain(required);
       for (const forbidden of [
@@ -3338,17 +3546,19 @@ describe('skills', () => {
       expect(zhDispatch).toContain(
         'comet state task-complete <name> <task-id> --expect <revision> --json',
       );
-      expect(zhDispatch).toContain('不能仅取新 revision 盲目重试');
-      expect(zhDispatch).toContain('不为每个微任务机械追加单独进度提交');
-      expect(zhDispatch).toContain('额外真实任务不静默丢弃');
-      expect(zhDispatch).toContain('不逐任务询问');
-      expect(zhDispatch).toContain('真实授权歧义');
-      expect(zhDispatch).toContain('派发失败或会话不可用时记录真实原因');
-      expect(zhDispatch).toContain('不静默改变用户选定策略');
-      expect(zhDispatch).toContain('所有任务验收完成后立即返回');
+      expect(zhDispatch).toContain('不能只换成新 revision 就盲目重试');
+      expect(zhDispatch).toContain('不要求每个小任务都单独创建一次进度提交');
+      expect(zhDispatch).toContain('不能擅自丢弃旧计划中额外存在的实际任务');
+      expect(zhDispatch).toContain('不逐个任务询问');
+      expect(zhDispatch).toContain('授权存在歧义');
+      expect(zhDispatch).toContain('任务分配失败或会话不可用时，记录实际原因');
+      expect(zhDispatch).toContain('不能擅自改变用户选定的执行方式');
+      expect(zhDispatch).toContain('所有任务验收完成后，立即返回');
       expect(zhDispatch).toContain('不恢复旧的 Build final-review/final-fix 状态');
       expect(zhRecovery).toContain('其他策略只在上下文缺少所需方法时加载');
-      expect(zhRecovery).toContain('按 subagent-dispatch.md 恢复有界工作包和原 implementer');
+      expect(zhRecovery).toContain(
+        '按 subagent-dispatch.md 恢复原先分配的任务范围，以及负责实现的子代理会话',
+      );
       expect(zhRecovery).toContain('读取结果为 `{checkpoint, stale}`');
       expect(zhGuard).toContain('重新加载 Superpowers `subagent-driven-development` 技能');
       expect(zhGuard).toContain(
@@ -3375,15 +3585,15 @@ describe('skills', () => {
         'utf-8',
       );
 
-      expect(enBuild).toContain('load the matching Superpowers Skill');
+      expect(enBuild).toContain('load the same-named Superpowers skill');
       expect(enBuild).toContain('`comet-classic/reference/subagent-dispatch.md`');
       expect(enBuild).toContain(
-        'every implementation task requires a matching genuine RED and corresponding GREEN command with actual results',
+        'every implementation task must record actual RED and corresponding GREEN commands/results',
       );
-      expect(enBuild).toContain('The workspace must already be prepared and bound during Open');
-      expect(enBuild).toContain('joint decision');
-      expect(enBuild).toContain('Build performs only task-level or segmented review');
-      expect(enBuild).toContain('Preserve isolation, bound_branch, and an existing pause');
+      expect(enBuild).toContain('Open must already have prepared and bound the workspace');
+      expect(enBuild).toContain('collect execution mode, TDD, and review mode together');
+      expect(enBuild).toContain('Build reviews tasks or sections only');
+      expect(enBuild).toContain('Preserve isolation, bound_branch, and any existing pause');
       expect(enBuild).not.toContain('Do not preflight, infer, or filter');
       expect(enBuild).not.toContain('no subagent environment');
       expect(enBuild).not.toContain(
@@ -3393,36 +3603,38 @@ describe('skills', () => {
       expect(enBuild).not.toContain(
         'ask the user to choose both workspace isolation ' + 'and execution method',
       );
-      expect(enBuild).toContain('Build performs only task-level or segmented review');
+      expect(enBuild).toContain('Build reviews tasks or sections only');
       expect(enBuild).toContain(
-        "standard\x60: risk-task review and Verify's only final integrated review",
+        'standard`: review risky tasks and perform the single final integration review in Verify',
       );
-      expect(enBuild).toContain('thorough\x60: per-task review and final integrated review');
+      expect(enBuild).toContain(
+        'thorough`: independently review each task or section according to the selected execution strategy, then complete the final integration review',
+      );
       expect(enBuild).not.toContain('must wait for both reviews to pass');
       for (const required of [
-        'Classic owns the execution method',
+        'Classic defines the execution method',
         'Perform one plan preflight',
-        'bounded work package',
+        'clearly scoped group completed consecutively by one implementer',
         'Report, accept, and check off each ID',
-        'one passing member does not complete the package',
+        'one passing task does not complete the whole group',
         'Reviewers remain independent',
         'Subagents do not nest dispatch',
         'artifact language',
         'allowed scope',
         'required checks',
-        'upstream-supported file handoff',
+        'file handoff supported by the external Skill',
         'files and commits are visible',
         'implement and self-test, but do not check off tasks',
         'it does not implement tasks itself',
         'RED failure and GREEN success',
-        'replaces upstream default reviewer nodes',
-        'Initial review reads real requirements',
-        'Rereview covers unresolved findings, fixes, and new risks',
+        "replace the external Skill's default review steps",
+        'Initial review reads actual requirements',
+        'Rechecks cover unresolved findings, fixes, and new risks',
         'checks actual diff against self-report',
         'Reviewers remain neutral',
         '`off` does not waive test failures',
         'only final integrated review',
-        'without repeating full requirement analysis or resetting rounds',
+        'without repeating all requirement analysis or resetting rounds already used',
         'Runtime validates and generates Markdown; do not manually maintain subagent-progress.md',
         '<classic-change-dir>/.comet/rulings.md',
         'Expanding scope, changing specifications or acceptance, accepting important defects, security exceptions, and external side effects still require user authorization',
@@ -3432,7 +3644,7 @@ describe('skills', () => {
         'without mechanical per-microtask progress commits',
         'genuine extra tasks are not silently discarded',
         'without asking between tasks',
-        'genuine authorization ambiguity',
+        'unclear authorization',
         'Record dispatch/session failures',
         'without silently changing the selected strategy',
         'After all tasks are accepted, immediately return',
@@ -3440,7 +3652,7 @@ describe('skills', () => {
       ]) {
         expect(enDispatch, required).toContain(required);
       }
-      expect(enRecovery).toContain('other strategies load methods only when absent from context');
+      expect(enRecovery).toContain('other strategies load methods only when missing from context');
       expect(enRecovery).toContain('subagent-dispatch.md');
       expect(enRecovery).toContain('comet state checkpoint <change-name>');
       expect(enGuard).toContain('reload the Superpowers `subagent-driven-development` skill');
@@ -3681,9 +3893,9 @@ describe('skills', () => {
       expect(zh).toContain('comet resume-probe . --stdin --json');
       expect(zh).toContain('comet-classic/reference/context-recovery.md');
       expect(zh).toContain('`out_of_scope`/`none` 不进入');
-      expect(en).toContain('Comet Ambient Resume');
+      expect(en).toContain('Ambient Resume');
       expect(en).toContain('comet resume-probe . --stdin --json');
-      expect(en).toContain('Never attach unrelated work');
+      expect(en).toContain('`out_of_scope`/`none` does not enter');
     });
 
     it('documents the public resume probe CLI bilingually', async () => {
@@ -3742,7 +3954,9 @@ describe('skills', () => {
         expect(en).toContain(`comet state transition <change-name> ${event}`);
       }
       expect(zh).toContain('不要在归档流程之外手动执行 `archived` transition');
-      expect(en).toContain('do not manually run the `archived` transition outside that flow');
+      expect(en).toContain(
+        'Do not manually run the `archived` transition outside the archive procedure',
+      );
     });
 
     it('documents the Ambient Resume probe command in context recovery references', async () => {
@@ -3757,7 +3971,9 @@ describe('skills', () => {
 
       expect(zh).toContain('先按 scripts.md 确认公开 CLI 和所选工作区');
       expect(zh).toContain('comet resume-probe . --stdin --json');
-      expect(en).toContain('Follow scripts.md to confirm the public CLI and selected workspace');
+      expect(en).toContain(
+        'First establish the public CLI and selected workspace using scripts.md',
+      );
       expect(en).toContain('comet resume-probe . --stdin --json');
     });
 

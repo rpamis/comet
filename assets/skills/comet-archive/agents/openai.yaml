@@ -1,5 +1,5 @@
 interface:
-  display_name: "Comet Classic Phase 5: Archive"
-  short_description: "Confirm archive, merge delta specs, finish the branch"
+  display_name: 'Comet Classic Phase 5: Archive'
+  short_description: 'Archive and complete the user-selected delivery'
 policy:
   allow_implicit_invocation: true

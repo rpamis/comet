@@ -2,27 +2,27 @@
 
 Canonical path: `comet-classic/reference/file-structure.md`
 
-This file is the Comet project file structure reference. Consult on demand; not loaded inline with skills.
+Consult this project file-structure reference as needed; do not load it wholesale with the Skill.
 
 ```text
-<classic-open-spec-root>/              # OpenSpec — WHAT; returned by the Classic layout resolver
+<classic-open-spec-root>/              # OpenSpec requirements and specifications; resolved by Classic
 ├── config.yaml
 ├── changes/
 │   ├── <name>/                        # Active change
 │   │   ├── .openspec.yaml
 │   │   ├── .comet.yaml
-│   │   ├── proposal.md                # Why + What
+│   │   ├── proposal.md                # Motivation, goals, and scope
 │   │   ├── design.md                  # High-level architecture decisions
-│   │   ├── specs/<capability>/spec.md # Delta capability spec
-│   │   ├── .comet/handoff/            # Script-generated phase handoff packages
-│   │   └── tasks.md                   # Task checklist
-│   └── archive/YYYY-MM-DD-<name>/     # Archived
-└── specs/<capability>/spec.md         # Main specs (merged on archive via OpenSpec delta semantics)
+│   │   ├── specs/<capability>/spec.md # Incremental capability specification changes (delta spec)
+│   │   ├── .comet/handoff/            # Script-generated phase handoff files
+│   │   └── tasks.md                   # Task list
+│   └── archive/YYYY-MM-DD-<name>/     # Archived change
+└── specs/<capability>/spec.md         # Main specification (OpenSpec merges delta specs at archive)
 
-<classic-superpowers-root>/            # Superpowers — HOW; returned by the Classic layout resolver
-├── specs/YYYY-MM-DD-<topic>-design.md # Design doc (technical RFC; annotated on archive)
-└── plans/YYYY-MM-DD-<feature>.md      # Implementation plan (file header contains change metadata)
+<classic-superpowers-root>/            # Superpowers design and plan directories; resolved by Classic
+├── specs/YYYY-MM-DD-<topic>-design.md # Technical design/RFC (status annotated at archive)
+└── plans/YYYY-MM-DD-<feature>.md      # Implementation plan (change metadata in frontmatter)
 
 .comet/
-└── config.yaml                        # Comet project config (context_compression defaults to off; set to beta to enable)
+└── config.yaml                        # Comet project configuration (context_compression defaults to off; beta is optional)
 ```

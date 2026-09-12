@@ -1,5 +1,5 @@
 interface:
-  display_name: "Comet Classic 阶段 1:Open"
-  short_description: "开启 OpenSpec change 并建立其产物"
+  display_name: 'Comet Classic 阶段 1：开启'
+  short_description: '创建 Classic change，整理需求文档并请用户确认范围与内容'
 policy:
   allow_implicit_invocation: true

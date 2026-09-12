@@ -1,5 +1,5 @@
 interface:
-  display_name: "Comet Classic Phase 4: Verify"
-  short_description: "Verify a change, record evidence, drive repair loops"
+  display_name: 'Comet Classic Phase 4: Verify'
+  short_description: 'Verify the change and return failed checks to Build'
 policy:
   allow_implicit_invocation: true

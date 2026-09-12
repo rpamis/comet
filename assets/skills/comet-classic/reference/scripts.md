@@ -1,16 +1,16 @@
-# Stable Public CLI Contract
+# Public CLI Reference
 
 Canonical path: `comet-classic/reference/scripts.md`
 
-This file is the single source of truth for Classic Skill calls into the Comet Runtime. Skills use only the public `comet` CLI on PATH. The packaged `comet/scripts/*.mjs` files are internal installation and Runtime assets; Skills do not search for or invoke them directly.
+This file defines how Classic Skills call Comet Runtime. Use only the public `comet` CLI on PATH. Bundled `comet/scripts/*.mjs` files are internal to installation and Runtime; Skills must not search for or invoke them directly.
 
-## CLI bootstrap
+## CLI Bootstrap
 
-When entering a workflow, run the required public `comet` command below directly. If it returns `command not found`, `executable not found`, or `ENOENT`, stop and explain that the Comet CLI installation is incomplete. Do not search for Skill files, enumerate platform directories, or invoke an internal bundle directly. If the CLI starts but exits nonzero, report the original error and do not retry through an internal script.
+At workflow entry, run the public `comet` command needed below. For `command not found`, `executable not found`, or `ENOENT`, stop and explain that the Comet CLI installation is incomplete. Do not bypass it by searching Skill files, walking platform directories, or invoking internal bundles. If the CLI starts but returns a nonzero exit code, report the original error instead of retrying with an internal script.
 
-## Public workflow contract
+## Public Workflow Commands
 
-Everyday workflows use the public CLI:
+Use the public CLI for everyday workflow operations:
 
 ```bash
 comet classic workspace prepare <change-name> --isolation <current|branch|worktree> --json
@@ -35,25 +35,25 @@ comet resume-probe . --stdin --json
 comet classic intent route --stdin
 ```
 
-During Open, run workspace prepare first. Run workspace resolve when the workspace is unknown, has changed, or selection is stale; enter the returned projectRoot, then select. Ordinary phase handoffs retain a valid selection without rescanning Worktrees. Source writes are governed only by the selected change.
+Run workspace prepare during Open. If the workspace is unknown, changes, or its previous selection is invalid, run workspace resolve, enter the returned projectRoot, then select. For normal phase handoffs, reuse valid selection without rescanning Worktrees. Source writes must belong to the selected change.
 
-Entry check --json provides layout, configuration, nextAction, task summary, coordination, and delivery together. Do not repeat individual queries for returned information. Cold recovery starts with compact --recover output; add --details only for full tasks/checkpoint/evidence. See context-recovery.md.
+Entry check --json returns layout, configuration, nextAction, task summaries, coordination, and delivery. Do not separately query fields already returned. If session recovery lacks context, start with --recover for a summary; add --details only for complete tasks, checkpoints, or evidence. See context-recovery.md.
 
-Checkpoint input requires schemaVersion:1 and taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds. Reads return `{checkpoint, stale}`; Runtime validates and generates Markdown. See context-recovery.md for JSON examples. task-complete automatically synchronizes legacy plans with comet-task ID mappings; sync-plan synchronizes separately. planSync mapping-required requests mapping reconciliation, not reimplementation.
+checkpoint input requires schemaVersion:1 and taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds; reads return `{checkpoint, stale}`. Runtime validates the data and generates Markdown. See context-recovery.md for JSON. task-complete automatically synchronizes legacy-plan tasks with established comet-task ID mappings. Use sync-plan for a separate update; planSync mapping-required requires completing mappings, not reimplementing tasks.
 
-Delivery input is action (local|push|pr), targetBranch, optional remote, commit, and prUrl; examples are in comet-archive. Ordinary entry and delivery reads do not access the network. Only `state delivery <change-name> --verify` performs remote/PR read-only verification and returns `{delivery, verification}`. Successful writes do not prove delivery. Stop if commands are unavailable, rejected, or records conflict; never bypass them by editing internal state.
+delivery input includes action (local|push|pr), targetBranch, and optional remote, commit, and prUrl; see comet-archive for examples. Normal entry and delivery reads do not access the network. Only `state delivery <change-name> --verify` checks remote and PR state read-only, returning `{delivery, verification}`. A successful record write does not prove delivery success. Stop for unavailable commands, rejected operations, or inconsistent records; do not bypass checks by editing internal state.
 
-Guard `--apply` advances state after checks pass. Use `comet state transition` when expressing a state event directly, and `comet state next` after phase advancement to determine whether to invoke the next Skill automatically.
+guard `--apply` updates state after checks pass. Use `comet state transition` when directly invoking a state-machine event. After phase advancement, follow auto-transition.md using the successful result's `agent.continuation`. Query next only when returned state is missing or invalid.
 
-## Automatic state updates
+## Automatic State Updates
 
-Guard supports `--apply`, which updates `.comet.yaml` state fields after checks pass:
+guard accepts `--apply` to update `.comet.yaml` automatically after validation:
 
 ```bash
 comet guard <change-name> <phase> --apply
 ```
 
-`--apply` delegates to the state-machine transition. Use these semantic events when state changes need to be expressed directly:
+`--apply` invokes state-machine transitions internally. To invoke an event directly, use:
 
 ```bash
 comet state transition <change-name> open-complete
@@ -67,22 +67,36 @@ comet state transition <change-name> archived
 comet state transition <change-name> preset-escalate
 ```
 
-Archive completion is handled by `comet archive <change-name>` after OpenSpec moves the change into its date-prefixed archive directory. Use `archive-confirm` or `archive-reopen` for the pre-archive decision, and do not manually run the `archived` transition outside that flow.
+Archive through `comet archive <change-name>`. OpenSpec first moves the change into a date-prefixed archive directory; Comet then records state. Update pre-archive confirmation through `archive-confirm` or `archive-reopen`. Do not manually run the `archived` transition outside the archive procedure.
 
-## Resolve the next action
+## Resolving the Next Step
 
-After guard-based phase advancement, use the `next` subcommand to determine whether to invoke the next Skill automatically:
+After the phase Guard advances phase, follow auto-transition.md and prefer `agent.continuation` from the successful JSON result. The next phase can use this returned state without repeating next, select, or check. Query only when session recovery lacks context, external state changes, or an older result lacks this information:
 
 ```bash
 comet state next <change-name>
 ```
 
-Output format: `NEXT: auto|manual|done` + `SKILL: <skill-name>` (omitted for `done`) + `HINT` (for `manual` only). With `auto_transition: false`, output is `manual`, which pauses only the next Skill invocation and does not block phase updates.
+Output includes `NEXT: auto|manual|done`, `SKILL: <skill-name>` (omitted for `done`), and `HINT` (only for `manual`). `auto_transition: false` returns `manual`: it prevents automatic invocation of the next Skill without changing the phase already advanced.
 
-## Archive command
+## Archive Command
 
-Complete all archive steps with:
+Run all archive steps with:
 
 ```bash
 comet archive <change-name>
 ```
+
+## Task Context and Artifact Language
+
+Every OpenSpec and Superpowers artifact must use the configured Comet artifact language, a normalized language ID: `en` or `zh-CN`. For an existing change, prefer `configuration.language` from the current valid entry. Only if entry omits it, read `language` in `<classic-change-dir>/.comet.yaml` through `comet state get <name> language`. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then global `~/.comet/config.yaml`. Use the current user request's language only when neither is configured. Explicitly include the resolved language in prompts or ARGUMENTS sent to external OpenSpec/Superpowers Skills.
+
+After binding the Classic workspace and reading the current `.comet.yaml` `phase`, automatically run `comet task <project-root> --task "<original user request>" --phase "<phase>" --session "<stable task id>" --json`. Add only returned `text` to context. Context Manifest (`manifest` / `<context_manifest>`) contains summaries, selection reasons, and stable IDs. When full content, sources, or verification methods are needed, run the same command with `--expand-context "<id>"`. When paths, operations, or phase change, reuse the same `--session` and pass updated `--path`, `--operation`, and `--phase` to select applicable context again.
+
+If `<active_policies>` includes `<verification command="...">`, add those commands to current Verify checks and record their actual results. Only commands that have actually passed can promote the corresponding policy to enforced.
+
+Use `comet memory remember ... --scope global|project` when the user explicitly asks to retain a preference or project convention long-term. Use `comet memory observe` only for stable collaboration habits reusable across tasks without an explicit request. Neither may store task summaries, progress, command output, or test results.
+
+After actually using an item and learning its result, take `applications[].applicationId` from JSON (or `application_id` from Hook text) and run `comet task <project-root> --task "<original user request>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`. Report outcomes truthfully; never mark unused items as successfully used. At task end, still run `comet task` with `--complete --workflow <workflow> --change <change-id>` to record the checkpoint.
+
+Without Hooks, the Skill calls the same interface. `comet memory context` is only a compatibility entry. Missing plugin results or failed calls do not block the workflow.

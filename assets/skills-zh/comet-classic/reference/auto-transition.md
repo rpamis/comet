@@ -6,17 +6,17 @@
 
 ## 术语区分
 
-「阶段守卫推进」由 guard `--apply` 完成，更新 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。本协议的「自动衔接」只决定**是否自动调用下一个 skill**，由 `auto_transition` 控制。
+guard `--apply` 检查通过后，会更新 `.comet.yaml` 的 `phase` 字段，进入下一阶段。无论 `auto_transition` 如何设置，这一步**都会执行**。`auto_transition` 只决定更新阶段后，**是否自动调用下一个 Skill**。
 
 ## 执行方式
 
-退出条件满足且阶段守卫推进 phase 后，优先消费该次成功 JSON 结果的 `agent.continuation`：`automatic: true` 时调用 `skill`；false 时提示用户手动运行该 Skill 并交还控制权。这个观察可直接用作下一阶段入口，不重复 next、select 或 check。只有恢复、外部状态或工作区变化，以及旧结果没有该观察时才运行：
+退出条件满足且阶段守卫更新 phase 后，优先按本次成功 JSON 结果中的 `agent.continuation` 继续：`automatic: true` 时调用 `skill` 指定的 Skill；false 时提示用户手动运行该 Skill，并结束本次调用。下一阶段可直接使用这里返回的状态信息，不重复 next、select 或 check。只有恢复会话、外部状态或工作区发生变化，或者旧结果没有这些信息时，才运行：
 
 ```bash
 comet state next <change-name>
 ```
 
-脚本根据 `phase`、`workflow`、`auto_transition` 输出确定性的下一步：
+脚本根据 `phase`、`workflow`、`auto_transition` 确定并返回下一步：
 
 - `NEXT: auto` → 调用 `SKILL` 指向的 skill 进入下一阶段
 - `NEXT: manual` → 不要调用下一 skill，按 `HINT` 提示用户手动运行 `/<SKILL>`

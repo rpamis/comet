@@ -2,25 +2,25 @@ apiVersion: comet/v1alpha1
 kind: Skill
 metadata:
   name: comet-classic
-  version: "1"
-  description: Internal compatibility orchestration for classic Comet full, hotfix, and tweak workflows
+  version: '1'
+  description: Preserve existing Classic state while dispatching phase Skills for full, hotfix, and tweak workflows
 goal:
-  statement: Advance or restore a classic Comet Run without changing the user command surface
+  statement: Continue or restore a Classic Run while preserving existing CLI usage
   inputs:
     - name: classic-state
-      description: Validated ClassicState consistent with the Run projection
+      description: Validated ClassicState matching the corresponding Run fields
       required: true
     - name: evidence
-      description: Structured evidence produced by the Classic Evidence collector
+      description: Structured check records returned by the Classic Evidence collector
       required: true
   outputs:
     - name: run-state
-      description: Atomically synchronized Classic and Run state
+      description: Classic and Run state synchronized in one atomic operation
       required: true
   success:
-    - Legacy fields and Run fields remain consistent
+    - Existing Classic fields match the corresponding Run fields
     - Every step invokes only a declared public Comet Skill
-    - The completed state passes its completion eval
+    - Completion checks pass before the Run is marked completed
 orchestration:
   mode: deterministic
   entry: full.open

@@ -14,8 +14,8 @@ describe('Chinese Comet entry Skills', () => {
     const source = await readSkill(chineseRoot, 'comet');
 
     expect(source).toContain('name: comet');
-    expect(source).toContain(
-      'description: "Comet 工作流入口。当用户明确调用 /comet，或明确要求使用 Comet 但未指定 Native/Classic 时使用；解析项目配置并加载唯一入口。"',
+    expect(source.match(/^description:\s*['"](.+)['"]$/mu)?.[1]).toBe(
+      'Comet 工作流入口。当用户明确调用 /comet，或明确要求使用 Comet 但未指定 Native/Classic 时使用；按项目配置加载 Native 或 Classic。',
     );
     expect(source).not.toContain('存在需要恢复的 active Comet change');
     expect(source).toContain('comet workflow resolve . --activate --json');
@@ -90,8 +90,8 @@ describe('English Comet entry Skills', () => {
     const source = await readSkill(englishRoot, 'comet');
 
     expect(source).toContain('name: comet');
-    expect(source).toContain(
-      'description: "Comet workflow entry. Use when the user invokes /comet or asks to use Comet without choosing Native or Classic; resolve and load exactly one entry from project configuration."',
+    expect(source.match(/^description:\s*['"](.+)['"]$/mu)?.[1]).toBe(
+      'Comet workflow entry. Use when the user invokes /comet or asks to use Comet without choosing Native or Classic; load Native or Classic from project configuration.',
     );
     expect(source).not.toContain('an active Comet change needs to be resumed');
     expect(source).toContain('comet workflow resolve . --activate --json');
@@ -108,11 +108,11 @@ describe('English Comet entry Skills', () => {
     expect(source).toContain('/comet-native');
     expect(source).toContain('/comet-classic');
     expect(source).toContain('Do not switch');
-    expect(source.length).toBeLessThan(2_000);
+    expect(source.length).toBeLessThan(3_000);
     expect(source).not.toMatch(/OpenSpec|Superpowers|brainstorming|TDD|\/comet-open/iu);
   });
 
-  it('publishes the existing thick workflow only through /comet-classic', async () => {
+  it('routes Classic through a bounded English entry while retaining its workflow identity', async () => {
     const source = await readSkill(englishRoot, 'comet-classic');
 
     expect(source).toContain('name: comet-classic');
@@ -122,7 +122,7 @@ describe('English Comet entry Skills', () => {
     expect(source).toContain('/comet-open');
     expect(source).toContain('/comet-build');
     expect(source).toContain('comet-classic/reference/scripts.md');
-    expect(source.length).toBeGreaterThan(10_000);
+    expect(source.length).toBeLessThanOrEqual(14_000);
     expect(source).not.toMatch(/\/comet(?![-/])/u);
   });
 

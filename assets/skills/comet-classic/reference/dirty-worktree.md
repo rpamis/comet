@@ -2,11 +2,11 @@
 
 Canonical path: `comet-classic/reference/dirty-worktree.md`
 
-This protocol is shared by all Comet sub-skills that may modify code. When an agent resumes context or continues execution, it must handle uncommitted working tree changes through this protocol.
+All Comet sub-skills that modify code follow this protocol. On context recovery or continuation, handle uncommitted workspace changes through it. A phase may add its own rules, such as Verify's requirements for implementation changes; follow the phase Skill for those details.
 
-## 1. Checks
+## 1. Inspect the Workspace
 
-Before continuing or starting code changes, run:
+Before continuing or starting edits, run:
 
 ```bash
 git status --short
@@ -15,45 +15,45 @@ git diff --cached --stat
 git ls-files --others --exclude-standard
 ```
 
-When needed, inspect `git diff`, `git diff --cached`, and newly created file contents.
+Inspect `git diff`, `git diff --cached`, and new-file contents as needed.
 
 ## 2. Core Rules
 
-- The user may not say which files they changed. If the worktree is dirty, including new files shown as `??` in Git status, assume changes may come from the user or mixed sources.
-- **Build artifact exclusion**: `??` files matching `.gitignore` patterns (e.g., `node_modules/`, `dist/`, `__pycache__/`, `*.o`, `target/`, `build/`) are automatically skipped during attribution and not treated as user changes.
-- A dirty worktree is code evidence only. It does not automatically advance `.comet.yaml` `phase` or check off `tasks.md`; Comet state may advance only after attribution, verification, required document synchronization, and the relevant phase guard.
+- Users may not say what they changed. Treat uncommitted work (including new files shown as `??`) as potentially user-authored or produced by several contributors.
+- **Exclude build outputs**: if a `??` file matches a `.gitignore` pattern such as `node_modules/`, `dist/`, `__pycache__/`, `*.o`, `target/`, or `build/`, skip attribution automatically; do not treat it as a user edit.
+- Code changes in the workspace do not authorize updating `.comet.yaml` `phase` or checking off `tasks.md`. First establish origin and ownership, verify the work, update required documents, and pass the corresponding phase Guard.
 
-## 3. Attribution
+## 3. Determine Which Work the Changes Belong To
 
-Classify dirty diffs into three groups:
+Classify uncommitted changes into three groups:
 
-1. **Belongs to the current change**: Files and content match the current change goal, tasks.md, plan, or delta spec. Incorporate the diff into the current task and avoid redoing the same work.
-2. **Does not belong to the current change**: Files or content are unrelated. Pause and ask whether to include it in the current change, split it into a new change, leave it alone, or discard it with explicit authorization.
-3. **Unclear source**: The diff and documents are not enough to determine ownership. Pause, report the file list and reasoning, and do not advance the phase.
+1. **Current change**: files and content match this change's goal, tasks.md, plan, or delta spec. Incorporate them and continue without repeating the same edits.
+2. **Unrelated to the current change**: files or content do not match its goal. Pause and ask whether to include them, create a separate change, leave them untouched, or explicitly authorize discarding them.
+3. **Uncertain origin**: diff and documents do not establish ownership. Pause, report the files and evidence, and do not advance the phase.
 
-## 4. Common Patterns
+## 4. Common Cases
 
-### Implemented But tasks.md Is Not Checked
+### Implementation Exists but tasks.md Is Unchecked
 
-Verify the implementation with build and tests. If it passes, check off the task. Do not redo work just because the task is unchecked, and do not ignore code evidence because state files lag behind. If the current sub-skill defines a phase-specific rule, follow that sub-skill.
+Verify the implementation with build and tests, then record completion. An unchecked task does not justify redoing work, and stale state does not justify ignoring implementation. Follow any phase-specific requirements in the current Skill.
 
-### Plan Or Scope Changed
+### The Plan or Scope Has Changed
 
-Follow the current sub-skill's escalation, incremental-update, or rollback rules. This protocol does not repeat phase-specific details.
+Follow the current Skill's escalation, incremental-update, or rollback rules. This reference does not repeat phase-specific cases.
 
-### Ambiguous Resume Intent
+### The User Has Not Described the Edits
 
-When the user says things like "continue", "keep going", "I changed a bit", "I wasn't happy with it", "redo it", "code changed", or "use what is there", follow this protocol. Do not require the user to remember exactly what they changed.
+Apply this protocol when the user says “continue,” “keep going,” “I changed something,” “the previous result was unsatisfactory,” “redo it,” “the code changed,” or “use the current version” without describing the edits. Do not require the user to reconstruct what they changed first.
 
-### Code Changes During open/design
+### Code Changes Exist During open/design
 
-If the current phase is still `open` or `design` but the dirty worktree already contains code changes, first attribute the changes through this protocol and do not advance the phase directly:
+If phase is still `open` or `design` but code changes exist, establish origin and ownership before advancing:
 
-- If the changes belong to the current change, treat them as requirements or design input and record them in proposal/design/spec/design doc/tasks as appropriate. The current phase guard must still pass before entering build.
-- If the changes do not belong to the current change or ownership is unclear, pause and ask whether to include them, split them into a new change, leave them alone, or discard them with explicit authorization.
-- Do not treat code changes made during open/design as completed implementation ready for verify.
+- Current-change edits: record them as requirement/design input in proposal/design/spec/design doc/tasks. The relevant phase Guard must still pass before build.
+- Unrelated or uncertain edits: ask whether to include them, split a new change, leave them untouched, or explicitly authorize discarding them.
+- Do not treat code changes during open/design as completed implementation and jump to verify.
 
-## 5. Prohibitions
+## 5. Prohibited Actions
 
-- Do not overwrite, revert, reformat over, or ignore user changes before understanding the dirty diff source.
-- Do not mark verification as passed while dirty diff remains unexplained.
+- Do not overwrite, revert, reformat away, or ignore user changes before establishing their origin.
+- Do not declare verification passed without explaining the origin and ownership of these edits.

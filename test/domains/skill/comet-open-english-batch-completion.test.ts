@@ -9,8 +9,8 @@ describe('comet-open English batch completion protocol', () => {
       'utf8',
     );
 
-    expect(skill).toContain('From unfinished `ready` artifacts');
-    expect(skill).toContain('Must not hard-code generation order');
+    expect(skill).toContain('From unfinished artifacts with `status: "ready"`');
+    expect(skill).toContain('Do not hard-code generation order');
     expect(skill).toContain('advance the `applyRequires` dependency closure');
     expect(skill).not.toContain(
       '**Standard Artifact Loop** (for each `artifact-id`: `proposal` → `design` → `tasks`)',
@@ -28,7 +28,7 @@ describe('comet-open English batch completion protocol', () => {
     );
     expect(skill).toContain('validates the full required closure');
     expect(skill).toContain('comet state artifacts <name> --json');
-    expect(skill).toContain('isComplete is diagnostic');
+    expect(skill).toContain('`isComplete` is diagnostic');
     expect(skill).toContain('If any split item fails these checks');
     expect(skill).toContain('comet state check <name> design');
   });
