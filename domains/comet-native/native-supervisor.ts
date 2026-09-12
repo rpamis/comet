@@ -932,13 +932,13 @@ export function projectNativeSupervisorTask(
           {
             kind: 'supervisor-verifier-result',
             ...identity,
-            verdict: '<pass|fail|blocked>',
+            verdict: 'blocked',
             evidence: {
               summary: '<verification-summary>',
               checks: [],
               acceptance: (task.acceptance ?? []).map(({ id }) => ({
                 id,
-                result: '<passed|failed|blocked>',
+                result: 'blocked',
                 reason: '<evidence>',
               })),
               receiptRef: task.checkExecution?.receiptRef ?? null,

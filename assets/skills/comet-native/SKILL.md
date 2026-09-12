@@ -85,6 +85,6 @@ Complete when state is `done`, authorized workspace finishing is `completed` or 
 - `blocked`: address listed blockers or recovery actions; pause only dependent work.
 - `done`: finish after checking the Archive completion criteria.
 
-After a successful response containing `agent`, continue using its phase, state version, `workspace.cwd`, and `continuation`. Query `status` again only on session recovery, a missing response, or signs of external changes.
+After a successful response containing `agent`, continue using its phase, state version, `workspace.cwd`, and `continuation`. Read details only when fields are missing, a command is rejected, or the action needs additional artifact text. Query `status` again only on session recovery, a missing response, or signs of external changes. Do not redispatch an existing Verifier or child task because a wait tool timed out.
 
 Add `--details` only when the current action needs acceptance text, handoff summaries, or history. Follow `nextPageArgs` through every page covering `scopeIds`. Run `show` only when artifact bodies are needed. For CLI text, read `summary`, the single `NEXT:`, and any relay message first. Use `--json` for programmatic parsing and `--verbose` only to diagnose local execution.

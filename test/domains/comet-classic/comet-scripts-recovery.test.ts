@@ -275,7 +275,7 @@ describe('check --recover', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(
-      'Complete only missing execution, TDD and review decisions in /comet-build before planning; retain confirmed settings and any valid plan.',
+      'Complete only the missing or invalid configuration in /comet-build before planning (missing: build_mode, tdd_mode, review_mode); retain confirmed settings and any valid plan.',
     );
   });
 

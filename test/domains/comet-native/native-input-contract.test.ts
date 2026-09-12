@@ -65,4 +65,35 @@ describe('Agent runner input contract', () => {
       runId: 'run-a',
     });
   });
+
+  it('returns directly parsable Verifier templates with a usable controller command', () => {
+    const task = projectNativeSupervisorTask(
+      {
+        role: 'verifier',
+        child: 'child-a',
+        runId: 'run-a',
+        projectRoot: '/child',
+        baseCommit: 'a'.repeat(40),
+        acceptance: [{ id: 'acceptance-a', source: 'spec.md', text: 'The change works.' }],
+      },
+      'parent',
+      '/controller',
+    );
+
+    expect(task.returnAction).toMatchObject({
+      cwd: '/controller',
+      commandArgs: [
+        'comet',
+        'native',
+        'next',
+        'parent',
+        '--runner-input',
+        '<temporary-json-file>',
+        '--json',
+      ],
+    });
+    for (const option of task.returnAction.inputOptions) {
+      expect(() => parseNativeRunnerInput(option.template)).not.toThrow();
+    }
+  });
 });

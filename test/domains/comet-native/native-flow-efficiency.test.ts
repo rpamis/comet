@@ -107,6 +107,22 @@ describe('Native flow efficiency plan', () => {
     expect(template).not.toHaveProperty('review');
   });
 
+  it('emits a directly parsable final Verifier response template', () => {
+    const runner = createNativeRunnerChannel();
+    const state = reserveNativeVerifierAttempt(
+      builderCandidate(confirmedState('verifier-final-template'), runner),
+    );
+    const continuation = nativePortableContinuation(state);
+    const option = continuation.inputOptions.find((candidate) => {
+      const template = candidate.template as Record<string, unknown>;
+      const response = template.response as Record<string, unknown> | undefined;
+      return response?.kind === 'final-result';
+    });
+
+    expect(option).toBeDefined();
+    expect(() => parseNativeRunnerInput(option!.template)).not.toThrow();
+  });
+
   it('rejects the same acceptance criterion duplicated across brief and Spec sources', () => {
     expect(() =>
       buildNativePortableAcceptance({

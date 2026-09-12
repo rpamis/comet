@@ -85,6 +85,6 @@ Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的
 - `blocked`：处理列出的阻塞或恢复动作；仅暂停依赖该条件的工作。
 - `done`：核对 Archive 完成标准后结束。
 
-命令成功且响应包含 `agent` 时，直接使用其中的阶段、状态版本、`workspace.cwd` 和 `continuation` 继续。恢复会话、响应缺失或有外部变化迹象时，才重新查询 `status`。
+命令成功且响应包含 `agent` 时，直接使用其中的阶段、状态版本、`workspace.cwd` 和 `continuation` 继续。只在字段缺失、命令被拒绝或需要额外正文时读取详情；恢复会话、响应缺失或有外部变化迹象时，才重新查询 `status`。不因等待工具超时重复派发已有的 Verifier 或子任务。
 
 当前动作需要验收文字、交接摘要或历史详情时，才加 `--details`，并按 `nextPageArgs` 读取 `scopeIds` 涉及的全部页面。需要正式文件的正文时，才运行 `show`。阅读 CLI 文本时，先看 `summary`、唯一的 `NEXT:` 和可选转述消息；程序解析使用 `--json`，排查本机执行状态时才用 `--verbose`。

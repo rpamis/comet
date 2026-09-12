@@ -11,6 +11,7 @@ import { readClassicCheckpoint, readClassicDelivery } from './classic-progress.j
 import { inspectClassicPlanReadiness } from './classic-plan-readiness.js';
 import { inspectClassicDesignReadiness } from './classic-design-readiness.js';
 import { readClassicState } from './classic-store.js';
+import { classicConfigurationReadiness } from './classic-build-configuration.js';
 
 export interface ClassicNextAction {
   kind: string;
@@ -52,6 +53,10 @@ export async function classicRecoveryContext(
   const mapping = inspectClassicPlanTasks(plan, tasks);
   const planReadiness =
     state.workflow === 'full' ? await inspectClassicPlanReadiness(root, state.plan) : null;
+  const configurationReadiness = classicConfigurationReadiness(state);
+  const hasConfigurationGap =
+    configurationReadiness.missingFields.length > 0 ||
+    configurationReadiness.invalidFields.length > 0;
   const coordination = await readClassicCheckpoint(root, directory, source);
   const delivery = state.phase === 'archive' ? await readClassicDelivery(root, directory) : null;
   let nextAction: ClassicNextAction = {
@@ -96,19 +101,21 @@ export async function classicRecoveryContext(
         reason:
           'Resume /comet-open to restore the missing isolation decision without regenerating valid artifacts.',
       };
-    else if (
-      state.workflow === 'full' &&
-      (!state.buildMode ||
-        !state.tddMode ||
-        !state.reviewMode ||
-        (state.buildMode === 'autonomous' && state.reviewMode === 'off') ||
-        (state.buildMode === 'subagent-driven-development' &&
-          state.subagentDispatch !== 'confirmed'))
-    )
+    else if (state.workflow === 'full' && hasConfigurationGap)
       nextAction = {
         kind: 'configure',
-        reason:
-          'Complete only missing execution, TDD and review decisions in /comet-build before planning; retain confirmed settings and any valid plan.',
+        reason: `Complete only the missing or invalid configuration in /comet-build before planning (${[
+          ...(configurationReadiness.missingFields.length
+            ? [`missing: ${configurationReadiness.missingFields.join(', ')}`]
+            : []),
+          ...(configurationReadiness.invalidFields.length
+            ? [
+                `invalid: ${configurationReadiness.invalidFields
+                  .map(({ field, reason }) => `${field} (${reason})`)
+                  .join('; ')}`,
+              ]
+            : []),
+        ].join('; ')}); retain confirmed settings and any valid plan.`,
       };
     else if (state.workflow === 'full' && planReadiness?.status !== 'ready')
       nextAction = {
@@ -220,6 +227,7 @@ export async function classicRecoveryContext(
       specsRoot: paths.specsDir,
       superpowersRoot: paths.superpowersRoot,
     },
+    configurationReadiness,
     nextAction,
     continuation: {
       ...nextAction,

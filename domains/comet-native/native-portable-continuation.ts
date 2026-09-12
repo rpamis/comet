@@ -1043,11 +1043,11 @@ export function nativePortableContinuation(
                     result: {
                       iteration: state.loop.iteration,
                       attempt: state.loop.attempt,
-                      verdict: '<pass|fail|blocked>',
+                      verdict: 'blocked',
                       acceptance: [
                         {
                           id: '<acceptance-id>',
-                          result: '<passed|failed|blocked>',
+                          result: 'blocked',
                           reason: '<reason>',
                         },
                       ],

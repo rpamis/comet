@@ -23,7 +23,7 @@ comet state select <change-name>
 comet state check <name> build --json
 ```
 
-If this invocation already has a successful Design/Guard result with Build state, use its `data.configuration`, `artifactRefs`, task information, and `agent.continuation` without repeating select/check. Run the entry commands above only on recovery or workspace/external state changes. After writing configuration, use the successful result rather than repeating get for every field. Handle `data.issues` on failure.
+If this invocation already has a successful Design/Guard result with Build state, use its `data.configuration`, `configurationReadiness`, `artifactRefs`, task information, and `agent.continuation` without repeating select/check. Run the entry commands above only on recovery or workspace/external state changes. After writing configuration, use the successful result rather than repeating get for every field. Handle `data.issues` on failure.
 
 If select/check returns `BLOCKED` because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
 
@@ -31,9 +31,9 @@ If select/check returns `BLOCKED` because `bound_branch` differs from the curren
 
 ### 1. Confirm the execution strategy first
 
-Read configuration, taskState, and nextAction from entry. If configuration, plan, and review records remain valid, continue without asking again or regenerating them. Open must already have prepared and bound the workspace. Stop if isolation is missing or the directory does not match, and resume in the projectRoot returned by workspace resolve. Do not create or switch workspaces in Build.
+Read configuration, `configurationReadiness`, taskState, and nextAction from entry. When `configurationReadiness.missingFields` and `invalidFields` are empty, retain the confirmed configuration instead of presenting the same choices again; ask only about the listed missing or invalid decisions. If configuration, plan, and review records remain valid, continue without asking again or regenerating them. Open must already have prepared and bound the workspace. Stop if isolation is missing or the directory does not match, and resume in the projectRoot returned by workspace resolve. Do not create or switch workspaces in Build.
 
-**Confirm the execution strategy before writing a plan.** If configuration is missing or the user explicitly requests a change, collect execution mode, TDD, and review mode together under `comet-classic/reference/decision-point.md`. Do not choose based on the model name.
+**Confirm the execution strategy before writing a plan.** `configurationReadiness` lists only unresolved or invalid fields; a valid configuration is not presented as a new choice. If configuration is missing or the user explicitly requests a change, collect execution mode, TDD, and review mode together under `comet-classic/reference/decision-point.md`, asking only about the listed decisions. Do not choose based on the model name.
 
 | build_mode                    | Behavior                                                                                                                                                                                    |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -71,7 +71,7 @@ Keep an existing valid plan. Otherwise, use configuration.language to create `<c
 - autonomous: the current Agent writes and checks the plan directly, without loading writing-plans.
 - Other plan execution strategies: use the `writing-plans` skill for writing and self-checking only; stop if it fails. Pass the confirmed configuration, design_doc, tasks.md, fixed plan path, and current `git rev-parse HEAD`. Return to Comet Build afterwards without choosing the strategy again or entering the external skill's subsequent workflow.
 
-All strategies follow the same plan requirements. Each task must produce an independently acceptable result and identify its task ID, scope, dependencies, constraints, and acceptance commands or scenarios. Organize preparation, implementation, tests, and documentation around that result. Do not split tasks by estimated minutes, file counts, or RED/GREEN steps. Reference designs and requirements rather than writing the whole implementation in advance. Include code excerpts only for interfaces or high-risk algorithms that need review before implementation.
+Adjust plan depth to risk: keep plans brief for clear, mature, reversible work; record tradeoffs, dependencies, rollback, and verification for real technical choices, component dependencies, permissions, migrations, concurrency, compatibility, or irreversible operations. Each task must still produce an independently acceptable result and identify its task ID, scope, dependencies, constraints, and acceptance commands or scenarios. Organize preparation, implementation, tests, and documentation around that result. Do not split tasks by estimated minutes, file counts, or RED/GREEN steps. Reference designs and requirements rather than writing the whole implementation in advance. Include code excerpts only for interfaces or high-risk algorithms that need review before implementation.
 
 Do not create another checkbox list in a new plan. Add `<!-- comet-task-authority: <classic-task-authority-ref> -->`, using the repository-relative reference from `data.artifactRefs.tasks`, and associate each task with `<!-- comet-task-ref:<task-id> -->`. Add actual new work to tasks.md and assign IDs before adding it to the plan. Handle scope changes under Step 4.
 
@@ -95,7 +95,7 @@ Continue under the confirmed strategy after planning; do not add another configu
 
 ### 3. Implement and accept tasks
 
-Use this invocation's entry configuration before implementation. Refresh entry after configuration, requirements, or workspace changes. External skills execute only the current plan and confirmed configuration. They must not create a worktree, choose isolation again, add a final review, or call finishing-a-development-branch. Return completed tasks to Comet Build.
+Use this invocation's entry configuration and continuation before implementation. Refresh entry after configuration, requirements, or workspace changes. Run checks according to risk instead of repeating the full suite after every small edit. External skills execute only the current plan and confirmed configuration. They must not create a worktree, choose isolation again, add a final review, or call finishing-a-development-branch. Return completed tasks to Comet Build.
 
 - autonomous: organize implementation within the plan. Before delegation, read `comet-classic/reference/subagent-dispatch.md`, delegate a clearly scoped group of tasks as a work package, save coordination records through Runtime, and arrange an independent reviewer. External execution skills are not mandatory.
 - executing-plans: load Superpowers `executing-plans` with the Skill tool, pass entry configuration.language, and execute the plan in order. Stop if loading fails.

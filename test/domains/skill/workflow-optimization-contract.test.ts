@@ -250,6 +250,19 @@ describe('Chinese Classic efficiency contracts', () => {
     expect(entry).toContain('恢复时保留计划、任务、审查记录和已用复查次数');
   });
 
+  it('documents structured configuration gaps and bounded Native continuation consumption', async () => {
+    const build = await readSkill(zhSkillRoot, 'comet-build');
+    const recovery = await readChineseReference('context-recovery');
+    const native = await readSkill(zhSkillRoot, 'comet-native');
+
+    expect(build).toContain('`configurationReadiness`');
+    expect(build).toContain('只询问 `missingFields` 和 `invalidFields`');
+    expect(build).toContain('不重新列成待选择问题');
+    expect(recovery).toContain('`configurationReadiness` 的 `missingFields` 与 `invalidFields`');
+    expect(native).toContain('只在字段缺失、命令被拒绝或需要额外正文时读取详情');
+    expect(native).toContain('不因等待工具超时重复派发');
+  });
+
   it('publishes a usable checkpoint JSON shape and refuses stale or missing records as proof of missing implementation', async () => {
     const recovery = await readChineseReference('context-recovery');
     const checkpoint = section(recovery, '## Runtime 协调记录', '## 各阶段恢复');

@@ -68,6 +68,7 @@ import {
 } from './classic-protected-path.js';
 import { resolveClassicWorkspace } from './classic-workspace.js';
 import { classicRecoveryContext } from './classic-recovery.js';
+import { classicConfigurationReadiness } from './classic-build-configuration.js';
 import { classicHandoffCommand } from './classic-handoff.js';
 import { classicIssue, type ClassicIssue } from './classic-issues.js';
 import {
@@ -699,48 +700,46 @@ async function requirePhase(name: string, expected: string): Promise<void> {
 }
 
 async function requireBuildDecisions(name: string): Promise<void> {
-  const workflow = await readField(name, 'workflow');
-  const buildMode = await readField(name, 'build_mode');
-  const isolation = await readField(name, 'isolation');
-  const directOverride = await readField(name, 'direct_override');
-  const subagentDispatch = await readField(name, 'subagent_dispatch');
-  const tddMode = await readField(name, 'tdd_mode');
-  const reviewMode = await readField(name, 'review_mode');
+  const { file } = await stateFile(name);
+  const record = (await readDocument(file)).toJS() as Record<string, unknown>;
+  const state = sparseClassicState(record);
+  const buildMode = state.buildMode;
+  const isolation = state.isolation;
+  const readiness = classicConfigurationReadiness(state);
   const allowedIsolation = ['current', 'branch', 'worktree'];
-  if (!allowedIsolation.includes(isolation)) {
+  if (!isolation || !allowedIsolation.includes(isolation)) {
     fail(
       `ERROR: Cannot transition '${name}': isolation must be current, branch, or worktree, got '${isolation || 'null'}'`,
     );
   }
-  if (
-    !['subagent-driven-development', 'executing-plans', 'autonomous', 'direct'].includes(buildMode)
-  ) {
+  if (readiness.missingFields.includes('build_mode')) {
     fail(
       `ERROR: Cannot transition '${name}': build_mode must be selected before leaving build, got '${buildMode || 'null'}'`,
     );
   }
-  if (
-    buildMode === 'direct' &&
-    !['hotfix', 'tweak'].includes(workflow) &&
-    directOverride !== 'true'
-  ) {
+  if (readiness.invalidFields.some(({ field }) => field === 'direct_override')) {
     fail(
       `ERROR: Cannot transition '${name}': build_mode=direct is only allowed for hotfix/tweak unless direct_override=true`,
     );
   }
-  if (buildMode === 'subagent-driven-development' && subagentDispatch !== 'confirmed') {
+  if (readiness.missingFields.includes('subagent_dispatch')) {
     fail(
       `ERROR: Cannot transition '${name}': subagent_dispatch must be confirmed before using build_mode=subagent-driven-development`,
     );
   }
-  if (workflow === 'full' && (!tddMode || tddMode === 'null')) {
+  if (readiness.missingFields.includes('tdd_mode')) {
     fail(
       `ERROR: Cannot transition '${name}': tdd_mode must be selected before leaving build (full workflow)`,
     );
   }
-  if (workflow === 'full' && !['off', 'standard', 'thorough'].includes(reviewMode)) {
+  if (readiness.missingFields.includes('review_mode')) {
     fail(
-      `ERROR: Cannot transition '${name}': review_mode must be selected before leaving build (full workflow); review_mode must be off, standard, or thorough, got '${reviewMode || 'null'}'`,
+      `ERROR: Cannot transition '${name}': review_mode must be selected before leaving build (full workflow); review_mode must be off, standard, or thorough, got 'null'`,
+    );
+  }
+  if (readiness.invalidFields.some(({ field }) => field === 'review_mode')) {
+    fail(
+      `ERROR: Cannot transition '${name}': review_mode must be standard or thorough for autonomous full build`,
     );
   }
 }

@@ -201,7 +201,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       '--recover is for cold recovery after context loss, not normal phase progression.',
       'Recovery revalidates reusable local evidence and invalidates stale, damaged or single-use evidence.',
       'It preserves completed work; resume from the checkpoint and rerun required checks before progressing.',
-      'JSON entry data includes layout, configuration, nextAction, compact taskState, planMapping and checks.',
+      'JSON entry data includes layout, configuration, configurationReadiness, nextAction, compact taskState, planMapping and checks.',
       '--recover additionally revalidates evidence and includes checkpoint references; --details expands tasks and checkpoint content.',
       'Reconcile existing implementation and acceptance before dispatching work; unchecked tasks are not proof of missing implementation.',
       'Read fresh state after changing configuration or advancing phases; do not reuse an earlier entry snapshot.',

@@ -130,4 +130,76 @@ describe('Classic executable artifact and recovery contract', () => {
     }
     expect(await fs.readFile(file, 'utf8')).toBe(source);
   });
+
+  it('returns only the missing full-build configuration fields', async () => {
+    const { cli } = await fixture('legacy');
+    expect(
+      (await cli(['state', 'set', 'demo', 'design_doc', 'openspec/changes/demo/design.md']))
+        .exitCode,
+    ).toBe(0);
+    expect(
+      (
+        await cli([
+          'state',
+          'complete-design',
+          'demo',
+          '--design-doc',
+          'openspec/changes/demo/design.md',
+        ])
+      ).exitCode,
+    ).toBe(0);
+    for (const [field, value] of [
+      ['build_mode', 'autonomous'],
+      ['review_mode', 'standard'],
+    ]) {
+      expect((await cli(['state', 'set', 'demo', field, value])).exitCode).toBe(0);
+    }
+
+    const result = JSON.parse((await cli(['state', 'check', 'demo', 'build'])).stdout!);
+    expect(result.data.configurationReadiness).toEqual({
+      missingFields: ['tdd_mode'],
+      invalidFields: [],
+    });
+    expect(result.data.nextAction.kind).toBe('configure');
+
+    expect((await cli(['state', 'set', 'demo', 'tdd_mode', 'tdd'])).exitCode).toBe(0);
+    const complete = JSON.parse((await cli(['state', 'check', 'demo', 'build'])).stdout!);
+    expect(complete.data.configurationReadiness).toEqual({
+      missingFields: [],
+      invalidFields: [],
+    });
+  });
+
+  it('reports an invalid autonomous review configuration without losing valid choices', async () => {
+    const { cli } = await fixture('legacy');
+    expect(
+      (await cli(['state', 'set', 'demo', 'design_doc', 'openspec/changes/demo/design.md']))
+        .exitCode,
+    ).toBe(0);
+    expect(
+      (
+        await cli([
+          'state',
+          'complete-design',
+          'demo',
+          '--design-doc',
+          'openspec/changes/demo/design.md',
+        ])
+      ).exitCode,
+    ).toBe(0);
+    for (const [field, value] of [
+      ['build_mode', 'autonomous'],
+      ['tdd_mode', 'tdd'],
+      ['review_mode', 'off'],
+    ]) {
+      expect((await cli(['state', 'set', 'demo', field, value])).exitCode).toBe(0);
+    }
+
+    const result = JSON.parse((await cli(['state', 'check', 'demo', 'build'])).stdout!);
+    expect(result.data.configurationReadiness.missingFields).toEqual([]);
+    expect(result.data.configurationReadiness.invalidFields).toEqual([
+      expect.objectContaining({ field: 'review_mode' }),
+    ]);
+    expect(result.data.nextAction.kind).toBe('configure');
+  });
 });

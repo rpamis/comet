@@ -23,7 +23,7 @@ comet state select <change-name>
 comet state check <name> build --json
 ```
 
-本轮 Design/Guard 已成功返回 Build 状态信息时，直接使用其中的 `data.configuration`、`artifactRefs` 和任务信息，并按 `agent.continuation` 继续，不重复 select/check。恢复任务、工作区变化或外部状态变化时，才执行上述入口验证。配置写入成功后，使用返回的结果，不逐字段重复调用 get；验证失败时处理 `data.issues`。
+本轮 Design/Guard 已成功返回 Build 状态信息时，直接使用其中的 `data.configuration`、`configurationReadiness`、`artifactRefs` 和任务信息，并按 `agent.continuation` 继续，不重复 select/check。恢复任务、工作区变化或外部状态变化时，才执行上述入口验证。配置写入成功后，使用返回的结果，不逐字段重复调用 get；验证失败时处理 `data.issues`。
 
 若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
@@ -31,9 +31,9 @@ comet state check <name> build --json
 
 ### 1. 先确认执行策略
 
-读取入口返回的 configuration、taskState 和 nextAction。已有配置、计划和审查记录仍然有效时，直接继续，不重新询问或生成。工作区必须已在 Open 阶段准备并绑定；缺少 isolation 或目录不匹配时停止，回到 workspace resolve 返回的 projectRoot 恢复任务，不能在 Build 新建或切换工作区。
+读取入口返回的 configuration、`configurationReadiness`、taskState 和 nextAction。`configurationReadiness.missingFields` 与 `invalidFields` 均为空时，沿用已确认配置，不重新列成待选择问题；只有缺失或无效字段才补问对应决定。已有计划和审查记录仍然有效时直接继续，不重新询问或生成。工作区必须已在 Open 阶段准备并绑定；缺少 isolation 或目录不匹配时停止，回到 workspace resolve 返回的 projectRoot 恢复任务，不能在 Build 新建或切换工作区。
 
-**写计划前必须确认执行策略**。配置缺失或用户明确要求更改时，按 `comet-classic/reference/decision-point.md` 在同一轮提问中收集执行方式、TDD 和审查模式，不按模型名称自动选择：
+**写计划前必须确认执行策略**。`configurationReadiness` 只列出尚未确定或组合无效的字段；配置已经有效时不重复询问。配置缺失或用户明确要求更改时，按 `comet-classic/reference/decision-point.md` 在同一轮提问中收集执行方式、TDD 和审查模式，但只询问 `missingFields` 和 `invalidFields` 中列出的决定，不按模型名称自动选择：
 
 | build_mode                    | 行为                                                                                                                     |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -71,7 +71,7 @@ comet state set <name> build_mode autonomous subagent_dispatch null tdd_mode tdd
 - autonomous：由当前 Agent 直接编写和自检，不加载 writing-plans。
 - 其他计划执行策略：使用 `writing-plans` Skill，只采用其编写和自检方法；技能失败则停止。传入已确认的配置、design_doc、tasks.md、固定计划路径和当前 `git rev-parse HEAD`。完成后返回 Comet Build，不再次选择执行策略，也不自动进入外部 Skill 的后续流程。
 
-所有策略都遵守以下计划要求：每个任务对应一个可独立验收的结果，列明 task ID、范围、依赖、约束，以及验收命令或场景。按这个结果安排准备、实现、测试和文档工作，不按预计分钟数、文件数量或 RED/GREEN 步骤拆分任务。计划引用已有设计和需求，不预先写出完整实现；只有必须提前审查的接口或高风险算法，才提供必要的代码片段。
+计划深度按风险调整：范围明确、方法成熟且易回退的任务简要记录；存在真实技术取舍、组件依赖、权限、迁移、并发、兼容性或不可逆操作时，补充方案理由、依赖、回退和验证。每个任务仍对应一个可独立验收的结果，列明 task ID、范围、依赖、约束，以及验收命令或场景；不按预计分钟数、文件数量或 RED/GREEN 步骤拆分任务。计划引用已有设计和需求，不预先写出完整实现；只有必须提前审查的接口或高风险算法，才提供必要的代码片段。
 
 新计划不创建第二套 checkbox，写入 `<!-- comet-task-authority: <classic-task-authority-ref> -->`（取自 `data.artifactRefs.tasks` 的仓库相对引用），以 `<!-- comet-task-ref:<task-id> -->` 关联每个任务。计划新增实际任务必须先纳入 tasks.md 并分配 ID；范围变化按 Step 4 处理。
 
@@ -95,7 +95,7 @@ comet state set <name> plan "<plan-ref>" --json
 
 ### 3. 执行与验收
 
-执行前使用本轮入口配置；配置、需求或工作区变化后刷新入口。外部 Skill 只执行当前计划和确认配置，不新建 Worktree、重新选择隔离、追加最终审查或调用 finishing-a-development-branch；完成任务返回 Comet Build。
+执行前使用本轮入口配置和 continuation；配置、需求或工作区变化后刷新入口。按风险执行相关检查，不在每个小修改后重复全量验证；外部 Skill 只执行当前计划和确认配置，不新建 Worktree、重新选择隔离、追加最终审查或调用 finishing-a-development-branch；完成任务返回 Comet Build。
 
 - autonomous：Agent 在计划范围内自行组织实施。需要委派时，先读取 `comet-classic/reference/subagent-dispatch.md`，将范围明确的一组任务作为工作包交给子代理，通过 Runtime 保存协调记录，并安排独立审查者（reviewer）；不强制加载外部执行 Skill。
 - executing-plans：使用 Skill 工具加载 Superpowers `executing-plans`，传入入口 configuration.language，按计划顺序执行；加载失败则停止。

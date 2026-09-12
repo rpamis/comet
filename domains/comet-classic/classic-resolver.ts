@@ -2,6 +2,7 @@ import type { DeterministicResolver } from '../../domains/engine/resolver.js';
 import type { ClassicEvidence } from './classic-evidence.js';
 import { evidenceSatisfied } from './classic-evidence.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
+import { classicConfigurationReady } from './classic-build-configuration.js';
 
 export interface ClassicResolverContext {
   classic: ClassicState;
@@ -13,15 +14,7 @@ function profileFor(classic: ClassicState): ClassicProfile {
 }
 
 function fullBuildConfigured(classic: ClassicState): boolean {
-  if (!classic.buildMode || !classic.tddMode || !classic.reviewMode || !classic.isolation) {
-    return false;
-  }
-  if (classic.buildMode === 'subagent-driven-development') {
-    return classic.subagentDispatch === 'confirmed';
-  }
-  if (classic.buildMode === 'direct') return classic.directOverride === true;
-  if (classic.buildMode === 'autonomous') return classic.reviewMode !== 'off';
-  return true;
+  return classic.isolation !== null && classicConfigurationReady(classic);
 }
 
 function presetBuildConfigured(classic: ClassicState): boolean {

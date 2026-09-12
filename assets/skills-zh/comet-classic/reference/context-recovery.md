@@ -10,7 +10,7 @@
 comet state check <change-name> <phase> --json
 ```
 
-普通入口和恢复入口都会返回 layout、configuration、nextAction、taskState、coordination 和 delivery。taskState 为 `{authority, revision, total, completed, needsIds, next}`；coordination 为 `{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}`。按 classic-layout.md 确定各逻辑路径对应的目录，根据实际 phase 进入对应阶段。摘要中已有的字段不再逐个查询。状态写入，或工作区、需求发生变化后，重新读取受影响的状态。
+普通入口和恢复入口都会返回 layout、configuration、`configurationReadiness`、nextAction、taskState、coordination 和 delivery。`configurationReadiness` 的 `missingFields` 与 `invalidFields` 为空时，表示当前执行配置可沿用；只根据其中列出的字段补问或修复，不逐字段重新查询。taskState 为 `{authority, revision, total, completed, needsIds, next}`；coordination 为 `{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}`。按 classic-layout.md 确定各逻辑路径对应的目录，根据实际 phase 进入对应阶段。摘要中已有的字段不再逐个查询。状态写入，或工作区、需求发生变化后，重新读取受影响的状态。
 
 nextAction 为 `{kind, reason, taskId?}`。先阅读 reason，再根据 kind 完成对应步骤：reconcile-task 表示核对实际成果，review 表示补充审查，checkoff 表示补记任务完成状态，check 表示补充检查，reconcile-plan 表示补齐旧计划与任务的对应关系或同步状态，plan 表示补充有效计划，configure 表示补齐配置，workspace 表示修复工作区归属，delivery 表示完成已授权的交付。nextAction 不允许跳过验收；其中的 taskId 必须对应 tasks.md 中的任务。
 

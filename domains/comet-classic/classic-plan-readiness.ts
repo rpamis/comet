@@ -4,6 +4,7 @@ import {
   readClassicProjectFile,
 } from './classic-protected-path.js';
 import type { ClassicState } from './classic-state.js';
+import { classicConfigurationReadiness } from './classic-build-configuration.js';
 import { parseDocument } from 'yaml';
 import { assertClassicLayoutReadable } from './classic-layout.js';
 import path from 'node:path';
@@ -22,9 +23,12 @@ export async function inspectClassicAutonomousBuildProblems(
   if (state.workflow !== 'full' || state.buildMode !== 'autonomous') return [];
   const problems: string[] = [];
   if (options.requirePlan !== false) {
-    if (!state.tddMode) problems.push('tdd_mode must be selected for autonomous full build');
-    if (!state.reviewMode) problems.push('review_mode must be selected for autonomous full build');
-    else if (state.reviewMode === 'off')
+    const configuration = classicConfigurationReadiness(state);
+    if (configuration.missingFields.includes('tdd_mode'))
+      problems.push('tdd_mode must be selected for autonomous full build');
+    if (configuration.missingFields.includes('review_mode'))
+      problems.push('review_mode must be selected for autonomous full build');
+    if (configuration.invalidFields.some(({ field }) => field === 'review_mode'))
       problems.push('review_mode must be standard or thorough for autonomous full build');
     if (!state.isolation) problems.push('isolation must be selected for autonomous full build');
   }
