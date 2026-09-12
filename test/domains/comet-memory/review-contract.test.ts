@@ -698,11 +698,15 @@ describe('memory text safety filter', () => {
     '会议定在 2026-09-01 讨论',
     '2026-09-01T10:00:00Z',
     '有效期至 2026 年 9 月',
+    '2026-09-01 2026-09-02',
+    '2026-09-01 1234',
+    '2026-09-01 2026-09-02 2026-09-03',
+    '2026-09-01-2026-09-02',
   ])('accepts the ISO date or date-like text %j', (text) => {
     expect(() => validateSafeMemoryText(text)).not.toThrow();
   });
 
-  it.each(['call 138-0000-0000', 'phone: +1 (555) 123-4567'])(
+  it.each(['call 138-0000-0000', 'phone: +1 (555) 123-4567', '编号-138-0000-0000'])(
     'still rejects the phone number %j and names the category',
     (text) => {
       expect(() => validateSafeMemoryText(text)).toThrow(/matched: phone number/u);

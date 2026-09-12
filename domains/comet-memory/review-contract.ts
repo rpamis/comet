@@ -41,9 +41,15 @@ const DANGEROUS_PATTERNS: readonly DangerousPattern[] = [
     category: 'JSON Web Token',
   },
   { pattern: /\b\d{3}-\d{2}-\d{4}\b/u, category: 'US social security number' },
-  // The negative lookahead excludes ISO dates (2026-09-01) that otherwise
-  // satisfy the phone-number shape.
-  { pattern: /\b\+?(?!\d{4}-\d{2}-\d{2}\b)\d[\d ()-]{7,}\d\b/u, category: 'phone number' },
+  // The lookahead blocks a match starting at the first digit of an ISO date,
+  // and the two lookbehinds block matches starting at the month or day inside
+  // one — the only word boundaries within a `YYYY-MM-DD` token. This keeps
+  // texts like `2026-09-01 2026-09-02` from matching as phone numbers while
+  // still detecting phone numbers elsewhere (e.g. after a label dash).
+  {
+    pattern: /\b(?<!\d{4}-)(?<!\d{4}-\d{2}-)\+?(?!\d{4}-\d{2}-\d{2}\b)\d[\d ()-]{7,}\d\b/u,
+    category: 'phone number',
+  },
   { pattern: /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/u, category: 'email address' },
   {
     pattern: /\b(?:diff --git|git\s+(?:diff|log)|@@\s+-\d|\+\+\+\s+[ab]\/|---\s+[ab]\/)/imu,
