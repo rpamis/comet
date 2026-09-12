@@ -34,7 +34,7 @@ describe('Chinese Comet entry Skills', () => {
     expect(source).not.toMatch(/OpenSpec|Superpowers|brainstorming|TDD|\/comet-open/iu);
   });
 
-  it('publishes the existing thick workflow only through /comet-classic', async () => {
+  it('routes Classic through a bounded entry while retaining its workflow identity', async () => {
     const source = await readSkill(chineseRoot, 'comet-classic');
 
     expect(source).toContain('name: comet-classic');
@@ -44,7 +44,8 @@ describe('Chinese Comet entry Skills', () => {
     expect(source).toContain('/comet-open');
     expect(source).toContain('/comet-build');
     expect(source).toContain('comet-classic/reference/scripts.md');
-    expect(source.length).toBeGreaterThan(10_000);
+    // Measure the loaded text, including long paragraphs, rather than formatted lines.
+    expect(source.length).toBeLessThanOrEqual(8_000);
     expect(source).not.toMatch(/\/comet(?![-/])/u);
   });
 

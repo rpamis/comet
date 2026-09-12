@@ -4,7 +4,7 @@
 
 ## 阶段入口与按需恢复
 
-先按 scripts.md 确认公开 CLI 和所选工作区；普通阶段衔接只运行一次入口检查：
+先按 scripts.md 确认公开 CLI 和所选工作区。普通阶段衔接优先消费成功结果的 `agent.continuation` 和入口观察；观察已有效时不重复 next、select 或 check。只有观察缺失或失效时运行一次入口检查：
 
 ```bash
 comet state check <change-name> <phase> --json
@@ -28,7 +28,23 @@ comet state check <change-name> <phase> --recover --details --json
 
 只读取当前动作缺少的正文。Runtime 将检查证据标为 `revalidated` 或 `rerun-required`；只有前者可复用，本地输入、环境、日志或一次性证据不满足条件时只重跑对应检查。恢复不清空计划、任务、审查或已用轮次。
 
+## Ambient Resume
+
 用户未明确调用 Classic，但仓库可能存在活跃 change 时，按 scripts.md 将当前请求通过 stdin 传给 `comet resume-probe . --stdin --json`；只有 auto_resume 自动恢复，ask_user 短问用户，out_of_scope/none 不进入流程。
+
+## 入口错误与恢复
+
+命令失败、依赖不可用、状态缺失或产物不完整时，保留原错误并按对应原因处理；只有当前输入足以验证的恢复动作才自动执行，恢复成功后重新运行受影响入口检查。
+
+| 观察到的问题                                           | 可执行的恢复动作与停止边界                                                                                                                                                                                              |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `comet classic openspec -- list --json` 失败           | 核对 OpenSpec 是否已安装与实际命令错误；artifact root 缺失或损坏时说明 `comet update --scope project` / `comet init --scope project` 的修复用途，不把命令失败当作“没有 active change”，不擅自升级或重新初始化用户环境。 |
+| 当前阶段要求的 Comet/OpenSpec/Superpowers Skill 不可用 | 停止依赖该 Skill 的动作，指出缺失名称与安装/启用条件；不以普通对话替代强依赖，也不静默更换已选执行策略。                                                                                                                |
+| `.comet.yaml` 缺失                                     | 先从本次明确选择和可验证产物核对 workflow；full 返回 `/comet-open`，hotfix/tweak 返回对应预设的初始化步骤，完成初始化后再 `comet state select`。workflow 无法确定时请求用户选择，不默认改成 full。                      |
+| `.comet.yaml` 格式异常                                 | 报告解析错误，从版本控制、备份或可验证产物恢复；不能用 `comet state set` 覆盖损坏文件，也不能根据现有文件猜测 phase 后推进。                                                                                            |
+| change 目录或必需产物不完整                            | 按当前 workflow 的 Open 初始化规则和 artifact 检查返回的依赖补齐；已有有效产物保留，Open 完整仍需最终审视确认。                                                                                                         |
+| 工作区绑定冲突或路径越界                               | 按 workspace.md 核对绑定与实际路径；需要切回绑定分支或 rebind 时展示合法选项并等待明确选择，无法确认归属时停止写入。                                                                                                    |
+| 构建、测试或手动验证失败                               | 保留当前 change 与失败证据，按 debug-gate.md 调查；Build 失败不得运行完成 Guard，Verify 失败按 Verify 修复循环续做，不以历史通过覆盖本次失败。                                                                          |
 
 ## 任务核对与补勾
 
@@ -83,6 +99,13 @@ evidence 保存实际提交、RED/GREEN 和审查证据引用；unresolved 保�
 记录缺失、会话失效或 revision 不匹配时先检查真实成果，重建最小记录；不能把“无检查点”解释为“无实现”。保留尚有效的审查与轮次，不因新会话重置预算。
 
 ## 各阶段恢复
+
+恢复先取得当前 phase、configuration 和 nextAction，再进入该阶段 Skill；元数据与文件冲突时处理入口报告，不从文件存在推断完成，也不手改 phase。
+
+- Open：状态文件缺失按上方“入口错误与恢复”核对 workflow 并完成相应初始化；格式损坏先修复来源。产物完整仍需核对 Open 用户确认，不能只凭文件推进。
+- Build 暂停：`build_pause: plan-ready` 表示用户要求计划后暂停。有效计划与配置沿用；只有用户明确要求继续才清除暂停。仅在配置缺失或用户明确要求更改时回到 Build 的写计划前联合决策，不因恢复暂停重问有效配置。计划缺失时核对文件与状态，修复后仍保留用户暂停意图。
+- Build 工作区：旧 change 缺 isolation 或目录不匹配时按 workspace.md 恢复 Open 的 workspace resolve/prepare；不在 Build 首次决定或切换工作区。
+- 已记录验证失败：`verify_result: fail` → 自动调用 `/comet-build` 继续修复已记录的失败，不重复写入同一次 verify-fail；达到自动修复上限或需接受偏差时由 `/comet-verify` 按真实失败次数处理例外决策。
 
 - Build：有效计划和配置继续使用。autonomous 不加载外部执行 Skill；其他策略只在上下文缺少所需方法时加载。委派按 subagent-dispatch.md 恢复有界工作包和原 implementer；subagent-driven-development 主会话不接管实现。任务全完成即返回 Build 退出检查，不恢复旧 Build final-review/final-fix。
 - Design：尚未确认的方案继续澄清；已确认则只补正式 Design Doc 或未完成的状态写入。按需读 brainstorm-summary.md 和一个 Markdown handoff，机器 JSON 默认由 Runtime 校验；不重新读取全部重复上下文。

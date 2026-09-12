@@ -22,15 +22,74 @@ async function read(language: keyof typeof roots, relative: string): Promise<str
   return fs.readFile(path.join(roots[language], relative), 'utf8');
 }
 
-function headings(source: string): string[] {
-  return source
-    .split(/\r?\n/u)
-    .filter((line) => /^##? /u.test(line))
-    .map((line) => line.replace(/^#+\s+/u, ''));
+function markdownLinks(source: string): string[] {
+  return [...source.matchAll(/\]\(([^)]+)\)/gu)].map((match) => match[1]);
 }
 
-function contentLineCount(source: string): number {
-  return source.split(/\r?\n/u).filter((line) => line.trim().length > 0).length;
+function section(source: string, anchor: string): string {
+  const lines = source.split(/\r?\n/u);
+  let fenced = false;
+  let start = -1;
+  let level = 0;
+  for (const [index, line] of lines.entries()) {
+    if (/^\s*```/u.test(line)) fenced = !fenced;
+    if (fenced) continue;
+    const heading = /^(#{1,6})\s+(.+)$/u.exec(line);
+    if (!heading) continue;
+    if (start >= 0 && heading[1].length <= level) return lines.slice(start, index).join('\n');
+    const slug = heading[2]
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+      .replace(/\s/gu, '-');
+    if (slug === anchor) {
+      start = index;
+      level = heading[1].length;
+    }
+  }
+  expect(start, `Missing Markdown anchor: ${anchor}`).toBeGreaterThanOrEqual(0);
+  return lines.slice(start).join('\n');
+}
+
+async function reachableInstructions(language: keyof typeof roots): Promise<{
+  content: string;
+  files: string[];
+}> {
+  const queue = [{ file: 'SKILL.md', anchor: '' }];
+  const visited = new Set<string>();
+  const files = new Set<string>();
+  const contents: string[] = [];
+  while (queue.length > 0) {
+    const { file, anchor } = queue.shift()!;
+    const key = `${file}#${anchor}`;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    files.add(file);
+    const source = await read(language, file);
+    const content = anchor ? section(source, anchor) : source;
+    contents.push(content);
+    for (const target of markdownLinks(content)) {
+      const [relative, nextAnchor = ''] = target.split('#');
+      const nextFile = relative ? path.posix.join(path.posix.dirname(file), relative) : file;
+      expect(markdownFiles, `${language}: ${target}`).toContain(nextFile);
+      queue.push({ file: nextFile, anchor: nextAnchor });
+    }
+  }
+  return { content: contents.join('\n'), files: [...files].sort() };
+}
+
+async function readReachable(language: keyof typeof roots): Promise<string> {
+  return (await reachableInstructions(language)).content;
+}
+
+async function readAction(language: keyof typeof roots, chineseTarget: string): Promise<string> {
+  const entry = await read(language, 'SKILL.md');
+  // English currently keeps these protocols in the entry; each language must expose
+  // the same contract through its actual entry or the explicitly linked action section.
+  if (language === 'en') return entry;
+  expect(markdownLinks(entry)).toContain(chineseTarget);
+  const [file, anchor] = chineseTarget.split('#');
+  const content = await read(language, file);
+  return `${entry}\n${section(content, anchor)}`;
 }
 
 describe('Comet Native Skills', () => {
@@ -46,7 +105,7 @@ describe('Comet Native Skills', () => {
       expect(metadata.name).toBe('comet-native');
       expect(metadata.description).toContain('Native');
 
-      const links = [...source.matchAll(/\]\(([^)]+)\)/gu)].map((match) => match[1]).sort();
+      const links = [...new Set(markdownLinks(source).map((link) => link.split('#')[0]))].sort();
       expect(links).toEqual([
         'reference/artifacts.md',
         'reference/clarification.md',
@@ -54,27 +113,102 @@ describe('Comet Native Skills', () => {
         'reference/recovery.md',
         'reference/workspace.md',
       ]);
-      await Promise.all(links.map((link) => fs.access(path.join(roots[language], link))));
+      expect((await reachableInstructions(language)).files).toEqual([...markdownFiles].sort());
     }
   });
 
-  it('bounds permanent Native context and keeps bilingual file structure aligned', async () => {
-    for (const language of ['en', 'zh'] as const) {
-      const contents = await Promise.all(markdownFiles.map((file) => read(language, file)));
-      // Exclude formatter-only blank lines; retain the baseline's 302 content lines plus one.
-      expect(contentLineCount(contents[0])).toBeLessThanOrEqual(100);
-      expect(
-        contents.reduce((total, source) => total + contentLineCount(source), 0),
-      ).toBeLessThanOrEqual(303);
-      expect(headings(contents[0])).toHaveLength(10);
-    }
+  it.each(['en', 'zh'] as const)(
+    'bounds the permanent %s entry by characters',
+    async (language) => {
+      // Character limits include whitespace so one long line cannot bypass the context budget.
+      // Language-specific sizes are not token counts; both entrypoints retain the same contracts.
+      // Keep the current English baseline bounded until its separate content confirmation.
+      const budget = language === 'zh' ? 6_000 : 38_000;
+      expect((await read(language, 'SKILL.md')).length).toBeLessThanOrEqual(budget);
+    },
+  );
 
-    for (const file of markdownFiles) {
-      const en = await read('en', file);
-      const zh = await read('zh', file);
-      expect(headings(en).length, file).toBe(headings(zh).length);
-      expect(en.split(/\r?\n/u).length, file).toBe(zh.split(/\r?\n/u).length);
+  it('routes ordinary Chinese Verify to its protocol without unrelated execution branches', async () => {
+    const skill = await read('zh', 'SKILL.md');
+    const verifyTarget = 'reference/commands.md#verify-协议';
+    expect(markdownLinks(skill)).toContain(verifyTarget);
+    const verify = section(await read('zh', 'reference/commands.md'), 'verify-协议');
+    for (const term of [
+      '新的只读 Verifier',
+      '全部验收项',
+      '--accept-result',
+      '等待同一个 Verifier',
+    ]) {
+      expect(`${skill}\n${verify}`, term).toContain(term);
     }
+    expect(`${skill}\n${verify}`).not.toContain('supervisor-cancel');
+    expect(verify).not.toContain('comet memory observe');
+    expect(verify).not.toContain('Codex 独立会话');
+    expect(`${skill}\n${verify}`.length).toBeLessThanOrEqual(8_500);
+    expect(skill).toContain('不一次加载整份命令参考或所有参考');
+  });
+
+  it('makes normal Runtime input rules available before template submission or returnAction', async () => {
+    const entry = await read('zh', 'SKILL.md');
+    const target = 'reference/commands.md#填写命令输入';
+    const trigger = entry.split('\n').find((line) => line.includes(`(${target})`));
+    expect(trigger).toContain('首次填写 Runtime 模板或通过 `returnAction` 回传结果前');
+    expect(trigger).toContain('必须读取');
+    const input = section(await read('zh', 'reference/commands.md'), '填写命令输入');
+    for (const term of [
+      '`exclusiveGroup`',
+      '单个对象 `template`',
+      '临时 JSON 文件',
+      '任务标识都原样保留',
+      '`error.issues`',
+      '`returnAction` 的控制目录、命令和模板',
+    ]) {
+      expect(input, term).toContain(term);
+    }
+    expect(input).not.toContain('supervisor-cancel');
+    expect(input).not.toContain('comet memory observe');
+  });
+
+  it('keeps current-candidate verification bindings and child receipts on their normal action routes', async () => {
+    const commands = await read('zh', 'reference/commands.md');
+    const verify = section(commands, 'verify-协议');
+    for (const term of [
+      '`projectRoot`',
+      '`verificationRoot`',
+      '`changeDir`',
+      '`supervisorStateRef`',
+      '`--project-root`',
+      '`candidateId`',
+      '`verifierExecutionRef`',
+      '恰好标记一次',
+      '至少一项集成检查',
+      '只在 `inputOptions.template` 中补充缺失或失效的检查',
+      '等待同一个 Verifier',
+      '`verifier-execution-error`',
+      '`verifier-unavailable`',
+    ]) {
+      expect(verify, term).toContain(term);
+    }
+    expect(markdownLinks(verify)).toContain('#填写命令输入');
+    expect(markdownLinks(verify)).toContain('#命令输入与异常');
+
+    const supervisor = section(commands, 'supervisor-协作');
+    for (const term of [
+      '子任务角色、任务包、worktree、基线提交、`runId`、验收范围、依赖和停止条件',
+      '`supervisor-checks`',
+      '`contractHash`',
+      '`verificationBoundary`',
+      '非空、`repeatable: true`',
+      '`retry_check_ids`',
+      '`receiptRef`',
+      '每个验收 ID 必须恰好出现一次',
+      '只有全部通过才记录 integrated',
+      '`supervisor-cancel`',
+    ]) {
+      expect(supervisor, term).toContain(term);
+    }
+    expect(markdownLinks(supervisor)).toContain('#填写命令输入');
+    expect(markdownLinks(supervisor)).toContain('recovery.md#等待外部输入与监控');
   });
 
   it('keeps the main Skill on decisions while delegating mechanics to public CLI output', async () => {
@@ -140,7 +274,7 @@ describe('Comet Native Skills', () => {
     ];
 
     for (const variant of variants) {
-      const skill = await read(variant.language, 'SKILL.md');
+      const skill = await readReachable(variant.language);
       for (const term of variant.required) {
         expect(skill, `${variant.language}: ${term}`).toContain(term);
       }
@@ -148,7 +282,8 @@ describe('Comet Native Skills', () => {
         variant.language === 'zh'
           ? '状态包含 `childSummary`'
           : 'When status contains `childSummary`';
-      expect(skill.match(new RegExp(statusMarker, 'gu')) ?? []).toHaveLength(1);
+      const entry = await read(variant.language, 'SKILL.md');
+      expect(entry.match(new RegExp(statusMarker, 'gu')) ?? []).toHaveLength(1);
       expect(skill).not.toContain(
         variant.language === 'zh'
           ? 'Archive 必须逐个使用 `finish=merge` 合入 Supervisor Change 分支'
@@ -193,7 +328,7 @@ describe('Comet Native Skills', () => {
     ];
 
     for (const variant of variants) {
-      const skill = await read(variant.language, 'SKILL.md');
+      const skill = await readAction(variant.language, 'reference/workspace.md#archive-收尾');
       for (const term of variant.required) {
         expect(skill, `${variant.language}: ${term}`).toContain(term);
       }
@@ -217,7 +352,7 @@ describe('Comet Native Skills', () => {
     ];
 
     for (const variant of variants) {
-      const skill = await read(variant.language, 'SKILL.md');
+      const skill = await readAction(variant.language, 'reference/workspace.md#创建-change');
       for (const term of variant.required) {
         expect(skill, `${variant.language}: ${term}`).toContain(term);
       }
@@ -297,7 +432,14 @@ describe('Comet Native Skills', () => {
     ];
 
     for (const variant of variants) {
-      const skill = await read(variant.language, 'SKILL.md');
+      const execution = await readAction(variant.language, 'reference/commands.md#supervisor-协作');
+      const clarification = await readAction(variant.language, 'reference/clarification.md#澄清');
+      let shape = '';
+      if (variant.language === 'zh') {
+        expect(markdownLinks(clarification)).toContain('#supervisor-拆分与确认');
+        shape = section(await read('zh', 'reference/clarification.md'), 'supervisor-拆分与确认');
+      }
+      const skill = `${execution}\n${clarification}\n${shape}`;
       for (const term of variant.required) {
         expect(skill, `${variant.language}: ${term}`).toContain(term);
       }
@@ -307,7 +449,7 @@ describe('Comet Native Skills', () => {
     }
   });
 
-  it('uses one shared clarification decision tree with mode-specific scheduling', async () => {
+  it('keeps clarification dependencies and mode-specific scheduling without mandatory simple-task trees', async () => {
     const variants = [
       {
         language: 'zh' as const,
@@ -347,7 +489,60 @@ describe('Comet Native Skills', () => {
         expect(reference, `${variant.language}: ${term}`).toContain(term);
       }
       expect(reference).not.toContain('[blocking] CONFIRM');
+      if (variant.language === 'zh') {
+        expect(reference).toContain('简单问题维护未决项和必要依赖即可');
+        expect(reference).toContain('只有多个决定相互依赖、回答会改变后续分支时');
+        expect(reference).not.toContain('在提出第一道用户问题前，先建立');
+      }
     }
+  });
+
+  it('persists each Chinese clarification round before asking and preserves unanswered Batch identities', async () => {
+    const clarification = await read('zh', 'reference/clarification.md');
+    const sequential = section(clarification, 'sequential-模式');
+    expect(sequential.indexOf('保存 `- [blocking]')).toBeGreaterThan(-1);
+    expect(sequential.indexOf('保存 `- [blocking]')).toBeLessThan(
+      sequential.indexOf('一次只提出这一个问题'),
+    );
+    expect(sequential).toContain('立即把已确定的决定写入 Decisions、brief 和完整目标规格');
+    expect(sequential).toContain('更新问题依赖并重新确定当前可提问项');
+
+    const batch = section(clarification, 'batch-模式');
+    expect(batch.indexOf('保存 `- [blocking] Q1:')).toBeGreaterThan(-1);
+    expect(batch.indexOf('保存 `- [blocking] Q1:')).toBeLessThan(
+      batch.indexOf('一次提出本轮全部问题'),
+    );
+    expect(batch).toContain('每个独立决定保留为单独问题');
+    expect(batch).toContain('后续轮次不把已有标识改用于其他问题');
+    expect(batch).toContain('部分、模糊或未回答的问题保留原标识及 `[blocking]`');
+    expect(batch).toContain('再计算下一轮完整集合');
+  });
+
+  it('presents both Supervisor modes as intact three-column choices with an explicit decision boundary', async () => {
+    const clarification = await read('zh', 'reference/clarification.md');
+    const supervisor = section(clarification, 'supervisor-拆分与确认');
+    const table = supervisor
+      .split('\n')
+      .filter((line) => line.startsWith('|'))
+      .map((line) =>
+        line
+          .split('|')
+          .slice(1, -1)
+          .map((cell) => cell.trim()),
+      );
+    expect(table).toHaveLength(4);
+    expect(table.every((row) => row.length === 3)).toBe(true);
+    expect(table.slice(2).map((row) => row[0])).toEqual(['A', 'B']);
+    expect(table[2][1]).toContain('多会话协作');
+    expect(table[2][2]).toContain('自动改用 subagent');
+    expect(table[3][1]).toContain('单会话推进');
+    expect(table[3][2]).toContain('由当前会话依次处理');
+    expect(supervisor).toContain('必须同时展示 A、B 两项');
+    expect(supervisor).toContain('文本提问使用上表');
+    expect(supervisor).toContain('等待用户明确选择');
+    expect(supervisor).toContain('不得把普通“确认”视为已选择');
+    expect(supervisor).toContain('用户仍需再次明确确认完整 Shape');
+    expect(markdownLinks(supervisor)).toContain('commands.md#supervisor-协作');
   });
 
   it('keeps Agent-authored formal artifacts separate from Runtime state and reports', async () => {
@@ -414,7 +609,7 @@ describe('Comet Native Skills', () => {
       expect(commands).toContain('skill-coordinated');
       expect(commands).toContain(
         language === 'zh'
-          ? '不存在需要另行启动或配置的 Verifier 服务、进程、地址或回调'
+          ? '它不会启动独立服务或进程，也不需要配置服务地址或回调'
           : 'There is no separate Verifier service, process, endpoint, or callback',
       );
       expect(commands).toContain(
@@ -422,7 +617,8 @@ describe('Comet Native Skills', () => {
           ? '本次任务未启动、执行失败、超时或结束后没有返回'
           : 'this task does not start, fails, times out, or ends without returning a result',
       );
-      expect(commands.match(/comet native/gu)?.length ?? 0).toBeLessThanOrEqual(5);
+      const exceptions = language === 'zh' ? section(commands, '命令输入与异常') : commands;
+      expect(exceptions.match(/comet native/gu)?.length ?? 0).toBeLessThanOrEqual(5);
       expect(commands).not.toContain('```json');
       expect(commands).not.toContain('| Exit code |');
       expect(commands).not.toContain('--expect-preflight <sha256> [--confirmed]');
@@ -506,7 +702,8 @@ describe('Comet Native Skills', () => {
   it('defines Chinese Supervisor monitoring pause and recovery boundaries', async () => {
     const skill = await read('zh', 'SKILL.md');
     const recovery = await read('zh', 'reference/recovery.md');
-    expect(skill).toContain('等待外部输入时，按恢复参考中的“等待外部输入与监控”处理');
+    expect(skill).toContain('等待外部输入时，按恢复参考中的');
+    expect(markdownLinks(skill)).toContain('reference/recovery.md#等待外部输入与监控');
     for (const term of [
       '没有可执行子任务、没有仍在执行的相关任务，也没有值得周期检查的外部状态',
       '保留独立任务及其监控',
@@ -585,7 +782,7 @@ describe('Comet Native Skills', () => {
     for (const variant of variants) {
       const workspace = await read(variant.language, 'reference/workspace.md');
       for (const term of variant.required) {
-        expect(workspace, `${variant.language}: ${term}`).toContain(term);
+        expect(workspace.replace(/[\t ]+/gu, ' '), `${variant.language}: ${term}`).toContain(term);
       }
     }
   });

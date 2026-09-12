@@ -1,6 +1,6 @@
 ---
 name: comet-open
-description: 'Comet Classic 阶段 1 —— 澄清需求，开启 OpenSpec change，按依赖生成必需产物并请求确认。'
+description: '创建 Classic change 并确认需求产物。在用户调用 /comet-open，或 Classic 路由到 Open、恢复初始化时使用。'
 ---
 
 # Comet 阶段 1：开启（Open）
@@ -80,6 +80,8 @@ comet classic openspec -- --version
 
 澄清摘要必须包含：目标、非目标、范围边界、关键未知项、验收场景草案。
 
+需要向用户澄清时，必须先读取 `comet-classic/reference/decision-point.md`，以明确问题、推荐及理由、各选项影响的形式提问，并优先使用可用的 `AskUserQuestion`。只询问当前缺口；事实或素材无法提供真实选项时说明缺失内容后请求补充。外部探索 Skill 的提问也应用该协议，不能因加载了探索方法而省略选项或替用户选择。
+
 完整 PRD 以路径和相关章节引用，不复制全文。已确认事实不重复征求同意；发现矛盾时只澄清矛盾点。OpenSpec 技能仍为强依赖，探索结束必须返回 Comet；不得由外部 Skill 自行进入设计、实施或归档。Open 最终产物确认保持独立。
 
 ### 1a. PRD 拆分预检（阻塞点）
@@ -99,7 +101,7 @@ comet classic openspec -- --version
 - PRD 包含多个可独立设计、构建、验证、归档的 capability
 - 涉及多个模块或用户路径，且其中一部分可独立交付
 - 存在明显分阶段里程碑
-- 预计会产生多个 delta spec 或超过 3 个大任务
+- 多个 delta spec 对应可分别验收与交付的独立目标；文档或任务数量本身不决定拆分
 - 任一部分失败或延期不应阻塞其他部分进入后续阶段
 
 如推荐拆分，必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户选择。
@@ -285,7 +287,7 @@ comet guard <change-name> open --apply
 
 ## 自动衔接下一阶段
 
-按 `comet-classic/reference/auto-transition.md` 执行。关键命令：
+按 `comet-classic/reference/auto-transition.md` 消费成功结果的 `agent.continuation`，已有有效观察时不重复 next、select 或 check。仅冷恢复、外部变化或旧结果缺少观察时运行：
 
 ```bash
 comet state next <change-name>

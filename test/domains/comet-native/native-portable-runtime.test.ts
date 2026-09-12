@@ -30,6 +30,7 @@ import {
   readNativePortableChange,
   recordNativePortableVerifierFailure,
   retryNativePortableCheckPlan,
+  sameNativeCheckPlan,
   retryNativePortableVerifier,
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
@@ -1386,6 +1387,55 @@ Ship the behavior.
     const local = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
     expect(reused.checks.map(({ id }) => id)).toEqual(['baseline', 'round-one', 'round-two']);
     expect(local?.checks.map(({ executionCount }) => executionCount)).toEqual([1, 1, 1]);
+  });
+
+  it('uses the reserved branch snapshot while deciding whether checks are reusable', async () => {
+    execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'native@example.test'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: root });
+    await fs.writeFile(path.join(root, 'source.txt'), 'baseline\n');
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'seed branch snapshot'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+
+    await createNativePortableChange({ paths, name: 'branch-snapshot', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'branch-snapshot');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- The branch snapshot remains stable.\n',
+    );
+    let state = await confirmNativePortableShape({ paths, name: 'branch-snapshot' });
+    const runner = createNativeRunnerChannel();
+    state = await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'branch-snapshot-builder',
+        }),
+        candidateId: 'branch-snapshot-candidate',
+        summary: 'Implemented the branch snapshot behavior.',
+        addressedAcceptanceIds: ['A1'],
+        review: passedReview('branch-snapshot-reviewer'),
+      },
+    });
+
+    await executeNativePortableCheckPlan({ paths, name: state.name, plans: [] });
+    const local = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
+    const branch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim();
+    expect(local).not.toBeNull();
+    expect(sameNativeCheckPlan(local!, [], root, state, local!.inputFingerprint, branch)).toBe(
+      true,
+    );
+    expect(
+      sameNativeCheckPlan(local!, [], root, state, local!.inputFingerprint, 'different-branch'),
+    ).toBe(false);
   });
 
   it('rejects a late host response without charging the current Verifier attempt', async () => {

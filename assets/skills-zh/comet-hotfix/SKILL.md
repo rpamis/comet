@@ -1,6 +1,6 @@
 ---
 name: comet-hotfix
-description: 'Comet 预设 —— 通过 open-build-verify-archive 短流程修复已有行为 bug。'
+description: '执行 Classic 局部缺陷修复预设。在用户明确调用 /comet-hotfix、选择 hotfix，或恢复 workflow: hotfix 时使用。'
 ---
 
 # Comet 预设路径：Hotfix
@@ -208,7 +208,7 @@ comet state transition <name> preset-escalate
 
 ## 自动衔接下一阶段
 
-按 `comet-classic/reference/auto-transition.md` 执行。关键命令：
+按 `comet-classic/reference/auto-transition.md` 消费成功结果的 `agent.continuation`，已有有效观察时不重复 next、select 或 check。仅冷恢复、外部变化或旧结果缺少观察时运行：
 
 ```bash
 comet state next <name>

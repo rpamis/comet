@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
@@ -12,6 +12,7 @@ const BASELINE_FILE = path.join(path.dirname(SCRIPT_PATH), 'runtime-coldstart-ba
 const SCHEMA = 'comet.runtime-benchmark.v2';
 const DEFAULT_THRESHOLD = 0.3;
 const PROFILE_PREFIX = 'COMET_BENCHMARK_PROFILE=';
+const FS_PROFILE_PREFIX = 'COMET_BENCHMARK_FS_PROFILE=';
 
 export function isolatedBenchmarkEnvironment(home, inherited = process.env) {
   return {
@@ -64,6 +65,9 @@ export async function measureRuntimeSample(target, env, options = {}) {
   await validateRuntimeProcess(target, result);
   await target.postcondition?.();
   const profile = (result.stderr ?? '').split('\n').find((line) => line.startsWith(PROFILE_PREFIX));
+  const fsProfile = (result.stderr ?? '')
+    .split('\n')
+    .find((line) => line.startsWith(FS_PROFILE_PREFIX));
   if (options.profile && !profile) throw new Error(`${target.name}: missing Git instrumentation`);
   return {
     milliseconds,
@@ -71,6 +75,7 @@ export async function measureRuntimeSample(target, env, options = {}) {
     stdoutBytes: Buffer.byteLength(result.stdout ?? ''),
     stderrBytes: Buffer.byteLength(result.stderr ?? ''),
     git: profile ? JSON.parse(profile.slice(PROFILE_PREFIX.length)) : null,
+    fs: fsProfile ? JSON.parse(fsProfile.slice(FS_PROFILE_PREFIX.length)) : null,
   };
 }
 
@@ -95,8 +100,12 @@ function expectedData(expected) {
 
 async function directorySnapshot(root) {
   const files = new Map();
+  const directories = new Set();
   async function walk(directory) {
+    directories.add(directory);
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      // Fixtures do not mutate Git history or the index; Git object files may be read-only.
+      if (entry.name === '.git') continue;
       const file = path.join(directory, entry.name);
       if (entry.isSymbolicLink())
         throw new Error('Benchmark fixtures must not contain symbolic links');
@@ -105,15 +114,19 @@ async function directorySnapshot(root) {
     }
   }
   await walk(root);
-  return files;
+  return { files, directories };
 }
 
 async function restoreSnapshot(root, snapshot) {
   const current = await directorySnapshot(root);
-  for (const file of current.keys()) {
-    if (!snapshot.has(file)) await fs.unlink(file);
+  for (const file of current.files.keys()) {
+    if (!snapshot.files.has(file)) await fs.unlink(file);
   }
-  for (const [file, bytes] of snapshot) {
+  for (const directory of [...current.directories].sort((a, b) => b.length - a.length)) {
+    if (!snapshot.directories.has(directory)) await fs.rmdir(directory);
+  }
+  for (const directory of snapshot.directories) await fs.mkdir(directory, { recursive: true });
+  for (const [file, bytes] of snapshot.files) {
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, bytes);
   }
@@ -133,8 +146,34 @@ for (const method of ['execFileSync', 'spawnSync']) {
     }
   };
 }
+const fsRows = [];
+const fsp = require('node:fs').promises;
+for (const method of ['readFile', 'stat', 'lstat', 'readdir']) {
+  const original = fsp[method];
+  fsp[method] = async function (...args) {
+    const start = process.hrtime.bigint();
+    let bytes;
+    try {
+      const value = await original.apply(this, args);
+      if (method === 'readFile') {
+        bytes = Buffer.isBuffer(value) ? value.length : Buffer.byteLength(value);
+      }
+      return value;
+    }
+    finally {
+      fsRows.push({
+        method,
+        milliseconds: Number(process.hrtime.bigint() - start) / 1e6,
+        ...(bytes === undefined ? {} : { bytes }),
+      });
+    }
+  };
+}
 require('node:module').syncBuiltinESMExports();
-process.on('exit', () => process.stderr.write('${PROFILE_PREFIX}' + JSON.stringify(rows) + '\\n'));
+process.on('exit', () => {
+  process.stderr.write('${PROFILE_PREFIX}' + JSON.stringify(rows) + '\\n');
+  process.stderr.write('${FS_PROFILE_PREFIX}' + JSON.stringify(fsRows) + '\\n');
+});
 `;
 
 async function createFixture(repoRoot, worktreeCounts) {
@@ -278,6 +317,151 @@ async function createFixture(repoRoot, worktreeCounts) {
           throw new Error('Wrong Native show target');
       },
     );
+    const checkRoot = path.join(root, 'classic-check');
+    await initialize(checkRoot);
+    await fs.mkdir(path.join(checkRoot, '.comet'), { recursive: true });
+    await fs.copyFile(
+      path.join(classic, '.comet/config.yaml'),
+      path.join(checkRoot, '.comet/config.yaml'),
+    );
+    await fs.writeFile(path.join(checkRoot, '.gitignore'), '.comet/runtime/\n');
+    await fs.mkdir(path.join(checkRoot, 'openspec/changes'), { recursive: true });
+    await fs.mkdir(path.join(checkRoot, 'openspec/specs'), { recursive: true });
+    await cli(checkRoot, ['state', 'init', 'benchmark-check', 'tweak', '--json']);
+    const checkArgs = [
+      'check',
+      'run',
+      'benchmark-check',
+      'build',
+      '--local',
+      '--json',
+      '--',
+      process.execPath,
+      '-e',
+      "console.log('fixture check passed')",
+    ];
+    const validateCheck = (reused) => (stdout) => {
+      const result = jsonSuccess(stdout).data;
+      if (
+        !result ||
+        result.exitCode !== 0 ||
+        Boolean(result.reused) !== reused ||
+        result.inputBefore !== result.inputAfter
+      ) {
+        throw new Error('Classic check did not produce the expected valid evidence');
+      }
+    };
+    const freshCheckSnapshot = await directorySnapshot(checkRoot);
+    await cli(checkRoot, checkArgs, validateCheck(false));
+    const passedCheckSnapshot = await directorySnapshot(checkRoot);
+    add('classic-check-execute', checkRoot, checkArgs, validateCheck(false), {
+      prepare: () => restoreSnapshot(checkRoot, freshCheckSnapshot),
+    });
+    add('classic-check-reuse', checkRoot, checkArgs, validateCheck(true), {
+      prepare: () => restoreSnapshot(checkRoot, passedCheckSnapshot),
+    });
+    add('classic-check-invalidate', checkRoot, checkArgs, validateCheck(false), {
+      prepare: async () => {
+        await restoreSnapshot(checkRoot, passedCheckSnapshot);
+        await fs.writeFile(path.join(checkRoot, 'README.md'), '# Changed check input\n');
+      },
+    });
+    const nativeCheckRoot = path.join(root, 'native-check');
+    await initialize(nativeCheckRoot);
+    await fs.writeFile(path.join(nativeCheckRoot, '.gitignore'), '.comet/runtime/\n');
+    await cli(nativeCheckRoot, ['native', 'new', 'benchmark-check', '--json']);
+    await fs.writeFile(
+      path.join(nativeCheckRoot, 'docs/comet/changes/benchmark-check/brief.md'),
+      '# Acceptance examples\n- The fixture behaves correctly.\n',
+    );
+    const nativeModule = (name) =>
+      JSON.stringify(
+        pathToFileURL(path.join(repoRoot, 'dist/domains/comet-native', name + '.js')).href,
+      );
+    const nativeCheckPrelude = `
+      import * as runtime from ${nativeModule('native-portable-runtime')};
+      import { nativeProjectPaths } from ${nativeModule('native-paths')};
+      import { readNativeLocalExecution } from ${nativeModule('native-local-execution')};
+      import { createNativeRunnerChannel } from ${nativeModule('native-runner-protocol')};
+      const paths = await nativeProjectPaths(process.cwd(), 'docs');
+      const name = 'benchmark-check';
+      const passed = {id:'passed',name:'Passed',executable:process.execPath,argv:['-e',"console.log('passed')"],cwdRef:'.',timeoutMs:10000,repeatable:true};
+      const interrupted = {id:'interrupted',name:'Interrupted',executable:process.execPath,argv:['-e','setTimeout(() => {}, 250)'],cwdRef:'.',timeoutMs:20,repeatable:true};
+    `;
+    const nativeDriver = (code) => ['--input-type=module', '--eval', nativeCheckPrelude + code];
+    await measureRuntimeSample(
+      {
+        name: 'prepare Native check candidate',
+        cwd: nativeCheckRoot,
+        args: nativeDriver(`
+        await runtime.prepareNativePortableShapeConfirmation({paths,name});
+        await runtime.confirmNativePortableShape({paths,name});
+        const runner = createNativeRunnerChannel();
+        await runtime.submitNativePortableBuilderCandidate({paths,name,input:{
+          identity:runner.captureExecutionIdentity({identityProvider:'benchmark',executionRef:'builder'}),
+          candidateId:'benchmark-candidate',summary:'Fixture implemented.',addressedAcceptanceIds:['A1']
+        }});
+      `),
+      },
+      env,
+    );
+    const nativeFresh = await directorySnapshot(nativeCheckRoot);
+    const nativeExecution = nativeDriver(`
+      await runtime.executeNativePortableCheckPlan({paths,name,plans:[passed]});
+      console.log(JSON.stringify((await readNativeLocalExecution(runtime.nativeLocalExecutionFile(paths,name))).checks));
+    `);
+    const validateNativeChecks = (counts, statuses) => (stdout) => {
+      const checks = JSON.parse(stdout);
+      if (
+        JSON.stringify(checks.map((c) => c.executionCount)) !== JSON.stringify(counts) ||
+        JSON.stringify(checks.map((c) => c.status)) !== JSON.stringify(statuses)
+      )
+        throw new Error('Native check evidence or execution counts did not match the scenario');
+    };
+    await measureRuntimeSample(
+      {
+        name: 'prepare Native passed evidence',
+        cwd: nativeCheckRoot,
+        args: nativeExecution,
+        validate: validateNativeChecks([1], ['passed']),
+      },
+      env,
+    );
+    const nativePassed = await directorySnapshot(nativeCheckRoot);
+    for (const [name, snapshot] of [
+      ['native-check-execute', nativeFresh],
+      ['native-check-reuse', nativePassed],
+    ]) {
+      targets.push({
+        name,
+        cwd: nativeCheckRoot,
+        args: nativeExecution,
+        validate: validateNativeChecks([1], ['passed']),
+        prepare: () => restoreSnapshot(nativeCheckRoot, snapshot),
+      });
+    }
+    await restoreSnapshot(nativeCheckRoot, nativeFresh);
+    await measureRuntimeSample(
+      {
+        name: 'prepare Native interrupted evidence',
+        cwd: nativeCheckRoot,
+        args: nativeDriver(
+          `await runtime.executeNativePortableCheckPlan({paths,name,plans:[passed,interrupted]});`,
+        ),
+      },
+      env,
+    );
+    const nativeInterrupted = await directorySnapshot(nativeCheckRoot);
+    targets.push({
+      name: 'native-check-retry-interrupted',
+      cwd: nativeCheckRoot,
+      args: nativeDriver(`
+        await runtime.retryNativePortableCheckPlan({paths,name,checkIds:['interrupted']});
+        console.log(JSON.stringify((await readNativeLocalExecution(runtime.nativeLocalExecutionFile(paths,name))).checks));
+      `),
+      validate: validateNativeChecks([1, 2], ['passed', 'interrupted']),
+      prepare: () => restoreSnapshot(nativeCheckRoot, nativeInterrupted),
+    });
     const nextArgs = [
       'native',
       'next',
@@ -426,7 +610,7 @@ async function buildIdentity(repoRoot, suppliedSourceHead) {
 }
 
 export async function runRuntimeBenchmark(options = {}) {
-  const runs = options.runs ?? 9;
+  const runs = options.runs ?? 15;
   const worktreeCounts = options.worktreeCounts ?? [1, 10, 30];
   if (
     !Number.isSafeInteger(runs) ||
@@ -435,6 +619,14 @@ export async function runRuntimeBenchmark(options = {}) {
   )
     throw new Error('Invalid benchmark runs or worktree counts');
   const repoRoot = options.repoRoot ?? REPO_ROOT;
+  const gitMetadata = (args) => {
+    const result = spawnSync('git', args, {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    return result.status === 0 ? result.stdout.trim() : null;
+  };
   const fixture = await createFixture(repoRoot, worktreeCounts);
   const report = {
     schema: SCHEMA,
@@ -444,11 +636,16 @@ export async function runRuntimeBenchmark(options = {}) {
     platform: process.platform,
     arch: os.arch(),
     osRelease: os.release(),
+    gitVersion: gitMetadata(['--version']),
+    branch: gitMetadata(['branch', '--show-current']),
+    workingTreeStatus: gitMetadata(['status', '--short']),
+    packageVersion: JSON.parse(await fs.readFile(path.join(repoRoot, 'package.json'), 'utf8'))
+      .version,
     cpu: os.cpus()[0]?.model,
     logicalCpus: os.cpus().length,
     threshold: DEFAULT_THRESHOLD,
     timing: 'fresh-node-process-warm-filesystem; excludes fixture setup and postcondition checks',
-    warmups: 1,
+    warmups: 3,
     runs,
     gitBudgetsEnforced: options.enforceGitBudgets !== false,
     results: {},
@@ -465,7 +662,7 @@ export async function runRuntimeBenchmark(options = {}) {
       throw new Error(`Unknown benchmark targets: ${unknownTargets.join(', ')}`);
     for (const target of fixture.targets) {
       if (options.targets?.length && !options.targets.includes(target.name)) continue;
-      await measureRuntimeSample(target, fixture.env);
+      for (let i = 0; i < report.warmups; i++) await measureRuntimeSample(target, fixture.env);
       const samples = [];
       for (let i = 0; i < runs; i++) samples.push(await measureRuntimeSample(target, fixture.env));
       const profile = await measureRuntimeSample(target, fixture.env, { profile: fixture.profile });
@@ -502,6 +699,10 @@ export async function runRuntimeBenchmark(options = {}) {
         gitBudgetMet,
         gitProfile: profile.git,
         gitMilliseconds: profile.git?.reduce((sum, row) => sum + row.milliseconds, 0) ?? 0,
+        fsCalls: profile.fs?.length ?? 0,
+        fsReadBytes: profile.fs?.reduce((sum, row) => sum + (row.bytes ?? 0), 0) ?? 0,
+        fsProfile: profile.fs,
+        fsMilliseconds: profile.fs?.reduce((sum, row) => sum + row.milliseconds, 0) ?? 0,
         profileSource: 'separate instrumented successful process',
       };
       options.onResult?.(target.name, report.results[target.name]);
@@ -575,7 +776,7 @@ async function main() {
     enforceGitBudgets: !measureBefore,
     onResult: (name, row) =>
       console.log(
-        `${name.padEnd(28)} ${row.median.toFixed(1)} ms median; ${row.gitCalls} Git; ${row.samples.length} samples`,
+        `${name.padEnd(28)} ${row.median.toFixed(1)} ms median; ${row.gitCalls} Git; ${row.fsCalls} FS; ${row.samples.length} samples`,
       ),
   });
   if (mode === 'record') await writeRuntimeBaseline(BASELINE_FILE, report);

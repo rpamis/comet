@@ -104,7 +104,9 @@ describe('Runtime cold-start benchmark evidence', () => {
         status: 0,
         signal: null,
         stdout,
-        stderr: 'COMET_BENCHMARK_PROFILE=[{"milliseconds":7}]\n',
+        stderr:
+          'COMET_BENCHMARK_PROFILE=[{"milliseconds":7}]\n' +
+          'COMET_BENCHMARK_FS_PROFILE=[{"method":"readFile","milliseconds":3}]\n',
       };
     });
     const result = await measureRuntimeSample(
@@ -130,6 +132,7 @@ describe('Runtime cold-start benchmark evidence', () => {
       exitCode: 0,
       stdoutBytes: Buffer.byteLength(stdout),
       git: [{ milliseconds: 7 }],
+      fs: [{ method: 'readFile', milliseconds: 3 }],
     });
     expect(result.milliseconds).toBeGreaterThanOrEqual(0);
     expect(spawn).toHaveBeenCalledWith(

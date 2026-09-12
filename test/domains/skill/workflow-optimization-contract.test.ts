@@ -10,7 +10,7 @@ async function readSkill(root: string, name: string): Promise<string> {
 }
 
 function descriptionOf(skill: string): string {
-  return skill.match(/^description:\s*"([^"]+)"/mu)?.[1] ?? '';
+  return skill.match(/^description:\s*(['"])([^\r\n]+)\1$/mu)?.[2] ?? '';
 }
 
 function section(source: string, start: string, end: string): string {
@@ -27,6 +27,139 @@ async function readChineseReference(name: string): Promise<string> {
 
 // Approved Chinese semantics are synchronized to English; both languages retain safety contracts.
 describe('Chinese Classic efficiency contracts', () => {
+  it('retains per-question options and recommendations throughout clarification and confirmation', async () => {
+    const decisions = await readChineseReference('decision-point');
+    const presentation = section(decisions, '## 最低呈现要求', '## 阶段确认的归属');
+    for (const requirement of [
+      '**问题**',
+      '**推荐与理由**',
+      '**选项与影响**',
+      '每个问题分别满足',
+    ]) {
+      expect(presentation).toContain(requirement);
+    }
+    expect(decisions).toContain('存在 `AskUserQuestion` 时，使用它展示单选/多选选项');
+    expect(decisions).toContain('本会话后续决策点不得反复重试它');
+    expect(presentation).toContain('待定决定保持未确认');
+    expect(decisions).toContain('阶段明确要求的产物/设计批准也属于用户决策点');
+    expect(decisions).toContain('此规则不替代阶段明确要求的用户确认');
+    for (const name of ['comet-classic', 'comet-open', 'comet-design']) {
+      const skill = await readSkill(zhSkillRoot, name);
+      expect(skill, name).toContain('comet-classic/reference/decision-point.md');
+      expect(skill, name).toContain('AskUserQuestion');
+    }
+    const open = await readSkill(zhSkillRoot, 'comet-open');
+    const explore = section(open, '### 1. 探索想法与需求澄清', '### 1a.');
+    expect(explore).toContain('各选项影响');
+    const design = await readSkill(zhSkillRoot, 'comet-design');
+    const brainstorming = section(design, '### 1b. 执行 Brainstorming', '### 1c.');
+    expect(brainstorming).toContain('逐问给出明确问题');
+    expect(brainstorming).toContain('推荐及基于当前约束的理由');
+  });
+
+  it('keeps phase confirmations reachable and preserves the selected preset initialization', async () => {
+    const entry = await readSkill(zhSkillRoot, 'comet-classic');
+    const continueFlow = section(entry, '## 3. 继续到', '## 始终保留的约束');
+    for (const boundary of [
+      'Open 产物完成后的名称、范围与产物最终审视',
+      'Design 的正式设计确认',
+      '执行/TDD/review 配置',
+      '接受偏差、Spec 漂移',
+      '归档与交付选择',
+      '预设升级',
+      '已有仍有效的授权与配置直接复用',
+    ]) {
+      expect(continueFlow).toContain(boundary);
+    }
+    expect(entry).toContain('新 full change 交 `/comet-open`');
+    expect(entry).toContain('hotfix/tweak 分别交 `/comet-hotfix`、`/comet-tweak`');
+    expect(entry).not.toContain('新 change 统一交 `/comet-open`');
+    expect(entry).toContain('用户选择升级后才运行');
+    expect(entry).toContain('comet state transition <name> preset-escalate');
+    for (const preset of ['hotfix', 'tweak']) {
+      const skill = await readSkill(zhSkillRoot, `comet-${preset}`);
+      expect(skill).toContain(`comet state init <name> ${preset}`);
+    }
+  });
+
+  it('routes missing dependencies and malformed state to concrete recovery without changing workflow', async () => {
+    const entry = await readSkill(zhSkillRoot, 'comet-classic');
+    const recovery = await readChineseReference('context-recovery');
+    const errors = section(recovery, '## 入口错误与恢复', '## 任务核对与补勾');
+    expect(entry).toContain('context-recovery.md` 的“入口错误与恢复”');
+    for (const invariant of [
+      '不把命令失败当作“没有 active change”',
+      '不以普通对话替代强依赖',
+      'hotfix/tweak 返回对应预设的初始化步骤',
+      '不能用 `comet state set` 覆盖损坏文件',
+      '无法确认归属时停止写入',
+      '不以历史通过覆盖本次失败',
+    ]) {
+      expect(errors).toContain(invariant);
+    }
+  });
+
+  it('routes recovery to the phase contract without re-asking valid plan-ready configuration', async () => {
+    const entry = await readSkill(zhSkillRoot, 'comet-classic');
+    const recovery = await readChineseReference('context-recovery');
+    const decisions = await readChineseReference('decision-point');
+    const fields = await readChineseReference('comet-yaml-fields');
+    const build = await readSkill(zhSkillRoot, 'comet-build');
+
+    expect(entry).toContain('comet-classic/reference/context-recovery.md');
+    expect(entry).toContain('由当前阶段入口的 nextAction 定位未完成动作');
+    expect(recovery).toContain('`build_pause: plan-ready` 表示用户要求计划后暂停');
+    expect(recovery).toContain('仅在配置缺失或用户明确要求更改时');
+    expect(recovery).toContain('只有用户明确要求继续才清除暂停');
+    expect(decisions).toContain('沿用有效计划与配置，不重新发起配置决策');
+    expect(fields).toContain('用户明确要求计划后暂停（包括切换模型）');
+    expect(build).toContain('有效计划与配置沿用');
+    for (const source of [entry, recovery, decisions, build]) {
+      expect(source).not.toContain('重新发起同一个联合决策；只有用户给出完整配置后才清除暂停');
+    }
+  });
+
+  it('keeps continuation and language fallback conditional across reachable Classic guidance', async () => {
+    const entry = await readSkill(zhSkillRoot, 'comet-classic');
+    const scripts = await readChineseReference('scripts');
+    const recovery = await readChineseReference('context-recovery');
+    const transition = await readChineseReference('auto-transition');
+    expect(entry).toContain('所有参考按当前动作读取相关章节');
+    expect(scripts).toContain('已有 change 优先使用本次有效入口的 `configuration.language`');
+    expect(scripts).toContain('仅入口未提供该字段时');
+    for (const source of [scripts, recovery, transition]) {
+      expect(source).toContain('agent.continuation');
+      expect(source).toContain('不重复 next、select 或 check');
+    }
+    for (const phase of ['open', 'build', 'verify', 'hotfix', 'tweak']) {
+      const skill = await readSkill(zhSkillRoot, `comet-${phase}`);
+      const handoff = skill.slice(skill.indexOf('## 自动衔接下一阶段'));
+      expect(handoff, phase).toContain('comet-classic/reference/auto-transition.md');
+      expect(handoff, phase).toContain('agent.continuation');
+      expect(handoff, phase).toContain('仅冷恢复、外部变化或旧结果缺少观察时运行');
+    }
+  });
+
+  it('uses scope and independence instead of task-count triggers while preserving review ownership', async () => {
+    const build = await readSkill(zhSkillRoot, 'comet-build');
+    const debug = await readChineseReference('debug-gate');
+    const decisions = await readChineseReference('decision-point');
+    expect(build).toContain('任务数量或增长比例本身不触发暂停');
+    expect(build).toContain('只有真实范围扩张、需要重新设计或出现可独立交付的新能力时');
+    expect(build).toContain('每个任务都须纳入独立审查');
+    expect(build).toContain('各段通过审查后才继续依赖它的后续实施');
+    expect(build).toContain('不将可独立验收的全部任务合成一段延后审查');
+    expect(debug).toContain('失败数量不决定调度方式');
+    expect(debug).toContain('修改范围互斥且能分别验收时才可并发实施');
+    expect(debug).toContain('其他执行方式保持已选方法');
+    expect(debug).toContain('根因未明前不得动源码');
+    expect(decisions).toContain('暂停或停止只约束依赖该决定或阻塞的动作');
+    expect(decisions).toContain('不得据此跨越阶段 Guard、提前实施待确认范围');
+    for (const obsolete of ['50% 阈值', '每完成 3 个任务', '失败 ≤ 2 个', '≥ 3 个失败']) {
+      expect(`${build}\n${debug}`).not.toContain(obsolete);
+    }
+  });
+
   it('confirms an atomic strategy before planning without silently replacing existing choices', async () => {
     const build = await readSkill(zhSkillRoot, 'comet-build');
     const configuration = section(build, '### 1. 先确认执行策略', '### 2. 创建或恢复计划');
@@ -86,7 +219,9 @@ describe('Chinese Classic efficiency contracts', () => {
     const recovery = await readChineseReference('context-recovery');
     const entry = section(recovery, '## 阶段入口与按需恢复', '## 任务核对与补勾');
 
-    expect(entry).toContain('普通阶段衔接只运行一次入口检查');
+    expect(entry).toContain('`agent.continuation`');
+    expect(entry).toContain('观察已有效时不重复 next、select 或 check');
+    expect(entry).toContain('只有观察缺失或失效时运行一次入口检查');
     expect(entry).toContain('{authority, revision, total, completed, needsIds, next}');
     expect(entry).toContain('{path, stale, taskIds, stage, sessionId, reviewRounds, unresolved}');
     expect(entry).toContain('{kind, reason, taskId?}');
@@ -461,10 +596,10 @@ describe('Comet workflow optimization contracts', () => {
       ]) {
         const description = descriptionOf(await readSkill(root, name));
 
-        // Phase/preset skills are user-invoked (disable-model-invocation: true) and
-        // must never pose as the root entry: no root trigger phrase, no bare `/comet`.
+        // A phase may name its own invocation; it cannot claim the root `/comet` trigger.
+        expect(description, name).not.toBe('');
         expect(description, name).not.toContain(rootTrigger);
-        expect(description, name).not.toMatch(/(^|[^-])\/comet(?!\w)/u);
+        expect(description, name).not.toMatch(/(^|[^-])\/comet(?![\w-])/u);
       }
 
       const anyDescription = descriptionOf(await readSkill(root, 'comet-any'));

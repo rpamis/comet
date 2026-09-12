@@ -1,6 +1,6 @@
 ---
 name: comet-build
-description: 'Comet Classic 阶段 3 —— 恢复或创建实施计划并执行其任务。'
+description: '计划、实施并验收 Classic 任务。在用户调用 /comet-build，或 Classic Runtime 路由到 Build、返回修复时使用。'
 ---
 
 # Comet 阶段 3：计划与构建（Build）
@@ -43,10 +43,10 @@ comet state check <name> build --json
 
 自主规划能力强、需要灵活组织长任务时可推荐 autonomous；希望固定委派方法时推荐 subagent-driven-development；希望固定顺序执行方法时推荐 executing-plans。推荐不替代用户确认，已有 change 的旧策略不自动替换。
 
-| 配置          | 选项与约束                                                                                                            |
-| ------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `tdd_mode`    | `tdd`：先核对真实 RED，再实施并获得 GREEN；`direct`：不强制逐任务 RED/GREEN，但保留相关测试和缺陷回归证据             |
-| `review_mode` | `off`：低风险任务不自动审查；`standard`：风险任务审查及 Verify 唯一最终集成审查；`thorough`：逐任务审查及最终集成审查 |
+| 配置          | 选项与约束                                                                                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tdd_mode`    | `tdd`：先核对真实 RED，再实施并获得 GREEN；`direct`：不强制逐任务 RED/GREEN，但保留相关测试和缺陷回归证据                                           |
+| `review_mode` | `off`：低风险任务不自动审查；`standard`：风险任务审查及 Verify 唯一最终集成审查；`thorough`：按已选执行方式逐任务或分段独立审查，并完成最终集成审查 |
 
 full 的 autonomous 必须选择 standard 或 thorough，独立审查不能由自评替代。旧策略仍遵循已有 review_mode 规则。TDD 默认推荐 tdd，审查默认推荐 standard；hotfix/tweak 的 direct 预设保持不变。
 
@@ -107,7 +107,7 @@ Build 只做任务或分段审查，Verify 负责唯一最终集成审查：
 
 - autonomous 及子代理执行：按 subagent-dispatch.md 的风险与预算规则进行独立任务审查；autonomous 即使不委派实现，所需 reviewer 也必须独立。
 - executing-plans + off|standard：验收任务后进入 Verify，不追加 Build 最终审查。
-- executing-plans + thorough：每完成 3 个任务审查该段 diff；总任务数不超过 3 时交由 Verify 最终审查。
+- executing-plans + thorough：每个任务都须纳入独立审查；依赖紧密、必须共同验收的任务可组成一段，按可独立验收的结果与风险边界审查 diff，不按固定任务数量切段。各段通过审查后才继续依赖它的后续实施，不将可独立验收的全部任务合成一段延后审查。没有后续实施的最后一段交由 Verify 的唯一最终集成审查。
 
 CRITICAL/IMPORTANT 发现必须解决；审查不可用时停止，不以自评代替。已接受的非关键偏差保存依据和范围。验收后使用 task-complete 逐 ID 勾选 tasks.md；协作与恢复记录通过 `comet state checkpoint <name> --file <json-path>` 保存，字段与读写规则见 context-recovery.md。检查点不代替任务勾选或真实证据。
 
@@ -129,7 +129,7 @@ CRITICAL/IMPORTANT 发现必须解决；审查不可用时停止，不以自评�
 | 中   | 接口变更、新增组件、数据流变化 | **暂停、展示选择并等待用户明确确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming` 更新 Design Doc + delta spec |
 | 大   | 全新 capability 需求           | **暂停、展示拆分选择并等待用户明确确认**；用户确认后，通过 `/comet-open` 创建独立 change                                 |
 
-**50% 阈值判定**：以 tasks.md 初始任务总数为基准，若新增任务数超过该总数的一半，视为超出原计划范围，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户决定是否拆分为新 change**。
+**范围复核**：新增任务先核对原目标、公开行为、验收与风险承担。补充原范围内遗漏的实现或验收、调整任务粒度时直接更新任务及依据；任务数量或增长比例本身不触发暂停。只有真实范围扩张、需要重新设计或出现可独立交付的新能力时，才按 `comet-classic/reference/decision-point.md` 暂停并确认继续、调整或拆分。
 
 创建独立 change 时必须调用 `/comet-open`，不得直接调用 `/opsx:new`。`/comet-open` 会同时创建 OpenSpec 产物和 `.comet.yaml`，避免新 change 脱离 Comet 状态机。
 
@@ -197,7 +197,7 @@ comet guard <change-name> build --apply
 
 ## 自动衔接下一阶段
 
-按 `comet-classic/reference/auto-transition.md` 执行。关键命令：
+按 `comet-classic/reference/auto-transition.md` 消费成功结果的 `agent.continuation`，已有有效观察时不重复 next、select 或 check。仅冷恢复、外部变化或旧结果缺少观察时运行：
 
 ```bash
 comet state next <change-name>

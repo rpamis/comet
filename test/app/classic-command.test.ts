@@ -316,6 +316,17 @@ describe('Classic command facade', () => {
     });
     expect(recordCometWorkflowResult).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    ['current', '--json'],
+    ['next', 'change-name', '--json'],
+  ])('does not record the default read-only state query: %s', async (...args) => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    runClassicCli.mockResolvedValue({ exitCode: 0, stdout: '{}' });
+    const { runClassicFacade } = await import('../../app/commands/classic.js');
+
+    expect(await runClassicFacade('state', args)).toBe(0);
+    expect(recordCometWorkflowResult).not.toHaveBeenCalled();
+  });
   it('injects the self-contained packaged executor through the same integration and plugin boundary', async () => {
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const execute = vi

@@ -1,302 +1,75 @@
 ---
 name: comet-classic
-description: 'Comet Classic 工作流（OpenSpec + Superpowers）。当用户明确调用 /comet-classic、要求启动或恢复 Comet Classic，或 resume-probe 返回可无歧义恢复的 active Classic change 时使用。'
+description: 'Comet Classic 工作流入口。当用户明确调用 /comet-classic、要求启动或恢复 Classic，或 resume-probe 返回可无歧义恢复的 active Classic change 时使用。'
 ---
 
-# Comet Classic — OpenSpec + Superpowers 双星开发流程
+# Comet Classic — OpenSpec + Superpowers
 
-开始或恢复前必须先读取并执行 `comet-classic/reference/classic-layout.md`；本文件中的 OpenSpec CLI 调用必须使用 adapter，文件路径必须使用该协议绑定的 `<classic-*>` 逻辑根。
+Classic 保留 Open → Design → Build → Verify → Archive 五阶段：OpenSpec 管理需求规格与归档，Superpowers 提供设计和已选工程方法。full 必须经过 brainstorming 和设计确认；hotfix/tweak 保持各自预设。
 
-OpenSpec 与 Superpowers 如双星系统围绕同一目标运转。
+## 1. 确定目标与工作区
 
-```
-OpenSpec 负责 WHAT  — 大纲、提案、spec 生命周期、归档
-Superpowers 负责 HOW — 技术设计、计划、执行、收尾
-```
+开始或恢复前按 `comet-classic/reference/classic-layout.md` 绑定逻辑根，并读取 `comet-classic/reference/scripts.md` 的“CLI 引导”章节，使用公开 Comet CLI 与 OpenSpec adapter。所有参考按当前动作读取相关章节，已加载且有效的协议不重读；不因引用一个文件而通读其余章节。
 
-**核心原则：brainstorming 必不可跳过。每次变更都必须经过深度设计（hotfix 和 tweak 预设除外）。**
-
----
-
-## 决策核心（Decision Core）
-
-agent 做决策只需读本节，参考附录按需查阅。
-
-### 输出语言规则
-
-所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言。配置值是规范化语言 ID，`en` 或 `zh-CN`。已有 change 优先通过 `comet state get <name> language` 读取 `<classic-change-dir>/.comet.yaml` 中的 `language`；`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；都不存在时才回退到当前用户请求语言。调用外部 OpenSpec/Superpowers skill 时，必须把解析后的语言显式写入 prompt 或 ARGUMENTS。
-
-### 阶段自动检测
-
-**Step 0: 活跃 Change 发现与意图判定**
-
-1. 先按 `comet-classic/reference/scripts.md` 直接运行公开 Comet CLI 命令。
-2. 运行 `comet classic openspec -- list --json` 获取所有活跃 change。
-3. 根据用户请求、active change 列表和必要仓库状态填写 `CometIntentFrame`。
-4. 优先用 `comet classic intent route --stdin` 传入 frame JSON，获取 runtime 规范化路由。`CometIntentFrame + runtime scorer` 是事实源；本节自然语言规则只用于意图识别槽位提取。
-5. 按 runtime route 处理：
-   - `hotfix` → 用户已明确选择时调用 `/comet-hotfix`；自动推荐时先按下方轻量路径规则确认
-   - `tweak` → 用户已明确选择时调用 `/comet-tweak`；自动推荐时先按下方轻量路径规则确认
-   - `full` → 按活跃 change 表决定 `/comet-open` 或用户确认
-   - `resume` → 进入 Step 1 读取对应 change 的 `.comet.yaml`
-   - `ask_user` → 按 `comet-classic/reference/decision-point.md` 暂停并等待用户选择
-   - `out_of_scope` → 说明本次输入不是 Comet workflow 启动/恢复请求，不初始化 change
-
-当 runtime route、Ambient Resume 或用户选择已经解析出明确 change 后，进入对应阶段 Skill 前必须先绑定当前执行上下文：
+- 未明确调用 Classic、需要判定是否恢复已有工作时：读取 `comet-classic/reference/context-recovery.md` 的 Ambient Resume，按 `comet resume-probe . --stdin --json` 结果处理；只有 `auto_resume` 自动进入，`ask_user` 等待选择，`out_of_scope`/`none` 不进入。
+- 启动新需求或目标 change 尚不明确时：读取 `comet-classic/reference/intent-frame.md` 的最小骨架与目标选择规则，获取活跃 change 后填写 CometIntentFrame，运行 `comet classic intent route --stdin`。`CometIntentFrame + runtime scorer` 是事实源，不另写自然语言 scorer。
+- 已明确目标 change 时：按下方绑定工作区；多个 active changes 尚未选定时不提前绑定。
 
 ```bash
 comet classic workspace resolve <change-name> --json
-# 进入返回的 projectRoot；state select 会在该工作区写入选择
+# 进入返回的 projectRoot 后选择 change
 comet state select <change-name>
+comet state next <name> --json
 ```
 
-新 change 的 workspace 决策在 `/comet-open` 完成，并遵循 `comet-classic/reference/workspace.md`：用户明确表达并行、同时处理或多个会话时，在绑定前准备 Worktree；未指定隔离方式时，需要决策就把 `current`、`branch`、`worktree` 作为单选项展示，推荐只作说明。准备和恢复都会扫描已登记 Worktree，优先复用分支匹配的工作区；当分支已重命名、被用户接管或无法确认归属时请求 rebind。
+使用返回的 phase、configuration 和下一步路由。新 full change 交 `/comet-open`，由它完成工作区准备、OpenSpec artifacts 和 `.comet.yaml` 双初始化；已确认的 hotfix/tweak 分别交 `/comet-hotfix`、`/comet-tweak` 完成预设初始化。不直接调用 `/opsx:new`。已有 change 状态缺失时按 context-recovery.md 的“入口错误与恢复”核对 workflow 后恢复，格式异常时报告错误，不以产物存在推断阶段。
 
-多个 active change 且用户尚未明确选择时，不得提前绑定；继续按 `ask_user` 决策点等待选择。
+新 full change 的工作区决策发生在 Open 创建产物之前。full workflow 的 `isolation` 可为 `current`、`branch` 或 `worktree`；用户明确表达并行时准备 Worktree，其他选择按 `comet-classic/reference/workspace.md` 执行。hotfix/tweak 按各自初始化步骤确认并绑定工作区。恢复时以绑定工作区为准，分支归属变化必须显式 rebind。
 
-### 小任务的轻量路径建议
+## 2. 载入当前阶段
 
-新需求经范围检查属于局部低风险修复或单一轻量调整时，默认建议现有 hotfix/tweak 预设，并简述匹配依据，由用户确认后进入；提供保留完整五阶段的选择。用户已经明确指定预设且风险匹配时不重复确认。涉及公共 API、数据迁移、安全、并发或跨模块设计时不能仅凭文件少推荐轻量路径。
+同一工作包复用这次结构化响应和已加载上下文；只有命令写入状态、切换工作区、恢复会话或发现外部变化时重新查询。按当前改动风险执行相关检查，Verify 保留一次覆盖最终实现的集成审查。
 
-此建议只决定新 change 的流程，不静默降级已有 full change，也不绕过预设的范围升级检查。`verify_mode: light` 是验证级别，不等于选择轻量 workflow。用户选择 full 后保持五阶段职责和设计确认，由模型按实际风险控制文档深度。
+绑定工作区并取得 phase 后，读取并执行 [任务上下文与产物语言](reference/scripts.md#任务上下文与产物语言)，运行 `comet task`，使用渐进式 Context Manifest 和配置产物语言；只展开当前动作缺少的内容，真实回写采用结果并在结束时记录检查点。
 
-### 记忆接入
+| Runtime 路由或阶段            | 入口与职责                                            |
+| ----------------------------- | ----------------------------------------------------- |
+| 新 full / open                | `/comet-open`：澄清范围、创建必需产物、最终审视确认   |
+| design                        | `/comet-design`：完成技术取舍并确认正式设计           |
+| build + full                  | `/comet-build`：恢复配置/计划，完成任务与所需审查     |
+| hotfix / build + hotfix       | `/comet-hotfix`：已有异常的局部修复                   |
+| tweak / build + tweak         | `/comet-tweak`：单 change 轻量调整                    |
+| verify                        | `/comet-verify`：真实验收、修复闭环、唯一最终集成审查 |
+| archive / verify_result: pass | `/comet-archive`：确认归档、精确提交、完成已选交付    |
 
-绑定 Classic 工作区并读取 `.comet.yaml` 当前 `phase` 后，Agent 自动运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<本次任务稳定标识>" --json`。只注入返回的 `text`；Context Manifest（`manifest` / `<context_manifest>`）只包含摘要、应用原因和稳定 ID，需要正文、来源或验证方式时运行同一命令并增加 `--expand-context "<id>"`。路径、操作或阶段变化时以同一 `--session` 和新的 `--path`、`--operation`、`--phase` 重新选择。若 `<active_policies>` 中包含 `<verification command="...">`，把这些命令加入当前 Verify 的实际检查并记录真实结果；只有成功执行过的命令才能让对应策略进入强制执行状态。用户明确要求长期记住偏好或项目约定时调用 `comet memory remember ... --scope global|project`；仅对未明确要求但可跨任务复用的稳定协作方式调用 `comet memory observe`，两者都不得写任务摘要、进展、命令输出或测试结果。实际采用某条内容且结果明确后，用返回的 `applications[].applicationId`（Hook 文本中的 `application_id`）运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`；不得为未使用条目回写成功。任务结束仍运行带 `--complete --workflow <workflow> --change <change-id>` 的 `comet task` 记录检查点。没有 Hook 时由 Skill 调用相同接口，`comet memory context` 只作为兼容入口；插件无结果或失败不阻断工作流。
+轻量路径只是新需求的建议：风险匹配且用户已明确选择时直接进入；自动推荐时说明匹配依据，并展示 hotfix/tweak 与保留 full 的选项及各自影响，等待用户确认。不静默降级已有 full change。公共 API、数据迁移、安全、并发或跨模块设计按实际风险处理，文件少不能豁免。
 
-### Comet Ambient Resume
+运行 hotfix/tweak 时必须读取所选预设的“升级判定”：命中质变信号或该预设的文件数提示阈值时，展示继续预设或升级 full 的选择并等待答复；用户选择升级后才运行 `comet state transition <name> preset-escalate`。`verify_mode` 只决定验证级别，不能替代 workflow 选择或预设升级确认。
 
-当用户未显式输入 `/comet-classic`，但当前仓库可能已有 active Comet change 时，开始处理需要改动或调查的任务前先运行只读探针：
+恢复会话、外部状态变化、计划/任务/审查或交付不一致时，读取 `comet-classic/reference/context-recovery.md`，由当前阶段入口的 nextAction 定位未完成动作。有效配置和成果沿用；未勾选不等于未实现，阶段恢复规则不在入口重复维护。
 
-```bash
-comet resume-probe . --stdin --json
-```
+## 3. 继续到本次授权工作的完成边界
 
-探针只读仓库状态，不修改文件。按返回值处理：
+阶段退出检查通过后，按 `comet-classic/reference/auto-transition.md` 消费成功结果的 `agent.continuation`，只加载其指向的下一 Skill；没有有效观察、冷恢复或外部变化时才重新查询。`auto_transition: false` 只控制 Skill 衔接，不改变 Guard 已推进的 phase；`NEXT: manual` 按 HINT 交还控制权，不追加确认。
 
-- `auto_resume`：输出一行 `[COMET] 检测到 active change <name>，按 <nextCommand> 恢复。`，然后进入 `nextCommand`。
-- `ask_user`：只问一个短问题并等待用户回复。
-- `out_of_scope` 或 `none`：不要进入 Comet workflow。
+决策点是阻塞点。首次需要向用户澄清或确认时，必须先读取 `comet-classic/reference/decision-point.md`，按其中的选项式提问、推荐理由、每项影响和 `AskUserQuestion` 优先规则执行；已在当前上下文中时直接复用。以下节点不能因“只有一个推荐方案”或自动衔接而跳过：
 
-原则：不把无关任务挂到 active Comet change，尤其不能只因为存在 `.comet.yaml` 就这样做。
+- 目标 change、PRD 拆分与工作区隔离尚有真实选择时，合并相邻问题并等待选择。
+- Open 产物完成后的名称、范围与产物最终审视，以及 Design 的正式设计确认：先提供可审视结果，再等待批准或调整意见。
+- Build 写计划前缺失或需修改的执行/TDD/review 配置；用户主动要求 `plan-ready` 暂停后，等明确继续指令再恢复。
+- Verify 接受偏差、Spec 漂移或达到自动修复上限后的策略；Archive 的归档与交付选择。
+- 预设升级，或 Build 出现范围扩张、重新设计与拆分取舍。
 
-**CometIntentFrame 最小骨架**：
+用户明确选择前，不写入依赖该决定的状态，不执行对应分支操作，也不跨越阶段 Guard。已有仍有效的授权与配置直接复用；范围内明确可修复的问题、补齐可验证状态和其他唯一合法下一步自动继续，不制造“是否继续”的停顿。
 
-```json
-{
-  "schema_version": "comet.intent.v1",
-  "utterance": "<用户原话>",
-  "intent": { "name": "start_change", "confidence": 0.8 },
-  "slots": {
-    "requested_action": "start",
-    "workflow_candidate": "full",
-    "user_explicit_workflow": null,
-    "change_id": null,
-    "existing_behavior": null,
-    "new_capability": null,
-    "public_api_change": null,
-    "schema_change": null,
-    "cross_module_change": null
-  },
-  "context": {
-    "active_changes_count": 0,
-    "active_change_names": []
-  },
-  "evidence": [],
-  "proposed_route": {
-    "name": "ask_user",
-    "confidence": 0.5
-  }
-}
-```
+归档与交付方式合并为同一个最终确认，由 `/comet-archive` 核对授权、真实 Git 与所选交付状态。验证通过不代表归档授权；归档目录存在也不代表提交、push 或 PR 已完成。
 
-**意图识别槽位提取**：
-字段完整含义见 `comet-classic/reference/intent-frame.md`；正常路由只需按上方最小骨架填写。
+## 始终保留的约束
 
-- `fix_bug` + `existing_behavior: true` + 无新增 capability/public API/schema/cross-module 信号 → 倾向 `hotfix`
-- 用户明确描述为可收敛为单一 OpenSpec change 的轻量/中等变更，需通过 OpenSpec apply 执行，且不需要完整 `/comet-classic` 深度设计/plan → 倾向 `tweak`
-- 文案、配置、文档、prompt 或单一 OpenSpec change 的轻中量修改 → 倾向 `tweak`
-- 新增 capability、public API、schema 变更、跨模块协调或架构调整 → 倾向 `full`
-- 多个 active change 且用户未明确 change → `ask_user`
-- 置信度不足、关键 evidence 缺失或用户显式 workflow 与风险信号冲突 → `ask_user`
+- Runtime phase、Guard 和当前工作区绑定是流程事实源；文件与对话是核对证据，不用于手改 phase 绕过确认或验证。
+- proposal 保存目标范围，spec 保存行为验收，唯一 design_doc 保存技术决策，plan 保存实施方法，tasks.md 保存完成状态。
+- 遵循已确认的执行方式、TDD 和 review 配置；autonomous 不免除 full 的设计、计划、真实证据与独立审查。配置缺失或用户要求更改时由 Build 确认，不按模型名称静默替换。
+- 未提交改动先按 `comet-classic/reference/dirty-worktree.md` 归因；只处理当前 change，保护无关改动。状态拒绝、路径越界、依赖不可用或归属不明时，读取 `comet-classic/reference/context-recovery.md` 的“入口错误与恢复”，报告原错误并执行对应恢复规则。
+- 当前阶段发生异常时读取 `comet-classic/reference/debug-gate.md`，先调查再修复；测试/构建声明不替代真实执行，历史通过仅在 Runtime 确认仍有效时复用。
 
-| 活跃 change | 用户输入                   | 行为                                                                  |
-| ----------- | -------------------------- | --------------------------------------------------------------------- |
-| 无          | `full` 路由                | → 调用 `/comet-open`                                                  |
-| 恰好 1 个   | `/comet-classic <描述>`    | → **询问**：继续该变更 or 创建新变更                                  |
-| 多个        | `/comet-classic <描述>`    | → **询问**：继续现有变更 or 创建新变更；若选继续 → 列出清单让用户选择 |
-| 恰好 1 个   | `/comet-classic`（无描述） | → 自动选中，进入 Step 1                                               |
-| 多个        | `/comet-classic`（无描述） | → 列出清单让用户选择                                                  |
-
-<IMPORTANT>
-当用户选择「创建新变更」时，**必须调用 `/comet-open`**（禁止直接调用 `/opsx:new`）。
-`/comet-open` 负责完整双初始化：OpenSpec artifacts（由内部 `/opsx:new` 创建）+ `.comet.yaml` 状态文件。
-直接调用 `/opsx:new` 会缺失 `.comet.yaml`，导致后续阶段判定失败。
-</IMPORTANT>
-
-**Step 1: 读取 `.comet.yaml` 状态元数据**
-
-已有状态时运行 `comet state next <name> --json`，使用返回的 phase、configuration 和下一步路由，不逐字段调用 get。状态缺失时进入 `/comet-open` 的初始化恢复规则；格式异常时报告错误，不能从文件存在情况猜测阶段并强制推进。
-
-**断点恢复规则**：
-
-- 每次恢复上下文时，先重新执行 Step 0 和 Step 1，不依赖对话历史判断阶段
-- 只要存在 active change 且工作区有未提交改动，必须按 `comet-classic/reference/dirty-worktree.md` 协议处理。该协议定义了检查步骤、归因分类和禁令，本文件不重复
-- 若 `phase: build`，先检查 `build_pause`、`plan`、`isolation`、`build_mode`、`subagent_dispatch`、`tdd_mode` 和 `review_mode`：
-  - 若 `build_pause: plan-ready` 且 plan 文件存在，回到 `/comet-build`，重新发起同一个联合决策；只有用户给出完整配置后才清除暂停。不重新生成 plan
-  - 若 `build_pause: plan-ready` 但 plan 文件缺失，回到 `/comet-build` 处理状态损坏或重新生成 plan
-  - 若旧 change 的 `isolation` 未设置，先回到 `/comet-open` 执行 workspace resolve/prepare；不得在 Build 首次决定工作区
-  - 若 `build_mode`、`tdd_mode` 或 `review_mode` 未设置，或 `build_mode: subagent-driven-development` 但 `subagent_dispatch` 未设置，回到 `/comet-build` 完成同一个联合决策；不得按计划或历史快照自动补齐
-  - 若均已设置，读取 tasks.md 的下一个未勾选任务，并按 `build_mode` 恢复执行：
-    - 若 `build_mode: subagent-driven-development`，不得在主窗口直接执行任务；必须回到 `/comet-build` 的后台 subagent 调度规则，由主窗口只做协调
-    - 其他执行方式按 `/comet-build` 的对应规则继续
-- 若 `verify_result: fail`，读取 `verify_failures`：未超过 3 次时直接调用 `/comet-build` 继续已记录的修复循环，不重复询问；超过自动修复上限时回到 `/comet-verify` 的例外决策点。只有接受 WARNING/SUGGESTION 偏差或超限后的继续/停止策略需要用户选择
-- 若 `phase: open` 但产物已完整，回到 `/comet-open` 的内容检查和用户确认；产物存在不代表用户已批准，不能直接运行 Guard 推进
-- 若 `phase: archive`，只允许调用 `/comet-archive`；归档与交付方式合并为同一个最终确认，确认后归档、精确提交并执行已选交付方式
-
-**Step 2: 阶段判定**（按顺序，命中即停）
-
-1. `archived: true` 或 change 已移入 archive → 流程已完成
-2. `verify_result: pass` 且 `archived` 不是 `true` → `/comet-archive`（先进行归档前最终确认）
-3. `verify_result: fail` → 自动调用 `/comet-build` 继续修复；若 `verify_failures` 已超过自动修复上限，则进入 `/comet-verify` 的超限策略决策点
-4. `phase: verify` → `/comet-verify`
-5. `phase: build` → 优先按 workflow 路由：`hotfix` → `/comet-hotfix`，`tweak` → `/comet-tweak`，`full` → `/comet-build`；任务全部勾选仍须完成 Build 检查与合法转换
-6. `phase: design` → `/comet-design`
-7. `phase: open` 或有活跃 change 但 `.comet.yaml` 缺失 → `/comet-open`
-8. 无活跃 change → `/comet-open`
-
-如果元数据与文件状态冲突，运行当前阶段入口检查并处理具体问题；文件只作证据，不覆盖 Runtime 阶段，不手工改 phase 绕过确认或验证。
-
-### 预设升级判定
-
-hotfix/tweak 的范围判定采用三层分工，避免「用纯文件数当硬性升级条件」误杀正常小改动：
-
-1. **质变信号**（agent 语义识别，命中任一即暂停交用户二选一）：跨模块协调修改、需要新增 capability、数据库 schema 变更、引入新的 public API、触及深层架构问题（各预设沿用这套核心信号，并可追加自身语境的特有信号，如 tweak 的「需要拆分为多个 OpenSpec changes」）
-2. **文件数 tripwire**（用户拍板，非自动升级）：改动文件数超提示阈值时，暂停交用户决定继续预设流程还是升级 full，不自动踢
-3. **验证级别**（scale 建议）：`comet state scale` 返回规模和建议，不写入 `verify_mode`、不触发 workflow 升级；在 Verify 中结合风险选择，保留已有明确配置
-
-**升级决策点（用户二选一）**：
-
-- 继续预设轻量流程（用户确认范围可控）
-- 升级为完整 `/comet-classic`（使用 `comet state transition <name> preset-escalate` 合法回退到 design 阶段，同时清除预设专属的 build 配置；补 Design Doc 后由 Build 重新发起完整联合配置决策）
-
-详细判定规则见 `comet-hotfix` / `comet-tweak` 各自的「升级判定」章节。
-
-### 错误处理速查
-
-| 场景                                         | 处理方式                                                                                                                               |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `comet classic openspec -- list --json` 失败 | 检查 OpenSpec 是否已安装；若 artifact root 缺失或损坏，提示运行 `comet update --scope project` 或重新运行 `comet init --scope project` |
-| 子 skill 不可用                              | 停止流程，提示安装或启用对应 skill                                                                                                     |
-| `.comet.yaml` 缺失                           | 进入对应 preset 的 `/comet-open` 初始化状态，再运行 `comet state select`；不得跳过初始化                                               |
-| `.comet.yaml` 格式异常                       | 停止并报告解析错误；从版本控制、备份或可验证产物人工修复，不能用 `comet state set` 覆盖损坏文件                                        |
-| 构建/测试失败                                | 返回 build 阶段修复，不进入 verify                                                                                                     |
-| change 目录结构不完整                        | 按 `comet-open` 产物要求补齐                                                                                                           |
-
-### 阶段衔接
-
-<IMPORTANT>
-单次 `/comet-classic` 调用从检测到的阶段开始，退出条件满足后进入下一阶段。
-
-流转链：open → design → build → verify → archive
-
-**连续执行要求**：从检测到的阶段开始，agent 自动推进后续阶段。但**自动推进仅适用于没有用户决策的衔接点**。遇到用户决策点时，必须提出明确选项并暂停等待用户回复，不得用推荐规则、默认值或历史偏好代替用户确认，也不得仅输出文字提示后继续执行。
-
-**阶段推进与自动衔接的区分**：每个子 skill 退出前都会运行阶段守卫 `--apply` 推进 `.comet.yaml` 的 `phase` 字段——这一步**始终发生**，与 `auto_transition` 无关。之后子 skill 运行 `comet state next <name>` 解析下一步：`auto_transition` 不为 `false` 时输出 `NEXT: auto`（自动调用下一 skill），为 `false` 时输出 `NEXT: manual`（不调用下一 skill，按 `HINT` 交还控制权）。`NEXT: manual` 不是用户决策点，不得再询问“是否继续”。因此 `auto_transition` **只控制是否自动调用下一个 skill，不影响 phase 推进**。无论 `auto_transition` 取何值，下方真正的用户决策点都必须阻塞等待。
-
-**决策点是阻塞点**：只要到达下列任一节点，当前 `/comet-classic` 调用必须停住，并按 `comet-classic/reference/decision-point.md` 的协议获取用户明确选择。用户明确选择后才能写入对应状态字段、执行对应操作，随后再继续自动流转。
-
-需要用户参与的节点（仅在这些节点暂停）：
-
-1. workflow 目标选择：多个 active changes、继续现有 change/创建新 change、或批量拆分完成后选择先启动哪一个
-2. open 阶段 proposal/design/tasks 最终审视确认（同时确认 change 名称与范围；清晰请求不做前置摘要/命名确认）
-3. brainstorming 确认设计方案
-4. open 阶段工作区决策：明确并行自动使用 Worktree；未指定隔离方式且需要决策时，将合法的 `current`、`branch`、`worktree` 作为单选项展示
-5. build 阶段 plan-ready 联合决策：暂停，或一次性确认执行方式、TDD 模式和代码审查模式
-6. verify 阶段接受 WARNING/SUGGESTION 偏差、处理 Spec 漂移，或第 4 次失败后选择继续修复/停止；前 3 次明确可修复失败自动闭环
-7. archive 阶段在一个最终确认中同时选择是否归档及归档提交的交付方式
-8. 遇到升级判定信号（hotfix/tweak → 用户二选一：继续预设流程 / 升级完整流程）
-9. build 阶段范围扩张需重新设计或拆分新 change
-10. open 阶段大型 PRD 是否拆分为多个 changes
-
-agent 不应跳过这些决策点；其他明确无歧义的阶段衔接必须自动继续推进，不得中途退出。到达决策点时，**禁止跳过用户确认或自动选择——必须提出明确选项并获取用户选择后才能继续**。
-
-**红旗清单** — 以下想法出现时立即停止并检查：
-
-| Agent 心理                     | 实际风险                              |
-| ------------------------------ | ------------------------------------- |
-| "用户应该会同意这个方案"       | 不能替用户决策，必须等待用户明确选择  |
-| "这只是个小改动，不需要确认"   | 决策点无大小之分，阻塞点必须等待      |
-| "用户之前选过 A，这次也选 A"   | 历史偏好不能替代当前确认              |
-| "我已经解释了方案，用户没反对" | 没反对 ≠ 同意，必须用工具获取明确选择 |
-| "流程走到这里应该没问题了"     | 验证不通过 ≠ 通过，检查 verify_result |
-
-</IMPORTANT>
-
----
-
-## 子命令速查
-
-| 命令             | 阶段          | 归属        | 产物                                                                              |
-| ---------------- | ------------- | ----------- | --------------------------------------------------------------------------------- |
-| `/comet-open`    | 1. 开启       | OpenSpec    | proposal.md、design.md、tasks.md                                                  |
-| `/comet-design`  | 2. 深度设计   | Superpowers | Design Doc、delta spec                                                            |
-| `/comet-build`   | 3. 计划与构建 | Superpowers | 实施计划、代码提交                                                                |
-| `/comet-verify`  | 4. 验证       | Both        | 验证报告                                                                          |
-| `/comet-archive` | 5. 归档与收尾 | OpenSpec    | delta→main spec 同步、design doc 标注、归档提交与交付                             |
-| `/comet-hotfix`  | 预设路径      | Both        | 快速修复（跳过 brainstorming）                                                    |
-| `/comet-tweak`   | 预设路径      | Both        | 串联 OpenSpec 的中等改动（delta spec 为一等公民，跳过 brainstorming 和完整 plan） |
-
-```
-/comet-classic
-  ↓ 自动检测
-/comet-open ──→ /comet-design ──→ /comet-build ──→ /comet-verify ──→ /comet-archive
-  (OpenSpec)      (Superpowers)     (Superpowers)     (Both)          (OpenSpec)
-
-/comet-hotfix（预设路径，跳过 brainstorming）
-  open ──→ build ──→ verify ──→ archive
-    ↑ 命中升级判定信号 → 用户二选一（继续预设流程 / 升级 full）→ 升级则 transition preset-escalate → 补 Design Doc → 回到完整流程
-
-/comet-tweak（轻量预设路径，串联 OpenSpec，delta spec 为一等公民）
-  open ──→ build ──→ verify ──→ archive
-    ↑ 命中升级判定信号 → 用户二选一（继续预设流程 / 升级 full）→ 升级则 transition preset-escalate → 补 Design Doc → 回到完整流程
-```
-
----
-
-## 参考附录（Reference Appendix）
-
-> 字段说明、文件结构和自动衔接协议已提取为渐进式加载参考文档，按需查阅：
->
-> - **`.comet.yaml` 完整字段表**：按 `comet-classic/reference/comet-yaml-fields.md` 查阅（含必需字段、可选字段和完整示例）
-> - **文件结构**：按 `comet-classic/reference/file-structure.md` 查阅
-> - **自动衔接协议**：按 `comet-classic/reference/auto-transition.md` 查阅
-> - **上下文压缩恢复**：按 `comet-classic/reference/context-recovery.md` 查阅
-> - **用户决策点协议**：按 `comet-classic/reference/decision-point.md` 查阅
-> - **异常调试协议**：按 `comet-classic/reference/debug-gate.md` 查阅
-
-### 状态机硬约束
-
-- full workflow 的 `isolation` 可为 `current`、`branch` 或 `worktree`，并且必须在 `build → verify` 前完成绑定
-- `build → verify` 前，`build_mode` 必须已选择
-- `build_mode: subagent-driven-development` 必须同时有 `subagent_dispatch: confirmed`
-- full workflow 离开 build 阶段前 `tdd_mode` 必须已选择为 `tdd` 或 `direct`
-- full workflow 离开 build 阶段前 `review_mode` 必须已选择为 `off`、`standard` 或 `thorough`
-- `build_mode: direct` 默认只允许 `hotfix` / `tweak`；full workflow 需要 `direct_override: true`
-- `build_pause` 不是执行方式，不得写入 `build_mode`
-- 这些约束同时由 `comet guard <name> build --apply` 和 `comet state transition <name> build-complete` 执行
-
-### 脚本定位
-
-每个会话按 `comet-classic/reference/scripts.md` 直接运行公开 CLI 命令。关键入口：
-
-```bash
-comet guard <change-name> <phase> --apply             # 阶段守卫 + 自动状态更新
-comet state transition <change-name> <event>          # open-complete | design-complete | build-complete | verify-pass | verify-fail
-comet state next <change-name>                        # NEXT: auto|manual|done + SKILL: <skill-name>
-comet archive <change-name>                           # 一键完成归档
-```
-
-### 文件结构
-
-按 `comet-classic/reference/file-structure.md` 查阅完整目录结构。
+需要状态字段含义时读 `comet-classic/reference/comet-yaml-fields.md`；需要产物目录说明时读 `comet-classic/reference/file-structure.md`。其余参考只在上方触发条件满足时读取。

@@ -122,6 +122,7 @@ import {
   resolveContainedNativePath,
 } from './native-paths.js';
 import { nativeBriefTemplate } from './native-artifact-language.js';
+import { mapWithConcurrency } from './native-concurrency.js';
 import {
   removeNativeVerificationReportSnapshot,
   writeNativeVerificationReportSnapshot,
@@ -1671,22 +1672,20 @@ async function nativeCheckInputFingerprint(options: {
       .split('\0')
       .filter(Boolean)
       .sort();
-    gitSnapshot.untracked = await Promise.all(
-      untracked.map(async (relative) => {
-        const target = path.resolve(options.projectRoot, ...relative.split('/'));
-        try {
-          const stat = await fs.stat(target);
-          const content = await fs.readFile(target);
-          return {
-            path: relative,
-            digest: digestNativeCheckInput(content.toString('base64')),
-            size: stat.size,
-          };
-        } catch {
-          return { path: relative, digest: null, size: null };
-        }
-      }),
-    );
+    gitSnapshot.untracked = await mapWithConcurrency(untracked, 4, async (relative) => {
+      const target = path.resolve(options.projectRoot, ...relative.split('/'));
+      try {
+        const stat = await fs.stat(target);
+        const content = await fs.readFile(target);
+        return {
+          path: relative,
+          digest: digestNativeCheckInput(content.toString('base64')),
+          size: stat.size,
+        };
+      } catch {
+        return { path: relative, digest: null, size: null };
+      }
+    });
     if (gitSnapshot.untracked.some(({ digest }) => digest === null)) {
       gitSnapshot.complete = false;
       gitSnapshot.reuseNonce = randomUUID();
@@ -1946,19 +1945,20 @@ async function persistVerifierExecutionError(options: {
   return written;
 }
 
-function sameNativeCheckPlan(
+export function sameNativeCheckPlan(
   local: NativeLocalExecutionState,
   plans: readonly NativeCheckPlan[],
   projectRoot: string,
   state: NativePortableState,
   inputFingerprint: string,
+  branch: string | null,
 ): boolean {
   if (
     local.candidateId !== state.builder_handoff?.candidate_id ||
     local.inputFingerprint !== inputFingerprint ||
     path.resolve(local.workspace.projectRoot) !== path.resolve(projectRoot) ||
     path.resolve(local.workspace.worktreeRoot) !== path.resolve(projectRoot) ||
-    local.workspace.branch !== currentBranch(projectRoot) ||
+    local.workspace.branch !== branch ||
     local.workspace.machineId !== os.hostname()
   )
     return false;
@@ -2031,13 +2031,14 @@ async function reserveNativePortableCheckPlan(options: {
       if (state.phase !== 'verify' || state.loop.stage !== 'verify-ready') {
         throw new Error('Native checks require Verify ready state');
       }
+      const branch = currentBranch(options.projectRoot);
       const file = nativeLocalExecutionFile(options.paths, state.name);
       let local = (
         await readOrRebuildNativeLocalExecution({
           file,
           portableState: state,
           projectRoot: options.projectRoot,
-          branch: currentBranch(options.projectRoot),
+          branch,
           containedRoot: options.paths.runtimeDir,
         })
       ).state;
@@ -2050,7 +2051,6 @@ async function reserveNativePortableCheckPlan(options: {
       const runtimeEvidenceAvailable = await hasNativeRuntimeCheckEvidence(local, runtimeDir);
       const allChecksPassed = local.checks.every((check) => check.status === 'passed');
       const retryIds = options.retryCheckIds === undefined ? null : new Set(options.retryCheckIds);
-      const branch = currentBranch(options.projectRoot);
       const sameBinding =
         local.candidateId === state.builder_handoff?.candidate_id &&
         path.resolve(local.workspace.projectRoot) === path.resolve(options.projectRoot) &&
@@ -2080,7 +2080,14 @@ async function reserveNativePortableCheckPlan(options: {
         local.execution?.stage === 'checking' &&
         local.execution.actor === 'runtime' &&
         planMatches &&
-        sameNativeCheckPlan(local, options.plans, options.projectRoot, state, inputFingerprint)
+        sameNativeCheckPlan(
+          local,
+          options.plans,
+          options.projectRoot,
+          state,
+          inputFingerprint,
+          branch,
+        )
       ) {
         const execution = local.execution;
         if (execution.status === 'running') {

@@ -43,7 +43,7 @@ checkpoint 输入必须有 schemaVersion:1，及 taskIds/revision/stage/sessionI
 
 delivery 输入为 action（local|push|pr）、targetBranch、可选 remote、commit、prUrl，示例见 comet-archive。普通入口和 delivery 读取不触网；只有 `state delivery <change-name> --verify` 执行远端/PR 只读核对，返回 `{delivery, verification}`。写入成功不等于交付成功；命令不可用、拒绝或记录不一致时停止，不手改内部状态绕过。
 
-guard 的 `--apply` 在检查通过后推进状态。需要直接表达状态事件时使用 `comet state transition`；阶段推进后使用 `comet state next` 解析是否自动调用下一 Skill。
+guard 的 `--apply` 在检查通过后推进状态。需要直接表达状态事件时使用 `comet state transition`；阶段推进后按 auto-transition.md 消费成功结果的 `agent.continuation`；观察缺失或失效时才查询 next。
 
 ## 自动状态更新
 
@@ -71,7 +71,7 @@ comet state transition <change-name> preset-escalate
 
 ## 解析下一步
 
-阶段守卫推进 phase 后，用 `next` 子命令解析是否自动调用下一个 skill：
+阶段守卫推进 phase 后，按 auto-transition.md 优先复用成功 JSON 的 `agent.continuation`。观察可直接作为下一阶段入口，不重复 next、select 或 check；仅冷恢复、外部变化或旧结果缺少观察时运行：
 
 ```bash
 comet state next <change-name>
@@ -86,3 +86,9 @@ comet state next <change-name>
 ```bash
 comet archive <change-name>
 ```
+
+## 任务上下文与产物语言
+
+所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言。配置值是规范化语言 ID，`en` 或 `zh-CN`。已有 change 优先使用本次有效入口的 `configuration.language`；仅入口未提供该字段时通过 `comet state get <name> language` 读取 `<classic-change-dir>/.comet.yaml` 中的 `language`；`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；都不存在时才回退到当前用户请求语言。调用外部 OpenSpec/Superpowers skill 时，必须把解析后的语言显式写入 prompt 或 ARGUMENTS。
+
+绑定 Classic 工作区并读取 `.comet.yaml` 当前 `phase` 后，Agent 自动运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<本次任务稳定标识>" --json`。只注入返回的 `text`；Context Manifest（`manifest` / `<context_manifest>`）只包含摘要、应用原因和稳定 ID，需要正文、来源或验证方式时运行同一命令并增加 `--expand-context "<id>"`。路径、操作或阶段变化时以同一 `--session` 和新的 `--path`、`--operation`、`--phase` 重新选择。若 `<active_policies>` 中包含 `<verification command="...">`，把这些命令加入当前 Verify 的实际检查并记录真实结果；只有成功执行过的命令才能让对应策略进入强制执行状态。用户明确要求长期记住偏好或项目约定时调用 `comet memory remember ... --scope global|project`；仅对未明确要求但可跨任务复用的稳定协作方式调用 `comet memory observe`，两者都不得写任务摘要、进展、命令输出或测试结果。实际采用某条内容且结果明确后，用返回的 `applications[].applicationId`（Hook 文本中的 `application_id`）运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`；不得为未使用条目回写成功。任务结束仍运行带 `--complete --workflow <workflow> --change <change-id>` 的 `comet task` 记录检查点。没有 Hook 时由 Skill 调用相同接口，`comet memory context` 只作为兼容入口；插件无结果或失败不阻断工作流。

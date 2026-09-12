@@ -1,10 +1,5 @@
 import type { ClassicCommandResult } from '../../domains/comet-classic/classic-cli.js';
 import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
-import {
-  classicChangeId,
-  inferClassicWorkflow,
-  parseClassicLifecycleEvidence,
-} from '../../domains/comet-classic/classic-experience.js';
 
 export const PUBLIC_CLASSIC_COMMANDS = ['state', 'guard', 'handoff', 'archive', 'check'] as const;
 
@@ -26,9 +21,11 @@ export async function runClassicFacade(
   const execute =
     executor ?? (await import('../../domains/comet-classic/classic-cli.js')).runClassicCli;
   const result = await execute([command, ...integration.cliArgs]);
-  await withProjectIdentityScope(() =>
-    recordClassicResult(command, integration.cliArgs, result, integration.workflow, projectRoot),
-  );
+  if (shouldRecordClassicResult(command, integration.cliArgs, integration)) {
+    await withProjectIdentityScope(() =>
+      recordClassicResult(command, integration.cliArgs, result, integration.workflow, projectRoot),
+    );
+  }
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   return result.exitCode;
@@ -74,18 +71,40 @@ export async function runClassicGroupFacade(args: readonly string[]): Promise<nu
   await emitContext(integration.projectRoot, integration);
   const { runClassicCli } = await import('../../domains/comet-classic/classic-cli.js');
   const result = await runClassicCli([command, ...integration.cliArgs]);
-  await withProjectIdentityScope(() =>
-    recordClassicResult(
-      command,
-      integration.cliArgs,
-      result,
-      integration.workflow,
-      integration.projectRoot,
-    ),
-  );
+  if (shouldRecordClassicResult(command, integration.cliArgs, integration)) {
+    await withProjectIdentityScope(() =>
+      recordClassicResult(
+        command,
+        integration.cliArgs,
+        result,
+        integration.workflow,
+        integration.projectRoot,
+      ),
+    );
+  }
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   return result.exitCode;
+}
+
+function shouldRecordClassicResult(
+  command: string,
+  args: readonly string[],
+  integration: ClassicIntegrationArgs,
+): boolean {
+  if (!isReadOnlyClassicStateQuery(command, args)) return true;
+  return Boolean(
+    integration.task?.trim() ||
+    integration.contextPath ||
+    integration.phase ||
+    integration.workflow,
+  );
+}
+
+function isReadOnlyClassicStateQuery(command: string, args: readonly string[]): boolean {
+  if (command !== 'state') return false;
+  const subcommand = args[0];
+  return subcommand === 'current' || subcommand === 'next';
 }
 
 async function recordClassicResult(
@@ -99,6 +118,8 @@ async function recordClassicResult(
   if (!['state', 'guard', 'handoff', 'archive', 'workspace'].includes(command)) return;
   if (result.exitCode !== 0 && command !== 'guard') return;
   try {
+    const { classicChangeId, inferClassicWorkflow, parseClassicLifecycleEvidence } =
+      await import('../../domains/comet-classic/classic-experience.js');
     const { recordCometWorkflowResult } =
       await import('../../domains/comet-entry/plugin-context.js');
     const verificationCommand = command === 'guard' ? 'comet classic guard' : undefined;

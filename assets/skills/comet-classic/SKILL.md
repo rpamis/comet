@@ -138,6 +138,8 @@ Calling `/opsx:new` directly leaves `.comet.yaml` missing and breaks later phase
 
 When state exists, run `comet state next <name> --json` and use its phase, configuration, and next route instead of querying individual fields. Missing state follows `/comet-open` initialization recovery; malformed state is an error, not permission to infer and advance phase from files.
 
+Within the same work package, reuse this structured response and loaded context. Query again after a state-writing command, a workspace switch, session recovery, or evidence of external changes. Run checks appropriate to the current change risk; Verify retains one integrated review covering the final implementation.
+
 **Resume rules**:
 
 - On every context resume, rerun Step 0 and Step 1; do not trust conversation history for phase detection

@@ -1,6 +1,6 @@
 ---
 name: comet-archive
-description: 'Comet Classic 阶段 5 —— 确认归档、合并 delta spec 并完成分支收尾。'
+description: '归档并交付 Classic change。在用户调用 /comet-archive，或 Classic Runtime 路由到 Archive、恢复交付时使用。'
 ---
 
 # Comet 阶段 5：归档（Archive）

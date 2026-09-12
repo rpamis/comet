@@ -1,6 +1,6 @@
 ---
 name: comet-design
-description: 'Comet Classic 阶段 2 —— 为 change 产出深度技术 Design Doc。'
+description: '完成 Classic 技术设计与确认。在用户调用 /comet-design，或 Classic Runtime 路由到 Design 时使用。'
 ---
 
 # Comet 阶段 2：深度设计（Design）
@@ -108,6 +108,7 @@ OpenSpec 产物是上游事实源。引用已确认需求，brainstorming 只深
 默认只读取上述一个 Markdown 上下文包；机器 JSON 由 Runtime 校验，只有诊断索引问题才读取。截断或验收条款不足时按 source path/line range 补读相关原文，不同时通读 JSON、Markdown 和全部源文件。
 你的任务是基于交接包做深度技术设计：实现方案、技术风险、测试策略、边界条件。
 如发现目标、范围、非目标、验收场景或关键约束仍不清楚，先澄清缺口；信息已足够时直接形成设计方案，不设置最低问答轮数。
+需要提问时，先读取 comet-classic/reference/decision-point.md，逐问给出明确问题、推荐及基于当前约束的理由、各选项影响，优先使用可用的 AskUserQuestion，并等待回答。无法形成真实选项的缺失事实明确请求补充。已有有效确认不重复询问；技术方案唯一不替代 Step 1c 的正式设计确认。
 不要重写 proposal/spec；如发现 OpenSpec delta spec 缺少验收场景，只能提出 Spec Patch，并回写 OpenSpec delta spec；不要在 Design Doc 中创建第二份需求 spec。Spec Patch 仅限于补充验收场景、修正歧义描述或添加边界条件，不得大幅重写 delta spec 的结构或范围——如需大幅修改，应标记为设计发现并回到 brainstorming 确认。
 
 Design Doc frontmatter 必须最小化，只包含：

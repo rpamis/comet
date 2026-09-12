@@ -1,6 +1,6 @@
 ---
 name: comet-verify
-description: 'Comet Classic 阶段 4 —— 验证 change、记录证据并驱动修复循环。'
+description: '验证 Classic change 并记录证据。在用户调用 /comet-verify，或 Classic Runtime 路由到 Verify 时使用。'
 ---
 
 # Comet 阶段 4：验证（Verify）
@@ -210,7 +210,7 @@ comet guard <change-name> verify --apply
 
 ## 自动衔接下一阶段
 
-按 `comet-classic/reference/auto-transition.md` 执行。关键命令：
+按 `comet-classic/reference/auto-transition.md` 消费成功结果的 `agent.continuation`，已有有效观察时不重复 next、select 或 check。仅冷恢复、外部变化或旧结果缺少观察时运行：
 
 ```bash
 comet state next <change-name>

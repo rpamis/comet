@@ -9,9 +9,24 @@ async function readNativeAsset(root: string, relativePath: string): Promise<stri
   return fs.readFile(path.join(root, relativePath), 'utf8');
 }
 
+async function readChineseSourceCoverage(): Promise<string> {
+  const skill = await readNativeAsset(nativeZhRoot, 'SKILL.md');
+  const clarification = await readNativeAsset(nativeZhRoot, 'reference/clarification.md');
+  expect(skill).toContain('(reference/clarification.md#澄清)');
+  expect(skill).toContain('(reference/artifacts.md#源文档完整覆盖)');
+  expect(clarification).toContain('(artifacts.md#源文档完整覆盖)');
+  const artifacts = await readNativeAsset(nativeZhRoot, 'reference/artifacts.md');
+  const marker = '\n## 源文档完整覆盖\n';
+  const start = artifacts.indexOf(marker);
+  expect(start, 'Source-coverage pointer must resolve to a real section').toBeGreaterThan(-1);
+  const contentStart = start + marker.length;
+  const end = artifacts.indexOf('\n## ', contentStart);
+  return artifacts.slice(contentStart, end === -1 ? undefined : end);
+}
+
 describe('Native 中文源文档完整覆盖契约', () => {
   it('只在文件或链接作为需求来源时进入完整覆盖模式', async () => {
-    const skill = await readNativeAsset(nativeZhRoot, 'SKILL.md');
+    const skill = await readChineseSourceCoverage();
 
     expect(skill).toContain('文件、附件、链接或本地路径作为需求来源');
     expect(skill).toContain('源文档完整覆盖模式');
@@ -23,15 +38,15 @@ describe('Native 中文源文档完整覆盖契约', () => {
   });
 
   it('把 brief 定义为持久化澄清产物并关闭单边映射逃逸路径', async () => {
-    const clarification = await readNativeAsset(nativeZhRoot, 'reference/clarification.md');
+    const clarification = await readChineseSourceCoverage();
     const sourceCoverage = clarification.indexOf('完整来源需求和覆盖状态');
     const questions = clarification.indexOf('歧义、遗漏或隐含边界');
 
     expect(clarification).toContain('`brief.md` 是持久化澄清产物');
     expect(sourceCoverage).toBeGreaterThan(-1);
     expect(questions).toBeGreaterThan(sourceCoverage);
-    expect(clarification).toContain('必须同时进入完整目标 Spec 和至少一个验收 ID');
-    expect(clarification).toContain('只需保留归类和理由，不要求验收 ID');
+    expect(clarification).toContain('必须同时映射到完整目标 Spec 和至少一个验收 ID');
+    expect(clarification).toContain('背景、非目标和已废止来源单元不要求 Spec 位置或验收 ID');
     expect(clarification).not.toContain('完整目标 Spec、验收条件或明确的背景/非目标归类');
     expect(clarification).toContain('不可访问的链接');
     expect(clarification).toContain('未映射的可执行来源单元');
@@ -54,6 +69,36 @@ describe('Native 中文源文档完整覆盖契约', () => {
     expect(artifacts).toContain('背景、非目标和已废止来源单元不要求 Spec 位置或验收 ID');
     expect(artifacts).toContain('验收条件至少覆盖原始来源的全部当前有效可执行语义');
     expect(artifacts).toContain('未覆盖内容或缺少双重映射的可执行单元保持阻塞');
+  });
+
+  it('在来源变更和最终确认前重查覆盖，并展示有效与已替代单元的不同映射要求', async () => {
+    const coverage = await readChineseSourceCoverage();
+    const clarification = await readNativeAsset(nativeZhRoot, 'reference/clarification.md');
+    const confirmation = clarification.slice(
+      clarification.indexOf('### 最终确认'),
+      clarification.indexOf('## Supervisor 拆分与确认'),
+    );
+    expect(confirmation).toContain('(artifacts.md#源文档完整覆盖)');
+    expect(confirmation).toContain('核对当前全部来源单元');
+    expect(coverage).toContain('新增或修正需求来源后，先更新受影响来源单元');
+    expect(coverage).toContain('准备最终 Shape 确认前逐项核对全部当前有效单元');
+    const rows = coverage
+      .split('\n')
+      .filter((line) => line.startsWith('|'))
+      .map((line) =>
+        line
+          .split('|')
+          .slice(1, -1)
+          .map((cell) => cell.trim()),
+      );
+    expect(rows).toHaveLength(4);
+    expect(rows.every((row) => row.length === 7)).toBe(true);
+    const active = rows.find((row) => row[5] === 'covered');
+    expect(active?.[3]).toContain('specs/');
+    expect(active?.[4]).toMatch(/^A\d+$/u);
+    const superseded = rows.find((row) => row[5] === 'superseded');
+    expect(superseded?.slice(3, 5)).toEqual(['—', '—']);
+    expect(superseded?.[6]).toContain('替代');
   });
 });
 
