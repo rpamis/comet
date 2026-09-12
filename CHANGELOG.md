@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.1] - 2026-09-12
+
+### Fixed
+
+- **Dashboard Git snapshot**: Show dirty-file paths verbatim for non-ASCII (e.g. Chinese) filenames and paths containing spaces, instead of git's quoted octal-escaped form, by reading status in NUL-terminated porcelain mode (#403).
+
 ## What's Changed [0.4.0] - 2026-09-08
 
 ### Changed
