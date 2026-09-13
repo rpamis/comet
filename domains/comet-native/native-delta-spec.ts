@@ -101,9 +101,8 @@ function normalizeLineEndings(value: string): string {
   return value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 }
 
-// codeql[js/insufficient-password-hash] This is a deterministic integrity digest
-// for Spec content, never a password verifier or credential storage primitive.
 function hashText(value: string): string {
+  // codeql[js/insufficient-password-hash] Deterministic integrity digest for Spec content; it is not password hashing.
   return createHash('sha256').update(normalizeLineEndings(value)).digest('hex');
 }
 
