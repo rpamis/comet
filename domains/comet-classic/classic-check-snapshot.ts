@@ -83,8 +83,9 @@ export async function checkInputFingerprint(
   const state = await readClassicState(changeDir, { migrate: false });
   const report = state.classic?.verificationReport;
   const reportPath = report && report.endsWith('.md') ? path.resolve(root, report) : null;
-  const isWithinRoot = (candidate: string): boolean => {
-    const relative = path.relative(root, candidate);
+  const rootVariants = [root, await fs.realpath(root).catch(() => root)];
+  const isWithinRoot = (candidate: string, base = root): boolean => {
+    const relative = path.relative(base, candidate);
     return (
       relative === '' ||
       (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
@@ -93,10 +94,21 @@ export async function checkInputFingerprint(
   // Some package managers and build tools write caches below the process home.
   // Test runners may place that home inside the temporary project, so it must
   // not make an otherwise stable check input look changed between snapshots.
-  const processHomeRoots = [process.env.HOME, process.env.USERPROFILE]
-    .filter((value): value is string => Boolean(value))
-    .map((value) => path.resolve(value))
-    .filter((home) => home !== root && isWithinRoot(home));
+  const configuredHomes = [process.env.HOME, process.env.USERPROFILE].filter(
+    (value): value is string => Boolean(value),
+  );
+  const processHomeRoots = [
+    ...new Set(
+      (
+        await Promise.all(
+          configuredHomes.map(async (value) => {
+            const home = path.resolve(value);
+            return [home, await fs.realpath(home).catch(() => home)];
+          }),
+        )
+      ).flat(),
+    ),
+  ].filter((home) => rootVariants.some((base) => home !== base && isWithinRoot(home, base)));
   const omitted = (absolute: string) =>
     processHomeRoots.some((home) => absolute === home || absolute.startsWith(home + path.sep)) ||
     absolute === path.join(changeDir, '.comet.yaml') ||
