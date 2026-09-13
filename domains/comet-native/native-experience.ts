@@ -9,16 +9,36 @@ export interface NativeLifecycleEvidence {
   artifactRefs: string[];
 }
 
-export function parseNativeOutcomeEvidence(stdout: string | undefined): NativeOutcomeEvidence {
-  if (!stdout?.trim()) return { reviewResolved: false, failureResolved: false };
+export interface NativeExperienceEvidence {
+  lifecycle: NativeLifecycleEvidence;
+  outcome: NativeOutcomeEvidence;
+}
+
+export function projectNativeExperienceEvidence(
+  data: unknown,
+  structuredDataVisible: boolean,
+): NativeExperienceEvidence {
+  return structuredDataVisible
+    ? {
+        lifecycle: projectNativeLifecycleEvidence(data),
+        outcome: projectNativeOutcomeEvidence(data),
+      }
+    : { lifecycle: emptyLifecycle(), outcome: emptyOutcome() };
+}
+
+function emptyOutcome(): NativeOutcomeEvidence {
+  return { reviewResolved: false, failureResolved: false };
+}
+
+export function projectNativeOutcomeEvidence(data: unknown): NativeOutcomeEvidence {
   try {
-    const data = nativeResultData(stdout);
-    if (data === null) return { reviewResolved: false, failureResolved: false };
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return emptyOutcome();
+    const record = data as Record<string, unknown>;
     const raw =
-      typeof data.change === 'object' && data.change !== null ? data.change : (data.state ?? data);
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      return { reviewResolved: false, failureResolved: false };
-    }
+      typeof record.change === 'object' && record.change !== null
+        ? record.change
+        : (record.state ?? record);
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return emptyOutcome();
     const change = raw as Record<string, unknown>;
     const verification =
       change.verification &&
@@ -56,37 +76,56 @@ export function parseNativeOutcomeEvidence(stdout: string | undefined): NativeOu
             : typeof change.summary === 'string'
               ? change.summary.trim()
               : undefined;
-    return {
-      reviewResolved,
-      failureResolved,
-      ...(summary ? { summary } : {}),
-    };
+    return { reviewResolved, failureResolved, ...(summary ? { summary } : {}) };
   } catch {
-    return { reviewResolved: false, failureResolved: false };
+    return emptyOutcome();
   }
 }
 
-export function parseNativeLifecycleEvidence(stdout: string | undefined): NativeLifecycleEvidence {
-  if (!stdout?.trim()) return { changedPaths: [], artifactRefs: [] };
+function emptyLifecycle(): NativeLifecycleEvidence {
+  return { changedPaths: [], artifactRefs: [] };
+}
+
+export function projectNativeLifecycleEvidence(data: unknown): NativeLifecycleEvidence {
   try {
-    const data = nativeResultData(stdout);
-    if (data === null) return { changedPaths: [], artifactRefs: [] };
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return emptyLifecycle();
+    const record = data as Record<string, unknown>;
     const list = (candidate: unknown): string[] =>
       Array.isArray(candidate)
         ? candidate.filter((entry): entry is string => typeof entry === 'string').slice(0, 24)
         : [];
     const state =
-      typeof data.change === 'object' && data.change !== null ? data.change : (data.state ?? data);
+      typeof record.change === 'object' && record.change !== null
+        ? record.change
+        : (record.state ?? record);
     return {
-      changedPaths: list(data.changedPaths),
+      changedPaths: list(record.changedPaths),
       artifactRefs: list(
-        data.artifactRefs ??
-          data.artifacts ??
+        record.artifactRefs ??
+          record.artifacts ??
           (state as Record<string, { artifactRefs?: unknown }>).learning?.artifactRefs,
       ),
     };
   } catch {
-    return { changedPaths: [], artifactRefs: [] };
+    return emptyLifecycle();
+  }
+}
+
+export function parseNativeOutcomeEvidence(stdout: string | undefined): NativeOutcomeEvidence {
+  if (!stdout?.trim()) return emptyOutcome();
+  try {
+    return projectNativeOutcomeEvidence(nativeResultData(stdout));
+  } catch {
+    return emptyOutcome();
+  }
+}
+
+export function parseNativeLifecycleEvidence(stdout: string | undefined): NativeLifecycleEvidence {
+  if (!stdout?.trim()) return emptyLifecycle();
+  try {
+    return projectNativeLifecycleEvidence(nativeResultData(stdout));
+  } catch {
+    return emptyLifecycle();
   }
 }
 

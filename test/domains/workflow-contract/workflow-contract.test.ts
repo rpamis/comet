@@ -29,8 +29,33 @@ import {
   writeWorkflowProjectConfig,
   writeWorkflowProjectConfigSource,
 } from '../../../domains/workflow-contract/project-config-writer.js';
+import {
+  COMET_CURRENT_SELECTION_SCHEMA,
+  readCometCurrentSelection,
+  writeCometCurrentSelection,
+} from '../../../domains/workflow-contract/current-selection.js';
 
 describe('workflow contract normalization', () => {
+  it('owns the shared current selection contract independently of Entry', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-selection-contract-'));
+    try {
+      const selection = {
+        schema: COMET_CURRENT_SELECTION_SCHEMA,
+        workflow: 'native' as const,
+        change: 'contract-change',
+        branch: null,
+      };
+      await writeCometCurrentSelection(root, selection);
+      await expect(readCometCurrentSelection(root)).resolves.toEqual({
+        status: 'selected',
+        selection,
+        legacy: false,
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('normalizes the optional project memory policy with enabled defaults', () => {
     const withoutMemory = parseWorkflowProjectConfigDocument(
       [

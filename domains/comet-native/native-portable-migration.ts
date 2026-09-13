@@ -4,7 +4,7 @@ import {
   parseLegacyNativeChangeValue,
   parseNativeChangeValue,
   parseV2NativeChangeValue,
-} from './native-change.js';
+} from './native-change-model.js';
 import {
   assertNativePortableAcceptanceIds,
   type NativePortableAcceptanceCriterion,

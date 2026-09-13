@@ -181,4 +181,50 @@ describe('Native CLI shared helpers', () => {
       stdout: 'done\n',
     });
   });
+
+  it('reports structured data visibility exactly as the public renderer exposes it', async () => {
+    const shared = (await import('../../../domains/comet-native/native-cli-shared.js')) as {
+      renderNativeCommandDetailed?: (
+        result: {
+          command: string;
+          exitCode: number;
+          data: unknown;
+          text?: string;
+          envelope?: { summary: string };
+        },
+        json: boolean,
+        verbose?: boolean,
+      ) => {
+        output: { exitCode: number; stdout?: string };
+        structuredDataVisible: boolean;
+      };
+    };
+    const data = { state: { phase: 'archive', verification_result: 'pass' } };
+
+    expect(
+      shared.renderNativeCommandDetailed?.(
+        { command: 'next', exitCode: 0, data, envelope: { summary: 'Complete.' } },
+        false,
+      ),
+    ).toEqual({ output: { exitCode: 0, stdout: 'Complete.\n' }, structuredDataVisible: false });
+    expect(
+      shared.renderNativeCommandDetailed?.(
+        { command: 'next', exitCode: 0, data, envelope: { summary: 'Complete.' } },
+        false,
+        true,
+      )?.structuredDataVisible,
+    ).toBe(false);
+    expect(
+      shared.renderNativeCommandDetailed?.(
+        { command: 'next', exitCode: 0, data, envelope: { summary: 'Complete.' } },
+        true,
+      )?.structuredDataVisible,
+    ).toBe(true);
+    expect(
+      shared.renderNativeCommandDetailed?.(
+        { command: 'status', exitCode: 0, data, text: `${JSON.stringify(data)}\n` },
+        false,
+      )?.structuredDataVisible,
+    ).toBe(true);
+  });
 });

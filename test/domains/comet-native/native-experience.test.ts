@@ -3,9 +3,67 @@ import { describe, expect, it } from 'vitest';
 import {
   parseNativeLifecycleEvidence,
   parseNativeOutcomeEvidence,
+  projectNativeExperienceEvidence,
+  projectNativeLifecycleEvidence,
+  projectNativeOutcomeEvidence,
 } from '../../../domains/comet-native/native-experience.js';
+import {
+  renderNativeCommandDetailed,
+  type DispatchResult,
+} from '../../../domains/comet-native/native-cli-shared.js';
 
 describe('Native workflow experience evidence', () => {
+  it('projects structured command data without reparsing rendered stdout', () => {
+    const data = {
+      change: {
+        phase: 'archive',
+        verification: { verdict: 'pass', summary: 'Structured pass.' },
+        history: [{ outcome: 'fail' }],
+      },
+      artifactRefs: ['docs/archive.md'],
+      changedPaths: ['src/example.ts'],
+    };
+    expect(projectNativeOutcomeEvidence(data)).toEqual({
+      reviewResolved: true,
+      failureResolved: true,
+      summary: 'Structured pass.',
+    });
+    expect(projectNativeLifecycleEvidence(data)).toEqual({
+      changedPaths: ['src/example.ts'],
+      artifactRefs: ['docs/archive.md'],
+    });
+  });
+
+  it.each([
+    { name: 'default envelope', json: false, verbose: false, envelope: true },
+    { name: 'verbose envelope', json: false, verbose: true, envelope: true },
+    { name: 'JSON envelope', json: true, verbose: false, envelope: true },
+    { name: 'default raw JSON', json: false, verbose: false, envelope: false },
+  ])('matches the legacy stdout projection for $name', ({ json, verbose, envelope }) => {
+    const data = {
+      state: {
+        phase: 'archive',
+        verification_result: 'pass',
+        history: [{ outcome: 'fail' }],
+      },
+      changedPaths: ['domains/example.ts'],
+      artifactRefs: ['docs/verification.md'],
+    };
+    const result: DispatchResult = {
+      command: 'next',
+      exitCode: 0,
+      data,
+      text: `${JSON.stringify(data, null, 2)}\n`,
+      ...(envelope ? { envelope: { summary: 'Complete.' } } : {}),
+    };
+    const rendered = renderNativeCommandDetailed(result, json, verbose);
+
+    expect(projectNativeExperienceEvidence(data, rendered.structuredDataVisible)).toEqual({
+      lifecycle: parseNativeLifecycleEvidence(rendered.output.stdout),
+      outcome: parseNativeOutcomeEvidence(rendered.output.stdout),
+    });
+  });
+
   it('recognizes a verifier pass that resolves an earlier failure', () => {
     const stdout = JSON.stringify({
       data: {

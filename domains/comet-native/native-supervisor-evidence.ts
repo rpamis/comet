@@ -32,8 +32,10 @@ import { redactNativeCredentialText } from './native-redaction.js';
 import {
   readNativeSupervisorState,
   writeNativeSupervisorState,
-  type NativeSupervisorCheckExecutionState,
-  type NativeSupervisorTask,
+} from './native-supervisor-state.js';
+import type {
+  NativeSupervisorCheckExecutionState,
+  NativeSupervisorTask,
 } from './native-supervisor.js';
 import type { NativeProjectPaths } from './native-types.js';
 

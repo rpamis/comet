@@ -405,7 +405,7 @@ export function errorResult(command: string | null, error: unknown): DispatchRes
   return envelope ? { ...result, envelope } : result;
 }
 
-export function render(
+function renderNativeCommandOutput(
   result: DispatchResult,
   json: boolean,
   verbose = false,
@@ -459,4 +459,36 @@ export function render(
     };
   }
   return { exitCode: result.exitCode, stdout: result.text };
+}
+
+export interface NativeRenderedCommand {
+  output: NativeCommandResult;
+  structuredDataVisible: boolean;
+}
+
+export function renderNativeCommandDetailed(
+  result: DispatchResult,
+  json: boolean,
+  verbose = false,
+): NativeRenderedCommand {
+  const output = renderNativeCommandOutput(result, json, verbose);
+  let structuredDataVisible = false;
+  if (output.stdout?.trim()) {
+    try {
+      const parsed: unknown = JSON.parse(output.stdout);
+      structuredDataVisible =
+        Boolean(parsed) && typeof parsed === 'object' && !Array.isArray(parsed);
+    } catch {
+      structuredDataVisible = false;
+    }
+  }
+  return { output, structuredDataVisible };
+}
+
+export function render(
+  result: DispatchResult,
+  json: boolean,
+  verbose = false,
+): NativeCommandResult {
+  return renderNativeCommandDetailed(result, json, verbose).output;
 }

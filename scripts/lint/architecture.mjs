@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 import {
   readGitignoredDirectoryEntries,
   readGitignoredTopLevelEntries,
@@ -260,13 +261,292 @@ for (const file of walkFiles('.', ignoredGeneratedTrees, ignoredGeneratedRelativ
   }
 }
 
-for (const file of walkFiles('domains/comet-native')) {
-  if (!/\.ts$/u.test(file)) continue;
-  const content = readFileSync(path.join(root, file), 'utf8');
-  if (/\bfrom\s+['"][^'"]*comet-classic[^'"]*['"]/u.test(content)) {
-    fail(`${file} must not import the Classic domain`);
-  }
+function normalizeRepositoryPath(value) {
+  return value.replaceAll('\\', '/').replace(/^\.\//u, '');
 }
+
+function sourceLayer(file) {
+  const normalized = normalizeRepositoryPath(file);
+  return normalized.split('/')[0];
+}
+
+function readCompilerOptions() {
+  const configPath = ts.findConfigFile(root, ts.sys.fileExists, 'tsconfig.json');
+  if (!configPath) {
+    return {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      target: ts.ScriptTarget.ES2022,
+      allowJs: true,
+    };
+  }
+  const loaded = ts.readConfigFile(configPath, ts.sys.readFile);
+  if (loaded.error) {
+    fail(ts.flattenDiagnosticMessageText(loaded.error.messageText, '\n'));
+    return {};
+  }
+  const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, path.dirname(configPath));
+  for (const diagnostic of parsed.errors) {
+    fail(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
+  }
+  return { ...parsed.options, allowJs: true };
+}
+
+function importDeclarationIsRuntime(node) {
+  const clause = node.importClause;
+  if (!clause) return true;
+  if (clause.isTypeOnly) return false;
+  if (clause.name) return true;
+  if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+    return clause.namedBindings.elements.some((element) => !element.isTypeOnly);
+  }
+  return clause.namedBindings !== undefined;
+}
+
+function exportDeclarationIsRuntime(node) {
+  if (node.isTypeOnly) return false;
+  if (!node.exportClause || !ts.isNamedExports(node.exportClause)) return true;
+  return node.exportClause.elements.some((element) => !element.isTypeOnly);
+}
+
+function collectDependencies(file, content) {
+  const scriptKind = file.endsWith('.tsx')
+    ? ts.ScriptKind.TSX
+    : file.endsWith('.jsx')
+      ? ts.ScriptKind.JSX
+      : file.endsWith('.js') || file.endsWith('.mjs') || file.endsWith('.cjs')
+        ? ts.ScriptKind.JS
+        : ts.ScriptKind.TS;
+  const sourceFile = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, scriptKind);
+  const dependencies = [];
+  const sourceLine = (node) =>
+    sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      dependencies.push({
+        specifier: node.moduleSpecifier.text,
+        runtime: importDeclarationIsRuntime(node),
+        line: sourceLine(node),
+      });
+    } else if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      dependencies.push({
+        specifier: node.moduleSpecifier.text,
+        runtime: exportDeclarationIsRuntime(node),
+        line: sourceLine(node),
+      });
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const [argument] = node.arguments;
+      if (
+        node.arguments.length === 1 &&
+        argument &&
+        (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument))
+      ) {
+        dependencies.push({ specifier: argument.text, runtime: true, line: sourceLine(node) });
+      } else {
+        dependencies.push({ specifier: null, runtime: true, line: sourceLine(node) });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return dependencies;
+}
+
+function pathIsWithinModule(file, modulePath) {
+  const normalizedModule = normalizeRepositoryPath(modulePath).replace(/\/$/u, '');
+  return file === normalizedModule || file.startsWith(`${normalizedModule}/`);
+}
+
+function pureModelDependencyIsForbidden(specifier, target) {
+  if (/^(?:node:)?fs(?:\/promises)?$/u.test(specifier)) return true;
+  if (!target) return false;
+  if (sourceLayer(target) === 'app' || sourceLayer(target) === 'platform') return true;
+  return /(?:^|\/)(?:[^/]*-(?:cli|entry|lock|recovery)|native-change|native-supervisor|native-portable-runtime)\.tsx?$/u.test(
+    target,
+  );
+}
+
+function checkSourceDependencies() {
+  const sourceFiles = new Set(
+    layout.sourceRoots.flatMap((sourceRoot) =>
+      walkFiles(sourceRoot).filter((file) => codeFilePattern.test(file)),
+    ),
+  );
+  const compilerOptions = readCompilerOptions();
+  const dependencyRules = layout.dependencyRules ?? {};
+  const pureModelModules = new Set(
+    (dependencyRules.pureModelModules ?? []).map(normalizeRepositoryPath),
+  );
+  const workflowCoreModules = (dependencyRules.workflowCoreModules ?? []).map(
+    normalizeRepositoryPath,
+  );
+  const compatibilityFacadesByImplementation = new Map();
+  for (const rule of dependencyRules.compatibilityFacades ?? []) {
+    const facade = normalizeRepositoryPath(rule.facade ?? '');
+    const implementations = (rule.implementations ?? []).map(normalizeRepositoryPath);
+    if (!sourceFiles.has(facade) || implementations.length === 0) {
+      fail(`compatibility facade ${facade || '(missing)'} must reference exact source files`);
+      continue;
+    }
+    for (const implementation of implementations) {
+      if (!sourceFiles.has(implementation) || /[*?{}[\]]/u.test(implementation)) {
+        fail(`compatibility facade ${facade} must reference exact source files`);
+        continue;
+      }
+      const facades = compatibilityFacadesByImplementation.get(implementation) ?? new Set();
+      facades.add(facade);
+      compatibilityFacadesByImplementation.set(implementation, facades);
+    }
+  }
+  const exceptionKeys = new Set();
+  const usedExceptionKeys = new Set();
+  for (const exception of dependencyRules.exceptions ?? []) {
+    const from = normalizeRepositoryPath(exception.from ?? '');
+    const to = normalizeRepositoryPath(exception.to ?? '');
+    const reason = typeof exception.reason === 'string' ? exception.reason.trim() : '';
+    if (!from || !to || /[*?{}[\]]/u.test(from) || /[*?{}[\]]/u.test(to)) {
+      fail('dependency exception paths must be exact files');
+      continue;
+    }
+    if (!sourceFiles.has(from) || !sourceFiles.has(to)) {
+      fail(`dependency exception ${from} -> ${to} must reference existing source files`);
+      continue;
+    }
+    if (!reason) {
+      fail(`dependency exception ${from} -> ${to} must include a reason`);
+      continue;
+    }
+    exceptionKeys.add(`${from}\0${to}`);
+  }
+
+  const moduleResolutionHost = {
+    fileExists: ts.sys.fileExists,
+    readFile: ts.sys.readFile,
+    realpath: ts.sys.realpath,
+    directoryExists: ts.sys.directoryExists,
+    getCurrentDirectory: () => root,
+    getDirectories: ts.sys.getDirectories,
+  };
+  const resolveSource = (importer, specifier) => {
+    const normalizedSpecifier = specifier.replaceAll('\\', '/');
+    const resolved = ts.resolveModuleName(
+      normalizedSpecifier,
+      path.join(root, importer),
+      compilerOptions,
+      moduleResolutionHost,
+    ).resolvedModule?.resolvedFileName;
+    if (!resolved) return null;
+    const relative = normalizeRepositoryPath(path.relative(root, resolved));
+    return sourceFiles.has(relative) ? relative : null;
+  };
+
+  const graph = new Map();
+  for (const file of [...sourceFiles].sort()) {
+    const content = readFileSync(path.join(root, file), 'utf8');
+    const edges = [];
+    for (const imported of collectDependencies(file, content)) {
+      if (imported.specifier === null) {
+        fail(`${file}:${imported.line} has a dynamic import that cannot be resolved statically`);
+        continue;
+      }
+      const target = resolveSource(file, imported.specifier);
+      if (!target) {
+        const importedExtension = path.extname(imported.specifier.replaceAll('\\', '/'));
+        if (
+          imported.specifier.startsWith('.') &&
+          (importedExtension === '' || codeFilePattern.test(importedExtension))
+        ) {
+          fail(`${file}:${imported.line} cannot resolve local dependency ${imported.specifier}`);
+        }
+        if (
+          pureModelModules.has(file) &&
+          imported.runtime &&
+          pureModelDependencyIsForbidden(imported.specifier, null)
+        ) {
+          fail(`${file} is a pure model and must not depend on ${imported.specifier}`);
+        }
+        continue;
+      }
+      const exceptionKey = `${file}\0${target}`;
+      const dependencyIsExcepted = exceptionKeys.has(exceptionKey);
+      if (dependencyIsExcepted) {
+        usedExceptionKeys.add(exceptionKey);
+      }
+      edges.push({ target, runtime: imported.runtime });
+      if (dependencyIsExcepted) continue;
+      if (
+        (sourceLayer(file) === 'platform' && ['app', 'domains'].includes(sourceLayer(target))) ||
+        (sourceLayer(file) === 'domains' && sourceLayer(target) === 'app')
+      ) {
+        fail(`${file} must not depend on ${target}`);
+      }
+      if (file.startsWith('domains/comet-native/') && target.startsWith('domains/comet-classic/')) {
+        fail(`${file} must not depend on ${target}`);
+      }
+      if (
+        workflowCoreModules.some((modulePath) => pathIsWithinModule(file, modulePath)) &&
+        target.startsWith('domains/comet-entry/')
+      ) {
+        fail(`${file} must not depend on ${target}`);
+      }
+      if (
+        pureModelModules.has(file) &&
+        imported.runtime &&
+        pureModelDependencyIsForbidden(imported.specifier, target)
+      ) {
+        fail(`${file} is a pure model and must not depend on ${target}`);
+      }
+      if (compatibilityFacadesByImplementation.get(file)?.has(target)) {
+        fail(`${file} must not depend on compatibility facade ${target}`);
+      }
+    }
+    graph.set(file, edges);
+  }
+
+  for (const exceptionKey of exceptionKeys) {
+    if (!usedExceptionKeys.has(exceptionKey)) {
+      const [from, to] = exceptionKey.split('\0');
+      fail(`dependency exception ${from} -> ${to} is unused`);
+    }
+  }
+
+  const runtimeGraph = new Map(
+    [...graph].map(([file, edges]) => [
+      file,
+      edges.filter(({ runtime }) => runtime).map(({ target }) => target),
+    ]),
+  );
+  const visiting = new Set();
+  const visited = new Set();
+  const stack = [];
+  const reportedCycles = new Set();
+  const visit = (file) => {
+    if (visiting.has(file)) {
+      const cycleStart = stack.indexOf(file);
+      const cycle = [...stack.slice(cycleStart), file];
+      const key = [...cycle.slice(0, -1)].sort().join('|');
+      if (!reportedCycles.has(key)) {
+        reportedCycles.add(key);
+        fail(`runtime dependency cycle: ${cycle.join(' -> ')}`);
+      }
+      return;
+    }
+    if (visited.has(file)) return;
+    visiting.add(file);
+    stack.push(file);
+    for (const dependency of runtimeGraph.get(file) ?? []) visit(dependency);
+    stack.pop();
+    visiting.delete(file);
+    visited.add(file);
+  };
+  for (const file of [...runtimeGraph.keys()].sort()) visit(file);
+}
+
+checkSourceDependencies();
 
 for (const guide of ['AGENTS.md', 'CLAUDE.md']) {
   const content = readFileSync(path.join(root, guide), 'utf8');

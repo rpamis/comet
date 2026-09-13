@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stringify } from 'yaml';
 
-import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import { runNativeCli, runNativeCliDetailed } from '../../../domains/comet-native/native-cli.js';
 import {
   defaultProjectConfig,
   readProjectConfig,
@@ -63,6 +63,12 @@ function passedReview(reviewerExecutionRef: string) {
 }
 
 describe('Comet Native CLI dispatcher', () => {
+  it('exposes the structured dispatch result before rendering output', async () => {
+    const result = await runNativeCliDetailed(['--help']);
+    expect(result.output.exitCode).toBe(0);
+    expect(result.dispatch.data).toMatchObject({ topic: '' });
+  });
+
   let projectRoot: string;
   const projectArgs = () => ['--project-root', projectRoot] as const;
 

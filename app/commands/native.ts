@@ -1,4 +1,5 @@
-import { runNativeCli } from '../../domains/comet-native/native-cli.js';
+import * as nativeCli from '../../domains/comet-native/native-cli.js';
+import type { NativeCliDetailedResult } from '../../domains/comet-native/native-cli.js';
 import {
   parseNativeLifecycleEvidence,
   parseNativeOutcomeEvidence,
@@ -13,8 +14,12 @@ export async function runNativeFacade(args: readonly string[]): Promise<number> 
   const integration = splitIntegrationArgs(args);
   const projectRoot = path.resolve(integration.projectRoot ?? process.cwd());
   await emitContext(projectRoot, integration);
-  const result = await runNativeCli(integration.cliArgs);
-  await recordNativeResult(integration.cliArgs, result, integration.workflow);
+  const detailed =
+    typeof nativeCli.runNativeCliDetailed === 'function'
+      ? await nativeCli.runNativeCliDetailed(integration.cliArgs)
+      : undefined;
+  const result = detailed?.output ?? (await nativeCli.runNativeCli(integration.cliArgs));
+  await recordNativeResult(integration.cliArgs, result, integration.workflow, detailed);
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr)
     process.stderr.write(result.stderr + (result.stderr.endsWith('\n') ? '' : '\n'));
@@ -23,8 +28,9 @@ export async function runNativeFacade(args: readonly string[]): Promise<number> 
 
 async function recordNativeResult(
   args: readonly string[],
-  result: Awaited<ReturnType<typeof runNativeCli>>,
+  result: Awaited<ReturnType<typeof nativeCli.runNativeCli>>,
   workflowOverride?: string,
+  detailed?: NativeCliDetailedResult,
 ): Promise<void> {
   const command = args.find((value) => ['next', 'archive', 'handoff', 'check'].includes(value));
   if (!command || !['next', 'archive', 'handoff', 'check'].includes(command)) return;
@@ -39,7 +45,7 @@ async function recordNativeResult(
     .find((value) => !value.startsWith('--'));
   try {
     const verificationCommand = command === 'check' ? 'comet native check' : undefined;
-    const evidence = parseNativeLifecycleEvidence(result.stdout);
+    const evidence = detailed?.experience.lifecycle ?? parseNativeLifecycleEvidence(result.stdout);
     const base: Parameters<typeof recordCometWorkflowResult>[0] = {
       projectRoot: path.resolve(projectRoot),
       workflow: workflowOverride ?? 'native',
@@ -62,7 +68,7 @@ async function recordNativeResult(
       ...(evidence.artifactRefs.length > 0 ? { artifactRefs: evidence.artifactRefs } : {}),
     };
     await recordCometWorkflowResult(base);
-    const outcome = parseNativeOutcomeEvidence(result.stdout);
+    const outcome = detailed?.experience.outcome ?? parseNativeOutcomeEvidence(result.stdout);
     if (result.exitCode === 0 && outcome.reviewResolved) {
       await recordCometWorkflowResult({
         ...base,

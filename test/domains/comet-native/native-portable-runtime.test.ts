@@ -35,6 +35,7 @@ import {
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
+import { sameNativeCheckPlan as sameNativeCheckPlanModule } from '../../../domains/comet-native/native-portable-checks.js';
 import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
@@ -48,6 +49,22 @@ function passedReview(reviewerExecutionRef: string) {
 }
 
 describe('Native portable Runtime vertical path', () => {
+  it('keeps check-plan identity in the portable checks module', () => {
+    const root = path.resolve(os.tmpdir(), 'comet-portable-checks');
+    const state = { builder_handoff: { candidate_id: 'candidate' } } as never;
+    const local = {
+      candidateId: 'candidate',
+      inputFingerprint: 'fingerprint',
+      workspace: {
+        projectRoot: root,
+        worktreeRoot: root,
+        branch: null,
+        machineId: os.hostname(),
+      },
+      checks: [],
+    } as never;
+    expect(sameNativeCheckPlanModule(local, [], root, state, 'fingerprint', null)).toBe(true);
+  });
   let root: string;
   let paths: NativeProjectPaths;
 

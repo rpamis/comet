@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const runNativeCli = vi.fn();
+const runNativeCliDetailed = vi.fn();
 const recordCometWorkflowResult = vi.fn();
 const collectCometPluginContext = vi.fn();
 
-vi.mock('../../domains/comet-native/native-cli.js', () => ({ runNativeCli }));
+vi.mock('../../domains/comet-native/native-cli.js', () => ({ runNativeCli, runNativeCliDetailed }));
 vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
   recordCometWorkflowResult,
   collectCometPluginContext,
@@ -21,6 +22,7 @@ describe('Native command facade', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     runNativeCli.mockReset();
+    runNativeCliDetailed.mockReset();
     recordCometWorkflowResult.mockReset();
     collectCometPluginContext.mockReset();
   });
@@ -196,6 +198,39 @@ describe('Native command facade', () => {
         eventType: 'review.resolved',
         summary: 'Raw Native result passed.',
       }),
+    );
+  });
+
+  it('does not expose additional plugin evidence for rendered text output', async () => {
+    runNativeCliDetailed.mockResolvedValue({
+      dispatch: {
+        command: 'next',
+        exitCode: 0,
+        data: {
+          change: {
+            phase: 'archive',
+            verification: { verdict: 'pass', summary: 'Structured result passed.' },
+            history: [{ outcome: 'fail' }, { outcome: 'pass' }],
+          },
+          changedPaths: ['src/native.ts'],
+        },
+      },
+      output: { exitCode: 0, stdout: 'rendered output\n', stderr: '' },
+      experience: {
+        lifecycle: { changedPaths: [], artifactRefs: [] },
+        outcome: { reviewResolved: false, failureResolved: false },
+      },
+      json: false,
+      verbose: false,
+    });
+    const { runNativeFacade } = await import('../../app/commands/native.js');
+
+    await runNativeFacade(['next', 'change-name', '--result', 'result.json']);
+
+    expect(runNativeCli).not.toHaveBeenCalled();
+    expect(recordCometWorkflowResult).toHaveBeenCalledTimes(1);
+    expect(recordCometWorkflowResult).toHaveBeenCalledWith(
+      expect.not.objectContaining({ changedPaths: expect.anything() }),
     );
   });
 });

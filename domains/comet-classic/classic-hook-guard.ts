@@ -10,7 +10,8 @@ import {
 } from './classic-layout.js';
 import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
 import { inspectClassicProjectTarget } from './classic-protected-path.js';
-import type { CometHookDecision, CometHookRequest } from '../comet-entry/hook-types.js';
+import type { CometHookRequest } from '../../platform/process/hook-adapter.js';
+import type { CometHookDecision } from '../workflow-contract/hook.js';
 import { scopeCometHookTargets } from '../workflow-contract/hook-target-scope.js';
 import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';

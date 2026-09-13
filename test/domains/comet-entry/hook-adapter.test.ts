@@ -6,6 +6,7 @@ import {
   parseCometHookRequest,
   renderCometHookDecision,
 } from '../../../domains/comet-entry/hook-adapter.js';
+import { parseCometHookRequest as parsePlatformHookRequest } from '../../../platform/process/hook-adapter.js';
 
 const PLATFORM_FIXTURES = [
   {
@@ -74,6 +75,10 @@ const PLATFORM_FIXTURES = [
 ] as const;
 
 describe('Comet Hook platform adapter', () => {
+  it('exposes the protocol adapter from the platform layer without changing parsing', () => {
+    const source = JSON.stringify({ tool_name: 'Write', file_path: 'src/example.ts' });
+    expect(parsePlatformHookRequest(source)).toEqual(parseCometHookRequest(source));
+  });
   it('keeps the fixture matrix aligned with every declared Hook platform', () => {
     expect(PLATFORM_FIXTURES.map(({ id }) => id)).toEqual([...COMET_HOOK_PLATFORM_IDS]);
   });

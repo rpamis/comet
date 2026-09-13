@@ -15,14 +15,26 @@ import {
   errorResult,
   NativeUsageError,
   projectRootFrom,
-  render,
+  renderNativeCommandDetailed,
   takeFlag,
   takeOption,
   type DispatchResult,
   type NativeCommandResult,
 } from './native-cli-shared.js';
+import {
+  projectNativeExperienceEvidence,
+  type NativeExperienceEvidence,
+} from './native-experience.js';
 
 export type { NativeCommandResult } from './native-cli-shared.js';
+
+export interface NativeCliDetailedResult {
+  dispatch: DispatchResult;
+  output: NativeCommandResult;
+  experience: NativeExperienceEvidence;
+  json: boolean;
+  verbose: boolean;
+}
 
 type NativeCommandHandler = (args: string[], projectRoot: string) => Promise<DispatchResult>;
 
@@ -71,7 +83,9 @@ async function dispatch(
   return { executionCwd: projectRoot, ...(await handler(rawArgs, projectRoot)) };
 }
 
-export async function runNativeCli(argv: readonly string[]): Promise<NativeCommandResult> {
+export async function runNativeCliDetailed(
+  argv: readonly string[],
+): Promise<NativeCliDetailedResult> {
   const args = [...argv];
   const separator = args.indexOf('--');
   const globalArgs = separator < 0 ? args : args.slice(0, separator);
@@ -86,8 +100,34 @@ export async function runNativeCli(argv: readonly string[]): Promise<NativeComma
     explicitProjectRoot = takeOption(globalArgs, '--project-root');
     const dispatchArgs = [...globalArgs, ...commandTail];
     command = dispatchArgs[0] ?? null;
-    return render(await dispatch(dispatchArgs, explicitProjectRoot), json, verbose);
+    const dispatchResult = await dispatch(dispatchArgs, explicitProjectRoot);
+    const rendered = renderNativeCommandDetailed(dispatchResult, json, verbose);
+    return {
+      dispatch: dispatchResult,
+      output: rendered.output,
+      experience: projectNativeExperienceEvidence(
+        dispatchResult.data,
+        rendered.structuredDataVisible,
+      ),
+      json,
+      verbose,
+    };
   } catch (error) {
-    return render(errorResult(command, error), json, verbose);
+    const dispatchResult = errorResult(command, error);
+    const rendered = renderNativeCommandDetailed(dispatchResult, json, verbose);
+    return {
+      dispatch: dispatchResult,
+      output: rendered.output,
+      experience: projectNativeExperienceEvidence(
+        dispatchResult.data,
+        rendered.structuredDataVisible,
+      ),
+      json,
+      verbose,
+    };
   }
+}
+
+export async function runNativeCli(argv: readonly string[]): Promise<NativeCommandResult> {
+  return (await runNativeCliDetailed(argv)).output;
 }

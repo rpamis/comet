@@ -124,6 +124,42 @@
     "vitest.config.ts"
   ],
   "sourceRoots": ["app", "domains", "platform"],
+  "dependencyRules": {
+    "compatibilityFacades": [
+      {
+        "facade": "domains/comet-native/native-portable-runtime.ts",
+        "implementations": [
+          "domains/comet-native/native-portable-storage.ts",
+          "domains/comet-native/native-portable-requirements.ts",
+          "domains/comet-native/native-portable-checks.ts",
+          "domains/comet-native/native-portable-verification.ts",
+          "domains/comet-native/native-portable-coordination.ts",
+          "domains/comet-native/native-portable-shape-coordination.ts",
+          "domains/comet-native/native-portable-verifier-coordination.ts",
+          "domains/comet-native/native-portable-transitions.ts"
+        ]
+      },
+      {
+        "facade": "domains/comet-native/native-supervisor.ts",
+        "implementations": [
+          "domains/comet-native/native-supervisor-model.ts",
+          "domains/comet-native/native-supervisor-state.ts",
+          "domains/comet-native/native-supervisor-workspace.ts",
+          "domains/comet-native/native-supervisor-coordinator.ts"
+        ]
+      }
+    ],
+    "exceptions": [],
+    "pureModelModules": [
+      "domains/comet-native/native-change-model.ts",
+      "domains/comet-native/native-supervisor-model.ts"
+    ],
+    "workflowCoreModules": [
+      "domains/comet-classic",
+      "domains/comet-native",
+      "domains/workflow-contract"
+    ]
+  },
   "appModules": ["cli", "commands"],
   "domainModules": [
     "agent-learning",

@@ -5,7 +5,7 @@ import {
   readCometCurrentSelection,
   writeCometCurrentSelection,
   type CometCurrentSelection,
-} from '../comet-entry/current-selection.js';
+} from '../workflow-contract/current-selection.js';
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import {
   driftStaleReason,

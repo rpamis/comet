@@ -2,12 +2,12 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
-import { parseCometHookRequest, readCometHookRequest } from '../comet-entry/hook-adapter.js';
-import type {
-  CometHookDecision,
-  CometHookIntent,
-  CometHookRequest,
-} from '../comet-entry/hook-types.js';
+import {
+  parseCometHookRequest,
+  readCometHookRequest,
+} from '../../platform/process/hook-adapter.js';
+import type { CometHookIntent, CometHookRequest } from '../../platform/process/hook-adapter.js';
+import type { CometHookDecision } from '../workflow-contract/hook.js';
 import { readNativeChange } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';

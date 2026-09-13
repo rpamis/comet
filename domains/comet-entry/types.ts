@@ -1,8 +1,9 @@
 import type { RecordedCommandCheck } from '../comet-classic/classic-command-checks.js';
 import type { NativePortableStatusProjection } from '../comet-native/native-portable-status.js';
 import type { NativeStatusProjection } from '../comet-native/native-types.js';
+import type { CometProjectWorkflow } from '../workflow-contract/types.js';
 
-export type CometWorkflow = 'native' | 'classic';
+export type CometWorkflow = CometProjectWorkflow;
 
 export type InitWorkflowSelection = CometWorkflow | 'both';
 

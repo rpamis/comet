@@ -7,10 +7,10 @@ import {
   COMET_HOOK_PLATFORM_IDS,
   readCometHookRequest,
   renderCometHookDecision,
-} from './hook-adapter.js';
+} from '../../platform/process/hook-adapter.js';
 import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
 import { inspectCometHook } from './hook-router.js';
-import type { CometHookDecision } from './hook-types.js';
+import type { CometHookDecision } from '../workflow-contract/hook.js';
 import { resolveCometHookProjectRoot } from './hook-project-root.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 

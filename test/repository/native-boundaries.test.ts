@@ -68,13 +68,12 @@ describe('Comet Native isolation boundaries', () => {
 
     expect(nativeSource).not.toMatch(/\bfrom\s+['"][^'"]*comet-classic[^'"]*['"]/u);
     expect(classicSource).not.toMatch(/\bfrom\s+['"][^'"]*comet-native[^'"]*['"]/u);
-    for (const source of [nativeSource, classicSource]) {
-      const entryImports = source.match(/\bfrom\s+['"][^'"]*comet-entry[^'"]*['"]/gu) ?? [];
-      expect(entryImports.length).toBeGreaterThan(0);
-      expect(
-        entryImports.every((entry) => /(?:current-selection|hook-adapter|hook-types)/u.test(entry)),
-      ).toBe(true);
-    }
+    expect(nativeSource).not.toMatch(/\bfrom\s+['"][^'"]*comet-entry[^'"]*['"]/u);
+    expect(classicSource).not.toMatch(/\bfrom\s+['"][^'"]*comet-entry[^'"]*['"]/u);
+    expect(nativeSource).toContain('../workflow-contract/current-selection.js');
+    expect(classicSource).toContain('../workflow-contract/current-selection.js');
+    expect(nativeSource).toContain('../../platform/process/hook-adapter.js');
+    expect(classicSource).toContain('../../platform/process/hook-adapter.js');
   });
 
   it('keeps canonical Native specs on the portable verification architecture', async () => {

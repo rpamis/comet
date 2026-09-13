@@ -5,7 +5,7 @@ import {
   readCometCurrentSelection,
   writeCometCurrentSelection,
   type CometCurrentSelection,
-} from '../comet-entry/current-selection.js';
+} from '../workflow-contract/current-selection.js';
 import { assertNativeName, readNativeChange } from './native-change.js';
 import { assertNoPendingNativeRootMove } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';

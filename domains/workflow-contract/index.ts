@@ -69,6 +69,23 @@ export {
 export { ensureCometProjectGitignore, renderCometProjectGitignore } from './project-gitignore.js';
 export { configuredHookWritePath } from './hook-write-policy.js';
 export type { HookWritePolicy } from './hook-write-policy.js';
+export type { CometHookDecision } from './hook.js';
+export {
+  clearCometCurrentSelection,
+  clearCometCurrentSelectionIf,
+  cometCurrentSelectionFile,
+  migrateLegacyClassicSelection,
+  readCometCurrentSelection,
+  writeCometCurrentSelection,
+  COMET_CURRENT_SELECTION_MAX_BYTES,
+  COMET_CURRENT_SELECTION_SCHEMA,
+} from './current-selection.js';
+export type {
+  CometCurrentSelection,
+  CometCurrentSelectionRead,
+  CometWorkflow,
+  LegacyClassicSelection,
+} from './current-selection.js';
 export {
   inspectWorkflowProjectConfigTransaction,
   repairWorkflowProjectConfigTransaction,
