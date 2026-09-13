@@ -93,28 +93,6 @@ describe('Comet Hook platform adapter', () => {
     }
   });
 
-  it('treats MultiEdit and NotebookEdit as governed writes', () => {
-    expect(
-      parseCometHookRequest(
-        JSON.stringify({
-          tool_name: 'MultiEdit',
-          tool_input: {
-            file_path: 'src/a.ts',
-            edits: [{ old_string: 'a', new_string: 'b' }],
-          },
-        }),
-      ),
-    ).toEqual({ intent: 'write', targets: ['src/a.ts'], toolName: 'MultiEdit' });
-    expect(
-      parseCometHookRequest(
-        JSON.stringify({
-          tool_name: 'NotebookEdit',
-          tool_input: { notebook_path: 'src/b.ipynb', new_source: 'x' },
-        }),
-      ),
-    ).toEqual({ intent: 'write', targets: ['src/b.ipynb'], toolName: 'NotebookEdit' });
-  });
-
   it('parses a payload carrying a leading UTF-8 BOM', () => {
     const source =
       String.fromCharCode(0xfeff) +

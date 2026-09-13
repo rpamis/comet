@@ -2,17 +2,11 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.2] - 2026-09-13
-
-### Fixed
-
-- **Workflow guard routing**: Route Claude Code `MultiEdit` and `NotebookEdit` writes through the Comet workflow guard by recognizing them as governed write tools (and extracting `notebook_path` targets), so phase write restrictions can no longer be bypassed with multi-edit or notebook edits.
-- **dsh Hook support**: Accept `dsh` (DeepSeek Harness) as a Comet Hook platform in the hook router, so installed dsh hooks dispatch writes to the workflow guard instead of failing every request as an unsupported platform.
-
 ## What's Changed [0.4.1] - 2026-09-12
 
 ### Fixed
 
+- **dsh Hook support**: Accept `dsh` (DeepSeek Harness) as a Comet Hook platform in the hook router, so installed dsh hooks dispatch writes to the workflow guard instead of failing every request as an unsupported platform.
 - **Memory content filter**: Accept ISO 8601 dates such as `2026-09-01` in memory text instead of misclassifying them as phone numbers, so remembering dated facts no longer fails.
 - **Memory filter diagnostics**: Name the matched content category (for example, `phone number` or `credential assignment`) when memory text is rejected, so callers can correct the text instead of guessing.
 - **Dashboard Git snapshot**: Show dirty-file paths verbatim for non-ASCII (e.g. Chinese) filenames and paths containing spaces, instead of git's quoted octal-escaped form, by reading status in NUL-terminated porcelain mode (#403).

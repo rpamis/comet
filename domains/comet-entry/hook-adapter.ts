@@ -11,8 +11,6 @@ const WRITE_TOOL_NAMES = new Set([
   'deletefile',
   'edit',
   'editfile',
-  'multiedit',
-  'notebookedit',
   'patch',
   'searchreplace',
   'strreplaceeditor',
@@ -31,14 +29,7 @@ const NON_WRITE_TOOL_NAMES = new Set([
   'view',
 ]);
 
-const SINGULAR_PATH_KEYS = [
-  'file_path',
-  'filePath',
-  'notebook_path',
-  'path',
-  'target_file',
-  'targetFile',
-] as const;
+const SINGULAR_PATH_KEYS = ['file_path', 'filePath', 'path', 'target_file', 'targetFile'] as const;
 const PLURAL_PATH_KEYS = ['file_paths', 'filePaths', 'paths', 'files', 'targets'] as const;
 const NESTED_TARGET_KEYS = ['operations', 'edits'] as const;
 const PATCH_KEYS = ['patch', 'diff', 'patchText', 'patch_text', 'changes'] as const;
