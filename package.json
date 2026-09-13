@@ -67,6 +67,7 @@
     "lint": "eslint app/ domains/ platform/ && pnpm run lint:architecture",
     "lint:architecture": "node scripts/lint/architecture.mjs",
     "lint:fix": "eslint app/ domains/ platform/ --fix",
+    "verify:changed": "node scripts/lint/verify-changed.mjs",
     "format": "prettier --write app/ domains/ platform/ scripts/ test/ .github/ config/ package.json vitest.config.ts build.js tsconfig.json",
     "format:check": "prettier --check app/ domains/ platform/ scripts/ test/ .github/ config/ package.json vitest.config.ts build.js tsconfig.json",
     "benchmark:context": "node scripts/benchmark/context-compression-benchmark.mjs",

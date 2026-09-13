@@ -43,6 +43,7 @@ Issue、Review 意见、Project Knowledge、Memory 和历史记录只提供调�
 验证范围必须与改动风险相匹配，不要在每次编辑后默认运行全量测试。
 
 - 每轮先运行覆盖当前改动的最小相关测试。
+- 需要根据当前差异选择检查时，运行 `pnpm verify:changed --base <比较基线>`；该命令只读取差异并执行检查，不生成文件或更新快照。
 - 纯文档或 Skill 内容修改：运行相关契约测试和受影响文件的 Prettier 检查。
 - 单一 `app/`、`domains/` 或 `platform/` 模块修改：运行对应测试；涉及编译、Runtime 或生成物时再运行 build。
 - 只有当前差异实际跨越多个生产模块，或涉及 Runtime、安装/路由、发布准备等高风险边界时，才在最终交付前运行一次全量测试；仅修改多个文件、生成资产或多个测试文件不自动构成全量测试理由。
@@ -104,7 +105,7 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 - `test/fixtures/` 和 `test/helpers/` 只放测试数据与测试工具。
 - 禁止新增或恢复 `test/ts/` 这种横向桶；旧文件应迁移到上面对应目录。
 
-架构约束由 `pnpm run lint:architecture` 校验，并已接入 `pnpm lint`。它会检查顶层目录白名单、活跃源码根、app/domain/platform 子模块、脚本模块、Classic/Native/Entry runtime 入口与生成物、内置 Skill 根目录、测试归属和禁止旧目录回归。如果确实需要新增顶层目录、源码模块、测试根目录或例外，必须先更新 `config/repository-layout.json`、架构 linter 和本节说明。
+架构约束由 `pnpm run lint:architecture` 校验，并已接入 `pnpm lint`。它会检查顶层目录白名单、活跃源码根、app/domain/platform 子模块、脚本模块、Classic/Native/Entry runtime 入口与生成物、内置 Skill 根目录、测试归属、领域依赖方向、跨领域入口、纯模型和兼容门面。新增领域依赖或供其他领域使用的源码入口时，先判断职责是否合理，再显式更新 `config/repository-layout.json`；不得由脚本自动扩展许可清单。新增顶层目录、源码模块、测试根目录或例外时，同时更新架构 linter 和本节说明。
 
 ## Classic runtime 脚本规范
 

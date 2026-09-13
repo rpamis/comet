@@ -7,10 +7,14 @@ import {
 } from './gitignore-top-level.mjs';
 
 const root = process.cwd();
+const jsonOutput = process.argv.includes('--json');
 const failures = [];
+const architectureReport = {
+  domainDependencies: [],
+};
 
-function fail(message) {
-  failures.push(message);
+function fail(message, code = 'ARCH_REPOSITORY_LAYOUT') {
+  failures.push({ code, message });
 }
 
 function readJson(relativePath) {
@@ -270,6 +274,22 @@ function sourceLayer(file) {
   return normalized.split('/')[0];
 }
 
+function domainModule(file) {
+  const match = /^domains\/([^/]+)\//u.exec(normalizeRepositoryPath(file));
+  return match?.[1] ?? null;
+}
+
+function sourceFileFor(file, content) {
+  const scriptKind = file.endsWith('.tsx')
+    ? ts.ScriptKind.TSX
+    : file.endsWith('.jsx')
+      ? ts.ScriptKind.JSX
+      : file.endsWith('.js') || file.endsWith('.mjs') || file.endsWith('.cjs')
+        ? ts.ScriptKind.JS
+        : ts.ScriptKind.TS;
+  return ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, scriptKind);
+}
+
 function readCompilerOptions() {
   const configPath = ts.findConfigFile(root, ts.sys.fileExists, 'tsconfig.json');
   if (!configPath) {
@@ -310,14 +330,7 @@ function exportDeclarationIsRuntime(node) {
 }
 
 function collectDependencies(file, content) {
-  const scriptKind = file.endsWith('.tsx')
-    ? ts.ScriptKind.TSX
-    : file.endsWith('.jsx')
-      ? ts.ScriptKind.JSX
-      : file.endsWith('.js') || file.endsWith('.mjs') || file.endsWith('.cjs')
-        ? ts.ScriptKind.JS
-        : ts.ScriptKind.TS;
-  const sourceFile = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, scriptKind);
+  const sourceFile = sourceFileFor(file, content);
   const dependencies = [];
   const sourceLine = (node) =>
     sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
@@ -381,6 +394,94 @@ function checkSourceDependencies() {
   const pureModelModules = new Set(
     (dependencyRules.pureModelModules ?? []).map(normalizeRepositoryPath),
   );
+  for (const file of pureModelModules) {
+    if (!sourceFiles.has(file) || /[*?{}[\]]/u.test(file)) {
+      fail(`pure model ${file} must reference an exact source file`, 'ARCH_PURE_MODEL_CONFIG');
+    }
+  }
+  for (const file of sourceFiles) {
+    if (
+      file.startsWith('domains/') &&
+      /-model\.(?:ts|tsx)$/u.test(file) &&
+      !pureModelModules.has(file)
+    ) {
+      fail(
+        `${file} must be registered in dependencyRules.pureModelModules`,
+        'ARCH_PURE_MODEL_CONFIG',
+      );
+    }
+  }
+  const allowedDomainDependencyKeys = new Set();
+  for (const rule of dependencyRules.allowedDomainDependencies ?? []) {
+    const from = typeof rule.from === 'string' ? rule.from : '';
+    const to = typeof rule.to === 'string' ? rule.to : '';
+    const key = `${from}\0${to}`;
+    if (!domainNames.has(from) || !domainNames.has(to) || from === to) {
+      fail(
+        `allowed domain dependency ${from || '(missing)'} -> ${to || '(missing)'} must reference two distinct domain modules`,
+        'ARCH_DOMAIN_DEPENDENCY_CONFIG',
+      );
+      continue;
+    }
+    if (allowedDomainDependencyKeys.has(key)) {
+      fail(
+        `allowed domain dependency ${from} -> ${to} is duplicated`,
+        'ARCH_DOMAIN_DEPENDENCY_CONFIG',
+      );
+      continue;
+    }
+    allowedDomainDependencyKeys.add(key);
+  }
+  const usedDomainDependencyKeys = new Set();
+  const crossDomainEntrypoints = new Set(
+    (dependencyRules.crossDomainEntrypoints ?? []).map(normalizeRepositoryPath),
+  );
+  for (const entrypoint of crossDomainEntrypoints) {
+    if (
+      !sourceFiles.has(entrypoint) ||
+      !entrypoint.startsWith('domains/') ||
+      /[*?{}[\]]/u.test(entrypoint)
+    ) {
+      fail(
+        `cross-domain entrypoint ${entrypoint} must reference an exact domain source file`,
+        'ARCH_DOMAIN_ENTRYPOINT_CONFIG',
+      );
+    }
+  }
+  const usedCrossDomainEntrypoints = new Set();
+  const restrictedDependencies = new Map();
+  const usedRestrictedImporters = new Set();
+  for (const rule of dependencyRules.restrictedDependencies ?? []) {
+    const target = normalizeRepositoryPath(rule.target ?? '');
+    const importers = (rule.importers ?? []).map(normalizeRepositoryPath);
+    const reason = typeof rule.reason === 'string' ? rule.reason.trim() : '';
+    if (!sourceFiles.has(target) || /[*?{}[\]]/u.test(target) || importers.length === 0) {
+      fail(
+        `restricted dependency ${target || '(missing)'} must reference exact source files`,
+        'ARCH_RESTRICTED_DEPENDENCY_CONFIG',
+      );
+      continue;
+    }
+    if (!reason) {
+      fail(
+        `restricted dependency ${target} must include a reason`,
+        'ARCH_RESTRICTED_DEPENDENCY_CONFIG',
+      );
+      continue;
+    }
+    const allowedImporters = new Set();
+    for (const importer of importers) {
+      if (!sourceFiles.has(importer) || /[*?{}[\]]/u.test(importer)) {
+        fail(
+          `restricted dependency ${target} must reference exact source files`,
+          'ARCH_RESTRICTED_DEPENDENCY_CONFIG',
+        );
+        continue;
+      }
+      allowedImporters.add(importer);
+    }
+    restrictedDependencies.set(target, allowedImporters);
+  }
   const workflowCoreModules = (dependencyRules.workflowCoreModules ?? []).map(
     normalizeRepositoryPath,
   );
@@ -389,8 +490,25 @@ function checkSourceDependencies() {
     const facade = normalizeRepositoryPath(rule.facade ?? '');
     const implementations = (rule.implementations ?? []).map(normalizeRepositoryPath);
     if (!sourceFiles.has(facade) || implementations.length === 0) {
-      fail(`compatibility facade ${facade || '(missing)'} must reference exact source files`);
+      fail(
+        `compatibility facade ${facade || '(missing)'} must reference exact source files`,
+        'ARCH_FACADE_CONFIG',
+      );
       continue;
+    }
+    const facadeSource = sourceFileFor(facade, readFileSync(path.join(root, facade), 'utf8'));
+    if (
+      facadeSource.statements.some(
+        (statement) =>
+          !ts.isImportDeclaration(statement) &&
+          !ts.isExportDeclaration(statement) &&
+          !ts.isEmptyStatement(statement),
+      )
+    ) {
+      fail(
+        `compatibility facade ${facade} must contain only imports and re-exports`,
+        'ARCH_FACADE_CONTENT',
+      );
     }
     for (const implementation of implementations) {
       if (!sourceFiles.has(implementation) || /[*?{}[\]]/u.test(implementation)) {
@@ -477,7 +595,39 @@ function checkSourceDependencies() {
         usedExceptionKeys.add(exceptionKey);
       }
       edges.push({ target, runtime: imported.runtime });
+      const allowedRestrictedImporters = restrictedDependencies.get(target);
+      if (allowedRestrictedImporters) {
+        if (!allowedRestrictedImporters.has(file)) {
+          fail(
+            `${file} must not depend on restricted module ${target}`,
+            'ARCH_RESTRICTED_DEPENDENCY',
+          );
+        } else {
+          usedRestrictedImporters.add(`${target}\0${file}`);
+        }
+      }
       if (dependencyIsExcepted) continue;
+      const fromDomain = domainModule(file);
+      const targetDomain = domainModule(target);
+      if (fromDomain && targetDomain && fromDomain !== targetDomain) {
+        const domainDependencyKey = `${fromDomain}\0${targetDomain}`;
+        if (!allowedDomainDependencyKeys.has(domainDependencyKey)) {
+          fail(
+            `${file} must not add undeclared domain dependency ${fromDomain} -> ${targetDomain} via ${target}`,
+            'ARCH_DOMAIN_DEPENDENCY',
+          );
+        } else {
+          usedDomainDependencyKeys.add(domainDependencyKey);
+        }
+        if (!crossDomainEntrypoints.has(target)) {
+          fail(
+            `${file} must use a declared cross-domain entrypoint for ${target}`,
+            'ARCH_DOMAIN_ENTRYPOINT',
+          );
+        } else {
+          usedCrossDomainEntrypoints.add(target);
+        }
+      }
       if (
         (sourceLayer(file) === 'platform' && ['app', 'domains'].includes(sourceLayer(target))) ||
         (sourceLayer(file) === 'domains' && sourceLayer(target) === 'app')
@@ -513,6 +663,33 @@ function checkSourceDependencies() {
       fail(`dependency exception ${from} -> ${to} is unused`);
     }
   }
+  for (const key of allowedDomainDependencyKeys) {
+    if (!usedDomainDependencyKeys.has(key)) {
+      const [from, to] = key.split('\0');
+      fail(`allowed domain dependency ${from} -> ${to} is unused`, 'ARCH_DOMAIN_DEPENDENCY_CONFIG');
+    }
+  }
+  for (const entrypoint of crossDomainEntrypoints) {
+    if (!usedCrossDomainEntrypoints.has(entrypoint)) {
+      fail(`cross-domain entrypoint ${entrypoint} is unused`, 'ARCH_DOMAIN_ENTRYPOINT_CONFIG');
+    }
+  }
+  for (const [target, importers] of restrictedDependencies) {
+    for (const importer of importers) {
+      if (!usedRestrictedImporters.has(`${target}\0${importer}`)) {
+        fail(
+          `restricted dependency importer ${importer} -> ${target} is unused`,
+          'ARCH_RESTRICTED_DEPENDENCY_CONFIG',
+        );
+      }
+    }
+  }
+  architectureReport.domainDependencies = [...usedDomainDependencyKeys]
+    .map((key) => {
+      const [from, to] = key.split('\0');
+      return { from, to };
+    })
+    .sort((left, right) => `${left.from}/${left.to}`.localeCompare(`${right.from}/${right.to}`));
 
   const runtimeGraph = new Map(
     [...graph].map(([file, edges]) => [
@@ -574,11 +751,21 @@ if (!packageJson.scripts?.lint?.includes('pnpm run lint:architecture')) {
 }
 
 if (failures.length > 0) {
-  console.error('Architecture lint failed:');
-  for (const failure of failures) {
-    console.error(`- ${failure}`);
+  if (jsonOutput) {
+    console.log(
+      JSON.stringify({ ok: false, violations: failures, ...architectureReport }, null, 2),
+    );
+  } else {
+    console.error('Architecture lint failed:');
+    for (const failure of failures) {
+      console.error(`- ${failure.message}`);
+    }
   }
   process.exit(1);
 }
 
-console.log('Architecture lint passed');
+if (jsonOutput) {
+  console.log(JSON.stringify({ ok: true, violations: [], ...architectureReport }, null, 2));
+} else {
+  console.log('Architecture lint passed');
+}

@@ -127,4 +127,20 @@ describe('development agent rules', () => {
     expect(packageJson.files).toContain('!assets/AGENTS.md');
     expect(packageJson.files).not.toContain('eval/AGENTS.md');
   });
+
+  it('documents the executable Runtime architecture seams', async () => {
+    const [native, entry, platform] = await Promise.all([
+      fs.readFile(path.join(repositoryRoot, 'domains/comet-native/AGENTS.md'), 'utf8'),
+      fs.readFile(path.join(repositoryRoot, 'domains/comet-entry/AGENTS.md'), 'utf8'),
+      fs.readFile(path.join(repositoryRoot, 'platform/AGENTS.md'), 'utf8'),
+    ]);
+
+    for (const marker of ['纯模型', '兼容门面', '锁内预留 → 锁外执行 → 锁内提交']) {
+      expect(native).toContain(marker);
+    }
+    expect(entry).toContain('selection 数据契约');
+    expect(entry).toContain('平台 Hook 协议');
+    expect(platform).toContain('原始 Hook 输入');
+    expect(platform).toContain('平台输出编码');
+  });
 });

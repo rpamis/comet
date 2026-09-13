@@ -4,6 +4,16 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+interface DependencyTestLayout {
+  domainModules: string[];
+  dependencyRules: {
+    allowedDomainDependencies: Array<{ from: string; to: string }>;
+    crossDomainEntrypoints: string[];
+    compatibilityFacades: Array<{ facade: string; implementations: string[] }>;
+    restrictedDependencies: Array<{ target: string; importers: string[]; reason: string }>;
+  };
+}
+
 const temporary: string[] = [];
 
 afterEach(async () => {
@@ -51,9 +61,12 @@ async function makeMinimalRepository(): Promise<string> {
     ],
     sourceRoots: ['app', 'domains', 'platform'],
     dependencyRules: {
+      allowedDomainDependencies: [],
       compatibilityFacades: [],
+      crossDomainEntrypoints: [],
       exceptions: [],
       pureModelModules: [],
+      restrictedDependencies: [],
       workflowCoreModules: [],
     },
     appModules: [],
@@ -558,6 +571,170 @@ describe('architecture lint', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       'domains/comet-classic/implementation.ts must not depend on compatibility facade domains/comet-classic/facade.ts',
+    );
+  });
+
+  it('allows only declared domain dependencies through declared cross-domain entrypoints', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '\n');
+    await writeFile(root, 'domains/shared/index.ts', 'export const shared = true;\n');
+    await writeFile(
+      root,
+      'domains/comet-classic/consumer.ts',
+      "import { shared } from '../shared/index.js';\nexport { shared };\n",
+    );
+    const layoutPath = path.join(root, 'config', 'repository-layout.json');
+    const layout = JSON.parse(await fs.readFile(layoutPath, 'utf8')) as DependencyTestLayout;
+    layout.domainModules = ['comet-classic', 'shared'];
+    layout.dependencyRules.allowedDomainDependencies = [{ from: 'comet-classic', to: 'shared' }];
+    layout.dependencyRules.crossDomainEntrypoints = ['domains/shared/index.ts'];
+    await fs.writeFile(layoutPath, JSON.stringify(layout, null, 2));
+
+    const allowed = spawnSync(
+      process.execPath,
+      [path.resolve('scripts', 'lint', 'architecture.mjs')],
+      { cwd: root, encoding: 'utf8' },
+    );
+    expect(allowed.stderr).toBe('');
+    expect(allowed.status).toBe(0);
+
+    layout.dependencyRules.allowedDomainDependencies = [];
+    await fs.writeFile(layoutPath, JSON.stringify(layout, null, 2));
+    const undeclared = spawnSync(
+      process.execPath,
+      [path.resolve('scripts', 'lint', 'architecture.mjs')],
+      { cwd: root, encoding: 'utf8' },
+    );
+    expect(undeclared.status).toBe(1);
+    expect(undeclared.stderr).toContain(
+      'domains/comet-classic/consumer.ts must not add undeclared domain dependency comet-classic -> shared',
+    );
+
+    layout.dependencyRules.allowedDomainDependencies = [{ from: 'comet-classic', to: 'shared' }];
+    layout.dependencyRules.crossDomainEntrypoints = [];
+    await fs.writeFile(layoutPath, JSON.stringify(layout, null, 2));
+    const privateImport = spawnSync(
+      process.execPath,
+      [path.resolve('scripts', 'lint', 'architecture.mjs')],
+      { cwd: root, encoding: 'utf8' },
+    );
+    expect(privateImport.status).toBe(1);
+    expect(privateImport.stderr).toContain(
+      'domains/comet-classic/consumer.ts must use a declared cross-domain entrypoint for domains/shared/index.ts',
+    );
+  });
+
+  it('keeps compatibility facades declarative', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '\n');
+    await writeFile(
+      root,
+      'domains/comet-classic/facade.ts',
+      "export * from './implementation.js';\nexport const runtimeValue = 1;\n",
+    );
+    await writeFile(root, 'domains/comet-classic/implementation.ts', 'export const value = 1;\n');
+    const layoutPath = path.join(root, 'config', 'repository-layout.json');
+    const layout = JSON.parse(await fs.readFile(layoutPath, 'utf8')) as DependencyTestLayout;
+    layout.dependencyRules.compatibilityFacades = [
+      {
+        facade: 'domains/comet-classic/facade.ts',
+        implementations: ['domains/comet-classic/implementation.ts'],
+      },
+    ];
+    await fs.writeFile(layoutPath, JSON.stringify(layout, null, 2));
+
+    const result = spawnSync(
+      process.execPath,
+      [path.resolve('scripts', 'lint', 'architecture.mjs')],
+      { cwd: root, encoding: 'utf8' },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'compatibility facade domains/comet-classic/facade.ts must contain only imports and re-exports',
+    );
+  });
+
+  it('requires model modules to be registered as pure models', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '\n');
+    await writeFile(root, 'domains/comet-classic/order-model.ts', 'export const order = {};\n');
+
+    const result = spawnSync(
+      process.execPath,
+      [path.resolve('scripts', 'lint', 'architecture.mjs')],
+      { cwd: root, encoding: 'utf8' },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'domains/comet-classic/order-model.ts must be registered in dependencyRules.pureModelModules',
+    );
+  });
+
+  it('provides stable JSON diagnostics for agent tooling', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '\n');
+    await writeFile(root, 'domains/shared/index.ts', 'export const shared = true;\n');
+    await writeFile(
+      root,
+      'domains/comet-classic/consumer.ts',
+      "import { shared } from '../shared/index.js';\nexport { shared };\n",
+    );
+    const layoutPath = path.join(root, 'config', 'repository-layout.json');
+    const layout = JSON.parse(await fs.readFile(layoutPath, 'utf8')) as DependencyTestLayout;
+    layout.domainModules = ['comet-classic', 'shared'];
+    layout.dependencyRules.crossDomainEntrypoints = ['domains/shared/index.ts'];
+    await fs.writeFile(layoutPath, JSON.stringify(layout, null, 2));
+
+    const result = spawnSync(
+      process.execPath,
+      [path.resolve('scripts', 'lint', 'architecture.mjs'), '--json'],
+      { cwd: root, encoding: 'utf8' },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe('');
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      violations: [
+        {
+          code: 'ARCH_DOMAIN_DEPENDENCY',
+        },
+      ],
+    });
+  });
+
+  it('restricts capability-owning dependencies to reviewed importers', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '\n');
+    await writeFile(root, 'domains/comet-classic/lock.ts', 'export const lock = true;\n');
+    await writeFile(
+      root,
+      'domains/comet-classic/approved.ts',
+      "import { lock } from './lock.js';\nexport { lock };\n",
+    );
+    await writeFile(
+      root,
+      'domains/comet-classic/unreviewed.ts',
+      "import { lock } from './lock.js';\nexport { lock };\n",
+    );
+    const layoutPath = path.join(root, 'config', 'repository-layout.json');
+    const layout = JSON.parse(await fs.readFile(layoutPath, 'utf8')) as DependencyTestLayout;
+    layout.dependencyRules.restrictedDependencies = [
+      {
+        target: 'domains/comet-classic/lock.ts',
+        importers: ['domains/comet-classic/approved.ts'],
+        reason: 'Only reviewed mutation entrypoints acquire the lock.',
+      },
+    ];
+    await fs.writeFile(layoutPath, JSON.stringify(layout, null, 2));
+
+    const result = spawnSync(
+      process.execPath,
+      [path.resolve('scripts', 'lint', 'architecture.mjs')],
+      { cwd: root, encoding: 'utf8' },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'domains/comet-classic/unreviewed.ts must not depend on restricted module domains/comet-classic/lock.ts',
     );
   });
 });
