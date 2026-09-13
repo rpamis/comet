@@ -6,6 +6,7 @@ import {
   parseCometHookRequest,
   renderCometHookDecision,
 } from '../../../domains/comet-entry/hook-adapter.js';
+import { PLATFORMS } from '../../../platform/install/platforms.js';
 
 const PLATFORM_FIXTURES = [
   {
@@ -71,11 +72,47 @@ const PLATFORM_FIXTURES = [
     id: 'grok',
     single: { toolName: 'write', toolInput: { file_path: 'src/grok.ts' } },
   },
+  {
+    id: 'dsh',
+    single: { tool_name: 'Write', tool_input: { file_path: 'src/dsh.ts' } },
+  },
 ] as const;
 
 describe('Comet Hook platform adapter', () => {
   it('keeps the fixture matrix aligned with every declared Hook platform', () => {
     expect(PLATFORM_FIXTURES.map(({ id }) => id)).toEqual([...COMET_HOOK_PLATFORM_IDS]);
+  });
+
+  it('routes every platform that installs hooks through the adapter', () => {
+    const hookCapablePlatformIds = PLATFORMS.filter(
+      (platform) => platform.hookFormat !== undefined,
+    ).map((platform) => platform.id);
+    expect(hookCapablePlatformIds.length).toBeGreaterThan(0);
+    for (const id of hookCapablePlatformIds) {
+      expect(COMET_HOOK_PLATFORM_IDS.has(id)).toBe(true);
+    }
+  });
+
+  it('treats MultiEdit and NotebookEdit as governed writes', () => {
+    expect(
+      parseCometHookRequest(
+        JSON.stringify({
+          tool_name: 'MultiEdit',
+          tool_input: {
+            file_path: 'src/a.ts',
+            edits: [{ old_string: 'a', new_string: 'b' }],
+          },
+        }),
+      ),
+    ).toEqual({ intent: 'write', targets: ['src/a.ts'], toolName: 'MultiEdit' });
+    expect(
+      parseCometHookRequest(
+        JSON.stringify({
+          tool_name: 'NotebookEdit',
+          tool_input: { notebook_path: 'src/b.ipynb', new_source: 'x' },
+        }),
+      ),
+    ).toEqual({ intent: 'write', targets: ['src/b.ipynb'], toolName: 'NotebookEdit' });
   });
 
   it('parses a payload carrying a leading UTF-8 BOM', () => {

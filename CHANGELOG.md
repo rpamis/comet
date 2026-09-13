@@ -2,6 +2,13 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.2] - 2026-09-13
+
+### Fixed
+
+- **Workflow guard routing**: Route Claude Code `MultiEdit` and `NotebookEdit` writes through the Comet workflow guard by recognizing them as governed write tools (and extracting `notebook_path` targets), so phase write restrictions can no longer be bypassed with multi-edit or notebook edits.
+- **dsh Hook support**: Accept `dsh` (DeepSeek Harness) as a Comet Hook platform in the hook router, so installed dsh hooks dispatch writes to the workflow guard instead of failing every request as an unsupported platform.
+
 ## What's Changed [0.4.1] - 2026-09-12
 
 ### Fixed
