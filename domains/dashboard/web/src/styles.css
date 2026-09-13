@@ -7028,6 +7028,22 @@ body {
   background-color: #3a4658 !important;
 }
 
+:root[data-theme='dark'] .dashboard-phase-item.is-pending .dashboard-phase-label,
+:host[data-theme='dark'] .dashboard-phase-item.is-pending .dashboard-phase-label {
+  color: #a5b4c8 !important;
+}
+
+:root[data-theme='dark'] .dashboard-phase-item.is-pending .dashboard-phase-node,
+:host[data-theme='dark'] .dashboard-phase-item.is-pending .dashboard-phase-node {
+  border-color: #3a4658 !important;
+  background: #1b2330 !important;
+}
+
+:root[data-theme='dark'] .dashboard-phase-item.is-pending .dashboard-phase-rail,
+:host[data-theme='dark'] .dashboard-phase-item.is-pending .dashboard-phase-rail {
+  background-color: #3a4658 !important;
+}
+
 :root[data-theme='dark'] .dashboard-priority-title svg,
 :host[data-theme='dark'] .dashboard-priority-title svg {
   background: #1d3b65;

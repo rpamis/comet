@@ -75,13 +75,30 @@ export async function checkInputFingerprint(
   changeDir: string,
   identity?: CheckIdentity,
 ): Promise<string> {
+  root = path.resolve(root);
+  changeDir = path.resolve(changeDir);
   const hash = createHash('sha256');
   const policy = await readCheckPolicy(root, identity);
   hash.update(policy.digest);
   const state = await readClassicState(changeDir, { migrate: false });
   const report = state.classic?.verificationReport;
   const reportPath = report && report.endsWith('.md') ? path.resolve(root, report) : null;
+  const isWithinRoot = (candidate: string): boolean => {
+    const relative = path.relative(root, candidate);
+    return (
+      relative === '' ||
+      (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+    );
+  };
+  // Some package managers and build tools write caches below the process home.
+  // Test runners may place that home inside the temporary project, so it must
+  // not make an otherwise stable check input look changed between snapshots.
+  const processHomeRoots = [process.env.HOME, process.env.USERPROFILE]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => path.resolve(value))
+    .filter((home) => home !== root && isWithinRoot(home));
   const omitted = (absolute: string) =>
+    processHomeRoots.some((home) => absolute === home || absolute.startsWith(home + path.sep)) ||
     absolute === path.join(changeDir, '.comet.yaml') ||
     absolute === path.join(changeDir, '.comet-state.lock') ||
     absolute === path.join(changeDir, '.comet-state-transaction.json') ||

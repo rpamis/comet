@@ -2944,10 +2944,9 @@ test('fully applies dark surfaces without page-wide color-transition jank', asyn
   );
 
   await expect(page.locator('.ant-card').first()).toHaveCSS('background-color', 'rgb(21, 25, 35)');
-  await expect(page.locator('.ant-steps-item-wait .ant-steps-item-title').first()).toHaveCSS(
-    'color',
-    'rgb(165, 180, 200)',
-  );
+  await expect(
+    page.locator('.dashboard-phase-item.is-pending .dashboard-phase-label').first(),
+  ).toHaveCSS('color', 'rgb(165, 180, 200)');
   await expect(page.locator('.dashboard-priority-title svg')).toHaveCSS(
     'background-color',
     'rgb(29, 59, 101)',
@@ -2964,10 +2963,9 @@ test('fully applies dark surfaces without page-wide color-transition jank', asyn
     'rgb(32, 42, 58)',
   );
   await expect(page.locator('.comet-workbench-header')).toHaveCSS('box-shadow', 'none');
-  await expect(page.locator('.ant-steps-item-rail-wait').first()).toHaveCSS(
-    'background-color',
-    'rgb(58, 70, 88)',
-  );
+  await expect(
+    page.locator('.dashboard-phase-item.is-pending .dashboard-phase-rail').first(),
+  ).toHaveCSS('background-color', 'rgb(58, 70, 88)');
 
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
   const nativeSelectedItem = page.locator('.native-change-list-item.selected');
@@ -3210,7 +3208,7 @@ test('keeps the next-step alert clear of its neighboring detail sections', async
   await page.goto('/?demo');
 
   const [stepsBox, alertBox, panelsBox] = await Promise.all([
-    page.locator('.ant-steps').boundingBox(),
+    page.locator('.dashboard-phase-track').boundingBox(),
     page.getByRole('alert').boundingBox(),
     page.locator('.change-detail-panels').boundingBox(),
   ]);
@@ -3364,6 +3362,17 @@ test('pins the desktop workbench frame while rich content scrolls in the center 
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/?demo');
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const shell = document.querySelector('.dashboard-content-shell');
+          if (!(shell instanceof HTMLElement)) return 0;
+          return shell.scrollHeight - shell.clientHeight;
+        }),
+      { message: 'Expected the workbench shell to render scrollable content' },
+    )
+    .toBeGreaterThan(0);
 
   const metrics = await page.evaluate(() => {
     const workbench = document.querySelector('.dashboard-workbench');
@@ -3953,6 +3962,7 @@ test('expands a Native parent and keeps child selection in the existing detail c
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
 
   const disclosure = page.locator('.native-change-disclosure');
+  await disclosure.click();
   await expect(disclosure).toHaveAccessibleName('收起 parent-change 的子变更');
   await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
   await expect(
@@ -4301,7 +4311,7 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(selectedNativeRow).toHaveCSS('border-radius', '10px');
       await expect(selectedNativeRow.locator('.truncate')).toHaveCSS('font-size', '14px');
       await expect(selectedNativeRow.getByText('◇', { exact: true })).toHaveCount(0);
-      await expect(selectedNativeRow).toContainText('Build · 1/3 子变更待验证');
+      await expect(selectedNativeRow).toContainText('Build · 1/3 子变更构建中');
       const nativeProgress = selectedNativeRow.getByRole('progressbar');
       await expect(nativeProgress).toHaveCount(1);
       await expect(nativeProgress).toHaveAttribute('aria-valuenow', '33');
