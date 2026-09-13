@@ -10,8 +10,19 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 WORKSPACE = Path("/workspace")
 RESULTS_FILE = os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")
+CONTEXT_FILE = os.environ.get("BENCH_TEST_CONTEXT", "_test_context.json")
+DOCS_LAYOUT_TREATMENT = "COMET_CLASSIC_DOCS_LAYOUT"
+LEGACY_LAYOUT_TREATMENT = "COMET_CLASSIC_LEGACY_LAYOUT"
+DOCS_CHANGES = Path("docs/openspec/changes")
+LEGACY_CHANGES = Path("openspec/changes")
+CURRENT_LAYOUTS = {
+    DOCS_LAYOUT_TREATMENT: ("docs", DOCS_CHANGES, Path("openspec")),
+    LEGACY_LAYOUT_TREATMENT: ("legacy", LEGACY_CHANGES, Path("docs/openspec")),
+}
 
 
 def passed(name: str):
@@ -22,19 +33,79 @@ def failed(name: str, reason: str):
     return {"check": name, "status": "failed", "reason": reason}
 
 
+def current_treatment():
+    try:
+        context = json.loads((WORKSPACE / CONTEXT_FILE).read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return ""
+    return context.get("treatment_name", "")
+
+
+def _read_yaml(path: Path):
+    try:
+        value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as error:
+        return None, str(error)
+    if not isinstance(value, dict):
+        return None, f"{path.name} must contain a mapping"
+    return value, None
+
+
+def _layout_contract():
+    """Resolve the OpenSpec root selected by the current Classic treatment."""
+    selected = CURRENT_LAYOUTS.get(current_treatment())
+    config_path = WORKSPACE / ".comet/config.yaml"
+    if not config_path.exists():
+        if selected is None:
+            return LEGACY_CHANGES, None
+        return (
+            selected[1],
+            ".comet/config.yaml is required for the current Classic treatment",
+        )
+
+    config, error = _read_yaml(config_path)
+    if error:
+        return selected[1] if selected else LEGACY_CHANGES, error
+
+    classic = config.get("classic")
+    configured_layout = classic.get("artifact_layout") if isinstance(classic, dict) else None
+    if configured_layout not in {"docs", "legacy"}:
+        return (
+            selected[1] if selected else LEGACY_CHANGES,
+            "classic.artifact_layout must be docs or legacy",
+        )
+    if selected is not None and configured_layout != selected[0]:
+        return (
+            selected[1],
+            "classic.artifact_layout does not match the selected Classic treatment",
+        )
+    changes = DOCS_CHANGES if configured_layout == "docs" else LEGACY_CHANGES
+    if selected is not None and (WORKSPACE / selected[2]).exists():
+        return (
+            changes,
+            f"alternate {selected[2].as_posix()}/ root exists for the selected Classic layout",
+        )
+    return changes, None
+
+
 def check_openspec_artifacts():
     """Check that OpenSpec artifacts were created (proposal, design, tasks).
 
-    Looks for a change directory either directly under openspec/changes/ (active)
-    or under openspec/changes/archive/ (archived). Accepts the first change dir
-    that actually contains proposal.md + tasks.md.
+    Resolve the root from the current Classic layout. Current docs-layout runs
+    use docs/openspec/changes; frozen legacy runs retain openspec/changes.
     """
-    changes_dir = WORKSPACE / "openspec" / "changes"
+    relative_changes, layout_error = _layout_contract()
+    if layout_error:
+        return failed("openspec_artifacts", layout_error)
+    changes_dir = WORKSPACE / relative_changes
     if not changes_dir.exists():
-        return failed("openspec_artifacts", "openspec/changes/ directory not found")
+        return failed(
+            "openspec_artifacts",
+            f"{relative_changes.as_posix()}/ directory not found",
+        )
 
-    # Candidate change dirs: direct children of openspec/changes/ (excluding the
-    # archive/ container itself) plus children of openspec/changes/archive/.
+    # Candidate change dirs: direct children of the selected changes root
+    # (excluding the archive/ container itself) plus archived change children.
     candidates = []
     for d in changes_dir.iterdir():
         if not d.is_dir():
@@ -47,14 +118,21 @@ def check_openspec_artifacts():
             candidates.append(d)
 
     if not candidates:
-        return failed("openspec_artifacts", "No change directories found in openspec/changes/")
+        return failed(
+            "openspec_artifacts",
+            f"No change directories found in {relative_changes.as_posix()}/",
+        )
 
     for change_dir in candidates:
         if (change_dir / "proposal.md").exists() and (change_dir / "tasks.md").exists():
             return passed("openspec_artifacts")
 
     first = candidates[0]
-    return failed("openspec_artifacts", f"proposal.md/tasks.md not found together in any change dir (checked {len(candidates)}; e.g. {first})")
+    return failed(
+        "openspec_artifacts",
+        "proposal.md/tasks.md not found together in any change dir "
+        f"(checked {len(candidates)}; e.g. {first})",
+    )
 
 
 def check_sentence_feature():
@@ -74,7 +152,9 @@ def check_sentence_feature():
         result = subprocess.run(
             [sys.executable, str(wordcount), "--sentences"],
             input="Hello world. How are you? Fine!",
-            capture_output=True, text=True, timeout=10
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode != 0:
             return failed("sentence_feature", f"wordcount.py --sentences failed: {result.stderr}")
@@ -154,7 +234,9 @@ def main():
     results.append(check_workflow_phases())
 
     passed_list = [r["check"] for r in results if r["status"] == "passed"]
-    failed_list = [f'{r["check"]}: {r.get("reason", "")}' for r in results if r["status"] == "failed"]
+    failed_list = [
+        f"{r['check']}: {r.get('reason', '')}" for r in results if r["status"] == "failed"
+    ]
 
     output = {"passed": passed_list, "failed": failed_list}
 
