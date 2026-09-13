@@ -73,7 +73,7 @@ describe('Native contract file collector', () => {
     });
   });
 
-  it('rejects sensitive sources and total-byte overflow', async () => {
+  it('rejects sensitive sources and accepts large contract content', async () => {
     await fs.writeFile(path.join(changeDir, '.npmrc'), 'token=secret');
     await expect(
       collectNativeContractFiles({
@@ -94,13 +94,13 @@ describe('Native contract file collector', () => {
       );
       largeSpecs.push({ capability, operation: 'create' as const, source, base_hash: null });
     }
-    await expect(
-      collectNativeContractFiles({
-        changeDir,
-        briefRef: 'brief.md',
-        specChanges: largeSpecs,
-      }),
-    ).rejects.toThrow(/exceeds/iu);
+    const collected = await collectNativeContractFiles({
+      changeDir,
+      briefRef: 'brief.md',
+      specChanges: largeSpecs,
+    });
+    expect(collected.sourceCount).toBe(6);
+    expect(collected.totalBytes).toBeGreaterThan(4_500_000);
   });
 
   it('rejects an oversized spec list and a proposed change without a source', async () => {
