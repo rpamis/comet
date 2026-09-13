@@ -169,6 +169,326 @@ body {
   background: var(--color-bg);
 }
 
+/* Shared workflow geometry with an Origin Wave-inspired 5x5 activity indicator. */
+.dashboard-phase-track {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+.dashboard-phase-item {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.dashboard-phase-rail {
+  position: absolute;
+  top: 15px;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.dashboard-phase-rail.is-leading {
+  right: 50%;
+  left: 0;
+}
+
+.dashboard-phase-rail.is-trailing {
+  right: 0;
+  left: 50%;
+}
+
+.dashboard-phase-item.is-done .dashboard-phase-rail,
+.dashboard-phase-item.is-current.is-active .dashboard-phase-rail.is-leading {
+  background: var(--color-accent);
+}
+
+.dashboard-phase-node {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-fg-2);
+  background: var(--color-bg);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.dashboard-phase-item.is-done .dashboard-phase-node {
+  border-color: var(--color-accent);
+  color: #ffffff;
+  background: var(--color-accent);
+}
+
+.dashboard-phase-item.is-current .dashboard-phase-node {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: color-mix(in oklab, var(--color-accent) 5%, var(--color-bg));
+}
+
+.dashboard-phase-item.is-current.is-active .dashboard-phase-node {
+  border: 0;
+  color: var(--color-accent);
+  background: var(--color-bg);
+}
+
+.dashboard-phase-item.is-current.is-active .dashboard-phase-rail.is-leading {
+  right: calc(50% + 19px);
+}
+
+.dashboard-phase-item.is-current.is-active .dashboard-phase-rail.is-trailing {
+  left: calc(50% + 19px);
+}
+
+.dashboard-phase-label {
+  color: var(--color-fg-2);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.dashboard-phase-item.is-current .dashboard-phase-label,
+.dashboard-phase-item.is-done .dashboard-phase-label {
+  color: var(--color-accent);
+}
+
+.dashboard-phase-origin-wave {
+  display: grid;
+  grid-template-columns: repeat(5, 4px);
+  grid-template-rows: repeat(5, 4px);
+  gap: 2px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.dashboard-phase-origin-wave-dot {
+  position: relative;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #1f73ed;
+  opacity: 0.12;
+  transform: scale(0.82);
+  animation:
+    comet-phase-origin-wave 1.2s cubic-bezier(0.32, 0.72, 0, 1) infinite,
+    comet-phase-origin-wave-spectrum-start 8.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation-delay: calc(var(--phase-origin-wave-ring) * 126ms), 0ms;
+  will-change: background-color, opacity, transform;
+}
+
+.dashboard-phase-origin-wave-dot::before,
+.dashboard-phase-origin-wave-dot::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  content: '';
+  opacity: 0;
+  animation-duration: 1.2s, 8.4s;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1), cubic-bezier(0.22, 1, 0.36, 1);
+  animation-delay: calc(var(--phase-origin-wave-ring) * 126ms), 0ms;
+  animation-iteration-count: infinite, infinite;
+  will-change: background-color, opacity;
+}
+
+.dashboard-phase-origin-wave-dot::before {
+  background: #3c92fa;
+  animation-name: comet-phase-origin-wave-middle, comet-phase-origin-wave-spectrum-middle;
+}
+
+.dashboard-phase-origin-wave-dot::after {
+  background: #86ccff;
+  animation-name: comet-phase-origin-wave-end, comet-phase-origin-wave-spectrum-end;
+}
+
+@keyframes comet-phase-origin-wave {
+  0%,
+  100% {
+    opacity: 0.12;
+    transform: scale(0.82);
+  }
+
+  38% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  68% {
+    opacity: 0.32;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes comet-phase-origin-wave-middle {
+  0%,
+  18%,
+  72%,
+  100% {
+    opacity: 0;
+  }
+
+  42% {
+    opacity: 1;
+  }
+}
+
+@keyframes comet-phase-origin-wave-end {
+  0%,
+  42%,
+  100% {
+    opacity: 0;
+  }
+
+  68% {
+    opacity: 1;
+  }
+}
+
+@keyframes comet-phase-origin-wave-spectrum-start {
+  0%,
+  12.8%,
+  100% {
+    background-color: #1f73ed;
+  }
+
+  14.285%,
+  27.08% {
+    background-color: #4f46e5;
+  }
+
+  28.57%,
+  41.37% {
+    background-color: #c65d0e;
+  }
+
+  42.855%,
+  55.65% {
+    background-color: #be185d;
+  }
+
+  57.14%,
+  69.94% {
+    background-color: #087f5b;
+  }
+
+  71.425%,
+  84.22% {
+    background-color: #ff4d6d;
+  }
+
+  85.71%,
+  98.5% {
+    background-color: #06b6d4;
+  }
+}
+
+@keyframes comet-phase-origin-wave-spectrum-middle {
+  0%,
+  12.8%,
+  100% {
+    background-color: #3c92fa;
+  }
+
+  14.285%,
+  27.08% {
+    background-color: #8b5cf6;
+  }
+
+  28.57%,
+  41.37% {
+    background-color: #f97316;
+  }
+
+  42.855%,
+  55.65% {
+    background-color: #f43f5e;
+  }
+
+  57.14%,
+  69.94% {
+    background-color: #14b8a6;
+  }
+
+  71.425%,
+  84.22% {
+    background-color: #ffd166;
+  }
+
+  85.71%,
+  98.5% {
+    background-color: #3b82f6;
+  }
+}
+
+@keyframes comet-phase-origin-wave-spectrum-end {
+  0%,
+  12.8%,
+  100% {
+    background-color: #86ccff;
+  }
+
+  14.285%,
+  27.08% {
+    background-color: #d946ef;
+  }
+
+  28.57%,
+  41.37% {
+    background-color: #f5b942;
+  }
+
+  42.855%,
+  55.65% {
+    background-color: #fb7185;
+  }
+
+  57.14%,
+  69.94% {
+    background-color: #67e8f9;
+  }
+
+  71.425%,
+  84.22% {
+    background-color: #06d6a0;
+  }
+
+  85.71%,
+  98.5% {
+    background-color: #8b5cf6;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-phase-origin-wave-dot {
+    opacity: var(--phase-origin-wave-rest);
+    transform: none;
+    animation: none;
+  }
+
+  .dashboard-phase-origin-wave-dot::before {
+    opacity: 0.42;
+    animation: none;
+  }
+
+  .dashboard-phase-origin-wave-dot::after {
+    opacity: 0.12;
+    animation: none;
+  }
+}
+
 .dashboard-workbench
   :where(
     .ant-alert,

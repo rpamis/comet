@@ -275,6 +275,11 @@ test('revalidates a cached plugin page when it is first entered', async ({ page 
     workflowSource: 'configured',
   };
   let pluginPageLoads = 0;
+  let pluginPageResponses = 0;
+  let releasePluginPageLoad: (() => void) | undefined;
+  const pluginPageLoadPending = new Promise<void>((resolve) => {
+    releasePluginPageLoad = resolve;
+  });
   await page.addInitScript(
     ({ cacheKey, cachedPage }) => {
       localStorage.setItem(cacheKey, JSON.stringify({ version: 1, value: cachedPage }));
@@ -340,6 +345,7 @@ test('revalidates a cached plugin page when it is first entered', async ({ page 
       });
     } else if (url.pathname.endsWith('/plugins/test.plugin')) {
       pluginPageLoads += 1;
+      await pluginPageLoadPending;
       await route.fulfill({
         json: {
           pluginId: 'test.plugin',
@@ -352,6 +358,7 @@ test('revalidates a cached plugin page when it is first entered', async ({ page 
           data: { version: 'fresh' },
         },
       });
+      pluginPageResponses += 1;
     } else {
       await route.fulfill({ json: {} });
     }
@@ -362,6 +369,16 @@ test('revalidates a cached plugin page when it is first entered', async ({ page 
   await page.getByRole('menuitem', { name: '测试插件' }).click();
   await expect(page.getByText('该插件暂未提供可视化中心页。')).toBeVisible();
   await expect.poll(() => pluginPageLoads).toBe(1);
+  const cachedContent = page.getByText('该插件暂未提供可视化中心页。');
+  const topWhileRefreshing = await cachedContent.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  await expect(page.getByText('正在同步最新数据…', { exact: true })).toHaveCount(0);
+  releasePluginPageLoad?.();
+  await expect.poll(() => pluginPageResponses).toBe(1);
+  await expect
+    .poll(async () => cachedContent.evaluate((element) => element.getBoundingClientRect().top))
+    .toBe(topWhileRefreshing);
 });
 
 test('keeps cached settings visible when fresh revalidation fails', async ({ page }) => {
@@ -401,6 +418,10 @@ test('keeps cached settings visible when fresh revalidation fails', async ({ pag
     },
   };
   let configLoads = 0;
+  let releaseSettingsRefresh: (() => void) | undefined;
+  const settingsRefreshPending = new Promise<void>((resolve) => {
+    releaseSettingsRefresh = resolve;
+  });
   await page.route('**/api/dashboard/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/api/dashboard/projects') {
@@ -435,7 +456,10 @@ test('keeps cached settings visible when fresh revalidation fails', async ({ pag
     } else if (url.pathname.endsWith('/config')) {
       configLoads += 1;
       if (configLoads === 1) await route.fulfill({ json: cachedConfig });
-      else await route.fulfill({ status: 503, json: { message: 'fresh settings unavailable' } });
+      else {
+        if (configLoads === 2) await settingsRefreshPending;
+        await route.fulfill({ status: 503, json: { message: 'fresh settings unavailable' } });
+      }
     } else {
       await route.fulfill({ json: {} });
     }
@@ -455,6 +479,8 @@ test('keeps cached settings visible when fresh revalidation fails', async ({ pag
       .getByText('Native', { exact: true }),
   ).toBeVisible();
   await expect.poll(() => configLoads).toBe(2);
+  await expect(settingsDialog.getByText('正在同步最新数据…', { exact: true })).toHaveCount(0);
+  releaseSettingsRefresh?.();
   await expect(
     settingsDialog.getByText('最新数据同步失败，当前显示缓存', { exact: true }),
   ).toBeVisible();
@@ -2156,6 +2182,85 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(page.getByRole('tab', { name: '已归档', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: '全部', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'ship-native-dashboard' })).toBeVisible();
+  const nativeSelectedRow = page
+    .locator('.native-change-row')
+    .filter({ hasText: 'ship-native-dashboard' });
+  await expect(nativeSelectedRow).toContainText('构建中');
+  await expect(nativeSelectedRow).not.toContainText('待验证');
+  const nativePhaseTrack = page.getByRole('list', { name: 'Native 生命周期阶段' });
+  await expect(nativePhaseTrack.locator('.dashboard-phase-item')).toHaveCount(4);
+  const nativeCurrentPhase = nativePhaseTrack.locator('.dashboard-phase-item.is-current');
+  await expect(nativeCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS('width', '32px');
+  await expect(nativeCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS('height', '32px');
+  await expect(nativeCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS(
+    'border-width',
+    '0px',
+  );
+  await expect(nativeCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS(
+    'background-color',
+    'rgb(255, 255, 255)',
+  );
+  const nativeOriginWave = nativeCurrentPhase.getByRole('status', { name: 'Build 正在进行' });
+  const nativeOriginWaveDots = nativeOriginWave.locator('.dashboard-phase-origin-wave-dot');
+  await expect(nativeOriginWave).toHaveClass(/dashboard-phase-origin-wave/);
+  await expect(nativeOriginWaveDots).toHaveCount(25);
+  await expect(nativeOriginWave).toHaveCSS('width', '28px');
+  await expect(nativeOriginWaveDots.first()).toHaveCSS(
+    'animation-name',
+    'comet-phase-origin-wave, comet-phase-origin-wave-spectrum-start',
+  );
+  await expect(nativeOriginWaveDots.first()).toHaveCSS('animation-duration', '1.2s, 8.4s');
+  const samplePhasePalette = (currentTime) =>
+    nativeOriginWaveDots.first().evaluate((element, time) => {
+      for (const animation of element.getAnimations({ subtree: true })) {
+        if (!animation.animationName.includes('spectrum')) continue;
+        animation.currentTime = time;
+        animation.pause();
+      }
+      return {
+        start: getComputedStyle(element).backgroundColor,
+        middle: getComputedStyle(element, '::before').backgroundColor,
+        end: getComputedStyle(element, '::after').backgroundColor,
+      };
+    }, currentTime);
+  await expect
+    .poll(() => samplePhasePalette(2_900))
+    .toEqual({
+      start: 'rgb(198, 93, 14)',
+      middle: 'rgb(249, 115, 22)',
+      end: 'rgb(245, 185, 66)',
+    });
+  await expect
+    .poll(() => samplePhasePalette(6_500))
+    .toEqual({
+      start: 'rgb(255, 77, 109)',
+      middle: 'rgb(255, 209, 102)',
+      end: 'rgb(6, 214, 160)',
+    });
+  await expect
+    .poll(() =>
+      nativeOriginWaveDots
+        .first()
+        .evaluate((element) => getComputedStyle(element, '::before').animationName),
+    )
+    .toBe('comet-phase-origin-wave-middle, comet-phase-origin-wave-spectrum-middle');
+  await expect
+    .poll(() =>
+      nativeOriginWaveDots
+        .first()
+        .evaluate((element) => getComputedStyle(element, '::after').animationName),
+    )
+    .toBe('comet-phase-origin-wave-end, comet-phase-origin-wave-spectrum-end');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(nativeOriginWaveDots.first()).toHaveCSS('animation-name', 'none');
+  await expect
+    .poll(() =>
+      nativeOriginWaveDots
+        .first()
+        .evaluate((element) => getComputedStyle(element, '::before').animationName),
+    )
+    .toBe('none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   const nativeCopyChangeName = page.getByRole('button', { name: '复制 Change 名称' });
   await expect(nativeCopyChangeName).toHaveCount(1);
   await nativeCopyChangeName.click();
@@ -2184,6 +2289,9 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await page.getByRole('tab', { name: '已归档', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'document-native-resume' })).toBeVisible();
   await expect(page.getByLabel('Archive 已完成')).toHaveText('✓');
+  await expect(
+    page.getByRole('list', { name: 'Native 生命周期阶段' }).locator('.dashboard-phase-origin-wave'),
+  ).toHaveCount(0);
   await expect(page.getByText(/Build ↔ Verify Loop · 已完成/u)).toBeVisible();
   await expect(page.getByText('你已确认接受不完整验证结果', { exact: true })).toBeVisible();
   await expect(page.getByText('归档只读', { exact: true }).first()).toBeVisible();
@@ -2192,6 +2300,25 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await classicWorkflow.click();
   await expect(classicWorkflow).toHaveClass(/ant-menu-item-selected/);
   await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeHidden();
+  const classicSelectedRow = page
+    .locator('.dashboard-change-row')
+    .filter({ hasText: 'add-auth-rate-limiting' });
+  await expect(classicSelectedRow).toContainText('构建中');
+  await expect(classicSelectedRow).not.toContainText('待验证');
+  const classicPhaseTrack = page.getByRole('list', { name: 'Classic 生命周期阶段' });
+  await expect(classicPhaseTrack.locator('.dashboard-phase-item')).toHaveCount(5);
+  const classicCurrentPhase = classicPhaseTrack.locator('.dashboard-phase-item.is-current');
+  await expect(classicCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS('width', '32px');
+  await expect(classicCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS('height', '32px');
+  await expect(classicCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS(
+    'border-width',
+    '0px',
+  );
+  await expect(classicCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS(
+    'background-color',
+    'rgb(255, 255, 255)',
+  );
+  await expect(classicCurrentPhase.locator('.dashboard-phase-origin-wave-dot')).toHaveCount(25);
 
   const proposal = page.getByRole('button').filter({ hasText: 'proposal' }).first();
   await expect(proposal).toBeVisible();

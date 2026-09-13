@@ -23,7 +23,6 @@ import {
   Menu,
   Modal,
   Progress,
-  Steps,
   Tabs,
 } from 'antd';
 import {
@@ -64,6 +63,11 @@ import {
   runMermaid,
 } from './markdown-preview.js';
 import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
+import { WorkflowPhaseTrack } from './phase-progress-indicator.jsx';
+import {
+  classicChangeStatusPresentation,
+  isClassicPhaseRunning,
+} from './classic-status-presentation.js';
 import {
   DashboardModal,
   DashboardPortalProvider,
@@ -2013,40 +2017,16 @@ function PhaseStepper({ phase, archived, next }) {
           {archived ? `归档 ${phase}` : `下一步 ${next?.command ?? '—'}`}
         </span>
       </div>
-      <div className="flex">
-        {PHASES.map(([key, label], index) => {
-          const state =
-            index < currentIndex || archived
-              ? 'done'
-              : index === currentIndex
-                ? 'current'
-                : 'pending';
-          return (
-            <div key={key} className="relative flex flex-1 flex-col items-center gap-2 text-center">
-              {index > 0 && (
-                <span
-                  className={`absolute left-0 right-1/2 top-4 h-px ${index <= currentIndex || archived ? 'bg-accent' : 'bg-border'}`}
-                />
-              )}
-              {index < PHASES.length - 1 && (
-                <span
-                  className={`absolute left-1/2 right-0 top-4 h-px ${index < currentIndex || archived ? 'bg-accent' : 'bg-border'}`}
-                />
-              )}
-              <span
-                className={`relative z-10 grid size-8 place-items-center rounded-full border text-sm font-bold ${state === 'done' ? 'border-accent bg-accent text-white' : state === 'current' ? 'border-accent bg-bg text-accent' : 'border-border bg-bg text-fg-2'}`}
-              >
-                {state === 'done' ? '✓' : index + 1}
-              </span>
-              <span
-                className={`text-[13px] font-semibold ${state === 'current' ? 'text-accent' : state === 'done' ? 'text-accent' : 'text-fg-2'}`}
-              >
-                {label}
-              </span>
-            </div>
-          );
+      <WorkflowPhaseTrack
+        phases={PHASES}
+        currentIndex={currentIndex}
+        archived={archived}
+        currentPhaseRunning={isClassicPhaseRunning({
+          status: archived ? 'archived' : 'active',
+          phase,
         })}
-      </div>
+        ariaLabel="Classic 生命周期阶段"
+      />
     </article>
   );
 }
@@ -4188,27 +4168,20 @@ function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onI
     );
   }
   if (!page) return <LoadingState />;
-  const syncState = (
-    <>
-      {loading ? (
-        <Alert className="mb-3" type="info" showIcon banner message="正在同步最新数据…" />
-      ) : null}
-      {error ? (
-        <Alert
-          className="mb-3"
-          type="warning"
-          showIcon
-          message="最新数据同步失败，当前显示缓存"
-          description={error}
-          action={<Button onClick={onRetry}>重试</Button>}
-        />
-      ) : null}
-    </>
-  );
+  const syncError = error ? (
+    <Alert
+      className="mb-3"
+      type="warning"
+      showIcon
+      message="最新数据同步失败，当前显示缓存"
+      description={error}
+      action={<Button onClick={onRetry}>重试</Button>}
+    />
+  ) : null;
   if (page.pluginId === 'comet.project-knowledge') {
     return (
       <>
-        {syncState}
+        {syncError}
         <ProjectKnowledgeCenter
           page={page}
           data={page.data}
@@ -4237,14 +4210,14 @@ function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onI
   if (page.pluginId === 'comet.personal-memory') {
     return (
       <>
-        {syncState}
+        {syncError}
         <PersonalMemoryCenter data={page.data} readOnly={readOnly} onInvoke={onInvoke} />
       </>
     );
   }
   return (
     <>
-      {syncState}
+      {syncError}
       <div className="mx-auto max-w-dashboard">
         <SectionHead title={page.label} hint="插件中心" />
         <AntCard size="small">该插件暂未提供可视化中心页。</AntCard>
@@ -4356,9 +4329,6 @@ function DashboardSettingsPage({
           aria-disabled={readOnly || undefined}
         >
           <div className="dashboard-settings-content">
-            {loading && currentData ? (
-              <Alert className="mb-3" type="info" showIcon banner message="正在同步最新数据…" />
-            ) : null}
             {error && currentData ? (
               <Alert
                 className="mb-3"
@@ -7960,46 +7930,47 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无变更" />
         )
       ) : (
-        visible.map((change) => (
-          <div
-            key={dashboardChangeKey(change)}
-            className={`dashboard-change-list-item ${dashboardChangeKey(change) === selectedId ? 'selected' : ''} px-2`}
-          >
-            <Button
-              className={`dashboard-change-row ${dashboardChangeKey(change) === selectedId ? 'dashboard-change-row-selected' : ''}`}
-              type="text"
-              block
-              onClick={() => onSelect(dashboardChangeKey(change))}
+        visible.map((change) => {
+          const statusPresentation = classicChangeStatusPresentation(change);
+          return (
+            <div
+              key={dashboardChangeKey(change)}
+              className={`dashboard-change-list-item ${dashboardChangeKey(change) === selectedId ? 'selected' : ''} px-2`}
             >
-              <div className="flex w-full items-center gap-2.5 text-left">
-                <div className="min-w-0 flex-1">
-                  <strong className="block truncate">{change.displayName}</strong>
-                  <span className="mt-0.5 block text-xs text-meta">
-                    {phaseLabel(change.phase)} · {change.tasks.completed}/{change.tasks.total}
-                  </span>
-                  {change.workspace && !change.workspace.current ? (
-                    <span className="dashboard-workspace-label mt-1 inline-flex max-w-full truncate">
-                      {change.workspace.label}
+              <Button
+                className={`dashboard-change-row ${dashboardChangeKey(change) === selectedId ? 'dashboard-change-row-selected' : ''}`}
+                type="text"
+                block
+                onClick={() => onSelect(dashboardChangeKey(change))}
+              >
+                <div className="flex w-full items-center gap-2.5 text-left">
+                  <div className="min-w-0 flex-1">
+                    <strong className="block truncate">{change.displayName}</strong>
+                    <span className="mt-0.5 block text-xs text-meta">
+                      {phaseLabel(change.phase)} · {change.tasks.completed}/{change.tasks.total}
                     </span>
-                  ) : null}
-                  <Progress
-                    percent={
-                      change.tasks.total
-                        ? Math.round((change.tasks.completed / change.tasks.total) * 100)
-                        : 0
-                    }
-                    className="mt-1"
-                    size="small"
-                    showInfo={false}
-                  />
+                    {change.workspace && !change.workspace.current ? (
+                      <span className="dashboard-workspace-label mt-1 inline-flex max-w-full truncate">
+                        {change.workspace.label}
+                      </span>
+                    ) : null}
+                    <Progress
+                      percent={
+                        change.tasks.total
+                          ? Math.round((change.tasks.completed / change.tasks.total) * 100)
+                          : 0
+                      }
+                      className="mt-1"
+                      size="small"
+                      showInfo={false}
+                    />
+                  </div>
+                  <Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>
                 </div>
-                <Pill tone={VERIFY_TONE[change.verify.result] ?? 'neutral'}>
-                  {VERIFY_LABEL[change.verify.result] ?? '未知'}
-                </Pill>
-              </div>
-            </Button>
-          </div>
-        ))
+              </Button>
+            </div>
+          );
+        })
       )}
       <div ref={sentinelRef} className="py-2 text-center text-xs text-meta" aria-live="polite">
         {pageLoading && visible.length > 0 ? (
@@ -8018,6 +7989,7 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
 
 function AntChangeDetail({ change, onPreview }) {
   const [copied, setCopied] = useState(false);
+  const statusPresentation = classicChangeStatusPresentation(change);
   const current = change.status === 'archived' ? 'archive' : change.phase;
   const currentIndex = Math.max(
     0,
@@ -8048,17 +8020,19 @@ function AntChangeDetail({ change, onPreview }) {
           </Tooltip>
         </div>
       }
-      extra={
-        <Pill tone={change.status === 'archived' ? 'neutral' : VERIFY_TONE[change.verify.result]}>
-          {change.status === 'archived' ? '已归档' : VERIFY_LABEL[change.verify.result]}
-        </Pill>
-      }
+      extra={<Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>}
     >
       <div className="mb-4 text-xs text-meta">
         {change.workflow ?? '—'} · 更新于 {formatTimestamp(change.updatedAt)} ·{' '}
         {relativeChangePath(change)}
       </div>
-      <Steps size="small" current={currentIndex} items={PHASES.map(([, title]) => ({ title }))} />
+      <WorkflowPhaseTrack
+        phases={PHASES}
+        currentIndex={currentIndex}
+        archived={change.status === 'archived'}
+        currentPhaseRunning={isClassicPhaseRunning(change)}
+        ariaLabel="Classic 生命周期阶段"
+      />
       <Alert
         className="dashboard-next-step-alert"
         type="info"

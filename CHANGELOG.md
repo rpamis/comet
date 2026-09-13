@@ -12,6 +12,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Workflow phase progress**: Use the same 32px phase geometry for Classic and Native, and present the current phase as a measured floating origin-wave dot matrix that cycles through distinct blue, violet, orange, rose, aqua, rainbow, and aurora palettes while keeping the track stable and respecting reduced-motion preferences.
 - **Workflow guidance**: Use clearer Chinese and English instructions, load detailed guidance for the current action, and present related questions with stable numbering, recommendations, and concrete option effects. Required confirmations and independent verification remain explicit.
 - **Workflow continuation inputs**: Expose unresolved Classic execution settings in structured entry results and make Native Verifier response templates directly parser-compatible, so Agents can retain confirmed decisions, fill only the remaining choices, and return results without reconstructing Runtime fields.
 - **Native Spec authoring limits**: Remove arbitrary Delta and canonical Spec file-size, per-operation text, and operation-count hard limits while retaining structural and integrity validation.
@@ -28,6 +29,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Dashboard background refresh**: Keep cached plugin and settings content in place during automatic synchronization, preventing the recurring sync notice from shifting the page while preserving initial loading and refresh-failure feedback.
+- **Workflow status**: Distinguish Classic and Native lifecycle phases, active execution, waiting states, and verification results so list badges and phase animations no longer imply conflicting work states.
 - **Native Changes Explorer count**: Animate the change total on entry and when it changes, matching the Classic Dashboard count behavior.
 - **Dashboard fullscreen control**: Correct the default preview icon so its four corners render symmetrically when entering fullscreen mode.
 - **Agent CLI operation**: Return workspace-aware actions, independently usable Native input templates, and precise field diagnostics. Preserve Classic artifact references and interrupted Design progress, keep shortcut plugin checkpoints consistent, and pass Windows OpenSpec arguments literally. Native also accepts valid UTF-8 BOM input files and provides complete Supervisor return instructions.

@@ -62,6 +62,19 @@ async function readWorkspaceLayoutSource(): Promise<string> {
 }
 
 describe('dashboard web source contracts', () => {
+  it('cycles the phase wave through complete multi-color palettes', async () => {
+    const styles = await readDashboardStyles();
+
+    expect(styles).toContain('comet-phase-origin-wave-spectrum-start 8.4s');
+    expect(styles).toContain('animation-duration: 1.2s, 8.4s;');
+    expect(styles).toContain('@keyframes comet-phase-origin-wave-spectrum-middle');
+    expect(styles).toContain('@keyframes comet-phase-origin-wave-spectrum-end');
+    expect(styles).toContain('#1f73ed');
+    expect(styles).toContain('#f97316');
+    expect(styles).toContain('#ffd166');
+    expect(styles).toContain('#d946ef');
+  });
+
   it('waits for the project directory before selecting a workflow', async () => {
     const source = await readDashboardSource();
 
@@ -77,7 +90,7 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('setPluginLoading(true)');
     expect(source).toContain('if (!cachedPage) setPluginPage(null)');
     expect(source).toMatch(/else if \(!cached\) \{\s+setSettingsPage\(null\)/u);
-    expect(source).toContain('message="正在同步最新数据…"');
+    expect(source).not.toContain('message="正在同步最新数据…"');
     expect(source).toContain('message="最新数据同步失败，当前显示缓存"');
     expect(source).toContain('pluginPageCoordinatorRef.current.release');
     expect(source).toContain('projectConfigCoordinatorRef.current.release');

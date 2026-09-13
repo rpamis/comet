@@ -12,7 +12,12 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { Button, Skeleton, Tooltip } from 'antd';
+import {
+  isNativePhaseRunning,
+  nativeChangeStatusPresentation,
+} from './native-status-presentation.js';
 import { useAnimatedNumber } from './use-animated-number.js';
+import { WorkflowPhaseTrack } from './phase-progress-indicator.jsx';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 
 const PHASES = [
@@ -706,6 +711,7 @@ function NativeChangesExplorer({
               const key = changeKey(change);
               const expanded = hasChildren && expandedParents.has(key);
               const progress = childrenProgress(change) ?? acceptanceProgress(change);
+              const statusPresentation = nativeChangeStatusPresentation(change);
               const childrenId = `native-children-${change.workspace?.id ?? 'local'}-${change.name.replace(/[^a-z0-9_-]/giu, '-')}`;
               const selectedChild = children.some((child) => child.locator === selectedKey);
               return (
@@ -761,9 +767,7 @@ function NativeChangesExplorer({
                             </div>
                           )}
                         </div>
-                        <Pill tone={verificationTone(change.verificationResult)}>
-                          {VERIFICATION_LABELS[change.verificationResult] ?? '状态未知'}
-                        </Pill>
+                        <Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>
                       </div>
                     </button>
                   </div>
@@ -1282,41 +1286,13 @@ function NativePhaseStepper({ change }) {
           {archived ? '已归档' : `当前 ${PHASE_LABELS[change.phase] ?? '状态异常'}`}
         </span>
       </div>
-      <div className="flex">
-        {PHASES.map(([key, label], index) => {
-          const state =
-            archived || index < currentIndex
-              ? 'done'
-              : index === currentIndex
-                ? 'current'
-                : 'pending';
-          return (
-            <div key={key} className="relative flex flex-1 flex-col items-center gap-2 text-center">
-              {index > 0 && (
-                <span
-                  className={`absolute left-0 right-1/2 top-4 h-px ${index <= currentIndex ? 'bg-accent' : 'bg-border'}`}
-                />
-              )}
-              {index < PHASES.length - 1 && (
-                <span
-                  className={`absolute left-1/2 right-0 top-4 h-px ${index < currentIndex ? 'bg-accent' : 'bg-border'}`}
-                />
-              )}
-              <span
-                aria-label={`${label} ${state === 'done' ? '已完成' : state === 'current' ? '当前阶段' : '待进行'}`}
-                className={`relative z-10 grid size-8 place-items-center rounded-full border text-sm font-bold ${state === 'done' ? 'border-accent bg-accent text-white' : state === 'current' ? 'border-accent bg-bg text-accent' : 'border-border bg-bg text-fg-2'}`}
-              >
-                {state === 'done' ? '✓' : index + 1}
-              </span>
-              <span
-                className={`text-[13px] font-semibold ${state === 'pending' ? 'text-fg-2' : 'text-accent'}`}
-              >
-                {label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      <WorkflowPhaseTrack
+        phases={PHASES}
+        currentIndex={currentIndex}
+        archived={archived}
+        currentPhaseRunning={isNativePhaseRunning(change)}
+        ariaLabel="Native 生命周期阶段"
+      />
       {change.loop && (
         <p className="mt-4 text-center text-xs text-meta">
           Build ↔ Verify Loop · {LOOP_STAGE_LABELS[change.loop.stage]} · 第 {change.loop.iteration}{' '}
