@@ -166,7 +166,7 @@ describe('packaged Hook Router worktree isolation', () => {
     expect(result.stderr).toContain('only allowed in Build');
   });
 
-  it.each(['trae', 'trae-cn'] as const)(
+  it.each(['trae', 'trae-cn', 'dsh'] as const)(
     'enforces Native Shape for %s write payloads through the packaged router',
     async (platform) => {
       await configureChange(primary, `${platform}-shape`, 'shape');
@@ -182,12 +182,13 @@ describe('packaged Hook Router worktree isolation', () => {
       );
 
       expect(result.status, result.stderr).toBe(2);
+      expect(result.stdout).toBe('');
       expect(result.stderr).toContain(`${platform}-shape`);
       expect(result.stderr).toContain('only allowed in Build');
     },
   );
 
-  it.each(['trae', 'trae-cn'] as const)(
+  it.each(['trae', 'trae-cn', 'dsh'] as const)(
     'allows %s write payloads through the packaged router during Native Build',
     async (platform) => {
       await configureChange(primary, `${platform}-build`, 'build');
