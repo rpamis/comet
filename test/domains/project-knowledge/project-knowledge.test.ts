@@ -2203,8 +2203,22 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
         fs.readFile(path.resolve('assets/skills-zh', skill, 'SKILL.md'), 'utf8'),
         fs.readFile(path.resolve('assets/skills', skill, 'SKILL.md'), 'utf8'),
       ]);
-      expect(chinese, `${skill} Chinese phase context`).toContain('--phase "<phase>"');
-      expect(english, `${skill} English phase context`).toContain('--phase "<phase>"');
+      // Native and Classic keep the concrete command in their progressive-
+      // disclosure references; Hotfix and Tweak retain it in the root skill.
+      const referencePath =
+        skill === 'comet-native'
+          ? 'reference/commands.md'
+          : skill === 'comet-classic'
+            ? 'reference/scripts.md'
+            : null;
+      const [chinesePhaseSource, englishPhaseSource] = referencePath
+        ? await Promise.all([
+            fs.readFile(path.resolve('assets/skills-zh', skill, referencePath), 'utf8'),
+            fs.readFile(path.resolve('assets/skills', skill, referencePath), 'utf8'),
+          ])
+        : [chinese, english];
+      expect(chinesePhaseSource, `${skill} Chinese phase context`).toContain('--phase "<phase>"');
+      expect(englishPhaseSource, `${skill} English phase context`).toContain('--phase "<phase>"');
       expect(chinese, `${skill} Chinese phase context`).not.toContain('--phase build');
       expect(english, `${skill} English phase context`).not.toContain('--phase build');
     }
