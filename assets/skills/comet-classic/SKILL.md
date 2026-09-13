@@ -32,6 +32,8 @@ While working on the same set of tasks, reuse state returned by the current comm
 
 After binding the workspace and obtaining phase, read and follow [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language), and run `comet task`. Use the configured artifact language. Start from Context Manifest summaries and expand only information still missing for the current step. Report outcomes truthfully after actually using an item, and save a checkpoint at task end.
 
+Memory learning submits only reusable user information; never save task summaries, progress, command output, or test results as Personal Memory. Complete the learning check in the task context reference before task completion and record `submitted`, `no-observation`, or `not-run`.
+
 | Runtime route or phase        | Entry and responsibility                                                                                        |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | new full / open               | `/comet-open`: clarify scope, create required artifacts, and obtain the user's review and confirmation          |

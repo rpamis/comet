@@ -22,9 +22,13 @@ comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --sess
 - 用户没有提出长期记忆要求，但协作方式已经稳定、可供以后任务复用时，才调用 `comet memory observe <project-root> --text "<协作方式>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`。
 - 两者都不得保存任务摘要、实现进展、命令输出或测试结果。
 
+每次任务结束前必须完成一次学习检查：如果本次出现了有明确后续复用条件的用户纠正、偏好或协作习惯，先调用 `comet memory observe`，再用 `comet task ... --complete --learning-check submitted`；确认没有合格观察时用 `--learning-check no-observation`。没有执行检查时显式使用 `--learning-check not-run`。首次观察只会形成 `trial` 候选，来自不同 change 的第二次独立成功观察才可能晋级；不要为了产生记录而提交任务摘要或测试结果。
+
+观察命令的 JSON `learning.result` 是本次处理结果：`candidate-created` 表示已记录候选，`candidate-promoted` 表示已晋级，`deduplicated` 表示同一 change 重试，`ignored` 或 `skipped` 表示被策略、暂停或安全筛选跳过。若 `status.learning.lastCheck` 显示 `not-run`，说明当前入口没有提交本次学习检查，不能推断为“没有值得学习的内容”。
+
 实际使用某条上下文后，从 JSON 的 `applications[].applicationId`（Hook 文本中的 `application_id`）取得标识。使用结果明确时，运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json` 记录结果；没有实际使用的条目不能标为成功。
 
-验证、编译或 linter 失败时，按错误信息修复并重跑。任务结束时，仍调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --json` 保存任务完成记录。命令不可用、没有返回内容或自动检索失败时，继续处理任务。没有 Hook 的平台由本 Skill 调用相同接口；`comet memory context` 只作为兼容入口。
+验证、编译或 linter 失败时，按错误信息修复并重跑。任务结束时，仍调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --learning-check submitted|no-observation|not-run --json` 保存任务完成记录。命令不可用、没有返回内容或自动检索失败时，继续处理任务。没有 Hook 的平台由本 Skill 调用相同接口；`comet memory context` 只作为兼容入口。
 
 ## 填写命令输入
 

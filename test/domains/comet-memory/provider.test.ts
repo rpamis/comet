@@ -110,6 +110,94 @@ describe('personal memory provider', () => {
     );
   });
 
+  test('preserves structured observation decisions and forwards task-end checks', async () => {
+    const operations: string[] = [];
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        operation: string;
+        payload: { operation?: string };
+      };
+      operations.push(body.payload.operation ?? body.operation);
+      return new Response(
+        JSON.stringify({
+          result:
+            body.payload.operation === 'observe'
+              ? {
+                  deduplicated: false,
+                  ignored: false,
+                  candidate: true,
+                  promoted: false,
+                  record: null,
+                  result: 'candidate-created',
+                }
+              : { accepted: true },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const service = new RemotePersonalMemoryService({
+      endpoint: 'https://memory.example.test/provider',
+      projectKey: 'remote-project',
+      fetchImpl,
+    });
+
+    await expect(
+      service.observe({
+        scope: 'project',
+        projectKey: 'remote-project',
+        category: '协作习惯',
+        text: '提交前只暂存本次改动文件',
+        workflow: 'native',
+        changeId: 'change-a',
+        candidateKey: 'staging',
+        success: true,
+      }),
+    ).resolves.toMatchObject({ result: 'candidate-created', candidate: true });
+    await expect(service.markLearningCheck('submitted')).resolves.toBeUndefined();
+    expect(operations).toEqual(['observe', 'learning-check']);
+  });
+
+  test('reads authoritative learning diagnostics from a Remote Provider', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            result: {
+              learning: {
+                lastCheck: 'submitted',
+                lastResult: 'candidate-promoted',
+                lastProjectKey: 'remote-project',
+                lastWorkflow: 'native',
+                lastChangeId: 'change-b',
+                submissionVerified: true,
+                observedCount: 2,
+                validObservationCount: 2,
+              },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const service = new RemotePersonalMemoryService({
+      endpoint: 'https://memory.example.test/provider',
+      projectKey: 'remote-project',
+      fetchImpl,
+    });
+
+    await expect(service.status()).resolves.toMatchObject({
+      learning: {
+        lastResult: 'candidate-promoted',
+        lastChangeId: 'change-b',
+        submissionVerified: true,
+        observedCount: 2,
+      },
+    });
+    expect(JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))).toMatchObject({
+      operation: 'status',
+      payload: { projectKey: 'remote-project' },
+    });
+  });
+
   test('requires structured fields on Remote Provider Personal Episodes', async () => {
     const fetchImpl = vi.fn(
       async () =>

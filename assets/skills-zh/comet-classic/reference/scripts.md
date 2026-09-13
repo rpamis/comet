@@ -97,6 +97,8 @@ comet archive <change-name>
 
 用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember ... --scope global|project`。用户没有明确要求、但协作方式稳定且可跨任务复用时，才调用 `comet memory observe`。两者都不得保存任务摘要、进展、命令输出或测试结果。
 
-实际使用某条内容并已得知结果后，使用返回的 `applications[].applicationId`（Hook 文本中的 `application_id`）运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`，如实记录使用结果；不得把未使用的条目标为使用成功。任务结束时仍需运行带 `--complete --workflow <workflow> --change <change-id>` 的 `comet task`，记录检查点。
+每次任务结束前完成一次学习检查：有明确后续复用条件的用户纠正、偏好或协作习惯先调用 `comet memory observe`，再在完成命令中传 `--learning-check submitted`；确认没有合格观察时传 `--learning-check no-observation`，没有执行检查时传 `--learning-check not-run`。首次观察只形成 `trial` 候选，来自不同 change 的第二次独立成功观察才可能晋级。观察 JSON 的 `learning.result` 和 `status.learning.lastCheck` 是诊断依据。
+
+实际使用某条内容并已得知结果后，使用返回的 `applications[].applicationId`（Hook 文本中的 `application_id`）运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`，如实记录使用结果；不得把未使用的条目标为使用成功。任务结束时仍需运行带 `--complete --workflow <workflow> --change <change-id> --learning-check submitted|no-observation|not-run` 的 `comet task`，记录检查点。
 
 没有 Hook 时，由 Skill 调用相同接口。`comet memory context` 只保留为兼容入口；插件未返回结果或调用失败，不会阻止工作流继续。

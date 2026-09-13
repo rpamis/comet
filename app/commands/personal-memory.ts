@@ -1,9 +1,10 @@
 import path from 'node:path';
-import { createHash } from 'node:crypto';
-
 import { createDefaultCometPluginBridge } from '../../domains/comet-plugin/index.js';
-import { AGENT_EXPERIENCE_SCHEMA } from '../../domains/agent-learning/index.js';
 import type { MemoryLanguage } from '../../domains/comet-memory/index.js';
+import type {
+  MemoryReviewResult,
+  MemoryObservationResultKind,
+} from '../../domains/comet-memory/index.js';
 import { readWorkflowProjectConfig } from '../../domains/workflow-contract/project-config-reader.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 
@@ -184,55 +185,65 @@ export async function personalMemoryObserveCommand(
   targetPath = '.',
   options: PersonalMemoryCommandOptions = {},
 ): Promise<unknown> {
-  // A direct CLI observation must finish its local Reflection before the
-  // command returns; otherwise a follow-up observation or retrieval can race
-  // the durable background task and expose a stale trial candidate.
-  const bridge = await createBridge(targetPath, options, true);
+  // A direct CLI observation waits for the provider review and status write
+  // before returning, so a follow-up observation cannot see stale state.
+  const bridge = await createBridge(targetPath, options);
   const language = await resolveDisplayLanguage(targetPath, options);
   const workflow = requireText(options.workflow, '--workflow');
   const changeId = requireText(options.change, '--change');
   const candidateKey = requireText(options.candidateKey, '--candidate-key');
   const text = requireText(options.text, '--text');
   const success = options.success !== false;
-  const identity = createHash('sha256')
-    .update(`${workflow}:${changeId}:${candidateKey}`)
-    .digest('hex');
-  await bridge.dispatchExperience({
-    schema: AGENT_EXPERIENCE_SCHEMA,
-    eventId: `memory-observe:${identity}`,
-    episodeId: `workflow:${createHash('sha256').update(`${workflow}:${changeId}`).digest('hex')}`,
-    occurredAt: new Date().toISOString(),
-    type: 'episode.completed',
-    actor: 'workflow',
+  const result = await bridge.observeMemory({
     scope: 'project',
-    projectId: bridge.currentProjectId,
-    source: { kind: 'workflow', name: workflow, workflow, changeId },
-    context: { workflow, changeId },
-    signal: {
-      kind: 'acceptance',
-      targetId: candidateKey,
-      explicit: false,
-      longTerm: true,
-      text,
-      category: options.category ?? defaultMemoryCategory(language),
-    },
-    evidence: [
-      {
-        id: candidateKey,
-        kind: 'outcome',
-        summary: text,
-        success,
-        digest: createHash('sha256').update(text).digest('hex'),
-      },
-    ],
-    outcome: {
-      status: success ? 'used-successfully' : 'contributed-to-failure',
-      summary: options.category ?? defaultMemoryCategory(language),
-    },
+    projectKey: bridge.currentProjectId,
+    projectIdentity: bridge.currentProjectId,
+    category: options.category ?? defaultMemoryCategory(language),
+    text,
+    language,
+    workflow,
+    changeId,
+    candidateKey,
+    success,
+    source: { kind: 'workflow', workflow, changeId, projectKey: bridge.currentProjectId },
   });
   const status = await bridge.status();
-  print(status, options);
-  return status;
+  const learning = learningReport(result, language);
+  const output = { learning, status };
+  print(output, options);
+  return output;
+}
+
+function learningReport(
+  result: MemoryReviewResult,
+  language: MemoryLanguage,
+): {
+  readonly result: MemoryObservationResultKind | 'deferred';
+  readonly reason?: string;
+  readonly candidate: boolean;
+  readonly promoted: boolean;
+  readonly deduplicated: boolean;
+} {
+  const observation =
+    result.observation ?? result.results?.find((entry) => entry.observation)?.observation;
+  return {
+    result:
+      result.deferred === true
+        ? 'deferred'
+        : (observation?.result ?? (result.persisted ? 'candidate-created' : 'skipped')),
+    ...(result.reason === undefined ? {} : { reason: result.reason }),
+    candidate: observation?.candidate ?? false,
+    promoted: observation?.promoted ?? false,
+    deduplicated: observation?.deduplicated ?? false,
+    ...(result.reason === undefined && !result.persisted
+      ? {
+          reason:
+            language === 'en'
+              ? 'Memory review skipped this observation.'
+              : '记忆评审跳过了这次观察。',
+        }
+      : {}),
+  };
 }
 
 export async function personalMemoryContextCommand(
@@ -307,16 +318,14 @@ export async function personalMemoryPauseCommand(
   return result;
 }
 
-async function createBridge(
-  targetPath: string,
-  options: PersonalMemoryCommandOptions,
-  waitForLearning = false,
-) {
+async function createBridge(targetPath: string, options: PersonalMemoryCommandOptions) {
   const projectRoot = path.resolve(targetPath);
   return createDefaultCometPluginBridge({
     projectRoot,
     projectId: resolveStableProjectId(projectRoot),
-    ...(waitForLearning ? { scheduleLearning: (task: () => Promise<void>) => task() } : {}),
+    // Memory CLI commands run in short-lived processes; finish queued
+    // reflection before the command exits.
+    scheduleLearning: (task) => task(),
     ...(options.memoryRoot ? { memoryRoot: options.memoryRoot } : {}),
     ...(options.stateRoot ? { stateRoot: options.stateRoot } : {}),
   });

@@ -111,6 +111,79 @@ describe('personal memory commands', () => {
     );
   });
 
+  it('returns the observation decision instead of hiding it behind aggregate status', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'comet-memory-observe-result-'));
+    roots.push(root);
+    const logs: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((message?: unknown) =>
+      logs.push(String(message ?? '')),
+    );
+
+    const result = (await personalMemoryObserveCommand(root, {
+      memoryRoot: path.join(root, 'memory'),
+      stateRoot: path.join(root, 'plugins'),
+      text: '提交前只暂存本次改动文件',
+      category: '协作习惯',
+      workflow: 'native',
+      change: 'change-a',
+      candidateKey: 'staging',
+      json: true,
+    })) as {
+      learning: { result: string; candidate: boolean; promoted: boolean };
+      status: { learning: { lastCheck: string; observedCount: number } };
+    };
+
+    expect(result.learning).toMatchObject({
+      result: 'candidate-created',
+      candidate: true,
+      promoted: false,
+    });
+    expect(result.status.learning).toMatchObject({ lastCheck: 'submitted', observedCount: 1 });
+    expect(JSON.parse(logs.at(-1) ?? '{}')).toMatchObject({
+      learning: { result: 'candidate-created' },
+    });
+  });
+
+  it('reports a semantic skip as skipped and replaces stale learning diagnostics', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'comet-memory-observe-skip-'));
+    roots.push(root);
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await personalMemoryObserveCommand(root, {
+      memoryRoot: path.join(root, 'memory'),
+      stateRoot: path.join(root, 'state'),
+      text: '提交前只暂存本次改动文件',
+      category: '协作习惯',
+      workflow: 'native',
+      change: 'change-a',
+      candidateKey: 'staging',
+      json: true,
+    });
+    const result = (await personalMemoryObserveCommand(root, {
+      memoryRoot: path.join(root, 'memory'),
+      stateRoot: path.join(root, 'state'),
+      text: '本次完成登录页面修复',
+      category: '协作习惯',
+      workflow: 'native',
+      change: 'change-b',
+      candidateKey: 'summary',
+      json: true,
+    })) as {
+      learning: { result: string; candidate: boolean; promoted: boolean };
+      status: { learning: { lastCheck: string; lastResult?: string } };
+    };
+
+    expect(result.learning).toMatchObject({
+      result: 'skipped',
+      candidate: false,
+      promoted: false,
+    });
+    expect(result.status.learning).toMatchObject({
+      lastCheck: 'submitted',
+      lastResult: 'skipped',
+    });
+  });
+
   it('uses a Chinese default category while preserving direct user text', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'comet-memory-default-category-'));
     roots.push(root);

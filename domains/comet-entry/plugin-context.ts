@@ -7,6 +7,7 @@ import {
   type CometPluginContextContribution,
   type CometPluginContextRequest,
 } from '../comet-plugin/index.js';
+import type { MemoryLearningStatus } from '../comet-memory/index.js';
 import {
   AGENT_EXPERIENCE_SCHEMA,
   type AgentContextExpansion,
@@ -75,12 +76,27 @@ export async function recordCometWorkflowResult(options: {
     readonly success: boolean;
   }[];
   readonly summary?: string;
-}): Promise<void> {
+  /** Whether the host performed the task-end learning check. */
+  readonly learningCheck?: 'submitted' | 'no-observation' | 'not-run';
+}): Promise<MemoryLearningStatus | undefined> {
   if (!options.changeId.trim()) return;
   try {
     const notices: string[] = [];
     const bridge = await createBridge(options.projectRoot, (notice) => notices.push(notice));
     const language = bridge.currentLanguage;
+    let learningStatus: MemoryLearningStatus | undefined;
+    if (options.learningCheck !== undefined) {
+      try {
+        learningStatus = await bridge.recordMemoryLearningCheck(options.learningCheck, {
+          projectKey: bridge.currentProjectId,
+          workflow: options.workflow,
+          changeId: options.changeId,
+        });
+      } catch {
+        // A Provider may not implement the optional task-end diagnostic yet;
+        // still dispatch the workflow checkpoint and keep the task nonblocking.
+      }
+    }
     const eventType =
       options.eventType ??
       (options.command === 'archive'
@@ -164,8 +180,10 @@ export async function recordCometWorkflowResult(options: {
       },
     });
     for (const notice of notices) console.log(notice);
+    return learningStatus;
   } catch {
     // Memory learning is optional and must never block a workflow checkpoint.
+    return undefined;
   }
 }
 
@@ -178,6 +196,9 @@ async function createBridge(projectRoot: string, onMemoryReviewNotice?: (notice:
   return createDefaultCometPluginBridge({
     projectRoot: resolved,
     projectId: resolveStableProjectId(resolved),
+    // CLI and Hook invocations are short-lived processes. Complete the
+    // durable Reflection before returning so learning is not lost at exit.
+    scheduleLearning: (task) => task(),
     ...(onMemoryReviewNotice === undefined ? {} : { onMemoryReviewNotice }),
   });
 }

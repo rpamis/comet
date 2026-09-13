@@ -508,6 +508,15 @@ describe('Comet plugin integration bridge', () => {
         expect((await skillBridge.retrieve({ projectKey: 'skill-project' })).records).toHaveLength(
           0,
         );
+        expect(await skillBridge.status()).toMatchObject({
+          learning: {
+            lastCheck: 'submitted',
+            lastResult: 'skipped',
+            lastProjectKey: 'skill-project',
+            lastWorkflow: 'native',
+            lastChangeId: 'skill-runner-1',
+          },
+        });
       } finally {
         await fs.rm(root, { recursive: true, force: true });
       }
@@ -640,6 +649,79 @@ describe('Comet plugin integration bridge', () => {
       }
       expect((await bridge.retrieve({ projectKey: 'demo-project' })).records).toHaveLength(0);
     });
+  });
+
+  test('replay respects a pause and permanent forget made while review is pending', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-learning-recovery-'));
+    const queued: Array<() => Promise<void>> = [];
+    let reviewAvailable = false;
+    try {
+      const projectRoot = path.join(root, 'project');
+      await fs.mkdir(projectRoot, { recursive: true });
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        memoryRoot: path.join(root, 'memory'),
+        projectId: 'learning-recovery-project',
+        stateRoot: path.join(root, 'plugin-state'),
+        scheduleLearning: (task) => {
+          queued.push(task);
+        },
+        runMemoryReview: async (packet) => {
+          if (!reviewAvailable) throw new Error('semantic reviewer unavailable');
+          return {
+            schema: 'comet.memory.actions.v1',
+            actions: [
+              {
+                action: 'create',
+                scope: 'project',
+                projectKey: packet.projectKey,
+                language: packet.language,
+                category: '工作习惯',
+                text: '提交前只暂存本次改动文件',
+                candidateKey: 'staging',
+              },
+            ],
+          };
+        },
+      });
+      const explicit = await bridge.remember({
+        scope: 'project',
+        category: '工作习惯',
+        text: '提交前只暂存本次改动文件',
+      });
+      expect(explicit).not.toBeNull();
+
+      await dispatchWorkflowExperience(bridge, {
+        name: 'change.completed',
+        workflow: 'native',
+        changeId: 'learning-recovery-1',
+        success: true,
+        category: '工作习惯',
+        text: '完成提交检查点',
+        userEvidence: ['提交前只暂存本次改动文件'],
+        candidateKey: 'staging',
+      });
+      expect(queued).toHaveLength(1);
+      await queued.shift()!();
+
+      await bridge.pauseProjectLearning(true);
+      await bridge.forget(explicit!.id, true);
+      reviewAvailable = true;
+      await bridge.syncMemory();
+      expect(queued).toHaveLength(1);
+      await queued.shift()!();
+
+      const managed = await bridge.manage({ projectKey: 'learning-recovery-project' });
+      expect(managed.records).toEqual([]);
+      const status = (await bridge.status()) as {
+        learning: { lastResult?: string };
+        counts: { tombstones: number };
+      };
+      expect(status.counts.tombstones).toBe(1);
+      expect(status.learning.lastResult).toBe('ignored');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   test('uses the deterministic review fallback for an explicit memory request', async () => {
@@ -994,6 +1076,62 @@ describe('Comet plugin integration bridge', () => {
 
       expect(sync).toHaveBeenCalledOnce();
     });
+  });
+
+  test("does not expose another project's last learning diagnostic", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-learning-scope-'));
+    const memoryRoot = path.join(root, 'memory');
+    const stateRoot = path.join(root, 'plugin-state');
+    const review = async (packet: { readonly language: 'zh-CN' | 'en' }) => ({
+      schema: 'comet.memory.actions.v1' as const,
+      actions: [
+        {
+          action: 'skip' as const,
+          language: packet.language,
+          reason: '没有长期可复用内容',
+        },
+      ],
+    });
+    try {
+      const projectARoot = path.join(root, 'project-a');
+      const projectBRoot = path.join(root, 'project-b');
+      await fs.mkdir(projectARoot, { recursive: true });
+      await fs.mkdir(projectBRoot, { recursive: true });
+      const bridgeA = await createDefaultCometPluginBridge({
+        projectRoot: projectARoot,
+        memoryRoot,
+        projectId: 'project-a',
+        stateRoot,
+        runMemoryReview: review,
+      });
+      await dispatchWorkflowExperience(bridgeA, {
+        name: 'task.completed',
+        workflow: 'native',
+        changeId: 'scope-a',
+        success: true,
+        category: '工作习惯',
+        text: '项目 A 的一次性说明',
+        userEvidence: ['只用于这次任务'],
+        candidateKey: 'scope-a',
+      });
+      expect(await bridgeA.status()).toMatchObject({
+        learning: { lastProjectKey: 'project-a', lastChangeId: 'scope-a' },
+      });
+
+      const bridgeB = await createDefaultCometPluginBridge({
+        projectRoot: projectBRoot,
+        memoryRoot,
+        projectId: 'project-b',
+        stateRoot,
+        runMemoryReview: review,
+      });
+      const statusB = (await bridgeB.status()) as { learning: Record<string, unknown> };
+      expect(statusB.learning).toMatchObject({ lastCheck: 'not-run' });
+      expect(statusB.learning.lastProjectKey).toBeUndefined();
+      expect(statusB.learning.lastChangeId).toBeUndefined();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   test('routes lifecycle checkpoints through semantic review and keeps command summaries out', async () => {

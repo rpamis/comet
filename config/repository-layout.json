@@ -207,6 +207,10 @@
       },
       {
         "from": "comet-entry",
+        "to": "comet-memory"
+      },
+      {
+        "from": "comet-entry",
         "to": "integrations"
       },
       {

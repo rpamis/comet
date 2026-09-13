@@ -7,7 +7,7 @@ description: 'Use the Classic preset to repair a localized defect. Use when the 
 
 Before starting or resuming, read and follow `comet-classic/reference/classic-layout.md`. All OpenSpec CLI calls must use the adapter, and all paths must use the bound `<classic-*>` logical roots.
 
-A short defect-repair flow: open → build → root-cause elimination check → verify → archive. It skips brainstorming and a full implementation plan, and applies to repairing existing behavior without designing new features.
+A short defect-repair flow: open → build → root cause check → verify → archive. It skips brainstorming and a full implementation plan, and applies to repairing existing behavior without designing new features.
 
 **All applicability conditions must hold:**
 
@@ -25,7 +25,7 @@ A short defect-repair flow: open → build → root-cause elimination check → 
 
 Use Comet's configured artifact language for the reduced OpenSpec artifacts. Before `.comet.yaml` exists, read `classic.language` from project `.comet/config.yaml`, then global `~/.comet/config.yaml`. After initialization, read it with `comet state get <name> language`.
 
-Execution order: open → build → root-cause elimination check → verify → archive. Hotfix presets how each stage runs: prepare the necessary artifacts, implement directly, check that the root cause is eliminated, choose verification based on size, then request final archive confirmation after verification passes.
+Execution order: open → build → root cause check → verify → archive. Hotfix presets how each stage runs: prepare the necessary artifacts, implement directly, check that the root cause is eliminated, choose verification based on size, then request final archive confirmation after verification passes.
 
 Use the supported Comet CLI described in `comet-classic/reference/scripts.md`. On recovery from any entry, first check phase/workflow under `comet-classic/reference/context-recovery.md`.
 
@@ -36,7 +36,8 @@ After entering the hotfix workspace and reading current `phase`, run `comet task
 - Add only returned `text` to the current context. Context Manifest (`manifest` / `<context_manifest>`) contains only summaries, application reasons, and stable IDs. Add `--expand-context "<id>"` when source text, provenance, or validation details are needed. When path, operation, or phase changes, select applicable entries again using the same `--session`.
 - Use `comet memory remember ... --scope global|project` when the user explicitly asks for long-term memory. Use `comet memory observe` only for implicit, reusable, stable collaboration patterns. Do not save task summaries, progress, command output, or test results.
 - After actually using an entry and determining its outcome, take `applications[].applicationId` (`application_id` in Hook text) and run `comet task <project-root> --task "<original-user-request>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json` to record the result.
-- At task completion, still run `comet task` with `--complete --workflow <workflow> --change <change-id>`. Without Hooks, this Skill uses the same interface. `comet memory context` is a compatibility entry only. Plugin failures do not block the repair.
+- Before task completion, complete one learning check: when a user correction, preference, or collaboration habit has a clear reuse condition, call `comet memory observe` and pass `--learning-check submitted` to the completion command; pass `--learning-check no-observation` when you checked and found none, or `--learning-check not-run` when no check occurred. Use observation JSON `learning.result` and `status.learning.lastCheck` to distinguish candidate, promotion, deduplication, and skip; do not submit task summaries or test results.
+- At task completion, still run `comet task` with `--complete --workflow <workflow> --change <change-id> --learning-check submitted|no-observation|not-run`. Without Hooks, this Skill uses the same interface. `comet memory context` is a compatibility entry only. Plugin failures do not block the repair.
 
 ### 1. Open a minimal change
 

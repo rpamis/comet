@@ -6,6 +6,10 @@ import type {
   MemoryCorrection,
   MemoryApplicationFeedback,
   MemoryInput,
+  MemoryLearningCheckKind,
+  MemoryLearningCheckContext,
+  MemoryLearningStatus,
+  MemoryObservationResultKind,
   MemoryManagementRecord,
   MemoryManagementView,
   MemoryManifestView,
@@ -64,7 +68,7 @@ export class RemotePersonalMemoryService
   }
 
   public async status(): Promise<PersonalMemoryStatus> {
-    return {
+    const base: PersonalMemoryStatus = {
       learningEnabled: true,
       retrievalEnabled: true,
       pausedProjects: [],
@@ -82,6 +86,21 @@ export class RemotePersonalMemoryService
         timeoutMs: this.timeoutMs,
       },
     };
+    try {
+      const result = await this.request<unknown>('status', {
+        projectKey: this.projectKey,
+      });
+      return { ...base, learning: normalizeLearningStatus(result) };
+    } catch (error) {
+      return {
+        ...base,
+        sync: {
+          status: 'failed',
+          retryable: true,
+          message: `Remote learning status unavailable: ${errorMessage(error)}`,
+        },
+      };
+    }
   }
 
   public async query(request: MemoryProviderQuery): Promise<MemoryProviderQueryResult> {
@@ -173,6 +192,25 @@ export class RemotePersonalMemoryService
       input: observation,
     });
     return normalizeObservationResult(result, this.projectKey);
+  }
+
+  public async markLearningCheck(
+    check: MemoryLearningCheckKind,
+    result?: MemoryObservationResultKind,
+    context?: MemoryLearningCheckContext,
+  ): Promise<MemoryLearningStatus | void> {
+    const response = await this.request<unknown>('apply', {
+      operation: 'learning-check',
+      input: {
+        check,
+        ...(result === undefined ? {} : { result }),
+        ...(context === undefined ? {} : { context }),
+      },
+      ...(this.projectKey === undefined ? {} : { projectKey: this.projectKey }),
+    });
+    normalizeAcknowledgement(response);
+    if (isRecord(response) && isRecord(response.learning)) return normalizeLearningStatus(response);
+    return;
   }
 
   public async reviewAndApply(
@@ -331,6 +369,43 @@ function normalizeMutationResult(
   }
 }
 
+function normalizeLearningStatus(value: unknown): MemoryLearningStatus {
+  if (!isRecord(value) || !isRecord(value.learning)) {
+    throw new Error('Remote Provider returned no learning status');
+  }
+  const learning = value.learning;
+  const lastCheck = learning.lastCheck;
+  const lastResult = learning.lastResult;
+  if (
+    (lastCheck !== undefined &&
+      lastCheck !== 'submitted' &&
+      lastCheck !== 'no-observation' &&
+      lastCheck !== 'not-run') ||
+    (lastResult !== undefined && !isObservationResultKind(lastResult)) ||
+    typeof learning.observedCount !== 'number' ||
+    typeof learning.validObservationCount !== 'number'
+  ) {
+    throw new Error('Remote Provider returned an invalid learning status');
+  }
+  return {
+    ...(typeof learning.lastCheckedAt === 'string'
+      ? { lastCheckedAt: learning.lastCheckedAt }
+      : {}),
+    ...(lastCheck === undefined ? {} : { lastCheck }),
+    ...(lastResult === undefined ? {} : { lastResult }),
+    ...(typeof learning.lastProjectKey === 'string'
+      ? { lastProjectKey: learning.lastProjectKey }
+      : {}),
+    ...(typeof learning.lastWorkflow === 'string' ? { lastWorkflow: learning.lastWorkflow } : {}),
+    ...(typeof learning.lastChangeId === 'string' ? { lastChangeId: learning.lastChangeId } : {}),
+    ...(typeof learning.submissionVerified === 'boolean'
+      ? { submissionVerified: learning.submissionVerified }
+      : {}),
+    observedCount: learning.observedCount,
+    validObservationCount: learning.validObservationCount,
+  };
+}
+
 function normalizeManifest(value: unknown, projectKey?: string): MemoryManifestView {
   if (!isRecord(value) || value.kind !== 'manifest' || !Array.isArray(value.items)) {
     throw new Error('Remote Provider returned an invalid memory manifest');
@@ -409,7 +484,19 @@ function normalizeObservationResult(value: unknown, projectKey?: string): Memory
       value.record === null || value.record === undefined
         ? null
         : normalizeMemoryRecord(value.record, projectKey, false),
+    ...(isObservationResultKind(value.result) ? { result: value.result } : {}),
   };
+}
+
+function isObservationResultKind(value: unknown): value is MemoryObservationResult['result'] {
+  return (
+    value === 'candidate-created' ||
+    value === 'candidate-promoted' ||
+    value === 'deduplicated' ||
+    value === 'ignored' ||
+    value === 'skipped' ||
+    value === 'deferred'
+  );
 }
 
 function normalizeReviewResult(value: unknown, projectKey?: string): MemoryReviewResult {
@@ -420,6 +507,7 @@ function normalizeReviewResult(value: unknown, projectKey?: string): MemoryRevie
       value.action !== 'forget' &&
       value.action !== 'skip') ||
     typeof value.persisted !== 'boolean' ||
+    (value.deferred !== undefined && typeof value.deferred !== 'boolean') ||
     (value.reason !== undefined && typeof value.reason !== 'string') ||
     (value.notification !== undefined && typeof value.notification !== 'string') ||
     (value.observation !== undefined && !isRecord(value.observation)) ||
@@ -431,6 +519,7 @@ function normalizeReviewResult(value: unknown, projectKey?: string): MemoryRevie
   return {
     action: value.action,
     persisted: value.persisted,
+    ...(value.deferred === undefined ? {} : { deferred: value.deferred }),
     ...(value.reason === undefined ? {} : { reason: value.reason }),
     ...(value.notification === undefined ? {} : { notification: value.notification }),
     ...(value.observation === undefined
@@ -682,4 +771,8 @@ function redactEndpoint(value: string): string {
   } catch {
     return value.replace(/(\/\/)[^/@]+@/u, '$1***@');
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

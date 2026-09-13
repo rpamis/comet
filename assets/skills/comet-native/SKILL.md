@@ -22,6 +22,8 @@ Native saves complete requirements, progress, and acceptance results in the proj
 3. If there is no matching active change, select isolation and create it using [workspace selection](reference/workspace.md#create-a-change), then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
 4. After entering the workspace and obtaining `phase`, retrieve context once using [memory integration](reference/commands.md#memory-integration). Expand details only when needed, record actual use outcomes, and call `comet task --complete` at the end as specified there.
 
+Memory learning submits only reusable user information; never save task summaries, progress, command output, or test results as Personal Memory. Complete the learning check in the memory integration section before task completion and record `submitted`, `no-observation`, or `not-run`.
+
 ## Read only what the action needs
 
 Read the section for the current action. Follow links within it only when their stated conditions apply; do not load the entire command reference or all references at once.

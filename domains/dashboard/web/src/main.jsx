@@ -7046,6 +7046,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
   const projectKey = data?.projectKey;
   const memoryFileCount = status.files?.length ?? 0;
   const provider = status.provider?.provider ?? 'local';
+  const learningDiagnostic = personalMemoryLearningDiagnostic(status.learning);
   const profileUsage = status.profile
     ? `个人偏好与事实 ${status.profile.usedChars} 字符 · 单次注入预算 ${status.profile.maxChars}`
     : provider === 'remote'
@@ -7353,6 +7354,10 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
             })}
           </nav>
           <div className="dashboard-memory-filter-summary">
+            <div className="dashboard-memory-learning-diagnostic" role="status">
+              <span>最近学习检查</span>
+              <strong>{learningDiagnostic}</strong>
+            </div>
             <div>
               <span
                 className={`dashboard-tool-state-dot ${status.learningEnabled ? 'is-success' : 'is-muted'}`}
@@ -7730,6 +7735,28 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
       </DashboardModal>
     </div>
   );
+}
+
+function personalMemoryLearningDiagnostic(learning = {}) {
+  if (learning.lastCheck === 'not-run' || learning.lastCheck === undefined) return '尚未检查';
+  if (learning.lastCheck === 'no-observation') return '本次没有合格观察';
+  if (learning.submissionVerified === false) return '当前 change 没有对应观察';
+  switch (learning.lastResult) {
+    case 'candidate-created':
+      return '已形成候选，等待独立证据';
+    case 'candidate-promoted':
+      return '已晋级为可复用记忆';
+    case 'deduplicated':
+      return '已去重，未重复计数';
+    case 'deferred':
+      return '评审待重试';
+    case 'ignored':
+      return '当前项目已跳过学习';
+    case 'skipped':
+      return '本次观察已跳过';
+    default:
+      return '已提交，等待结果';
+  }
 }
 
 function AntSummaryCards({ snapshot }) {

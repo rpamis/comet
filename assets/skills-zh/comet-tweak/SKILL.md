@@ -39,7 +39,8 @@ Tweak 为 Comet 五阶段流程提供一组预设配置。它通过 OpenSpec 完
 - 只将返回的 `text` 加入当前上下文。Context Manifest（`manifest` / `<context_manifest>`）只包含摘要、应用原因和固定 ID；需要正文、来源或验证方式时，增加 `--expand-context "<id>"`。路径、操作或阶段变化后，使用同一 `--session` 重新选择适用条目。
 - 用户明确要求长期记住时，调用 `comet memory remember ... --scope global|project`。对于用户未明确要求记忆、但可重复采用且相对稳定的协作方式，才调用 `comet memory observe`；不得保存任务摘要、进展、命令输出或测试结果。
 - 实际使用某条记录、且使用结果已经明确后，取 `applications[].applicationId`（Hook 文本中的 `application_id`），运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`，记录使用结果。
-- 任务结束时，仍须运行带 `--complete --workflow <workflow> --change <change-id>` 的 `comet task`。没有 Hook 时，由本 Skill 调用相同接口；`comet memory context` 只作为兼容入口。插件失败不阻断本次变更。
+- 任务结束前完成一次学习检查：有明确后续复用条件的用户纠正、偏好或协作习惯先调用 `comet memory observe`，再在完成命令中传 `--learning-check submitted`；确认没有合格观察时传 `--learning-check no-observation`，没有执行检查时传 `--learning-check not-run`。观察 JSON 的 `learning.result` 和 `status.learning.lastCheck` 用于区分候选、晋级、去重和跳过；不要提交任务摘要或测试结果。
+- 任务结束时，仍须运行带 `--complete --workflow <workflow> --change <change-id> --learning-check submitted|no-observation|not-run` 的 `comet task`。没有 Hook 时，由本 Skill 调用相同接口；`comet memory context` 只作为兼容入口。插件失败不阻断本次变更。
 
 ### 1. 快速开启（预设 open）
 

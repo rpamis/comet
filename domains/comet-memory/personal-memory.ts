@@ -8,6 +8,10 @@ import type {
   MemoryCorrection,
   MemoryFileProjection,
   MemoryInput,
+  MemoryLearningCheckKind,
+  MemoryLearningStatus,
+  MemoryLearningCheckContext,
+  MemoryObservationResultKind,
   MemoryLanguage,
   MemoryManagementConflict,
   MemoryManagementRecord,
@@ -491,15 +495,18 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
   public async observe(observation: MemoryObservation): Promise<MemoryObservationResult> {
     validateObservation(observation);
     if (observation.source?.kind !== 'user' && !isUsefulAutomaticObservation(observation)) {
-      return {
+      const result: MemoryObservationResult = {
         deduplicated: false,
         ignored: true,
         candidate: false,
         promoted: false,
         record: null,
+        result: 'ignored',
       };
+      await this.recordLearningStatus(result, false, learningContext(observation));
+      return result;
     }
-    return this.repository.withLock(async () => {
+    const result = await this.repository.withLock(async () => {
       const state = await this.loadAndReconcile(observation.scope, observation.projectKey);
       const projectIdentity = observation.projectIdentity ?? observation.projectKey;
       const normalizedObservation: MemoryObservation = {
@@ -516,6 +523,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           candidate: false,
           promoted: false,
           record: null,
+          result: 'deduplicated' as const,
         };
       }
       const source = observation.source ?? {
@@ -568,6 +576,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           candidate: false,
           promoted: false,
           record: null,
+          result: 'ignored' as const,
         };
       }
       const paused =
@@ -582,6 +591,8 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           candidate: false,
           promoted: false,
           record: null,
+          result:
+            !state.settings.learningEnabled || paused ? ('ignored' as const) : ('skipped' as const),
         };
       }
 
@@ -630,6 +641,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
             candidate: true,
             promoted: false,
             record: null,
+            result: 'candidate-created' as const,
           };
         }
         const refreshed = addSource(explicit, source, this.timestamp());
@@ -646,6 +658,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           candidate: false,
           promoted: false,
           record: cloneRecord(refreshed),
+          result: 'skipped' as const,
         };
       }
       const conflicting = state.records.filter(
@@ -669,6 +682,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           candidate: true,
           promoted: false,
           record: null,
+          result: 'candidate-created' as const,
         };
       }
       if (active !== undefined && normalizeText(active.text) === normalized) {
@@ -688,6 +702,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           candidate: false,
           promoted: false,
           record: cloneRecord(refreshed),
+          result: 'skipped' as const,
         };
       }
       const independentEvidence = independentEvidenceCount(
@@ -703,6 +718,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           candidate: true,
           promoted: false,
           record: null,
+          result: 'candidate-created' as const,
         };
       }
       if (active !== undefined && active.id !== record.id) {
@@ -719,6 +735,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           candidate: true,
           promoted: false,
           record: null,
+          result: 'candidate-created' as const,
         };
       }
 
@@ -741,7 +758,75 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         candidate: true,
         promoted: true,
         record: cloneRecord(promoted),
+        result: 'candidate-promoted' as const,
       };
+    });
+    await this.recordLearningStatus(
+      result,
+      result.result === 'candidate-created' ||
+        result.result === 'candidate-promoted' ||
+        result.result === 'deduplicated',
+      learningContext(observation),
+    );
+    return result;
+  }
+
+  private async recordLearningStatus(
+    result: MemoryObservationResult,
+    validObservation: boolean,
+    context?: MemoryLearningCheckContext,
+  ): Promise<void> {
+    await this.repository.withLock(async () => {
+      const state = await this.loadAndReconcile();
+      const previous = state.learning;
+      state.learning = {
+        lastCheckedAt: this.timestamp(),
+        lastCheck: 'submitted',
+        lastResult: result.result ?? inferObservationResult(result),
+        ...(context?.projectKey === undefined ? {} : { lastProjectKey: context.projectKey }),
+        ...(context?.workflow === undefined ? {} : { lastWorkflow: context.workflow }),
+        ...(context?.changeId === undefined ? {} : { lastChangeId: context.changeId }),
+        observedCount: (previous?.observedCount ?? 0) + 1,
+        validObservationCount: (previous?.validObservationCount ?? 0) + Number(validObservation),
+      };
+      await this.persist(state);
+    });
+  }
+
+  public async markLearningCheck(
+    check: MemoryLearningCheckKind,
+    result?: MemoryObservationResultKind,
+    context?: MemoryLearningCheckContext,
+  ): Promise<MemoryLearningStatus> {
+    return this.repository.withLock(async () => {
+      const state = await this.loadAndReconcile();
+      const lastResult = state.learning?.lastResult;
+      const submissionVerified =
+        check !== 'submitted' || context?.changeId === undefined
+          ? undefined
+          : state.observations.some(
+              (entry) =>
+                entry.changeId === context.changeId &&
+                (context.projectKey === undefined || entry.projectKey === context.projectKey) &&
+                (context.workflow === undefined || entry.source.workflow === context.workflow),
+            );
+      state.learning = {
+        ...(result === undefined
+          ? check === 'submitted' && lastResult !== undefined
+            ? { lastResult }
+            : {}
+          : { lastResult: result }),
+        lastCheckedAt: this.timestamp(),
+        lastCheck: check,
+        ...(context?.projectKey === undefined ? {} : { lastProjectKey: context.projectKey }),
+        ...(context?.workflow === undefined ? {} : { lastWorkflow: context.workflow }),
+        ...(context?.changeId === undefined ? {} : { lastChangeId: context.changeId }),
+        ...(submissionVerified === undefined ? {} : { submissionVerified }),
+        observedCount: state.learning?.observedCount ?? 0,
+        validObservationCount: state.learning?.validObservationCount ?? 0,
+      };
+      await this.persist(state);
+      return state.learning!;
     });
   }
 
@@ -1235,6 +1320,8 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     const status = await this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
       await this.persist(state);
+      const projectKey = this.repository.projectFileBinding?.()?.projectKey;
+      const learning = projectScopedLearningStatus(state.learning, projectKey);
       return {
         learningEnabled: state.settings.learningEnabled,
         retrievalEnabled: state.settings.retrievalEnabled,
@@ -1246,6 +1333,23 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           .sort(),
         provider: { provider: 'local' as const, configured: true },
         profile: { usedChars: profileUsedChars(state), maxChars: this.profileMaxChars },
+        learning: {
+          ...(learning.lastCheckedAt === undefined
+            ? {}
+            : { lastCheckedAt: learning.lastCheckedAt }),
+          ...(learning.lastCheck === undefined ? {} : { lastCheck: learning.lastCheck }),
+          ...(learning.lastResult === undefined ? {} : { lastResult: learning.lastResult }),
+          ...(learning.lastProjectKey === undefined
+            ? {}
+            : { lastProjectKey: learning.lastProjectKey }),
+          ...(learning.lastWorkflow === undefined ? {} : { lastWorkflow: learning.lastWorkflow }),
+          ...(learning.lastChangeId === undefined ? {} : { lastChangeId: learning.lastChangeId }),
+          ...(learning.submissionVerified === undefined
+            ? {}
+            : { submissionVerified: learning.submissionVerified }),
+          observedCount: learning.observedCount,
+          validObservationCount: learning.validObservationCount,
+        },
         counts: {
           active: state.records.filter((record) => isVisibleMemoryRecord(state, record)).length,
           trial: state.records.filter(
@@ -1595,6 +1699,7 @@ interface MutableMemoryState extends Omit<
   | 'applicationOutcomes'
   | 'feedbackState'
   | 'pendingFileProjections'
+  | 'learning'
 > {
   records: StoredRecord[];
   history: Record<string, StoredRecord[]>;
@@ -1619,6 +1724,7 @@ interface MutableMemoryState extends Omit<
     { baseState: Exclude<import('./types.js').MemoryLifecycleState, 'superseded'> }
   >;
   pendingFileProjections: Record<string, MemoryFileProjection>;
+  learning?: MemoryLearningStatus;
 }
 
 function mutableState(raw: MemoryRuntimeState): MutableMemoryState {
@@ -1675,7 +1781,43 @@ function mutableState(raw: MemoryRuntimeState): MutableMemoryState {
     applicationOutcomes: { ...(raw.applicationOutcomes ?? {}) },
     feedbackState: { ...(raw.feedbackState ?? {}) },
     pendingFileProjections: { ...(raw.pendingFileProjections ?? {}) },
+    learning: {
+      ...(raw.learning ?? {}),
+      lastCheck: raw.learning?.lastCheck ?? 'not-run',
+      observedCount: raw.learning?.observedCount ?? 0,
+      validObservationCount: raw.learning?.validObservationCount ?? 0,
+    },
   };
+}
+
+function inferObservationResult(result: MemoryObservationResult): MemoryObservationResultKind {
+  if (result.promoted) return 'candidate-promoted';
+  if (result.candidate) return 'candidate-created';
+  if (result.deduplicated) return 'deduplicated';
+  if (result.ignored) return 'ignored';
+  return 'skipped';
+}
+
+function learningContext(observation: MemoryObservation): MemoryLearningCheckContext {
+  return {
+    ...(observation.projectKey === undefined ? {} : { projectKey: observation.projectKey }),
+    workflow: observation.workflow,
+    changeId: observation.changeId,
+  };
+}
+
+function projectScopedLearningStatus(
+  learning: MemoryLearningStatus | undefined,
+  projectKey: string | undefined,
+): MemoryLearningStatus {
+  const counts = {
+    observedCount: learning?.observedCount ?? 0,
+    validObservationCount: learning?.validObservationCount ?? 0,
+  };
+  if (projectKey !== undefined && learning?.lastProjectKey !== projectKey) {
+    return { ...counts, lastCheck: 'not-run' };
+  }
+  return { ...counts, ...(learning ?? {}) };
 }
 
 function negativeContextOutcome(

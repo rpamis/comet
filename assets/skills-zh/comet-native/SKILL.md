@@ -22,6 +22,8 @@ Native 将完整需求、进度和验收结论保存在项目中。Agent 只处�
 3. 没有对应 active change 时，按[工作区选择参考](reference/workspace.md#创建-change)确定隔离方式并创建，再进入 `preparation.projectRoot`。准备失败时，保留已创建的分支和目录，按返回的原因处理。
 4. 进入工作区并取得 `phase` 后，按[记忆接入](reference/commands.md#记忆接入)检索一次上下文。需要详情时再展开；实际使用后记录使用结果，任务结束时调用 `comet task --complete`。具体操作见该节。
 
+记忆学习只提交可复用的用户信息；任务摘要、进展、命令输出和测试结果不写入个人记忆。任务结束前按记忆接入章节完成学习检查，并记录 `submitted`、`no-observation` 或 `not-run`。
+
 ## 按需读取
 
 只读取当前动作对应的章节。章节中的链接写明了适用条件，满足条件时再读取链接内容；不一次加载整份命令参考或所有参考。

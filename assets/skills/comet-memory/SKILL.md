@@ -24,8 +24,9 @@ Read only the Runtime-provided `comet.memory.review.v1` `MemoryReviewPacket`: co
 ## Examples
 
 - `请帮我修复登录页面样式`, `this test passed`, and `Change completed` are one-off tasks or activity summaries; return exactly one `skip`.
-- `提交前只暂存本次改动文件` and `Dashboard 使用 Ant Design` may be saved when the packet provides trusted repeated successful evidence; preserve technical proper nouns while keeping titles, reasons, and tags in the configured language.
-- Do not activate a lasting memory from a single successful observation, and do not create a record to appear as if learning occurred. When future reuse is not proven, `skip` is the correct result.
+- `提交前只暂存本次改动文件` and `Dashboard 使用 Ant Design` may create a project candidate when the packet provides one trusted observation with clear future reuse value; a candidate is not an active lasting memory, and the Runtime must wait for a second independent successful observation from a different change before promotion. Preserve technical proper nouns while keeping titles, reasons, and tags in the configured language.
+- Do not promote a lasting memory from a single successful observation, and do not create a record without a trustworthy source just to make learning appear to occur. When future reuse is not proven, `skip` is the correct result.
+- Content that is semantically known to be unworthy of storage returns `skip`; a temporarily unavailable reviewer is a host-level retryable state and must not be presented as a definitive `skip`. The host must retain the bounded review packet and recover it through the existing queue; the Skill must not write files or call tools.
 
 ## Fixed output
 

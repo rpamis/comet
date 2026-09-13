@@ -23,6 +23,7 @@ export interface CometTaskCommandOptions {
   readonly verification?: string;
   readonly verificationResult?: 'passed' | 'failed';
   readonly complete?: boolean;
+  readonly learningCheck?: 'submitted' | 'no-observation' | 'not-run';
   readonly workflow?: string;
   readonly change?: string;
   readonly json?: boolean;
@@ -32,6 +33,8 @@ export interface CometTaskCommandResult {
   readonly context: Awaited<ReturnType<typeof collectCometPluginContext>>;
   readonly expansion?: Awaited<ReturnType<typeof expandCometPluginContext>>;
   readonly outcomeRecorded?: boolean;
+  readonly learningCheck?: 'submitted' | 'no-observation' | 'not-run';
+  readonly learningCheckVerified?: boolean;
 }
 
 /**
@@ -107,8 +110,9 @@ async function runCometTaskCommand(
     options.expandContext || options.application || options.complete
       ? []
       : await collectCometPluginContext(projectRoot, request);
+  let learningCheckVerified: boolean | undefined;
   if (options.complete) {
-    await recordCometWorkflowResult({
+    const learningStatus = await recordCometWorkflowResult({
       projectRoot,
       workflow: requireText(options.workflow, '--workflow'),
       changeId: requireText(options.change, '--change'),
@@ -116,12 +120,16 @@ async function runCometTaskCommand(
       success: true,
       eventType: 'episode.completed',
       ...(options.path === undefined ? {} : { changedPaths: [options.path] }),
+      learningCheck: options.learningCheck ?? 'not-run',
     });
+    learningCheckVerified = learningStatus?.submissionVerified;
   }
   const result = {
     context,
     ...(expansion === undefined ? {} : { expansion }),
     ...(options.application === undefined ? {} : { outcomeRecorded: true }),
+    ...(options.complete ? { learningCheck: options.learningCheck ?? ('not-run' as const) } : {}),
+    ...(learningCheckVerified === undefined ? {} : { learningCheckVerified }),
   };
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else if (expansion) {

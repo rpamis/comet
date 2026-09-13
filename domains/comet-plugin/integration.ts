@@ -11,6 +11,11 @@ import {
   type MemoryInput,
   type MemoryCorrection,
   type MemoryLanguage,
+  type MemoryObservation,
+  type MemoryLearningCheckKind,
+  type MemoryLearningCheckContext,
+  type MemoryLearningStatus,
+  type MemoryReviewResult,
   type MemoryManagementView,
   type MemoryQuery,
   type MemoryRecord,
@@ -268,10 +273,47 @@ export class CometPluginBridge {
     return this.runtime.invoke('comet.personal-memory', 'status', {}, 'user');
   }
 
+  public async observeMemory(input: MemoryObservation): Promise<MemoryReviewResult> {
+    const scope = input.scope === 'project' ? 'project' : 'user';
+    const result = (await this.runtime.invoke(
+      'comet.personal-memory',
+      'observe',
+      input,
+      { scope, ...(scope === 'project' ? { projectId: this.projectId } : {}) },
+      { throwOnError: true },
+    )) as MemoryReviewResult;
+    if (result.deferred === true) {
+      await this.runtime.dispatch(memoryObservationEvent(input, this.projectId));
+    }
+    return result;
+  }
+
+  public async recordMemoryLearningCheck(
+    check: MemoryLearningCheckKind,
+    context?: MemoryLearningCheckContext,
+  ): Promise<MemoryLearningStatus | undefined> {
+    return (await this.runtime.invoke(
+      'comet.personal-memory',
+      'learning-check',
+      { check, ...(context === undefined ? {} : { context }) },
+      { scope: 'project', projectId: this.projectId },
+      { throwOnError: true },
+    )) as MemoryLearningStatus | undefined;
+  }
+
   public async status(): Promise<unknown> {
-    return this.runtime.invoke('comet.personal-memory', 'status', {}, 'user', {
-      throwOnError: true,
-    });
+    // Status is consumed by task and Dashboard callers for the current project.
+    // Use the project scope so a shared memory repository cannot expose another
+    // project's last learning check in this project's diagnostics.
+    return this.runtime.invoke(
+      'comet.personal-memory',
+      'status',
+      {},
+      { scope: 'project', projectId: this.projectId },
+      {
+        throwOnError: true,
+      },
+    );
   }
 
   public async retrieve(query: MemoryQuery): Promise<MemoryRetrieval> {
@@ -325,6 +367,7 @@ export class CometPluginBridge {
   }
 
   public async syncMemory(): Promise<unknown> {
+    await this.runtime.replayLearning();
     return this.runtime.invoke('comet.personal-memory', 'sync', {}, 'user', { throwOnError: true });
   }
 
@@ -580,6 +623,73 @@ function contextOutcomeEvent(
       applicationId: application.applicationId,
       unitIds: [contextExpansionId(application.owner, application.candidateId)],
     },
+  };
+}
+
+function memoryObservationEvent(
+  observation: MemoryObservation,
+  fallbackProjectId: string,
+): AgentExperienceEvent {
+  const identity = createHash('sha256')
+    .update(
+      JSON.stringify({
+        scope: observation.scope,
+        projectKey: observation.projectKey,
+        workflow: observation.workflow,
+        changeId: observation.changeId,
+        candidateKey: observation.candidateKey ?? 'default',
+        text: observation.text,
+      }),
+    )
+    .digest('hex');
+  const projectId =
+    observation.scope === 'project' ? (observation.projectKey ?? fallbackProjectId) : undefined;
+  return {
+    schema: AGENT_EXPERIENCE_SCHEMA,
+    eventId: `memory-observation:${identity}`,
+    episodeId: `memory-observation:${identity}`,
+    occurredAt: observation.observedAt ?? new Date().toISOString(),
+    type: 'user.signal',
+    actor: 'agent',
+    scope: observation.scope === 'project' ? 'project' : 'user',
+    ...(projectId === undefined ? {} : { projectId }),
+    source: {
+      kind: 'workflow',
+      name: 'memory.observe',
+      workflow: observation.workflow,
+      changeId: observation.changeId,
+    },
+    context: {
+      workflow: observation.workflow,
+      changeId: observation.changeId,
+      operation: 'memory.observe',
+      ...(observation.pathPatterns === undefined ? {} : { paths: observation.pathPatterns }),
+    },
+    signal: {
+      kind: 'preference',
+      explicit: false,
+      longTerm: true,
+      text: observation.text,
+      category: observation.category,
+      ...(observation.candidateKey === undefined ? {} : { targetId: observation.candidateKey }),
+      selectors: {
+        ...(observation.pathPatterns === undefined ? {} : { paths: observation.pathPatterns }),
+        ...(observation.taskTypes === undefined ? {} : { tasks: observation.taskTypes }),
+        ...(observation.operations === undefined ? {} : { operations: observation.operations }),
+        ...(observation.phases === undefined ? {} : { phases: observation.phases }),
+      },
+    },
+    evidence:
+      observation.evidence === undefined || observation.evidence.length === 0
+        ? [
+            {
+              id: `memory-observation-evidence:${identity}`,
+              kind: 'source',
+              summary: observation.text,
+              success: observation.success,
+            },
+          ]
+        : observation.evidence,
   };
 }
 

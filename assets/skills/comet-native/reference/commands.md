@@ -22,9 +22,13 @@ Save memory as follows:
 - Only when the user has not requested long-term memory, but a collaboration practice is stable and reusable in future tasks, call `comet memory observe <project-root> --text "<collaboration practice>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`.
 - Neither command may save task summaries, implementation progress, command output, or test results.
 
+Before every task ends, complete one learning check. When the task contains a user correction, preference, or collaboration practice with a clear reuse condition, call `comet memory observe` and then pass `--learning-check submitted` to `comet task ... --complete`. If you checked and found no qualifying observation, pass `--learning-check no-observation`; if no check was performed, pass `--learning-check not-run`. The first observation creates only a `trial` candidate; a second independent successful observation from a different change may promote it. Do not submit a task summary or test result to manufacture a record.
+
+The observation JSON `learning.result` reports `candidate-created`, `candidate-promoted`, `deduplicated`, `ignored`, or `skipped`. `status.learning.lastCheck: not-run` means the host did not submit this task's learning check; it does not mean that no reusable information exists.
+
 After actually using an item, obtain its identifier from JSON `applications[].applicationId` (`application_id` in Hook text). Once the outcome is known, record it with `comet task <project-root> --task "<original user request>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`. Never report successful use of an unused item.
 
-If verification, compilation, or linting fails, address the error and rerun. At task completion, still call `comet task <project-root> --task "<original user request>" --complete --workflow <workflow> --change <change-id> --json` to record completion. An unavailable command, empty result, or failed automatic retrieval does not block the task. On platforms without Hooks, this Skill calls the same interfaces; `comet memory context` is a compatibility entry only.
+If verification, compilation, or linting fails, address the error and rerun. At task completion, still call `comet task <project-root> --task "<original user request>" --complete --workflow <workflow> --change <change-id> --learning-check submitted|no-observation|not-run --json` to record completion. An unavailable command, empty result, or failed automatic retrieval does not block the task. On platforms without Hooks, this Skill calls the same interfaces; `comet memory context` is a compatibility entry only.
 
 ## Filling command inputs
 

@@ -88,6 +88,13 @@ program
     ]),
   )
   .option('--complete', '记录成功任务')
+  .addOption(
+    new Option('--learning-check <state>', '任务结束时个人记忆学习检查结果').choices([
+      'submitted',
+      'no-observation',
+      'not-run',
+    ]),
+  )
   .option('--workflow <workflow>', '工作流类型')
   .option('--change <id>', '当前 change ID')
   .option('--json', 'Output as JSON')

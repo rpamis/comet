@@ -360,6 +360,11 @@ export class PluginRuntime {
     await this.learningByScope[event.scope].capture(event);
   }
 
+  /** Replay durable learning observations captured by an earlier process. */
+  public async replayLearning(): Promise<void> {
+    await this.replayPendingLearning();
+  }
+
   private async learningAdapters(event: AgentExperienceEvent) {
     const target = { scope: event.scope, projectId: event.projectId };
     await this.loadScope(target);

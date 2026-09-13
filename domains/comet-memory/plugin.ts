@@ -19,9 +19,12 @@ import type {
   MemoryQuery,
   MemoryQueryView,
   MemoryObservation,
+  MemoryObservationResultKind,
   MemoryReviewPacket,
   MemoryReviewActionSet,
   MemoryReviewResult,
+  MemoryLearningCheckKind,
+  MemoryLearningCheckContext,
   MemoryReviewRequest,
   MemoryProviderConfig,
   MemoryRetrieval,
@@ -106,11 +109,29 @@ async function createModule(
   };
 
   const applyReview = async (packet: MemoryReviewPacket): Promise<MemoryReviewResult> => {
-    const { actions } = await resolveReviewActions(packet);
+    const reviewed = await resolveReviewActions(packet);
+    const { actions } = reviewed;
     const result = (await provider.apply({
       operation: 'review',
       input: { packet, actions },
     })) as MemoryReviewResult;
+
+    const observationResult = reviewObservationResult(result);
+    if (
+      packet.explicitRequest === undefined &&
+      observationResult !== undefined &&
+      !result.persisted
+    ) {
+      await service.markLearningCheck?.(
+        'submitted',
+        reviewed.deferred ? 'deferred' : observationResult,
+        {
+          ...(packet.projectKey === undefined ? {} : { projectKey: packet.projectKey }),
+          workflow: packet.workflow,
+          changeId: packet.changeId,
+        },
+      );
+    }
 
     if (packet.explicitRequest !== undefined && !result.persisted) {
       throw new Error(result.reason ?? 'Explicit personal memory request was not persisted.');
@@ -156,7 +177,7 @@ async function createModule(
         // Conflict inspection is advisory; persistence has already completed.
       }
     }
-    return result;
+    return reviewed.deferred ? { ...result, deferred: true } : result;
   };
 
   const retrieveWithoutNotice = async (query: MemoryQuery): Promise<MemoryRetrieval> => {
@@ -262,6 +283,7 @@ async function createModule(
             'configure-remote',
             'set-learning',
             'set-retrieval',
+            'learning-check',
             'pause-project-learning',
             'pause-project-retrieval',
             'get-provider-config',
@@ -323,6 +345,20 @@ async function createModule(
             );
             const reviewed = await resolveReviewActions(packet);
             deferred ||= reviewed.deferred;
+            const result = reviewed.deferred
+              ? ('deferred' as const)
+              : reviewed.actions.actions.every((entry) => entry.action === 'skip')
+                ? ('skipped' as const)
+                : undefined;
+            if (result !== undefined) {
+              await service.markLearningCheck?.('submitted', result, {
+                ...(event.scope === 'project' && event.projectId === undefined
+                  ? {}
+                  : { projectKey: event.projectId }),
+                workflow: observation.workflow,
+                changeId: observation.changeId,
+              });
+            }
             deltas.push(...memoryReviewActionDeltas(packet, reviewed.actions, event));
           };
           await review();
@@ -493,12 +529,22 @@ async function invokeCapability(
     }
     case 'observe': {
       if (!projectPolicy.learning) {
+        await service.markLearningCheck?.('submitted', 'ignored');
         return {
-          deduplicated: false,
-          ignored: true,
-          candidate: false,
-          promoted: false,
-          record: null,
+          action: 'skip',
+          persisted: false,
+          reason:
+            language === 'en'
+              ? 'Personal memory learning is disabled for this project.'
+              : '当前项目已停用个人记忆学习。',
+          observation: {
+            deduplicated: false,
+            ignored: true,
+            candidate: false,
+            promoted: false,
+            record: null,
+            result: 'ignored',
+          },
         };
       }
       const observation = scopedMemoryObservation(
@@ -512,6 +558,36 @@ async function invokeCapability(
         language,
       );
       return applyReview(packet);
+    }
+    case 'learning-check': {
+      if (service.markLearningCheck === undefined)
+        throw new Error('Learning check tracking is unavailable');
+      const value = asObject(input, 'learning-check');
+      const check = value.check;
+      if (check !== 'submitted' && check !== 'no-observation' && check !== 'not-run')
+        throw new Error('learning-check.check is invalid');
+      const result = value.result;
+      if (
+        result !== undefined &&
+        result !== 'candidate-created' &&
+        result !== 'candidate-promoted' &&
+        result !== 'deduplicated' &&
+        result !== 'ignored' &&
+        result !== 'skipped' &&
+        result !== 'deferred'
+      )
+        throw new Error('learning-check.result is invalid');
+      const context = value.context;
+      if (
+        context !== undefined &&
+        (context === null || typeof context !== 'object' || Array.isArray(context))
+      )
+        throw new Error('learning-check.context is invalid');
+      return service.markLearningCheck?.(
+        check as MemoryLearningCheckKind,
+        result as MemoryObservationResultKind | undefined,
+        context as MemoryLearningCheckContext | undefined,
+      );
     }
     case 'retrieve':
       return retrieveWithNotice(
@@ -834,6 +910,16 @@ function resolveProvider(service: PersonalMemoryServiceLike): PersonalMemoryProv
 function reviewHasCandidate(result: MemoryReviewResult): boolean {
   if (result.observation?.candidate === true) return true;
   return result.results?.some((entry) => reviewHasCandidate(entry)) ?? false;
+}
+
+function reviewObservationResult(
+  result: MemoryReviewResult,
+): MemoryObservationResultKind | undefined {
+  if (result.observation?.result !== undefined) return result.observation.result;
+  const nested = result.results?.find((entry) => reviewObservationResult(entry) !== undefined);
+  const nestedResult = nested === undefined ? undefined : reviewObservationResult(nested);
+  if (nestedResult !== undefined) return nestedResult;
+  return result.action === 'skip' ? 'skipped' : undefined;
 }
 
 function experienceApplicability(event: AgentExperienceEvent) {

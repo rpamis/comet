@@ -8,6 +8,96 @@ import { PersonalMemoryService } from '../../../domains/comet-memory/index.js';
 import { FileMemoryRepository } from '../../../domains/comet-memory/repository.js';
 
 describe('personal memory experience projection', () => {
+  it('returns a structured result for an automatic observation', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-observe-result-'));
+    try {
+      const projectRoot = path.join(root, 'project');
+      await fs.mkdir(projectRoot, { recursive: true });
+      const { createDefaultCometPluginBridge } =
+        await import('../../../domains/comet-plugin/integration.js');
+      const bridge = await createDefaultCometPluginBridge({
+        projectRoot,
+        projectId: 'observe-result-project',
+        memoryRoot: path.join(root, 'memory'),
+        stateRoot: path.join(root, 'plugins'),
+        scheduleLearning: (task) => task(),
+      });
+
+      const result = await bridge.observeMemory({
+        scope: 'project',
+        projectKey: bridge.currentProjectId,
+        projectIdentity: bridge.currentProjectId,
+        category: '协作习惯',
+        text: '提交前只暂存本次改动文件',
+        language: 'zh-CN',
+        workflow: 'native',
+        changeId: 'change-a',
+        candidateKey: 'staging',
+        success: true,
+      });
+
+      expect(result).toMatchObject({
+        action: 'create',
+        persisted: true,
+        observation: { candidate: true, promoted: false, result: 'candidate-created' },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a review-failed observation for a later process to retry', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-observe-retry-'));
+    try {
+      const projectRoot = path.join(root, 'project');
+      await fs.mkdir(projectRoot, { recursive: true });
+      const { createDefaultCometPluginBridge } =
+        await import('../../../domains/comet-plugin/integration.js');
+      const observation = {
+        scope: 'project' as const,
+        projectKey: 'observe-retry-project',
+        projectIdentity: 'observe-retry-project',
+        category: '协作习惯',
+        text: '提交前只暂存本次改动文件',
+        language: 'zh-CN' as const,
+        workflow: 'native',
+        changeId: 'change-a',
+        candidateKey: 'staging',
+        success: true,
+      };
+      const broken = await createDefaultCometPluginBridge({
+        projectRoot,
+        projectId: observation.projectKey,
+        memoryRoot: path.join(root, 'memory'),
+        stateRoot: path.join(root, 'plugins'),
+        scheduleLearning: (task) => task(),
+        runMemoryReview: () => {
+          throw new Error('review unavailable');
+        },
+      });
+      await expect(broken.observeMemory(observation)).resolves.toMatchObject({
+        persisted: false,
+        reason: '记忆评审暂不可用，已延后处理。',
+      });
+
+      const recovered = await createDefaultCometPluginBridge({
+        projectRoot,
+        projectId: observation.projectKey,
+        memoryRoot: path.join(root, 'memory'),
+        stateRoot: path.join(root, 'plugins'),
+        scheduleLearning: (task) => task(),
+      });
+      await recovered.syncMemory();
+      await expect(recovered.manage({ projectKey: observation.projectKey })).resolves.toMatchObject(
+        {
+          records: [expect.objectContaining({ text: observation.text, status: 'trial' })],
+        },
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('returns a user-safe management view with evidence and conflict status', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-experience-'));
     const service = new PersonalMemoryService({
