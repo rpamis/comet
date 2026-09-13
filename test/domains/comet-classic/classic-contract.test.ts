@@ -259,7 +259,7 @@ function handoffMarkerLines(stderr: string): string[] {
 
 function guardMachineLines(stderr: string): string[] {
   const stripAnsi = (line: string) => line.replace(/\u001b\[[0-9;]*m/gu, '').trim();
-  return stderr
+  const kept = stderr
     .split('\n')
     .map(stripAnsi)
     .filter(
@@ -271,6 +271,12 @@ function guardMachineLines(stderr: string): string[] {
         !line.startsWith('[PASS] OpenSpec required dependency closure is ready') &&
         !line.startsWith('RELAY TO USER:'),
     );
+  // The frozen shell and active TypeScript guard enumerate independent checks
+  // in different orders. Compare their check markers as a set while retaining
+  // the surrounding title and final blocking decision order.
+  const checks = kept.filter((line) => /^\[(?:PASS|FAIL)\]/u.test(line)).sort();
+  let checkIndex = 0;
+  return kept.map((line) => (/^\[(?:PASS|FAIL)\]/u.test(line) ? checks[checkIndex++] : line));
 }
 
 async function observeState(
