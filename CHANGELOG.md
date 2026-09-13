@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.1] - 2026-09-09
+## What's Changed [0.4.1] - 2026-09-12
 
 ### Added
 
@@ -34,6 +34,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Dashboard project selection**: Default to the launch project instead of a remembered selection, and distinguish working directories of the same repository so project switching and dropdown labels stay consistent while preserving shared plugin state.
 - **Workflow evaluation**: Recognize explicit Classic entry points and configured artifact layouts without mistaking enabled Native settings for the workflow being evaluated; generate Native rubric results without a scoring exception.
 - **Platform-specific instructions**: Create or refresh `CLAUDE.md` only for selected Claude Code targets during initialization and updates, while preserving existing user files for other platforms.
+- **Memory content filter**: Accept ISO 8601 dates such as `2026-09-01` in memory text instead of misclassifying them as phone numbers, so remembering dated facts no longer fails.
+- **Memory filter diagnostics**: Name the matched content category (for example, `phone number` or `credential assignment`) when memory text is rejected, so callers can correct the text instead of guessing.
+- **Dashboard Git snapshot**: Show dirty-file paths verbatim for non-ASCII (e.g. Chinese) filenames and paths containing spaces, instead of git's quoted octal-escaped form, by reading status in NUL-terminated porcelain mode (#403).
 
 ## What's Changed [0.4.0] - 2026-09-08
 
