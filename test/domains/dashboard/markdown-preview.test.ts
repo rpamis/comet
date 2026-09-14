@@ -105,6 +105,26 @@ describe('dashboard markdown-preview', () => {
     expect(html).toContain('npx jest a.test.tsx');
   });
 
+  it('explains Native state fields and formats nested values as JSON code', async () => {
+    const html = await renderYamlTable(
+      [
+        'schema: comet.native.v4',
+        'phase: build',
+        'workspace:',
+        '  isolation: current',
+        '  target_branch: master',
+      ].join('\n'),
+      { schema: 'native-state' },
+    );
+
+    expect(html).toContain('<th scope="col">说明</th>');
+    expect(html).toContain('当前所处的工作流阶段。');
+    expect(html).toContain('执行分支、目标分支和隔离方式等工作区绑定信息。');
+    expect(html).toContain('class="structured-json-value"');
+    expect(html).toContain('class="language-json"');
+    expect(html).toContain('"target_branch": "master"');
+  });
+
   it('renders handoff JSON with scalar kv table and files data table', async () => {
     const html = await renderJsonPreview(
       JSON.stringify({

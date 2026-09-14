@@ -155,6 +155,8 @@ describe('workflow contract normalization', () => {
         '      - docs/architecture/**/*.md',
         '      - docs/architecture/**/*.md',
         '      - packages/*/README.MD',
+        '    max_file_mb: 2',
+        '    max_total_mb: 64',
         'native:',
         '  artifact_root: docs',
         '',
@@ -163,12 +165,40 @@ describe('workflow contract normalization', () => {
 
     expect(parsed.config?.knowledge).toEqual({
       provider: 'local',
-      local: { include: ['docs/architecture/**/*.md', 'packages/*/README.MD'] },
+      local: {
+        include: ['docs/architecture/**/*.md', 'packages/*/README.MD'],
+        max_file_mb: 2,
+        max_total_mb: 64,
+      },
     });
     expect(mergeWorkflowProjectConfigDocument(parsed.value, parsed.config!).knowledge).toEqual({
       provider: 'local',
-      local: { include: ['docs/architecture/**/*.md', 'packages/*/README.MD'] },
+      local: {
+        include: ['docs/architecture/**/*.md', 'packages/*/README.MD'],
+        max_file_mb: 2,
+        max_total_mb: 64,
+      },
     });
+  });
+
+  it('rejects a local knowledge single-file limit above the total corpus budget', () => {
+    expect(() =>
+      parseWorkflowProjectConfigDocument(
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'workflows: [native]',
+          'knowledge:',
+          '  provider: local',
+          '  local:',
+          '    max_file_mb: 2',
+          '    max_total_mb: 1',
+          'native:',
+          '  artifact_root: docs',
+          '',
+        ].join('\n'),
+      ),
+    ).toThrow('knowledge.local.max_file_mb must not exceed max_total_mb');
   });
 
   it.each([

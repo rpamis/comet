@@ -10,8 +10,14 @@ import {
   migrateNativeLegacyChangeToPortable,
 } from './native-portable-migration-runtime.js';
 import { recoverNativePortableChange } from './native-portable-recovery.js';
+import { readNativeLocalExecution } from './native-local-execution.js';
+import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
 import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
-import { isNativePortableChange, readNativePortableChange } from './native-portable-runtime.js';
+import {
+  isNativePortableChange,
+  nativeLocalExecutionFile,
+  readNativePortableChange,
+} from './native-portable-runtime.js';
 import type { NativePortableState } from './native-portable-types.js';
 import {
   inspectNativePortableStatus,
@@ -37,6 +43,33 @@ import type { NativeDoctorFinding, NativeProjectPaths } from './native-types.js'
 async function portableContinuation(paths: NativeProjectPaths, state: NativePortableState) {
   const children = await inspectNativeChildren({ paths, state });
   return nativePortableContinuation(state, children);
+}
+
+async function portableCheckExecutionFinding(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<NativeDoctorFinding | null> {
+  let local: Awaited<ReturnType<typeof readNativeLocalExecution>>;
+  try {
+    local = await readNativeLocalExecution(nativeLocalExecutionFile(paths, name));
+  } catch {
+    return null;
+  }
+  if (local?.execution?.stage !== 'checking' || local.execution.actor !== 'runtime') return null;
+  if (local.execution.status !== 'running') return null;
+  const liveness = await inspectNativePortableCheckExecution(local);
+  if (liveness === 'running') return null;
+  const message =
+    liveness === 'orphaned'
+      ? `Native Runtime check operation ${local.execution.operationId} has no live owner or active check process`
+      : `Native Runtime check operation ${local.execution.operationId} is running, but its owner process identity is unavailable`;
+  return {
+    severity: 'error',
+    code: 'portable-check-execution-stuck',
+    message: `${name}: ${message}; run comet native doctor ${name} --repair to recover it`,
+    path: nativeLocalExecutionFile(paths, name),
+    repair: 'recover',
+  };
 }
 
 async function listActiveChangeNames(paths: NativeProjectPaths): Promise<string[]> {
@@ -309,7 +342,21 @@ export async function nativeDoctorCommand(
           continuation: await portableContinuation(paths, state),
         });
       }
-      const result = await recoverNativePortableChange({ paths, name });
+      const result = await recoverNativePortableChange({
+        paths,
+        name,
+        recoverUnknownRuntimeCheck: true,
+      });
+      if (result.reason === 'execution-active') {
+        return success('doctor', {
+          healthy: true,
+          workflow: 'native-portable',
+          change: name,
+          repaired: false,
+          result,
+          continuation: await portableContinuation(paths, result.state),
+        });
+      }
       return success('doctor', {
         healthy: true,
         workflow: 'native-portable',
@@ -317,6 +364,19 @@ export async function nativeDoctorCommand(
         repaired: true,
         result,
         continuation: await portableContinuation(paths, result.state),
+      });
+    }
+    const executionFinding = await portableCheckExecutionFinding(paths, name);
+    if (executionFinding) {
+      const result = await inspectNativePortableStatus({ paths, name, details: true });
+      return unhealthyDoctor({
+        healthy: false,
+        workflow: 'native-portable',
+        change: name,
+        repaired: false,
+        result,
+        findings: [executionFinding],
+        continuation: result.continuation,
       });
     }
     const result = await inspectNativePortableStatus({ paths, name, details: true });
@@ -405,18 +465,25 @@ export async function nativeDoctorCommand(
         .map(({ change }) => change),
     );
     const legacyNames = activeNames.filter((change) => !portableSet.has(change));
-    const [changes, conflicts, incompleteMigrations, legacyResults, projectResult] =
-      await Promise.all([
-        Promise.all(
-          portableNames.map((change) => inspectNativePortableStatus({ paths, name: change })),
-        ),
-        Promise.all(portableNames.map((change) => activeArchiveConflictFinding(paths, change))),
-        Promise.all(
-          portableNames.map((change) => hasIncompleteNativePortableMigration(paths, change)),
-        ),
-        Promise.all(legacyNames.map((change) => doctorNativeProject({ paths, name: change }))),
-        doctorNativeProject({ paths, projectOnly: true }),
-      ]);
+    const [
+      changes,
+      conflicts,
+      incompleteMigrations,
+      executionFindings,
+      legacyResults,
+      projectResult,
+    ] = await Promise.all([
+      Promise.all(
+        portableNames.map((change) => inspectNativePortableStatus({ paths, name: change })),
+      ),
+      Promise.all(portableNames.map((change) => activeArchiveConflictFinding(paths, change))),
+      Promise.all(
+        portableNames.map((change) => hasIncompleteNativePortableMigration(paths, change)),
+      ),
+      Promise.all(portableNames.map((change) => portableCheckExecutionFinding(paths, change))),
+      Promise.all(legacyNames.map((change) => doctorNativeProject({ paths, name: change }))),
+      doctorNativeProject({ paths, projectOnly: true }),
+    ]);
     const findings = uniqueFindings([
       ...conflicts.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...portableNames.flatMap((change, index) =>
@@ -424,6 +491,7 @@ export async function nativeDoctorCommand(
           ? [incompleteMigrationFinding(paths, change)]
           : [],
       ),
+      ...executionFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...projectPortableTransactions.findings,
       ...legacyNames.map<NativeDoctorFinding>((change) => ({
         severity: 'error',

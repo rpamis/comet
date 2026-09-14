@@ -4,6 +4,10 @@ import type { Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { runGitCommand } from '../../platform/process/git.js';
+import {
+  processInstanceMayBeAlive,
+  readProcessIdentity,
+} from '../../platform/process/process-identity.js';
 import { canonicalHash } from './native-canonical-hash.js';
 import {
   executeNativeCheck,
@@ -116,6 +120,52 @@ export function sameNativeCheckCommands(
   );
 }
 
+export type NativePortableCheckExecutionLiveness =
+  'not-running' | 'running' | 'orphaned' | 'unknown';
+
+/**
+ * Inspect the owner and active child recorded for a local Runtime check operation.
+ * Missing identity metadata remains unknown so a stale overlay can never trigger a
+ * second check while the original process might still be alive.
+ */
+export async function inspectNativePortableCheckExecution(
+  local: NativeLocalExecutionState,
+): Promise<NativePortableCheckExecutionLiveness> {
+  const execution = local.execution;
+  if (execution === null || execution.status !== 'running') return 'not-running';
+  if (execution.ownerPid === undefined) return 'unknown';
+  if (await processInstanceMayBeAlive(execution.ownerPid, execution.ownerIdentity)) {
+    return 'running';
+  }
+
+  let unknown = false;
+  for (const check of local.checks) {
+    if (check.status !== 'running') continue;
+    const active = check.activeProcess;
+    if (!active || active.status === 'starting') {
+      unknown = true;
+      continue;
+    }
+    if (await processInstanceMayBeAlive(active.pid, active.identity)) return 'running';
+  }
+  return unknown ? 'unknown' : 'orphaned';
+}
+
+function interruptNativePortableCheckExecution(
+  local: NativeLocalExecutionState,
+): NativeLocalExecutionState {
+  return {
+    ...local,
+    execution:
+      local.execution === null ? null : { ...local.execution, status: 'interrupted' as const },
+    checks: local.checks.map((check) =>
+      check.status === 'planned' || check.status === 'running'
+        ? { ...check, status: 'interrupted' as const, activeProcess: null }
+        : check,
+    ),
+  };
+}
+
 function localCheck(
   plan: NativeCheckPlan,
   operationId: string,
@@ -135,6 +185,7 @@ function localCheck(
     startedAt: null,
     completedAt: null,
     log: `logs/checks/${operationId}-${plan.id}.log`,
+    activeProcess: null,
   };
 }
 
@@ -743,6 +794,23 @@ async function reserveNativePortableCheckPlan(options: {
       if (retryIds && retryIds.size === 0) {
         throw new Error('Native check retry list must contain at least one ID');
       }
+      if (
+        !sameBinding &&
+        local.execution?.stage === 'checking' &&
+        local.execution.actor === 'runtime' &&
+        local.execution.status === 'running'
+      ) {
+        const liveness = await inspectNativePortableCheckExecution(local);
+        if (liveness !== 'orphaned') {
+          throw new Error(
+            liveness === 'unknown'
+              ? 'Native check plan owner could not be proven to have exited; inspect the Runtime overlay before changing its binding'
+              : 'Native check plan is already in progress on another workspace binding',
+          );
+        }
+        local = interruptNativePortableCheckExecution(local);
+        await writeNativeLocalExecution(file, local, { containedRoot: options.paths.runtimeDir });
+      }
       if (!sameBinding) {
         // A local overlay from another candidate, workspace or host is not
         // evidence for the current candidate. Rebuild the local overlay before
@@ -769,9 +837,19 @@ async function reserveNativePortableCheckPlan(options: {
           branch,
         )
       ) {
-        const execution = local.execution;
+        let execution = local.execution;
         if (execution.status === 'running') {
-          throw new Error('Native check plan is already in progress');
+          const liveness = await inspectNativePortableCheckExecution(local);
+          if (liveness !== 'orphaned') {
+            throw new Error(
+              liveness === 'unknown'
+                ? 'Native check plan owner could not be proven to have exited; inspect the Runtime overlay before retrying'
+                : 'Native check plan is already in progress',
+            );
+          }
+          local = interruptNativePortableCheckExecution(local);
+          await writeNativeLocalExecution(file, local, { containedRoot: options.paths.runtimeDir });
+          execution = local.execution!;
         }
         const interrupted = local.checks.filter((check) => check.status === 'interrupted');
         if (
@@ -805,6 +883,36 @@ async function reserveNativePortableCheckPlan(options: {
               .join(', ')}); submit a new Builder candidate`,
           );
         }
+        if (
+          interrupted.length > 0 &&
+          interrupted.some((check) => !check.repeatable) &&
+          !forceReexecuteForMissingEvidence
+        ) {
+          const next = returnNativeCandidateToBuild({
+            state,
+            reason: `A non-repeatable Runtime check was interrupted (${interrupted
+              .filter((check) => !check.repeatable)
+              .map(({ id }) => id)
+              .join(', ')}); a new Builder candidate is required before it can run again.`,
+          });
+          const written = await writePortableMutation({
+            paths: options.paths,
+            previous: state,
+            next,
+          });
+          await writeNativeLocalExecution(
+            nativeLocalExecutionFile(options.paths, state.name),
+            rebuildNativeLocalExecution({
+              portableState: written,
+              projectRoot: options.paths.projectRoot,
+              branch: currentBranch(options.paths.projectRoot),
+            }),
+            { containedRoot: options.paths.runtimeDir },
+          );
+          throw new Error(
+            `Native check ${interrupted.find((check) => !check.repeatable)!.id} was interrupted and is not repeatable; the change returned to Build for a new candidate`,
+          );
+        }
         if (interrupted.length > 0 && retryIds === null && !forceReexecuteForMissingEvidence) {
           const requestedNames = new Map(options.plans.map(({ id, name }) => [id, name] as const));
           return {
@@ -836,36 +944,6 @@ async function reserveNativePortableCheckPlan(options: {
             );
           }
         }
-        if (
-          interrupted.length > 0 &&
-          interrupted.some((check) => !check.repeatable) &&
-          !forceReexecuteForMissingEvidence
-        ) {
-          const next = returnNativeCandidateToBuild({
-            state,
-            reason: `A non-repeatable Runtime check was interrupted (${interrupted
-              .filter((check) => !check.repeatable)
-              .map(({ id }) => id)
-              .join(', ')}); a new Builder candidate is required before it can run again.`,
-          });
-          const written = await writePortableMutation({
-            paths: options.paths,
-            previous: state,
-            next,
-          });
-          await writeNativeLocalExecution(
-            nativeLocalExecutionFile(options.paths, state.name),
-            rebuildNativeLocalExecution({
-              portableState: written,
-              projectRoot: options.paths.projectRoot,
-              branch: currentBranch(options.paths.projectRoot),
-            }),
-            { containedRoot: options.paths.runtimeDir },
-          );
-          throw new Error(
-            `Native check ${interrupted.find((check) => !check.repeatable)!.id} was interrupted and is not repeatable; the change returned to Build for a new candidate`,
-          );
-        }
       }
       if (local.execution !== null && local.checks.length > 0) {
         const sameInterruptedPlan =
@@ -883,6 +961,7 @@ async function reserveNativePortableCheckPlan(options: {
         throw new Error('Native check plan was already resolved with a different plan');
       }
       const operationId = randomUUID();
+      const ownerIdentity = await readProcessIdentity(process.pid);
       const operation: NativeLocalExecutionState = {
         ...local,
         candidateId: state.builder_handoff?.candidate_id ?? null,
@@ -902,6 +981,8 @@ async function reserveNativePortableCheckPlan(options: {
           status: 'running',
           startedAt: new Date().toISOString(),
           requestCheckRounds: 0,
+          ownerPid: process.pid,
+          ...(ownerIdentity ? { ownerIdentity } : {}),
         },
         checks: options.plans.map((plan) => {
           const previous = local.checks.find((check) => check.id === plan.id);
@@ -914,7 +995,7 @@ async function reserveNativePortableCheckPlan(options: {
           ) {
             return resetInterruptedCheck(previous, plan, operationId, options.projectRoot);
           }
-          if (previous) return { ...previous, operationId };
+          if (previous) return { ...previous, operationId, activeProcess: null };
           return localCheck(plan, operationId, options.projectRoot);
         }),
       };
@@ -1016,6 +1097,7 @@ export async function executeNativePortableCheckPlan(options: {
                   status: 'running',
                   executionCount: check.executionCount + 1,
                   startedAt,
+                  activeProcess: { status: 'starting' as const },
                 }
               : check,
           ),
@@ -1026,6 +1108,29 @@ export async function executeNativePortableCheckPlan(options: {
         runtimeDir,
         operationId,
         plan,
+        onSpawn: async ({ pid }) => {
+          const identity = await readProcessIdentity(pid);
+          await updateReservedNativeCheckPlan({
+            paths: options.paths,
+            state: reservation.state,
+            operationId,
+            update: (local) => ({
+              ...local,
+              checks: local.checks.map((check) =>
+                check.id === plan.id
+                  ? {
+                      ...check,
+                      activeProcess: {
+                        status: 'running' as const,
+                        pid,
+                        ...(identity ? { identity } : {}),
+                      },
+                    }
+                  : check,
+              ),
+            }),
+          });
+        },
       });
       const logContent = await fs.readFile(
         path.resolve(runtimeDir, ...result.logRef.split('/')),
@@ -1046,6 +1151,7 @@ export async function executeNativePortableCheckPlan(options: {
               startedAt: result.startedAt,
               completedAt: result.completedAt,
               log: result.logRef,
+              activeProcess: null,
               evidence: 'runtime' as const,
             };
             return {
@@ -1076,7 +1182,7 @@ export async function executeNativePortableCheckPlan(options: {
           execution: { ...local.execution!, status: 'interrupted' },
           checks: local.checks.map((check) =>
             check.status === 'planned' || check.status === 'running'
-              ? { ...check, status: 'interrupted' as const }
+              ? { ...check, status: 'interrupted' as const, activeProcess: null }
               : check,
           ),
         }),
@@ -1379,6 +1485,7 @@ export async function executeReservedVerifierRequestedChecks(options: {
                   status: 'running',
                   executionCount: check.executionCount + 1,
                   startedAt,
+                  activeProcess: { status: 'starting' as const },
                 }
               : check,
           ),
@@ -1393,6 +1500,28 @@ export async function executeReservedVerifierRequestedChecks(options: {
         runtimeDir,
         operationId: options.reservation.local.execution!.operationId,
         plan,
+        onSpawn: async ({ pid }) => {
+          const identity = await readProcessIdentity(pid);
+          await updateReservedVerifierRequestedChecks({
+            paths: options.paths,
+            reservation: options.reservation,
+            update: (local) => ({
+              ...local,
+              checks: local.checks.map((check) =>
+                check.id === plan.id
+                  ? {
+                      ...check,
+                      activeProcess: {
+                        status: 'running' as const,
+                        pid,
+                        ...(identity ? { identity } : {}),
+                      },
+                    }
+                  : check,
+              ),
+            }),
+          });
+        },
       });
       const logContent = await fs.readFile(
         await resolveContainedNativePath(
@@ -1415,6 +1544,7 @@ export async function executeReservedVerifierRequestedChecks(options: {
               startedAt: result.startedAt,
               completedAt: result.completedAt,
               log: result.logRef,
+              activeProcess: null,
               evidence: 'runtime' as const,
             };
             return {
@@ -1449,7 +1579,7 @@ export async function executeReservedVerifierRequestedChecks(options: {
           execution: { ...local.execution!, status: 'interrupted' },
           checks: local.checks.map((check) =>
             check.status === 'planned' || check.status === 'running'
-              ? { ...check, status: 'interrupted' as const }
+              ? { ...check, status: 'interrupted' as const, activeProcess: null }
               : check,
           ),
         }),

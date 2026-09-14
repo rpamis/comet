@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 
+import { DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG } from '../workflow-contract/project-config.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import {
   protectedProjectFileExists,
@@ -16,8 +17,8 @@ import type {
 
 const MAX_REFERENCE_BYTES = 64 * 1024;
 const MAX_CORPUS_FILES = 512;
-const MAX_CORPUS_TOTAL_BYTES = 8 * 1024 * 1024;
 const MAX_CORPUS_DISCOVERY_MS = 2_000;
+const BYTES_PER_MB = 1024 * 1024;
 const SUPERPOWER_ROOTS = new Set([
   'docs/superpowers/specs',
   'docs/superpowers/plans',
@@ -328,6 +329,14 @@ export async function discoverProjectKnowledgeCorpus(
     return [];
   }
   if (!config || budgetExpired(budget)) return [];
+  const localLimits = {
+    maxFileMb:
+      config.knowledge?.local?.max_file_mb ?? DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_file_mb,
+    maxTotalMb:
+      config.knowledge?.local?.max_total_mb ?? DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_total_mb,
+  };
+  const maxFileBytes = localLimits.maxFileMb * BYTES_PER_MB;
+  const maxTotalBytes = localLimits.maxTotalMb * BYTES_PER_MB;
   const enabledWorkflows = new Set(config.workflows ?? [config.default_workflow]);
   const documents: ProjectKnowledgeDocument[] = [];
   if (config.native && enabledWorkflows.has('native')) {
@@ -410,11 +419,19 @@ export async function discoverProjectKnowledgeCorpus(
     }
     try {
       const size = (await fs.stat(document.absolutePath)).size;
-      if (size > MAX_REFERENCE_BYTES || totalBytes + size > MAX_CORPUS_TOTAL_BYTES) {
+      if (size > maxFileBytes) {
         report(
           options.reportDiagnostic,
           'corpus-bytes',
-          `未进入检索：超过单文件或语料总预算，${document.source} 当前不会参与召回。`,
+          `未进入检索：${document.source} 为 ${size} 字节，超过单文件上限 ${localLimits.maxFileMb} MB。可在 .comet/config.yaml 调整 knowledge.local.max_file_mb。`,
+        );
+        continue;
+      }
+      if (totalBytes + size > maxTotalBytes) {
+        report(
+          options.reportDiagnostic,
+          'corpus-bytes',
+          `未进入检索：加入 ${document.source} 后将超过语料总预算 ${localLimits.maxTotalMb} MB。可在 .comet/config.yaml 调整 knowledge.local.max_total_mb。`,
         );
         continue;
       }

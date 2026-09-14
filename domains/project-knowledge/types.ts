@@ -308,6 +308,10 @@ export interface ProjectKnowledgeDashboardSnapshot {
   readonly provider: WorkflowKnowledgeProvider;
   readonly configured: boolean;
   readonly remote?: ProjectKnowledgeDashboardRemoteSummary;
+  readonly localLimits: {
+    readonly maxFileMb: number;
+    readonly maxTotalMb: number;
+  };
   readonly local?: {
     readonly available: boolean;
     readonly repositoryId: string;

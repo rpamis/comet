@@ -5,6 +5,7 @@ import {
   ConfigProvider,
   Form,
   Input,
+  InputNumber,
   Popover,
   Select,
   Skeleton,
@@ -1650,13 +1651,17 @@ function DashboardApp({
             const previousKnowledge = settingsConfig.knowledge ?? {
               provider: 'local',
               localInclude: [],
+              maxFileMb: 1,
+              maxTotalMb: 32,
             };
             const nextKnowledge = config.knowledge ?? previousKnowledge;
-            const knowledgePathsChanged =
+            const localKnowledgeConfigChanged =
               nextKnowledge.provider === 'local' &&
               (previousKnowledge.provider !== 'local' ||
                 JSON.stringify(nextKnowledge.localInclude ?? []) !==
-                  JSON.stringify(previousKnowledge.localInclude ?? []));
+                  JSON.stringify(previousKnowledge.localInclude ?? []) ||
+                nextKnowledge.maxFileMb !== previousKnowledge.maxFileMb ||
+                nextKnowledge.maxTotalMb !== previousKnowledge.maxTotalMb);
             try {
               const next = await saveDashboardProjectConfig(activeProjectId, {
                 expectedRevision: settingsConfig.revision,
@@ -1683,7 +1688,7 @@ function DashboardApp({
               );
               writeDashboardCache(projectConfigStorageKey(activeProjectId), next);
               setSettingsConfig(next);
-              if (knowledgePathsChanged) {
+              if (localKnowledgeConfigChanged) {
                 await invokeActivePlugin('comet.project-knowledge', 'refresh', {}, 'settings');
                 if (pluginSelectionRef.current === 'comet.project-knowledge') {
                   setPluginRefreshToken((value) => value + 1);
@@ -2447,6 +2452,7 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
 
     const preview = artifact.preview;
     const previewPath = preview?.path ?? '';
+    const isNativeStatePreview = artifact.key === 'comet-state.yaml';
     const isYamlPreview = artifact.key === 'cometYaml' || /\.ya?ml$/i.test(previewPath);
     const isJsonPreview =
       artifact.key === 'handoff' || artifact.key === 'checkpoint' || /\.json$/i.test(previewPath);
@@ -2465,11 +2471,17 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
         let html;
         if (preview?.exists && useStructuredPreview) {
           if (!content.trim()) {
-            html = isJsonPreview ? await renderJsonPreview('') : await renderYamlTable('');
+            html = isJsonPreview
+              ? await renderJsonPreview('')
+              : await renderYamlTable('', {
+                  schema: isNativeStatePreview ? 'native-state' : undefined,
+                });
           } else {
             html = isJsonPreview
               ? await renderJsonPreview(content)
-              : await renderYamlTable(content);
+              : await renderYamlTable(content, {
+                  schema: isNativeStatePreview ? 'native-state' : undefined,
+                });
             if (preview.truncated) {
               html += '<p><em>内容过长，已截取前 256KB。</em></p>';
             }
@@ -4249,7 +4261,7 @@ function DashboardSettingsOverlay({
       open={open}
       title="Comet 设置"
       subtitle={readOnly ? '只读预览' : '当前项目'}
-      description="统一管理个人记忆、项目规则与工作流配置"
+      description="统一管理个人记忆、项目知识与工作流配置"
       onClose={onClose}
       footer={
         <div className="dashboard-settings-modal-footer">
@@ -4305,7 +4317,7 @@ function DashboardSettingsPage({
     {
       key: 'comet.project-knowledge',
       icon: <DatabaseOutlined />,
-      label: '项目规则',
+      label: '项目知识',
       disabled: !installedPlugins.has('comet.project-knowledge'),
     },
     { key: 'comet.config', icon: <SettingOutlined />, label: 'Comet 配置' },
@@ -4398,6 +4410,8 @@ function toCometConfigDraft(data) {
     knowledge: {
       provider: data.knowledge?.provider ?? 'local',
       localInclude: [...(data.knowledge?.localInclude ?? [])],
+      maxFileMb: data.knowledge?.maxFileMb ?? 1,
+      maxTotalMb: data.knowledge?.maxTotalMb ?? 32,
     },
     native: {
       ...data.native,
@@ -4429,10 +4443,10 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
       classic: { ...current.classic, [key]: value },
     }));
   };
-  const setKnowledge = (localInclude) => {
+  const setKnowledge = (key, value) => {
     setDraft((current) => ({
       ...current,
-      knowledge: { ...current.knowledge, localInclude },
+      knowledge: { ...current.knowledge, [key]: value },
     }));
   };
   const save = async () => {
@@ -4443,6 +4457,20 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
     const maxVerifyFailures = Number(draft.native.maxVerifyFailures);
     if (!Number.isSafeInteger(maxVerifyFailures) || maxVerifyFailures <= 0) {
       setSaveError('Verify 失败上限必须是正整数。');
+      return;
+    }
+    const maxFileMb = Number(draft.knowledge.maxFileMb);
+    const maxTotalMb = Number(draft.knowledge.maxTotalMb);
+    if (!Number.isSafeInteger(maxFileMb) || maxFileMb <= 0) {
+      setSaveError('单文件上限必须是正整数。');
+      return;
+    }
+    if (!Number.isSafeInteger(maxTotalMb) || maxTotalMb <= 0) {
+      setSaveError('语料总预算必须是正整数。');
+      return;
+    }
+    if (maxFileMb > maxTotalMb) {
+      setSaveError('单文件上限不能大于语料总预算。');
       return;
     }
     setSaving(true);
@@ -4459,6 +4487,8 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
         knowledge: {
           provider: draft.knowledge.provider,
           localInclude: draft.knowledge.localInclude.filter((item) => item.trim()),
+          maxFileMb,
+          maxTotalMb,
         },
         native: { ...draft.native, maxVerifyFailures },
         classic: draft.classic,
@@ -4582,7 +4612,7 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
                   onChange={(event) => {
                     const next = [...draft.knowledge.localInclude];
                     next[index] = event.target.value;
-                    setKnowledge(next);
+                    setKnowledge('localInclude', next);
                   }}
                 />
                 <Button
@@ -4592,7 +4622,10 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
                   disabled={draft.knowledge.provider !== 'local'}
                   aria-label={`删除额外知识文档路径 ${index + 1}`}
                   onClick={() =>
-                    setKnowledge(draft.knowledge.localInclude.filter((_, item) => item !== index))
+                    setKnowledge(
+                      'localInclude',
+                      draft.knowledge.localInclude.filter((_, item) => item !== index),
+                    )
                   }
                 />
               </div>
@@ -4601,7 +4634,7 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
               type="dashed"
               icon={<PlusOutlined />}
               disabled={draft.knowledge.provider !== 'local'}
-              onClick={() => setKnowledge([...draft.knowledge.localInclude, ''])}
+              onClick={() => setKnowledge('localInclude', [...draft.knowledge.localInclude, ''])}
             >
               添加文档路径
             </Button>
@@ -5222,22 +5255,46 @@ function ProjectKnowledgeSettings({ page, data, readOnly = false, onInvoke }) {
   const [tokenEnv, setTokenEnv] = useState(snapshot.remote?.tokenEnv ?? '');
   const [scope, setScope] = useState(snapshot.remote?.scope ?? '');
   const [timeoutMs, setTimeoutMs] = useState(String(snapshot.remote?.timeoutMs ?? 5000));
+  const [maxFileMb, setMaxFileMb] = useState(snapshot.localLimits?.maxFileMb ?? 1);
+  const [maxTotalMb, setMaxTotalMb] = useState(snapshot.localLimits?.maxTotalMb ?? 32);
+  const [saveError, setSaveError] = useState(null);
   useEffect(() => {
     setProviderMode(snapshot.provider ?? 'local');
     setEndpoint(snapshot.remote?.endpoint ?? '');
     setTokenEnv(snapshot.remote?.tokenEnv ?? '');
     setScope(snapshot.remote?.scope ?? '');
     setTimeoutMs(String(snapshot.remote?.timeoutMs ?? 5000));
+    setMaxFileMb(snapshot.localLimits?.maxFileMb ?? 1);
+    setMaxTotalMb(snapshot.localLimits?.maxTotalMb ?? 32);
+    setSaveError(null);
   }, [
     snapshot.provider,
     snapshot.remote?.endpoint,
     snapshot.remote?.tokenEnv,
     snapshot.remote?.scope,
     snapshot.remote?.timeoutMs,
+    snapshot.localLimits?.maxFileMb,
+    snapshot.localLimits?.maxTotalMb,
   ]);
   const saveProvider = async () => {
+    if (providerMode === 'local') {
+      if (!Number.isSafeInteger(maxFileMb) || maxFileMb <= 0) {
+        setSaveError('单文件上限必须是正整数。');
+        return;
+      }
+      if (!Number.isSafeInteger(maxTotalMb) || maxTotalMb <= 0) {
+        setSaveError('语料总预算必须是正整数。');
+        return;
+      }
+      if (maxFileMb > maxTotalMb) {
+        setSaveError('单文件上限不能大于语料总预算。');
+        return;
+      }
+    }
+    setSaveError(null);
     await onInvoke('configure-provider', {
       provider: providerMode,
+      ...(providerMode === 'local' ? { maxFileMb, maxTotalMb } : {}),
       ...(providerMode === 'remote'
         ? {
             remote: {
@@ -5354,6 +5411,57 @@ function ProjectKnowledgeSettings({ page, data, readOnly = false, onInvoke }) {
                 </Button>
               </div>
             </div>
+          </section>
+          {saveError && (
+            <Alert type="error" showIcon message="项目知识配置保存失败" description={saveError} />
+          )}
+          <section className="dashboard-settings-panel" aria-labelledby="knowledge-budget-settings">
+            <div className="dashboard-settings-panel-head">
+              <div>
+                <h4 id="knowledge-budget-settings">Local 语料预算</h4>
+                <p>控制参与本地项目知识检索的单文件大小和全部文档总量，单位为 MB</p>
+              </div>
+              <Tag color={providerMode === 'local' ? 'success' : 'default'}>
+                {providerMode === 'local' ? 'Local 生效' : 'Remote 使用中'}
+              </Tag>
+            </div>
+            <div className="dashboard-memory-setting">
+              <div className="dashboard-memory-setting-copy">
+                <strong>单文件上限</strong>
+                <span>超过此大小的 Markdown 文件不会进入 Local 检索</span>
+              </div>
+              <InputNumber
+                className="dashboard-config-control"
+                min={1}
+                precision={0}
+                value={maxFileMb}
+                disabled={readOnly || providerMode !== 'local'}
+                aria-label="项目知识单文件上限（MB）"
+                addonAfter="MB"
+                onChange={setMaxFileMb}
+              />
+            </div>
+            <div className="dashboard-memory-setting">
+              <div className="dashboard-memory-setting-copy">
+                <strong>语料总预算</strong>
+                <span>所有进入 Local 检索的 Markdown 文件合计不能超过此大小</span>
+              </div>
+              <InputNumber
+                className="dashboard-config-control"
+                min={1}
+                precision={0}
+                value={maxTotalMb}
+                disabled={readOnly || providerMode !== 'local'}
+                aria-label="项目知识语料总预算（MB）"
+                addonAfter="MB"
+                onChange={setMaxTotalMb}
+              />
+            </div>
+            <span className="dashboard-settings-help-text">
+              {providerMode === 'local'
+                ? '保存配置后会按新预算刷新本地语料；单文件上限不能大于语料总预算。'
+                : '当前使用 Remote Provider；这些 Local 预算会保留，切回 Local 后继续生效。'}
+            </span>
           </section>
           {providerMode === 'local' && local && (
             <section
@@ -8037,7 +8145,7 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
                 <div className="flex w-full items-center gap-2.5 text-left">
                   <div className="min-w-0 flex-1">
                     <strong className="block truncate">{change.displayName}</strong>
-                    <span className="mt-0.5 block text-xs text-meta">
+                    <span className="mt-0.5 block truncate whitespace-nowrap text-xs text-meta">
                       {phaseLabel(change.phase)} · {change.tasks.completed}/{change.tasks.total}
                     </span>
                     {change.workspace && !change.workspace.current ? (

@@ -2497,6 +2497,7 @@ export const DEMO_PLUGIN_PAGES = [
     data: {
       provider: 'local',
       configured: true,
+      localLimits: { maxFileMb: 1, maxTotalMb: 32 },
       retrieval: '当前页面使用预置的项目知识，便于查看 Agent 在任务中会获得的上下文。',
       local: {
         available: true,
@@ -2621,6 +2622,8 @@ export const DEMO_PROJECT_CONFIG = {
   knowledge: {
     provider: 'local',
     localInclude: ['docs/architecture/**/*.md', 'packages/*/README.md'],
+    maxFileMb: 1,
+    maxTotalMb: 32,
   },
   native: {
     artifactRoot: '.comet/native',

@@ -8,6 +8,7 @@ import {
   rebuildNativeLocalExecution,
   writeNativeLocalExecution,
 } from './native-local-execution.js';
+import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import {
   inspectNativeSupervisorOverlay,
@@ -39,6 +40,7 @@ export interface NativePortableRecoveryResult {
     | 'invalid'
     | 'stale'
     | 'interrupted'
+    | 'execution-active'
     | 'workspace-mismatch'
     | 'overlay-incompatible'
     | 'done';
@@ -126,6 +128,8 @@ export async function recoverNativePortableChange(options: {
   paths: NativeProjectPaths;
   name: string;
   preserveRunningExecution?: boolean;
+  /** Doctor may take over only a legacy Runtime check whose owner identity is unavailable. */
+  recoverUnknownRuntimeCheck?: boolean;
 }): Promise<NativePortableRecoveryResult> {
   return withNativeMutationLock(
     options.paths,
@@ -189,6 +193,35 @@ export async function recoverNativePortableChange(options: {
         !options.preserveRunningExecution &&
         inspected.local?.execution !== null &&
         inspected.local?.execution?.status !== 'completed';
+      if (operationWasInterrupted && inspected.local?.execution?.status === 'running') {
+        const execution = inspected.local.execution;
+        const liveness = await inspectNativePortableCheckExecution(inspected.local);
+        const externallyOwnedVerifier =
+          execution.stage === 'verifying' &&
+          execution.actor === 'verifier' &&
+          execution.executionId !== null;
+        const mayRecoverUnknownRuntimeCheck =
+          liveness === 'unknown' &&
+          options.recoverUnknownRuntimeCheck === true &&
+          execution.stage === 'checking' &&
+          execution.actor === 'runtime';
+        if (
+          externallyOwnedVerifier ||
+          (liveness !== 'orphaned' && !mayRecoverUnknownRuntimeCheck)
+        ) {
+          return {
+            state,
+            local: inspected.local,
+            action: 'await-user',
+            reason: 'execution-active',
+            message: externallyOwnedVerifier
+              ? `Native Verifier execution ${execution.executionId} remains owned by its host task; record an explicit Verifier failure before retrying it.`
+              : liveness === 'unknown'
+                ? 'The Native Runtime check owner could not be proven to have exited; inspect the overlay or run Doctor with --repair to take over explicitly.'
+                : 'The Native Runtime check operation is still owned by a live process; wait for it to finish before recovering it.',
+          };
+        }
+      }
       if (operationWasInterrupted && inspected.local) {
         reason = 'interrupted';
         if (inspected.local.execution?.status === 'running') {

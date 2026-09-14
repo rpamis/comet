@@ -166,7 +166,7 @@ describe('Native portable recovery', () => {
     },
   );
 
-  it('abandons a lost running Verifier and returns to a fresh Verify boundary', async () => {
+  it('preserves a running Verifier until its host reports an explicit execution error', async () => {
     let state = await createBuild('recover-verifier');
     const runner = createNativeRunnerChannel();
     state = await submitNativePortableBuilderCandidate({
@@ -198,18 +198,31 @@ describe('Native portable recovery', () => {
       checks: resolved.checks,
       verifierExecutionId: 'lost-verifier',
     });
-
-    const recovered = await recoverNativePortableChange({ paths, name: state.name });
-    expect(recovered).toMatchObject({
-      action: 'reverify',
-      reason: 'interrupted',
+    await expect(recoverNativePortableChange({ paths, name: state.name })).resolves.toMatchObject({
+      action: 'await-user',
+      reason: 'execution-active',
+    });
+    const failed = await applyNativeRunnerInput({
+      paths,
+      name: state.name,
+      input: {
+        kind: 'verifier-execution-error',
+        summary: 'The host confirmed that the Verifier task ended without a result.',
+        stateVersion: state.state_version,
+        iteration: state.loop.iteration,
+        attempt: state.loop.attempt,
+        verifierExecutionRef: 'lost-verifier',
+      },
+      maxVerifyFailures: 5,
+    });
+    expect(failed).toMatchObject({
       state: {
         phase: 'verify',
         verification_result: 'pending',
         loop: { stage: 'verify-ready', attempt: 1 },
       },
     });
-    expect(recovered.state.loop.execution_failure_count).toBe(0);
+    expect(failed.state.loop.execution_failure_count).toBe(1);
 
     const rebound = await applyNativeRunnerInput({
       paths,
@@ -325,16 +338,26 @@ describe('Native portable recovery', () => {
       { id: 'A2', result: 'pending' },
     ]);
 
-    const recovered = await recoverNativePortableChange({ paths, name });
-    expect(recovered).toMatchObject({
-      action: 'reverify',
-      reason: 'interrupted',
+    const failed = await applyNativeRunnerInput({
+      paths,
+      name,
+      input: {
+        kind: 'verifier-execution-error',
+        summary: 'The host confirmed that the repair Verifier task was lost.',
+        stateVersion: state.state_version,
+        iteration: state.loop.iteration,
+        attempt: state.loop.attempt,
+        verifierExecutionRef: 'lost-repair-verifier',
+      },
+      maxVerifyFailures: 5,
+    });
+    expect(failed).toMatchObject({
       state: {
         phase: 'verify',
         loop: { stage: 'verify-ready', iteration: 2, attempt: 1 },
       },
     });
-    expect(recovered.state.acceptance.map(({ id, result }) => ({ id, result }))).toEqual([
+    expect(failed.state.acceptance.map(({ id, result }) => ({ id, result }))).toEqual([
       { id: 'A1', result: 'pending' },
       { id: 'A2', result: 'pending' },
     ]);

@@ -2,6 +2,7 @@ import type {
   ProjectKnowledgeDashboardSnapshot,
   ProjectKnowledgeDashboardSnapshotOptions,
 } from './types.js';
+import { DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG } from '../workflow-contract/project-config.js';
 
 const MAX_SCOPE_LENGTH = 512;
 const TOKEN_ENV_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -10,10 +11,15 @@ export function createProjectKnowledgeDashboardSnapshot(
   options: ProjectKnowledgeDashboardSnapshotOptions,
 ): ProjectKnowledgeDashboardSnapshot {
   const { config } = options;
+  const localLimits = {
+    maxFileMb: config.local?.max_file_mb ?? DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_file_mb,
+    maxTotalMb: config.local?.max_total_mb ?? DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_total_mb,
+  };
   if (config.provider !== 'remote') {
     return {
       provider: 'local',
       configured: true,
+      localLimits,
       retrieval:
         options.language === 'en'
           ? 'Local uses a workspace-isolated section index with bounded ripgrep fallback.'
@@ -43,6 +49,7 @@ export function createProjectKnowledgeDashboardSnapshot(
   return {
     provider: 'remote',
     configured,
+    localLimits,
     ...(remoteSummary === undefined ? {} : { remote: remoteSummary }),
     retrieval:
       options.language === 'en'

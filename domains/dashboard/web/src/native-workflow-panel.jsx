@@ -741,7 +741,7 @@ function NativeChangesExplorer({
                       <div className="flex w-full items-center gap-2.5 text-left">
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-semibold">{change.name}</div>
-                          <div className="mt-1 text-xs text-meta">
+                          <div className="mt-1 truncate whitespace-nowrap text-xs text-meta">
                             {PHASE_LABELS[change.phase] ?? '状态异常'}
                             {hasChildren
                               ? ` · ${progress.resolved}/${progress.total} 子变更`

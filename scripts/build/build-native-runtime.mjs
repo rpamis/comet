@@ -45,6 +45,23 @@ const esbuildOptions = {
   banner,
 };
 
+const RETRYABLE_WRITE_CODES = new Set(['UNKNOWN', 'EPERM', 'EACCES', 'EBUSY']);
+
+async function writeFileWithRetry(outputFile, output) {
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await fs.writeFile(outputFile, output);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!RETRYABLE_WRITE_CODES.has(error?.code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 async function bundledRuntime(entry) {
   const result = await build({ ...esbuildOptions, entryPoints: [entry] });
   if (result.outputFiles.length !== 1) {
@@ -106,6 +123,6 @@ if (process.argv.includes('--check')) {
 } else {
   for (const { outputFile, output } of outputs) {
     await fs.mkdir(path.dirname(outputFile), { recursive: true });
-    await fs.writeFile(outputFile, output);
+    await writeFileWithRetry(outputFile, output);
   }
 }

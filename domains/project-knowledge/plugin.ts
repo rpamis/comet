@@ -46,6 +46,7 @@ import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/pro
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import { RaceSafeReadError } from '../../platform/fs/race-safe-read.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import { DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG } from '../workflow-contract/project-config.js';
 
 export const PROJECT_KNOWLEDGE_PLUGIN_ID = 'comet.project-knowledge';
 const MAX_RECENT_DIAGNOSTICS = 3;
@@ -78,6 +79,37 @@ function stringList(value: unknown, label: string): string[] {
       throw new Error(`${label}[${index}] must be a non-empty string`);
     return entry.trim();
   });
+}
+
+function positiveInteger(value: unknown, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return value;
+}
+
+function nextLocalKnowledgeConfig(
+  current: ProjectKnowledgePluginOptions['knowledgeConfig']['local'],
+  input: Record<string, unknown>,
+) {
+  const maxFileMb = positiveInteger(input.maxFileMb, 'maxFileMb');
+  const maxTotalMb = positiveInteger(input.maxTotalMb, 'maxTotalMb');
+  if (maxFileMb === undefined && maxTotalMb === undefined) {
+    return current === undefined ? undefined : { ...current, include: [...current.include] };
+  }
+  const next = {
+    ...(current ?? { include: [] }),
+    include: [...(current?.include ?? [])],
+    max_file_mb:
+      maxFileMb ?? current?.max_file_mb ?? DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_file_mb,
+    max_total_mb:
+      maxTotalMb ?? current?.max_total_mb ?? DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_total_mb,
+  };
+  if (next.max_file_mb > next.max_total_mb) {
+    throw new Error('maxFileMb must not exceed maxTotalMb');
+  }
+  return next;
 }
 
 function recordSources(value: unknown): ProjectKnowledgeRecordSource[] {
@@ -503,12 +535,11 @@ async function createProjectKnowledgeModule(
           const providerValue = rawValue.provider;
           if (providerValue !== 'local' && providerValue !== 'remote')
             throw new Error('provider must be local or remote');
+          const local = nextLocalKnowledgeConfig(options.knowledgeConfig.local, rawValue);
           if (providerValue === 'local') {
             await options.updateKnowledgeConfig({
               provider: 'local',
-              ...(options.knowledgeConfig.local
-                ? { local: { include: [...options.knowledgeConfig.local.include] } }
-                : {}),
+              ...(local === undefined ? {} : { local }),
             });
           } else {
             const remoteValue = rawValue.remote;
@@ -523,9 +554,7 @@ async function createProjectKnowledgeModule(
               throw new Error('remote timeout must be an integer');
             await options.updateKnowledgeConfig({
               provider: 'remote',
-              ...(options.knowledgeConfig.local
-                ? { local: { include: [...options.knowledgeConfig.local.include] } }
-                : {}),
+              ...(local === undefined ? {} : { local }),
               remote: {
                 endpoint: remote.endpoint.trim(),
                 ...(typeof remote.tokenEnv === 'string' && remote.tokenEnv.trim()

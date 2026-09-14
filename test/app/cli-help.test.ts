@@ -26,6 +26,18 @@ describe('CLI help text', () => {
     },
   );
 
+  it.each(['state', 'guard', 'handoff', 'archive', 'check', 'classic', 'native'])(
+    'routes help %s to the facade-owned command help',
+    (command) => {
+      const directHelp = runCli(command, '--help');
+      const routedHelp = runCli('help', command);
+
+      expect(directHelp.status, directHelp.stderr).toBe(0);
+      expect(routedHelp.status, routedHelp.stderr).toBe(0);
+      expect(routedHelp.stdout).toBe(directHelp.stdout);
+    },
+  );
+
   it('keeps unknown-option failures machine readable with --json', () => {
     const result = runCli('status', '--bogus', '--json');
     expect(result.status).not.toBe(0);
@@ -38,15 +50,28 @@ describe('CLI help text', () => {
     await ensureCliBuilt(repositoryRoot);
   }, 120_000);
 
-  it('uses the evaluated-workflows tagline in CLI and package metadata', () => {
+  it('uses consistent English guidance in root help', () => {
     const help = runCli('--help');
+    const tagline = 'Agent Skill Harness For Turning Ideas Into Evaluated Workflows';
+
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).toContain(tagline);
+    expect(help.stdout).toContain('Usage: comet [options] [command]');
+    expect(help.stdout).toContain('Options:');
+    expect(help.stdout).toContain('Commands:');
+    expect(help.stdout).toContain('-v, --version');
+    expect(help.stdout).toContain('Output the current version');
+    expect(help.stdout).toContain('-h, --help');
+    expect(help.stdout).toContain('Display command help');
+    expect(help.stdout).not.toMatch(/[\u3400-\u9fff]/u);
+  });
+
+  it('keeps the evaluated-workflows tagline in package metadata', () => {
     const packageJson = JSON.parse(
       readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
     ) as { description: string; version: string };
     const tagline = 'Agent Skill Harness For Turning Ideas Into Evaluated Workflows';
 
-    expect(help.status, help.stderr).toBe(0);
-    expect(help.stdout).toContain(tagline);
     expect(packageJson.description).toBe(tagline);
     expect(packageJson.version).toBe('0.4.1');
   });
@@ -61,11 +86,11 @@ describe('CLI help text', () => {
     expect(publishHelp.status, publishHelp.stderr).toBe(0);
     expect(bundleHelp.status, bundleHelp.stderr).toBe(0);
     expect(skillHelp.status, skillHelp.stderr).toBe(0);
-    expect(creatorHelp.stdout).toContain('Skill Creator workspace');
+    expect(creatorHelp.stdout).toContain('Create or resume Skill Creator candidates');
     expect(creatorHelp.stdout).toContain('next [options] <name>');
     expect(creatorHelp.stdout).toContain('generate [options] <name>');
     expect(publishHelp.stdout).toContain('Review, approve, publish, and distribute');
-    expect(bundleHelp.stdout).toContain('Advanced Bundle backend');
+    expect(bundleHelp.stdout).toContain('Manage advanced /comet-any Bundle state and audits');
     expect(bundleHelp.stdout).not.toContain('factory-');
     expect(bundleHelp.stdout).not.toContain('authoring-plan');
     expect(bundleHelp.stdout).not.toContain('authoring-record');
@@ -88,23 +113,23 @@ describe('CLI help text', () => {
     const help = runCli('--help');
 
     expect(help.status, help.stderr).toBe(0);
-    expect(help.stdout).toContain('Read and update Classic workflow state');
+    expect(help.stdout).toContain('Read or update Classic workflow state');
     expect(help.stdout).toContain('Validate Classic phase requirements');
-    expect(help.stdout).toContain('Create and inspect Classic workflow handoffs');
+    expect(help.stdout).toContain('Create or inspect Classic workflow handoffs');
     expect(help.stdout).toContain('Archive completed Classic workflow changes');
     expect(help.stdout).not.toMatch(/^\s+(validate|intent|hook-guard)\b/mu);
     const facadeDescriptions = [
-      'Read and update Classic workflow state',
+      'Read or update Classic workflow state',
       'Validate Classic phase requirements',
-      'Create and inspect Classic workflow handoffs',
+      'Create or inspect Classic workflow handoffs',
       'Archive completed Classic workflow changes',
     ];
     expect(
       facadeDescriptions.filter((description) => help.stdout.includes(description)),
     ).toHaveLength(4);
-    expect(help.stdout).toMatch(/^\s+resume-probe \[options\] \[path\]\s+Probe whether/mu);
-    expect(help.stdout).toMatch(/^\s+classic \[args\.\.\.\]\s+Manage the Comet Classic workflow/mu);
-    expect(help.stdout).toContain('Manage the self-contained Comet Native workflow');
+    expect(help.stdout).toMatch(/^\s+resume-probe \[options\] \[path\]\s+Determine whether/mu);
+    expect(help.stdout).toMatch(/^\s+classic \[args\.\.\.\]\s+Manage the Classic workflow/mu);
+    expect(help.stdout).toContain('Manage the self-contained Native workflow');
   });
 
   it('does not expose the unpublished project rules plugin command', () => {
@@ -134,8 +159,15 @@ describe('CLI help text', () => {
 
     expect(help.status, help.stderr).toBe(0);
     expect(nativeHelp.status, nativeHelp.stderr).toBe(0);
-    expect(help.stdout).toMatch(/^\s+native \[args\.\.\.\]\s+Manage the self-contained/mu);
+    expect(help.stdout).toMatch(
+      /^\s+native \[args\.\.\.\]\s+Manage the self-contained Native workflow/mu,
+    );
     expect(nativeHelp.stdout).toContain('Usage: comet native <command> [options]');
+    expect(nativeHelp.stdout).toContain('Agent Quick Start:');
+    expect(nativeHelp.stdout).toContain('comet native status --json');
+    expect(nativeHelp.stdout).toContain('agent.continuation.commandArgs');
+    expect(nativeHelp.stdout).toContain('agent.workspace.cwd');
+    expect(nativeHelp.stdout).toContain('agent.continuation.inputOptions');
     expect(nativeHelp.stdout).toContain('root move <artifact-root>');
     expect(nativeHelp.stdout).toContain('spec sync <change-name> <capability> --input <json-file>');
     expect(nativeHelp.stdout).toContain('doctor [<change-name>]');
@@ -154,7 +186,7 @@ describe('CLI help text', () => {
 
     expect(evalHelp.status, evalHelp.stderr).toBe(0);
     expect(skillCheckHelp.status, skillCheckHelp.stderr).toBe(0);
-    expect(evalHelp.stdout).toContain('Evaluate a Skill or eval manifest with one command');
+    expect(evalHelp.stdout).toContain('Evaluate a Skill or eval manifest and generate results');
     expect(evalHelp.stdout).toContain('Usage: comet eval [options] [target]');
     expect(evalHelp.stdout).toContain('--suite <suite>');
     expect(evalHelp.stdout).toContain('--model <model>');
@@ -229,7 +261,9 @@ describe('CLI help text', () => {
     expect(help.status, help.stderr).toBe(0);
     expect(commandHelp.status, commandHelp.stderr).toBe(0);
     expect(help.stdout).toContain('resume-probe');
-    expect(commandHelp.stdout).toContain('Probe whether an active Comet workflow should resume');
+    expect(commandHelp.stdout).toContain(
+      'Determine whether the current request should resume an active Comet workflow',
+    );
     expect(commandHelp.stdout).toContain('--utterance');
     expect(commandHelp.stdout).toContain('--stdin');
     expect(commandHelp.stdout).toContain('--json');

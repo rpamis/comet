@@ -30,6 +30,11 @@ export const DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG: WorkflowMemoryProjectConfig
   learning: true,
   retrieval: true,
 };
+export const DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG = {
+  include: [],
+  max_file_mb: 1,
+  max_total_mb: 32,
+} satisfies WorkflowKnowledgeLocalConfig;
 export const DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG: WorkflowKnowledgeProjectConfig = {
   provider: 'local',
 };
@@ -165,6 +170,8 @@ type ProjectConfigCommentKey =
   | 'knowledge.provider'
   | 'knowledge.local'
   | 'knowledge.local.include'
+  | 'knowledge.local.max_file_mb'
+  | 'knowledge.local.max_total_mb'
   | 'knowledge.remote'
   | 'knowledge.remote.endpoint'
   | 'knowledge.remote.token_env'
@@ -209,6 +216,10 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     'knowledge.local': '# Additional project-relative Markdown globs used by the local provider.',
     'knowledge.local.include':
       '# One project-relative Markdown glob per list item; appended to the built-in corpus.',
+    'knowledge.local.max_file_mb':
+      '# Maximum size in MB for one local Markdown document. Increase it for long specifications or verification reports.',
+    'knowledge.local.max_total_mb':
+      '# Maximum total size in MB of the local Markdown retrieval corpus.',
     'knowledge.remote': '# Fixed Comet Retrieval API v1 settings used when provider is remote.',
     'knowledge.remote.endpoint': '# HTTPS endpoint; loopback HTTP is allowed.',
     'knowledge.remote.token_env': '# Optional environment variable containing the bearer token.',
@@ -269,6 +280,9 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
     'knowledge.provider': '# 项目知识 Provider。\n# 可选值：local | remote',
     'knowledge.local': '# Local Provider 额外加载的项目相对 Markdown 路径。',
     'knowledge.local.include': '# 每项填写一个项目相对 Markdown glob；会追加到内置语料。',
+    'knowledge.local.max_file_mb':
+      '# 单个本地 Markdown 文档允许参与检索的最大 MB 数；较长的规格或验证报告可按需提高。',
+    'knowledge.local.max_total_mb': '# 本地 Markdown 检索语料允许读取的总 MB 数。',
     'knowledge.remote': '# provider 为 remote 时使用的固定 Comet Retrieval API v1 配置。',
     'knowledge.remote.endpoint': '# HTTPS 地址；loopback 地址允许使用 HTTP。',
     'knowledge.remote.token_env': '# 可选的 Bearer Token 环境变量名。',
@@ -528,6 +542,14 @@ function positiveWorkflowSnapshotInteger(value: unknown, fallback: number, label
     throw new Error(`${label} must be a positive integer`);
   }
   return resolved as number;
+}
+
+function workflowKnowledgeLimitMb(value: unknown, fallback: number, label: string): number {
+  const resolved = positiveWorkflowSnapshotInteger(value, fallback, label);
+  if (resolved > Math.floor(Number.MAX_SAFE_INTEGER / (1024 * 1024))) {
+    throw new Error(`${label} is too large to convert to bytes safely`);
+  }
+  return resolved;
 }
 
 function normalizeWorkflowSnapshot(value: unknown): WorkflowNativeSnapshotConfig {
@@ -812,7 +834,7 @@ function normalizeKnowledgeLocal(value: unknown): WorkflowKnowledgeLocalConfig {
   const local = projectKnowledgeRecord(value, 'knowledge.local');
   const include = local.include ?? [];
   if (!Array.isArray(include)) throw new Error('knowledge.local.include must be an array');
-  return {
+  const normalized = {
     include: [
       ...new Set(
         include.map((pattern, index) =>
@@ -820,7 +842,21 @@ function normalizeKnowledgeLocal(value: unknown): WorkflowKnowledgeLocalConfig {
         ),
       ),
     ],
+    max_file_mb: workflowKnowledgeLimitMb(
+      local.max_file_mb,
+      DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_file_mb,
+      'knowledge.local.max_file_mb',
+    ),
+    max_total_mb: workflowKnowledgeLimitMb(
+      local.max_total_mb,
+      DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_total_mb,
+      'knowledge.local.max_total_mb',
+    ),
   };
+  if (normalized.max_file_mb > normalized.max_total_mb) {
+    throw new Error('knowledge.local.max_file_mb must not exceed max_total_mb');
+  }
+  return normalized;
 }
 
 function normalizeKnowledgeEndpoint(value: unknown): string {
@@ -1040,8 +1076,17 @@ export function workflowProjectConfigManagedValue(
     memory: config.memory ?? { ...DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG },
     knowledge: {
       provider: knowledge.provider,
-      ...(knowledge.local && knowledge.local.include.length > 0
-        ? { local: { include: [...knowledge.local.include] } }
+      ...(knowledge.local
+        ? {
+            local: {
+              include: [...knowledge.local.include],
+              max_file_mb:
+                knowledge.local.max_file_mb ?? DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_file_mb,
+              max_total_mb:
+                knowledge.local.max_total_mb ??
+                DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_total_mb,
+            },
+          }
         : {}),
       ...(knowledge.remote
         ? {
@@ -1144,10 +1189,12 @@ export function mergeWorkflowProjectConfigDocument(
       ...existingKnowledge,
       provider: validated.knowledge.provider,
     };
-    if (validated.knowledge.local && validated.knowledge.local.include.length > 0) {
+    if (validated.knowledge.local) {
       knowledge.local = {
         ...optionalRecord(existingKnowledge.local),
         include: [...validated.knowledge.local.include],
+        max_file_mb: validated.knowledge.local.max_file_mb,
+        max_total_mb: validated.knowledge.local.max_total_mb,
       };
     } else {
       delete knowledge.local;
@@ -1345,13 +1392,30 @@ function normalizeWorkflowKnowledgeIncludePattern(value, label) {
   return pattern;
 }
 
+function workflowKnowledgeLimitMb(value, fallback, label) {
+  const resolved = value ?? fallback;
+  if (!Number.isSafeInteger(resolved) || resolved < 1) {
+    throw new Error(label + ' must be a positive integer');
+  }
+  if (resolved > Math.floor(Number.MAX_SAFE_INTEGER / (1024 * 1024))) {
+    throw new Error(label + ' is too large to convert to bytes safely');
+  }
+  return resolved;
+}
+
 function normalizeWorkflowKnowledgeLocal(value) {
   const local = workflowConfigRecord(value, 'knowledge.local');
   const include = local.include ?? [];
   if (!Array.isArray(include)) throw new Error('knowledge.local.include must be an array');
-  return {
+  const normalized = {
     include: [...new Set(include.map((pattern, index) => normalizeWorkflowKnowledgeIncludePattern(pattern, 'knowledge.local.include[' + index + ']')))],
+    max_file_mb: workflowKnowledgeLimitMb(local.max_file_mb, ${DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_file_mb}, 'knowledge.local.max_file_mb'),
+    max_total_mb: workflowKnowledgeLimitMb(local.max_total_mb, ${DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_total_mb}, 'knowledge.local.max_total_mb'),
   };
+  if (normalized.max_file_mb > normalized.max_total_mb) {
+    throw new Error('knowledge.local.max_file_mb must not exceed max_total_mb');
+  }
+  return normalized;
 }
 
 function normalizeWorkflowKnowledgeProjectConfig(value) {

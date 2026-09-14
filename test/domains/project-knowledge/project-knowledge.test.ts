@@ -357,6 +357,7 @@ describe('project knowledge dashboard status', () => {
     ).toEqual({
       provider: 'local',
       configured: true,
+      localLimits: { maxFileMb: 1, maxTotalMb: 32 },
       retrieval: expect.stringContaining('section 索引'),
       diagnostics: [],
     });
@@ -1314,6 +1315,83 @@ describe('project knowledge corpus and local provider', () => {
       expect(corpus.find((entry) => entry.source === 'docs/comet/specs/native.md')?.kind).toBe(
         'native-spec',
       );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('includes long verification reports within the friendly default single-file limit', async () => {
+    const root = await tempProject();
+    try {
+      await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'workflows: [native]',
+          'native:',
+          '  artifact_root: docs',
+          '',
+        ].join('\n'),
+      );
+      const report = path.join(root, 'docs/comet/archive/2026-08-15-change/verification.md');
+      await fs.mkdir(path.dirname(report), { recursive: true });
+      await fs.writeFile(report, `# Verification\n\n${'evidence '.repeat(15_000)}`);
+
+      const diagnostics: Array<{ code: string; message: string }> = [];
+      const corpus = await discoverProjectKnowledgeCorpus({
+        projectRoot: root,
+        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      });
+
+      expect(corpus.map((entry) => entry.source)).toContain(
+        'docs/comet/archive/2026-08-15-change/verification.md',
+      );
+      expect(diagnostics.some(({ code }) => code === 'corpus-bytes')).toBe(false);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('uses configurable local corpus limits and names the exceeded total budget', async () => {
+    const root = await tempProject();
+    try {
+      await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, '.comet', 'config.yaml'),
+        [
+          'schema: comet.project.v1',
+          'default_workflow: native',
+          'workflows: [native]',
+          'knowledge:',
+          '  provider: local',
+          '  local:',
+          '    max_file_mb: 1',
+          '    max_total_mb: 1',
+          'native:',
+          '  artifact_root: docs',
+          '',
+        ].join('\n'),
+      );
+      for (const name of ['a.md', 'b.md']) {
+        const file = path.join(root, 'docs/comet/specs', name);
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, `# ${name}\n\n${'x'.repeat(600_000)}`);
+      }
+
+      const diagnostics: Array<{ code: string; message: string }> = [];
+      const corpus = await discoverProjectKnowledgeCorpus({
+        projectRoot: root,
+        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      });
+
+      expect(corpus.map((entry) => entry.source)).toEqual(['docs/comet/specs/a.md']);
+      expect(diagnostics).toContainEqual({
+        code: 'corpus-bytes',
+        message: expect.stringContaining('knowledge.local.max_total_mb'),
+      });
+      expect(diagnostics[0]?.message).toContain('语料总预算 1 MB');
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

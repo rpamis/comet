@@ -225,6 +225,11 @@ Run applicable focused checks.
     const status = await runNativeCli(['status', '--help']);
 
     expect(root.stdout).toContain('skill-coordinated');
+    expect(root.stdout).toContain('Agent Quick Start:');
+    expect(root.stdout).toContain('comet native status --json');
+    expect(root.stdout).toContain('agent.continuation.commandArgs');
+    expect(root.stdout).toContain('agent.workspace.cwd');
+    expect(root.stdout).toContain('agent.continuation.inputOptions');
     expect(next.stdout).toContain('continuation.runnerAction');
     expect(next.stdout).toContain('continuation.userCommunication');
     expect(next.stdout).toContain('--runner-input <file>');

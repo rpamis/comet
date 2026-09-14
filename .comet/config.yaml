@@ -53,3 +53,11 @@ knowledge:
   # 项目知识 Provider。
   # 可选值：local | remote
   provider: local
+  # Local Provider 额外加载的项目相对 Markdown 路径。
+  local:
+    # 每项填写一个项目相对 Markdown glob；会追加到内置语料。
+    include: []
+    # 单个本地 Markdown 文档允许参与检索的最大 MB 数；较长的规格或验证报告可按需提高。
+    max_file_mb: 2
+    # 本地 Markdown 检索语料允许读取的总 MB 数。
+    max_total_mb: 32

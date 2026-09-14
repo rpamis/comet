@@ -1,6 +1,7 @@
 interface NativeHelpEntry {
   usage: string;
   purpose: string;
+  agentQuickStart?: readonly string[];
   options?: readonly string[];
   output: string;
   examples?: readonly string[];
@@ -19,6 +20,12 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     usage: 'comet native <command> [options]',
     purpose:
       'Create, inspect, recover, and archive portable Native changes through Runtime-enforced, skill-coordinated steps.',
+    agentQuickStart: [
+      'Run `comet native status --json` to discover active changes.',
+      'Select an existing change with `select`, or create one with `new`.',
+      'In `agent.workspace.cwd`, execute the exact `agent.continuation.commandArgs` returned by Runtime.',
+      'Use `agent.continuation.inputOptions` templates for JSON input; do not reconstruct fields from memory.',
+    ],
     subcommands: [
       'init                         Initialize Native project configuration.',
       'root show                    Inspect the configured artifact root.',
@@ -243,6 +250,9 @@ export function nativeHelp(topicParts: readonly string[] = []): {
   const entry = HELP[topic];
   if (!entry) throw new Error(`Unknown Native help topic: ${topic}`);
   const sections = [`Usage: ${entry.usage}`, '', entry.purpose];
+  if (entry.agentQuickStart) {
+    sections.push('', section('Agent Quick Start', entry.agentQuickStart));
+  }
   if (entry.subcommands) sections.push('', section('Commands', entry.subcommands));
   const options = topic === '' ? entry.options : [...(entry.options ?? []), ...GLOBAL_OPTIONS];
   if (options && options.length > 0) sections.push('', section('Options', options));

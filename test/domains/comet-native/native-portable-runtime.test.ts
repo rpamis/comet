@@ -37,7 +37,15 @@ import {
 } from '../../../domains/comet-native/native-portable-runtime.js';
 import { sameNativeCheckPlan as sameNativeCheckPlanModule } from '../../../domains/comet-native/native-portable-checks.js';
 import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
+import { ensureCliBuilt } from '../../helpers/ensure-cli-built.js';
+import {
+  processIsAlive,
+  spawnNativePortableProcess,
+  waitForCondition,
+  waitForProcessExit,
+} from '../../helpers/native-portable-process.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
+import { recoverNativePortableChange } from '../../../domains/comet-native/native-portable-recovery.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 
 function passedReview(reviewerExecutionRef: string) {
@@ -629,6 +637,189 @@ children:
       { id: passedPlan.id, status: 'passed', executionCount: 1 },
       { id: plan.id, status: 'interrupted', executionCount: 3 },
     ]);
+  });
+
+  it('recovers an orphaned running check after its Runtime owner process exits', async () => {
+    await createNativePortableChange({ paths, name: 'orphaned-owner', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'orphaned-owner');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- A check survives an interrupted Runtime host.\n',
+    );
+    let state = await confirmNativePortableShape({ paths, name: 'orphaned-owner' });
+    const runner = createNativeRunnerChannel();
+    state = await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'orphaned-builder',
+        }),
+        candidateId: 'orphaned-candidate',
+        summary: 'Implemented.',
+        addressedAcceptanceIds: ['A1'],
+        review: passedReview('orphaned-reviewer'),
+      },
+    });
+    const marker = path.join(root, 'check-starts.txt');
+    const release = path.join(root, 'release-check');
+    const plan = {
+      id: 'orphaned-check',
+      name: 'Orphaned check',
+      executable: process.execPath,
+      argv: [
+        '-e',
+        "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'start\\n');setInterval(()=>{if(fs.existsSync(process.argv[2]))process.exit(0)},25)",
+        marker,
+        release,
+      ],
+      cwdRef: '.',
+      timeoutMs: 10_000,
+      repeatable: true,
+    } as const;
+    const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
+    await ensureCliBuilt(repositoryRoot);
+    const file = nativeLocalExecutionFile(paths, state.name);
+    const owner = spawnNativePortableProcess({
+      repositoryRoot,
+      payload: { action: 'execute-checks', paths, name: state.name, plans: [plan] },
+    });
+    await waitForCondition(async () => {
+      const local = await readNativeLocalExecution(file);
+      const reserved =
+        local?.execution?.ownerPid === owner.pid &&
+        local.checks[0]?.activeProcess?.status === 'running';
+      const mutationLockReleased = await fs
+        .access(path.join(paths.locksDir, 'root-move.lock'))
+        .then(() => false)
+        .catch(() => true);
+      return reserved && mutationLockReleased;
+    }, 'Runtime owner did not reserve and start its check');
+    const running = await readNativeLocalExecution(file);
+    const activePid =
+      running?.checks[0]?.activeProcess?.status === 'running'
+        ? running.checks[0].activeProcess.pid
+        : undefined;
+    expect(activePid).toEqual(expect.any(Number));
+
+    owner.kill('SIGKILL');
+    await waitForProcessExit(owner);
+    expect(processIsAlive(owner.pid!)).toBe(false);
+    if (activePid !== undefined && processIsAlive(activePid)) process.kill(activePid, 'SIGKILL');
+    await waitForCondition(
+      () => activePid !== undefined && !processIsAlive(activePid),
+      'Check process remained alive after its Runtime owner was terminated',
+    );
+    expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/)).toHaveLength(1);
+
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'interrupted' }] });
+    await fs.writeFile(release, 'release\n');
+    await expect(
+      retryNativePortableCheckPlan({ paths, name: state.name, checkIds: [plan.id] }),
+    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'passed' }] });
+    expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/)).toHaveLength(2);
+  });
+
+  it('returns an interrupted non-repeatable check to Build before exposing retry', async () => {
+    await createNativePortableChange({ paths, name: 'non-repeatable-interrupted', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'non-repeatable-interrupted');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- Interrupted non-repeatable checks require a new candidate.\n',
+    );
+    let state = await confirmNativePortableShape({ paths, name: 'non-repeatable-interrupted' });
+    const runner = createNativeRunnerChannel();
+    state = await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'non-repeatable-builder',
+        }),
+        candidateId: 'non-repeatable-candidate',
+        summary: 'Implemented.',
+        addressedAcceptanceIds: ['A1'],
+        review: passedReview('non-repeatable-reviewer'),
+      },
+    });
+    const plan = {
+      id: 'non-repeatable',
+      name: 'Non-repeatable check',
+      executable: process.execPath,
+      argv: ['-e', 'setInterval(() => {}, 1000)'],
+      cwdRef: '.',
+      timeoutMs: 20,
+      repeatable: false,
+    } as const;
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'interrupted' }] });
+
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+    ).rejects.toThrow('returned to Build');
+    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
+      phase: 'build',
+      loop: { next_action: 'submit-builder-candidate' },
+    });
+  });
+
+  it('does not infer that an external Verifier ended when its dispatch process exits', async () => {
+    await createNativePortableChange({ paths, name: 'external-verifier-owner', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'external-verifier-owner');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Acceptance examples\n- Verifier execution remains owned by its host task.\n',
+    );
+    let state = await confirmNativePortableShape({ paths, name: 'external-verifier-owner' });
+    const runner = createNativeRunnerChannel();
+    state = await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'external-verifier-builder',
+        }),
+        candidateId: 'external-verifier-candidate',
+        summary: 'Implemented.',
+        addressedAcceptanceIds: ['A1'],
+        review: passedReview('external-verifier-reviewer'),
+      },
+    });
+    const executed = await executeNativePortableCheckPlan({ paths, name: state.name, plans: [] });
+    const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
+    await ensureCliBuilt(repositoryRoot);
+    const dispatcher = spawnNativePortableProcess({
+      repositoryRoot,
+      payload: {
+        action: 'dispatch-verifier',
+        paths,
+        name: state.name,
+        checks: executed.checks,
+        verifierExecutionId: 'external-verifier-task',
+      },
+    });
+    await waitForProcessExit(dispatcher);
+    expect(dispatcher.exitCode).toBe(0);
+
+    await expect(recoverNativePortableChange({ paths, name: state.name })).resolves.toMatchObject({
+      action: 'await-user',
+      reason: 'execution-active',
+    });
+    await expect(
+      readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name)),
+    ).resolves.toMatchObject({
+      execution: {
+        actor: 'verifier',
+        executionId: 'external-verifier-task',
+        status: 'running',
+      },
+    });
   });
 
   it('rejects an unavailable check before reserving a local execution operation', async () => {

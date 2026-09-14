@@ -14,6 +14,38 @@ const PURIFY_CONFIG = {
 const NATIVE_ACCEPTANCE_EVIDENCE_BLOCK =
   /<!--\s*comet-native:acceptance-evidence:start\s*-->\s*([\s\S]*?)\s*<!--\s*comet-native:acceptance-evidence:end\s*-->/gu;
 
+const NATIVE_STATE_FIELD_DESCRIPTIONS = Object.freeze({
+  schema: 'Native 状态文件的格式版本。',
+  name: '当前 change 的唯一名称。',
+  change: '当前 change 的名称；旧版或展示用状态可能使用此字段。',
+  workflow: '生成并维护这份状态的工作流类型。',
+  language: '需求、规格和验证文档使用的语言。',
+  phase: '当前所处的工作流阶段。',
+  status: '当前 change 的整体状态。',
+  state_version: '状态修订号；每次正式状态变更后递增。',
+  brief: '需求简报文件的项目内路径。',
+  shape_confirmation_hash: '已确认需求形态的内容摘要，用于识别需求是否变化。',
+  children_contract_hash: 'Supervisor 子变更契约的内容摘要。',
+  coordination_mode: '当前 change 的执行协调方式。',
+  spec_changes: '本次 change 涉及的能力规格及其来源。',
+  workspace: '执行分支、目标分支和隔离方式等工作区绑定信息。',
+  loop: '当前目标轮次、实现迭代、尝试次数和下一步动作。',
+  acceptance: '验收项、当前结果及其证据绑定。',
+  builder_handoff: 'Builder 最近一次交付的候选、摘要和已处理验收项。',
+  blockers: '仍阻止工作流继续的明确问题。',
+  verification: '最近一次独立验证的状态、结论和证据。',
+  history: '已完成轮次的结果历史。',
+  history_overflow: '因历史条目上限而省略的结果汇总。',
+  verification_result: '当前候选的最终验证结果。',
+  verification_report: '验证报告文件的项目内路径。',
+  archived: '该 change 是否已归档。',
+  created_at: '该 change 创建时的时间戳。',
+  updated_at: '这份状态最近一次更新的时间戳。',
+  local_execution: '当前设备上的执行状态；不属于可迁移的 portable 状态。',
+  portable_artifacts: '可随 change 一起迁移、用于恢复工作流的产物路径。',
+  integrity: '用于校验状态与契约、范围是否匹配的摘要信息。',
+});
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -129,17 +161,30 @@ function summarizeNativeAcceptanceEvidence(content) {
   });
 }
 
-function renderKvTable(entries, { className = 'yaml-kv-table' } = {}) {
+function renderStructuredValue(value) {
+  if (isScalar(value)) return escapeHtml(formatScalar(value));
+  return `<pre class="structured-json-value"><code class="language-json">${escapeHtml(formatPrettyJson(value))}</code></pre>`;
+}
+
+function renderKvTable(entries, { className = 'yaml-kv-table', fieldDescriptions = null } = {}) {
   const rows = entries
     .map(([key, value]) => {
-      const display = isScalar(value) ? formatScalar(value) : formatPrettyJson(value);
-      return `<tr><th scope="row">${escapeHtml(key)}</th><td>${escapeHtml(display)}</td></tr>`;
+      const description = fieldDescriptions?.[key];
+      return [
+        '<tr>',
+        `<th scope="row">${escapeHtml(key)}</th>`,
+        fieldDescriptions
+          ? `<td class="yaml-field-description">${escapeHtml(description ?? '该字段由当前状态格式定义。')}</td>`
+          : '',
+        `${fieldDescriptions ? '<td class="yaml-field-value">' : '<td>'}${renderStructuredValue(value)}</td>`,
+        '</tr>',
+      ].join('');
     })
     .join('');
 
   return [
     `<table class="${escapeHtml(className)}">`,
-    '<thead><tr><th scope="col">字段</th><th scope="col">值</th></tr></thead>',
+    `<thead><tr><th scope="col">字段</th>${fieldDescriptions ? '<th scope="col">说明</th>' : ''}<th scope="col">值</th></tr></thead>`,
     `<tbody>${rows}</tbody>`,
     '</table>',
   ].join('');
@@ -177,7 +222,7 @@ function renderObjectArrayTable(items, { className = 'json-array-table' } = {}) 
   ].join('');
 }
 
-function renderStructuredObject(data) {
+function renderStructuredObject(data, options = {}) {
   const scalarEntries = [];
   const nestedSections = [];
 
@@ -197,7 +242,7 @@ function renderStructuredObject(data) {
 
   const parts = [];
   if (scalarEntries.length > 0) {
-    parts.push(renderKvTable(scalarEntries));
+    parts.push(renderKvTable(scalarEntries, options));
   }
   parts.push(...nestedSections);
   return parts.join('\n') || '<p>这个产物是空文件。</p>';
@@ -207,7 +252,7 @@ function renderStructuredObject(data) {
  * Render flat / map-like YAML as a key-value HTML table.
  * Non-object documents and parse failures fall back to fenced Markdown YAML.
  */
-export async function renderYamlTable(content) {
+export async function renderYamlTable(content, { schema } = {}) {
   const raw = String(content ?? '');
   if (!raw.trim()) {
     return sanitizePreviewHtml('<p>这个产物是空文件。</p>');
@@ -222,7 +267,11 @@ export async function renderYamlTable(content) {
     if (typeof data !== 'object' || Array.isArray(data)) {
       return renderMarkdown(['```yaml', raw.replace(/\n$/, ''), '```'].join('\n'));
     }
-    return sanitizePreviewHtml(renderStructuredObject(data));
+    return sanitizePreviewHtml(
+      renderStructuredObject(data, {
+        fieldDescriptions: schema === 'native-state' ? NATIVE_STATE_FIELD_DESCRIPTIONS : null,
+      }),
+    );
   } catch {
     return renderMarkdown(['```yaml', raw.replace(/\n$/, ''), '```'].join('\n'));
   }

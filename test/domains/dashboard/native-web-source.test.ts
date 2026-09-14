@@ -106,6 +106,18 @@ describe('Native dashboard web source contracts', () => {
     expect(source).not.toContain('const animatedTotal = useAnimatedNumber(total, 850, total)');
   });
 
+  it('keeps Native and Classic change summaries on one line', async () => {
+    const [nativeSource, classicSource] = await Promise.all([
+      readNativePanelSource(),
+      fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'main.jsx'), 'utf8'),
+    ]);
+
+    expect(nativeSource).toContain('className="mt-1 truncate whitespace-nowrap text-xs text-meta"');
+    expect(classicSource).toContain(
+      'className="mt-0.5 block truncate whitespace-nowrap text-xs text-meta"',
+    );
+  });
+
   it('keeps the three-pane Native workspace visible when the selected view is empty', async () => {
     const [source, styles] = await Promise.all([
       readNativePanelSource(),

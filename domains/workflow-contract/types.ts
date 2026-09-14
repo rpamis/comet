@@ -60,6 +60,8 @@ export interface WorkflowKnowledgeRemoteConfig {
 
 export interface WorkflowKnowledgeLocalConfig {
   include: string[];
+  max_file_mb?: number;
+  max_total_mb?: number;
 }
 
 export interface WorkflowKnowledgeProjectConfig {

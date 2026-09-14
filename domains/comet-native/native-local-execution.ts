@@ -98,6 +98,7 @@ function parseCheck(value: unknown, index: number): NativeLocalCheckState {
       'startedAt',
       'completedAt',
       'log',
+      'activeProcess',
       'evidence',
       'evidenceDigest',
     ]),
@@ -130,6 +131,35 @@ function parseCheck(value: unknown, index: number): NativeLocalCheckState {
   }
   const timeoutMs = integerValue(root.timeoutMs, `${label}.timeoutMs`);
   if (timeoutMs < 1) throw new Error(`${label}.timeoutMs must be positive`);
+  let activeProcess: NativeLocalCheckState['activeProcess'];
+  if (Object.hasOwn(root, 'activeProcess')) {
+    if (root.activeProcess === null) {
+      activeProcess = null;
+    } else {
+      const activeRoot = record(root.activeProcess, `${label}.activeProcess`);
+      const activeStatus = enumValue(
+        activeRoot.status,
+        ['starting', 'running'] as const,
+        `${label}.activeProcess.status`,
+      );
+      rejectUnknown(activeRoot, new Set(['status', 'pid', 'identity']), `${label}.activeProcess`);
+      if (activeStatus === 'starting') {
+        if (Object.hasOwn(activeRoot, 'pid') || Object.hasOwn(activeRoot, 'identity')) {
+          throw new Error(`${label}.activeProcess starting state cannot contain process identity`);
+        }
+        activeProcess = { status: 'starting' };
+      } else {
+        const pid = integerValue(activeRoot.pid, `${label}.activeProcess.pid`, 1);
+        activeProcess = {
+          status: 'running',
+          pid,
+          ...(Object.hasOwn(activeRoot, 'identity')
+            ? { identity: stringValue(activeRoot.identity, `${label}.activeProcess.identity`) }
+            : {}),
+        };
+      }
+    }
+  }
   return {
     id: stringValue(root.id, `${label}.id`),
     name: stringValue(root.name, `${label}.name`),
@@ -144,6 +174,7 @@ function parseCheck(value: unknown, index: number): NativeLocalCheckState {
     startedAt,
     completedAt,
     log: stringValue(root.log, `${label}.log`),
+    ...(Object.hasOwn(root, 'activeProcess') ? { activeProcess } : {}),
     ...(Object.hasOwn(root, 'evidence')
       ? { evidence: enumValue(root.evidence, ['runtime'] as const, `${label}.evidence`) }
       : {}),
@@ -193,6 +224,8 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
         'status',
         'startedAt',
         'requestCheckRounds',
+        'ownerPid',
+        'ownerIdentity',
       ]),
       'Native local execution',
     );
@@ -224,6 +257,17 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
         executionRoot.requestCheckRounds,
         'Native local execution.requestCheckRounds',
       ),
+      ...(Object.hasOwn(executionRoot, 'ownerPid')
+        ? { ownerPid: integerValue(executionRoot.ownerPid, 'Native local execution.ownerPid', 1) }
+        : {}),
+      ...(Object.hasOwn(executionRoot, 'ownerIdentity')
+        ? {
+            ownerIdentity: stringValue(
+              executionRoot.ownerIdentity,
+              'Native local execution.ownerIdentity',
+            ),
+          }
+        : {}),
     };
   }
 

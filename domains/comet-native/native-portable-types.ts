@@ -201,6 +201,10 @@ export interface NativeLocalExecutionState {
     status: 'running' | 'completed' | 'interrupted';
     startedAt: string;
     requestCheckRounds: number;
+    /** Host process that owns a running Runtime operation. Optional on legacy overlays. */
+    ownerPid?: number;
+    /** Process creation identity used to avoid PID reuse. */
+    ownerIdentity?: string;
   };
   checks: NativeLocalCheckState[];
 }
@@ -219,6 +223,9 @@ export interface NativeLocalCheckState {
   startedAt: string | null;
   completedAt: string | null;
   log: string;
+  /** Child process lifecycle persisted before and after spawn. */
+  activeProcess?:
+    null | { status: 'starting' } | { status: 'running'; pid: number; identity?: string };
   /** Set only by the Runtime after a real process completion. */
   evidence?: 'runtime';
   /** Digest tying the Runtime result fields to the captured log content. */

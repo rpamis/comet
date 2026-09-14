@@ -597,7 +597,7 @@ export interface NativeDoctorFinding {
   code: string;
   message: string;
   path?: string;
-  repair?: 'continue' | 'rollback' | 'migrate' | 'truncate-tail';
+  repair?: 'continue' | 'rollback' | 'migrate' | 'truncate-tail' | 'recover';
   repairCommand?: string;
 }
 

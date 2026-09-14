@@ -20,11 +20,13 @@ const collect = (value: string, previous: string[]): string[] => [...previous, v
 program
   .name('comet')
   .description(COMET_TAGLINE)
-  .version(getCurrentVersion(), '-v, --version', 'output the current version');
+  .version(getCurrentVersion(), '-v, --version', 'Output the current version')
+  .helpOption('-h, --help', 'Display command help')
+  .addHelpCommand('help [command]', 'Display help for a command');
 
 program
   .command('init [path]')
-  .description('Initialize Comet workflow in your project')
+  .description('Initialize Comet workflows and Agent integrations in a project')
   .option('--yes', 'Auto-install missing components, skip existing')
   .option('--skip-existing', 'Never overwrite existing components')
   .option('--overwrite', 'Overwrite manifest-managed files')
@@ -52,7 +54,7 @@ program
 
 program
   .command('status [path]')
-  .description('Show active changes and workflow status')
+  .description('Show active changes and workflow status for a project')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { statusCommand } = await import('../commands/status.js');
@@ -61,7 +63,7 @@ program
 
 program
   .command('task [path]')
-  .description('为普通 Comet Skill 任务选择上下文并在结束时记录结果')
+  .description('Select context for a regular Comet Skill task and record its outcome')
   .requiredOption('--task <text>', '用户原始请求')
   .option('--path <path>', '当前任务目标路径')
   .option('--phase <phase>', '当前工作阶段，例如 build 或 verify')
@@ -103,7 +105,9 @@ program
     await cometTaskCommand(targetPath, options);
   });
 
-const workflow = program.command('workflow').description('Resolve the configured Comet workflow');
+const workflow = program
+  .command('workflow')
+  .description('Resolve whether /comet should use the configured Native or Classic workflow');
 
 workflow
   .command('resolve [path]')
@@ -118,7 +122,9 @@ workflow
     await workflowResolveCommand(targetPath, options);
   });
 
-const memory = program.command('memory').description('查看和维护跨会话的个人记忆');
+const memory = program
+  .command('memory')
+  .description('Inspect and maintain personal memory across sessions');
 
 memory
   .command('list [path]')
@@ -267,7 +273,9 @@ memory
     await personalMemoryPauseCommand(targetPath, options);
   });
 
-const knowledge = program.command('knowledge').description('查看和查询当前项目的项目知识');
+const knowledge = program
+  .command('knowledge')
+  .description('Inspect and query Project Knowledge for the current project');
 knowledge
   .command('review [path]')
   .description('读取宿主 Agent 待评审经验或提交评审结果')
@@ -380,7 +388,7 @@ knowledge
 
 program
   .command('resume-probe [path]')
-  .description('Probe whether an active Comet workflow should resume')
+  .description('Determine whether the current request should resume an active Comet workflow')
   .option('--utterance <text>', 'User request to classify', '')
   .option('--stdin', 'Read the user request from stdin')
   .option('--json', 'Output as JSON')
@@ -396,7 +404,7 @@ program
 
 program
   .command('dashboard [path]')
-  .description('Launch the local Comet dashboard in your browser')
+  .description('Launch the local Comet Dashboard in a browser')
   .option('--port <port>', 'HTTP port to bind (default 4321, auto-bumps if busy)', (value) => {
     if (!/^\d+$/u.test(value)) {
       throw new Error(`Invalid --port value: "${value}". Use an integer between 0 and 65535.`);
@@ -416,7 +424,7 @@ program
 
 program
   .command('doctor [path]')
-  .description('Diagnose Comet installation health')
+  .description('Diagnose Comet installation health and repairable issues')
   .option('--json', 'Output as JSON')
   .option('--repair', 'Repair managed Hook, Rule, and deterministic selection state')
   .option('--yes', 'Authorize repairable project integrations such as CodeGraph indexing')
@@ -440,7 +448,7 @@ program
 
 program
   .command('update [path]')
-  .description('Update comet skill files to latest version')
+  .description('Update Comet and its installed Skills, Rules, and Hooks')
   .option('--json', 'Output as JSON')
   .option('--platform <platform>', 'Platform target to update')
   .addOption(new Option('--language <lang>', 'Language for skills').choices(['en', 'zh']))
@@ -470,7 +478,7 @@ program
 
 program
   .command('uninstall [path]')
-  .description('Remove Comet skills, rules, and hooks from your project or global scope')
+  .description('Remove Comet Skills, Rules, and Hooks from project or global scope')
   .option('--json', 'Output as JSON')
   .addOption(new Option('--scope <scope>', 'Uninstall scope').choices(['global', 'project']))
   .option('--all-projects', 'Uninstall all indexed project-scope Comet installs')
@@ -491,7 +499,7 @@ program
 
 program
   .command('eval')
-  .description('Evaluate a Skill or eval manifest with one command')
+  .description('Evaluate a Skill or eval manifest and generate results')
   .argument('[target]', 'Local Skill directory, SKILL.md, or comet/eval.yaml')
   .option('--project <dir>', 'Repository root that contains eval/')
   .option('--manifest <path>', 'Path to comet/eval.yaml')
@@ -520,9 +528,9 @@ program
   });
 
 const classicDescriptions: Record<PublicClassicCommand, string> = {
-  state: 'Read and update Classic workflow state',
-  guard: 'Validate Classic phase requirements (may execute checks); --apply advances',
-  handoff: 'Create and inspect Classic workflow handoffs',
+  state: 'Read or update Classic workflow state',
+  guard: 'Validate Classic phase requirements; --apply advances after checks pass',
+  handoff: 'Create or inspect Classic workflow handoffs',
   archive: 'Archive completed Classic workflow changes',
   check: 'Execute and record Classic build or verification checks',
 };
@@ -542,7 +550,7 @@ for (const command of PUBLIC_CLASSIC_COMMANDS) {
 
 program
   .command('classic [args...]')
-  .description('Manage the Comet Classic workflow and its configured artifact root')
+  .description('Manage the Classic workflow and its configured artifact root')
   .allowUnknownOption()
   .allowExcessArguments()
   .helpOption(false)
@@ -553,7 +561,7 @@ program
 
 program
   .command('native [args...]')
-  .description('Manage the self-contained Comet Native workflow')
+  .description('Manage the self-contained Native workflow')
   .allowUnknownOption()
   .allowExcessArguments()
   .helpOption(false)
@@ -643,7 +651,7 @@ const publish = program
 
 const creator = program
   .command('creator')
-  .description('Skill Creator workspace for /comet-any creation and resume flows');
+  .description('Create or resume Skill Creator candidates for /comet-any');
 
 creator
   .command('list')
@@ -827,7 +835,7 @@ publish
 
 const bundle = program
   .command('bundle')
-  .description('Advanced Bundle backend for /comet-any Skill Creator state and audits');
+  .description('Manage advanced /comet-any Bundle state and audits');
 
 const draft = bundle.command('draft').description('Manage Bundle drafts');
 
@@ -967,6 +975,24 @@ async function runCli(): Promise<void> {
   try {
     // Check owns every argument after --, including flags Commander would consume.
     const raw = process.argv.slice(process.argv[2] === '--' ? 3 : 2);
+    if (raw[0] === 'help' && raw.length === 2) {
+      const target = raw[1];
+      if (target === 'native') {
+        const { runNativeFacade } = await import('../commands/native.js');
+        process.exitCode = await runNativeFacade(['--help']);
+        return;
+      }
+      if (target === 'classic') {
+        const { runClassicGroupFacade } = await import('../commands/classic.js');
+        process.exitCode = await runClassicGroupFacade(['--help']);
+        return;
+      }
+      if (PUBLIC_CLASSIC_COMMANDS.includes(target as PublicClassicCommand)) {
+        const { runClassicFacade } = await import('../commands/classic.js');
+        process.exitCode = await runClassicFacade(target as PublicClassicCommand, ['--help']);
+        return;
+      }
+    }
     if (raw[0] === 'check') {
       const { runClassicFacade } = await import('../commands/classic.js');
       process.exitCode = await runClassicFacade('check', raw.slice(1));

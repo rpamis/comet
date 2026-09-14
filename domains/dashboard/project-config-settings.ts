@@ -2,6 +2,7 @@ import path from 'path';
 
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import {
+  DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG,
   defaultWorkflowProjectConfig,
   mergeWorkflowProjectConfigDocument,
   parseWorkflowProjectConfigDocument,
@@ -51,6 +52,8 @@ export interface DashboardClassicConfigSettings {
 export interface DashboardKnowledgeConfigSettings {
   provider: 'local' | 'remote';
   localInclude: string[];
+  maxFileMb: number;
+  maxTotalMb: number;
 }
 
 export interface DashboardProjectConfigSettings {
@@ -138,6 +141,10 @@ function dashboardKnowledgeSettings(
   return {
     provider: config.knowledge?.provider ?? 'local',
     localInclude: [...(config.knowledge?.local?.include ?? [])],
+    maxFileMb:
+      config.knowledge?.local?.max_file_mb ?? DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_file_mb,
+    maxTotalMb:
+      config.knowledge?.local?.max_total_mb ?? DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_total_mb,
   };
 }
 
@@ -174,6 +181,11 @@ function parseUpdate(value: unknown): DashboardProjectConfigUpdate {
                 'knowledge.provider',
               ),
               localInclude: knowledgeIncludeList((knowledgeValue.localInclude ?? []) as unknown),
+              maxFileMb: positiveInteger(knowledgeValue.maxFileMb, 'knowledge.local.max_file_mb'),
+              maxTotalMb: positiveInteger(
+                knowledgeValue.maxTotalMb,
+                'knowledge.local.max_total_mb',
+              ),
             },
           }),
       native: {
@@ -312,9 +324,11 @@ function nextKnowledgeConfig(
   return {
     ...withoutLocal,
     provider: input.provider,
-    ...(input.localInclude.length > 0
-      ? { local: { ...(existing.local ?? {}), include: [...input.localInclude] } }
-      : {}),
+    local: {
+      include: [...input.localInclude],
+      max_file_mb: input.maxFileMb,
+      max_total_mb: input.maxTotalMb,
+    },
   };
 }
 

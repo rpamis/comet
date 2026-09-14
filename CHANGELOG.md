@@ -2,6 +2,20 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.2] - 2026-09-14
+
+### Changed
+
+- **Agent-oriented CLI help**: Present every root `comet --help` description in consistent, action-oriented English, route `comet help` for facade commands to their complete Runtime help, and show the Native discovery and continuation sequence so Agents can reliably find and execute the next workflow action.
+- **Project Knowledge corpus limits**: Allow projects to configure the Local Provider's per-file and total corpus limits in MB through `.comet/config.yaml` or Dashboard settings. New defaults accept Markdown files up to 1 MB and a corpus up to 32 MB.
+
+### Fixed
+
+- **Native Runtime check recovery**: Persist Runtime owner and active check process identity so interrupted Verify checks recover only after prior processes exit, Doctor cannot take over live work, and externally owned Verifier tasks keep their existing execution handle.
+- **Dashboard change summaries**: Keep Native and Classic change status summaries on one line with truncation, so selecting a row no longer changes its text layout.
+- **Native workflow state preview**: Explain `comet-state.yaml` fields and render nested values as formatted JSON blocks instead of undifferentiated table text.
+- **Project Knowledge diagnostics**: Distinguish per-file and total-corpus limit failures, name the exact setting to adjust, and stop excluding ordinary long verification reports under the previous fixed 64 KiB limit.
+
 ## What's Changed [0.4.1] - 2026-09-14
 
 ### Added

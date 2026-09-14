@@ -129,7 +129,11 @@ describe('Dashboard project config settings', () => {
             ...current,
             knowledge: {
               provider: 'local',
-              local: { include: ['docs/**/*.md'] },
+              local: {
+                include: ['docs/**/*.md'],
+                max_file_mb: 2,
+                max_total_mb: 64,
+              },
             },
           },
         ),
@@ -139,7 +143,12 @@ describe('Dashboard project config settings', () => {
     );
 
     const loaded = await collectDashboardProjectConfigSettings(projectRoot);
-    expect(loaded.knowledge).toEqual({ provider: 'local', localInclude: ['docs/**/*.md'] });
+    expect(loaded.knowledge).toEqual({
+      provider: 'local',
+      localInclude: ['docs/**/*.md'],
+      maxFileMb: 2,
+      maxTotalMb: 64,
+    });
 
     const saved = await updateDashboardProjectConfigSettings(projectRoot, {
       expectedRevision: loaded.revision,
@@ -151,6 +160,8 @@ describe('Dashboard project config settings', () => {
         knowledge: {
           provider: 'local',
           localInclude: ['docs/architecture/**/*.md', 'packages/*/README.md'],
+          maxFileMb: 4,
+          maxTotalMb: 128,
         },
         native: loaded.native,
         classic: loaded.classic,
@@ -160,6 +171,8 @@ describe('Dashboard project config settings', () => {
     expect(saved.knowledge).toEqual({
       provider: 'local',
       localInclude: ['docs/architecture/**/*.md', 'packages/*/README.md'],
+      maxFileMb: 4,
+      maxTotalMb: 128,
     });
     expect(
       parseWorkflowProjectConfigDocument(
@@ -167,7 +180,11 @@ describe('Dashboard project config settings', () => {
       ).config?.knowledge,
     ).toEqual({
       provider: 'local',
-      local: { include: ['docs/architecture/**/*.md', 'packages/*/README.md'] },
+      local: {
+        include: ['docs/architecture/**/*.md', 'packages/*/README.md'],
+        max_file_mb: 4,
+        max_total_mb: 128,
+      },
     });
   });
 });

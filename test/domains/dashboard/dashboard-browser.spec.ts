@@ -401,7 +401,7 @@ test('keeps cached settings visible when fresh revalidation fails', async ({ pag
     workflows: ['native', 'classic'],
     ambientResume: true,
     hookAllowPaths: [],
-    knowledge: { provider: 'local', localInclude: [] },
+    knowledge: { provider: 'local', localInclude: [], maxFileMb: 2, maxTotalMb: 64 },
     native: {
       artifactRoot: 'docs',
       language: 'zh-CN',
@@ -478,6 +478,8 @@ test('keeps cached settings visible when fresh revalidation fails', async ({ pag
       .first()
       .getByText('Native', { exact: true }),
   ).toBeVisible();
+  await expect(settingsDialog.getByLabel('项目知识单文件上限（MB）')).toHaveValue('2');
+  await expect(settingsDialog.getByLabel('项目知识语料总预算（MB）')).toHaveValue('64');
   await expect.poll(() => configLoads).toBe(2);
   await expect(settingsDialog.getByText('正在同步最新数据…', { exact: true })).toHaveCount(0);
   releaseSettingsRefresh?.();
@@ -2401,6 +2403,47 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   ).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
+});
+
+test('keeps change summaries single-line and explains Native workflow state', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto('/?demo');
+
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  const nativeSummaries = page.locator('.native-change-row .text-meta').filter({ hasText: '·' });
+  await expect(nativeSummaries.first()).toBeVisible();
+  await expect
+    .poll(() =>
+      nativeSummaries.evaluateAll((elements) =>
+        elements.every((element) => getComputedStyle(element).whiteSpace === 'nowrap'),
+      ),
+    )
+    .toBe(true);
+
+  await page.getByRole('button', { name: '工作流状态' }).click();
+  const preview = page.locator('.dashboard-artifact-preview-panel');
+  await expect(preview.getByRole('columnheader', { name: '说明' })).toBeVisible();
+  await expect(preview.getByText('当前所处的工作流阶段。')).toBeVisible();
+  await expect(preview.locator('tbody tr').first().locator('td').first()).toContainText(
+    'Native 状态文件的格式版本。',
+  );
+  await expect(
+    preview.locator('pre.structured-json-value code.language-json').first(),
+  ).toBeVisible();
+
+  await page.locator('.dashboard-artifact-preview-backdrop').click();
+  await page.getByRole('menuitem', { name: 'Classic 工作流' }).click();
+  const classicSummaries = page
+    .locator('.dashboard-change-row .text-meta')
+    .filter({ hasText: '·' });
+  await expect(classicSummaries.first()).toBeVisible();
+  await expect
+    .poll(() =>
+      classicSummaries.evaluateAll((elements) =>
+        elements.every((element) => getComputedStyle(element).whiteSpace === 'nowrap'),
+      ),
+    )
+    .toBe(true);
 });
 
 test('keeps personal memory and project knowledge text readable at desktop density', async ({
