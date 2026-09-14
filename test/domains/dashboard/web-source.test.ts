@@ -25,6 +25,10 @@ async function readWebsiteDemoEntrySource(): Promise<string> {
   );
 }
 
+async function readWebsiteDemoBuildScript(): Promise<string> {
+  return fs.readFile(path.resolve('scripts', 'build', 'build-website-dashboard-demo.mjs'), 'utf8');
+}
+
 async function readWebsiteDemoSnippet(): Promise<string> {
   return fs.readFile(path.resolve('website', 'snippets', 'dashboard-website-demo.jsx'), 'utf8');
 }
@@ -62,6 +66,15 @@ async function readWorkspaceLayoutSource(): Promise<string> {
 }
 
 describe('dashboard web source contracts', () => {
+  it('builds the JSON-wrapped assets consumed by the website demo', async () => {
+    const source = await readWebsiteDemoBuildScript();
+
+    expect(source).toContain('dashboard-website-demo.js.json');
+    expect(source).toContain('dashboard-website-demo.css.json');
+    expect(source).toContain('JSON.stringify({ js })');
+    expect(source).toContain('JSON.stringify({ css:');
+  });
+
   it('cycles the phase wave through complete multi-color palettes', async () => {
     const styles = await readDashboardStyles();
 

@@ -8,6 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const dashboardRoot = path.join(root, 'domains/dashboard/web');
 const outputRoot = path.join(root, 'website/assets/dashboard-website-demo');
 const cssPath = path.join(outputRoot, 'dashboard-website-demo.css');
+const jsPath = path.join(outputRoot, 'dashboard-website-demo.js');
 
 await build({ configFile: path.join(dashboardRoot, 'website.vite.config.mjs') });
 
@@ -99,7 +100,16 @@ stylesheet.walkRules((rule) => {
   });
 });
 
-await fs.writeFile(cssPath, stylesheet.toString());
+const js = await fs.readFile(jsPath, 'utf8');
+await Promise.all([
+  fs.writeFile(
+    path.join(outputRoot, 'dashboard-website-demo.css.json'),
+    JSON.stringify({ css: stylesheet.toString() }),
+  ),
+  fs.writeFile(path.join(outputRoot, 'dashboard-website-demo.js.json'), JSON.stringify({ js })),
+  fs.unlink(cssPath),
+  fs.unlink(jsPath),
+]);
 await fs.copyFile(
   path.join(dashboardRoot, 'public/favicon.png'),
   path.join(outputRoot, 'favicon.png'),

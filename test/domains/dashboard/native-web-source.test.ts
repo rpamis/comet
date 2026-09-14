@@ -93,11 +93,17 @@ describe('Native dashboard web source contracts', () => {
     expect(source).not.toContain('<NativeWorkflowPanel native={snapshot.native} />');
   });
 
-  it('animates the Native Changes Explorer total like the Classic count', async () => {
-    const source = await readNativePanelSource();
+  it('uses the same scrolling Badge for Native and Classic change totals', async () => {
+    const [source, classicSource] = await Promise.all([
+      readNativePanelSource(),
+      fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'main.jsx'), 'utf8'),
+    ]);
 
-    expect(source).toContain('const animatedTotal = useAnimatedNumber(total, 850, total)');
-    expect(source).toContain('{Math.round(animatedTotal)}');
+    expect(source).toContain(
+      '<Badge count={total} showZero className="native-changes-count ml-2" />',
+    );
+    expect(classicSource).toContain('<Badge count={total} showZero className="ml-2" />');
+    expect(source).not.toContain('const animatedTotal = useAnimatedNumber(total, 850, total)');
   });
 
   it('keeps the three-pane Native workspace visible when the selected view is empty', async () => {

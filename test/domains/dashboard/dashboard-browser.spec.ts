@@ -4270,18 +4270,17 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       const nativeList = workspace.locator('.native-change-list');
       const nativeDetail = workspace.locator('.native-change-detail');
       const rightPanel = workspace.locator('.dashboard-workspace-right');
-      const nativeCount = nativeExplorer.locator('.native-changes-count');
+      const nativeCount = nativeExplorer.locator('.native-changes-count .ant-badge-count');
       await expect(nativeCount).toHaveText(/^\d+$/);
+      await expect(nativeCount).toHaveClass(/ant-scroll-number/u);
+      await expect
+        .poll(() => nativeCount.locator('.ant-scroll-number-only').count())
+        .toBeGreaterThan(0);
       await expect(nativeCount).toHaveCSS('background-color', 'rgb(11, 24, 51)');
       await expect(nativeCount).toHaveCSS('color', 'rgb(255, 255, 255)');
       await expect(nativeCount).toHaveCSS('min-width', '20px');
       await expect(nativeCount).toHaveCSS('padding', '0px 8px');
       await expect(nativeCount).toHaveCSS('font-weight', '400');
-      await expect(nativeCount).toHaveCSS(
-        'font-family',
-        '"Segoe UI Variable", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
-      );
-      await expect(nativeCount).toHaveCSS('letter-spacing', '-0.182px');
       await expect(nativeCount).toHaveCSS('white-space', 'nowrap');
       await expect(nativeExplorer).toHaveCSS('font-size', '14px');
       const nativeHeader = nativeExplorer.locator('.native-changes-explorer-header');

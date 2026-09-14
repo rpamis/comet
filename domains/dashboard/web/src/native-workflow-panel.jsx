@@ -11,7 +11,7 @@ import {
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Button, Skeleton, Tooltip } from 'antd';
+import { Badge, Button, Skeleton, Tooltip } from 'antd';
 import {
   isNativePhaseRunning,
   nativeChangeStatusPresentation,
@@ -614,7 +614,6 @@ function NativeChangesExplorer({
   const [expandedParents, setExpandedParents] = useState(() => new Set());
   const knownParentsRef = useRef(new Set());
   const normalizedQuery = query.trim().toLowerCase();
-  const animatedTotal = useAnimatedNumber(total, 850, total);
 
   useEffect(() => {
     const parentKeys = new Set(
@@ -665,7 +664,7 @@ function NativeChangesExplorer({
     <aside className="native-changes-explorer flex min-h-0 flex-col rounded-lg border border-border bg-bg shadow-raised">
       <div className="native-changes-explorer-header flex flex-none items-center border-b border-border-soft">
         <h3 className="font-semibold">
-          Changes Explorer <span className="native-changes-count">{Math.round(animatedTotal)}</span>
+          Changes Explorer <Badge count={total} showZero className="native-changes-count ml-2" />
         </h3>
       </div>
       <div className="native-changes-explorer-body flex min-h-0 flex-1 flex-col">
