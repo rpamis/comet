@@ -30,6 +30,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Codex CodeGraph diagnostics**: Detect project-scoped CodeGraph MCP configuration, apply project overrides over user configuration, and report disabled or invalid effective entries without modifying either config file.
+- **dsh Hook support**: Accept `dsh` (DeepSeek Harness) as a Comet Hook platform in the hook router, so installed dsh hooks dispatch writes to the workflow guard instead of failing every request as an unsupported platform.
 - **Cross-platform Classic checks**: Ignore build-tool caches inside the configured process home when comparing check inputs, preventing valid Linux and macOS builds from being rejected as changed during verification.
 - **Personal Memory learning**: Preserve reusable workflow observations through review failures, distinguish skipped, deferred, candidate, promoted, and deduplicated outcomes, bind completion checks to the current project and change, and expose matching diagnostics through CLI, Dashboard, and Remote Providers.
 - **Personal Memory diagnostics**: Keep recent learning checks per project, show bounded reasons and task ownership in Dashboard diagnostics, and preserve confirmed Remote Provider capabilities when older services do not expose learning diagnostics.

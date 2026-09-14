@@ -72,6 +72,7 @@ export const COMET_HOOK_PLATFORM_IDS = new Set([
   'trae',
   'trae-cn',
   'grok',
+  'dsh',
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
