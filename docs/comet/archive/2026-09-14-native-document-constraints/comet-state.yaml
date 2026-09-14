@@ -1,0 +1,443 @@
+schema: comet.native.v4
+name: native-document-constraints
+language: zh-CN
+phase: archive
+status: done
+state_version: 16
+brief: brief.md
+document_constraints_version: 1
+shape_confirmation_hash: 2c5473402d8eece2f18a8b22c6608c5b92aac2de6d558a5ac8257068e7fa4167
+spec_changes:
+  - capability: native-document-constraints
+    operation: create
+    source: specs/native-document-constraints/spec.md
+workspace:
+  isolation: current
+  change_branch: "042"
+  target_branch: "042"
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 3
+  iteration: 2
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: brief 缺失、缺少必需章节、章节为空或只含模板占位内容时，Shape
+      准备确认被阻止，并返回对应路径、章节及补齐方式；有效的中文和英文文档均可通过。
+    result: passed
+    reason:
+      text: Strict brief validation and actionable Shape rejection are covered by
+        focused tests.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: brief 的非目标、决策或待解决问题确实为空时，可以用明确的无相关事项说明表达；真实阻塞问题仍阻止确认。
+    result: passed
+    reason:
+      text: Explicit no-item statements are accepted while blocking content remains
+        rejected.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: 没有目标 Spec 且没有适用的明确豁免理由时不能确认 Shape；不改变产品行为的工作可以记录理由后豁免，能力删除继续使用正式删除声明。
+    result: passed
+    reason:
+      text: Formal remove-only changes are accepted without an unnecessary exemption;
+        missing exemptions remain blocked.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: 已声明的 Spec 缺失、为空或仍为模板占位时不能完成 Shape；确认准备之后发生的文档变化不能沿用过期确认进入 Build。
+    result: passed
+    reason:
+      text: Previously declared target Specs cannot disappear from discovered changes
+        or be hidden by an exemption.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: Hook 能明确归属于当前 change 的正式文档写入若指向错误位置，则拒绝并提示配置决定的正确路径；正确路径允许按现有正式产物规则编辑。
+    result: passed
+    reason:
+      text: Formal target source path validation reports the configured path.
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: 普通项目文档不会仅因名为 brief.md 或 spec.md 被拦截；缺少可归属写入事件时，Runtime 仍独立执行阶段文档检查。
+    result: passed
+    reason:
+      text: Checks are bound to discovered formal change artifacts rather than
+        arbitrary filenames.
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: 自定义 artifact_root 下的检查和纠错路径与默认目录一致遵循项目配置，不硬编码 docs；多文件写入继续整体裁决。
+    result: passed
+    reason:
+      text: Validation resolves through configured Native project paths.
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: 升级前已确认并处于 Build、Verify 或待归档状态的需求保留进度，不仅因新文档规范被追溯阻塞；新建需求及旧需求重新确认 Shape
+      时必须满足新约束，已归档需求保持兼容。
+    result: passed
+    reason:
+      text: The constraint marker is applied at new or reconfirmed Shape while legacy
+        later-phase state remains compatible.
+      truncated: false
+  - id: A9
+    source: brief.md
+    text: 完整合法的文档可经过用户确认正常进入 Build；状态、报告仍由 Runtime 管理，需求变化与候选失效继续遵循现有机制。
+    result: passed
+    reason:
+      text: Valid documents proceed through the existing Runtime-managed Shape
+        transition.
+      truncated: false
+  - id: A10
+    source: brief.md
+    text: Build 提交候选前检查适用新约束的正式文档；缺失、为空或位置错误时拒绝候选，但必须允许补写或返回正确阶段修复。
+    result: passed
+    reason:
+      text: Build rechecks marked changes and returns actionable repair errors.
+      truncated: false
+  - id: A11
+    source: brief.md
+    text: Verify 接受通过结论前核对正式文档、已确认需求与候选的一致性；文档漂移不能沿用旧通过结论，语义遗漏仍由独立 Verifier 判断。
+    result: passed
+    reason:
+      text: Verify drift inspection revalidates marked formal documents.
+      truncated: false
+  - id: A12
+    source: brief.md
+    text: Archive 核对文档、当前验收结论和待发布 Spec；缺失或过期的 verification.md 由 Runtime
+      从有效状态重建，修复后可重试归档。
+    result: passed
+    reason:
+      text: Archive inspection revalidates marked formal documents before
+        finalization.
+      truncated: false
+  - id: A13
+    source: brief.md
+    text: 恢复任务时明确当前阶段、正确文档路径、缺失项和可执行的下一动作。
+    result: passed
+    reason:
+      text: Failure messages identify the formal path and the resumable continuation
+        action.
+      truncated: false
+  - id: A14
+    source: brief.md
+    text: 每类新增阻塞必须通过“触发拒绝、按提示修复、重试成功”的回归验证，不要求手改 Runtime 状态或绕过 Hook。
+    result: passed
+    reason:
+      text: Focused regression coverage now exercises reject-repair-retry for
+        exemption, missing target content, and formal path blockers.
+      truncated: false
+  - id: A15
+    source: brief.md
+    text: 恢复动作可以安全重试并保留已有工作，不能出现“先修复才允许返回修复阶段”的循环依赖。
+    result: passed
+    reason:
+      text: Recovery preserves Runtime state and directs repair without requiring
+        state edits or Hook bypass.
+      truncated: false
+builder_handoff:
+  candidate_id: 90b707f3-429c-44a7-b146-69f3836e6416
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:b1c47864-e7ca-4714-acac-6a37c6f88752
+  iteration: 2
+  summary:
+    text: Fixed the remove-only and previously declared missing-Spec recovery gaps,
+      and added reject-repair-retry regression coverage for exemption, missing
+      target content, and formal path checks. The document constraints remain
+      recoverable and preserve legacy progress.
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+    - A11
+    - A12
+    - A13
+    - A14
+    - A15
+  checks:
+    - name:
+        text: Native document-constraint regression tests
+        truncated: false
+      result: passed
+      note:
+        text: "Focused Vitest: 7 tests passed, including remove-only, missing declared
+          Spec, and reject-repair-retry coverage."
+        truncated: false
+    - name:
+        text: Native Archive regression tests
+        truncated: false
+      result: passed
+      note:
+        text: "Focused Vitest: 23 tests passed."
+        truncated: false
+    - name:
+        text: Native Runtime, artifacts, and Hook regression tests
+        truncated: false
+      result: passed
+      note:
+        text: "Focused Vitest: 67 tests passed across artifacts, portable Runtime, and
+          Hook Guard."
+        truncated: false
+    - name:
+        text: Native document format checks
+        truncated: false
+      result: passed
+      note:
+        text: Prettier check passed for changed source, tests, Skills, changelog, and
+          formal change documents.
+        truncated: false
+    - name:
+        text: Native lint and architecture checks
+        truncated: false
+      result: passed
+      note:
+        text: pnpm lint passed, including architecture lint.
+        truncated: false
+    - name:
+        text: Generated Runtime consistency
+        truncated: false
+      result: passed
+      note:
+        text: Native and Entry Runtime rebuilt; pnpm check:generated passed.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: Real host Hook execution and model-based independent semantic verification
+        were not run in this local Builder turn.
+      truncated: false
+    - text: The earlier Windows orphaned Runtime-process timing test exceeded its wait
+        budget; the focused Runtime and Hook regression rerun passed 67 tests.
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-09-14T15:47:36.715Z
+blockers: []
+verification:
+  candidate_id: 90b707f3-429c-44a7-b146-69f3836e6416
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:4e378375-2da5-447d-91b8-6811e2ca226f
+  iteration: 2
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: native-document-constraints-vitest-v2
+      name:
+        text: Native document-constraint regression tests after repair
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-document-constraints.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 7360
+    - id: native-archive-vitest-v2
+      name:
+        text: Native Archive regression tests after repair
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-portable-archive.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 82895
+    - id: native-runtime-hook-vitest-v2
+      name:
+        text: Native Runtime artifacts and Hook regression tests after repair
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-native/native-artifacts.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-portable-runtime.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-hook-guard.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 80173
+    - id: native-document-format-v2
+      name:
+        text: Native document format checks after repair
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: prettier
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: domains/comet-native/native-artifacts.ts
+          truncated: false
+        - text: domains/comet-native/native-next-command.ts
+          truncated: false
+        - text: domains/comet-native/native-portable-archive.ts
+          truncated: false
+        - text: domains/comet-native/native-portable-requirements.ts
+          truncated: false
+        - text: domains/comet-native/native-portable-runtime.ts
+          truncated: false
+        - text: domains/comet-native/native-portable-state.ts
+          truncated: false
+        - text: domains/comet-native/native-portable-types.ts
+          truncated: false
+        - text: test/domains/comet-native/native-document-constraints.test.ts
+          truncated: false
+        - text: assets/skills-zh/comet-native/SKILL.md
+          truncated: false
+        - text: assets/skills/comet-native/SKILL.md
+          truncated: false
+        - text: CHANGELOG.md
+          truncated: false
+        - text: docs/comet/changes/native-document-constraints/brief.md
+          truncated: false
+        - text: docs/comet/changes/native-document-constraints/specs/native-document-constraints/spec.md
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2164
+    - id: native-lint-v2
+      name:
+        text: Native lint and architecture checks after repair
+        truncated: false
+      argv_display:
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 12139
+    - id: native-generated-runtime-v2
+      name:
+        text: Generated Native and Entry Runtime consistency after repair
+        truncated: false
+      argv_display:
+        - text: check:generated
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2055
+  summary:
+    text: Independent read-only verification passed all 15 acceptance items. The
+      remove-only false positive, previously declared missing Spec bypass, and
+      reject-repair-retry evidence gaps are fixed. Runtime checks, generated
+      assets, formatting, lint, and focused Native suites passed.
+    truncated: false
+  risks:
+    - text: Real host Hook execution, published package installation, and model-based
+        semantic Eval were not run.
+      truncated: false
+    - text: The earlier Windows orphaned Runtime-process timing test exceeded its wait
+        budget; the current focused Runtime and Hook rerun passed 67 tests.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-14T15:56:57.702Z
+history:
+  - goal_cycle: 1
+    iteration: 0
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-14T14:47:14.540Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native Shape artifacts changed
+      truncated: false
+    completed_at: 2026-09-14T15:15:52.106Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A3
+      - A4
+      - A14
+    summary:
+      text: "Independent verification found three recoverable gaps in the document
+        constraint implementation: remove-only changes, missing previously
+        declared Specs, and incomplete reject-repair-retry regression evidence.
+        Related local checks passed, but the candidate must return to Build for
+        correction."
+      truncated: false
+    completed_at: 2026-09-14T15:44:03.562Z
+  - goal_cycle: 3
+    iteration: 2
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: Independent read-only verification passed all 15 acceptance items. The
+        remove-only false positive, previously declared missing Spec bypass, and
+        reject-repair-retry evidence gaps are fixed. Runtime checks, generated
+        assets, formatting, lint, and focused Native suites passed.
+      truncated: false
+    completed_at: 2026-09-14T15:56:57.702Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-14T12:29:56.390Z
