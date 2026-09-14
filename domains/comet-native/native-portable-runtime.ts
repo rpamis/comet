@@ -10,6 +10,7 @@ export {
 } from './native-portable-storage.js';
 export {
   NATIVE_PORTABLE_BRIEF_TEMPLATE,
+  assertNativePortableDocuments,
   createNativePortableChange,
   ensureNativePortableAcceptanceCurrentLocked,
   inspectNativePortableAcceptanceDrift,
@@ -21,6 +22,8 @@ export {
   returnNativePortableStateToShapeLocked,
   setNativePortableWorkspaceFinish,
   syncNativePortableSpecReferences,
+  validateNativePortableDocuments,
+  formatNativeDocumentConstraintFindings,
   type NativePortableExpectedContinuation,
   type NativePortableExpectedContinuationAction,
 } from './native-portable-requirements.js';

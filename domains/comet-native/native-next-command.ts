@@ -25,6 +25,7 @@ import {
   inspectNativePortableAcceptanceDrift,
   isNativePortableChange,
   prepareNativePortableShapeConfirmation,
+  assertNativePortableDocuments,
   readNativePortableChange,
   recoverNativeSupervisorFinalVerificationOnResume,
   resolveNativePortableVerifierBlocker,
@@ -326,6 +327,9 @@ export async function nativeNextCommand(
         input,
         projectRoot,
       });
+      if (initialState.document_constraints_version === 1) {
+        await assertNativePortableDocuments({ paths: configured.paths, state: initialState });
+      }
     } catch (error) {
       return {
         ...errorResult('next', error),
@@ -596,6 +600,7 @@ export async function nativeNextCommand(
       state = await prepareNativePortableShapeConfirmation({
         paths: configured.paths,
         name,
+        enforceDocumentConstraints: true,
         ...(coordinationMode === undefined ? {} : { coordinationMode }),
         expectedContinuation,
       });

@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { atomicWriteText } from './native-atomic-file.js';
-import { nativeBriefHasBlockingQuestion } from './native-artifacts.js';
+import {
+  nativeBriefHasBlockingQuestion,
+  validateNativeBrief,
+  validateNativeSpecDocumentText,
+} from './native-artifacts.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { canonicalHash } from './native-canonical-hash.js';
 import {
@@ -60,6 +64,7 @@ import {
   writeNativeVerificationReportSnapshot,
 } from './native-evidence-storage.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
+import type { NativeArtifactValidation, NativeFinding } from './native-types.js';
 import type { NativeWorkspaceBinding } from './native-workspace.js';
 import { readProjectConfig, writeProjectConfig } from './native-config.js';
 import { parseCapabilityAssociationDraft } from '../project-knowledge/capability-discovery.js';
@@ -79,6 +84,126 @@ import { returnNativePortableStateToFinalVerificationLocked } from './native-por
 export const NATIVE_PORTABLE_BRIEF_TEMPLATE = nativeBriefTemplate('en');
 
 const NATIVE_CAPABILITY_ASSOCIATION_FILE = 'capability-association.yaml';
+
+function hasExplicitSpecExemption(source: string): boolean {
+  return /(?:no\s+product\s+behavior\s+change|documentation[- ]only|不改变产品行为|不涉及产品行为|仅文档)[^\n]*[:：]\s*[^\n\s]/iu.test(
+    source,
+  );
+}
+
+export function formatNativeDocumentConstraintFindings(
+  findings: readonly NativeFinding[],
+  options: { change: string; phase: NativePortablePhase },
+): string {
+  const details = findings
+    .map(({ code, message, path: ref }) => `- ${code}${ref ? ` (${ref})` : ''}: ${message}`)
+    .join('\n');
+  return [
+    `Native ${options.phase} document checks failed for ${options.change}.`,
+    details,
+    'Recovery: edit the reported formal file in the configured Native change directory, then rerun the latest continuation command. The current state and existing work are preserved; do not edit comet-state.yaml or bypass the Hook.',
+  ].join('\n');
+}
+
+export async function validateNativePortableDocuments(options: {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+  specChanges?: readonly NativePortableSpecChange[];
+}): Promise<NativeArtifactValidation> {
+  const changeDir = nativePortableChangeDir(options.paths, options.state.name);
+  const findings: NativeFinding[] = [
+    ...(await validateNativeBrief(changeDir, options.state.brief, { strict: true })).findings,
+  ];
+  let briefSource = '';
+  try {
+    briefSource = (
+      await readNativeBoundedTextFile({
+        root: changeDir,
+        ref: options.state.brief,
+        maxBytes: null,
+        includeHash: false,
+      })
+    ).text;
+  } catch {
+    // validateNativeBrief already reports the bounded/missing read failure.
+  }
+  const specChanges = options.specChanges ?? options.state.spec_changes;
+  const targetSpecs = specChanges.filter(({ operation }) => operation !== 'remove');
+  const declaredTargetSpecs = options.state.spec_changes.filter(
+    ({ operation }) => operation !== 'remove',
+  );
+  const discoveredCapabilities = new Set(targetSpecs.map(({ capability }) => capability));
+  if (options.specChanges !== undefined) {
+    for (const declared of declaredTargetSpecs) {
+      if (discoveredCapabilities.has(declared.capability)) continue;
+      findings.push({
+        code: 'spec-document-missing',
+        message: `Previously declared target Spec is missing: specs/${declared.capability}/spec.md. Restore the complete file or record the intended capability deletion as a formal remove entry.`,
+        path: `specs/${declared.capability}/spec.md`,
+      });
+    }
+  }
+  const formalRemovalsOnly =
+    specChanges.length > 0 && specChanges.every(({ operation }) => operation === 'remove');
+  if (
+    targetSpecs.length === 0 &&
+    declaredTargetSpecs.length === 0 &&
+    !formalRemovalsOnly &&
+    !hasExplicitSpecExemption(briefSource)
+  ) {
+    findings.push({
+      code: 'spec-exemption-missing',
+      message:
+        'This change declares no target Spec. Add a complete target Spec, or record a concrete reason such as “No product behavior change: documentation-only wording.” in brief.md.',
+      path: options.state.brief,
+    });
+  }
+  for (const spec of targetSpecs) {
+    const expectedSource = `specs/${spec.capability}/spec.md`;
+    if (spec.source !== expectedSource) {
+      findings.push({
+        code: 'spec-source-path-invalid',
+        message: `Target Spec must be staged at ${expectedSource}.`,
+        path: spec.source ?? expectedSource,
+      });
+      continue;
+    }
+    try {
+      const source = (
+        await readNativeBoundedTextFile({
+          root: changeDir,
+          ref: expectedSource,
+          maxBytes: null,
+          includeHash: false,
+        })
+      ).text;
+      findings.push(...validateNativeSpecDocumentText(source, expectedSource).findings);
+    } catch (error) {
+      findings.push({
+        code: 'spec-document-missing',
+        message: `Target Spec cannot be read: ${(error as Error).message}. Restore the complete file at ${expectedSource}.`,
+        path: expectedSource,
+      });
+    }
+  }
+  return { valid: findings.length === 0, findings };
+}
+
+export async function assertNativePortableDocuments(options: {
+  paths: NativeProjectPaths;
+  state: NativePortableState;
+  specChanges?: readonly NativePortableSpecChange[];
+}): Promise<void> {
+  const validation = await validateNativePortableDocuments(options);
+  if (!validation.valid) {
+    throw new Error(
+      formatNativeDocumentConstraintFindings(validation.findings, {
+        change: options.state.name,
+        phase: options.state.phase,
+      }),
+    );
+  }
+}
 
 export type NativePortableExpectedContinuationAction =
   | 'prepare-shape-confirmation'
@@ -634,6 +759,7 @@ export async function prepareNativePortableShapeConfirmation(options: {
   name: string;
   coordinationMode?: NativeSupervisorCoordinationMode;
   expectedContinuation?: NativePortableExpectedContinuation;
+  enforceDocumentConstraints?: boolean;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
@@ -649,6 +775,9 @@ export async function prepareNativePortableShapeConfirmation(options: {
         throw new Error('Native Shape confirmation can only be prepared from active Shape');
       }
       const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
+      if (options.enforceDocumentConstraints === true) {
+        await assertNativePortableDocuments({ paths: options.paths, state, specChanges });
+      }
       const shape = await readNativePortableAcceptance({
         paths: options.paths,
         state,
@@ -704,6 +833,7 @@ export async function prepareNativePortableShapeConfirmation(options: {
         state: shapeState,
         acceptance: acceptance.map((entry) => ({ ...entry })),
       });
+      if (options.enforceDocumentConstraints === true) next.document_constraints_version = 1;
       if (children) {
         next.children_contract_hash = hashNativeParentContract({
           acceptance: next.acceptance,
@@ -730,6 +860,18 @@ export async function inspectNativePortableAcceptanceDrift(options: {
   state: NativePortableState;
   ignoreSpecOperationFor?: ReadonlySet<string>;
 }): Promise<{ drifted: boolean; reason: string | null }> {
+  if (options.state.document_constraints_version === 1) {
+    const documents = await validateNativePortableDocuments(options);
+    if (!documents.valid) {
+      const first = documents.findings[0];
+      return {
+        drifted: true,
+        reason: first
+          ? `Native formal documents are invalid (${first.code}${first.path ? `: ${first.path}` : ''})`
+          : 'Native formal documents are invalid',
+      };
+    }
+  }
   const specChanges = await discoverNativePortableSpecChanges(options);
   const ignoredOperations =
     options.ignoreSpecOperationFor ??

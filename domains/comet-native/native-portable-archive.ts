@@ -25,6 +25,7 @@ import {
   returnNativePortableStateToFinalVerificationLocked,
   returnNativePortableStateToShapeLocked,
 } from './native-portable-runtime.js';
+import { validateNativePortableDocuments } from './native-portable-requirements.js';
 import {
   finalizeNativeSupervisorDeliveryLocked,
   readNativeSupervisorState,
@@ -668,6 +669,13 @@ export async function inspectNativePortableArchive(options: {
   const blockers: string[] = [];
   let requiresReverification = false;
   let specPreview: NativePortableArchiveSpecPreview[];
+  if (state.document_constraints_version === 1) {
+    const documents = await validateNativePortableDocuments({
+      paths: options.paths,
+      state,
+    });
+    blockers.push(...documents.findings.map(({ message }) => message));
+  }
   try {
     assertArchiveReady(state);
   } catch (error) {

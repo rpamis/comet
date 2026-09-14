@@ -33,6 +33,13 @@ const VERIFICATION_ALL = [
   'conclusion',
 ];
 
+const BRIEF_NONE_ALLOWED = new Set(['nonGoals', 'decisions', 'openQuestions']);
+
+export interface NativeBriefValidationOptions {
+  /** Apply the full completeness rule used at new/reconfirmed Shape boundaries. */
+  strict?: boolean;
+}
+
 export const NATIVE_ARTIFACT_VALIDATION_LIMITS = {
   maxFileBytes: DEFAULT_NATIVE_ARTIFACT_MAX_BYTES,
 } as const;
@@ -74,6 +81,59 @@ async function readContainedFile(root: string, relativeRef: string): Promise<str
 
 function result(findings: NativeFinding[]): NativeArtifactValidation {
   return { valid: findings.length === 0, findings };
+}
+
+function meaningfulMarkdown(source: string): string {
+  return source
+    .replace(/<!--[\s\S]*?-->/gu, '')
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:TODO|TBD|FIXME|待填写|待补充)\s*[:：-]?\s*$/gimu, '')
+    .trim();
+}
+
+function isExplicitNone(source: string): boolean {
+  const normalized = meaningfulMarkdown(source)
+    .replace(/[*_`>#\x5b\x5d()]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .toLocaleLowerCase('en-US');
+  return /^(?:none|n\/a|not applicable|no(?:ne)?(?:\s+at\s+this\s+time)?|no\s+(?:additional\s+)?(?:non-goals?|decisions?|open\s+questions?|questions?)|无|无相关事项|没有(?:额外)?(?:非目标|决定|待解决问题)|不适用|暂无)$/iu.test(
+    normalized,
+  );
+}
+
+function isTemplateOnly(source: string): boolean {
+  const normalized = meaningfulMarkdown(source)
+    .replace(/^#{1,6}\s+.*$/gimu, '')
+    .replace(/[*_`>#\x5b\x5d()]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (normalized.length === 0) return false;
+  return /^(?:(?:todo|tbd|fixme)(?:\s*[:：-]\s*(?:fill(?:\s+this\s+in)?|待填写|待补充)?)?|fill(?:\s+this\s+in)?|placeholder|待填写|待补充|<[^>]+>|\{\{[^}]+\}\})[.!：: -]*$/iu.test(
+    normalized,
+  );
+}
+
+export function validateNativeSpecDocumentText(
+  source: string,
+  documentRef: string,
+): NativeArtifactValidation {
+  const findings: NativeFinding[] = [];
+  const meaningful = meaningfulMarkdown(source);
+  const body = meaningfulMarkdown(source.replace(/^#{1,6}\s+.*$/gimu, ''));
+  if (meaningful.length === 0 || body.length === 0) {
+    findings.push({
+      code: 'spec-document-empty',
+      message: `Native target Spec is empty: ${documentRef}. Add the complete target requirements or use an explicit no-product-behavior exemption in brief.md.`,
+      path: documentRef,
+    });
+  } else if (isTemplateOnly(source)) {
+    findings.push({
+      code: 'spec-document-placeholder',
+      message: `Native target Spec contains only template placeholder content: ${documentRef}. Replace it with complete target requirements.`,
+      path: documentRef,
+    });
+  }
+  return result(findings);
 }
 
 export function nativeBriefHasBlockingQuestion(source: string): boolean {
@@ -131,6 +191,7 @@ export function nativeBriefHasBlockingQuestion(source: string): boolean {
 export async function validateNativeBrief(
   changeDir: string,
   briefRef: string,
+  options: NativeBriefValidationOptions = {},
 ): Promise<NativeArtifactValidation> {
   const findings: NativeFinding[] = [];
   let source: string;
@@ -158,11 +219,25 @@ export async function validateNativeBrief(
       });
     }
   }
-  for (const heading of BRIEF_REQUIRED) {
-    if ((sections.get(heading) ?? '').length === 0) {
+  const nonEmptySections = options.strict ? BRIEF_ALL : BRIEF_REQUIRED;
+  for (const heading of nonEmptySections) {
+    const section = sections.get(heading) ?? '';
+    if (meaningfulMarkdown(section).length === 0) {
       findings.push({
         code: 'brief-section-empty',
         message: `Brief section is empty: ${heading}`,
+        path: briefRef,
+      });
+    } else if (isTemplateOnly(section)) {
+      findings.push({
+        code: 'brief-section-placeholder',
+        message: `Brief section contains only template placeholder content: ${heading}`,
+        path: briefRef,
+      });
+    } else if (options.strict && !BRIEF_NONE_ALLOWED.has(heading) && isExplicitNone(section)) {
+      findings.push({
+        code: 'brief-section-empty',
+        message: `Brief section must describe the confirmed work instead of declaring no items: ${heading}`,
         path: briefRef,
       });
     }

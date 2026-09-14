@@ -36,6 +36,7 @@ const ROOT_KEYS = new Set([
   'status',
   'state_version',
   'brief',
+  'document_constraints_version',
   'shape_confirmation_hash',
   'children_contract_hash',
   'coordination_mode',
@@ -793,6 +794,13 @@ export function parseNativePortableState(value: unknown): NativePortableState {
     ),
     state_version: integerValue(root.state_version, 'Native state_version', 1),
     brief: 'brief.md',
+    ...(root.document_constraints_version === undefined
+      ? {}
+      : root.document_constraints_version === 1
+        ? { document_constraints_version: 1 as const }
+        : (() => {
+            throw new Error('Native document_constraints_version must be 1');
+          })()),
     ...(root.shape_confirmation_hash === undefined
       ? {}
       : {
