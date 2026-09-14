@@ -3980,7 +3980,6 @@ test('expands a Native parent and keeps child selection in the existing detail c
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
 
   const disclosure = page.locator('.native-change-disclosure');
-  await disclosure.click();
   await expect(disclosure).toHaveAccessibleName('收起 parent-change 的子变更');
   await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
   await expect(
