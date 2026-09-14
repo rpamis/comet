@@ -130,6 +130,7 @@ async function createModule(
           workflow: packet.workflow,
           changeId: packet.changeId,
         },
+        result.reason,
       );
     }
 
@@ -351,13 +352,21 @@ async function createModule(
                 ? ('skipped' as const)
                 : undefined;
             if (result !== undefined) {
-              await service.markLearningCheck?.('submitted', result, {
-                ...(event.scope === 'project' && event.projectId === undefined
-                  ? {}
-                  : { projectKey: event.projectId }),
-                workflow: observation.workflow,
-                changeId: observation.changeId,
-              });
+              const reason = reviewed.actions.actions.find(
+                (entry) => entry.reason !== undefined,
+              )?.reason;
+              await service.markLearningCheck?.(
+                'submitted',
+                result,
+                {
+                  ...(event.scope === 'project' && event.projectId === undefined
+                    ? {}
+                    : { projectKey: event.projectId }),
+                  workflow: observation.workflow,
+                  changeId: observation.changeId,
+                },
+                reason,
+              );
             }
             deltas.push(...memoryReviewActionDeltas(packet, reviewed.actions, event));
           };
@@ -529,14 +538,20 @@ async function invokeCapability(
     }
     case 'observe': {
       if (!projectPolicy.learning) {
-        await service.markLearningCheck?.('submitted', 'ignored');
+        const reason =
+          language === 'en'
+            ? 'Personal memory learning is disabled for this project.'
+            : '当前项目已停用个人记忆学习。';
+        await service.markLearningCheck?.(
+          'submitted',
+          'ignored',
+          currentProjectId === undefined ? undefined : { projectKey: currentProjectId },
+          reason,
+        );
         return {
           action: 'skip',
           persisted: false,
-          reason:
-            language === 'en'
-              ? 'Personal memory learning is disabled for this project.'
-              : '当前项目已停用个人记忆学习。',
+          reason,
           observation: {
             deduplicated: false,
             ignored: true,
@@ -583,10 +598,14 @@ async function invokeCapability(
         (context === null || typeof context !== 'object' || Array.isArray(context))
       )
         throw new Error('learning-check.context is invalid');
+      const reason = value.reason;
+      if (reason !== undefined && (typeof reason !== 'string' || reason.trim().length === 0))
+        throw new Error('learning-check.reason is invalid');
       return service.markLearningCheck?.(
         check as MemoryLearningCheckKind,
         result as MemoryObservationResultKind | undefined,
         context as MemoryLearningCheckContext | undefined,
+        reason as string | undefined,
       );
     }
     case 'retrieve':

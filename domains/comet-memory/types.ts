@@ -166,6 +166,7 @@ export interface MemoryLearningStatus {
   readonly lastCheckedAt?: string;
   readonly lastCheck?: MemoryLearningCheckKind;
   readonly lastResult?: MemoryObservationResultKind;
+  readonly lastReason?: string;
   readonly lastProjectKey?: string;
   readonly lastWorkflow?: string;
   readonly lastChangeId?: string;
@@ -332,6 +333,8 @@ export interface MemoryRuntimeState {
   readonly pendingFileProjections?: Readonly<Record<string, MemoryFileProjection>>;
   /** Optional so older v3 state files remain readable. */
   readonly learning?: MemoryLearningStatus;
+  /** Optional per-project diagnostics; older v3 state files only have `learning`. */
+  readonly learningByProject?: Readonly<Record<string, MemoryLearningStatus>>;
 }
 
 export interface MemoryStoredObservation {
@@ -590,8 +593,15 @@ export interface PersonalMemoryProjectPolicy {
 }
 
 export interface PersonalMemoryStatus {
-  readonly learningEnabled: boolean;
-  readonly retrievalEnabled: boolean;
+  /** Undefined means the provider could not confirm the current capability state. */
+  readonly learningEnabled: boolean | undefined;
+  /** Undefined means the provider could not confirm the current capability state. */
+  readonly retrievalEnabled: boolean | undefined;
+  readonly availability?: 'available' | 'unavailable';
+  readonly availabilityReason?: string;
+  /** Older Remote Providers may expose capabilities without learning diagnostics. */
+  readonly learningAvailability?: 'available' | 'unavailable';
+  readonly learningAvailabilityReason?: string;
   readonly pausedProjects: readonly string[];
   readonly pausedLearningProjects: readonly string[];
   readonly pausedRetrievalProjects: readonly string[];
@@ -694,6 +704,7 @@ export interface PersonalMemoryServiceLike {
     check: MemoryLearningCheckKind,
     result?: MemoryObservationResultKind,
     context?: MemoryLearningCheckContext,
+    reason?: string,
   ): Promise<MemoryLearningStatus | void>;
   reviewAndApply(
     packet: MemoryReviewPacket,

@@ -4907,11 +4907,23 @@ function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
             <div className="dashboard-memory-setting">
               <div className="dashboard-memory-setting-copy">
                 <strong>自动学习</strong>
-                <span>{status.learningEnabled ? '会沉淀稳定偏好' : '已暂停自动沉淀'}</span>
+                <span>
+                  {personalMemoryCapabilityLabel(
+                    status,
+                    'learningEnabled',
+                    '会沉淀稳定偏好',
+                    '已暂停自动沉淀',
+                  )}
+                </span>
               </div>
               <Switch
                 size="small"
-                checked={Boolean(status.learningEnabled)}
+                checked={status.learningEnabled === true}
+                disabled={
+                  readOnly ||
+                  status.availability === 'unavailable' ||
+                  status.learningEnabled === undefined
+                }
                 aria-label="切换自动学习"
                 onChange={(enabled) => onInvoke('set-learning', { enabled })}
               />
@@ -4919,11 +4931,23 @@ function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
             <div className="dashboard-memory-setting">
               <div className="dashboard-memory-setting-copy">
                 <strong>记忆注入</strong>
-                <span>{status.retrievalEnabled ? '任务中可使用已保存内容' : '已暂停任务注入'}</span>
+                <span>
+                  {personalMemoryCapabilityLabel(
+                    status,
+                    'retrievalEnabled',
+                    '任务中可使用已保存内容',
+                    '已暂停任务注入',
+                  )}
+                </span>
               </div>
               <Switch
                 size="small"
-                checked={Boolean(status.retrievalEnabled)}
+                checked={status.retrievalEnabled === true}
+                disabled={
+                  readOnly ||
+                  status.availability === 'unavailable' ||
+                  status.retrievalEnabled === undefined
+                }
                 aria-label="切换记忆注入"
                 onChange={(enabled) => onInvoke('set-retrieval', { enabled })}
               />
@@ -7046,7 +7070,8 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
   const projectKey = data?.projectKey;
   const memoryFileCount = status.files?.length ?? 0;
   const provider = status.provider?.provider ?? 'local';
-  const learningDiagnostic = personalMemoryLearningDiagnostic(status.learning);
+  const learningDiagnostic = personalMemoryLearningDiagnostic(status.learning, status);
+  const learningDetails = personalMemoryLearningDetails(status.learning, status);
   const profileUsage = status.profile
     ? `个人偏好与事实 ${status.profile.usedChars} 字符 · 单次注入预算 ${status.profile.maxChars}`
     : provider === 'remote'
@@ -7357,18 +7382,29 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
             <div className="dashboard-memory-learning-diagnostic" role="status">
               <span>最近学习检查</span>
               <strong>{learningDiagnostic}</strong>
+              {learningDetails && <small>{learningDetails}</small>}
             </div>
             <div>
               <span
-                className={`dashboard-tool-state-dot ${status.learningEnabled ? 'is-success' : 'is-muted'}`}
+                className={`dashboard-tool-state-dot ${
+                  status.learningEnabled === true && status.availability !== 'unavailable'
+                    ? 'is-success'
+                    : 'is-muted'
+                }`}
               />
-              自动学习{status.learningEnabled ? '已开启' : '已暂停'}
+              自动学习
+              {personalMemoryCapabilityLabel(status, 'learningEnabled', '已开启', '已暂停')}
             </div>
             <div>
               <span
-                className={`dashboard-tool-state-dot ${status.retrievalEnabled ? 'is-accent' : 'is-muted'}`}
+                className={`dashboard-tool-state-dot ${
+                  status.retrievalEnabled === true && status.availability !== 'unavailable'
+                    ? 'is-accent'
+                    : 'is-muted'
+                }`}
               />
-              任务注入{status.retrievalEnabled ? '已开启' : '已暂停'}
+              任务注入
+              {personalMemoryCapabilityLabel(status, 'retrievalEnabled', '已开启', '已暂停')}
             </div>
             <span>{profileUsage}</span>
             <span>
@@ -7737,7 +7773,21 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
   );
 }
 
-function personalMemoryLearningDiagnostic(learning = {}) {
+function personalMemoryCapabilityLabel(status = {}, field, enabledLabel, disabledLabel) {
+  if (status.availability === 'unavailable') {
+    return `状态不可用${status.availabilityReason ? `：${status.availabilityReason}` : ''}`;
+  }
+  if (status[field] === undefined) return '状态未知（Provider 未确认）';
+  return status[field] ? enabledLabel : disabledLabel;
+}
+
+function personalMemoryLearningDiagnostic(learning = {}, status = {}) {
+  if (status.learningAvailability === 'unavailable') {
+    return `不可用${status.learningAvailabilityReason ? `：${status.learningAvailabilityReason}` : ''}`;
+  }
+  if (status.availability === 'unavailable') {
+    return `不可用${status.availabilityReason ? `：${status.availabilityReason}` : ''}`;
+  }
   if (learning.lastCheck === 'not-run' || learning.lastCheck === undefined) return '尚未检查';
   if (learning.lastCheck === 'no-observation') return '本次没有合格观察';
   if (learning.submissionVerified === false) return '当前 change 没有对应观察';
@@ -7757,6 +7807,20 @@ function personalMemoryLearningDiagnostic(learning = {}) {
     default:
       return '已提交，等待结果';
   }
+}
+
+function personalMemoryLearningDetails(learning = {}, status = {}) {
+  if (status.learningAvailability === 'unavailable' || learning === undefined) return '';
+  const details = [];
+  if (learning.lastCheckedAt) details.push(`时间：${learning.lastCheckedAt}`);
+  const ownership = [
+    learning.lastProjectKey ? `项目 ${learning.lastProjectKey}` : '',
+    learning.lastWorkflow ? `workflow ${learning.lastWorkflow}` : '',
+    learning.lastChangeId ? `change ${learning.lastChangeId}` : '',
+  ].filter(Boolean);
+  if (ownership.length > 0) details.push(`归属：${ownership.join(' · ')}`);
+  if (learning.lastReason?.trim()) details.push(`原因：${learning.lastReason.trim()}`);
+  return details.join(' · ');
 }
 
 function AntSummaryCards({ snapshot }) {

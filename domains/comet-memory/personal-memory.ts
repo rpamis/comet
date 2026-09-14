@@ -55,6 +55,8 @@ const DEFAULT_TASK_MAX_CHARS = 6000;
 const DEFAULT_MANAGEMENT_MAX_ENTRIES = 100;
 const DEFAULT_MANAGEMENT_MAX_BYTES = 32 * 1024;
 const MAX_SOURCES = 8;
+const MAX_LEARNING_PROJECTS = 128;
+const MAX_LEARNING_REASON_CHARS = 240;
 
 interface MarkdownBullet {
   readonly category: string;
@@ -503,7 +505,12 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         record: null,
         result: 'ignored',
       };
-      await this.recordLearningStatus(result, false, learningContext(observation));
+      await this.recordLearningStatus(
+        result,
+        false,
+        learningContext(observation),
+        observation.reason,
+      );
       return result;
     }
     const result = await this.repository.withLock(async () => {
@@ -767,6 +774,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         result.result === 'candidate-promoted' ||
         result.result === 'deduplicated',
       learningContext(observation),
+      observation.reason,
     );
     return result;
   }
@@ -775,20 +783,32 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     result: MemoryObservationResult,
     validObservation: boolean,
     context?: MemoryLearningCheckContext,
+    reason?: string,
   ): Promise<void> {
     await this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
-      const previous = state.learning;
-      state.learning = {
-        lastCheckedAt: this.timestamp(),
-        lastCheck: 'submitted',
-        lastResult: result.result ?? inferObservationResult(result),
-        ...(context?.projectKey === undefined ? {} : { lastProjectKey: context.projectKey }),
-        ...(context?.workflow === undefined ? {} : { lastWorkflow: context.workflow }),
-        ...(context?.changeId === undefined ? {} : { lastChangeId: context.changeId }),
-        observedCount: (previous?.observedCount ?? 0) + 1,
-        validObservationCount: (previous?.validObservationCount ?? 0) + Number(validObservation),
-      };
+      const checkedAt = this.timestamp();
+      const projectKey = context?.projectKey ?? this.repository.projectFileBinding?.()?.projectKey;
+      const scopedContext = projectKey === undefined ? context : { ...(context ?? {}), projectKey };
+      const previousGlobal = state.learning;
+      const previousScoped = previousLearningStatus(state, projectKey);
+      const nextScoped = createLearningSubmissionStatus(
+        previousScoped,
+        result,
+        validObservation,
+        scopedContext,
+        checkedAt,
+        reason,
+      );
+      state.learning = createLearningSubmissionStatus(
+        previousGlobal,
+        result,
+        validObservation,
+        scopedContext,
+        checkedAt,
+        reason,
+      );
+      if (projectKey !== undefined) setProjectLearningStatus(state, projectKey, nextScoped);
       await this.persist(state);
     });
   }
@@ -797,36 +817,45 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     check: MemoryLearningCheckKind,
     result?: MemoryObservationResultKind,
     context?: MemoryLearningCheckContext,
+    reason?: string,
   ): Promise<MemoryLearningStatus> {
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
-      const lastResult = state.learning?.lastResult;
+      const projectKey = context?.projectKey ?? this.repository.projectFileBinding?.()?.projectKey;
+      const scopedContext = projectKey === undefined ? context : { ...(context ?? {}), projectKey };
+      const previousGlobal = state.learning;
+      const previousScoped = previousLearningStatus(state, projectKey);
       const submissionVerified =
         check !== 'submitted' || context?.changeId === undefined
           ? undefined
           : state.observations.some(
               (entry) =>
                 entry.changeId === context.changeId &&
-                (context.projectKey === undefined || entry.projectKey === context.projectKey) &&
+                (projectKey === undefined || entry.projectKey === projectKey) &&
                 (context.workflow === undefined || entry.source.workflow === context.workflow),
             );
-      state.learning = {
-        ...(result === undefined
-          ? check === 'submitted' && lastResult !== undefined
-            ? { lastResult }
-            : {}
-          : { lastResult: result }),
-        lastCheckedAt: this.timestamp(),
-        lastCheck: check,
-        ...(context?.projectKey === undefined ? {} : { lastProjectKey: context.projectKey }),
-        ...(context?.workflow === undefined ? {} : { lastWorkflow: context.workflow }),
-        ...(context?.changeId === undefined ? {} : { lastChangeId: context.changeId }),
-        ...(submissionVerified === undefined ? {} : { submissionVerified }),
-        observedCount: state.learning?.observedCount ?? 0,
-        validObservationCount: state.learning?.validObservationCount ?? 0,
-      };
+      const checkedAt = this.timestamp();
+      const nextScoped = createLearningCheckStatus(
+        previousScoped,
+        check,
+        result,
+        scopedContext,
+        checkedAt,
+        submissionVerified,
+        reason,
+      );
+      state.learning = createLearningCheckStatus(
+        previousGlobal,
+        check,
+        result,
+        scopedContext,
+        checkedAt,
+        submissionVerified,
+        reason,
+      );
+      if (projectKey !== undefined) setProjectLearningStatus(state, projectKey, nextScoped);
       await this.persist(state);
-      return state.learning!;
+      return nextScoped;
     });
   }
 
@@ -1321,7 +1350,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const state = await this.loadAndReconcile();
       await this.persist(state);
       const projectKey = this.repository.projectFileBinding?.()?.projectKey;
-      const learning = projectScopedLearningStatus(state.learning, projectKey);
+      const learning = projectScopedLearningStatus(state, projectKey);
       return {
         learningEnabled: state.settings.learningEnabled,
         retrievalEnabled: state.settings.retrievalEnabled,
@@ -1339,6 +1368,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
             : { lastCheckedAt: learning.lastCheckedAt }),
           ...(learning.lastCheck === undefined ? {} : { lastCheck: learning.lastCheck }),
           ...(learning.lastResult === undefined ? {} : { lastResult: learning.lastResult }),
+          ...(learning.lastReason === undefined ? {} : { lastReason: learning.lastReason }),
           ...(learning.lastProjectKey === undefined
             ? {}
             : { lastProjectKey: learning.lastProjectKey }),
@@ -1700,6 +1730,7 @@ interface MutableMemoryState extends Omit<
   | 'feedbackState'
   | 'pendingFileProjections'
   | 'learning'
+  | 'learningByProject'
 > {
   records: StoredRecord[];
   history: Record<string, StoredRecord[]>;
@@ -1725,6 +1756,7 @@ interface MutableMemoryState extends Omit<
   >;
   pendingFileProjections: Record<string, MemoryFileProjection>;
   learning?: MemoryLearningStatus;
+  learningByProject: Record<string, MemoryLearningStatus>;
 }
 
 function mutableState(raw: MemoryRuntimeState): MutableMemoryState {
@@ -1781,12 +1813,8 @@ function mutableState(raw: MemoryRuntimeState): MutableMemoryState {
     applicationOutcomes: { ...(raw.applicationOutcomes ?? {}) },
     feedbackState: { ...(raw.feedbackState ?? {}) },
     pendingFileProjections: { ...(raw.pendingFileProjections ?? {}) },
-    learning: {
-      ...(raw.learning ?? {}),
-      lastCheck: raw.learning?.lastCheck ?? 'not-run',
-      observedCount: raw.learning?.observedCount ?? 0,
-      validObservationCount: raw.learning?.validObservationCount ?? 0,
-    },
+    learning: normalizeLearningStatus(raw.learning),
+    learningByProject: normalizeLearningStatusMap(raw),
   };
 }
 
@@ -1806,18 +1834,155 @@ function learningContext(observation: MemoryObservation): MemoryLearningCheckCon
   };
 }
 
-function projectScopedLearningStatus(
-  learning: MemoryLearningStatus | undefined,
-  projectKey: string | undefined,
-): MemoryLearningStatus {
-  const counts = {
+function normalizeLearningStatus(learning: MemoryLearningStatus | undefined): MemoryLearningStatus {
+  const reason = normalizeLearningReason(learning?.lastReason);
+  return {
+    ...(learning ?? {}),
+    ...(reason === undefined ? {} : { lastReason: reason }),
+    lastCheck: learning?.lastCheck ?? 'not-run',
     observedCount: learning?.observedCount ?? 0,
     validObservationCount: learning?.validObservationCount ?? 0,
   };
-  if (projectKey !== undefined && learning?.lastProjectKey !== projectKey) {
-    return { ...counts, lastCheck: 'not-run' };
+}
+
+function normalizeLearningReason(reason: string | undefined): string | undefined {
+  const normalized = reason?.trim();
+  if (normalized === undefined || normalized.length === 0) return undefined;
+  return normalized.length > MAX_LEARNING_REASON_CHARS
+    ? `${normalized.slice(0, MAX_LEARNING_REASON_CHARS - 1)}…`
+    : normalized;
+}
+
+function normalizeLearningStatusMap(raw: MemoryRuntimeState): Record<string, MemoryLearningStatus> {
+  const map = Object.fromEntries(
+    Object.entries(raw.learningByProject ?? {}).map(([projectKey, learning]) => [
+      projectKey,
+      normalizeLearningStatus(learning),
+    ]),
+  );
+  if (
+    raw.learning?.lastProjectKey !== undefined &&
+    map[raw.learning.lastProjectKey] === undefined
+  ) {
+    map[raw.learning.lastProjectKey] = normalizeLearningStatus(raw.learning);
   }
-  return { ...counts, ...(learning ?? {}) };
+  const keys = Object.keys(map);
+  if (keys.length > MAX_LEARNING_PROJECTS) {
+    keys
+      .sort((left, right) => {
+        const leftCheckedAt = map[left]?.lastCheckedAt ?? '';
+        const rightCheckedAt = map[right]?.lastCheckedAt ?? '';
+        return leftCheckedAt.localeCompare(rightCheckedAt) || left.localeCompare(right);
+      })
+      .slice(0, keys.length - MAX_LEARNING_PROJECTS)
+      .forEach((key) => delete map[key]);
+  }
+  return map;
+}
+
+function previousLearningStatus(
+  state: Pick<MutableMemoryState, 'learning' | 'learningByProject'>,
+  projectKey: string | undefined,
+): MemoryLearningStatus | undefined {
+  if (projectKey === undefined) return state.learning;
+  return (
+    state.learningByProject[projectKey] ??
+    (state.learning?.lastProjectKey === projectKey ? state.learning : undefined)
+  );
+}
+
+function setProjectLearningStatus(
+  state: Pick<MutableMemoryState, 'learningByProject'>,
+  projectKey: string,
+  learning: MemoryLearningStatus,
+): void {
+  state.learningByProject[projectKey] = learning;
+  const keys = Object.keys(state.learningByProject);
+  if (keys.length <= MAX_LEARNING_PROJECTS) return;
+  keys
+    .sort((left, right) => {
+      const leftCheckedAt = state.learningByProject[left]?.lastCheckedAt ?? '';
+      const rightCheckedAt = state.learningByProject[right]?.lastCheckedAt ?? '';
+      return leftCheckedAt.localeCompare(rightCheckedAt) || left.localeCompare(right);
+    })
+    .slice(0, keys.length - MAX_LEARNING_PROJECTS)
+    .forEach((key) => delete state.learningByProject[key]);
+}
+
+function projectScopedLearningStatus(
+  state: Pick<MutableMemoryState, 'learning' | 'learningByProject'>,
+  projectKey: string | undefined,
+): MemoryLearningStatus {
+  const learning = previousLearningStatus(state, projectKey);
+  const counts =
+    projectKey === undefined
+      ? {
+          observedCount: learning?.observedCount ?? state.learning?.observedCount ?? 0,
+          validObservationCount:
+            learning?.validObservationCount ?? state.learning?.validObservationCount ?? 0,
+        }
+      : {
+          observedCount: learning?.observedCount ?? 0,
+          validObservationCount: learning?.validObservationCount ?? 0,
+        };
+  if (learning === undefined) return { ...counts, lastCheck: 'not-run' };
+  return { ...counts, ...learning };
+}
+
+function createLearningSubmissionStatus(
+  previous: MemoryLearningStatus | undefined,
+  result: MemoryObservationResult,
+  validObservation: boolean,
+  context: MemoryLearningCheckContext | undefined,
+  checkedAt: string,
+  reason: string | undefined,
+): MemoryLearningStatus {
+  const normalizedReason = normalizeLearningReason(reason);
+  return {
+    lastCheckedAt: checkedAt,
+    lastCheck: 'submitted',
+    lastResult: result.result ?? inferObservationResult(result),
+    ...(normalizedReason === undefined ? {} : { lastReason: normalizedReason }),
+    ...(context?.projectKey === undefined ? {} : { lastProjectKey: context.projectKey }),
+    ...(context?.workflow === undefined ? {} : { lastWorkflow: context.workflow }),
+    ...(context?.changeId === undefined ? {} : { lastChangeId: context.changeId }),
+    observedCount: (previous?.observedCount ?? 0) + 1,
+    validObservationCount: (previous?.validObservationCount ?? 0) + Number(validObservation),
+  };
+}
+
+function createLearningCheckStatus(
+  previous: MemoryLearningStatus | undefined,
+  check: MemoryLearningCheckKind,
+  result: MemoryObservationResultKind | undefined,
+  context: MemoryLearningCheckContext | undefined,
+  checkedAt: string,
+  submissionVerified: boolean | undefined,
+  reason: string | undefined,
+): MemoryLearningStatus {
+  const normalizedReason = normalizeLearningReason(reason);
+  return {
+    ...(result === undefined
+      ? check === 'submitted' && previous?.lastResult !== undefined
+        ? { lastResult: previous.lastResult }
+        : {}
+      : { lastResult: result }),
+    ...(reason === undefined
+      ? check === 'submitted' && previous?.lastReason !== undefined
+        ? { lastReason: previous.lastReason }
+        : {}
+      : normalizedReason === undefined
+        ? {}
+        : { lastReason: normalizedReason }),
+    lastCheckedAt: checkedAt,
+    lastCheck: check,
+    ...(context?.projectKey === undefined ? {} : { lastProjectKey: context.projectKey }),
+    ...(context?.workflow === undefined ? {} : { lastWorkflow: context.workflow }),
+    ...(context?.changeId === undefined ? {} : { lastChangeId: context.changeId }),
+    ...(submissionVerified === undefined ? {} : { submissionVerified }),
+    observedCount: previous?.observedCount ?? 0,
+    validObservationCount: previous?.validObservationCount ?? 0,
+  };
 }
 
 function negativeContextOutcome(

@@ -8,7 +8,7 @@ Comet Personal Memory keeps genuinely reusable user preferences and collaboratio
 - **Collaboration Policy**: personal working practices selected by project, path, task type, operation, or phase.
 - **Personal Episode**: a compact successful, corrected, or failed situation with a situation, action summary, outcome, and lesson, used for background reflection or on-demand expansion.
 
-An explicit “remember”, “always do this”, or correction is stored immediately as `proven` and can affect the next task. A request limited to “this time” or “this task” is not persisted. Reusable experience inferred from real feedback starts as low-priority `trial`; one successful application can promote it to `proven`, while rejection, correction, or a contributed failure can rewrite it or mark it `superseded`. Forgetting writes a separate tombstone, so replaying old events cannot restore forgotten content.
+An explicit “remember”, “always do this”, or correction is stored immediately as `proven` and can affect the next task. A request limited to “this time” or “this task” is not persisted. Reusable experience inferred from real feedback starts as low-priority `trial`; it is promoted to `proven` only after evidence from two independent successful changes, while rejection, correction, or a contributed failure can rewrite it or mark it `superseded`. Forgetting writes a separate tombstone, so replaying old events cannot restore forgotten content.
 
 ## Automatic learning and task use
 

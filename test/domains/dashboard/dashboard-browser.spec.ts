@@ -1473,6 +1473,17 @@ test('adds global or project memory, explains application, and permanently delet
         pausedRetrievalProjects: [],
         profile: { usedChars: 18, maxChars: 2000 },
         provider: { provider: 'local', configured: true },
+        learning: {
+          lastCheckedAt: '2026-08-23T00:00:00.000Z',
+          lastCheck: 'submitted',
+          lastResult: 'candidate-created',
+          lastReason: '等待另一个独立成功 change 的证据',
+          lastProjectKey: 'fixture-project',
+          lastWorkflow: 'native',
+          lastChangeId: 'change-learning-1',
+          observedCount: 1,
+          validObservationCount: 1,
+        },
       },
       retrieval: { records: projectRecords, profileRecords },
       management: { records: managedRecords, conflicts: [] },
@@ -1626,6 +1637,13 @@ test('adds global or project memory, explains application, and permanently delet
 
   await page.goto('/');
   await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  const learningStatus = page.locator('.dashboard-memory-learning-diagnostic');
+  await expect(learningStatus).toContainText('已形成候选，等待独立证据');
+  await expect(learningStatus).toContainText('时间：2026-08-23T00:00:00.000Z');
+  await expect(learningStatus).toContainText(
+    '归属：项目 fixture-project · workflow native · change change-learning-1',
+  );
+  await expect(learningStatus).toContainText('原因：等待另一个独立成功 change 的证据');
   await expect(page.getByRole('button', { name: '个人偏好与事实 1' })).toBeVisible();
   await expect(page.getByRole('button', { name: '协作约定 0' })).toBeVisible();
   await expect(page.getByRole('button', { name: '任务经验 0' })).toBeVisible();

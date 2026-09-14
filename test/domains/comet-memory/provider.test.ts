@@ -198,6 +198,88 @@ describe('personal memory provider', () => {
     });
   });
 
+  test('does not report remote capability switches as enabled when status is unavailable', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response('{"error":"unavailable"}', {
+          status: 503,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    const service = new RemotePersonalMemoryService({
+      endpoint: 'https://memory.example.test/provider',
+      projectKey: 'remote-project',
+      fetchImpl,
+    });
+
+    const status = await service.status();
+    expect(status).toMatchObject({
+      availability: 'unavailable',
+      availabilityReason: expect.stringContaining('503'),
+    });
+    expect(status.learningEnabled).toBeUndefined();
+    expect(status.retrievalEnabled).toBeUndefined();
+  });
+
+  test('uses remote capability switches when the provider returns them', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            result: {
+              learningEnabled: false,
+              retrievalEnabled: true,
+              learning: {
+                lastCheck: 'not-run',
+                observedCount: 0,
+                validObservationCount: 0,
+              },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const service = new RemotePersonalMemoryService({
+      endpoint: 'https://memory.example.test/provider',
+      projectKey: 'remote-project',
+      fetchImpl,
+    });
+
+    await expect(service.status()).resolves.toMatchObject({
+      availability: 'available',
+      learningEnabled: false,
+      retrievalEnabled: true,
+    });
+  });
+
+  test('keeps known remote capabilities when an older provider has no learning diagnostics', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            result: {
+              learningEnabled: false,
+              retrievalEnabled: true,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const service = new RemotePersonalMemoryService({
+      endpoint: 'https://memory.example.test/provider',
+      projectKey: 'remote-project',
+      fetchImpl,
+    });
+
+    await expect(service.status()).resolves.toMatchObject({
+      availability: 'available',
+      learningAvailability: 'unavailable',
+      learningAvailabilityReason: expect.stringContaining('learning status'),
+      learningEnabled: false,
+      retrievalEnabled: true,
+    });
+  });
+
   test('requires structured fields on Remote Provider Personal Episodes', async () => {
     const fetchImpl = vi.fn(
       async () =>

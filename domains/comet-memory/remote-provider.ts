@@ -35,6 +35,7 @@ import { runBoundedHttpRequest } from '../../platform/http/bounded-request.js';
 
 const MAX_REMOTE_RESPONSE_BYTES = 1024 * 1024;
 const MAX_REMOTE_REQUEST_BYTES = 512 * 1024;
+const MAX_LEARNING_REASON_CHARS = 240;
 
 export interface RemotePersonalMemoryServiceOptions extends Partial<
   Pick<MemoryProviderConfig, 'profileCharLimit' | 'taskContextCharLimit'>
@@ -69,8 +70,8 @@ export class RemotePersonalMemoryService
 
   public async status(): Promise<PersonalMemoryStatus> {
     const base: PersonalMemoryStatus = {
-      learningEnabled: true,
-      retrievalEnabled: true,
+      learningEnabled: undefined,
+      retrievalEnabled: undefined,
       pausedProjects: [],
       pausedLearningProjects: [],
       pausedRetrievalProjects: [],
@@ -90,14 +91,19 @@ export class RemotePersonalMemoryService
       const result = await this.request<unknown>('status', {
         projectKey: this.projectKey,
       });
-      return { ...base, learning: normalizeLearningStatus(result) };
+      return { ...base, ...normalizeRemoteStatus(result) };
     } catch (error) {
+      const reason = `Remote learning status unavailable: ${errorMessage(error)}`;
       return {
         ...base,
+        availability: 'unavailable',
+        availabilityReason: reason,
+        learningAvailability: 'unavailable',
+        learningAvailabilityReason: reason,
         sync: {
           status: 'failed',
           retryable: true,
-          message: `Remote learning status unavailable: ${errorMessage(error)}`,
+          message: reason,
         },
       };
     }
@@ -198,6 +204,7 @@ export class RemotePersonalMemoryService
     check: MemoryLearningCheckKind,
     result?: MemoryObservationResultKind,
     context?: MemoryLearningCheckContext,
+    reason?: string,
   ): Promise<MemoryLearningStatus | void> {
     const response = await this.request<unknown>('apply', {
       operation: 'learning-check',
@@ -205,6 +212,7 @@ export class RemotePersonalMemoryService
         check,
         ...(result === undefined ? {} : { result }),
         ...(context === undefined ? {} : { context }),
+        ...(reason === undefined ? {} : { reason }),
       },
       ...(this.projectKey === undefined ? {} : { projectKey: this.projectKey }),
     });
@@ -382,6 +390,7 @@ function normalizeLearningStatus(value: unknown): MemoryLearningStatus {
       lastCheck !== 'no-observation' &&
       lastCheck !== 'not-run') ||
     (lastResult !== undefined && !isObservationResultKind(lastResult)) ||
+    (learning.lastReason !== undefined && typeof learning.lastReason !== 'string') ||
     typeof learning.observedCount !== 'number' ||
     typeof learning.validObservationCount !== 'number'
   ) {
@@ -393,6 +402,9 @@ function normalizeLearningStatus(value: unknown): MemoryLearningStatus {
       : {}),
     ...(lastCheck === undefined ? {} : { lastCheck }),
     ...(lastResult === undefined ? {} : { lastResult }),
+    ...(learning.lastReason === undefined
+      ? {}
+      : { lastReason: normalizeLearningReason(learning.lastReason) }),
     ...(typeof learning.lastProjectKey === 'string'
       ? { lastProjectKey: learning.lastProjectKey }
       : {}),
@@ -404,6 +416,76 @@ function normalizeLearningStatus(value: unknown): MemoryLearningStatus {
     observedCount: learning.observedCount,
     validObservationCount: learning.validObservationCount,
   };
+}
+
+function normalizeRemoteStatus(value: unknown): Pick<
+  PersonalMemoryStatus,
+  | 'availability'
+  | 'learningEnabled'
+  | 'retrievalEnabled'
+  | 'pausedProjects'
+  | 'pausedLearningProjects'
+  | 'pausedRetrievalProjects'
+> & {
+  readonly learning?: MemoryLearningStatus;
+  readonly learningAvailability: 'available' | 'unavailable';
+  readonly learningAvailabilityReason?: string;
+} {
+  if (!isRecord(value)) throw new Error('Remote Provider returned an invalid status');
+  const settings = isRecord(value.settings) ? value.settings : undefined;
+  const capabilities = isRecord(value.capabilities) ? value.capabilities : undefined;
+  const sources = [value, settings, capabilities].filter(
+    (entry): entry is Record<string, unknown> => entry !== undefined,
+  );
+  const readBoolean = (key: string): boolean | undefined => {
+    const source = sources.find((entry) => entry[key] !== undefined);
+    if (source === undefined) return undefined;
+    if (typeof source[key] !== 'boolean') {
+      throw new Error(`Remote Provider returned an invalid ${key} capability`);
+    }
+    return source[key] as boolean;
+  };
+  const readStringArray = (key: string): string[] | undefined => {
+    const source = sources.find((entry) => entry[key] !== undefined);
+    if (source === undefined) return undefined;
+    if (!stringArray(source[key])) {
+      throw new Error(`Remote Provider returned an invalid ${key} list`);
+    }
+    return [...(source[key] as string[])];
+  };
+  const learningEnabled = readBoolean('learningEnabled');
+  const retrievalEnabled = readBoolean('retrievalEnabled');
+  const pausedProjects = readStringArray('pausedProjects');
+  const pausedLearningProjects = readStringArray('pausedLearningProjects');
+  const pausedRetrievalProjects = readStringArray('pausedRetrievalProjects');
+  const capabilitiesStatus = {
+    availability: 'available' as const,
+    learningEnabled,
+    retrievalEnabled,
+    pausedProjects: pausedProjects ?? [],
+    pausedLearningProjects: pausedLearningProjects ?? [],
+    pausedRetrievalProjects: pausedRetrievalProjects ?? [],
+  };
+  try {
+    return {
+      ...capabilitiesStatus,
+      learningAvailability: 'available',
+      learning: normalizeLearningStatus(value),
+    };
+  } catch (error) {
+    return {
+      ...capabilitiesStatus,
+      learningAvailability: 'unavailable',
+      learningAvailabilityReason: `Remote learning diagnostics unavailable: ${errorMessage(error)}`,
+    };
+  }
+}
+
+function normalizeLearningReason(reason: string): string {
+  const normalized = reason.trim();
+  return normalized.length > MAX_LEARNING_REASON_CHARS
+    ? `${normalized.slice(0, MAX_LEARNING_REASON_CHARS - 1)}…`
+    : normalized;
 }
 
 function normalizeManifest(value: unknown, projectKey?: string): MemoryManifestView {
