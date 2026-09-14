@@ -584,6 +584,66 @@ describe('doctor command', () => {
     }
   });
 
+  it('reports a project-scoped Codex CodeGraph MCP registration', async () => {
+    const homeDir = path.join(tmpDir, 'codegraph-home');
+    const binDir = path.join(tmpDir, 'codegraph-bin');
+    const executable =
+      process.platform === 'win32'
+        ? path.join(binDir, 'codegraph.cmd')
+        : path.join(binDir, 'codegraph');
+    await fs.mkdir(path.join(tmpDir, '.codegraph'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, '.codegraph', 'codegraph.db'), '');
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.codex', 'config.toml'),
+      '[mcp_servers.codegraph]\ncommand = "codegraph"\nargs = ["serve", "--mcp"]\n',
+    );
+    await fs.mkdir(binDir, { recursive: true });
+    const status =
+      '{"initialized":true,"pendingChanges":{"added":0,"modified":0,"removed":0},"index":{"state":"complete","reindexRecommended":false,"pendingRefs":0}}';
+    const script =
+      process.platform === 'win32'
+        ? `@echo off\r\nif "%1"=="status" echo ${status}\r\n`
+        : `#!/bin/sh\nif [ "$1" = "status" ]; then printf '%s\\n' '${status}'; fi\n`;
+    await fs.writeFile(executable, script);
+    if (process.platform !== 'win32') await fs.chmod(executable, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ''}`;
+    try {
+      await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
+      const configPath = path.join(tmpDir, '.codex', 'config.toml');
+      const configBefore = await fs.readFile(configPath, 'utf8');
+
+      const payload = await collectDoctorPayload(tmpDir, 'project', homeDir);
+
+      expect(payload.codegraph).toMatchObject({
+        cliStatus: 'installed',
+        indexStatus: 'current',
+        mcpStatus: 'registered',
+        effectiveForAgent: { codex: true },
+        agents: [
+          expect.objectContaining({
+            id: 'codex',
+            scope: 'project',
+            configPath,
+            registered: true,
+            valid: true,
+            effective: true,
+          }),
+        ],
+      });
+      expect(payload.results).toContainEqual(
+        expect.objectContaining({
+          check: 'CodeGraph MCP registration',
+          status: 'pass',
+        }),
+      );
+      await expect(fs.readFile(configPath, 'utf8')).resolves.toBe(configBefore);
+    } finally {
+      process.env.PATH = previousPath;
+    }
+  });
+
   it('reports allowed Classic recovery strategies and never chooses one implicitly', async () => {
     await fs.mkdir(path.join(tmpDir, '.git'));
     await writeReadyClassicRootMove(tmpDir);

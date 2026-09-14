@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { isCommandAvailable, getNpmExecutable } from './openspec.js';
 import { printCommandErrorDetails } from '../../platform/process/command-error.js';
+import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
 
 import type { InstallScope } from '../../platform/install/types.js';
@@ -115,11 +116,15 @@ interface CodegraphAgentDefinition {
   id: CodegraphAgentId;
   name: string;
   candidates: CodegraphConfigCandidate[];
+  mergeConfigLayers?: boolean;
 }
 
 interface CodegraphMcpEntryInspection {
   present: boolean;
   valid: boolean;
+  command?: unknown;
+  enabled?: boolean;
+  disabled?: boolean;
   error?: string;
 }
 
@@ -163,12 +168,21 @@ function inspectJsonMcpEntry(source: string): CodegraphMcpEntryInspection {
 }
 
 function inspectTomlMcpEntry(source: string): CodegraphMcpEntryInspection {
-  const match = source.match(
-    /(?:^|\r?\n)\s*\[mcp_servers\.codegraph\]\s*\r?\n?([\s\S]*?)(?=\r?\n\s*\[[^\]]+\]\s*|$)/u,
-  );
-  if (!match) return { present: false, valid: false };
-  const command = match[1].match(/^\s*command\s*=\s*["']([^"']+)["']\s*$/mu)?.[1];
-  return { present: true, valid: codegraphCommandLooksValid(command) };
+  const config = recordValue(parseToml(source));
+  const servers = recordValue(config?.mcp_servers);
+  const entry = servers?.codegraph;
+  if (entry === undefined) return { present: false, valid: false };
+  const entryRecord = recordValue(entry);
+  const command = entryRecord?.command;
+  const enabled = typeof entryRecord?.enabled === 'boolean' ? entryRecord.enabled : undefined;
+  const disabled = enabled === false;
+  return {
+    present: true,
+    valid: !disabled && codegraphCommandLooksValid(command),
+    ...(command !== undefined ? { command } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
+    ...(disabled ? { disabled: true } : {}),
+  };
 }
 
 function inspectYamlMcpEntry(source: string): CodegraphMcpEntryInspection {
@@ -181,6 +195,49 @@ function inspectYamlMcpEntry(source: string): CodegraphMcpEntryInspection {
     present: true,
     valid: codegraphCommandLooksValid(entryRecord?.command),
   };
+}
+
+function mergeCodegraphConfigLayers(
+  inspections: Array<{
+    candidate: CodegraphConfigCandidate;
+    inspection: CodegraphMcpEntryInspection;
+  }>,
+): Array<{ candidate: CodegraphConfigCandidate; inspection: CodegraphMcpEntryInspection }> {
+  let selected:
+    { candidate: CodegraphConfigCandidate; inspection: CodegraphMcpEntryInspection } | undefined;
+  let command: unknown;
+  let enabled: boolean | undefined;
+
+  for (const result of inspections) {
+    if (result.inspection.error !== undefined) {
+      selected = result;
+      command = undefined;
+      enabled = undefined;
+      continue;
+    }
+    if (!result.inspection.present) continue;
+    selected = result;
+    if (result.inspection.command !== undefined) command = result.inspection.command;
+    if (result.inspection.enabled !== undefined) enabled = result.inspection.enabled;
+  }
+
+  if (!selected || selected.inspection.error !== undefined) {
+    return selected ? [selected] : inspections;
+  }
+
+  const disabled = enabled === false;
+  return [
+    {
+      candidate: selected.candidate,
+      inspection: {
+        present: true,
+        valid: !disabled && codegraphCommandLooksValid(command),
+        ...(command !== undefined ? { command } : {}),
+        ...(enabled !== undefined ? { enabled } : {}),
+        ...(disabled ? { disabled: true } : {}),
+      },
+    },
+  ];
 }
 
 function inspectCodegraphConfigCandidate(
@@ -273,8 +330,12 @@ function codegraphAgentDefinitions(
     {
       id: 'codex',
       name: 'Codex CLI',
+      mergeConfigLayers: true,
       candidates: [
         jsonCandidate('global', path.join(codexGlobalDir, 'config.toml'), 'toml', [codexGlobalDir]),
+        jsonCandidate('project', path.join(project, '.codex', 'config.toml'), 'toml', [
+          path.join(project, '.codex'),
+        ]),
       ],
     },
     {
@@ -361,7 +422,7 @@ function inspectCodegraphMcp(
     );
     if (existing.length === 0) continue;
 
-    const inspections = candidates
+    const inspectedCandidates = candidates
       .map((candidate) => ({ candidate, inspection: inspectCodegraphConfigCandidate(candidate) }))
       .filter(
         (
@@ -371,6 +432,9 @@ function inspectCodegraphMcp(
           inspection: CodegraphMcpEntryInspection;
         } => result.inspection !== null,
       );
+    const inspections = definition.mergeConfigLayers
+      ? mergeCodegraphConfigLayers(inspectedCandidates)
+      : inspectedCandidates;
     const registered = inspections.some(({ inspection }) => inspection.present);
     const valid = inspections.some(({ inspection }) => inspection.valid);
     const registeredScopes = new Set(
@@ -405,7 +469,9 @@ function inspectCodegraphMcp(
       detail: registered
         ? valid
           ? `CodeGraph MCP is registered at ${configPath}`
-          : `CodeGraph MCP entry at ${configPath} does not point to the CodeGraph server`
+          : inspections.some(({ inspection }) => inspection.disabled)
+            ? `CodeGraph MCP entry at ${configPath} is disabled`
+            : `CodeGraph MCP entry at ${configPath} does not point to the CodeGraph server`
         : (errors[0] ?? `CodeGraph MCP is not registered at ${configPath}`),
     });
     effectiveForAgent[definition.id] = effective;

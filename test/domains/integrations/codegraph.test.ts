@@ -23,6 +23,29 @@ describe('codegraph', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  function writeReadyCodegraphIndex(): void {
+    fs.mkdirSync(path.join(tmpDir, '.codegraph'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.codegraph', 'codegraph.db'), '');
+  }
+
+  function mockReadyCodegraphCli(): void {
+    mockedExecFileSync.mockImplementation((command: unknown, args?: unknown) => {
+      const cmd = String(command);
+      const cmdArgs = Array.isArray(args) ? args.map(String) : [];
+      if ((cmd === 'where' || cmd === 'which') && cmdArgs[0] === 'codegraph') {
+        return Buffer.from('/usr/bin/codegraph');
+      }
+      if (cmd === 'codegraph' && cmdArgs[0] === 'status') {
+        return JSON.stringify({
+          initialized: true,
+          pendingChanges: { added: 0, modified: 0, removed: 0 },
+          index: { state: 'complete', reindexRecommended: false, pendingRefs: 0 },
+        });
+      }
+      return Buffer.from('');
+    });
+  }
+
   it('detects an existing project CodeGraph index', async () => {
     const codegraphDir = path.join(tmpDir, '.codegraph');
     fs.mkdirSync(codegraphDir, { recursive: true });
@@ -321,6 +344,71 @@ describe('codegraph', () => {
       }),
     );
   });
+
+  it.each([
+    {
+      name: 'uses a project-only registration',
+      globalEntry: null,
+      projectEntry: '[mcp_servers.codegraph]\ncommand = "codegraph"\nargs = ["serve", "--mcp"]\n',
+      effective: true,
+      detail: 'is registered',
+    },
+    {
+      name: 'applies a project disable over a valid global registration',
+      globalEntry: '[mcp_servers.codegraph]\ncommand = "codegraph"\n',
+      projectEntry: '[mcp_servers.codegraph]\nenabled = false\n',
+      effective: false,
+      detail: 'is disabled',
+    },
+    {
+      name: 'applies an invalid project command over a valid global registration',
+      globalEntry: '[mcp_servers.codegraph]\ncommand = "codegraph"\n',
+      projectEntry: '[mcp_servers.codegraph]\ncommand = "other-server"\n',
+      effective: false,
+      detail: 'does not point to the CodeGraph server',
+    },
+    {
+      name: 'inherits a global command when the project layer enables it',
+      globalEntry: '[mcp_servers.codegraph]\ncommand = "codegraph"\nenabled = false\n',
+      projectEntry: '[mcp_servers.codegraph]\nenabled = true\n',
+      effective: true,
+      detail: 'is registered',
+    },
+  ])(
+    'resolves Codex config layers: $name',
+    async ({ globalEntry, projectEntry, effective, detail }) => {
+      const homeDir = path.join(tmpDir, 'home');
+      writeReadyCodegraphIndex();
+      if (globalEntry !== null) {
+        fs.mkdirSync(path.join(homeDir, '.codex'), { recursive: true });
+        fs.writeFileSync(path.join(homeDir, '.codex', 'config.toml'), globalEntry);
+      }
+      fs.mkdirSync(path.join(tmpDir, '.codex'), { recursive: true });
+      const configPath = path.join(tmpDir, '.codex', 'config.toml');
+      fs.writeFileSync(configPath, projectEntry);
+      mockReadyCodegraphCli();
+
+      const { inspectCodegraphIntegration } =
+        await import('../../../domains/integrations/codegraph.js');
+      const result = inspectCodegraphIntegration(tmpDir, 'project', homeDir);
+
+      expect(result).toMatchObject({
+        mcpStatus: 'registered',
+        effectiveForAgent: { codex: effective },
+      });
+      expect(result.agents).toContainEqual(
+        expect.objectContaining({
+          id: 'codex',
+          scope: 'project',
+          configPath,
+          registered: true,
+          valid: effective,
+          effective,
+          detail: expect.stringContaining(detail),
+        }),
+      );
+    },
+  );
 
   it('reports a registered Claude MCP independently from project index readiness', async () => {
     const homeDir = path.join(tmpDir, 'home');
