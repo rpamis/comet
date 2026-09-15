@@ -12,6 +12,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Classic workflow ordering**: Configure the full-workflow execution strategy before planning in both localized runtime packages, keeping packaged deterministic transitions aligned with the executable Classic Runtime.
 - **Native Runtime check recovery**: Persist Runtime owner and active check process identity so interrupted Verify checks recover only after prior processes exit, Doctor cannot take over live work, and externally owned Verifier tasks keep their existing execution handle.
 - **Dashboard change summaries**: Keep Native and Classic change status summaries on one line with truncation, so selecting a row no longer changes its text layout.
 - **Native workflow state preview**: Explain `comet-state.yaml` fields and render nested values as formatted JSON blocks instead of undifferentiated table text.

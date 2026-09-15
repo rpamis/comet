@@ -33,14 +33,14 @@ orchestration:
       next: full.design.document
     - id: full.design.document
       action: { type: invoke_skill, ref: comet-design }
+      next: full.build.configure
+    - id: full.build.configure
+      action: { type: invoke_skill, ref: comet-build }
       next: full.build.plan
     - id: full.build.plan
       action: { type: invoke_skill, ref: comet-build }
       next: full.build.plan-ready
     - id: full.build.plan-ready
-      action: { type: invoke_skill, ref: comet-build }
-      next: full.build.configure
-    - id: full.build.configure
       action: { type: invoke_skill, ref: comet-build }
       next: full.build.execute
     - id: full.build.execute

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { decide, recordOutcome, startRun } from '../../../domains/engine/loop.js';
 import { loadRuntimePackage } from '../../../domains/skill/load.js';
 import { validateSkillPackage } from '../../../domains/skill/validate.js';
 
@@ -10,9 +11,9 @@ const stableSteps = [
   'full.open',
   'full.design.handoff',
   'full.design.document',
+  'full.build.configure',
   'full.build.plan',
   'full.build.plan-ready',
-  'full.build.configure',
   'full.build.execute',
   'full.build.complete',
   'full.build.fix',
@@ -71,6 +72,34 @@ describe('Chinese comet-classic package', () => {
     );
     expect(invoked.every((ref) => ref && declared.has(ref))).toBe(true);
     expect(invoked).not.toContain('comet-classic');
+  });
+
+  it('configures the full build before planning it', async () => {
+    const pkg = await loadRuntimePackage(chinesePackageRoot);
+    let state = {
+      ...startRun(pkg, 'classic-package-order', '1'.repeat(64)),
+      currentStep: 'full.design.document',
+    };
+    const visited: Array<string | null> = [];
+
+    for (let index = 0; index < 4; index++) {
+      const decision = decide(pkg, state, new Set());
+      expect(decision.action).not.toBeNull();
+      visited.push(decision.action!.stepId);
+      state = recordOutcome(pkg, decision.state, {
+        actionId: decision.action!.id,
+        status: 'succeeded',
+        summary: 'step completed',
+      });
+    }
+
+    expect(visited).toEqual([
+      'full.design.document',
+      'full.build.configure',
+      'full.build.plan',
+      'full.build.plan-ready',
+    ]);
+    expect(state.currentStep).toBe('full.build.execute');
   });
 
   it('defines a completion eval for completed Run state', async () => {
