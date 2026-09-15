@@ -391,6 +391,26 @@ describe('Native phase Hook guard', () => {
     });
   });
 
+  it('rejects a non-canonical file inside a Native change Specs directory', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const { paths, state } = await portableBuild('portable-wrong-spec-path');
+    const wrongPath = path
+      .relative(
+        projectRoot,
+        path.join(nativePortableChangeDir(paths, state.name), 'specs', 'auth', 'wrong.md'),
+      )
+      .replaceAll('\\', '/');
+
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest(wrongPath)),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('spec.md'),
+      phase: 'build',
+      change: state.name,
+    });
+  });
+
   it('returns phase-specific guidance for legacy implementation writes outside Build', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
 

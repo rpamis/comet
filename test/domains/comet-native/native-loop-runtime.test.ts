@@ -578,6 +578,17 @@ describe('Native portable Build/Verify loop', () => {
       commandArgs: null,
       requiredInputs: ['archive-blocker-resolution'],
     });
+    expect(
+      nativePortableContinuation(isolated, null, {
+        archiveMode: 'preview',
+        archiveBlockers: ['verification.md is missing'],
+      }),
+    ).toMatchObject({
+      disposition: 'continue',
+      action: 'repair',
+      commandArgs: ['comet', 'native', 'doctor', 'loop-change', '--repair'],
+      requiredInputs: [],
+    });
   });
 
   it('allows an explicitly empty Runtime check plan when Verifier covers every acceptance ID', () => {

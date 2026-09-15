@@ -105,7 +105,23 @@ describe('Comet Native CLI dispatcher', () => {
     return currentBranch();
   }
 
+  async function ensureTargetSpec(name: string): Promise<void> {
+    const config = await readProjectConfig(projectRoot);
+    const paths = await nativeProjectPaths(projectRoot, config?.native.artifact_root ?? 'docs');
+    const entries = await fs.readdir(path.join(paths.changesDir, name, 'specs'), {
+      withFileTypes: true,
+    });
+    if (entries.some((entry) => entry.isDirectory())) return;
+    const fixtureDir = path.join(paths.changesDir, name, 'specs', 'fixture');
+    await fs.mkdir(fixtureDir, { recursive: true });
+    await fs.writeFile(
+      path.join(fixtureDir, 'spec.md'),
+      '# Fixture target\n\nThis document binds the Native CLI fixture.\n',
+    );
+  }
+
   async function prepareShape(name: string, summary = 'Shape is ready for confirmation') {
+    await ensureTargetSpec(name);
     return json(
       await runNativeCli(['next', name, '--summary', summary, '--json', ...projectArgs()]),
     );

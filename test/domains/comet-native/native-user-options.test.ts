@@ -48,6 +48,35 @@ async function input(root: string, name: string, value: unknown) {
   await fs.writeFile(file, JSON.stringify(value));
   return cli(root, ['next', name, '--runner-input', file]);
 }
+
+function supervisorBrief(acceptance: string | string[]): string {
+  const examples = Array.isArray(acceptance) ? acceptance : [acceptance];
+  return `# Outcome
+Exercise one integrated Supervisor result.
+
+# Scope
+Coordinate the child changes and the parent verification boundary.
+
+# Non-goals
+Do not introduce behavior outside the coordinated change.
+
+# Acceptance examples
+${examples.map((example) => `- ${example}`).join('\n')}
+
+# Constraints and invariants
+Child evidence remains traceable to the parent result.
+
+# Decisions
+No product behavior change: this fixture validates Supervisor state transitions only.
+
+# Open questions
+None.
+
+# Verification expectations
+Run the focused Supervisor checks.
+`;
+}
+
 async function repository() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'native-user-options-'));
   roots.push(root);
@@ -142,7 +171,7 @@ describe('Native public user-option paths', () => {
       );
       await fs.writeFile(
         path.join(dir, 'brief.md'),
-        '# Acceptance examples\n- Alpha works.\n- Beta works.\n',
+        supervisorBrief(['Alpha works.', 'Beta works.']),
       );
       await fs.writeFile(
         path.join(dir, 'children.yaml'),
@@ -288,10 +317,7 @@ describe('Native public user-option paths', () => {
         .projectRoot;
       worktrees.push(root);
       const dir = path.join(root, 'docs/comet/changes', name);
-      await fs.writeFile(
-        path.join(dir, 'brief.md'),
-        '# Acceptance examples\n- Shared behavior works.\n',
-      );
+      await fs.writeFile(path.join(dir, 'brief.md'), supervisorBrief('Shared behavior works.'));
       await fs.mkdir(path.join(dir, 'specs/shared'), { recursive: true });
       await fs.writeFile(
         path.join(dir, 'specs/shared/spec.md'),

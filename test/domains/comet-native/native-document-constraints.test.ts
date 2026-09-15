@@ -78,6 +78,15 @@ describe('Native document constraints', () => {
       findings: [expect.objectContaining({ code: 'brief-section-placeholder' })],
     });
 
+    await fs.writeFile(
+      path.join(root, 'brief.md'),
+      completeBrief.replace('# Outcome\nShip the documented behavior.', '# Outcome\n- None.'),
+    );
+    await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ code: 'brief-section-empty' })],
+    });
+
     await fs.writeFile(path.join(root, 'brief.md'), completeBrief);
     await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toEqual({
       valid: true,
@@ -102,6 +111,68 @@ describe('Native document constraints', () => {
       valid: false,
       findings: [expect.objectContaining({ code: 'spec-document-placeholder' })],
     });
+    expect(
+      validateNativeSpecDocumentText('# Authentication\n<TODO>', 'specs/auth/spec.md'),
+    ).toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ code: 'spec-document-placeholder' })],
+    });
+    expect(
+      validateNativeSpecDocumentText('# Authentication\n**<TODO>**', 'specs/auth/spec.md'),
+    ).toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ code: 'spec-document-placeholder' })],
+    });
+    expect(
+      validateNativeSpecDocumentText('# Authentication\nTODO: explain later', 'specs/auth/spec.md'),
+    ).toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ code: 'spec-document-placeholder' })],
+    });
+    expect(
+      validateNativeSpecDocumentText('# Authentication\n```\nTODO\n```', 'specs/auth/spec.md'),
+    ).toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ code: 'spec-document-placeholder' })],
+    });
+  });
+
+  it('rejects placeholder-only product behavior exemptions at the Shape boundary', async () => {
+    const projectRoot = path.join(root, 'placeholder-exemption-project');
+    await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await ensureNativeDirectories(paths);
+    await createNativePortableChange({ paths, name: 'placeholder-exemption', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'placeholder-exemption');
+    for (const reason of [
+      'No product behavior change: TODO',
+      'No product behavior change: TODO: explain later',
+      'No product behavior change: 待补充',
+      'No product behavior change: 不涉及产品行为',
+      '<!-- No product behavior change: explain reason here -->',
+      'No product behavior change: {{reason}}',
+    ]) {
+      await fs.writeFile(
+        path.join(changeDir, 'brief.md'),
+        completeBrief.replace('# Decisions\nNone.', `# Decisions\n${reason}`),
+      );
+
+      await expect(
+        nativeNextCommand(['placeholder-exemption', '--summary', 'Prepare Shape'], projectRoot),
+      ).rejects.toThrow(/spec-exemption-missing/u);
+    }
+
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      completeBrief.replace(
+        '# Decisions\nNone.',
+        '# Decisions\nNo product behavior change: 仅更新说明文档。',
+      ),
+    );
+    await expect(
+      nativeNextCommand(['placeholder-exemption', '--summary', 'Prepare Shape'], projectRoot),
+    ).resolves.toMatchObject({ exitCode: 0 });
   });
 
   it('blocks the public Shape transition and succeeds after the documented repair', async () => {

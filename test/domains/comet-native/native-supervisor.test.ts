@@ -66,6 +66,33 @@ children:
     depends_on: [integration-core]
 `);
 
+function supervisorBrief(acceptance: string): string {
+  return `# Outcome
+Exercise one integrated Supervisor result.
+
+# Scope
+Coordinate the child changes and the parent verification boundary.
+
+# Non-goals
+Do not introduce behavior outside the coordinated change.
+
+# Acceptance examples
+- ${acceptance}
+
+# Constraints and invariants
+Child evidence remains traceable to the parent result.
+
+# Decisions
+No product behavior change: this fixture validates Supervisor state transitions only.
+
+# Open questions
+None.
+
+# Verification expectations
+Run the focused Supervisor checks.
+`;
+}
+
 describe('Native Supervisor v2 state', () => {
   it('advances a parent without a mandatory review and keeps verification in its integration workspace', async () => {
     const repository = await fs.mkdtemp(path.join(process.cwd(), '.tmp-supervisor-auto-advance-'));
@@ -97,7 +124,7 @@ describe('Native Supervisor v2 state', () => {
       const changeDir = nativePortableChangeDir(paths, 'parent');
       await fs.writeFile(
         path.join(changeDir, 'brief.md'),
-        '# Acceptance examples\n- The integrated behavior is available.\n',
+        supervisorBrief('The integrated behavior is available.'),
       );
       await fs.mkdir(path.join(changeDir, 'specs', 'supervisor'), { recursive: true });
       await fs.writeFile(
@@ -481,7 +508,7 @@ describe('Native Supervisor v2 state', () => {
       const changeDir = nativePortableChangeDir(paths, 'coordinated-parent');
       await fs.writeFile(
         path.join(changeDir, 'brief.md'),
-        '# Acceptance examples\n- The coordinated behavior is available.\n',
+        supervisorBrief('The coordinated behavior is available.'),
       );
       await fs.writeFile(
         path.join(changeDir, 'children.yaml'),
@@ -1916,7 +1943,7 @@ children:
       const changeDir = nativePortableChangeDir(paths, 'parent');
       await fs.writeFile(
         path.join(changeDir, 'brief.md'),
-        '# Acceptance examples\n- The parent integration is complete.\n',
+        supervisorBrief('The parent integration is complete.'),
       );
       await fs.mkdir(path.join(changeDir, 'specs', 'repair'), { recursive: true });
       await fs.writeFile(

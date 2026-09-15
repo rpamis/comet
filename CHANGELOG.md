@@ -8,7 +8,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Agent-oriented CLI help**: Present every root `comet --help` description in consistent, action-oriented English, route `comet help` for facade commands to their complete Runtime help, and show the Native discovery and continuation sequence so Agents can reliably find and execute the next workflow action.
 - **Project Knowledge corpus limits**: Allow projects to configure the Local Provider's per-file and total corpus limits in MB through `.comet/config.yaml` or Dashboard settings. New defaults accept Markdown files up to 1 MB and a corpus up to 32 MB.
-- **Native formal document constraints**: Require complete brief sections and target Specs or an explicit no-product-behavior exemption at new and reconfirmed Shape boundaries, then recheck the bound documents through Build, Verify, and Archive with recoverable diagnostics while preserving already-confirmed legacy progress.
+- **Native formal document constraints**: Require complete brief sections and target Specs or a concrete no-product-behavior reason at new and reconfirmed Shape boundaries, reject placeholder-only documents and non-canonical Spec paths through the Native Hook, then recheck bound documents through Build, Verify, and Archive with executable report-repair guidance while preserving already-confirmed progress.
 
 ### Fixed
 

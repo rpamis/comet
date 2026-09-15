@@ -502,6 +502,35 @@ function nativeNextDecisionAlternative(options: {
   };
 }
 
+function nativePortableArchiveRepairAlternatives(
+  state: NativePortableState,
+  blockers: readonly string[],
+): NativePortableCommandAlternative[] {
+  const reportNeedsRepair = blockers.some((blocker) =>
+    /^verification\.md is (?:missing|stale|invalid)$/u.test(blocker),
+  );
+  if (!reportNeedsRepair) return [];
+  return [
+    {
+      name: 'repair-verification-report',
+      stateVersion: state.state_version,
+      expectedAction: 'archive-preview',
+      commandArgs: ['comet', 'native', 'doctor', state.name, '--repair'],
+      requiredInputs: [],
+      inputOptions: [],
+      description: localized(
+        state,
+        'Rebuild the Runtime-managed verification report, then rerun the Archive dry-run.',
+        '重建由 Runtime 管理的 verification.md，然后重新运行 Archive 预检。',
+      ),
+    },
+  ];
+}
+
+function isVerificationReportBlocker(blocker: string): boolean {
+  return /^verification\.md is (?:missing|stale|invalid)$/u.test(blocker);
+}
+
 function nativeNextRevisionAlternatives(options: {
   change: string;
   stateVersion: number;
@@ -1101,6 +1130,24 @@ export function nativePortableContinuation(
     }
     if (archiveMode === 'preview') {
       if (options.archiveBlockers && options.archiveBlockers.length > 0) {
+        const reportRepair = nativePortableArchiveRepairAlternatives(
+          state,
+          options.archiveBlockers,
+        )[0];
+        if (
+          reportRepair &&
+          options.archiveBlockers.every((blocker) => isVerificationReportBlocker(blocker))
+        ) {
+          return {
+            ...base,
+            disposition: 'continue',
+            action: 'repair',
+            commandArgs: reportRepair.commandArgs,
+            requiredInputs: [],
+            inputOptions: [],
+            runnerAction: runner('none'),
+          };
+        }
         return {
           ...base,
           disposition: 'blocked',
@@ -1108,6 +1155,10 @@ export function nativePortableContinuation(
           commandArgs: null,
           requiredInputs: ['archive-blocker-resolution'],
           inputOptions: [],
+          commandAlternatives: nativePortableArchiveRepairAlternatives(
+            state,
+            options.archiveBlockers,
+          ),
           runnerAction: runner('none'),
         };
       }

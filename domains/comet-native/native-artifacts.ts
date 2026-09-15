@@ -84,32 +84,57 @@ function result(findings: NativeFinding[]): NativeArtifactValidation {
 }
 
 function meaningfulMarkdown(source: string): string {
-  return source
-    .replace(/<!--[\s\S]*?-->/gu, '')
-    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:TODO|TBD|FIXME|待填写|待补充)\s*[:：-]?\s*$/gimu, '')
-    .trim();
+  return source.replace(/<!--[\s\S]*?-->/gu, '').trim();
+}
+
+function markdownBody(source: string): string {
+  const lines = meaningfulMarkdown(source).split(/\r?\n/u);
+  const body: string[] = [];
+  let inFence = false;
+  for (const line of lines) {
+    if (/^\s*(?:```|~~~)/u.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && /^\s*#{1,6}\s*$/u.test(line)) continue;
+    if (!inFence && /^\s*#{1,6}\s+/u.test(line)) continue;
+    if (!inFence && /^\s*(?:[-*+]\s*|\d+[.)]\s*)$/u.test(line)) continue;
+    body.push(line);
+  }
+  return body.join('\n').trim();
 }
 
 function isExplicitNone(source: string): boolean {
-  const normalized = meaningfulMarkdown(source)
+  const normalized = markdownBody(source)
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/gmu, '')
     .replace(/[*_`>#\x5b\x5d()]/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim()
     .toLocaleLowerCase('en-US');
-  return /^(?:none|n\/a|not applicable|no(?:ne)?(?:\s+at\s+this\s+time)?|no\s+(?:additional\s+)?(?:non-goals?|decisions?|open\s+questions?|questions?)|无|无相关事项|没有(?:额外)?(?:非目标|决定|待解决问题)|不适用|暂无)$/iu.test(
+  return /^(?:none|n\/a|not applicable|no(?:ne)?(?:\s+at\s+this\s+time)?|no\s+(?:additional\s+)?(?:non-goals?|decisions?|open\s+questions?|questions?)|无|无相关事项|没有(?:额外)?(?:非目标|决定|待解决问题)|不适用|暂无)[.!。；;：:，,、 -]*$/iu.test(
     normalized,
   );
 }
 
 function isTemplateOnly(source: string): boolean {
-  const normalized = meaningfulMarkdown(source)
-    .replace(/^#{1,6}\s+.*$/gimu, '')
-    .replace(/[*_`>#\x5b\x5d()]/gu, ' ')
+  const normalized = markdownBody(source)
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/gmu, '')
     .replace(/\s+/gu, ' ')
     .trim();
   if (normalized.length === 0) return false;
-  return /^(?:(?:todo|tbd|fixme)(?:\s*[:：-]\s*(?:fill(?:\s+this\s+in)?|待填写|待补充)?)?|fill(?:\s+this\s+in)?|placeholder|待填写|待补充|<[^>]+>|\{\{[^}]+\}\})[.!：: -]*$/iu.test(
-    normalized,
+  const placeholderCandidate = normalized
+    .replace(/[*_`]/gu, '')
+    .replace(/^\s*>+\s?/gmu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (/^(?:<[^>\r\n]+>|\{\{[^}\r\n]+\}\})[.!。；;：:，,、 -]*$/iu.test(placeholderCandidate))
+    return true;
+  const decorated = normalized
+    .replace(/[*_`>#\x5b\x5d()]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  return /^(?:(?:todo|tbd|fixme)(?:\s*[:：-]\s*.+)?|fill(?:\s+this\s+in)?(?:\s*[:：-]\s*.+)?|placeholder(?:\s*[:：-]\s*.+)?|待填写\S*|待补充\S*|<[^>]+>|\{\{[^}]+\}\})[.!。；;：:，,、 -]*$/iu.test(
+    decorated,
   );
 }
 
@@ -118,9 +143,8 @@ export function validateNativeSpecDocumentText(
   documentRef: string,
 ): NativeArtifactValidation {
   const findings: NativeFinding[] = [];
-  const meaningful = meaningfulMarkdown(source);
-  const body = meaningfulMarkdown(source.replace(/^#{1,6}\s+.*$/gimu, ''));
-  if (meaningful.length === 0 || body.length === 0) {
+  const body = markdownBody(source);
+  if (body.length === 0) {
     findings.push({
       code: 'spec-document-empty',
       message: `Native target Spec is empty: ${documentRef}. Add the complete target requirements or use an explicit no-product-behavior exemption in brief.md.`,
@@ -222,7 +246,7 @@ export async function validateNativeBrief(
   const nonEmptySections = options.strict ? BRIEF_ALL : BRIEF_REQUIRED;
   for (const heading of nonEmptySections) {
     const section = sections.get(heading) ?? '';
-    if (meaningfulMarkdown(section).length === 0) {
+    if (markdownBody(section).length === 0) {
       findings.push({
         code: 'brief-section-empty',
         message: `Brief section is empty: ${heading}`,

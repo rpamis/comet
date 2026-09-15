@@ -13,6 +13,8 @@ import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
 import { resolveSelectedNativeChange } from './native-selection.js';
+import { NATIVE_DELTA_FILE } from './native-delta-spec.js';
+import { NAME_PATTERN } from './native-portable-storage.js';
 import type { NativeChangeState, NativeProjectPaths } from './native-types.js';
 import {
   isNativePortableChange,
@@ -69,6 +71,7 @@ async function inspectPortableWriteTargets(options: {
   const { projectRoot, paths, state, request } = options;
   const changeDir = nativePortableChangeDir(paths, state.name);
   const formalTargets: string[] = [];
+  const invalidFormalTargets: string[] = [];
   const implementationTargets: string[] = [];
   let configuredTarget = false;
   let controlTarget = false;
@@ -113,14 +116,28 @@ async function inspectPortableWriteTargets(options: {
     if (
       changeRelative === 'brief.md' ||
       changeRelative === 'children.yaml' ||
-      changeRelative.startsWith('specs/')
+      (changeRelative.startsWith('specs/') && isPortableFormalTarget(changeRelative))
     ) {
       formalTargets.push(changeRelative);
+      continue;
+    }
+    if (changeRelative.startsWith('specs/')) {
+      invalidFormalTargets.push(changeRelative);
       continue;
     }
     return {
       allowed: false,
       reason: `${changeRelative || 'change directory'} is Runtime-owned and cannot be edited by the Agent`,
+      workflow: 'native',
+      phase: state.phase,
+      change: state.name,
+    };
+  }
+
+  if (invalidFormalTargets.length > 0) {
+    return {
+      allowed: false,
+      reason: invalidFormalTargets.map(portableFormalTargetReason).join('\n'),
       workflow: 'native',
       phase: state.phase,
       change: state.name,
@@ -226,6 +243,27 @@ async function inspectPortableWriteTargets(options: {
 function isWithin(parent: string, target: string): boolean {
   const relative = path.relative(parent, target);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function portableFormalTargetReason(changeRelative: string): string {
+  const parts = changeRelative.split('/');
+  const capability =
+    parts[0] === 'specs' && parts[1] && NAME_PATTERN.test(parts[1]) ? parts[1] : null;
+  const expected = capability
+    ? `specs/${capability}/spec.md (or specs/${capability}/${NATIVE_DELTA_FILE} for delta metadata)`
+    : `specs/<capability>/spec.md (or specs/<capability>/${NATIVE_DELTA_FILE} for delta metadata)`;
+  return `Native formal Spec artifacts must use ${expected}; received ${changeRelative}`;
+}
+
+function isPortableFormalTarget(changeRelative: string): boolean {
+  const parts = changeRelative.split('/');
+  return (
+    parts.length === 3 &&
+    parts[0] === 'specs' &&
+    parts[1] !== undefined &&
+    NAME_PATTERN.test(parts[1]) &&
+    (parts[2] === 'spec.md' || parts[2] === NATIVE_DELTA_FILE)
+  );
 }
 
 function requestTargetsAreControlOnly(

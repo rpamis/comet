@@ -42,7 +42,7 @@ Investigate facts that can be established without the user. Ask only about decis
 
 Complete when requirements sources have been fully covered according to their purpose, all outcome-affecting decisions and assumptions are resolved, no `[blocking]` remains, the user explicitly confirms the outcome, scope, key decisions, all acceptance items, and non-goals, and Runtime has entered Build.
 
-For a new change or a Shape reconfirmation, Runtime checks the eight existing brief sections, a complete target Spec or an explicit no-product-behavior-change exemption, and the formal artifact paths. Missing, blank, template-only, or misattributed files return the file, reason, and repair action; edit the reported artifact and rerun the latest continuation without editing state or creating a same-name change. Existing changes already confirmed in a later phase retain their progress and receive this contract when they return to Shape.
+At a new or reconfirmed Shape, Runtime checks all eight brief sections, a complete target Spec or an explicit no-product-behavior-change reason, and formal paths. Failures name the artifact and repair action; edit it and rerun continuation. Later-phase existing changes keep their progress until Shape.
 
 ## Build ↔ Verify Loop
 
@@ -54,7 +54,7 @@ After the Builder submits a candidate, Runtime runs required checks and a new re
 
 Before the first implementation, read the current brief, complete target Specs, and every acceptance item. Edit project code and tests within confirmed scope. During repair, prioritize the Verifier's failed or blocked items and failed checks, then recheck other confirmed behavior before submission. `previous_unresolved_ids` identifies the repair focus; the next formal verification still covers every acceptance item.
 
-Builder handoff, Verify, and Archive recheck the applicable formal documents and their binding to the confirmed goal. If a document drifts, goes missing, or leaves an outdated report, Runtime preserves existing work and returns an executable Shape/Build or report-rebuild action; phase checks still run when a host Hook is unavailable. Ordinary project Markdown is not blocked solely because its filename matches a formal artifact.
+Build, Verify, and Archive recheck bound documents. Drift or stale reports return a repair action and preserve work; Runtime still checks without a Hook. Ordinary Markdown is unaffected.
 
 Classify requirement changes before taking an action allowed by the current `continuation`:
 

@@ -132,7 +132,13 @@ None.
 # Verification expectations
 Run applicable focused checks.
 `;
-    await fs.writeFile(path.join(projectRoot, 'docs', 'comet', 'changes', name, 'brief.md'), brief);
+    const changeDir = path.join(projectRoot, 'docs', 'comet', 'changes', name);
+    await fs.writeFile(path.join(changeDir, 'brief.md'), brief);
+    await fs.mkdir(path.join(changeDir, 'specs', 'fixture'), { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, 'specs', 'fixture', 'spec.md'),
+      '# Fixture target\n\nThis document binds the Native Runtime loop fixture.\n',
+    );
     const prepared = json(
       await runNativeCli([
         'next',
@@ -696,7 +702,7 @@ Run applicable focused checks.
           changeDir: path.join(projectRoot, 'docs', 'comet', 'changes', name),
           supervisorStateRef: null,
           briefRef: 'brief.md',
-          specRefs: [],
+          specRefs: [{ capability: 'fixture', operation: 'create', ref: 'specs/fixture/spec.md' }],
           acceptanceCount: 2,
           scopeIds: ['A1', 'A2'],
           detailsPageArgs: [

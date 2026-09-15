@@ -70,16 +70,52 @@ async function guardedShapeConfirmationArgs(
 const PARENT_BRIEF = `# Outcome
 Integrate the child changes into one verified result.
 
+# Scope
+Coordinate the child changes and verify the integrated result.
+
+# Non-goals
+Do not introduce behavior outside the child changes.
+
 # Acceptance examples
 - The integrated result contains the first behavior.
 - The integrated result contains the second behavior.
+
+# Constraints and invariants
+Every child result remains independently traceable.
+
+# Decisions
+No product behavior change: this fixture validates Supervisor coordination only.
+
+# Open questions
+None.
+
+# Verification expectations
+Run the focused Supervisor coordination checks.
 `;
 
 const CHILD_BRIEF = `# Outcome
 Implement one independently verified child result.
 
+# Scope
+Implement the assigned child behavior and its checks.
+
+# Non-goals
+Do not change unrelated capabilities.
+
 # Acceptance examples
 - The child implementation is present on its branch.
+
+# Constraints and invariants
+The child remains independently verifiable.
+
+# Decisions
+No product behavior change: this fixture validates child coordination only.
+
+# Open questions
+None.
+
+# Verification expectations
+Run the focused child checks.
 `;
 
 const CHILDREN = `schema: comet.native.children.v1

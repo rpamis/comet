@@ -85,10 +85,46 @@ export const NATIVE_PORTABLE_BRIEF_TEMPLATE = nativeBriefTemplate('en');
 
 const NATIVE_CAPABILITY_ASSOCIATION_FILE = 'capability-association.yaml';
 
-function hasExplicitSpecExemption(source: string): boolean {
-  return /(?:no\s+product\s+behavior\s+change|documentation[- ]only|不改变产品行为|不涉及产品行为|仅文档)[^\n]*[:：]\s*[^\n\s]/iu.test(
-    source,
+function isPlaceholderExemptionReason(source: string): boolean {
+  const normalized = source
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/u, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (normalized.length === 0) return true;
+  if (/^(?:<[^>\r\n]+>|\{\{[^}\r\n]+\}\})[.!：: -]*$/iu.test(normalized)) return true;
+  const decorated = normalized
+    .replace(/[*_`>#\x5b\x5d()]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (
+    /^(?:todo|tbd|fixme)(?:\s*[:：-]|\s*$)/iu.test(decorated) ||
+    /^(?:fill(?:\s+this\s+in)?|placeholder)\b/iu.test(decorated) ||
+    /^(?:待填写|待补充)/u.test(decorated)
+  ) {
+    return true;
+  }
+  return /^(?:(?:todo|tbd|fixme)\b|fill(?:\s+this\s+in)?\b|placeholder\b|documentation[- ]only\b|no\s+product\s+behavior\s+change\b|待填写|待补充|仅文档|不改变产品行为|不涉及产品行为)[.!。；;：:，,、 -]*$/iu.test(
+    decorated,
   );
+}
+
+function hasExplicitSpecExemption(source: string): boolean {
+  const visibleLines: string[] = [];
+  let inFence = false;
+  for (const line of source.replace(/<!--[\s\S]*?-->/gu, '').split(/\r?\n/u)) {
+    if (/^\s*(?:```|~~~)/u.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && !/^\s*#{1,6}\s+/u.test(line)) visibleLines.push(line);
+  }
+  return visibleLines.some((line) => {
+    const match =
+      /(?:no\s+product\s+behavior\s+change|documentation[- ]only|不改变产品行为|不涉及产品行为|仅文档)\s*[:：]\s*(.*)$/iu.exec(
+        line,
+      );
+    return match !== null && !isPlaceholderExemptionReason(match[1] ?? '');
+  });
 }
 
 export function formatNativeDocumentConstraintFindings(

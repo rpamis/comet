@@ -27,6 +27,8 @@ Runtime 的本机数据固定保存在被 Git 忽略的 `.comet/runtime/native/`
 
 `verification.md` 是 Runtime 根据同一版本的 YAML 生成的可读验收报告。报告缺失或版本落后时，Runtime 只重建报告，不会因此重新运行检查或 Verifier。工作流进度始终以 YAML 为准，不能通过修改 Markdown 报告来推进。
 
+Shape、Build、Verify 和 Archive 会复查正式文件与已确认需求的绑定。目标规格必须位于 `specs/<capability>/spec.md`；`specs/` 下的其他文件不会被当作正式 Spec，Hook 会拒绝并提示正确位置。空文档、只有标题或围栏、以及只含模板占位（如 `TODO`、`<TODO>`、`{{reason}}`）的内容都不能满足完整规格。无产品行为变更豁免也必须写具体理由，注释和占位理由不算。Archive 预检若只报告 `verification.md` 缺失、过期或无效，`continuation` 会直接给出 `comet native doctor <change> --repair`；完成后重新运行 dry-run。
+
 `.comet/config.yaml` 决定使用哪种工作流，以及 change 产物保存在哪个目录。使用非默认产物目录并需要跨设备恢复时，应同步该文件；其余 `.comet/*` 只保留在本机。
 
 ### Brief
