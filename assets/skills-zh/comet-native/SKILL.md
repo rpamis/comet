@@ -56,6 +56,8 @@ Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的
 
 Build、Verify 和 Archive 会复查文档绑定。文档漂移或报告过期时保留工作并返回修复动作；Hook 未触发仍检查，普通 Markdown 不受影响。
 
+用户 Hook 的共享输出目录可通过 `.comet/config.yaml` 的 `hook.allow_paths` 放行；该配置对 Native 和 Classic 共用，工作流产物目录不在白名单范围。详见[用户 Hook 写入](reference/commands.md#用户-hook-写入)。
+
 需求变化时，先判断变化属于哪种情况，再执行当前 `continuation` 允许的动作：
 
 - 已确认的功能有实现遗漏：从 Verify 使用 `--revise-implementation`，保留已确认的需求范围，回 Build 修改。

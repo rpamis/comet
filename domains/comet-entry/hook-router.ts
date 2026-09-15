@@ -1,8 +1,13 @@
+import path from 'path';
+
 import {
   inspectClassicHookGuard,
   listActiveClassicHookChanges,
 } from '../comet-classic/classic-hook-guard.js';
-import { ClassicLayoutUnavailableError } from '../comet-classic/classic-layout.js';
+import {
+  ClassicLayoutUnavailableError,
+  classicLayoutPaths,
+} from '../comet-classic/classic-layout.js';
 import { resolveCurrentChange } from '../comet-classic/classic-current-change.js';
 import {
   inspectNativeHookGuard,
@@ -13,6 +18,7 @@ import { readWorkflowProjectConfig } from '../workflow-contract/project-config-r
 import { readCometCurrentSelection } from './current-selection.js';
 import { readCachedProjectConfig } from './entry-reads.js';
 import { scopeCometHookTargets } from '../workflow-contract/hook-target-scope.js';
+import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
 import type { CometHookDecision, CometHookRequest } from './hook-types.js';
 import type { CometWorkflow } from './types.js';
 import { collectCometPluginContext } from './plugin-context.js';
@@ -77,6 +83,53 @@ function enabledWorkflows(
 ): CometWorkflow[] {
   if (!config) return ['classic'];
   return config.workflows ?? [config.default_workflow];
+}
+
+/**
+ * Explicit user Hook outputs do not need a current Comet change. Keep this
+ * check before owner resolution so an unrelated Hook is not forced to select
+ * one of several active changes. Workflow-owned roots remain reserved and
+ * continue through the workflow guard.
+ */
+async function inspectUnownedHookTargets(
+  projectRoot: string,
+  request: CometHookRequest,
+): Promise<CometHookDecision | null> {
+  const config = await readCachedProjectConfig(projectRoot);
+  const enabled = enabledWorkflows(config);
+  const reservedPaths = [path.join(projectRoot, '.comet')];
+
+  if (enabled.includes('native') && config?.native) {
+    reservedPaths.push(path.join(projectRoot, config.native.artifact_root, 'comet'));
+  }
+  if (enabled.includes('classic')) {
+    const layout = classicLayoutPaths(projectRoot, config?.classic?.artifact_layout ?? 'legacy');
+    reservedPaths.push(layout.openSpecRoot, layout.superpowersRoot);
+  }
+
+  let controlTarget = false;
+  let configuredTarget = false;
+  for (const targetPath of request.targets) {
+    const target = path.resolve(projectRoot, targetPath);
+    const relative = path.relative(projectRoot, target).replaceAll('\\', '/');
+    if (relative === '.comet/config.yaml') {
+      controlTarget = true;
+      continue;
+    }
+    if (!(await configuredHookWritePath(projectRoot, target, reservedPaths))) return null;
+    configuredTarget = true;
+  }
+
+  if (!controlTarget && !configuredTarget) return null;
+  return {
+    allowed: true,
+    reason:
+      controlTarget && configuredTarget
+        ? 'Write targets are Comet control files or configured Hook allow paths'
+        : controlTarget
+          ? 'Comet control artifact write'
+          : 'Write targets are configured Hook allow paths',
+  };
 }
 
 async function listEnabledActiveChanges(
@@ -270,12 +323,16 @@ export async function inspectCometHook(
       return { allowed: true, reason: 'No active Comet change' };
     }
     if (resolution.status === 'stale') {
+      const unownedDecision = await inspectUnownedHookTargets(projectRoot, projectRequest);
+      if (unownedDecision) return unownedDecision;
       return {
         allowed: false,
         reason: `${resolution.reason}. Resume /comet-native or /comet-classic and select the current change before retrying`,
       };
     }
     if (resolution.status === 'ambiguous') {
+      const unownedDecision = await inspectUnownedHookTargets(projectRoot, projectRequest);
+      if (unownedDecision) return unownedDecision;
       return {
         allowed: false,
         reason: `Multiple active Comet changes require one current selection: ${resolution.candidates

@@ -16,6 +16,21 @@ When the task needs full text, sources, or verification methods, run `comet task
 
 If `<active_policies>` includes `<verification command="...">`, include those commands in current Verify checks and record actual results. Runtime makes the policy mandatory only after its command executes successfully.
 
+## User Hook writes
+
+The Comet Hook Router only checks write targets; it does not replace or invoke a project's other Hooks. Writes outside the project are allowed without Comet attribution. When a user Hook writes shared project files during Shape, Verify, or Archive, configure a dedicated directory in `.comet/config.yaml`:
+
+```yaml
+hook:
+  allow_paths:
+    - .my-hook-output
+    - docs/team-notes
+```
+
+Paths are project-relative directories; the directory and its descendants are allowed, and the setting is shared by Native and Classic. Explicitly configured paths do not require a current change selection when several changes are active. `.comet/config.yaml` is also a permitted control write.
+
+`.comet/`, `native.artifact_root/comet/`, and Classic workflow artifact roots remain workflow-owned and cannot be bypassed through `allow_paths`. If one Hook event contains multiple targets, every non-allowlisted target still goes through phase checks; keep user Hook output in a dedicated directory.
+
 Save memory as follows:
 
 - When the user explicitly asks to remember a preference or project convention long term, call `comet memory remember <project-root> --text "<preference or convention>" --scope global|project --json` to save it immediately as explicit user memory.

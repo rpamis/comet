@@ -16,6 +16,21 @@ comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --sess
 
 若 `<active_policies>` 中包含 `<verification command="...">`，将这些命令加入当前 Verify 的检查，并记录实际结果。只有对应命令成功执行后，Runtime 才会将该策略设为强制执行。
 
+## 用户 Hook 写入
+
+Comet Hook Router 只检查写入目标，不会替换或调用项目自己的其他 Hook。写入项目目录之外的目标会直接放行。用户 Hook 如果在 Shape、Verify 或 Archive 等阶段向项目内的共享目录写文件，应在 `.comet/config.yaml` 配置专用目录：
+
+```yaml
+hook:
+  allow_paths:
+    - .my-hook-output
+    - docs/team-notes
+```
+
+路径必须是项目相对目录；目录本身及其后代路径都会放行，Native 和 Classic 共用这项配置。即使同时存在多个 active change、还没有当前选择，明确配置的目录也不会要求先选择 change；`.comet/config.yaml` 也属于可写的控制文件。
+
+`.comet/`、Native 的 `native.artifact_root/comet/` 以及 Classic 的工作流产物目录始终由工作流管理，不能通过 `allow_paths` 绕过。一次 Hook 事件包含多个目标时，未配置的目标仍会继续接受阶段检查；建议把用户 Hook 的输出放在独立目录中。
+
 记忆按以下规则保存：
 
 - 用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember <project-root> --text "<偏好或约定>" --scope global|project --json`，立即保存为用户明确指定的记忆。

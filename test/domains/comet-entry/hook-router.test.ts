@@ -469,6 +469,62 @@ describe('Comet Hook Router', () => {
     expect(inspectClassic).not.toHaveBeenCalled();
   });
 
+  it('allows an explicit user Hook output without selecting a Comet change', async () => {
+    const config = defaultProjectConfig('docs');
+    config.workflows = ['native', 'classic'];
+    config.hook = { allow_paths: ['.user-hook-output'] };
+    await writeProjectConfig(root, config);
+
+    const inspectNative = vi.fn();
+    const inspectClassic = vi.fn();
+    const decision = await inspectCometHook(
+      root,
+      { intent: 'write', targets: ['.user-hook-output/result.json'], toolName: 'Write' },
+      {
+        listNative: async () => [
+          { workflow: 'native', name: 'first', phase: 'shape' as const },
+          { workflow: 'native', name: 'second', phase: 'build' as const },
+        ],
+        listClassic: async () => [],
+        inspectNative,
+        inspectClassic,
+      },
+    );
+
+    expect(decision).toEqual({
+      allowed: true,
+      reason: 'Write targets are configured Hook allow paths',
+    });
+    expect(inspectNative).not.toHaveBeenCalled();
+    expect(inspectClassic).not.toHaveBeenCalled();
+  });
+
+  it('does not let the user allowlist bypass workflow-owned roots', async () => {
+    const config = defaultProjectConfig('docs');
+    config.workflows = ['native', 'classic'];
+    config.hook = { allow_paths: ['docs/comet'] };
+    await writeProjectConfig(root, config);
+
+    const decision = await inspectCometHook(
+      root,
+      { intent: 'write', targets: ['docs/comet/changes/first/brief.md'], toolName: 'Write' },
+      {
+        listNative: async () => [
+          { workflow: 'native', name: 'first', phase: 'shape' as const },
+          { workflow: 'native', name: 'second', phase: 'build' as const },
+        ],
+        listClassic: async () => [],
+        inspectNative: vi.fn(),
+        inspectClassic: vi.fn(),
+      },
+    );
+
+    expect(decision).toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('Multiple active Comet changes'),
+    });
+  });
+
   it('allows ordinary development when a stale selection has no active replacement', async () => {
     await configureBoth();
     await writeCometCurrentSelection(root, {

@@ -56,6 +56,8 @@ Before the first implementation, read the current brief, complete target Specs, 
 
 Build, Verify, and Archive recheck bound documents. Drift or stale reports return a repair action and preserve work; Runtime still checks without a Hook. Ordinary Markdown is unaffected.
 
+User Hook output can use `hook.allow_paths` in `.comet/config.yaml`; see [User Hook writes](reference/commands.md#user-hook-writes).
+
 Classify requirement changes before taking an action allowed by the current `continuation`:
 
 - Missing implementation of confirmed functionality: use `--revise-implementation` from Verify, retain confirmed scope, and return to Build.
