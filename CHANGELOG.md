@@ -20,6 +20,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native workflow state preview**: Explain `comet-state.yaml` fields and render nested values as formatted JSON blocks instead of undifferentiated table text.
 - **Project Knowledge diagnostics**: Distinguish per-file and total-corpus limit failures, name the exact setting to adjust, and stop excluding ordinary long verification reports under the previous fixed 64 KiB limit.
 
+### Security
+
+- **Vitest dependency security**: Upgrade Vitest, `@vitest/mocker`, and the V8 coverage package to 4.1.11, removing the path traversal and arbitrary file read vulnerability in reachable development servers.
+
 ## What's Changed [0.4.1] - 2026-09-14
 
 ### Added

@@ -116,7 +116,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.1.1",
-    "@vitest/coverage-v8": "^4.1.6",
+    "@vitest/coverage-v8": "^4.1.11",
     "esbuild": "0.28.2",
     "eslint": "^10.4.0",
     "husky": "^9.1.7",
@@ -130,7 +130,7 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.59.3",
     "vite": "8.2.2",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
