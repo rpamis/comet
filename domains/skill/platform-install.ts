@@ -395,6 +395,102 @@ function getAssetsDir(): string {
   return directAssets;
 }
 
+function bundledAssetPath(relativePath: string, label: string): string {
+  if (
+    !relativePath ||
+    relativePath !== relativePath.trim() ||
+    relativePath.includes('\\') ||
+    path.posix.isAbsolute(relativePath) ||
+    path.posix.normalize(relativePath) !== relativePath ||
+    relativePath.split('/').some((part) => !part || part === '.' || part === '..')
+  ) {
+    throw new Error(
+      `Invalid manifest at ${label}: unsafe asset path ${JSON.stringify(relativePath)}`,
+    );
+  }
+  return relativePath;
+}
+
+function manifestStringList(value: unknown, label: string): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
+    throw new Error(`Invalid manifest at ${label}: expected an array of asset paths`);
+  }
+  return value as string[];
+}
+
+function bundledAssetPaths(manifest: Manifest, manifestPath: string): string[] {
+  const managedSkills = [
+    ...manifestStringList(manifest.skills, `${manifestPath} skills`),
+    ...manifestStringList(manifest.internalSkills, `${manifestPath} internalSkills`),
+  ];
+  const languageRoots = new Set<string>(['skills']);
+  for (const language of manifest.languages ?? []) {
+    if (!language || typeof language.skillsDir !== 'string') {
+      throw new Error(`Invalid manifest at ${manifestPath}: language skillsDir is required`);
+    }
+    languageRoots.add(bundledAssetPath(language.skillsDir, manifestPath));
+  }
+
+  const required = new Set<string>();
+  for (const skillPath of managedSkills) {
+    const safePath = bundledAssetPath(skillPath, manifestPath);
+    if (safePath.includes('/scripts/')) {
+      required.add(`skills/${safePath}`);
+      continue;
+    }
+    for (const languageRoot of languageRoots) required.add(`${languageRoot}/${safePath}`);
+  }
+
+  for (const rulePath of [
+    ...manifestStringList(manifest.rules, `${manifestPath} rules`),
+    ...manifestStringList(manifest.nativeRules, `${manifestPath} nativeRules`),
+  ]) {
+    required.add(`skills/${bundledAssetPath(rulePath, manifestPath)}`);
+  }
+  for (const hookPath of [
+    ...Object.keys(manifest.hooks ?? {}),
+    ...Object.keys(manifest.nativeHooks ?? {}),
+  ]) {
+    required.add(`skills/${bundledAssetPath(hookPath, manifestPath)}`);
+  }
+  return [...required].sort();
+}
+
+async function assertBundledAssetsComplete(assetsDir: string = getAssetsDir()): Promise<void> {
+  const resolvedAssetsDir = path.resolve(assetsDir);
+  const manifestPath = path.join(resolvedAssetsDir, 'manifest.json');
+  let manifest: Manifest;
+  try {
+    manifest = await readJson<Manifest>(manifestPath);
+  } catch (error) {
+    throw new Error(
+      `The installed @rpamis/comet package asset manifest is unavailable at ${manifestPath}. Reinstall the same version from the official npm registry and retry.`,
+      { cause: error },
+    );
+  }
+
+  if (!manifest || !Array.isArray(manifest.skills)) {
+    throw new Error(
+      `The installed @rpamis/comet package asset manifest is invalid at ${manifestPath}. Reinstall the same version from the official npm registry and retry.`,
+    );
+  }
+
+  const missing: string[] = [];
+  for (const relativePath of bundledAssetPaths(manifest, manifestPath)) {
+    const stat = await lstatOrNull(path.join(resolvedAssetsDir, ...relativePath.split('/')));
+    if (!stat?.isFile()) missing.push(relativePath);
+  }
+  if (missing.length === 0) return;
+
+  const preview = missing.slice(0, 5).join(', ');
+  const remainder = missing.length > 5 ? `, and ${missing.length - 5} more` : '';
+  const noun = missing.length === 1 ? 'asset is' : 'assets are';
+  throw new Error(
+    `The installed @rpamis/comet package is incomplete (${missing.length} required ${noun} missing) at ${resolvedAssetsDir}. Missing: ${preview}${remainder}. Reinstall the same version from the official npm registry and retry.`,
+  );
+}
+
 /**
  * Get the central skills directory for symlink mode.
  * Project scope: <project>/.comet/skills/
@@ -515,6 +611,7 @@ async function prepareManagedSkillCopyTarget(
   scope: InstallScope = 'project',
   workflowSelection: InitWorkflowSelection = 'both',
 ): Promise<void> {
+  await assertBundledAssetsComplete();
   const manifest = await readManifest();
   const managedEntries = new Set(getManagedSkillTopLevelEntries(manifest, workflowSelection));
   const skillsRoot = path.join(baseDir, getPlatformSkillsDir(platform, scope), 'skills');
@@ -762,6 +859,7 @@ async function copyCometSkillsForPlatform(
   installMode: InstallMode = 'copy',
   workflowSelection: InitWorkflowSelection = 'both',
 ): Promise<{ copied: number; skipped: number; failed: number }> {
+  await assertBundledAssetsComplete();
   if (installMode === 'symlink') {
     return installSkillsAsSymlink(
       baseDir,
@@ -2451,6 +2549,7 @@ async function createWorkingDirs(
 }
 
 export {
+  assertBundledAssetsComplete,
   copyCometSkillsForPlatform,
   copyCometRulesForPlatform,
   installCometHooksForPlatform,

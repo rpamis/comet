@@ -25,6 +25,7 @@ vi.mock('../../../platform/fs/file-system.js', async (importOriginal) => {
 });
 
 import {
+  assertBundledAssetsComplete,
   getAssetsDir,
   readManifest,
   getManifestSkills,
@@ -35,6 +36,7 @@ import {
   parseProjectConfigOverrides,
   renderProjectConfig,
   mergeProjectConfig,
+  prepareManagedSkillCopyTarget,
 } from '../../../domains/skill/platform-install.js';
 import {
   reconcileCometHooksForPlatform,
@@ -44,7 +46,11 @@ import {
   removeCometHooksForPlatform,
   removeCometRulesForPlatform,
 } from '../../../domains/skill/uninstall.js';
-import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
+import {
+  getPlatformSkillsDir,
+  PLATFORMS,
+  type Platform,
+} from '../../../platform/install/platforms.js';
 import {
   artifactLanguageToSkillLanguage,
   resolveArtifactLanguage,
@@ -137,6 +143,77 @@ describe('skills', () => {
       expect(manifest).toHaveProperty('skills');
       expect(Array.isArray(manifest.skills)).toBe(true);
       expect(manifest.skills.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('bundled asset completeness', () => {
+    it('accepts the repository asset tree declared by the release manifest', async () => {
+      await expect(assertBundledAssetsComplete()).resolves.toBeUndefined();
+    });
+
+    it('reports localized and shared source assets together before installation', async () => {
+      const assetsDir = path.join(tmpDir, 'assets');
+      await fs.mkdir(assetsDir, { recursive: true });
+      await fs.writeFile(
+        path.join(assetsDir, 'manifest.json'),
+        JSON.stringify({
+          version: '9.9.9',
+          skills: ['comet/SKILL.md', 'comet/scripts/comet-runtime.mjs'],
+          rules: ['comet/rules/comet-workflow-guard.md'],
+          hooks: {
+            'comet/scripts/comet-runtime.mjs': {
+              matcher: 'Write|Edit',
+              description: 'test router',
+            },
+          },
+          languages: [
+            { id: 'en', name: 'English', skillsDir: 'skills', artifactLanguage: 'en' },
+            { id: 'zh', name: '中文', skillsDir: 'skills-zh', artifactLanguage: 'zh-CN' },
+          ],
+        }),
+        'utf8',
+      );
+      await fs.mkdir(path.join(assetsDir, 'skills', 'comet'), { recursive: true });
+      await fs.writeFile(path.join(assetsDir, 'skills', 'comet', 'SKILL.md'), '# Comet\n');
+
+      const failure = await assertBundledAssetsComplete(assetsDir).catch(
+        (error: unknown) => error as Error,
+      );
+
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure.message).toContain('3 required assets are missing');
+      expect(failure.message).toContain('skills-zh/comet/SKILL.md');
+      expect(failure.message).toContain('skills/comet/scripts/comet-runtime.mjs');
+      expect(failure.message).toContain('skills/comet/rules/comet-workflow-guard.md');
+      expect(failure.message).toContain(assetsDir);
+      expect(failure.message).toContain('Reinstall the same version');
+    });
+
+    it('rejects an incomplete source before preparing an install target', async () => {
+      readJsonMock.mockResolvedValue({
+        version: '9.9.9',
+        skills: ['missing/SKILL.md'],
+        languages: [{ id: 'en', name: 'English', skillsDir: 'skills', artifactLanguage: 'en' }],
+      });
+
+      await expect(
+        prepareManagedSkillCopyTarget(tmpDir, PLATFORMS[0]!, 'project', 'native'),
+      ).rejects.toThrow('1 required asset is missing');
+    });
+
+    it('rejects an incomplete source before copying the first Skill', async () => {
+      readJsonMock.mockResolvedValue({
+        version: '9.9.9',
+        skills: ['missing/SKILL.md'],
+        languages: [{ id: 'en', name: 'English', skillsDir: 'skills', artifactLanguage: 'en' }],
+      });
+
+      await expect(copyCometSkillsForPlatform(tmpDir, PLATFORMS[0]!, true)).rejects.toThrow(
+        '1 required asset is missing',
+      );
+      await expect(
+        fs.access(path.join(tmpDir, getPlatformSkillsDir(PLATFORMS[0]!, 'project'), 'skills')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
     });
   });
 

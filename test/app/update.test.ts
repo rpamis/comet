@@ -30,6 +30,7 @@ import {
   writeProjectConfig,
 } from '../../domains/comet-native/native-config.js';
 import { assertClassicLayoutReadable } from '../../domains/comet-classic/classic-layout.js';
+import * as platformInstall from '../../domains/skill/platform-install.js';
 
 // Mock the interactive select prompt so tests don't hang on CI (no TTY).
 vi.mock('@inquirer/prompts', () => ({
@@ -546,6 +547,21 @@ describe('update command helpers', () => {
     expect(JSON.parse(json).skills.targets).toEqual([
       expect.objectContaining({ scope: 'global', platform: 'codex' }),
     ]);
+  });
+
+  it('stops before updating installed assets when bundled assets are incomplete', async () => {
+    const projectDir = path.join(tmpDir, 'incomplete-package-assets');
+    const preflight = vi
+      .spyOn(platformInstall, 'assertBundledAssetsComplete')
+      .mockRejectedValueOnce(new Error('2 required assets are missing; reinstall Comet'));
+
+    await expect(
+      updateCommand(projectDir, { json: true, skipNpm: true, scope: 'global' }),
+    ).rejects.toThrow('2 required assets are missing; reinstall Comet');
+    expect(preflight).toHaveBeenCalledOnce();
+    await expect(fs.access(path.join(projectDir, '.comet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
 
   it('updates an explicitly scoped WorkBuddy project install and refreshes its project Hook', async () => {

@@ -13,6 +13,7 @@ import {
   hasSkills,
 } from '../../platform/install/detect.js';
 import {
+  assertBundledAssetsComplete,
   copyCometSkillsForPlatform,
   copyCometRulesForPlatform,
   detectInstalledWorkflowSelection,
@@ -1316,6 +1317,8 @@ async function updateSingleProject(
       }
     }
   }
+
+  await assertBundledAssetsComplete();
 
   const targets = options.platform
     ? await Promise.all(

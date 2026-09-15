@@ -10,6 +10,7 @@ import {
   copyCometRulesForPlatform,
   installCometHooksForPlatform,
 } from '../../domains/skill/platform-install.js';
+import * as platformInstall from '../../domains/skill/platform-install.js';
 import { PLATFORMS } from '../../platform/install/platforms.js';
 import {
   readCometCurrentSelection,
@@ -233,6 +234,26 @@ describe('doctor command', () => {
       `comet-doctor-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     await fs.mkdir(tmpDir, { recursive: true });
+  });
+
+  it('stops before repair when the installed package assets are incomplete', async () => {
+    const preflight = vi
+      .spyOn(platformInstall, 'assertBundledAssetsComplete')
+      .mockRejectedValueOnce(
+        new Error(
+          'The installed @rpamis/comet package is incomplete (1 required asset is missing)',
+        ),
+      );
+    try {
+      await expect(
+        doctorCommand(tmpDir, { json: true, repair: true, scope: 'project', homeDir: tmpDir }),
+      ).rejects.toThrow('1 required asset is missing');
+      await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    } finally {
+      preflight.mockRestore();
+    }
   });
 
   it('returns a failing exit status for an unhealthy installation', async () => {

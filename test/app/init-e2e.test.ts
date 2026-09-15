@@ -8,6 +8,8 @@ import { parse } from 'yaml';
 import { getProjectRegistryPath } from '../../platform/install/project-registry.js';
 import { defaultProjectConfig } from '../../domains/comet-native/native-config.js';
 import { stageOpenSpecSkills, unquoteWindowsArg } from '../helpers/openspec-test-utils.js';
+import * as platformInstall from '../../domains/skill/platform-install.js';
+import { initCommand as runInitCommand } from '../../app/commands/init.js';
 
 vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
@@ -178,6 +180,35 @@ describe('comet init E2E', () => {
       expect.objectContaining({ value: 'classic', name: expect.stringContaining('Spec/TDD') }),
       expect.objectContaining({ value: 'both', name: expect.stringContaining('两套独立入口') }),
     ]);
+  });
+
+  it('stops before project writes when bundled assets are incomplete', async () => {
+    mockExternalSuccess();
+    await fs.mkdir(path.join(tmpDir, '.codex'), { recursive: true });
+    const preflight = vi
+      .spyOn(platformInstall, 'assertBundledAssetsComplete')
+      .mockRejectedValueOnce(
+        new Error(
+          'The installed @rpamis/comet package is incomplete (1 required asset is missing)',
+        ),
+      );
+    try {
+      await expect(
+        runInitCommand(tmpDir, {
+          yes: true,
+          json: true,
+          language: 'en',
+          workflow: 'native',
+          platform: 'codex',
+          codegraph: 'skip',
+        }),
+      ).rejects.toThrow('1 required asset is missing');
+      await expect(fs.access(path.join(tmpDir, '.comet', 'config.yaml'))).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+    } finally {
+      preflight.mockRestore();
+    }
   });
 
   it('enables the banner for text output and disables it for JSON output', async () => {

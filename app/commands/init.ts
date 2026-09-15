@@ -24,6 +24,7 @@ import {
 } from '../../platform/install/project-registry.js';
 import type { InstallMode } from '../../platform/install/types.js';
 import {
+  assertBundledAssetsComplete,
   copyCometSkillsForPlatform,
   copyCometRulesForPlatform,
   createWorkingDirs,
@@ -699,6 +700,8 @@ export async function initCommand(
 
     plans.push({ platform, native, osAction, spAction, cmAction, hasOS, hasSP, hasCM });
   }
+
+  await assertBundledAssetsComplete();
 
   if (includesWorkflow(workflowSelection, 'native') && scope === 'project') {
     for (const plan of plans) {

@@ -17,6 +17,7 @@ import {
   type CodegraphIntegrationDiagnostic,
 } from '../../domains/integrations/codegraph.js';
 import {
+  assertBundledAssetsComplete,
   copyCometRulesForPlatform,
   readManifest,
   getAssetsDir,
@@ -1653,6 +1654,7 @@ export async function doctorCommand(
   if (options.yes && !options.repair) {
     throw new Error('--yes requires --repair');
   }
+  await assertBundledAssetsComplete();
   const repaired = options.repair
     ? await repairDoctorState(
         projectPath,
