@@ -22,6 +22,7 @@ import {
   nativeLocalExecutionFile,
   nativePortableChangeDir,
   nativePortableStateFile,
+  prepareNativePortableShapeConfirmation,
   readNativePortableChange,
   submitNativePortableBuilderCandidate,
 } from '../../../domains/comet-native/native-portable-runtime.js';
@@ -202,6 +203,154 @@ children:
     });
   });
 
+  it('reports and repairs pending Shape confirmation drift before it is confirmed', async () => {
+    const name = 'pending-shape-drift';
+    await createPortable(name);
+    const changeDir = nativePortableChangeDir(paths, name);
+    const brief = path.join(changeDir, 'brief.md');
+    await fs.mkdir(path.join(changeDir, 'specs', 'fixture'), { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, 'specs', 'fixture', 'spec.md'),
+      '# Test target\n\nThis target exists only for the Doctor drift regression.\n',
+    );
+    await fs.writeFile(
+      brief,
+      [
+        '# Outcome',
+        '',
+        'Refresh the pending Shape confirmation when its acceptance changes.',
+        '',
+        '# Scope',
+        '',
+        'Only the confirmation boundary is under test.',
+        '',
+        '# Non-goals',
+        '',
+        'No implementation work is performed.',
+        '',
+        '# Acceptance examples',
+        '',
+        '- The original acceptance is recorded.',
+        '',
+        '# Constraints and invariants',
+        '',
+        'The Runtime owns the state transition.',
+        '',
+        '# Decisions',
+        '',
+        'No user decision is pending in this fixture.',
+        '',
+        '# Open questions',
+        '',
+        'None.',
+        '',
+        '# Verification expectations',
+        '',
+        'Doctor must report drift without mutating the state.',
+        '',
+      ].join('\n'),
+    );
+    const waiting = await prepareNativePortableShapeConfirmation({ paths, name });
+    expect(waiting).toMatchObject({
+      phase: 'shape',
+      status: 'await-user',
+      state_version: 2,
+      loop: { next_action: 'confirm-shape' },
+      acceptance: [{ text: 'The original acceptance is recorded.' }],
+    });
+    const stateFile = nativePortableStateFile(paths, name);
+    const beforeDoctor = await fs.readFile(stateFile);
+
+    await fs.writeFile(
+      brief,
+      [
+        '# Outcome',
+        '',
+        'Refresh the pending Shape confirmation when its acceptance changes.',
+        '',
+        '# Scope',
+        '',
+        'Only the confirmation boundary is under test.',
+        '',
+        '# Non-goals',
+        '',
+        'No implementation work is performed.',
+        '',
+        '# Acceptance examples',
+        '',
+        '- The original acceptance is recorded.',
+        '- The changed acceptance is recorded after repair.',
+        '',
+        '# Constraints and invariants',
+        '',
+        'The Runtime owns the state transition.',
+        '',
+        '# Decisions',
+        '',
+        'No user decision is pending in this fixture.',
+        '',
+        '# Open questions',
+        '',
+        'None.',
+        '',
+        '# Verification expectations',
+        '',
+        'Doctor must report drift without mutating the state.',
+        '',
+      ].join('\n'),
+    );
+
+    const diagnosis = await nativeDoctorCommand([name], projectRoot);
+    expect(diagnosis).toMatchObject({
+      exitCode: 65,
+      data: {
+        healthy: false,
+        repaired: false,
+        findings: [
+          expect.objectContaining({
+            code: 'portable-shape-confirmation-drift',
+            repair: 'recover',
+            repairCommand: `comet native doctor ${name} --repair`,
+          }),
+        ],
+      },
+    });
+    await expect(fs.readFile(stateFile)).resolves.toEqual(beforeDoctor);
+
+    const repaired = await nativeDoctorCommand([name, '--repair'], projectRoot);
+    expect(repaired).toMatchObject({
+      exitCode: 0,
+      data: {
+        healthy: true,
+        repaired: true,
+        result: {
+          state: {
+            phase: 'shape',
+            status: 'active',
+            state_version: 3,
+            acceptance: [],
+            loop: { next_action: 'prepare-shape-confirmation' },
+          },
+        },
+      },
+    });
+
+    const refreshed = await nativeNextCommand(
+      [name, '--summary', 'Re-read the changed Shape confirmation'],
+      projectRoot,
+    );
+    expect(refreshed).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'shape',
+          status: 'await-user',
+          acceptance: { total: 2, pending: 2 },
+        },
+      },
+    });
+  });
+
   it('reports an orphaned Runtime check instead of claiming the change is healthy', async () => {
     const name = 'orphaned-check-doctor';
     await fs.mkdir(path.join(projectRoot, '.git'));
@@ -210,9 +359,9 @@ children:
       path.join(nativePortableChangeDir(paths, name), 'brief.md'),
       '# Acceptance examples\n- Doctor reports an orphaned check owner.\n',
     );
-    let state = await confirmNativePortableShape({ paths, name });
+    await confirmNativePortableShape({ paths, name });
     const runner = createNativeRunnerChannel();
-    state = await submitNativePortableBuilderCandidate({
+    const state = await submitNativePortableBuilderCandidate({
       paths,
       name,
       input: {
@@ -298,9 +447,9 @@ children:
       path.join(nativePortableChangeDir(paths, name), 'brief.md'),
       '# Acceptance examples\n- Doctor preserves a live Runtime check.\n',
     );
-    let state = await confirmNativePortableShape({ paths, name });
+    await confirmNativePortableShape({ paths, name });
     const runner = createNativeRunnerChannel();
-    state = await submitNativePortableBuilderCandidate({
+    const state = await submitNativePortableBuilderCandidate({
       paths,
       name,
       input: {

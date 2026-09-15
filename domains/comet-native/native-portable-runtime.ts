@@ -16,6 +16,7 @@ export {
   inspectNativePortableAcceptanceDrift,
   markNativePortableSpecRemoval,
   prepareNativePortableShapeConfirmation,
+  recoverNativePortableShapeConfirmationDrift,
   rebaseNativePortableDeltas,
   rebaseNativePortableDeltasLocked,
   returnNativePortableChangeToShape,

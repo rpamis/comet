@@ -12,6 +12,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Installed package asset validation**: Check every manifest-declared Skill, Rule, and Hook before initialization, updates, or Doctor repairs, and report one actionable reinstall error when an npm installation is incomplete.
+- **Native Shape confirmation diagnostics**: Detect and repair brief, Spec, and acceptance drift while a Shape confirmation is waiting, returning the change to active Shape before stale requirements can be confirmed.
 - **Classic workflow ordering**: Configure the full-workflow execution strategy before planning in both localized runtime packages, keeping packaged deterministic transitions aligned with the executable Classic Runtime.
 - **Native Runtime check recovery**: Persist Runtime owner and active check process identity so interrupted Verify checks recover only after prior processes exit, Doctor cannot take over live work, and externally owned Verifier tasks keep their existing execution handle.
 - **Dashboard change summaries**: Keep Native and Classic change status summaries on one line with truncation, so selecting a row no longer changes its text layout.

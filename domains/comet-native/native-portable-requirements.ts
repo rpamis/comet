@@ -981,6 +981,39 @@ export async function inspectNativePortableAcceptanceDrift(options: {
     : { drifted: true, reason: 'Native child declarations changed' };
 }
 
+export async function recoverNativePortableShapeConfirmationDrift(options: {
+  paths: NativeProjectPaths;
+  name: string;
+}): Promise<{
+  state: NativePortableState;
+  repaired: boolean;
+  reason: string | null;
+}> {
+  return withNativeMutationLock(
+    options.paths,
+    `recover pending Shape confirmation ${options.name}`,
+    async () => {
+      const state = await readNativePortableChange(options.paths, options.name);
+      if (
+        state.phase !== 'shape' ||
+        state.status !== 'await-user' ||
+        state.loop.next_action !== 'confirm-shape'
+      ) {
+        return { state, repaired: false, reason: null };
+      }
+      const drift = await inspectNativePortableAcceptanceDrift({ paths: options.paths, state });
+      if (!drift.drifted) return { state, repaired: false, reason: null };
+      const reason = drift.reason ?? 'Native confirmed requirements changed';
+      const recovered = await returnNativePortableStateToShapeLocked({
+        paths: options.paths,
+        state,
+        reason,
+      });
+      return { state: recovered, repaired: true, reason };
+    },
+  );
+}
+
 export async function ensureNativePortableAcceptanceCurrentLocked(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;

@@ -9,6 +9,10 @@ import {
   hasIncompleteNativePortableMigration,
   migrateNativeLegacyChangeToPortable,
 } from './native-portable-migration-runtime.js';
+import {
+  inspectNativePortableAcceptanceDrift,
+  recoverNativePortableShapeConfirmationDrift,
+} from './native-portable-requirements.js';
 import { recoverNativePortableChange } from './native-portable-recovery.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
 import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
@@ -16,6 +20,7 @@ import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import {
   isNativePortableChange,
   nativeLocalExecutionFile,
+  nativePortableStateFile,
   readNativePortableChange,
 } from './native-portable-runtime.js';
 import type { NativePortableState } from './native-portable-types.js';
@@ -69,6 +74,31 @@ async function portableCheckExecutionFinding(
     message: `${name}: ${message}; run comet native doctor ${name} --repair to recover it`,
     path: nativeLocalExecutionFile(paths, name),
     repair: 'recover',
+  };
+}
+
+async function portableShapeConfirmationFinding(
+  paths: NativeProjectPaths,
+  name: string,
+  state: NativePortableState,
+): Promise<NativeDoctorFinding | null> {
+  if (
+    state.phase !== 'shape' ||
+    state.status !== 'await-user' ||
+    state.loop.next_action !== 'confirm-shape'
+  ) {
+    return null;
+  }
+  const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
+  if (!drift.drifted) return null;
+  const reason = drift.reason ?? 'Native confirmed requirements changed';
+  return {
+    severity: 'error',
+    code: 'portable-shape-confirmation-drift',
+    message: `${name}: pending Shape confirmation is stale (${reason}); run comet native doctor ${name} --repair to reopen Shape`,
+    path: nativePortableStateFile(paths, name),
+    repair: 'recover',
+    repairCommand: `comet native doctor ${name} --repair`,
   };
 }
 
@@ -342,6 +372,17 @@ export async function nativeDoctorCommand(
           continuation: await portableContinuation(paths, state),
         });
       }
+      const shapeRecovery = await recoverNativePortableShapeConfirmationDrift({ paths, name });
+      if (shapeRecovery.repaired) {
+        return success('doctor', {
+          healthy: true,
+          workflow: 'native-portable',
+          change: name,
+          repaired: true,
+          result: shapeRecovery,
+          continuation: await portableContinuation(paths, shapeRecovery.state),
+        });
+      }
       const result = await recoverNativePortableChange({
         paths,
         name,
@@ -364,6 +405,19 @@ export async function nativeDoctorCommand(
         repaired: true,
         result,
         continuation: await portableContinuation(paths, result.state),
+      });
+    }
+    const shapeFinding = await portableShapeConfirmationFinding(paths, name, portableState);
+    if (shapeFinding) {
+      const result = await inspectNativePortableStatus({ paths, name, details: true });
+      return unhealthyDoctor({
+        healthy: false,
+        workflow: 'native-portable',
+        change: name,
+        repaired: false,
+        result,
+        findings: [shapeFinding],
+        continuation: result.continuation,
       });
     }
     const executionFinding = await portableCheckExecutionFinding(paths, name);
@@ -442,6 +496,19 @@ export async function nativeDoctorCommand(
           transactionId: transaction.journal.id,
         });
       }
+      const repairedShapeConfirmations: Array<{ change: string; reason: string }> = [];
+      for (const change of portableNames) {
+        const shapeRecovery = await recoverNativePortableShapeConfirmationDrift({
+          paths,
+          name: change,
+        });
+        if (shapeRecovery.repaired) {
+          repairedShapeConfirmations.push({
+            change,
+            reason: shapeRecovery.reason ?? 'Native confirmed requirements changed',
+          });
+        }
+      }
       const inspected = await nativeDoctorCommand([], projectRoot);
       const inspectedData =
         inspected.data && typeof inspected.data === 'object' && !Array.isArray(inspected.data)
@@ -453,6 +520,7 @@ export async function nativeDoctorCommand(
           ...inspectedData,
           repaired: true,
           repairedPortableTransactions,
+          repairedShapeConfirmations,
           repairFindings: projectRepair.findings,
         },
       };
@@ -469,6 +537,7 @@ export async function nativeDoctorCommand(
       changes,
       conflicts,
       incompleteMigrations,
+      shapeFindings,
       executionFindings,
       legacyResults,
       projectResult,
@@ -479,6 +548,12 @@ export async function nativeDoctorCommand(
       Promise.all(portableNames.map((change) => activeArchiveConflictFinding(paths, change))),
       Promise.all(
         portableNames.map((change) => hasIncompleteNativePortableMigration(paths, change)),
+      ),
+      Promise.all(
+        portableNames.map(async (change) => {
+          const state = await readNativePortableChange(paths, change);
+          return portableShapeConfirmationFinding(paths, change, state);
+        }),
       ),
       Promise.all(portableNames.map((change) => portableCheckExecutionFinding(paths, change))),
       Promise.all(legacyNames.map((change) => doctorNativeProject({ paths, name: change }))),
@@ -491,6 +566,7 @@ export async function nativeDoctorCommand(
           ? [incompleteMigrationFinding(paths, change)]
           : [],
       ),
+      ...shapeFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...executionFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...projectPortableTransactions.findings,
       ...legacyNames.map<NativeDoctorFinding>((change) => ({
