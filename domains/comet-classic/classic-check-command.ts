@@ -21,7 +21,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
     !args[separator + 1]
   ) {
     throw new Error(
-      'Usage: comet check run <change> <build|verify> [--local] [--cwd <path>] [--timeout-ms <ms>] -- <program> [args...]',
+      'Usage: comet check run <change> <build|verify> [--local] [--incremental] [--cwd <path>] [--timeout-ms <ms>] -- <program> [args...]',
     );
   }
   const root = classicCommandProjectRoot();
@@ -32,9 +32,11 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
   let cwd = path.relative(root, classicCommandInvocationCwd()) || '.';
   let timeoutMs = 300_000;
   let reusable = false;
+  let incremental = false;
   for (let index = 3; index < separator; index += 1) {
     const option = args[index];
     if (option === '--local') reusable = true;
+    else if (option === '--incremental') incremental = true;
     else if (option === '--cwd' && index + 1 < separator) cwd = args[++index];
     else if (option === '--timeout-ms' && index + 1 < separator) timeoutMs = Number(args[++index]);
     else throw new Error(`Unknown or incomplete check option: ${option}`);
@@ -48,11 +50,12 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
     cwd,
     timeoutMs,
     reusable,
+    tier: incremental ? 'incremental' : 'full',
   });
   return {
     exitCode: recorded.exitCode || (recorded.inputBefore === recorded.inputAfter ? 0 : 1),
     data: recorded,
-    stdout: `Check ${recorded.scope}: exit=${recorded.exitCode}; reused=${recorded.reused === true}; log=${recorded.logRef}\n`,
+    stdout: `Check ${recorded.scope}: exit=${recorded.exitCode}; reused=${recorded.reused === true}; tier=${recorded.tier ?? 'full'}; log=${recorded.logRef}\n`,
     ...(recorded.inputBefore !== recorded.inputAfter
       ? { stderr: 'Inputs changed during check; rerun after the workspace is stable.' }
       : {}),

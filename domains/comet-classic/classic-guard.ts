@@ -18,9 +18,10 @@ import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.
 import { classicGuardCheckEnvelope, classicLocale } from './classic-output-language.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import {
-  usableCommandCheck,
+  evaluateCommandCheck,
   latestCommandCheck,
   executeCommandCheck,
+  type CommandCheckEvaluation,
   type CommandCheckScope,
   type RecordedCommandCheck,
 } from './classic-command-checks.js';
@@ -472,7 +473,8 @@ async function commandCheckPasses(
     }
   }
   const root = classicCommandProjectRoot();
-  let recorded = await usableCommandCheck(root, changeDir, run, scope);
+  const evaluation = await evaluateCommandCheck(root, changeDir, run, scope);
+  let recorded = evaluation.record;
   if (recorded && path.resolve(root, recorded.cwd) !== path.resolve(classicCommandInvocationCwd()))
     recorded = null;
   const inferred = scope === 'build' && !recorded ? await inferredBuildCommand() : null;
@@ -503,12 +505,13 @@ async function commandCheckPasses(
         status: previous.exitCode,
         output: `Latest recorded ${scope} check failed with exit code ${previous.exitCode}.\n${evidenceDetail(previous)}\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`,
       };
+    const invalidation = invalidationDetail(evaluation);
     return {
       status: 1,
       output:
         scope === 'build'
-          ? `No current Runtime build evidence. Detection searched: ${INFERRED_COMMAND_SOURCES.join(', ')}.\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`
-          : `No current Runtime verify evidence. Manual attestations, stale inputs and recovered checks require a new execution.\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`,
+          ? `No current Runtime build evidence. Detection searched: ${INFERRED_COMMAND_SOURCES.join(', ')}.${invalidation}\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`
+          : `No current Runtime verify evidence. Manual attestations, stale inputs and recovered checks require a new execution.${invalidation}\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`,
     };
   }
   if (recorded.exitCode !== 0) {
@@ -517,7 +520,25 @@ async function commandCheckPasses(
       output: `Latest recorded ${scope} check failed with exit code ${recorded.exitCode}.\n${evidenceDetail(recorded)}\nNext: rerun the command successfully, then record it with:\n${recoveryCommand(change, scope, recorded.command)}`,
     };
   }
-  return { status: 0, output: evidenceDetail(recorded) };
+  const tierNote =
+    recorded.tier === 'incremental'
+      ? ' (incremental evidence: rerun the full command before --apply)'
+      : '';
+  return { status: 0, output: `${evidenceDetail(recorded)}${tierNote}` };
+}
+
+function invalidationDetail(evaluation: CommandCheckEvaluation): string {
+  if (!evaluation.reason) return '';
+  const lines = [`\nWhy: ${evaluation.reason}.`];
+  if (evaluation.changedPaths?.length) {
+    const shown = evaluation.changedPaths.slice(0, 20);
+    const remainder = evaluation.changedPaths.length - shown.length;
+    lines.push(
+      `Changed inputs: ${shown.join(', ')}${remainder > 0 ? ` (+${remainder} more)` : ''}`,
+    );
+    if (evaluation.relevance) lines.push(`Relevance scope: ${evaluation.relevance}.`);
+  }
+  return lines.join('\n');
 }
 
 async function tasksAllDone(changeDir: string): Promise<CheckResult> {
@@ -1086,18 +1107,24 @@ async function applyStateUpdateLocked(
   // stale projection would write the pre-heal null back over it.
   const context = await ensureClassicRuntimeRun(changeDir);
   if ((phase === 'build' || phase === 'verify') && process.env.COMET_SKIP_BUILD !== '1') {
-    const record = await usableCommandCheck(
+    const evaluation = await evaluateCommandCheck(
       classicCommandProjectRoot(),
       changeDir,
       context.run,
       phase,
     );
+    const record = evaluation.record;
     if (
       !record ||
+      record.tier === 'incremental' ||
       path.resolve(classicCommandProjectRoot(), record.cwd) !==
         path.resolve(classicCommandInvocationCwd())
     )
-      throw new GuardFailure('Check evidence changed before transition; rerun the check.');
+      throw new GuardFailure(
+        record?.tier === 'incremental'
+          ? 'Incremental check evidence cannot advance the phase; rerun the full command before --apply.'
+          : 'Check evidence changed before transition; rerun the check.',
+      );
   }
   const result = applyClassicTransition(context.classic, event);
   await transitionClassicRuntimeRun(changeDir, result.classic, context.run, {

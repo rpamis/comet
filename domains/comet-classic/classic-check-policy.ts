@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
-import { normalizeWorkflowRelativePath } from '../workflow-contract/project-config.js';
+import {
+  normalizeWorkflowRelativePath,
+  normalizeWorkflowSnapshotPattern,
+} from '../workflow-contract/project-config.js';
 import { classicProjectTargetExists, readClassicProjectFile } from './classic-protected-path.js';
+import { hasGlobCharacters } from './classic-check-manifest.js';
 
 export const CHECK_POLICY_PATH = '.comet/check-policy.json';
 
@@ -10,18 +14,126 @@ export interface CheckIdentity {
 }
 
 export interface CheckPolicy {
+  /** sha256 of the raw declaration file; empty without one. */
   digest: string;
+  /**
+   * v2 only: canonical digest of the command entry matching the identity, so
+   * unrelated entries can change without invalidating this command's evidence.
+   */
+  entryDigest?: string;
+  /** Resolved declaration scope: v1 top-level fields, or the matched v2 entry. */
   files?: string[];
   env?: string[];
   git: 'all' | 'none';
   taskCheckboxes: 'include' | 'ignore';
 }
 
+export interface CheckPolicyCommand {
+  argv: string[];
+  cwd: string;
+  files?: string[];
+  env?: string[];
+  git: 'all' | 'none';
+  taskCheckboxes: 'include' | 'ignore';
+}
+
+const COMMAND_KEYS = ['argv', 'cwd', 'files', 'env', 'git', 'taskCheckboxes'];
+
+function parseCommandEntry(value: unknown, label: string): CheckPolicyCommand {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error(`${label} must be an object`);
+  const record = value as Record<string, unknown>;
+  if (Object.keys(record).some((key) => !COMMAND_KEYS.includes(key)))
+    throw new Error(`${label} has unknown fields`);
+  if (
+    !Array.isArray(record.argv) ||
+    !record.argv.length ||
+    !record.argv[0] ||
+    record.argv.some((arg: unknown) => typeof arg !== 'string' || arg.includes('\0'))
+  )
+    throw new Error(`${label} argv must bind literal command arguments`);
+  if (typeof record.cwd !== 'string' || !record.cwd)
+    throw new Error(`${label} cwd must bind a project-relative directory`);
+  const cwd = record.cwd === '.' ? '.' : normalizeWorkflowRelativePath(record.cwd, `${label} cwd`);
+  const command: CheckPolicyCommand = {
+    argv: [...record.argv],
+    cwd,
+    git: 'none',
+    taskCheckboxes: 'ignore',
+  };
+  for (const key of ['files', 'env'] as const) {
+    if (record[key] === undefined) continue;
+    if (
+      !Array.isArray(record[key]) ||
+      record[key].some((item: unknown) => typeof item !== 'string' || !item)
+    )
+      throw new Error(`${label} ${key} must be an array of nonempty strings`);
+  }
+  if (record.files !== undefined) {
+    command.files = [
+      ...new Set(
+        (record.files as string[]).map((file) =>
+          hasGlobCharacters(file)
+            ? normalizeWorkflowSnapshotPattern(file, `${label} file`)
+            : normalizeWorkflowRelativePath(file, `${label} file`),
+        ),
+      ),
+    ].sort((left, right) => left.localeCompare(right, 'en'));
+  }
+  if (record.env !== undefined) {
+    if ((record.env as string[]).some((name) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)))
+      throw new Error(`${label} has an invalid environment variable name`);
+    command.env = [...new Set(record.env as string[])].sort((left, right) =>
+      left.localeCompare(right, 'en'),
+    );
+  }
+  if (record.git !== undefined) {
+    if (!['all', 'none'].includes(record.git as string))
+      throw new Error(`${label} has an invalid git binding`);
+    command.git = record.git as 'all' | 'none';
+  }
+  if (record.taskCheckboxes !== undefined) {
+    if (!['include', 'ignore'].includes(record.taskCheckboxes as string))
+      throw new Error(`${label} has an invalid taskCheckboxes mode`);
+    command.taskCheckboxes = record.taskCheckboxes as 'include' | 'ignore';
+  }
+  return command;
+}
+
+function commandEntryDigest(command: CheckPolicyCommand): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        argv: command.argv,
+        cwd: command.cwd,
+        files: command.files ?? null,
+        env: command.env ?? null,
+        git: command.git,
+        taskCheckboxes: command.taskCheckboxes,
+      }),
+    )
+    .digest('hex');
+}
+
+function matchesIdentity(command: CheckPolicyCommand, identity: CheckIdentity): boolean {
+  return (
+    identity.cwd === command.cwd && JSON.stringify(identity.argv) === JSON.stringify(command.argv)
+  );
+}
+
 export async function readCheckPolicy(
   root: string,
   identity?: CheckIdentity,
+  legacy = false,
 ): Promise<CheckPolicy> {
-  const defaults: CheckPolicy = { digest: '', git: 'all', taskCheckboxes: 'include' };
+  // Evidence recorded before per-file manifests existed resolves omitted
+  // declarations with the original conservative defaults (bind HEAD, the
+  // index and task checkboxes). Current evidence treats working-tree content
+  // as the check input: HEAD/index, task checkbox marks and the environment
+  // bind only when the policy declares them.
+  const defaults: CheckPolicy = legacy
+    ? { digest: '', git: 'all', taskCheckboxes: 'include' }
+    : { digest: '', git: 'none', taskCheckboxes: 'ignore' };
   if (
     !(await classicProjectTargetExists(root, CHECK_POLICY_PATH, {
       label: 'Classic check policy',
@@ -35,15 +147,40 @@ export async function readCheckPolicy(
   });
   try {
     const value = JSON.parse(raw);
+    if (!value || Array.isArray(value)) throw new Error('Expected a policy object');
+    const digest = createHash('sha256').update(raw).digest('hex');
+    if (value.version === 2) {
+      if (Object.keys(value).some((key) => key !== 'version' && key !== 'commands'))
+        throw new Error('version 2 allows only version and commands');
+      if (!Array.isArray(value.commands) || !value.commands.length)
+        throw new Error('commands must be a nonempty array');
+      const commands: CheckPolicyCommand[] = value.commands.map((entry: unknown, index: number) =>
+        parseCommandEntry(entry, `Classic check policy commands[${index}]`),
+      );
+      const identityKeys = new Set(
+        commands.map((command) => JSON.stringify([command.argv, command.cwd])),
+      );
+      if (identityKeys.size !== commands.length)
+        throw new Error('commands must not repeat an argv and cwd pair');
+      if (!identity || !commands.some((command) => matchesIdentity(command, identity)))
+        return { ...defaults, digest };
+      const matched = commands.find((command) => matchesIdentity(command, identity))!;
+      return {
+        digest,
+        entryDigest: commandEntryDigest(matched),
+        files: matched.files,
+        env: matched.env,
+        git: matched.git,
+        taskCheckboxes: matched.taskCheckboxes,
+      };
+    }
     if (
-      !value ||
-      Array.isArray(value) ||
       value.version !== 1 ||
       Object.keys(value).some(
         (key) => !['version', 'argv', 'cwd', 'files', 'env', 'git', 'taskCheckboxes'].includes(key),
       )
     )
-      throw new Error('Expected version 1 and known fields');
+      throw new Error('Expected version 1 or 2 with known fields');
     if (
       !Array.isArray(value.argv) ||
       !value.argv.length ||
@@ -75,7 +212,6 @@ export async function readCheckPolicy(
       throw new Error('Invalid git binding');
     if (value.taskCheckboxes !== undefined && !['include', 'ignore'].includes(value.taskCheckboxes))
       throw new Error('Invalid taskCheckboxes mode');
-    const digest = createHash('sha256').update(raw).digest('hex');
     if (
       !identity ||
       identity.cwd !== cwd ||

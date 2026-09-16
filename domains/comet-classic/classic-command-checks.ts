@@ -5,11 +5,21 @@ import { appendTrajectory } from '../engine/run-store.js';
 import type { RunState, TrajectoryEvent } from '../engine/types.js';
 import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
 import { spawnCommand } from '../../platform/process/spawn-command.js';
-import { checkEnvironmentFingerprint, checkInputFingerprint } from './classic-check-snapshot.js';
+import {
+  checkEnvironmentFingerprint,
+  collectCheckSnapshot,
+  legacyCheckInputFingerprint,
+} from './classic-check-snapshot.js';
 import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
 import { readClassicState, withClassicStateLock } from './classic-store.js';
 import { readCheckIndex } from './classic-check-index.js';
 import { readCheckPolicy } from './classic-check-policy.js';
+import {
+  checkManifestHash,
+  diffCheckManifests,
+  parseCheckManifest,
+  type CheckManifestEntry,
+} from './classic-check-manifest.js';
 
 export type CommandCheckScope = 'build' | 'verify';
 
@@ -28,6 +38,11 @@ export interface RecordedCommandCheck {
   environment?: string;
   logRef?: string;
   logHash?: string;
+  /** Repository-relative per-file input manifest recorded at execution time. */
+  manifestRef?: string;
+  manifestHash?: string;
+  /** Incremental evidence maintains validity inside a phase; only full evidence advances it. */
+  tier?: 'full' | 'incremental';
   reusable?: boolean;
   reused?: boolean;
   checkEpoch?: number;
@@ -94,6 +109,15 @@ function validRecord(projectRoot: string, event: TrajectoryEvent): RecordedComma
           environment: (data as RecordedCommandCheck).environment,
           logRef: (data as RecordedCommandCheck).logRef,
           logHash: (data as RecordedCommandCheck).logHash,
+          manifestRef:
+            typeof (data as RecordedCommandCheck).manifestRef === 'string'
+              ? (data as RecordedCommandCheck).manifestRef
+              : undefined,
+          manifestHash:
+            typeof (data as RecordedCommandCheck).manifestHash === 'string'
+              ? (data as RecordedCommandCheck).manifestHash
+              : undefined,
+          tier: (data as RecordedCommandCheck).tier === 'incremental' ? 'incremental' : undefined,
           reusable: (data as RecordedCommandCheck).reusable,
           checkEpoch: (data as RecordedCommandCheck).checkEpoch,
         }
@@ -171,12 +195,13 @@ export async function invalidateCommandChecks(changeDir: string, run: RunState):
 
 export async function recoverCommandChecks(root: string, changeDir: string, run: RunState) {
   const snapshots = new Map<string, Promise<string>>();
+  // Pre-manifest records are revalidated with their original binding semantics.
   const inputFingerprint = async (argv: string[], cwd: string) => {
     const identity = { argv, cwd };
-    const key = JSON.stringify(await readCheckPolicy(root, identity));
+    const key = JSON.stringify(await readCheckPolicy(root, identity, true));
     let snapshot = snapshots.get(key);
     if (!snapshot) {
-      snapshot = checkInputFingerprint(root, changeDir, identity);
+      snapshot = legacyCheckInputFingerprint(root, changeDir, identity);
       snapshots.set(key, snapshot);
     }
     return snapshot;
@@ -190,7 +215,9 @@ export async function recoverCommandChecks(root: string, changeDir: string, run:
     const record = await usableCommandCheck(root, changeDir, run, scope, inputFingerprint).catch(
       () => null,
     );
-    if (record?.reusable === true) scopes[scope] = 'revalidated';
+    // Incremental evidence never survives cold recovery: it is a phase-local
+    // accelerator, not a resumable acceptance record.
+    if (record?.reusable === true && record.tier !== 'incremental') scopes[scope] = 'revalidated';
     else invalidated.push(scope);
   }
   // Persist rejected scopes so restoring old inputs cannot resurrect stale evidence.
@@ -233,6 +260,7 @@ export async function executeCommandCheck(
     cwd?: string;
     timeoutMs?: number;
     reusable?: boolean;
+    tier?: 'full' | 'incremental';
   },
 ): Promise<RecordedCommandCheck> {
   validateScope(input.scope);
@@ -241,11 +269,13 @@ export async function executeCommandCheck(
   const cwd = normalizedCwd(root, input.cwd);
   const realRoot = await fs.realpath(root);
   normalizedCwd(realRoot, await fs.realpath(path.resolve(root, cwd)));
+  const tier: 'full' | 'incremental' = input.tier === 'incremental' ? 'incremental' : 'full';
   if (input.reusable) {
     const previous = await latestCommandCheck(root, changeDir, run, input.scope);
     if (
       previous &&
       previous.reusable &&
+      (previous.tier ?? 'full') === tier &&
       previous.cwd === cwd &&
       JSON.stringify(previous.argv) === JSON.stringify(input.argv)
     ) {
@@ -259,7 +289,7 @@ export async function executeCommandCheck(
   const checkEpoch =
     (await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0;
   const identity = { argv: input.argv, cwd };
-  const inputBefore = await checkInputFingerprint(root, changeDir, identity);
+  const inputBefore = (await collectCheckSnapshot(root, changeDir, identity)).digest;
   const environment = await checkEnvironmentFingerprint(
     input.argv,
     path.resolve(root, cwd),
@@ -293,9 +323,20 @@ export async function executeCommandCheck(
       });
     });
   });
-  let inputAfter = await checkInputFingerprint(root, changeDir, identity).catch(
-    () => 'unavailable',
-  );
+  const after = await collectCheckSnapshot(root, changeDir, identity).catch(() => null);
+  let inputAfter = after ? after.digest : 'unavailable';
+  let manifestRef: string | undefined;
+  let manifestHash: string | undefined;
+  if (after) {
+    // The manifest lives under the change's runtime directory, which the
+    // input snapshot omits, so recording it never invalidates its own check.
+    const manifestPath = path.join(changeDir, '.comet', 'checks', `${randomUUID()}.manifest`);
+    await writeClassicProjectText(root, manifestPath, after.manifest, {
+      label: 'Classic check manifest',
+    });
+    manifestRef = path.relative(root, manifestPath).replaceAll('\\', '/');
+    manifestHash = checkManifestHash(after.manifest);
+  }
   if (
     checkEpoch !==
     ((await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0)
@@ -324,6 +365,9 @@ export async function executeCommandCheck(
     environment,
     logRef: path.relative(root, logPath).replaceAll('\\', '/'),
     logHash: createHash('sha256').update(result.output).digest('hex'),
+    manifestRef,
+    manifestHash,
+    tier,
     reusable: input.reusable === true && inputBefore === inputAfter,
   };
   const event = await withClassicStateLock(changeDir, async () => {
@@ -342,48 +386,110 @@ export async function executeCommandCheck(
   return { ...data, sequence: event.sequence, timestamp: event.timestamp, runId: run.runId };
 }
 
-export async function usableCommandCheck(
+async function recordManifestEntries(
+  root: string,
+  record: RecordedCommandCheck,
+): Promise<CheckManifestEntry[] | null> {
+  if (typeof record.manifestHash !== 'string' || typeof record.manifestRef !== 'string')
+    return null;
+  const serialized = await readClassicProjectFile(root, record.manifestRef, {
+    label: 'Classic check manifest',
+    maxBytes: Number.MAX_SAFE_INTEGER,
+  });
+  if (checkManifestHash(serialized) !== record.manifestHash) return null;
+  return parseCheckManifest(serialized);
+}
+
+export interface CommandCheckEvaluation {
+  record: RecordedCommandCheck | null;
+  /** Why the latest record is not reusable; absent when a record is usable or none exists. */
+  reason?: string;
+  /** Added, removed and changed input paths relative to the recorded manifest. */
+  changedPaths?: string[];
+  /** The declared input scope that decided relevance for the changed paths. */
+  relevance?: string;
+}
+
+export async function evaluateCommandCheck(
   root: string,
   changeDir: string,
   run: RunState,
   scope: CommandCheckScope,
   inputFingerprint: (argv: string[], cwd: string) => Promise<string> = (argv, cwd) =>
-    checkInputFingerprint(root, changeDir, { argv, cwd }),
-): Promise<RecordedCommandCheck | null> {
+    legacyCheckInputFingerprint(root, changeDir, { argv, cwd }),
+): Promise<CommandCheckEvaluation> {
   const record = await latestCommandCheck(root, changeDir, run, scope);
+  const fail = (reason: string): CommandCheckEvaluation => ({ record: null, reason });
   if (
     record &&
     !record.reusable &&
     (record.checkEpoch ?? 0) !==
       ((await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0)
   )
-    return null;
-  if (
-    !record ||
-    record.provenance !== 'runtime' ||
-    record.exitCode !== 0 ||
-    !Array.isArray(record.argv) ||
-    !record.argv.length ||
-    !record.inputBefore ||
-    record.inputBefore !== record.inputAfter ||
-    record.environment !==
+    return fail('check evidence crossed a phase boundary');
+  if (!record) return { record: null };
+  if (record.provenance !== 'runtime')
+    return fail('the latest record was not produced by the runtime');
+  if (record.exitCode !== 0) return fail(`the last check failed with exit code ${record.exitCode}`);
+  if (!Array.isArray(record.argv) || !record.argv.length || !record.inputBefore)
+    return fail('the latest record is incomplete');
+  if (record.inputBefore !== record.inputAfter) return fail('inputs changed while the check ran');
+  const identity = { argv: record.argv, cwd: record.cwd };
+  if (record.manifestRef) {
+    // Per-file evidence reuses when the environment binding holds and no
+    // recorded input file changed relative to the execution-time manifest.
+    if (
+      record.environment !==
       (await checkEnvironmentFingerprint(
         record.argv,
         path.resolve(root, record.cwd),
-        await readCheckPolicy(root, { argv: record.argv, cwd: record.cwd }),
-      )) ||
-    record.inputAfter !== (await inputFingerprint(record.argv, record.cwd))
-  )
-    return null;
-  if (typeof record.logRef !== 'string' || typeof record.logHash !== 'string') return null;
+        await readCheckPolicy(root, identity),
+      ))
+    )
+      return fail('the environment changed since execution');
+    const baseline = await recordManifestEntries(root, record).catch(() => null);
+    if (!baseline) return fail('the recorded input manifest is damaged or missing');
+    const current = await collectCheckSnapshot(root, changeDir, identity, { baseline });
+    const diff = diffCheckManifests(baseline, current.entries);
+    const changedPaths = [...diff.added, ...diff.removed, ...diff.changed];
+    if (changedPaths.length) {
+      const policy = await readCheckPolicy(root, identity);
+      return {
+        record: null,
+        reason: 'check inputs changed since execution',
+        changedPaths,
+        relevance: policy.files
+          ? `declared inputs (${policy.files.join(', ')})`
+          : 'default whole-tree inputs',
+      };
+    }
+  } else {
+    // Evidence recorded before per-file manifests existed keeps its original
+    // binding semantics: whole-tree inputs, HEAD/index and every environment
+    // variable unless a v1 policy declared otherwise.
+    if (
+      record.environment !==
+        (await checkEnvironmentFingerprint(
+          record.argv,
+          path.resolve(root, record.cwd),
+          await readCheckPolicy(root, identity, true),
+          true,
+        )) ||
+      record.inputAfter !== (await inputFingerprint(record.argv, record.cwd))
+    )
+      return fail('check inputs changed since execution');
+  }
+  if (typeof record.logRef !== 'string' || typeof record.logHash !== 'string')
+    return fail('the evidence log record is incomplete');
   try {
     const log = await readClassicProjectFile(root, record.logRef, {
       label: 'Classic check evidence log',
       maxBytes: 8 * 1024 * 1024,
     });
-    if (createHash('sha256').update(log).digest('hex') !== record.logHash) return null;
+    if (createHash('sha256').update(log).digest('hex') !== record.logHash)
+      return fail('the evidence log is damaged');
   } catch {
-    return null;
+    return fail('the evidence log is missing');
   }
   const current = await latestCommandCheck(root, changeDir, run, scope);
   if (
@@ -391,8 +497,19 @@ export async function usableCommandCheck(
     current.timestamp !== record.timestamp ||
     JSON.stringify(current) !== JSON.stringify(record)
   )
-    return null;
-  return record;
+    return fail('the evidence was superseded by a newer check');
+  return { record };
+}
+
+export async function usableCommandCheck(
+  root: string,
+  changeDir: string,
+  run: RunState,
+  scope: CommandCheckScope,
+  inputFingerprint: (argv: string[], cwd: string) => Promise<string> = (argv, cwd) =>
+    legacyCheckInputFingerprint(root, changeDir, { argv, cwd }),
+): Promise<RecordedCommandCheck | null> {
+  return (await evaluateCommandCheck(root, changeDir, run, scope, inputFingerprint)).record;
 }
 
 export async function consumeCommandCheck(
