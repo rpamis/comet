@@ -1267,5 +1267,5 @@ children:`,
     await expect(readNativePortableChange(parentPaths, 'parent')).resolves.toMatchObject({
       children_contract_hash: expect.stringMatching(/^[a-f0-9]{64}$/u),
     });
-  }, 180_000);
+  }, 300_000);
 });

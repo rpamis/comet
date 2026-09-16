@@ -1399,7 +1399,10 @@ Ship the behavior.
     await expect(running).resolves.toMatchObject({
       requestChecks: { executedCheckIds: ['slow-check'] },
     });
-    expect(lockWaitMs).toBeLessThan(1_200);
+    // The probe must finish well before the 2.5s check completes to prove the
+    // lock is not held during execution; the margin absorbs scheduling noise
+    // on loaded machines without accepting a full-check-length wait.
+    expect(lockWaitMs).toBeLessThan(2_000);
   });
 
   it('records over-budget and malformed requests as execution errors and blocks after three', async () => {

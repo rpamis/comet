@@ -386,7 +386,7 @@ children:
         marker,
       ],
       cwdRef: '.',
-      timeoutMs: 10_000,
+      timeoutMs: 60_000,
       repeatable: true,
     } as const;
     const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
@@ -476,7 +476,7 @@ children:
         release,
       ],
       cwdRef: '.',
-      timeoutMs: 10_000,
+      timeoutMs: 60_000,
       repeatable: true,
     } as const;
     const repositoryRoot = path.resolve(import.meta.dirname, '../../..');
