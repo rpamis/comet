@@ -265,7 +265,9 @@ function guardMachineLines(stderr: string): string[] {
     .filter(
       (line) =>
         line.length > 0 &&
-        !/^(?:Change |需求 ).*\b(?:passed every check|is not ready to leave|暂时还不能离开|通过了离开)/u.test(
+        // \b never holds before CJK characters, so the localized Chinese
+        // summary must be matched without a word-boundary requirement.
+        !/^(?:Change |需求 ).*(?:passed every check|is not ready to leave|暂时还不能离开|通过了离开)/u.test(
           line,
         ) &&
         !line.startsWith('[PASS] OpenSpec required dependency closure is ready') &&

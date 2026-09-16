@@ -79,8 +79,11 @@ async function createPackSource(): Promise<string> {
   if (archived.status !== 0) {
     throw new Error(`git archive failed: ${archived.stderr || archived.stdout}`);
   }
-  const extracted = spawnSync('tar', ['-xf', archive, '-C', source], {
-    cwd: process.cwd(),
+  // Extract with paths relative to the archive directory: GNU tar reads a
+  // leading `C:` in an argument as a remote hostname ("Cannot connect to
+  // C: resolve failed"), so absolute Windows paths must not reach argv.
+  const extracted = spawnSync('tar', ['-xf', 'repository.tar', '-C', 'source'], {
+    cwd: root,
     encoding: 'utf8',
   });
   if (extracted.status !== 0) {
