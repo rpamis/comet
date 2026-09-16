@@ -66,6 +66,45 @@ interface DoctorPayload {
   results: Array<{ check: string; status: string; message: string }>;
 }
 
+it('reports and repairs a corrupt global project registry with a preserved backup', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-doctor-registry-'));
+  const homeDir = path.join(root, 'home');
+  const registryPath = path.join(homeDir, '.comet', 'installations.json');
+  await fs.mkdir(path.dirname(registryPath), { recursive: true });
+  await fs.writeFile(registryPath, '{broken', 'utf8');
+  try {
+    const before = await collectDoctorPayload(root, 'global', homeDir);
+    expect(before.results).toContainEqual({
+      check: 'Project registry',
+      status: 'fail',
+      message: expect.stringContaining(registryPath),
+    });
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let repaired: DoctorPayload;
+    try {
+      await doctorCommand(root, { json: true, repair: true, scope: 'global', homeDir });
+      repaired = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(repaired!.healthy).toBe(true);
+    expect(repaired!.repaired).toEqual([
+      expect.stringMatching(/^project registry \(backup: .+installations\.corrupt-.+\.json\)$/u),
+    ]);
+    const backups = (await fs.readdir(path.dirname(registryPath))).filter((entry) =>
+      entry.startsWith('installations.corrupt-'),
+    );
+    expect(backups).toHaveLength(1);
+    await expect(
+      fs.readFile(path.join(path.dirname(registryPath), backups[0]), 'utf8'),
+    ).resolves.toBe('{broken');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 async function collectDoctorPayload(
   targetPath: string,
   scope: 'project' | 'global' | 'auto' = 'project',

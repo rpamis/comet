@@ -40,6 +40,12 @@ import {
   type Platform,
 } from '../../platform/install/platforms.js';
 import { hasSkills } from '../../platform/install/detect.js';
+import {
+  ProjectRegistryError,
+  getProjectRegistryPath,
+  readProjectRegistry,
+  repairProjectRegistry,
+} from '../../platform/install/project-registry.js';
 import { resolveCanonicalSkillRootOwners } from '../../platform/install/skill-root-owner.js';
 import type { InstallScope } from '../../platform/install/types.js';
 import { inspectClassicChangeReadOnly } from '../../domains/comet-classic/classic-diagnostics.js';
@@ -1295,6 +1301,17 @@ async function collectResultsWithContext(
   context: DoctorContext,
 ): Promise<DoctorReport> {
   const results: CheckResult[] = [];
+  try {
+    const registry = await readProjectRegistry({ homeDir: context.homeDir, strict: true });
+    results.push({
+      check: 'Project registry',
+      status: 'pass',
+      message: `${getProjectRegistryPath(context.homeDir)} (${registry.projects.length} project(s))`,
+    });
+  } catch (error) {
+    if (!(error instanceof ProjectRegistryError)) throw error;
+    results.push({ check: 'Project registry', status: 'fail', message: error.message });
+  }
   if (scope !== 'global') {
     const configTransaction = await checkProjectConfigWriteTransaction(projectPath);
     if (configTransaction) results.push(configTransaction);
@@ -1454,6 +1471,12 @@ async function repairDoctorState(
   quietCodegraph = false,
 ): Promise<string[]> {
   const repaired: string[] = [];
+  if (scope === 'global') {
+    const registryRepair = await repairProjectRegistry({ homeDir: context.homeDir });
+    if (registryRepair) {
+      repaired.push(`project registry (backup: ${registryRepair.backupPath})`);
+    }
+  }
   if (scope !== 'global' && (await repairWorkflowProjectConfigTransaction(projectPath))) {
     repaired.push('project config write transaction');
   }

@@ -553,7 +553,8 @@ describe('Native archived workspace finish', () => {
     await expect(rejection).rejects.toMatchObject({
       result: {
         status: 'blocked',
-        recoveryArgs: ['git', '-C', projectRoot, 'status', '--short'],
+        diagnosticArgs: ['git', '-C', projectRoot, 'status', '--short'],
+        recoveryArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
       },
     });
   });

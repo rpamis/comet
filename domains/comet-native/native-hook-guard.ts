@@ -110,6 +110,11 @@ function artifactResponsePath(relative: string): string {
   return 'data.artifacts.changeDir';
 }
 
+function publishedSpecRecovery(changeDir: string, specsDir: string, target: string): string {
+  const stagedTarget = path.join(changeDir, 'specs', path.relative(specsDir, target));
+  return `Published Native specs are updated through Archive. Read ${stagedTarget}, merge the original edit there, and retry the write against that exact target; do not overwrite existing content.`;
+}
+
 function nativeUnownedTargetDecision(
   projectRoot: string,
   paths: NativeProjectPaths,
@@ -262,7 +267,7 @@ async function inspectPortableWriteTargets(options: {
       targetDecisions.push({
         allowed: false,
         reason: isWithin(paths.specsDir, target)
-          ? `Published Native specs are updated through Archive. Stage the complete target spec in ${path.join(changeDir, 'specs', path.relative(paths.specsDir, target))}; use comet native spec sync for reference-only corrections, or revise-requirements for requirement changes.`
+          ? publishedSpecRecovery(changeDir, paths.specsDir, target)
           : 'Portable Native control state is Runtime-owned',
         workflow: 'native',
         phase: state.phase,
@@ -612,7 +617,7 @@ export async function inspectNativeHookGuard(
           : nativeChangeDir(context.paths, state.name);
       preDecisions.push({
         allowed: false,
-        reason: `Published Native specs are updated through Archive. Stage the complete target spec in ${path.join(selectedChangeDir, 'specs', path.relative(context.paths.specsDir, target))}; use comet native spec sync for reference-only corrections, or revise-requirements for requirement changes.`,
+        reason: publishedSpecRecovery(selectedChangeDir, context.paths.specsDir, target),
         workflow: 'native',
         phase: state.phase,
         change: state.name,

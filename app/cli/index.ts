@@ -426,7 +426,10 @@ program
   .command('doctor [path]')
   .description('Diagnose Comet installation health and repairable issues')
   .option('--json', 'Output as JSON')
-  .option('--repair', 'Repair managed Hook, Rule, and deterministic selection state')
+  .option(
+    '--repair',
+    'Repair managed Hook, Rule, and selection state; back up and replace a corrupt project registry',
+  )
   .option('--yes', 'Authorize repairable project integrations such as CodeGraph indexing')
   .addOption(
     new Option('--strategy <strategy>', 'Classic root move recovery strategy').choices([

@@ -567,6 +567,7 @@ function openSpecAllowed(
 function blocked(
   relativePath: string,
   phase: ClassicPhase,
+  changeName: string,
   locale: ReturnType<typeof classicLocale>,
 ): ClassicCommandResult {
   const guidance =
@@ -575,25 +576,25 @@ function blocked(
           '  BLOCKED: source writes are not allowed during open',
           '  This phase does not allow source writes',
           '  ALLOWED: create proposal/design/tasks artifacts and run guard',
-          '  NEXT: finish clarification and artifacts, then run guard --apply',
+          `  NEXT: finish clarification and artifacts, then run comet guard ${changeName} open --apply`,
         ]
       : phase === 'design'
         ? [
             '  BLOCKED: source writes are not allowed during design',
             '  This phase does not allow source writes',
             '  ALLOWED: run brainstorming, create the Design Doc, and run guard',
-            '  NEXT: finish the Design Doc, then run comet guard <change-name> design --apply to enter build',
+            `  NEXT: finish the Design Doc, then run comet guard ${changeName} design --apply to enter build`,
           ]
         : phase === 'verify'
           ? [
               '  BLOCKED: implementation writes are not allowed during verify',
               '  This phase allows verification reports and state updates only',
-              '  NEXT: run verify-fail and return to build before repairing implementation',
+              `  NEXT: run comet state transition ${changeName} verify-fail, then retry the implementation edit in Build`,
             ]
           : [
               '  BLOCKED: source writes are not allowed during archive',
               '  This phase does not allow source writes',
-              '  ALLOWED: confirm archive state and run the archive script',
+              `  NEXT: run comet archive ${changeName} to complete Archive; use the reported recovery action if Archive is blocked`,
             ];
   return blockedBanner(relativePath, phase, phase, locale, guidance);
 }
@@ -628,6 +629,7 @@ function blockedBanner(
 
 function blockedMissingDesignDoc(
   relativePath: string,
+  changeName: string,
   locale: ReturnType<typeof classicLocale>,
 ): ClassicCommandResult {
   return blockedBanner(
@@ -638,7 +640,7 @@ function blockedMissingDesignDoc(
     [
       '  BLOCKED: full workflow source writes require a recorded Design Doc',
       '  This phase does not allow source writes until design_doc is recorded',
-      '  NEXT: return to design, create/link the Design Doc, then run guard again',
+      `  NEXT: create the Design Doc, run comet state complete-design ${changeName} --design-doc <repo-relative-ref>, then retry the original write`,
     ],
   );
 }
@@ -784,7 +786,7 @@ function blockedMultipleChanges(relativePath: string, changeNames: string[]): Cl
       `  Target file: ${relativePath}`,
       `  Active changes: ${changeNames.join(', ')}`,
       '',
-      '  NEXT: run comet state select <change-name>, then retry the source write',
+      `  NEXT: choose the intended change, run one of: ${changeNames.map((name) => `comet state select ${name}`).join(' | ')}, then retry the source write`,
       '',
     ].join('\n'),
   );
@@ -803,7 +805,7 @@ function blockedStaleSelection(relativePath: string, reason: string): ClassicCom
       `  Target file: ${relativePath}`,
       `  Reason: ${reason}`,
       '',
-      '  NEXT: run comet state select <change-name>, then retry the source write',
+      '  NEXT: run comet state current --json, follow its exact selection recovery action, then retry the source write',
       '',
     ].join('\n'),
   );
@@ -877,6 +879,10 @@ async function inspectClassicHookTarget(
   if (governing.archived) return allowed(`${relativePath} (own change archived)`);
 
   const phase = governing.phase;
+  const changeName = governingChangeName(governing) ?? selectedChangeName;
+  if (!changeName) {
+    return blockedStaleSelection(relativePath, 'active Classic change name cannot be resolved');
+  }
 
   if (governing.classic?.buildMode === 'autonomous' && governing.changeDir) {
     try {
@@ -884,10 +890,10 @@ async function inspectClassicHookTarget(
         heal: false,
         cwd: projectRoot,
       });
-      const name = governingChangeName(governing) ?? '';
       if (binding.status === 'drift')
-        return result(2, driftStaleReason(name, binding.boundBranch, binding.currentBranch));
-      if (binding.status === 'unbound-detached') return result(2, unboundDetachedMessage(name));
+        return result(2, driftStaleReason(changeName, binding.boundBranch, binding.currentBranch));
+      if (binding.status === 'unbound-detached')
+        return result(2, unboundDetachedMessage(changeName));
     } catch (error) {
       return result(2, error instanceof Error ? error.message : String(error));
     }
@@ -903,7 +909,7 @@ async function inspectClassicHookTarget(
   ) {
     const problems = await inspectClassicAutonomousBuildProblems(
       projectRoot,
-      governingChangeName(governing) ?? '',
+      changeName,
       governing.classic,
       { requirePlan: false },
     );
@@ -927,11 +933,15 @@ async function inspectClassicHookTarget(
   if (governing.invalidState) {
     return result(
       2,
-      `[COMET-HOOK] blocked: active Classic state is invalid; repair .comet.yaml before writing ${relativePath}`,
+      `[COMET-HOOK] blocked: active Classic state is invalid; run comet classic validate ${changeName}, repair only the reported fields, then run comet state next ${changeName} --json before retrying ${relativePath}`,
     );
   }
   if (phase === 'build' && governing.classic?.workflow === 'full' && !governing.classic.designDoc) {
-    return blockedMissingDesignDoc(relativePath, classicLocale(governing.classic?.language));
+    return blockedMissingDesignDoc(
+      relativePath,
+      changeName,
+      classicLocale(governing.classic?.language),
+    );
   }
   if (phase === 'build' && governing.classic?.workflow === 'full') {
     const planReadiness = await hookPlanReadiness(projectRoot, governing.classic.plan, {
@@ -945,14 +955,14 @@ async function inspectClassicHookTarget(
     if (governing.classic?.buildMode === 'autonomous') {
       const problems = await inspectClassicAutonomousBuildProblems(
         projectRoot,
-        governingChangeName(governing) ?? '',
+        changeName,
         governing.classic,
       );
       if (problems.length) return result(2, problems.join('\n'));
     }
     return allowed(`${relativePath} (phase: ${phase})`);
   }
-  return blocked(relativePath, phase, classicLocale(governing.classic?.language));
+  return blocked(relativePath, phase, changeName, classicLocale(governing.classic?.language));
 }
 
 export async function inspectClassicHookGuard(

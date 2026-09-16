@@ -234,7 +234,7 @@ async function selectPlatforms(
 
   if (options.yes || options.json) {
     const selected = [...detected];
-    return selected.length > 0 ? selected : PLATFORMS.map((p) => p.id);
+    return selected;
   }
 
   return platformSelectPrompt({
@@ -515,8 +515,8 @@ export async function initCommand(
 
   log(`  ${t(lang, 'settingUp')} ${projectPath}\n`);
 
-  const detected = await detectPlatforms(projectPath);
   const scope = await selectScope(options, lang);
+  const detected = await detectPlatforms(scope === 'global' ? os.homedir() : projectPath);
   if (scope === 'global' && options.codegraph === 'init') {
     throw new Error('--codegraph init is only valid for project-scope initialization');
   }

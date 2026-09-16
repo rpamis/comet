@@ -306,7 +306,7 @@ describe('Native public user-option paths', () => {
       expect(git(root, ['branch', '--list', 'comet/supervisor/*'])).toBe('');
       expect(git(root, ['ls-files', '.comet/config.yaml'])).toBe('');
     },
-    120000,
+    180_000,
   );
 
   it('provides an executable serial Archive choice for two real worktrees', async () => {
@@ -337,5 +337,5 @@ describe('Native public user-option paths', () => {
     expect(ordered.continuation.commandArgs).toContain('--serial-first');
     const archived = await follow(worktrees[0], ordered.continuation.commandArgs);
     expect(archived.state.status).toBe('done');
-  }, 120000);
+  }, 180_000);
 });

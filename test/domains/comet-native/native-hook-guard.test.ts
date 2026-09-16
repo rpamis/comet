@@ -545,12 +545,30 @@ describe('Native phase Hook guard', () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
     await activeChange('build', 'legacy-build', 'docs');
 
-    await expect(
-      inspectNativeHookGuard(projectRoot, writeRequest('docs/comet/specs/authentication/spec.md')),
-    ).resolves.toMatchObject({
+    const decision = await inspectNativeHookGuard(
+      projectRoot,
+      writeRequest('docs/comet/specs/authentication/spec.md'),
+    );
+
+    expect(decision).toMatchObject({
       allowed: false,
       reason: expect.stringContaining('updated through Archive'),
     });
+    expect(decision.reason).toContain(
+      path.join(
+        projectRoot,
+        'docs',
+        'comet',
+        'changes',
+        'legacy-build',
+        'specs',
+        'authentication',
+        'spec.md',
+      ),
+    );
+    expect(decision.reason).toMatch(/read.*merge.*retry/iu);
+    expect(decision.reason).not.toContain('use comet native spec sync');
+    expect(decision.reason).not.toContain('revise-requirements');
   });
 
   it('does not guess that an association write intends to revoke it', async () => {

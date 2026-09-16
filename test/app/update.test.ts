@@ -1840,7 +1840,7 @@ describe('update command helpers', () => {
     expect(installCalls.some((call) => !(call[1]?.slice(1) ?? []).includes('-g'))).toBe(false);
   });
 
-  it('reports global npm update failure before updating all indexed projects', async () => {
+  it('continues updating indexed projects after one global npm update failure', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home-global-npm-failure');
     const projectA = path.join(tmpDir, 'project-a-global-failure');
     const projectB = path.join(tmpDir, 'project-b-global-failure');
@@ -1871,12 +1871,11 @@ describe('update command helpers', () => {
       expect.objectContaining({
         projectPath: path.resolve(projectA),
         status: 'failed',
-        reason: expect.stringContaining('npm package update failed'),
+        reason: expect.stringContaining('EACCES permission denied'),
       }),
       expect.objectContaining({
         projectPath: path.resolve(projectB),
-        status: 'not_attempted',
-        reason: expect.stringContaining('global npm package update failed'),
+        status: 'updated',
       }),
     ]);
     expect(result.status).toBe('incomplete');

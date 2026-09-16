@@ -280,5 +280,6 @@ describe('CLI help text', () => {
     expect(initHelp.stdout).toContain('--codegraph <action>');
     expect(doctorHelp.stdout).toContain('--yes');
     expect(doctorHelp.stdout).toContain('CodeGraph indexing');
+    expect(doctorHelp.stdout).toMatch(/back up\s+and replace a corrupt project registry/u);
   });
 });

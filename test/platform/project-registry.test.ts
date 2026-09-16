@@ -8,6 +8,7 @@ import {
   getProjectRegistryPath,
   listProjectRegistryEntries,
   readProjectRegistry,
+  repairProjectRegistry,
   removeProjectInstallation,
   upsertProjectInstallation,
 } from '../../platform/install/project-registry.js';
@@ -214,7 +215,31 @@ describe('project installation registry', () => {
 
     await expect(readProjectRegistry({ homeDir, strict: true })).rejects.toMatchObject({
       code: 'invalid-json',
+      message: expect.stringContaining(registryPath),
     } satisfies Partial<ProjectRegistryError>);
+  });
+
+  it('backs up a corrupt registry before replacing it with an empty valid registry', async () => {
+    const registryPath = getProjectRegistryPath(homeDir);
+    await fs.mkdir(path.dirname(registryPath), { recursive: true });
+    await fs.writeFile(registryPath, '{not-json', 'utf-8');
+
+    const repaired = await repairProjectRegistry({
+      homeDir,
+      now: new Date('2026-09-16T12:34:56.789Z'),
+    });
+
+    expect(repaired).toEqual({
+      registryPath,
+      backupPath: path.join(
+        path.dirname(registryPath),
+        'installations.corrupt-20260916T123456789Z.json',
+      ),
+    });
+    await expect(fs.readFile(repaired!.backupPath, 'utf8')).resolves.toBe('{not-json');
+    await expect(readProjectRegistry({ homeDir, strict: true })).resolves.toMatchObject({
+      projects: [],
+    });
   });
 
   it('does not treat unreadable registry files as an empty strict registry', async () => {

@@ -44,9 +44,16 @@ export class ProjectRegistryError extends Error {
     message: string,
     public readonly registryPath: string,
   ) {
-    super(message);
+    super(
+      `${message}. Registry: ${registryPath}. Run comet doctor --repair --scope global, then retry the original command`,
+    );
     this.name = 'ProjectRegistryError';
   }
+}
+
+export interface ProjectRegistryRepairResult {
+  registryPath: string;
+  backupPath: string;
 }
 
 function nowIso(options: ProjectRegistryOptions): string {
@@ -224,6 +231,37 @@ async function writeProjectRegistry(
   } finally {
     await fs.rm(temporary, { force: true }).catch(() => undefined);
   }
+}
+
+function corruptRegistryBackupPath(registryPath: string, now: Date): string {
+  const stamp = now.toISOString().replace(/[-:.]/gu, '');
+  return path.join(path.dirname(registryPath), `installations.corrupt-${stamp}.json`);
+}
+
+export async function repairProjectRegistry(
+  options: ProjectRegistryOptions = {},
+): Promise<ProjectRegistryRepairResult | null> {
+  const registryPath = getProjectRegistryPath(options.homeDir);
+  return withRecoverableFileLock(`${registryPath}.lock`, async () => {
+    try {
+      await readProjectRegistrySnapshot({ ...options, strict: true });
+      return null;
+    } catch (error) {
+      if (!(error instanceof ProjectRegistryError)) throw error;
+    }
+
+    const now = options.now ?? new Date();
+    const backupPath = corruptRegistryBackupPath(registryPath, now);
+    await ensureDir(path.dirname(registryPath));
+    await fs.rename(registryPath, backupPath);
+    try {
+      await writeProjectRegistry(emptyRegistry(now.toISOString()), registryPath);
+    } catch (error) {
+      await fs.rename(backupPath, registryPath).catch(() => undefined);
+      throw error;
+    }
+    return { registryPath, backupPath };
+  });
 }
 
 export async function readProjectRegistry(

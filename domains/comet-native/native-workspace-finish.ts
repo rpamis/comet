@@ -52,6 +52,7 @@ export interface NativeWorkspaceFinishResult {
   };
   blockedPaths: string[];
   message: string | null;
+  diagnosticArgs: string[] | null;
   recoveryArgs: string[] | null;
 }
 
@@ -412,6 +413,7 @@ function baseResult(plan: NativeWorkspaceFinishPlan): NativeWorkspaceFinishResul
     cleanup: { performed: false, reason: null },
     blockedPaths: [],
     message: null,
+    diagnosticArgs: null,
     recoveryArgs: null,
   };
 }
@@ -599,12 +601,16 @@ export async function finishArchivedNativeWorkspace(options: {
     }
     result.status = 'blocked';
     result.message = (error as Error).message;
-    result.recoveryArgs =
-      options.plan.finish === 'pull-request'
-        ? ['comet', 'native', 'archive', options.name, '--confirmed']
-        : options.plan.finish === 'merge' && result.targetRoot
-          ? ['git', '-C', result.targetRoot, 'status', '--short']
-          : ['git', '-C', options.plan.changeRoot, 'status', '--short'];
+    result.diagnosticArgs = [
+      'git',
+      '-C',
+      options.plan.finish === 'merge' && result.targetRoot
+        ? result.targetRoot
+        : options.plan.changeRoot,
+      'status',
+      '--short',
+    ];
+    result.recoveryArgs = ['comet', 'native', 'archive', options.name, '--confirmed'];
     throw new NativeWorkspaceFinishError(result);
   }
 }

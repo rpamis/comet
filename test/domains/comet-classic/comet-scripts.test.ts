@@ -6007,7 +6007,9 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('Current phase: verify');
-      expect(result.stderr).toContain('return to build before repairing implementation');
+      expect(result.stderr).toContain(
+        'comet state transition test-hook verify-fail, then retry the implementation edit in Build',
+      );
     }, 20_000);
 
     it('blocks source code writes in archive phase', async () => {
@@ -6263,7 +6265,9 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('multiple active changes require a current change');
-      expect(result.stderr).toContain('comet state select <change-name>');
+      expect(result.stderr).toContain(
+        'comet state select a-open-change | comet state select z-design-change',
+      );
     }, 20_000);
 
     it('requires selection before an unmatched standard specs write with multiple eligible changes', async () => {
@@ -6292,7 +6296,7 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('multiple active changes require a current change');
-      expect(result.stderr).toContain('comet state select <change-name>');
+      expect(result.stderr).toContain('comet state select auth | comet state select payments');
     }, 20_000);
 
     it('requires a current change for repo source writes with multiple active changes', async () => {

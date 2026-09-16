@@ -439,7 +439,8 @@ describe('Classic hook guard command', () => {
 
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('multiple active changes require a current change');
-      expect(result.stderr).toContain('comet state select <change-name>');
+      expect(result.stderr).toContain('comet state select build-change');
+      expect(result.stderr).toContain('comet state select unrelated-design');
     });
 
     it.each(['open', 'design', 'verify', 'archive'] as const)(
@@ -629,7 +630,8 @@ describe('Classic hook guard command', () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('multiple active changes require a current change');
-    expect(result.stderr).toContain('comet state select <change-name>');
+    expect(result.stderr).toContain('comet state select build-ready');
+    expect(result.stderr).toContain('comet state select open-change');
     expect(result.stderr).toContain('build-ready');
     expect(result.stderr).toContain('open-change');
     expect(result.stderr).not.toContain('Current phase: open');
@@ -710,6 +712,18 @@ describe('Classic hook guard command', () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('Current phase: open');
+    expect(result.stderr).toContain('comet guard open-change open --apply');
+  });
+
+  it('returns an executable design recovery command for the selected change', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'design-change', 'design');
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('comet guard design-change design --apply');
+    expect(result.stderr).not.toContain('<change-name>');
   });
 
   it('blocks implementation writes during verify so repairs return through build', async () => {
@@ -720,7 +734,7 @@ describe('Classic hook guard command', () => {
 
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('Current phase: verify');
-    expect(result.stderr).toContain('return to build before repairing implementation');
+    expect(result.stderr).toContain('comet state transition verify-change verify-fail');
   });
 
   it('blocks tasks updates during verify so task state is repaired in build', async () => {
@@ -737,7 +751,17 @@ describe('Classic hook guard command', () => {
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('Current phase: verify');
     expect(result.stderr).toContain('verification reports and state updates only');
-    expect(result.stderr).toContain('run verify-fail and return to build');
+    expect(result.stderr).toContain('comet state transition verify-tasks verify-fail');
+  });
+
+  it('returns the exact Archive continuation command for the selected change', async () => {
+    const dir = await makeProject();
+    await seedChange(dir, 'archive-change', 'archive');
+
+    const result = run(dir, 'hook-guard', [], hookInput(path.join(dir, 'src', 'feature.ts')));
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('comet archive archive-change');
   });
 
   it('keeps single-change source guard behavior without a selection', async () => {

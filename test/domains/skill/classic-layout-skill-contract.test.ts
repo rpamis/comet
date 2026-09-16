@@ -67,6 +67,26 @@ async function classicGuidanceFiles(
 }
 
 describe('Classic layout Skill contract', () => {
+  it.each([
+    {
+      file: 'comet-workflow-guard.md',
+      diagnostic: '诊断动作',
+      recovery: '恢复命令',
+    },
+    {
+      file: 'comet-workflow-guard.en.md',
+      diagnostic: 'diagnostic action',
+      recovery: 'recovery command',
+    },
+  ])('keeps Hook recovery guidance executable in $file', async ({ file, diagnostic, recovery }) => {
+    const source = await fs.readFile(path.resolve('assets/skills/comet/rules', file), 'utf8');
+
+    expect(source).toContain(diagnostic);
+    expect(source).toContain(recovery);
+    expect(source).toContain('continuation.commandArgs');
+    expect(source).toContain('comet native archive <change> --confirmed');
+  });
+
   it.each(LANGUAGE_CASES)(
     'keeps $label entry layout bindings and commands aligned',
     async ({ languageRoot }) => {

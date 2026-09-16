@@ -317,7 +317,8 @@ export async function nativeArchiveCommand(
           cleanup: { performed: false, reason: null },
           blockedPaths,
           message,
-          recoveryArgs: ['git', '-C', workspaceRoot, 'status', '--short'],
+          diagnosticArgs: ['git', '-C', workspaceRoot, 'status', '--short'],
+          recoveryArgs: ['comet', 'native', 'archive', name, '--confirmed'],
         };
         return {
           command: 'archive',

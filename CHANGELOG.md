@@ -6,7 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **Native artifact paths and recovery**: Return the configured Native artifact root, change files, Runtime directory, and actual workspace from `new`, `status`, and `show`; Hook denials now provide the exact target or CLI action needed to retry without guessing another directory.
+- **Workflow artifact paths and recovery**: Return the configured Native artifact root, change files, Runtime directory, and actual workspace from `new`, `status`, and `show`. Classic and Native Hook denials now provide exact change-aware commands or targets, and interrupted Native Archive delivery separates diagnostics from the idempotent Archive retry instead of ending recovery at `git status`.
 - **Native capability association**: Add state-version-protected `comet native spec disassociate` recovery to revoke an explicitly selected association through Runtime and return the change to Shape without guessing intent or hand-editing the association file.
 - **Agent-oriented CLI help**: Present every root `comet --help` description in consistent, action-oriented English, route `comet help` for facade commands to their complete Runtime help, and show the Native discovery and continuation sequence so Agents can reliably find and execute the next workflow action.
 - **Project Knowledge corpus limits**: Allow projects to configure the Local Provider's per-file and total corpus limits in MB through `.comet/config.yaml` or Dashboard settings. New defaults accept Markdown files up to 1 MB and a corpus up to 32 MB.
@@ -23,6 +23,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Dashboard change summaries**: Keep Native and Classic change status summaries on one line with truncation, so selecting a row no longer changes its text layout.
 - **Native workflow state preview**: Explain `comet-state.yaml` fields and render nested values as formatted JSON blocks instead of undifferentiated table text.
 - **Project Knowledge diagnostics**: Distinguish per-file and total-corpus limit failures, name the exact setting to adjust, and stop excluding ordinary long verification reports under the previous fixed 64 KiB limit.
+- **Global installation lifecycle**: Detect global platforms from the user home, avoid guessing every platform during unattended initialization, back up and repair a corrupt project registry through Doctor, and continue safe all-project asset updates after one global npm update failure.
 
 ### Security
 

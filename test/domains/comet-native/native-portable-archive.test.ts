@@ -946,6 +946,74 @@ children:
     );
   });
 
+  it('completes an interrupted Archive by rerunning the returned recovery command', async () => {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'native-test@example.com'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: root });
+    await fs.writeFile(path.join(root, '.gitignore'), '.comet/runtime/\n');
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'seed retryable Native archive'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['switch', '-c', 'comet/archive-retry'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+
+    const remote = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-remote-'));
+    await fs.rm(remote, { recursive: true, force: true });
+    try {
+      execFileSync('git', ['remote', 'add', 'origin', remote], { cwd: root });
+      execFileSync('git', ['config', 'branch.comet/archive-retry.remote', 'origin'], { cwd: root });
+      execFileSync(
+        'git',
+        ['config', 'branch.comet/archive-retry.merge', 'refs/heads/comet/archive-retry'],
+        { cwd: root },
+      );
+
+      const state = await archiveReady('archive-retry');
+      await writeNativePortableState(
+        path.join(nativePortableChangeDir(paths, state.name), 'comet-state.yaml'),
+        {
+          ...state,
+          workspace: {
+            isolation: 'branch',
+            change_branch: 'comet/archive-retry',
+            target_branch: 'main',
+            finish: 'push',
+          },
+        },
+      );
+
+      const blocked = await nativeArchiveCommand([state.name, '--confirmed'], root);
+      expect(blocked).toMatchObject({
+        exitCode: 73,
+        data: {
+          workspaceFinishResult: {
+            status: 'blocked',
+            diagnosticArgs: ['git', '-C', root, 'status', '--short'],
+            recoveryArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
+          },
+          continuation: {
+            commandArgs: ['comet', 'native', 'archive', state.name, '--confirmed'],
+          },
+        },
+      });
+
+      execFileSync('git', ['init', '--bare', remote], { stdio: 'ignore' });
+      await expect(nativeArchiveCommand([state.name, '--confirmed'], root)).resolves.toMatchObject({
+        exitCode: 0,
+        data: {
+          state: { status: 'done', archived: true },
+          workspaceFinishResult: { status: 'completed', pushed: true },
+        },
+      });
+    } finally {
+      await fs.rm(remote, { recursive: true, force: true });
+    }
+  });
+
   it('detects capability owners in another registered Git worktree', async () => {
     const first = await archiveReady('primary-owner');
     execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
