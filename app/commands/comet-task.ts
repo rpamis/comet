@@ -123,6 +123,10 @@ async function runCometTaskCommand(
       learningCheck: options.learningCheck ?? 'not-run',
     });
     learningCheckVerified = learningStatus?.submissionVerified;
+    if (learningCheckVerified === false)
+      console.error(
+        'Warning: --learning-check submitted, but no observation was recorded for this change; run comet memory observe first, then submit again',
+      );
   }
   const result = {
     context,
