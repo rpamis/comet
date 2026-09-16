@@ -6,6 +6,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Classic delivery input diagnostics**: Reject a `comet state delivery --file` input saved to the Runtime record path (`<change-dir>/.comet/delivery.json`) with one direct collision message, instead of contradictory schema errors from validating the same file as both input and record. Archive integrity failures now list the untracked files that broke the sealed change directory.
+- **Task learning-check warning**: `comet task --complete --learning-check submitted` prints a stderr warning pointing to `comet memory observe` when no observation exists for the change, instead of surfacing the unverified submission only through JSON output.
 - **Workflow artifact paths and recovery**: Return the configured Native artifact root, change files, Runtime directory, and actual workspace from `new`, `status`, and `show`. Classic and Native Hook denials now provide exact change-aware commands or targets, and interrupted Native Archive delivery separates diagnostics from the idempotent Archive retry instead of ending recovery at `git status`.
 - **Native capability association**: Add state-version-protected `comet native spec disassociate` recovery to revoke an explicitly selected association through Runtime and return the change to Shape without guessing intent or hand-editing the association file.
 - **Agent-oriented CLI help**: Present every root `comet --help` description in consistent, action-oriented English, route `comet help` for facade commands to their complete Runtime help, and show the Native discovery and continuation sequence so Agents can reliably find and execute the next workflow action.
@@ -14,6 +16,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Classic delivery git timeouts**: Retry unanswered read-only git verification calls (show, diff, ls-files, merge-base, and delivery authorization checks) once, then fail with an identifiable `git command timed out` error, so an overloaded machine no longer reports a clean archive as `Classic delivery commit must be a verified archive commit`.
 - **Native scoped verification**: Accept and filter already-passed acceptance entries when a Verifier returns a known full-result superset for a scoped retry, while continuing to reject hallucinated IDs, missing scope coverage, duplicates, and conflicting out-of-scope results.
 - **Native Hook attribution**: Protect configured Native formal and Runtime-owned paths while leaving ordinary same-named files, non-Comet work, and explicitly configured user Hook outputs neutral.
 - **Installed package asset validation**: Check every manifest-declared Skill, Rule, and Hook before initialization, updates, or Doctor repairs, and report one actionable reinstall error when an npm installation is incomplete.
