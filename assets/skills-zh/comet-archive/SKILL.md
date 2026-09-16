@@ -73,7 +73,7 @@ targetBranch 是接收归档提交的绑定分支，与 PR 的 base 分支含义
 }
 ```
 
-用文件工具保存 JSON，再传给 delivery --file。归档提交确认后，在同一完整记录中追加 `"commit": "<actual-archive-commit-sha>"`；action 为 pr 且 PR 已创建时，再追加真实 prUrl。local 示例只需 action:local 和已确认 targetBranch，不要求 remote。
+用文件工具保存 JSON，再传给 delivery --file。输入文件放在 change 目录之外（例如仓库根的 `delivery-input.json`），用后删除；不得写进 change 目录，尤其不得使用 `<change-dir>/.comet/delivery.json`——那是 Runtime 的交付记录，输入会被当作记录校验而报出矛盾错误。输入只包含 action、targetBranch 和可选的 remote、commit、prUrl；schemaVersion 等字段属于 Runtime 记录，不得出现在输入中。归档提交确认后，在同一完整记录中追加 `"commit": "<actual-archive-commit-sha>"`；action 为 pr 且 PR 已创建时，再追加真实 prUrl。commit 由 Runtime 保存在 Git 忽略的交付回执中，change 目录内被跟踪的 `delivery.json` 始终不含 commit；归档提交后 change 目录必须与该提交保持零差异，不得在其中新增、修改或删除文件，否则完整性校验失败。local 示例只需 action:local 和已确认 targetBranch，不要求 remote。
 
 普通 `comet state delivery <change-name>` 只读取已保存的记录，入口摘要也不访问网络。恢复远端交付、上次调用没有返回明确结果，或准备宣告完成时，必须显式运行：
 
