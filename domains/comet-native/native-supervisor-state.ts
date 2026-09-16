@@ -270,6 +270,26 @@ export async function readNativeSupervisorState(
   }
 }
 
+export async function assertNoActiveNativeSupervisorTasks(
+  paths: Pick<NativeProjectPaths, 'changesRuntimeDir'>,
+  parent: string,
+): Promise<void> {
+  const active = await activeNativeSupervisorTaskNames(paths, parent);
+  if (active.length > 0) {
+    throw new Error(
+      `Native Supervisor Git binding cannot change while active child tasks exist: ${active.join(', ')}`,
+    );
+  }
+}
+
+export async function activeNativeSupervisorTaskNames(
+  paths: Pick<NativeProjectPaths, 'changesRuntimeDir'>,
+  parent: string,
+): Promise<string[]> {
+  const state = await readNativeSupervisorState(paths, parent, { diagnostics: true });
+  return state?.children.filter(({ task }) => task !== null).map(({ name }) => name) ?? [];
+}
+
 export async function writeNativeSupervisorState(
   paths: Pick<NativeProjectPaths, 'changesRuntimeDir'>,
   state: NativeSupervisorState,

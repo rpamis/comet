@@ -5,6 +5,7 @@ import {
   inspectGitWorktree,
   resolveGitRef,
 } from '../../platform/paths/git-worktree.js';
+import { gitWorktreeIsClean } from '../../platform/process/git.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
 import {
   compareAndSwapNativePortableState,
@@ -85,6 +86,11 @@ export function lateBindPortableCurrentWorkspace(
   const inspection = inspectGitWorktree(projectRoot);
   if (!inspection.isGitWorktree || inspection.currentBranch === null) return null;
   if (resolveGitRef(projectRoot, inspection.currentBranch) === null) return null;
+  if (!gitWorktreeIsClean(projectRoot)) {
+    throw new Error(
+      'Native Supervisor Git binding requires a clean current working directory; commit or stash pending changes, then rerun the latest continuation',
+    );
+  }
   return {
     ...workspace,
     change_branch: inspection.currentBranch,

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-worktree.js';
+import { gitWorktreeIsClean } from '../../platform/process/git.js';
 
 import { doctorNativeProject } from './native-doctor.js';
 import { inspectNativeChildren, readNativeChildrenContract } from './native-children.js';
@@ -19,6 +20,7 @@ import { recoverNativePortableChange } from './native-portable-recovery.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
 import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
 import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
+import { activeNativeSupervisorTaskNames } from './native-supervisor-state.js';
 import {
   isNativePortableChange,
   nativeLocalExecutionFile,
@@ -135,12 +137,18 @@ async function portableSupervisorGitBindingFinding(
     inspection.isGitWorktree &&
     inspection.currentBranch !== null &&
     resolveGitRef(paths.projectRoot, inspection.currentBranch) !== null;
+  const clean = attached && gitWorktreeIsClean(paths.projectRoot);
+  const activeTasks = attached ? await activeNativeSupervisorTaskNames(paths, name) : [];
   return {
     severity: 'error',
     code: 'portable-supervisor-git-binding-missing',
-    message: attached
-      ? `${name}: the Supervisor change has no Git branch binding; run comet native status ${name} --json and rerun its continuation to bind branch ${inspection.currentBranch} at the Shape confirmation boundary`
-      : `${name}: the Supervisor change requires Git; initialize a Git repository, commit to a branch, then rerun the latest continuation`,
+    message: !attached
+      ? `${name}: the Supervisor change requires Git; initialize a Git repository, commit to a branch, then rerun the latest continuation`
+      : !clean
+        ? `${name}: the Supervisor change has no Git branch binding and the current Git baseline is dirty; commit or stash pending changes to restore a clean current working directory, then rerun the latest continuation`
+        : activeTasks.length > 0
+          ? `${name}: the Supervisor change has no Git branch binding while active child tasks exist (${activeTasks.join(', ')}); finish or recover those tasks before rerunning the latest continuation`
+          : `${name}: the Supervisor change has no Git branch binding; run comet native status ${name} --json and rerun its continuation to bind branch ${inspection.currentBranch} at the Shape confirmation boundary`,
     path: nativePortableStateFile(paths, name),
   };
 }

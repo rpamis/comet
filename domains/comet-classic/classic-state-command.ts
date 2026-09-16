@@ -1,6 +1,7 @@
 import { spawnSync } from 'child_process';
 import path from 'path';
 import { Document, parseDocument } from 'yaml';
+import { samePath } from '../../platform/paths/git-worktree.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import {
@@ -1145,7 +1146,7 @@ async function progressCommand(
     const inputPath = path.isAbsolute(args[2])
       ? path.resolve(args[2])
       : path.resolve(root, args[2]);
-    if (inputPath === path.resolve(path.join(directory, '.comet', 'delivery.json')))
+    if (samePath(inputPath, path.resolve(path.join(directory, '.comet', 'delivery.json'))))
       fail(
         'ERROR: delivery input file collides with the Runtime record path <change-dir>/.comet/delivery.json; save the input outside the change directory',
       );

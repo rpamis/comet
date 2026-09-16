@@ -225,7 +225,7 @@ export function validateNativeTrustedVerifierEnvelope(options: {
   }
   if (response.kind === 'request-checks') return response;
 
-  const acceptance = validateNativeVerifierFinalResultConsistency(response.result, binding);
+  const acceptance = validateAndScopeNativeVerifierFinalResult(response.result, binding);
   return {
     ...response,
     result: {
@@ -235,7 +235,7 @@ export function validateNativeTrustedVerifierEnvelope(options: {
   };
 }
 
-export function validateNativeVerifierFinalResultConsistency(
+export function validateAndScopeNativeVerifierFinalResult(
   result: Pick<NativeVerifierFinalResult, 'verdict' | 'acceptance'>,
   binding: Pick<
     NativeVerifierBinding,

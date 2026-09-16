@@ -81,6 +81,7 @@ import {
   writePortableMutation,
 } from './native-portable-storage.js';
 import { returnNativePortableStateToFinalVerificationLocked } from './native-portable-transitions.js';
+import { assertNoActiveNativeSupervisorTasks } from './native-supervisor-state.js';
 
 export const NATIVE_PORTABLE_BRIEF_TEMPLATE = nativeBriefTemplate('en');
 
@@ -832,6 +833,7 @@ export async function prepareNativePortableShapeConfirmation(options: {
       });
       let bound = state;
       if (children && state.workspace.change_branch === null) {
+        await assertNoActiveNativeSupervisorTasks(options.paths, state.name);
         const workspace = lateBindPortableCurrentWorkspace(
           state.workspace,
           options.paths.projectRoot,

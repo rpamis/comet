@@ -21,6 +21,9 @@ vi.mock('node:child_process', async (importOriginal) => {
 });
 const actualChildProcess =
   await vi.importActual<typeof import('node:child_process')>('node:child_process');
+function commandName(command: string): string {
+  return path.basename(command).replace(/\.(?:bat|cmd|exe)$/iu, '');
+}
 function resetCommands() {
   vi.mocked(childProcess.execFileSync)
     .mockReset()
@@ -396,7 +399,7 @@ describe('Classic structured progress', () => {
       args: string[],
       options: unknown,
     ) => {
-      if (command === 'git' && args.includes('ls-remote')) {
+      if (commandName(command) === 'git' && args.includes('ls-remote')) {
         expect(args.slice(-2)).toEqual(['origin', 'refs/heads/main']);
         expect(options).toMatchObject({ timeout: 5000, env: { GIT_TERMINAL_PROMPT: '0' } });
         expect(options).toMatchObject({
@@ -406,7 +409,7 @@ describe('Classic structured progress', () => {
         if (output instanceof Error) throw output;
         return output ?? `${commit}\trefs/heads/main`;
       }
-      if (command === 'gh') {
+      if (commandName(command) === 'gh') {
         expect(options).toMatchObject({ env: { GH_CONFIG_DIR: root, GH_PROMPT_DISABLED: '1' } });
         if (args[1] === 'list')
           expect(args).toEqual([
@@ -565,7 +568,7 @@ describe('Classic structured progress', () => {
       args: string[],
       options: unknown,
     ) => {
-      if (command === 'git' && args.includes('diff')) {
+      if (commandName(command) === 'git' && args.includes('diff')) {
         diffAttempts += 1;
         throw timeout;
       }
@@ -592,7 +595,7 @@ describe('Classic structured progress', () => {
       args: string[],
       options: unknown,
     ) => {
-      if (command === 'git' && args.includes('diff')) {
+      if (commandName(command) === 'git' && args.includes('diff')) {
         diffAttempts += 1;
         if (diffAttempts === 1) throw timeout;
       }

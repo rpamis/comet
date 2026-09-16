@@ -23,6 +23,7 @@ import {
   reconcileNativeSupervisorState,
 } from './native-supervisor-model.js';
 import {
+  assertNoActiveNativeSupervisorTasks,
   readNativeSupervisorState,
   writeNativeSupervisorState,
 } from './native-supervisor-state.js';
@@ -92,6 +93,7 @@ export async function confirmNativePortableShape(options: {
       });
       let bound = state;
       if (children && state.workspace.change_branch === null) {
+        await assertNoActiveNativeSupervisorTasks(options.paths, state.name);
         const workspace = lateBindPortableCurrentWorkspace(
           state.workspace,
           options.paths.projectRoot,

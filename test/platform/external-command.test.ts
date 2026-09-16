@@ -55,6 +55,18 @@ describe('external command provider', () => {
     ).toThrow('failed safely');
   });
 
+  it('marks a timed-out child process in the typed failure', () => {
+    try {
+      runExternalCommand(process.execPath, ['-e', 'setTimeout(() => {}, 10_000)'], {
+        timeoutMs: 20,
+      });
+      throw new Error('Expected the child process to time out');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ExternalCommandError);
+      expect((error as ExternalCommandError).timedOut).toBe(true);
+    }
+  });
+
   it.runIf(process.platform === 'win32')(
     'resolves and executes a Windows command shim from PATH',
     async () => {

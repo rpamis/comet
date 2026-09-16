@@ -1,5 +1,8 @@
 import { expect, it } from 'vitest';
-import { independentGitEnvironment } from '../../platform/process/git-environment.js';
+import {
+  independentGitEnvironment,
+  nonInteractiveGitEnvironment,
+} from '../../platform/process/git-environment.js';
 
 it('isolates repository state while preserving global configuration and authentication', () => {
   const input = {
@@ -23,4 +26,26 @@ it('isolates repository state while preserving global configuration and authenti
     SSH_AUTH_SOCK: '/agent/socket',
   });
   expect(input.GIT_DIR).toBe('/other/.git');
+});
+
+it('builds an isolated non-interactive environment for unauthenticated Git checks', () => {
+  expect(
+    nonInteractiveGitEnvironment({
+      authentication: false,
+      environment: {
+        HOME: '/home/user',
+        GIT_CONFIG_GLOBAL: '/home/user/.gitconfig',
+        GIT_DIR: '/other/.git',
+      },
+    }),
+  ).toEqual({
+    HOME: '/home/user',
+    GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_TERMINAL_PROMPT: '0',
+    GCM_INTERACTIVE: 'never',
+    SSH_ASKPASS_REQUIRE: 'never',
+    GIT_NO_REPLACE_OBJECTS: '1',
+    GH_PROMPT_DISABLED: '1',
+  });
 });

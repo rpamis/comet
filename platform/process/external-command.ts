@@ -15,15 +15,27 @@ export interface ExternalCommandOptions {
 }
 
 export class ExternalCommandError extends Error {
+  readonly timedOut: boolean;
+
   constructor(
     readonly command: string,
     readonly args: readonly string[],
     readonly stderr: string,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { timedOut?: boolean },
   ) {
     super(`${command} ${args.join(' ')} failed${stderr ? `: ${stderr}` : ''}`, options);
     this.name = 'ExternalCommandError';
+    this.timedOut = options?.timedOut === true;
   }
+}
+
+function commandTimedOut(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    ((error as NodeJS.ErrnoException).code === 'ETIMEDOUT' ||
+      ((error as { killed?: unknown }).killed === true &&
+        (error as { signal?: unknown }).signal === 'SIGTERM'))
+  );
 }
 
 export function runExternalCommand(
@@ -67,6 +79,9 @@ export function runExternalCommand(
         : Buffer.isBuffer((error as { stderr?: unknown }).stderr)
           ? (error as { stderr: Buffer }).stderr.toString('utf8').trim()
           : '';
-    throw new ExternalCommandError(command, args, stderr, { cause: error });
+    throw new ExternalCommandError(command, args, stderr, {
+      cause: error,
+      timedOut: commandTimedOut(error),
+    });
   }
 }

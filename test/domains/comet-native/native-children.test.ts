@@ -38,6 +38,11 @@ import {
 import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import {
+  createNativeSupervisorState,
+  createNativeSupervisorTask,
+} from '../../../domains/comet-native/native-supervisor-model.js';
+import { writeNativeSupervisorState } from '../../../domains/comet-native/native-supervisor-state.js';
+import {
   readNativePortableState,
   writeNativePortableState,
 } from '../../../domains/comet-native/native-portable-state.js';
@@ -806,6 +811,123 @@ children:`,
     await expect(nativeDoctorCommand(['parent'], repository)).resolves.toMatchObject({
       exitCode: 0,
       data: { healthy: true },
+    });
+  });
+
+  it('refuses to bind a pre-Git Supervisor Shape from a dirty Git baseline', async () => {
+    const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-children-'));
+    repositories.push(repository);
+    const config = defaultProjectConfig('docs', 'en');
+    config.workflows = ['native', 'classic'];
+    config.default_workflow = 'native';
+    await writeProjectConfig(repository, config);
+    await nativeNewCommand(['parent', '--isolation', 'current'], repository);
+    const paths = await nativeProjectPaths(repository, 'docs');
+    await ensureNativeDirectories(paths);
+    const changeDir = nativePortableChangeDir(paths, 'parent');
+    await fs.writeFile(path.join(changeDir, 'brief.md'), PARENT_BRIEF);
+    await fs.writeFile(path.join(changeDir, 'children.yaml'), READABLE_CHILDREN);
+
+    git(repository, ['init', '-b', 'main']);
+    git(repository, ['config', 'user.email', 'native@example.test']);
+    git(repository, ['config', 'user.name', 'Native Test']);
+    await fs.writeFile(
+      path.join(repository, '.gitignore'),
+      '.comet/runtime/\n.comet/current-change.json\n',
+    );
+    git(repository, ['add', '.']);
+    git(repository, ['commit', '-m', 'seed after the change exists']);
+    await fs.writeFile(path.join(repository, 'uncommitted.txt'), 'not part of the baseline\n');
+
+    await expect(nativeDoctorCommand(['parent'], repository)).resolves.toMatchObject({
+      exitCode: 65,
+      data: {
+        findings: [
+          expect.objectContaining({
+            message: expect.stringMatching(/clean current working directory/iu),
+          }),
+        ],
+      },
+    });
+    await expect(
+      nativeNextCommand(
+        [
+          'parent',
+          '--summary',
+          'Prepare the parent contract confirmation',
+          '--coordination-mode',
+          'multi-session',
+        ],
+        repository,
+      ),
+    ).rejects.toThrow(/clean current working directory/iu);
+    await expect(readNativePortableChange(paths, 'parent')).resolves.toMatchObject({
+      workspace: { change_branch: null, target_branch: null },
+    });
+  });
+
+  it('refuses to bind a pre-Git Supervisor Shape while a child task is active', async () => {
+    const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-children-'));
+    repositories.push(repository);
+    const config = defaultProjectConfig('docs', 'en');
+    config.workflows = ['native', 'classic'];
+    config.default_workflow = 'native';
+    await writeProjectConfig(repository, config);
+    await nativeNewCommand(['parent', '--isolation', 'current'], repository);
+    const paths = await nativeProjectPaths(repository, 'docs');
+    await ensureNativeDirectories(paths);
+    const changeDir = nativePortableChangeDir(paths, 'parent');
+    await fs.writeFile(path.join(changeDir, 'brief.md'), PARENT_BRIEF);
+    await fs.writeFile(path.join(changeDir, 'children.yaml'), READABLE_CHILDREN);
+
+    git(repository, ['init', '-b', 'main']);
+    git(repository, ['config', 'user.email', 'native@example.test']);
+    git(repository, ['config', 'user.name', 'Native Test']);
+    await fs.writeFile(
+      path.join(repository, '.gitignore'),
+      '.comet/runtime/\n.comet/current-change.json\n',
+    );
+    git(repository, ['add', '.']);
+    git(repository, ['commit', '-m', 'seed after the change exists']);
+    const head = git(repository, ['rev-parse', 'HEAD']);
+    const supervisor = createNativeSupervisorState({
+      parent: 'parent',
+      targetBranch: 'main',
+      targetCommit: head,
+      integrationBranch: 'comet/supervisor/parent/integration',
+      integrationWorktree: repository,
+      contract: parseNativeChildrenContract(READABLE_CHILDREN, ['A1', 'A2']),
+    });
+    const active = createNativeSupervisorTask(supervisor, {
+      role: 'builder',
+      child: 'child-a',
+      projectRoot: repository,
+      runId: 'active-builder',
+    });
+    await writeNativeSupervisorState(paths, active.state);
+
+    await expect(nativeDoctorCommand(['parent'], repository)).resolves.toMatchObject({
+      exitCode: 65,
+      data: {
+        findings: [
+          expect.objectContaining({ message: expect.stringMatching(/active child tasks/iu) }),
+        ],
+      },
+    });
+    await expect(
+      nativeNextCommand(
+        [
+          'parent',
+          '--summary',
+          'Prepare the parent contract confirmation',
+          '--coordination-mode',
+          'multi-session',
+        ],
+        repository,
+      ),
+    ).rejects.toThrow(/active child tasks/iu);
+    await expect(readNativePortableChange(paths, 'parent')).resolves.toMatchObject({
+      workspace: { change_branch: null, target_branch: null },
     });
   });
 

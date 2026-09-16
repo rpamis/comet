@@ -61,6 +61,22 @@ describe('Classic public argument safety', () => {
     expect(relative.stderr).toContain('collides with the Runtime record path');
   });
 
+  it('rejects a delivery input path alias that resolves to the Runtime record', async () => {
+    const record = path.join(root, 'openspec/changes/demo/.comet/delivery.json');
+    await fs.mkdir(path.dirname(record), { recursive: true });
+    await fs.writeFile(record, '{"action":"local","targetBranch":"main"}');
+    const aliasRoot = `${root}-alias`;
+    await fs.symlink(root, aliasRoot, process.platform === 'win32' ? 'junction' : 'dir');
+    try {
+      const alias = path.join(aliasRoot, 'openspec/changes/demo/.comet/delivery.json');
+      const result = await classicStateCommand(['delivery', 'demo', '--file', alias], options());
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain('collides with the Runtime record path');
+    } finally {
+      await fs.rm(aliasRoot, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ['demo'],
     ['demo', 'design'],

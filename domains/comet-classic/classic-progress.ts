@@ -1,8 +1,11 @@
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { parseDocument } from 'yaml';
-import { independentGitEnvironment } from '../../platform/process/git-environment.js';
+import {
+  ExternalCommandError,
+  runExternalCommand,
+} from '../../platform/process/external-command.js';
+import { nonInteractiveGitEnvironment } from '../../platform/process/git-environment.js';
 import { classicTaskRevision, parseClassicTasks } from './classic-tasks.js';
 import type { ClassicState } from './classic-state.js';
 import {
@@ -285,42 +288,17 @@ class GitCommandTimeoutError extends Error {
   }
 }
 
-function commandTimeout(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    ((error as NodeJS.ErrnoException).code === 'ETIMEDOUT' ||
-      ((error as { killed?: unknown }).killed === true &&
-        (error as { signal?: unknown }).signal === 'SIGTERM'))
-  );
-}
-
 function runCommand(
   root: string,
   command: string,
   args: string[],
   authentication: boolean,
 ): string {
-  return execFileSync(command, args, {
+  return runExternalCommand(command, args, {
     cwd: root,
-    encoding: 'utf8',
-    timeout: 5000,
-    maxBuffer: MAX_BYTES,
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: {
-      ...independentGitEnvironment(),
-      ...(authentication
-        ? {}
-        : {
-            GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null',
-            GIT_CONFIG_NOSYSTEM: '1',
-          }),
-      GIT_TERMINAL_PROMPT: '0',
-      GCM_INTERACTIVE: 'never',
-      SSH_ASKPASS_REQUIRE: 'never',
-      GIT_NO_REPLACE_OBJECTS: '1',
-      GH_PROMPT_DISABLED: '1',
-    },
+    timeoutMs: 5000,
+    maxBufferBytes: MAX_BYTES,
+    env: nonInteractiveGitEnvironment({ authentication }),
   }).trim();
 }
 
@@ -350,11 +328,13 @@ function verifyingCommand(
   try {
     return runCommand(root, command, args, authentication);
   } catch (error) {
-    if (!commandTimeout(error)) return null;
+    if (!(error instanceof ExternalCommandError) || !error.timedOut) return null;
     try {
       return runCommand(root, command, args, authentication);
     } catch (retry) {
-      if (commandTimeout(retry)) throw new GitCommandTimeoutError(command, args);
+      if (retry instanceof ExternalCommandError && retry.timedOut) {
+        throw new GitCommandTimeoutError(command, args);
+      }
       return null;
     }
   }

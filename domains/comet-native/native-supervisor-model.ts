@@ -2,7 +2,7 @@ import { canonicalHash } from './native-canonical-hash.js';
 import type { NativeChildrenContract } from './native-children-contract.js';
 import type { NativeChildStatusProjection, NativeChildrenInspection } from './native-children.js';
 import {
-  validateNativeVerifierFinalResultConsistency,
+  validateAndScopeNativeVerifierFinalResult,
   type NativeVerifierAcceptanceResult,
 } from './native-verifier-protocol.js';
 
@@ -365,7 +365,7 @@ export function markNativeSupervisorChildVerified(
   if (options.baseCommit !== next.integration.headCommit) {
     throw new Error(`Native Supervisor child ${options.name} base commit is stale`);
   }
-  validateNativeVerifierFinalResultConsistency(
+  validateAndScopeNativeVerifierFinalResult(
     { verdict: 'pass', acceptance: options.evidence.acceptance ?? [] },
     {
       acceptanceIds: child.acceptanceScope?.map(({ id }) => id) ?? [`child:${child.name}`],
@@ -648,7 +648,7 @@ export function applyNativeSupervisorVerifierResult(
   if ((child.status !== 'active' && child.status !== 'needs-reverify') || !child.candidateCommit) {
     throw new Error(`Native Supervisor child ${options.child} is not ready for Verifier result`);
   }
-  validateNativeVerifierFinalResultConsistency(
+  validateAndScopeNativeVerifierFinalResult(
     { verdict: options.verdict, acceptance: options.evidence.acceptance ?? [] },
     {
       acceptanceIds: child.task.acceptance?.map(({ id }) => id) ??

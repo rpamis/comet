@@ -37,12 +37,12 @@ export function samePath(left: string, right: string): boolean {
 
 function canonicalPathForComparison(target: string): string {
   const resolved = path.resolve(target);
-  if (process.platform !== 'win32') return resolved;
   try {
-    return fs.realpathSync.native(resolved).toLowerCase();
+    const real = fs.realpathSync.native(resolved);
+    return process.platform === 'win32' ? real.toLowerCase() : real;
   } catch {
     // A path that does not exist yet cannot be resolved by the filesystem.
-    return resolved.toLowerCase();
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
   }
 }
 

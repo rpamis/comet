@@ -28,3 +28,23 @@ export function independentGitEnvironment(
     }),
   );
 }
+
+export function nonInteractiveGitEnvironment(options: {
+  authentication: boolean;
+  environment?: NodeJS.ProcessEnv;
+}): NodeJS.ProcessEnv {
+  return {
+    ...independentGitEnvironment(options.environment),
+    ...(options.authentication
+      ? {}
+      : {
+          GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null',
+          GIT_CONFIG_NOSYSTEM: '1',
+        }),
+    GIT_TERMINAL_PROMPT: '0',
+    GCM_INTERACTIVE: 'never',
+    SSH_ASKPASS_REQUIRE: 'never',
+    GIT_NO_REPLACE_OBJECTS: '1',
+    GH_PROMPT_DISABLED: '1',
+  };
+}
