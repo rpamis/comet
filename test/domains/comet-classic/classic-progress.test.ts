@@ -540,6 +540,75 @@ describe('Classic structured progress', () => {
     expect(git('status', '--porcelain')).toBe('');
   });
 
+  it('names untracked files when the sealed change directory breaks archive integrity', async () => {
+    const commit = await archivedDelivery('push');
+    await writeFile(path.join(change, 'delivery-input.json'), '{"action":"local"}');
+    await expect(
+      writeClassicDelivery(
+        root,
+        change,
+        { action: 'push', targetBranch: 'main', commit },
+        { ...state, archived: true },
+      ),
+    ).rejects.toThrow('untracked files: changes/demo/delivery-input.json');
+    await rm(path.join(change, 'delivery-input.json'));
+    expect(git('status', '--porcelain')).toBe('');
+  });
+
+  it('reports an identifiable timeout instead of a fake archive mismatch', async () => {
+    const commit = await archivedDelivery('push');
+    const timeout = Object.assign(new Error('spawn git ETIMEDOUT'), { code: 'ETIMEDOUT' });
+    let diffAttempts = 0;
+    const original = actualChildProcess.execFileSync;
+    vi.mocked(childProcess.execFileSync).mockImplementation(((
+      command: string,
+      args: string[],
+      options: unknown,
+    ) => {
+      if (command === 'git' && args.includes('diff')) {
+        diffAttempts += 1;
+        throw timeout;
+      }
+      return original(command, args, options);
+    }) as typeof original);
+    await expect(
+      writeClassicDelivery(
+        root,
+        change,
+        { action: 'push', targetBranch: 'main', commit },
+        { ...state, archived: true },
+      ),
+    ).rejects.toThrow('Classic delivery git command timed out');
+    expect(diffAttempts).toBe(2);
+  });
+
+  it('accepts a verification git call that answers on the retry', async () => {
+    const commit = await archivedDelivery('push');
+    const timeout = Object.assign(new Error('spawn git ETIMEDOUT'), { code: 'ETIMEDOUT' });
+    let diffAttempts = 0;
+    const original = actualChildProcess.execFileSync;
+    vi.mocked(childProcess.execFileSync).mockImplementation(((
+      command: string,
+      args: string[],
+      options: unknown,
+    ) => {
+      if (command === 'git' && args.includes('diff')) {
+        diffAttempts += 1;
+        if (diffAttempts === 1) throw timeout;
+      }
+      return original(command, args, options);
+    }) as typeof original);
+    const result = await writeClassicDelivery(
+      root,
+      change,
+      { action: 'push', targetBranch: 'main', commit },
+      { ...state, archived: true },
+    );
+    expect(diffAttempts).toBeGreaterThanOrEqual(2);
+    expect(result.verification.archiveCommitted).toBe(true);
+    expect(git('status', '--porcelain')).toBe('');
+  });
+
   it.each([
     'unique',
     'merged',

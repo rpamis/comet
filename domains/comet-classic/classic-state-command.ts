@@ -1141,6 +1141,15 @@ async function progressCommand(
   const { directory, file } = await stateFile(args[0]);
   const root = classicCommandProjectRoot();
   const write = args[1] === '--file';
+  if (write && kind === 'delivery') {
+    const inputPath = path.isAbsolute(args[2])
+      ? path.resolve(args[2])
+      : path.resolve(root, args[2]);
+    if (inputPath === path.resolve(path.join(directory, '.comet', 'delivery.json')))
+      fail(
+        'ERROR: delivery input file collides with the Runtime record path <change-dir>/.comet/delivery.json; save the input outside the change directory',
+      );
+  }
   const operation = async () => {
     const state = sparseClassicState((await readDocument(file)).toJS() as Record<string, unknown>);
     const input = write

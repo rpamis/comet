@@ -279,6 +279,51 @@ async function currentState(root: string, changeDir: string) {
   );
 }
 
+class GitCommandTimeoutError extends Error {
+  constructor(command: string, args: string[]) {
+    super(`Classic delivery git command timed out: ${[command, ...args].join(' ')}`);
+  }
+}
+
+function commandTimeout(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    ((error as NodeJS.ErrnoException).code === 'ETIMEDOUT' ||
+      ((error as { killed?: unknown }).killed === true &&
+        (error as { signal?: unknown }).signal === 'SIGTERM'))
+  );
+}
+
+function runCommand(
+  root: string,
+  command: string,
+  args: string[],
+  authentication: boolean,
+): string {
+  return execFileSync(command, args, {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 5000,
+    maxBuffer: MAX_BYTES,
+    windowsHide: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...independentGitEnvironment(),
+      ...(authentication
+        ? {}
+        : {
+            GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null',
+            GIT_CONFIG_NOSYSTEM: '1',
+          }),
+      GIT_TERMINAL_PROMPT: '0',
+      GCM_INTERACTIVE: 'never',
+      SSH_ASKPASS_REQUIRE: 'never',
+      GIT_NO_REPLACE_OBJECTS: '1',
+      GH_PROMPT_DISABLED: '1',
+    },
+  }).trim();
+}
+
 function readCommand(
   root: string,
   command: string,
@@ -286,35 +331,41 @@ function readCommand(
   authentication = false,
 ): string | null {
   try {
-    return execFileSync(command, args, {
-      cwd: root,
-      encoding: 'utf8',
-      timeout: 5000,
-      maxBuffer: MAX_BYTES,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...independentGitEnvironment(),
-        ...(authentication
-          ? {}
-          : {
-              GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null',
-              GIT_CONFIG_NOSYSTEM: '1',
-            }),
-        GIT_TERMINAL_PROMPT: '0',
-        GCM_INTERACTIVE: 'never',
-        SSH_ASKPASS_REQUIRE: 'never',
-        GIT_NO_REPLACE_OBJECTS: '1',
-        GH_PROMPT_DISABLED: '1',
-      },
-    }).trim();
+    return runCommand(root, command, args, authentication);
   } catch {
     return null;
   }
 }
 
+/**
+ * Delivery checks that fail hard on `null` must not mistake an unanswered git
+ * call for a failed verification. Retry once, then surface the timeout.
+ */
+function verifyingCommand(
+  root: string,
+  command: string,
+  args: string[],
+  authentication = false,
+): string | null {
+  try {
+    return runCommand(root, command, args, authentication);
+  } catch (error) {
+    if (!commandTimeout(error)) return null;
+    try {
+      return runCommand(root, command, args, authentication);
+    } catch (retry) {
+      if (commandTimeout(retry)) throw new GitCommandTimeoutError(command, args);
+      return null;
+    }
+  }
+}
+
 function localGit(root: string, args: string[]): string | null {
   return readCommand(root, 'git', ['-C', root, ...args]);
+}
+
+function verifyingGit(root: string, args: string[]): string | null {
+  return verifyingCommand(root, 'git', ['-C', root, ...args]);
 }
 
 function remoteUrl(root: string, remote: string, push = false): string | null {
@@ -326,6 +377,27 @@ function remoteUrl(root: string, remote: string, push = false): string | null {
   );
 }
 
+function archivePathspecs(root: string, changeDir: string): string[] {
+  const relative = path.relative(root, changeDir).replaceAll('\\', '/');
+  return [
+    `:(literal)${relative}`,
+    ...['.comet-state.lock', '.comet-state-transaction.json'].map(
+      (file) => `:(exclude,literal)${relative}/${file}`,
+    ),
+  ];
+}
+
+function archiveUntrackedFiles(root: string, changeDir: string): string[] {
+  const listing = verifyingGit(root, [
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '--',
+    ...archivePathspecs(root, changeDir),
+  ]);
+  return (listing ?? '').split(/\r?\n/u).filter(Boolean);
+}
+
 function archiveCommitMatches(
   root: string,
   changeDir: string,
@@ -333,21 +405,16 @@ function archiveCommitMatches(
   changeIdentity: string,
 ): boolean {
   const relative = path.relative(root, changeDir).replaceAll('\\', '/');
-  const archivePaths = [
-    `:(literal)${relative}`,
-    ...['.comet-state.lock', '.comet-state-transaction.json'].map(
-      (file) => `:(exclude,literal)${relative}/${file}`,
-    ),
-  ];
-  const source = localGit(root, ['show', `${commit}:${relative}/.comet.yaml`]);
+  const archivePaths = archivePathspecs(root, changeDir);
+  const source = verifyingGit(root, ['show', `${commit}:${relative}/.comet.yaml`]);
   if (!source) return false;
   try {
     const committed = stateObject(source);
     return (
       committed.archived === true &&
       identity(committed, changeDir) === changeIdentity &&
-      localGit(root, ['merge-base', '--is-ancestor', commit, 'HEAD']) !== null &&
-      localGit(root, [
+      verifyingGit(root, ['merge-base', '--is-ancestor', commit, 'HEAD']) !== null &&
+      verifyingGit(root, [
         'diff',
         '--quiet',
         '--no-ext-diff',
@@ -356,9 +423,11 @@ function archiveCommitMatches(
         '--',
         ...archivePaths,
       ]) !== null &&
-      localGit(root, ['ls-files', '--others', '--exclude-standard', '--', ...archivePaths]) === ''
+      verifyingGit(root, ['ls-files', '--others', '--exclude-standard', '--', ...archivePaths]) ===
+        ''
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof GitCommandTimeoutError) throw error;
     return false;
   }
 }
@@ -374,7 +443,7 @@ interface DeliveryReceipt {
 
 function receiptLocations(root: string, changeIdentity: string) {
   const filename = `${createHash('sha256').update(changeIdentity).digest('hex')}.json`;
-  const common = localGit(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+  const common = verifyingGit(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
   return [
     { root, file: path.join(root, '.comet', 'classic-deliveries', filename) },
     ...(common
@@ -467,8 +536,8 @@ async function writeReceipt(root: string, receipt: DeliveryReceipt): Promise<voi
   const candidate = locations[0];
   const relative = path.relative(root, candidate.file).replaceAll('\\', '/');
   const ignored =
-    localGit(root, ['check-ignore', '--quiet', '--', relative]) !== null &&
-    localGit(root, ['ls-files', '--', `:(literal)${relative}`]) === '';
+    verifyingGit(root, ['check-ignore', '--quiet', '--', relative]) !== null &&
+    verifyingGit(root, ['ls-files', '--', `:(literal)${relative}`]) === '';
   const location = ignored ? candidate : locations[1];
   if (!location)
     throw new Error('Classic delivery receipt requires ignored runtime storage or Git metadata');
@@ -767,7 +836,7 @@ export async function writeClassicDelivery(
   state: Pick<ClassicState, 'phase' | 'verifyResult' | 'archived'>,
 ) {
   const next = deliveryInput(input);
-  if (localGit(root, ['check-ref-format', `refs/heads/${next.targetBranch}`]) === null)
+  if (verifyingGit(root, ['check-ref-format', `refs/heads/${next.targetBranch}`]) === null)
     throw new Error('Invalid Classic delivery targetBranch');
   const previous = (await readClassicDelivery(root, changeDir)).delivery;
   const actual = await currentState(root, changeDir);
@@ -785,7 +854,7 @@ export async function writeClassicDelivery(
     );
   if (
     !previous &&
-    (localGit(root, ['symbolic-ref', '--quiet', '--short', 'HEAD']) !== next.targetBranch ||
+    (verifyingGit(root, ['symbolic-ref', '--quiet', '--short', 'HEAD']) !== next.targetBranch ||
       (actual.bound_branch && actual.bound_branch !== next.targetBranch))
   )
     throw new Error(
@@ -806,8 +875,14 @@ export async function writeClassicDelivery(
     next.commit &&
     (actual.archived !== true ||
       !archiveCommitMatches(root, changeDir, next.commit, identity(actual, changeDir)))
-  )
-    throw new Error('Classic delivery commit must be a verified archive commit');
+  ) {
+    const untracked = archiveUntrackedFiles(root, changeDir);
+    throw new Error(
+      untracked.length
+        ? `Classic delivery commit must be a verified archive commit; the sealed change directory has untracked files: ${untracked.join(', ')}`
+        : 'Classic delivery commit must be a verified archive commit',
+    );
+  }
   let authorizedRemoteUrl = previous?.authorizedRemoteUrl;
   if (!previous && next.action !== 'local') {
     next.remote ??= 'origin';

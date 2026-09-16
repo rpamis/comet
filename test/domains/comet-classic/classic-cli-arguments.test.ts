@@ -46,6 +46,21 @@ describe('Classic public argument safety', () => {
     expect(result.stderr).not.toContain('ALL CHECKS PASSED');
   });
 
+  it('rejects a delivery input file that collides with the Runtime record path', async () => {
+    const record = path.join(root, 'openspec/changes/demo/.comet/delivery.json');
+    await fs.mkdir(path.dirname(record), { recursive: true });
+    await fs.writeFile(record, '{"action":"local","targetBranch":"main"}');
+    const absolute = await classicStateCommand(['delivery', 'demo', '--file', record], options());
+    expect(absolute.exitCode).not.toBe(0);
+    expect(absolute.stderr).toContain('collides with the Runtime record path');
+    const relative = await classicStateCommand(
+      ['delivery', 'demo', '--file', 'openspec/changes/demo/.comet/delivery.json'],
+      options(),
+    );
+    expect(relative.exitCode).not.toBe(0);
+    expect(relative.stderr).toContain('collides with the Runtime record path');
+  });
+
   it.each([
     ['demo'],
     ['demo', 'design'],
