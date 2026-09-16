@@ -11,6 +11,7 @@ import {
   isLocalGitBranch,
   listGitWorktrees,
   listGitWorktreeRoots,
+  samePath,
 } from '../../platform/paths/git-worktree.js';
 
 import { readProjectConfig, writeProjectConfig } from './native-config.js';
@@ -47,14 +48,6 @@ export class NativeWorkspacePreparationError extends Error {
     super(message, options);
     this.name = 'NativeWorkspacePreparationError';
   }
-}
-
-function samePath(left: string, right: string): boolean {
-  const normalizedLeft = path.normalize(left);
-  const normalizedRight = path.normalize(right);
-  return process.platform === 'win32'
-    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
-    : normalizedLeft === normalizedRight;
 }
 
 function isInside(parent: string, target: string): boolean {

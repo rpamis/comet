@@ -14,6 +14,13 @@ const worktree = vi.hoisted(() => ({
   isLocalGitBranch: vi.fn(),
   listGitWorktrees: vi.fn(),
   listGitWorktreeRoots: vi.fn(),
+  samePath: vi.fn((left: string, right: string) => {
+    const normalizedLeft = left.replaceAll('\\', '/');
+    const normalizedRight = right.replaceAll('\\', '/');
+    return process.platform === 'win32'
+      ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+      : normalizedLeft === normalizedRight;
+  }),
 }));
 const config = vi.hoisted(() => ({
   readProjectConfig: vi.fn(),

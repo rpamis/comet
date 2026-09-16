@@ -10,6 +10,7 @@ import {
   listGitWorktrees,
   isLocalGitBranch,
   listGitWorktreeRoots,
+  samePath,
 } from '../../platform/paths/git-worktree.js';
 
 describe('Git worktree inspection', () => {
@@ -43,24 +44,32 @@ describe('Git worktree inspection', () => {
   });
 
   it('distinguishes the primary checkout from a linked worktree', () => {
-    expect(inspectGitWorktree(primary)).toMatchObject({
+    // Git can report the same root through a different path spelling than the
+    // one Node resolved (for example Windows 8.3 short names), so compare
+    // roots by identity on disk instead of exact string equality.
+    const primaryInspection = inspectGitWorktree(primary);
+    expect(primaryInspection).toMatchObject({
       isGitWorktree: true,
       isSecondaryWorktree: false,
-      currentWorktreeRoot: path.resolve(primary),
-      primaryWorktreeRoot: path.resolve(primary),
       currentBranch: 'master',
     });
-    expect(inspectGitWorktree(secondary)).toMatchObject({
+    expect(samePath(primaryInspection.currentWorktreeRoot!, path.resolve(primary))).toBe(true);
+    expect(samePath(primaryInspection.primaryWorktreeRoot!, path.resolve(primary))).toBe(true);
+    const secondaryInspection = inspectGitWorktree(secondary);
+    expect(secondaryInspection).toMatchObject({
       isGitWorktree: true,
       isSecondaryWorktree: true,
-      currentWorktreeRoot: path.resolve(secondary),
-      primaryWorktreeRoot: path.resolve(primary),
       currentBranch: 'feature/secondary',
     });
+    expect(samePath(secondaryInspection.currentWorktreeRoot!, path.resolve(secondary))).toBe(true);
+    expect(samePath(secondaryInspection.primaryWorktreeRoot!, path.resolve(primary))).toBe(true);
     expect(isLocalGitBranch(primary, 'master')).toBe(true);
     expect(isLocalGitBranch(primary, 'feature/secondary')).toBe(true);
     expect(isLocalGitBranch(primary, 'missing')).toBe(false);
-    expect(listGitWorktreeRoots(primary)).toEqual([path.resolve(primary), path.resolve(secondary)]);
+    const roots = listGitWorktreeRoots(primary);
+    expect(roots).toHaveLength(2);
+    expect(roots.some((root) => samePath(root, path.resolve(primary)))).toBe(true);
+    expect(roots.some((root) => samePath(root, path.resolve(secondary)))).toBe(true);
     expect(currentGitBranch(secondary)).toBe('feature/secondary');
     expect(gitWorktreeContextFromEntries(secondary, listGitWorktrees(primary))).toEqual(
       inspectGitWorktree(secondary),

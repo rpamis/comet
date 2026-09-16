@@ -119,34 +119,49 @@ describe('Native v4 registered-worktree status discovery', () => {
         repository.root,
       ]),
     );
-    expect(named.data).toMatchObject({
+    const namedData = named.data as {
+      workspace?: { projectRoot?: string; bindingState?: string };
+      [key: string]: unknown;
+    };
+    expect(namedData).toMatchObject({
       schema: 'comet.native.status.v2',
       name: 'portable-side',
       phase: 'shape',
-      workspace: {
-        projectRoot: path.resolve(worktreeRoot),
-        bindingState: 'aligned',
-      },
+      workspace: { bindingState: 'aligned' },
       continuation: {
         disposition: 'continue',
         action: 'prepare-shape-confirmation',
       },
     });
+    expect(gitWorktree.samePath(namedData.workspace?.projectRoot ?? '', worktreeRoot)).toBe(true);
 
     const shown = json(
       await runNativeCli(['show', 'portable-side', '--json', '--project-root', repository.root]),
     );
-    expect(shown.data).toMatchObject({
+    const shownData = shown.data as {
+      state?: { name?: string };
+      artifacts?: { changeDir?: string };
+      [key: string]: unknown;
+    };
+    expect(shownData).toMatchObject({
       state: { name: 'portable-side' },
-      artifacts: {
-        changeDir: path.join(worktreeRoot, 'docs', 'comet', 'changes', 'portable-side'),
-      },
     });
+    expect(
+      gitWorktree.samePath(
+        shownData.artifacts?.changeDir ?? '',
+        path.join(worktreeRoot, 'docs', 'comet', 'changes', 'portable-side'),
+      ),
+    ).toBe(true);
 
     const listed = json(
       await runNativeCli(['status', '--json', '--project-root', repository.root]),
     );
-    expect(listed.data).toMatchObject({
+    const listedData = listed.data as {
+      schema?: string;
+      total?: number;
+      items?: Array<{ name?: string; workspace?: { projectRoot?: string; bindingState?: string } }>;
+    };
+    expect(listedData).toMatchObject({
       schema: 'comet.native.status-page.v2',
       total: 1,
       items: [
@@ -154,12 +169,14 @@ describe('Native v4 registered-worktree status discovery', () => {
           schema: 'comet.native.status.v2',
           name: 'portable-side',
           workspace: expect.objectContaining({
-            projectRoot: path.resolve(worktreeRoot),
             bindingState: 'aligned',
           }),
         }),
       ],
     });
+    expect(
+      gitWorktree.samePath(listedData.items?.[0]?.workspace?.projectRoot ?? '', worktreeRoot),
+    ).toBe(true);
   });
 
   it('merges portable and legacy changes instead of returning early on the current v4', async () => {
@@ -186,17 +203,23 @@ describe('Native v4 registered-worktree status discovery', () => {
       nextCursor: null,
     });
     expect(page.items.map(({ name }) => name)).toEqual(['legacy-side', 'portable-main']);
-    expect(page.items.find(({ name }) => name === 'legacy-side')).toMatchObject({
+    const legacyItem = page.items.find(({ name }) => name === 'legacy-side') as
+      { migrationRequired?: boolean; workspace?: { projectRoot?: string } } | undefined;
+    expect(legacyItem).toMatchObject({
       migrationRequired: true,
-      workspace: { projectRoot: path.resolve(legacyRoot) },
     });
-    expect(page.items.find(({ name }) => name === 'portable-main')).toMatchObject({
+    expect(gitWorktree.samePath(legacyItem?.workspace?.projectRoot ?? '', legacyRoot)).toBe(true);
+    const portableItem = page.items.find(({ name }) => name === 'portable-main') as
+      { schema?: string; workspace?: { projectRoot?: string; bindingState?: string } } | undefined;
+    expect(portableItem).toMatchObject({
       schema: 'comet.native.status.v2',
       workspace: {
-        projectRoot: path.resolve(repository.root),
         bindingState: 'aligned',
       },
       continuation: { action: 'prepare-shape-confirmation' },
     });
+    expect(gitWorktree.samePath(portableItem?.workspace?.projectRoot ?? '', repository.root)).toBe(
+      true,
+    );
   });
 });

@@ -28,6 +28,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Project Knowledge diagnostics**: Distinguish per-file and total-corpus limit failures, name the exact setting to adjust, and stop excluding ordinary long verification reports under the previous fixed 64 KiB limit.
 - **Global installation lifecycle**: Detect global platforms from the user home, avoid guessing every platform during unattended initialization, back up and repair a corrupt project registry through Doctor, and continue safe all-project asset updates after one global npm update failure.
 - **Native Supervisor Git binding**: Bind `--isolation current` Supervisor changes to the current Git branch at the Shape confirmation boundary when the project initialized Git only after the change was created, instead of dead-ending on "Native parent changes require a Git integration branch"; `comet native doctor` now reports the missing binding with the recovery command instead of an unqualified healthy result.
+- **Windows worktree path identity**: Compare Git worktree roots by identity on disk instead of path spelling, so Windows 8.3 short names (for example `C:\Users\NAME~1`) no longer make the same worktree look foreign. Child worktree creation no longer fails with a false "already contains active change" isolation error, and registered-worktree status discovery returns the owning workspace again.
 
 ### Security
 

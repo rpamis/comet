@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument, stringify } from 'yaml';
 
-import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
+import { listGitWorktreeRoots, samePath } from '../../platform/paths/git-worktree.js';
 
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { atomicWriteText } from './native-atomic-file.js';
@@ -569,20 +569,12 @@ export async function listActiveNativeChangesOwnedByWorkspace(
   return owned;
 }
 
-function sameWorkspaceRoot(left: string, right: string): boolean {
-  const normalizedLeft = path.resolve(left);
-  const normalizedRight = path.resolve(right);
-  return process.platform === 'win32'
-    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
-    : normalizedLeft === normalizedRight;
-}
-
 async function hasForeignRegisteredWorkspaceOwner(
   paths: NativeProjectPaths,
   name: string,
 ): Promise<boolean> {
   for (const root of listGitWorktreeRoots(paths.projectRoot)) {
-    if (sameWorkspaceRoot(root, paths.projectRoot)) continue;
+    if (samePath(root, paths.projectRoot)) continue;
     try {
       const config = await readProjectConfig(root);
       if (!config) continue;
@@ -603,7 +595,7 @@ async function hasForeignRegisteredWorkspaceOwner(
           if (
             local.schema === 'comet.native.local-execution.v4' &&
             typeof local.workspace?.projectRoot === 'string' &&
-            sameWorkspaceRoot(local.workspace.projectRoot, root)
+            samePath(local.workspace.projectRoot, root)
           ) {
             return true;
           }
