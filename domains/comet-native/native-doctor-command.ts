@@ -1,8 +1,10 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-worktree.js';
+
 import { doctorNativeProject } from './native-doctor.js';
-import { inspectNativeChildren } from './native-children.js';
+import { inspectNativeChildren, readNativeChildrenContract } from './native-children.js';
 import { archiveNativePortableChange } from './native-portable-archive.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import {
@@ -20,6 +22,7 @@ import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import {
   isNativePortableChange,
   nativeLocalExecutionFile,
+  nativePortableChangeDir,
   nativePortableStateFile,
   readNativePortableChange,
 } from './native-portable-runtime.js';
@@ -99,6 +102,46 @@ async function portableShapeConfirmationFinding(
     path: nativePortableStateFile(paths, name),
     repair: 'recover',
     repairCommand: `comet native doctor ${name} --repair`,
+  };
+}
+
+/**
+ * A change with a children contract needs a Git target branch, but
+ * `--isolation current` changes created before Git existed keep a null
+ * binding. Surface the mismatch instead of reporting an unqualified healthy
+ * state; the confirmation boundary binds the workspace once Git is available.
+ */
+async function portableSupervisorGitBindingFinding(
+  paths: NativeProjectPaths,
+  name: string,
+  state: NativePortableState,
+): Promise<NativeDoctorFinding | null> {
+  if (state.archived || state.workspace.change_branch !== null) return null;
+  let childrenPresent: boolean;
+  try {
+    childrenPresent =
+      (await readNativeChildrenContract({
+        changeDir: nativePortableChangeDir(paths, name),
+        policy: 'advisory',
+      })) !== null;
+  } catch {
+    // An unreadable children.yaml still requires the Git binding; the
+    // continuation reports the contract error separately.
+    childrenPresent = true;
+  }
+  if (!childrenPresent) return null;
+  const inspection = inspectGitWorktree(paths.projectRoot);
+  const attached =
+    inspection.isGitWorktree &&
+    inspection.currentBranch !== null &&
+    resolveGitRef(paths.projectRoot, inspection.currentBranch) !== null;
+  return {
+    severity: 'error',
+    code: 'portable-supervisor-git-binding-missing',
+    message: attached
+      ? `${name}: the Supervisor change has no Git branch binding; run comet native status ${name} --json and rerun its continuation to bind branch ${inspection.currentBranch} at the Shape confirmation boundary`
+      : `${name}: the Supervisor change requires Git; initialize a Git repository, commit to a branch, then rerun the latest continuation`,
+    path: nativePortableStateFile(paths, name),
   };
 }
 
@@ -342,6 +385,19 @@ export async function nativeDoctorCommand(
       });
     }
     const portableState = await readNativePortableChange(paths, name);
+    const gitBindingFinding = await portableSupervisorGitBindingFinding(paths, name, portableState);
+    if (gitBindingFinding) {
+      const result = await inspectNativePortableStatus({ paths, name, details: true });
+      return unhealthyDoctor({
+        healthy: false,
+        workflow: 'native-portable',
+        change: name,
+        repaired: false,
+        result,
+        findings: [gitBindingFinding],
+        continuation: result.continuation,
+      });
+    }
     const supervisorOverlay = await inspectNativeSupervisorOverlay({
       paths,
       state: portableState,
@@ -538,6 +594,7 @@ export async function nativeDoctorCommand(
       conflicts,
       incompleteMigrations,
       shapeFindings,
+      gitBindingFindings,
       executionFindings,
       legacyResults,
       projectResult,
@@ -555,6 +612,12 @@ export async function nativeDoctorCommand(
           return portableShapeConfirmationFinding(paths, change, state);
         }),
       ),
+      Promise.all(
+        portableNames.map(async (change) => {
+          const state = await readNativePortableChange(paths, change);
+          return portableSupervisorGitBindingFinding(paths, change, state);
+        }),
+      ),
       Promise.all(portableNames.map((change) => portableCheckExecutionFinding(paths, change))),
       Promise.all(legacyNames.map((change) => doctorNativeProject({ paths, name: change }))),
       doctorNativeProject({ paths, projectOnly: true }),
@@ -567,6 +630,7 @@ export async function nativeDoctorCommand(
           : [],
       ),
       ...shapeFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
+      ...gitBindingFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...executionFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...projectPortableTransactions.findings,
       ...legacyNames.map<NativeDoctorFinding>((change) => ({

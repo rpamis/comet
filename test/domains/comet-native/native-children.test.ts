@@ -174,6 +174,8 @@ interface CommandData {
   };
   archiveDir?: string;
   workspaceFinishResult?: { merged?: boolean } | null;
+  healthy?: boolean;
+  findings?: Array<{ code: string; message: string }>;
 }
 
 function git(projectRoot: string, args: string[]): string {
@@ -711,6 +713,100 @@ children:`,
     await expect(
       inspectNativePortableStatus({ paths: parentPaths, name: 'parent' }),
     ).resolves.toMatchObject({ name: 'parent' });
+  });
+
+  it('binds a Supervisor Shape to Git that was initialized after the change was created', async () => {
+    const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-children-'));
+    repositories.push(repository);
+
+    // The project is configured before any Git repository exists.
+    const config = defaultProjectConfig('docs', 'en');
+    config.workflows = ['native', 'classic'];
+    config.default_workflow = 'native';
+    await writeProjectConfig(repository, config);
+
+    const parentCreated = await nativeNewCommand(['parent', '--isolation', 'current'], repository);
+    expect(parentCreated.exitCode).toBe(0);
+    const parentPaths = await nativeProjectPaths(repository, 'docs');
+    await ensureNativeDirectories(parentPaths);
+    const parentDir = nativePortableChangeDir(parentPaths, 'parent');
+    await fs.writeFile(path.join(parentDir, 'brief.md'), PARENT_BRIEF);
+    await fs.writeFile(path.join(parentDir, 'children.yaml'), READABLE_CHILDREN);
+
+    expect(await readNativePortableChange(parentPaths, 'parent')).toMatchObject({
+      workspace: { isolation: 'current', change_branch: null, target_branch: null },
+    });
+    await expect(
+      nativeNextCommand(['parent', '--summary', 'Prepare the parent contract'], repository),
+    ).rejects.toThrow(/Git integration branch/u);
+    await expect(nativeDoctorCommand(['parent'], repository)).resolves.toMatchObject({
+      exitCode: 65,
+      data: {
+        healthy: false,
+        findings: [expect.objectContaining({ code: 'portable-supervisor-git-binding-missing' })],
+      },
+    });
+
+    // Git is initialized only after the change already exists.
+    git(repository, ['init', '-b', 'main']);
+    git(repository, ['config', 'user.email', 'native@example.test']);
+    git(repository, ['config', 'user.name', 'Native Test']);
+    await fs.writeFile(
+      path.join(repository, '.gitignore'),
+      '.comet/runtime/\n.comet/current-change.json\n',
+    );
+    git(repository, ['add', '.']);
+    git(repository, ['commit', '--allow-empty', '-m', 'seed after the change exists']);
+
+    await expect(nativeDoctorCommand(['parent'], repository)).resolves.toMatchObject({
+      exitCode: 65,
+      data: {
+        healthy: false,
+        findings: [
+          expect.objectContaining({
+            code: 'portable-supervisor-git-binding-missing',
+            message: expect.stringContaining('main'),
+          }),
+        ],
+      },
+    });
+    const parentPrepared = await nativeNextCommand(
+      [
+        'parent',
+        '--summary',
+        'Prepare the parent contract confirmation',
+        '--coordination-mode',
+        'multi-session',
+      ],
+      repository,
+    );
+    expect(data(parentPrepared).state).toMatchObject({
+      phase: 'shape',
+      status: 'await-user',
+      workspace: { change_branch: 'main', target_branch: 'main' },
+    });
+    expect(
+      (await readNativePortableChange(parentPaths, 'parent')).history.some(
+        ({ outcome, summary }) =>
+          outcome === 'recovery' && /bound to branch main/u.test(summary.text),
+      ),
+    ).toBe(true);
+
+    const parentConfirmed = await nativeNextCommand(
+      await guardedShapeConfirmationArgs(parentPaths, 'parent', 'Confirm the parent contract'),
+      repository,
+    );
+    expect(data(parentConfirmed).state).toMatchObject({
+      phase: 'build',
+      workspace: { change_branch: 'main', target_branch: 'main' },
+    });
+    expect(git(repository, ['branch', '--list', 'comet/supervisor/parent/integration'])).toContain(
+      'comet/supervisor/parent/integration',
+    );
+    await expect(nativeDoctorCommand(['parent'], repository)).resolves.toMatchObject({
+      exitCode: 0,
+      data: { healthy: true },
+    });
   });
 
   it('gates the parent on real child merges and starts dependents from the integrated HEAD', async () => {

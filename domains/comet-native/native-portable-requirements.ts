@@ -72,6 +72,7 @@ import {
   NAME_PATTERN,
   assertPortableWorkspaceBindingCurrent,
   currentBranch,
+  lateBindPortableCurrentWorkspace,
   nativeLocalExecutionFile,
   nativePortableChangeDir,
   nativePortableStateFile,
@@ -829,8 +830,31 @@ export async function prepareNativePortableShapeConfirmation(options: {
           acceptance,
         }),
       });
+      let bound = state;
       if (children && state.workspace.change_branch === null) {
-        throw new Error('Native parent changes require a Git integration branch');
+        const workspace = lateBindPortableCurrentWorkspace(
+          state.workspace,
+          options.paths.projectRoot,
+        );
+        if (workspace === null) {
+          throw new Error(
+            'Native parent changes require a Git integration branch; initialize Git, commit to a branch, then rerun the latest continuation to bind the workspace',
+          );
+        }
+        bound = appendNativePortableHistory(
+          { ...state, workspace },
+          {
+            goal_cycle: state.loop.goal_cycle,
+            iteration: state.loop.iteration,
+            attempt: state.loop.attempt,
+            outcome: 'recovery',
+            unresolved_ids: [],
+            summary: toNativePortableText(
+              `Native workspace bound to branch ${workspace.change_branch} at the Supervisor Shape confirmation boundary`,
+            ),
+            completed_at: new Date().toISOString(),
+          },
+        );
       }
       const coordinationRequired =
         (await readNativeSupervisorShapeIntent(
@@ -855,7 +879,7 @@ export async function prepareNativePortableShapeConfirmation(options: {
         );
       }
       const shapeState: NativePortableState = {
-        ...state,
+        ...bound,
         spec_changes: specChanges,
         shape_confirmation_hash: nativePortableShapeConfirmationHash({
           formalHash: shape.formalHash,

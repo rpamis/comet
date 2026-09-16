@@ -698,6 +698,14 @@ children:
 
   it('leaves a valid v2 Supervisor overlay on the normal path', async () => {
     const name = 'current-v2-overlay';
+    // A real Supervisor overlay only exists after a Git-bound confirmation;
+    // seed the repository and the workspace binding the normal path produces.
+    await fs.writeFile(path.join(projectRoot, '.gitignore'), '.comet/runtime/\n');
+    runGitCommand(projectRoot, ['init', '-b', 'main']);
+    runGitCommand(projectRoot, ['config', 'user.email', 'native@example.test']);
+    runGitCommand(projectRoot, ['config', 'user.name', 'Native Test']);
+    runGitCommand(projectRoot, ['add', '.']);
+    runGitCommand(projectRoot, ['commit', '--allow-empty', '-m', 'seed test repository']);
     await createPortable(name);
     const changeDir = nativePortableChangeDir(paths, name);
     const childrenSource = `schema: comet.native.children.v2
@@ -717,6 +725,11 @@ children:
       contract,
     });
     await writeNativeSupervisorState(paths, overlay);
+    const state = await readNativePortableChange(paths, name);
+    await writeNativePortableState(nativePortableStateFile(paths, name), {
+      ...state,
+      workspace: { ...state.workspace, change_branch: 'main', target_branch: 'main' },
+    });
 
     await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({
       exitCode: 0,

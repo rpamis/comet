@@ -1,6 +1,10 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { currentGitBranch, inspectGitWorktree } from '../../platform/paths/git-worktree.js';
+import {
+  currentGitBranch,
+  inspectGitWorktree,
+  resolveGitRef,
+} from '../../platform/paths/git-worktree.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
 import {
   compareAndSwapNativePortableState,
@@ -64,6 +68,28 @@ export function portableWorkspace(binding?: NativeWorkspaceBinding): NativePorta
 
 export function currentBranch(projectRoot: string): string | null {
   return currentGitBranch(projectRoot);
+}
+
+/**
+ * `--isolation current` changes created before the project had a Git
+ * repository persist a null branch binding. A Supervisor Shape requires a Git
+ * target branch; bind such a workspace to the attached branch when the
+ * confirmation boundary is reached, mirroring what `--isolation current`
+ * would have recorded at creation time. Returns null while the project root
+ * has no attached branch that resolves to a commit.
+ */
+export function lateBindPortableCurrentWorkspace(
+  workspace: NativePortableWorkspace,
+  projectRoot: string,
+): NativePortableWorkspace | null {
+  const inspection = inspectGitWorktree(projectRoot);
+  if (!inspection.isGitWorktree || inspection.currentBranch === null) return null;
+  if (resolveGitRef(projectRoot, inspection.currentBranch) === null) return null;
+  return {
+    ...workspace,
+    change_branch: inspection.currentBranch,
+    target_branch: inspection.currentBranch,
+  };
 }
 
 export function assertPortableWorkspaceBindingCurrent(
