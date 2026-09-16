@@ -37,6 +37,8 @@ The Hook evaluates multi-file and patch targets atomically. Unattributable event
 
 The phase table governs only ordinary implementation writes. Before phase evaluation, the Classic Hook always allows `.comet` configuration, the `.superpowers` workspace, root Markdown files, and `hook.allow_paths`. These are explicit control or configuration allowlists: they do not widen phase permissions or permit task updates during Verify.
 
+Native formal artifacts belong only to the configured `<artifact-root>/comet/changes/<change>/` and the project-local `.comet/runtime/native/`. A filename, a `comet/changes/<name>` fragment, or the mere presence of an active change is not enough to attribute another directory to Comet; ordinary same-named Markdown, non-Comet work, and explicitly configured user Hook output remain neutral. Register a Native change through the CLI first, then follow the complete command or absolute target in a denial and retry. Never edit Runtime files or migrate leftovers by hand.
+
 ## Personal memory and project knowledge context
 
 Only perform the following when `.comet/config.yaml` exists and the user is using Comet. An ordinary repository without an enabled Comet project remains neutral: do not create files and do not change tool-call results.

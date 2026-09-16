@@ -53,6 +53,20 @@ export interface NativeProjectPaths {
   transactionsDir: string;
 }
 
+/** Canonical user-editable and Runtime-managed paths for one Native change. */
+export interface NativeChangeArtifactPaths {
+  artifactRoot: string;
+  nativeRoot: string;
+  changeDir: string;
+  briefPath: string;
+  childrenPath: string;
+  specsDir: string;
+  verificationPath: string;
+  statePath: string;
+  runtimeDir: string;
+  runtimeStatePath: string;
+}
+
 export interface NativeSpecChange {
   capability: string;
   operation: NativeSpecOperation;
@@ -538,6 +552,7 @@ export interface NativeTransitionHooks {
 
 export interface NativeStatusProjection {
   name: string;
+  artifacts?: NativeChangeArtifactPaths;
   phase: NativePhase | 'invalid';
   revision: number | null;
   approval: NativeApproval;

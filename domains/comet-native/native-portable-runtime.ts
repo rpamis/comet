@@ -12,6 +12,7 @@ export {
   NATIVE_PORTABLE_BRIEF_TEMPLATE,
   assertNativePortableDocuments,
   createNativePortableChange,
+  disassociateNativePortableCapability,
   ensureNativePortableAcceptanceCurrentLocked,
   inspectNativePortableAcceptanceDrift,
   markNativePortableSpecRemoval,

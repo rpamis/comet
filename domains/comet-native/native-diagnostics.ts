@@ -35,15 +35,29 @@ import {
   readNativeWorkspaceIdentity,
 } from './native-workspace.js';
 import { captureNativeProtectedDirectoryGuard } from './native-protected-file.js';
-import { inspectNativeRuntimeStorage } from './native-paths.js';
+import { inspectNativeRuntimeStorage, nativeChangeArtifactPaths } from './native-paths.js';
 import type {
   NativeChangeState,
+  NativeChangeArtifactPaths,
   NativeClarificationMode,
   NativeFinding,
   NativeProjectPaths,
   NativeStatusPageProjection,
   NativeStatusProjection,
 } from './native-types.js';
+
+function statusArtifactPaths(
+  paths: NativeProjectPaths,
+  name: string,
+): NativeChangeArtifactPaths | undefined {
+  try {
+    return nativeChangeArtifactPaths(paths, name);
+  } catch {
+    // Status must still report malformed/untrusted directory names as invalid;
+    // do not turn a diagnostic listing into a path-validation exception.
+    return undefined;
+  }
+}
 
 const NATIVE_STATUS_CURSOR_PATTERN =
   /^native-status-v1\.([a-f0-9]{64})\.([0-9a-z]+)\.([a-f0-9]{64})$/u;
@@ -182,6 +196,7 @@ export async function inspectNativeStatus(
     if (inspection.status === 'migration-required' && inspection.state) {
       return {
         name,
+        artifacts: statusArtifactPaths(paths, name),
         phase: inspection.state.phase,
         revision: 'revision' in inspection.state ? inspection.state.revision : null,
         approval: inspection.state.approval,
@@ -219,6 +234,7 @@ export async function inspectNativeStatus(
     if (inspection.status !== 'current' || !inspection.state) {
       return {
         name,
+        artifacts: statusArtifactPaths(paths, name),
         phase: 'invalid',
         revision: null,
         approval: null,
@@ -256,6 +272,7 @@ export async function inspectNativeStatus(
   } catch (error) {
     return {
       name,
+      artifacts: statusArtifactPaths(paths, name),
       phase: 'invalid',
       revision: null,
       approval: null,
@@ -300,6 +317,7 @@ export async function inspectNativeStatus(
     const continuation = nativeContinuation({ state, findings });
     return {
       name: state.name,
+      artifacts: statusArtifactPaths(paths, state.name),
       phase: state.phase,
       revision: state.revision,
       approval: state.approval,
@@ -546,6 +564,7 @@ export async function inspectNativeStatus(
   const firstErrorFinding = findings.find((finding) => finding.severity === 'error');
   return {
     name: state.name,
+    artifacts: statusArtifactPaths(paths, state.name),
     phase: state.phase,
     revision: state.revision,
     approval: state.approval,

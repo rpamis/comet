@@ -9,9 +9,10 @@ Native saves complete requirements, progress, and acceptance results in the proj
 
 ## Required rules
 
-- Treat `.comet/config.yaml`, the current change, `comet-state.yaml`, and formal artifacts on disk as authoritative; chat memory is supplementary. Among formal workflow files, the Agent edits only the brief, complete target Specs, and `children.yaml`. Runtime owns state, check results, reports, locks, and transactions.
+- Treat `.comet/config.yaml`, the current change, `comet-state.yaml`, and formal artifacts on disk as authoritative; chat memory is supplementary. Among formal workflow files, the Agent edits only the brief, complete target Specs, association `delta.yaml`, and `children.yaml`. Runtime owns state, check results, reports, locks, and transactions.
 - Advance through the public `comet native` CLI on PATH; do not ask the user to run commands manually. If the command is unavailable, report an incomplete installation and stop. Consult `comet native <command> --help` for arguments.
-- The Builder submits the current code and related files as a candidate implementation. Each iteration requires a new read-only Verifier to assess every acceptance item independently. Failed, blocked, unexecuted, and timed-out work cannot count as passed.
+- Create changes with the CLI; use returned paths and follow denial commands or targets before retrying. Custom and non-Comet writes stay neutral.
+- The Builder submits code as the candidate implementation. Each iteration requires a new read-only Verifier to assess every acceptance item independently. Failed, blocked, unexecuted, and timed-out work cannot count as passed.
 - Run confirmation commands only after the user explicitly confirms the complete Shape, accepts the final result, or selects the relevant delivery option. Reuse confirmed scope and user choices saved by Runtime. Authorization for Archive, merge, push, PR creation, and workspace cleanup is not interchangeable.
 - This Skill and Runtime provide the Native workflow without an external Skill dependency. The Agent chooses implementation methods that preserve confirmed requirements and constraints.
 
@@ -22,7 +23,7 @@ Native saves complete requirements, progress, and acceptance results in the proj
 3. If there is no matching active change, select isolation and create it using [workspace selection](reference/workspace.md#create-a-change), then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
 4. After entering the workspace and obtaining `phase`, retrieve context once using [memory integration](reference/commands.md#memory-integration). Expand details only when needed, record actual use outcomes, and call `comet task --complete` at the end as specified there.
 
-Memory learning submits only reusable user information; never save task summaries, progress, command output, or test results as Personal Memory. Complete the learning check in the memory integration section before task completion and record `submitted`, `no-observation`, or `not-run`.
+Never save task summaries, progress, command output, or test results as Personal Memory; complete the learning check.
 
 ## Read only what the action needs
 

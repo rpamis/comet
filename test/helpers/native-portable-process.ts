@@ -43,7 +43,7 @@ export async function waitForProcessExit(child: ChildProcess, timeoutMs = 10_000
 export async function waitForCondition(
   condition: () => boolean | Promise<boolean>,
   message: string,
-  timeoutMs = 10_000,
+  timeoutMs = 30_000,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {

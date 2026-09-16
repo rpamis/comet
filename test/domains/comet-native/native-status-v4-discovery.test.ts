@@ -133,6 +133,16 @@ describe('Native v4 registered-worktree status discovery', () => {
       },
     });
 
+    const shown = json(
+      await runNativeCli(['show', 'portable-side', '--json', '--project-root', repository.root]),
+    );
+    expect(shown.data).toMatchObject({
+      state: { name: 'portable-side' },
+      artifacts: {
+        changeDir: path.join(worktreeRoot, 'docs', 'comet', 'changes', 'portable-side'),
+      },
+    });
+
     const listed = json(
       await runNativeCli(['status', '--json', '--project-root', repository.root]),
     );

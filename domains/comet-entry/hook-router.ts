@@ -11,6 +11,7 @@ import {
 import { resolveCurrentChange } from '../comet-classic/classic-current-change.js';
 import {
   inspectNativeHookGuard,
+  inspectNativeUnownedHookTargets,
   listActiveNativeHookChanges,
 } from '../comet-native/native-hook-guard.js';
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
@@ -318,8 +319,19 @@ export async function inspectCometHook(
   }
 
   try {
+    const nativeUnownedDecision = await inspectNativeUnownedHookTargets(
+      projectRoot,
+      projectRequest,
+    );
+    if (nativeUnownedDecision) return nativeUnownedDecision;
     const resolution = await resolveHookWorkflowOwner(projectRoot, dependencies);
     if (resolution.status === 'none') {
+      const nativeUnownedDecision = await inspectNativeUnownedHookTargets(
+        projectRoot,
+        projectRequest,
+        { allowCanonicalFormal: true },
+      );
+      if (nativeUnownedDecision) return nativeUnownedDecision;
       return { allowed: true, reason: 'No active Comet change' };
     }
     if (resolution.status === 'stale') {

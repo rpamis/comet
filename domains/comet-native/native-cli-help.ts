@@ -31,6 +31,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'root show                    Inspect the configured artifact root.',
       'root move <artifact-root>    Move the configured artifact root.',
       'new <change-name>            Create a change and prepare its workspace.',
+      'spec disassociate            Revoke a capability association through Runtime.',
       'spec remove                  Record a complete capability removal intent.',
       'spec sync <change-name> <capability> --input <json-file>  Audit local Markdown reference corrections.',
       'show <change-name>           Read formal artifacts and portable state.',
@@ -94,7 +95,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--worktree-path <path>       Worktree directory; defaults to .worktrees/<change-name>.',
     ],
     output:
-      'The portable state, workspace preparation result, and continuation with the next Runner action.',
+      'The portable state, canonical artifact paths, workspace preparation result, and continuation with the next Runner action.',
     examples: [
       'comet native new session-timeout --language zh-CN',
       'comet native new add-sms-login --task "add SMS login to authentication"',
@@ -104,10 +105,11 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   spec: {
     usage:
-      'comet native spec remove <change-name> <capability>\n       comet native spec sync <change-name> <capability> --input <json-file>',
+      'comet native spec disassociate <change-name> --expected-state-version <n> --expected-action disassociate-capability\n       comet native spec remove <change-name> <capability>\n       comet native spec sync <change-name> <capability> --input <json-file>',
     purpose:
       'Record a capability removal; create and modify intents use complete proposed Spec files.',
     subcommands: [
+      'disassociate <change-name>  Revoke a capability association and return to Shape.',
       'remove <change-name> <capability>  Record a capability removal.',
       'sync <change-name> <capability> --input <json-file>  Audit local Markdown reference corrections without changing prose or acceptance.',
     ],
@@ -116,6 +118,16 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   'spec remove': {
     usage: 'comet native spec remove <change-name> <capability>',
     purpose: 'Record removal of a capability in the complete target specification.',
+    output: 'The updated portable state and continuation with the next Runner action.',
+  },
+  'spec disassociate': {
+    usage:
+      'comet native spec disassociate <change-name> --expected-state-version <n> --expected-action disassociate-capability',
+    purpose: 'Revoke a capability association through Runtime without hand-editing artifacts.',
+    options: [
+      '--expected-state-version <n>  State version returned by the latest status response.',
+      '--expected-action <action>   Must be disassociate-capability.',
+    ],
     output: 'The updated portable state and continuation with the next Runner action.',
   },
   'spec sync': {
@@ -132,7 +144,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     usage: 'comet native show <change-name>',
     purpose: 'Read formal artifacts and portable state for one Native change.',
     output:
-      'A compact summary and NEXT action by default. Use --json to read the portable state, brief, complete proposed Specs, and continuation; legacy state is reported as migration-required. Fill command-template placeholders before executing NEXT commands.',
+      'A compact summary and NEXT action by default. Use --json to read canonical artifact paths, the portable state, brief, complete proposed Specs, and continuation; legacy state is reported as migration-required. Fill command-template placeholders before executing NEXT commands.',
   },
   check: {
     usage: 'comet native check <change-name>',
@@ -149,7 +161,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--details         Include one fixed-size page of acceptance, Spec, handoff, verification, history, workspace, and report details.',
     ],
     output:
-      'A compact v2 status page or one compact Loop projection with local execution availability. Use --details and --cursor to read fixed-size detail pages; parent changes expose childSummary and readyChildren.',
+      'A compact v2 status page or one compact Loop projection with canonical artifact paths and local execution availability. Use --details and --cursor to read fixed-size detail pages; parent changes expose childSummary and readyChildren.',
     examples: [
       'comet native status --json',
       'comet native status session-timeout --details --json',

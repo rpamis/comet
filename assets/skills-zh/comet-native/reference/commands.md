@@ -45,6 +45,10 @@ hook:
 
 `.comet/`、Native 的 `native.artifact_root/comet/` 以及 Classic 的工作流产物目录始终由工作流管理，不能通过 `allow_paths` 绕过。一次 Hook 事件包含多个目标时，未配置的目标仍会继续接受阶段检查；建议把用户 Hook 的输出放在独立目录中。
 
+Native 正式产物只能由 `comet native new <name> --json` 登记后创建。Runtime 初始化 brief；Agent 使用响应中的 `artifacts.briefPath`、`artifacts.specsDir` 和其他路径编辑对应文件。拒绝信息会列出原因、错误目标、正确目标和下一动作：直接执行其中的 CLI 命令或修正原目标后重试，不要查询其他目录的同名文件，也不要把自定义 Hook 或普通开发文件强行归为 Comet。
+
+用户明确要求撤销能力关联时，先执行 `comet native status <change> --json`，再使用最新响应中的 `data.stateVersion` 执行 `comet native spec disassociate <change> --expected-state-version <data.stateVersion> --expected-action disassociate-capability`，并按新 continuation 继续。其他关联文件写入意图只查询 status，不猜测为撤销；不要手工删除关联文件。
+
 ## 填写命令输入
 
 首次填写 Runtime 模板或通过 `returnAction` 回传结果前必须读取本节。

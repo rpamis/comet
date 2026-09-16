@@ -37,6 +37,8 @@ Hook 会对多文件和 patch 目标整体裁决。无法归因的事件和仅�
 
 阶段表只约束普通实现写入。Classic Hook 在阶段判断前固定放行 `.comet` 配置、`.superpowers` 工作区、根目录 Markdown 和 `hook.allow_paths`；这些是显式控制或配置白名单，不扩大阶段权限，也不允许在 Verify 更新 tasks。
 
+Native 正式产物只认配置解析出的 `<artifact-root>/comet/changes/<change>/` 及项目 `.comet/runtime/native/`。仅凭文件名、`comet/changes/<name>` 片段或当前存在 active change 不能推断其他目录归属；普通同名 Markdown、非 Comet 工作和明确配置的用户 Hook 输出保持放行。需要写 Native 正式产物时先用 CLI 创建 change，并按拒绝信息给出的完整命令或正确绝对路径修正后重试，不手工改 Runtime 文件或迁移遗留文件。
+
 ## 个人记忆和项目知识上下文
 
 只有当前仓库存在 `.comet/config.yaml` 且用户正在使用 Comet 时，才执行以下投递；普通未启用 Comet 的仓库保持中立，不创建文件、不阻止工具调用：

@@ -166,6 +166,43 @@ describe('packaged Hook Router worktree isolation', () => {
     expect(result.stderr).toContain('only allowed in Build');
   });
 
+  it('executes Native artifact attribution and recovery through the packaged Router', async () => {
+    await writeProjectConfig(primary, defaultProjectConfig('docs'));
+    const unregistered = spawnSync(
+      process.execPath,
+      [router, '--platform', 'codex', '--project-root', primary],
+      {
+        cwd: primary,
+        input: JSON.stringify({
+          tool_name: 'Write',
+          cwd: primary,
+          tool_input: { file_path: 'docs/comet/changes/new-change/brief.md' },
+        }),
+        encoding: 'utf8',
+        timeout: 20_000,
+      },
+    );
+    const unownedLookalike = spawnSync(
+      process.execPath,
+      [router, '--platform', 'codex', '--project-root', primary],
+      {
+        cwd: primary,
+        input: JSON.stringify({
+          tool_name: 'Write',
+          cwd: primary,
+          tool_input: { file_path: '.comet/comet/changes/fake/brief.md' },
+        }),
+        encoding: 'utf8',
+        timeout: 20_000,
+      },
+    );
+
+    expect(unregistered.status).toBe(2);
+    expect(unregistered.stderr).toContain('comet native new new-change');
+    expect(unregistered.stderr).toContain('data.artifacts.briefPath');
+    expect(unownedLookalike.status, unownedLookalike.stderr).toBe(0);
+  });
+
   it.each(['trae', 'trae-cn', 'dsh'] as const)(
     'enforces Native Shape for %s write payloads through the packaged router',
     async (platform) => {

@@ -599,9 +599,9 @@ export async function inspectDiscoveredNativeStatus(options: {
   acceptanceCursor?: string;
   detailsCursor?: string;
 }): Promise<NativeDiscoveredStatusProjection> {
-  const sources = await discoverSources(options.projectRoot, options.name);
-  const candidates = (await discoverCandidates(options.projectRoot, sources)).filter(
-    (candidate) => candidate.name === options.name,
+  const { sources, candidates } = await discoverNamedNativeCandidates(
+    options.projectRoot,
+    options.name,
   );
   if (candidates.length === 0) {
     const current =
@@ -614,13 +614,6 @@ export async function inspectDiscoveredNativeStatus(options: {
       maxVerifyFailures: current.config.native.max_verify_failures,
     });
   }
-  if (candidates.length > 1) {
-    throw new Error(
-      `Native change ${options.name} has multiple aligned workspace bindings: ${candidates
-        .map((candidate) => candidate.source.projectRoot)
-        .join(', ')}`,
-    );
-  }
   options.onSelectedRoot?.(candidates[0].source.projectRoot);
   return inspectCandidate(
     candidates[0],
@@ -628,6 +621,37 @@ export async function inspectDiscoveredNativeStatus(options: {
     options.acceptanceCursor,
     options.detailsCursor,
   );
+}
+
+async function discoverNamedNativeCandidates(
+  projectRoot: string,
+  name: string,
+): Promise<{ sources: NativeWorkspaceSource[]; candidates: NativeStatusCandidate[] }> {
+  const sources = await discoverSources(projectRoot, name);
+  const candidates = (await discoverCandidates(projectRoot, sources)).filter(
+    (candidate) => candidate.name === name,
+  );
+  if (candidates.length > 1) {
+    throw new Error(
+      `Native change ${name} has multiple aligned workspace bindings: ${candidates
+        .map((candidate) => candidate.source.projectRoot)
+        .join(', ')}`,
+    );
+  }
+  return { sources, candidates };
+}
+
+export async function discoverNativeChangeProjectRoot(options: {
+  projectRoot: string;
+  name: string;
+}): Promise<string> {
+  const { sources, candidates } = await discoverNamedNativeCandidates(
+    options.projectRoot,
+    options.name,
+  );
+  if (candidates.length > 0) return candidates[0].source.projectRoot;
+  return (sources.find((source) => samePath(source.projectRoot, options.projectRoot)) ?? sources[0])
+    .projectRoot;
 }
 
 export async function listDiscoveredNativeStatusPage(options: {

@@ -249,7 +249,8 @@ export type NativePortableExpectedContinuationAction =
   | 'revise-implementation'
   | 'revise-requirements'
   | 'retry-verifier'
-  | 'resolve-verifier-blocker';
+  | 'resolve-verifier-blocker'
+  | 'disassociate-capability';
 
 export interface NativePortableExpectedContinuation {
   stateVersion: number;
@@ -1312,6 +1313,47 @@ export async function markNativePortableSpecRemoval(options: {
         { containedRoot: options.paths.runtimeDir },
       );
       return written;
+    },
+  );
+}
+
+/** Revoke a capability association through Runtime and invalidate its confirmation. */
+export async function disassociateNativePortableCapability(options: {
+  paths: NativeProjectPaths;
+  name: string;
+  expectedContinuation: NativePortableExpectedContinuation;
+}): Promise<NativePortableState> {
+  return withNativeMutationLock(
+    options.paths,
+    `disassociate portable capability ${options.name}`,
+    async () => {
+      const state = await readNativePortableChange(options.paths, options.name);
+      assertNativePortableExpectedContinuationLocked({
+        state,
+        expected: options.expectedContinuation,
+        action: 'disassociate-capability',
+      });
+      if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
+      const associationPath = path.join(
+        nativePortableChangeDir(options.paths, options.name),
+        NATIVE_CAPABILITY_ASSOCIATION_FILE,
+      );
+      let stat;
+      try {
+        stat = await fs.lstat(associationPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return state;
+        throw error;
+      }
+      if (!stat.isFile() || stat.isSymbolicLink()) {
+        throw new Error('Native capability association must be a regular file');
+      }
+      await fs.rm(associationPath);
+      return returnNativePortableStateToShapeLocked({
+        paths: options.paths,
+        state,
+        reason: 'Capability association revoked through comet native spec disassociate',
+      });
     },
   );
 }

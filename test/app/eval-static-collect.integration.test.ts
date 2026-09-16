@@ -2,9 +2,14 @@ import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 
 const temporary: string[] = [];
+
+beforeAll(async () => {
+  await ensureCliBuilt(process.cwd());
+}, 120_000);
 
 async function snapshotTree(root: string): Promise<string[]> {
   const entries: string[] = [];

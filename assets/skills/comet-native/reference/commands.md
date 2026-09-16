@@ -45,6 +45,10 @@ Paths are project-relative directories; the directory and its descendants are al
 
 `.comet/`, `native.artifact_root/comet/`, and Classic workflow artifact roots remain workflow-owned and cannot be bypassed through `allow_paths`. If one Hook event contains multiple targets, every non-allowlisted target still goes through phase checks; keep user Hook output in a dedicated directory.
 
+Native formal artifacts may be created only after `comet native new <name> --json` registers the change. Runtime initializes the brief; edit the corresponding files using `artifacts.briefPath`, `artifacts.specsDir`, and the other returned paths. A rejection names the reason, wrong target, correct target, and next action: run the supplied CLI command or correct the original target and retry. Do not search other directories for same-named files or classify custom Hook and ordinary development files as Comet-owned.
+
+When the user explicitly wants to revoke a capability association, first run `comet native status <change> --json`, then use `data.stateVersion` from that latest response in `comet native spec disassociate <change> --expected-state-version <data.stateVersion> --expected-action disassociate-capability`, and follow the new continuation. For any other association-file write intent, query status without guessing revocation; do not remove the file manually.
+
 ## Filling command inputs
 
 Read this section before first filling a Runtime template or returning a result through `returnAction`.

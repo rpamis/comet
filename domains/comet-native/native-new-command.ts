@@ -20,7 +20,11 @@ import {
   readNativeCapabilityDiscoveryCache,
   writeNativeCapabilityDiscoveryCache,
 } from './native-capability-discovery.js';
-import { ensureNativeDirectories, nativeProjectPaths } from './native-paths.js';
+import {
+  ensureNativeDirectories,
+  nativeChangeArtifactPaths,
+  nativeProjectPaths,
+} from './native-paths.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { createNativePortableChange, nativePortableChangeDir } from './native-portable-runtime.js';
 import { selectNativeChange } from './native-selection.js';
@@ -218,20 +222,24 @@ export async function nativeNewCommand(
   }
   await selectNativeChange(paths, state.name);
   if (initialProjectConfig) await recordNativeWorkspaceConfig(projectRoot);
-  return success(
-    'new',
-    {
-      ...state,
-      preparation: prepared.preparation,
-      ...(capabilityDiscovery === null
-        ? {}
-        : {
-            capabilityDiscovery,
-            ...(associationPath === undefined ? {} : { associationPath }),
-            ...(deltaProposal === undefined ? {} : { deltaProposal }),
-          }),
-      continuation: nativePortableContinuation(state),
-    },
-    `Created Native change ${state.name}\n`,
-  );
+  return {
+    executionCwd: projectRoot,
+    ...success(
+      'new',
+      {
+        ...state,
+        artifacts: nativeChangeArtifactPaths(paths, state.name),
+        preparation: prepared.preparation,
+        ...(capabilityDiscovery === null
+          ? {}
+          : {
+              capabilityDiscovery,
+              ...(associationPath === undefined ? {} : { associationPath }),
+              ...(deltaProposal === undefined ? {} : { deltaProposal }),
+            }),
+        continuation: nativePortableContinuation(state),
+      },
+      `Created Native change ${state.name}\n`,
+    ),
+  };
 }

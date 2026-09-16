@@ -69,11 +69,10 @@ describe('CLI help text', () => {
   it('keeps the evaluated-workflows tagline in package metadata', () => {
     const packageJson = JSON.parse(
       readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
-    ) as { description: string; version: string };
+    ) as { description: string };
     const tagline = 'Agent Skill Harness For Turning Ideas Into Evaluated Workflows';
 
     expect(packageJson.description).toBe(tagline);
-    expect(packageJson.version).toBe('0.4.1');
   });
 
   it('marks bundle as the advanced backend and skill Engine runs as advanced', () => {

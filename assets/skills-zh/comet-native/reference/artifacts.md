@@ -13,11 +13,13 @@
   comet-state.yaml
   brief.md
   children.yaml
+  capability-association.yaml  # capability association draft, when created
   specs/<capability>/spec.md
+  specs/<capability>/delta.yaml  # association delta, when required
   verification.md
 ```
 
-Agent 只编辑 brief、完整目标规格和 Supervisor Change 的 `children.yaml`。`comet-state.yaml` 与 `verification.md` 由 Runtime 管理；Runtime 第一次接受 Verifier 结果后生成报告。
+Agent 只编辑 brief、完整目标规格、关联时的 `delta.yaml` 和 Supervisor Change 的 `children.yaml`。`capability-association.yaml` 由 Runtime 创建并维护；`comet-state.yaml` 与 `verification.md` 由 Runtime 管理，Runtime 第一次接受 Verifier 结果后生成报告。
 
 Runtime 的本机数据固定保存在被 Git 忽略的 `.comet/runtime/native/`。每个 active change 的本机状态和日志位于该目录下的 `changes/<change-name>/state.json` 与 `logs/`；项目级锁和短期事务也放在这个 Runtime 目录中。这些本机文件始终由 Runtime 创建、迁移和修复。
 
@@ -30,6 +32,8 @@ Runtime 的本机数据固定保存在被 Git 忽略的 `.comet/runtime/native/`
 Shape、Build、Verify 和 Archive 会复查正式文件与已确认需求的绑定。目标规格必须位于 `specs/<capability>/spec.md`；`specs/` 下的其他文件不会被当作正式 Spec，Hook 会拒绝并提示正确位置。空文档、只有标题或围栏、以及只含模板占位（如 `TODO`、`<TODO>`、`{{reason}}`）的内容都不能满足完整规格。无产品行为变更豁免也必须写具体理由，注释和占位理由不算。Archive 预检若只报告 `verification.md` 缺失、过期或无效，`continuation` 会直接给出 `comet native doctor <change> --repair`；完成后重新运行 dry-run。
 
 `.comet/config.yaml` 决定使用哪种工作流，以及 change 产物保存在哪个目录。使用非默认产物目录并需要跨设备恢复时，应同步该文件；其余 `.comet/*` 只保留在本机。
+
+Runtime 返回的 `artifacts` 是当前工作区的唯一位置依据：`briefPath`、`childrenPath`、`specsDir` 和 `statePath` 都位于配置解析出的 `<artifact-root>/comet/changes/<change-name>/`，本机 `runtimeDir` 仍位于项目 `.comet/runtime/native/`。不要用 `.comet/comet/` 或其他目录中的同名文件替代缺失产物；若 Hook 指出路径错误，按拒绝信息给出的正确绝对路径重试原编辑，保留已有内容并先读取合并。
 
 ### Brief
 
@@ -95,7 +99,7 @@ children:
 
 如果已归档的正式 Spec 与当前 change 冲突，先重读最新 Spec，再按用户意图修改当前 change 的完整目标规格。`delta.yaml` 中互不影响的 requirement 变更可以自动重新对齐；涉及同一 requirement、删除或重命名、共享的旧约束，或无法确定影响时，必须重新 Verify。最后执行 Runtime 返回的 rebase 动作。
 
-删除 `capability-association.yaml` 可以撤销能力关联。没有关联结果或没有 `delta.yaml` 的旧 Native change，继续按完整目标 Spec 处理，以兼容旧格式。Spec 操作类型和工作流状态仍由 Runtime 管理。
+用户明确要求撤销能力关联时，先执行 `comet native status <change> --json`，再执行 `comet native spec disassociate <change> --expected-state-version <data.stateVersion> --expected-action disassociate-capability`，由 Runtime 撤销关联并重新准备 Shape。其他写入意图只查询 status；不要手工删除 `capability-association.yaml`。没有关联结果或没有 `delta.yaml` 的旧 Native change，继续按完整目标 Spec 处理，以兼容旧格式。Spec 操作类型和工作流状态仍由 Runtime 管理。
 
 ### Verification
 

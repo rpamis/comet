@@ -6,12 +6,15 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Native artifact paths and recovery**: Return the configured Native artifact root, change files, Runtime directory, and actual workspace from `new`, `status`, and `show`; Hook denials now provide the exact target or CLI action needed to retry without guessing another directory.
+- **Native capability association**: Add state-version-protected `comet native spec disassociate` recovery to revoke an explicitly selected association through Runtime and return the change to Shape without guessing intent or hand-editing the association file.
 - **Agent-oriented CLI help**: Present every root `comet --help` description in consistent, action-oriented English, route `comet help` for facade commands to their complete Runtime help, and show the Native discovery and continuation sequence so Agents can reliably find and execute the next workflow action.
 - **Project Knowledge corpus limits**: Allow projects to configure the Local Provider's per-file and total corpus limits in MB through `.comet/config.yaml` or Dashboard settings. New defaults accept Markdown files up to 1 MB and a corpus up to 32 MB.
 - **Native formal document constraints**: Require complete brief sections and target Specs or a concrete no-product-behavior reason at new and reconfirmed Shape boundaries, reject placeholder-only documents and non-canonical Spec paths through the Native Hook, then recheck bound documents through Build, Verify, and Archive with executable report-repair guidance while preserving already-confirmed progress.
 
 ### Fixed
 
+- **Native Hook attribution**: Protect configured Native formal and Runtime-owned paths while leaving ordinary same-named files, non-Comet work, and explicitly configured user Hook outputs neutral.
 - **Installed package asset validation**: Check every manifest-declared Skill, Rule, and Hook before initialization, updates, or Doctor repairs, and report one actionable reinstall error when an npm installation is incomplete.
 - **Native Shape confirmation diagnostics**: Detect and repair brief, Spec, and acceptance drift while a Shape confirmation is waiting, returning the change to active Shape before stale requirements can be confirmed.
 - **Classic workflow ordering**: Configure the full-workflow execution strategy before planning in both localized runtime packages, keeping packaged deterministic transitions aligned with the executable Classic Runtime.

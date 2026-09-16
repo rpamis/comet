@@ -13,11 +13,13 @@ Each active change directory contains only user-readable formal artifacts that c
   comet-state.yaml
   brief.md
   children.yaml
+  capability-association.yaml  # capability association draft, when created
   specs/<capability>/spec.md
+  specs/<capability>/delta.yaml  # association delta, when required
   verification.md
 ```
 
-The Agent edits only the brief, complete target specifications, and a Supervisor Change's `children.yaml`. Runtime owns `comet-state.yaml` and `verification.md`; it generates the report after accepting the first Verifier result.
+The Agent edits only the brief, complete target specifications, an association's `delta.yaml`, and a Supervisor Change's `children.yaml`. Runtime creates and maintains `capability-association.yaml`; it owns `comet-state.yaml` and `verification.md`, generating the report after accepting the first Verifier result.
 
 Machine-local data always lives in the Git-ignored `.comet/runtime/native/` directory. Each active change has `changes/<change-name>/state.json` and `logs/` there; project locks and short-lived transactions also live under this Runtime directory. Runtime alone creates, migrates, and repairs these files.
 
@@ -30,6 +32,8 @@ Use `comet-state.yaml` to restore workflow state across devices. Runtime updates
 Shape, Build, Verify, and Archive recheck the binding between formal files and confirmed requirements. A target specification must be at `specs/<capability>/spec.md`; other files under `specs/` are not formal Specs, and the Hook rejects them with the expected path. Empty documents, heading- or fence-only content, and template-only placeholders such as `TODO`, `<TODO>`, or `{{reason}}` do not satisfy a complete specification. A no-product-behavior exemption must give a concrete reason; comments and placeholder reasons do not count. If Archive dry-run reports only that `verification.md` is missing, stale, or invalid, `continuation` directly supplies `comet native doctor <change> --repair`; rerun dry-run after the repair.
 
 `.comet/config.yaml` selects the workflow and artifact directory. Synchronize it when a nondefault artifact directory must work across devices; other `.comet/*` data stays local.
+
+Runtime's `artifacts` object is the sole location authority for the current workspace: `briefPath`, `childrenPath`, `specsDir`, and `statePath` are under the configured `<artifact-root>/comet/changes/<change-name>/`; local `runtimeDir` remains under `.comet/runtime/native/`. Do not substitute a same-named file from `.comet/comet/` or another directory when a formal artifact is missing. If the Hook reports a path error, retry the original edit at the exact absolute path it supplies, preserving existing content and reading before merging when needed.
 
 ### Brief
 
@@ -95,7 +99,7 @@ Each `specs/<capability>/spec.md` describes the capability's complete behavior a
 
 If an archived project Spec conflicts with the change, reread the latest Spec, then revise the change's complete target specification according to user intent. Independent requirement changes in `delta.yaml` may be realigned automatically. Changes to the same requirement, deletion or renaming, shared prior constraints, or uncertain impact require Verify again. Finally, execute Runtime's returned rebase action.
 
-Deleting `capability-association.yaml` cancels the association. Legacy Native changes without an association result or `delta.yaml` continue to use complete target Specs for compatibility. Runtime still owns Spec operation types and workflow state.
+When the user explicitly wants to revoke the association, first run `comet native status <change> --json`, then run `comet native spec disassociate <change> --expected-state-version <data.stateVersion> --expected-action disassociate-capability` so Runtime revokes it and prepares Shape again. For any other write intent, query status only; do not delete `capability-association.yaml` by hand. Legacy Native changes without an association result or `delta.yaml` continue to use complete target Specs for compatibility. Runtime still owns Spec operation types and workflow state.
 
 ### Verification
 

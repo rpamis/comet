@@ -4,7 +4,7 @@ import os from 'os';
 
 import { normalizeWorkflowArtifactRoot } from '../workflow-contract/project-config.js';
 
-import type { NativeProjectPaths } from './native-types.js';
+import type { NativeChangeArtifactPaths, NativeProjectPaths } from './native-types.js';
 
 export const PROJECT_CONFIG_FILE = '.comet/config.yaml';
 const NATIVE_CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
@@ -194,6 +194,27 @@ export function nativeChangeRuntimeDir(paths: NativeProjectPaths, name: string):
   if (existsSync(preferred)) return preferred;
   const legacy = nativeLegacyChangeRuntimeDir(paths, name);
   return existsSync(legacy) ? legacy : preferred;
+}
+
+export function nativeChangeArtifactPaths(
+  paths: NativeProjectPaths,
+  name: string,
+): NativeChangeArtifactPaths {
+  assertNativeRuntimeChangeName(name);
+  const changeDir = path.join(paths.changesDir, name);
+  const runtimeDir = nativeChangeRuntimeDir(paths, name);
+  return {
+    artifactRoot: paths.artifactRoot,
+    nativeRoot: paths.nativeRoot,
+    changeDir,
+    briefPath: path.join(changeDir, 'brief.md'),
+    childrenPath: path.join(changeDir, 'children.yaml'),
+    specsDir: path.join(changeDir, 'specs'),
+    verificationPath: path.join(changeDir, 'verification.md'),
+    statePath: path.join(changeDir, 'comet-state.yaml'),
+    runtimeDir,
+    runtimeStatePath: path.join(runtimeDir, 'state.json'),
+  };
 }
 
 export interface NativeRuntimeStorageInspection {

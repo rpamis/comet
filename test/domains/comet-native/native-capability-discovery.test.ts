@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { nativeNewCommand } from '../../../domains/comet-native/native-new-command.js';
+import { nativeSpecCommand } from '../../../domains/comet-native/native-spec-command.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -80,6 +81,63 @@ describe('Native capability association during change creation', () => {
         'utf8',
       ),
     ).resolves.toMatch(/schema: comet\.native\.delta\.v1[\s\S]*operations: \[\]/);
+  });
+
+  it('revokes an association through the CLI and clears the confirmation boundary', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-capability-revoke-'));
+    roots.push(root);
+    await fs.mkdir(path.join(root, '.git'));
+    await fs.mkdir(path.join(root, 'docs', 'comet', 'specs', 'authentication'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(root, 'docs', 'comet', 'specs', 'authentication', 'spec.md'),
+      '# Authentication\n',
+      'utf8',
+    );
+
+    const created = await nativeNewCommand(['extend-auth', '--capability', 'authentication'], root);
+    const createdData = created.data as { associationPath?: string; state_version: number };
+    expect(createdData.associationPath).toBeDefined();
+    await expect(nativeSpecCommand(['disassociate', 'extend-auth'], root)).rejects.toThrow(
+      '--expected-state-version and --expected-action are required',
+    );
+    await expect(
+      nativeSpecCommand(
+        [
+          'disassociate',
+          'extend-auth',
+          '--expected-state-version',
+          String(createdData.state_version + 1),
+          '--expected-action',
+          'disassociate-capability',
+        ],
+        root,
+      ),
+    ).rejects.toThrow('Native continuation is stale');
+    await expect(fs.access(createdData.associationPath!)).resolves.toBeUndefined();
+
+    const revoked = await nativeSpecCommand(
+      [
+        'disassociate',
+        'extend-auth',
+        '--expected-state-version',
+        String(createdData.state_version),
+        '--expected-action',
+        'disassociate-capability',
+      ],
+      root,
+    );
+
+    expect(revoked).toMatchObject({
+      exitCode: 0,
+      command: 'spec disassociate',
+      data: {
+        phase: 'shape',
+        loop: { next_action: 'prepare-shape-confirmation' },
+      },
+    });
+    await expect(fs.access(createdData.associationPath!)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('honors the configured Remote Project Knowledge provider instead of scanning local Specs', async () => {

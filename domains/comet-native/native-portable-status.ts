@@ -10,7 +10,8 @@ import { nativePortableContinuation } from './native-portable-continuation.js';
 import { nativePortableChangeDir, readNativePortableRuntime } from './native-portable-runtime.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
 import type { NativeLocalExecutionState, NativePortableState } from './native-portable-types.js';
-import type { NativeProjectPaths } from './native-types.js';
+import { nativeChangeArtifactPaths } from './native-paths.js';
+import type { NativeProjectPaths, NativeChangeArtifactPaths } from './native-types.js';
 
 export interface NativePortableAcceptanceCounts {
   total: number;
@@ -23,6 +24,7 @@ export interface NativePortableAcceptanceCounts {
 export interface NativePortableStatusProjection {
   schema: 'comet.native.status.v2';
   name: string;
+  artifacts: NativeChangeArtifactPaths;
   phase: NativePortableState['phase'];
   status: NativePortableState['status'];
   stateVersion: number;
@@ -234,6 +236,7 @@ export function projectNativeArchivedStatus(options: {
   return {
     schema: 'comet.native.status.v2',
     name: state.name,
+    artifacts: nativeChangeArtifactPaths(paths, state.name),
     phase: state.phase,
     status: state.status,
     stateVersion: state.state_version,
@@ -475,6 +478,7 @@ export async function inspectNativePortableStatus(options: {
   return {
     schema: 'comet.native.status.v2',
     name: runtime.state.name,
+    artifacts: nativeChangeArtifactPaths(options.paths, runtime.state.name),
     phase: runtime.state.phase,
     status: runtime.state.status,
     stateVersion: runtime.state.state_version,

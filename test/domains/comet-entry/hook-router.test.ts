@@ -666,6 +666,21 @@ describe('Comet Hook Router', () => {
     expect(inspectClassic).not.toHaveBeenCalled();
   });
 
+  it('requires the Native CLI before an unowned Native formal artifact write', async () => {
+    await writeProjectConfig(root, defaultProjectConfig('docs'));
+
+    await expect(
+      inspectCometHook(root, {
+        intent: 'write',
+        targets: ['docs/comet/changes/new-change/brief.md'],
+        toolName: 'Write',
+      }),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('comet native new new-change'),
+    });
+  });
+
   it('allows ordinary development when configured workflow roots have not been created', async () => {
     await configureBoth();
 

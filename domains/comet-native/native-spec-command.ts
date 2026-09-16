@@ -4,6 +4,7 @@ import path from 'node:path';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
 import {
   isNativePortableChange,
+  disassociateNativePortableCapability,
   markNativePortableSpecRemoval,
   syncNativePortableSpecReferences,
 } from './native-portable-runtime.js';
@@ -67,6 +68,45 @@ export async function nativeSpecCommand(
       'spec sync',
       { ...state, continuation: nativePortableContinuation(state) },
       `Synced Native spec references in ${name}\n`,
+    );
+  }
+  if (subcommand === 'disassociate') {
+    const name = requiredPositional(args, 'change name');
+    const expectedStateVersion = takeOption(args, '--expected-state-version');
+    const expectedAction = takeOption(args, '--expected-action');
+    if (expectedStateVersion === undefined || expectedAction === undefined) {
+      throw new NativeUsageError(
+        '--expected-state-version and --expected-action are required for spec disassociate',
+      );
+    }
+    if (
+      !/^[1-9]\d*$/u.test(expectedStateVersion) ||
+      !Number.isSafeInteger(Number(expectedStateVersion))
+    ) {
+      throw new NativeUsageError('--expected-state-version must be a positive integer');
+    }
+    if (expectedAction !== 'disassociate-capability') {
+      throw new NativeUsageError(
+        '--expected-action for spec disassociate must be disassociate-capability',
+      );
+    }
+    assertNoArguments(args);
+    const { paths } = await configuredPaths(projectRoot);
+    if (!(await isNativePortableChange(paths, name))) {
+      throw new NativeUsageError('spec disassociate requires a current portable Native change');
+    }
+    const state = await disassociateNativePortableCapability({
+      paths,
+      name,
+      expectedContinuation: {
+        stateVersion: Number(expectedStateVersion),
+        action: 'disassociate-capability',
+      },
+    });
+    return success(
+      'spec disassociate',
+      { ...state, continuation: nativePortableContinuation(state) },
+      `Revoked Native capability association in ${name}\n`,
     );
   }
   if (subcommand !== 'remove') {
