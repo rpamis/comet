@@ -4,8 +4,15 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.4.2] - 2026-09-14
 
+### Added
+
+- **Classic check policy v2**: Declare check input scopes per command in `.comet/check-policy.json` with `*`, `?`, and `**` wildcards. Each command's evidence is scoped independently, newly created matching files are picked up automatically, and editing or adding other command entries no longer invalidates existing evidence.
+- **Classic incremental checks**: `comet check run --incremental` records phase-local evidence that guard previews accept, so small in-phase changes can keep checks current with an incremental command; `guard --apply` still requires one full rerun before advancing the phase.
+- **Classic evidence invalidation details**: When guard reports check evidence as not reusable, it now prints the reason, the changed input files, and the declared relevance scope instead of a generic missing-evidence message.
+
 ### Changed
 
+- **Classic check evidence input scoping**: Reuse of recorded build and verify checks is now decided per file against an execution-time input manifest instead of one whole-tree fingerprint. Commits, staging, task checkbox ticks, and environment variable changes no longer invalidate evidence by default; working-tree file contents remain the bound inputs, and checks that read Git metadata, task completion marks, or specific environment variables declare them in `.comet/check-policy.json`. Evidence recorded by earlier versions stays valid after the upgrade when its inputs are unchanged.
 - **Classic delivery input diagnostics**: Reject a `comet state delivery --file` input saved to the Runtime record path (`<change-dir>/.comet/delivery.json`), including case variants and filesystem aliases, with one direct collision message instead of contradictory schema errors. Archive integrity failures now list the untracked files that broke the sealed change directory. The comet-archive Skill documents where to save the input, which fields an input may contain, and that the change directory must stay byte-identical after the archive commit.
 - **Task learning-check warning**: `comet task --complete --learning-check submitted` prints a stderr warning pointing to `comet memory observe` when no observation exists for the change, instead of surfacing the unverified submission only through JSON output.
 - **Workflow artifact paths and recovery**: Return the configured Native artifact root, change files, Runtime directory, and actual workspace from `new`, `status`, and `show`. Classic and Native Hook denials now provide exact change-aware commands or targets, and interrupted Native Archive delivery separates diagnostics from the idempotent Archive retry instead of ending recovery at `git status`.

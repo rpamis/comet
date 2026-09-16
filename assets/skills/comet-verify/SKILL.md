@@ -118,7 +118,7 @@ Check all 7 items:
 6. Final integration review passes, or its omission under non-full-autonomous `review_mode: off` is recorded. Full autonomous cannot skip independent review.
 7. Core success, important failure/edge cases, and the high-risk requirements affected by this change all pass. Small changes may not omit these.
 
-To reuse a build, call `comet check run <change-name> build --local -- <program> [args...]` with the same cwd, program, and arguments used in Build. Reuse counts only when Runtime returns `reused=true`; changed inputs or environment cause an actual rerun. A past conversation saying “build passed” does not justify skipping the check.
+To reuse a build, call `comet check run <change-name> build --local -- <program> [args...]` with the same cwd, program, and arguments used in Build. Reuse counts only when Runtime returns `reused=true`; changed inputs or environment cause an actual rerun. A past conversation saying “build passed” does not justify skipping the check. Evidence is judged by "input scope": the default inputs are working-tree file contents, so commits, staging, task checkbox ticks, and environment variable changes do not invalidate evidence by default. When guard reports invalid evidence it prints the reason and changed files; handle those instead of rerunning everything. Incremental `--incremental` evidence left by Build supports preview confirmation, while `--apply` requires full evidence from the complete command.
 
 Both light and full must execute actual verification commands through Runtime. Record the intended report path first so changes to the report are not counted as changes to verification inputs. Fill in results after tests and acceptance checks finish:
 

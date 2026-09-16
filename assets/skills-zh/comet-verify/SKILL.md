@@ -118,7 +118,7 @@ Verify 负责整个 change 的唯一最终集成代码审查。Build 只保留�
 6. 最终集成代码审查已通过，或非 full autonomous 的 `review_mode: off` 跳过原因已记录；full autonomous 不允许跳过独立审查
 7. 核心成功场景、关键失败和边界场景，以及本次涉及的高风险功能要求均已验证通过；小改动也不可省略
 
-复用构建时，用 Build 相同的 cwd、程序和参数再次调用 `comet check run <change-name> build --local -- <program> [args...]`；Runtime 返回 `reused=true` 才算复用，输入或环境已变化时会真正重跑。不得仅凭旧对话中的“构建通过”跳过检查。
+复用构建时，用 Build 相同的 cwd、程序和参数再次调用 `comet check run <change-name> build --local -- <program> [args...]`；Runtime 返回 `reused=true` 才算复用，输入或环境已变化时会真正重跑。不得仅凭旧对话中的“构建通过”跳过检查。证据按“输入面”判定：默认输入是工作区文件内容，commit、暂存、勾选任务和环境变量变化默认不作废证据；guard 报告证据失效时会给出原因和变化文件清单，按清单处理即可。Build 阶段留下的 `--incremental` 增量证据可用于预览确认，`--apply` 前必须用完整命令重新取得 full 证据。
 
 light/full 均必须通过 Runtime 执行真实验证命令。先记录将要写入的报告路径，避免将报告的修改也算作验证输入的变化；测试和验收检查完成后再填写结果：
 

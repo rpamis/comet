@@ -69,6 +69,33 @@ comet state transition <change-name> preset-escalate
 
 Archive through `comet archive <change-name>`. OpenSpec first moves the change into a date-prefixed archive directory; Comet then records state. Update pre-archive confirmation through `archive-confirm` or `archive-reopen`. Do not manually run the `archived` transition outside the archive procedure.
 
+## Check Evidence and Input Declarations
+
+Check evidence reuses by "input scope": the default inputs are working-tree file contents. Commits, staging, ticking tasks.md checkboxes, and environment variable changes no longer invalidate evidence by default; when a build or test actually reads such information, declare the binding through `.comet/check-policy.json`.
+
+When guard reports evidence as not reusable, it prints the invalidation reason and the changed file list (`Why:`, `Changed inputs:`, `Relevance scope:`). Use that list to decide which command to rerun instead of rerunning everything.
+
+`--incremental` records phase-local evidence: guard previews accept it for quick confirmation, while `--apply` still requires one full rerun of the complete command before advancing the phase. The caller chooses the incremental command (for example, running only related tests); incremental evidence always requires a rerun after cold recovery.
+
+```bash
+comet check run <change-name> build --local -- <program> [args...]
+comet check run <change-name> verify --local --incremental -- <program> [args...]
+```
+
+`.comet/check-policy.json` declares an input scope per command. In the v2 format each command is scoped independently and only the entry matching `argv` and `cwd` applies; editing or adding other entries does not affect this command's existing evidence. `files` accepts literal paths and the `*`, `?`, and `**` wildcards; newly added matching files are picked up automatically without changing the declaration:
+
+```json
+{
+  "version": 2,
+  "commands": [
+    { "argv": ["pnpm", "build"], "cwd": ".", "files": ["src/**", "package.json", "tsconfig.json"], "git": "all" },
+    { "argv": ["vitest", "run"], "cwd": ".", "files": ["src/**", "test/**"] }
+  ]
+}
+```
+
+Omitted fields keep the defaults: `git` defaults to `none` (no HEAD or index binding), `env` binds no variables, and `taskCheckboxes` defaults to `ignore` (ticking tasks does not invalidate evidence; task text changes still do). Declare `git: "all"` when build artifacts embed a commit SHA, list variable names in `env` when the result depends on them, and declare `taskCheckboxes: "include"` when completion marks themselves affect the check result. The older v1 single-command format remains valid and keeps its original semantics.
+
 ## Resolving the Next Step
 
 After the phase Guard advances phase, follow auto-transition.md and prefer `agent.continuation` from the successful JSON result. The next phase can use this returned state without repeating next, select, or check. Query only when session recovery lacks context, external state changes, or an older result lacks this information:

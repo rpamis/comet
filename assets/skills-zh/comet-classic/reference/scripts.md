@@ -69,6 +69,33 @@ comet state transition <change-name> preset-escalate
 
 归档由 `comet archive <change-name>` 完成。OpenSpec 先把 change 移到带日期前缀的归档目录，再由 Comet 记录状态。归档前的确认状态通过 `archive-confirm` 或 `archive-reopen` 更新；不要在归档流程之外手动执行 `archived` transition。
 
+## 检查证据与输入声明
+
+check 证据按"输入面"判定复用：默认输入是工作区文件内容。commit、暂存、勾选 tasks.md 任务和环境变量变化默认不再作废证据；构建或测试确实读取这些信息时，才通过 `.comet/check-policy.json` 显式声明绑定。
+
+guard 报告证据不可复用时，会输出失效原因和变化文件清单（`Why:`、`Changed inputs:`、`Relevance scope:`），按清单判断需要重跑的命令即可，不要凭猜测全量重跑。
+
+`--incremental` 记录阶段内证据：guard 预览接受它用于快速确认，`--apply` 推进阶段前仍要求用完整命令重新执行一次。增量命令由调用方选择（如只跑相关测试），冷恢复后增量证据一律要求重跑。
+
+```bash
+comet check run <change-name> build --local -- <program> [args...]
+comet check run <change-name> verify --local --incremental -- <program> [args...]
+```
+
+`.comet/check-policy.json` 按命令声明输入面。v2 格式每条命令独立生效，只绑定匹配 `argv` 和 `cwd` 的那条命令；修改或新增其他条目不影响本命令的既有证据。`files` 接受字面路径和 `*`、`?`、`**` 通配符，新增的匹配文件自动纳入，不需要改声明：
+
+```json
+{
+  "version": 2,
+  "commands": [
+    { "argv": ["pnpm", "build"], "cwd": ".", "files": ["src/**", "package.json", "tsconfig.json"], "git": "all" },
+    { "argv": ["vitest", "run"], "cwd": ".", "files": ["src/**", "test/**"] }
+  ]
+}
+```
+
+省略的字段保持默认：`git` 默认 `none`（不绑定 HEAD 和 index），`env` 默认不绑定任何变量，`taskCheckboxes` 默认 `ignore`（勾选任务不作废证据，任务文本变化仍会作废）。构建产物包含 commit SHA 时声明 `git: "all"`；结果依赖某个环境变量时在 `env` 中列出它的名字；勾选状态本身影响检查结果时声明 `taskCheckboxes: "include"`。旧的 v1 单命令格式继续有效，按原语义解析。
+
 ## 解析下一步
 
 阶段守卫更新 phase 后，按 auto-transition.md 优先使用成功 JSON 中的 `agent.continuation`。下一阶段可以直接使用这里返回的状态信息，不重复 next、select 或 check。只有恢复会话时缺少上下文、发生外部变化，或旧结果缺少这些信息时，才运行：
