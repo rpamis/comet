@@ -51,7 +51,7 @@
 > - **复杂需求的并行交付**：Supervisor Change 将目标拆成带依赖的子 Change，支持 Codex 多会话或 Claude Code Agent Teams 在独立 worktree 中实现和验证，再按依赖顺序集成，完成父 Change 的最终验收。
 > - **可管理的个人记忆与项目知识**：跨任务保留协作偏好与可复用经验，按当前任务渐进式提供相关上下文。你可以查看、纠正、遗忘或暂停使用；新经验先试用，再依据实际采纳和验证结果积累可信度。
 > - **Skill 创建、分发与评估**：通过 `/comet-any` 组合任意 Skill 并打包分发，用 `comet eval` 结合 Rubric、Pass@k、Pass^k 和 LangSmith 评估效果，让 Skill 的迭代有可比较的依据。
-> - **统一的三栏 Dashboard**：在浏览器中查看 Native 与 Classic 进度、Git worktree、验收结果和归档记录，并管理个人记忆、项目知识与插件设置。
+> - **统一的三栏 Dashboard**：在浏览器中查看 Native 与 Classic 进度、Git worktree、验收结果和归档记录；[观测 Comet Any 生成 Skill 的运行节点、证据与产物](docs/dashboard-comet-any.md)，并管理个人记忆、项目知识与插件设置。
 > - **跨平台运行与中断恢复**：纯 Node.js Runtime 支持 Windows、macOS 和 Linux，不再依赖 Bash/WSL；任务状态保存在项目中，换会话或中断后可以继续，CLI 明确提示下一步和需要用户决定的事项。
 >
 > 已有 Native 与 0.4.0 Classic 对齐实验（16 个任务，每种模式各运行 48 次）中，双方均通过的 41 组配对样本显示：Native **总 Token 减少 76.8%**、**Agent 轮次减少 57.4%**、**耗时减少 47.4%**。完整样本中，Native **pass^3 为 87.5%（提高 12.5 个百分点）**，两种模式的 **pass@3 均为 100%**。实验条件与限制见[评估报告](https://docs.comet.rpamis.com/zh/eval/comet-native-vs-040-experiment)，完整变化见 [Changelog](https://docs.comet.rpamis.com/zh/changelog)。

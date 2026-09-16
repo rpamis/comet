@@ -34,17 +34,19 @@ export function WorkflowPhaseTrack({
   currentIndex,
   archived = false,
   currentPhaseRunning = true,
+  phaseStates,
   ariaLabel,
 }) {
   return (
     <div className="dashboard-phase-track" role="list" aria-label={ariaLabel}>
       {phases.map(([key, label], index) => {
         const state =
-          archived || index < currentIndex
+          phaseStates?.[key] ??
+          (archived || index < currentIndex
             ? 'done'
             : index === currentIndex
               ? 'current'
-              : 'pending';
+              : 'pending');
         const stateLabel =
           state === 'done'
             ? '已完成'

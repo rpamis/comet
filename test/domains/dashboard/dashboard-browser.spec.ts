@@ -76,6 +76,141 @@ test.describe('Dashboard project selection', () => {
     await expect(page.getByRole('button', { name: /^Git 未提交 1 / })).toHaveCount(0);
   });
 
+  test('observes Comet Any nodes, blockers and artifacts with filters and narrow layout', async ({
+    page,
+  }) => {
+    const item = {
+      locator: 'run-1',
+      name: 'research-report',
+      status: 'blocked',
+      completedNodes: 1,
+      currentNode: 'write',
+      totalNodes: 2,
+      workspace: { label: 'feature/research', current: true },
+      updatedAt: '2026-09-16T09:49:00.000Z',
+      diagnostics: [],
+    };
+    await page.route('**/any-workflows?*', async (route) => {
+      const url = new URL(route.request().url());
+      const empty =
+        url.searchParams.get('status') === 'completed' || url.searchParams.get('q') === 'missing';
+      await route.fulfill({
+        json: {
+          items: empty ? [] : [item],
+          total: empty ? 0 : 1,
+          summary: { active: 1, completed: 0, paused: 0, attention: 1, invalid: 0 },
+          nextCursor: null,
+          diagnostics: [],
+        },
+      });
+    });
+    await page.route('**/any-workflow?*', async (route) =>
+      route.fulfill({
+        json: {
+          ...item,
+          goal: 'Produce a reviewed report',
+          blocker: 'Awaiting source approval',
+          relativePath: '.comet/runs/research-report/state.json',
+          nodes: [
+            { id: 'research', label: 'Research', status: 'done', skill: 'research-skill' },
+            { id: 'write', label: 'Write', status: 'current', skill: 'writing-skill' },
+          ],
+          evidence: { research: { summary: 'Sources verified' } },
+          history: [{ event: 'exit-applied', node: 'research' }],
+          references: [],
+          artifacts: [
+            {
+              node: 'research',
+              path: 'notes.md',
+              required: true,
+              status: 'present',
+              content: '# Checked sources',
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto('/');
+    await page.getByRole('menuitem', { name: 'Comet Any 工作流' }).click();
+    const panel = page.getByRole('region', { name: 'Comet Any 工作流' });
+    await expect(panel.getByText('Awaiting source approval').last()).toBeVisible();
+    await expect(panel.getByRole('heading', { name: '项目概览' })).toBeVisible();
+    await expect(panel.getByRole('heading', { name: '关键产物' })).toBeVisible();
+    await expect(panel.locator('.dashboard-overview-summary-card')).toHaveCount(5);
+    await expect(panel.locator('.dashboard-workspace-region-stable')).toBeVisible();
+    await expect(panel.getByText('1 / 2 节点')).toBeVisible();
+    await panel.getByRole('button', { name: /notes.md/ }).click();
+    await expect(page.getByRole('heading', { name: 'Checked sources' })).toBeVisible();
+    await page.getByRole('button', { name: '产物预览背景' }).click({ position: { x: 5, y: 5 } });
+    await panel.getByRole('tab', { name: '已完成', exact: true }).click();
+    await expect(panel.getByText(/暂无工作流运行记录/)).toBeVisible();
+    await expect(panel.getByText('Awaiting source approval')).toHaveCount(0);
+    await panel.getByRole('tab', { name: '全部', exact: true }).click();
+    await expect(panel.getByText('Awaiting source approval').last()).toBeVisible();
+    await expect(panel.getByRole('button', { name: /^活跃运行 1 / })).toBeVisible();
+    await expect(panel.getByRole('button', { name: /^失败或阻塞 1 / })).toBeVisible();
+    await page.screenshot({ path: 'coverage/any-dashboard-desktop.png', fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(panel.getByText('Awaiting source approval').last()).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    await page.screenshot({ path: 'coverage/any-dashboard-mobile.png', fullPage: true });
+  });
+
+  test('discards stale Comet Any details after selecting a different run', async ({ page }) => {
+    const items = ['first', 'second'].map((name) => ({
+      locator: name,
+      name,
+      status: 'running',
+      workspace: { label: 'main' },
+      diagnostics: [],
+    }));
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started!: () => void;
+    const requested = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    await page.route('**/any-workflows?*', (route) =>
+      route.fulfill({ json: { items, total: 2, nextCursor: null, diagnostics: [] } }),
+    );
+    await page.route('**/any-workflow?*', async (route) => {
+      const name = new URL(route.request().url()).searchParams.get('locator');
+      if (name === 'first') {
+        started();
+        await held;
+      }
+      await route
+        .fulfill({
+          json: {
+            ...items.find((item) => item.name === name),
+            goal: `${name} result`,
+            blocker: null,
+            nodes: [],
+            evidence: {},
+            history: [],
+            references: [],
+            artifacts: [],
+            completedNodes: 0,
+            totalNodes: null,
+          },
+        })
+        .catch(() => undefined);
+    });
+    await page.goto('/');
+    await page.getByRole('menuitem', { name: 'Comet Any 工作流' }).click();
+    await requested;
+    const panel = page.getByRole('region', { name: 'Comet Any 工作流' });
+    await panel.getByRole('button', { name: /second/ }).click();
+    await expect(panel.getByText('second result')).toBeVisible();
+    release();
+    await expect(panel.getByText('first result')).toHaveCount(0);
+    await expect(panel.getByText('second result')).toBeVisible();
+  });
+
   test('keeps option names and paths paired through scrolling and searching', async ({ page }) => {
     await page.goto('/');
     const selector = page.locator('.comet-project-select');

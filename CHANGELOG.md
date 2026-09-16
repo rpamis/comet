@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.2] - 2026-09-16
+
+### Added
+
+- **Comet Any run observability**: Inspect generated standalone Skill runs in a dedicated Dashboard view sharing Native's overview cards and three-pane layout, with searchable worktree-aware lists, dynamic node progress, recorded blocking information, evidence, history, and bounded artifact previews. Missing definitions and unreadable state remain visible without changing workflow files.
+
+### Tests
+
+- **Comet Any Dashboard coverage**: Cover generated-runtime state transitions, pagination, worktree identity, unavailable definitions, malformed state, protected artifact reads, HTTP routes, and desktop/narrow-screen interactions.
+
 ## What's Changed [0.4.1] - 2026-09-14
 
 ### Added

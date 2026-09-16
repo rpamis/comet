@@ -69,6 +69,49 @@ describe('startDashboardServer', () => {
     await fs.rm(webDir, { recursive: true, force: true });
   });
 
+  it('serves Comet Any pages and details only for registered projects and discovered locators', async () => {
+    const runDir = path.join(projectDir, '.comet/runs/research');
+    await fs.mkdir(runDir, { recursive: true });
+    await fs.writeFile(
+      path.join(runDir, 'state.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        workflow: 'research',
+        status: 'running',
+        currentNode: 'collect',
+        completedNodes: [],
+        evidence: {},
+        history: [],
+      }),
+    );
+    const server = await startDashboardServer({
+      projectPath: projectDir,
+      webRoot: webDir,
+      port: 0,
+    });
+    handles.push(server);
+    const directory = JSON.parse((await request(server.port, '/api/dashboard/projects')).body);
+    const prefix = `/api/dashboard/projects/${directory.currentProjectId}`;
+    const response = await request(server.port, `${prefix}/any-workflows`);
+    expect(response.status).toBe(200);
+    const page = JSON.parse(response.body);
+    expect(page.total).toBe(1);
+    const detail = await request(
+      server.port,
+      `${prefix}/any-workflow?locator=${encodeURIComponent(page.items[0].locator)}`,
+    );
+    expect(detail.status).toBe(200);
+    expect(JSON.parse(detail.body).currentNode).toBe('collect');
+    expect((await request(server.port, `${prefix}/any-workflow`)).status).toBe(400);
+    expect(
+      (await request(server.port, `${prefix}/any-workflow?locator=../../private`)).status,
+    ).toBe(404);
+    expect((await request(server.port, `${prefix}/any-workflows?status=wrong`)).status).toBe(400);
+    expect(
+      (await request(server.port, '/api/dashboard/projects/not-registered/any-workflows')).status,
+    ).toBe(404);
+  });
+
   it('routes same-remote worktrees to their own overview and current change details', async () => {
     const linked = path.join(webDir, 'linked');
     const git = (...args: string[]) =>

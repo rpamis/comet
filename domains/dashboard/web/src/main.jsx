@@ -63,6 +63,7 @@ import {
   runMermaid,
 } from './markdown-preview.js';
 import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
+import { AnyWorkflowPanel } from './any-workflow-panel.jsx';
 import { WorkflowPhaseTrack } from './phase-progress-indicator.jsx';
 import {
   classicChangeStatusPresentation,
@@ -1550,6 +1551,27 @@ function DashboardApp({
                 onInvoke={(capability, input) =>
                   invokeActivePlugin(pluginSelection, capability, input)
                 }
+              />
+            ) : workflow === 'any' ? (
+              <AnyWorkflowPanel
+                key={`${activeProjectId}:${query}`}
+                projectId={activeProjectId}
+                query={query}
+                refreshToken={snapshot.project.generatedAt}
+                git={snapshot.git}
+                onPreview={setArtifact}
+                onCopyName={(name) =>
+                  copyText(name)
+                    .then(() => {
+                      toast('工作流名称已复制');
+                      return true;
+                    })
+                    .catch(() => {
+                      toast('复制工作流名称失败', 'error');
+                      return false;
+                    })
+                }
+                demo={useDemo}
               />
             ) : workflow === 'native' ? (
               <NativeWorkflowPanel
@@ -4027,6 +4049,7 @@ function AntSidebar({
           items={[
             { key: 'classic', icon: <BranchesOutlined />, label: 'Classic 工作流' },
             { key: 'native', icon: <FileTextOutlined />, label: 'Native 工作流' },
+            { key: 'any', icon: <BranchesOutlined />, label: 'Comet Any 工作流' },
           ]}
           onClick={({ key }) => {
             onPluginSelect(null);

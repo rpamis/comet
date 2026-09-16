@@ -1,4 +1,9 @@
 import { createReadStream, promises as fs } from 'fs';
+import {
+  collectAnyDashboardPage,
+  collectAnyDashboardDetail,
+  AnyDashboardQueryError,
+} from './any-collector.js';
 import http from 'http';
 import net from 'net';
 import path from 'path';
@@ -114,6 +119,7 @@ export async function startDashboardServer(
   const server = http.createServer((req, res) => {
     handleRequest(req, res, options.projectPath, webRoot, pluginHostAccess).catch((error) => {
       if (
+        error instanceof AnyDashboardQueryError ||
         error instanceof DashboardChangeQueryError ||
         error instanceof NativeDashboardQueryError
       ) {
@@ -262,6 +268,30 @@ async function handleRequest(
         query: url.searchParams.get('q') ?? undefined,
       });
       respondJson(res, req.method, 200, page);
+      return;
+    }
+
+    if (subpath === '/any-workflows') {
+      const page = await collectAnyDashboardPage(project.path, {
+        status: url.searchParams.get('status') ?? undefined,
+        limit: parseChangeLimit(url.searchParams.get('limit')),
+        cursor: url.searchParams.get('cursor') ?? undefined,
+        query: url.searchParams.get('q') ?? undefined,
+      });
+      respondJson(res, req.method, 200, page);
+      return;
+    }
+
+    if (subpath === '/any-workflow') {
+      const locator = url.searchParams.get('locator');
+      if (!locator) throw new AnyDashboardQueryError('Missing Comet Any workflow locator');
+      const detail = await collectAnyDashboardDetail(project.path, locator);
+      respondJson(
+        res,
+        req.method,
+        detail ? 200 : 404,
+        detail ?? { error: 'Unknown Comet Any workflow' },
+      );
       return;
     }
 
