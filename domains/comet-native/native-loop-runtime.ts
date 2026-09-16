@@ -305,6 +305,10 @@ export function applyNativeVerifierEnvelope(options: {
       iteration: state.loop.iteration,
       attempt: state.loop.attempt,
       acceptanceIds: scopeIds,
+      knownAcceptanceIds: state.acceptance.map(({ id }) => id),
+      previouslyPassedAcceptanceIds: state.acceptance
+        .filter(({ result }) => result === 'passed')
+        .map(({ id }) => id),
       requiredChecksPassed: options.checks.every(({ status }) => status === 'passed'),
     },
   });

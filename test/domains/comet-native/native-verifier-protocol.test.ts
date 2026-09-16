@@ -19,6 +19,16 @@ const binding: NativeVerifierBinding = {
   requiredChecksPassed: true,
 };
 
+const scopedBinding = {
+  ...binding,
+  acceptanceIds: ['A2'],
+  knownAcceptanceIds: ['A1', 'A2'],
+  previouslyPassedAcceptanceIds: ['A1'],
+} as NativeVerifierBinding & {
+  knownAcceptanceIds: readonly string[];
+  previouslyPassedAcceptanceIds: readonly string[];
+};
+
 function finalResult(
   acceptance = [
     { id: 'A1', result: 'passed', reason: 'Observed the expected first behavior.' },
@@ -55,6 +65,58 @@ describe('Native package-local Verifier protocol', () => {
       kind: 'final-result',
       result: { verdict: 'pass' },
     });
+  });
+
+  it('filters a known already-passed superset from a scoped final result', () => {
+    const runner = createNativeRunnerChannel();
+    const envelope = runner.envelopeVerifierResponse({
+      candidateId: 'candidate-1',
+      identity: runner.captureExecutionIdentity({
+        identityProvider: 'codex-host',
+        executionRef: 'verifier-scoped-superset',
+      }),
+      payload: finalResult(),
+    });
+
+    expect(
+      validateNativeTrustedVerifierEnvelope({ envelope, binding: scopedBinding }),
+    ).toMatchObject({
+      kind: 'final-result',
+      result: { acceptance: [{ id: 'A2', result: 'passed' }] },
+    });
+  });
+
+  it('keeps nonexistent IDs unknown while distinguishing conflicting out-of-scope results', () => {
+    const runner = createNativeRunnerChannel();
+    const resultWith = (acceptance: ReturnType<typeof finalResult>['result']['acceptance']) =>
+      runner.envelopeVerifierResponse({
+        candidateId: 'candidate-1',
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'codex-host',
+          executionRef: `verifier-${acceptance.at(-1)?.id}`,
+        }),
+        payload: finalResult(acceptance),
+      });
+
+    expect(() =>
+      validateNativeTrustedVerifierEnvelope({
+        envelope: resultWith([
+          { id: 'A2', result: 'passed', reason: 'Scoped behavior passed.' },
+          { id: 'A99', result: 'passed', reason: 'This criterion does not exist.' },
+        ]),
+        binding: scopedBinding,
+      }),
+    ).toThrow('unknown: A99');
+
+    expect(() =>
+      validateNativeTrustedVerifierEnvelope({
+        envelope: resultWith([
+          { id: 'A1', result: 'failed', reason: 'Previously passed behavior regressed.' },
+          { id: 'A2', result: 'passed', reason: 'Scoped behavior passed.' },
+        ]),
+        binding: scopedBinding,
+      }),
+    ).toThrow('out-of-scope: A1=failed');
   });
 
   it('rejects an Agent-shaped plain object even if it forges identity fields', () => {

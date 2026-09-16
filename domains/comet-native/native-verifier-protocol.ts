@@ -49,7 +49,12 @@ export interface NativeVerifierBinding {
   builderExecutionRef: string;
   iteration: number;
   attempt: number;
+  /** Acceptance IDs required in this Verifier response. */
   acceptanceIds: readonly string[];
+  /** Every acceptance ID that belongs to the current change. Defaults to acceptanceIds. */
+  knownAcceptanceIds?: readonly string[];
+  /** Known out-of-scope IDs that may be repeated only as passed. */
+  previouslyPassedAcceptanceIds?: readonly string[];
   requiredChecksPassed: boolean;
 }
 
@@ -220,29 +225,61 @@ export function validateNativeTrustedVerifierEnvelope(options: {
   }
   if (response.kind === 'request-checks') return response;
 
-  validateNativeVerifierFinalResultConsistency(response.result, binding);
-  return response;
+  const acceptance = validateNativeVerifierFinalResultConsistency(response.result, binding);
+  return {
+    ...response,
+    result: {
+      ...response.result,
+      acceptance,
+    },
+  };
 }
 
 export function validateNativeVerifierFinalResultConsistency(
   result: Pick<NativeVerifierFinalResult, 'verdict' | 'acceptance'>,
-  binding: Pick<NativeVerifierBinding, 'acceptanceIds' | 'requiredChecksPassed'>,
-): void {
+  binding: Pick<
+    NativeVerifierBinding,
+    | 'acceptanceIds'
+    | 'knownAcceptanceIds'
+    | 'previouslyPassedAcceptanceIds'
+    | 'requiredChecksPassed'
+  >,
+): NativeVerifierAcceptanceResult[] {
   parseNativeVerifierAcceptance(result.acceptance);
   const expected = [...binding.acceptanceIds];
+  const known = new Set(binding.knownAcceptanceIds ?? expected);
+  const previouslyPassed = new Set(binding.previouslyPassedAcceptanceIds ?? []);
+  const invalidExpected = expected.filter((id) => !known.has(id));
+  const invalidPassed = [...previouslyPassed].filter((id) => !known.has(id));
+  if (invalidExpected.length > 0 || invalidPassed.length > 0) {
+    throw new Error('Native Verifier acceptance binding is internally inconsistent');
+  }
+  const expectedSet = new Set(expected);
   const actual = result.acceptance.map(({ id }) => id);
   const duplicates = actual.filter((id, index) => actual.indexOf(id) !== index);
-  const unknown = actual.filter((id) => !expected.includes(id));
+  const unknown = actual.filter((id) => !known.has(id));
   const missing = expected.filter((id) => !actual.includes(id));
-  if (duplicates.length > 0 || unknown.length > 0 || missing.length > 0) {
+  const outOfScopeConflicts = result.acceptance
+    .filter(({ id, result: acceptanceResult }) => {
+      if (expectedSet.has(id) || !known.has(id)) return false;
+      return !previouslyPassed.has(id) || acceptanceResult !== 'passed';
+    })
+    .map(({ id, result: acceptanceResult }) => `${id}=${acceptanceResult}`);
+  if (
+    duplicates.length > 0 ||
+    unknown.length > 0 ||
+    missing.length > 0 ||
+    outOfScopeConflicts.length > 0
+  ) {
     throw new Error(
-      `Native Verifier acceptance coverage is invalid (duplicate: ${[...new Set(duplicates)].join(', ') || 'none'}; unknown: ${unknown.join(', ') || 'none'}; missing: ${missing.join(', ') || 'none'})`,
+      `Native Verifier acceptance coverage is invalid (duplicate: ${[...new Set(duplicates)].join(', ') || 'none'}; unknown: ${unknown.join(', ') || 'none'}; missing: ${missing.join(', ') || 'none'}; out-of-scope: ${outOfScopeConflicts.join(', ') || 'none'}). Return each required scope ID exactly once and no other acceptance IDs.`,
     );
   }
+  const scopedAcceptance = result.acceptance.filter(({ id }) => expectedSet.has(id));
   if (!binding.requiredChecksPassed && result.verdict === 'pass') {
     throw new Error('Native verification cannot pass before every required check succeeds');
   }
-  const results = result.acceptance.map(({ result }) => result);
+  const results = scopedAcceptance.map(({ result }) => result);
   if (result.verdict === 'pass' && results.some((result) => result !== 'passed')) {
     throw new Error('Native pass requires every acceptance criterion to pass');
   }
@@ -252,4 +289,5 @@ export function validateNativeVerifierFinalResultConsistency(
   if (result.verdict === 'blocked' && !results.includes('blocked')) {
     throw new Error('Native blocked verdict requires at least one blocked acceptance criterion');
   }
+  return scopedAcceptance;
 }

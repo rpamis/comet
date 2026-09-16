@@ -14,6 +14,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native scoped verification**: Accept and filter already-passed acceptance entries when a Verifier returns a known full-result superset for a scoped retry, while continuing to reject hallucinated IDs, missing scope coverage, duplicates, and conflicting out-of-scope results.
 - **Native Hook attribution**: Protect configured Native formal and Runtime-owned paths while leaving ordinary same-named files, non-Comet work, and explicitly configured user Hook outputs neutral.
 - **Installed package asset validation**: Check every manifest-declared Skill, Rule, and Hook before initialization, updates, or Doctor repairs, and report one actionable reinstall error when an npm installation is incomplete.
 - **Native Shape confirmation diagnostics**: Detect and repair brief, Spec, and acceptance drift while a Shape confirmation is waiting, returning the change to active Shape before stale requirements can be confirmed.

@@ -94,20 +94,20 @@ Runtime 要求启动 Verifier（`dispatch-verifier`）时，按以下步骤执�
 
 1. 将本轮实现需要运行的测试和检查命令填入 `inputOptions.template`，由 Runtime 统一执行。Runtime 保存的“检查回执”包括检查结果及其对应的实现版本、工作区和输入信息。同一实现版本、同一工作区、同一机器上，输入未变化且回执完整的成功检查可以复用。
 2. 检查中断后，只有最新 `continuation` 返回 `retry-checks` 时，才重试其中指定的可重复检查。断言失败或不允许重复执行的检查，不能当作环境故障自动重跑。
-3. 读取 `verifierDispatch` 中的工作区和检查记录位置、`scopeIds`、验收项数量、brief/Spec 引用、详情分页参数、可选复核摘要和检查结果。任务包不直接包含全部验收文字，须按分页参数读完 `scopeIds` 对应的验收场景。
+3. 读取 `verifierDispatch` 中的工作区和检查记录位置、`scopeIds`、`scopeCount`、全部验收项数量、brief/Spec 引用、详情分页参数、可选复核摘要和检查结果。任务包不直接包含全部验收文字，须按分页参数读完 `scopeIds` 对应的验收场景。
 4. 立即使用当前平台的原生能力，启动一个新的只读 Verifier subagent，原样传递工作目录、检查记录位置和 `recoveryContext`（如果存在）。subagent 不可用时，只有用户选择了多会话协作、且平台能管理独立会话，才可以启动与 Builder 分开的独立 Agent 会话。其他情况按命令参考报告 Verifier 不可用，并执行最新 `continuation`。
 
 `dispatch-verifier` 只登记本次验收，并返回任务包和 attempt 标识；它不会启动独立服务或进程，也不需要配置服务地址或回调。Verifier 返回结果时，必须原样带回本次任务包中的 `candidateId` 和 `verifierExecutionRef`。Runtime 会拒绝旧实现版本或旧 Verifier 任务的迟到结果。
 
 ### 独立验收与结果
 
-Verifier 全程只读。先读取当前 `scopeIds` 对应的验收场景、brief、完整目标 Spec、实际实现和 Runtime 检查结果，再核对检查记录是否对应当前实现版本、工作区和输入，以及是否覆盖全部验收项。只在 `inputOptions.template` 中补充缺失或失效的检查，由 Runtime 执行；Verifier 仍要独立判断全部验收项。
+Verifier 全程只读。先读取当前 `scopeIds` 对应的验收场景、brief、完整目标 Spec、实际实现和 Runtime 检查结果，再核对检查记录是否对应当前实现版本、工作区和输入，以及是否覆盖当前 scope。只在 `inputOptions.template` 中补充缺失或失效的检查，由 Runtime 执行；Verifier 独立判断 `scopeIds` 中的每个验收项。
 
 Verifier 最后再阅读 Builder 交接，将其作为调查线索。Builder 只提供本轮实现的位置、验收项的编号与引用、检查记录位置、已知限制和相关文件位置；日志正文按需读取。
 
 等待工具超时后，继续等待同一个 Verifier。只有平台确认执行失败、执行超时、任务丢失或结束后没有可用结果时，才登记执行错误并重试。
 
-通过 `verifier-response` 提交结果时，Verifier 必须把当前 `scopeIds` 中的每个场景恰好标记一次为通过（`passed`）、未通过（`failed`）或暂时无法验证（`blocked`）。未通过或无法验证时，写明具体原因，让下一轮 Build 能据此修复。
+通过 `verifier-response` 提交结果时，响应只列出当前 `scopeIds`，每项恰好标记一次为 `passed`、`failed` 或 `blocked`；后两种情况写明原因。已通过且仍报告通过的合法超集会由 Runtime 过滤；不存在或重复的 ID、缺少当前 scope，以及 scope 外的 `failed` 或 `blocked` 仍会被拒绝。
 
 提交修复后的实现时，Runtime 会保留仍然有效的检查回执，并让新的正式 Verifier 在一轮内检查全部验收场景。全部通过后，直接等待用户接受验收结果；不会自动清空结果，再追加一轮相同的完整验收。
 
@@ -194,7 +194,7 @@ comet native <group> <command> --help
 - `workspace` / `preparation`：实际工作目录和 change 创建结果；
 - `stateVersion` / `loop`：当前状态版本和验收循环进度；
 - `acceptance` / `childSummary` / `readyChildren` / `supervisor` / `details.nextPageArgs`：验收计数、Supervisor Change 的子任务计数、当前可执行子任务、集成分支与当前任务包摘要，以及详情下一页命令；
-- `verifierDispatch`：启动独立 Verifier 所需的工作区与证据位置、当前 `scopeIds`、数量、正文引用、详情分页参数、复核摘要和检查结果；如果存在 `recoveryContext`，也要把它作为最近一次恢复或用户补充的信息直接传给 Verifier；
+- `verifierDispatch`：启动独立 Verifier 所需的工作区与证据位置、当前 `scopeIds`、`scopeCount`、全部验收项数量、正文引用、详情分页参数、复核摘要和检查结果；如果存在 `recoveryContext`，也要把它作为最近一次恢复或用户补充的信息直接传给 Verifier；
 - `workspaceFinishResult` / `recoveryArgs`：归档后的工作区收尾结果和恢复命令。
 
 Archive-ready 时先执行 continuation 给出的 `archive --dry-run`。使用隔离工作区、且尚未选择收尾方式（finish）时，使用 `commandAlternatives` 中对应的完整 `--dry-run --finish` 命令；不要自行补 `--finish`，也不要直接执行 `--confirmed`。dry-run 会同时检查归档内容和 Git 收尾涉及的分支及文件；`ready: false` 时在同一响应中处理 `blockers` 和 `workspaceFinishBlockers[].paths` 的完整路径清单，不要额外运行 `status` 或手工提交 change 的状态/verification 文件。只有 `ready: true` 才执行返回的唯一 `archive --confirmed` 命令。

@@ -613,6 +613,34 @@ describe('Native portable Build/Verify loop', () => {
     ]);
   });
 
+  it('accepts a full known-passed matrix when only one acceptance ID is pending', () => {
+    const prepared = buildState();
+    const preservedReason = toNativePortableText('A1 passed in an earlier scoped attempt.');
+    const state: NativePortableState = {
+      ...prepared.state,
+      acceptance: prepared.state.acceptance.map((entry) =>
+        entry.id === 'A1' ? { ...entry, result: 'passed', reason: preservedReason } : entry,
+      ),
+    };
+
+    const applied = applyNativeVerifierEnvelope({
+      state,
+      envelope: envelope(prepared.runner, state, 'pass', [], ['A1', 'A2']),
+      checks,
+      maxVerifyFailures: 5,
+    });
+
+    expect(applied.response).toMatchObject({
+      kind: 'final-result',
+      result: { acceptance: [{ id: 'A2', result: 'passed' }] },
+    });
+    expect(applied.state.acceptance).toMatchObject([
+      { id: 'A1', result: 'passed', reason: preservedReason },
+      { id: 'A2', result: 'passed' },
+    ]);
+    expect(applied.state.loop.execution_failure_count).toBe(0);
+  });
+
   it('returns an implementation failure to a new Build iteration', () => {
     const { state, runner } = buildState();
     const result = applyNativeVerifierEnvelope({

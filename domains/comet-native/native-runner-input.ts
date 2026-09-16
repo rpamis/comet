@@ -904,6 +904,7 @@ function verifierDispatch(options: {
       ref: source,
     })),
     acceptanceCount: state.acceptance.length,
+    scopeCount: scopeIds.length,
     scopeIds,
     detailsPageArgs: [
       'comet',
@@ -926,7 +927,9 @@ function verifierDispatch(options: {
     builderReportedChecks: handoff.checks.map((check) => ({ ...check })),
     builderKnownLimits: handoff.known_limits.map((limit) => ({ ...limit })),
     evidenceInstruction:
-      'Independently inspect the current candidate against every acceptance criterion. Runtime checks are bound evidence; Builder-reported checks and review are claims to corroborate, not Runtime receipts. Reuse applicable completed evidence, request only missing or invalidated checks, and do not repeat full suites by default. Use one Verifier for this dispatch; keep it running across wait-tool timeouts. Return the actual per-criterion findings, risks, and incomplete checks without omitting limitations. Keep using the same CLI executable that produced this dispatch; do not switch to a different PATH installation.',
+      'Independently inspect the current candidate against every scenario in scopeIds exactly once. Runtime checks are bound evidence; Builder-reported checks and review are claims to corroborate, not Runtime receipts. Reuse applicable completed evidence, request only missing or invalidated checks, and do not repeat full suites by default. Use one Verifier for this dispatch; keep it running across wait-tool timeouts. Return the actual scoped findings, risks, and incomplete checks without omitting limitations. Keep using the same CLI executable that produced this dispatch; do not switch to a different PATH installation.',
+    responseInstruction:
+      'Return one acceptance entry for each ID in scopeIds and no other acceptance IDs. Runtime safely filters a known already-passed superset only when every extra entry still reports passed; nonexistent IDs and conflicting out-of-scope results remain invalid.',
   };
 }
 

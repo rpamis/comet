@@ -704,6 +704,7 @@ Run applicable focused checks.
           briefRef: 'brief.md',
           specRefs: [{ capability: 'fixture', operation: 'create', ref: 'specs/fixture/spec.md' }],
           acceptanceCount: 2,
+          scopeCount: 2,
           scopeIds: ['A1', 'A2'],
           detailsPageArgs: [
             'comet',
@@ -722,7 +723,8 @@ Run applicable focused checks.
           runtimeChecks: [],
           builderReportedChecks: [{ name: { text: 'Focused tests' }, result: 'passed' }],
           builderKnownLimits: [{ text: 'Host Hook not exercised' }],
-          evidenceInstruction: expect.stringContaining('not Runtime receipts'),
+          evidenceInstruction: expect.stringMatching(/scopeIds.*exactly once/iu),
+          responseInstruction: expect.stringMatching(/scopeIds.*no other acceptance IDs/iu),
         },
       },
     });

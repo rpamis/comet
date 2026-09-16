@@ -94,20 +94,20 @@ When Runtime requests `dispatch-verifier`:
 
 1. Fill `inputOptions.template` with the tests and checks needed for this candidate, for Runtime to execute. A Runtime check receipt records the result and its candidate, workspace, and input associations. Successful checks are reusable on the same candidate, workspace, and machine when inputs are unchanged and receipts are complete.
 2. After interrupted checks, retry only the repeatable checks listed by the latest `continuation` action `retry-checks`. Do not treat assertion failures or nonrepeatable checks as environment failures to retry automatically.
-3. Read `verifierDispatch` for workspace and check-record locations, `scopeIds`, acceptance count, brief/Spec references, detail pagination arguments, optional review summary, and check results. The package does not inline every acceptance text; use pagination to read every scenario covered by `scopeIds`.
+3. Read `verifierDispatch` for workspace and check-record locations, `scopeIds`, `scopeCount`, total acceptance count, brief/Spec references, detail pagination arguments, optional review summary, and check results. The package does not inline every acceptance text; use pagination to read every scenario covered by `scopeIds`.
 4. Immediately launch a new read-only Verifier subagent through the platform's native capability. Pass directories, check-record locations, and any `recoveryContext` unchanged. If subagents are unavailable, a separate Agent session from the Builder is allowed only when the user selected multi-session coordination and the platform can manage independent sessions. Otherwise report Verifier unavailability as specified below and follow the latest `continuation`.
 
 `dispatch-verifier` registers the attempt and returns its package and attempt identifier. It does not start an independent service or process, and requires no service address or callback. Verifier results must return this package's `candidateId` and `verifierExecutionRef` unchanged. Runtime rejects late results for older candidates or Verifier tasks.
 
 ### Independent acceptance and results
 
-The Verifier remains read-only throughout. First read the scenarios identified by current `scopeIds`, the brief, complete target Specs, actual implementation, and Runtime check results. Confirm that recorded checks match the current candidate, workspace, and inputs and cover all acceptance items. Add only missing or invalidated checks through `inputOptions.template` for Runtime to execute. Independently assess every acceptance item regardless of check reuse.
+The Verifier remains read-only throughout. First read the scenarios identified by current `scopeIds`, the brief, complete target Specs, actual implementation, and Runtime check results. Confirm that recorded checks match the current candidate, workspace, and inputs and cover the current scope. Add only missing or invalidated checks through `inputOptions.template` for Runtime to execute. Independently assess every acceptance item in `scopeIds` regardless of check reuse.
 
 Read the Builder handoff last, as investigation leads. The Builder provides only implementation locations, acceptance IDs and references, check-record locations, known limitations, and relevant file locations. Read log bodies on demand.
 
 A wait-tool timeout means keep waiting for the same Verifier. Record an execution error and retry only after the platform confirms execution failure, an execution timeout, a lost task, or completion without a usable result.
 
-For `verifier-response`, mark each scenario in current `scopeIds` exactly once as `passed`, `failed`, or `blocked`. Give a concrete reason for failed or blocked items so the next Build can address them.
+For `verifier-response`, submit this result shape: The response lists only the current `scopeIds` and marks each scenario exactly once as `passed`, `failed`, or `blocked`. Give a concrete reason for failed or blocked items. Runtime filters a known superset only when the extra criteria already passed and still report `passed`; nonexistent IDs, duplicates, missing scope IDs, and out-of-scope `failed` or `blocked` results remain invalid.
 
 After submission of a repaired implementation, Runtime retains still-valid check receipts and a new formal Verifier assesses every scenario in one round. Once all pass, wait directly for user acceptance. Do not automatically clear results and add another identical full verification round.
 
@@ -194,7 +194,7 @@ comet native <group> <command> --help
 - `workspace` / `preparation`: the actual working directory and change-creation result.
 - `stateVersion` / `loop`: current state version and acceptance-loop progress.
 - `acceptance` / `childSummary` / `readyChildren` / `supervisor` / `details.nextPageArgs`: acceptance counts, child counts, ready children, integration-branch and current task-package summaries, and the next detail-page command.
-- `verifierDispatch`: workspace and evidence locations, current `scopeIds`, count, content references, detail pagination arguments, review summary, and check results for independent Verifier dispatch. Pass any `recoveryContext` directly as the latest recovery or user-provided information.
+- `verifierDispatch`: workspace and evidence locations, current `scopeIds`, `scopeCount`, total acceptance count, content references, detail pagination arguments, review summary, and check results for independent Verifier dispatch. Pass any `recoveryContext` directly as the latest recovery or user-provided information.
 - `workspaceFinishResult` / `recoveryArgs`: post-Archive workspace result and recovery commands.
 
 At Archive-ready, first execute continuation's `archive --dry-run`. If an isolated workspace has no selected finish action, use the complete matching `--dry-run --finish` command in `commandAlternatives`. Do not append `--finish` yourself or execute `--confirmed` directly. The dry-run checks both archive content and the branches and files involved in Git finishing. On `ready: false`, address `blockers` and the complete `workspaceFinishBlockers[].paths` list from that same response; do not add a `status` query or manually commit change state/verification files. Only on `ready: true` execute the single returned `archive --confirmed` command.
