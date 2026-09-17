@@ -241,6 +241,8 @@ Run applicable focused checks.
     expect(next.stdout).toContain('--runner-input <file>');
     expect(next.stdout).toContain('--validate-only');
     expect(next.stdout).toContain('retry-checks');
+    expect(next.stdout).toContain('verification_checks');
+    expect(next.stdout).toContain('reused without executing the same plan twice');
     expect(next.stdout).toContain('--coordination-mode multi-session|single-session');
     expect(next.stdout).toContain('not trusted identity attestation');
     expect(next.stdout).toContain('Checks completed, but your confirmation is required');
@@ -1503,6 +1505,135 @@ Run applicable focused checks.
       },
     });
     await expect(fs.readFile(counter, 'utf8')).resolves.toBe('run\n');
+  });
+
+  it('executes handoff verification checks once and reuses them for Verifier dispatch', async () => {
+    const name = 'handoff-runtime-check-reuse';
+    const counter = path.join(projectRoot, '.comet', 'runtime', 'handoff-check-count.txt');
+    const verificationCheck = {
+      id: 'runtime-pass',
+      name: 'Runtime pass',
+      executable: process.execPath,
+      argv: ['-e', `require('fs').appendFileSync(${JSON.stringify(counter)}, 'run\\n')`],
+      cwdRef: '.',
+      timeoutMs: 10_000,
+      repeatable: true,
+    };
+    await prepareBuild(name, ['First behavior works.'], 'zh-CN');
+
+    const checked = await runnerStep(name, {
+      ...builderHandoff(['A1']),
+      verification_checks: [verificationCheck],
+    });
+
+    expect(checked).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'verify',
+          status: 'active',
+          loop: { stage: 'verify-ready', next_action: 'run-required-checks-and-dispatch-verifier' },
+        },
+        checks: [expect.objectContaining({ id: 'runtime-pass', status: 'passed' })],
+        runtimeCheckExecution: { disposition: 'executed' },
+        continuation: {
+          action: 'dispatch-verifier',
+          inputOptions: [
+            expect.objectContaining({
+              template: { kind: 'dispatch-verifier', checks: [verificationCheck] },
+            }),
+          ],
+        },
+      },
+    });
+    await expect(fs.readFile(counter, 'utf8')).resolves.toBe('run\n');
+
+    const dispatched = await runnerStep(name, inputTemplate(checked, 'runner-input'));
+    expect(dispatched).toMatchObject({
+      exitCode: 0,
+      data: {
+        checks: [expect.objectContaining({ id: 'runtime-pass', status: 'passed' })],
+        runtimeCheckExecution: { disposition: 'reused' },
+        verifierDispatch: { runtimeChecks: [expect.objectContaining({ id: 'runtime-pass' })] },
+        continuation: { action: 'await-verifier' },
+      },
+    });
+    await expect(fs.readFile(counter, 'utf8')).resolves.toBe('run\n');
+  });
+
+  it('returns a failed handoff verification check to Build', async () => {
+    const name = 'handoff-runtime-check-failure';
+    await prepareBuild(name, ['First behavior works.'], 'zh-CN');
+
+    const checked = await runnerStep(name, {
+      ...builderHandoff(['A1']),
+      verification_checks: [
+        {
+          id: 'runtime-fail',
+          name: 'Runtime fail',
+          executable: process.execPath,
+          argv: ['-e', 'process.exit(7)'],
+          cwdRef: '.',
+          timeoutMs: 10_000,
+          repeatable: true,
+        },
+      ],
+    });
+
+    expect(checked).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'build',
+          status: 'active',
+          loop: { stage: 'repairing', next_action: 'submit-builder-candidate' },
+        },
+        checks: [expect.objectContaining({ id: 'runtime-fail', status: 'failed', exit_code: 7 })],
+        runtimeCheckExecution: { disposition: 'executed' },
+        continuation: { action: 'repair' },
+      },
+    });
+  });
+
+  it('offers retry-checks when a repeatable handoff verification check is interrupted', async () => {
+    const name = 'handoff-runtime-check-interrupted';
+    await prepareBuild(name, ['First behavior works.'], 'zh-CN');
+
+    const checked = await runnerStep(name, {
+      ...builderHandoff(['A1']),
+      verification_checks: [
+        {
+          id: 'runtime-timeout',
+          name: 'Runtime timeout',
+          executable: process.execPath,
+          argv: ['-e', 'setTimeout(() => {}, 10000)'],
+          cwdRef: '.',
+          timeoutMs: 50,
+          repeatable: true,
+        },
+      ],
+    });
+
+    expect(checked).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: {
+          phase: 'verify',
+          status: 'active',
+          loop: { stage: 'verify-ready', next_action: 'run-required-checks-and-dispatch-verifier' },
+        },
+        checks: [expect.objectContaining({ id: 'runtime-timeout', status: 'interrupted' })],
+        runtimeCheckExecution: { disposition: 'executed' },
+        continuation: {
+          action: 'retry-checks',
+          inputOptions: [
+            expect.objectContaining({
+              template: { kind: 'retry-checks', check_ids: ['runtime-timeout'] },
+            }),
+          ],
+        },
+      },
+    });
   });
 
   it('rejects delayed generic Verifier errors and unavailable messages from an older attempt', async () => {

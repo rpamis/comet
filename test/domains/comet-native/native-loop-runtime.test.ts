@@ -285,6 +285,16 @@ describe('Native portable Build/Verify loop', () => {
       ],
     });
     expect(continuation.inputOptions[0].template).not.toHaveProperty('review');
+    expect(continuation.inputOptions[0].template).toMatchObject({
+      verification_checks: [
+        expect.objectContaining({
+          id: '<check-id>',
+          executable: '<executable>',
+          cwdRef: '.',
+          repeatable: true,
+        }),
+      ],
+    });
   });
 
   it('requires an explicit coordination choice before confirming a multi-child Supervisor Shape', () => {

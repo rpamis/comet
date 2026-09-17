@@ -1060,7 +1060,11 @@ export async function executeNativePortableCheckPlan(options: {
   plans: NativeCheckPlan[];
   projectRoot?: string;
   retryCheckIds?: readonly string[];
-}): Promise<{ state: NativePortableState; checks: NativePortableCheckSummary[] }> {
+}): Promise<{
+  state: NativePortableState;
+  checks: NativePortableCheckSummary[];
+  disposition: 'executed' | 'reused';
+}> {
   const projectRoot = options.projectRoot ?? options.paths.projectRoot;
   preflightNativeCheckPlans(projectRoot, options.plans);
   const normalizedPlans: NativeCheckPlan[] = [];
@@ -1077,7 +1081,7 @@ export async function executeNativePortableCheckPlan(options: {
     plans: normalizedPlans,
     projectRoot,
   });
-  if (reservation.kind === 'reuse') return reservation;
+  if (reservation.kind === 'reuse') return { ...reservation, disposition: 'reused' };
 
   const operationId = reservation.local.execution!.operationId;
   const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, reservation.state.name);
@@ -1204,6 +1208,7 @@ export async function executeNativePortableCheckPlan(options: {
       projectRoot,
       supplied: [],
     }),
+    disposition: 'executed',
   };
 }
 

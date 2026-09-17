@@ -73,6 +73,7 @@ interface RunnerBuilderInput {
     result: 'passed' | 'failed' | 'not-run';
     note: string | null;
   }>;
+  verification_checks?: NativeCheckPlan[];
   known_limits: string[];
   review: {
     status: 'passed';
@@ -305,6 +306,7 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
   const input = record(value, 'Native Runner input');
   if (input.kind === 'builder-handoff') {
     const builderKeys = ['kind', 'summary', 'addressed_acceptance_ids', 'checks', 'known_limits'];
+    if (Object.hasOwn(input, 'verification_checks')) builderKeys.push('verification_checks');
     exactKeys(
       input,
       Object.hasOwn(input, 'review') ? [...builderKeys, 'review'] : builderKeys,
@@ -339,6 +341,9 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
         'Native Builder addressed acceptance IDs',
       ),
       checks: builderChecks(input.checks),
+      ...(Object.hasOwn(input, 'verification_checks')
+        ? { verification_checks: checkPlans(input.verification_checks) }
+        : {}),
       known_limits: strings(input.known_limits, 'Native Builder known limits'),
       review,
     };
@@ -637,6 +642,10 @@ export async function validateNativeRunnerInputBoundary(options: {
     options.state.phase === 'build' &&
     supervisor.children.every(({ status }) => status === 'integrated' || status === 'archived');
   const children = await inspectNativeChildren({ paths: options.paths, state: options.state });
+  const executionRoot =
+    (supervisorParentVerification || supervisorParentReview) && supervisor
+      ? supervisor.integration.worktree
+      : options.projectRoot;
 
   if (isSupervisorRunnerInput(options.input) && supervisor === null) {
     throw new Error('Native Supervisor Runner input requires a current Supervisor state');
@@ -669,13 +678,11 @@ export async function validateNativeRunnerInputBoundary(options: {
     ) {
       throw new Error('Native parent verification failed; complete the repair child first');
     }
+    if (options.input.verification_checks !== undefined) {
+      preflightNativeCheckPlans(executionRoot, options.input.verification_checks);
+    }
     return;
   }
-
-  const executionRoot =
-    supervisorParentVerification && supervisor
-      ? supervisor.integration.worktree
-      : options.projectRoot;
 
   if (options.input.kind === 'dispatch-verifier') {
     assertPortableVerifyReadyBoundary(options.state);
@@ -1306,6 +1313,58 @@ export async function applyNativeRunnerInput(options: {
           : null,
       },
     });
+    if (input.verification_checks !== undefined) {
+      const execution = await executeNativePortableCheckPlan({
+        paths: options.paths,
+        name: options.name,
+        plans: input.verification_checks,
+        ...(supervisorParentReview && supervisor
+          ? { projectRoot: supervisor.integration.worktree }
+          : {}),
+      });
+      const failedIds = execution.checks
+        .filter(({ status }) => status === 'failed')
+        .map(({ id }) => id);
+      const interruptedIds = execution.checks
+        .filter(({ status }) => status === 'interrupted')
+        .map(({ id }) => id);
+      const nonRepeatableInterruptedIds = input.verification_checks
+        .filter(({ id, repeatable }) => interruptedIds.includes(id) && !repeatable)
+        .map(({ id }) => id);
+      if (failedIds.length > 0 || nonRepeatableInterruptedIds.length > 0) {
+        const reason =
+          failedIds.length > 0
+            ? `Builder handoff Runtime checks failed: ${failedIds.join(', ')}`
+            : `Builder handoff Runtime checks were interrupted and cannot be repeated: ${nonRepeatableInterruptedIds.join(', ')}`;
+        const returned = await returnNativePortableChangeToBuild({
+          paths: options.paths,
+          name: options.name,
+          reason,
+        });
+        return {
+          state: returned,
+          checks: execution.checks,
+          runtimeCheckExecution: { disposition: execution.disposition },
+          requestChecks: null,
+          verifierDispatch: null,
+          continuation: nativePortableContinuation(returned),
+        };
+      }
+      return {
+        state: execution.state,
+        checks: execution.checks,
+        runtimeCheckExecution: { disposition: execution.disposition },
+        continuationCheckPlans: input.verification_checks,
+        ...(interruptedIds.length > 0 ? { continuationRetryCheckIds: interruptedIds } : {}),
+        requestChecks: null,
+        verifierDispatch: null,
+        continuation: nativePortableContinuation(execution.state, undefined, {
+          ...(interruptedIds.length > 0
+            ? { retryCheckIds: interruptedIds }
+            : { verificationCheckPlans: input.verification_checks }),
+        }),
+      };
+    }
     return {
       state,
       checks: [],
@@ -1336,6 +1395,7 @@ export async function applyNativeRunnerInput(options: {
     return {
       state: result.state,
       checks: result.checks,
+      ...(interrupted.length > 0 ? { continuationRetryCheckIds: interrupted } : {}),
       requestChecks: null,
       verifierDispatch: null,
       continuation: nativePortableContinuation(result.state, undefined, {
@@ -1367,16 +1427,15 @@ export async function applyNativeRunnerInput(options: {
       };
     }
     assertSkillCoordinatedCandidate(ready);
-    const executedChecks = (
-      await executeNativePortableCheckPlan({
-        paths: options.paths,
-        name: options.name,
-        plans: input.checks,
-        ...(supervisorParentVerification && supervisor
-          ? { projectRoot: supervisor.integration.worktree }
-          : {}),
-      })
-    ).checks;
+    const checkExecution = await executeNativePortableCheckPlan({
+      paths: options.paths,
+      name: options.name,
+      plans: input.checks,
+      ...(supervisorParentVerification && supervisor
+        ? { projectRoot: supervisor.integration.worktree }
+        : {}),
+    });
+    const executedChecks = checkExecution.checks;
     const interruptedIds = executedChecks
       .filter(({ status }) => status === 'interrupted')
       .map(({ id }) => id);
@@ -1393,6 +1452,8 @@ export async function applyNativeRunnerInput(options: {
       return {
         state: ready,
         checks: executedChecks,
+        runtimeCheckExecution: { disposition: checkExecution.disposition },
+        continuationRetryCheckIds: interruptedIds,
         requestChecks: null,
         verifierDispatch: null,
         continuation: nativePortableContinuation(ready, undefined, {
@@ -1413,6 +1474,7 @@ export async function applyNativeRunnerInput(options: {
     return {
       state,
       checks: executedChecks,
+      runtimeCheckExecution: { disposition: checkExecution.disposition },
       requestChecks: null,
       verifierDispatch: verifierDispatch({
         paths: options.paths,

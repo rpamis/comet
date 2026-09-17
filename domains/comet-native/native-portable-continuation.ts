@@ -82,9 +82,20 @@ export interface NativePortableContinuation {
 
 export type NativePortableArchiveContinuationMode = 'archive-ready' | 'preview' | 'blocked';
 
+interface NativePortableCheckPlanTemplate {
+  id: string;
+  name: string;
+  executable: string;
+  argv: readonly string[];
+  cwdRef: string;
+  timeoutMs: number;
+  repeatable: boolean;
+}
+
 export interface NativePortableContinuationOptions {
   verifierExecutionRef?: string;
   retryCheckIds?: readonly string[];
+  verificationCheckPlans?: readonly NativePortableCheckPlanTemplate[];
   supervisorIntegrationRetryIds?: readonly string[];
   archiveMode?: NativePortableArchiveContinuationMode;
   archiveBlockers?: readonly string[];
@@ -435,6 +446,18 @@ function boundNativeNextCommandArgs(options: {
 
 function textInput(name: string, flag: string): NativePortableContinuationInputOption {
   return { name, flag, valueKind: 'text', required: true, template: null };
+}
+
+function nativeCheckPlanTemplate(): NativePortableCheckPlanTemplate {
+  return {
+    id: '<check-id>',
+    name: '<check-name>',
+    executable: '<executable>',
+    argv: [],
+    cwdRef: '.',
+    timeoutMs: 120000,
+    repeatable: true,
+  };
 }
 
 function confirmationInput(name: string, flag: string): NativePortableContinuationInputOption {
@@ -870,6 +893,7 @@ export function nativePortableContinuation(
                 summary: '<summary>',
                 addressed_acceptance_ids: ['<acceptance-id>'],
                 checks: [{ name: '<check-name>', result: 'not-run', note: null }],
+                verification_checks: [nativeCheckPlanTemplate()],
                 known_limits: [],
               },
             },
@@ -970,6 +994,7 @@ export function nativePortableContinuation(
             summary: '<summary>',
             addressed_acceptance_ids: ['<acceptance-id>'],
             checks: [{ name: '<check-name>', result: 'not-run', note: null }],
+            verification_checks: [],
             known_limits: [],
           },
         },
@@ -980,15 +1005,7 @@ export function nativePortableContinuation(
   if (state.phase === 'verify') {
     const awaiting = state.loop.next_action === 'await-verifier-result';
     const supervisor = Boolean(state.children_contract_hash);
-    const checkTemplate = {
-      id: '<check-id>',
-      name: '<check-name>',
-      executable: '<executable>',
-      argv: [],
-      cwdRef: '.',
-      timeoutMs: 120000,
-      repeatable: true,
-    };
+    const checkTemplate = nativeCheckPlanTemplate();
     if (!awaiting && options.retryCheckIds && options.retryCheckIds.length > 0) {
       return {
         ...base,
@@ -1102,7 +1119,17 @@ export function nativePortableContinuation(
                   verifierExecutionRef: options.verifierExecutionRef ?? '<from verifierDispatch>',
                 },
               ]
-            : { kind: 'dispatch-verifier', checks: supervisor ? [checkTemplate] : [] },
+            : {
+                kind: 'dispatch-verifier',
+                checks: options.verificationCheckPlans
+                  ? options.verificationCheckPlans.map((plan) => ({
+                      ...plan,
+                      argv: [...plan.argv],
+                    }))
+                  : supervisor
+                    ? [checkTemplate]
+                    : [],
+              },
         },
       ]),
       runnerAction: runner(awaiting ? 'await-verifier' : 'dispatch-verifier'),

@@ -69,6 +69,10 @@ Supervisor 子任务在任务包指定的 `projectRoot` 工作。回传结果时
 
 Builder 的交接摘要必须写明本轮修改、处理的验收项、实际运行和未运行的开发期检查，以及已知限制。前面的复核不能替代正式 Verifier；正式 Verifier 仍须独立检查全部验收项。
 
+开发期只跑定向检查；最终检查计划填入 `builder-handoff.verification_checks`，不要先运行同一完整计划。Runtime 冻结候选后执行：通过则进入 Verify 并预填 `dispatch-verifier`；失败或不可重复检查中断则返回 Build；可重复检查中断只按 `retry-checks` 重试。`runtimeCheckExecution.disposition` 区分执行与复用。
+
+`verification_checks` 只放 Runtime 能在当前候选上安全管理的命令。外部服务和一次性操作仍由 Verifier 按原约束判断。`builder-handoff.checks` 只记录开发期检查，不是正式证据。
+
 交接摘要保存在 `comet-state.yaml` 中，不会生成单独文件，也不表示验收已经通过。Runtime 会将必要摘要交给 Verifier，Builder 提交一次即可。
 
 完成标准：实现和相关检查已准备好交给 Verifier，全部验收项已重新核对，Runtime 接受交接摘要并进入 Verify。
@@ -92,7 +96,7 @@ Builder 的交接摘要必须写明本轮修改、处理的验收项、实际运
 
 Runtime 要求启动 Verifier（`dispatch-verifier`）时，按以下步骤执行：
 
-1. 将本轮实现需要运行的测试和检查命令填入 `inputOptions.template`，由 Runtime 统一执行。Runtime 保存的“检查回执”包括检查结果及其对应的实现版本、工作区和输入信息。同一实现版本、同一工作区、同一机器上，输入未变化且回执完整的成功检查可以复用。
+1. 最终计划优先随 handoff 的 `verification_checks` 提交，否则填入 `dispatch-verifier` 模板。通过后原样执行预填计划；证据绑定未变时返回 `runtimeCheckExecution.disposition=reused`，否则重新执行。Builder 日志不是正式证据。
 2. 检查中断后，只有最新 `continuation` 返回 `retry-checks` 时，才重试其中指定的可重复检查。断言失败或不允许重复执行的检查，不能当作环境故障自动重跑。
 3. 读取 `verifierDispatch` 中的工作区和检查记录位置、`scopeIds`、`scopeCount`、全部验收项数量、brief/Spec 引用、详情分页参数、可选复核摘要和检查结果。任务包不直接包含全部验收文字，须按分页参数读完 `scopeIds` 对应的验收场景。
 4. 立即使用当前平台的原生能力，启动一个新的只读 Verifier subagent，原样传递工作目录、检查记录位置和 `recoveryContext`（如果存在）。subagent 不可用时，只有用户选择了多会话协作、且平台能管理独立会话，才可以启动与 Builder 分开的独立 Agent 会话。其他情况按命令参考报告 Verifier 不可用，并执行最新 `continuation`。

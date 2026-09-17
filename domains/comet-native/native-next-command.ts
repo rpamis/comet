@@ -1,5 +1,8 @@
 import { inspectNativeChildren } from './native-children.js';
-import { nativePortableContinuation } from './native-portable-continuation.js';
+import {
+  nativePortableContinuation,
+  type NativePortableContinuationOptions,
+} from './native-portable-continuation.js';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
 import {
   nativePortableWorkspaceMismatch,
@@ -92,6 +95,8 @@ async function portableParentView(
   paths: NativeProjectPaths,
   state: NativePortableState,
   verifierExecutionRef?: string,
+  verificationCheckPlans?: NativePortableContinuationOptions['verificationCheckPlans'],
+  retryCheckIds?: NativePortableContinuationOptions['retryCheckIds'],
 ) {
   const children = await inspectNativeChildren({ paths, state });
   const supervisor = children?.confirmed
@@ -117,6 +122,8 @@ async function portableParentView(
       : {}),
     continuation: nativePortableContinuation(state, children, {
       verifierExecutionRef,
+      verificationCheckPlans,
+      retryCheckIds,
       supervisorIntegrationRetryIds,
     }),
   };
@@ -125,7 +132,12 @@ async function portableParentView(
 function compactRunnerResult<T extends { state: NativePortableState }>(result: T) {
   return Object.fromEntries(
     Object.entries(result).filter(
-      ([key]) => key !== 'state' && key !== 'response' && key !== 'supervisorState',
+      ([key]) =>
+        key !== 'state' &&
+        key !== 'response' &&
+        key !== 'supervisorState' &&
+        key !== 'continuationCheckPlans' &&
+        key !== 'continuationRetryCheckIds',
     ),
   ) as Omit<T, 'state' | 'response' | 'supervisorState'>;
 }
@@ -396,6 +408,10 @@ export async function nativeNextCommand(
       input,
       maxVerifyFailures: configured.config.native.max_verify_failures,
     });
+    const continuationCheckPlans =
+      'continuationCheckPlans' in result ? result.continuationCheckPlans : undefined;
+    const continuationRetryCheckIds =
+      'continuationRetryCheckIds' in result ? result.continuationRetryCheckIds : undefined;
     return success('next', {
       ...compactRunnerResult(result),
       state: nativePortableStateSummary(result.state, configured.paths),
@@ -403,6 +419,8 @@ export async function nativeNextCommand(
         configured.paths,
         result.state,
         result.verifierDispatch?.verifierExecutionRef,
+        continuationCheckPlans,
+        continuationRetryCheckIds,
       )),
       coordination: NATIVE_SKILL_COORDINATION,
     });

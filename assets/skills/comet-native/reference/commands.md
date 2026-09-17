@@ -69,6 +69,14 @@ An ordinary change or Supervisor parent does not need an additional read-only re
 
 The Builder handoff must describe this iteration's changes, acceptance items addressed, development checks actually run and not run, and known limitations. An earlier review cannot replace the formal Verifier, which still independently assesses every acceptance item.
 
+During development, prefer focused checks that give fast feedback on the current change. At handoff, put the final check plan in `builder-handoff.verification_checks` instead of running the same complete plan directly in the Builder first. Runtime freezes the candidate, executes the plan, and returns `runtimeCheckExecution.disposition`:
+
+- `executed`: Runtime ran the plan in this action. After every check passes, Runtime enters Verify and prefills the same plan in the next `dispatch-verifier` action.
+- A failed check, or an interrupted nonrepeatable check: Runtime returns the change to Build; repair the implementation and submit a new Builder handoff.
+- An interrupted repeatable check: retry only the checks named by the latest `retry-checks` template.
+
+Use `verification_checks` only for commands Runtime can safely manage on the current candidate. Leave external-service checks, one-time operations, and steps that cannot be safely retried for the Verifier to assess under their existing execution constraints. `builder-handoff.checks` continues to report development checks the Builder did or did not run; it never becomes formal Runtime check evidence.
+
 Runtime saves the summary in `comet-state.yaml`, not a separate file; it does not mean acceptance has passed. Submit it once; Runtime passes necessary summaries to the Verifier.
 
 Complete when implementation and relevant checks are ready for verification, all acceptance items have been rechecked, and Runtime accepts the handoff and enters Verify.
@@ -92,7 +100,7 @@ Pass any `recoveryContext` unchanged too; it contains the latest recovery or use
 
 When Runtime requests `dispatch-verifier`:
 
-1. Fill `inputOptions.template` with the tests and checks needed for this candidate, for Runtime to execute. A Runtime check receipt records the result and its candidate, workspace, and input associations. Successful checks are reusable on the same candidate, workspace, and machine when inputs are unchanged and receipts are complete.
+1. Prefer submitting the final check plan through Builder handoff `verification_checks`; if it was not submitted there, add it to the `dispatch-verifier` `inputOptions.template`. Runtime evidence binds the result to the candidate, workspace, machine, command, inputs, and tool environment. After handoff checks pass, execute Runtime's prefilled `dispatch-verifier` unchanged. When the binding is unchanged, Runtime returns `runtimeCheckExecution.disposition=reused` and does not execute the same plan again; a changed plan or binding is executed again. Ordinary Builder logs cannot replace this evidence.
 2. After interrupted checks, retry only the repeatable checks listed by the latest `continuation` action `retry-checks`. Do not treat assertion failures or nonrepeatable checks as environment failures to retry automatically.
 3. Read `verifierDispatch` for workspace and check-record locations, `scopeIds`, `scopeCount`, total acceptance count, brief/Spec references, detail pagination arguments, optional review summary, and check results. The package does not inline every acceptance text; use pagination to read every scenario covered by `scopeIds`.
 4. Immediately launch a new read-only Verifier subagent through the platform's native capability. Pass directories, check-record locations, and any `recoveryContext` unchanged. If subagents are unavailable, a separate Agent session from the Builder is allowed only when the user selected multi-session coordination and the platform can manage independent sessions. Otherwise report Verifier unavailability as specified below and follow the latest `continuation`.
