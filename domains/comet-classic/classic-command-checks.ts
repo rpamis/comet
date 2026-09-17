@@ -476,7 +476,9 @@ export async function evaluateCommandCheck(
         await readCheckPolicy(root, identity),
       ))
     )
-      return fail('the environment changed since execution');
+      return fail(
+        'the environment changed since execution (checks bind the resolved executable path and its file identity, the Node version, and declared policy environment variables; switching Node versions, package-manager shims, or PATH order invalidates evidence)',
+      );
     const baseline = await recordManifestEntries(root, record).catch(() => null);
     if (!baseline) return fail('the recorded input manifest is damaged or missing');
     const current = await collectCheckSnapshot(root, changeDir, identity, { baseline });
