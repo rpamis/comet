@@ -700,7 +700,7 @@ export async function initCommand(
     plans.push({ platform, native, osAction, spAction, cmAction, hasOS, hasSP, hasCM });
   }
 
-  if (includesWorkflow(workflowSelection, 'native') && scope === 'project') {
+  if (includesWorkflow(workflowSelection, 'native')) {
     for (const plan of plans) {
       const action =
         plan.cmAction === 'overwrite' ? 'overwrite' : plan.cmAction === 'install' ? 'fill' : 'skip';

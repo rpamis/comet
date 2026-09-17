@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.2] - 2026-09-17
+
+### Fixed
+
+- **Global Native initialization**: Prepare native skill installation targets and remove legacy managed symlinks or junctions during global initialization, preventing retired-skill safety checks from reporting false failures when upgrading from Symlink mode.
+
 ## What's Changed [0.4.1] - 2026-09-14
 
 ### Added
