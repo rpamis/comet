@@ -156,6 +156,7 @@ export const DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG: WorkflowNativeSnapshotConf
   max_files: 10_000,
   max_total_bytes: 256 * 1024 * 1024,
   max_duration_ms: 60_000,
+  max_selection_records: 20_000,
 };
 
 type ProjectConfigCommentKey =
@@ -192,6 +193,7 @@ type ProjectConfigCommentKey =
   | 'native.snapshot.max_files'
   | 'native.snapshot.max_total_bytes'
   | 'native.snapshot.max_duration_ms'
+  | 'native.snapshot.max_selection_records'
   | 'classic'
   | 'classic.artifact_layout'
   | 'classic.language'
@@ -253,6 +255,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# Bounds the total file content hashed by one snapshot. Content is streamed and does not depend on Git hashes.',
     'native.snapshot.max_duration_ms':
       '# Bounds snapshot capture time in milliseconds. Increase it together with the byte budget on slower or larger repositories.',
+    'native.snapshot.max_selection_records':
+      '# Bounds Git selection records and physical enumeration nodes per snapshot. Raise it for monorepos whose tracked plus untracked file list exceeds the default.',
     classic: '# Classic workflow settings. They do not change Native state or behavior.',
     'classic.artifact_layout':
       '# Selects the Classic artifact layout. The default is docs; update preserves detected root-level legacy artifacts.\n# artifact_layout: legacy | docs',
@@ -309,6 +313,8 @@ const COMMENTS: Record<ProjectConfigCommentLanguage, Record<ProjectConfigComment
       '# 单次快照最多哈希的文件内容总字节数；内容采用流式读取，不依赖 Git hash。',
     'native.snapshot.max_duration_ms':
       '# 单次快照的最长执行时间（毫秒）；较慢或更大的仓库应与字节预算一并提高。',
+    'native.snapshot.max_selection_records':
+      '# 单次快照的 Git 选择记录数与物理枚举节点数上限；tracked 加 untracked 清单超过默认值的大型 monorepo 可按需提高。',
     classic: '# Classic 工作流配置，不会改变 Native 的状态或行为。',
     'classic.artifact_layout':
       '# Classic 产物布局；默认使用 docs，update 检测到根目录 legacy 产物时予以保留。\n# 可选值：legacy | docs',
@@ -586,6 +592,11 @@ function normalizeWorkflowSnapshot(value: unknown): WorkflowNativeSnapshotConfig
       snapshot.max_duration_ms,
       DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_duration_ms,
       'native.snapshot.max_duration_ms',
+    ),
+    max_selection_records: positiveWorkflowSnapshotInteger(
+      snapshot.max_selection_records,
+      DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG.max_selection_records,
+      'native.snapshot.max_selection_records',
     ),
   };
 }

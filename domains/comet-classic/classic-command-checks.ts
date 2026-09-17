@@ -193,6 +193,32 @@ export async function invalidateCommandChecks(changeDir: string, run: RunState):
   await checkEvent(changeDir, run, 'command_checks_invalidated', { reason: 'cold-recovery' });
 }
 
+/**
+ * Explains why no record is visible when a `command_check_started` event
+ * without a completing event is the latest trajectory entry for the scope —
+ * the attempt was interrupted (killed, timed out during snapshotting, or the
+ * process died) and must not expose an older success.
+ */
+export async function interruptedCommandCheckReason(
+  changeDir: string,
+  run: RunState,
+  scope: CommandCheckScope,
+): Promise<string | null> {
+  const trajectory = (await readCheckIndex(changeDir, run.trajectoryRef)).events;
+  for (let index = trajectory.length - 1; index >= 0; index -= 1) {
+    const event = trajectory[index];
+    if (event.runId !== run.runId) continue;
+    const touchesScope =
+      event.data?.scope === scope ||
+      (Array.isArray(event.data?.scopes) && event.data.scopes.includes(scope));
+    if (!touchesScope) continue;
+    if (event.type === 'command_check_started')
+      return `a previous ${scope} check attempt started at ${event.timestamp} never completed (interrupted or failed during launch); rerun the check`;
+    return null;
+  }
+  return null;
+}
+
 export async function recoverCommandChecks(root: string, changeDir: string, run: RunState) {
   const snapshots = new Map<string, Promise<string>>();
   // Pre-manifest records are revalidated with their original binding semantics.
@@ -427,7 +453,11 @@ export async function evaluateCommandCheck(
       ((await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0)
   )
     return fail('check evidence crossed a phase boundary');
-  if (!record) return { record: null };
+  if (!record)
+    return {
+      record: null,
+      reason: (await interruptedCommandCheckReason(changeDir, run, scope)) ?? undefined,
+    };
   if (record.provenance !== 'runtime')
     return fail('the latest record was not produced by the runtime');
   if (record.exitCode !== 0) return fail(`the last check failed with exit code ${record.exitCode}`);

@@ -779,6 +779,34 @@ describe('Classic executed check evidence', () => {
     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
   });
 
+  it('explains an interrupted check attempt instead of reporting missing evidence', async () => {
+    await readyVerify();
+    // A symbolic link in the input scope makes the snapshot throw after the
+    // started event is written, leaving the interrupted-attempt tombstone
+    // behind. A junction works without Windows developer-mode privileges.
+    await fs.mkdir(path.join(root, 'linked-dir'));
+    await fs.symlink(
+      path.join(root, 'linked-dir'),
+      path.join(root, 'alias-link'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    const check = await cli(
+      'check',
+      'run',
+      'demo',
+      'verify',
+      '--local',
+      '--',
+      process.execPath,
+      'check.cjs',
+    );
+    expect(check.exitCode).not.toBe(0);
+    expect(`${check.stdout ?? ''}${check.stderr ?? ''}`).toContain('check-policy.json');
+    const guard = await cli('guard', 'demo', 'verify');
+    expect(guard.exitCode).not.toBe(0);
+    expect(`${guard.stdout ?? ''}${guard.stderr ?? ''}`).toContain('never completed');
+  });
+
   it('does not rebuild after an explicit successful build check', async () => {
     const dir = path.join(root, 'openspec', 'changes', 'demo');
     await fs.writeFile(path.join(dir, 'tasks.md'), '- [x] implement\n');

@@ -107,7 +107,7 @@ const KNOWN_KEYS = new Set<string>([...CLASSIC_WIRE_KEYS, ...RUN_WIRE_KEYS]);
 // and omitting it here allows legacy files to parse without migration. The transition
 // guard in classic-state-command.ts enforces review_mode selection for full workflow
 // at build→verify time, so runtime safety is not compromised.
-const REQUIRED_CLASSIC_KEYS = [
+export const REQUIRED_CLASSIC_KEYS = [
   'workflow',
   'phase',
   'design_doc',

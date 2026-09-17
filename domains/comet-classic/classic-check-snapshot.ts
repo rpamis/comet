@@ -225,7 +225,10 @@ export async function collectCheckSnapshot(
       });
       return;
     }
-    if (stat.isSymbolicLink()) throw new Error(`Check input is a symbolic link: ${relative}`);
+    if (stat.isSymbolicLink())
+      throw new Error(
+        `Check input is a symbolic link: ${relative}. Symbolic links cannot be check inputs; either remove the link, or bind this command's inputs in .comet/check-policy.json (version 2) with a files list that excludes it`,
+      );
     if (stat.isDirectory()) {
       await inspectClassicProjectTarget(root, absolute, {
         label: 'Classic check input',
@@ -238,10 +241,17 @@ export async function collectCheckSnapshot(
       label: 'Classic check input',
       maxBytes: 64 * 1024 * 1024,
     });
-    const bound =
-      policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md')
-        ? classicTaskRequirements(bytes.toString('utf8'))
-        : bytes;
+    let bound = bytes;
+    if (policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md')) {
+      // A malformed tasks.md cannot produce task requirements; binding the raw
+      // bytes keeps the fingerprint conservative (any change invalidates)
+      // instead of failing the whole snapshot.
+      try {
+        bound = Buffer.from(classicTaskRequirements(bytes.toString('utf8')), 'utf8');
+      } catch {
+        bound = bytes;
+      }
+    }
     hash.update(bound);
     const cacheKey = `${relative}|${stat.size}|${stat.mtimeNs}|${stat.mode}`;
     let contentHash = contentCache.get(cacheKey);

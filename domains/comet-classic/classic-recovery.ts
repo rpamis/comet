@@ -6,6 +6,7 @@ import {
   classicTaskRevision,
   inspectClassicPlanTasks,
   parseClassicTasks,
+  type ClassicTask,
 } from './classic-tasks.js';
 import { readClassicCheckpoint, readClassicDelivery } from './classic-progress.js';
 import { inspectClassicPlanReadiness } from './classic-plan-readiness.js';
@@ -38,7 +39,15 @@ export async function classicRecoveryContext(
   const source = taskFileExists
     ? await readClassicProjectFile(root, taskFile, { label: 'Classic recovery task authority' })
     : '';
-  const tasks = parseClassicTasks(source);
+  // A single malformed task line must not take down the whole recovery
+  // context; treating it as no readable tasks keeps recovery usable while the
+  // guard's tasks.md check reports the exact line.
+  let tasks: ClassicTask[];
+  try {
+    tasks = parseClassicTasks(source);
+  } catch {
+    tasks = [];
+  }
   const next = tasks.find((task) => !task.completed) ?? null;
   const planExists = Boolean(
     state.plan &&

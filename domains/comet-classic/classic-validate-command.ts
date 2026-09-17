@@ -169,7 +169,10 @@ export const classicValidateCommand: ClassicCommandHandler = withProjectContext(
     }
   }
   for (const field of Object.keys(record)) {
-    if (!KNOWN_KEYS.has(field)) warn(`unknown field '${field}' found`);
+    if (!KNOWN_KEYS.has(field))
+      warn(
+        `unknown field '${field}' found; guard treats unknown fields as fatal — remove the field or realign it with this Comet version before advancing the phase`,
+      );
   }
 
   lines.push('');

@@ -28,6 +28,8 @@ export interface WorkflowNativeSnapshotConfig {
   max_files: number;
   max_total_bytes: number;
   max_duration_ms: number;
+  /** Bounds Git selection records and physical enumeration nodes per snapshot. */
+  max_selection_records: number;
 }
 
 export interface WorkflowNativePullRequestFinishConfig {

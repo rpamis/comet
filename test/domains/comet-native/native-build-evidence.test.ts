@@ -539,7 +539,7 @@ describe('Native Build evidence preparation', () => {
         confirmedSummary: 'Confirmed despite the project tree race.',
         confirmed: true,
       }),
-    ).rejects.toThrow(/physical selection.*stable bounded project tree/iu);
+    ).rejects.toThrow(/physical enumeration.*changed while capturing.*max_selection_records/iu);
   });
 
   it('rejects an unstable physical selection while projecting a legacy baseline', async () => {
@@ -551,7 +551,7 @@ describe('Native Build evidence preparation', () => {
         state,
         artifactRefs: ['src/feature.ts'],
       }),
-    ).rejects.toThrow(/physical selection.*baseline projection.*stable bounded project tree/iu);
+    ).rejects.toThrow(/physical enumeration.*changed while capturing.*max_selection_records/iu);
   });
 
   it('never converts an incomplete baseline into waivable partial Build evidence', async () => {

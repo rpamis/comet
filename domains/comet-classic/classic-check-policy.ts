@@ -233,6 +233,9 @@ export async function readCheckPolicy(
       taskCheckboxes: value.taskCheckboxes ?? defaults.taskCheckboxes,
     };
   } catch (error) {
-    throw new Error('Invalid Classic check policy', { cause: error });
+    throw new Error(
+      `Invalid Classic check policy: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
 }

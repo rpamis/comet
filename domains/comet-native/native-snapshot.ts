@@ -126,6 +126,8 @@ interface SnapshotOptions {
   limits?: Partial<NativeContentSnapshotManifest['limits']>;
   policy?: Pick<NativeSnapshotPolicy, 'include' | 'exclude'> | NativeSnapshotPolicy;
   denylist?: readonly string[];
+  /** Config override (native.snapshot.max_selection_records) for the Git-record and physical-node ceilings; explicit selection limits still win. */
+  maxSelectionRecords?: number;
   gitSelectionLimits?: Partial<NativeGitSelectionLimits>;
   gitSelectionHooks?: NativeGitSelectionHooks;
   physicalSelectionLimits?: Partial<NativePhysicalSelectionLimits>;
@@ -301,8 +303,13 @@ function isNativeGitSnapshotTimeout(error: unknown): boolean {
 
 function resolveNativePhysicalSelectionLimits(
   values: Partial<NativePhysicalSelectionLimits> | undefined,
+  maxNodesFromConfig?: number,
 ): NativePhysicalSelectionLimits {
-  const limits = { ...DEFAULT_NATIVE_PHYSICAL_SELECTION_LIMITS, ...values };
+  const limits = {
+    ...DEFAULT_NATIVE_PHYSICAL_SELECTION_LIMITS,
+    ...(maxNodesFromConfig === undefined ? {} : { maxNodes: maxNodesFromConfig }),
+    ...values,
+  };
   if (
     !Number.isSafeInteger(limits.maxNodes) ||
     limits.maxNodes < 1 ||
@@ -451,8 +458,13 @@ function startNativeGitProcess(
 
 function resolveNativeGitSelectionLimits(
   values: Partial<NativeGitSelectionLimits> | undefined,
+  maxRecordsFromConfig?: number,
 ): NativeGitSelectionLimits {
-  const limits = { ...DEFAULT_NATIVE_GIT_SELECTION_LIMITS, ...values };
+  const limits = {
+    ...DEFAULT_NATIVE_GIT_SELECTION_LIMITS,
+    ...(maxRecordsFromConfig === undefined ? {} : { maxRecords: maxRecordsFromConfig }),
+    ...values,
+  };
   if (
     !Number.isSafeInteger(limits.maxRecords) ||
     limits.maxRecords < 1 ||
@@ -754,6 +766,15 @@ interface NativeGitSelectionResults {
   stagedAfter: GitNullRecordResult;
 }
 
+function nativeExcludePathspecs(patterns: readonly string[] | undefined): string[] {
+  if (!patterns) return [];
+  return patterns
+    .filter((pattern) => pattern && !pattern.startsWith('!'))
+    .flatMap((pattern) =>
+      pattern.includes('**') ? [`:(exclude,glob)${pattern}`] : [`:(exclude)${pattern}`],
+    );
+}
+
 async function readNativeGitSelectionResults(
   execution: NativeSnapshotExecution,
   paths: NativeProjectPaths,
@@ -762,6 +783,7 @@ async function readNativeGitSelectionResults(
     NativeGitSelectionHooks,
     'afterStageBefore' | 'afterCombined' | 'outputChunkBytes'
   > = {},
+  excludedPatterns?: readonly string[],
 ): Promise<NativeGitSelectionResults> {
   const projectRoot = path.resolve(paths.projectRoot);
   const selectionFile = path.join(projectRoot, '.comet', 'current-change.json');
@@ -773,10 +795,14 @@ async function readNativeGitSelectionResults(
       return safe;
     },
   );
+  // Policy excludes are excluded from snapshot content, so they must not be
+  // fenced either: monitoring them turns unrelated background churn (dev
+  // servers, build output) into git-selection-changed failures.
   const pathspecs = [
     '--',
     '.',
     ...excludedRefs.flatMap((relative) => [`:(exclude)${relative}`, `:(exclude)${relative}/**`]),
+    ...nativeExcludePathspecs(excludedPatterns),
   ];
   const options: GitNullRecordOptions = {
     ...limits,
@@ -818,6 +844,7 @@ async function nativeGitSnapshotSelection(
   paths: NativeProjectPaths,
   limits: NativeGitSelectionLimits = DEFAULT_NATIVE_GIT_SELECTION_LIMITS,
   hooks: NativeGitSelectionHooks = {},
+  excludedPatterns?: readonly string[],
 ): Promise<NativeGitSnapshotSelection | null> {
   const projectRoot = path.resolve(paths.projectRoot);
   if (!(await hasGitMetadataBoundary(projectRoot))) return null;
@@ -838,7 +865,13 @@ async function nativeGitSnapshotSelection(
   }
   let results: NativeGitSelectionResults;
   try {
-    results = await readNativeGitSelectionResults(execution, paths, limits, hooks);
+    results = await readNativeGitSelectionResults(
+      execution,
+      paths,
+      limits,
+      hooks,
+      excludedPatterns,
+    );
   } catch (error) {
     if (isNativeGitSnapshotTimeout(error)) throw error;
     throw new Error('Native Git snapshot provider failed after repository detection', {
@@ -933,12 +966,19 @@ async function finalizeNativeGitSnapshotSelection(
   limits: NativeGitSelectionLimits,
   selection: NativeGitSnapshotSelection,
   outputChunkBytes?: number,
+  excludedPatterns?: readonly string[],
 ): Promise<void> {
   let finalResults: NativeGitSelectionResults;
   try {
-    finalResults = await readNativeGitSelectionResults(execution, paths, limits, {
-      ...(outputChunkBytes === undefined ? {} : { outputChunkBytes }),
-    });
+    finalResults = await readNativeGitSelectionResults(
+      execution,
+      paths,
+      limits,
+      {
+        ...(outputChunkBytes === undefined ? {} : { outputChunkBytes }),
+      },
+      excludedPatterns,
+    );
   } catch (error) {
     if (isNativeGitSnapshotTimeout(error)) throw error;
     throw new Error('Native Git snapshot provider failed during its final selection fence', {
@@ -2346,9 +2386,13 @@ export async function createNativeContentSnapshot(
     ...options,
     deadlineMs: options.deadlineMs ?? limits.maxDurationMs,
   });
-  const gitSelectionLimits = resolveNativeGitSelectionLimits(options.gitSelectionLimits);
+  const gitSelectionLimits = resolveNativeGitSelectionLimits(
+    options.gitSelectionLimits,
+    options.maxSelectionRecords,
+  );
   const physicalSelectionLimits = resolveNativePhysicalSelectionLimits(
     options.physicalSelectionLimits,
+    options.maxSelectionRecords,
   );
   if (
     limits.maxFiles < 1 ||
@@ -2768,6 +2812,7 @@ export async function createNativeContentSnapshot(
     paths,
     gitSelectionLimits,
     options.gitSelectionHooks,
+    policy?.manifest.exclude,
   );
   if (gitSelection === null) {
     const before = await nativePhysicalSnapshotSelection({
@@ -3080,6 +3125,7 @@ export async function createNativeContentSnapshot(
       gitSelectionLimits,
       gitSelection,
       options.gitSelectionHooks?.outputChunkBytes,
+      policy?.manifest.exclude,
     );
     // Reused entries already require a final worktree fence. Newly captured entries only need
     // the extra fence when they are being added to an incremental baseline: a full snapshot has
@@ -3187,6 +3233,7 @@ export async function createNativeCurrentContentSnapshot(
     ...options,
     policy: baseline.policy,
     incrementalBaseline: baseline,
+    maxSelectionRecords: settings.max_selection_records,
     limits: {
       maxFiles: settings.max_files,
       maxFileBytes: settings.max_total_bytes,

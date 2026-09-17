@@ -161,6 +161,17 @@ describe('Native VCS-independent content snapshots', () => {
     expect(manifest.capture).toEqual({ provider: 'physical-tree' });
   });
 
+  it('applies maxSelectionRecords to physical enumeration node limits', async () => {
+    await fs.mkdir(path.join(projectRoot, 'src'), { recursive: true });
+    await fs.writeFile(path.join(projectRoot, 'src', 'app.ts'), 'export const app = true;\n');
+    const manifest = await createNativeContentSnapshot(paths, {
+      policy: DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+      maxSelectionRecords: 1,
+    });
+    expect(manifest.complete).toBe(false);
+    expect(manifest.omitted.length).toBeGreaterThan(0);
+  });
+
   it('rejects invalid snapshot budgets and unsafe denylist roots before capture', async () => {
     const invalidOptions: Array<[string, Record<string, unknown>]> = [
       ['maxFiles', { limits: { maxFiles: 0 } }],

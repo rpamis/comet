@@ -54,8 +54,11 @@ function object(input: unknown): Record<string, unknown> {
 }
 
 function keys(value: Record<string, unknown>, allowed: string[]): void {
-  if (Object.keys(value).some((key) => !allowed.includes(key)))
-    throw new Error('Unknown Classic progress field');
+  const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (unknown.length)
+    throw new Error(
+      `Unknown Classic progress field(s): ${unknown.join(', ')}; allowed fields: ${allowed.join(', ')}`,
+    );
 }
 
 function text(value: unknown, label: string): string {
@@ -220,7 +223,9 @@ function deliveryInput(input: unknown, persisted = false): ClassicDeliveryInput 
       : []),
   ]);
   if (!['local', 'push', 'pr'].includes(value.action as string))
-    throw new Error('Invalid Classic delivery action');
+    throw new Error(
+      `Invalid Classic delivery action '${String(value.action)}'; actions: local|push|pr`,
+    );
   const targetBranch = text(value.targetBranch, 'targetBranch');
   if (
     targetBranch.startsWith('-') ||

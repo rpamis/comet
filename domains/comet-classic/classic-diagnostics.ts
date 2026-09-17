@@ -3,6 +3,7 @@ import { collectClassicEvidence } from './classic-evidence.js';
 import { ensureStrictClassicRuntimeRun, validateClassicRuntimeRun } from './classic-runtime-run.js';
 import { readClassicState } from './classic-store.js';
 import { resolveClassicStepId } from './classic-resolver.js';
+import { REQUIRED_CLASSIC_KEYS } from './classic-state.js';
 import {
   evaluateClassicRuntimeStep,
   type ClassicRuntimeEvalStatus,
@@ -31,7 +32,10 @@ export async function inspectClassicChangeReadOnly(
     if (unknownKeys.length > 0) {
       throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`);
     }
-    if (!projection.classic) throw new Error('Invalid Classic state: missing Classic projection');
+    if (!projection.classic)
+      throw new Error(
+        `Invalid Classic state: missing Classic projection — a Classic state key is present but not all required fields exist (required: ${REQUIRED_CLASSIC_KEYS.join(', ')})`,
+      );
 
     if (!projection.run) {
       return {

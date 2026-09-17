@@ -189,7 +189,17 @@ async function taskEvidence(projectRoot: string, tasksFile: string): Promise<Cla
       detail: `unsafe tasks artifact: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  const tasks = parseClassicTasks(source);
+  let tasks;
+  try {
+    tasks = parseClassicTasks(source);
+  } catch (error) {
+    return {
+      code: 'build.tasks-complete',
+      satisfied: false,
+      source: relative,
+      detail: `malformed tasks.md: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
   const complete = tasks.filter((task) => task.completed).length;
   return {
     code: 'build.tasks-complete',

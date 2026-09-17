@@ -255,25 +255,29 @@ async function retreatStaleNativeEvidence(options: {
   ) {
     throw new Error('Native Verify/Archive Run cannot retreat evidence safely');
   }
+  const scopeFreshness =
+    previousPhase === 'archive'
+      ? await inspectNativeVerificationFreshness({
+          paths: options.transition.paths,
+          state: options.state,
+          now: options.transition.now,
+        })
+      : await inspectNativeImplementationScopeFreshness({
+          paths: options.transition.paths,
+          state: options.state,
+          now: options.transition.now,
+        });
+  const freshnessLabel =
+    'freshness' in scopeFreshness ? String(scopeFreshness.freshness) : 'unknown';
   const evidenceIsFresh = options.force
     ? false
     : previousPhase === 'archive'
       ? ['complete', 'partial'].includes(
-          (
-            await inspectNativeVerificationFreshness({
-              paths: options.transition.paths,
-              state: options.state,
-              now: options.transition.now,
-            })
-          ).freshness,
+          (scopeFreshness as Awaited<ReturnType<typeof inspectNativeVerificationFreshness>>)
+            .freshness,
         )
-      : (
-          await inspectNativeImplementationScopeFreshness({
-            paths: options.transition.paths,
-            state: options.state,
-            now: options.transition.now,
-          })
-        ).freshness === 'fresh';
+      : (scopeFreshness as Awaited<ReturnType<typeof inspectNativeImplementationScopeFreshness>>)
+          .freshness === 'fresh';
   if (evidenceIsFresh) {
     const findings = structureNativeFindings({
       paths: options.transition.paths,
@@ -351,12 +355,28 @@ async function retreatStaleNativeEvidence(options: {
     options.transition.hooks,
   );
   if (!persisted) throw new Error('Native evidence retreat journal disappeared before completion');
+  const retreatFindings = structureNativeFindings({
+    paths: options.transition.paths,
+    state: persisted,
+    findings: [
+      {
+        code: 'evidence-retreated-to-build',
+        message: `${
+          previousPhase === 'archive' ? 'Verification' : 'Implementation scope'
+        } freshness was '${freshnessLabel}', not fresh; the recorded ${
+          previousPhase === 'archive'
+            ? 'verification evidence'
+            : 'implementation scope and Verify evidence'
+        } was discarded and the change returned to Build. Stabilize the workspace, then rerun Build evidence.`,
+      },
+    ],
+  });
   return {
     change: persisted,
     previousPhase,
     next: 'auto',
     nextCommand: null,
-    findings: [],
+    findings: retreatFindings,
     continuation: nativeContinuation({
       state: persisted,
       clarificationMode: options.transition.clarificationMode,
@@ -398,6 +418,7 @@ async function rebuildMissingNativeRuntime(
       now: options.now,
       origin: 'change-created',
       policy: snapshotPolicy,
+      maxSelectionRecords: snapshotPolicy.max_selection_records,
       limits: {
         maxFiles: snapshotPolicy.max_files,
         maxFileBytes: snapshotPolicy.max_total_bytes,
@@ -457,7 +478,7 @@ async function rebuildMissingNativeRuntime(
       {
         actionId: decision.action.id,
         status: 'succeeded',
-        summary: `Rebuilt local Runtime for ${state.name}`,
+        summary: `Rebuilt local Runtime for ${state.name}: the previous phase (${state.phase}) and all recorded Verify evidence were reset because the local runtime directory was missing, and the baseline was re-captured from the current tree (work already on disk is preserved as baseline content); re-run Build evidence and Verify`,
       },
       nativePhaseResolver,
       undefined,
@@ -495,7 +516,7 @@ async function rebuildMissingNativeRuntime(
         previousPhase: state.phase,
         nextPhase: 'build',
         evidenceHash,
-        summary: `Rebuilt local Runtime for ${state.name}`,
+        summary: `Rebuilt local Runtime for ${state.name}: the previous phase (${state.phase}) and all recorded Verify evidence were reset because the local runtime directory was missing, and the baseline was re-captured from the current tree (work already on disk is preserved as baseline content); re-run Build evidence and Verify`,
         artifacts: [],
         noCodeReason: null,
         verificationResult: null,

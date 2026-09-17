@@ -309,7 +309,11 @@ async function preflight(changeDir: string, name: string): Promise<void> {
   const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
   if (unknownKeys.length > 0) {
     throw new GuardFailure(
-      red(`FATAL: .comet.yaml has unknown field(s): ${unknownKeys.join(', ')}`),
+      red(
+        `FATAL: .comet.yaml has unknown field(s): ${unknownKeys.join(
+          ', ',
+        )}. Remove them (or realign them with this Comet version, e.g. after a version rollback), then rerun comet classic validate`,
+      ),
     );
   }
 }
@@ -461,7 +465,10 @@ async function guardEvidenceCwd(root: string, record: RecordedCommandCheck): Pro
   // A v2 policy entry matching the recorded command declares where its
   // evidence belongs; every other command's evidence must come from the
   // guard's invocation directory.
-  const policy = await readCheckPolicy(root, { argv: record.argv, cwd: record.cwd });
+  const policy = await readCheckPolicy(root, {
+    argv: record.argv ?? [],
+    cwd: record.cwd,
+  });
   if (policy.declaredCwd) return path.resolve(root, policy.declaredCwd);
   return classicCommandInvocationCwd();
 }
@@ -508,12 +515,19 @@ async function commandCheckPasses(
           : ['/bin/sh', '-c', inferred],
     });
     if (recorded.exitCode !== 0)
-      return { status: recorded.exitCode, output: `Build failed. Log: ${recorded.logRef}` };
+      return {
+        status: recorded.exitCode,
+        output: `Build failed (guard auto-ran the detected command '${inferred}' in '${invocationDir}'; disable with COMET_SKIP_BUILD=1). Log: ${recorded.logRef}`,
+      };
     if (recorded.inputBefore !== recorded.inputAfter)
       return {
         status: 1,
-        output: 'Build changed check inputs; rerun after the workspace is stable.',
+        output: `The detected build command '${inferred}' changed its own check inputs (for example nondeterministic build artifacts); rerun after the workspace is stable, or record a deterministic command with:\n${recoveryCommand(change, scope, '<program> [args...]')}`,
       };
+    return {
+      status: 0,
+      output: `${evidenceDetail(recorded)} (guard auto-ran the detected command '${inferred}' in '${invocationDir}')`,
+    };
   }
   if (!recorded) {
     const previous = await latestCommandCheck(root, changeDir, run, scope);
@@ -1142,20 +1156,22 @@ async function applyStateUpdateLocked(
       phase,
     );
     const record = evaluation.record;
-    const cwdMismatched = record
-      ? path.resolve(classicCommandProjectRoot(), record.cwd) !==
-        path.resolve(await guardEvidenceCwd(classicCommandProjectRoot(), record))
-      : false;
-    if (!record || record.tier === 'incremental' || cwdMismatched)
-      throw new GuardFailure(
+    const cwdMismatched = Boolean(
+      record &&
+      path.resolve(classicCommandProjectRoot(), record.cwd) !==
+        path.resolve(await guardEvidenceCwd(classicCommandProjectRoot(), record)),
+    );
+    if (!record || record.tier === 'incremental' || cwdMismatched) {
+      const reason =
         record?.tier === 'incremental'
           ? 'Incremental check evidence cannot advance the phase; rerun the full command before --apply.'
-          : cwdMismatched
+          : cwdMismatched && record
             ? `Check evidence ran in '${record.cwd}', not the guard's invocation directory '${
                 path.relative(classicCommandProjectRoot(), classicCommandInvocationCwd()) || '.'
               }'; rerun the check from the invocation directory, or declare its cwd in .comet/check-policy.json (version 2), before --apply.`
-            : 'Check evidence changed before transition; rerun the check.',
-      );
+            : 'Check evidence changed before transition; rerun the check.';
+      throw new GuardFailure(reason);
+    }
   }
   const result = applyClassicTransition(context.classic, event);
   await transitionClassicRuntimeRun(changeDir, result.classic, context.run, {

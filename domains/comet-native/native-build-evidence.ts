@@ -82,7 +82,7 @@ function assertStableNativeSelection(
     )
   ) {
     throw new Error(
-      `Native physical selection was incomplete or changed while capturing the ${source}; retry Build evidence with a stable bounded project tree`,
+      `Native physical enumeration hit its node limit or changed while capturing the ${source}; this happens on projects without Git metadata whose tree exceeds the bounded-enumeration budget — initialize Git (recommended, so selection comes from the index), reduce the project tree, or raise/declare .comet/config.yaml native.snapshot.max_selection_records, then retry Build evidence`,
     );
   }
 }
@@ -203,7 +203,9 @@ async function collectDeclaredArtifacts(options: {
   refs: readonly string[];
 }): Promise<NativeDeclaredArtifact[]> {
   if (options.refs.length > NATIVE_BUILD_EVIDENCE_LIMITS.maxDeclaredArtifacts) {
-    throw new Error('Native build evidence exceeds its declared-artifact budget');
+    throw new Error(
+      `Native build evidence exceeds its declared-artifact budget: ${options.refs.length} declared artifacts, limit ${NATIVE_BUILD_EVIDENCE_LIMITS.maxDeclaredArtifacts}; declare a bounded set of representative artifacts instead of every generated path`,
+    );
   }
   const artifacts = await Promise.all(
     options.refs.map((reference) =>
@@ -337,7 +339,9 @@ export async function inspectNativeBuildEvidence(
   }
   const expectedScopeHash = partialScopeHash(options.allowPartialScopeHash);
   if (expectedScopeHash !== bundle.scope.scopeHash) {
-    throw new Error('Native partial allowance does not match the current implementation scope');
+    throw new Error(
+      `Native partial allowance does not match the current implementation scope: the confirmed scope hash was ${expectedScopeHash} but the current scope hash is ${bundle.scope.scopeHash}; the workspace changed since the confirmation — re-request confirmation against the current scope`,
+    );
   }
   const allowance = buildNativePartialAllowance({
     change: options.state.name,

@@ -284,6 +284,7 @@ async function createNativeChangeLocked(options: {
       now: options.now,
       origin: 'change-created',
       policy: snapshot,
+      maxSelectionRecords: snapshot.max_selection_records,
       limits: {
         maxFiles: snapshot.max_files,
         maxFileBytes: snapshot.max_total_bytes,
