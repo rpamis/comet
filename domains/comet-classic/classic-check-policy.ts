@@ -21,6 +21,12 @@ export interface CheckPolicy {
    * unrelated entries can change without invalidating this command's evidence.
    */
   entryDigest?: string;
+  /**
+   * v2 only: the matched entry's cwd. Guard accepts this command's evidence
+   * recorded in that directory even when the guard runs elsewhere in the
+   * project; without it evidence must come from the guard's invocation cwd.
+   */
+  declaredCwd?: string;
   /** Resolved declaration scope: v1 top-level fields, or the matched v2 entry. */
   files?: string[];
   env?: string[];
@@ -168,6 +174,7 @@ export async function readCheckPolicy(
       return {
         digest,
         entryDigest: commandEntryDigest(matched),
+        declaredCwd: matched.cwd,
         files: matched.files,
         env: matched.env,
         git: matched.git,

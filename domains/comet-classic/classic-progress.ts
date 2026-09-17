@@ -98,7 +98,9 @@ function checkpoint(input: unknown): ClassicCheckpoint {
   if (typeof value.revision !== 'string' || !/^[a-f0-9]{64}$/u.test(value.revision))
     throw new Error('Invalid Classic checkpoint revision');
   if (!STAGES.includes(value.stage as ClassicCheckpoint['stage']))
-    throw new Error('Invalid Classic checkpoint stage');
+    throw new Error(
+      `Invalid Classic checkpoint stage '${String(value.stage)}'; stages: ${STAGES.join('|')}`,
+    );
   if (!Number.isSafeInteger(value.reviewRounds) || (value.reviewRounds as number) < 0)
     throw new Error('Invalid Classic checkpoint reviewRounds');
   return {

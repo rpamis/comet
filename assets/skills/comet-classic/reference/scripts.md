@@ -96,6 +96,8 @@ comet check run <change-name> verify --local --incremental -- <program> [args...
 
 Omitted fields keep the defaults: `git` defaults to `none` (no HEAD or index binding), `env` binds no variables, and `taskCheckboxes` defaults to `ignore` (ticking tasks does not invalidate evidence; task text changes still do). Declare `git: "all"` when build artifacts embed a commit SHA, list variable names in `env` when the result depends on them, and declare `taskCheckboxes: "include"` when completion marks themselves affect the check result. The older v1 single-command format remains valid and keeps its original semantics.
 
+An entry's `cwd` also declares where that command's evidence belongs. By default the guard reuses only evidence whose cwd matches its own invocation directory; a command matched by a v2 entry may record evidence in the entry's declared `cwd` instead. When a build or verification entry point lives in a subdirectory, declare the command as actually executed (for example `{ "argv": ["npm", "run", "build"], "cwd": "ui/frontend" }`), record it with `--cwd ui/frontend`, and a guard invoked from the project root reuses it. Undeclared commands still require evidence from the guard's invocation directory.
+
 ## Resolving the Next Step
 
 After the phase Guard advances phase, follow auto-transition.md and prefer `agent.continuation` from the successful JSON result. The next phase can use this returned state without repeating next, select, or check. Query only when session recovery lacks context, external state changes, or an older result lacks this information:

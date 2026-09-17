@@ -6,7 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
-- **Classic check policy v2**: Declare check input scopes per command in `.comet/check-policy.json` with `*`, `?`, and `**` wildcards. Each command's evidence is scoped independently, newly created matching files are picked up automatically, and editing or adding other command entries no longer invalidates existing evidence.
+- **Classic check policy v2**: Declare check input scopes per command in `.comet/check-policy.json` with `*`, `?`, and `**` wildcards. Each command's evidence is scoped independently, newly created matching files are picked up automatically, and editing or adding other command entries no longer invalidates existing evidence. A v2 entry's `cwd` also declares where that command's evidence belongs, so a subdirectory build or verification command recorded with `--cwd` passes a guard invoked from the project root; undeclared commands keep requiring evidence from the guard's invocation directory (#425).
 - **Classic incremental checks**: `comet check run --incremental` records phase-local evidence that guard previews accept, so small in-phase changes can keep checks current with an incremental command; `guard --apply` still requires one full rerun before advancing the phase.
 - **Classic evidence invalidation details**: When guard reports check evidence as not reusable, it now prints the reason, the changed input files, and the declared relevance scope instead of a generic missing-evidence message.
 
@@ -23,6 +23,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Classic checkpoint stage diagnostics**: An invalid `state checkpoint` stage value now reports the submitted value and the full list of valid stages in the validation error instead of a bare "Invalid Classic checkpoint stage", so Agents can correct the input without looking up the CLI help (#425).
+- **Classic guard cwd mismatch diagnostics**: When recorded build or verify evidence is valid but was run with `--cwd` in another directory, the guard now explains the mismatch — the evidence's cwd, the required invocation directory, and a rerun suggestion such as `npm --prefix <subdir> run build` for subdirectory builds — instead of a generic missing-evidence message that only listed build detection locations; the comet-build and comet-verify skills now state the cwd rule as well (#425).
 - **Classic delivery git timeouts**: Retry unanswered read-only git verification calls (show, diff, ls-files, merge-base, and delivery authorization checks) once, then fail with an identifiable `git command timed out` error, so an overloaded machine no longer reports a clean archive as `Classic delivery commit must be a verified archive commit`.
 - **Native scoped verification**: Accept and filter already-passed acceptance entries when a Verifier returns a known full-result superset for a scoped retry, while continuing to reject hallucinated IDs, missing scope coverage, duplicates, and conflicting out-of-scope results.
 - **Native Hook attribution**: Protect configured Native formal and Runtime-owned paths while leaving ordinary same-named files, non-Comet work, and explicitly configured user Hook outputs neutral.

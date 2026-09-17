@@ -415,6 +415,128 @@ describe('Classic executed check evidence', () => {
     expect((await cli('guard', 'demo', 'verify', '--apply')).exitCode).toBe(0);
   });
 
+  it('explains cwd mismatch instead of reporting generic missing evidence', async () => {
+    await readyVerify();
+    await fs.mkdir(path.join(root, 'ui'));
+    const check = await cli(
+      'check',
+      'run',
+      'demo',
+      'verify',
+      '--local',
+      '--cwd',
+      'ui',
+      '--json',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    );
+    expect(check.exitCode, check.stderr).toBe(0);
+    expect(JSON.parse(check.stdout!).data.cwd).toBe('ui');
+    const guard = await cli('guard', 'demo', 'verify');
+    expect(guard.exitCode).not.toBe(0);
+    const text = `${guard.stdout ?? ''}${guard.stderr ?? ''}`;
+    expect(text).toContain('No current Runtime verify evidence from this directory');
+    expect(text).toContain("ran in 'ui'");
+    expect(text).toContain("invocation directory '.'");
+    expect(text).toContain('npm --prefix');
+  });
+
+  it('prefers cwd mismatch guidance over detection hints for build evidence', async () => {
+    await readyVerify();
+    await fs.writeFile(
+      path.join(root, 'openspec', 'changes', 'demo', 'proposal.md'),
+      '# Proposal\n',
+    );
+    expect((await cli('state', 'set', 'demo', 'isolation', 'current')).exitCode).toBe(0);
+    await fs.mkdir(path.join(root, 'ui'));
+    const check = await cli(
+      'check',
+      'run',
+      'demo',
+      'build',
+      '--local',
+      '--cwd',
+      'ui',
+      '--json',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    );
+    expect(check.exitCode, check.stderr).toBe(0);
+    const guard = await cli('guard', 'demo', 'build');
+    expect(guard.exitCode).not.toBe(0);
+    const text = `${guard.stdout ?? ''}${guard.stderr ?? ''}`;
+    expect(text).toContain("ran in 'ui'");
+    expect(text).toContain('npm --prefix');
+    expect(text).toContain('.comet/check-policy.json');
+    expect(text).not.toContain('Detection searched');
+  });
+
+  it('accepts subdirectory evidence when a v2 policy entry declares its cwd', async () => {
+    await readyVerify();
+    await fs.mkdir(path.join(root, 'ui'));
+    await fs.writeFile(
+      path.join(root, '.comet/check-policy.json'),
+      JSON.stringify({
+        version: 2,
+        commands: [{ argv: [process.execPath, '-e', 'process.exit(0)'], cwd: 'ui' }],
+      }),
+    );
+    const check = await cli(
+      'check',
+      'run',
+      'demo',
+      'verify',
+      '--local',
+      '--cwd',
+      'ui',
+      '--json',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    );
+    expect(check.exitCode, check.stderr).toBe(0);
+    expect((await cli('guard', 'demo', 'verify')).exitCode).toBe(0);
+    expect((await cli('guard', 'demo', 'verify', '--apply')).exitCode).toBe(0);
+  });
+
+  it('rejects evidence recorded in an undeclared directory despite other policy entries', async () => {
+    await readyVerify();
+    await fs.mkdir(path.join(root, 'ui'));
+    await fs.mkdir(path.join(root, 'api'));
+    await fs.writeFile(
+      path.join(root, '.comet/check-policy.json'),
+      JSON.stringify({
+        version: 2,
+        commands: [{ argv: [process.execPath, '-e', 'process.exit(0)'], cwd: 'ui' }],
+      }),
+    );
+    const check = await cli(
+      'check',
+      'run',
+      'demo',
+      'verify',
+      '--local',
+      '--cwd',
+      'api',
+      '--json',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    );
+    expect(check.exitCode, check.stderr).toBe(0);
+    const guard = await cli('guard', 'demo', 'verify');
+    expect(guard.exitCode).not.toBe(0);
+    const text = `${guard.stdout ?? ''}${guard.stderr ?? ''}`;
+    expect(text).toContain("ran in 'api'");
+    expect(text).toContain("declare this command with cwd 'api'");
+  });
+
   it('requires a full rerun when recovering incremental evidence', async () => {
     await readyVerify();
     await cli(

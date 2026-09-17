@@ -25,6 +25,7 @@ import {
   type CommandCheckScope,
   type RecordedCommandCheck,
 } from './classic-command-checks.js';
+import { readCheckPolicy } from './classic-check-policy.js';
 import { inspectClassicChange } from './classic-diagnostics.js';
 import { assertClassicLayoutWritable, classicProjectRelative } from './classic-layout.js';
 import {
@@ -456,6 +457,15 @@ function recoveryCommand(change: string, scope: CommandCheckScope, command: stri
   return `comet check run ${change} ${scope} --local -- ${command}`;
 }
 
+async function guardEvidenceCwd(root: string, record: RecordedCommandCheck): Promise<string> {
+  // A v2 policy entry matching the recorded command declares where its
+  // evidence belongs; every other command's evidence must come from the
+  // guard's invocation directory.
+  const policy = await readCheckPolicy(root, { argv: record.argv, cwd: record.cwd });
+  if (policy.declaredCwd) return path.resolve(root, policy.declaredCwd);
+  return classicCommandInvocationCwd();
+}
+
 async function commandCheckPasses(
   changeDir: string,
   change: string,
@@ -473,10 +483,17 @@ async function commandCheckPasses(
     }
   }
   const root = classicCommandProjectRoot();
+  const invocationDir = path.relative(root, classicCommandInvocationCwd()) || '.';
   const evaluation = await evaluateCommandCheck(root, changeDir, run, scope);
   let recorded = evaluation.record;
-  if (recorded && path.resolve(root, recorded.cwd) !== path.resolve(classicCommandInvocationCwd()))
-    recorded = null;
+  let cwdMismatched: RecordedCommandCheck | null = null;
+  if (recorded) {
+    const requiredCwd = await guardEvidenceCwd(root, recorded);
+    if (path.resolve(root, recorded.cwd) !== path.resolve(requiredCwd)) {
+      cwdMismatched = recorded;
+      recorded = null;
+    }
+  }
   const inferred = scope === 'build' && !recorded ? await inferredBuildCommand() : null;
   if (inferred) {
     // Only this fixed, Runtime-inferred command is shell syntax. Attestations
@@ -484,7 +501,7 @@ async function commandCheckPasses(
     recorded = await executeCommandCheck(root, changeDir, run, {
       scope,
       reusable: true,
-      cwd: path.relative(root, classicCommandInvocationCwd()) || '.',
+      cwd: invocationDir,
       argv:
         process.platform === 'win32'
           ? [process.env.ComSpec || 'cmd.exe', '/d', '/s', '/c', inferred]
@@ -504,6 +521,17 @@ async function commandCheckPasses(
       return {
         status: previous.exitCode,
         output: `Latest recorded ${scope} check failed with exit code ${previous.exitCode}.\n${evidenceDetail(previous)}\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`,
+      };
+    if (cwdMismatched)
+      return {
+        status: 1,
+        output: [
+          `No current Runtime ${scope} evidence from this directory.`,
+          evidenceDetail(cwdMismatched),
+          `Why: the recorded check is valid but ran in '${cwdMismatched.cwd}'; check evidence is reused only when its cwd matches the guard's invocation directory '${invocationDir}' or a matching check-policy entry.`,
+          `Rerun the command in a form that executes from '${invocationDir}' (for example npm --prefix <subdir> run build for a subdirectory build) and record it again, or declare this command with cwd '${cwdMismatched.cwd}' in .comet/check-policy.json (version 2) to bind subdirectory evidence.`,
+          `Next: ${recoveryCommand(change, scope, '<program> [args...]')}`,
+        ].join('\n'),
       };
     const invalidation = invalidationDetail(evaluation);
     return {
@@ -1114,16 +1142,19 @@ async function applyStateUpdateLocked(
       phase,
     );
     const record = evaluation.record;
-    if (
-      !record ||
-      record.tier === 'incremental' ||
-      path.resolve(classicCommandProjectRoot(), record.cwd) !==
-        path.resolve(classicCommandInvocationCwd())
-    )
+    const cwdMismatched = record
+      ? path.resolve(classicCommandProjectRoot(), record.cwd) !==
+        path.resolve(await guardEvidenceCwd(classicCommandProjectRoot(), record))
+      : false;
+    if (!record || record.tier === 'incremental' || cwdMismatched)
       throw new GuardFailure(
         record?.tier === 'incremental'
           ? 'Incremental check evidence cannot advance the phase; rerun the full command before --apply.'
-          : 'Check evidence changed before transition; rerun the check.',
+          : cwdMismatched
+            ? `Check evidence ran in '${record.cwd}', not the guard's invocation directory '${
+                path.relative(classicCommandProjectRoot(), classicCommandInvocationCwd()) || '.'
+              }'; rerun the check from the invocation directory, or declare its cwd in .comet/check-policy.json (version 2), before --apply.`
+            : 'Check evidence changed before transition; rerun the check.',
       );
   }
   const result = applyClassicTransition(context.classic, event);

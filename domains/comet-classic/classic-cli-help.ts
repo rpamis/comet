@@ -25,6 +25,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'Use --local only when no network, external state or untracked ignored inputs affect the result.',
       'Default evidence is single-use; reusable evidence requires matching inputs, environment and log.',
       '--cwd: relative to the project root; default is the invocation directory; must stay inside the project.',
+      'Guard reuses evidence only when its cwd matches the guard invocation directory, or the command is declared with that cwd in a v2 check policy.',
       '--timeout-ms: default 300000; integer range 1..3600000.',
       'Place Comet options, including --json, before --. Child --help and --json after -- are forwarded.',
       '',

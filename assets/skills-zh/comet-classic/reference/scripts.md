@@ -96,6 +96,8 @@ comet check run <change-name> verify --local --incremental -- <program> [args...
 
 省略的字段保持默认：`git` 默认 `none`（不绑定 HEAD 和 index），`env` 默认不绑定任何变量，`taskCheckboxes` 默认 `ignore`（勾选任务不作废证据，任务文本变化仍会作废）。构建产物包含 commit SHA 时声明 `git: "all"`；结果依赖某个环境变量时在 `env` 中列出它的名字；勾选状态本身影响检查结果时声明 `taskCheckboxes: "include"`。旧的 v1 单命令格式继续有效，按原语义解析。
 
+条目的 `cwd` 同时声明该命令证据所属的目录。守卫默认只复用与自身调用目录一致的证据；v2 条目匹配的命令，其证据可以来自条目声明的 `cwd`。构建或验证入口在子目录时，按实际执行形式声明（例如 `{ "argv": ["npm", "run", "build"], "cwd": "ui/frontend" }`），再用 `--cwd ui/frontend` 记录，从项目根调用守卫即可复用；未声明的命令仍要求证据来自守卫的调用目录。
+
 ## 解析下一步
 
 阶段守卫更新 phase 后，按 auto-transition.md 优先使用成功 JSON 中的 `agent.continuation`。下一阶段可以直接使用这里返回的状态信息，不重复 next、select 或 check。只有恢复会话时缺少上下文、发生外部变化，或旧结果缺少这些信息时，才运行：
