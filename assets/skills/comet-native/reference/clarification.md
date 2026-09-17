@@ -16,7 +16,7 @@ Ask only when ambiguity materially changes user-visible outcomes and cannot be r
 - **Recommendation**: the preferred option and why.
 - **Impact**: the actual effect of each option on the result.
 
-When a file, attachment, link, or local path is a requirements source, first follow [source-document full coverage](artifacts.md#source-document-full-coverage). Save complete source requirements and coverage status in the brief before asking about ambiguities, omissions, or unstated constraints. Material used only for debugging, evidence gathering, review, or implementation reference does not trigger this automatically; clarify an unclear purpose first.
+When a file, attachment, link, or local path is a requirements source, first follow [source-document full coverage](artifacts.md#source-document-full-coverage). Save the user-defined coverage boundary, complete in-boundary source requirements, and coverage status in the brief before asking about ambiguities, omissions, or unstated constraints. Material used only for debugging, evidence gathering, review, or implementation reference does not trigger this automatically; clarify an unclear purpose first.
 
 ### Unresolved questions and dependencies
 
@@ -77,7 +77,7 @@ In either mode, if no questions are ready, continue investigating unresolved fac
 
 ### Final confirmation
 
-Before final confirmation of a large request, assess [Supervisor decomposition and confirmation](#supervisor-decomposition-and-confirmation). Length and item count alone do not require decomposition. When requirements sources exist, check every current source item under [source-document full coverage](artifacts.md#source-document-full-coverage), including additions, replacements, Spec locations, and acceptance IDs.
+Before final confirmation of a large request, assess [Supervisor decomposition and confirmation](#supervisor-decomposition-and-confirmation). Length and item count alone do not require decomposition. When requirements sources exist, check every source item within the current coverage boundary under [source-document full coverage](artifacts.md#source-document-full-coverage), including additions, replacements, Spec locations, and acceptance IDs.
 
 Completion requires every outcome-affecting decision to be confirmed, relevant facts and implicit assumptions to be checked, no `[blocking]` in the brief, and specific, verifiable, nonduplicative acceptance items. Then:
 

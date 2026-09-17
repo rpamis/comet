@@ -41,7 +41,7 @@ Read the section for the current action. Follow links within it only when their 
 
 Investigate facts that can be established without the user. Ask only about decisions that change user-visible outcomes and cannot be inferred reliably. For simple requests, list unresolved questions and dependencies; maintain a decision tree only when several decisions affect one another. Before asking under `native.clarification_mode`, save this round's unresolved questions in the brief. Immediately copy confirmed conclusions into Decisions, the brief, and complete target Specs. Keep unanswered parts `[blocking]`.
 
-Complete when requirements sources have been fully covered according to their purpose, all outcome-affecting decisions and assumptions are resolved, no `[blocking]` remains, the user explicitly confirms the outcome, scope, key decisions, all acceptance items, and non-goals, and Runtime has entered Build.
+Complete when requirements sources are fully processed within the coverage boundary and classified by purpose, all outcome-affecting decisions and assumptions are resolved, no `[blocking]` remains, the user explicitly confirms the outcome, scope, key decisions, all acceptance items, and non-goals, and Runtime has entered Build.
 
 At a new or reconfirmed Shape, Runtime checks all eight brief sections, a complete target Spec or an explicit no-product-behavior-change reason, and formal paths. Failures name the artifact and repair action; edit it and rerun continuation. Later-phase existing changes keep their progress until Shape.
 
