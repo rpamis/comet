@@ -237,41 +237,46 @@ export async function collectCheckSnapshot(
       await tree(absolute);
       return;
     }
-    const bytes = await readClassicProjectBytes(root, absolute, {
-      label: 'Classic check input',
-      maxBytes: 64 * 1024 * 1024,
-    });
-    let bound = bytes;
-    if (policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md')) {
-      // A malformed tasks.md cannot produce task requirements; binding the raw
-      // bytes keeps the fingerprint conservative (any change invalidates)
-      // instead of failing the whole snapshot.
-      try {
-        bound = Buffer.from(classicTaskRequirements(bytes.toString('utf8')), 'utf8');
-      } catch {
-        bound = bytes;
-      }
-    }
-    hash.update(bound);
     const cacheKey = `${relative}|${stat.size}|${stat.mtimeNs}|${stat.mode}`;
-    let contentHash = contentCache.get(cacheKey);
-    if (!contentHash) {
-      const recorded = baseline?.get(relative);
-      if (
-        recorded &&
-        recorded.h !== 'missing' &&
-        recorded.s === Number(stat.size) &&
-        recorded.m === stat.mtimeNs.toString()
-      ) {
-        contentHash = recorded.h;
-      } else {
-        contentHash = createHash('sha256').update(bound).digest('hex');
+    // An unchanged stat identity proves the content matches the baseline entry,
+    // so the file is not reread. This is the same assumption the manifest
+    // revalidation already relies on; legacy digests keep binding raw bytes and
+    // therefore never take this path.
+    const recorded = baseline?.get(relative) ?? null;
+    const baselineHit =
+      !legacy &&
+      recorded !== null &&
+      recorded.h !== 'missing' &&
+      recorded.s === Number(stat.size) &&
+      recorded.m === stat.mtimeNs.toString();
+    let contentHash = legacy ? undefined : contentCache.get(cacheKey);
+    if (contentHash === undefined && baselineHit) contentHash = recorded.h;
+    if (contentHash === undefined) {
+      const bytes = await readClassicProjectBytes(root, absolute, {
+        label: 'Classic check input',
+        maxBytes: 64 * 1024 * 1024,
+      });
+      let bound: Buffer = bytes;
+      if (policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md')) {
+        // A malformed tasks.md cannot produce task requirements; binding the raw
+        // bytes keeps the fingerprint conservative (any change invalidates)
+        // instead of failing the whole snapshot.
+        try {
+          bound = Buffer.from(classicTaskRequirements(bytes.toString('utf8')), 'utf8');
+        } catch {
+          bound = bytes;
+        }
       }
+      if (legacy) hash.update(bound);
+      else contentHash = createHash('sha256').update(bound).digest('hex');
+    }
+    if (contentHash !== undefined) {
       contentCache.set(cacheKey, contentHash);
+      if (!legacy) hash.update(contentHash);
     }
     entries.push({
       p: relative,
-      h: contentHash,
+      h: contentHash as string,
       s: Number(stat.size),
       m: stat.mtimeNs.toString(),
     });

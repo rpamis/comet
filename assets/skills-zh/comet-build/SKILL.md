@@ -185,7 +185,18 @@ comet check run <change-name> build --local -- <program> [args...]
 
 Guard 先检查配置、任务和产物，再复用输入与环境相同的 Runtime 检查结果；没有有效结果时，才运行自动识别出的构建命令。证据的 cwd 必须与之后调用 guard 的目录一致（通常是项目根）；构建入口在子目录时，用从项目根可执行的形式记录（例如 `npm --prefix <subdir> run build`），或在 `.comet/check-policy.json`（v2）中声明该命令的 cwd 后用 `--cwd <subdir>` 记录（见 `comet-classic/reference/scripts.md`）。证据按"输入面"判定：默认输入是工作区文件内容，源文件、测试、相关配置、依赖或子模块内容变化后必须重跑相关检查；commit、暂存、勾选任务和环境变量变化默认不作废证据，需要绑定时通过 `.comet/check-policy.json` 声明（见 `comet-classic/reference/scripts.md`）。阶段内的小改动可以先用 `--incremental` 跑增量命令（如只跑相关测试）维持证据，guard `--apply` 推进阶段前仍要求完整命令的 full 证据。guard 报告证据失效时会给出原因和变化文件清单，按清单处理，不要凭猜测全量重跑。丢失上下文后恢复任务时，重新校验可复用的本地结果，只重跑已失效或只能使用一次的检查。执行期间输入发生变化的结果不得复用。预检不会用掉一次性结果；只有阶段转换成功后，该结果才不能再次使用。失败日志保存在 `logRef`，按需读取。
 
-`state record-check --command` 仍只保存手工声明，Comet **绝不会执行该文本**，也不能据此自动推进。build 与 verify 证据彼此独立：Verify 可引用已验证的同一构建结果，但构建通过不替代测试和验收场景。`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据。
+`state record-check --command` 仍只保存手工声明，Comet **绝不会执行该文本**，也不能据此自动推进。手动声明还会成为该 scope 的最新记录，遮蔽之前仍然有效的 Runtime 证据，guard 会拒绝并要求重新 `comet check run`；没有恢复旧证据的方法，只能在树静止时重跑一条 check run。build 与 verify 证据彼此独立：Verify 可引用已验证的同一构建结果，但构建通过不替代测试和验收场景。`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据。
+
+构建命令自动识别覆盖三种来源：调用目录的 package.json build script、pom.xml、Cargo.toml；monorepo 根没有 build script 时，会探测 workspace 子包（package.json `workspaces` 或 `pnpm-workspace.yaml` 声明的一层目录），恰好一个子包有 build script 时自动执行 `npm --prefix <子包> run build`，多个子包时 guard 不代用户选择，会列出候选并给出可复制的录制命令。
+
+**证据录制纪律**（按此顺序操作，避免重复执行）：
+
+1. 构建和测试先直接运行并跑绿，不要在中间穿插任何 `comet state` 写入；
+2. 树静止后连续执行所需的 `comet check run`（build 与 verify 各一条，一条 shell 调用里依次运行），立即运行 `comet guard <change-name> build --apply`；
+3. 中间不要插入 `state set`、`record-check` 或其他状态写入——`phase` 变化会作废全部检查证据，手动 `record-check` 会遮蔽 Runtime 证据；
+4. 提交一律放在 guard 通过之后，勾选 task 用 `task-complete`，避免普通文本编辑改变 tasks.md 输入面。
+
+多条只读 comet 命令（如 `state get`、`state next`、`status`）合并成一条 shell 调用依次执行，减少每条命令的进程启动开销。
 
 退出前运行阶段守卫推进 phase（此步骤与 `auto_transition` 无关）：
 

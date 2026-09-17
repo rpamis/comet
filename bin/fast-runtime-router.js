@@ -53,6 +53,14 @@ export function resolveFastRuntime(argv) {
     };
   }
 
+  if (group === 'task') {
+    return {
+      assetPath: 'dist/app/commands/task-facade.js',
+      args: argv.slice(1),
+      taskFacade: true,
+    };
+  }
+
   if (group === 'native' && command && NATIVE_COMMANDS.has(command)) {
     return {
       assetPath: `assets/skills/comet-native/scripts/comet-native-${command}.mjs`,
@@ -92,6 +100,10 @@ export async function tryRunFastRuntime(argv = process.argv.slice(2)) {
   if (route.configuredEntry) {
     const { tryRunConfiguredCometEntryRuntime } = await import(runtimeUrl.href);
     return await tryRunConfiguredCometEntryRuntime(route.args);
+  }
+  if (route.taskFacade) {
+    const { runTaskFacade } = await import(runtimeUrl.href);
+    return await runTaskFacade(route.args);
   }
 
   process.argv = [process.execPath, runtimePath, ...route.args];

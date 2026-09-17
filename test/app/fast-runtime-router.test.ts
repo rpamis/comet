@@ -32,6 +32,11 @@ describe('CLI fast runtime router', () => {
         args: ['--project-root', 'project', '--json'],
       },
     );
+    expect(resolveFastRuntime(['task', '--task', 'repair the build', '--json'])).toEqual({
+      assetPath: 'dist/app/commands/task-facade.js',
+      taskFacade: true,
+      args: ['--task', 'repair the build', '--json'],
+    });
   });
 
   it('preserves the command tail without parsing it', () => {

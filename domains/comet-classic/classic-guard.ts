@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { promises as fs } from 'fs';
 import { inspectClassicAutonomousBuildProblems } from './classic-plan-readiness.js';
 import { classicIssue, type ClassicIssue } from './classic-issues.js';
 import { classicRecoveryContext } from './classic-recovery.js';
@@ -398,7 +399,7 @@ interface CommandRun {
 }
 
 const INFERRED_COMMAND_SOURCES = [
-  'package.json with a build script',
+  'package.json with a build script (invocation root, or a single workspace package when the root has none)',
   'pom.xml',
   'Cargo.toml',
 ] as const;
@@ -429,7 +430,67 @@ function invocationTarget(relative: string): string {
   return path.resolve(classicCommandInvocationCwd(), relative);
 }
 
-async function inferredBuildCommand(): Promise<string | null> {
+/**
+ * Expands one workspace pattern level (`packages/*`, `apps/*`); deeper globs
+ * are left unexpanded so pathological repositories stay cheap to probe.
+ */
+function workspaceGlobDirectories(pattern: string): { prefix: string; wildcard: boolean } | null {
+  const normalized = pattern.replaceAll('\\', '/').replace(/\/+$/u, '');
+  const match = /^(.+\/)?\*(?:\/\*\*)?$/u.exec(normalized);
+  if (match) return { prefix: match[1] ?? '', wildcard: true };
+  if (normalized.includes('*')) return null;
+  return { prefix: normalized, wildcard: false };
+}
+
+const WORKSPACE_PACKAGE_LIMIT = 32;
+
+async function workspacePackageDirectories(rootWorkspaces: unknown): Promise<string[]> {
+  const listed = Array.isArray(rootWorkspaces)
+    ? rootWorkspaces
+    : rootWorkspaces &&
+        typeof rootWorkspaces === 'object' &&
+        Array.isArray((rootWorkspaces as { packages?: unknown }).packages)
+      ? (rootWorkspaces as { packages: unknown[] }).packages
+      : [];
+  const patterns = listed.filter((entry): entry is string => typeof entry === 'string');
+  const pnpmWorkspace = invocationTarget('pnpm-workspace.yaml');
+  if (await exists(pnpmWorkspace)) {
+    try {
+      const document = parseDocument(
+        await readClassicProjectFile(classicCommandProjectRoot(), pnpmWorkspace, {
+          label: 'pnpm-workspace.yaml',
+        }),
+      );
+      const packages = document.get('packages');
+      if (Array.isArray(packages))
+        for (const entry of packages) if (typeof entry === 'string') patterns.push(entry);
+    } catch {
+      // An unreadable workspace file must not break build detection.
+    }
+  }
+  const directories = new Set<string>();
+  for (const pattern of patterns) {
+    const parsed = workspaceGlobDirectories(pattern);
+    if (!parsed) continue;
+    if (!parsed.wildcard) {
+      directories.add(parsed.prefix);
+      continue;
+    }
+    const base = parsed.prefix ? invocationTarget(parsed.prefix) : classicCommandInvocationCwd();
+    let entries: import('fs').Dirent[];
+    try {
+      entries = await fs.readdir(base, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries.slice(0, WORKSPACE_PACKAGE_LIMIT))
+      if (entry.isDirectory()) directories.add(`${parsed.prefix}${entry.name}`);
+    if (directories.size >= WORKSPACE_PACKAGE_LIMIT) break;
+  }
+  return [...directories].sort();
+}
+
+async function inferredBuildCommand(): Promise<string | { ambiguous: string[] } | null> {
   const packageJson = invocationTarget('package.json');
   if (await exists(packageJson)) {
     const parsed = JSON.parse(
@@ -438,8 +499,34 @@ async function inferredBuildCommand(): Promise<string | null> {
       }),
     ) as {
       scripts?: Record<string, unknown>;
+      workspaces?: unknown;
     };
     if (typeof parsed.scripts?.build === 'string') return 'npm run build';
+    // A monorepo root without its own build script falls back to workspace
+    // packages; exactly one candidate auto-runs like a root script, several
+    // candidates stay explicit because choosing for the user would be a guess.
+    const candidates: string[] = [];
+    for (const directory of await workspacePackageDirectories(parsed.workspaces)) {
+      const subPackage = invocationTarget(path.posix.join(directory, 'package.json'));
+      if (!(await exists(subPackage))) continue;
+      try {
+        const sub = JSON.parse(
+          await readClassicProjectFile(classicCommandProjectRoot(), subPackage, {
+            label: `package.json (${directory})`,
+          }),
+        ) as {
+          scripts?: Record<string, unknown>;
+        };
+        if (typeof sub.scripts?.build === 'string') candidates.push(directory);
+      } catch {
+        continue;
+      }
+    }
+    if (candidates.length === 1) {
+      const directory = candidates[0].includes(' ') ? `"${candidates[0]}"` : candidates[0];
+      return `npm --prefix ${directory} run build`;
+    }
+    if (candidates.length > 1) return { ambiguous: candidates };
   }
   if (await exists(invocationTarget('pom.xml'))) {
     if (process.platform === 'win32') {
@@ -502,7 +589,7 @@ async function commandCheckPasses(
     }
   }
   const inferred = scope === 'build' && !recorded ? await inferredBuildCommand() : null;
-  if (inferred) {
+  if (inferred !== null && typeof inferred !== 'object') {
     // Only this fixed, Runtime-inferred command is shell syntax. Attestations
     // and check-run argv never enter this path.
     recorded = await executeCommandCheck(root, changeDir, run, {
@@ -529,12 +616,34 @@ async function commandCheckPasses(
       output: `${evidenceDetail(recorded)} (guard auto-ran the detected command '${inferred}' in '${invocationDir}')`,
     };
   }
+  if (inferred !== null && typeof inferred === 'object') {
+    const example = inferred.ambiguous[0].includes(' ')
+      ? `"${inferred.ambiguous[0]}"`
+      : inferred.ambiguous[0];
+    return {
+      status: 1,
+      output: [
+        `The invocation root has no build script, and several workspace packages declare one: ${inferred.ambiguous.join(', ')}.`,
+        'Guard auto-runs a build only when exactly one candidate exists.',
+        `Next: record the intended build explicitly, for example:\n${recoveryCommand(change, scope, `npm --prefix ${example} run build`)}`,
+      ].join('\n'),
+    };
+  }
   if (!recorded) {
     const previous = await latestCommandCheck(root, changeDir, run, scope);
     if (previous && previous.exitCode !== 0)
       return {
         status: previous.exitCode,
-        output: `Latest recorded ${scope} check failed with exit code ${previous.exitCode}.\n${evidenceDetail(previous)}\nNext: ${recoveryCommand(change, scope, '<program> [args...]')}`,
+        output: `Latest recorded ${scope} check failed with exit code ${previous.exitCode}.\n${evidenceDetail(previous)}\nNext: ${recoveryCommand(change, scope, previous.command)}`,
+      };
+    if (previous && previous.provenance !== 'runtime')
+      return {
+        status: 1,
+        output: [
+          `Latest ${scope} record is a manual record-check declaration (recorded ${previous.timestamp}, command: ${previous.command}).`,
+          'Manual declarations never satisfy the guard, and they shadow the earlier runtime evidence until a new runtime check runs.',
+          `Next: ${recoveryCommand(change, scope, '<program> [args...]')}`,
+        ].join('\n'),
       };
     if (cwdMismatched)
       return {

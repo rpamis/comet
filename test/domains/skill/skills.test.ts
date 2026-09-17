@@ -3241,7 +3241,7 @@ describe('skills', () => {
       expect
         .soft(enVerify)
         .toContain(
-          'Manual `record-check` only stores a declaration and cannot automatically advance the phase',
+          'Manual `record-check` only stores a declaration, cannot automatically advance the phase, and shadows earlier valid Runtime evidence',
         );
       expect(enBuild).toContain('Build and Verify evidence are separate');
       expect

@@ -13,6 +13,7 @@ import {
 } from '../../../domains/comet-classic/classic-command-checks.js';
 import {
   checkEnvironmentFingerprint,
+  collectCheckSnapshot,
   legacyCheckInputFingerprint,
 } from '../../../domains/comet-classic/classic-check-snapshot.js';
 import { readCheckPolicy } from '../../../domains/comet-classic/classic-check-policy.js';
@@ -343,5 +344,50 @@ describe('Classic command check evidence', () => {
     expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
     await fs.rm(manifestPath);
     expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
+  });
+
+  it('keeps the digest identical when every baseline entry hits', async () => {
+    await fs.writeFile(path.join(projectRoot, 'input.txt'), 'stable');
+    const identity = { argv: [process.execPath, '-e', 'process.exit(0)'], cwd: '.' };
+    const plain = await collectCheckSnapshot(projectRoot, changeDir, identity);
+    const withBaseline = await collectCheckSnapshot(projectRoot, changeDir, identity, {
+      baseline: plain.entries,
+    });
+    expect(withBaseline.digest).toBe(plain.digest);
+    expect(withBaseline.entries).toEqual(plain.entries);
+  });
+
+  it('still detects changed content through a stale baseline', async () => {
+    const input = path.join(projectRoot, 'input.txt');
+    await fs.writeFile(input, 'v1');
+    const identity = { argv: [process.execPath, '-e', 'process.exit(0)'], cwd: '.' };
+    const before = await collectCheckSnapshot(projectRoot, changeDir, identity);
+    await fs.writeFile(input, 'v2');
+    const after = await collectCheckSnapshot(projectRoot, changeDir, identity, {
+      baseline: before.entries,
+    });
+    expect(after.digest).not.toBe(before.digest);
+  });
+
+  it('reruns read only what changed since the previous manifest', async () => {
+    const input = path.join(projectRoot, 'input.txt');
+    await fs.writeFile(input, 'v1');
+    const first = await executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'build',
+      argv: [process.execPath, '-e', 'process.exit(0)'],
+      reusable: true,
+    });
+    expect(first.reusable).toBe(true);
+    await fs.writeFile(input, 'v2');
+    const second = await executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'build',
+      argv: [process.execPath, '-e', 'process.exit(0)'],
+      reusable: true,
+    });
+    expect(second.reused).toBeUndefined();
+    expect(second.reusable).toBe(true);
+    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toMatchObject({
+      sequence: second.sequence,
+    });
   });
 });

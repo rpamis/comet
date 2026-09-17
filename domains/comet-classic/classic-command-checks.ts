@@ -296,8 +296,10 @@ export async function executeCommandCheck(
   const realRoot = await fs.realpath(root);
   normalizedCwd(realRoot, await fs.realpath(path.resolve(root, cwd)));
   const tier: 'full' | 'incremental' = input.tier === 'incremental' ? 'incremental' : 'full';
+  // Read the previous record before writing the started event: once it exists,
+  // the started event hides every earlier record for this scope.
+  const previous = await latestCommandCheck(root, changeDir, run, input.scope);
   if (input.reusable) {
-    const previous = await latestCommandCheck(root, changeDir, run, input.scope);
     if (
       previous &&
       previous.reusable &&
@@ -315,7 +317,18 @@ export async function executeCommandCheck(
   const checkEpoch =
     (await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0;
   const identity = { argv: input.argv, cwd };
-  const inputBefore = (await collectCheckSnapshot(root, changeDir, identity)).digest;
+  // The previous execution's manifest lets unchanged files skip rereading, so a
+  // rerun only reads what actually changed since the last recorded check.
+  const previousManifest = previous?.manifestRef
+    ? await recordManifestEntries(root, previous).catch(() => null)
+    : null;
+  const before = await collectCheckSnapshot(
+    root,
+    changeDir,
+    identity,
+    previousManifest ? { baseline: previousManifest } : {},
+  );
+  const inputBefore = before.digest;
   const environment = await checkEnvironmentFingerprint(
     input.argv,
     path.resolve(root, cwd),
@@ -349,7 +362,9 @@ export async function executeCommandCheck(
       });
     });
   });
-  const after = await collectCheckSnapshot(root, changeDir, identity).catch(() => null);
+  const after = await collectCheckSnapshot(root, changeDir, identity, {
+    baseline: before.entries,
+  }).catch(() => null);
   let inputAfter = after ? after.digest : 'unavailable';
   let manifestRef: string | undefined;
   let manifestHash: string | undefined;
@@ -459,7 +474,10 @@ export async function evaluateCommandCheck(
       reason: (await interruptedCommandCheckReason(changeDir, run, scope)) ?? undefined,
     };
   if (record.provenance !== 'runtime')
-    return fail('the latest record was not produced by the runtime');
+    return fail(
+      'the latest record is a manual record-check declaration from ' +
+        `${record.timestamp}; manual declarations never satisfy the guard and shadow any earlier runtime record`,
+    );
   if (record.exitCode !== 0) return fail(`the last check failed with exit code ${record.exitCode}`);
   if (!Array.isArray(record.argv) || !record.argv.length || !record.inputBefore)
     return fail('the latest record is incomplete');
