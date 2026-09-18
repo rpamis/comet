@@ -30,7 +30,15 @@ comet state check <change-name> <phase> --recover --details --json
 
 ## Ambient Resume
 
-用户未明确调用 Classic，但仓库可能存在未归档的 change 时，按 scripts.md 将当前请求通过 stdin 传给 `comet resume-probe . --stdin --json`。返回 auto_resume 才自动恢复；返回 ask_user 时向用户提出一个简短问题；返回 out_of_scope/none 时不进入流程。
+用户未明确调用 Classic，但仓库可能存在未归档的 change 时，按 scripts.md 将当前请求通过 stdin 传给 `comet resume-probe . --stdin --json`。返回 auto_resume 才自动恢复；返回 ask_user 时按 `reason` 选择下面的问题和选项提问（遵循 `comet-classic/reference/decision-point.md`，优先使用 AskUserQuestion；选项必须是真实可选的动作，不得问没有选项的"是否继续"）；返回 out_of_scope/none 时不进入流程。
+
+| reason                                      | 问题与选项                                                                                                                  |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 多个 active change 需要点名                 | 单选：列出全部活跃 change 名称与当前 phase，选择继续哪一个；用户也可以直接说明是哪个 change。                             |
+| 未提交改动需要归属                         | 单选：归入当前 change；属于另一个 change（请用户说明名称）；请用户自己说明归属。没有归属信息前不修改、不提交这些改动。       |
+| active change 停在决策点                    | 说明该 change 停在哪个阶段的确认项（按各阶段 skill 的确认清单），选项：恢复该阶段继续处理确认项；用户直接给出决定。         |
+| OpenSpec change 缺少 Comet 状态             | 说明缺失内容，选项：按「入口错误与恢复」为它建立 Comet 状态；用户说明这不是 Comet 需求。                                    |
+| 请求看似与现有 change 无关                  | 单选：恢复现有 change（列出名称与 phase）；本次请求是新的工作（请用户确认走新流程）。                                      |
 
 ## 入口错误与恢复
 

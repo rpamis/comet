@@ -148,7 +148,13 @@ brainstorming 产出设计方案后，**必须按 `comet-classic/reference/decis
 - 测试策略
 - 如有 Spec Patch，列出将回写的 delta spec 变更
 
-用户明确确认后，才继续 Step 2。若用户要求调整，继续 brainstorming 迭代，直到用户确认。
+以单选题给出以下三个选项：
+
+- **确认本设计**：以该设计继续 Step 2
+- **要求调整**：继续 brainstorming 迭代，直到用户确认修改后的方案
+- **暂缓确认**：保留 brainstorming 检查点和方案，不创建最终 Design Doc、不推进阶段，留待后续再确认
+
+用户确认本设计后，才继续 Step 2。若用户要求调整，继续 brainstorming 迭代，直到用户确认。
 
 ### 1d. 保存已确认的设计摘要
 

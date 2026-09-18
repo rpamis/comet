@@ -11,7 +11,7 @@ Classic has five phases: Open → Design → Build → Verify → Archive. OpenS
 
 Before starting or recovering, use `comet-classic/reference/classic-layout.md` to resolve logical artifact paths, and read “CLI Bootstrap” in `comet-classic/reference/scripts.md`. Call the public Comet CLI and use its OpenSpec adapter for OpenSpec commands. Read only the reference sections needed for the current action. Reuse instructions already in context that remain valid; a reference to one section does not require reading the rest of the file.
 
-- When Classic was not explicitly invoked and existing work may need to resume: read Ambient Resume in `comet-classic/reference/context-recovery.md` and follow `comet resume-probe . --stdin --json`. Only `auto_resume` enters automatically; `ask_user` waits for a choice; `out_of_scope`/`none` does not enter.
+- When Classic was not explicitly invoked and existing work may need to resume: read Ambient Resume in `comet-classic/reference/context-recovery.md` and follow `comet resume-probe . --stdin --json`. Only `auto_resume` enters automatically; for `ask_user` ask by `reason` using the Ambient Resume table's question and options; `out_of_scope`/`none` does not enter.
 - When starting a new request or the target change is unclear: read the minimal example and target-selection rules in `comet-classic/reference/intent-frame.md`. List active changes, fill a CometIntentFrame, and run `comet classic intent route --stdin`. The Agent extracts intent fields from evidence; Runtime computes the route. Follow its result without inventing a separate set of prose scoring rules.
 - When the target change is explicit: bind its workspace below. Do not bind early when several active changes exist and none has been selected.
 

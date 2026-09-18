@@ -148,7 +148,13 @@ Present the necessary summary:
 - Test strategy.
 - Any Spec Patch changes to write back to delta specs.
 
-Continue to Step 2 only after explicit confirmation. If the user requests changes, continue brainstorming until they confirm the revised design.
+Offer these three options as a single-choice question:
+
+- **Approve the design**: continue to Step 2 with this design.
+- **Request changes**: continue brainstorming until the user confirms the revised design.
+- **Defer confirmation**: keep the brainstorming checkpoint and design proposal without creating the final Design Doc or advancing; the user confirms in a later invocation.
+
+Continue to Step 2 only after the user approves. If the user requests changes, continue brainstorming until they confirm the revised design.
 
 ### 1d. Save the Confirmed Design Summary
 

@@ -30,7 +30,15 @@ Read only content still missing for the current step. Runtime marks check eviden
 
 ## Ambient Resume
 
-If Classic was not explicitly invoked but the repository may have an active change, follow scripts.md and pass the current request through stdin to `comet resume-probe . --stdin --json`. Resume automatically only for auto_resume. Ask one short question for ask_user. Do not enter the workflow for out_of_scope/none.
+If Classic was not explicitly invoked but the repository may have an active change, follow scripts.md and pass the current request through stdin to `comet resume-probe . --stdin --json`. Resume automatically only for auto_resume. For ask_user, pick the question and options below by `reason` (follow `comet-classic/reference/decision-point.md`, prefer AskUserQuestion, and only ask when the options are real choices — never a bare “continue?” without options). Do not enter the workflow for out_of_scope/none.
+
+| reason                                       | Question and options                                                                                                             |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| multiple active changes require a change name | Single-select: list every active change name with its current phase and ask which one to continue; the user may also name it.     |
+| uncommitted worktree changes require attribution | Single-select: attribute to the current change; attribute to another change (ask which); let the user explain the ownership. Do not modify or commit anything before attribution is known. |
+| active change is at a decision point         | State which phase confirmation the change is waiting on (see that phase Skill's confirmation list). Options: resume that phase and process the pending confirmation; the user gives the decision directly. |
+| OpenSpec change is missing Comet state       | State what is missing. Options: establish Comet state following “Entry Errors and Recovery”; the user declares this is not Comet work. |
+| request looks unrelated to the existing change | Single-select: resume the existing change (name and phase); this request is new work (ask the user to confirm a fresh flow).     |
 
 ## Entry Errors and Recovery
 
