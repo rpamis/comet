@@ -43,7 +43,6 @@ export const NATIVE_EVIDENCE_RETENTION_POLICY = Object.freeze({
   maxReportMessageBytes: 4_096,
 } as const);
 
-const MAX_NATIVE_CHECK_RECEIPT_BYTES = 512 * 1024;
 const HASH_FILE_PATTERN = /^([a-f0-9]{64})\.json$/u;
 const CLEANUP_QUARANTINE_PATTERN =
   /^\.([a-f0-9]{64}\.json)\.([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.gc$/u;
@@ -338,11 +337,12 @@ async function readCanonicalDocument(options: {
   if (!before.isFile() || before.isSymbolicLink()) {
     throw new Error(`Native evidence entry is not a regular file: ${options.ref}`);
   }
+  // Check receipts are runtime-written and bounded by structural budgets (file,
+  // issue, and change counts), so scanning them applies no byte cap; other
+  // evidence documents keep the same write-side budget here.
   const maximumBytes =
-    options.kind === 'check-receipts'
-      ? MAX_NATIVE_CHECK_RECEIPT_BYTES
-      : MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES;
-  if (before.size > maximumBytes) {
+    options.kind === 'check-receipts' ? null : MAX_NATIVE_EVIDENCE_DOCUMENT_BYTES;
+  if (maximumBytes !== null && before.size > maximumBytes) {
     throw new Error(`Native evidence entry exceeds its byte budget: ${options.ref}`);
   }
   const beforeRealPath = await fs.realpath(options.file);
@@ -380,11 +380,11 @@ async function readCanonicalDocument(options: {
     const buffer = Buffer.allocUnsafe(64 * 1024);
     let total = 0;
     while (true) {
-      const remaining = maximumBytes + 1 - total;
+      const remaining = maximumBytes === null ? buffer.length : maximumBytes + 1 - total;
       const read = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
       if (read.bytesRead === 0) break;
       total += read.bytesRead;
-      if (total > maximumBytes) {
+      if (maximumBytes !== null && total > maximumBytes) {
         throw new Error(`Native evidence entry exceeds its byte budget: ${options.ref}`);
       }
       chunks.push(Buffer.from(buffer.subarray(0, read.bytesRead)));

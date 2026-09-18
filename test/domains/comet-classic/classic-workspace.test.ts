@@ -232,13 +232,17 @@ describe('Classic workspace preparation and routing', () => {
     git(root, 'worktree', 'remove', '--force', prepared.projectRoot);
     await seedChange(root, 'config-retry', prepared.changeBranch!);
     const config = path.join(root, 'openspec/config.yaml');
-    await fs.writeFile(config, 'x'.repeat(1024 * 1024 + 1));
+    // Replace the configuration with a directory so the workspace setup read
+    // fails before any copy, forcing the resolution retry path.
+    await fs.rm(config, { force: true });
+    await fs.mkdir(config);
     await expect(
       resolveClassicWorkspace({ projectRoot: root, name: 'config-retry' }),
     ).rejects.toThrow();
     expect(listGitWorktrees(root).some((entry) => entry.branch === prepared.changeBranch)).toBe(
       true,
     );
+    await fs.rm(config, { recursive: true });
     await fs.writeFile(config, 'schema: spec-driven\n');
     const recovered = await resolveClassicWorkspace({ projectRoot: root, name: 'config-retry' });
     expect(recovered.projectRoot).toBe(prepared.projectRoot);

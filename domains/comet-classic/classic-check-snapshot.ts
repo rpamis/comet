@@ -20,7 +20,10 @@ function git(root: string, args: string[]): string | null {
     encoding: 'utf8',
     windowsHide: true,
     timeout: 30_000,
-    maxBuffer: 32 * 1024 * 1024,
+    // The buffer ceiling only guards runaway output; memory grows with the
+    // actual listing, so a high ceiling keeps `ls-files --stage` working for
+    // repositories with hundreds of thousands of tracked files.
+    maxBuffer: 256 * 1024 * 1024,
   });
   return result.status === 0 ? result.stdout : null;
 }

@@ -57,17 +57,23 @@ async function ensureWorkspaceConfig(sourceRoot: string, targetRoot: string): Pr
   });
   let openSpecContent;
   try {
-    openSpecContent = await readProtectedProjectFile(sourceRoot, relativeConfig, 1024 * 1024, {
-      label: 'Classic OpenSpec workspace configuration',
-    });
+    openSpecContent = await readProtectedProjectFile(
+      sourceRoot,
+      relativeConfig,
+      WORKFLOW_PROJECT_CONFIG_MAX_BYTES,
+      { label: 'Classic OpenSpec workspace configuration' },
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
   }
   if (targetConfig.exists) {
-    const targetContent = await readProtectedProjectFile(targetRoot, relativeConfig, 1024 * 1024, {
-      label: 'Classic OpenSpec workspace configuration',
-    });
+    const targetContent = await readProtectedProjectFile(
+      targetRoot,
+      relativeConfig,
+      WORKFLOW_PROJECT_CONFIG_MAX_BYTES,
+      { label: 'Classic OpenSpec workspace configuration' },
+    );
     if (
       openSpecContent.bytes.toString('utf8').replaceAll('\r\n', '\n') !==
       targetContent.bytes.toString('utf8').replaceAll('\r\n', '\n')

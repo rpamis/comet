@@ -5,6 +5,7 @@ import { parseDocument } from 'yaml';
 
 import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
 import { withClassicStateLock } from './classic-store.js';
+import { CLASSIC_PROJECT_FILE_MAX_BYTES } from './classic-protected-path.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 
@@ -139,7 +140,7 @@ export async function healBoundBranch(changeDir: string, branch: string): Promis
 async function healBoundBranchLocked(changeDir: string, branch: string): Promise<void> {
   const file = path.join(changeDir, '.comet.yaml');
   const source = (
-    await readProtectedProjectFile(changeDir, '.comet.yaml', 2 * 1024 * 1024, {
+    await readProtectedProjectFile(changeDir, '.comet.yaml', CLASSIC_PROJECT_FILE_MAX_BYTES, {
       label: 'Classic branch binding',
     })
   ).bytes.toString('utf8');

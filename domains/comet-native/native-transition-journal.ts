@@ -79,7 +79,6 @@ const V2_JOURNAL_KEYS = new Set<string>([
   'revision',
 ]);
 const CURRENT_JOURNAL_KEYS = new Set<string>([...V2_JOURNAL_KEYS, 'operation']);
-export const NATIVE_TRANSITION_JOURNAL_MAX_BYTES = 512 * 1024;
 const REQUIRED_TRANSITION_EVENT_DATA_KEYS = new Set([
   'previousPhase',
   'nextPhase',
@@ -890,7 +889,7 @@ export async function inspectPendingNativeTransitionSchema(
     const snapshot = await readNativeProtectedFile({
       root: storageRoot,
       file,
-      maxBytes: NATIVE_TRANSITION_JOURNAL_MAX_BYTES,
+      maxBytes: null,
       label: `Native transition journal ${name}`,
     });
     return inspectNativeTransitionJournalValue(JSON.parse(snapshot.bytes.toString('utf8')), name);

@@ -160,6 +160,56 @@ describe('Native evidence retention', () => {
     return refs;
   }
 
+  it('scans an oversized multi-batch check receipt without a byte budget failure', async () => {
+    const batchCount = 4_000;
+    const batches = Array.from({ length: batchCount }, () => ({
+      filesSelected: 1,
+      filesScanned: 1,
+      binaryFilesSkipped: 0,
+      bytesScanned: 64,
+      issueCount: 0,
+      recordedIssueCount: 0,
+    }));
+    const ref = await writeNativeCheckReceipt({
+      paths,
+      name: CHANGE,
+      receipt: buildNativeCheckReceipt({
+        change: CHANGE,
+        sourceRevision: 1,
+        status: 'passed',
+        startedAt: '2026-07-01T00:00:01.000Z',
+        endedAt: '2026-07-01T00:00:01.000Z',
+        contract: { expectedHash: HASH_A, beforeHash: HASH_A, afterHash: HASH_A },
+        implementation: {
+          scopeHash: HASH_B,
+          expectedSnapshotHash: HASH_C,
+          beforeSnapshotHash: HASH_C,
+          afterSnapshotHash: HASH_C,
+        },
+        counts: {
+          filesSelected: batchCount,
+          filesScanned: batchCount,
+          binaryFilesSkipped: 0,
+          bytesScanned: batchCount * 64,
+          issueCount: 0,
+          recordedIssueCount: 0,
+          batches,
+        },
+        issues: [],
+        issuesTruncated: false,
+        stale: false,
+        staleReasons: [],
+      }),
+    });
+    const size = (await fs.stat(refFile(paths, ref))).size;
+    expect(size).toBeGreaterThan(512 * 1024);
+
+    const result = await inspectNativeEvidenceRetention({ paths, name: CHANGE, now: NOW });
+    expect(result).not.toContainEqual(
+      expect.objectContaining({ code: 'evidence-retention-unsafe' }),
+    );
+  });
+
   it('keeps doctor read-only by default, prunes only old excess documents, and is idempotent', async () => {
     await writeOldReceipts(NATIVE_EVIDENCE_RETENTION_POLICY.keepLatestUnreferencedPerKind + 11);
     const receiptDirectory = path.join(

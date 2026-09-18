@@ -39,6 +39,7 @@ import {
 import {
   nativeBaselineManifestFile,
   readNativeBaselineManifest,
+  writeNativeBaselineManifest,
 } from '../../../domains/comet-native/native-snapshot.js';
 import {
   NATIVE_CHANGE_SCHEMA,
@@ -247,10 +248,31 @@ describe('Native schema compatibility and journalized migration', () => {
   it('rejects an incomplete migration baseline before changing legacy state', async () => {
     const file = await seedLegacyChange('incomplete-migration-baseline');
     const originalState = await fs.readFile(file, 'utf8');
-    await fs.writeFile(
-      path.join(projectRoot, 'oversized-migration.bin'),
-      Buffer.alloc(5 * 1024 * 1024 + 1, 0x61),
-    );
+    // Seed a stored baseline that records one file-size omission, matching what
+    // a snapshot of a file above the per-file budget would persist; the 1 GiB
+    // default budget makes an on-disk oversized fixture impractical.
+    await writeNativeBaselineManifest(paths, 'incomplete-migration-baseline', {
+      schema: 'comet.native.content-snapshot.v1',
+      origin: 'explicit',
+      createdAt: '2026-07-01T00:00:00.000Z',
+      complete: false,
+      limits: {
+        maxFiles: 10_000,
+        maxFileBytes: 1024 * 1024 * 1024,
+        maxTotalBytes: 1024 * 1024 * 1024,
+        maxManifestBytes: 1024 * 1024 * 1024,
+      },
+      entries: [],
+      omitted: [
+        {
+          path: 'oversized-migration.bin',
+          size: 1024 * 1024 * 1024 + 1,
+          type: 'file',
+          reason: 'file-size',
+        },
+      ],
+      omittedCount: 1,
+    });
 
     await expect(
       migrateNativeChange({ paths, name: 'incomplete-migration-baseline' }),
@@ -263,7 +285,7 @@ describe('Native schema compatibility and journalized migration', () => {
     await expect(fs.readFile(file, 'utf8')).resolves.toBe(originalState);
     await expect(
       readNativeBaselineManifest(paths, 'incomplete-migration-baseline'),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ complete: false, omittedCount: 1 });
     await expect(
       inspectPendingNativeSchemaMigration(paths, 'incomplete-migration-baseline'),
     ).resolves.toMatchObject({ fromSchema: NATIVE_LEGACY_CHANGE_SCHEMA });

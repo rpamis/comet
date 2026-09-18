@@ -20,7 +20,7 @@ export interface ClassicStateEventRecord extends ClassicStateEventInput {
 }
 
 export const CLASSIC_STATE_EVENT_LOG = path.join('.comet', 'state-events.jsonl');
-const CLASSIC_STATE_EVENT_MAX_BYTES = 8 * 1024 * 1024;
+const CLASSIC_STATE_EVENT_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 
 export async function appendClassicStateEvent(
   changeDir: string,

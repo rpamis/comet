@@ -40,7 +40,6 @@ import {
   inspectPendingNativeTransition,
   inspectPendingNativeTransitionSchema,
   inspectNativeTransitionJournalValue,
-  NATIVE_TRANSITION_JOURNAL_MAX_BYTES,
   nativeTransitionJournalFile,
 } from '../../../domains/comet-native/native-transition-journal.js';
 import { appendNativeTrajectoryEvent } from '../../../domains/comet-native/native-trajectory.js';
@@ -172,26 +171,14 @@ describe('Native transition recovery', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('bounds the protected transition journal before JSON parsing', async () => {
-    await expect(
-      advanceNativeChange({
-        paths,
-        name: 'recover-transition',
-        evidence: { summary: 'prepare an oversized journal fixture' },
-        hooks: {
-          afterPrepared: () => {
-            throw new Error('seed oversized transition');
-          },
-        },
-      }),
-    ).rejects.toThrow('seed oversized transition');
+  it('evaluates an oversized transition journal through schema validation, not a byte cap', async () => {
     await fs.writeFile(
       nativeTransitionJournalFile(paths, 'recover-transition'),
-      'x'.repeat(NATIVE_TRANSITION_JOURNAL_MAX_BYTES + 1),
+      'x'.repeat(600 * 1024),
     );
 
     await expect(inspectPendingNativeTransitionSchema(paths, 'recover-transition')).rejects.toThrow(
-      `exceeds ${NATIVE_TRANSITION_JOURNAL_MAX_BYTES} bytes`,
+      'Unexpected token',
     );
   });
 

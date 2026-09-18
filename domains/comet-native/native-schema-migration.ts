@@ -547,7 +547,7 @@ export async function inspectPendingNativeSchemaMigration(
     const source = await readNativeProtectedTextFile({
       root: storageRoot,
       file,
-      maxBytes: 512 * 1024,
+      maxBytes: null,
       label: 'Native schema migration journal',
     });
     return parseMigrationJournal(JSON.parse(source.text), name);
