@@ -23,6 +23,7 @@ import {
 import { readNativeLocalExecution } from './native-local-execution.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import {
+  confirmNativePortableVerifierStart,
   dispatchNativePortableVerifier,
   executeNativePortableCheckPlan,
   retryNativePortableCheckPlan,
@@ -99,6 +100,12 @@ interface RunnerVerifierInput {
   response: NativeVerifierResponse;
 }
 
+interface RunnerVerifierStartedInput {
+  kind: 'verifier-started';
+  candidateId: string;
+  verifierExecutionRef: string;
+}
+
 interface RunnerExecutionErrorInput {
   kind: 'verifier-execution-error';
   summary: string;
@@ -173,6 +180,7 @@ export type NativeRunnerInput =
   | RunnerDispatchInput
   | RunnerRetryChecksInput
   | RunnerVerifierInput
+  | RunnerVerifierStartedInput
   | RunnerExecutionErrorInput
   | RunnerVerifierUnavailableInput
   | RunnerSupervisorBuilderInput
@@ -375,6 +383,21 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
       response: parseNativeVerifierResponse(input.response, '/response'),
     };
   }
+  if (input.kind === 'verifier-started') {
+    exactKeys(
+      input,
+      ['kind', 'candidateId', 'verifierExecutionRef'],
+      'Native Runner started input',
+    );
+    return {
+      kind: 'verifier-started',
+      candidateId: text(input.candidateId, 'Native Runner started candidateId'),
+      verifierExecutionRef: text(
+        input.verifierExecutionRef,
+        'Native Runner started verifierExecutionRef',
+      ),
+    };
+  }
   if (input.kind === 'verifier-execution-error') {
     exactKeys(
       input,
@@ -534,6 +557,7 @@ function isGenericPortableRunnerInput(input: NativeRunnerInput): boolean {
     input.kind === 'dispatch-verifier' ||
     input.kind === 'retry-checks' ||
     input.kind === 'verifier-response' ||
+    input.kind === 'verifier-started' ||
     input.kind === 'verifier-execution-error' ||
     input.kind === 'verifier-unavailable'
   );
@@ -732,6 +756,22 @@ export async function validateNativeRunnerInputBoundary(options: {
       );
     }
     preflightNativeCheckPlans(executionRoot, verifierCheckPlans(options.input));
+    return;
+  }
+  if (options.input.kind === 'verifier-started') {
+    assertPortableVerifierResultBoundary(options.state);
+    const execution = await currentVerifierExecution({
+      paths: options.paths,
+      state: options.state,
+    });
+    if (
+      options.input.candidateId !== options.state.builder_handoff?.candidate_id ||
+      options.input.verifierExecutionRef !== execution.executionId
+    ) {
+      throw new Error(
+        'Native Runner started input is stale for the current candidate or execution',
+      );
+    }
     return;
   }
   if (
@@ -933,6 +973,8 @@ function verifierDispatch(options: {
     runtimeChecks: checks.map((check) => ({ ...check })),
     builderReportedChecks: handoff.checks.map((check) => ({ ...check })),
     builderKnownLimits: handoff.known_limits.map((limit) => ({ ...limit })),
+    startupInstruction:
+      'As this Verifier, submit the startup receipt first: save {"kind":"verifier-started","candidateId":"<candidateId above>","verifierExecutionRef":"<verifierExecutionRef above>"} as a temporary JSON file and run comet native next <change> --runner-input <file> --project-root <projectRoot above>. It only records that this Verifier actually started; a repeat submission is accepted without side effects. Then read the scenarios and proceed.',
     evidenceInstruction:
       'Independently inspect the current candidate against every scenario in scopeIds exactly once. Runtime checks are bound evidence; Builder-reported checks and review are claims to corroborate, not Runtime receipts. Reuse applicable completed evidence, request only missing or invalidated checks, and do not repeat full suites by default. Use one Verifier for this dispatch; keep it running across wait-tool timeouts. Return the actual scoped findings, risks, and incomplete checks without omitting limitations. Keep using the same CLI executable that produced this dispatch; do not switch to a different PATH installation.',
     responseInstruction:
@@ -1275,6 +1317,7 @@ export async function applyNativeRunnerInput(options: {
       input.kind === 'dispatch-verifier' ||
       input.kind === 'retry-checks' ||
       input.kind === 'verifier-response' ||
+      input.kind === 'verifier-started' ||
       input.kind === 'verifier-execution-error' ||
       input.kind === 'verifier-unavailable' ||
       input.kind === 'supervisor-builder-result' ||
@@ -1484,6 +1527,21 @@ export async function applyNativeRunnerInput(options: {
         supervisor: supervisorParentVerification ? supervisor : null,
       }),
       continuation: nativePortableContinuation(state, undefined, { verifierExecutionRef }),
+    };
+  }
+  if (input.kind === 'verifier-started') {
+    const state = await confirmNativePortableVerifierStart({
+      paths: options.paths,
+      name: options.name,
+      candidateId: input.candidateId,
+      verifierExecutionRef: input.verifierExecutionRef,
+    });
+    return {
+      state,
+      checks: [],
+      requestChecks: null,
+      verifierDispatch: null,
+      continuation: nativePortableContinuation(state),
     };
   }
   if (input.kind === 'verifier-execution-error') {

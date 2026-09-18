@@ -37,6 +37,7 @@ export {
   type NativePortableRequestChecksOutcome,
 } from './native-portable-checks.js';
 export {
+  confirmNativePortableVerifierStart,
   confirmNativePortableVerifierUnavailable,
   dispatchNativePortableVerifier,
   ensureNativePortableReport,

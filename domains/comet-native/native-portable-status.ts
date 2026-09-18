@@ -48,6 +48,16 @@ export interface NativePortableStatusProjection {
   localExecution: {
     status: 'available' | 'missing' | 'invalid' | 'stale' | 'not-expected';
     operation: NativeLocalExecutionState['execution'];
+    /**
+     * Present while a dispatched Verifier attempt is awaited. Distinguishes a
+     * registered dispatch from a Verifier that actually contacted Runtime.
+     */
+    verifierStartup?: {
+      attempt: number;
+      registeredAt: string;
+      confirmedAt: string | null;
+      confirmation: 'unconfirmed' | 'confirmed';
+    };
   };
   childSummary?: Record<string, number>;
   readyChildren?: string[];
@@ -184,6 +194,32 @@ function counts(state: NativePortableState): NativePortableAcceptanceCounts {
     (result, entry) => ({ ...result, [entry.result]: result[entry.result] + 1 }),
     { total: state.acceptance.length, passed: 0, failed: 0, blocked: 0, pending: 0 },
   );
+}
+
+function verifierStartupProjection(
+  state: NativePortableState,
+  local: NativeLocalExecutionState | null | undefined,
+): NativePortableStatusProjection['localExecution']['verifierStartup'] {
+  const execution = local?.execution;
+  if (
+    state.phase !== 'verify' ||
+    state.status !== 'active' ||
+    state.loop.next_action !== 'await-verifier-result' ||
+    !execution ||
+    execution.stage !== 'verifying' ||
+    execution.actor !== 'verifier' ||
+    execution.status !== 'running'
+  ) {
+    return undefined;
+  }
+  const confirmedAt = execution.verifierStartedAt ?? null;
+  return {
+    attempt: state.loop.attempt,
+    registeredAt: execution.startedAt,
+    confirmedAt,
+    confirmation:
+      confirmedAt !== null || execution.requestCheckRounds > 0 ? 'confirmed' : 'unconfirmed',
+  };
 }
 
 export function projectNativePortableWorkspace(
@@ -491,10 +527,17 @@ export async function inspectNativePortableStatus(options: {
     verificationResult: runtime.state.verification_result,
     blockers: supervisor ? [] : stateSummary.blockers,
     workspace,
-    localExecution: {
-      status: localExpected ? runtime.localStatus : 'not-expected',
-      operation: runtime.localStatus === 'available' ? (runtime.local?.execution ?? null) : null,
-    },
+    localExecution: (() => {
+      const startup = verifierStartupProjection(
+        runtime.state,
+        runtime.localStatus === 'available' ? runtime.local : null,
+      );
+      return {
+        status: localExpected ? runtime.localStatus : 'not-expected',
+        operation: runtime.localStatus === 'available' ? (runtime.local?.execution ?? null) : null,
+        ...(startup ? { verifierStartup: startup } : {}),
+      };
+    })(),
     ...(children
       ? {
           childSummary: children.children.reduce<Record<string, number>>(

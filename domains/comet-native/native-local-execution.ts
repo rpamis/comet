@@ -73,6 +73,12 @@ function timestampOrNull(value: unknown, label: string): string | null {
   return result;
 }
 
+function timestampValue(value: unknown, label: string): string {
+  const result = stringValue(value, label);
+  if (Number.isNaN(Date.parse(result))) throw new Error(`${label} must be an ISO timestamp`);
+  return result;
+}
+
 function absolutePath(value: unknown, label: string): string {
   const result = stringValue(value, label);
   if (!path.isAbsolute(result)) throw new Error(`${label} must be absolute`);
@@ -224,6 +230,7 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
         'status',
         'startedAt',
         'requestCheckRounds',
+        'verifierStartedAt',
         'ownerPid',
         'ownerIdentity',
       ]),
@@ -257,6 +264,14 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
         executionRoot.requestCheckRounds,
         'Native local execution.requestCheckRounds',
       ),
+      ...(Object.hasOwn(executionRoot, 'verifierStartedAt')
+        ? {
+            verifierStartedAt: timestampValue(
+              executionRoot.verifierStartedAt,
+              'Native local execution.verifierStartedAt',
+            ),
+          }
+        : {}),
       ...(Object.hasOwn(executionRoot, 'ownerPid')
         ? { ownerPid: integerValue(executionRoot.ownerPid, 'Native local execution.ownerPid', 1) }
         : {}),

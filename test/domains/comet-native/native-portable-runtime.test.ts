@@ -190,7 +190,7 @@ describe('Native portable Runtime vertical path', () => {
         name: 'shape-boundary',
         expectedContinuation: { stateVersion: 1, action: 'confirm-shape' },
       }),
-    ).rejects.toThrow('stale for state version 1');
+    ).rejects.toThrow('Native continuation is stale');
 
     await expect(
       confirmNativePortableShapeAtBoundary({

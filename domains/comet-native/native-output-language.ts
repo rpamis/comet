@@ -407,11 +407,23 @@ export function deriveNativeOutputEnvelope(data: unknown): CliOutputEnvelope | u
   }
   const continuation = record.continuation;
   if (isNativeContinuationLike(continuation)) {
-    return envelopeFromNativeContinuation(
+    const locale = nativeContinuationLocale(continuation);
+    const envelope = envelopeFromNativeContinuation(
       continuation,
       acceptanceFromRecord(record),
-      prefixFromRecord(record, nativeContinuationLocale(continuation)),
+      prefixFromRecord(record, locale),
     );
+    if (verifierStartupConfirmation(record) === 'unconfirmed') {
+      return {
+        ...envelope,
+        summary: `${envelope.summary}${phrase(
+          locale,
+          '; the dispatched Verifier has not confirmed startup yet — verify the subagent actually launched before waiting on it',
+          '；已派发的 Verifier 尚未确认启动——先核实子代理确实启动，再继续等待',
+        )}`,
+      };
+    }
+    return envelope;
   }
   if (typeof record.artifactRoot === 'string' && typeof record.nativeRoot === 'string') {
     const locale: CliOutputLocale = record.language === 'zh-CN' ? 'zh-CN' : 'en';
@@ -441,6 +453,16 @@ function acceptanceFromRecord(record: Record<string, unknown>): NativeAcceptance
       return acceptanceCountsFromEntries(stateRecord.acceptance);
   }
   return null;
+}
+
+function verifierStartupConfirmation(record: Record<string, unknown>): unknown {
+  const localExecution = record.localExecution;
+  if (!localExecution || typeof localExecution !== 'object' || Array.isArray(localExecution)) {
+    return undefined;
+  }
+  const startup = (localExecution as Record<string, unknown>).verifierStartup;
+  if (!startup || typeof startup !== 'object' || Array.isArray(startup)) return undefined;
+  return (startup as Record<string, unknown>).confirmation;
 }
 
 function prefixFromRecord(record: Record<string, unknown>, locale: CliOutputLocale): string | null {

@@ -203,6 +203,12 @@ export interface NativeLocalExecutionState {
     status: 'running' | 'completed' | 'interrupted';
     startedAt: string;
     requestCheckRounds: number;
+    /**
+     * First Runtime contact from the dispatched Verifier itself. Absent until
+     * the Verifier reports startup, so a registered attempt stays
+     * distinguishable from one that actually started.
+     */
+    verifierStartedAt?: string;
     /** Host process that owns a running Runtime operation. Optional on legacy overlays. */
     ownerPid?: number;
     /** Process creation identity used to avoid PID reuse. */

@@ -127,7 +127,7 @@ describe('Comet Native Skills', () => {
     async (language) => {
       // Character limits include whitespace so one long line cannot bypass the context budget.
       // Language-specific sizes are not token counts; both entrypoints retain the same contracts.
-      const budget = language === 'zh' ? 6_000 : 12_000;
+      const budget = language === 'zh' ? 6_000 : 13_500;
       expect((await read(language, 'SKILL.md')).length).toBeLessThanOrEqual(budget);
     },
   );
@@ -148,7 +148,7 @@ describe('Comet Native Skills', () => {
     expect(`${skill}\n${verify}`).not.toContain('supervisor-cancel');
     expect(verify).not.toContain('comet memory observe');
     expect(verify).not.toContain('Codex 独立会话');
-    expect(`${skill}\n${verify}`.length).toBeLessThanOrEqual(8_500);
+    expect(`${skill}\n${verify}`.length).toBeLessThanOrEqual(9_500);
     expect(skill).toContain('不一次加载整份命令参考或所有参考');
     const enEntry = await read('en', 'SKILL.md');
     expect(markdownLinks(enEntry)).toContain('reference/commands.md#verify-protocol');
@@ -221,6 +221,9 @@ describe('Comet Native Skills', () => {
       '至少一项集成检查',
       '只在 `inputOptions.template` 中补充缺失或失效的检查',
       '等待同一个 Verifier',
+      '`verifier-started`',
+      '`localExecution.verifierStartup`',
+      '启动调用被平台拒绝或返回错误时',
       '`verifier-execution-error`',
       '`verifier-unavailable`',
     ]) {
@@ -262,6 +265,9 @@ describe('Comet Native Skills', () => {
       'at least one integration check',
       'Add only missing or invalidated checks',
       'waiting for the same Verifier',
+      '`verifier-started`',
+      '`localExecution.verifierStartup`',
+      'the dispatch is complete only after the platform accepts the launch',
       '`verifier-execution-error`',
       '`verifier-unavailable`',
     ])

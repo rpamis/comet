@@ -215,7 +215,9 @@ export async function recoverNativePortableChange(options: {
             action: 'await-user',
             reason: 'execution-active',
             message: externallyOwnedVerifier
-              ? `Native Verifier execution ${execution.executionId} remains owned by its host task; record an explicit Verifier failure before retrying it.`
+              ? execution.verifierStartedAt === undefined && execution.requestCheckRounds === 0
+                ? `Native Verifier execution ${execution.executionId} is registered but never confirmed startup; if the task did not start, record an explicit Verifier failure before retrying it.`
+                : `Native Verifier execution ${execution.executionId} remains owned by its host task; record an explicit Verifier failure before retrying it.`
               : liveness === 'unknown'
                 ? 'The Native Runtime check owner could not be proven to have exited; inspect the overlay or run Doctor with --repair to take over explicitly.'
                 : 'The Native Runtime check operation is still owned by a live process; wait for it to finish before recovering it.',

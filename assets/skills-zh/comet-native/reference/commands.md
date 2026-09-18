@@ -99,13 +99,15 @@ Runtime 要求启动 Verifier（`dispatch-verifier`）时，按以下步骤执�
 1. 最终计划优先随 handoff 的 `verification_checks` 提交，否则填入 `dispatch-verifier` 模板。通过后原样执行预填计划；证据绑定未变时返回 `runtimeCheckExecution.disposition=reused`，否则重新执行。Builder 日志不是正式证据。
 2. 检查中断后，只有最新 `continuation` 返回 `retry-checks` 时，才重试其中指定的可重复检查。断言失败或不允许重复执行的检查，不能当作环境故障自动重跑。
 3. 读取 `verifierDispatch` 中的工作区和检查记录位置、`scopeIds`、`scopeCount`、全部验收项数量、brief/Spec 引用、详情分页参数、可选复核摘要和检查结果。任务包不直接包含全部验收文字，须按分页参数读完 `scopeIds` 对应的验收场景。
-4. 立即使用当前平台的原生能力，启动一个新的只读 Verifier subagent，原样传递工作目录、检查记录位置和 `recoveryContext`（如果存在）。subagent 不可用时，只有用户选择了多会话协作、且平台能管理独立会话，才可以启动与 Builder 分开的独立 Agent 会话。其他情况按命令参考报告 Verifier 不可用，并执行最新 `continuation`。
+4. 立即使用当前平台的原生能力，启动一个新的只读 Verifier subagent，原样传递工作目录、检查记录位置和 `recoveryContext`（如果存在）。启动调用被平台拒绝或返回错误时，立即按 `verifier-execution-error` 处理；只有平台接受了这次启动，派发才算完成。subagent 不可用时，只有用户选择了多会话协作、且平台能管理独立会话，才可以启动与 Builder 分开的独立 Agent 会话。其他情况按命令参考报告 Verifier 不可用，并执行最新 `continuation`。
 
 `dispatch-verifier` 只登记本次验收，并返回任务包和 attempt 标识；它不会启动独立服务或进程，也不需要配置服务地址或回调。Verifier 返回结果时，必须原样带回本次任务包中的 `candidateId` 和 `verifierExecutionRef`。Runtime 会拒绝旧实现版本或旧 Verifier 任务的迟到结果。
 
+等待期间用 `status` 的 `localExecution.verifierStartup` 区分两种状态：`unconfirmed` 表示只有派发记录、Verifier 尚未与 Runtime 联络；`confirmed` 表示 Verifier 已回报启动或已开始补充检查。`unconfirmed` 且子代理无响应时，先核实派发是否成功；回执未到本身不算执行失败，登记错误仍以下文“独立验收与结果”的异常条件为准。
+
 ### 独立验收与结果
 
-Verifier 全程只读。先读取当前 `scopeIds` 对应的验收场景、brief、完整目标 Spec、实际实现和 Runtime 检查结果，再核对检查记录是否对应当前实现版本、工作区和输入，以及是否覆盖当前 scope。只在 `inputOptions.template` 中补充缺失或失效的检查，由 Runtime 执行；Verifier 独立判断 `scopeIds` 中的每个验收项。
+Verifier 全程只读。第一个 Runtime 动作是提交 `verifier-started` 启动回执（`candidateId` 和 `verifierExecutionRef` 原样取自任务包，重复提交无副作用），再读取当前 `scopeIds` 对应的验收场景、brief、完整目标 Spec、实际实现和 Runtime 检查结果，核对检查记录是否对应当前实现版本、工作区和输入，以及是否覆盖当前 scope。只在 `inputOptions.template` 中补充缺失或失效的检查，由 Runtime 执行；Verifier 独立判断 `scopeIds` 中的每个验收项。
 
 Verifier 最后再阅读 Builder 交接，将其作为调查线索。Builder 只提供本轮实现的位置、验收项的编号与引用、检查记录位置、已知限制和相关文件位置；日志正文按需读取。
 

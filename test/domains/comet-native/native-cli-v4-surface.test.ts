@@ -1097,7 +1097,7 @@ Run applicable focused checks.
     );
     expect(staleAcceptResult).toMatchObject({
       exitCode: 65,
-      error: { message: expect.stringContaining('stale for state version') },
+      error: { message: expect.stringContaining('Native continuation is stale') },
     });
     expect(json(await runNativeCli(['show', name, '--json', ...projectArgs()])).data).toMatchObject(
       {
@@ -1312,7 +1312,7 @@ Run applicable focused checks.
     );
     expect(staleRevision).toMatchObject({
       exitCode: 65,
-      error: { message: expect.stringContaining('stale for state version') },
+      error: { message: expect.stringContaining('Native continuation is stale') },
     });
   });
 
