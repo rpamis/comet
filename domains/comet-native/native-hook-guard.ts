@@ -12,6 +12,7 @@ import { nativeChangeDir, readNativeChange } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
+import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
 import { resolveSelectedNativeChange } from './native-selection.js';
 import { NATIVE_DELTA_FILE } from './native-delta-spec.js';
 import { NAME_PATTERN } from './native-portable-storage.js';
@@ -234,7 +235,9 @@ async function inspectPortableWriteTargets(options: {
   const formalTargets: string[] = [];
   const invalidFormalTargets: string[] = [];
   const implementationTargets: string[] = [];
+  const documentTargets: string[] = [];
   const targetDecisions: NativeHookGuardResult[] = [];
+  const documentsRevert = await nativeDocumentWritesRevert(projectRoot);
   let configuredTarget = false;
   let controlTarget = false;
   let externalTarget = false;
@@ -258,6 +261,12 @@ async function inspectPortableWriteTargets(options: {
         ])
       ) {
         configuredTarget = true;
+        continue;
+      }
+      // Documentation edits do not touch the candidate implementation scope,
+      // so they stay neutral instead of invalidating a verified candidate.
+      if (!documentsRevert && isNativeNeutralDocumentWrite(paths, relative)) {
+        documentTargets.push(relative);
         continue;
       }
       implementationTargets.push(relative);
@@ -310,11 +319,14 @@ async function inspectPortableWriteTargets(options: {
     return combineNativeTargetDecisions(targetDecisions)!;
   }
 
-  if (formalTargets.length > 0 && implementationTargets.length > 0) {
+  if (
+    formalTargets.length > 0 &&
+    (implementationTargets.length > 0 || documentTargets.length > 0)
+  ) {
     return {
       allowed: false,
       reason:
-        'Formal Native requirements and implementation files must be edited in separate actions',
+        'Formal Native requirements must be edited in separate actions from implementation or documentation files',
       workflow: 'native',
       phase: state.phase,
       change: state.name,
@@ -384,6 +396,16 @@ async function inspectPortableWriteTargets(options: {
       change: state.name,
     };
   }
+  if (documentTargets.length > 0) {
+    return {
+      allowed: true,
+      reason:
+        'Native neutral document write: documentation edits stay outside the implementation scope and do not return the change to Build',
+      workflow: 'native',
+      phase: state.phase,
+      change: state.name,
+    };
+  }
   if (configuredTarget) {
     return {
       allowed: true,
@@ -409,6 +431,25 @@ async function inspectPortableWriteTargets(options: {
 function isWithin(parent: string, target: string): boolean {
   const relative = path.relative(parent, target);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+/**
+ * Whether documentation writes stay neutral instead of returning the change to
+ * Build. The default (`allow`) keeps document edits out of the implementation
+ * scope; `native.document_writes: revert` restores the strict behavior where
+ * any project write during Shape/Verify/Archive reverts or denies.
+ */
+async function nativeDocumentWritesRevert(projectRoot: string): Promise<boolean> {
+  const config = await readProjectConfig(projectRoot);
+  return config?.native?.document_writes === 'revert';
+}
+
+/** Neutral document writes exclude the Native artifact root and .comet. */
+function isNativeNeutralDocumentWrite(paths: NativeProjectPaths, relative: string): boolean {
+  return isNeutralDocumentPath(relative, [
+    path.relative(paths.projectRoot, paths.nativeRoot).replaceAll('\\', '/'),
+    '.comet',
+  ]);
 }
 
 function portableFormalTargetReason(changeRelative: string): string {
@@ -690,6 +731,8 @@ export async function inspectNativeHookGuard(
   let controlTarget = false;
   let externalTarget = false;
   let configuredTarget = false;
+  let documentTarget = false;
+  const documentsRevert = await nativeDocumentWritesRevert(projectRoot);
   for (const targetPath of request.targets) {
     const target = path.resolve(projectRoot, targetPath);
     if (!isWithin(projectRoot, target)) {
@@ -733,6 +776,10 @@ export async function inspectNativeHookGuard(
       configuredTarget = true;
       continue;
     }
+    if (!documentsRevert && isNativeNeutralDocumentWrite(context.paths, relative)) {
+      documentTarget = true;
+      continue;
+    }
     return {
       allowed: false,
       reason: implementationWriteDeniedReason(state),
@@ -750,7 +797,9 @@ export async function inspectNativeHookGuard(
         ? 'Write target is outside the guarded project'
         : configuredTarget
           ? 'Native configured Hook allow path'
-          : 'No guarded write target was provided',
+          : documentTarget
+            ? 'Native neutral document write: documentation edits stay outside the implementation scope'
+            : 'No guarded write target was provided',
     workflow: 'native',
     phase: state.phase,
     change: state.name,

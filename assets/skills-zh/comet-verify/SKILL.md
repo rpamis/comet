@@ -49,7 +49,7 @@ comet state scale <change-name>
 
 验证开始前，按 `comet-classic/reference/dirty-worktree.md` 协议检查并处理未提交改动。verify 阶段的特殊处理：
 
-1. 未提交改动明确属于当前 change 时，将这些改动纳入本次验证；继续验证，但不在 verify 阶段修改或提交实现、测试、tasks、delta spec 或 Design Doc
+1. 未提交改动明确属于当前 change 时，将这些改动纳入本次验证；继续验证，但不在 verify 阶段修改或提交实现、测试、tasks、delta spec 或 Design Doc。纯文档编辑（comet-build 定义的中性文档集：仓库根目录及 `docs/`、`doc/`、`documentation/`、`.github/` 下的 Markdown/text 文件和 LICENSE 类文件，OpenSpec 与 Superpowers 产物除外）可以在 verify 阶段正常完成——它们不是实现写入，默认不作废检查证据，也不需要 `verify-fail`
 2. 未提交改动只是 verify 本阶段的产物时，例如验证报告草稿，可以继续在 verify 阶段完成并记录状态
 3. 未提交改动表明代码已经实现、但 tasks.md 尚未勾选时，说明 build 的任务记录落后于实现；直接运行 `verify-fail` 返回 build，核对已有结果并更新任务状态，不得询问是否接受未完成任务
 4. 无法确认未提交改动的归属，或改动属于其他 change 时，按 dirty-worktree 协议说明为何需要停止；不要在尚未确定归属时让用户选择“继续/忽略”
@@ -92,10 +92,12 @@ comet state transition <change-name> verify-fail
 comet handoff <change-name> --hash-only
 ```
 
-- 将当前 hash 与入口的记录值比较；记录值未提供时才运行 `comet state get <change-name> handoff_hash`。两者相等且均非空、非 null 时，仅在上下文仍保留该版本内容的前提下复用；按当前验收点补读缺失章节，tasks 仍须核对勾选。
-- 若 `RECORDED_HASH` 为空、为 `null`、或与 `CURRENT_HASH` 不一致：产物已变化或 hash 未记录，正常读取所有所需文件全文。
+- 读取 stderr 中的 `[HANDOFF] status:` 结论并照此执行（stdout 的裸 hash 供脚本调用方使用，不要自行比对）：
+  - `FRESH`：复用上下文已有的产物内容，只补读当前验收点仍缺的章节，tasks 仍须核对勾选。
+  - `STALE (changed: <files>)`：先完整读取列出的变更产物，再按其内容验收。
+  - 不带清单的 `STALE`：记录的 handoff 缺失或早于当前产物，正常读取所有所需文件全文。
 
-hash 相等不代表当前上下文仍保留该内容。丢失上下文后恢复任务、摘要被截断，或无法确认此前已读取内容时，应重新读取对应源文件；不能用 handoff 摘要代替尚未读取的验收条款。
+FRESH 不代表当前上下文仍保留该内容。丢失上下文后恢复任务、摘要被截断，或无法确认此前已读取内容时，应重新读取对应源文件；不能用 handoff 摘要代替尚未读取的验收条款。
 
 autonomous 直接按本 Skill 执行实际检查并记录结果，不强制加载外部验证 Skill；其他策略使用 Skill 工具加载 Superpowers `verification-before-completion`。任何策略都不能仅凭自评宣布验证通过。
 
@@ -111,7 +113,7 @@ Verify 负责整个 change 的唯一最终集成代码审查。Build 只保留�
 按以下 7 项进行检查：
 
 1. tasks.md 全部任务已完成 `[x]`
-2. 改动文件与 tasks.md 描述一致（`git diff --stat` / `git diff --cached --stat` / `git diff --stat <base-ref>...HEAD` 对照 tasks 内容）
+2. 改动文件与 tasks.md 描述一致（`git diff --stat` / `git diff --cached --stat` / `git diff --stat <base-ref>...HEAD` 对照 tasks 内容）；中性文档集内的纯文档编辑在对照结果旁说明即可，不作为实现不一致处理
 3. 编译通过（复用 Runtime 判定仍有效的 Build 证据；失效时重跑）
 4. 相关测试通过
 5. 无明显安全问题（无硬编码密钥、无新增 unsafe 操作）

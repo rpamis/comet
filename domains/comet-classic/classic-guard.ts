@@ -675,7 +675,16 @@ async function commandCheckPasses(
     recorded.tier === 'incremental'
       ? ' (incremental evidence: rerun the full command before --apply)'
       : '';
-  return { status: 0, output: `${evidenceDetail(recorded)}${tierNote}` };
+  const documentNote = documentChangesDetail(evaluation);
+  return { status: 0, output: `${evidenceDetail(recorded)}${tierNote}${documentNote}` };
+}
+
+function documentChangesDetail(evaluation: CommandCheckEvaluation): string {
+  const ignored = evaluation.documentChangesIgnored;
+  if (!ignored?.length) return '';
+  const shown = ignored.slice(0, 10);
+  const remainder = ignored.length - shown.length;
+  return `\nIgnored document-only changes (neutral by default; declare inputs in .comet/check-policy.json or set classic.document_evidence: strict if this command consumes them): ${shown.join(', ')}${remainder > 0 ? ` (+${remainder} more)` : ''}`;
 }
 
 function invalidationDetail(evaluation: CommandCheckEvaluation): string {

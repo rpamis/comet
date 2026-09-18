@@ -162,6 +162,35 @@ describe('Classic handoff command', () => {
     expect(existsSync(path.join(changeDir, '.comet', 'handoff'))).toBe(false);
   });
 
+  it('reports a FRESH verdict on stderr while keeping the bare hash on stdout', async () => {
+    const dir = await makeProject();
+    await seedDesignChange(dir);
+    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
+
+    const result = run(dir, 'handoff', 'demo', '--hash-only');
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.stderr).toContain('[HANDOFF] status: FRESH');
+    expect(result.stderr).not.toContain('STALE');
+  });
+
+  it('reports a STALE verdict with the changed artifacts instead of a bare comparison', async () => {
+    const dir = await makeProject();
+    const changeDir = await seedDesignChange(dir);
+    expect(run(dir, 'handoff', 'demo', 'design', '--write').status).toBe(0);
+    await fs.appendFile(path.join(changeDir, 'proposal.md'), 'changed\n');
+
+    const result = run(dir, 'handoff', 'demo', '--hash-only');
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.stderr).toContain(
+      '[HANDOFF] status: STALE (changed: openspec/changes/demo/proposal.md)',
+    );
+    expect(result.stderr).toContain('Recorded: ');
+    expect(result.stderr).toContain('Current:  ');
+    expect(result.stderr).toContain('NEXT: comet handoff demo design --write');
+  });
+
   it('refreshes the design handoff when source evidence changed after a completed handoff', async () => {
     const dir = await makeProject();
     const changeDir = await seedDesignChange(dir);

@@ -10,6 +10,7 @@ import {
   recordCommandCheck,
   executeCommandCheck,
   usableCommandCheck,
+  evaluateCommandCheck,
 } from '../../../domains/comet-classic/classic-command-checks.js';
 import {
   checkEnvironmentFingerprint,
@@ -389,5 +390,122 @@ describe('Classic command check evidence', () => {
     expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toMatchObject({
       sequence: second.sequence,
     });
+  });
+
+  it('keeps evidence valid and reports it when only neutral documents changed', async () => {
+    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v1');
+    await fs.mkdir(path.join(projectRoot, 'docs', 'guides'), { recursive: true });
+    await fs.writeFile(path.join(projectRoot, 'docs', 'guides', 'usage.md'), 'v1');
+    const recorded = await executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'build',
+      argv: [process.execPath, '-e', 'process.exit(0)'],
+      reusable: true,
+    });
+    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v2 - edited');
+    await fs.writeFile(path.join(projectRoot, 'docs', 'guides', 'usage.md'), 'v2');
+    await fs.writeFile(path.join(projectRoot, 'docs', 'guides', 'new-page.md'), 'new');
+    const evaluation = await evaluateCommandCheck(projectRoot, changeDir, run, 'build');
+    expect(evaluation.record).toMatchObject({ sequence: recorded.sequence });
+    expect(evaluation.documentChangesIgnored).toEqual(
+      expect.arrayContaining(['README.md', 'docs/guides/usage.md', 'docs/guides/new-page.md']),
+    );
+    const again = await executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'build',
+      argv: [process.execPath, '-e', 'process.exit(0)'],
+      reusable: true,
+    });
+    expect(again.reused).toBe(true);
+  });
+
+  it('invalidates evidence when a material input changes alongside documents', async () => {
+    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v1');
+    await fs.writeFile(path.join(projectRoot, 'input2.js'), 'v1');
+    await executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'build',
+      argv: [process.execPath, '-e', 'process.exit(0)'],
+      reusable: true,
+    });
+    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v2');
+    await fs.writeFile(path.join(projectRoot, 'input2.js'), 'v2');
+    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
+  });
+
+  it('keeps OpenSpec artifacts bound even though they are markdown', async () => {
+    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] one\n');
+    await executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'build',
+      argv: [process.execPath, '-e', 'process.exit(0)'],
+      reusable: true,
+    });
+    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] one\n- [x] two\n');
+    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
+  });
+
+  it('binds documents again under classic.document_evidence: strict', async () => {
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'classic:',
+        '  document_evidence: strict',
+        '',
+      ].join('\n'),
+    );
+    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v1');
+    await executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'build',
+      argv: [process.execPath, '-e', 'process.exit(0)'],
+      reusable: true,
+    });
+    await fs.writeFile(path.join(projectRoot, 'README.md'), 'v2');
+    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
+  });
+
+  it('records the log stat and still detects a rewritten evidence log', async () => {
+    const recorded = await executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'build',
+      argv: [process.execPath, '-e', 'process.exit(0)'],
+      reusable: true,
+    });
+    expect(typeof recorded.logSize).toBe('number');
+    expect(recorded.logMtimeNs).toMatch(/^\d+$/u);
+    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).not.toBeNull();
+
+    // A rewritten log changes both content and stat, so revalidation must
+    // reject it through the full content-hash path even with the stat present.
+    const logPath = path.join(projectRoot, recorded.logRef!);
+    const stat = await fs.stat(logPath);
+    await fs.writeFile(logPath, 'tampered output\n');
+    await fs.utimes(logPath, stat.atime, stat.mtime).catch(() => {});
+    expect(await usableCommandCheck(projectRoot, changeDir, run, 'build')).toBeNull();
+  });
+
+  it('keeps docs-layout OpenSpec artifacts bound as material inputs', async () => {
+    await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'classic:',
+        '  artifact_layout: docs',
+        '',
+      ].join('\n'),
+    );
+    // The docs-layout change directory sits inside docs/, so its markdown
+    // artifacts must be excluded from neutrality by the resolved layout.
+    const docsChangeDir = path.join(projectRoot, 'docs', 'openspec', 'changes', 'demo');
+    await fs.mkdir(docsChangeDir, { recursive: true });
+    const docsRun = runState('run-docs');
+    await fs.writeFile(path.join(docsChangeDir, 'tasks.md'), '- [x] one\n');
+    await executeCommandCheck(projectRoot, docsChangeDir, docsRun, {
+      scope: 'build',
+      argv: [process.execPath, '-e', 'process.exit(0)'],
+      reusable: true,
+    });
+    await fs.writeFile(path.join(docsChangeDir, 'tasks.md'), '- [x] one\n- [x] two\n');
+    expect(await usableCommandCheck(projectRoot, docsChangeDir, docsRun, 'build')).toBeNull();
   });
 });

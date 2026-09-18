@@ -12,7 +12,7 @@ Native 将完整需求、进度和验收结论保存在项目中。Agent 只处�
 - 以磁盘上的 `.comet/config.yaml`、当前 change、`comet-state.yaml` 和正式文件为准，聊天记忆只作辅助。工作流保存的正式文件中，Agent 只编辑 brief、完整目标 Spec、关联时的 `delta.yaml` 和 `children.yaml`；状态、检查结果、报告、锁和事务由 Runtime 管理。
 - 通过 PATH 中公开的 `comet native` 命令推进，用户不手工执行命令。命令不可用时报告安装不完整并停止；参数以 `comet native <command> --help` 为准。
 - 新建 change 走 CLI 并使用响应路径；拒绝后按信息中的命令或目标修正并重试；自定义 Hook、非 Comet 工作和普通同名文件保持中立。
-- Builder 提交本轮待验收的代码和相关文件，称为“候选实现”。每轮都由新的只读 Verifier 独立判断全部验收项。失败、阻塞、未执行和超时不能算通过。
+- Builder 提交本轮待验收的代码和相关文件，称为“候选实现”。每轮都由新的只读 Verifier 独立判断全部验收项。判断全部验收项不等于重跑全部命令：仍与当前候选实现匹配的 Runtime 检查记录可以复用，只补充缺失或失效的检查。失败、阻塞、未执行和超时不能算通过。
 - 只有用户明确确认完整 Shape、接受最终结果或选择相应交付方式后，才执行对应的确认命令。沿用已确认的需求范围和 Runtime 保存的用户选择。归档、merge、push、PR 和工作区清理各自需要的授权不能互相代替。
 - Native 主流程由本 Skill 和 Runtime 完成，不依赖外部 Skill；不改变已确认的需求和约束时，实现方法由 Agent 自行选择。
 
@@ -55,7 +55,7 @@ Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的
 
 首次实现前，读取当前 brief、完整目标规格和全部验收项，在已确认的需求范围内修改项目代码和测试。修复时优先处理 Verifier 指出的未通过项、无法验证的原因和失败检查；提交前仍要核对其他已确认行为。`previous_unresolved_ids` 只提示本轮修复重点，下一次正式验收仍覆盖全部验收项。
 
-Build、Verify 和 Archive 会复查文档绑定。文档漂移或报告过期时保留工作并返回修复动作；Hook 未触发仍检查，普通 Markdown 不受影响。
+Build、Verify 和 Archive 会复查文档绑定。文档漂移或报告过期时保留工作并返回修复动作；Hook 未触发仍检查，普通 Markdown 不受影响。Shape、Verify 和 Archive 阶段的普通文档写入（仓库根目录及 `docs/`、`doc/`、`documentation/`、`.github/` 下的 Markdown/text 和 LICENSE 类文件，且位于 Native 产物根目录之外）按中性处理：不会把 change 打回 Build，也不作废当前候选实现。在 `.comet/config.yaml` 设置 `native.document_writes: revert` 可恢复严格行为。
 
 用户 Hook 的共享输出目录可通过 `.comet/config.yaml` 的 `hook.allow_paths` 放行；该配置对 Native 和 Classic 共用，工作流产物目录不在白名单范围。详见[用户 Hook 写入](reference/commands.md#用户-hook-写入)。
 

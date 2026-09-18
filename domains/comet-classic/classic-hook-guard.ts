@@ -29,6 +29,7 @@ import {
   inspectClassicAutonomousBuildProblems,
   type ClassicPlanReadiness,
 } from './classic-plan-readiness.js';
+import { isClassicNeutralDocumentWrite } from './classic-neutral-documents.js';
 
 function result(exitCode: number, message: string): ClassicCommandResult {
   return { exitCode, stderr: message + '\n' };
@@ -848,6 +849,14 @@ async function inspectClassicHookTarget(
   }
   if (isSuperpowersWorkspace(relativePath)) {
     return allowed(`${relativePath} (whitelist: superpowers workspace)`);
+  }
+  // Documentation edits stay neutral in every phase: they are not
+  // implementation writes, and OpenSpec/Superpowers artifacts are excluded by
+  // the protected prefixes so phase ownership of those files is unchanged.
+  // Under classic.document_evidence: strict only the root-markdown whitelist
+  // below survives.
+  if (await isClassicNeutralDocumentWrite(projectRoot, layout, relativePath)) {
+    return allowed(`${relativePath} (whitelist: neutral document)`);
   }
   if (
     relativePath === 'CLAUDE.md' ||

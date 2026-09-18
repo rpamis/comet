@@ -49,7 +49,7 @@ The script counts tasks, delta specs, and changed files, returning a light/full 
 
 Before verification, inspect uncommitted changes under `comet-classic/reference/dirty-worktree.md`. Apply these Verify-specific rules:
 
-1. Include uncommitted changes clearly belonging to this change in the verification input. Continue verifying, but do not modify or commit implementation, tests, tasks, delta spec, or the Design Doc in Verify.
+1. Include uncommitted changes clearly belonging to this change in the verification input. Continue verifying, but do not modify or commit implementation, tests, tasks, delta spec, or the Design Doc in Verify. Documentation-only edits (the neutral document set defined in comet-build: Markdown/text files at the repository root or under `docs/`, `doc/`, `documentation/`, `.github/`, and LICENSE-style files, excluding OpenSpec and Superpowers artifacts) may be completed normally in Verify — they are not implementation writes, they do not invalidate check evidence by default, and they do not require `verify-fail`.
 2. If uncommitted changes are Verify artifacts, such as a draft report, continue completing them and recording state in Verify.
 3. If implementation exists but tasks.md is unchecked, Build's task record is behind the code. Run `verify-fail` directly to return to Build, inspect evidence, and update task state. Do not ask whether to accept unfinished tasks.
 4. If ownership cannot be established or the changes belong to another change, report the stopping condition from dirty-worktree. Do not offer “continue/ignore” before ownership is known.
@@ -86,16 +86,19 @@ Accepting WARNING/SUGGESTION deviations or choosing a strategy after the fourth 
 
 ### 2. Read the artifacts needed for verification
 
-When verification needs OpenSpec artifacts, use the handoff status already returned by entry. Run this only if entry lacks the current hash comparison:
+When verification needs OpenSpec artifacts, use the handoff status already returned by entry. Run this only if entry lacks the current comparison:
 
 ```bash
 comet handoff <change-name> --hash-only
 ```
 
-- Compare the current hash with the recorded value from entry. Query `comet state get <change-name> handoff_hash` only if that value is absent. If both hashes are nonempty, non-null, and equal, reuse content only if that version is still in context. Read any missing sections needed for acceptance, and still verify task completion marks.
-- If `RECORDED_HASH` is empty, `null`, or differs from `CURRENT_HASH`, read every required source file in full because artifacts changed or the hash was not recorded.
+Read the `[HANDOFF] status:` verdict from stderr and act on it; the stdout hash stays for scripted callers and is never compared by hand:
 
-Matching hashes do not mean the content remains in context. After context loss, truncation, or uncertainty about what was read, reload the corresponding sources. A handoff summary cannot replace acceptance clauses that have not been read.
+- `FRESH`: reuse artifact content already in context, read only acceptance sections still missing, and still verify task completion marks.
+- `STALE (changed: <files>)`: read the listed changed artifacts in full before verifying acceptance against them.
+- `STALE` without a file list: read every required source file in full because the recorded handoff is missing or predates the current artifacts.
+
+A FRESH verdict does not mean the content is still in context. After context loss, truncation, or uncertainty about what was read, reload the corresponding sources. A handoff summary cannot replace acceptance clauses that have not been read.
 
 Autonomous performs the actual checks and records results under this Skill without requiring an external verification skill. Other strategies load Superpowers `verification-before-completion` through the Skill tool. No strategy may declare verification successful based only on self-assessment.
 
@@ -111,7 +114,7 @@ Return CRITICAL/IMPORTANT integration-review findings to Build under Step 1b. Ha
 Check all 7 items:
 
 1. Every tasks.md task is completed `[x]`.
-2. Changed files match tasks.md; compare task content against `git diff --stat` / `git diff --cached --stat` / `git diff --stat <base-ref>...HEAD`.
+2. Changed files match tasks.md; compare task content against `git diff --stat` / `git diff --cached --stat` / `git diff --stat <base-ref>...HEAD`. Documentation-only edits in the neutral document set are reported next to the comparison instead of being treated as an implementation mismatch.
 3. Compilation passes; reuse Build evidence only when Runtime confirms it remains valid, otherwise rerun it.
 4. Relevant tests pass.
 5. No obvious security issues, such as hard-coded secrets or new unsafe operations.

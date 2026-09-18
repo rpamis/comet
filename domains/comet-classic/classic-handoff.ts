@@ -163,6 +163,59 @@ export async function computeContextHash(
   return createHash('sha256').update(lines.join('\n')).digest('hex');
 }
 
+/**
+ * Names the handoff source files whose current content no longer matches the
+ * SHA256 recorded in the generated handoff markdown, so a stale verdict can
+ * point at exactly what to reread. Returns null when the markdown (or its
+ * recorded hashes) is unavailable; callers then degrade to a plain STALE.
+ */
+async function handoffChangedSources(
+  projectRoot: string,
+  changeDir: string,
+  changeRef: string,
+): Promise<string[] | null> {
+  const contextRef = await readField(projectRoot, changeDir, 'handoff_context');
+  if (!contextRef || contextRef === 'null') return null;
+  const markdown = await readProtectedIfExists(
+    projectRoot,
+    `${contextRef.replace(/\.json$/u, '')}.md`,
+    'Classic handoff markdown',
+  );
+  if (markdown === null) return null;
+  // The markdown emits "- Source: X" / "- Lines: …" / "- SHA256: H" blocks; a
+  // line scan pairs each Source with the next SHA256 regardless of what sits
+  // between them across handoff format revisions.
+  const recorded = new Map<string, string>();
+  let pendingSource: string | null = null;
+  for (const line of markdown.split(/\r?\n/u)) {
+    const source = /^- Source: (.+)$/u.exec(line);
+    if (source) {
+      pendingSource = source[1]!;
+      continue;
+    }
+    const digest = /^- SHA256: ([a-f0-9]{64})$/u.exec(line);
+    if (digest && pendingSource !== null) {
+      recorded.set(pendingSource, digest[1]!);
+      pendingSource = null;
+    }
+  }
+  if (recorded.size === 0) return null;
+  const changed: string[] = [];
+  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
+    const reference = handoffSourceReference(changeDir, changeRef, file);
+    const expectedHash = recorded.get(reference);
+    if (expectedHash === undefined) continue;
+    const content = await readProtectedIfExists(
+      projectRoot,
+      file,
+      `Classic handoff source ${reference}`,
+    );
+    if (content === null || handoffSourceHash(file, content) !== expectedHash)
+      changed.push(reference);
+  }
+  return changed;
+}
+
 function jsonEscape(value: string): string {
   return value.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"');
 }
@@ -557,7 +610,35 @@ export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(a
             );
           }
         }
-        output.stdout.push(await computeContextHash(layout.projectRoot, changeDir, changeRef));
+        const contextHash = await computeContextHash(layout.projectRoot, changeDir, changeRef);
+        // stdout keeps the bare hash for scripted callers; stderr carries the
+        // semantic verdict so Agents read a conclusion instead of comparing hex.
+        output.stdout.push(contextHash);
+        const recordedHash = active.stateExists
+          ? (await readField(layout.projectRoot, changeDir, 'handoff_hash')).trim()
+          : '';
+        if (/^[a-f0-9]{64}$/u.test(recordedHash) && recordedHash === contextHash) {
+          output.stderr.push('[HANDOFF] status: FRESH');
+          output.stderr.push(
+            'Recorded handoff hash matches the current OpenSpec artifacts; reuse content already in context and read only missing acceptance sections.',
+          );
+        } else {
+          const changed = active.stateExists
+            ? await handoffChangedSources(layout.projectRoot, changeDir, changeRef).catch(
+                () => null,
+              )
+            : null;
+          output.stderr.push(
+            `[HANDOFF] status: STALE${changed?.length ? ` (changed: ${changed.join(', ')})` : ''}`,
+          );
+          output.stderr.push(`Recorded: ${recordedHash || 'none'}`);
+          output.stderr.push(`Current:  ${contextHash}`);
+          output.stderr.push(
+            changed?.length
+              ? `NEXT: comet handoff ${change} design --write, then read the changed artifacts listed above in full before verifying acceptance`
+              : `NEXT: comet handoff ${change} design --write, then read every required source file in full because the recorded handoff is missing or predates the current artifacts`,
+          );
+        }
         return output.toResult(0);
       }
 

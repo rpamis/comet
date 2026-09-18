@@ -114,7 +114,9 @@ describe('Native capability association during change creation', () => {
         ],
         root,
       ),
-    ).rejects.toThrow('Native continuation is stale');
+    ).rejects.toThrow(
+      /Native continuation is stale: the change moved on since the referenced response \(current phase \w+, next action [\w-]+, state version \d+\)\. Run comet native status extend-auth --json and execute its commandAlternatives with --expected-state-version \d+ --expected-action [\w-]+\./u,
+    );
     await expect(fs.access(createdData.associationPath!)).resolves.toBeUndefined();
 
     const revoked = await nativeSpecCommand(

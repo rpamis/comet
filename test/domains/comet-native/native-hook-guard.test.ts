@@ -75,8 +75,8 @@ describe('Native phase Hook guard', () => {
     return { paths, state };
   }
 
-  async function portableBuild(name: string) {
-    const paths = await nativeProjectPaths(projectRoot, '.');
+  async function portableBuild(name: string, artifactRoot = '.') {
+    const paths = await nativeProjectPaths(projectRoot, artifactRoot);
     await ensureNativeDirectories(paths);
     await createNativePortableChange({ paths, name, language: 'en' });
     await fs.writeFile(
@@ -373,6 +373,180 @@ describe('Native phase Hook guard', () => {
       builder_handoff: {
         review: { reviewer_execution_ref: 'concurrent-guard-reviewer' },
       },
+    });
+  });
+
+  it('keeps a portable Verify candidate valid for neutral document writes', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const { paths, state } = await portableBuild('portable-doc-write');
+    const runner = createNativeRunnerChannel();
+    await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'builder',
+        }),
+        candidateId: 'candidate',
+        summary: 'Built.',
+        addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        review: passedReview('doc-write-reviewer'),
+      },
+    });
+
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('README.md', 'docs/guide.md')),
+    ).resolves.toMatchObject({
+      allowed: true,
+      phase: 'verify',
+      reason: expect.stringContaining('neutral document'),
+    });
+    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
+      phase: 'verify',
+      builder_handoff: { candidate_id: 'candidate' },
+    });
+  });
+
+  it('still invalidates a portable Verify candidate when a material write mixes with documents', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const { paths, state } = await portableBuild('portable-mixed-write');
+    const runner = createNativeRunnerChannel();
+    await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'builder',
+        }),
+        candidateId: 'candidate',
+        summary: 'Built.',
+        addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        review: passedReview('mixed-write-reviewer'),
+      },
+    });
+
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('README.md', 'src/index.ts')),
+    ).resolves.toMatchObject({
+      allowed: true,
+      phase: 'build',
+      reason: expect.stringContaining('candidate was invalidated'),
+    });
+    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
+      phase: 'build',
+    });
+  });
+
+  it('keeps every Native formal artifact protected under the default docs artifact root', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    const { paths, state } = await portableBuild('docs-artifact-verify', 'docs');
+    const runner = createNativeRunnerChannel();
+    await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'builder',
+        }),
+        candidateId: 'candidate',
+        summary: 'Built.',
+        addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        review: passedReview('docs-artifact-reviewer'),
+      },
+    });
+    const changeDir = nativePortableChangeDir(paths, state.name);
+
+    // Ordinary docs-tree documentation next to the artifact root stays neutral
+    // while the candidate is still under verification.
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('docs/guide.md')),
+    ).resolves.toMatchObject({
+      allowed: true,
+      phase: 'verify',
+      reason: expect.stringContaining('neutral document'),
+    });
+    // Neutral documentation inside the artifact tree never applies: the brief
+    // is a formal requirement write and returns the change to Shape.
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest(path.join(changeDir, 'brief.md'))),
+    ).resolves.toMatchObject({
+      allowed: true,
+      phase: 'shape',
+      reason: expect.stringContaining('returned to Shape'),
+    });
+    // Runtime-owned state stays denied even in Shape.
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest(path.join(changeDir, 'comet-state.yaml'))),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('Runtime-owned'),
+    });
+    // Published specs keep their Archive-only recovery path.
+    await expect(
+      inspectNativeHookGuard(
+        projectRoot,
+        writeRequest(path.join(paths.specsDir, 'capability', 'spec.md')),
+      ),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('Published Native specs are updated through Archive'),
+    });
+  });
+
+  it('reverts portable Verify document writes to Build under native.document_writes: revert', async () => {
+    const defaults = defaultProjectConfig('.');
+    await writeProjectConfig(projectRoot, {
+      ...defaults,
+      native: { ...defaults.native, document_writes: 'revert' },
+    });
+    const { paths, state } = await portableBuild('portable-doc-revert');
+    const runner = createNativeRunnerChannel();
+    await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'builder',
+        }),
+        candidateId: 'candidate',
+        summary: 'Built.',
+        addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        review: passedReview('doc-revert-reviewer'),
+      },
+    });
+
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('README.md')),
+    ).resolves.toMatchObject({
+      allowed: true,
+      phase: 'build',
+      reason: expect.stringContaining('candidate was invalidated'),
+    });
+    await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
+      phase: 'build',
+    });
+  });
+
+  it('allows legacy-phase neutral document writes while denying implementation writes', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const { paths: verifyPaths } = await activeChange('verify', 'legacy-doc-write');
+    await selectNativeChange(verifyPaths, 'legacy-doc-write');
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('docs/guide.md')),
+    ).resolves.toMatchObject({
+      allowed: true,
+      phase: 'verify',
+      reason: expect.stringContaining('neutral document'),
+    });
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('commandAlternative'),
     });
   });
 

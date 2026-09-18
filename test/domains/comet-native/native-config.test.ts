@@ -37,6 +37,7 @@ describe('Native project configuration', () => {
       max_files: 10_000,
       max_total_bytes: 256 * 1024 * 1024,
       max_duration_ms: 60_000,
+      max_selection_records: 20_000,
     });
   });
 
@@ -102,6 +103,7 @@ describe('Native project configuration', () => {
           max_files: 10_000,
           max_total_bytes: 256 * 1024 * 1024,
           max_duration_ms: 60_000,
+          max_selection_records: 20_000,
         },
       },
     });

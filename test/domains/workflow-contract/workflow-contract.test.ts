@@ -485,8 +485,40 @@ describe('workflow contract normalization', () => {
       'invalid managed fields',
       'schema: comet.project.v1\ndefault_workflow: classic\nclassic:\n  review_mode: casual\n',
     ],
+    [
+      'invalid document evidence mode',
+      'schema: comet.project.v1\ndefault_workflow: classic\nclassic:\n  document_evidence: loose\n',
+    ],
+    [
+      'invalid document writes mode',
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n  document_writes: ignore\n',
+    ],
   ])('fails closed for project config with %s', (_label, source) => {
     expect(() => parseWorkflowProjectConfigDocument(source)).toThrow();
+  });
+
+  it('parses document neutrality modes and keeps neutral defaults', () => {
+    const strict = parseWorkflowProjectConfigDocument(
+      [
+        'schema: comet.project.v1',
+        'default_workflow: classic',
+        'workflows: [classic, native]',
+        'native:',
+        '  artifact_root: docs',
+        '  document_writes: revert',
+        'classic:',
+        '  document_evidence: strict',
+        '',
+      ].join('\n'),
+    );
+    expect(strict.config?.native?.document_writes).toBe('revert');
+    expect(strict.config?.classic?.document_evidence).toBe('strict');
+
+    const defaults = parseWorkflowProjectConfigDocument(
+      'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n',
+    );
+    expect(defaults.config?.native?.document_writes).toBeUndefined();
+    expect(defaults.config?.classic?.document_evidence).toBeUndefined();
   });
 
   it('keeps YAML parsing ownership out of project-config consumers', async () => {

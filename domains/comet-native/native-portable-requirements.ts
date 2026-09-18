@@ -268,7 +268,8 @@ export function assertNativePortableExpectedContinuationLocked(options: {
   if (!expected) return;
   if (options.state.state_version !== expected.stateVersion) {
     throw new Error(
-      `Native continuation is stale for state version ${expected.stateVersion}; current state version is ${options.state.state_version}`,
+      `Native continuation is stale: the change moved on since the referenced response (current phase ${options.state.phase}, next action ${options.state.loop.next_action}, state version ${options.state.state_version}). ` +
+        `Run comet native status ${options.state.name} --json and execute its commandAlternatives with --expected-state-version ${options.state.state_version} --expected-action ${options.state.loop.next_action}.`,
     );
   }
   if (expected.action !== options.action) {

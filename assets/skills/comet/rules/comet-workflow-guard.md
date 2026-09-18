@@ -35,7 +35,7 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 
 Hook 会对多文件和 patch 目标整体裁决。无法归因的事件和仅位于项目外的目标保持中立；一旦写入已归属于本项目，当前阶段不允许普通项目写入、存在多个所有权候选，或 selection、状态与目标范围无法安全读取时会失败关闭。不要绕过 Hook；按拒绝信息恢复对应 workflow，只有所有权不明确时才重新选择当前 change。
 
-阶段表只约束普通实现写入。Classic Hook 在阶段判断前固定放行 `.comet` 配置、`.superpowers` 工作区、根目录 Markdown 和 `hook.allow_paths`；这些是显式控制或配置白名单，不扩大阶段权限，也不允许在 Verify 更新 tasks。
+阶段表只约束普通实现写入。Classic Hook 在阶段判断前固定放行 `.comet` 配置、`.superpowers` 工作区、中性文档和 `hook.allow_paths`；中性文档指根目录与 `docs/`、`doc/`、`documentation/`、`.github/` 下的 Markdown/text 文档及 LICENSE 类文件（OpenSpec 与 Superpowers 流程产物除外）。这些是显式控制或配置白名单，不扩大阶段权限，也不允许在 Verify 更新 tasks。在 `.comet/config.yaml` 设置 `classic.document_evidence: strict` 时，白名单回退为仅根目录 Markdown。
 
 Native 正式产物只认配置解析出的 `<artifact-root>/comet/changes/<change>/` 及项目 `.comet/runtime/native/`。仅凭文件名、`comet/changes/<name>` 片段或当前存在 active change 不能推断其他目录归属；普通同名 Markdown、非 Comet 工作和明确配置的用户 Hook 输出保持放行。需要写 Native 正式产物时先用 CLI 创建 change，并按拒绝信息给出的完整命令或正确绝对路径修正后重试，不手工改 Runtime 文件或迁移遗留文件。
 

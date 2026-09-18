@@ -431,6 +431,7 @@
       "domains/workflow-contract/hook-write-policy.ts",
       "domains/workflow-contract/hook.ts",
       "domains/workflow-contract/index.ts",
+      "domains/workflow-contract/neutral-document-path.ts",
       "domains/workflow-contract/output-envelope.ts",
       "domains/workflow-contract/project-config-reader.ts",
       "domains/workflow-contract/project-config-writer.ts",

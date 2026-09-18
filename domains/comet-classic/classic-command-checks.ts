@@ -15,6 +15,10 @@ import { readClassicState, withClassicStateLock } from './classic-store.js';
 import { readCheckIndex } from './classic-check-index.js';
 import { readCheckPolicy } from './classic-check-policy.js';
 import {
+  classicDocumentEvidenceMode,
+  splitNeutralDocumentChanges,
+} from './classic-neutral-documents.js';
+import {
   checkManifestHash,
   diffCheckManifests,
   parseCheckManifest,
@@ -38,6 +42,13 @@ export interface RecordedCommandCheck {
   environment?: string;
   logRef?: string;
   logHash?: string;
+  /**
+   * Post-write stat of the evidence log. Revalidation trusts an unchanged
+   * size+mtime instead of rereading the whole log; records without these
+   * fields (or a changed stat) keep the full content-hash check.
+   */
+  logSize?: number;
+  logMtimeNs?: string;
   /** Repository-relative per-file input manifest recorded at execution time. */
   manifestRef?: string;
   manifestHash?: string;
@@ -109,6 +120,14 @@ function validRecord(projectRoot: string, event: TrajectoryEvent): RecordedComma
           environment: (data as RecordedCommandCheck).environment,
           logRef: (data as RecordedCommandCheck).logRef,
           logHash: (data as RecordedCommandCheck).logHash,
+          logSize:
+            typeof (data as RecordedCommandCheck).logSize === 'number'
+              ? (data as RecordedCommandCheck).logSize
+              : undefined,
+          logMtimeNs:
+            typeof (data as RecordedCommandCheck).logMtimeNs === 'string'
+              ? (data as RecordedCommandCheck).logMtimeNs
+              : undefined,
           manifestRef:
             typeof (data as RecordedCommandCheck).manifestRef === 'string'
               ? (data as RecordedCommandCheck).manifestRef
@@ -393,6 +412,7 @@ export async function executeCommandCheck(
   )
     inputAfter = 'environment-changed';
   await writeClassicProjectText(root, logPath, result.output, { label: 'Classic check log' });
+  const logStat = await fs.stat(logPath, { bigint: true }).catch(() => null);
   const data = {
     scope: input.scope,
     command: JSON.stringify(input.argv),
@@ -406,6 +426,7 @@ export async function executeCommandCheck(
     environment,
     logRef: path.relative(root, logPath).replaceAll('\\', '/'),
     logHash: createHash('sha256').update(result.output).digest('hex'),
+    ...(logStat ? { logSize: Number(logStat.size), logMtimeNs: logStat.mtimeNs.toString() } : {}),
     manifestRef,
     manifestHash,
     tier,
@@ -449,6 +470,12 @@ export interface CommandCheckEvaluation {
   changedPaths?: string[];
   /** The declared input scope that decided relevance for the changed paths. */
   relevance?: string;
+  /**
+   * Neutral document paths that changed since execution while every material
+   * input stayed identical; the record remains usable and these edits are
+   * reported instead of silently dropped.
+   */
+  documentChangesIgnored?: string[];
 }
 
 export async function evaluateCommandCheck(
@@ -483,6 +510,7 @@ export async function evaluateCommandCheck(
     return fail('the latest record is incomplete');
   if (record.inputBefore !== record.inputAfter) return fail('inputs changed while the check ran');
   const identity = { argv: record.argv, cwd: record.cwd };
+  let documentChangesIgnored: string[] | undefined;
   if (record.manifestRef) {
     // Per-file evidence reuses when the environment binding holds and no
     // recorded input file changed relative to the execution-time manifest.
@@ -504,14 +532,25 @@ export async function evaluateCommandCheck(
     const changedPaths = [...diff.added, ...diff.removed, ...diff.changed];
     if (changedPaths.length) {
       const policy = await readCheckPolicy(root, identity);
-      return {
-        record: null,
-        reason: 'check inputs changed since execution',
-        changedPaths,
-        relevance: policy.files
-          ? `declared inputs (${policy.files.join(', ')})`
-          : 'default whole-tree inputs',
-      };
+      const relevance = policy.files
+        ? `declared inputs (${policy.files.join(', ')})`
+        : 'default whole-tree inputs';
+      // A declared files list keeps its exact binding; the neutral-document
+      // default relaxes only the undeclared whole-tree scope, so editing a
+      // README or a docs page alone no longer discards valid evidence.
+      const material =
+        policy.files || (await classicDocumentEvidenceMode(root)) === 'strict'
+          ? changedPaths
+          : (await splitNeutralDocumentChanges(root, changedPaths)).material;
+      if (material.length) {
+        return {
+          record: null,
+          reason: 'check inputs changed since execution',
+          changedPaths: material,
+          relevance,
+        };
+      }
+      documentChangesIgnored = changedPaths;
     }
   } else {
     // Evidence recorded before per-file manifests existed keeps its original
@@ -532,12 +571,26 @@ export async function evaluateCommandCheck(
   if (typeof record.logRef !== 'string' || typeof record.logHash !== 'string')
     return fail('the evidence log record is incomplete');
   try {
-    const log = await readClassicProjectFile(root, record.logRef, {
-      label: 'Classic check evidence log',
-      maxBytes: 8 * 1024 * 1024,
-    });
-    if (createHash('sha256').update(log).digest('hex') !== record.logHash)
-      return fail('the evidence log is damaged');
+    // An unchanged size+mtime proves the log was not rewritten since the
+    // check wrote it, so rereading (up to 8 MB per scope) is skipped. Records
+    // without the stat, or a changed stat, keep the full content-hash check.
+    const logStat = await fs
+      .stat(path.resolve(root, record.logRef), { bigint: true })
+      .catch(() => null);
+    const statMatches =
+      typeof record.logSize === 'number' &&
+      typeof record.logMtimeNs === 'string' &&
+      logStat !== null &&
+      Number(logStat.size) === record.logSize &&
+      logStat.mtimeNs.toString() === record.logMtimeNs;
+    if (!statMatches) {
+      const log = await readClassicProjectFile(root, record.logRef, {
+        label: 'Classic check evidence log',
+        maxBytes: 8 * 1024 * 1024,
+      });
+      if (createHash('sha256').update(log).digest('hex') !== record.logHash)
+        return fail('the evidence log is damaged');
+    }
   } catch {
     return fail('the evidence log is missing');
   }
@@ -548,7 +601,7 @@ export async function evaluateCommandCheck(
     JSON.stringify(current) !== JSON.stringify(record)
   )
     return fail('the evidence was superseded by a newer check');
-  return { record };
+  return { record, ...(documentChangesIgnored ? { documentChangesIgnored } : {}) };
 }
 
 export async function usableCommandCheck(

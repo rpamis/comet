@@ -12,7 +12,7 @@ Native saves complete requirements, progress, and acceptance results in the proj
 - Treat `.comet/config.yaml`, the current change, `comet-state.yaml`, and formal artifacts on disk as authoritative; chat memory is supplementary. Among formal workflow files, the Agent edits only the brief, complete target Specs, association `delta.yaml`, and `children.yaml`. Runtime owns state, check results, reports, locks, and transactions.
 - Advance through the public `comet native` CLI on PATH; do not ask the user to run commands manually. If the command is unavailable, report an incomplete installation and stop. Consult `comet native <command> --help` for arguments.
 - Create changes with the CLI; use returned paths and follow denial commands or targets before retrying. Custom and non-Comet writes stay neutral.
-- The Builder submits code as the candidate implementation. Each iteration requires a new read-only Verifier to assess every acceptance item independently. Failed, blocked, unexecuted, and timed-out work cannot count as passed.
+- The Builder submits code as the candidate implementation. Each iteration requires a new read-only Verifier to assess every acceptance item independently. Assessing every item does not mean rerunning every command: reuse Runtime check records that still match the current candidate and add only missing or invalidated checks. Failed, blocked, unexecuted, and timed-out work cannot count as passed.
 - Run confirmation commands only after the user explicitly confirms the complete Shape, accepts the final result, or selects the relevant delivery option. Reuse confirmed scope and user choices saved by Runtime. Authorization for Archive, merge, push, PR creation, and workspace cleanup is not interchangeable.
 - This Skill and Runtime provide the Native workflow without an external Skill dependency. The Agent chooses implementation methods that preserve confirmed requirements and constraints.
 
@@ -55,7 +55,7 @@ After the Builder submits a candidate, Runtime runs required checks and a new re
 
 Before the first implementation, read the current brief, complete target Specs, and every acceptance item. Edit project code and tests within confirmed scope. During repair, prioritize the Verifier's failed or blocked items and failed checks, then recheck other confirmed behavior before submission. `previous_unresolved_ids` identifies the repair focus; the next formal verification still covers every acceptance item.
 
-Build, Verify, and Archive recheck bound documents. Drift or stale reports return a repair action and preserve work; Runtime still checks without a Hook. Ordinary Markdown is unaffected.
+Build, Verify, and Archive recheck bound documents. Drift or stale reports return a repair action and preserve work; Runtime still checks without a Hook. Ordinary Markdown is unaffected. Ordinary documentation writes (Markdown/text and LICENSE-style files at the repository root or under `docs/`, `doc/`, `documentation/`, `.github/`, outside the Native artifact root) are neutral during Shape, Verify, and Archive: they do not return the change to Build and do not invalidate the current candidate. Set `native.document_writes: revert` in `.comet/config.yaml` to restore the strict behavior.
 
 User Hook output can use `hook.allow_paths` in `.comet/config.yaml`; see [User Hook writes](reference/commands.md#user-hook-writes).
 
