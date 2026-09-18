@@ -15,7 +15,6 @@ import type { NativeProjectPaths } from './native-types.js';
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const RECEIPT_REF_PATTERN = /^runtime\/evidence\/check-receipts\/([a-f0-9]{64})\.json$/u;
-const MAX_NATIVE_CHECK_RECEIPT_BYTES = 512 * 1024;
 
 interface DirectoryIdentity {
   path: string;
@@ -126,9 +125,6 @@ async function readBoundedReceipt(
   if (!before.isFile() || before.isSymbolicLink()) {
     throw new Error('Native check receipt must be a regular file');
   }
-  if (before.size > MAX_NATIVE_CHECK_RECEIPT_BYTES) {
-    throw new Error(`Native check receipt exceeds ${MAX_NATIVE_CHECK_RECEIPT_BYTES} bytes`);
-  }
   const [realChangeRoot, beforeRealPath] = await Promise.all([
     fs.realpath(changeRoot),
     fs.realpath(file),
@@ -167,13 +163,9 @@ async function readBoundedReceipt(
     let total = 0;
     const buffer = Buffer.allocUnsafe(16 * 1024);
     while (true) {
-      const remaining = MAX_NATIVE_CHECK_RECEIPT_BYTES + 1 - total;
-      const read = await handle.read(buffer, 0, Math.min(buffer.length, remaining), null);
+      const read = await handle.read(buffer, 0, buffer.length, null);
       if (read.bytesRead === 0) break;
       total += read.bytesRead;
-      if (total > MAX_NATIVE_CHECK_RECEIPT_BYTES) {
-        throw new Error(`Native check receipt exceeds ${MAX_NATIVE_CHECK_RECEIPT_BYTES} bytes`);
-      }
       chunks.push(Buffer.from(buffer.subarray(0, read.bytesRead)));
     }
     const [afterHandle, afterPath, afterRealPath] = await Promise.all([
@@ -226,10 +218,6 @@ export async function writeNativeCheckReceipt(options: {
   }
   const ref = nativeCheckReceiptRef(receipt.receiptHash);
   const file = receiptFile(options.paths, options.name, receipt.receiptHash);
-  const serializedBytes = Buffer.byteLength(JSON.stringify(receipt, null, 2) + '\n', 'utf8');
-  if (serializedBytes > MAX_NATIVE_CHECK_RECEIPT_BYTES) {
-    throw new Error(`Native check receipt exceeds ${MAX_NATIVE_CHECK_RECEIPT_BYTES} bytes`);
-  }
   const storageRoot = nativeStorageRoot(options.paths, file);
   await resolveContainedNativePath(storageRoot, file);
   try {

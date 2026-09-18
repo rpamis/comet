@@ -25,8 +25,6 @@ export interface ClassicEvidence {
   detail?: string;
 }
 
-const CLASSIC_ARTIFACT_MAX_BYTES = 2 * 1024 * 1024;
-
 function relativeSource(projectRoot: string, file: string): string {
   return path.relative(projectRoot, file).split(path.sep).join('/');
 }
@@ -118,7 +116,7 @@ async function archivedHandoffEvidence(
       projectRoot,
       changeDir,
       relativePath,
-      CLASSIC_ARTIFACT_MAX_BYTES,
+      Number.MAX_SAFE_INTEGER,
     );
     if (!mapped) return evidence;
     return {
@@ -174,7 +172,7 @@ async function taskEvidence(projectRoot: string, tasksFile: string): Promise<Cla
   const relative = relativeSource(projectRoot, tasksFile);
   try {
     source = (
-      await readProtectedProjectFile(projectRoot, relative, CLASSIC_ARTIFACT_MAX_BYTES, {
+      await readProtectedProjectFile(projectRoot, relative, Number.MAX_SAFE_INTEGER, {
         label: 'Classic tasks artifact',
       })
     ).bytes.toString('utf8');

@@ -12,11 +12,11 @@ import {
 import type { Checkpoint, EngineAction, TrajectoryEvent } from './types.js';
 
 const RUN_FILE_LIMITS = {
-  trajectory: 8 * 1024 * 1024,
-  artifacts: 1024 * 1024,
-  context: 1024 * 1024,
-  pendingAction: 256 * 1024,
-  checkpoint: 256 * 1024,
+  trajectory: Number.MAX_SAFE_INTEGER,
+  artifacts: Number.MAX_SAFE_INTEGER,
+  context: Number.MAX_SAFE_INTEGER,
+  pendingAction: Number.MAX_SAFE_INTEGER,
+  checkpoint: Number.MAX_SAFE_INTEGER,
 } as const;
 
 function assertRunPath(changeDir: string, relativePath: string): void {

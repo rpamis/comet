@@ -383,7 +383,7 @@ describe('Native VCS-independent content snapshots', () => {
     expect(manifest.complete).toBe(false);
   });
 
-  it('keeps the root selection-change omission recorded when compacting the manifest', async () => {
+  it('keeps the root selection-change omission and every recorded omission', async () => {
     await execFileAsync('git', ['init'], { cwd: projectRoot });
     const files = Array.from(
       { length: 30 },
@@ -392,7 +392,7 @@ describe('Native VCS-independent content snapshots', () => {
     await Promise.all(files.map((file) => fs.writeFile(path.join(projectRoot, file), 'xx')));
 
     const manifest = await createNativeContentSnapshot(paths, {
-      limits: { maxFileBytes: 1, maxManifestBytes: 3_000 },
+      limits: { maxFileBytes: 1 },
       gitSelectionHooks: {
         afterCombined: async () => {
           await execFileAsync('git', ['add', files[0]!], { cwd: projectRoot });
@@ -407,8 +407,8 @@ describe('Native VCS-independent content snapshots', () => {
       reason: 'git-selection-changed',
     });
     expect(manifest.capture?.gitSelection?.status).toBe('changed');
-    expect(manifest.omissionOverflow?.count).toBeGreaterThan(0);
-    expect(Buffer.byteLength(`${JSON.stringify(manifest, null, 2)}\n`)).toBeLessThanOrEqual(3_000);
+    expect(manifest.omitted).toHaveLength(files.length + 1);
+    expect(manifest.complete).toBe(false);
     expect(parseNativeContentSnapshotManifest(manifest)).toEqual(manifest);
   });
 
@@ -1613,11 +1613,6 @@ describe('Native VCS-independent content snapshots', () => {
         },
         'completeness',
       ],
-      [
-        'manifest byte limit',
-        { ...base, limits: { ...base.limits, maxManifestBytes: 1 } },
-        'manifest byte limit',
-      ],
     ];
 
     for (const [_label, value, message] of invalidCases) {
@@ -2317,7 +2312,7 @@ describe('Native VCS-independent content snapshots', () => {
     expect(serialized).not.toContain('overflow-1002.txt');
   });
 
-  it('caps the serialized manifest and summarizes entries that do not fit', async () => {
+  it('keeps every entry regardless of the serialized manifest size', async () => {
     const files = Array.from({ length: 40 }, (_, index) =>
       path.join(
         projectRoot,
@@ -2332,16 +2327,11 @@ describe('Native VCS-independent content snapshots', () => {
     const manifest = await createNativeContentSnapshot(paths, options);
     const serialized = JSON.stringify(manifest, null, 2) + '\n';
 
-    expect(Buffer.byteLength(serialized)).toBeLessThanOrEqual(1_500);
-    expect(manifest.complete).toBe(false);
-    expect(manifest.omittedCount).toBeGreaterThan(0);
+    expect(Buffer.byteLength(serialized)).toBeGreaterThan(1_500);
+    expect(manifest.complete).toBe(true);
+    expect(manifest.entries).toHaveLength(files.length);
     expect(manifest.omitted).toEqual([]);
-    expect(manifest.omissionOverflow?.count).toBe(manifest.omittedCount);
     expect(parseNativeContentSnapshotManifest(JSON.parse(serialized))).toEqual(manifest);
-
-    await Promise.all(files.map((file) => fs.writeFile(file, 'y')));
-    const changed = await createNativeContentSnapshot(paths, options);
-    expect(changed.omissionOverflow?.hash).not.toBe(manifest.omissionOverflow?.hash);
   });
 
   it('removes a newly created change directory when baseline capture fails so retry can succeed', async () => {

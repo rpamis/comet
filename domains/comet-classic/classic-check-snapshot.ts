@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { readClassicState } from './classic-store.js';
 import { readClassicProjectBytes, inspectClassicProjectTarget } from './classic-protected-path.js';
+import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { resolveWindowsCommand } from '../../platform/process/spawn-command.js';
 import { readCheckPolicy, type CheckPolicy, type CheckIdentity } from './classic-check-policy.js';
 import { classicTaskRequirements } from './classic-tasks.js';
@@ -252,23 +253,33 @@ export async function collectCheckSnapshot(
     let contentHash = legacy ? undefined : contentCache.get(cacheKey);
     if (contentHash === undefined && baselineHit) contentHash = recorded.h;
     if (contentHash === undefined) {
-      const bytes = await readClassicProjectBytes(root, absolute, {
-        label: 'Classic check input',
-        maxBytes: 64 * 1024 * 1024,
-      });
-      let bound: Buffer = bytes;
-      if (policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md')) {
-        // A malformed tasks.md cannot produce task requirements; binding the raw
-        // bytes keeps the fingerprint conservative (any change invalidates)
-        // instead of failing the whole snapshot.
-        try {
-          bound = Buffer.from(classicTaskRequirements(bytes.toString('utf8')), 'utf8');
-        } catch {
-          bound = bytes;
+      const normalizeTasks =
+        policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md');
+      // Regular files are stream-hashed without retaining their bytes; legacy
+      // evidence and the tasks.md normalization still need the full content.
+      if (!legacy && !normalizeTasks) {
+        contentHash = (
+          await hashProtectedProjectFile(root, relative, { label: 'Classic check input' })
+        ).digest;
+      } else {
+        const bytes = await readClassicProjectBytes(root, absolute, {
+          label: 'Classic check input',
+          maxBytes: Number.MAX_SAFE_INTEGER,
+        });
+        let bound: Buffer = bytes;
+        if (normalizeTasks) {
+          // A malformed tasks.md cannot produce task requirements; binding the raw
+          // bytes keeps the fingerprint conservative (any change invalidates)
+          // instead of failing the whole snapshot.
+          try {
+            bound = Buffer.from(classicTaskRequirements(bytes.toString('utf8')), 'utf8');
+          } catch {
+            bound = bytes;
+          }
         }
+        if (legacy) hash.update(bound);
+        else contentHash = createHash('sha256').update(bound).digest('hex');
       }
-      if (legacy) hash.update(bound);
-      else contentHash = createHash('sha256').update(bound).digest('hex');
     }
     if (contentHash !== undefined) {
       contentCache.set(cacheKey, contentHash);

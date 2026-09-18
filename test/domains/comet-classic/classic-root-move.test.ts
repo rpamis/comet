@@ -1065,14 +1065,12 @@ describe('Classic root move', () => {
     ).resolves.toBe('{"external":"untrusted"');
   });
 
-  it('rejects a root-move journal that exceeds the 16 MiB read budget', async () => {
+  it('reads a root-move journal of any size and rejects malformed content', async () => {
     const journal = path.join(projectRoot, '.comet', 'classic-root-move.json');
     await fs.writeFile(journal, '{}', 'utf8');
     await fs.truncate(journal, 16 * 1024 * 1024 + 1);
 
-    await expect(inspectClassicRootMove(projectRoot)).rejects.toThrow(
-      /bounded regular file|exceeds 16777216 bytes/iu,
-    );
+    await expect(inspectClassicRootMove(projectRoot)).rejects.toThrow(/journal|JSON/iu);
   });
 
   it('rejects traversal inside a persisted manifest before copying', async () => {

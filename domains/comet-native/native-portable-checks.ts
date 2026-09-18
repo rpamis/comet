@@ -219,9 +219,49 @@ function digestNativeCheckInput(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+/**
+ * Stream-hash a file with the same digest semantics as hashing the base64 of
+ * its full content, without retaining the bytes. The file must stay stable
+ * while read, matching the previous read-then-restat contract.
+ */
+export async function digestNativeInputFileContent(
+  file: string,
+): Promise<{ digest: string; size: number }> {
+  const before = await fs.lstat(file);
+  if (!before.isFile()) {
+    throw new Error('Native check input must be a regular file');
+  }
+  const hash = createHash('sha256');
+  const handle = await fs.open(file, 'r');
+  let total = 0;
+  try {
+    const buffer = Buffer.allocUnsafe(NATIVE_INPUT_BASE64_CHUNK_BYTES);
+    while (true) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      hash.update(buffer.subarray(0, bytesRead).toString('base64'));
+    }
+  } finally {
+    await handle.close();
+  }
+  const after = await fs.lstat(file);
+  if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
+    throw new Error('Native check input changed while reading');
+  }
+  return { digest: hash.digest('hex'), size: total };
+}
+
 const NATIVE_IGNORED_INPUT_MAX_FILES = 20_000;
 
-const NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+const NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES = 1024 * 1024 * 1024;
+
+/**
+ * Chunk size for streamed base64 digests. It must stay divisible by 3 so that
+ * concatenating per-chunk base64 output equals base64-encoding the whole file,
+ * keeping the legacy sha256(base64(content)) digest semantics.
+ */
+const NATIVE_INPUT_BASE64_CHUNK_BYTES = 65_535;
 
 const NATIVE_GENERATED_INPUT_DIRECTORIES = [
   'build',
@@ -331,17 +371,9 @@ async function nativeIgnoredCheckInputSnapshot(
       if (!before.isFile() || totalBytes + before.size > NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES) {
         return incompleteNativeIgnoredInputSnapshot();
       }
-      const content = await fs.readFile(target);
-      const after = await fs.lstat(target);
-      if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
-        return incompleteNativeIgnoredInputSnapshot();
-      }
-      totalBytes += before.size;
-      files.push({
-        path: relative,
-        digest: digestNativeCheckInput(content.toString('base64')),
-        size: before.size,
-      });
+      const { digest, size } = await digestNativeInputFileContent(target);
+      totalBytes += size;
+      files.push({ path: relative, digest, size });
     } catch {
       return incompleteNativeIgnoredInputSnapshot();
     }
@@ -397,14 +429,12 @@ async function nativePhysicalCheckInputSnapshot(
       try {
         const before = await fs.lstat(target);
         if (totalBytes + before.size > NATIVE_IGNORED_INPUT_MAX_TOTAL_BYTES) return false;
-        const content = await fs.readFile(target);
-        const after = await fs.lstat(target);
-        if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) return false;
-        totalBytes += before.size;
+        const { digest, size } = await digestNativeInputFileContent(target);
+        totalBytes += size;
         files.set(relative, {
           path: relative,
-          digest: digestNativeCheckInput(content.toString('base64')),
-          size: before.size,
+          digest,
+          size,
         });
         if (files.size > NATIVE_IGNORED_INPUT_MAX_FILES) return false;
       } catch {
@@ -523,13 +553,8 @@ async function nativeCheckInputFingerprint(options: {
     gitSnapshot.untracked = await mapWithConcurrency(untracked, 4, async (relative) => {
       const target = path.resolve(options.projectRoot, ...relative.split('/'));
       try {
-        const stat = await fs.stat(target);
-        const content = await fs.readFile(target);
-        return {
-          path: relative,
-          digest: digestNativeCheckInput(content.toString('base64')),
-          size: stat.size,
-        };
+        const { digest, size } = await digestNativeInputFileContent(target);
+        return { path: relative, digest, size };
       } catch {
         return { path: relative, digest: null, size: null };
       }

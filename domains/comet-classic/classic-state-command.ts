@@ -1157,7 +1157,6 @@ async function progressCommand(
       ? JSON.parse(
           await readClassicProjectFile(root, args[2], {
             label: 'Classic progress input',
-            maxBytes: 64 * 1024,
           }),
         )
       : null;

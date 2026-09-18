@@ -364,15 +364,21 @@ describe('Native scoped check receipts', () => {
     },
   );
 
-  it('fails closed before reading when the scoped input exceeds checker limits', async () => {
+  it('skips scoped inputs above the per-file limit without blocking the receipt', async () => {
     const state = await prepareState(Buffer.alloc(NATIVE_CHECK_LIMITS.maxFileBytes + 1, 0x61));
 
     const { receipt } = await executeNativeCheckReceipt({ paths, state });
 
     expect(receipt).toMatchObject({
-      status: 'failed',
-      counts: { filesSelected: 1, filesScanned: 0, bytesScanned: 0, issueCount: 1 },
-      issues: [{ path: 'src/feature.ts', line: 1, kind: 'scan-limit' }],
+      status: 'passed',
+      counts: {
+        filesSelected: 1,
+        filesScanned: 0,
+        binaryFilesSkipped: 1,
+        bytesScanned: 0,
+        issueCount: 0,
+      },
+      issues: [],
     });
   });
 

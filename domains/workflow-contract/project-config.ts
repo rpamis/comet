@@ -20,7 +20,7 @@ import type {
 
 export type ProjectConfigCommentLanguage = 'en' | 'zh-CN';
 
-export const WORKFLOW_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
+export const WORKFLOW_PROJECT_CONFIG_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 export const MAX_WORKFLOW_SNAPSHOT_PATTERN_LENGTH = 1024;
 export const MAX_WORKFLOW_SNAPSHOT_PATTERN_WILDCARDS = 64;
 export const MAX_WORKFLOW_KNOWLEDGE_INCLUDE_PATTERN_LENGTH = 1024;
@@ -154,7 +154,7 @@ export const DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_CONFIG: WorkflowNativeSnapshotConf
   include: ['**/*'],
   exclude: [...DEFAULT_WORKFLOW_NATIVE_SNAPSHOT_EXCLUDES],
   max_files: 10_000,
-  max_total_bytes: 256 * 1024 * 1024,
+  max_total_bytes: 1024 * 1024 * 1024,
   max_duration_ms: 60_000,
   max_selection_records: 20_000,
 };
@@ -1352,8 +1352,8 @@ export function defaultWorkflowProjectConfig(
  */
 export function workflowProjectConfigRuntimeHelperScript(): string {
   return String.raw`
-const WORKFLOW_PROJECT_CONFIG_MAX_BYTES = 64 * 1024;
-const WORKFLOW_PROJECT_FILE_MAX_BYTES = 2 * 1024 * 1024;
+const WORKFLOW_PROJECT_CONFIG_MAX_BYTES = Number.MAX_SAFE_INTEGER;
+const WORKFLOW_PROJECT_FILE_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 
 function workflowProjectRelativeSegments(value, label) {
   if (typeof value !== 'string') throw new Error(label + ' must be a string');

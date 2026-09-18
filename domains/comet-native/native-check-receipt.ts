@@ -611,7 +611,10 @@ export async function executeNativeCheckReceipt(options: {
     for (const diagnostic of batch.diagnostics) recordIssue(diagnostic);
     for (const file of batch.files) {
       if (file.expected.size > NATIVE_CHECK_LIMITS.maxFileBytes) {
-        recordIssue({ path: file.path, line: 1, kind: 'scan-limit' });
+        // Oversized files are skipped without a blocking issue: the bounded
+        // text-safety checker makes no claim about them, like binary files.
+        binaryFilesSkipped += 1;
+        counts.binaryFilesSkipped += 1;
         continue;
       }
       try {

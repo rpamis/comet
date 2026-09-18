@@ -267,6 +267,101 @@ export async function readNativeProtectedFile(options: {
   }
 }
 
+export interface NativeProtectedFileDigest {
+  hash: string;
+  size: number;
+}
+
+/**
+ * Stream-hash a protected project file with the same race protections as
+ * `readNativeProtectedFile` without retaining the content. Files of any size
+ * are hashed in fixed chunks, so memory stays bounded.
+ */
+export async function hashNativeProtectedFile(options: {
+  root: string;
+  file: string;
+  label: string;
+  forbiddenRoots?: readonly string[];
+  hooks?: NativeProtectedFileHooks;
+}): Promise<NativeProtectedFileDigest> {
+  const file = path.resolve(options.file);
+  const chain = await captureDirectoryChain(options.root, path.dirname(file), options.label);
+  const forbidden = await Promise.all(
+    (options.forbiddenRoots ?? []).map((root) =>
+      captureDirectoryIdentity(path.resolve(root), options.label),
+    ),
+  );
+  await options.hooks?.afterParentChainCaptured?.();
+  await verifyDirectoryChain(chain, options.label);
+  const before = await fs.lstat(file);
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new Error(`${options.label} must be a regular file`);
+  }
+  const beforeIdentity = asFileIdentity(before);
+  const beforeRealPath = await fs.realpath(file);
+  if (!isInside(chain[0].realPath, beforeRealPath)) {
+    throw new Error(`${options.label} resolves outside its managed root`);
+  }
+  if (forbidden.some((identity) => isInside(identity.realPath, beforeRealPath))) {
+    throw new Error(`${options.label} resolves inside an excluded root`);
+  }
+  const flags =
+    process.platform === 'win32'
+      ? fsConstants.O_RDONLY
+      : fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK;
+  const handle = await fs.open(file, flags);
+  try {
+    const opened = await handle.stat();
+    await options.hooks?.afterOpen?.();
+    const [pathAfterOpen, realPathAfterOpen] = await Promise.all([
+      fs.lstat(file),
+      fs.realpath(file),
+    ]);
+    await verifyDirectoryChain(chain, options.label);
+    await verifyDirectoryChain(forbidden, options.label);
+    if (
+      !opened.isFile() ||
+      !pathAfterOpen.isFile() ||
+      pathAfterOpen.isSymbolicLink() ||
+      realPathAfterOpen !== beforeRealPath ||
+      !sameFileIdentity(beforeIdentity, opened) ||
+      !sameFileIdentity(beforeIdentity, pathAfterOpen)
+    ) {
+      throw new Error(`${options.label} changed while opening`);
+    }
+    await options.hooks?.beforeRead?.();
+    const hash = createHash('sha256');
+    let total = 0;
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    while (true) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+    await options.hooks?.beforeFinalCheck?.();
+    const [afterHandle, afterPath, afterRealPath] = await Promise.all([
+      handle.stat(),
+      fs.lstat(file),
+      fs.realpath(file),
+    ]);
+    await verifyDirectoryChain(chain, options.label);
+    await verifyDirectoryChain(forbidden, options.label);
+    if (
+      !afterPath.isFile() ||
+      afterPath.isSymbolicLink() ||
+      afterRealPath !== beforeRealPath ||
+      !sameFileIdentity(beforeIdentity, afterHandle) ||
+      !sameFileIdentity(beforeIdentity, afterPath)
+    ) {
+      throw new Error(`${options.label} changed while reading`);
+    }
+    return { hash: hash.digest('hex'), size: total };
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function readNativeProtectedTextFile(options: {
   root: string;
   file: string;
@@ -437,7 +532,7 @@ export async function removeNativeProtectedDirectory(options: {
 export async function removeNativeProtectedFile(options: {
   root: string;
   file: string;
-  maxBytes: number;
+  maxBytes: number | null;
   expectedHash: string;
   expectedSize: number;
   label: string;

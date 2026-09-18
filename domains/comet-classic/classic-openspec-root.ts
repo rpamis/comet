@@ -9,8 +9,6 @@ import {
   type ClassicLayoutPaths,
 } from './classic-layout.js';
 
-const OPENSPEC_CONFIG_MAX_BYTES = 1024 * 1024;
-
 export interface ClassicOpenSpecRootHealth {
   layout: ClassicLayoutPaths;
   configPath: string;
@@ -34,7 +32,7 @@ export async function assertClassicOpenSpecRootHealthy(
     const result = await readProtectedProjectFile(
       resolvedLayout.projectRoot,
       relativeConfig,
-      OPENSPEC_CONFIG_MAX_BYTES,
+      Number.MAX_SAFE_INTEGER,
       {
         label: 'Classic OpenSpec project config',
         bigint: true,

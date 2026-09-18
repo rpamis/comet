@@ -33,13 +33,13 @@ import type {
 
 export const DEFAULT_NATIVE_SNAPSHOT_LIMITS = {
   maxFiles: 10_000,
-  maxFileBytes: 5 * 1024 * 1024,
-  maxTotalBytes: 64 * 1024 * 1024,
-  maxManifestBytes: 1024 * 1024,
+  maxFileBytes: 1024 * 1024 * 1024,
+  maxTotalBytes: 1024 * 1024 * 1024,
+  // Recorded in manifests for compatibility but no longer enforced.
+  maxManifestBytes: 1024 * 1024 * 1024,
 } as const;
 
 const MAX_RECORDED_OMISSIONS = 1_000;
-const NATIVE_SNAPSHOT_MANIFEST_HARD_MAX_BYTES = 8 * 1024 * 1024;
 const CHANGE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 const MANIFEST_KEYS = new Set([
   'schema',
@@ -1434,10 +1434,6 @@ function isChangedDuringReadError(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === 'ENOENT';
 }
 
-function serializedManifestBytes(manifest: NativeContentSnapshotManifest): number {
-  return Buffer.byteLength(JSON.stringify(manifest, null, 2) + '\n');
-}
-
 function snapshotPolicyHash(include: readonly string[], exclude: readonly string[]): string {
   return sha256Text(
     `comet.native.snapshot-policy.v1\n${JSON.stringify({ include, exclude, hash: 'sha256' })}`,
@@ -2192,9 +2188,6 @@ export function parseNativeContentSnapshotManifest(value: unknown): NativeConten
     omittedCount,
     ...(omissionOverflow ? { omissionOverflow } : {}),
   };
-  if (serializedManifestBytes(parsed) > limits.maxManifestBytes) {
-    throw new Error('Native content snapshot exceeds its manifest byte limit');
-  }
   return parsed;
 }
 
@@ -2350,16 +2343,7 @@ export async function filterNativeContentSnapshotToProjectScope(
         }
       : {}),
   });
-  let projected = buildProjection();
-  while (serializedManifestBytes(projected) > manifest.limits.maxManifestBytes) {
-    const omission = takeLastCompactableOmission(omitted);
-    if (omission === null) {
-      throw new Error('Projected Native snapshot cannot fit its manifest byte limit');
-    }
-    foldOverflow(omission);
-    projected = buildProjection();
-  }
-  return parseNativeContentSnapshotManifest(projected);
+  return parseNativeContentSnapshotManifest(buildProjection());
 }
 
 export function nativeBaselineManifestFile(paths: NativeProjectPaths, name: string): string {
@@ -2451,14 +2435,6 @@ export async function createNativeContentSnapshot(
     overflowHash = foldSnapshotOverflowHash(overflowHash, 'git-selection', {
       source: 'git-selection',
       ...value,
-    });
-  };
-
-  const foldManifestEntryOverflow = (entry: NativeSnapshotEntry): void => {
-    overflowCount += 1;
-    overflowHash = foldSnapshotOverflowHash(overflowHash, 'manifest-entry', {
-      reason: 'manifest-size',
-      entry,
     });
   };
 
@@ -3196,30 +3172,7 @@ export async function createNativeContentSnapshot(
       : {}),
   });
 
-  let manifest = buildManifest();
-  while (serializedManifestBytes(manifest) > limits.maxManifestBytes) {
-    const compactableOmissionCount = omitted.filter(
-      (omission) => !isSelectionIntegrityOmission(omission),
-    ).length;
-    if (compactableOmissionCount > 0) {
-      const removeCount = Math.max(1, Math.ceil(omitted.length / 4));
-      for (let removed = 0; removed < removeCount; removed += 1) {
-        const omission = takeLastCompactableOmission(omitted);
-        if (omission === null) break;
-        foldOverflow(omission);
-      }
-    } else if (entries.length > 0) {
-      const removeCount = Math.max(1, Math.ceil(entries.length / 4));
-      for (const entry of entries.splice(-removeCount)) {
-        omittedCount += 1;
-        foldManifestEntryOverflow(entry);
-      }
-    } else {
-      throw new Error('Native snapshot manifest byte limit is too small for its metadata');
-    }
-    manifest = buildManifest();
-  }
-  return manifest;
+  return buildManifest();
 }
 
 export async function createNativeCurrentContentSnapshot(
@@ -3265,7 +3218,7 @@ export async function readNativeBaselineManifest(
     const source = await readNativeProtectedTextFile({
       root: storageRoot,
       file,
-      maxBytes: NATIVE_SNAPSHOT_MANIFEST_HARD_MAX_BYTES,
+      maxBytes: null,
       label: 'Native baseline snapshot manifest',
     });
     return parseNativeContentSnapshotManifest(JSON.parse(source.text));

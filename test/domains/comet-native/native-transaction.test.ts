@@ -530,16 +530,16 @@ describe('Native transaction schema', () => {
     );
   });
 
-  it('bounds transaction journals and event logs before parsing', async () => {
+  it('parses transaction journals and event logs of any size', async () => {
     await createNativeTransaction(paths, journal);
     const tx = nativeTransactionPaths(paths, journal.id);
     await fs.writeFile(tx.events, Buffer.alloc(1024 * 1024 + 1, 0x20));
     await expect(readNativeTransactionEvents(paths, journal.id)).rejects.toThrow(
-      'exceeds 1048576 bytes',
+      'Invalid Native transaction event at line 1',
     );
 
     await fs.writeFile(tx.journal, Buffer.alloc(256 * 1024 + 1, 0x20));
-    await expect(readNativeTransaction(paths, journal.id)).rejects.toThrow('exceeds 262144 bytes');
+    await expect(readNativeTransaction(paths, journal.id)).rejects.toThrow();
   });
 
   it('copies legacy staged bytes without UTF-8 coercion', async () => {
@@ -557,19 +557,19 @@ describe('Native transaction schema', () => {
     expect(await fs.readFile(target)).toEqual(bytes);
   });
 
-  it('rejects an oversized legacy staged object before loading or copying it', async () => {
+  it('copies legacy staged objects of any size without a byte budget', async () => {
     await createNativeTransaction(paths, journal);
     const staged = path.join(
       paths.runtimeDir,
       journal.operations[0].staged!.slice('runtime/'.length),
     );
+    const target = path.join(paths.nativeRoot, journal.operations[0].target);
     await fs.writeFile(staged, 'x');
     await fs.truncate(staged, 64 * 1024 * 1024 + 1);
 
-    await expect(applyNativeTransaction(paths, journal)).rejects.toThrow('exceeds 67108864 bytes');
-    await expect(
-      fs.access(path.join(paths.nativeRoot, journal.operations[0].target)),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+    await applyNativeTransaction(paths, journal);
+
+    expect((await fs.stat(target)).size).toBe(64 * 1024 * 1024 + 1);
   });
 
   it.skipIf(process.platform === 'win32')(

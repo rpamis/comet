@@ -401,6 +401,23 @@ Run focused tests.
     ).toMatchObject({ freshness: 'stale', reasons: ['artifact-changed:src/feature.ts'] });
   });
 
+  it('hashes checkpoint artifacts larger than 16 MiB without a byte budget', async () => {
+    const size = 16 * 1024 * 1024 + 1;
+    const artifact = path.join(projectRoot, 'recording.bin');
+    const handle = await fs.open(artifact, 'w');
+    try {
+      await handle.truncate(size);
+    } finally {
+      await handle.close();
+    }
+
+    const manifest = await createNativeCheckpointManifest(paths, 'resume-work', ['recording.bin']);
+
+    expect(manifest.artifacts).toHaveLength(1);
+    expect(manifest.artifacts[0]).toMatchObject({ size });
+    expect(manifest.totalBytes).toBe(size);
+  });
+
   it('rejects unsafe, duplicate, and Native-owned artifact references', async () => {
     await fs.writeFile(path.join(projectRoot, 'feature.ts'), 'export {};\n');
     await expect(
@@ -540,12 +557,12 @@ Run focused tests.
     expect(await fs.readFile(target, 'utf8')).toBe('replacement artifact\n');
   });
 
-  it('bounds and rejects untrusted progress documents before JSON parsing', async () => {
+  it('parses untrusted progress documents of any size and rejects unsafe files', async () => {
     const file = nativeProgressCheckpointFile(paths, 'resume-work');
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, 'x'.repeat(256 * 1024 + 1));
     await expect(readNativeProgressCheckpoint(paths, 'resume-work')).rejects.toThrow(
-      'exceeds 262144 bytes',
+      'is not valid JSON',
     );
 
     await fs.writeFile(file, '{}');

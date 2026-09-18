@@ -9,7 +9,7 @@ import {
   type ProtectedProjectPathInspection,
 } from '../workflow-contract/protected-project-path.js';
 
-export const CLASSIC_PROJECT_FILE_MAX_BYTES = 2 * 1024 * 1024;
+export const CLASSIC_PROJECT_FILE_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 
 function projectTarget(
   projectRoot: string,

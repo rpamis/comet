@@ -74,11 +74,7 @@ const EVENT_TYPES = new Set<NativeTransactionEvent['type']>([
   'rollback-started',
   'rollback-completed',
 ]);
-const NATIVE_TRANSACTION_JOURNAL_MAX_BYTES = 256 * 1024;
-const NATIVE_TRANSACTION_EVENTS_MAX_BYTES = 1024 * 1024;
-const NATIVE_TRANSACTION_EVENT_MAX_BYTES = 16 * 1024;
 const NATIVE_TRANSACTION_EVENT_MAX_COUNT = 1024;
-const NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES = 64 * 1024 * 1024;
 const NATIVE_LEGACY_TRANSACTION_DIRECTORY_MAX_ENTRIES = 20_000;
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
 
@@ -509,10 +505,7 @@ function couldCompleteOperationEventSuffix(value: string): boolean {
  * sequence number.
  */
 function isRecognizedIncompleteEventTail(source: string, sequence: number): boolean {
-  if (
-    source.length === 0 ||
-    Buffer.byteLength(source, 'utf8') > NATIVE_TRANSACTION_EVENT_MAX_BYTES
-  ) {
+  if (source.length === 0) {
     return false;
   }
   const prefix = `{"sequence":${sequence},"timestamp":"`;
@@ -546,9 +539,6 @@ function isRecognizedIncompleteEventTail(source: string, sequence: number): bool
 
 function parseEventLine(source: string, line: number): NativeTransactionEvent {
   if (source.length === 0) throw new Error('Blank transaction event line');
-  if (Buffer.byteLength(source, 'utf8') > NATIVE_TRANSACTION_EVENT_MAX_BYTES) {
-    throw new Error(`Native transaction event at line ${line} is too large`);
-  }
   return parseEvent(JSON.parse(source) as unknown, line);
 }
 
@@ -687,7 +677,7 @@ async function readEventLogSnapshot(
     const snapshot = await readNativeProtectedFile({
       root: paths.runtimeDir,
       file: tx.events,
-      maxBytes: NATIVE_TRANSACTION_EVENTS_MAX_BYTES,
+      maxBytes: null,
       label: `Native transaction event log ${id}`,
       hooks: options.hooks,
     });
@@ -796,7 +786,7 @@ export async function readNativeTransaction(
   const snapshot = await readNativeProtectedFile({
     root: paths.runtimeDir,
     file: tx.journal,
-    maxBytes: NATIVE_TRANSACTION_JOURNAL_MAX_BYTES,
+    maxBytes: null,
     label: `Native transaction journal ${id}`,
     hooks: options.hooks,
   });
@@ -840,7 +830,7 @@ async function readLegacyTransactionFile(
     return await readNativeProtectedFile({
       root: nativeStorageRoot(paths, file),
       file,
-      maxBytes: NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES,
+      maxBytes: null,
       label,
     });
   } catch (error) {
@@ -868,7 +858,7 @@ async function copyAtomic(
     source,
     targetRoot: nativeStorageRoot(paths, target),
     target,
-    maxBytes: NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES,
+    maxBytes: null,
     label,
     expectedHash: sourceSnapshot.hash,
     expectedTargetHash: targetSnapshot?.hash ?? null,
@@ -886,7 +876,7 @@ async function removeLegacyTransactionFile(
   await removeNativeProtectedFile({
     root: nativeStorageRoot(paths, file),
     file,
-    maxBytes: NATIVE_LEGACY_TRANSACTION_FILE_MAX_BYTES,
+    maxBytes: null,
     expectedHash: snapshot.hash,
     expectedSize: snapshot.size,
     label,

@@ -21,8 +21,6 @@ async function identity(changeDir: string, ref: string) {
   if (!target.exists) return { target: target.target, stamp: 'missing', cacheable: false };
   const stat = await fs.lstat(target.target, { bigint: true });
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Classic check trajectory changed');
-  if (stat.size > 8n * 1024n * 1024n)
-    throw new Error('Classic check trajectory exceeds size limit');
   return {
     target: target.target,
     cacheable: stat.ino !== 0n && stat.ctimeNs > 0n,

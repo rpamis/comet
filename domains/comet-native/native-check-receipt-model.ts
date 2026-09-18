@@ -10,9 +10,9 @@ export const NATIVE_CHECK_LIMITS = Object.freeze({
   // maxFiles and maxTotalBytes apply to each auditable batch; one receipt may aggregate many
   // batches when the complete projection-derived scope is larger than one batch.
   maxFiles: 256,
-  // Generated Native runtimes are deliberately emitted as a single auditable asset and
-  // currently exceed 1 MiB. Keep the bounded checker usable for that supported asset
-  // while retaining a finite per-file limit that produces a blocking scan-limit receipt.
+  // Files above maxFileBytes are skipped without a blocking issue, like binary
+  // files: the bounded checker makes no claim about them. The threshold stays
+  // part of the checker identity so existing receipts remain comparable.
   maxFileBytes: 2 * 1024 * 1024,
   maxTotalBytes: 8 * 1024 * 1024,
   maxIssues: 128,

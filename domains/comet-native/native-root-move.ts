@@ -9,6 +9,7 @@ import { isInsidePath, nativeProjectPaths, normalizeArtifactRootRef } from './na
 import {
   copyNativeProtectedFile,
   ensureNativeProtectedDirectory,
+  hashNativeProtectedFile,
   quarantineNativeProtectedDirectory,
   readNativeProtectedDirectory,
   readNativeProtectedFile,
@@ -58,10 +59,6 @@ interface RootMoveCleanupManifest {
   kind: NativeRootMoveCleanupKind;
   entries: TreeEntry[];
 }
-
-const NATIVE_ROOT_MOVE_MAX_FILE_BYTES = 64 * 1024 * 1024;
-const NATIVE_ROOT_MOVE_MAX_JOURNAL_BYTES = 256 * 1024;
-const NATIVE_ROOT_MOVE_MAX_MANIFEST_BYTES = 16 * 1024 * 1024;
 
 async function exists(target: string): Promise<boolean> {
   try {
@@ -212,10 +209,9 @@ async function walkTree(
         });
         await visit(target);
       } else if (entry.isFile() && stat.isFile()) {
-        const snapshot = await readNativeProtectedFile({
+        const snapshot = await hashNativeProtectedFile({
           root,
           file: target,
-          maxBytes: NATIVE_ROOT_MOVE_MAX_FILE_BYTES,
           label: `Native root file ${path.relative(root, target)}`,
         });
         treeEntries.push({
@@ -277,7 +273,7 @@ async function copyTree(
           source: sourceEntry,
           targetRoot,
           target: targetEntry,
-          maxBytes: NATIVE_ROOT_MOVE_MAX_FILE_BYTES,
+          maxBytes: null,
           label: `Native root move file ${path.relative(source, sourceEntry)}`,
           exclusive: true,
           expectedTargetHash: null,
@@ -432,9 +428,6 @@ async function writeCleanupManifest(options: {
     entries: options.entries,
   };
   const source = cleanupManifestSource(manifest);
-  if (Buffer.byteLength(source, 'utf8') > NATIVE_ROOT_MOVE_MAX_MANIFEST_BYTES) {
-    throw new Error('Native root-move cleanup manifest exceeds its byte budget');
-  }
   await atomicWriteText(cleanupManifestFile(options.paths, options.id, options.kind), source, {
     containedRoot: options.paths.runtimeDir,
   });
@@ -449,7 +442,7 @@ async function readCleanupManifest(options: {
   const snapshot = await readNativeProtectedFile({
     root: options.paths.runtimeDir,
     file: cleanupManifestFile(options.paths, options.id, options.cleanup.kind),
-    maxBytes: NATIVE_ROOT_MOVE_MAX_MANIFEST_BYTES,
+    maxBytes: null,
     label: `Native root-move cleanup manifest ${options.cleanup.kind}`,
   });
   if (snapshot.hash !== options.cleanup.manifestHash) {
@@ -514,7 +507,7 @@ async function deleteCleanupManifestSubset(options: {
       await removeNativeProtectedFile({
         root: options.projectRoot,
         file: target,
-        maxBytes: NATIVE_ROOT_MOVE_MAX_FILE_BYTES,
+        maxBytes: null,
         expectedHash: entry.hash,
         expectedSize: entry.size,
         label: `Native root-move cleanup file ${entry.ref}`,
@@ -593,7 +586,7 @@ async function readRootMoveJournal(
     const snapshot = await readNativeProtectedFile({
       root: stage,
       file: stageJournal,
-      maxBytes: NATIVE_ROOT_MOVE_MAX_JOURNAL_BYTES,
+      maxBytes: null,
       label: `Staged Native root-move journal ${id}`,
     });
     const journal = JSON.parse(snapshot.bytes.toString('utf8')) as NativeTransactionJournal;

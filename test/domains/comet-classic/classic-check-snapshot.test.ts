@@ -126,6 +126,26 @@ describe('Classic check input snapshots', () => {
     expect(touched.digest).not.toBe(baseline.digest);
   });
 
+  it('fingerprints tracked files larger than 64 MiB without a byte cap', async () => {
+    const size = 64 * 1024 * 1024 + 1;
+    const large = path.join(root, 'recording.bin');
+    const handle = await fs.open(large, 'w');
+    try {
+      await handle.truncate(size);
+    } finally {
+      await handle.close();
+    }
+    git(root, 'add', 'recording.bin');
+
+    const snapshot = await collectCheckSnapshot(root, change);
+
+    const entry = snapshot.entries.find((candidate) => candidate.p === 'recording.bin');
+    expect(entry?.s).toBe(size);
+    expect(entry?.h).toBe(createHash('sha256').update(Buffer.alloc(size)).digest('hex'));
+    const changed = await collectCheckSnapshot(root, change);
+    expect(changed.digest).toBe(snapshot.digest);
+  });
+
   it('reports added, removed and changed files between manifests', () => {
     const baseline = parseCheckManifest(
       serializeCheckManifest([

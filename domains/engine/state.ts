@@ -110,7 +110,7 @@ export function applyRunStateToDocument(doc: StateDocument, state: RunState | nu
 }
 
 export const RUN_STATE_FILE = '.comet/run-state.json';
-const RUN_STATE_MAX_BYTES = 256 * 1024;
+const RUN_STATE_MAX_BYTES = Number.MAX_SAFE_INTEGER;
 
 interface RunStateJson {
   runId: string;

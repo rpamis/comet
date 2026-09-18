@@ -11,14 +11,14 @@ import { atomicWriteText } from './native-atomic-file.js';
 import { sameNativeFileObject } from './native-file-identity.js';
 
 export const NATIVE_RUN_IO_LIMITS = {
-  runStateBytes: 256 * 1024,
-  trajectoryBytes: 8 * 1024 * 1024,
+  runStateBytes: Number.MAX_SAFE_INTEGER,
+  trajectoryBytes: Number.MAX_SAFE_INTEGER,
   trajectoryEvents: 4_096,
-  trajectoryEventBytes: 256 * 1024,
-  checkpointBytes: 256 * 1024,
-  pendingActionBytes: 256 * 1024,
-  contextBytes: 1024 * 1024,
-  artifactsBytes: 1024 * 1024,
+  trajectoryEventBytes: Number.MAX_SAFE_INTEGER,
+  checkpointBytes: Number.MAX_SAFE_INTEGER,
+  pendingActionBytes: Number.MAX_SAFE_INTEGER,
+  contextBytes: Number.MAX_SAFE_INTEGER,
+  artifactsBytes: Number.MAX_SAFE_INTEGER,
 } as const;
 
 export interface NativeRunReadHooks {

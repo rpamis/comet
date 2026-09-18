@@ -65,8 +65,6 @@ export interface NativeArchiveTransactionHooksV2 {
   ) => void | Promise<void>;
 }
 
-const NATIVE_ARCHIVE_JOURNAL_MAX_BYTES = 256 * 1024;
-const NATIVE_ARCHIVE_CAS_RECORD_MAX_BYTES = 16 * 1024;
 const NATIVE_ARCHIVE_CAS_SCHEMA = 'comet.native.archive-cas.v1' as const;
 
 interface NativeArchiveFileObjectIdentity {
@@ -155,7 +153,7 @@ export async function readNativeArchiveTransactionV2(
   const snapshot = await readNativeProtectedFile({
     root: paths.runtimeDir,
     file: tx.journal,
-    maxBytes: NATIVE_ARCHIVE_JOURNAL_MAX_BYTES,
+    maxBytes: null,
     label: `Native Archive transaction journal ${id}`,
   });
   const journal = parseNativeArchiveTransactionJournalV2(
@@ -355,7 +353,7 @@ async function readCasRecord(options: {
   const snapshot = await readNativeProtectedFile({
     root: options.paths.runtimeDir,
     file: options.file,
-    maxBytes: NATIVE_ARCHIVE_CAS_RECORD_MAX_BYTES,
+    maxBytes: null,
     label: `Archive CAS ${options.operation.id} ${options.role} record`,
   });
   return parseCasRecord(

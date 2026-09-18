@@ -9,7 +9,7 @@ import {
   nativeStorageRoot,
   resolveContainedNativePath,
 } from './native-paths.js';
-import { readNativeProtectedFile } from './native-protected-file.js';
+import { hashNativeProtectedFile, readNativeProtectedFile } from './native-protected-file.js';
 import {
   nativeSensitiveArtifactReason,
   nativeSensitiveRelativePathReason,
@@ -26,9 +26,6 @@ import type {
 
 export const NATIVE_CHECKPOINT_LIMITS = {
   maxArtifacts: 128,
-  maxFileBytes: 16 * 1024 * 1024,
-  maxTotalBytes: 64 * 1024 * 1024,
-  maxDocumentBytes: 256 * 1024,
 } as const;
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
@@ -122,7 +119,7 @@ async function readBoundedJson(root: string, file: string, label: string): Promi
   const snapshot = await readNativeProtectedFile({
     root,
     file,
-    maxBytes: NATIVE_CHECKPOINT_LIMITS.maxDocumentBytes,
+    maxBytes: null,
     label,
   });
   return JSON.parse(snapshot.bytes.toString('utf8')) as unknown;
@@ -182,9 +179,6 @@ export function parseNativeCheckpointManifestValue(
   const totalBytes = nonNegativeInteger(manifest.totalBytes, 'checkpoint manifest totalBytes');
   if (artifacts.reduce((total, artifact) => total + artifact.size, 0) !== totalBytes) {
     throw new Error('Native checkpoint manifest totalBytes mismatch');
-  }
-  if (totalBytes > NATIVE_CHECKPOINT_LIMITS.maxTotalBytes) {
-    throw new Error('Native checkpoint manifest totalBytes exceeds its budget');
   }
   return {
     schema: 'comet.native.checkpoint-manifest.v1',
@@ -374,10 +368,9 @@ async function hashProjectArtifact(
       `Checkpoint artifact is excluded as sensitive (${sensitiveReason}): ${artifactRef}`,
     );
   }
-  const snapshot = await readNativeProtectedFile({
+  const snapshot = await hashNativeProtectedFile({
     root: paths.projectRoot,
     file: target,
-    maxBytes: NATIVE_CHECKPOINT_LIMITS.maxFileBytes,
     label: `Checkpoint artifact ${artifactRef}`,
     forbiddenRoots: [paths.nativeRoot, paths.runtimeDir],
     hooks: {
@@ -409,9 +402,6 @@ export async function createNativeCheckpointManifest(
   for (const artifactRef of normalized) {
     const artifact = await hashProjectArtifact(paths, artifactRef, hooks);
     totalBytes += artifact.size;
-    if (totalBytes > NATIVE_CHECKPOINT_LIMITS.maxTotalBytes) {
-      throw new Error('Checkpoint artifacts exceed the total byte budget');
-    }
     artifacts.push(artifact);
   }
   return {

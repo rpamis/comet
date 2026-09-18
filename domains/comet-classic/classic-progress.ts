@@ -16,7 +16,6 @@ import {
   writeClassicProjectText,
 } from './classic-protected-path.js';
 
-const MAX_BYTES = 64 * 1024;
 const STAGES = ['implementing', 'task-review', 'checkoff', 'done', 'blocked'] as const;
 
 export interface ClassicCheckpoint {
@@ -48,8 +47,6 @@ export interface ClassicDelivery extends ClassicDeliveryInput {
 function object(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== 'object' || Array.isArray(input))
     throw new Error('Classic progress requires a JSON object');
-  if (Buffer.byteLength(JSON.stringify(input), 'utf8') > MAX_BYTES)
-    throw new Error('Classic progress exceeds size limit');
   return input as Record<string, unknown>;
 }
 
@@ -127,9 +124,7 @@ async function readRecord(root: string, changeDir: string, filename: string): Pr
     }))
   )
     return undefined;
-  return JSON.parse(
-    await readClassicProjectFile(root, target, { label: 'Classic progress', maxBytes: MAX_BYTES }),
-  );
+  return JSON.parse(await readClassicProjectFile(root, target, { label: 'Classic progress' }));
 }
 
 export async function readClassicCheckpoint(root: string, changeDir: string, tasksSource: string) {
@@ -284,7 +279,6 @@ async function currentState(root: string, changeDir: string) {
   return stateObject(
     await readClassicProjectFile(root, path.join(changeDir, '.comet.yaml'), {
       label: 'Classic delivery state',
-      maxBytes: MAX_BYTES,
     }),
   );
 }
@@ -304,7 +298,6 @@ function runCommand(
   return runExternalCommand(command, args, {
     cwd: root,
     timeoutMs: 5000,
-    maxBufferBytes: MAX_BYTES,
     env: nonInteractiveGitEnvironment({ authentication }),
   }).trim();
 }
@@ -453,7 +446,6 @@ async function readReceipt(root: string, changeIdentity: string): Promise<Delive
       JSON.parse(
         await readClassicProjectFile(location.root, location.file, {
           label: 'Classic delivery receipt',
-          maxBytes: MAX_BYTES,
         }),
       ),
     );

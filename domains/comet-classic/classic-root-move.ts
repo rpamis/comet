@@ -42,8 +42,6 @@ const APPLY_PRECONDITIONS = [
   'source, target, staging, transaction, and config paths remain protected',
 ] as const;
 const MAX_FILES = 50_000;
-const MAX_TOTAL_BYTES = 512 * 1024 * 1024;
-const MAX_JOURNAL_BYTES = 16 * 1024 * 1024;
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const UUID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 const journalClaimBrand = Symbol('ClassicRootMoveJournalClaim');
@@ -979,18 +977,14 @@ async function scanTree(
       if (files.length + 1 > MAX_FILES) {
         throw new Error(`Classic root move exceeds ${MAX_FILES} files`);
       }
-      const remainingBytes = MAX_TOTAL_BYTES - totalBytes;
       const bytes = await readRootMoveFile(
         projectRoot,
         absolute,
-        Math.max(1, remainingBytes),
+        Math.max(1, Number(stat.size)),
         `Classic root move source file ${relative}`,
         stat,
       );
       totalBytes += bytes.byteLength;
-      if (totalBytes > MAX_TOTAL_BYTES) {
-        throw new Error(`Classic root move exceeds ${MAX_TOTAL_BYTES} bytes`);
-      }
       files.push({ path: relative, size: bytes.byteLength, hash: hashBytes(bytes) });
     }
   }
@@ -1250,7 +1244,6 @@ function parseManifest(value: unknown): ClassicRootMoveManifest {
     !Array.isArray(manifest.files) ||
     !Number.isSafeInteger(manifest.totalBytes) ||
     (manifest.totalBytes as number) < 0 ||
-    (manifest.totalBytes as number) > MAX_TOTAL_BYTES ||
     typeof manifest.hash !== 'string' ||
     !HASH_PATTERN.test(manifest.hash)
   ) {
@@ -1599,14 +1592,14 @@ async function readJournalAtPath(
   await assertProtectedMovePath(projectRoot, file, label, 'file');
   try {
     const stat = await fs.lstat(file, { bigint: true });
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > BigInt(MAX_JOURNAL_BYTES)) {
+    if (!stat.isFile() || stat.isSymbolicLink()) {
       throw invalidJournal('journal must be a bounded regular file');
     }
     await afterInspect?.();
     const bytes = await readRootMoveFile(
       projectRoot,
       file,
-      MAX_JOURNAL_BYTES,
+      Math.max(1, Number(stat.size)),
       'Classic root move journal',
       stat,
     );

@@ -29,9 +29,7 @@ import {
 
 const ROOT_MOVE_JOURNAL = '.comet/classic-root-move.json';
 const INIT_OWNERSHIP_JOURNAL = '.comet/classic-init-ownership.json';
-const INIT_OWNERSHIP_MAX_BYTES = 16 * 1024 * 1024;
 const INIT_OWNERSHIP_MAX_FILES = 50_000;
-const INIT_OWNERSHIP_MAX_TOTAL_BYTES = 512 * 1024 * 1024;
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const initializationPermitBrand = Symbol('ClassicLayoutInitializationPermit');
 const ownershipClaimBrand = Symbol('ClassicInitOwnershipClaim');
@@ -190,7 +188,6 @@ function parseManifest(value: unknown): ClassicInitManifest {
     !Array.isArray(raw.files) ||
     !Number.isSafeInteger(raw.totalBytes) ||
     (raw.totalBytes as number) < 0 ||
-    (raw.totalBytes as number) > INIT_OWNERSHIP_MAX_TOTAL_BYTES ||
     typeof raw.hash !== 'string' ||
     !HASH_PATTERN.test(raw.hash)
   ) {
@@ -337,7 +334,7 @@ async function readOwnershipJournalAtPath(
     const { bytes, stat } = await readProtectedProjectFile(
       projectRoot,
       relativePath,
-      INIT_OWNERSHIP_MAX_BYTES,
+      Number.MAX_SAFE_INTEGER,
       { label: relativePath, bigint: true },
     );
     const journal = parseOwnershipJournal(JSON.parse(bytes.toString('utf8')) as unknown);
@@ -398,9 +395,6 @@ async function scanOwnedRoot(
       }
       const bytes = await fs.readFile(absolute);
       totalBytes += bytes.byteLength;
-      if (totalBytes > INIT_OWNERSHIP_MAX_TOTAL_BYTES) {
-        throw new Error('Classic init ownership manifest exceeds its byte budget');
-      }
       const current = await fs.lstat(absolute, { bigint: true });
       if (
         !current.isFile() ||

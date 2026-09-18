@@ -586,7 +586,6 @@ export async function evaluateCommandCheck(
     if (!statMatches) {
       const log = await readClassicProjectFile(root, record.logRef, {
         label: 'Classic check evidence log',
-        maxBytes: 8 * 1024 * 1024,
       });
       if (createHash('sha256').update(log).digest('hex') !== record.logHash)
         return fail('the evidence log is damaged');

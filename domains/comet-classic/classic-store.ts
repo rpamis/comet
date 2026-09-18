@@ -25,7 +25,6 @@ import {
   type StateDocument,
 } from '../../domains/engine/state.js';
 
-const CLASSIC_STATE_MAX_BYTES = 2 * 1024 * 1024;
 const stateLock = new AsyncLocalStorage<string>();
 const STATE_TRANSACTION = '.comet-state-transaction.json';
 
@@ -50,7 +49,7 @@ export async function withClassicStateLock<T>(
 async function optionalStateText(changeDir: string, file: string): Promise<string | null> {
   try {
     return (
-      await readProtectedProjectFile(changeDir, file, CLASSIC_STATE_MAX_BYTES * 4, {
+      await readProtectedProjectFile(changeDir, file, Number.MAX_SAFE_INTEGER, {
         label: 'Classic state transaction',
       })
     ).bytes.toString('utf8');
@@ -184,7 +183,7 @@ async function readDocument(file: string): Promise<Document> {
       await readProtectedProjectFile(
         path.dirname(file),
         path.basename(file),
-        CLASSIC_STATE_MAX_BYTES,
+        Number.MAX_SAFE_INTEGER,
         {
           label: 'Classic state document',
         },

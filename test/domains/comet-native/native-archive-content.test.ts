@@ -21,13 +21,16 @@ describe('Native Archive content identity budgets', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('rejects a file that exceeds the per-file budget before hashing it', async () => {
+  it('hashes files of any size without a per-file byte budget', async () => {
     const file = path.join(root, 'large.md');
-    await fs.writeFile(file, '12345');
+    const handle = await fs.open(file, 'w');
+    try {
+      await handle.truncate(65 * 1024 * 1024 + 1);
+    } finally {
+      await handle.close();
+    }
 
-    await expect(inspectNativeArchiveContent(file, { maxFileBytes: 4 })).rejects.toThrow(
-      'exceeds 4 bytes',
-    );
+    await expect(inspectNativeArchiveContent(file)).resolves.toMatchObject({ kind: 'file' });
   });
 
   it('rejects a tree that exceeds the global entry budget', async () => {
@@ -39,13 +42,11 @@ describe('Native Archive content identity budgets', () => {
     );
   });
 
-  it('rejects a tree that exceeds the cumulative file budget', async () => {
+  it('hashes a tree of any cumulative size without a byte budget', async () => {
     await fs.writeFile(path.join(root, 'one.md'), '123');
     await fs.writeFile(path.join(root, 'two.md'), '456');
 
-    await expect(hashNativeArchiveTree(root, { maxTotalBytes: 5 })).rejects.toThrow(
-      'exceeds 5 total file bytes',
-    );
+    await expect(hashNativeArchiveTree(root)).resolves.toMatch(/^[a-f0-9]{64}$/u);
   });
 
   it('rejects a tree that exceeds the directory depth budget', async () => {
@@ -74,10 +75,6 @@ describe('Native Archive content identity budgets', () => {
     const invalidLimits = [
       ['maxDepth', 0],
       ['maxEntries', Number.NaN],
-      ['maxFileBytes', -1],
-      ['maxTotalBytes', 1.5],
-      ['maxManifestBytes', Number.POSITIVE_INFINITY],
-      ['maxRefBytes', 0],
     ] as const;
     for (const [name, value] of invalidLimits) {
       await expect(hashNativeArchiveTree(root, { [name]: value })).rejects.toThrow(name);

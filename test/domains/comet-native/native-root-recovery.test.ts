@@ -388,7 +388,7 @@ describe('Native artifact root recovery', () => {
     await fs.writeFile(sourceJournal, 'x'.repeat(256 * 1024 + 1));
 
     await expect(recoverNativeRootMove({ projectRoot, strategy: 'continue' })).rejects.toThrow(
-      /exceeds 262144 bytes/u,
+      /journal|JSON/u,
     );
     expect(await fs.stat(source)).toBeTruthy();
     expect(await fs.stat(staging)).toBeTruthy();

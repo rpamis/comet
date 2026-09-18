@@ -149,7 +149,6 @@ export async function readCheckPolicy(
     return defaults;
   const raw = await readClassicProjectFile(root, CHECK_POLICY_PATH, {
     label: 'Classic check policy',
-    maxBytes: 64 * 1024,
   });
   try {
     const value = JSON.parse(raw);
