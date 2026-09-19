@@ -1430,6 +1430,7 @@ export async function returnNativePortableChangeToShape(options: {
   reason: string;
   allowedPhases?: readonly NativePortablePhase[];
   expectedContinuation?: NativePortableExpectedContinuation;
+  keepFailureBudget?: boolean;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
@@ -1449,6 +1450,7 @@ export async function returnNativePortableChangeToShape(options: {
         paths: options.paths,
         state,
         reason: options.reason,
+        ...(options.keepFailureBudget ? { keepFailureBudget: true } : {}),
       });
     },
   );
@@ -1487,7 +1489,12 @@ export async function returnNativePortableStateToShapeLocked(options: {
       iteration: 0,
       attempt: 0,
       retry_epoch: 0,
-      failed_iteration_count: 0,
+      // The failed-iteration budget survives a drift return to Shape: repair
+      // rounds must not reset the failure budget every time children.yaml
+      // changes, or max_verify_failures can never trigger (issue: a repair
+      // loop through Shape silently zeroed the budget each round). Only a
+      // user-confirmed fresh Shape via --revise-requirements clears it.
+      failed_iteration_count: state.loop.failed_iteration_count,
       no_progress_count: 0,
       execution_failure_count: 0,
       previous_unresolved_ids: [],

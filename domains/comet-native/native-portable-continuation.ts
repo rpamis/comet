@@ -189,6 +189,25 @@ function nativePortableUserCommunication(
     state.status === 'blocked' &&
     state.blockers.some(({ resolution_action }) => resolution_action === 'retry-verifier')
   ) {
+    if (state.loop.retry_epoch >= 3) {
+      return state.language === 'zh-CN'
+        ? {
+            required: true,
+            message:
+              '自动重试验收已连续多轮未能取得结果，验证环境很可能不可用。请人工检查验证环境（subagent 配额、平台任务队列、网络），或使用 doctor --repair 评估该 change 状态。',
+            suggestedReply: '人工检查验证环境',
+            agentInstruction:
+              '只向用户转述 message，等待用户完成人工检查后再继续。不要自动重试验收。',
+          }
+        : {
+            required: true,
+            message:
+              'Automatic verification retries have failed across multiple rounds; the verification environment is likely unavailable. Inspect the environment manually (subagent quota, platform task queue, network), or use doctor --repair to assess the change state.',
+            suggestedReply: 'Inspect the verification environment',
+            agentInstruction:
+              'Relay message to the user and wait for a manual environment check before continuing. Do not retry verification automatically.',
+          };
+    }
     return state.language === 'zh-CN'
       ? {
           required: true,
@@ -268,7 +287,7 @@ function nativePortableUserCommunication(
     const stalled = stopReason === 'stalled';
     const zhMessage = stalled
       ? '验证已连续三轮失败且未通过的验收场景一直没有减少，本次修改已暂停，以避免在同一个问题上反复循环。你的代码和已经完成的检查都已安全保留。可以让 Builder 换一种修复思路继续，也可以回到需求阶段调整验收项。'
-      : '本次修改的验证失败次数已用完配置的预算，因此暂停等待你的决定，而不是自动重试。你的代码和已经完成的检查都已安全保留。可以让 Builder 换一种修复思路继续，也可以回到需求阶段调整验收项。';
+      : '本次修改的验证失败次数已用完配置的预算，因此暂停等待你的决定，而不是自动重试。你的代码和已经完成的检查都已安全保留。可以让 Builder 换一种修复思路继续，也可以回到需求阶段调整验收项。注意：预算不会重置，选择继续修复后，下一次验收失败会再次暂停。';
     const enMessage = stalled
       ? 'Verification has failed three times in a row without the unresolved scenarios shrinking, so this change is paused to avoid looping on the same problem. Your code and completed checks are safely preserved. You can have the Builder try a different repair approach, or go back and adjust the requirements.'
       : 'Verification for this change has used its configured failure budget, so it is paused for your decision instead of retrying automatically. Your code and completed checks are safely preserved. You can have the Builder continue with a different repair approach, or go back and adjust the requirements.';

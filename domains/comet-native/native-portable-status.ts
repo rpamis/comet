@@ -57,6 +57,8 @@ export interface NativePortableStatusProjection {
       registeredAt: string;
       confirmedAt: string | null;
       confirmation: 'unconfirmed' | 'confirmed';
+      /** Whole minutes since registration while never confirmed (unconfirmed only). */
+      waitingMinutes?: number;
     };
   };
   childSummary?: Record<string, number>;
@@ -213,12 +215,20 @@ function verifierStartupProjection(
     return undefined;
   }
   const confirmedAt = execution.verifierStartedAt ?? null;
+  const confirmed = confirmedAt !== null || execution.requestCheckRounds > 0;
   return {
     attempt: state.loop.attempt,
     registeredAt: execution.startedAt,
     confirmedAt,
-    confirmation:
-      confirmedAt !== null || execution.requestCheckRounds > 0 ? 'confirmed' : 'unconfirmed',
+    confirmation: confirmed ? 'confirmed' : 'unconfirmed',
+    ...(confirmed
+      ? {}
+      : {
+          waitingMinutes: Math.max(
+            0,
+            Math.round((Date.now() - Date.parse(execution.startedAt)) / 60_000),
+          ),
+        }),
   };
 }
 

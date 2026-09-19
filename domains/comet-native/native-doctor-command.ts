@@ -1,4 +1,12 @@
 import { promises as fs } from 'node:fs';
+
+/**
+ * A dispatched Verifier that never confirmed startup is presumed lost after
+ * this long; explicit doctor repair may register its failure so the change
+ * returns to a dispatchable Verify boundary (platform queue loss, quota
+ * reclaim). Genuine startups report progress well within the window.
+ */
+const NATIVE_VERIFIER_CONFIRM_TAKEOVER_MS = 30 * 60 * 1_000;
 import path from 'node:path';
 
 import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-worktree.js';
@@ -8,6 +16,8 @@ import { doctorNativeProject } from './native-doctor.js';
 import { inspectNativeChildren, readNativeChildrenContract } from './native-children.js';
 import { archiveNativePortableChange } from './native-portable-archive.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
+import { compareAndSwapNativePortableState } from './native-portable-state.js';
+import { recordNativeVerifierExecutionError } from './native-loop-runtime.js';
 import {
   hasIncompleteNativePortableMigration,
   migrateNativeLegacyChangeToPortable,
@@ -503,6 +513,45 @@ export async function nativeDoctorCommand(
           result: shapeRecovery,
           continuation: await portableContinuation(paths, shapeRecovery.state),
         });
+      }
+      // A dispatched Verifier that never confirmed startup parks the change on
+      // await-verifier forever (platform queue loss, quota reclaim). Once the
+      // dispatch is old enough that no startup can plausibly still arrive,
+      // explicit doctor repair registers the failure so Runtime returns to a
+      // dispatchable Verify boundary.
+      const localExecution = await readNativeLocalExecution(
+        nativeLocalExecutionFile(paths, name),
+      ).catch(() => null);
+      const execution = localExecution?.execution;
+      if (
+        execution &&
+        execution.stage === 'verifying' &&
+        execution.actor === 'verifier' &&
+        execution.status === 'running' &&
+        execution.verifierStartedAt === undefined
+      ) {
+        const waitingMs = Date.now() - Date.parse(execution.startedAt);
+        if (waitingMs >= NATIVE_VERIFIER_CONFIRM_TAKEOVER_MS) {
+          const portableNow = await readNativePortableChange(paths, name);
+          const recorded = recordNativeVerifierExecutionError({
+            state: portableNow,
+            summary: `Verifier dispatch registered ${Math.round(waitingMs / 60_000)} minutes ago and never confirmed startup; doctor repair recorded the failure`,
+          });
+          const written = await compareAndSwapNativePortableState({
+            file: nativePortableStateFile(paths, name),
+            expectedStateVersion: portableNow.state_version,
+            next: recorded,
+            containedRoot: paths.nativeRoot,
+          });
+          return success('doctor', {
+            healthy: true,
+            workflow: 'native-portable',
+            change: name,
+            repaired: true,
+            result: { verifierTakeover: true, waitedMinutes: Math.round(waitingMs / 60_000) },
+            continuation: await portableContinuation(paths, written),
+          });
+        }
       }
       const result = await recoverNativePortableChange({
         paths,

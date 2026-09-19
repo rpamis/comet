@@ -828,14 +828,27 @@ async function applyTransitionEvent(
       unknownKeys: projection.unknownKeys,
     });
   }
-  await appendClassicStateEvent(directory, {
-    change: name,
-    event,
-    source: 'comet-state',
-    from: classic,
-    to: result.classic,
-    effects: result.effects,
-  });
+  try {
+    await appendClassicStateEvent(directory, {
+      change: name,
+      event,
+      source: 'comet-state',
+      from: classic,
+      to: result.classic,
+      effects: result.effects,
+    });
+  } catch (error) {
+    // The transition itself already committed (phase + epoch are on disk). A
+    // failing audit-log append must not flip the command to failure, which
+    // would make callers retry an already-applied transition.
+    output.stderr.push(
+      red(
+        `[WARN] transition ${event} applied but the state event log append failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      ),
+    );
+  }
 
   for (const effect of result.effects) {
     output.stderr.push(green(`[SET] ${wireField(effect.field)}=${wireValue(effect.to)}`));
@@ -874,6 +887,22 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
     return;
   } else if (event === 'verify-fail') {
     await requirePhase(name, 'verify');
+    // Soft guard against agent loops: each verify-fail costs a full rebuild
+    // and re-verification cycle on the next build-complete. After three
+    // failures the transition still succeeds only with an explicit ack, so a
+    // mechanical retry loop hits a decision point instead of burning cycles.
+    const verifyFailures = Number((await readField(name, 'verify_failures')) ?? 0);
+    if (
+      Number.isFinite(verifyFailures) &&
+      verifyFailures >= 3 &&
+      process.env.COMET_ACK_VERIFY_FAILURES !== '1'
+    ) {
+      fail(
+        `ERROR: '${name}' has already failed verification ${verifyFailures} times\n` +
+          '  Repeated verify-fail transitions cost a full build + verification cycle each.\n' +
+          '  Fix the reported failures, or set COMET_ACK_VERIFY_FAILURES=1 to accept another round deliberately.',
+      );
+    }
   } else if (event === 'archive-confirm') {
     await requirePhase(name, 'archive');
     if ((await readField(name, 'verify_result')) !== 'pass') {

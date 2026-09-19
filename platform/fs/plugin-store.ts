@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+
+import { unlinkWithRetry } from './transient-retry.js';
 import path from 'node:path';
 
 const DEFAULT_LOCK_TIMEOUT_MS = 30_000;
@@ -132,9 +134,16 @@ async function releaseOwnedLock(lockPath: string, nonce: string): Promise<void> 
   try {
     const owner = parseLockOwner(await fs.readFile(lockPath, 'utf8'));
     if (owner?.nonce !== nonce) return;
-    await fs.rm(lockPath);
+    await unlinkWithRetry(lockPath);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return;
+    // The operation itself already committed; a stuck lock file must not
+    // replace the success result. The empty-lock grace recovers it shortly.
+    process.stderr.write(
+      `[comet] warning: could not remove lock file ${lockPath} (${code ?? error}); it will be recovered automatically
+`,
+    );
   }
 }
 

@@ -810,11 +810,23 @@ export function returnNativeCandidateToBuild(options: {
   state: NativePortableState;
   reason: string;
   now?: Date;
+  /**
+   * Count this return against the failed-iteration budget (issue #439 follow-up:
+   * Builder-handoff Runtime check failures previously bypassed the budget and
+   * could loop forever). When the budget is exhausted the candidate stays in
+   * Verify with an await-user blocker instead of silently returning to Build.
+   */
+  failureBudget?: { maxVerifyFailures: number };
 }): NativePortableState {
   const state = parseNativePortableState(options.state);
   if (state.phase !== 'verify' && state.phase !== 'archive') {
     throw new Error('Only Verify or Archive can return a candidate to Build');
   }
+  const budget = options.failureBudget;
+  const failedIterationCount = budget
+    ? state.loop.failed_iteration_count + 1
+    : state.loop.failed_iteration_count;
+  const budgetExhausted = budget !== undefined && failedIterationCount >= budget.maxVerifyFailures;
   const completedAt = (options.now ?? new Date()).toISOString();
   const withHistory = appendNativePortableHistory(
     state,
@@ -834,6 +846,34 @@ export function returnNativeCandidateToBuild(options: {
             ? { ...entry, result: 'pending' as const, reason: null }
             : entry,
         );
+  if (budgetExhausted) {
+    return parseNativePortableState({
+      ...withHistory,
+      phase: 'verify',
+      status: 'await-user',
+      state_version: nextVersion(state),
+      verification_result: 'fail',
+      builder_handoff: state.builder_handoff,
+      blockers: [
+        {
+          owner: 'user',
+          reason: toNativePortableText(
+            `Native Runtime checks failed at Builder handoff and reached the configured failed iteration limit: ${options.reason}`,
+          ),
+          acceptance_ids: unresolvedIds,
+          resolution_action: 'await-user',
+        },
+      ],
+      loop: {
+        ...state.loop,
+        stage: 'await-user',
+        failed_iteration_count: failedIterationCount,
+        execution_failure_count: 0,
+        stop_reason: 'budget',
+        next_action: 'resolve-loop-stop',
+      },
+    });
+  }
   return parseNativePortableState({
     ...withHistory,
     phase: 'build',
@@ -851,6 +891,7 @@ export function returnNativeCandidateToBuild(options: {
       iteration: state.loop.iteration + 1,
       attempt: 0,
       execution_failure_count: 0,
+      failed_iteration_count: failedIterationCount,
       stop_reason: undefined,
       next_action: 'submit-builder-candidate',
     },

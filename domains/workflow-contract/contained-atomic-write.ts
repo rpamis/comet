@@ -1,3 +1,8 @@
+import {
+  linkWithRetry,
+  renameWithRetry,
+  unlinkWithRetry,
+} from '../../platform/fs/transient-retry.js';
 import { randomUUID } from 'crypto';
 import { constants as fsConstants, promises as fs } from 'fs';
 import path from 'path';
@@ -27,7 +32,7 @@ export async function publishFileExclusively(
   destination: string,
 ): Promise<{ linked: boolean }> {
   try {
-    await fs.link(source, destination);
+    await linkWithRetry(source, destination);
     return { linked: true };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
@@ -259,7 +264,7 @@ async function atomicWriteContained(
       await publishFileExclusively(temporary, file);
       await fs.unlink(temporary);
     } else {
-      await fs.rename(temporary, file);
+      await renameWithRetry(temporary, file);
     }
     await syncDirectory(directory);
   } catch (error) {
@@ -344,7 +349,7 @@ export async function removeContainedFile(
   ) {
     throw new Error('Contained file removal target changed before removal');
   }
-  await fs.unlink(file);
+  await unlinkWithRetry(file);
   await verifyDirectoryChain(directoryChain);
   await syncDirectory(directory);
   return true;

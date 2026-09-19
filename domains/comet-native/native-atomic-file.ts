@@ -1,4 +1,10 @@
 import { randomUUID } from 'crypto';
+
+import {
+  linkWithRetry,
+  renameWithRetry,
+  unlinkWithRetry,
+} from '../../platform/fs/transient-retry.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -217,10 +223,10 @@ async function atomicWrite(
       }
     }
     if (options.exclusive) {
-      await fs.link(temporary, file);
-      await fs.unlink(temporary);
+      await linkWithRetry(temporary, file);
+      await unlinkWithRetry(temporary);
     } else {
-      await fs.rename(temporary, file);
+      await renameWithRetry(temporary, file);
     }
     await syncDirectory(directory);
   } catch (error) {

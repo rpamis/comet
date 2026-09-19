@@ -141,22 +141,31 @@ describe('Native operation locks', () => {
     },
   );
 
-  it.each([
-    {
-      fileName: 'root-move.lock',
-      run: (work: () => Promise<void>) =>
-        withNativeMutationLock(paths, 'mutate after stale owner', work),
-    },
-    {
-      fileName: 'transition-example.lock',
-      run: (work: () => Promise<void>) =>
-        withNativeTransitionLock(paths, 'example', 'transition after stale owner', work),
-    },
-  ])('requires doctor takeover for a stale $fileName', async ({ fileName, run }) => {
+  it('takes over a same-host stale root-move lock automatically instead of failing', async () => {
     await fs.mkdir(paths.locksDir, { recursive: true });
-    const file = path.join(paths.locksDir, fileName);
+    const file = path.join(paths.locksDir, 'root-move.lock');
     const stale = {
-      id: `stale-${fileName}`,
+      id: 'stale-root-move',
+      pid: 2_147_483_647,
+      hostname: os.hostname(),
+      createdAt: '2026-07-17T00:00:00.000Z',
+      operation: 'interrupted operation',
+    };
+    await fs.writeFile(file, JSON.stringify(stale));
+    let entered = false;
+
+    await withNativeMutationLock(paths, 'mutate after stale owner', async () => {
+      entered = true;
+    });
+    expect(entered).toBe(true);
+    expect(await readNativeLock(file)).toBeNull();
+  });
+
+  it('requires doctor takeover for a stale transition lock', async () => {
+    await fs.mkdir(paths.locksDir, { recursive: true });
+    const file = path.join(paths.locksDir, 'transition-example.lock');
+    const stale = {
+      id: 'stale-transition',
       pid: 2_147_483_647,
       hostname: os.hostname(),
       createdAt: '2026-07-17T00:00:00.000Z',
@@ -166,7 +175,7 @@ describe('Native operation locks', () => {
     let entered = false;
 
     await expect(
-      run(async () => {
+      withNativeTransitionLock(paths, 'example', 'transition after stale owner', async () => {
         entered = true;
       }),
     ).rejects.toThrow(/already held/u);

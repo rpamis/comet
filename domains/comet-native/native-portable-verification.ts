@@ -684,6 +684,7 @@ export async function returnNativePortableChangeToBuild(options: {
   name: string;
   reason: string;
   expectedContinuation?: NativePortableExpectedContinuation;
+  failureBudget?: { maxVerifyFailures: number };
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
@@ -696,7 +697,11 @@ export async function returnNativePortableChangeToBuild(options: {
         action: 'revise-implementation',
       });
       if (state.phase === 'build') return state;
-      const next = returnNativeCandidateToBuild({ state, reason: options.reason });
+      const next = returnNativeCandidateToBuild({
+        state,
+        reason: options.reason,
+        ...(options.failureBudget ? { failureBudget: options.failureBudget } : {}),
+      });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),

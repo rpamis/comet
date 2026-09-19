@@ -388,6 +388,7 @@ export async function nativeNextCommand(
           paths: configured.paths,
           name,
           reason: drift.reason ?? 'Native confirmed requirements changed',
+          keepFailureBudget: true,
         });
         return success('next', {
           state: nativePortableStateSummary(state, configured.paths),
@@ -568,6 +569,7 @@ export async function nativeNextCommand(
           paths: configured.paths,
           name,
           reason: drift.reason ?? 'Native confirmed requirements changed',
+          keepFailureBudget: true,
         });
       } else {
         const children = await inspectNativeChildren({ paths: configured.paths, state: current });

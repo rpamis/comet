@@ -5,13 +5,37 @@ import { runExternalCommand } from './external-command.js';
 
 let ownIdentity: string | null = null;
 
+// A pid's creation identity never changes, so caching the probe result is
+// always semantically safe for live processes. Caching a failed probe is only
+// safe briefly (the process may have exited and its identity become readable
+// later is impossible — but a *timeout* can clear), so failures get a short
+// TTL. This keeps lock/recovery paths off the PowerShell cold start when a
+// foreign pid is probed repeatedly within one command.
+const IDENTITY_CACHE_TTL_MS = 60_000;
+const FAILED_PROBE_TTL_MS = 10_000;
+const identityCache = new Map<number, { value: string | null; at: number }>();
+
+function cachedIdentity(pid: number): string | null | undefined {
+  const entry = identityCache.get(pid);
+  if (!entry) return undefined;
+  const ttl = entry.value === null ? FAILED_PROBE_TTL_MS : IDENTITY_CACHE_TTL_MS;
+  if (Date.now() - entry.at > ttl) {
+    identityCache.delete(pid);
+    return undefined;
+  }
+  return entry.value;
+}
+
 /** OS process creation identity; null means inspection was unavailable, never proof of exit. */
 export async function readProcessIdentity(pid: number): Promise<string | null> {
   if (pid === process.pid && ownIdentity !== null) return ownIdentity;
+  const cached = cachedIdentity(pid);
+  if (cached !== undefined) return cached;
   const identity = await inspectProcessIdentity(pid);
   // Our own creation identity cannot change within this process. Avoid repeatedly
   // starting a process probe for the same owner, especially on cold Windows hosts.
   if (pid === process.pid && identity !== null) ownIdentity = identity;
+  if (pid !== process.pid) identityCache.set(pid, { value: identity, at: Date.now() });
   return identity;
 }
 

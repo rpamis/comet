@@ -454,6 +454,20 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
             requestedRetryIds,
           );
         } else if (previous?.status === 'interrupted' && sameBinding) {
+          // Rerunning the byte-identical integrate after checks failed used to
+          // return success without doing anything, so the continuation kept
+          // proposing an action that could never change state. Fail fast and
+          // name the actual exits instead.
+          const failed = (previous.checkStates ?? []).filter(({ status }) => status === 'failed');
+          if (failed.length > 0) {
+            throw new Error(
+              `Native Supervisor integration checks already failed on the identical plan (${failed
+                .map(({ id }) => id)
+                .join(
+                  ', ',
+                )}); change the integration check plan or re-verify the child instead of rerunning the same integrate`,
+            );
+          }
           return { completed: state };
         }
         const priorStates =

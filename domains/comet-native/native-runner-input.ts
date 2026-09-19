@@ -1383,6 +1383,7 @@ export async function applyNativeRunnerInput(options: {
           paths: options.paths,
           name: options.name,
           reason,
+          failureBudget: { maxVerifyFailures: options.maxVerifyFailures },
         });
         return {
           state: returned,
