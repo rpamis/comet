@@ -1,4 +1,6 @@
 import type { SkillLanguageId } from './languages.js';
+import path from 'path';
+import { promises as fs } from 'fs';
 import { resolveProtectedProjectInstructionPath } from '../workflow-contract/protected-project-path.js';
 import {
   mergeManagedMarkdownBlock,
@@ -17,6 +19,62 @@ export interface ProjectInstructionResult {
 export interface ProjectInstructionRemovalResult {
   files: Array<{ file: string; result: ManagedMarkdownBlockResult }>;
   removed: number;
+}
+
+const DIRECT_AGENTS_IMPORT_PATTERN =
+  /(?:^|[\s([{"'])@(?:\.\/)?AGENTS\.md(?=$|[\s\])}>,!?:;]|[.,](?=\s|$))/u;
+
+function stripInlineMarkdownCode(line: string): string {
+  let output = '';
+  let delimiter = '';
+  let index = 0;
+
+  while (index < line.length) {
+    if (line[index] !== '`') {
+      if (!delimiter) output += line[index];
+      index += 1;
+      continue;
+    }
+
+    let end = index + 1;
+    while (end < line.length && line[end] === '`') end += 1;
+    const marker = line.slice(index, end);
+    if (!delimiter) {
+      delimiter = marker;
+    } else if (marker === delimiter) {
+      delimiter = '';
+    }
+    index = end;
+  }
+
+  return output;
+}
+
+function hasDirectAgentsImport(content: string): boolean {
+  let fence: { marker: '`' | '~'; length: number } | null = null;
+
+  for (const rawLine of content.replace(/\r\n/gu, '\n').split('\n')) {
+    if (/^(?: {4}|\t)/u.test(rawLine)) continue;
+    const fenceMatch = /^\s*(`{3,}|~{3,})/u.exec(rawLine);
+    if (fence) {
+      if (fenceMatch && fenceMatch[1][0] === fence.marker && fenceMatch[1].length >= fence.length) {
+        fence = null;
+      }
+      continue;
+    }
+    if (fenceMatch) {
+      fence = { marker: fenceMatch[1][0] as '`' | '~', length: fenceMatch[1].length };
+      continue;
+    }
+    if (DIRECT_AGENTS_IMPORT_PATTERN.test(stripInlineMarkdownCode(rawLine))) return true;
+  }
+
+  return false;
+}
+
+function normalizeInstructionTarget(target: string): string {
+  const normalized = path.normalize(target);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
 export function renderCometAmbientResumeContent(languageId: SkillLanguageId): string {
@@ -73,14 +131,33 @@ export async function installCometProjectInstructions(
   const content = renderCometAmbientResumeContent(languageId);
   const files = [];
 
-  for (const file of PROJECT_INSTRUCTION_FILES) {
-    if (file === 'CLAUDE.md' && !platformIds.includes('claude')) continue;
-    const instruction = await resolveProtectedProjectInstructionPath(projectPath, file);
-    const result = await mergeManagedMarkdownBlock(instruction.target, {
-      tagName: COMET_AMBIENT_RESUME_TAG,
-      content,
-    });
-    files.push({ file, result });
+  const agents = await resolveProtectedProjectInstructionPath(projectPath, 'AGENTS.md');
+  const claude = platformIds.includes('claude')
+    ? await resolveProtectedProjectInstructionPath(projectPath, 'CLAUDE.md')
+    : undefined;
+  const claudeImportsAgents =
+    claude &&
+    normalizeInstructionTarget(agents.target) !== normalizeInstructionTarget(claude.target) &&
+    claude.exists
+      ? hasDirectAgentsImport(await fs.readFile(claude.target, 'utf8'))
+      : false;
+
+  const agentsResult = await mergeManagedMarkdownBlock(agents.target, {
+    tagName: COMET_AMBIENT_RESUME_TAG,
+    content,
+  });
+  files.push({ file: 'AGENTS.md', result: agentsResult });
+
+  if (claude) {
+    if (normalizeInstructionTarget(agents.target) !== normalizeInstructionTarget(claude.target)) {
+      const result = claudeImportsAgents
+        ? await removeManagedMarkdownBlock(claude.target, COMET_AMBIENT_RESUME_TAG)
+        : await mergeManagedMarkdownBlock(claude.target, {
+            tagName: COMET_AMBIENT_RESUME_TAG,
+            content,
+          });
+      files.push({ file: 'CLAUDE.md', result });
+    }
   }
 
   return {

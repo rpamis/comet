@@ -3749,6 +3749,58 @@ describe('update command helpers', () => {
     expect(claude).toContain('<comet-ambient-resume>');
   });
 
+  it('migrates duplicate CLAUDE instructions during update and reports one changed file', async () => {
+    await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.comet', 'config.yaml'),
+      [
+        'schema: comet.project.v1',
+        'default_workflow: native',
+        'workflows: [native]',
+        'ambient_resume: true',
+        'native:',
+        '  artifact_root: docs',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    await fs.mkdir(path.join(tmpDir, '.claude', 'skills', 'comet'), { recursive: true });
+    await fs.writeFile(
+      path.join(tmpDir, '.claude', 'skills', 'comet', 'SKILL.md'),
+      '# Comet\n\nUse this skill.',
+      'utf8',
+    );
+    await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), '# User\n\nKeep this.\n', 'utf8');
+    const claudePath = path.join(tmpDir, 'CLAUDE.md');
+    await fs.writeFile(claudePath, '# User\n\nAlso keep this.\n', 'utf8');
+
+    const instructions = await import('../../domains/skill/project-instructions.js');
+    await instructions.installCometProjectInstructions(tmpDir, 'en');
+    const legacyClaude = await fs.readFile(claudePath, 'utf8');
+    await fs.writeFile(claudePath, `# User\n\n@AGENTS.md\n\n${legacyClaude}`, 'utf8');
+
+    const fakeHome = path.join(tmpDir, 'fake-home-migrated-instructions');
+    const homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    let json: string;
+    try {
+      await updateCommand(tmpDir, { json: true, skipNpm: true });
+      json = log.mock.calls.map((call) => call.join(' ')).join('\n');
+    } finally {
+      log.mockRestore();
+      homedirSpy.mockRestore();
+    }
+
+    const result = JSON.parse(json);
+    expect(result.projectInstructions.updated).toBe(1);
+    await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain(
+      '<comet-ambient-resume>',
+    );
+    await expect(fs.readFile(claudePath, 'utf8')).resolves.toContain('@AGENTS.md');
+    await expect(fs.readFile(claudePath, 'utf8')).resolves.toContain('Also keep this.');
+    await expect(fs.readFile(claudePath, 'utf8')).resolves.not.toContain('<comet-ambient-resume>');
+  });
+
   it('installs ambient resume instructions for Classic-only projects', async () => {
     await arrangeClassicDocsOpenSpecUpdate(tmpDir);
     await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), '# User\n\nKeep this.\n', 'utf8');

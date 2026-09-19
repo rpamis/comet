@@ -4,11 +4,12 @@ This Rule is the persistent soft safeguard shared by Native and Classic. A proje
 
 ## Resolve the current request first
 
-At the start of every turn, when resuming work, or after possible context compression:
+At the start of every turn, when resuming work, or after possible context compression, perform only these lightweight ownership reads:
 
 1. Read `.comet/config.yaml`: `workflows` lists enabled capabilities, while `default_workflow` only selects the default `/comet` entry.
 2. Read `.comet/current-change.json`: its `workflow + change` identifies the current request owner.
-3. When the selection is missing, or its target change is missing or archived, enumerate active Comet changes across the project again: zero means there is no current Comet request, exactly one permits read-only inference, and multiple candidates require an explicit user selection.
+   When the selection remains valid and still points to the same workflow/change, reuse the current continuation response; these two lightweight reads do not run `resume-probe`, query `status`, or enumerate every change.
+3. Only when the selection is missing or invalid, its target change is missing or archived, or ownership is unclear, enumerate active Comet changes across the project again: zero means there is no current Comet request, exactly one permits read-only inference, and multiple candidates require an explicit user selection.
 4. Stop when the selection file is unreadable, its format or schema is invalid, its workflow is disabled, its branch is invalid, or change state cannot be read safely. Never fall back to `default_workflow` to guess ownership.
 
 A legacy Classic project without the current project schema uses only the Classic legacy fallback; that fallback never enables Native.

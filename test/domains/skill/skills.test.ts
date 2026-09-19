@@ -4048,6 +4048,13 @@ describe('skills', () => {
       expect(zhGuard).toContain('点号开头的普通项目文件');
       expect(zhGuard).toContain('零个表示当前没有 Comet 需求');
       expect(zhGuard).toContain('多个候选时暂停并让用户选择');
+      expect(zhGuard).toContain('每轮只执行以下轻量所有权读取');
+      expect(zhGuard).toContain(
+        '这两次轻量读取不运行 `resume-probe`、不查询 `status`，也不枚举全部 change',
+      );
+      expect(zhGuard).toContain(
+        '只有 selection 缺失、失效、目标 change 已不存在或已归档，或所有权不明确时',
+      );
       expect(zhGuard).toContain('普通写入权限不覆盖 brief 中未解决的 `[blocking]`');
       expect(zhGuard).toContain('无法归因的事件和仅位于项目外的目标保持中立');
       expect(zhGuard).toContain('一旦写入已归属于本项目');
@@ -4082,6 +4089,13 @@ describe('skills', () => {
       expect(enGuard).toContain('dot-prefixed project files');
       expect(enGuard).toContain('zero means there is no current Comet request');
       expect(enGuard).toContain('multiple candidates require an explicit user selection');
+      expect(enGuard).toContain('perform only these lightweight ownership reads');
+      expect(enGuard).toContain(
+        'these two lightweight reads do not run `resume-probe`, query `status`, or enumerate every change',
+      );
+      expect(enGuard).toContain(
+        'Only when the selection is missing or invalid, its target change is missing or archived, or ownership is unclear',
+      );
       expect(enGuard).toContain('does not override unresolved `[blocking]` user decisions');
       expect(enGuard).toContain('targets that are entirely outside the project remain neutral');
       expect(enGuard).toContain('Once a write is attributed to this project');
@@ -4213,6 +4227,27 @@ describe('skills', () => {
       expect(en).toContain('Ambient Resume');
       expect(en).toContain('comet resume-probe . --stdin --json');
       expect(en).toContain('`out_of_scope`/`none` does not enter');
+    });
+
+    it('documents continuation reuse and conditional status recovery in both Native Skills', async () => {
+      const zh = await fs.readFile(
+        path.resolve('assets', 'skills-zh', 'comet-native', 'SKILL.md'),
+        'utf-8',
+      );
+      const en = await fs.readFile(
+        path.resolve('assets', 'skills', 'comet-native', 'SKILL.md'),
+        'utf-8',
+      );
+
+      expect(zh).toContain('直接复用共用 workflow guard 的轻量所有权读取结果');
+      expect(zh).toContain('命令因版本或所有权被拒绝');
+      expect(zh).toContain('新会话或上下文压缩恢复缺少响应状态');
+      expect(zh).toContain('仓库/分支/change 切换或有明确外部变化迹象时，才重新查询 `status`');
+      expect(en).toContain("reuse the shared workflow guard's lightweight ownership result");
+      expect(en).toContain('the command is rejected for version or ownership');
+      expect(en).toContain(
+        'Query `status` again only for a new session or compression recovery without response state, a repository/branch/change switch, or clear external changes.',
+      );
     });
 
     it('documents the public resume probe CLI bilingually', async () => {

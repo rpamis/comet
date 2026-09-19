@@ -32,6 +32,81 @@ describe('Comet project instructions', () => {
     }
   });
 
+  it.each(['@AGENTS.md', '@./AGENTS.md'])(
+    'keeps a direct %s import in CLAUDE.md single-sourced',
+    async (importPath) => {
+      await fs.writeFile(
+        path.join(tmpDir, 'CLAUDE.md'),
+        `# Claude rules\n\n${importPath}\n`,
+        'utf8',
+      );
+
+      const result = await installCometProjectInstructions(tmpDir, 'en');
+
+      expect(result.changed).toBe(1);
+      await expect(fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).resolves.toContain(
+        '<comet-ambient-resume>',
+      );
+      await expect(fs.readFile(path.join(tmpDir, 'CLAUDE.md'), 'utf8')).resolves.toBe(
+        `# Claude rules\n\n${importPath}\n`,
+      );
+    },
+  );
+
+  it('migrates a legacy duplicate block and restores it after the import is removed', async () => {
+    const claude = path.join(tmpDir, 'CLAUDE.md');
+    await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), '# Shared rules\n', 'utf8');
+    await fs.writeFile(claude, '# Claude rules\n\nKeep Claude rules.\n', 'utf8');
+    await installCometProjectInstructions(tmpDir, 'en');
+
+    const legacyClaude = await fs.readFile(claude, 'utf8');
+    await fs.writeFile(claude, `# Claude rules\n\n@AGENTS.md\n\n${legacyClaude}`, 'utf8');
+
+    const migrated = await syncCometProjectInstructions(tmpDir, 'en', true);
+    expect(migrated.changed).toBe(1);
+    const migratedClaude = await fs.readFile(claude, 'utf8');
+    expect(migratedClaude).toContain('@AGENTS.md');
+    expect(migratedClaude).toContain('Keep Claude rules.');
+    expect(migratedClaude).not.toContain('<comet-ambient-resume>');
+
+    await fs.writeFile(claude, migratedClaude.replace('@AGENTS.md\n', ''), 'utf8');
+    const restored = await syncCometProjectInstructions(tmpDir, 'en', true);
+    expect(restored.changed).toBe(1);
+    expect(await fs.readFile(claude, 'utf8')).toContain('<comet-ambient-resume>');
+    expect((await syncCometProjectInstructions(tmpDir, 'en', true)).changed).toBe(0);
+  });
+
+  it('does not treat markdown code or near-match paths as direct imports', async () => {
+    const claude = path.join(tmpDir, 'CLAUDE.md');
+    await fs.writeFile(
+      claude,
+      [
+        '# Claude rules',
+        '',
+        '`@AGENTS.md`',
+        '',
+        '```markdown',
+        '@AGENTS.md',
+        '```',
+        '',
+        '~~~text',
+        '@./AGENTS.md',
+        '~~~',
+        '',
+        '    @AGENTS.md',
+        '@AGENTS.md.bak',
+        '@./AGENTS.md-extra',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = await installCometProjectInstructions(tmpDir, 'en');
+
+    expect(result.changed).toBe(2);
+    await expect(fs.readFile(claude, 'utf8')).resolves.toContain('<comet-ambient-resume>');
+  });
+
   it('does not create or edit Claude instructions for non-Claude targets', async () => {
     await syncCometProjectInstructions(tmpDir, 'en', true, ['codex']);
     await expect(fs.access(path.join(tmpDir, 'CLAUDE.md'))).rejects.toMatchObject({

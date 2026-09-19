@@ -4,11 +4,12 @@
 
 ## 先确定当前需求
 
-每轮开始、恢复工作或怀疑上下文被压缩后，按以下顺序检查：
+每轮开始、恢复工作或怀疑上下文被压缩后，每轮只执行以下轻量所有权读取：
 
 1. 读取 `.comet/config.yaml`：`workflows` 表示项目启用的能力，`default_workflow` 只决定 `/comet` 的默认入口。
 2. 读取 `.comet/current-change.json`：其中的 `workflow + change` 才是当前需求所有者。
-3. selection 缺失，或 selection 指向的 change 已不存在/已归档时，重新枚举全项目的 Comet 活跃 change：零个表示当前没有 Comet 需求；恰好一个时只读推断；多个候选时暂停并让用户选择。
+   selection 仍然有效且继续指向同一 workflow/change 时，正常 continuation 直接沿用当前响应中的状态；这两次轻量读取不运行 `resume-probe`、不查询 `status`，也不枚举全部 change。
+3. 只有 selection 缺失、失效、目标 change 已不存在或已归档，或所有权不明确时，才重新枚举全项目的 Comet 活跃 change：零个表示当前没有 Comet 需求；恰好一个时只读推断；多个候选时暂停并让用户选择。
 4. selection 文件不可读、格式或 schema 无效、workflow 未启用、跨分支失效或 change 状态不可安全读取时停止，不得回退到 `default_workflow` 猜测。
 
 Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，不得因此启用 Native。
