@@ -2810,14 +2810,55 @@ describe('skills', () => {
       expect(zhArchive).toContain('调用 `/comet-classic` 或 `/comet-open`');
       expect(zhArchive).not.toContain('调用 `/comet` 或 `/comet-open`');
       expect(zhVerify).toContain('验证通过本身不代表用户已授权归档');
-      expect(zhHotfix).toContain(
-        '出现上述变化，或改动文件数超过提示阈值时，**必须按 `comet-classic/reference/decision-point.md` 暂停并等待用户明确选择**',
-      );
+      expect(zhHotfix).toContain('文件数量只触发范围复核，不等同于实质升级信号');
+      expect(zhHotfix).toContain('只有当前 change 的用户明确授权');
+      expect(zhHotfix).toContain('仅文件数超限');
+      expect(zhHotfix).toContain('报告文件总数、分类');
+      expect(zhHotfix).toContain('Preset file-count authorization');
+      expect(zhHotfix).toContain('status: active|invalidated');
+      expect(zhHotfix).toContain('decision: continue-on-file-count-only');
+      expect(zhHotfix).toContain('allowed-file-categories');
+      expect(zhHotfix).toContain('<classic-change-dir>/.comet/rulings.md');
+      expect(zhHotfix).toContain('新增公共 API、修改结构化数据格式（schema）');
+      expect(zhHotfix).toContain('无有效授权时必须暂停');
       expect(zhHotfix).toContain('不得直接进入 `/comet-design`');
-      expect(zhTweak).toContain(
-        '出现上述变化，或改动文件数超过提示阈值时，**必须按 `comet-classic/reference/decision-point.md` 暂停并等待用户明确选择**',
-      );
+      expect(zhTweak).toContain('文件数量只触发范围复核，不等同于实质升级信号');
+      expect(zhTweak).toContain('只有当前 change 的用户明确授权');
+      expect(zhTweak).toContain('仅文件数超限');
+      expect(zhTweak).toContain('报告文件总数、分类');
+      expect(zhTweak).toContain('Preset file-count authorization');
+      expect(zhTweak).toContain('status: active|invalidated');
+      expect(zhTweak).toContain('decision: continue-on-file-count-only');
+      expect(zhTweak).toContain('allowed-file-categories');
+      expect(zhTweak).toContain('<classic-change-dir>/.comet/rulings.md');
+      expect(zhTweak).toContain('新增公共 API、修改结构化数据格式（schema）');
+      expect(zhTweak).toContain('无有效授权时必须暂停');
       expect(zhTweak).toContain('不得直接进入 `/comet-design`');
+      for (const preset of [zhHotfix, zhTweak]) {
+        expect(preset).toContain('源码');
+        expect(preset).toContain('测试');
+        expect(preset).toContain('用户文档');
+        expect(preset).toContain('配置');
+        expect(preset).toContain('生成物');
+        expect(preset).toContain('排除');
+        expect(preset).toContain('未跟踪');
+        expect(preset).toContain('去重');
+        expect(preset).toContain('撤销');
+        expect(preset).toContain('切换 workflow');
+        expect(preset).toContain('文件落到授权类别之外');
+        expect(preset).toContain('历史偏好');
+        expect(preset).toContain('Personal Memory');
+        expect(preset).toContain('实质升级信号');
+        expect(preset).toContain('需要协调修改多个模块');
+        expect(preset).toContain('涉及深层架构问题');
+        expect(preset).toContain('恢复任务时');
+        expect(preset).toContain('status: invalidated');
+      }
+      expect(zhDecisionPoint).toContain('Preset file-count authorization');
+      expect(zhDecisionPoint).toContain('只有 active、workflow 与当前 change 匹配');
+      expect(zhDecisionPoint).toContain('文件数超限且没有实质升级信号');
+      expect(zhDecisionPoint).toContain('rulings.md 缺失、不可读、含糊或已失效');
+      expect(zhDecisionPoint).toContain('普通开始修复、Skill 调用、历史偏好或 Personal Memory');
       expect(zhComet).toContain('comet-classic/reference/context-recovery.md');
       expect(zhRecovery).toContain('`verify_result: fail` → 自动调用 `/comet-build` 继续修复');
       expect(zhComet).not.toContain(
@@ -3267,10 +3308,64 @@ describe('skills', () => {
         .toContain('Start new Classic work with `/comet-classic` or `/comet-open`');
       expect(enArchive).not.toContain('invoke `/comet` or `/comet-open`');
       expect(enVerify).toContain('Passing verification alone does not authorize archive.');
+      expect(enHotfix).toContain(
+        'File count prompts a scope review only; it is not a substantive escalation signal.',
+      );
+      expect(enHotfix).toContain(
+        'Only an explicit authorization from the user of the current change',
+      );
+      expect(enHotfix).toContain('file count is the only trigger');
+      expect(enHotfix).toContain('report the total file count, category breakdown');
+      expect(enHotfix).toContain('Preset file-count authorization');
+      expect(enHotfix).toContain('status: active|invalidated');
+      expect(enHotfix).toContain('decision: continue-on-file-count-only');
+      expect(enHotfix).toContain('allowed-file-categories');
+      expect(enHotfix).toContain('<classic-change-dir>/.comet/rulings.md');
+      expect(enHotfix).toContain('new public API or structured-data schema change');
+      expect(enHotfix).toContain('there is no valid authorization and the Agent must pause');
+      expect(enTweak).toContain(
+        'File count prompts a scope review only; it is not a substantive escalation signal.',
+      );
+      expect(enTweak).toContain(
+        'Only an explicit authorization from the user of the current change',
+      );
+      expect(enTweak).toContain('file count is the only trigger');
+      expect(enTweak).toContain('report the total file count, category breakdown');
+      expect(enTweak).toContain('Preset file-count authorization');
+      expect(enTweak).toContain('status: active|invalidated');
+      expect(enTweak).toContain('decision: continue-on-file-count-only');
+      expect(enTweak).toContain('allowed-file-categories');
+      expect(enTweak).toContain('<classic-change-dir>/.comet/rulings.md');
+      expect(enTweak).toContain('new public API or structured-data schema change');
+      expect(enTweak).toContain('there is no valid authorization and the Agent must pause');
+      for (const preset of [enHotfix, enTweak]) {
+        expect(preset).toContain('implementation/source');
+        expect(preset).toContain('user documentation');
+        expect(preset).toContain('generated output');
+        expect(preset).toContain('untracked');
+        expect(preset).toContain('deduplicated');
+        expect(preset).toContain('revokes authorization');
+        expect(preset).toContain('workflow changes');
+        expect(preset).toContain('falls outside the authorized categories');
+        expect(preset).toContain('historical preferences');
+        expect(preset).toContain('Personal Memory');
+        expect(preset).toContain('substantive escalation signal');
+        expect(preset).toContain('Coordinated edits across modules');
+        expect(preset).toContain('deeper architecture issue');
+        expect(preset).toContain('When resuming a task');
+        expect(preset).toContain('status: invalidated');
+      }
+      expect(enDecisionPoint).toContain('Reusing file-count authorization in Classic presets');
+      expect(enDecisionPoint).toContain('status` is active, `workflow` matches');
+      expect(enDecisionPoint).toContain('file count is the only trigger');
+      expect(enDecisionPoint).toContain('missing, unreadable, ambiguous, or invalid `rulings.md`');
+      expect(enDecisionPoint).toContain(
+        'Ordinary start-repair instructions, Skill invocation, historical preferences, and Personal Memory',
+      );
       expect
         .soft(enHotfix)
         .toContain(
-          'pause under `comet-classic/reference/decision-point.md` and wait for an explicit choice',
+          'requires pausing under `comet-classic/reference/decision-point.md` and waiting for an explicit choice',
         );
       expect
         .soft(enHotfix)
@@ -3278,7 +3373,7 @@ describe('skills', () => {
       expect
         .soft(enTweak)
         .toContain(
-          'pause under `comet-classic/reference/decision-point.md` and wait for an explicit choice',
+          'requires pausing under `comet-classic/reference/decision-point.md` and waiting for an explicit choice',
         );
       expect
         .soft(enTweak)

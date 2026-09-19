@@ -95,7 +95,7 @@ comet state next <name>
 
 使用 hotfix 默认值：`build_mode: direct`、`tdd_mode: direct`、`review_mode: off`。`isolation` 必须沿用 Step 1 中用户已确认的工作区隔离方式，不得自行改回 `current`。
 
-`direct` 表示不采用完整的规划和逐任务 TDD 流程，仍然必须复现问题、运行回归测试并完成验证。跳过 Superpowers `brainstorming` 和 `writing-plans`；**任务数量本身不触发 `/comet-build`**。任务较多时，仍按当前 hotfix 的 tasks.md 顺序执行。只有出现后文列出的升级条件或范围超限提示时，才交给用户决定是否改用 full。
+`direct` 表示不采用完整的规划和逐任务 TDD 流程，仍然必须复现问题、运行回归测试并完成验证。跳过 Superpowers `brainstorming` 和 `writing-plans`；**任务数量本身不触发 `/comet-build`**。任务较多时，仍按当前 hotfix 的 tasks.md 顺序执行。只有出现后文列出的升级条件，或文件数超过提示阈值且没有有效授权时，才交给用户决定是否改用 full。
 
 开始或继续修改前，按 `comet-classic/reference/dirty-worktree.md` 处理未提交改动。确认改动归属后，如发现修复涉及下文列出的升级条件，或改动文件数超过提示阈值，按本文件「升级判定」处理。
 
@@ -197,9 +197,32 @@ hotfix 的升级判定只决定是否从预设流程转为 full。文件数量�
 
 出现任一情况时，Agent **不得自行升级，也不得自行决定继续使用 hotfix**。
 
-文件数量仅用于提示用户复核范围。改动文件数超过提示阈值（如 > 4 个文件）时，也由用户决定继续 hotfix 还是改用 full；文件多不代表一定需要完整流程。缺陷修复通常集中在 1-3 个文件，超过阈值说明涉及范围偏大，需要用户复核是否仍适合预设流程。
+文件数量只触发范围复核，不等同于实质升级信号。改动文件数超过提示阈值（如 > 4 个文件）时，先统计当前 change 的交付文件，再按下文检查是否存在有效的用户授权；文件多不代表一定需要完整流程。缺陷修复通常集中在 1-3 个文件，超过阈值说明涉及范围偏大，需要复核是否仍适合预设流程。
 
-出现上述变化，或改动文件数超过提示阈值时，**必须按 `comet-classic/reference/decision-point.md` 暂停并等待用户明确选择**。不得直接进入 `/comet-design`，也不得自动补充 Design Doc。
+交付文件只包括源码、测试、用户文档、配置和生成物。统计覆盖确认基线之后已提交的变更、暂存、未暂存和未跟踪文件，并按路径去重；排除当前 change 目录中的 OpenSpec 产物、`.comet` 元数据以及与当前 change 无关的脏文件。不能把 OpenSpec 产物或无关脏文件计入阈值，也不能因为文件数量较少而跳过实质升级信号检查。
+
+### 文件数超限时复用当前 change 的明确授权
+
+只有当前 change 的用户明确授权“范围、风险不变且仅文件数超限时继续”，才能建立或复用授权。普通开始修复、调用 Skill、历史偏好或 Personal Memory 都不是授权。授权记录只写入 `<classic-change-dir>/.comet/rulings.md`，并使用以下稳定结构；change 目录尚未初始化时，先保留待写入状态，不能假定授权已经成立：
+
+```text
+### Preset file-count authorization
+- status: active|invalidated
+- workflow: hotfix
+- decision: continue-on-file-count-only
+- scope: <当前 change 已确认的范围>
+- allowed-file-categories: implementation, tests, user-docs, config, generated
+- authorization-basis: user-explicit
+- reason: <用户授权依据和继续理由>
+```
+
+没有有效 ruling 的首次超过阈值时，仍按 `comet-classic/reference/decision-point.md` 暂停并让用户选择继续 hotfix（选项 A）或升级 full（选项 B）。只有用户明确选择 A，并明确说明范围、风险不变且仅文件数超限，才写入上述 ruling；后续同一范围内的文件增长可以复用 `status: active` 的记录而不重复提问。已有有效授权时不提问，但必须先报告文件总数、分类、与确认范围的对应关系、ruling 记录位置，以及没有命中实质升级信号的依据，然后继续 hotfix；验证深度仍按实际风险和 `comet state scale` 的建议决定。
+
+恢复任务时，先读取当前 change 的 ruling。有效的 `status: active` 记录按同样条件继续；`status: invalidated`、缺失、不可读、含糊或与当前 scope 不匹配时，必须暂停并重新提供继续 hotfix 或升级 full 的选择。
+
+只有同时满足以下条件，`status: active` 才有效：`workflow` 与当前 hotfix 匹配，scope、验收和风险假设没有变化，所有新增交付文件仍在 `allowed-file-categories` 内，且当前触发原因只有文件数超限。用户撤销授权、切换 workflow、范围或验收变化、出现新的模块/API/schema/capability/架构问题（例如新增公共 API、修改结构化数据格式（schema）），或文件落到授权类别之外时，必须把记录标为 `status: invalidated` 并回到暂停流程。`rulings.md` 缺失、不可读、含糊或已失效时，无有效授权时必须暂停；升级到 full 时也将记录标为 `status: invalidated`，之后不得继续复用该授权。
+
+因此，出现任何实质升级信号，或没有有效授权而改动文件数超过提示阈值时，必须按 `comet-classic/reference/decision-point.md` 暂停并等待用户明确选择。不得直接进入 `/comet-design`，也不得自动补充 Design Doc。
 
 用户选择升级（选项 B）后，运行状态机提供的升级命令，将预设流程转为 full，并回到 design 阶段：
 
@@ -209,7 +232,7 @@ comet state transition <name> preset-escalate
 
 该命令会原子地将 `workflow`/`classic_profile` 设为 `full`、将 `phase` 改为 `design`、清空 `design_doc`，并清除预设专属的 `build_mode`、`tdd_mode`、`review_mode`、`isolation`、`verify_mode`，同时清空 `bound_branch` 等工作区绑定——升级后必须在进入 build 前按 `comet-classic/reference/decision-point.md` 重新决定隔离方式并重新绑定（`state set <name> isolation ...`），否则 guard 会以 isolation 缺失拦截。然后，**立即使用 Skill 工具加载 `comet-design` skill**，在当前 change 的基础上补充 Design Doc。进入 build 后，必须在同一轮提问中重新确认完整的工作方式配置。
 
-用户选择继续（选项 A）时，继续 hotfix 流程，并记录用户确认继续的原因。
+用户选择继续（选项 A）时，只有在用户明确确认范围和风险不变且仅文件数超限时，才继续 hotfix，并按上述结构记录用户授权依据和继续理由；仅说“开始修复”或“继续”而没有这项授权语义时，仍按暂停流程等待澄清。
 
 ---
 

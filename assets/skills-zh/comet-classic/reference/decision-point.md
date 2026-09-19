@@ -27,6 +27,14 @@
 - 不得用推荐规则、默认值、历史偏好或“用户应该会同意”的推断代替当前确认
 - 用户明确选择前，不得写入对应状态字段、执行对应分支操作或自动继续下一阶段
 
+## Classic 预设的文件数授权复用
+
+hotfix 和 tweak 的文件数阈值只触发范围复核，不是实质升级信号。预设可以复用 `<classic-change-dir>/.comet/rulings.md` 中的 `Preset file-count authorization`，但只有 active、workflow 与当前 change 匹配，scope、验收和风险假设未变，且当前唯一触发条件是文件数超限时，才把它视为有效授权。记录必须包含 `status: active|invalidated`、`workflow`、`decision: continue-on-file-count-only`、授权范围、`allowed-file-categories`、`authorization-basis` 和 `reason`。
+
+命中有效授权时，不重新提问，但先报告交付文件总数和分类、它们与确认范围的对应关系、ruling 记录，以及没有命中实质升级信号的依据。恢复任务也必须先读取同一 ruling，再按当前 scope 和 workflow 重新核对。交付文件只统计源码、测试、用户文档、配置和生成物，覆盖基线后提交、暂存、未暂存及未跟踪文件并去重；排除 change 目录中的 OpenSpec 产物、`.comet` 元数据和无关脏文件。有效授权只绕过“文件数超限且没有实质升级信号”的提问，不能绕过新增模块、公共 API、schema、capability、跨模块或架构风险的复核。
+
+普通开始修复、Skill 调用、历史偏好或 Personal Memory 不能建立授权。用户撤销、切换 workflow、范围或验收变化、出现新实质升级信号，或文件落到授权类别之外时，将 ruling 标为 `invalidated`；rulings.md 缺失、不可读、含糊或已失效时，无有效授权，必须按现有暂停流程提问。升级到 full 时也将 ruling 标为 `invalidated`，之后不得继续复用该授权。
+
 ## `AskUserQuestion` 优先策略
 
 使用结构化提问时：

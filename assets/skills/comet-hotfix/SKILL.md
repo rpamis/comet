@@ -95,7 +95,7 @@ comet state next <name>
 
 Use hotfix defaults: `build_mode: direct`, `tdd_mode: direct`, `review_mode: off`. Preserve the isolation confirmed in Step 1; do not change it back to `current`.
 
-`direct` skips full planning and per-task TDD orchestration; it still requires reproduction, regression tests, and verification. Skip Superpowers `brainstorming` and `writing-plans`. **Task count alone does not trigger `/comet-build`.** Execute even a longer tasks.md in order within the current hotfix. Ask whether to escalate to full only when the later escalation conditions or scope prompts apply.
+`direct` skips full planning and per-task TDD orchestration; it still requires reproduction, regression tests, and verification. Skip Superpowers `brainstorming` and `writing-plans`. **Task count alone does not trigger `/comet-build`.** Execute even a longer tasks.md in order within the current hotfix. Ask whether to escalate to full only when a later escalation condition applies, or when the file-count threshold is exceeded without valid authorization.
 
 Before starting or resuming edits, handle uncommitted changes under `comet-classic/reference/dirty-worktree.md`. After establishing ownership, apply “Escalation decisions” if the repair meets an escalation condition or exceeds the file-count prompt.
 
@@ -198,9 +198,32 @@ During repair, watch for:
 
 For any of these, the Agent **must neither escalate nor decide to stay on hotfix without the user**.
 
-File count prompts a scope review only. Above the prompt threshold, such as > 4 files, also let the user choose hotfix or full. More files do not necessarily require the full flow. Defect repairs usually involve 1–3 files; exceeding the threshold warrants checking whether the preset still fits.
+File count prompts a scope review only; it is not a substantive escalation signal. When delivery files exceed the prompt threshold, such as > 4 files, first count the current change's delivery files and check for valid authorization below. More files do not necessarily require the full flow. Defect repairs usually involve 1–3 files; exceeding the threshold warrants checking whether the preset still fits.
 
-When a condition or file-count prompt applies, **pause under `comet-classic/reference/decision-point.md` and wait for an explicit choice**. Do not enter `/comet-design` or create a Design Doc automatically.
+Delivery files include only implementation/source, tests, user documentation, configuration, and generated output. Count committed changes after the confirmed baseline together with staged, unstaged, and untracked files, deduplicated by path. Exclude OpenSpec artifacts in the current change directory, `.comet` metadata, and unrelated dirty files. Do not count OpenSpec artifacts or unrelated dirty files toward the threshold, and do not skip substantive-signal checks because the file count is small.
+
+### Reusing explicit authorization for a file-count-only prompt
+
+Only an explicit authorization from the user of the current change to continue when the scope and risk are unchanged and file count is the only trigger can create or reuse authorization. Ordinary “start repairing” instructions, Skill invocation, historical preferences, and Personal Memory are not authorization. Store it only in `<classic-change-dir>/.comet/rulings.md` using this stable structure; if the change directory does not exist yet, keep the record pending and do not assume authorization exists:
+
+```text
+### Preset file-count authorization
+- status: active|invalidated
+- workflow: hotfix
+- decision: continue-on-file-count-only
+- scope: <confirmed scope of the current change>
+- allowed-file-categories: implementation, tests, user-docs, config, generated
+- authorization-basis: user-explicit
+- reason: <basis and reason supplied by the user>
+```
+
+When the file-count threshold is first exceeded without a valid ruling, pause under `comet-classic/reference/decision-point.md` and ask the user to choose continue hotfix (A) or escalate to full (B). Write the ruling only after the user explicitly chooses A and confirms that scope and risk are unchanged and file count is the only trigger; later growth within the same scope can reuse `status: active` without asking again. With valid authorization, do not ask, but first report the total file count, category breakdown, mapping to the confirmed scope, the ruling location, and the evidence that no substantive escalation signal was found, then continue hotfix. Verification depth still follows actual risk and the `comet state scale` recommendation.
+
+When resuming a task, read the current change's ruling first. A valid `status: active` record is reused under the same conditions; `status: invalidated`, missing, unreadable, ambiguous, or scope-mismatched records require pausing and offering continue hotfix or escalate to full again.
+
+`status: active` is valid only when `workflow` matches hotfix, scope, acceptance, and risk assumptions are unchanged, all new delivery files remain within `allowed-file-categories`, and file count is the only trigger. If the user revokes authorization, the workflow changes, scope or acceptance changes, a new module/API/schema/capability/architecture issue appears (for example, a new public API or structured-data schema change), or a file falls outside the authorized categories, mark the record `status: invalidated` and return to the pause. If `rulings.md` is missing, unreadable, ambiguous, or invalid, there is no valid authorization and the Agent must pause; when escalating to full, also mark it `status: invalidated` and do not reuse it.
+
+Therefore, any substantive escalation signal, or a file-count threshold exceeded without valid authorization, requires pausing under `comet-classic/reference/decision-point.md` and waiting for an explicit choice. Do not enter `/comet-design` or create a Design Doc automatically.
 
 After the user chooses escalation (B), run the supported state-machine transition to full and return to design:
 
@@ -210,7 +233,7 @@ comet state transition <name> preset-escalate
 
 It atomically sets `workflow`/`classic_profile` to `full`, moves `phase` to `design`, clears `design_doc`, and clears preset-specific `build_mode`, `tdd_mode`, `review_mode`, `isolation`, and `verify_mode`, together with workspace bindings such as `bound_branch` — before entering Build, re-decide isolation and rebind (`state set <name> isolation ...`) under `comet-classic/reference/decision-point.md`, or guard will reject the missing isolation. **Immediately load `comet-design` using the Skill tool** to complete the design within the existing change. On entering Build, jointly reconfirm the complete working configuration.
 
-If the user chooses to continue (A), continue hotfix and record the reason they accepted doing so.
+If the user chooses to continue (A), continue hotfix only after they explicitly confirm that scope and risk are unchanged and file count is the only trigger, and record the authorization basis and reason in the structure above. A bare “start repairing” or “continue” without that authorization meaning is not sufficient; pause for clarification.
 
 ---
 

@@ -27,6 +27,14 @@ A pause or stop applies only to actions that depend on the decision or are block
 - Never substitute recommendations, defaults, historical preferences, or an assumption that the user would agree for current confirmation.
 - Before an explicit choice, do not write the corresponding state fields, execute the corresponding branch operation, or automatically continue to the next phase.
 
+## Reusing file-count authorization in Classic presets
+
+The hotfix and tweak file-count thresholds prompt a scope review only; they are not substantive escalation signals. A preset may reuse `Preset file-count authorization` in `<classic-change-dir>/.comet/rulings.md`, but it is valid only when `status` is active, `workflow` matches the current change, scope, acceptance, and risk assumptions are unchanged, and file count is the only trigger. The record must contain `status: active|invalidated`, `workflow`, `decision: continue-on-file-count-only`, the authorized scope, `allowed-file-categories`, `authorization-basis`, and `reason`.
+
+With valid authorization, do not ask again, but first report the total and category breakdown of delivery files, their mapping to the confirmed scope, the ruling record, and the evidence that no substantive escalation signal was found. On task recovery, read the same ruling first and recheck it against the current scope and workflow. Delivery files include only implementation/source, tests, user documentation, configuration, and generated output; count committed changes after the baseline, staged, unstaged, and untracked files, deduplicated by path. Exclude OpenSpec artifacts in the change directory, `.comet` metadata, and unrelated dirty files. Valid authorization bypasses only the prompt for “file count exceeded and no substantive escalation signal”; it never bypasses review of new modules, public APIs, schemas, capabilities, cross-module work, or architecture risk.
+
+Ordinary start-repair instructions, Skill invocation, historical preferences, and Personal Memory cannot create authorization. If the user revokes it, the workflow changes, scope or acceptance changes, a substantive escalation signal appears, or a file falls outside the authorized categories, mark the ruling `invalidated`; missing, unreadable, ambiguous, or invalid `rulings.md` means there is no valid authorization and the existing pause flow applies. When escalating to full, also mark the ruling `invalidated`; do not reuse this authorization afterward.
+
 ## `AskUserQuestion` Priority Strategy
 
 When using structured questions:
