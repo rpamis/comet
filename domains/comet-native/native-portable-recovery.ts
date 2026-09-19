@@ -323,14 +323,27 @@ export async function recoverNativePortableChange(options: {
       });
       await writeNativeLocalExecution(file, local, { containedRoot: options.paths.runtimeDir });
       await ensureNativePortableReport({ paths: options.paths, state });
+      // A stale overlay is discarded by design after any state-version bump (a
+      // transition, a Verifier retry, a Hook revert). Name the version gap so an
+      // agent reading "the runtime data is gone" sees the rule, not a mystery.
+      const staleOverlayDetail =
+        reason === 'stale' && inspected.local
+          ? `Local execution overlay was recorded for state version ${String(
+              inspected.local.basedOnStateVersion,
+            )} of ${inspected.local.change} but the current state version is ${String(
+              state.state_version,
+            )} of ${state.name}; a state transition moved on, so the overlay was rebuilt from the stable boundary.`
+          : null;
       return {
         state,
         local,
         action: mustReverify ? 'reverify' : 'resume-stable-boundary',
         reason,
-        message: mustReverify
-          ? 'Rebuilt local execution from the portable boundary; previous pass/execution was not reused.'
-          : `Rebuilt local execution from the portable ${state.phase}/${state.loop.stage} boundary.`,
+        message:
+          staleOverlayDetail ??
+          (mustReverify
+            ? 'Rebuilt local execution from the portable boundary; previous pass/execution was not reused.'
+            : `Rebuilt local execution from the portable ${state.phase}/${state.loop.stage} boundary.`),
       };
     },
   );

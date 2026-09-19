@@ -126,6 +126,34 @@ describe('Classic check input snapshots', () => {
     expect(touched.digest).not.toBe(baseline.digest);
   });
 
+  it('differentially reuses untouched entries and still invalidates changes and additions', async () => {
+    const baseline = await collectCheckSnapshot(root, change);
+
+    // A pure mtime touch with unchanged content keeps the differential digest
+    // stable: `git status` reports nothing, so every recorded entry is reused.
+    const touched = new Date(Date.now() - 60_000);
+    await fs.utimes(path.join(root, 'source.js'), touched, touched);
+    const untouched = await collectCheckSnapshot(root, change, undefined, {
+      baseline: baseline.entries,
+    });
+    expect(untouched.digest).toBe(baseline.digest);
+
+    // Modifying tracked content and adding a new file both break the digest.
+    await fs.writeFile(path.join(root, 'source.js'), 'v2');
+    const modified = await collectCheckSnapshot(root, change, undefined, {
+      baseline: baseline.entries,
+    });
+    expect(modified.digest).not.toBe(baseline.digest);
+
+    await fs.writeFile(path.join(root, 'added.js'), 'new');
+    const added = await collectCheckSnapshot(root, change, undefined, {
+      baseline: baseline.entries,
+    });
+    const addedEntry = added.entries.find((entry) => entry.p === 'added.js');
+    expect(addedEntry?.h).toBe(createHash('sha256').update('new').digest('hex'));
+    expect(added.digest).not.toBe(modified.digest);
+  });
+
   it('fingerprints tracked files larger than 64 MiB without a byte cap', async () => {
     const size = 64 * 1024 * 1024 + 1;
     const large = path.join(root, 'recording.bin');

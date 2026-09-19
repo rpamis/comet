@@ -174,7 +174,7 @@ describe('Native portable Archive', () => {
     ).rejects.toThrow('--serial-first is only valid for portable Native changes');
     await expect(
       nativeArchiveCommand(['archive-change', '--finish', 'keep'], root),
-    ).rejects.toThrow('--finish is only valid with --dry-run');
+    ).rejects.toThrow('--finish without --dry-run requires --confirmed');
   });
 
   it('applies full specs, finalizes YAML/report, moves the change, and removes local Runtime', async () => {
@@ -840,6 +840,48 @@ children:
     await expect(
       nativeArchiveCommand([first.name, '--confirmed', '--serial-first', first.name], root),
     ).resolves.toMatchObject({ exitCode: 0, data: { state: { status: 'done' } } });
+  });
+
+  it('archives in one step with --confirmed --finish without a second full dry-run', async () => {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'native-test@example.com'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: root });
+    await fs.writeFile(path.join(root, '.gitignore'), '.comet/runtime/\n');
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'seed native archive one-step'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['switch', '-c', 'comet/archive-one-step'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+
+    const state = await archiveReady('archive-one-step');
+    await writeNativePortableState(
+      path.join(nativePortableChangeDir(paths, state.name), 'comet-state.yaml'),
+      {
+        ...state,
+        workspace: {
+          isolation: 'branch',
+          change_branch: 'comet/archive-one-step',
+          target_branch: 'main',
+          finish: null,
+        },
+      },
+    );
+
+    const archived = await nativeArchiveCommand(
+      [state.name, '--confirmed', '--finish', 'keep'],
+      root,
+    );
+    expect(archived).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: { status: 'done', archived: true },
+        workspaceFinishResult: { status: 'kept', commit: expect.any(String) },
+      },
+    });
   });
 
   it('allows isolated keep finishes to preserve unrelated files while committing change-owned files', async () => {

@@ -514,13 +514,10 @@ export async function evaluateCommandCheck(
   if (record.manifestRef) {
     // Per-file evidence reuses when the environment binding holds and no
     // recorded input file changed relative to the execution-time manifest.
+    const policy = await readCheckPolicy(root, identity);
     if (
       record.environment !==
-      (await checkEnvironmentFingerprint(
-        record.argv,
-        path.resolve(root, record.cwd),
-        await readCheckPolicy(root, identity),
-      ))
+      (await checkEnvironmentFingerprint(record.argv, path.resolve(root, record.cwd), policy))
     )
       return fail(
         'the environment changed since execution (checks bind the resolved executable path and its file identity, the Node version, and declared policy environment variables; switching Node versions, package-manager shims, or PATH order invalidates evidence)',
@@ -531,7 +528,6 @@ export async function evaluateCommandCheck(
     const diff = diffCheckManifests(baseline, current.entries);
     const changedPaths = [...diff.added, ...diff.removed, ...diff.changed];
     if (changedPaths.length) {
-      const policy = await readCheckPolicy(root, identity);
       const relevance = policy.files
         ? `declared inputs (${policy.files.join(', ')})`
         : 'default whole-tree inputs';

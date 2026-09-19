@@ -420,6 +420,8 @@ function gitOutput(args: string[]): string | null {
   const result = spawnSync('git', args, {
     cwd: classicCommandProjectRoot(),
     encoding: 'utf8',
+    timeout: 30_000,
+    windowsHide: true,
   });
   return result.status === 0 ? result.stdout.trim() : null;
 }
@@ -1558,6 +1560,7 @@ async function recover(
     directory,
     classic,
     details,
+    projection.run ?? null,
   );
   output.data = {
     ...context,
@@ -1774,6 +1777,22 @@ async function selectChange(output: CommandOutput, name: string): Promise<void> 
   validateChangeName(name);
   try {
     const requestedRoot = classicCommandProjectRoot();
+    // Fast path: when the recorded selection already routes this change to this
+    // workspace and its directory is present, the per-worktree enumeration is
+    // pure overhead — selecting again only rewrites the same selection.
+    const resolution = await resolveCurrentChange(requestedRoot);
+    if (resolution.status === 'selected' && resolution.selection.change === name) {
+      const selection = await selectCurrentChange(requestedRoot, name);
+      const change = await resolveClassicChangeDirectory(name, requestedRoot);
+      const state = await readClassicState(change.directory, { migrate: false });
+      const bound = state.classic?.boundBranch ?? null;
+      output.stderr.push(
+        green(
+          `[SELECTED] current change: ${selection.change}${bound ? ` (branch: ${bound})` : ''}`,
+        ),
+      );
+      return;
+    }
     const workspace = await resolveClassicWorkspace({ projectRoot: requestedRoot, name });
     const selection = await selectCurrentChange(workspace.projectRoot, name);
     const change = await resolveClassicChangeDirectory(name, workspace.projectRoot);
@@ -1983,11 +2002,18 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       }
       if (options.json && ['init', 'set', 'transition', 'select'].includes(subcommand)) {
         const { directory } = await stateFile(rest[0]);
-        const state = (await readClassicState(directory, { migrate: false })).classic;
+        const updated = await readClassicState(directory, { migrate: false });
+        const state = updated.classic;
         if (state)
           output.data = {
             ...(output.data && typeof output.data === 'object' ? output.data : {}),
-            ...(await classicRecoveryContext(classicCommandProjectRoot(), directory, state)),
+            ...(await classicRecoveryContext(
+              classicCommandProjectRoot(),
+              directory,
+              state,
+              false,
+              updated.run ?? null,
+            )),
             change: rest[0],
             phase: state.phase,
             configuration: state,

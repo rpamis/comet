@@ -85,8 +85,8 @@ export async function nativeArchiveCommand(
     if (serialFirstOption && serialFirstOption !== name) {
       throw new NativeUsageError('--serial-first must name the change being archived');
     }
-    if (!dryRun && finish) {
-      throw new NativeUsageError('--finish is only valid with --dry-run');
+    if (!dryRun && finish && !confirmed) {
+      throw new NativeUsageError('--finish without --dry-run requires --confirmed');
     }
     assertNoArguments(args);
     const recovery =
@@ -96,6 +96,20 @@ export async function nativeArchiveCommand(
     let state =
       recovery?.state ??
       (portableActive ? await readNativePortableChange(configured.paths, name) : null);
+    if (
+      !dryRun &&
+      confirmed &&
+      finish &&
+      state &&
+      state.workspace.isolation !== 'current' &&
+      state.workspace.finish === null
+    ) {
+      // One-step archive after a finish decision: record the choice first, then
+      // the single preflight + in-transaction freshness recheck run. This replaces
+      // the mandatory second full dry-run, which repeated the same snapshot fence
+      // the transaction already revalidates.
+      state = await setNativePortableWorkspaceFinish({ paths: configured.paths, name, finish });
+    }
     if (recovery?.action === 'reverify' || recovery?.action === 'await-user') {
       return success(
         dryRun ? 'archive --dry-run' : 'archive',
@@ -458,8 +472,8 @@ export async function nativeArchiveCommand(
   if (serialFirstOption) {
     throw new NativeUsageError('--serial-first is only valid for portable Native changes');
   }
-  if (!dryRun && finish) {
-    throw new NativeUsageError('--finish is only valid with --dry-run');
+  if (!dryRun && finish && !confirmed) {
+    throw new NativeUsageError('--finish without --dry-run requires --confirmed');
   }
   assertNoArguments(args);
   if (dryRun) {

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { RunState } from '../engine/types.js';
 import type { ClassicState } from './classic-state.js';
 import { assertClassicLayoutReadable } from './classic-layout.js';
 import { classicProjectTargetExists, readClassicProjectFile } from './classic-protected-path.js';
@@ -28,9 +29,15 @@ export async function classicRecoveryContext(
   directory: string,
   state: ClassicState,
   details = false,
+  run?: RunState | null,
 ) {
   const paths = await assertClassicLayoutReadable(root);
-  const projection = await readClassicState(directory, { migrate: false });
+  // Callers that just read the projection hand over its run part; only the
+  // sparse-document callers pay the extra read here.
+  const projection =
+    run === undefined
+      ? await readClassicState(directory, { migrate: false })
+      : { classic: state, run: run ?? null };
   const taskFile = path.join(directory, 'tasks.md');
   const taskFileExists = await classicProjectTargetExists(root, taskFile, {
     label: 'Classic task authority',

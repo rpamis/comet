@@ -107,6 +107,8 @@ export async function executeClassicOpenSpec(
     encoding: 'utf8',
     shell: false,
     windowsHide: true,
+    // A wedged OpenSpec process must not hang the whole comet command with it.
+    timeout: 120_000,
     ...(launch.env ? { env: launch.env } : {}),
   });
   if (result.error) {

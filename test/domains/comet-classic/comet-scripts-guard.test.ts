@@ -601,9 +601,7 @@ describe('comet guard', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('Latest recorded build check failed with exit code 2');
-      expect(result.stderr).toContain(
-        'comet check run latest-build build --local -- <program> [args...]',
-      );
+      expect(result.stderr).toContain('comet check run latest-build build --local -- pnpm lint');
     });
 
     it('ignores evidence recorded for another change', async () => {

@@ -5,6 +5,12 @@ import path from 'node:path';
 const DEFAULT_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_LOCK_RETRY_MS = 20;
 const DEFAULT_MALFORMED_LOCK_STALE_MS = 5 * 60_000;
+/**
+ * An empty lock file means the creating process crashed between creating the file
+ * and writing its owner record — it never held the lock. A short grace covers the
+ * in-flight write, so waits recover in seconds instead of the malformed-stale span.
+ */
+const EMPTY_LOCK_GRACE_MS = 10_000;
 
 interface PluginStoreLockOwner {
   readonly pid: number;
@@ -107,8 +113,11 @@ async function recoverAbandonedLock(
   }
   const owner = parseLockOwner(content);
   if (owner !== null && processIsAlive(owner.pid)) return false;
-  if (owner === null && Date.now() - Number(stat.mtimeMs) < malformedLockStaleMs) {
-    return false;
+  if (owner === null) {
+    const graceMs = content.trim().length === 0 ? EMPTY_LOCK_GRACE_MS : malformedLockStaleMs;
+    if (Date.now() - Number(stat.mtimeMs) < graceMs) {
+      return false;
+    }
   }
   try {
     if ((await fs.readFile(lockPath, 'utf8')) !== content) return false;

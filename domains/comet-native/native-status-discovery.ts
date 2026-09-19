@@ -90,6 +90,7 @@ export interface NativeInspectionErrorStatusProjection {
     action: 'none';
     commandArgs: string[];
     requiredInputs: [];
+    message: string;
     runnerAction: {
       kind: 'none';
       candidateId: null;
@@ -116,7 +117,15 @@ export interface NativeLegacyMigrationStatusProjection {
     disposition: 'blocked';
     action: 'none';
     commandArgs: string[];
-    requiredInputs: [];
+    requiredInputs: string[];
+    inputOptions: Array<{
+      name: string;
+      flag: string;
+      valueKind: 'text';
+      required: boolean;
+      template: null;
+    }>;
+    message: string;
     runnerAction: {
       kind: 'none';
       candidateId: null;
@@ -508,8 +517,16 @@ async function inspectLegacyCandidate(
         status: 'blocked',
         disposition: 'blocked',
         action: 'none',
-        commandArgs: ['comet', 'native', 'doctor', candidate.name, '--repair'],
-        requiredInputs: [],
+        // Schema migration happens deterministically on the first mutating
+        // command; doctor skips migration-required changes, so pointing there
+        // sent agents in a status→doctor→status loop.
+        commandArgs: ['comet', 'native', 'next', candidate.name, '--summary', '<summary>'],
+        requiredInputs: ['summary'],
+        inputOptions: [
+          { name: 'summary', flag: '--summary', valueKind: 'text', required: true, template: null },
+        ],
+        message:
+          'This change uses a legacy schema; the first mutating command performs the deterministic migration. Run the listed next command with a migration summary.',
         runnerAction: {
           kind: 'none',
           candidateId: null,
@@ -551,6 +568,10 @@ async function inspectCandidate(
         action: 'none',
         commandArgs: ['comet', 'native', 'doctor', candidate.name, '--repair'],
         requiredInputs: [],
+        // Doctor repairs the workspace it runs in. When the broken copy lives in
+        // another worktree, name it so the command runs there instead of looping
+        // between a healthy primary and the same blocked status.
+        message: `Run the repair command in the workspace holding this change: ${candidate.source.paths.projectRoot}`,
         runnerAction: { kind: 'none', candidateId: null, iteration: 0, attempt: 0 },
       },
     };

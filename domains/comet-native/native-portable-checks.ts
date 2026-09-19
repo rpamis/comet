@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { runGitCommand } from '../../platform/process/git.js';
 import {
-  processInstanceMayBeAlive,
+  inspectProcessLiveness,
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
 import { canonicalHash } from './native-canonical-hash.js';
@@ -134,11 +134,13 @@ export async function inspectNativePortableCheckExecution(
   const execution = local.execution;
   if (execution === null || execution.status !== 'running') return 'not-running';
   if (execution.ownerPid === undefined) return 'unknown';
-  if (await processInstanceMayBeAlive(execution.ownerPid, execution.ownerIdentity)) {
-    return 'running';
-  }
+  // Probe failures land on 'unknown' instead of 'running': the doctor repair path
+  // can take those over, while a host whose probes never succeed no longer parks
+  // the change on an undying zombie owner.
+  const ownerLiveness = await inspectProcessLiveness(execution.ownerPid, execution.ownerIdentity);
+  if (ownerLiveness === 'alive') return 'running';
 
-  let unknown = false;
+  let unknown = ownerLiveness === 'unknown';
   for (const check of local.checks) {
     if (check.status !== 'running') continue;
     const active = check.activeProcess;
@@ -146,7 +148,9 @@ export async function inspectNativePortableCheckExecution(
       unknown = true;
       continue;
     }
-    if (await processInstanceMayBeAlive(active.pid, active.identity)) return 'running';
+    const liveness = await inspectProcessLiveness(active.pid, active.identity);
+    if (liveness === 'alive') return 'running';
+    if (liveness === 'unknown') unknown = true;
   }
   return unknown ? 'unknown' : 'orphaned';
 }
@@ -492,7 +496,7 @@ function nativeLocalCheckEvidenceDigest(
   });
 }
 
-async function nativeCheckInputFingerprint(options: {
+export async function nativeCheckInputFingerprint(options: {
   state: NativePortableState;
   projectRoot: string;
   plans: readonly NativeCheckPlan[];
@@ -503,7 +507,7 @@ async function nativeCheckInputFingerprint(options: {
     head: null as string | null,
     branch: null as string | null,
     status: null as string | null,
-    diff: null as string | null,
+    diff: null as Array<{ path: string; digest: string | null }> | null,
     stagedDiff: null as string | null,
     submodules: null as string | null,
     untracked: [] as Array<{ path: string; digest: string | null; size: number | null }>,
@@ -523,17 +527,31 @@ async function nativeCheckInputFingerprint(options: {
       '--untracked-files=all',
       '--ignore-submodules=none',
     ]);
-    gitSnapshot.diff = digestNativeCheckInput(
-      runGitCommand(options.projectRoot, ['diff', '--binary', 'HEAD', '--submodule=diff', '--']),
-    );
+    // The working-tree binding no longer digests a full `diff --binary` stream
+    // (megabytes of patch text on large trees). HEAD is bound separately, so
+    // naming the changed paths and hashing each one pins the same information:
+    // any working-tree difference changes the path set or one of the digests.
+    const changed = runGitCommand(options.projectRoot, ['diff', '--name-only', '-z', 'HEAD', '--'])
+      .split('\0')
+      .filter(Boolean)
+      .sort();
+    gitSnapshot.diff = await mapWithConcurrency(changed, 4, async (relative) => {
+      const target = path.resolve(options.projectRoot, ...relative.split('/'));
+      try {
+        const { digest } = await digestNativeInputFileContent(target);
+        return { path: relative, digest };
+      } catch {
+        return { path: relative, digest: null };
+      }
+    });
+    if (gitSnapshot.diff.some(({ digest }) => digest === null)) {
+      gitSnapshot.complete = false;
+      gitSnapshot.reuseNonce = randomUUID();
+    }
+    // Staged content binds through index blob ids: `ls-files --stage` names each
+    // path with its object id, which Git already defines as the content hash.
     gitSnapshot.stagedDiff = digestNativeCheckInput(
-      runGitCommand(options.projectRoot, [
-        'diff',
-        '--cached',
-        '--binary',
-        '--submodule=diff',
-        '--',
-      ]),
+      runGitCommand(options.projectRoot, ['ls-files', '--stage', '-z', '--']),
     );
     gitSnapshot.submodules = runGitCommand(options.projectRoot, [
       'submodule',
@@ -597,15 +615,115 @@ async function nativeCheckInputFingerprint(options: {
     arch: process.arch,
     path: process.env.PATH ?? null,
     pathext: process.env.PATHEXT ?? null,
-    environment: Object.entries(process.env)
+    // Only execution-relevant variables bind the fingerprint. Binding every
+    // environment entry made any incidental variable (shell session ids, editor
+    // state, timestamps) break check reuse; this mirrors the Classic manifest
+    // default, which binds no environment variable unless a policy declares it.
+    boundEnvironment: Object.entries(process.env)
+      .filter(([key]) => NATIVE_CHECK_BOUND_ENV.has(key.toUpperCase()))
       .map(([key, value]) => [key, value ?? null] as const)
       .sort(([left], [right]) => left.localeCompare(right)),
   });
 }
 
+const NATIVE_CHECK_BOUND_ENV = new Set([
+  'PATH',
+  'PATHEXT',
+  'NODE_OPTIONS',
+  'NODE_ENV',
+  'NODE_PATH',
+  'LANG',
+  'LC_ALL',
+  'HOME',
+  'USERPROFILE',
+  'SYSTEMROOT',
+  'COMSPEC',
+  'SHELL',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'NO_PROXY',
+]);
+
 function completedCheckDuration(check: NativeLocalCheckState): number {
   if (check.startedAt === null || check.completedAt === null) return 0;
   return Math.max(0, Date.parse(check.completedAt) - Date.parse(check.startedAt));
+}
+
+function boundEnvironmentEntries(): Array<[string, string | null]> {
+  return (
+    Object.entries(process.env)
+      .filter(([key]) => NATIVE_CHECK_BOUND_ENV.has(key.toUpperCase()))
+      // eslint-disable-next-line total-functions/no-unsafe-mutable-readonly-assignment -- canonicalHash serializes entries without mutating them
+      .map(([key, value]) => [key, (value ?? null) as string | null] as [string, string | null])
+      .sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+/**
+ * Cheap pre-gate over the full fingerprint's decisive inputs. Three fast Git
+ * calls (HEAD, porcelain status, staged blob ids) plus untracked content
+ * digests cover everything the full fingerprint derives except ignored
+ * generated directories, which a matching gate deliberately skips. A gate hit
+ * proves the full fingerprint would recompute to its recorded value, letting
+ * the reuse decision land before the per-file hashing runs.
+ */
+export async function nativeCheckInputGate(options: {
+  projectRoot: string;
+  candidateId: string | null;
+}): Promise<string | null> {
+  try {
+    const head = runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
+    const branch = runGitCommand(options.projectRoot, ['branch', '--show-current']);
+    const status = runGitCommand(options.projectRoot, [
+      'status',
+      '--porcelain=v1',
+      '-z',
+      '--untracked-files=all',
+      '--ignore-submodules=none',
+    ]);
+    const staged = runGitCommand(options.projectRoot, ['ls-files', '--stage', '-z', '--']);
+    if (head === null || status === null) return null;
+    const untracked: Array<{ path: string; digest: string | null }> = [];
+    const parts = status.split('\0');
+    for (let index = 0; index < parts.length; index += 1) {
+      const record = parts[index];
+      if (!record.startsWith('?? ')) continue;
+      const relative = record.slice(3);
+      if (!relative) continue;
+      const target = path.resolve(options.projectRoot, ...relative.split('/'));
+      let digest: string | null = null;
+      try {
+        digest = (await digestNativeInputFileContent(target)).digest;
+      } catch {
+        digest = null;
+      }
+      untracked.push({ path: relative, digest });
+    }
+    untracked.sort((left, right) => left.path.localeCompare(right.path, 'en'));
+    return canonicalHash('comet.native.check-input-gate.v1', {
+      candidateId: options.candidateId,
+      head,
+      branch,
+      // The porcelain body itself binds every modification, staging and
+      // submodule record; the untracked digests below additionally pin untracked
+      // file content, which porcelain names but does not hash.
+      status,
+      staged,
+      untracked,
+      projectRoot: path.resolve(options.projectRoot),
+      machineId: os.hostname(),
+      execPath: process.execPath,
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      boundEnvironment: boundEnvironmentEntries(),
+    });
+  } catch {
+    return null;
+  }
 }
 
 export function authoritativePortableChecks(options: {
@@ -798,11 +916,28 @@ async function reserveNativePortableCheckPlan(options: {
           containedRoot: options.paths.runtimeDir,
         })
       ).state;
-      const inputFingerprint = await nativeCheckInputFingerprint({
-        state,
+      const gate = await nativeCheckInputGate({
         projectRoot: options.projectRoot,
-        plans: options.plans,
+        candidateId: state.builder_handoff?.candidate_id ?? null,
       });
+      // Reuse decides before the full fingerprint: a matching gate proves the
+      // recorded fingerprint is still what a full recomputation would produce,
+      // so the changed-path hashing and the ignored-directory sweep never run.
+      const gateBindingMatches =
+        gate !== null &&
+        local.inputFingerprint !== null &&
+        local.inputFingerprintGate === gate &&
+        local.candidateId === state.builder_handoff?.candidate_id &&
+        path.resolve(local.workspace.projectRoot) === path.resolve(options.projectRoot) &&
+        path.resolve(local.workspace.worktreeRoot) === path.resolve(options.projectRoot) &&
+        local.workspace.machineId === os.hostname();
+      const inputFingerprint = gateBindingMatches
+        ? local.inputFingerprint!
+        : await nativeCheckInputFingerprint({
+            state,
+            projectRoot: options.projectRoot,
+            plans: options.plans,
+          });
       const runtimeDir = nativePreferredChangeRuntimeDir(options.paths, state.name);
       const runtimeEvidenceAvailable = await hasNativeRuntimeCheckEvidence(local, runtimeDir);
       const allChecksPassed = local.checks.every((check) => check.status === 'passed');
@@ -991,6 +1126,7 @@ async function reserveNativePortableCheckPlan(options: {
         ...local,
         candidateId: state.builder_handoff?.candidate_id ?? null,
         inputFingerprint,
+        inputFingerprintGate: gate,
         workspace: {
           ...local.workspace,
           projectRoot: path.resolve(options.projectRoot),

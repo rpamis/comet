@@ -35,7 +35,7 @@ describe('Native project configuration', () => {
       include: ['**/*'],
       exclude: DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude,
       max_files: 10_000,
-      max_total_bytes: 256 * 1024 * 1024,
+      max_total_bytes: 1024 * 1024 * 1024,
       max_duration_ms: 60_000,
       max_selection_records: 20_000,
     });
@@ -101,7 +101,7 @@ describe('Native project configuration', () => {
           include: ['**/*'],
           exclude: DEFAULT_NATIVE_SNAPSHOT_CONFIG.exclude,
           max_files: 10_000,
-          max_total_bytes: 256 * 1024 * 1024,
+          max_total_bytes: 1024 * 1024 * 1024,
           max_duration_ms: 60_000,
           max_selection_records: 20_000,
         },
@@ -564,12 +564,14 @@ describe('Native project configuration', () => {
     expect(source).toContain('top_extension:');
   });
 
-  it('rejects an oversized project config before parsing it', async () => {
+  it('parses a large project config without a byte cap and still rejects invalid YAML', async () => {
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'config.yaml'),
-      Buffer.alloc(64 * 1024 + 1),
+      Buffer.alloc(64 * 1024 + 1, 0x61),
     );
 
-    await expect(readProjectConfig(projectRoot)).rejects.toThrow('exceeds 65536 bytes');
+    // The config read lost its byte cap; oversized content now fails at YAML
+    // parsing instead of a size rejection.
+    await expect(readProjectConfig(projectRoot)).rejects.toThrow();
   });
 });

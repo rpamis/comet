@@ -13,6 +13,16 @@ import type { NativeProjectPaths } from './native-types.js';
 const NATIVE_LOCK_MAX_BYTES = 16 * 1024;
 const NATIVE_LOCK_COORDINATOR_DIR = '.coordinator';
 const NATIVE_LOCK_COORDINATOR_TIMEOUT_MS = 5_000;
+/**
+ * Locks whose owner cannot be proven stale (different hostname, or a liveness
+ * probe that never succeeds) become takeable by an explicit doctor repair once
+ * their recorded creation time is at least this old. Fifteen minutes clears
+ * crashed owners from any machine quickly enough that a user running doctor
+ * right after a crash usually passes the threshold, while the longest legal
+ * holder (an Archive transaction with its snapshot fences) finishes within a
+ * few minutes, well out of reach of a blind takeover.
+ */
+export const NATIVE_LOCK_UNKNOWN_TAKEOVER_MS = 15 * 60 * 1_000;
 
 export interface NativeLockOwner {
   id: string;
@@ -466,14 +476,30 @@ export function isProcessAlive(pid: number): boolean | null {
   }
 }
 
+export function nativeLockOwnerAgeMs(owner: NativeLockOwner | null, now = Date.now()): number {
+  if (!owner) return 0;
+  const createdAt = Date.parse(owner.createdAt);
+  return Number.isFinite(createdAt) ? Math.max(0, now - createdAt) : Number.POSITIVE_INFINITY;
+}
+
 export async function diagnoseNativeLock(file: string): Promise<NativeLockDiagnosis> {
   return diagnosisFromSnapshot(await readNativeLockSnapshot(file));
+}
+
+export interface NativeLockTakeoverOptions {
+  /**
+   * Also remove locks whose owner cannot be proven stale when the owner record is
+   * older than NATIVE_LOCK_UNKNOWN_TAKEOVER_MS. Reserved for the explicit doctor
+   * repair path; automatic acquisition never opts in.
+   */
+  allowAgedUnknown?: boolean;
 }
 
 export async function takeOverNativeStaleLock(
   paths: NativeProjectPaths,
   file: string,
   expected?: NativeLockDiagnosis,
+  options: NativeLockTakeoverOptions = {},
 ): Promise<NativeStaleLockTakeover> {
   return withNativeLockCoordinator(paths, `take over ${path.basename(file)}`, async () => {
     const locksDir = await resolveContainedNativePath(paths.runtimeDir, paths.locksDir);
@@ -487,7 +513,11 @@ export async function takeOverNativeStaleLock(
     if (expected && !sameNativeLockDiagnosis(expected, diagnosis)) {
       return { status: 'changed', diagnosis };
     }
-    if (diagnosis.status !== 'stale' || !snapshot) {
+    const agedUnknownTakeable =
+      options.allowAgedUnknown === true &&
+      diagnosis.status === 'unknown' &&
+      nativeLockOwnerAgeMs(snapshot?.owner ?? null) >= NATIVE_LOCK_UNKNOWN_TAKEOVER_MS;
+    if ((diagnosis.status !== 'stale' && !agedUnknownTakeable) || !snapshot) {
       return { status: 'changed', diagnosis };
     }
     const coordinatorDir = path.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR);

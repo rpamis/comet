@@ -10,7 +10,7 @@ export async function readProcessIdentity(pid: number): Promise<string | null> {
   if (pid === process.pid && ownIdentity !== null) return ownIdentity;
   const identity = await inspectProcessIdentity(pid);
   // Our own creation identity cannot change within this process. Avoid repeatedly
-  // starting PowerShell for the same owner, especially on cold Windows hosts.
+  // starting a process probe for the same owner, especially on cold Windows hosts.
   if (pid === process.pid && identity !== null) ownIdentity = identity;
   return identity;
 }
@@ -31,25 +31,9 @@ async function inspectProcessIdentity(pid: number): Promise<string | null> {
       return /^\d+$/u.test(started ?? '') ? `linux:${boot.trim()}:${started}` : null;
     }
     if (process.platform === 'win32') {
-      const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
-      const executable = path.win32.join(
-        systemRoot,
-        'System32',
-        'WindowsPowerShell',
-        'v1.0',
-        'powershell.exe',
-      );
-      const started = runExternalCommand(
-        executable,
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks.ToString()`,
-        ],
-        { timeoutMs: 15000, maxBufferBytes: 4096 },
-      ).trim();
-      return /^\d+$/u.test(started) ? `win32:${started}` : null;
+      // Await inside the try: a bare `return` of the promise would let a probe
+      // rejection escape this catch and surface as an unhandled error.
+      return await inspectWindowsProcessIdentity(pid);
     }
     if (process.platform === 'darwin') {
       const started = runExternalCommand('/bin/ps', ['-p', String(pid), '-o', 'lstart='], {
@@ -65,14 +49,95 @@ async function inspectProcessIdentity(pid: number): Promise<string | null> {
   return null;
 }
 
-export async function processInstanceMayBeAlive(pid: number, identity?: string): Promise<boolean> {
-  if (!Number.isSafeInteger(pid) || pid <= 0) return true;
+function windowsProcessTicks(raw: string): string | null {
+  const ticks = raw.trim();
+  return /^\d+$/u.test(ticks) ? `win32-ps:${ticks}` : null;
+}
+
+/**
+ * Windows creation-time identity. WMIC answers in tens of milliseconds without a
+ * PowerShell cold start, so it is tried first; PowerShell remains the fallback for
+ * hosts where WMIC was removed. Each source keeps its own prefix: a value recorded
+ * through one source never compares equal to the other, so an occasional WMIC
+ * timeout that falls back to PowerShell yields `unknown`, never a false reuse verdict.
+ */
+async function inspectWindowsProcessIdentity(pid: number): Promise<string | null> {
+  try {
+    const wmic = runExternalCommand(
+      path.win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'wbem', 'WMIC.exe'),
+      ['process', 'where', `processid=${pid}`, 'get', 'creationdate', '/value'],
+      { timeoutMs: 5000, maxBufferBytes: 4096 },
+    );
+    const creation = /^CreationDate=(\S+)/mu.exec(wmic);
+    // WMIC prints local time like 20260918161643.123456+480; keep the raw form as
+    // the identity string. It only needs to be stable per process, not comparable
+    // across hosts or sources, so the timezone suffix stays part of the value.
+    if (creation) return `win32-wmic:${creation[1]}`;
+  } catch {
+    // WMIC is optional on modern Windows; fall through to PowerShell.
+  }
+  const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+  const executable = path.win32.join(
+    systemRoot,
+    'System32',
+    'WindowsPowerShell',
+    'v1.0',
+    'powershell.exe',
+  );
+  const started = runExternalCommand(
+    executable,
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks.ToString()`,
+    ],
+    { timeoutMs: 8000, maxBufferBytes: 4096 },
+  ).trim();
+  return windowsProcessTicks(started);
+}
+
+export type ProcessLiveness = 'alive' | 'dead' | 'unknown';
+
+// The two Windows probe sources format creation time differently; a mismatch
+// between them says which probe ran, not that the pid was reused.
+const INTERCHANGEABLE_IDENTITY_SOURCES = new Set(['win32-wmic', 'win32-ps']);
+
+function identitySource(value: string): string {
+  const separator = value.indexOf(':');
+  return separator === -1 ? '' : value.slice(0, separator);
+}
+
+/**
+ * Three-state liveness. `unknown` means the pid exists but its recorded creation
+ * identity could not be re-inspected — distinct from `alive`, so callers can offer
+ * a time-bounded takeover path instead of waiting on a probe that never succeeds.
+ * Identities recorded through different interchangeable probe sources also resolve
+ * to `unknown` rather than `dead`, because such a mismatch proves nothing about reuse.
+ */
+export async function inspectProcessLiveness(
+  pid: number,
+  identity?: string,
+): Promise<ProcessLiveness> {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return 'alive';
   try {
     process.kill(pid, 0);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return 'dead';
   }
-  if (!identity) return true;
+  if (!identity) return 'alive';
   const current = await readProcessIdentity(pid);
-  return current === null || current === identity;
+  if (current === identity) return 'alive';
+  if (current === null) return 'unknown';
+  if (
+    INTERCHANGEABLE_IDENTITY_SOURCES.has(identitySource(current)) &&
+    INTERCHANGEABLE_IDENTITY_SOURCES.has(identitySource(identity))
+  ) {
+    return 'unknown';
+  }
+  return 'dead';
+}
+
+export async function processInstanceMayBeAlive(pid: number, identity?: string): Promise<boolean> {
+  return (await inspectProcessLiveness(pid, identity)) !== 'dead';
 }

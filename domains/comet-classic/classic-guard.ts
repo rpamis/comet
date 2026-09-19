@@ -1395,6 +1395,8 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
               classicCommandProjectRoot(),
               changeDir,
               updated.classic,
+              false,
+              updated.run ?? null,
             )),
             change,
             phase: updated.classic.phase,

@@ -15,6 +15,7 @@ export function liveGitBranch(cwd: string): string | null {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10_000,
       windowsHide: true,
     }).trim();
     return branch && branch !== 'HEAD' ? branch : null;
@@ -35,6 +36,7 @@ export function isGitWorkTree(cwd: string): boolean {
         cwd,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 10_000,
         windowsHide: true,
       }).trim() === 'true'
     );

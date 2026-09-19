@@ -12,6 +12,8 @@ import { inspectNativeStatus, listNativeStatus } from './native-diagnostics.js';
 import { inspectNativeEvidenceRetention } from './native-evidence-retention.js';
 import {
   diagnoseNativeLock,
+  NATIVE_LOCK_UNKNOWN_TAKEOVER_MS,
+  nativeLockOwnerAgeMs,
   takeOverNativeStaleLock,
   withNativeLockRecovery,
 } from './native-lock.js';
@@ -125,11 +127,32 @@ async function clearStaleRecoveryLocks(
       if (takeover.status === 'missing') continue;
       diagnosis = takeover.diagnosis;
     }
-    if (diagnosis.status === 'stale') {
+    if (diagnosis.status === 'unknown') {
+      // Explicit doctor repair may take over a lock whose owner cannot be proven
+      // stale (for example left by a crash on another machine) once the owner
+      // record is old enough that no live operation plausibly still holds it.
+      const takeover = await takeOverNativeStaleLock(paths, file, diagnosis, {
+        allowAgedUnknown: true,
+      });
+      if (takeover.status === 'removed') {
+        findings.push({
+          severity: 'info',
+          code: 'aged-unknown-recovery-lock-removed',
+          message:
+            'Removed a recovery lock whose owner could not be proven stale and was recorded over fifteen minutes ago',
+          path: file,
+        });
+        continue;
+      }
+      if (takeover.status === 'missing') continue;
+      diagnosis = takeover.diagnosis;
+    }
+    if (diagnosis.status === 'stale' || diagnosis.status === 'unknown') {
       findings.push({
         severity: 'error',
-        code: 'lock-takeover-raced',
-        message: 'Native recovery lock changed while doctor was preparing stale takeover',
+        code: 'lock-owner-unknown',
+        message:
+          'Native recovery lock owner cannot be proven stale; retry doctor --repair after the lock is older than fifteen minutes',
         path: file,
       });
       return false;
@@ -361,10 +384,40 @@ async function inspectLocks(
           path: file,
         });
       } else if (diagnosis.status === 'unknown') {
+        // Cross-host crash remnants and owners whose liveness probe never succeeds
+        // land here. An explicit doctor repair may take them over once the owner
+        // record is over fifteen minutes old; younger ones stay untouched with guidance.
+        const ageMs = nativeLockOwnerAgeMs(diagnosis.owner);
+        if (repair && ageMs >= NATIVE_LOCK_UNKNOWN_TAKEOVER_MS && unfinished.length === 0) {
+          const takeover = await takeOverNativeStaleLock(paths, file, diagnosis, {
+            allowAgedUnknown: true,
+          });
+          if (takeover.status === 'removed') {
+            findings.push({
+              severity: 'info',
+              code: 'aged-unknown-lock-removed',
+              message:
+                'Removed a Native lock whose owner could not be proven stale and was recorded over fifteen minutes ago',
+              path: file,
+            });
+            continue;
+          }
+          if (takeover.status === 'missing') continue;
+          findings.push({
+            severity: 'warning',
+            code: 'lock-takeover-raced',
+            message: 'Native lock changed while doctor was preparing takeover',
+            path: file,
+          });
+          continue;
+        }
         findings.push({
           severity: 'warning',
           code: 'lock-owner-unknown',
-          message: 'Native lock owner cannot be proven stale',
+          message:
+            ageMs >= NATIVE_LOCK_UNKNOWN_TAKEOVER_MS
+              ? 'Native lock owner cannot be proven stale; run doctor --repair to take over this lock'
+              : `Native lock owner cannot be proven stale yet; retry doctor --repair after ${Math.ceil((NATIVE_LOCK_UNKNOWN_TAKEOVER_MS - ageMs) / 60_000)} more minutes`,
           path: file,
         });
       } else if (diagnosis.status === 'stale') {

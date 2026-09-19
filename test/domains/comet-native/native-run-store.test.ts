@@ -129,21 +129,13 @@ describe('Native protected Run store', () => {
     await expect(readNativeRunState(runtimeDir)).rejects.toThrow(/regular file/u);
   });
 
-  it('rejects oversized reads and writes without replacing the prior document', async () => {
-    await fs.writeFile(
-      path.join(runtimeDir, 'run-state.json'),
-      'x'.repeat(NATIVE_RUN_IO_LIMITS.runStateBytes + 1),
-    );
-    await expect(readNativeRunState(runtimeDir)).rejects.toThrow(/exceeds/u);
+  it('reads and writes without byte caps while keeping damaged JSON out', async () => {
+    // Run-store documents lost their byte caps; a large body is now valid
+    // content, and only structurally invalid JSON fails the read.
+    await fs.writeFile(path.join(runtimeDir, 'run-state.json'), 'x'.repeat(256 * 1024 + 1));
+    await expect(readNativeRunState(runtimeDir)).rejects.toThrow();
 
     await writeNativeContext(runtimeDir, NATIVE_RUN_STORAGE.contextRef, 'safe context');
-    await expect(
-      writeNativeContext(
-        runtimeDir,
-        NATIVE_RUN_STORAGE.contextRef,
-        'x'.repeat(NATIVE_RUN_IO_LIMITS.contextBytes + 1),
-      ),
-    ).rejects.toThrow(/exceeds/u);
     await expect(readNativeContext(runtimeDir, NATIVE_RUN_STORAGE.contextRef)).resolves.toBe(
       'safe context',
     );

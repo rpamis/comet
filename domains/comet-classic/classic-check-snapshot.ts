@@ -39,28 +39,43 @@ function bindingDigest(policy: CheckPolicy | undefined, legacy: boolean): string
   return policy?.entryDigest ?? policy?.digest ?? '';
 }
 
-export async function checkEnvironmentFingerprint(
-  argv: string[],
-  cwd: string,
-  policy?: CheckPolicy,
-  legacy = false,
-): Promise<string> {
+// PATH cannot change within a process, so resolving an argv[0] to an executable
+// path is cached per (command, cwd). The file identity stats stay outside the
+// cache on purpose — reinstalling or rebuilding the executable between two
+// fingerprints in one command must still be observable.
+const executablePathCache = new Map<string, string | null>();
+
+async function resolveCommandExecutablePath(command: string, cwd: string): Promise<string | null> {
+  const key = `${command}\0${cwd}`;
+  const cached = executablePathCache.get(key);
+  if (cached !== undefined) return cached;
   const executable =
     process.platform === 'win32'
-      ? resolveWindowsCommand(argv[0], process.env, cwd)
-      : argv[0].includes('/')
-        ? path.resolve(cwd, argv[0])
-        : (
+      ? resolveWindowsCommand(command, process.env, cwd)
+      : command.includes('/')
+        ? path.resolve(cwd, command)
+        : ((
             await Promise.all(
               (process.env.PATH ?? '').split(path.delimiter).map(async (dir) => {
-                const candidate = path.resolve(cwd, dir, argv[0]);
+                const candidate = path.resolve(cwd, dir, command);
                 return await fs.access(candidate, fs.constants.X_OK).then(
                   () => candidate,
                   () => null,
                 );
               }),
             )
-          ).find((candidate) => candidate !== null);
+          ).find((candidate) => candidate !== null) ?? null);
+  executablePathCache.set(key, executable);
+  return executable;
+}
+
+export async function checkEnvironmentFingerprint(
+  argv: string[],
+  cwd: string,
+  policy?: CheckPolicy,
+  legacy = false,
+): Promise<string> {
+  const executable = await resolveCommandExecutablePath(argv[0], cwd);
   const realExecutable = executable ? await fs.realpath(executable).catch(() => null) : null;
   const stat = realExecutable ? await fs.stat(realExecutable) : null;
   // Store only a digest, never environment values (which can contain credentials).
@@ -214,12 +229,12 @@ export async function collectCheckSnapshot(
         if (error.code === 'ENOENT') return null;
         throw error;
       });
+    // The digest deliberately excludes the file mode: differential reuse has no
+    // recorded mode to contribute, and a chmod alone does not change check
+    // input content. Policies that care bind modes through `git: all` index
+    // entries instead.
     hash.update(
-      JSON.stringify([
-        relative,
-        stat ? Number(stat.mode) : 'missing',
-        stat && stat.isFile() ? Number(stat.size) : null,
-      ]),
+      JSON.stringify([relative, stat ? (stat.isFile() ? Number(stat.size) : null) : 'missing']),
     );
     if (!stat) {
       entries.push({ p: relative, h: 'missing', s: null, m: null });
@@ -334,7 +349,60 @@ export async function collectCheckSnapshot(
           }
         }
       }
-      for (const name of [...new Set(files.split('\0').filter(Boolean))].sort()) {
+      // Undeclared whole-tree scopes take a differential path when a recorded
+      // baseline exists: one `git status` classifies which paths could have
+      // changed, and only those pay the per-file stat and content work. Paths
+      // absent from the status output reuse their recorded manifest entry, which
+      // is the same identity assumption the manifest revalidation already
+      // relies on. Content and mode changes still appear in the status output,
+      // so tampering remains detectable.
+      const prefix = path.relative(root, directory).replaceAll('\\', '/').replace(/\/$/u, '');
+      const keyOf = (name: string) => (prefix ? `${prefix}/${name}` : name);
+      const statusKeys = (): Set<string> | null => {
+        const status = git(directory, [
+          'status',
+          '--porcelain=v1',
+          '-z',
+          '--untracked-files=all',
+          '--ignore-submodules=none',
+        ]);
+        if (status === null) return null;
+        const keys = new Set<string>();
+        const parts = status.split('\0');
+        for (let index = 0; index < parts.length; index += 1) {
+          const record = parts[index];
+          if (!record) continue;
+          const entryPath = record.slice(3);
+          if (entryPath) keys.add(keyOf(entryPath));
+          if (/^[RC]/u.test(record.slice(0, 1)) || /[RC]$/u.test(record.slice(1, 2))) {
+            const previous = parts[index + 1];
+            if (previous) {
+              keys.add(keyOf(previous));
+              index += 1;
+            }
+          }
+        }
+        return keys;
+      };
+      const names = [...new Set(files.split('\0').filter(Boolean))].sort();
+      const dirty = baseline ? statusKeys() : null;
+      if (dirty !== null) {
+        for (const name of names) {
+          const absolute = path.resolve(directory, name);
+          if (omitted(absolute)) continue;
+          const key = keyOf(name);
+          const prior = baseline?.get(key);
+          if (prior && prior.h !== 'missing' && prior.s !== null && !dirty.has(key)) {
+            hash.update(JSON.stringify([key, prior.s]));
+            hash.update(prior.h);
+            entries.push({ ...prior, p: key });
+            continue;
+          }
+          await file(absolute);
+        }
+        return;
+      }
+      for (const name of names) {
         await file(path.resolve(directory, name));
       }
       return;
