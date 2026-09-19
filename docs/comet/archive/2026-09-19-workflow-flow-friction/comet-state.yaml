@@ -1,0 +1,298 @@
+schema: comet.native.v4
+name: workflow-flow-friction
+language: zh-CN
+phase: archive
+status: done
+state_version: 23
+brief: brief.md
+shape_confirmation_hash: 95bb356d058dbb281b00df6c879455318d379bfc26313b1729de3021c2f02ae4
+spec_changes: []
+workspace:
+  isolation: current
+  change_branch: "042"
+  target_branch: "042"
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 4
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: "Scenario: 跨主机残留锁恢复 —— 在设备 B 上面对设备 A 崩溃留下的 Native 变更锁（hostname 不同、owner
+      不可达），`comet native doctor <change> --repair` 在锁龄超过约定阈值后能够接管，后续变更命令不再每条空转 5
+      秒后失败。"
+    result: passed
+    reason:
+      text: "Aged unknown-lock takeover now at fifteen minutes: constant, doctor text,
+        countdown, tests, CHANGELOG, brief record, and bundle all consistent
+        (6/6 checks)."
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: 'Scenario: Windows 进程探测降级 —— 在进程身份探测工具不可用（PowerShell 被禁用或超时）的 Windows
+      主机上，僵尸检查 owner 在合理时限内可被 doctor 判定并接管，不再出现"探测失败即永远判活"。'
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: "Scenario: Classic 空锁快速自愈 —— 模拟 crash 留下的空 `.comet-state.lock`，后续命令在秒级（而非
+      5 分钟）内完成清理或自动恢复，不再每条命令等待 30 秒。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: "Scenario: Hook stdin 超时退出 —— 宿主进程不写入也不关闭 stdin 时，hook
+      进程在约定超时内以非零码退出并输出可诊断错误，而不是永久阻塞。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: "Scenario: 指纹复用先于全价 —— 工作树与状态版本未变时，连续两次 Runtime 检查保留判定中第二次不再重新执行全量 `diff
+      --binary` 与 ignored 目录哈希，复用路径在计算指纹前命中。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: "Scenario: guard --apply 校验去重 —— `comet guard <change> build --apply`
+      对同一份证据的昂贵部分只计算一次：策略文件每次评估只读一次、可执行文件路径按进程缓存；锁内的第二次校验作为防并发篡改保护保留，但其复验走
+      manifest 差分快照。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: "Scenario: check run 去重 —— `comet check run` 执行期间环境未变化时，只计算一次环境指纹；after
+      快照复用 before 快照的枚举结构。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: "Scenario: select 优先复用 —— `.comet/current-change.json` 有效时，`state select`
+      不再对每个 worktree 发起 3 次 git 调用。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A9
+    source: brief.md
+    text: "Scenario: Open 阶段产物刷新本地化 —— OpenSpec status 刷新改为本地 `state artifacts`
+      判定，仅在依赖报错时回退真实 status；Open 阶段外部子进程调用次数显著下降。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A10
+    source: brief.md
+    text: "Scenario: 阶段入口免重复读取 —— design/verify/archive 入口在上一阶段 guard 已返回本阶段状态时不再重复
+      `state select` + `state check`（与 build 的豁免对齐，Skill 中英文同步）。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A11
+    source: brief.md
+    text: "Scenario: status→select 单条化 —— 已知 change 名时 Native 入口一条命令完成发现与选择（select
+      返回发现结果或 status 复用 select 上下文），Skill 中英文同步更新。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A12
+    source: brief.md
+    text: "Scenario: 默认输入绑定走 manifest 差分 —— 未声明 check-policy `files` 的命令，第二次 `check
+      run` 的输入指纹基于上次 manifest 差分与新增文件计算，不再全树枚举；与上次无关的文件改动不使证据失效，新增匹配文件仍使证据失效。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+  - id: A13
+    source: brief.md
+    text: "Scenario: A5 四条循环出口 —— status blocked 指向外部 worktree 时返回指向该 worktree
+      的可执行修复命令；migration 双轨指令统一为单一推荐路径；liveness unknown 给出带时限的接管出口。"
+    result: passed
+    reason:
+      text: Carried over from the second-round verification (unchanged
+        implementation); parameter round re-verified lock/doctor suites.
+      truncated: false
+builder_handoff:
+  candidate_id: 225ed4c4-af3f-4f1e-914e-9ce177b8c992
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:3039f426-50f1-4cc6-ac89-2c68cb8ed9e7
+  iteration: 1
+  summary:
+    text: "Parameter-only correction round: the aged unknown-lock takeover threshold
+      dropped from one hour to fifteen minutes per the user instruction given
+      during result acceptance. The constant, the doctor guidance text
+      (remaining-minutes countdown now ends at fifteen), the CHANGELOG wording,
+      and the brief decision record are updated; the native bundle was rebuilt;
+      lock and doctor suites rerun green. No acceptance scenario, implementation
+      logic, or other file changed in this round."
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+  checks:
+    - name:
+        text: lock and doctor suites
+        truncated: false
+      result: passed
+      note:
+        text: native-lock 13 passed 2 skipped (platform-specific), doctor 13 + v4 14
+          passed after an initial parallel-jitter rerun
+        truncated: false
+    - name:
+        text: bundle rebuild
+        truncated: false
+      result: passed
+      note:
+        text: build:native-runtime rerun
+        truncated: false
+    - name:
+        text: prettier
+        truncated: false
+      result: passed
+      note:
+        text: changed files formatted
+        truncated: false
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-09-19T06:26:24.001Z
+blockers: []
+verification:
+  candidate_id: 225ed4c4-af3f-4f1e-914e-9ce177b8c992
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:0be7c146-fa94-42ee-9d7a-37ba87201398
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks: []
+  summary:
+    text: "Third independent verification: the fifteen-minute takeover-threshold
+      correction is consistent across source, tests, user-facing text,
+      CHANGELOG, brief decision record, and the built bundle (6/6 checks, 40
+      tests green). All thirteen acceptance scenarios remain satisfied; the
+      implementation logic was otherwise unchanged from the round the user
+      already reviewed."
+    truncated: false
+  risks:
+    - text: "Same declared risks as the second round: ignored generated directories
+        stay the gate exception; two assertion gaps and one zh
+        explanatory-clause asymmetry noted for follow-up"
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-19T06:31:20.565Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native Shape artifacts changed
+      truncated: false
+    completed_at: 2026-09-19T03:17:43.087Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A5
+      - A11
+    summary:
+      text: 12 of 14 scenarios verified with evidence; A5's reuse-before-fingerprint
+        ordering was missing at verification time (Builder added the gate
+        afterwards); A11 is an intentionally unimplemented declared non-goal
+        whose acceptance example text still needs removal from the brief.
+      truncated: false
+    completed_at: 2026-09-19T03:50:17.326Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-19T03:51:01.759Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: "Second independent verification round for the current candidate: 13/13
+        scenarios pass. The two first-round failures were substantively fixed
+        (A5 input gate with tests; A11 resolved by the user-confirmed
+        requirement revision) and the remaining scenarios were not regressed.
+        Random-run spot checks across five test files all green."
+      truncated: false
+    completed_at: 2026-09-19T06:08:14.840Z
+  - goal_cycle: 3
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native Shape artifacts changed
+      truncated: false
+    completed_at: 2026-09-19T06:24:56.310Z
+  - goal_cycle: 4
+    iteration: 1
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: "Third independent verification: the fifteen-minute takeover-threshold
+        correction is consistent across source, tests, user-facing text,
+        CHANGELOG, brief decision record, and the built bundle (6/6 checks, 40
+        tests green). All thirteen acceptance scenarios remain satisfied; the
+        implementation logic was otherwise unchanged from the round the user
+        already reviewed."
+      truncated: false
+    completed_at: 2026-09-19T06:31:20.565Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-18T16:16:43.443Z
