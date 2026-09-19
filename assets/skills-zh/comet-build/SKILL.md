@@ -25,7 +25,7 @@ comet state check <name> build --json
 
 本轮 Design/Guard 已成功返回 Build 状态信息时，直接使用其中的 `data.configuration`、`configurationReadiness`、`artifactRefs` 和任务信息，并按 `agent.continuation` 继续，不重复 select/check。恢复任务、工作区变化或外部状态变化时，才执行上述入口验证。配置写入成功后，使用返回的结果，不逐字段重复调用 get；验证失败时处理 `data.issues`。
 
-若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
+若上述 `select` / `check` 输出 `BLOCKED` 或分支绑定 `ERROR`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
 **恢复**：根据入口返回的 phase、任务 ID 和 plan 的 `base-ref`，核对现有实现与审查记录，再从尚未完成的实施或审查步骤继续。任务未勾选不等于尚未实现。派发任务前先核对检查点，不重复已有提交，也不假定外部操作可以安全重试。
 
@@ -183,13 +183,13 @@ Build 是最长阶段，可能跨越大量任务。为支持上下文压缩后�
 comet check run <change-name> build --local -- <program> [args...]
 ```
 
-Guard 先检查配置、任务和产物，再复用输入与环境相同的 Runtime 检查结果；没有有效结果时，才运行自动识别出的构建命令。证据的 cwd 必须与之后调用 guard 的目录一致（通常是项目根）；构建入口在子目录时，用从项目根可执行的形式记录（例如 `npm --prefix <subdir> run build`），或在 `.comet/check-policy.json`（v2）中声明该命令的 cwd 后用 `--cwd <subdir>` 记录（见 `comet-classic/reference/scripts.md`）。证据按"输入面"判定：默认输入是工作区文件内容，源文件、测试、相关配置、依赖或子模块内容变化后必须重跑相关检查；commit、暂存、勾选任务和环境变量变化默认不作废证据，需要绑定时通过 `.comet/check-policy.json` 声明（见 `comet-classic/reference/scripts.md`）。纯文档编辑（仓库根目录及 `docs/`、`doc/`、`documentation/`、`.github/` 下的 Markdown/text 文件和 LICENSE 类文件，OpenSpec 与 Superpowers 产物除外）同样默认不作废证据；guard 和 `comet check run` 会列出被忽略的路径而不重跑命令，改一处 README 不再触发全量构建和测试。若命令确实以这些文档为输入，在 `.comet/config.yaml` 设置 `classic.document_evidence: strict`，或用 `.comet/check-policy.json` 声明精确输入。阶段内的小改动可以先用 `--incremental` 跑增量命令（如只跑相关测试）维持证据，guard `--apply` 推进阶段前仍要求完整命令的 full 证据。guard 报告证据失效时会给出原因和变化文件清单，按清单处理，不要凭猜测全量重跑。丢失上下文后恢复任务时，重新校验可复用的本地结果，只重跑已失效或只能使用一次的检查。执行期间输入发生变化的结果不得复用。预检不会用掉一次性结果；只有阶段转换成功后，该结果才不能再次使用。失败日志保存在 `logRef`，按需读取。
+Guard 先检查配置、任务和产物，再复用输入与环境相同的 Runtime 检查结果；没有有效结果时，才运行自动识别出的构建命令。证据的 cwd 必须与之后调用 guard 的目录一致（通常是项目根）；构建入口在子目录时，用从项目根可执行的形式记录（例如 `npm --prefix <subdir> run build`），或在 `.comet/check-policy.json`（v2）中声明该命令的 cwd 后用 `--cwd <subdir>` 记录（见 `comet-classic/reference/scripts.md`）。证据按"输入面"判定：默认输入是工作区文件内容，源文件、测试、相关配置、依赖或子模块内容变化后必须重跑相关检查；commit、暂存、勾选任务和环境变量变化默认不作废证据，需要绑定时通过 `.comet/check-policy.json` 声明（见 `comet-classic/reference/scripts.md`）。纯文档编辑（仓库根目录的 Markdown 与 `LICENSE`/`NOTICE`/`AUTHORS`，以及 `docs/`、`doc/`、`documentation/`、`.github/` 下的 Markdown/`.txt`/`.rst`，OpenSpec 与 Superpowers 产物除外）同样默认不作废证据；guard 和 `comet check run` 会列出被忽略的路径而不重跑命令，改一处 README 不再触发全量构建和测试。若命令确实以这些文档为输入，在 `.comet/config.yaml` 设置 `classic.document_evidence: strict`，或用 `.comet/check-policy.json` 声明精确输入。阶段内的小改动可以先用 `--incremental` 跑增量命令（如只跑相关测试）维持证据，guard `--apply` 推进阶段前仍要求完整命令的 full 证据。guard 报告证据失效时会给出原因和变化文件清单，按清单处理，不要凭猜测全量重跑。丢失上下文后恢复任务时，重新校验可复用的本地结果，只重跑已失效或只能使用一次的检查。执行期间输入发生变化的结果不得复用。预检不会用掉一次性结果；只有阶段转换成功后，该结果才不能再次使用。失败日志保存在 `logRef`，按需读取。
 
 `state record-check --command` 仍只保存手工声明，Comet **绝不会执行该文本**，也不能据此自动推进。手动声明还会成为该 scope 的最新记录，遮蔽之前仍然有效的 Runtime 证据，guard 会拒绝并要求重新 `comet check run`；没有恢复旧证据的方法，只能在树静止时重跑一条 check run。build 与 verify 证据彼此独立：Verify 可引用已验证的同一构建结果，但构建通过不替代测试和验收场景。`COMET_SKIP_BUILD=1` 仅是旧流程的兼容绕过方式，不是可审计的构建证据。
 
 构建命令自动识别覆盖三种来源：调用目录的 package.json build script、pom.xml、Cargo.toml；monorepo 根没有 build script 时，会探测 workspace 子包（package.json `workspaces` 或 `pnpm-workspace.yaml` 声明的一层目录），恰好一个子包有 build script 时自动执行 `npm --prefix <子包> run build`，多个子包时 guard 不代用户选择，会列出候选并给出可复制的录制命令。
 
-**证据录制**：实现完成、相关检查跑绿后，一次性完成录制与推进——所需的 `comet check run`（build 与 verify 各一条，一条 shell 调用里依次运行）之后立即运行 `comet guard <change-name> build --apply`。输入未变化时 Runtime 会自动复用已记录的证据，文档编辑后的重跑不会再次执行命令。guard 报告证据失效时会给出确切原因和变化文件清单——只重跑列出的 scope，record-check 遮蔽或 phase 边界的情况按报错信息处理，不要全量重来。提交一律放在 guard 通过之后，勾选 task 用 `comet state task-complete`。
+**证据录制**：实现完成、相关检查跑绿后，录制 build 证据并立即运行 `comet guard <change-name> build --apply`。Build 阶段只录 build 证据：外部（非 `--local`）verify 检查必须在 guard build --apply **成功之后**再录制——阶段转换会使此前录的外部 verify 证据过期（`crossed a phase boundary`），昂贵的非幂等外部检查会被白跑；`--local` 证据不受此限，可在一条 shell 调用里连续录制。输入未变化时 Runtime 会自动复用已记录的证据，文档编辑后的重跑不会再次执行命令。guard 报告证据失效时会给出确切原因和变化文件清单——只重跑列出的 scope，record-check 遮蔽或 phase 边界的情况按报错信息处理，不要全量重来。提交一律放在 guard 通过之后，勾选 task 用 `comet state task-complete`。
 
 多条只读 comet 命令（如 `state get`、`state next`、`status`）合并成一条 shell 调用依次执行，减少每条命令的进程启动开销。
 

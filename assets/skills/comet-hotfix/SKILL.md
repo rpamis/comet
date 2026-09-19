@@ -49,29 +49,25 @@ Reuse Comet Open with hotfix defaults. Skip the full `openspec-explore` explorat
 
 **Adapt external OpenSpec instructions:** Do not directly invoke the official CLI, adopt a fixed cwd, or read/write fixed physical OpenSpec paths. Use `comet classic openspec -- <args...>` for every OpenSpec command and this invocation's `<classic-*>` logical roots for all change and artifact paths.
 
-Create the initial change structure, then immediately initialize state and select the change so interrupted work can resume:
+Workspace isolation is a user choice made before state initialization; do not write `current` as an assumed default (choosing a worktree after initialization fails: the change directory only appears in the primary root, not in the worktree). Pause under `comet-classic/reference/decision-point.md` and present:
+
+- A. Work on the current branch (`--isolation current`, binding the actual branch).
+- B. Create a branch: create and switch to `hotfix/YYYYMMDD/<change-name>` (`--isolation branch`).
+- C. Create a worktree: first load Superpowers `using-git-worktrees` with the Skill tool and let it create the isolated workspace (`--isolation worktree`).
+
+Then prepare the workspace and initialize plus select the change inside the returned `projectRoot` (resume follows the same order):
 
 ```bash
-comet state init <name> hotfix
+comet classic workspace prepare <name> --isolation <selected-isolation> --json
+cd <returned projectRoot>
+comet state init <name> hotfix --isolation <selected-isolation>
 comet state select <name>
 comet state check <name> open
 ```
 
 Combine multiple read-only comet commands (for example `state get`, `state next`, `state artifacts`) into a single shell invocation to reduce process startup overhead.
 
-If select/check returns `BLOCKED` because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
-
-Workspace isolation is a user choice at entry; do not write `current` as an assumed default. Pause under `comet-classic/reference/decision-point.md` and present:
-
-- A. Work on the current branch: run `comet state set <name> isolation current`, binding the actual branch.
-- B. Create a branch: create and switch to `hotfix/YYYYMMDD/<change-name>`, then run `comet state set <name> isolation branch`.
-- C. Create a worktree: first load Superpowers `using-git-worktrees` with the Skill tool and let it create the isolated workspace. Enter it, then run `comet state set <name> isolation worktree`.
-
-After B or C, run this again in the actual execution branch/worktree:
-
-```bash
-comet state select <name>
-```
+If select/check returns `BLOCKED` — or a branch-binding `ERROR` — because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
 
 Then create the reduced artifacts:
 
@@ -212,7 +208,7 @@ After the user chooses escalation (B), run the supported state-machine transitio
 comet state transition <name> preset-escalate
 ```
 
-It atomically sets `workflow`/`classic_profile` to `full`, moves `phase` to `design`, clears `design_doc`, and clears preset-specific `build_mode`, `tdd_mode`, `review_mode`, `isolation`, and `verify_mode`. **Immediately load `comet-design` using the Skill tool** to complete the design within the existing change. On entering Build, jointly reconfirm the complete working configuration.
+It atomically sets `workflow`/`classic_profile` to `full`, moves `phase` to `design`, clears `design_doc`, and clears preset-specific `build_mode`, `tdd_mode`, `review_mode`, `isolation`, and `verify_mode`, together with workspace bindings such as `bound_branch` — before entering Build, re-decide isolation and rebind (`state set <name> isolation ...`) under `comet-classic/reference/decision-point.md`, or guard will reject the missing isolation. **Immediately load `comet-design` using the Skill tool** to complete the design within the existing change. On entering Build, jointly reconfirm the complete working configuration.
 
 If the user chooses to continue (A), continue hotfix and record the reason they accepted doing so.
 

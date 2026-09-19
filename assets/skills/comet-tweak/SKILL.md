@@ -59,32 +59,23 @@ Follow the skill to create the reduced artifacts:
 - `tasks.md`: a reasonably scoped task list. Count alone does not trigger escalation; see “Escalation decisions.”
 - Optional `delta spec`: create it normally if the change affects existing spec acceptance scenarios, using only `## MODIFIED Requirements` or `## ADDED Requirements`. OpenSpec uses delta specs to describe incremental changes to existing systems. The need for this artifact does not itself require escalation.
 
-Initialize Comet state:
+Workspace isolation is a user choice made before state initialization; do not write `current` as an assumed default (choosing a worktree after initialization fails: the change directory only appears in the primary root, not in the worktree). Pause under `comet-classic/reference/decision-point.md` and present:
+
+- A. Work on the current branch (`--isolation current`, binding the actual branch).
+- B. Create a branch: create and switch to `tweak/YYYYMMDD/<change-name>` (`--isolation branch`).
+- C. Create a worktree: first load Superpowers `using-git-worktrees` with the Skill tool and let it create the isolated workspace (`--isolation worktree`).
+
+Then prepare the workspace and initialize plus select the change inside the returned `projectRoot`:
 
 ```bash
-comet state init <name> tweak
+comet classic workspace prepare <name> --isolation <selected-isolation> --json
+cd <returned projectRoot>
+comet state init <name> tweak --isolation <selected-isolation>
 comet state select <name>
-```
-
-Then validate initialization:
-
-```bash
 comet state check <name> open
 ```
 
 If select/check returns `BLOCKED` because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
-
-Workspace isolation is a user choice at entry; do not write `current` as an assumed default. Pause under `comet-classic/reference/decision-point.md` and present:
-
-- A. Work on the current branch: run `comet state set <name> isolation current`, binding the actual branch.
-- B. Create a branch: create and switch to `tweak/YYYYMMDD/<change-name>`, then run `comet state set <name> isolation branch`.
-- C. Create a worktree: first load Superpowers `using-git-worktrees` with the Skill tool and let it create the isolated workspace. Enter it, then run `comet state set <name> isolation worktree`.
-
-After B or C, run this again in the actual execution branch/worktree:
-
-```bash
-comet state select <name>
-```
 
 Apply the guard to move from open to build:
 

@@ -49,29 +49,25 @@ description: '使用 Classic 预设流程修复局部缺陷。在用户明确调
 
 **外部 OpenSpec Skill 适配规则：** 加载后，不执行其中直接运行官方 CLI、采用固定 cwd 或读写固定 OpenSpec 目录的指令。所有 OpenSpec 命令改用 `comet classic openspec -- <args...>`，所有 change 与产物路径改用本轮绑定的 `<classic-*>` 逻辑根目录。
 
-技能加载后，先创建 change 的基础目录和文件，随即初始化状态并选中当前 change，以便中断后恢复：
+开始工作时，先由用户选择工作区隔离方式，不能默认写入 `current`（选 worktree 时必须先决定隔离，再初始化状态——change 目录在初始化后才存在，事后补选 worktree 会因目录不在 worktree 中而失败）。按 `comet-classic/reference/decision-point.md` 暂停，以单选题让用户选择：
+
+- A. 当前分支直接工作（`--isolation current`，如实绑定当前分支）
+- B. 创建分支：先创建并切换到 `hotfix/YYYYMMDD/<change-name>`（`--isolation branch`）
+- C. 创建 worktree：必须先使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能，由该技能创建隔离工作区（`--isolation worktree`）
+
+随后准备工作区并在返回的 `projectRoot` 中初始化与选中 change（中断后恢复亦按此顺序）：
 
 ```bash
-comet state init <name> hotfix
+comet classic workspace prepare <name> --isolation <selected-isolation> --json
+cd <返回的 projectRoot>
+comet state init <name> hotfix --isolation <selected-isolation>
 comet state select <name>
 comet state check <name> open
 ```
 
 多条只读 comet 命令（如 `state get`、`state next`、`state artifacts`）可以合并成一条 shell 调用依次执行，减少进程启动开销。
 
-若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
-
-开始工作时，由用户选择工作区隔离方式，不能默认写入 `current`。按 `comet-classic/reference/decision-point.md` 暂停，以单选题让用户选择：
-
-- A. 当前分支直接工作：运行 `comet state set <name> isolation current`，如实绑定当前分支
-- B. 创建分支：先创建并切换到 `hotfix/YYYYMMDD/<change-name>`，再运行 `comet state set <name> isolation branch`
-- C. 创建 worktree：必须先使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能，由该技能创建隔离工作区；进入 worktree 后运行 `comet state set <name> isolation worktree`
-
-B/C 完成后，必须在实际执行分支或 worktree 中重新运行：
-
-```bash
-comet state select <name>
-```
+若上述 `select` / `check` 输出 `BLOCKED` 或分支绑定 `ERROR`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
 随后按指引创建精简版产物：
 
@@ -211,7 +207,7 @@ hotfix 的升级判定只决定是否从预设流程转为 full。文件数量�
 comet state transition <name> preset-escalate
 ```
 
-该命令会原子地将 `workflow`/`classic_profile` 设为 `full`、将 `phase` 改为 `design`、清空 `design_doc`，并清除预设专属的 `build_mode`、`tdd_mode`、`review_mode`、`isolation` 和 `verify_mode`。然后，**立即使用 Skill 工具加载 `comet-design` skill**，在当前 change 的基础上补充 Design Doc。进入 build 后，必须在同一轮提问中重新确认完整的工作方式配置。
+该命令会原子地将 `workflow`/`classic_profile` 设为 `full`、将 `phase` 改为 `design`、清空 `design_doc`，并清除预设专属的 `build_mode`、`tdd_mode`、`review_mode`、`isolation`、`verify_mode`，同时清空 `bound_branch` 等工作区绑定——升级后必须在进入 build 前按 `comet-classic/reference/decision-point.md` 重新决定隔离方式并重新绑定（`state set <name> isolation ...`），否则 guard 会以 isolation 缺失拦截。然后，**立即使用 Skill 工具加载 `comet-design` skill**，在当前 change 的基础上补充 Design Doc。进入 build 后，必须在同一轮提问中重新确认完整的工作方式配置。
 
 用户选择继续（选项 A）时，继续 hotfix 流程，并记录用户确认继续的原因。
 

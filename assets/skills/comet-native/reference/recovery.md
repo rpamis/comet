@@ -20,14 +20,14 @@ For external-input waits, follow [external input and monitoring](#external-input
 
 `status` searches registered worktrees for the change associated with the current project and branch and returns `workspace.projectRoot`. Enter it and run `select` again. Reuse the located change and workspace; do not copy it or recreate the same name elsewhere.
 
-Runtime blocks writes if project root, branch, workspace type, or Git state disagrees with `comet-state.yaml`. Follow its action if Runtime can safely find or create the declared worktree; otherwise it enters `await-user`. If the original directory or branch is truly lost, the user chooses the recovery location, whether to restore from a trusted backup, or whether to abandon the change.
+Runtime blocks writes if project root, branch, workspace type, or Git state disagrees with `comet-state.yaml`. Follow its action if Runtime can safely find or create the declared worktree; otherwise it enters blocked await-user (`disposition: blocked`, recovery action `await-user`). If the original directory or branch is truly lost, the user chooses the recovery location, whether to restore from a trusted backup, or whether to abandon the change.
 
 ### Workflow records and local execution
 
 `comet-state.yaml` records the last safely recoverable workflow state. Local `state.json` only describes execution on this machine. If missing, behind, or associated with an old task, Runtime rebuilds it from YAML, the brief, and target Specs. Local state cannot override newer YAML.
 
 - Shape: stay in Shape and continue clarification or confirmation.
-- Build: `repairing` means Verify failed and returned to Build. Ordinary changes retain the current iteration and continue implementation. Supervisor Changes use `repair-child` to add a new repair child for unresolved items rather than reopening archived children.
+- Build: `repairing` means Verify failed and returned to Build. Ordinary changes retain the current iteration and continue implementation. Supervisor Changes use `repair-child` to add a new repair child for unresolved items (edit `children.yaml`, then run `comet native next <parent> --summary "<note>"` so the contract change returns the change to Shape for reconfirmation) rather than reopening archived children.
 - Verify (`verify-ready`): rerun checks needed for the current implementation and launch a new Verifier; do not reuse passes from the old device.
 - Archive (`archive-ready`): safely return to Verify, reset acceptance to `pending`, and assess the implementation synchronized to this device.
 - `await-user` / `blocked`: restore the original blocker, responsible party, and allowed actions, then wait for the corresponding condition.

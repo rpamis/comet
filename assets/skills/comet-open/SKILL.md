@@ -169,12 +169,11 @@ Create the change's initial structure following the loaded skill. If Step 1b alr
 
 Use that resolved brief to populate the artifacts. Return to the skill's questions only if the brief still has ambiguity that would change scope.
 
-Initialize recoverable state immediately after creating the initial structure; do not wait for every artifact to be generated:
+Initialize recoverable state immediately after creating the initial structure; do not wait for every artifact to be generated (the entry check runs once in Step 3, not here):
 
 ```bash
 comet state init <name> full --isolation <selected-isolation>
 comet state select <name>
-comet state check <name> open
 ```
 
 Stop if any command fails. Then run `comet classic openspec --agent-json -- status --change "<name>" --json` once and check compatibility:

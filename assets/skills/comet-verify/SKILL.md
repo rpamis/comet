@@ -31,7 +31,7 @@ Combine multiple read-only comet commands (for example `state get`, `state next`
 
 When the previous phase's guard already returned this phase's state, continue from that state and `agent.continuation` without repeating select/check; run the entry checks above only when resuming, after workspace changes, or after external state changes. Continue from the returned layout, configuration, nextAction, task information, and coordination summary. If checks and the integration review remain valid, finish only the missing work instead of rerunning the phase. After context loss, use --recover --details --json when full records are needed. Handle the reported cause of any failure.
 
-If select/check returns `BLOCKED` because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
+If select/check returns `BLOCKED` — or a branch-binding `ERROR` — because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
 
 **Continue from recorded results:** If `verify_result` is `pass`, proceed to archive. Keep `branch_status` at `pending` until the archive commit and final branch handling are complete. If `verify_result` is `pending`, inspect existing reports and results, then resume unfinished checks.
 
@@ -51,7 +51,7 @@ The script counts tasks, delta specs, and changed files, returning a light/full 
 
 Before verification, inspect uncommitted changes under `comet-classic/reference/dirty-worktree.md`. Apply these Verify-specific rules:
 
-1. Include uncommitted changes clearly belonging to this change in the verification input. Continue verifying, but do not modify or commit implementation, tests, tasks, delta spec, or the Design Doc in Verify. Documentation-only edits (the neutral document set defined in comet-build: Markdown/text files at the repository root or under `docs/`, `doc/`, `documentation/`, `.github/`, and LICENSE-style files, excluding OpenSpec and Superpowers artifacts) may be completed normally in Verify — they are not implementation writes, they do not invalidate check evidence by default, and they do not require `verify-fail`.
+1. Include uncommitted changes clearly belonging to this change in the verification input. Continue verifying, but do not modify or commit implementation, tests, tasks, delta spec, or the Design Doc in Verify. Documentation-only edits (the neutral document set defined in comet-build: Markdown plus `LICENSE`/`NOTICE`/`AUTHORS` at the repository root, and Markdown/`.txt`/`.rst` under `docs/`, `doc/`, `documentation/`, `.github/`, excluding OpenSpec and Superpowers artifacts) may be completed normally in Verify — they are not implementation writes, they do not invalidate check evidence by default, and they do not require `verify-fail`.
 2. If uncommitted changes are Verify artifacts, such as a draft report, continue completing them and recording state in Verify.
 3. If implementation exists but tasks.md is unchecked, Build's task record is behind the code. Run `verify-fail` directly to return to Build, inspect evidence, and update task state. Do not ask whether to accept unfinished tasks.
 4. If ownership cannot be established or the changes belong to another change, report the stopping condition from dirty-worktree. Do not offer “continue/ignore” before ownership is known.
@@ -97,7 +97,7 @@ comet handoff <change-name> --hash-only
 Read the `[HANDOFF] status:` verdict from stderr and act on it; the stdout hash stays for scripted callers and is never compared by hand:
 
 - `FRESH`: reuse artifact content already in context, read only acceptance sections still missing, and still verify task completion marks.
-- `STALE (changed: <files>)`: read the listed changed artifacts in full before verifying acceptance against them.
+- `STALE (changed: <files>)`: read the listed changed artifacts in full before verifying acceptance against them; if runtime's NEXT suggests `comet handoff <change-name> design --write`, run it before reading.
 - `STALE` without a file list: read every required source file in full because the recorded handoff is missing or predates the current artifacts.
 
 A FRESH verdict does not mean the content is still in context. After context loss, truncation, or uncertainty about what was read, reload the corresponding sources. A handoff summary cannot replace acceptance clauses that have not been read.
@@ -184,7 +184,7 @@ comet state transition <change-name> verify-fail
 **Resolve spec divergence with the user:**
 
 - If item 6 finds content in delta spec that the Design Doc does not reflect, **pause, present a single-choice question, and wait for the user**. Do not choose automatically. Include:
-  - A: append an “Implementation Divergence” section explaining the deviation to the Design Doc. This is an allowed Verify artifact; do not trigger another Step 1b dirty-worktree decision because of this design edit.
+  - A: append an “Implementation Divergence” section explaining the deviation to the Design Doc. This is an allowed Verify artifact; do not trigger another Step 1b dirty-worktree decision because of this design edit. The Design Doc is a check input (not a neutral document), so after writing rerun `comet check run <change-name> verify --local -- <command>` and then `comet guard <change-name> verify --apply`.
   - B: run `comet state transition <change-name> verify-fail` after the user chooses B, then invoke `/comet-build`. Build loads Superpowers `brainstorming` under its spec-update rules to update the Design Doc + delta spec.
   - C: accept the deviation and continue verification. Archive will mark the Design Doc `superseded-by-main-spec`.
 

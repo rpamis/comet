@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -38,6 +39,8 @@ describe('Native portable status', () => {
   it('projects the portable loop even when local execution is missing', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-status-v2-'));
     roots.push(root);
+    // The select command runs the full workspace discovery, which needs a Git repository.
+    execFileSync('git', ['init', '--quiet'], { cwd: root, stdio: 'ignore' });
     const config = defaultProjectConfig('docs', 'en');
     await writeProjectConfig(root, config);
     const paths = await nativeProjectPaths(root, 'docs');

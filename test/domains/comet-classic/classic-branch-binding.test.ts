@@ -200,7 +200,7 @@ describe('drift messages', () => {
   });
   it('renders the stale reason with the current branch name', () => {
     expect(driftStaleReason('my-change', 'feature-A', 'feature-B')).toBe(
-      "change 'my-change' is bound to branch 'feature-A', but current branch is 'feature-B'",
+      "change 'my-change' is bound to branch 'feature-A', but current branch is 'feature-B'. Next: switch to branch 'feature-A' and rerun, or run comet state rebind my-change after the user explicitly confirms this branch should take over the change",
     );
   });
 });

@@ -20,14 +20,14 @@ Runtime 出现故障时，先停止修改项目，再重新运行 `status --deta
 
 `status` 会在已登记的 worktree 中查找与当前项目和分支关联的 change，并返回实际工作目录 `workspace.projectRoot`。进入该目录并重新执行 `select`。恢复时沿用找到的 change 和工作目录，不复制 change，也不在其他目录重建同名 change。
 
-如果项目根目录、分支、工作区类型或 Git 状态与 `comet-state.yaml` 中的记录不一致，Runtime 会阻止写入。Runtime 能安全找到或创建已声明的 worktree 时，按返回动作继续；否则进入等待用户（`await-user`）。原目录或分支确实丢失时，由用户决定使用哪个恢复目录、是否从可信备份重建，或是否放弃 change。
+如果项目根目录、分支、工作区类型或 Git 状态与 `comet-state.yaml` 中的记录不一致，Runtime 会阻止写入。Runtime 能安全找到或创建已声明的 worktree 时，按返回动作继续；否则进入阻塞等待用户决定（`disposition: blocked`，recovery action 为 `await-user`）。原目录或分支确实丢失时，由用户决定使用哪个恢复目录、是否从可信备份重建，或是否放弃 change。
 
 ### 工作流记录与本机执行状态
 
 `comet-state.yaml` 记录最后一个可以安全恢复的工作流状态。本机 `state.json` 只说明这台机器正在执行什么；如果它缺失、版本落后或属于旧任务，Runtime 会根据 YAML、brief 和目标 Spec 重建。本机状态不能覆盖版本更新的 YAML。
 
 - Shape：保持 Shape，继续澄清或确认。
-- Build：如果 Runtime 显示 `repairing`，表示 Verify 未通过后已返回 Build。普通 change 保持当前验收轮次并继续修改；Supervisor Change 按 `repair-child` 添加新的修复子任务，处理尚未通过的验收项，不重新打开已经归档的子任务。
+- Build：如果 Runtime 显示 `repairing`，表示 Verify 未通过后已返回 Build。普通 change 保持当前验收轮次并继续修改；Supervisor Change 按 `repair-child` 添加新的修复子任务，处理尚未通过的验收项（编辑 `children.yaml` 后运行 `comet native next <parent> --summary "<说明>"`，契约变化会让 Runtime 退回 Shape 重新确认），不重新打开已经归档的子任务。
 - Verify（`verify-ready`）：重新运行当前实现所需的检查，并启动新的 Verifier；不沿用旧设备上的通过结果。
 - Archive（`archive-ready`）：先安全返回 Verify，把验收结果重置为待检查（`pending`），再验收已经同步到新设备的实现。
 - 等待用户或阻塞（`await-user` / `blocked`）：恢复原来的阻塞原因、负责处理的人和允许动作，等待对应条件满足后再继续。

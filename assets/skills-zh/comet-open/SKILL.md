@@ -171,12 +171,11 @@ resolved brief 或 change 名称仍不明确时不得运行 `comet classic opens
 
 直接使用 Step 1b 的 resolved brief 填充产物内容。只有 brief 仍有会改变范围的歧义时，才回退到技能的提问流程。
 
-change 的基础目录和文件创建后，立即初始化状态，以便中断后恢复；不能等所有产物都生成后再写 `.comet.yaml`：
+change 的基础目录和文件创建后，立即初始化状态，以便中断后恢复；不能等所有产物都生成后再写 `.comet.yaml`（入口状态验证统一在 Step 3 执行，这里不重复）：
 
 ```bash
 comet state init <name> full --isolation <selected-isolation>
 comet state select <name>
-comet state check <name> open
 ```
 
 任一命令失败都停止。随后运行一次 `comet classic openspec --agent-json -- status --change "<name>" --json` 并执行兼容性预检：

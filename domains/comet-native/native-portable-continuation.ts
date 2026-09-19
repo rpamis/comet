@@ -63,7 +63,6 @@ export interface NativePortableContinuation {
     | 'resolve-verifier-blocker'
     | 'resolve-loop-stop'
     | 'advance-children'
-    | 'advance-parent'
     | 'builder-handoff'
     | 'dispatch-verifier'
     | 'retry-checks'
@@ -769,6 +768,25 @@ export function nativePortableContinuation(
       disposition: 'await-user',
       action: 'none',
       commandArgs: null,
+      // Fallback for uncovered await-user states: surface the blocker message
+      // and the revision alternatives so the agent always has an executable
+      // next step instead of a dead `action: none` with no options.
+      commandAlternatives: nativeNextRevisionAlternatives({
+        change: state.name,
+        stateVersion: state.state_version,
+      }),
+      userCommunication: {
+        ...base.userCommunication,
+        required: true,
+        message:
+          state.blockers.length > 0
+            ? state.blockers.map(({ reason }) => reason).join('; ')
+            : base.userCommunication.message,
+        suggestedReply:
+          state.blockers.length > 0
+            ? (state.blockers[0]?.resolution_action ?? null)
+            : base.userCommunication.suggestedReply,
+      },
       requiredInputs: ['resolve-blocker'],
       runnerAction: runner('none'),
     };
@@ -862,9 +880,21 @@ export function nativePortableContinuation(
           ...base,
           disposition: 'continue',
           action: 'repair',
-          commandArgs: null,
+          // The repair loop continues by editing children.yaml and running
+          // `next`; the children-contract drift detection then returns the
+          // change to Shape for confirmation (issue: an actionless repair
+          // continuation left agents with no executable step).
+          commandArgs: ['comet', 'native', 'next', state.name, '--summary', '<summary>'],
           requiredInputs: ['repair-child'],
-          inputOptions: [],
+          inputOptions: [
+            {
+              name: 'summary',
+              flag: '--summary',
+              valueKind: 'text' as const,
+              required: true,
+              template: null,
+            },
+          ],
           runnerAction: runner('none'),
         };
       }

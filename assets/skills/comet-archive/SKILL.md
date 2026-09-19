@@ -32,7 +32,7 @@ Combine multiple read-only comet commands (for example `state get`, `state next`
 
 When the previous phase's guard already returned this phase's state, continue from that state and `agent.continuation` without repeating select/check; run the entry checks above only when resuming, after workspace changes, or after external state changes. Continue from returned layout, configuration, nextAction, and the delivery summary. After context loss, read details according to context-recovery.md. If authorization is still valid and the delivery target is unchanged, continue only unfinished actions without asking again. Handle the specific cause on failure.
 
-If select/check returns `BLOCKED` because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
+If select/check returns `BLOCKED` — or a branch-binding `ERROR` — because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
 
 ### 1. Ask the user to confirm archive and delivery
 

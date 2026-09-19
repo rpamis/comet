@@ -21,6 +21,7 @@ comet state next <change-name>
 - `NEXT: auto` → 调用 `SKILL` 指向的 skill 进入下一阶段
 - `NEXT: manual` → 不要调用下一 skill，按 `HINT` 提示用户手动运行 `/<SKILL>`
 - `NEXT: done` → 流程已完成，无需继续
+- `NEXT: delivery` → change 已归档，按 delivery 摘要完成收尾，不再推进阶段
 
 ## 预设路由
 

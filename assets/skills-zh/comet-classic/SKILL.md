@@ -13,7 +13,7 @@ Classic 分为 Open → Design → Build → Verify → Archive 五个阶段。O
 
 - 未明确调用 Classic、需要判定是否恢复已有工作时：读取 `comet-classic/reference/context-recovery.md` 的 Ambient Resume，按 `comet resume-probe . --stdin --json` 结果处理；只有 `auto_resume` 自动进入，`ask_user` 按 `reason` 使用 Ambient Resume 表格中的问题与选项提问，`out_of_scope`/`none` 不进入。
 - 启动新需求或目标 change 尚不明确时：读取 `comet-classic/reference/intent-frame.md` 的最小示例与目标选择规则，获取未归档的 change 列表后填写 CometIntentFrame，运行 `comet classic intent route --stdin`。Agent 只负责按证据填写意图字段，路由由 Runtime 计算；以返回结果为准，不另写一套自然语言评分规则。
-- 已明确目标 change 时：按下方绑定工作区；有多个未归档的 change 且尚未选定时，不提前绑定。
+- 已明确目标 change 且该 change 已初始化（`.comet.yaml` 已存在）时：按下方绑定工作区；有多个未归档的 change 且尚未选定时，不提前绑定。新 change（尚未初始化）直接交 `/comet-open` 或对应预设 Skill，它们会先准备工作区再初始化，`workspace resolve` 对未初始化的 change 会报 not found。
 
 ```bash
 comet classic workspace resolve <change-name> --json

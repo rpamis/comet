@@ -13,7 +13,7 @@ Before starting or recovering, use `comet-classic/reference/classic-layout.md` t
 
 - When Classic was not explicitly invoked and existing work may need to resume: read Ambient Resume in `comet-classic/reference/context-recovery.md` and follow `comet resume-probe . --stdin --json`. Only `auto_resume` enters automatically; for `ask_user` ask by `reason` using the Ambient Resume table's question and options; `out_of_scope`/`none` does not enter.
 - When starting a new request or the target change is unclear: read the minimal example and target-selection rules in `comet-classic/reference/intent-frame.md`. List active changes, fill a CometIntentFrame, and run `comet classic intent route --stdin`. The Agent extracts intent fields from evidence; Runtime computes the route. Follow its result without inventing a separate set of prose scoring rules.
-- When the target change is explicit: bind its workspace below. Do not bind early when several active changes exist and none has been selected.
+- When the target change is explicit and already initialized (`.comet.yaml` exists): bind its workspace below. Do not bind early when several active changes exist and none has been selected. A new change (not yet initialized) goes straight to `/comet-open` or the matching preset Skill, which prepares the workspace before initializing; `workspace resolve` reports not-found for an uninitialized change.
 
 ```bash
 comet classic workspace resolve <change-name> --json

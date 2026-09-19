@@ -1,6 +1,5 @@
-import { inspectNativeStatus } from './native-diagnostics.js';
-import { inspectNativePortableStatus } from './native-portable-status.js';
-import { isNativePortableChange } from './native-portable-runtime.js';
+import { inspectDiscoveredNativeStatus } from './native-status-discovery.js';
+import { nativeProjectPaths } from './native-paths.js';
 import { selectNativeChange } from './native-selection.js';
 import {
   assertNoArguments,
@@ -16,17 +15,22 @@ export async function nativeSelectCommand(
 ): Promise<DispatchResult> {
   const name = requiredPositional(args, 'change name');
   assertNoArguments(args);
-  const { config, paths } = await configuredPaths(projectRoot);
-  await selectNativeChange(paths, name);
-  const status = (await isNativePortableChange(paths, name))
-    ? await inspectNativePortableStatus({ paths, name })
-    : await inspectNativeStatus(paths, name, {
-        clarificationMode: config.native.clarification_mode,
-        maxVerifyFailures: config.native.max_verify_failures,
-      });
-  return success(
-    'select',
-    { selected: name, continuation: status.continuation },
-    `Selected Native change ${name}\n`,
-  );
+  await configuredPaths(projectRoot);
+  // The discovered projection carries the workspace that owns the change, so
+  // selecting a worktree-bound change from the primary root routes both the
+  // recorded selection and the caller into the right workspace (the compact
+  // form dropped everything but the continuation).
+  let executionCwd = projectRoot;
+  const status = await inspectDiscoveredNativeStatus({
+    projectRoot,
+    name,
+    onSelectedRoot: (selectedRoot) => {
+      executionCwd = selectedRoot;
+    },
+  });
+  await selectNativeChange((await configuredPaths(executionCwd)).paths, name);
+  return {
+    ...success('select', { selected: name, ...status }),
+    executionCwd,
+  };
 }

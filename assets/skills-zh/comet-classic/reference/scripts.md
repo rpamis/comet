@@ -94,7 +94,7 @@ comet check run <change-name> verify --local --incremental -- <program> [args...
 }
 ```
 
-省略的字段保持默认：`git` 默认 `none`（不绑定 HEAD 和 index），`env` 默认不绑定任何变量，`taskCheckboxes` 默认 `ignore`（勾选任务不作废证据，任务文本变化仍会作废）。构建产物包含 commit SHA 时声明 `git: "all"`；结果依赖某个环境变量时在 `env` 中列出它的名字；勾选状态本身影响检查结果时声明 `taskCheckboxes: "include"`。旧的 v1 单命令格式继续有效，按原语义解析。
+省略的字段保持默认：`git` 默认 `none`（不绑定 HEAD 和 index），`env` 默认不绑定任何变量（可执行文件路径与文件身份、Node 版本始终绑定，切换 Node 版本仍会作废证据），`taskCheckboxes` 默认 `ignore`（勾选任务不作废证据，任务文本变化仍会作废）。构建产物包含 commit SHA 时声明 `git: "all"`；结果依赖某个环境变量时在 `env` 中列出它的名字；勾选状态本身影响检查结果时声明 `taskCheckboxes: "include"`。旧的 v1 单命令格式继续有效，按原语义解析。
 
 条目的 `cwd` 同时声明该命令证据所属的目录。守卫默认只复用与自身调用目录一致的证据；v2 条目匹配的命令，其证据可以来自条目声明的 `cwd`。构建或验证入口在子目录时，按实际执行形式声明（例如 `{ "argv": ["npm", "run", "build"], "cwd": "ui/frontend" }`），再用 `--cwd ui/frontend` 记录，从项目根调用守卫即可复用；未声明的命令仍要求证据来自守卫的调用目录。
 
@@ -106,7 +106,7 @@ comet check run <change-name> verify --local --incremental -- <program> [args...
 comet state next <change-name>
 ```
 
-输出包含 `NEXT: auto|manual|done`、`SKILL: <skill-name>`（`done` 时省略），以及 `HINT`（仅 `manual` 时）。`auto_transition: false` 时输出 `manual`，表示不自动调用下一 Skill，不影响已经更新的 phase。
+输出包含 `NEXT: auto|manual|done|delivery`、`SKILL: <skill-name>`（`done` 时省略），以及 `HINT`（仅 `manual` 时）。`auto_transition: false` 时输出 `manual`，表示不自动调用下一 Skill，不影响已经更新的 phase；`delivery` 表示 change 已归档，按 delivery 摘要完成收尾，不再推进阶段。
 
 ## 归档脚本
 
@@ -124,7 +124,7 @@ comet archive <change-name>
 
 若 `<active_policies>` 中包含 `<verification command="...">`，将这些命令加入当前 Verify 的检查并记录实际结果。只有命令成功执行过，对应策略才能设为强制执行。
 
-用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember ... --scope global|project`。用户没有明确要求、但协作方式稳定且可跨任务复用时，才调用 `comet memory observe`。两者都不得保存任务摘要、进展、命令输出或测试结果。
+用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember ... --scope global|project`。用户没有明确要求、但协作方式稳定且可跨任务复用时，才调用 `comet memory observe --text "<偏好内容>" --workflow <classic|native> --change <change-id> --candidate-key <change-id>-<行为短名>`（三个选项均为必需；`--candidate-key` 用 change ID 加行为短名生成稳定标识）。两者都不得保存任务摘要、进展、命令输出或测试结果。
 
 每次任务结束前完成一次学习检查：有明确后续复用条件的用户纠正、偏好或协作习惯先调用 `comet memory observe`，再在完成命令中传 `--learning-check submitted`；确认没有合格观察时传 `--learning-check no-observation`，没有执行检查时传 `--learning-check not-run`。首次观察只形成 `trial` 候选，来自不同 change 的第二次独立成功观察才可能晋级。观察 JSON 的 `learning.result` 和 `status.learning.lastCheck` 是诊断依据。
 

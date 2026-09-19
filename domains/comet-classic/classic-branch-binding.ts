@@ -172,7 +172,10 @@ export function driftStaleReason(
   boundBranch: string,
   currentBranch: string | null,
 ): string {
-  return `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'`;
+  return (
+    `change '${change}' is bound to branch '${boundBranch}', but current branch is '${branchLabel(currentBranch)}'` +
+    `. Next: switch to branch '${boundBranch}' and rerun, or run comet state rebind ${change} after the user explicitly confirms this branch should take over the change`
+  );
 }
 
 export function unboundDetachedMessage(change: string): string {

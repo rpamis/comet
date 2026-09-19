@@ -21,6 +21,7 @@ The script determines the next step from `phase`, `workflow`, and `auto_transiti
 - `NEXT: auto` → invoke the Skill named by `SKILL` to enter the next phase.
 - `NEXT: manual` → do not invoke it; use `HINT` to prompt the user to run `/<SKILL>` manually.
 - `NEXT: done` → the workflow is complete; no further action is needed.
+- `NEXT: delivery` → the change is archived; finish delivery from the delivery summary instead of advancing phases.
 
 ## Preset Routing
 

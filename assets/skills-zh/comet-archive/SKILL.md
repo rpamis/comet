@@ -32,7 +32,7 @@ comet state check <name> archive --json
 
 上一阶段 guard 已成功返回本阶段状态信息时，直接使用其中的状态与 `agent.continuation` 继续，不重复 select/check；恢复任务、工作区变化或外部状态变化时，才执行上述入口验证。使用入口返回的 layout、configuration、nextAction 和 delivery 摘要继续。丢失上下文后恢复任务时，按 context-recovery.md 读取所需详情。已有授权仍然有效、交付目标也没有变化时，只继续未完成的动作，不重复询问。失败时，处理返回的具体原因。
 
-若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
+若上述 `select` / `check` 输出 `BLOCKED` 或分支绑定 `ERROR`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
 ### 1. 请用户确认归档与交付方式
 

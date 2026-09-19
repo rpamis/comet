@@ -536,10 +536,26 @@ export async function nativeNextCommand(
     });
   } else {
     if (recovery.reason !== 'available') {
+      // Recovery early exits must still surface in-flight Supervisor task
+      // packages (runId, worktree, base commit): after a crash the first
+      // `next` call lands here, and status redacts those fields — without
+      // them a multi-session operator cannot cancel or reconnect anything
+      // (issue: the only documented handle was unreachable on the first hop).
+      const children = await inspectNativeChildren({ paths: configured.paths, state: current });
+      const supervisor = children?.confirmed
+        ? await readNativeSupervisorState(configured.paths, current.name, { diagnostics: true })
+        : null;
+      const supervisorTasks =
+        supervisor?.children.flatMap(({ task }) =>
+          task
+            ? [projectNativeSupervisorTask(task, current.name, configured.paths.projectRoot)]
+            : [],
+        ) ?? [];
       return success('next', {
         state: nativePortableStateSummary(current, configured.paths),
         recovery: compactRecoveryResult(recovery),
         ...(await portableParentView(configured.paths, current)),
+        ...(supervisorTasks.length > 0 ? { supervisorTasks } : {}),
       });
     }
     if (current.phase === 'build') {

@@ -906,7 +906,7 @@ async function designHandoffContextValid(changeDir: string, change: string): Pro
   const recordedHash = await readField(changeDir, 'handoff_hash');
   if (!context || context === 'null') {
     return fail(
-      `handoff_context is missing from .comet.yaml\nNext: run node "$COMET_HANDOFF" ${change} design --write before invoking Superpowers.`,
+      `handoff_context is missing from .comet.yaml\nNext: run comet handoff ${change} design --write before invoking Superpowers.`,
     );
   }
   if (!(await nonempty(context))) {

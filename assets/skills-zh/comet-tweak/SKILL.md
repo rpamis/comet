@@ -59,32 +59,23 @@ Tweak 为 Comet 五阶段流程提供一组预设配置。它通过 OpenSpec 完
 - `tasks.md` — 任务清单（建议控制在合理规模，数量本身不触发升级，见「升级判定」）
 - `delta spec`（可选）— 变更影响已有 spec 的验收场景时，正常创建 delta spec（仅含 `## MODIFIED Requirements` 或 `## ADDED Requirements`）。OpenSpec 使用 delta spec 描述对现有系统的增量变更，不能仅因为需要这份产物就要求升级流程
 
-初始化 Comet 状态文件：
+开始工作前先由用户选择工作区隔离方式，不能默认写入 `current`（选 worktree 必须在初始化状态前决定——change 目录在初始化后才存在，事后补选会失败）。按 `comet-classic/reference/decision-point.md` 暂停，以单选题让用户选择：
+
+- A. 当前分支直接工作（`--isolation current`，如实绑定当前分支）
+- B. 创建分支：先创建并切换到 `tweak/YYYYMMDD/<change-name>`（`--isolation branch`）
+- C. 创建 worktree：必须先使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能，由该技能创建隔离工作区（`--isolation worktree`）
+
+随后准备工作区并在返回的 `projectRoot` 中初始化与选中 change：
 
 ```bash
-comet state init <name> tweak
+comet classic workspace prepare <name> --isolation <selected-isolation> --json
+cd <返回的 projectRoot>
+comet state init <name> tweak --isolation <selected-isolation>
 comet state select <name>
-```
-
-初始化后验证状态：
-
-```bash
 comet state check <name> open
 ```
 
 若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
-
-开始工作时，由用户选择工作区隔离方式，不能默认写入 `current`。按 `comet-classic/reference/decision-point.md` 暂停，以单选题让用户选择：
-
-- A. 当前分支直接工作：运行 `comet state set <name> isolation current`，如实绑定当前分支
-- B. 创建分支：先创建并切换到 `tweak/YYYYMMDD/<change-name>`，再运行 `comet state set <name> isolation branch`
-- C. 创建 worktree：必须先使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能，由该技能创建隔离工作区；进入 worktree 后运行 `comet state set <name> isolation worktree`
-
-B/C 完成后，必须在实际执行分支或 worktree 中重新运行：
-
-```bash
-comet state select <name>
-```
 
 阶段守卫完成 open → build 过渡：
 
