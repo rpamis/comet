@@ -653,13 +653,10 @@ function completedCheckDuration(check: NativeLocalCheckState): number {
 }
 
 function boundEnvironmentEntries(): Array<[string, string | null]> {
-  return (
-    Object.entries(process.env)
-      .filter(([key]) => NATIVE_CHECK_BOUND_ENV.has(key.toUpperCase()))
-      // eslint-disable-next-line total-functions/no-unsafe-mutable-readonly-assignment -- canonicalHash serializes entries without mutating them
-      .map(([key, value]) => [key, (value ?? null) as string | null] as [string, string | null])
-      .sort(([left], [right]) => left.localeCompare(right))
-  );
+  return Object.entries(process.env)
+    .filter(([key]) => NATIVE_CHECK_BOUND_ENV.has(key.toUpperCase()))
+    .map(([key, value]) => [key, (value ?? null) as string | null] as [string, string | null])
+    .sort(([left], [right]) => left.localeCompare(right));
 }
 
 /**

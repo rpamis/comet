@@ -20,7 +20,12 @@ import { recoverNativePortableChange } from './native-portable-recovery.js';
 import { readNativeLocalExecution } from './native-local-execution.js';
 import { inspectNativePortableCheckExecution } from './native-portable-checks.js';
 import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
-import { activeNativeSupervisorTaskNames } from './native-supervisor-state.js';
+import {
+  activeNativeSupervisorTaskNames,
+  readNativeSupervisorState,
+  writeNativeSupervisorState,
+} from './native-supervisor-state.js';
+import { supervisorDependenciesIntegrated } from './native-supervisor-model.js';
 import {
   isNativePortableChange,
   nativeLocalExecutionFile,
@@ -29,6 +34,10 @@ import {
   readNativePortableChange,
 } from './native-portable-runtime.js';
 import type { NativePortableState } from './native-portable-types.js';
+import type {
+  NativeSupervisorChildState,
+  NativeSupervisorState,
+} from './native-supervisor-model.js';
 import {
   inspectNativePortableStatus,
   listNativePortableChangeNames,
@@ -248,6 +257,54 @@ function portableSupervisorOverlayFinding(
   return null;
 }
 
+/**
+ * A `ready` child whose dependencies are not integrated is a state the
+ * dispatcher always rejects (issue #439): the Supervisor change self-locks on
+ * `advance-children` while doctor reports healthy. A pre-0.4.2 overlay can
+ * still carry that state, so doctor surfaces it explicitly instead of
+ * reporting healthy and lets --repair demote the stuck children to `pending`
+ * — the smallest write that unlocks the change without touching any
+ * integrated work.
+ */
+async function unmetReadySupervisorDependencies(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<NativeSupervisorChildState[] | null> {
+  const supervisorState = await readNativeSupervisorState(paths, name);
+  if (!supervisorState) return null;
+  const blocked = supervisorState.children.filter(
+    (child) =>
+      child.status === 'ready' &&
+      !supervisorDependenciesIntegrated(child.dependsOn, supervisorState.children),
+  );
+  return blocked.length > 0 ? blocked : null;
+}
+
+function unmetReadySupervisorDependencyFinding(
+  name: string,
+  supervisorState: NativeSupervisorState,
+  blocked: NativeSupervisorChildState[],
+): NativeDoctorFinding {
+  const statuses = new Map(
+    supervisorState.children.map(({ name: child, status }) => [child, status]),
+  );
+  const detail = blocked
+    .map((child) => {
+      const unmet = child.dependsOn.filter(
+        (dependency) => statuses.get(dependency) !== 'integrated',
+      );
+      return `${child.name} (waiting on: ${unmet.join(', ')})`;
+    })
+    .join('; ');
+  return {
+    severity: 'error',
+    code: 'portable-supervisor-ready-dependencies-unmet',
+    message: `Native Supervisor children are marked ready but their dependencies are not integrated: ${detail}. Run doctor --repair to demote them to pending until their dependencies integrate.`,
+    repair: 'continue',
+    repairCommand: `comet native doctor ${name} --repair`,
+  };
+}
+
 async function inspectPortableTransactions(
   paths: NativeProjectPaths,
   name?: string,
@@ -462,11 +519,33 @@ export async function nativeDoctorCommand(
           continuation: await portableContinuation(paths, result.state),
         });
       }
+      // Repair legacy overlays that the pre-0.4.2 derivation left self-locked
+      // (issue #439): demote ready children with unmet dependencies to
+      // pending. Integrated work is untouched, and the next advance-children
+      // dispatch picks the dependencies first.
+      const supervisorState = await readNativeSupervisorState(paths, name);
+      const demoted =
+        supervisorState &&
+        supervisorState.children.filter(
+          (child) =>
+            child.status === 'ready' &&
+            !supervisorDependenciesIntegrated(child.dependsOn, supervisorState.children),
+        );
+      if (supervisorState && demoted && demoted.length > 0) {
+        for (const child of demoted) {
+          child.status = 'pending';
+          child.blocker = null;
+        }
+        await writeNativeSupervisorState(paths, supervisorState);
+      }
       return success('doctor', {
         healthy: true,
         workflow: 'native-portable',
         change: name,
         repaired: true,
+        ...(demoted && demoted.length > 0
+          ? { supervisorDependencyRepair: demoted.map(({ name: child }) => child) }
+          : {}),
         result,
         continuation: await portableContinuation(paths, result.state),
       });
@@ -494,6 +573,26 @@ export async function nativeDoctorCommand(
         repaired: false,
         result,
         findings: [executionFinding],
+        continuation: result.continuation,
+      });
+    }
+    const supervisorState = await readNativeSupervisorState(paths, name);
+    const unmetReady =
+      supervisorState &&
+      supervisorState.children.filter(
+        (child) =>
+          child.status === 'ready' &&
+          !supervisorDependenciesIntegrated(child.dependsOn, supervisorState.children),
+      );
+    if (supervisorState && unmetReady && unmetReady.length > 0) {
+      const result = await inspectNativePortableStatus({ paths, name, details: true });
+      return unhealthyDoctor({
+        healthy: false,
+        workflow: 'native-portable',
+        change: name,
+        repaired: false,
+        result,
+        findings: [unmetReadySupervisorDependencyFinding(name, supervisorState, unmetReady)],
         continuation: result.continuation,
       });
     }

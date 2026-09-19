@@ -38,10 +38,15 @@ import {
 import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import {
+  assertChildDependenciesIntegrated,
   createNativeSupervisorState,
   createNativeSupervisorTask,
+  reconcileNativeSupervisorState,
 } from '../../../domains/comet-native/native-supervisor-model.js';
-import { writeNativeSupervisorState } from '../../../domains/comet-native/native-supervisor-state.js';
+import {
+  readNativeSupervisorState,
+  writeNativeSupervisorState,
+} from '../../../domains/comet-native/native-supervisor-state.js';
 import {
   readNativePortableState,
   writeNativePortableState,
@@ -619,6 +624,180 @@ children:`,
       extra: ['A9'],
       uncovered: ['A9'],
     });
+  });
+
+  it('derives contract-changed child states through the dependency gate (issue #439)', () => {
+    const contract = parseNativeChildrenContract(READABLE_CHILDREN, ['A1', 'A2']);
+    const repository = '/tmp/unused-repository';
+    const state = createNativeSupervisorState({
+      parent: 'parent',
+      targetBranch: 'main',
+      targetCommit: 'a'.repeat(40),
+      integrationBranch: 'comet/supervisor/parent/integration',
+      integrationWorktree: repository,
+      contract,
+    });
+    // Issue setup: child-a integrated, child-b pending on it, and the confirmed
+    // contract then grows a new child that child-b must additionally wait on.
+    const childA = state.children.find(({ name }) => name === 'child-a');
+    const childB = state.children.find(({ name }) => name === 'child-b');
+    childA!.status = 'integrated';
+    childB!.status = 'pending';
+    const revised = parseNativeChildrenContract(
+      `schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: The integrated result contains the first behavior.
+  A2:
+    source: brief.md
+    text: The integrated result contains the second behavior.
+  A3:
+    source: brief.md
+    text: The integrated result contains the third behavior.
+children:
+  - name: child-a
+    depends_on: []
+    covers: [A1]
+  - name: child-new
+    depends_on: []
+    covers: [A3]
+  - name: child-b
+    depends_on: [child-a, child-new]
+    covers: [A2]
+`,
+      ['A1', 'A2', 'A3'],
+    );
+
+    // child-b has no candidate and its new dependency is not integrated, so the
+    // reconciled state must stay pending instead of becoming dispatch-ready.
+    const reconciled = reconcileNativeSupervisorState({ state, contract: revised });
+    const reconciledB = reconciled.children.find(({ name }) => name === 'child-b');
+    expect(reconciledB?.status).toBe('pending');
+    expect(reconciledB?.blocker).toBeNull();
+    const reconciledNew = reconciled.children.find(({ name }) => name === 'child-new');
+    expect(reconciledNew?.status).toBe('ready');
+
+    // A child whose dependencies are all integrated may become ready again.
+    // A second contract revision (child-new's summary changes) triggers the
+    // re-derivation for child-b while child-new itself is already integrated
+    // and therefore immutable.
+    const integratedNew = reconciled.children.find(({ name }) => name === 'child-new');
+    integratedNew!.status = 'integrated';
+    const revised2 = parseNativeChildrenContract(
+      `schema: comet.native.children.v2
+acceptance_index:
+  A1:
+    source: brief.md
+    text: The integrated result contains the first behavior.
+  A2:
+    source: brief.md
+    text: The integrated result contains the second behavior.
+  A3:
+    source: brief.md
+    text: The integrated result contains the refined third behavior.
+children:
+  - name: child-a
+    depends_on: []
+    covers: [A1]
+  - name: child-new
+    depends_on: []
+    covers: [A3]
+  - name: child-b
+    depends_on: [child-a, child-new]
+    covers: [A2]
+`,
+      ['A1', 'A2', 'A3'],
+    );
+    const promoted = reconcileNativeSupervisorState({ state: reconciled, contract: revised2 });
+    const promotedB = promoted.children.find(({ name }) => name === 'child-b');
+    expect(promotedB?.status).toBe('ready');
+    expect(promoted.children.find(({ name }) => name === 'child-new')?.status).toBe('integrated');
+
+    // A child with a recorded candidate keeps the needs-reverify semantics.
+    // A third revision triggers the re-derivation for the recorded candidate.
+    const withCandidate = reconcileNativeSupervisorState({ state, contract: revised });
+    const candidateB = withCandidate.children.find(({ name }) => name === 'child-b');
+    candidateB!.candidateCommit = 'b'.repeat(40);
+    const reverified = reconcileNativeSupervisorState({
+      state: withCandidate,
+      contract: revised2,
+    });
+    const reverifiedB = reverified.children.find(({ name }) => name === 'child-b');
+    expect(reverifiedB?.status).toBe('needs-reverify');
+  });
+
+  it('finds and repairs a self-locked supervisor overlay through doctor (issue #439)', async () => {
+    const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-lock-439-'));
+    repositories.push(repository);
+    git(repository, ['init', '-b', 'main']);
+    git(repository, ['config', 'user.email', 'native@example.test']);
+    git(repository, ['config', 'user.name', 'Native Test']);
+    await fs.writeFile(path.join(repository, '.gitignore'), '.comet/runtime/\n');
+    git(repository, ['add', '.']);
+    git(repository, ['commit', '-m', 'seed']);
+    await writeProjectConfig(repository, defaultProjectConfig('docs', 'en'));
+    git(repository, ['add', '.']);
+    git(repository, ['commit', '-m', 'configure comet']);
+    expect((await nativeNewCommand(['parent'], repository)).exitCode).toBe(0);
+    const paths = await nativeProjectPaths(repository, 'docs');
+    const directory = nativePortableChangeDir(paths, 'parent');
+    await fs.writeFile(path.join(directory, 'brief.md'), PARENT_BRIEF);
+    await fs.writeFile(path.join(directory, 'children.yaml'), READABLE_CHILDREN);
+    await confirmNativePortableShape({
+      paths,
+      name: 'parent',
+      coordinationMode: 'multi-session',
+    });
+
+    const contract = parseNativeChildrenContract(READABLE_CHILDREN, ['A1', 'A2']);
+    const supervisor = createNativeSupervisorState({
+      parent: 'parent',
+      targetBranch: 'main',
+      targetCommit: git(repository, ['rev-parse', 'HEAD']),
+      integrationBranch: 'comet/supervisor/parent/integration',
+      integrationWorktree: repository,
+      contract,
+    });
+    // Reproduce the locked overlay: child-a integrated, child-b wrongly ready
+    // although child-a is not integrated.
+    supervisor.children.find(({ name }) => name === 'child-a')!.status = 'pending';
+    const childB = supervisor.children.find(({ name }) => name === 'child-b')!;
+    childB.status = 'ready';
+    childB.blocker =
+      'Confirmed Supervisor contract changed; verify the current acceptance scope again.';
+    await writeNativeSupervisorState(paths, supervisor);
+
+    const diagnosis = await nativeDoctorCommand(['parent'], repository);
+    expect(diagnosis).toMatchObject({
+      exitCode: 65,
+      data: {
+        healthy: false,
+        findings: [
+          expect.objectContaining({
+            code: 'portable-supervisor-ready-dependencies-unmet',
+          }),
+        ],
+      },
+    });
+
+    const repaired = await nativeDoctorCommand(['parent', '--repair'], repository);
+    expect(repaired).toMatchObject({
+      exitCode: 0,
+      data: {
+        repaired: true,
+        supervisorDependencyRepair: ['child-b'],
+      },
+    });
+    const healed = await readNativeSupervisorState(paths, 'parent');
+    expect(healed?.children.find(({ name }) => name === 'child-b')?.status).toBe('pending');
+    // After the repair no ready child fails the dispatcher's dependency gate,
+    // so advance-children can proceed with the actually ready children.
+    for (const child of healed!.children) {
+      if (child.status === 'ready') {
+        expect(() => assertChildDependenciesIntegrated(healed!, child)).not.toThrow();
+      }
+    }
   });
 
   it('preserves parent child progress while blocking a mismatched workspace', async () => {

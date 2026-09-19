@@ -172,14 +172,31 @@ export function assertChildDependenciesIntegrated(
   state: NativeSupervisorState,
   child: NativeSupervisorChildState,
 ): void {
-  for (const dependency of child.dependsOn) {
-    const record = state.children.find(({ name }) => name === dependency);
-    if (!record || record.status !== 'integrated') {
-      throw new Error(
-        `Native Supervisor child ${child.name} dependency ${dependency} is not integrated`,
-      );
-    }
+  if (!supervisorDependenciesIntegrated(child.dependsOn, state.children)) {
+    const unmet = child.dependsOn.filter(
+      (dependency) =>
+        state.children.find(({ name }) => name === dependency)?.status !== 'integrated',
+    );
+    throw new Error(
+      `Native Supervisor child ${child.name} dependency ${unmet[0] ?? '?'} is not integrated`,
+    );
   }
+}
+
+/**
+ * Single source of truth for the dependency gate: whether every declared
+ * dependency of a child is integrated. Both the state derivation after a
+ * confirmed contract change and the dispatch-time assertion read this, so the
+ * derivation can never produce a `ready` child the dispatcher would reject.
+ * Integrated and archived statuses are immutable during reconciliation, which
+ * keeps a single pass over the child list correct.
+ */
+export function supervisorDependenciesIntegrated(
+  dependsOn: readonly string[],
+  children: readonly NativeSupervisorChildState[],
+): boolean {
+  const statuses = new Map(children.map(({ name, status }) => [name, status]));
+  return dependsOn.every((dependency) => statuses.get(dependency) === 'integrated');
 }
 
 export function stableSupervisorIntegrationOrder(
@@ -303,9 +320,22 @@ export function reconcileNativeSupervisorState(options: {
       child.verifiedCommit = null;
       child.verification = null;
       child.checks = [];
-      child.status = child.candidateCommit ? 'needs-reverify' : 'ready';
-      child.blocker =
-        'Confirmed Supervisor contract changed; verify the current acceptance scope again.';
+      // The same gate the dispatcher asserts: a child without a candidate can
+      // only be `ready` when every dependency is integrated, otherwise it
+      // stays `pending` until its dependencies integrate. Deriving and
+      // asserting through one helper keeps the two from drifting apart again.
+      if (child.candidateCommit) {
+        child.status = 'needs-reverify';
+        child.blocker =
+          'Confirmed Supervisor contract changed; verify the current acceptance scope again.';
+      } else if (supervisorDependenciesIntegrated(child.dependsOn, next.children)) {
+        child.status = 'ready';
+        child.blocker =
+          'Confirmed Supervisor contract changed; verify the current acceptance scope again.';
+      } else {
+        child.status = 'pending';
+        child.blocker = null;
+      }
     }
     child.acceptanceScope = nextScope;
     child.contractHash = nextContractHash;
