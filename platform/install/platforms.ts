@@ -54,7 +54,8 @@ export interface Platform {
     | 'codebuddy'
     | 'dsh'
     | 'omp'
-    | 'trae';
+    | 'trae'
+    | 'zcode';
   /** Hook config filename relative to the platform config root when it differs from the format default. */
   hookConfigFile?: string;
   /** Historical hook config filenames checked during migration and uninstall. */
@@ -419,6 +420,9 @@ export const PLATFORMS: Platform[] = [
     name: 'ZCode',
     skillsDir: '.zcode',
     globalSkillsDir: '.zcode',
+    // ZCode keeps its user-scope configuration under ~/.zcode/cli/ (not
+    // ~/.zcode/), so hooks written with the global scope target that file.
+    globalConfigDir: '.zcode/cli',
     // openspec CLI has no zcode tool id; zcode is built on opencode (it shares the
     // opencode.ai config schema), so we reuse openspec's opencode support and migrate
     // the .opencode/{skills,commands} output to .zcode/ after install.
@@ -426,6 +430,8 @@ export const PLATFORMS: Platform[] = [
     openspecMirrorFrom: 'opencode',
     rulesDir: 'rules',
     rulesFormat: 'md',
+    supportsHooks: true,
+    hookFormat: 'zcode',
   },
   {
     id: 'mimocode',

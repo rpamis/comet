@@ -1180,6 +1180,8 @@ async function removeCometHooksForPlatform(
       }
       case 'trae':
         return await removeTraeHooks(platformBase, scriptRelPaths);
+      case 'zcode':
+        return await removeZcodeHooks(platformBase, scriptRelPaths);
       case 'copilot':
         return await removeCopilotHooks(platformBase, scriptRelPaths);
       case 'kiro':
@@ -1374,6 +1376,78 @@ async function removeTraeHooks(
   }
 
   await writeFile(hooksPath, JSON.stringify(hooksFile, null, 2) + '\n', 'utf-8');
+  return { removed, failed: 0 };
+}
+
+/**
+ * ZCode hooks live under `hooks.events.<Event>` in `.zcode/config.json` with
+ * `process`-form handlers, so managed entries are matched through their args
+ * vector. `hooks.enabled` stays untouched: the runner toggle may be user-owned
+ * and an enabled runner without events is inert.
+ */
+async function removeZcodeHooks(
+  platformBase: string,
+  scriptRelPaths: string[],
+): Promise<RemovalResult> {
+  const configPath = path.join(platformBase, 'config.json');
+  if (!(await fileExists(configPath))) return { removed: 0, failed: 0 };
+  const readResult = await readJsonObjectFile(configPath);
+  if (readResult.status === 'missing') return { removed: 0, failed: 0 };
+  if (readResult.status === 'error') return { removed: 0, failed: 1 };
+  const settings = readResult.value;
+
+  const existingHooks = settings.hooks as Record<string, unknown> | undefined;
+  if (!existingHooks) {
+    return { removed: 0, failed: 0 };
+  }
+  const existingEvents =
+    existingHooks.events &&
+    typeof existingHooks.events === 'object' &&
+    !Array.isArray(existingHooks.events)
+      ? (existingHooks.events as Record<string, unknown>)
+      : undefined;
+  if (!existingEvents) {
+    return { removed: 0, failed: 0 };
+  }
+  const existingPreToolUse = existingEvents.PreToolUse as
+    Array<Record<string, unknown>> | undefined;
+  if (!existingPreToolUse || !Array.isArray(existingPreToolUse)) {
+    return { removed: 0, failed: 0 };
+  }
+
+  let removed = 0;
+  const filtered = existingPreToolUse.flatMap((group) => {
+    if (!Array.isArray(group.hooks)) return [group];
+
+    const hooks = (group.hooks as Array<Record<string, unknown>>).filter((hook) => {
+      const managed = isManagedHookCommand(hook.command, scriptRelPaths, hook.args);
+      if (managed) removed++;
+      return !managed;
+    });
+
+    if (hooks.length === 0) {
+      const hasUnknownMetadata = Object.keys(group).some(
+        (key) => key !== 'matcher' && key !== 'hooks',
+      );
+      return hasUnknownMetadata ? [{ ...group, hooks: [] }] : [];
+    }
+    return [{ ...group, hooks }];
+  });
+
+  if (filtered.length === 0) {
+    delete existingEvents.PreToolUse;
+  } else {
+    existingEvents.PreToolUse = filtered;
+  }
+
+  if (Object.keys(existingEvents).length === 0) {
+    delete existingHooks.events;
+  }
+  if (Object.keys(existingHooks).length === 0) {
+    delete settings.hooks;
+  }
+
+  await writeFile(configPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
   return { removed, failed: 0 };
 }
 

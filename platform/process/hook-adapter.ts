@@ -1,7 +1,7 @@
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { stripUtf8Bom } from '../fs/strip-bom.js';
+import { readStdinTextWithTimeout, type StdinReadResult } from './stdin-read.js';
 
 export type CometHookIntent = 'context' | 'write' | 'non-write' | 'unknown';
 
@@ -73,6 +73,7 @@ export const COMET_HOOK_PLATFORM_IDS = new Set([
   'trae-cn',
   'grok',
   'dsh',
+  'zcode',
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -257,12 +258,24 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
   };
 }
 
-export function readCometHookRequest(): CometHookRequest {
+export function readCometHookRequest(
+  options: { readStdin?: () => StdinReadResult } = {},
+): CometHookRequest {
   const filePath = process.env.FILE_PATH;
   if (filePath?.trim()) return parseCometHookRequest('', filePath);
   if (process.stdin.isTTY) return parseCometHookRequest('', filePath);
+  const stdin = (options.readStdin ?? readStdinTextWithTimeout)();
+  if (stdin.text === null) {
+    // A host that neither writes nor closes the hook's stdin is broken; failing
+    // fast with a diagnostic beats hanging on every tool call. Not injectable as
+    // a plain return because every consumer is a short-lived hook entry point.
+    process.stderr.write(
+      '[COMET-HOOK] stdin timeout: the host did not provide hook input within the expected window\n',
+    );
+    process.exit(1);
+  }
   try {
-    return parseCometHookRequest(readFileSync(0, 'utf8'), filePath);
+    return parseCometHookRequest(stdin.text, filePath);
   } catch {
     return parseCometHookRequest('', filePath);
   }

@@ -480,7 +480,6 @@ describe('skills', () => {
           '--failed-check',
           'external-role handoff',
           '外部角色交接',
-          'comet native select <change-name>',
           'comet native check <change-name>',
         ]) {
           expect(allContent, `${languageDir}: ${unwanted}`).not.toContain(unwanted);
@@ -2104,6 +2103,152 @@ describe('skills', () => {
       });
     });
 
+    it('writes ZCode project hooks to .zcode/config.json under enabled events', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'zcode')!;
+      const configPath = path.join(tmpDir, '.zcode', 'config.json');
+      const initialConfig = {
+        mcp: { servers: { keep: { command: 'keep' } } },
+        hooks: {
+          enabled: false,
+          timeoutMs: 30000,
+          events: {
+            Stop: [
+              { matcher: '.*', hooks: [{ type: 'process', command: 'node', args: ['stop.mjs'] }] },
+            ],
+            PreToolUse: [
+              {
+                matcher: 'Write|Edit',
+                hooks: [
+                  {
+                    type: 'process',
+                    command: 'node',
+                    args: ['user-write-check.mjs'],
+                    timeoutMs: 5000,
+                  },
+                  {
+                    type: 'process',
+                    command: 'node',
+                    args: [
+                      path.join(
+                        tmpDir,
+                        '.legacy',
+                        'skills',
+                        'comet',
+                        'scripts',
+                        'comet-hook-router.mjs',
+                      ),
+                      '--platform',
+                      'zcode',
+                    ],
+                    timeoutMs: 60000,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await fs.writeFile(configPath, JSON.stringify(initialConfig), 'utf-8');
+
+      await configureNativeBuildChange(tmpDir);
+      await copyCometSkillsForPlatform(tmpDir, platform, false, 'skills', 'project');
+      await expect(installCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        status: 'installed',
+      });
+      const firstInstall = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+
+      expect(firstInstall.mcp).toEqual(initialConfig.mcp);
+      expect(firstInstall.hooks.enabled).toBe(true);
+      expect(firstInstall.hooks.timeoutMs).toBe(30000);
+      expect(firstInstall.hooks.events.Stop).toEqual(initialConfig.hooks.events.Stop);
+      expect(firstInstall.hooks.events.PreToolUse).toEqual([
+        {
+          matcher: 'Write|Edit',
+          hooks: [
+            { type: 'process', command: 'node', args: ['user-write-check.mjs'], timeoutMs: 5000 },
+          ],
+        },
+        {
+          matcher: 'Write|Edit',
+          hooks: [
+            {
+              type: 'process',
+              command: 'node',
+              args: [
+                path.join(tmpDir, '.zcode', 'skills', 'comet', 'scripts', 'comet-hook-router.mjs'),
+                '--platform',
+                'zcode',
+                '--project-root',
+                tmpDir,
+              ],
+              timeoutMs: 60000,
+            },
+          ],
+        },
+      ]);
+      const cometHook = firstInstall.hooks.events.PreToolUse[1].hooks[0];
+      const router = spawnSync(cometHook.command, cometHook.args, {
+        cwd: tmpDir,
+        input: JSON.stringify({
+          tool_name: 'Write',
+          tool_input: { file_path: 'src/app.ts' },
+        }),
+        encoding: 'utf8',
+        timeout: 20_000,
+      });
+      expect(router.status, router.stderr).toBe(0);
+
+      await installCometHooksForPlatform(tmpDir, platform, 'project');
+      const secondInstall = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+      expect(secondInstall).toEqual(firstInstall);
+    });
+
+    it('writes and removes ZCode project hooks while preserving unrelated config', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'zcode')!;
+      const configPath = path.join(tmpDir, '.zcode', 'config.json');
+      const initialConfig = {
+        mcp: { servers: { keep: { command: 'keep' } } },
+        hooks: {
+          events: {
+            PreToolUse: [
+              {
+                matcher: 'Write|Edit',
+                hooks: [{ type: 'process', command: 'node', args: ['user-write-check.mjs'] }],
+              },
+            ],
+          },
+        },
+      };
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await fs.writeFile(configPath, JSON.stringify(initialConfig), 'utf-8');
+
+      await expect(installCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        status: 'installed',
+      });
+
+      await expect(removeCometHooksForPlatform(tmpDir, platform, 'project')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+      const cleaned = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+      expect(cleaned.mcp).toEqual(initialConfig.mcp);
+      expect(cleaned.hooks.events.PreToolUse).toEqual(initialConfig.hooks.events.PreToolUse);
+      expect(cleaned.hooks.enabled).toBe(true);
+    });
+
+    it('leaves invalid ZCode config byte-for-byte unchanged', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'zcode')!;
+      const configPath = path.join(tmpDir, '.zcode', 'config.json');
+      const invalidConfig = '{\r\n  "hooks": {\r\n';
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await fs.writeFile(configPath, invalidConfig, 'utf-8');
+
+      const result = await installCometHooksForPlatform(tmpDir, platform, 'project');
+      expect(result.status).toBe('failed');
+      await expect(fs.readFile(configPath, 'utf-8')).resolves.toBe(invalidConfig);
+    });
+
     it('leaves invalid Trae hooks byte-for-byte unchanged', async () => {
       const platform = PLATFORMS.find((candidate) => candidate.id === 'trae')!;
       const hooksPath = path.join(tmpDir, '.trae', 'hooks.json');
@@ -2465,7 +2610,9 @@ describe('skills', () => {
         expect(enOpen).toContain(field);
       }
       expect(enOpen).toContain('do not copy them into the artifact');
-      expect(enOpen).toContain('After each artifact is created, refresh status once');
+      expect(enOpen).toContain(
+        'After each artifact is created, validate the closure locally with `comet state artifacts <name> --json`',
+      );
       expect(enOpen).toContain(
         'comet classic openspec --agent-json -- status --change "<name>" --json',
       );
@@ -2753,7 +2900,7 @@ describe('skills', () => {
 
       // LOW: comet-build "中" level requires user confirmation before brainstorming
       expect(zhBuild).toContain(
-        '暂停、展示选择并等待用户明确确认后**，必须使用 Skill 工具加载 Superpowers `brainstorming`',
+        '未确认不得重开设计。确认后，必须使用 Skill 工具加载 Superpowers `brainstorming`',
       );
 
       // Task granularity alone cannot create an authorization boundary.
@@ -3268,7 +3415,7 @@ describe('skills', () => {
         );
       expect(enHotfix).toContain("Follow comet-verify's light-verification checklist");
       expect(enHotfix).toContain('Task count alone does not trigger `/comet-build`');
-      expect(enBuild).toContain('Pause, present choices, and wait for explicit confirmation');
+      expect(enBuild).toContain('Do not reopen Design without this confirmation.');
       expect
         .soft(enBuild)
         .toContain(
@@ -3317,9 +3464,7 @@ describe('skills', () => {
       expect(enOpen).toContain('use `worktree` directly');
       expect(enBuild).not.toContain('using-git-worktrees');
       expect(enBuild).not.toContain('native `EnterWorktree` tool');
-      expect
-        .soft(enBuild)
-        .toContain('then load Superpowers `brainstorming` through the Skill tool');
+      expect.soft(enBuild).toContain('load Superpowers `brainstorming` through the Skill tool');
       expect
         .soft(enDesign)
         .toContain(

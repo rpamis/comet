@@ -196,7 +196,17 @@ export function planBundleHook(
 } | null {
   const format = target.platform.hookFormat;
   const destination = hookDestination(target, hook.id);
-  if (!target.layout.hooksSupported || !format || format === 'omp' || !destination) return null;
+  // 'omp' hooks are extension modules and 'zcode' hooks need a process
+  // argument vector; neither fits this command-string hook model.
+  if (
+    !target.layout.hooksSupported ||
+    !format ||
+    format === 'omp' ||
+    format === 'zcode' ||
+    !destination
+  ) {
+    return null;
+  }
   if (!['before_tool', 'before_write'].includes(hook.event)) return null;
   const script = scripts.find((item) => item.id === hook.script);
   if (!script || !target.layout.scriptsRoot) return null;

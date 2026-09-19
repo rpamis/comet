@@ -1347,6 +1347,7 @@ ${content}`;
  *   'kiro' — hooks/*.kiro.hook JSON files
  *   'omp' — .omp/hooks/pre/comet-hook-router.ts extension module
  *   'trae' — hooks.json with version and PreToolUse grouped command hooks
+ *   'zcode' — config.json with hooks.enabled and hooks.events.PreToolUse process hooks
  */
 async function installCometHooksForPlatform(
   baseDir: string,
@@ -1526,6 +1527,15 @@ async function installCometHooksForPlatform(
       }
       case 'trae':
         return await installTraeHooks(
+          baseDir,
+          platformBase,
+          skillsDir,
+          hooksConfig,
+          platform.name,
+          { platformId: platform.id, scope, hookMatcher: platform.hookMatcher },
+        );
+      case 'zcode':
+        return await installZcodeHooks(
           baseDir,
           platformBase,
           skillsDir,
@@ -2102,6 +2112,71 @@ async function installTraeHooks(
   hooksFile.hooks = { ...existingHooks, PreToolUse: merged };
   await ensureDir(path.dirname(hooksPath));
   await writeFile(hooksPath, JSON.stringify(hooksFile, null, 2) + '\n', 'utf-8');
+  return { status: 'installed' };
+}
+
+/**
+ * ZCode format:
+ * Writes to .zcode/config.json with { hooks: { enabled: true, events: { PreToolUse: [...] } } }.
+ * ZCode nests event groups under `hooks.events` and only runs configuration-file
+ * hooks when `hooks.enabled` is true, so install forces the flag on.
+ */
+async function installZcodeHooks(
+  baseDir: string,
+  platformBase: string,
+  skillsDir: string,
+  hooksConfig: Record<string, HookConfig>,
+  platformName: string,
+  context: HookCommandContext,
+): Promise<HookInstallResult> {
+  const configPath = path.join(platformBase, 'config.json');
+
+  // ZCode `process` hooks run an argument vector without a shell (the most
+  // portable form on Windows) and accept only command/args/timeoutMs.
+  const matcherGroups: Record<
+    string,
+    Array<{ type: string; command: string; args: string[]; timeoutMs: number }>
+  > = {};
+  for (const [scriptRelPath, config] of Object.entries(hooksConfig)) {
+    const matcher = resolveInstalledHookMatcher(context, config.matcher);
+    matcherGroups[matcher] ??= [];
+    const invocation = buildHookInvocation(baseDir, skillsDir, scriptRelPath, context);
+    matcherGroups[matcher].push({
+      type: 'process',
+      command: invocation.command,
+      args: invocation.args,
+      timeoutMs: 60_000,
+    });
+  }
+
+  const preToolUseEntries = Object.entries(matcherGroups).map(([matcher, hooks]) => ({
+    matcher,
+    hooks,
+  }));
+
+  const settings = await readSettingsJsonObject(configPath, platformName);
+
+  const existingHooks = (settings.hooks as Record<string, unknown>) ?? {};
+  const existingEvents =
+    existingHooks.events &&
+    typeof existingHooks.events === 'object' &&
+    !Array.isArray(existingHooks.events)
+      ? (existingHooks.events as Record<string, unknown>)
+      : {};
+  const existingPreToolUse = asHookGroup(existingEvents.PreToolUse);
+  const merged = mergeHookGroups(
+    existingPreToolUse,
+    preToolUseEntries,
+    managedHookScriptPaths(hooksConfig),
+  );
+
+  settings.hooks = {
+    ...existingHooks,
+    enabled: true,
+    events: { ...existingEvents, PreToolUse: merged },
+  };
+  await ensureDir(path.dirname(configPath));
+  await writeFile(configPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
   return { status: 'installed' };
 }
 

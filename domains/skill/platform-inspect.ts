@@ -199,6 +199,64 @@ function countGroupedHookMatches(
   }, 0);
 }
 
+/** ZCode nests event groups under `hooks.events` instead of `hooks` directly. */
+function collectZcodeGroupedCommands(config: Record<string, unknown>): unknown[] {
+  const hooks = config.hooks;
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
+  const events = (hooks as Record<string, unknown>).events;
+  if (!events || typeof events !== 'object' || Array.isArray(events)) return [];
+  const groups = (events as Record<string, unknown>).PreToolUse;
+  if (!Array.isArray(groups)) return [];
+
+  return groups.flatMap((group) => {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) return [];
+    const handlers = (group as Record<string, unknown>).hooks;
+    if (!Array.isArray(handlers)) return [];
+    return handlers.map((handler): CollectedHookCommand => {
+      if (!handler || typeof handler !== 'object' || Array.isArray(handler)) {
+        return { command: undefined };
+      }
+      const record = handler as Record<string, unknown>;
+      return { command: record.command, args: record.args };
+    });
+  });
+}
+
+function countZcodeHookMatches(
+  config: Record<string, unknown>,
+  expected: ExpectedHookDescriptor,
+  expectedMatcher: (matcher: string) => string = (matcher) => matcher,
+): number {
+  const hooks = config.hooks;
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return 0;
+  // ZCode keeps configuration-file hooks dormant until hooks.enabled is true,
+  // so an installed-but-disabled Hook must not report as present.
+  if ((hooks as Record<string, unknown>).enabled !== true) return 0;
+  const events = (hooks as Record<string, unknown>).events;
+  if (!events || typeof events !== 'object' || Array.isArray(events)) return 0;
+  const groups = (events as Record<string, unknown>).PreToolUse;
+  if (!Array.isArray(groups)) return 0;
+  return groups.reduce((count, group) => {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) return count;
+    const record = group as Record<string, unknown>;
+    if (record.matcher !== expectedMatcher(expected.matcher) || !Array.isArray(record.hooks)) {
+      return count;
+    }
+    return (
+      count +
+      record.hooks.filter(
+        (handler) =>
+          handler !== null &&
+          typeof handler === 'object' &&
+          !Array.isArray(handler) &&
+          (handler as Record<string, unknown>).type === 'process' &&
+          (handler as Record<string, unknown>).command === expected.command &&
+          equalStringArray((handler as Record<string, unknown>).args, expected.args ?? []),
+      ).length
+    );
+  }, 0);
+}
+
 function collectCommandArray(config: Record<string, unknown>, groupName: string): unknown[] {
   const hooks = config.hooks;
   if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return [];
@@ -452,7 +510,7 @@ export async function inspectCometHooksForPlatform(
     ([scriptRelPath, config]) => {
       const context = { platformId: platform.id, scope };
       const invocation =
-        platform.id === 'claude'
+        platform.id === 'claude' || platform.hookFormat === 'zcode'
           ? buildHookInvocation(baseDir, skillsDir, scriptRelPath, context)
           : undefined;
       return {
@@ -605,6 +663,17 @@ export async function inspectCometHooksForPlatform(
                 timeout > 0
               );
             },
+          ),
+      );
+      break;
+    case 'zcode':
+      inspection = await inspectSingleHookJson(
+        path.join(platformBase, 'config.json'),
+        expectedHooks,
+        collectZcodeGroupedCommands,
+        (config, expected) =>
+          countZcodeHookMatches(config, expected, (matcher) =>
+            resolveInstalledHookMatcher(platform, matcher),
           ),
       );
       break;

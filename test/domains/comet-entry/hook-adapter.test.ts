@@ -77,6 +77,10 @@ const PLATFORM_FIXTURES = [
     id: 'dsh',
     single: { tool_name: 'Write', tool_input: { file_path: 'src/dsh.ts' } },
   },
+  {
+    id: 'zcode',
+    single: { tool_name: 'Write', tool_input: { file_path: 'src/zcode.ts' } },
+  },
 ] as const;
 
 describe('Comet Hook platform adapter', () => {

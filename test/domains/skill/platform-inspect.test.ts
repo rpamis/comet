@@ -57,6 +57,8 @@ function hookConfigPath(baseDir: string, platformId: string): string {
       return path.join(baseDir, '.omp', 'hooks', 'pre', 'comet-hook-router.ts');
     case 'dsh':
       return path.join(baseDir, '.dsh', 'hooks.json');
+    case 'zcode':
+      return path.join(baseDir, '.zcode', 'config.json');
     default:
       throw new Error(`missing Hook path fixture: ${platformId}`);
   }
@@ -206,6 +208,7 @@ describe('platform component inspection', () => {
     'kiro',
     'oh-my-pi',
     'grok',
+    'zcode',
   ])('recognizes the managed Hook command in the %s format', async (id) => {
     const target = platform(id);
     await installManagedHookScripts(tmpDir, target);
@@ -222,6 +225,26 @@ describe('platform component inspection', () => {
       present: true,
     });
     expect(await fs.readFile(configPath, 'utf8')).toBe(before);
+  });
+
+  it('reports a ZCode Hook as managed but dormant while the runner is disabled', async () => {
+    const target = platform('zcode');
+    await installManagedHookScripts(tmpDir, target);
+    await expect(installCometHooksForPlatform(tmpDir, target, 'project')).resolves.toMatchObject({
+      status: 'installed',
+    });
+
+    const configPath = hookConfigPath(tmpDir, 'zcode');
+    const config = JSON.parse(await fs.readFile(configPath, 'utf8')) as {
+      hooks: { enabled: boolean };
+    };
+    config.hooks.enabled = false;
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+
+    await expect(inspectCometHooksForPlatform(tmpDir, target, 'project')).resolves.toEqual({
+      present: false,
+      managedPresent: true,
+    });
   });
 
   it('reports dsh Hook config as awaiting the profile bridge', async () => {
