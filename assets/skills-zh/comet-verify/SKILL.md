@@ -27,7 +27,9 @@ comet state select <change-name>
 comet state check <change-name> verify --json
 ```
 
-根据入口返回的 layout、configuration、nextAction、任务信息和协作进度摘要继续。已有检查结果和集成审查仍然有效时，只补未完成的工作，不重新执行整个阶段。丢失上下文后恢复任务，需要完整记录时，使用 --recover --details --json。验证失败时，处理返回的具体原因。
+多条只读 comet 命令（如 `state get`、`state next`、`state artifacts`）可以合并成一条 shell 调用依次执行，减少进程启动开销。
+
+上一阶段 guard 已成功返回本阶段状态信息时，直接使用其中的状态与 `agent.continuation` 继续，不重复 select/check；恢复任务、工作区变化或外部状态变化时，才执行上述入口验证。根据入口返回的 layout、configuration、nextAction、任务信息和协作进度摘要继续。已有检查结果和集成审查仍然有效时，只补未完成的工作，不重新执行整个阶段。丢失上下文后恢复任务，需要完整记录时，使用 --recover --details --json。验证失败时，处理返回的具体原因。
 
 若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 

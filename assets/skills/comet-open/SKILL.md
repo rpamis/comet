@@ -128,6 +128,8 @@ Do not automatically move an individual batch item from Open to `/comet-design`.
 comet state check <name> design --json
 ```
 
+Combine multiple read-only comet commands (for example `state get`, `state next`, `state artifacts`) into a single shell invocation to reduce process startup overhead.
+
 This entry validates the full required closure, actual OpenSpec outputs, and Comet state. Do not repeat a separate status scan. `isComplete` is diagnostic; optional artifacts do not block progress. Query status only after a failed check to locate missing dependencies or diagnose reported path/capability errors.
 
 If any split item fails these checks, do not announce batch completion or ask which change to start. Stop further advancement and resume `/comet-open` at that change's first `ready` or `blocked` artifact. If OpenSpec checks pass but Comet state checks fail, repair `.comet.yaml` initialization or phase first, then rerun the batch checks.
@@ -204,7 +206,7 @@ In Agent JSON mode, read upstream fields from `data.upstream.data`. Execute only
    - Apply `context` and `rules` as constraints; **do not copy them into the artifact**.
    - Write to `resolvedOutputPath`. For wildcard outputs, create every actual file required by the instruction.
    - Confirm the actual output files returned by the CLI exist and are nonempty.
-6. After each artifact is created, refresh status once, reuse it for the next iteration, and recheck paths and the full dependency closure. Do not regenerate `done` items. Process only newly ready items in the closure, not unrelated optional artifacts.
+6. After each artifact is created, validate the closure locally with `comet state artifacts <name> --json` (no OpenSpec subprocess); refresh status once only when it reports a missing dependency or ordering error, or when new live instructions are needed, then recheck paths and the full dependency closure. Do not regenerate `done` items. Process only newly ready items in the closure, not unrelated optional artifacts.
 
 **Handle failures and blocked dependencies:** If `applyRequires` is incomplete but no required dependency is ready, report the relevant `blocked` artifacts and their `missingDeps`, then stop. Do not guess order or skip dependencies. Also stop and report the OpenSpec error if adapter `status` / `instructions` fails, returns invalid JSON, escapes the repository, or lacks a usable `resolvedOutputPath`. Do not substitute a hard-coded document structure.
 
@@ -236,8 +238,8 @@ Continue to Step 4 when it passes. On failure, the script reports the specific c
 1. If state is missing, prepare the selected isolation mode, enter the returned `projectRoot`, and run `comet state init <name> full --isolation <selected-isolation>`. Stop and repair malformed state instead of overwriting it. Then select the change and run `comet state check <name> open`.
 2. Run `comet classic openspec --agent-json -- status --change "<name>" --json` and recheck `changeRoot`, core IDs, `applyRequires`, `artifacts`, and `missingDeps`.
 3. `done`: keep the artifact unchanged and do not regenerate it.
-4. `ready`: fetch its instructions with `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`, write the artifact accordingly, and immediately refresh status.
-5. `blocked`: follow `missingDeps` and complete dependencies in the `applyRequires` closure first. Refresh status after each dependency; do not generate a blocked artifact directly.
+4. `ready`: fetch its instructions with `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`, write the artifact accordingly, then validate the closure locally with `comet state artifacts <name> --json` instead of refreshing status.
+5. `blocked`: follow `missingDeps` and complete dependencies in the `applyRequires` closure first. Validate with `comet state artifacts <name> --json` after each dependency and refresh status only when it reports a new problem; do not generate a blocked artifact directly.
 6. Repeat until the full required closure is done or legitimately skipped and `comet state artifacts <name> --json` passes.
 
 If required dependencies cannot progress, list the relevant blocked artifacts and `missingDeps`, then stop and report. Existing directories or three fixed files do not replace the CLI's checks. Conversely, an optional artifact outside `applyRequires` must not block implementation merely because `isComplete: false`.

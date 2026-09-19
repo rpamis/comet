@@ -59,7 +59,7 @@ Native 正式产物只能由 `comet native new <name> --json` 登记后创建。
 
 Supervisor 子任务在任务包指定的 `projectRoot` 工作。回传结果时，使用 `returnAction` 指定的控制目录、命令和模板。
 
-复制 Runner 输入后，可先执行 `comet native next <change> --runner-input <file> --validate-only --json` 检查 JSON 结构。该校验不会写入状态或启动检查。正式提交时，仍要使用当前 `continuation` 指定的状态版本、任务标识和命令参数。
+按 `inputOptions` 模板填写完整后直接正式提交；Runtime 在提交时校验输入，无需先跑预检。`comet native next <change> --runner-input <file> --validate-only --json` 只在提交被拒且需要区分 JSON 结构错误与业务校验错误时使用；该校验不写入状态或启动检查。正式提交时，仍要使用当前 `continuation` 指定的状态版本、任务标识和命令参数。
 
 ## Builder 交接
 

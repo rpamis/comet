@@ -57,6 +57,8 @@ comet state select <name>
 comet state check <name> open
 ```
 
+Combine multiple read-only comet commands (for example `state get`, `state next`, `state artifacts`) into a single shell invocation to reduce process startup overhead.
+
 If select/check returns `BLOCKED` because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
 
 Workspace isolation is a user choice at entry; do not write `current` as an assumed default. Pause under `comet-classic/reference/decision-point.md` and present:

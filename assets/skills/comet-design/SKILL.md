@@ -25,7 +25,9 @@ comet state select <change-name>
 comet state check <name> design --json
 ```
 
-After a successful check, use the returned layout, configuration, nextAction, and coordination progress summary. Avoid individual field queries or another root show. Normal entry requires only the entry check; follow context-recovery.md when resuming without context or retrieving details. Address the reported cause if validation fails.
+Combine multiple read-only comet commands (for example `state get`, `state next`, `state artifacts`) into a single shell invocation to reduce process startup overhead.
+
+When the previous phase's guard already returned this phase's state, continue from that state and `agent.continuation` without repeating select/check; run the entry checks above only when resuming, after workspace changes, or after external state changes. After a successful check, use the returned layout, configuration, nextAction, and coordination progress summary. Avoid individual field queries or another root show. Normal entry requires only the entry check; follow context-recovery.md when resuming without context or retrieving details. Address the reported cause if validation fails.
 
 **Recovery**: Check existing artifacts and confirmation records, then complete only unfinished steps. Both normal entry and recovery preserve a registered, still-valid design and inspect `data.designReadiness`, `data.issues`, and `data.nextAction`. Restore missing files, correct the change associated with a file, or refresh an outdated handoff without clearing `design_doc`. Once the user has confirmed the design, execute the returned complete-design action; it preserves completed work. If Runtime is already in Build, the command only returns that phase's entry information.
 

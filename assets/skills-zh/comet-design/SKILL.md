@@ -25,7 +25,9 @@ comet state select <change-name>
 comet state check <name> design --json
 ```
 
-验证通过后，使用入口返回的 layout、configuration、nextAction 和协作进度摘要继续，不逐字段查询，也不重复 root show。正常进入本阶段时，只做入口检查；丢失上下文后恢复任务或需要读取详情时，按 context-recovery.md 处理。验证失败时，处理返回的具体原因。
+多条只读 comet 命令（如 `state get`、`state next`、`state artifacts`）可以合并成一条 shell 调用依次执行，减少进程启动开销。
+
+上一阶段 guard 已成功返回本阶段状态信息时，直接使用其中的状态与 `agent.continuation` 继续，不重复 select/check；恢复任务、工作区变化或外部状态变化时，才执行上述入口验证。验证通过后，使用入口返回的 layout、configuration、nextAction 和协作进度摘要继续，不逐字段查询，也不重复 root show。正常进入本阶段时，只做入口检查；丢失上下文后恢复任务或需要读取详情时，按 context-recovery.md 处理。验证失败时，处理返回的具体原因。
 
 **恢复**：先核对现有产物和用户确认记录，只补未完成的步骤。无论正常进入还是恢复任务，都要保留已登记且仍然有效的设计，并读取 `data.designReadiness`、`data.issues` 和 `data.nextAction`。补回缺失文件、纠正文件关联的 change，或更新过期 handoff，不清空 `design_doc`。用户已确认设计后，可以执行返回的 complete-design 动作；该命令会保留已完成的步骤。如果已经进入 Build，则只返回当前阶段的入口信息。
 

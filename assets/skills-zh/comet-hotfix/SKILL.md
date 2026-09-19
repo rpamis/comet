@@ -57,6 +57,8 @@ comet state select <name>
 comet state check <name> open
 ```
 
+多条只读 comet 命令（如 `state get`、`state next`、`state artifacts`）可以合并成一条 shell 调用依次执行，减少进程启动开销。
+
 若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
 开始工作时，由用户选择工作区隔离方式，不能默认写入 `current`。按 `comet-classic/reference/decision-point.md` 暂停，以单选题让用户选择：

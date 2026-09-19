@@ -27,7 +27,9 @@ comet state select <change-name>
 comet state check <change-name> verify --json
 ```
 
-Continue from the returned layout, configuration, nextAction, task information, and coordination summary. If checks and the integration review remain valid, finish only the missing work instead of rerunning the phase. After context loss, use --recover --details --json when full records are needed. Handle the reported cause of any failure.
+Combine multiple read-only comet commands (for example `state get`, `state next`, `state artifacts`) into a single shell invocation to reduce process startup overhead.
+
+When the previous phase's guard already returned this phase's state, continue from that state and `agent.continuation` without repeating select/check; run the entry checks above only when resuming, after workspace changes, or after external state changes. Continue from the returned layout, configuration, nextAction, task information, and coordination summary. If checks and the integration review remain valid, finish only the missing work instead of rerunning the phase. After context loss, use --recover --details --json when full records are needed. Handle the reported cause of any failure.
 
 If select/check returns `BLOCKED` because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
 

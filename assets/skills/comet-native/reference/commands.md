@@ -59,7 +59,7 @@ Options in the same `exclusiveGroup` within `inputOptions` are mutually exclusiv
 
 Supervisor children work in the task package's `projectRoot`. Return results through the controller directory, command, and template specified by `returnAction`.
 
-After copying Runner input, you may validate its JSON structure with `comet native next <change> --runner-input <file> --validate-only --json`. This does not write state or start checks. Actual submission must still use the state version, task identifiers, and arguments in the current `continuation`.
+Submit directly once the template is filled completely; Runtime validates the input on submission, so no pre-check pass is needed. Use `comet native next <change> --runner-input <file> --validate-only --json` only when a submission was rejected and you need to distinguish a JSON structure error from a business validation error; it does not write state or start checks. Actual submission must still use the state version, task identifiers, and arguments in the current `continuation`.
 
 ## Builder handoff
 

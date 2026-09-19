@@ -46,7 +46,7 @@ For `branch` or `worktree` isolation that needs a finish choice, show the actual
 
 After A, B, C, or D, execute Runtime's complete command for `keep`, `merge`, `push`, or `pull-request` respectively. Stop after E. At Archive-ready:
 
-1. First execute Runtime's complete `archive --dry-run` command. If an isolated workspace has no finish choice, wait for the user, then use the matching `--dry-run --finish` command in `commandAlternatives`. Do not add arguments yourself or directly run `--confirmed`.
+1. First execute Runtime's complete `archive --dry-run` command. If an isolated workspace has no finish choice, wait for the user, then either run `comet native archive <change-name> --confirmed --finish <chosen mode>` to archive in one step (Runtime records the choice and revalidates verification freshness inside the transaction, so no second dry-run is needed) or use the matching `--dry-run --finish` command in `commandAlternatives` for a preview. Do not add other arguments yourself.
 2. On `ready: false`, address only blockers in that response. Do not first query `status`, repeat Archive, or manually commit Native state and verification files.
 3. Only after `ready: true`, execute the single returned `archive --confirmed` command.
 4. If dry-run or confirmed fails, follow only the latest structured `continuation` and `workspaceFinishResult.recoveryArgs`; do not infer commands from error text.

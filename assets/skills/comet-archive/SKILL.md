@@ -28,7 +28,9 @@ comet state select <change-name>
 comet state check <name> archive --json
 ```
 
-Continue from returned layout, configuration, nextAction, and the delivery summary. After context loss, read details according to context-recovery.md. If authorization is still valid and the delivery target is unchanged, continue only unfinished actions without asking again. Handle the specific cause on failure.
+Combine multiple read-only comet commands (for example `state get`, `state next`, `state artifacts`) into a single shell invocation to reduce process startup overhead.
+
+When the previous phase's guard already returned this phase's state, continue from that state and `agent.continuation` without repeating select/check; run the entry checks above only when resuming, after workspace changes, or after external state changes. Continue from returned layout, configuration, nextAction, and the delivery summary. After context loss, read details according to context-recovery.md. If authorization is still valid and the delivery target is unchanged, continue only unfinished actions without asking again. Handle the specific cause on failure.
 
 If select/check returns `BLOCKED` because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
 
@@ -127,11 +129,10 @@ Archive moves files and merges specs; it does not commit. Afterwards, expect the
 - Main spec contains the merged delta changes.
 - The Design Doc/plan contains archive metadata.
 
-Confirm that delivery still records valid authorization, then write the compatibility field and run the final archive guard:
+Confirm that delivery still records valid authorization, then write the compatibility field and run the final archive guard (both commands in one shell invocation to reduce process startup overhead):
 
 ```bash
-comet state set <change-name> branch_status handled
-comet guard <change-name> archive
+comet state set <change-name> branch_status handled && comet guard <change-name> archive
 ```
 
 handled is only a legacy compatibility field. It neither authorizes local/push/pr nor proves those actions succeeded. Use delivery records and Runtime checks of actual Git/remotes for authorization and completion. Stop on state-write or guard failure. On recovery, check whether the archive commit already exists and reuse it rather than making a second one.

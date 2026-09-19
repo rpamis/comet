@@ -28,7 +28,9 @@ comet state select <change-name>
 comet state check <name> archive --json
 ```
 
-使用入口返回的 layout、configuration、nextAction 和 delivery 摘要继续。丢失上下文后恢复任务时，按 context-recovery.md 读取所需详情。已有授权仍然有效、交付目标也没有变化时，只继续未完成的动作，不重复询问。失败时，处理返回的具体原因。
+多条只读 comet 命令（如 `state get`、`state next`、`state artifacts`）可以合并成一条 shell 调用依次执行，减少进程启动开销。
+
+上一阶段 guard 已成功返回本阶段状态信息时，直接使用其中的状态与 `agent.continuation` 继续，不重复 select/check；恢复任务、工作区变化或外部状态变化时，才执行上述入口验证。使用入口返回的 layout、configuration、nextAction 和 delivery 摘要继续。丢失上下文后恢复任务时，按 context-recovery.md 读取所需详情。已有授权仍然有效、交付目标也没有变化时，只继续未完成的动作，不重复询问。失败时，处理返回的具体原因。
 
 若上述 `select` / `check` 输出 `BLOCKED`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
@@ -130,11 +132,10 @@ brainstorming → delta spec → 实施 → 验证 → 主 spec 合并 → desig
 - 主 spec 按 delta 语义合并的内容
 - design doc / plan 的归档元数据标注
 
-确认 delivery 中的实际授权仍有效，再写入兼容字段并运行最终 archive guard：
+确认 delivery 中的实际授权仍有效，再写入兼容字段并运行最终 archive guard（两条命令合并成一次 shell 调用串行执行，减少进程启动开销）：
 
 ```bash
-comet state set <change-name> branch_status handled
-comet guard <change-name> archive
+comet state set <change-name> branch_status handled && comet guard <change-name> archive
 ```
 
 handled 只是兼容旧流程的状态字段，不能表示用户已授权 local/push/pr，也不能证明这些动作已成功。授权与执行结果以 delivery 记录和 Runtime 对实际 Git、远端的核对为准。状态写入或 guard 失败时停止。恢复任务时，先核对归档提交是否已经存在；存在就复用，不再创建第二个归档提交。

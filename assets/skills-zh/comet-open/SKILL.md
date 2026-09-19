@@ -130,6 +130,8 @@ comet classic openspec -- --version
 comet state check <name> design --json
 ```
 
+多条只读 comet 命令（如 `state get`、`state next`、`state artifacts`）可以合并成一条 shell 调用依次执行，减少进程启动开销。
+
 该入口已检查 OpenSpec 的全部必需依赖、实际输出和 Comet 状态，不再额外重复查询 status。`isComplete` 仅用于诊断，非必需产物不会阻止流程继续。检查失败时，再查询 status，找出尚未生成的依赖，或处理已报告的路径错误、缺少必需能力等问题。
 
 任一拆分项未通过检查时，不能宣告拆分完成，也不能询问用户开始哪个 change。应停止后续推进，从该 change 的第一个 `ready` 或 `blocked` 产物恢复 `/comet-open`。OpenSpec 检查通过、但 Comet state 检查失败时，必须先修复 `.comet.yaml` 初始化或 phase，再重新执行整批检查。
@@ -206,7 +208,7 @@ Agent JSON 模式下，从 `data.upstream.data` 读取上游字段。下一步�
    - 遵守 `context` 和 `rules` 中的约束，**不得将这些内容复制到产物中**
    - 写入 `resolvedOutputPath`；通配输出必须按 instruction 创建每个实际文件
    - 验证 CLI 返回的实际输出文件存在且非空
-6. 每创建一个产物后，刷新一次 status，将结果用于下一轮，并再次校验路径与完整依赖闭包。已经变为 `done` 的项不得重复生成；只处理闭包中新增的 ready 项，不额外生成无关的可选产物。
+6. 每创建一个产物后，用 `comet state artifacts <name> --json` 做本地闭包校验（不启动 OpenSpec 子进程），仅当它报告依赖缺失或顺序错误、需要新的实时指令时，才刷新一次 status 并再次校验路径与完整依赖闭包。已经变为 `done` 的项不得重复生成；只处理闭包中新增的 ready 项，不额外生成无关的可选产物。
 
 **阻塞与失败处理**：`applyRequires` 尚未全部完成、但其所需依赖中已没有 ready 产物时，必须报告相关 `blocked` 产物的 `missingDeps`，然后停止。不得猜测生成顺序或跳过依赖。适配器的 `status` / `instructions` 调用失败、返回无效 JSON、产物路径超出仓库，或未提供可用的 `resolvedOutputPath` 时，也必须立即停止并报告 OpenSpec 错误，不能改用写死的文档结构。
 
@@ -238,8 +240,8 @@ comet state check <name> open
 1. 状态文件缺失时先使用所选隔离方式准备工作区，再进入返回的 `projectRoot` 运行 `comet state init <name> full --isolation <selected-isolation>`；格式异常时停止并修复，不得覆盖。随后选择 change 并运行 `comet state check <name> open`。
 2. 运行 `comet classic openspec --agent-json -- status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
 3. `done`：该产物已完成，保持原文件不变，不重复生成。
-4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后立刻重新运行 status。
-5. `blocked`：读取 `missingDeps`，先完成属于 `applyRequires` 依赖闭包的依赖产物；每完成一个依赖都重新运行 status，不能直接生成 blocked 产物。
+4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后用 `comet state artifacts <name> --json` 做本地闭包校验，不重新运行 status。
+5. `blocked`：读取 `missingDeps`，先完成属于 `applyRequires` 依赖闭包的依赖产物；每完成一个依赖用 `comet state artifacts <name> --json` 校验，仅在报告新问题时重新运行 status，不能直接生成 blocked 产物。
 6. 重复上述处理，直到完整必需闭包为 done 或合法 skipped，且 `comet state artifacts <name> --json` 校验通过。
 
 如果必需依赖仍无法完成，必须列出相关 blocked 产物及其 `missingDeps`，然后停止并报告。不能仅凭目录或三个固定文件存在，就替代 CLI 的检查结论；也不能因为 `isComplete: false`，就让不属于 `applyRequires` 的可选产物阻止流程进入实施阶段。

@@ -46,7 +46,7 @@ Supervisor Change 中由 `readyChildren` 返回的子任务固定使用独立 `w
 
 用户选择 A、B、C 或 D 后，分别按 `keep`、`merge`、`push` 或 `pull-request` 执行 Runtime 返回的完整命令；选择 E 后停止。Archive-ready 时按以下顺序操作：
 
-1. 先执行 Runtime 返回的完整 `archive --dry-run` 命令。隔离工作区尚未选择 finish 时，等待用户选择，再使用 `commandAlternatives` 中对应的 `--dry-run --finish` 命令；不得自行补参数或直接执行 `--confirmed`。
+1. 先执行 Runtime 返回的完整 `archive --dry-run` 命令。隔离工作区尚未选择 finish 时，等待用户选择，然后可以直接执行 `comet native archive <change-name> --confirmed --finish <选定的方式>` 一步完成归档（Runtime 会记录选择并在事务内复验验证新鲜度，不再需要第二次 dry-run）；也可以先使用 `commandAlternatives` 中对应的 `--dry-run --finish` 命令预览。不得自行补其他参数。
 2. dry-run 返回 `ready: false` 时，只处理同一响应列出的阻塞。不要先额外运行 `status`、重复 Archive，或手工提交 Native 的状态和 verification 文件。
 3. 只有 dry-run 返回 `ready: true` 后，才执行它返回的唯一 `archive --confirmed` 命令。
 4. dry-run 或 confirmed 失败时，只按最新结构化 `continuation` 和 `workspaceFinishResult.recoveryArgs` 继续，不从错误文本猜测下一步。
