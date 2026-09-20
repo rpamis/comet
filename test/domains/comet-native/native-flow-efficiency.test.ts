@@ -107,6 +107,69 @@ describe('Native flow efficiency plan', () => {
     expect(template).not.toHaveProperty('review');
   });
 
+  it('pauses a fully blocked Supervisor instead of emitting a self-retrying next command', () => {
+    const state = confirmedState('blocked-supervisor', ['A1']);
+    const continuation = nativePortableContinuation(state, {
+      schema: 'comet.native.children.v2',
+      contractHash: 'contract-hash',
+      confirmed: true,
+      parentBranch: 'main',
+      children: [
+        {
+          name: 'child-a',
+          summary: 'Child A',
+          dependsOn: [],
+          covers: ['A1'],
+          status: 'blocked',
+          phase: null,
+          projectRoot: null,
+          message: 'Workspace preparation failed',
+        },
+      ],
+      readyChildren: [],
+      allDone: false,
+      supervisorStateVersion: 4,
+    });
+
+    expect(continuation).toMatchObject({
+      disposition: 'blocked',
+      action: 'advance-children',
+      commandArgs: null,
+      requiredInputs: [],
+      userCommunication: { required: true },
+    });
+  });
+
+  it('keeps a needs-reverify child dispatchable instead of treating it as a hard blocker', () => {
+    const state = confirmedState('reverify-supervisor', ['A1']);
+    const continuation = nativePortableContinuation(state, {
+      schema: 'comet.native.children.v2',
+      contractHash: 'contract-hash',
+      confirmed: true,
+      parentBranch: 'main',
+      children: [
+        {
+          name: 'child-a',
+          summary: 'Child A',
+          dependsOn: [],
+          covers: ['A1'],
+          status: 'needs-reverify',
+          phase: null,
+          projectRoot: null,
+          message: 'Verifier was interrupted',
+        },
+      ],
+      readyChildren: [],
+      allDone: false,
+      supervisorStateVersion: 5,
+    });
+
+    expect(continuation).toMatchObject({
+      disposition: 'continue',
+      commandArgs: ['comet', 'native', 'next', 'reverify-supervisor', '--summary', '<summary>'],
+    });
+  });
+
   it('emits a directly parsable final Verifier response template', () => {
     const runner = createNativeRunnerChannel();
     const state = reserveNativeVerifierAttempt(

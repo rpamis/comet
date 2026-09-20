@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { accessSync, constants as fsConstants, promises as fs } from 'node:fs';
 import path from 'node:path';
 
+import { atomicWriteJson } from './native-atomic-file.js';
 import { runExternalCommand } from '../../platform/process/external-command.js';
 import { gitBranchRemote, gitStatusPaths, runGitCommand } from '../../platform/process/git.js';
 import { inspectGitWorktree, listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
@@ -54,6 +56,186 @@ export interface NativeWorkspaceFinishResult {
   message: string | null;
   diagnosticArgs: string[] | null;
   recoveryArgs: string[] | null;
+}
+
+export const NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA = 'comet.native.workspace-finish.v1' as const;
+
+export interface NativeWorkspaceFinishJournal {
+  schema: typeof NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA;
+  name: string;
+  transactionId: string;
+  archiveDir: string | null;
+  status: 'pending' | 'blocked';
+  result: NativeWorkspaceFinishResult | null;
+  updatedAt: string;
+}
+
+export interface NativeWorkspaceFinishJournalReadOptions {
+  /**
+   * Status discovery is best-effort across every worktree.  A malformed
+   * journal in one workspace must become a visible diagnostic instead of
+   * aborting discovery for all other changes.  Mutating callers omit this
+   * callback so invalid data still fails closed before a mutation.
+   */
+  onError?: (name: string, message: string) => void;
+}
+
+const NATIVE_FINISH_NAME_SOURCE = '[a-z][a-z0-9]*(?:-[a-z0-9]+)*';
+const NATIVE_FINISH_NAME_PATTERN = new RegExp(`^${NATIVE_FINISH_NAME_SOURCE}$`, 'u');
+const NATIVE_FINISH_TRANSACTION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+
+function parseNativeWorkspaceFinishJournal(value: unknown): NativeWorkspaceFinishJournal {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Native workspace finish journal is invalid');
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    record.schema !== NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA ||
+    typeof record.name !== 'string' ||
+    !NATIVE_FINISH_NAME_PATTERN.test(record.name) ||
+    typeof record.transactionId !== 'string' ||
+    !NATIVE_FINISH_TRANSACTION_PATTERN.test(record.transactionId) ||
+    (record.archiveDir !== null &&
+      (typeof record.archiveDir !== 'string' || !path.isAbsolute(record.archiveDir))) ||
+    !['pending', 'blocked'].includes(String(record.status)) ||
+    typeof record.updatedAt !== 'string' ||
+    !Number.isFinite(Date.parse(record.updatedAt))
+  ) {
+    throw new Error('Native workspace finish journal is invalid');
+  }
+  if (record.result !== null) {
+    if (!record.result || typeof record.result !== 'object' || Array.isArray(record.result)) {
+      throw new Error('Native workspace finish journal result is invalid');
+    }
+    const result = record.result as Record<string, unknown>;
+    if (
+      !['merge', 'push', 'pull-request', 'keep'].includes(String(result.action)) ||
+      !['completed', 'kept', 'blocked'].includes(String(result.status)) ||
+      !Array.isArray(result.blockedPaths) ||
+      result.blockedPaths.some((entry) => typeof entry !== 'string') ||
+      (result.recoveryArgs !== null &&
+        (!Array.isArray(result.recoveryArgs) ||
+          result.recoveryArgs.some((entry) => typeof entry !== 'string')))
+    ) {
+      throw new Error('Native workspace finish journal result is invalid');
+    }
+  }
+  return {
+    schema: NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA,
+    name: record.name,
+    transactionId: record.transactionId,
+    archiveDir: record.archiveDir as string | null,
+    status: record.status as NativeWorkspaceFinishJournal['status'],
+    result: record.result as NativeWorkspaceFinishResult | null,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function workspaceFinishJournalFile(
+  paths: Pick<NativeProjectPaths, 'transactionsDir'>,
+  name: string,
+): string {
+  if (!NATIVE_FINISH_NAME_PATTERN.test(name)) {
+    throw new Error(`Invalid Native workspace finish journal name: ${name}`);
+  }
+  return path.join(paths.transactionsDir, `workspace-finish-${name}.json`);
+}
+
+export async function readNativeWorkspaceFinishJournal(
+  paths: Pick<NativeProjectPaths, 'transactionsDir'>,
+  name: string,
+  options: NativeWorkspaceFinishJournalReadOptions = {},
+): Promise<NativeWorkspaceFinishJournal | null> {
+  const file = workspaceFinishJournalFile(paths, name);
+  try {
+    const stat = await fs.lstat(file);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      throw new Error('Native workspace finish journal is not a regular file');
+    }
+    const parsed = parseNativeWorkspaceFinishJournal(JSON.parse(await fs.readFile(file, 'utf8')));
+    if (parsed.name !== name) throw new Error('Native workspace finish journal name is invalid');
+    return parsed;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if (options.onError) {
+      options.onError(name, error instanceof Error ? error.message : String(error));
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function listNativeWorkspaceFinishJournals(
+  paths: Pick<NativeProjectPaths, 'transactionsDir'>,
+  options: NativeWorkspaceFinishJournalReadOptions = {},
+): Promise<NativeWorkspaceFinishJournal[]> {
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(paths.transactionsDir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+  const journals: NativeWorkspaceFinishJournal[] = [];
+  for (const entry of entries) {
+    if ((!entry.isFile() && !entry.isSymbolicLink()) || entry.isDirectory()) continue;
+    const match = new RegExp(`^workspace-finish-(${NATIVE_FINISH_NAME_SOURCE})\\.json$`, 'u').exec(
+      entry.name,
+    );
+    if (!match) continue;
+    const journal = await readNativeWorkspaceFinishJournal(paths, match[1], options);
+    if (journal) journals.push(journal);
+  }
+  return journals;
+}
+
+/**
+ * Preserve a corrupt finish journal for forensics while removing it from the
+ * active transaction namespace.  This is intentionally an explicit doctor
+ * repair operation; normal status/archive reads never discard recovery data.
+ */
+export async function quarantineNativeWorkspaceFinishJournal(
+  paths: Pick<NativeProjectPaths, 'transactionsDir'>,
+  name: string,
+): Promise<string | null> {
+  const file = workspaceFinishJournalFile(paths, name);
+  const quarantine = path.join(
+    paths.transactionsDir,
+    `workspace-finish-invalid-${name}-${randomUUID()}.json`,
+  );
+  try {
+    // lstat deliberately avoids following a hostile or broken symlink.  A
+    // malformed journal is quarantined by moving the directory entry itself;
+    // doctor must be able to repair a symlink/non-regular entry without
+    // reading or deleting anything it points to.
+    await fs.lstat(file);
+    await fs.rename(file, quarantine);
+    return quarantine;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+export async function writeNativeWorkspaceFinishJournal(
+  paths: Pick<NativeProjectPaths, 'transactionsDir'>,
+  journal: NativeWorkspaceFinishJournal,
+): Promise<void> {
+  const parsed = parseNativeWorkspaceFinishJournal(journal);
+  await atomicWriteJson(workspaceFinishJournalFile(paths, parsed.name), parsed, {
+    containedRoot: paths.transactionsDir,
+  });
+}
+
+export async function clearNativeWorkspaceFinishJournal(
+  paths: Pick<NativeProjectPaths, 'transactionsDir'>,
+  name: string,
+): Promise<void> {
+  try {
+    await fs.unlink(workspaceFinishJournalFile(paths, name));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
 }
 
 export class NativeWorkspaceFinishError extends Error {

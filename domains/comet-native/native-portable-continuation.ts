@@ -4,6 +4,7 @@ import {
   NATIVE_SUPERVISOR_COORDINATION_MODES,
   type NativePortableState,
 } from './native-portable-types.js';
+import { NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES } from './native-supervisor-model.js';
 
 type NativePortableContinuationInputOption = {
   name: string;
@@ -107,6 +108,7 @@ function localized(state: NativePortableState, english: string, chinese: string)
 function nativePortableUserCommunication(
   state: NativePortableState,
   coordinationChoiceRequired: boolean,
+  children?: NativeChildrenInspection | null,
 ): NativePortableUserCommunication {
   const noUserUpdate = (agentInstruction: string): NativePortableUserCommunication => ({
     required: false,
@@ -331,6 +333,42 @@ function nativePortableUserCommunication(
   }
 
   if (state.phase === 'build' && state.status === 'active') {
+    const hardBlockedChildren =
+      children?.children.some(({ status }) => status === 'blocked') ?? false;
+    const reverifyChildren =
+      children?.children.some(({ status }) => status === 'needs-reverify') ?? false;
+    const progressingChildren =
+      children?.children.some(({ status }) => status === 'ready' || status === 'active') ?? false;
+    const explicitBuilderRetryAvailable =
+      children?.children.some(
+        ({ status, builderFailureCount }) =>
+          status === 'blocked' &&
+          (builderFailureCount ?? 0) >= NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES,
+      ) ?? false;
+    if (
+      hardBlockedChildren &&
+      !reverifyChildren &&
+      !progressingChildren &&
+      !explicitBuilderRetryAvailable
+    ) {
+      return state.language === 'zh-CN'
+        ? {
+            required: true,
+            message:
+              'Supervisor 子任务暂时无法启动，已暂停自动重试以避免流程循环。请先根据子任务 blocker 修复工作区、分支或依赖；修复完成后重新运行最新的 next 继续流程。代码和已有证据已保留。',
+            suggestedReply: '修复 blocker 后继续',
+            agentInstruction:
+              '向用户说明子任务 blocker 和需要先完成的外部修复；不要反复执行 next，也不要创建替代任务。用户确认工作区或依赖已修复后，再重新读取 status 并执行最新 continuation。',
+          }
+        : {
+            required: true,
+            message:
+              'Supervisor child dispatch is paused because every remaining child is blocked. Automatic retries are stopped to avoid a loop. Resolve the recorded child blocker (workspace, branch, or dependency) first, then read the latest status and continue; code and completed evidence are preserved.',
+            suggestedReply: 'Resolve the blocker and continue',
+            agentInstruction:
+              'Explain the child blocker and the required external repair to the user. Do not repeatedly run next or spawn replacement tasks. After the user confirms the workspace or dependency is fixed, read status again and execute the latest continuation.',
+          };
+    }
     return noUserUpdate(
       localized(
         state,
@@ -630,7 +668,7 @@ export function nativePortableContinuation(
 ): NativePortableContinuation {
   const coordinationRequired =
     supervisorCoordinationRequired(children) && state.coordination_mode === undefined;
-  const userCommunication = nativePortableUserCommunication(state, coordinationRequired);
+  const userCommunication = nativePortableUserCommunication(state, coordinationRequired, children);
   const base = {
     schema: 'comet.native.continuation.v2' as const,
     skill: 'comet-native' as const,
@@ -998,24 +1036,66 @@ export function nativePortableContinuation(
       const blocked = children.children.some(
         ({ status }) => status === 'blocked' || status === 'needs-reverify',
       );
+      const reverifyPending = children.children.some(({ status }) => status === 'needs-reverify');
       const progressing = children.children.some(
         ({ status }) => status === 'ready' || status === 'active',
       );
+      const exhaustedBuilder =
+        children.supervisorStateVersion === undefined
+          ? null
+          : (children.children.find(
+              (child) =>
+                child.status === 'blocked' &&
+                (child.builderFailureCount ?? 0) >= NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES,
+            ) ?? null);
+      const builderRetryOption =
+        exhaustedBuilder === null
+          ? null
+          : {
+              name: 'runner-input',
+              flag: '--runner-input' as const,
+              valueKind: 'json-file' as const,
+              required: true,
+              template: {
+                kind: 'supervisor-retry-builder',
+                child: exhaustedBuilder.name,
+                stateVersion: children.supervisorStateVersion,
+              },
+              description: localized(
+                state,
+                'Explicitly authorize one fresh Builder attempt after the Builder failure budget was exhausted.',
+                'Builder 失败预算已耗尽；明确授权后才能重新开始一次 Builder 尝试。',
+              ),
+            };
+      const blockedWithoutBuilderRetry =
+        blocked && !reverifyPending && !progressing && builderRetryOption === null;
       return {
         ...base,
-        disposition: blocked && !progressing ? 'blocked' : 'continue',
+        disposition: blockedWithoutBuilderRetry ? 'blocked' : 'continue',
         action: 'advance-children',
-        commandArgs: [
-          'comet',
-          'native',
-          'next',
-          state.name,
-          '--summary',
-          '<summary>',
-          ...(state.coordination_mode === 'single-session' ? ['--max-parallel', '1'] : []),
-        ],
-        requiredInputs: blocked && !progressing ? ['resolve-child-blocker'] : ['ready-children'],
-        inputOptions: [textInput('summary', '--summary')],
+        commandArgs: blockedWithoutBuilderRetry
+          ? null
+          : builderRetryOption !== null
+            ? ['comet', 'native', 'next', state.name, '--runner-input', '<temporary-json-file>']
+            : [
+                'comet',
+                'native',
+                'next',
+                state.name,
+                '--summary',
+                '<summary>',
+                ...(state.coordination_mode === 'single-session' ? ['--max-parallel', '1'] : []),
+              ],
+        requiredInputs: blockedWithoutBuilderRetry
+          ? []
+          : builderRetryOption !== null
+            ? ['supervisor-builder-retry-json-file']
+            : ['ready-children'],
+        inputOptions: blockedWithoutBuilderRetry
+          ? []
+          : builderRetryOption !== null
+            ? [builderRetryOption]
+            : [textInput('summary', '--summary')],
         runnerAction: runner('none'),
       };
     }

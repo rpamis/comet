@@ -43,6 +43,11 @@ import {
   nativePortableStateFile,
   readNativePortableChange,
 } from './native-portable-runtime.js';
+import {
+  listNativeWorkspaceFinishJournals,
+  quarantineNativeWorkspaceFinishJournal,
+  readNativeWorkspaceFinishJournal,
+} from './native-workspace-finish.js';
 import type { NativePortableState } from './native-portable-types.js';
 import type {
   NativeSupervisorChildState,
@@ -223,6 +228,36 @@ function uniqueFindings(findings: readonly NativeDoctorFinding[]): NativeDoctorF
   return [...unique.values()];
 }
 
+async function inspectWorkspaceFinishJournalErrors(
+  paths: NativeProjectPaths,
+  name?: string,
+): Promise<Array<{ name: string; message: string }>> {
+  const errors: Array<{ name: string; message: string }> = [];
+  if (name !== undefined && !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(name)) return errors;
+  const onError = (journalName: string, message: string) =>
+    errors.push({ name: journalName, message });
+  if (name !== undefined) {
+    await readNativeWorkspaceFinishJournal(paths, name, { onError });
+  } else {
+    await listNativeWorkspaceFinishJournals(paths, { onError });
+  }
+  return errors;
+}
+
+function workspaceFinishJournalFinding(
+  paths: NativeProjectPaths,
+  error: { name: string; message: string },
+): NativeDoctorFinding {
+  return {
+    severity: 'error',
+    code: 'portable-workspace-finish-journal-invalid',
+    message: `Native workspace finish journal for ${error.name} is invalid (${error.message}); run comet native doctor ${error.name} --repair to quarantine it and resume from the preserved change or Archive record`,
+    path: path.join(paths.transactionsDir, `workspace-finish-${error.name}.json`),
+    repair: 'continue',
+    repairCommand: `comet native doctor ${error.name} --repair`,
+  };
+}
+
 function unhealthyDoctor(data: Record<string, unknown>): DispatchResult {
   return {
     command: 'doctor',
@@ -276,20 +311,6 @@ function portableSupervisorOverlayFinding(
  * — the smallest write that unlocks the change without touching any
  * integrated work.
  */
-async function unmetReadySupervisorDependencies(
-  paths: NativeProjectPaths,
-  name: string,
-): Promise<NativeSupervisorChildState[] | null> {
-  const supervisorState = await readNativeSupervisorState(paths, name);
-  if (!supervisorState) return null;
-  const blocked = supervisorState.children.filter(
-    (child) =>
-      child.status === 'ready' &&
-      !supervisorDependenciesIntegrated(child.dependsOn, supervisorState.children),
-  );
-  return blocked.length > 0 ? blocked : null;
-}
-
 function unmetReadySupervisorDependencyFinding(
   name: string,
   supervisorState: NativeSupervisorState,
@@ -380,6 +401,45 @@ export async function nativeDoctorCommand(
   const name = args[0]?.startsWith('--') ? undefined : args.shift();
   assertNoArguments(args);
   const paths = await doctorPaths(projectRoot);
+  const workspaceFinishJournalErrors = await inspectWorkspaceFinishJournalErrors(paths, name);
+  if (name && workspaceFinishJournalErrors.length > 0) {
+    const finding = workspaceFinishJournalFinding(paths, workspaceFinishJournalErrors[0]);
+    if (!repair) {
+      const portable = await isNativePortableChange(paths, name);
+      const result = portable
+        ? await inspectNativePortableStatus({ paths, name, details: true })
+        : undefined;
+      return unhealthyDoctor({
+        healthy: false,
+        workflow: 'native-portable',
+        change: name,
+        repaired: false,
+        ...(result ? { result, continuation: result.continuation } : {}),
+        findings: [finding],
+      });
+    }
+    const quarantined = await quarantineNativeWorkspaceFinishJournal(paths, name);
+    const portable = await isNativePortableChange(paths, name);
+    if (portable) {
+      const state = await readNativePortableChange(paths, name);
+      return success('doctor', {
+        healthy: true,
+        workflow: 'native-portable',
+        change: name,
+        repaired: true,
+        workspaceFinishJournal: { quarantined, finding },
+        state,
+        continuation: await portableContinuation(paths, state),
+      });
+    }
+    return success('doctor', {
+      healthy: true,
+      workflow: 'native-portable',
+      change: name,
+      repaired: true,
+      workspaceFinishJournal: { quarantined, finding },
+    });
+  }
   const portableTransactions = await inspectPortableTransactions(paths, name);
   if (name && portableTransactions.findings.length > 0) {
     if (recoveryStrategy) {
@@ -690,7 +750,11 @@ export async function nativeDoctorCommand(
   }
   const portableNames = await listNativePortableChangeNames(paths);
   const projectPortableTransactions = portableTransactions;
-  if (portableNames.length > 0 || projectPortableTransactions.findings.length > 0) {
+  if (
+    portableNames.length > 0 ||
+    projectPortableTransactions.findings.length > 0 ||
+    workspaceFinishJournalErrors.length > 0
+  ) {
     if (recoveryStrategy) {
       throw new NativeUsageError('--strategy is only available to the legacy transaction doctor');
     }
@@ -701,6 +765,14 @@ export async function nativeDoctorCommand(
         change: string;
         transactionId: string;
       }> = [];
+      const repairedWorkspaceFinishJournals: Array<{ change: string; quarantined: string | null }> =
+        [];
+      for (const error of workspaceFinishJournalErrors) {
+        repairedWorkspaceFinishJournals.push({
+          change: error.name,
+          quarantined: await quarantineNativeWorkspaceFinishJournal(paths, error.name),
+        });
+      }
       for (const transaction of projectPortableTransactions.transactions) {
         if (transaction.kind === 'archive') {
           await archiveNativePortableChange({ paths, name: transaction.change });
@@ -737,6 +809,7 @@ export async function nativeDoctorCommand(
           ...inspectedData,
           repaired: true,
           repairedPortableTransactions,
+          repairedWorkspaceFinishJournals,
           repairedShapeConfirmations,
           repairFindings: projectRepair.findings,
         },
@@ -794,6 +867,7 @@ export async function nativeDoctorCommand(
       ...gitBindingFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...executionFindings.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...projectPortableTransactions.findings,
+      ...workspaceFinishJournalErrors.map((error) => workspaceFinishJournalFinding(paths, error)),
       ...legacyNames.map<NativeDoctorFinding>((change) => ({
         severity: 'error',
         code: 'portable-migration-required',

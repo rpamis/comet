@@ -4,6 +4,8 @@ import {
   type NativePortableContinuationOptions,
 } from './native-portable-continuation.js';
 import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
+import { nativeVerifierExecutionRefForState } from './native-local-execution.js';
+import { readNativeWorkspaceFinishJournal } from './native-workspace-finish.js';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
 import {
   nativePortableWorkspaceMismatch,
@@ -100,9 +102,10 @@ async function portableParentView(
   verificationCheckPlans?: NativePortableContinuationOptions['verificationCheckPlans'],
   retryCheckIds?: NativePortableContinuationOptions['retryCheckIds'],
 ) {
-  if (verificationCheckPlans === undefined) {
-    const runtime = await readNativePortableRuntime({ paths, name: state.name });
-    if (runtime.local) {
+  const runtime = await readNativePortableRuntime({ paths, name: state.name });
+  if (runtime.local) {
+    verifierExecutionRef ??= nativeVerifierExecutionRefForState(state, runtime.local);
+    if (verificationCheckPlans === undefined) {
       verificationCheckPlans = nativePortableCheckPlansFromLocal(
         runtime.local,
         runtime.local.workspace.projectRoot,
@@ -226,7 +229,59 @@ export async function nativeNextCommand(
   assertNoArguments(args);
 
   const configured = await configuredPaths(projectRoot);
+  const finishJournal = await readNativeWorkspaceFinishJournal(configured.paths, name);
   if (!(await isNativePortableChange(configured.paths, name))) {
+    if (finishJournal) {
+      const continuation = {
+        schema: 'comet.native.continuation.v2' as const,
+        skill: 'comet-native' as const,
+        change: name,
+        phase: 'archive' as const,
+        status: 'blocked' as const,
+        disposition: 'blocked' as const,
+        action: 'archive' as const,
+        commandArgs: finishJournal.result?.recoveryArgs ?? [
+          'comet',
+          'native',
+          'archive',
+          name,
+          '--confirmed',
+        ],
+        requiredInputs: [],
+        inputOptions: [],
+        runnerAction: {
+          kind: 'none' as const,
+          candidateId: null,
+          iteration: 0,
+          attempt: 0,
+        },
+        userCommunication: {
+          required: true,
+          message:
+            finishJournal.result?.message ??
+            'Native Archive completed, but workspace finish is still pending.',
+          suggestedReply: 'Retry workspace finish',
+          agentInstruction:
+            'Retry the recorded Native workspace finish command after resolving the Git blocker; do not treat this change as complete until it succeeds.',
+        },
+      };
+      return {
+        command: 'next',
+        exitCode: 73,
+        data: {
+          change: name,
+          archived: true,
+          workspaceFinishResult: finishJournal.result,
+          continuation,
+        },
+        error: {
+          code: 'conflict',
+          message:
+            finishJournal.result?.message ??
+            'Native Archive completed, but workspace finish is still pending',
+        },
+      };
+    }
     if (runnerInputFile) {
       throw new NativeUsageError('--runner-input is only valid for portable Native changes');
     }

@@ -334,6 +334,20 @@ const NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES = new Set([
   'tmp',
 ]);
 
+// These files are Runtime bookkeeping. They change as a check is reserved and
+// completed, so treating them as candidate input makes the next invocation
+// invalidate its own binding. The project configuration remains an input and is
+// intentionally not excluded.
+const NATIVE_RUNTIME_INPUT_EXCLUSIONS = [
+  ':(exclude).comet/runtime/**',
+  ':(exclude).comet/current-change.json',
+] as const;
+
+function isNativeRuntimeInputPath(relative: string): boolean {
+  const normalized = relative.replaceAll('\\', '/').replace(/^\.\//u, '');
+  return normalized === '.comet/current-change.json' || normalized.startsWith('.comet/runtime/');
+}
+
 function incompleteNativeIgnoredInputSnapshot(): NativeIgnoredInputSnapshot {
   return { complete: false, files: [] };
 }
@@ -545,12 +559,21 @@ export async function nativeCheckInputFingerprint(options: {
       '-z',
       '--untracked-files=all',
       '--ignore-submodules=none',
+      '--',
+      ...NATIVE_RUNTIME_INPUT_EXCLUSIONS,
     ]);
     // The working-tree binding no longer digests a full `diff --binary` stream
     // (megabytes of patch text on large trees). HEAD is bound separately, so
     // naming the changed paths and hashing each one pins the same information:
     // any working-tree difference changes the path set or one of the digests.
-    const changed = runGitCommand(options.projectRoot, ['diff', '--name-only', '-z', 'HEAD', '--'])
+    const changed = runGitCommand(options.projectRoot, [
+      'diff',
+      '--name-only',
+      '-z',
+      'HEAD',
+      '--',
+      ...NATIVE_RUNTIME_INPUT_EXCLUSIONS,
+    ])
       .split('\0')
       .filter(Boolean)
       .sort();
@@ -570,7 +593,13 @@ export async function nativeCheckInputFingerprint(options: {
     // Staged content binds through index blob ids: `ls-files --stage` names each
     // path with its object id, which Git already defines as the content hash.
     gitSnapshot.stagedDiff = digestNativeCheckInput(
-      runGitCommand(options.projectRoot, ['ls-files', '--stage', '-z', '--']),
+      runGitCommand(options.projectRoot, [
+        'ls-files',
+        '--stage',
+        '-z',
+        '--',
+        ...NATIVE_RUNTIME_INPUT_EXCLUSIONS,
+      ]),
     );
     gitSnapshot.submodules = runGitCommand(options.projectRoot, [
       'submodule',
@@ -583,6 +612,7 @@ export async function nativeCheckInputFingerprint(options: {
       '--exclude-standard',
       '-z',
       '--',
+      ...NATIVE_RUNTIME_INPUT_EXCLUSIONS,
     ])
       .split('\0')
       .filter(Boolean)
@@ -699,11 +729,21 @@ export async function nativeCheckInputGate(options: {
       '-z',
       '--untracked-files=all',
       '--ignore-submodules=none',
+      '--',
+      ...NATIVE_RUNTIME_INPUT_EXCLUSIONS,
     ]);
-    const staged = runGitCommand(options.projectRoot, ['ls-files', '--stage', '-z', '--']);
+    const staged = runGitCommand(options.projectRoot, [
+      'ls-files',
+      '--stage',
+      '-z',
+      '--',
+      ...NATIVE_RUNTIME_INPUT_EXCLUSIONS,
+    ]);
     if (head === null || status === null) return null;
     const workingTree: Array<{ path: string; digest: string | null }> = [];
-    for (const changedPath of gitStatusPaths(options.projectRoot)) {
+    for (const changedPath of gitStatusPaths(options.projectRoot).filter(
+      (changedPath) => !isNativeRuntimeInputPath(changedPath),
+    )) {
       const target = path.resolve(options.projectRoot, ...changedPath.split('/'));
       let digest: string | null = null;
       try {
@@ -967,6 +1007,12 @@ async function reserveNativePortableCheckPlan(options: {
         local.workspace.branch === branch &&
         local.workspace.machineId === os.hostname() &&
         local.inputFingerprint === inputFingerprint;
+      const sameWorkspaceBinding =
+        local.candidateId === state.builder_handoff?.candidate_id &&
+        path.resolve(local.workspace.projectRoot) === path.resolve(options.projectRoot) &&
+        path.resolve(local.workspace.worktreeRoot) === path.resolve(options.projectRoot) &&
+        local.workspace.branch === branch &&
+        local.workspace.machineId === os.hostname();
       const forceReexecuteForMissingEvidence =
         sameBinding && allChecksPassed && !runtimeEvidenceAvailable;
       if (retryIds && retryIds.size === 0) {
@@ -988,6 +1034,40 @@ async function reserveNativePortableCheckPlan(options: {
         }
         local = interruptNativePortableCheckExecution(local);
         await writeNativeLocalExecution(file, local, { containedRoot: options.paths.runtimeDir });
+      }
+      if (
+        !sameBinding &&
+        sameWorkspaceBinding &&
+        local.inputFingerprint !== null &&
+        (local.execution !== null || local.checks.length > 0)
+      ) {
+        // The candidate was reserved against a different project input. Do not
+        // rebuild the overlay and reset its execution counters: that turns a
+        // source edit or deletion into an unlimited retry loop. The candidate
+        // is no longer the one the Builder produced, so return to Build and
+        // preserve the durable failure history before accepting a new one.
+        const next = returnNativeCandidateToBuild({
+          state,
+          reason:
+            'Native check input changed after the candidate was built; a new Builder candidate is required before checks can run again.',
+        });
+        const written = await writePortableMutation({
+          paths: options.paths,
+          previous: state,
+          next,
+        });
+        await writeNativeLocalExecution(
+          file,
+          rebuildNativeLocalExecution({
+            portableState: written,
+            projectRoot: options.paths.projectRoot,
+            branch,
+          }),
+          { containedRoot: options.paths.runtimeDir },
+        );
+        throw new Error(
+          'Native check input changed after the candidate was built; the change returned to Build for a new candidate',
+        );
       }
       if (!sameBinding) {
         // A local overlay from another candidate, workspace or host is not

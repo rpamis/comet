@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -305,29 +305,28 @@ async function nativeRelatedEvidence(
 
 async function gitDirtyFiles(projectRoot: string): Promise<string[]> {
   return new Promise((resolve) => {
-    const child = spawn('git', ['status', '--short', '--untracked-files=all'], {
-      cwd: projectRoot,
-      stdio: ['ignore', 'pipe', 'ignore'],
-      shell: false,
-    });
-    const chunks: Buffer[] = [];
-    child.stdout.on('data', (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-    });
-    child.on('error', () => resolve([]));
-    child.on('exit', (code) => {
-      if (code !== 0) {
-        resolve([]);
-        return;
-      }
-      resolve(
-        Buffer.concat(chunks)
-          .toString('utf8')
-          .split(/\r?\n/u)
-          .map((line) => line.trim())
-          .filter(Boolean),
-      );
-    });
+    execFile(
+      'git',
+      ['status', '--short', '--untracked-files=all'],
+      {
+        cwd: projectRoot,
+        timeout: 3000,
+        maxBuffer: 2 * 1024 * 1024,
+        windowsHide: true,
+      },
+      (error, stdout) => {
+        if (error || typeof stdout !== 'string') {
+          resolve([]);
+          return;
+        }
+        resolve(
+          stdout
+            .split(/\r?\n/u)
+            .map((line) => line.trim())
+            .filter(Boolean),
+        );
+      },
+    );
   });
 }
 

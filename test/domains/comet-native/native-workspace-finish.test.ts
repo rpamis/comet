@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   finishArchivedNativeWorkspace,
   NativeWorkspaceFinishError,
+  listNativeWorkspaceFinishJournals,
+  quarantineNativeWorkspaceFinishJournal,
+  readNativeWorkspaceFinishJournal,
 } from '../../../domains/comet-native/native-workspace-finish.js';
 import { nativeChangeDir } from '../../../domains/comet-native/native-change.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
@@ -83,6 +86,50 @@ describe('Native workspace finish recovery', () => {
         stdio: 'ignore',
       }),
     ).toThrow();
+  });
+
+  it('keeps malformed finish journals visible and quarantines them only on explicit repair', async () => {
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await fs.mkdir(paths.transactionsDir, { recursive: true });
+    const file = path.join(paths.transactionsDir, 'workspace-finish-corrupt.json');
+    await fs.writeFile(file, '{not-json');
+
+    const errors: Array<{ name: string; message: string }> = [];
+    await expect(
+      readNativeWorkspaceFinishJournal(paths, 'corrupt', {
+        onError: (name, message) => errors.push({ name, message }),
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      listNativeWorkspaceFinishJournals(paths, {
+        onError: (name, message) => errors.push({ name, message }),
+      }),
+    ).resolves.toEqual([]);
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.name).toBe('corrupt');
+
+    const quarantined = await quarantineNativeWorkspaceFinishJournal(paths, 'corrupt');
+    expect(quarantined).toBeTruthy();
+    await expect(fs.access(file)).rejects.toThrow();
+    await expect(fs.access(quarantined!)).resolves.toBeUndefined();
+  });
+
+  it('quarantines a non-regular journal entry without following it', async () => {
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await fs.mkdir(paths.transactionsDir, { recursive: true });
+    const file = path.join(paths.transactionsDir, 'workspace-finish-corrupt-directory.json');
+    await fs.mkdir(file);
+
+    await expect(readNativeWorkspaceFinishJournal(paths, 'corrupt-directory')).rejects.toThrow(
+      /not a regular file/i,
+    );
+    const quarantined = await quarantineNativeWorkspaceFinishJournal(paths, 'corrupt-directory');
+
+    expect(quarantined).toBeTruthy();
+    await expect(fs.access(file)).rejects.toThrow();
+    await expect(fs.stat(quarantined!)).resolves.toMatchObject({
+      isDirectory: expect.any(Function),
+    });
   });
 
   it.each([

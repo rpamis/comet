@@ -24,7 +24,7 @@ import { scopeCometHookTargets } from '../workflow-contract/hook-target-scope.js
 import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
 import type { CometHookDecision, CometHookRequest } from './hook-types.js';
 import type { CometWorkflow } from './types.js';
-import { collectCometPluginContext } from './plugin-context.js';
+import { collectCometHookContext, collectCometPluginContext } from './plugin-context.js';
 
 // Wrap the hot reads so that within one Hook decision the router and the
 // delegated Classic/Native Guard share a single config + selection read
@@ -82,7 +82,7 @@ const DEFAULT_DEPENDENCIES: HookRouterDependencies = {
   getClassic: resolveActiveClassicHookChange,
   inspectNative: inspectNativeHookGuard,
   inspectClassic: inspectClassicHookGuard,
-  collectContext: collectCometPluginContext,
+  collectContext: collectCometHookContext,
 };
 
 function enabledWorkflows(
@@ -322,7 +322,7 @@ export async function inspectCometHook(
 ): Promise<CometHookDecision> {
   if (request.intent === 'context') {
     try {
-      const [context] = await (dependencies.collectContext ?? collectCometPluginContext)(
+      const [context] = await (dependencies.collectContext ?? collectCometHookContext)(
         projectRoot,
         {
           task: request.task?.trim() || 'Current agent task',

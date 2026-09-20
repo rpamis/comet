@@ -125,6 +125,8 @@ export interface PluginRuntimeOptions {
     readonly project: AgentExperienceJournal;
   };
   readonly scheduleLearning?: (task: () => Promise<void>) => void | Promise<void>;
+  /** Skip durable reflection replay while collecting optional Hook context. */
+  readonly replayPendingLearningOnContext?: boolean;
   readonly now?: () => Date;
 }
 
@@ -142,6 +144,7 @@ export class PluginRuntime {
   private readonly config: Record<string, Record<string, unknown>>;
   private readonly descriptors: ReadonlyMap<string, PluginDescriptor>;
   private readonly now: () => Date;
+  private readonly replayPendingLearningOnContext: boolean;
   private readonly learningByScope: Readonly<Record<'user' | 'project', AgentLearningCoordinator>>;
   private readonly learningCoordinators: readonly AgentLearningCoordinator[];
   private readonly active = new Map<string, ActivePlugin>();
@@ -163,6 +166,7 @@ export class PluginRuntime {
     );
     this.descriptors = descriptors;
     this.now = options.now ?? (() => new Date());
+    this.replayPendingLearningOnContext = options.replayPendingLearningOnContext ?? true;
     const fallbackJournal =
       options.journal ?? new AgentExperienceJournal(new MemoryAgentExperienceJournalStore());
     const userJournal = options.journals?.user ?? fallbackJournal;
@@ -407,7 +411,7 @@ export class PluginRuntime {
     request: PluginContextRequest,
     scope: PluginScopeTarget,
   ): Promise<AgentContextCandidate[]> {
-    await this.replayPendingLearning();
+    if (this.replayPendingLearningOnContext) await this.replayPendingLearning();
     const target = normalizeScopeTarget(scope);
     await this.loadScope(target);
     const candidates: AgentContextCandidate[] = [];

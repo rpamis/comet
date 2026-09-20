@@ -314,6 +314,59 @@ describe('Classic guard command', () => {
     expect(rerun.exitCode, rerun.stderr).toBe(0);
   });
 
+  it('does not print legacy JSON argv as a shell recovery command', async () => {
+    const dir = await makeProject();
+    const cli = (...args: string[]) =>
+      withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
+        runClassicCli(args),
+      );
+    expect(
+      (await cli('state', 'init', 'legacy-argv', 'hotfix', '--isolation', 'current')).exitCode,
+    ).toBe(0);
+    const changeDir = path.join(dir, 'openspec/changes/legacy-argv');
+    const stateFile = path.join(changeDir, '.comet.yaml');
+    const state = parse(await fs.readFile(stateFile, 'utf8'));
+    await fs.writeFile(stateFile, stringify({ ...state, phase: 'build' }));
+    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\n');
+    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+    expect(
+      (
+        await cli(
+          'check',
+          'run',
+          'legacy-argv',
+          'build',
+          '--',
+          process.execPath,
+          '-e',
+          'process.exit(0)',
+        )
+      ).exitCode,
+    ).toBe(0);
+    const legacyArgv = JSON.stringify([process.execPath, '-e', 'process.exit(7)']);
+    expect(
+      (
+        await cli(
+          'state',
+          'record-check',
+          'legacy-argv',
+          'build',
+          '--command',
+          legacyArgv,
+          '--exit-code',
+          '7',
+        )
+      ).exitCode,
+    ).toBe(0);
+
+    const result = await cli('guard', 'legacy-argv', 'build');
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('comet check rerun legacy-argv build');
+    expect(result.stderr).not.toContain(
+      `Next: comet check run legacy-argv build --local -- ${legacyArgv}`,
+    );
+  });
+
   it('lists workspace candidates instead of choosing when several packages build', async () => {
     const dir = await makeProject();
     const cli = (...args: string[]) =>

@@ -78,6 +78,7 @@ export interface NativeChildStatusProjection {
   phase: NativePortablePhase | null;
   projectRoot: string | null;
   message: string | null;
+  builderFailureCount?: number;
 }
 
 export interface NativeChildrenInspection {
@@ -89,6 +90,7 @@ export interface NativeChildrenInspection {
   children: NativeChildStatusProjection[];
   readyChildren: string[];
   allDone: boolean;
+  supervisorStateVersion?: number;
 }
 
 interface WorkspaceSource {

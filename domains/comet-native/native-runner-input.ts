@@ -50,6 +50,8 @@ import {
   readNativeSupervisorState,
   reconnectNativeSupervisorTaskWithState,
   projectNativeSupervisorTask,
+  retryNativeSupervisorBuilder,
+  NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES,
   writeNativeSupervisorState,
   type NativeSupervisorState,
   type NativeSupervisorVerificationEvidence,
@@ -138,6 +140,12 @@ interface RunnerSupervisorBuilderFailureInput {
   reason: string;
 }
 
+interface RunnerSupervisorBuilderRetryInput {
+  kind: 'supervisor-retry-builder';
+  child: string;
+  stateVersion: number;
+}
+
 interface RunnerSupervisorReconnectInput {
   kind: 'supervisor-reconnect';
   child: string;
@@ -185,6 +193,7 @@ export type NativeRunnerInput =
   | RunnerVerifierUnavailableInput
   | RunnerSupervisorBuilderInput
   | RunnerSupervisorBuilderFailureInput
+  | RunnerSupervisorBuilderRetryInput
   | RunnerSupervisorReconnectInput
   | RunnerSupervisorCancelInput
   | RunnerSupervisorVerifierInput
@@ -446,6 +455,17 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
       child: text(input.child, 'Native Supervisor child'),
       runId: text(input.runId, 'Native Supervisor runId'),
       reason: text(input.reason, 'Native Supervisor Builder failure reason'),
+    };
+  }
+  if (input.kind === 'supervisor-retry-builder') {
+    exactKeys(input, ['kind', 'child', 'stateVersion'], 'Native Supervisor Builder retry input');
+    if (!Number.isSafeInteger(input.stateVersion) || (input.stateVersion as number) < 1) {
+      throw new Error('Native Supervisor Builder retry stateVersion is invalid');
+    }
+    return {
+      kind: 'supervisor-retry-builder',
+      child: text(input.child, 'Native Supervisor child'),
+      stateVersion: input.stateVersion as number,
     };
   }
   if (input.kind === 'supervisor-reconnect') {
@@ -794,6 +814,24 @@ export async function validateNativeRunnerInputBoundary(options: {
     return;
   }
 
+  const retryBuilderInput = options.input;
+  if (retryBuilderInput.kind === 'supervisor-retry-builder') {
+    if (!supervisor)
+      throw new Error('Native Supervisor Builder retry requires a current Supervisor state');
+    const child = supervisor.children.find(({ name }) => name === retryBuilderInput.child);
+    if (!child)
+      throw new Error(`Native Supervisor child ${retryBuilderInput.child} does not exist`);
+    if (
+      retryBuilderInput.stateVersion !== supervisor.stateVersion ||
+      child.status !== 'blocked' ||
+      child.task !== null ||
+      (child.builderFailureCount ?? 0) < NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES
+    ) {
+      throw new Error('Native Supervisor Builder retry input is stale or not currently required');
+    }
+    return;
+  }
+
   if (options.input.kind === 'supervisor-checks') {
     const input = options.input;
     if (
@@ -1127,6 +1165,31 @@ export async function applyNativeRunnerInput(options: {
           child: input.child,
           runId: input.runId,
           reason: input.reason,
+        });
+        await writeNativeSupervisorState(options.paths, state);
+        const portableState = await readNativePortableChange(options.paths, options.name);
+        return {
+          state: portableState,
+          supervisorState: state,
+          supervisorTask: null,
+          checks: [],
+          requestChecks: null,
+          verifierDispatch: null,
+          continuation: nativePortableContinuation(portableState),
+        };
+      },
+    );
+  }
+  if (supervisor && input.kind === 'supervisor-retry-builder') {
+    return withNativeMutationLock(
+      options.paths,
+      `retry Native Supervisor Builder task ${input.child}`,
+      async () => {
+        const current = await readNativeSupervisorState(options.paths, options.name);
+        if (!current) throw new Error(`Native Supervisor state is missing for ${options.name}`);
+        const state = retryNativeSupervisorBuilder(current, {
+          child: input.child,
+          expectedStateVersion: input.stateVersion,
         });
         await writeNativeSupervisorState(options.paths, state);
         const portableState = await readNativePortableChange(options.paths, options.name);

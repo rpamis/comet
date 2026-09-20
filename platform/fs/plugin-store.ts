@@ -37,9 +37,11 @@ export interface TextFileStore {
 
 export class JsonFileTextStore implements TextFileStore {
   private readonly filePath: string;
+  private readonly lockOptions: RecoverableFileLockOptions;
 
-  public constructor(filePath: string) {
+  public constructor(filePath: string, lockOptions: RecoverableFileLockOptions = {}) {
     this.filePath = path.resolve(filePath);
+    this.lockOptions = { ...lockOptions };
   }
 
   public async read(): Promise<string | null> {
@@ -59,7 +61,7 @@ export class JsonFileTextStore implements TextFileStore {
   }
 
   public async withLock<T>(operation: () => Promise<T>): Promise<T> {
-    return withRecoverableFileLock(`${this.filePath}.lock`, operation);
+    return withRecoverableFileLock(`${this.filePath}.lock`, operation, this.lockOptions);
   }
 }
 
@@ -211,9 +213,11 @@ class JsonFilePluginStorage {
 
 export class JsonFilePluginStorageStore {
   private readonly root: string;
+  private readonly lockOptions: RecoverableFileLockOptions;
 
-  public constructor(root: string) {
+  public constructor(root: string, lockOptions: RecoverableFileLockOptions = {}) {
     this.root = path.resolve(root);
+    this.lockOptions = { ...lockOptions };
   }
 
   public async open(
@@ -222,7 +226,9 @@ export class JsonFilePluginStorageStore {
     projectId?: string,
   ): Promise<JsonFilePluginStorage> {
     const fileName = `${safeSegment(pluginId)}-${safeSegment(scope)}-${safeSegment(projectId ?? 'global')}.json`;
-    return new JsonFilePluginStorage(new JsonFileTextStore(path.join(this.root, fileName)));
+    return new JsonFilePluginStorage(
+      new JsonFileTextStore(path.join(this.root, fileName), this.lockOptions),
+    );
   }
 }
 

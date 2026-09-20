@@ -30,6 +30,11 @@ import {
   projectNativeArchivedStatus,
   type NativePortableStatusProjection,
 } from './native-portable-status.js';
+import {
+  listNativeWorkspaceFinishJournals,
+  readNativeWorkspaceFinishJournal,
+  type NativeWorkspaceFinishJournal,
+} from './native-workspace-finish.js';
 import { isNativePortableChange, readNativePortableChange } from './native-portable-runtime.js';
 import { projectNativeWorkspace } from './native-workspace.js';
 import type {
@@ -50,6 +55,8 @@ interface NativeWorkspaceSource {
   changes: Array<{ name: string; kind: 'portable' | 'legacy' }>;
   archives?: NativeStatusRecord[];
   archiveErrors?: Array<{ name: string; message: string }>;
+  finishJournals?: NativeWorkspaceFinishJournal[];
+  finishJournalErrors?: Array<{ name: string; message: string }>;
 }
 
 interface NativeStatusCandidate {
@@ -60,6 +67,7 @@ interface NativeStatusCandidate {
   portableStatus: NativePortableStatusProjection | null;
   inspectionError: string | null;
   record?: NativeStatusRecord;
+  finishJournal?: NativeWorkspaceFinishJournal | null;
 }
 
 export type NativeDiscoveredStatusProjection =
@@ -230,6 +238,7 @@ async function discoverSources(
   }
   for (const source of sources) {
     source.archiveErrors = [];
+    source.finishJournalErrors = [];
     source.archives = await listNativeArchivedStatusRecords(
       source.paths,
       (name, message) => source.archiveErrors!.push({ name, message }),
@@ -239,6 +248,15 @@ async function discoverSources(
       source.archives = source.archives.filter(({ state }) => state.name === targetName);
       source.archiveErrors = source.archiveErrors.filter(({ name }) => name === targetName);
     }
+    const onJournalError = (name: string, message: string) =>
+      source.finishJournalErrors!.push({ name, message });
+    source.finishJournals = targetName
+      ? [
+          await readNativeWorkspaceFinishJournal(source.paths, targetName, {
+            onError: onJournalError,
+          }),
+        ].filter((journal): journal is NativeWorkspaceFinishJournal => journal !== null)
+      : await listNativeWorkspaceFinishJournals(source.paths, { onError: onJournalError });
   }
   return sources;
 }
@@ -273,6 +291,12 @@ async function discoverCandidates(
     for (const error of source.archiveErrors ?? []) {
       if (!grouped.has(error.name)) grouped.set(error.name, []);
     }
+    for (const journal of source.finishJournals ?? []) {
+      if (!grouped.has(journal.name)) grouped.set(journal.name, []);
+    }
+    for (const error of source.finishJournalErrors ?? []) {
+      if (!grouped.has(error.name)) grouped.set(error.name, []);
+    }
   }
   const selected: NativeStatusCandidate[] = [];
   for (const [name, nameSources] of [...grouped.entries()].sort(([left], [right]) =>
@@ -280,6 +304,9 @@ async function discoverCandidates(
   )) {
     const candidates = await Promise.all(
       nameSources.map(async ({ source, kind }): Promise<NativeStatusCandidate> => {
+        const journalError = source.finishJournalErrors?.find(
+          ({ name: errorName }) => errorName === name,
+        );
         if (kind === 'portable') {
           try {
             const state = await readNativePortableChange(source.paths, name);
@@ -289,7 +316,10 @@ async function discoverCandidates(
               kind,
               workspace: projectNativePortableWorkspace(source.paths, state, source.gitContext),
               portableStatus: null,
-              inspectionError: null,
+              inspectionError: journalError?.message ?? null,
+              finishJournal:
+                source.finishJournals?.find(({ name: journalName }) => journalName === name) ??
+                null,
             };
           } catch (error) {
             // A stale or partially synced copy in another worktree must not
@@ -330,7 +360,7 @@ async function discoverCandidates(
                   finish: null,
                 },
           portableStatus: null,
-          inspectionError: null,
+          inspectionError: journalError?.message ?? null,
         };
       }),
     );
@@ -338,15 +368,24 @@ async function discoverCandidates(
       (source.archives ?? [])
         .filter(({ state }) => state.name === name)
         .map((record) => {
-          const portableStatus = projectNativeArchivedStatus({ paths: source.paths, ...record });
+          const portableStatus = projectNativeArchivedStatus({
+            paths: source.paths,
+            ...record,
+            finishJournal:
+              source.finishJournals?.find(({ name: journalName }) => journalName === name) ?? null,
+          });
           return {
             source,
             name,
             kind: 'portable' as const,
             workspace: portableStatus.workspace,
             portableStatus,
-            inspectionError: null,
+            inspectionError:
+              source.finishJournalErrors?.find(({ name: errorName }) => errorName === name)
+                ?.message ?? null,
             record,
+            finishJournal:
+              source.finishJournals?.find(({ name: journalName }) => journalName === name) ?? null,
           };
         }),
     );
@@ -373,6 +412,60 @@ async function discoverCandidates(
         },
       });
       continue;
+    }
+    const journalError = sources.flatMap((source) =>
+      (source.finishJournalErrors ?? [])
+        .filter((error) => error.name === name)
+        .map((error) => ({ source, error })),
+    )[0];
+    if (journalError && candidates.length === 0 && archives.length === 0) {
+      selected.push({
+        source: journalError.source,
+        name,
+        kind: 'portable',
+        portableStatus: null,
+        inspectionError: journalError.error.message,
+        workspace: {
+          projectRoot: journalError.source.projectRoot,
+          isolation: 'current',
+          bindingState: 'mismatch',
+          changeBranch: null,
+          targetBranch: null,
+          finish: null,
+          message: journalError.error.message,
+        },
+      });
+      continue;
+    }
+    if (candidates.length === 0 && archives.length === 0) {
+      const journalSource = sources.find((source) =>
+        source.finishJournals?.some(({ name: journalName }) => journalName === name),
+      );
+      const journal = journalSource?.finishJournals?.find(
+        ({ name: journalName }) => journalName === name,
+      );
+      if (journalSource && journal) {
+        selected.push({
+          source: journalSource,
+          name,
+          kind: 'portable',
+          portableStatus: null,
+          inspectionError:
+            journal.result?.message ??
+            'Native workspace finish journal has no matching active or archived change record.',
+          workspace: {
+            projectRoot: journalSource.projectRoot,
+            isolation: 'current',
+            bindingState: 'mismatch',
+            changeBranch: null,
+            targetBranch: null,
+            finish: null,
+            message: journal.result?.message ?? 'Native workspace finish record is orphaned.',
+          },
+          finishJournal: journal,
+        });
+        continue;
+      }
     }
     if (archives.length > 0) {
       for (const candidate of candidates) {
@@ -585,6 +678,7 @@ async function inspectCandidate(
       return projectNativeArchivedStatus({
         paths: candidate.source.paths,
         ...candidate.record,
+        finishJournal: candidate.finishJournal ?? null,
         details,
         cursor: detailsCursor,
       });

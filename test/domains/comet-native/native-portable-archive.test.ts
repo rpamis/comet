@@ -435,6 +435,55 @@ children:
     });
   });
 
+  it('clears a pre-Archive workspace finish journal when verification becomes stale', async () => {
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'native-test@example.com'], { cwd: root });
+    execFileSync('git', ['config', 'user.name', 'Native Test'], { cwd: root });
+    await fs.writeFile(path.join(root, '.gitignore'), '.comet/runtime/\n');
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'seed stale finish recovery'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['switch', '-c', 'comet/stale-finish'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+
+    const state = await archiveReady('stale-finish');
+    await writeNativePortableState(
+      path.join(nativePortableChangeDir(paths, state.name), 'comet-state.yaml'),
+      {
+        ...state,
+        workspace: {
+          isolation: 'branch',
+          change_branch: 'comet/stale-finish',
+          target_branch: 'main',
+          finish: 'keep',
+        },
+      },
+    );
+    await expect(
+      archiveNativePortableChange({
+        paths,
+        name: state.name,
+        hooks: { afterSpecApplied: () => Promise.reject(new Error('pause-before-finish')) },
+      }),
+    ).rejects.toThrow('pause-before-finish');
+    await fs.writeFile(
+      path.join(paths.specsDir, 'sample', 'spec.md'),
+      '# Sample\n\nThe canonical behavior changed after verification.\n',
+    );
+
+    await expect(nativeArchiveCommand([state.name, '--confirmed'], root)).resolves.toMatchObject({
+      exitCode: 0,
+      data: { archived: false, recovery: { action: 'reverify' } },
+    });
+    await expect(
+      fs.stat(path.join(paths.transactionsDir, `workspace-finish-${state.name}.json`)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('resumes after final YAML and after directory move without rerunning verification', async () => {
     for (const hook of ['afterFinalState', 'afterMove'] as const) {
       const name = `resume-${hook === 'afterFinalState' ? 'state' : 'move'}`;

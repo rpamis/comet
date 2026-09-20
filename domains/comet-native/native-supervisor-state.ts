@@ -135,6 +135,12 @@ function assertSupervisorState(value: unknown): asserts value is NativeSuperviso
       throw new Error(`Native Supervisor child ${child.name} summary is invalid`);
     }
     if (
+      child.builderFailureCount !== undefined &&
+      (!Number.isSafeInteger(child.builderFailureCount) || child.builderFailureCount < 0)
+    ) {
+      throw new Error(`Native Supervisor child ${child.name} Builder failure count is invalid`);
+    }
+    if (
       child.projectRoot !== undefined &&
       child.projectRoot !== null &&
       (typeof child.projectRoot !== 'string' || child.projectRoot.length === 0)

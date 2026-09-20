@@ -9,6 +9,7 @@ import {
   writeClassicCheckpoint,
   readClassicDelivery,
   writeClassicDelivery,
+  reauthorizeClassicDelivery,
   invalidateClassicDelivery,
 } from '../../../domains/comet-classic/classic-progress.js';
 import { classicTaskRevision } from '../../../domains/comet-classic/classic-tasks.js';
@@ -300,6 +301,29 @@ describe('Classic structured progress', () => {
     await expect(
       writeClassicDelivery(root, change, { action: 'local', targetBranch: 'main' }, state),
     ).rejects.toThrow('current and bound branch');
+  });
+
+  it('allows an explicit post-archive reauthorization to move delivery to the current branch', async () => {
+    await archivedDelivery('push');
+    await writeFile(path.join(change, '.comet.yaml'), yaml(true) + 'bound_branch: main\n');
+    git('add', '.');
+    git('commit', '-m', 'bind archive branch');
+    git('checkout', '-b', 'release');
+    const reauthorized = await reauthorizeClassicDelivery(
+      root,
+      change,
+      { action: 'push', targetBranch: 'release', remote: 'origin' },
+      { ...state, archived: true },
+    );
+    expect(reauthorized.delivery).toMatchObject({
+      action: 'push',
+      targetBranch: 'release',
+    });
+    expect(reauthorized.verification).toMatchObject({
+      status: 'needsVerification',
+      currentBranch: 'release',
+      archiveCommitted: true,
+    });
   });
 
   it.each([true, false])(

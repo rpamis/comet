@@ -295,7 +295,26 @@ export async function latestInterruptedCommandCheck(
       event.data?.scope === scope ||
       (Array.isArray(event.data?.scopes) && event.data.scopes.includes(scope));
     if (!touchesScope) continue;
-    return validStartedAttempt(projectRoot, event);
+    if (event.type === 'command_check_started') return validStartedAttempt(projectRoot, event);
+    const record = validRecord(projectRoot, event);
+    if (record?.scope === scope && record.provenance === 'runtime' && record.argv?.length) {
+      return {
+        sequence: record.sequence,
+        timestamp: record.timestamp,
+        runId: record.runId,
+        scope: record.scope,
+        argv: [...record.argv],
+        cwd: record.cwd,
+        timeoutMs: record.timeoutMs ?? 300_000,
+        reusable: record.reusable === true,
+        tier: record.tier ?? 'full',
+      };
+    }
+    // Cold recovery fences the evidence but deliberately leaves the exact
+    // Runtime plan discoverable above it. Do not let the fence erase the only
+    // command identity and force Guard to guess a replacement command.
+    if (event.type === 'command_checks_invalidated') continue;
+    return null;
   }
   return null;
 }
@@ -330,7 +349,12 @@ export async function interruptedCommandCheckReason(
   return null;
 }
 
-export async function recoverCommandChecks(root: string, changeDir: string, run: RunState) {
+export async function recoverCommandChecks(
+  root: string,
+  changeDir: string,
+  run: RunState,
+  options: { persistInvalidation?: boolean } = {},
+) {
   const snapshots = new Map<string, Promise<string>>();
   // Pre-manifest records are revalidated with their original binding semantics.
   const inputFingerprint = async (argv: string[], cwd: string) => {
@@ -358,7 +382,23 @@ export async function recoverCommandChecks(root: string, changeDir: string, run:
     else invalidated.push(scope);
   }
   // Persist rejected scopes so restoring old inputs cannot resurrect stale evidence.
-  if (invalidated.length) {
+  const persistInvalidation = options.persistInvalidation ?? true;
+  if (persistInvalidation && invalidated.length) {
+    const events = (await readCheckIndex(changeDir, run.trajectoryRef)).events;
+    // An unrelated event may follow the invalidation (for example a status
+    // checkpoint).  Looking only at the last trajectory entry caused every
+    // subsequent cold recovery to append another identical fence, making the
+    // trajectory grow and slowing recovery.  Reuse any matching fence for this
+    // run that already covers all invalidated scopes.
+    const alreadyRecorded = events.some(
+      (event) =>
+        event.runId === run.runId &&
+        event.type === 'command_checks_invalidated' &&
+        event.data?.reason === 'cold-recovery' &&
+        Array.isArray(event.data.scopes) &&
+        invalidated.every((scope) => (event.data?.scopes as unknown[]).includes(scope)),
+    );
+    if (alreadyRecorded) return scopes;
     await checkEvent(changeDir, run, 'command_checks_invalidated', {
       reason: 'cold-recovery',
       scopes: invalidated,

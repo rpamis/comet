@@ -58,6 +58,24 @@ async function validateActiveChange(projectRoot: string, changeName: string): Pr
   return active.directory;
 }
 
+async function validateSelectableChange(projectRoot: string, changeName: string): Promise<string> {
+  try {
+    return await validateActiveChange(projectRoot, changeName);
+  } catch (activeError) {
+    const archived = await findClassicArchiveChangeDirectory(changeName, projectRoot);
+    if (!archived) throw activeError;
+    const projection = await readClassicState(archived.directory, { migrate: false });
+    const delivery = await readClassicDelivery(projectRoot, archived.directory);
+    if (
+      !projection.classic?.archived ||
+      ['complete', 'local-verified'].includes(delivery.verification.status)
+    ) {
+      throw activeError;
+    }
+    return archived.directory;
+  }
+}
+
 export async function selectCurrentChange(
   projectRoot: string,
   changeName: string,
@@ -82,7 +100,7 @@ export async function selectCurrentChange(
     throw error;
   }
   const selectedProjectRoot = workspace.projectRoot;
-  const changeDir = await validateActiveChange(selectedProjectRoot, changeName);
+  const changeDir = await validateSelectableChange(selectedProjectRoot, changeName);
   const outcome = await resolveBranchBinding(changeDir, {
     heal: true,
     cwd: selectedProjectRoot,

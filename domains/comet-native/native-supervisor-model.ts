@@ -13,6 +13,7 @@ export function assertCommit(value: string, label: string): void {
 }
 
 export const NATIVE_SUPERVISOR_SCHEMA = 'comet.native.supervisor.v2' as const;
+export const NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES = 3;
 
 export type NativeSupervisorChildStatus =
   | 'pending'
@@ -121,6 +122,8 @@ export interface NativeSupervisorChildState {
   task: NativeSupervisorTask | null;
   acceptanceScope?: Array<{ id: string; source: string; text: string }>;
   contractHash?: string;
+  /** Consecutive Builder failures for this child since its last candidate. */
+  builderFailureCount?: number;
 }
 
 export interface NativeSupervisorState {
@@ -245,6 +248,7 @@ export function createNativeSupervisorState(options: {
     task: null,
     acceptanceScope: supervisorAcceptanceScope(options.contract, child.name),
     contractHash: canonicalHash('comet.native.supervisor-contract.v1', options.contract),
+    builderFailureCount: 0,
   }));
   for (const child of children) {
     for (const dependency of child.dependsOn) {
@@ -339,6 +343,7 @@ export function reconcileNativeSupervisorState(options: {
     }
     child.acceptanceScope = nextScope;
     child.contractHash = nextContractHash;
+    child.builderFailureCount ??= 0;
   }
   for (const definition of options.contract.children) {
     if (existing.has(definition.name)) continue;
@@ -362,6 +367,7 @@ export function reconcileNativeSupervisorState(options: {
       task: null,
       acceptanceScope: supervisorAcceptanceScope(options.contract, definition.name),
       contractHash: canonicalHash('comet.native.supervisor-contract.v1', options.contract),
+      builderFailureCount: 0,
     });
   }
   next.stateVersion += 1;
@@ -584,8 +590,11 @@ export function cancelNativeSupervisorTask(
   if (!child?.task || child.task.runId !== options.runId) {
     throw new Error(`Native Supervisor task runId is not current for ${options.child}`);
   }
-  if (child.task.role === 'builder') {
-    child.status = 'ready';
+  const taskRole = child.task.role;
+  if (taskRole === 'builder') {
+    child.builderFailureCount = (child.builderFailureCount ?? 0) + 1;
+    child.status =
+      child.builderFailureCount >= NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES ? 'blocked' : 'ready';
     child.candidateCommit = null;
   } else {
     // A cancelled Verifier keeps the candidate and can be safely redispatched
@@ -594,7 +603,11 @@ export function cancelNativeSupervisorTask(
     child.status = 'needs-reverify';
   }
   child.task = null;
-  child.blocker = options.reason;
+  child.blocker =
+    taskRole === 'builder' &&
+    (child.builderFailureCount ?? 0) >= NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES
+      ? `Builder failed ${child.builderFailureCount} times; explicit Builder retry is required. Last failure: ${options.reason}`
+      : options.reason;
   recordEvent(next, {
     kind: 'task-cancelled',
     child: options.child,
@@ -642,6 +655,7 @@ export function applyNativeSupervisorBuilderResult(
     throw new Error(`Native Supervisor child ${options.child} is not active for Builder result`);
   }
   child.candidateCommit = options.candidateCommit;
+  child.builderFailureCount = 0;
   child.task = null;
   child.blocker = null;
   recordEvent(next, {
@@ -695,7 +709,18 @@ export function applyNativeSupervisorVerifierResult(
     child.verifiedCommit = child.candidateCommit;
     child.blocker = null;
   } else {
-    child.status = 'needs-reverify';
+    if (options.verdict === 'fail') {
+      // A failed candidate is not eligible for Verifier redispatch. Return the
+      // child to Build so the next task creates a fresh candidate; only an
+      // environmental/blocking result may safely retain the old candidate.
+      child.status = 'ready';
+      child.candidateCommit = null;
+      child.verifiedCommit = null;
+      child.verification = null;
+      child.checks = [];
+    } else {
+      child.status = 'needs-reverify';
+    }
     child.blocker = options.evidence.summary;
   }
   recordEvent(next, {
@@ -703,6 +728,45 @@ export function applyNativeSupervisorVerifierResult(
     child: child.name,
     runId: options.runId,
     summary: options.evidence.summary,
+  });
+  next.stateVersion += 1;
+  return next;
+}
+
+export function retryNativeSupervisorBuilder(
+  state: NativeSupervisorState,
+  options: { child: string; expectedStateVersion: number },
+): NativeSupervisorState {
+  if (!Number.isSafeInteger(options.expectedStateVersion) || options.expectedStateVersion < 1) {
+    throw new Error('Native Supervisor Builder retry state version is invalid');
+  }
+  if (state.stateVersion !== options.expectedStateVersion) {
+    throw new Error('Native Supervisor Builder retry input is stale');
+  }
+  const next = cloneState(state);
+  const child = next.children.find(({ name }) => name === options.child);
+  if (!child) throw new Error(`Native Supervisor child ${options.child} does not exist`);
+  if (
+    child.status !== 'blocked' ||
+    child.task !== null ||
+    (child.builderFailureCount ?? 0) < NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES
+  ) {
+    throw new Error(
+      `Native Supervisor child ${options.child} is not waiting for an explicit Builder retry`,
+    );
+  }
+  if (!supervisorDependenciesIntegrated(child.dependsOn, next.children)) {
+    throw new Error(`Native Supervisor child ${options.child} dependencies are not integrated`);
+  }
+  child.status = 'ready';
+  child.candidateCommit = null;
+  child.blocker = null;
+  child.builderFailureCount = 0;
+  recordEvent(next, {
+    kind: 'task-cancelled',
+    child: child.name,
+    runId: null,
+    summary: 'Explicit Builder retry authorized after the failure budget was exhausted',
   });
   next.stateVersion += 1;
   return next;
@@ -766,7 +830,7 @@ export function projectNativeSupervisorChildren(
     dependsOn: [...child.dependsOn],
     covers: child.acceptanceScope?.map(({ id }) => id) ?? [],
     status:
-      child.status === 'ready' &&
+      (child.status === 'ready' || child.status === 'active') &&
       child.blocker &&
       [...state.history].reverse().find((event) => event.child === child.name)?.kind ===
         'task-blocked'
@@ -777,9 +841,11 @@ export function projectNativeSupervisorChildren(
     message: confirmed
       ? child.blocker
       : 'Supervisor acceptance scope is unavailable; restore children.yaml and confirm Shape before continuing',
+    builderFailureCount: child.builderFailureCount ?? 0,
   }));
   return {
     contractHash: null,
+    supervisorStateVersion: state.stateVersion,
     confirmed,
     parentBranch: state.integration.branch,
     children,

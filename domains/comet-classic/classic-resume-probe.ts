@@ -1,5 +1,5 @@
 import { assertClassicLayoutReadable } from './classic-layout.js';
-import { spawn } from 'child_process';
+import { execFile } from 'child_process';
 import { readDir } from '../../platform/fs/file-system.js';
 import type { ClassicDiagnostic } from './classic-diagnostics.js';
 import { readClassicState } from './classic-store.js';
@@ -398,28 +398,28 @@ function relatedEvidence(utterance: string, change: ActiveProbeChange): CometRes
 
 async function gitDirtyFiles(projectRoot: string): Promise<string[]> {
   return new Promise((resolve) => {
-    const child = spawn('git', ['status', '--short', '--untracked-files=all'], {
-      cwd: projectRoot,
-      stdio: ['ignore', 'pipe', 'ignore'],
-      shell: false,
-    });
-    const chunks: Buffer[] = [];
-    child.stdout.on('data', (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-    });
-    child.on('error', () => resolve([]));
-    child.on('exit', (code) => {
-      if (code !== 0) {
-        resolve([]);
-        return;
-      }
-      const dirtyFiles = Buffer.concat(chunks)
-        .toString('utf8')
-        .split(/\r?\n/u)
-        .map((line) => line.trim())
-        .filter(Boolean);
-      resolve(dirtyFiles);
-    });
+    execFile(
+      'git',
+      ['status', '--short', '--untracked-files=all'],
+      {
+        cwd: projectRoot,
+        timeout: 3000,
+        maxBuffer: 2 * 1024 * 1024,
+        windowsHide: true,
+      },
+      (error, stdout) => {
+        if (error || typeof stdout !== 'string') {
+          resolve([]);
+          return;
+        }
+        resolve(
+          stdout
+            .split(/\r?\n/u)
+            .map((line) => line.trim())
+            .filter(Boolean),
+        );
+      },
+    );
   });
 }
 

@@ -31,6 +31,7 @@ import { selectNativeChange } from './native-selection.js';
 import { prepareNativeWorkspace } from './native-workspace-preparation.js';
 import { recordNativeWorkspaceConfig } from './native-workspace-config.js';
 import { type NativeWorkspaceIsolation } from './native-workspace.js';
+import { ensureCometProjectGitignore } from '../workflow-contract/project-gitignore.js';
 import {
   assertNoArguments,
   languageOption,
@@ -189,6 +190,10 @@ export async function nativeNewCommand(
   }
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   await ensureNativeDirectories(paths);
+  // `new` is a complete Native entry point.  Runtime state is created under
+  // `.comet/runtime`; make that state non-input before the first candidate is
+  // checked, even when the project has never run `native init`.
+  await ensureCometProjectGitignore(projectRoot);
   const capabilityDiscovery = await discoverNativeCapability(
     projectRoot,
     config.native.artifact_root,

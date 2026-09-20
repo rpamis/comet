@@ -127,6 +127,75 @@ async function readRecord(root: string, changeDir: string, filename: string): Pr
   return JSON.parse(await readClassicProjectFile(root, target, { label: 'Classic progress' }));
 }
 
+function deliveryReauthorizationFile(root: string, changeIdentity: string): string {
+  const key = createHash('sha256').update(changeIdentity).digest('hex');
+  return path.join(root, '.comet', 'runtime', 'classic-delivery', `${key}.json`);
+}
+
+interface ClassicDeliveryReauthorization {
+  schemaVersion: 1;
+  changeIdentity: string;
+  previousAuthorizationId: string;
+  authorizationId: string;
+  action: ClassicDeliveryInput['action'];
+  targetBranch: string;
+  remote?: string;
+  authorizedRemoteUrl?: string;
+}
+
+async function readClassicDeliveryReauthorization(
+  root: string,
+  changeIdentity: string,
+): Promise<ClassicDeliveryReauthorization | null> {
+  const file = deliveryReauthorizationFile(root, changeIdentity);
+  if (
+    !(await classicProjectTargetExists(root, file, {
+      label: 'Classic delivery reauthorization',
+      expected: 'file',
+    }))
+  )
+    return null;
+  const value = object(
+    JSON.parse(
+      await readClassicProjectFile(root, file, { label: 'Classic delivery reauthorization' }),
+    ),
+  );
+  keys(value, [
+    'schemaVersion',
+    'changeIdentity',
+    'previousAuthorizationId',
+    'authorizationId',
+    'action',
+    'targetBranch',
+    'remote',
+    'authorizedRemoteUrl',
+  ]);
+  if (value.schemaVersion !== 1 || value.changeIdentity !== changeIdentity) {
+    throw new Error('Classic delivery reauthorization identity is invalid');
+  }
+  const input = deliveryInput(
+    {
+      action: value.action,
+      targetBranch: value.targetBranch,
+      ...(value.remote === undefined ? {} : { remote: value.remote }),
+    },
+    true,
+  );
+  if (input.commit !== undefined || input.prUrl !== undefined) {
+    throw new Error('Classic delivery reauthorization cannot change sealed commit or PR evidence');
+  }
+  return {
+    schemaVersion: 1,
+    changeIdentity,
+    previousAuthorizationId: text(value.previousAuthorizationId, 'previousAuthorizationId'),
+    authorizationId: text(value.authorizationId, 'authorizationId'),
+    ...input,
+    ...(value.authorizedRemoteUrl === undefined
+      ? {}
+      : { authorizedRemoteUrl: text(value.authorizedRemoteUrl, 'authorizedRemoteUrl') }),
+  };
+}
+
 export async function readClassicCheckpoint(root: string, changeDir: string, tasksSource: string) {
   const raw = await readRecord(root, changeDir, 'coordination.json');
   if (raw === undefined) return { checkpoint: null, stale: false };
@@ -355,6 +424,24 @@ function remoteUrl(root: string, remote: string, push = false): string | null {
     ['-C', root, 'remote', 'get-url', ...(push ? ['--push'] : []), remote],
     true,
   );
+}
+
+function assertSafeClassicRemoteUrl(value: string): void {
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(value);
+  } catch {
+    /* SCP-style SSH and local paths are not URLs. */
+  }
+  if (
+    parsed &&
+    (parsed.password ||
+      parsed.search ||
+      parsed.hash ||
+      (['http:', 'https:'].includes(parsed.protocol) && parsed.username))
+  ) {
+    throw new Error('Classic delivery remote must not contain credentials');
+  }
 }
 
 function archivePathspecs(root: string, changeDir: string): string[] {
@@ -610,33 +697,51 @@ export async function readClassicDelivery(
   if (value.changeIdentity !== changeIdentity)
     throw new Error('Classic delivery change identity mismatch');
   const id = authorizationId(value);
+  const reauthorization = await readClassicDeliveryReauthorization(root, changeIdentity);
+  if (reauthorization && reauthorization.previousAuthorizationId !== id) {
+    throw new Error('Classic delivery reauthorization is stale for the sealed authorization');
+  }
+  const effectiveInput: ClassicDeliveryInput = reauthorization
+    ? {
+        action: reauthorization.action,
+        targetBranch: reauthorization.targetBranch,
+        ...(reauthorization.remote === undefined ? {} : { remote: reauthorization.remote }),
+      }
+    : input;
+  const effectiveId = reauthorization?.authorizationId ?? id;
   const storedReceipt = await readReceipt(root, changeIdentity);
-  const receipt = storedReceipt?.authorizationId === id ? storedReceipt : null;
+  const receipt = storedReceipt?.authorizationId === effectiveId ? storedReceipt : null;
   if (receipt?.invalidated)
     return {
       delivery: null,
       verification: { status: 'needsAuthorization' as const, invalidated: true },
     };
   for (const field of ['commit', 'prUrl'] as const) {
-    if (field === 'commit' && receipt?.[field] && input[field] && receipt[field] !== input[field])
+    if (
+      field === 'commit' &&
+      receipt?.[field] &&
+      effectiveInput[field] &&
+      receipt[field] !== effectiveInput[field]
+    )
       throw new Error('Classic delivery receipt conflicts with authorization evidence');
-    if (receipt?.[field]) input[field] = receipt[field];
+    if (receipt?.[field]) (effectiveInput as ClassicDeliveryInput)[field] = receipt[field];
   }
-  const authorizedRemoteUrl =
+  const sealedAuthorizedRemoteUrl =
     value.authorizedRemoteUrl === undefined
       ? undefined
       : text(value.authorizedRemoteUrl, 'authorizedRemoteUrl');
+  const authorizedRemoteUrl = reauthorization?.authorizedRemoteUrl ?? sealedAuthorizedRemoteUrl;
   const delivery: ClassicDelivery = {
-    ...input,
+    ...effectiveInput,
     schemaVersion: 1,
     changeIdentity,
-    authorizationId: id,
+    authorizationId: effectiveId,
     ...(authorizedRemoteUrl ? { authorizedRemoteUrl } : {}),
   };
   const currentBranch = localGit(root, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
   const relative = path.relative(root, changeDir).replaceAll('\\', '/');
   let observedCommit: string | null = null;
-  if (!input.commit && state.archived === true) {
+  if (!effectiveInput.commit && state.archived === true) {
     const history = localGit(root, [
       'log',
       '-20',
@@ -654,32 +759,32 @@ export async function readClassicDelivery(
             archiveCommitMatches(root, changeDir, candidate, changeIdentity),
         ) ?? null;
   }
-  const commit = input.commit ?? observedCommit;
+  const commit = effectiveInput.commit ?? observedCommit;
   const commitExists = !!commit && localGit(root, ['cat-file', '-t', commit]) === 'commit';
   const archiveCommitted =
     state.archived === true &&
     commitExists &&
     archiveCommitMatches(root, changeDir, commit!, changeIdentity);
   const localVerified =
-    currentBranch === input.targetBranch &&
-    (!state.bound_branch || state.bound_branch === currentBranch) &&
+    currentBranch === effectiveInput.targetBranch &&
+    (!state.bound_branch || reauthorization !== null || state.bound_branch === currentBranch) &&
     archiveCommitted;
   let remoteVerified = false;
   let prVerified = false;
   let observedPrUrl: string | null = null;
   let remoteStatus: 'notChecked' | 'verified' | 'missing' | 'unavailable' =
-    options.verifyRemote && input.action !== 'local' ? 'unavailable' : 'notChecked';
+    options.verifyRemote && effectiveInput.action !== 'local' ? 'unavailable' : 'notChecked';
   let prStatus: 'notChecked' | 'verified' | 'missing' | 'unavailable' = 'notChecked';
   if (
     options.verifyRemote &&
     localVerified &&
-    input.action !== 'local' &&
-    input.remote &&
+    effectiveInput.action !== 'local' &&
+    effectiveInput.remote &&
     authorizedRemoteUrl &&
-    remoteUrl(root, input.remote) === authorizedRemoteUrl &&
-    remoteUrl(root, input.remote, true) === authorizedRemoteUrl
+    remoteUrl(root, effectiveInput.remote) === authorizedRemoteUrl &&
+    remoteUrl(root, effectiveInput.remote, true) === authorizedRemoteUrl
   ) {
-    const ref = `refs/heads/${input.targetBranch}`;
+    const ref = `refs/heads/${effectiveInput.targetBranch}`;
     const remoteOutput = readCommand(
       root,
       'git',
@@ -696,7 +801,7 @@ export async function readClassicDelivery(
         'protocol.file.allow=always',
         'ls-remote',
         '--refs',
-        input.remote,
+        effectiveInput.remote,
         ref,
       ],
       true,
@@ -704,7 +809,7 @@ export async function readClassicDelivery(
     const lines = remoteOutput?.split(/\r?\n/u) ?? [];
     const match = lines.length === 1 ? /^([a-f0-9]{40}|[a-f0-9]{64})\t(.+)$/u.exec(lines[0]) : null;
     const remoteHead = match?.[2] === ref ? match[1] : null;
-    remoteVerified = !!remoteHead && containsCommit(root, commit!, remoteHead);
+    remoteVerified = !!commit && !!remoteHead && containsCommit(root, commit, remoteHead);
     remoteStatus = remoteVerified
       ? 'verified'
       : remoteOutput === ''
@@ -715,19 +820,21 @@ export async function readClassicDelivery(
           ? 'unavailable'
           : 'missing';
     const repository = repositoryFromRemote(authorizedRemoteUrl);
-    const prUrl = repository && input.prUrl ? verifiedPrUrl(input.prUrl, repository) : null;
+    const prUrl =
+      repository && effectiveInput.prUrl ? verifiedPrUrl(effectiveInput.prUrl, repository) : null;
     const canCheckPr = remoteVerified || remoteOutput === '';
     const matchesPrHead = (pr: Record<string, unknown>) =>
-      pr.headRefName === input.targetBranch &&
+      pr.headRefName === effectiveInput.targetBranch &&
       typeof pr.headRefOid === 'string' &&
       /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(pr.headRefOid) &&
       (remoteVerified
         ? pr.headRefOid === remoteHead && ['OPEN', 'MERGED'].includes(pr.state as string)
         : remoteOutput === '' &&
           pr.state === 'MERGED' &&
-          containsCommit(root, commit!, pr.headRefOid));
-    if (canCheckPr && input.action === 'pr') prStatus = 'unavailable';
-    if (canCheckPr && input.action === 'pr' && prUrl && repository) {
+          !!commit &&
+          containsCommit(root, commit, pr.headRefOid));
+    if (canCheckPr && effectiveInput.action === 'pr') prStatus = 'unavailable';
+    if (canCheckPr && effectiveInput.action === 'pr' && prUrl && repository) {
       const result = readCommand(
         root,
         'gh',
@@ -746,7 +853,12 @@ export async function readClassicDelivery(
         prVerified = false;
         prStatus = 'unavailable';
       }
-    } else if (canCheckPr && input.action === 'pr' && !input.prUrl && repository) {
+    } else if (
+      canCheckPr &&
+      effectiveInput.action === 'pr' &&
+      !effectiveInput.prUrl &&
+      repository
+    ) {
       const result = readCommand(
         root,
         'gh',
@@ -756,7 +868,7 @@ export async function readClassicDelivery(
           '--repo',
           repository,
           '--head',
-          input.targetBranch,
+          effectiveInput.targetBranch,
           '--state',
           'all',
           '--json',
@@ -791,7 +903,8 @@ export async function readClassicDelivery(
     verification: {
       status:
         localVerified &&
-        (input.action === 'local' || (input.action === 'push' ? remoteVerified : prVerified))
+        (effectiveInput.action === 'local' ||
+          (effectiveInput.action === 'push' ? remoteVerified : prVerified))
           ? ('complete' as const)
           : ('needsVerification' as const),
       currentBranch,
@@ -868,20 +981,7 @@ export async function writeClassicDelivery(
     authorizedRemoteUrl = remoteUrl(root, next.remote) ?? undefined;
     if (!authorizedRemoteUrl || remoteUrl(root, next.remote, true) !== authorizedRemoteUrl)
       throw new Error('Classic delivery requires one configured fetch/push remote repository');
-    let parsedRemote: URL | null = null;
-    try {
-      parsedRemote = new URL(authorizedRemoteUrl);
-    } catch {
-      /* SCP-style SSH and local paths are not URLs. */
-    }
-    if (
-      parsedRemote &&
-      (parsedRemote.password ||
-        parsedRemote.search ||
-        parsedRemote.hash ||
-        (['http:', 'https:'].includes(parsedRemote.protocol) && parsedRemote.username))
-    )
-      throw new Error('Classic delivery remote must not contain credentials');
+    assertSafeClassicRemoteUrl(authorizedRemoteUrl);
   }
   if (next.prUrl) {
     const repository = authorizedRemoteUrl ? repositoryFromRemote(authorizedRemoteUrl) : null;
@@ -917,5 +1017,74 @@ export async function writeClassicDelivery(
       ...(record.commit ? { commit: record.commit } : {}),
       ...(record.prUrl ? { prUrl: record.prUrl } : {}),
     });
+  return readClassicDelivery(root, changeDir);
+}
+
+/**
+ * Reauthorize delivery after Archive without mutating the sealed change
+ * directory. The override is bound to the previous authorization id and the
+ * current change identity, so stale or copied records fail closed.
+ */
+export async function reauthorizeClassicDelivery(
+  root: string,
+  changeDir: string,
+  input: unknown,
+  state: Pick<ClassicState, 'phase' | 'verifyResult' | 'archived'>,
+) {
+  if (!state.archived || state.phase !== 'archive' || state.verifyResult !== 'pass') {
+    throw new Error('Classic delivery reauthorization requires an archived verified change');
+  }
+  const current = await currentState(root, changeDir);
+  const changeIdentity = identity(current, changeDir);
+  if (await readClassicDeliveryReauthorization(root, changeIdentity)) {
+    throw new Error('Classic delivery already has a reauthorization; use that authorization');
+  }
+  if ((await readRecord(root, changeDir, 'delivery.json')) === undefined)
+    throw new Error('Classic delivery authorization is missing');
+  const previous = await readClassicDelivery(root, changeDir);
+  if (!previous.delivery) throw new Error('Classic delivery authorization is unavailable');
+  const next = deliveryInput(input);
+  if (next.commit !== undefined || next.prUrl !== undefined) {
+    throw new Error('Classic delivery reauthorization cannot change sealed commit or PR evidence');
+  }
+  if (verifyingGit(root, ['check-ref-format', `refs/heads/${next.targetBranch}`]) === null) {
+    throw new Error('Invalid Classic delivery targetBranch');
+  }
+  if (localGit(root, ['symbolic-ref', '--quiet', '--short', 'HEAD']) !== next.targetBranch) {
+    throw new Error(
+      'Classic delivery reauthorization requires the current branch to match targetBranch',
+    );
+  }
+  let authorizedRemoteUrl: string | undefined;
+  if (next.action !== 'local') {
+    next.remote ??= 'origin';
+    authorizedRemoteUrl = remoteUrl(root, next.remote) ?? undefined;
+    if (!authorizedRemoteUrl || remoteUrl(root, next.remote, true) !== authorizedRemoteUrl) {
+      throw new Error(
+        'Classic delivery reauthorization requires one configured fetch/push remote repository',
+      );
+    }
+    assertSafeClassicRemoteUrl(authorizedRemoteUrl);
+  }
+  const record: ClassicDeliveryReauthorization = {
+    schemaVersion: 1,
+    changeIdentity,
+    previousAuthorizationId: previous.delivery.authorizationId,
+    authorizationId: randomUUID(),
+    ...next,
+    ...(authorizedRemoteUrl ? { authorizedRemoteUrl } : {}),
+  };
+  const directory = path.join(root, '.comet', 'runtime', 'classic-delivery');
+  await ensureClassicProjectDirectory(
+    root,
+    directory,
+    'Classic delivery reauthorization directory',
+  );
+  await writeClassicProjectText(
+    root,
+    deliveryReauthorizationFile(root, changeIdentity),
+    `${JSON.stringify(record, null, 2)}\n`,
+    { label: 'Classic delivery reauthorization' },
+  );
   return readClassicDelivery(root, changeDir);
 }

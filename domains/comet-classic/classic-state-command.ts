@@ -77,6 +77,7 @@ import {
   readClassicCheckpoint,
   writeClassicCheckpoint,
   readClassicDelivery,
+  reauthorizeClassicDelivery,
   writeClassicDelivery,
   invalidateClassicDelivery,
 } from './classic-progress.js';
@@ -993,7 +994,7 @@ async function next(output: CommandOutput, name: string): Promise<void> {
     output.stdout.push(
       complete
         ? 'NEXT: done'
-        : 'NEXT: delivery\nSKILL: comet-archive\nInspect authorized delivery and actual results; do not archive again.',
+        : `NEXT: delivery\nSKILL: comet-archive\nInspect authorized delivery and actual results; do not archive again. If the target branch or remote must change after Archive, record a new authorization with: comet state delivery ${name} --reauthorize --file <json>.`,
     );
     return;
   }
@@ -1162,22 +1163,25 @@ async function progressCommand(
   kind: 'checkpoint' | 'delivery',
   args: string[],
 ) {
+  const reauthorize = kind === 'delivery' && args[1] === '--reauthorize';
+  const inputIndex = reauthorize ? 3 : 2;
   if (
     args.length !== 1 &&
     !(args.length === 3 && args[1] === '--file') &&
+    !(reauthorize && args.length === 4 && args[2] === '--file') &&
     !(kind === 'delivery' && args.length === 2 && args[1] === '--verify')
   )
     fail(
-      `Usage: comet state ${kind} <change-name> [--file <json>${kind === 'delivery' ? ' | --verify' : ''}]`,
+      `Usage: comet state ${kind} <change-name> [--file <json>${kind === 'delivery' ? ' | --verify | --reauthorize --file <json>' : ''}]`,
     );
   validateChangeName(args[0]);
   const { directory, file } = await stateFile(args[0]);
   const root = classicCommandProjectRoot();
-  const write = args[1] === '--file';
+  const write = args[1] === '--file' || reauthorize;
   if (write && kind === 'delivery') {
-    const inputPath = path.isAbsolute(args[2])
-      ? path.resolve(args[2])
-      : path.resolve(root, args[2]);
+    const inputPath = path.isAbsolute(args[inputIndex])
+      ? path.resolve(args[inputIndex])
+      : path.resolve(root, args[inputIndex]);
     if (samePath(inputPath, path.resolve(path.join(directory, '.comet', 'delivery.json'))))
       fail(
         'ERROR: delivery input file collides with the Runtime record path <change-dir>/.comet/delivery.json; save the input outside the change directory',
@@ -1187,7 +1191,7 @@ async function progressCommand(
     const state = sparseClassicState((await readDocument(file)).toJS() as Record<string, unknown>);
     const input = write
       ? JSON.parse(
-          await readClassicProjectFile(root, args[2], {
+          await readClassicProjectFile(root, args[inputIndex], {
             label: 'Classic progress input',
           }),
         )
@@ -1203,7 +1207,9 @@ async function progressCommand(
         : await readClassicCheckpoint(root, directory, source);
     } else {
       output.data = write
-        ? await writeClassicDelivery(root, directory, input, state)
+        ? reauthorize
+          ? await reauthorizeClassicDelivery(root, directory, input, state)
+          : await writeClassicDelivery(root, directory, input, state)
         : await readClassicDelivery(root, directory, { verifyRemote: args[1] === '--verify' });
     }
     output.stdout.push(
@@ -1212,14 +1218,16 @@ async function progressCommand(
   };
   if (write) {
     await assertStateCommandWritable('set');
-    const binding = await resolveBranchBinding(directory, {
-      heal: false,
-      cwd: classicCommandInvocationCwd(),
-    });
-    if (binding.status === 'drift' || binding.status === 'unbound-detached')
-      fail(
-        'ERROR: progress update requires the bound branch; inspect the workspace before retrying',
-      );
+    if (!reauthorize) {
+      const binding = await resolveBranchBinding(directory, {
+        heal: false,
+        cwd: classicCommandInvocationCwd(),
+      });
+      if (binding.status === 'drift' || binding.status === 'unbound-detached')
+        fail(
+          'ERROR: progress update requires the bound branch; inspect the workspace before retrying',
+        );
+    }
     await withClassicStateLock(directory, operation);
   } else await operation();
   if (
@@ -1591,7 +1599,11 @@ async function recover(
   const workflow = classic.workflow;
   const locale = classicLocale(classic.language);
   const evidenceScopes = projection.run
-    ? await recoverCommandChecks(classicCommandProjectRoot(), directory, projection.run)
+    ? await recoverCommandChecks(classicCommandProjectRoot(), directory, projection.run, {
+        // Archive trajectories are sealed evidence. Recovery may inspect their
+        // exact plans but must never append a new invalidation event to them.
+        persistInvalidation: !classic.archived,
+      })
     : { build: 'rerun-required', verify: 'rerun-required' };
   const checkpoint = path.join(directory, '.comet', 'subagent-progress.md');
   const context = await classicRecoveryContext(

@@ -1,5 +1,6 @@
 export {
   NATIVE_SUPERVISOR_SCHEMA,
+  NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES,
   applyNativeSupervisorBuilderResult,
   applyNativeSupervisorVerifierResult,
   blockNativeSupervisorTask,
@@ -11,6 +12,7 @@ export {
   projectNativeSupervisorChildren,
   projectNativeSupervisorTask,
   reconcileNativeSupervisorState,
+  retryNativeSupervisorBuilder,
   reconnectNativeSupervisorTask,
   reconnectNativeSupervisorTaskWithState,
   type NativeSupervisorCheckExecutionState,

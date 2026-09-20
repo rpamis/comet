@@ -76,6 +76,36 @@ test('remote memory failures reject explicit operations but leave automatic cont
   }
 });
 
+test('best-effort context does not reconcile or persist plugin state', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-context-hook-'));
+  const projectRoot = path.join(root, 'project');
+  const stateRoot = path.join(root, 'plugins');
+  await fs.mkdir(projectRoot);
+  try {
+    const bridge = await createProductionCometPluginBridge({
+      projectRoot,
+      projectId: 'hook-context-project',
+      homeDirectory: root,
+      stateRoot,
+      lockTimeoutMs: 750,
+      bestEffortContext: true,
+      memoryProviderConfig: {
+        provider: 'local',
+        profileCharLimit: 2000,
+        taskContextCharLimit: 6000,
+      },
+    });
+
+    await expect(bridge.collectContext({ task: 'optional Hook context' })).resolves.toEqual([]);
+    await expect(fs.access(path.join(stateRoot, 'state.json'))).rejects.toThrow();
+    await expect(
+      fs.access(path.join(stateRoot, 'storage', 'comet.agent-context-user-global.json')),
+    ).rejects.toThrow();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 function createDefaultCometPluginBridge(
   options: Parameters<typeof createProductionCometPluginBridge>[0],
 ): ReturnType<typeof createProductionCometPluginBridge> {

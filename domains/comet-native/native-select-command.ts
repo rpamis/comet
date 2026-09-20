@@ -1,5 +1,4 @@
 import { inspectDiscoveredNativeStatus } from './native-status-discovery.js';
-import { nativeProjectPaths } from './native-paths.js';
 import { selectNativeChange } from './native-selection.js';
 import {
   assertNoArguments,

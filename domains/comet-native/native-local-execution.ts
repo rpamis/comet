@@ -377,6 +377,37 @@ export async function readNativeLocalExecution(
   return parseNativeLocalExecution(value);
 }
 
+/**
+ * Return the currently running Verifier execution identity only when the
+ * local overlay is bound to this exact portable state and candidate. Status,
+ * Show, and Next must not print an identity from a stale or completed run.
+ */
+export function nativeVerifierExecutionRefForState(
+  state: NativePortableState,
+  local: NativeLocalExecutionState | null,
+): string | undefined {
+  const execution = local?.execution;
+  if (
+    state.phase !== 'verify' ||
+    state.status !== 'active' ||
+    state.loop.next_action !== 'await-verifier-result' ||
+    state.builder_handoff?.candidate_id === undefined ||
+    state.builder_handoff?.candidate_id === null ||
+    local === null ||
+    local.change !== state.name ||
+    local.basedOnStateVersion !== state.state_version ||
+    local.candidateId !== state.builder_handoff.candidate_id ||
+    execution == null ||
+    execution.stage !== 'verifying' ||
+    execution.actor !== 'verifier' ||
+    execution.status !== 'running' ||
+    execution.executionId === null
+  ) {
+    return undefined;
+  }
+  return execution.executionId;
+}
+
 export async function writeNativeLocalExecution(
   file: string,
   state: NativeLocalExecutionState,

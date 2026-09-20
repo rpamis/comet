@@ -227,6 +227,33 @@ export async function confirmNativePortableShape(options: {
           });
         }
       }
+      // Reconcile or create the Supervisor state before touching the portable
+      // state or local execution overlay. Contract removals and immutable
+      // integrated-child changes can throw; validating them first prevents a
+      // confirmed Shape from leaving a half-written portable plan behind.
+      const supervisorStateToWrite =
+        children?.contract.schema === 'comet.native.children.v2' &&
+        supervisorTargetBranch &&
+        supervisorTargetCommit
+          ? existingSupervisor
+            ? reconcileNativeSupervisorState({
+                state: existingSupervisor,
+                contract: children.contract,
+              })
+            : supervisorWorkspace
+              ? createNativeSupervisorState({
+                  parent: next.name,
+                  targetBranch: supervisorTargetBranch,
+                  targetCommit: supervisorTargetCommit,
+                  integrationBranch: supervisorWorkspace.binding.changeBranch!,
+                  integrationWorktree: supervisorWorkspace.projectRoot,
+                  contract: children.contract,
+                })
+              : null
+          : null;
+      if (children?.contract.schema === 'comet.native.children.v2' && !supervisorStateToWrite) {
+        throw new Error('Native Supervisor integration state is unavailable');
+      }
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
@@ -237,28 +264,8 @@ export async function confirmNativePortableShape(options: {
         }),
         { containedRoot: options.paths.runtimeDir },
       );
-      if (
-        children?.contract.schema === 'comet.native.children.v2' &&
-        supervisorTargetBranch &&
-        supervisorTargetCommit
-      ) {
-        const supervisorState = existingSupervisor
-          ? reconcileNativeSupervisorState({
-              state: existingSupervisor,
-              contract: children.contract,
-            })
-          : supervisorWorkspace
-            ? createNativeSupervisorState({
-                parent: written.name,
-                targetBranch: supervisorTargetBranch,
-                targetCommit: supervisorTargetCommit,
-                integrationBranch: supervisorWorkspace.binding.changeBranch!,
-                integrationWorktree: supervisorWorkspace.projectRoot,
-                contract: children.contract,
-              })
-            : null;
-        if (!supervisorState) throw new Error('Native Supervisor integration state is unavailable');
-        await writeNativeSupervisorState(options.paths, supervisorState);
+      if (supervisorStateToWrite) {
+        await writeNativeSupervisorState(options.paths, supervisorStateToWrite);
       }
       return written;
     },

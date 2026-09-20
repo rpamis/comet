@@ -11,6 +11,7 @@ import {
   executeCommandCheck,
   usableCommandCheck,
   evaluateCommandCheck,
+  recoverCommandChecks,
 } from '../../../domains/comet-classic/classic-command-checks.js';
 import {
   checkEnvironmentFingerprint,
@@ -309,6 +310,30 @@ describe('Classic command check evidence', () => {
     await fs.rm(added);
     expect(await usableCommandCheck(projectRoot, changeDir, run, 'verify')).not.toBeNull();
     expect(recorded.scope).toBe('verify');
+  });
+
+  it('does not append duplicate cold-recovery fences after an unrelated checkpoint', async () => {
+    await expect(recoverCommandChecks(projectRoot, changeDir, run)).resolves.toEqual({
+      build: 'rerun-required',
+      verify: 'rerun-required',
+    });
+    const first = await readTrajectory(changeDir, run.trajectoryRef);
+    expect(first.filter((event) => event.type === 'command_checks_invalidated')).toHaveLength(1);
+
+    await appendTrajectory(changeDir, run.trajectoryRef, {
+      sequence: first.at(-1)!.sequence + 1,
+      timestamp: new Date().toISOString(),
+      runId: run.runId,
+      type: 'checkpoint',
+      data: { note: 'unrelated progress checkpoint' },
+    });
+    await expect(recoverCommandChecks(projectRoot, changeDir, run)).resolves.toEqual({
+      build: 'rerun-required',
+      verify: 'rerun-required',
+    });
+
+    const second = await readTrajectory(changeDir, run.trajectoryRef);
+    expect(second.filter((event) => event.type === 'command_checks_invalidated')).toHaveLength(1);
   });
 
   it('revalidates pre-manifest evidence with its original binding semantics', async () => {

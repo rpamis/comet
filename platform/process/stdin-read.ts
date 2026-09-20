@@ -1,39 +1,33 @@
-import { readSync } from 'node:fs';
-import { Worker } from 'node:worker_threads';
+import { spawnSync } from 'node:child_process';
 
 /**
  * Synchronous stdin read with a hard timeout. Hook entry points run before any
- * async machinery exists, and a host that spawns the hook but never writes or
- * closes the pipe would otherwise block `readFileSync(0)` forever — hanging every
- * tool call. The read happens on a detached worker thread; the main thread waits
- * on a shared flag for at most `timeoutMs` and proceeds without input on timeout.
+ * async machinery exists. A separate child owns the blocking read so the
+ * timeout can terminate the reader itself; an unref'd Worker cannot be
+ * cancelled while it is blocked in fs.readSync and leaves the hook process
+ * alive after the caller has already received a timeout.
  */
-const DEFAULT_STDIN_TIMEOUT_MS = 10_000;
+// Hook hosts normally write their JSON payload immediately. Two seconds is a
+// generous scheduling window while keeping a broken or silent pipe from
+// adding the old ten-second pause to every guarded tool call.
+const DEFAULT_STDIN_TIMEOUT_MS = 2_000;
 const STDIN_BYTE_LIMIT = 1024 * 1024;
 
-// Layout: [length, flag] as Int32 words, then raw bytes.
-const HEADER_BYTES = 8;
-const FLAG_PENDING = 0;
-const FLAG_DONE = 1;
-
-const READ_STDIN_WORKER = `
-const { workerData } = require('node:worker_threads');
+const READ_STDIN_CHILD = `
 const fs = require('node:fs');
-const view = new Int32Array(workerData.buffer, 0, 2);
-const bytes = new Uint8Array(workerData.buffer, ${HEADER_BYTES});
+const limit = ${STDIN_BYTE_LIMIT};
+const chunks = [];
 let length = 0;
 const chunk = Buffer.alloc(65536);
 try {
-  while (length < bytes.length) {
-    const read = fs.readSync(0, chunk, 0, Math.min(chunk.length, bytes.length - length), null);
+  while (length < limit) {
+    const read = fs.readSync(0, chunk, 0, Math.min(chunk.length, limit - length), null);
     if (read === 0) break;
-    chunk.copy(bytes, length, 0, read);
+    chunks.push(Buffer.from(chunk.subarray(0, read)));
     length += read;
   }
 } catch {}
-view[0] = length;
-Atomics.store(view, 1, ${FLAG_DONE});
-Atomics.notify(view, 1);
+process.stdout.write(Buffer.concat(chunks, length));
 `;
 
 export interface StdinReadResult {
@@ -43,35 +37,18 @@ export interface StdinReadResult {
 
 export function readStdinTextWithTimeout(timeoutMs = DEFAULT_STDIN_TIMEOUT_MS): StdinReadResult {
   if (process.stdin.isTTY) return { text: '' };
-  const buffer = new SharedArrayBuffer(HEADER_BYTES + STDIN_BYTE_LIMIT);
-  const view = new Int32Array(buffer, 0, 2);
-  const bytes = new Uint8Array(buffer, HEADER_BYTES);
-  let worker: Worker;
-  try {
-    worker = new Worker(READ_STDIN_WORKER, { eval: true, workerData: { buffer } });
-  } catch {
-    // A worker cannot start in this environment; fall back to the direct read.
-    return { text: readStdinDirect(bytes) };
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 1) return { text: null };
+  const result = spawnSync(process.execPath, ['-e', READ_STDIN_CHILD], {
+    stdio: ['inherit', 'pipe', 'ignore'],
+    timeout: Math.ceil(timeoutMs),
+    maxBuffer: STDIN_BYTE_LIMIT,
+    encoding: 'buffer',
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) {
+    // A timeout or an unavailable child must not fall back to a direct read:
+    // the host may still hold the pipe open, which was the original hang.
+    return { text: null };
   }
-  worker.unref();
-  const waitResult = Atomics.wait(view, 1, FLAG_PENDING, timeoutMs);
-  if (waitResult === 'timed-out') return { text: null };
-  const length = Atomics.load(view, 0);
-  return { text: Buffer.from(bytes.buffer, bytes.byteOffset, length).toString('utf8') };
-}
-
-function readStdinDirect(bytes: Uint8Array): string {
-  let length = 0;
-  const chunk = Buffer.alloc(64 * 1024);
-  try {
-    while (length < bytes.length) {
-      const read = readSync(0, chunk, 0, Math.min(chunk.length, bytes.length - length), null);
-      if (read === 0) break;
-      chunk.copy(bytes, length, 0, read);
-      length += read;
-    }
-  } catch {
-    // Reads past a closed pipe or on a broken descriptor leave whatever arrived.
-  }
-  return Buffer.from(bytes.buffer, bytes.byteOffset, length).toString('utf8');
+  return { text: result.stdout.toString('utf8') };
 }

@@ -8,11 +8,13 @@ import { readNativeSupervisorState, type NativeSupervisorState } from './native-
 import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
+import { nativeVerifierExecutionRefForState } from './native-local-execution.js';
 import { nativePortableChangeDir, readNativePortableRuntime } from './native-portable-runtime.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
 import type { NativeLocalExecutionState, NativePortableState } from './native-portable-types.js';
 import { nativeChangeArtifactPaths } from './native-paths.js';
 import type { NativeProjectPaths, NativeChangeArtifactPaths } from './native-types.js';
+import type { NativeWorkspaceFinishJournal } from './native-workspace-finish.js';
 
 export interface NativePortableAcceptanceCounts {
   total: number;
@@ -270,9 +272,42 @@ export function projectNativeArchivedStatus(options: {
   file: string;
   details?: boolean;
   cursor?: string;
+  finishJournal?: NativeWorkspaceFinishJournal | null;
 }): NativePortableStatusProjection {
   const { state, paths } = options;
+  const finishJournal = options.finishJournal ?? null;
   const summary = nativePortableStateSummary(state);
+  const finishBlocked = finishJournal !== null;
+  const finishMessage =
+    finishJournal?.result?.message ??
+    'Native Archive completed, but workspace finish is still pending; retry the recorded finish command.';
+  const continuation = finishBlocked
+    ? {
+        ...nativePortableContinuation(state),
+        disposition: 'blocked' as const,
+        action: 'archive' as const,
+        commandArgs: finishJournal?.result?.recoveryArgs ?? [
+          'comet',
+          'native',
+          'archive',
+          state.name,
+          '--confirmed',
+        ],
+        requiredInputs: [],
+        inputOptions: [],
+        userCommunication: {
+          required: true,
+          message: finishMessage,
+          suggestedReply: 'Retry workspace finish',
+          agentInstruction:
+            'Retry the recorded Native workspace finish command after resolving the reported Git blocker; do not treat this archived change as complete until it succeeds.',
+        },
+        runnerAction: {
+          ...nativePortableContinuation(state).runnerAction,
+          kind: 'none' as const,
+        },
+      }
+    : nativePortableContinuation(state);
   const all = options.details ? detailItems(state, null, []) : [];
   const offset = detailsOffset(options.cursor, state.state_version, 0);
   const items = all.slice(offset, offset + 32);
@@ -285,7 +320,7 @@ export function projectNativeArchivedStatus(options: {
     name: state.name,
     artifacts: nativeChangeArtifactPaths(paths, state.name),
     phase: state.phase,
-    status: state.status,
+    status: finishBlocked ? 'blocked' : state.status,
     stateVersion: state.state_version,
     archived: true,
     archiveRef: path.relative(paths.projectRoot, options.file).replaceAll('\\', '/'),
@@ -293,7 +328,17 @@ export function projectNativeArchivedStatus(options: {
     acceptance: counts(state),
     unresolvedAcceptanceIds: summary.unresolved_acceptance_ids,
     verificationResult: state.verification_result,
-    blockers: summary.blockers,
+    blockers: finishBlocked
+      ? [
+          ...summary.blockers,
+          {
+            owner: 'runtime' as const,
+            reason: finishMessage,
+            acceptance_ids: [],
+            resolution_action: 'wait-external' as const,
+          },
+        ]
+      : summary.blockers,
     workspace: {
       projectRoot: paths.projectRoot,
       isolation: state.workspace.isolation,
@@ -304,7 +349,7 @@ export function projectNativeArchivedStatus(options: {
       message: null,
     },
     localExecution: { status: 'not-expected', operation: null },
-    continuation: nativePortableContinuation(state),
+    continuation,
     ...(options.details
       ? {
           details: {
@@ -412,6 +457,7 @@ export async function inspectNativePortableStatus(options: {
       }
     : projectNativePortableWorkspace(options.paths, runtime.state, options.gitContext);
   const continuation = nativePortableContinuation(runtime.state, children, {
+    verifierExecutionRef: nativeVerifierExecutionRefForState(runtime.state, runtime.local),
     ...(runtime.local
       ? {
           verificationCheckPlans: nativePortableCheckPlansFromLocal(
@@ -438,22 +484,31 @@ export async function inspectNativePortableStatus(options: {
   const supervisorRoots = supervisor ? supervisorPublicRoots(options.paths, supervisor) : [];
   const supervisorSummary = supervisor
     ? (() => {
+        const projectedStatuses = new Map(
+          children?.children.map((child) => [child.name, child.status]) ?? [],
+        );
+        const effectiveStatus = (child: NativeSupervisorState['children'][number]) =>
+          projectedStatuses.get(child.name) ?? child.status;
         const waiting = supervisor.children.filter(
-          ({ status }) => status === 'pending' || status === 'ready',
+          (child) => effectiveStatus(child) === 'pending' || effectiveStatus(child) === 'ready',
         ).length;
         const working = supervisor.children.filter(
-          ({ status }) => status === 'active' || status === 'verified',
+          (child) => effectiveStatus(child) === 'active' || effectiveStatus(child) === 'verified',
         ).length;
         const integrated = supervisor.children.filter(
-          ({ status }) => status === 'integrated' || status === 'archived',
+          (child) =>
+            effectiveStatus(child) === 'integrated' || effectiveStatus(child) === 'archived',
         ).length;
         const blocked = supervisor.children.filter(
-          ({ status }) => status === 'blocked' || status === 'needs-reverify',
+          (child) =>
+            effectiveStatus(child) === 'blocked' || effectiveStatus(child) === 'needs-reverify',
         ).length;
         const active = supervisor.children
           .filter(
-            ({ status }) =>
-              status === 'active' || status === 'blocked' || status === 'needs-reverify',
+            (child) =>
+              effectiveStatus(child) === 'active' ||
+              effectiveStatus(child) === 'blocked' ||
+              effectiveStatus(child) === 'needs-reverify',
           )
           .slice(0, 16)
           .map((child) => ({

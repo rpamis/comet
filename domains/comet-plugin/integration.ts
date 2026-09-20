@@ -28,7 +28,11 @@ import {
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { resolveProjectName } from '../../platform/paths/project-identity.js';
 import { defaultProjectKnowledgeStorageRoot } from '../../platform/paths/project-knowledge-storage.js';
-import { JsonFilePluginStorageStore, JsonFileTextStore } from '../../platform/fs/plugin-store.js';
+import {
+  JsonFilePluginStorageStore,
+  JsonFileTextStore,
+  type RecoverableFileLockOptions,
+} from '../../platform/fs/plugin-store.js';
 import { JsonPluginStateStore, PluginRuntime } from './plugin-runtime.js';
 import type { PluginScopeContext } from './types.js';
 import {
@@ -38,6 +42,7 @@ import {
   contextExpansionId,
   parseContextExpansionId,
   StorageAgentContextApplicationStore,
+  MemoryAgentContextApplicationStore,
   StorageAgentExperienceJournalStore,
   type AgentContextApplicationStore,
   type AgentContextApplicationRecord,
@@ -77,6 +82,10 @@ export interface CometPluginBridgeOptions {
   readonly onMemoryReviewNotice?: (notice: string) => void | Promise<void>;
   /** Optional host-owned adapter for nonblocking project knowledge review. */
   readonly runProjectKnowledgeReview?: ProjectKnowledgeSemanticReviewer;
+  /** Optional shorter lock budget for best-effort context injection. */
+  readonly lockTimeoutMs?: number;
+  /** Hook context is optional; avoid durable writes and reflection replay on this path. */
+  readonly bestEffortContext?: boolean;
 }
 
 export interface CometPluginContextRequest {
@@ -103,6 +112,7 @@ export class CometPluginBridge {
     private readonly language: MemoryLanguage = 'zh-CN',
     private readonly contextDirector: ContextDirector = new ContextDirector(),
     private readonly applicationStore?: AgentContextApplicationStore,
+    private readonly persistContextApplications = true,
   ) {}
 
   public get pluginRuntime(): PluginRuntime {
@@ -209,6 +219,7 @@ export class CometPluginBridge {
   private async recordContextApplications(
     _applications: readonly AgentContextApplicationRecord[],
   ): Promise<void> {
+    if (!this.persistContextApplications) return;
     await this.flushContextApplicationOutbox();
   }
 
@@ -427,12 +438,18 @@ export async function createDefaultCometPluginBridge(
     options.stateRoot ?? path.join(homeDirectory, '.comet', 'plugins'),
   );
   const projectRoot = path.resolve(options.projectRoot);
+  const bestEffortContext = options.bestEffortContext === true;
+  const contextLockTimeoutMs = bestEffortContext
+    ? Math.max(100, Math.min(options.lockTimeoutMs ?? 750, 750))
+    : options.lockTimeoutMs;
   const projectName = resolveProjectName(projectRoot);
   const language = options.language ?? (await resolveProjectMemoryLanguage(projectRoot));
   const projectPolicy = await resolveProjectMemoryPolicy(projectRoot);
   const memoryProviderConfig =
     options.memoryProviderConfig ?? (await readPersonalMemoryConfig(homeDirectory));
-  const storage = new JsonFilePluginStorageStore(path.join(stateRoot, 'storage'));
+  const lockOptions: RecoverableFileLockOptions =
+    contextLockTimeoutMs === undefined ? {} : { timeoutMs: contextLockTimeoutMs };
+  const storage = new JsonFilePluginStorageStore(path.join(stateRoot, 'storage'), lockOptions);
   const userJournal = new AgentExperienceJournal(
     new StorageAgentExperienceJournalStore(await storage.open('comet.agent-learning', 'user')),
   );
@@ -441,18 +458,45 @@ export async function createDefaultCometPluginBridge(
       await storage.open('comet.agent-learning', 'project', options.projectId),
     ),
   );
-  const applicationStore = new StorageAgentContextApplicationStore(
-    await storage.open('comet.agent-context', 'user'),
-  );
+  const applicationStore: AgentContextApplicationStore = bestEffortContext
+    ? new MemoryAgentContextApplicationStore()
+    : new StorageAgentContextApplicationStore(await storage.open('comet.agent-context', 'user'));
+  const effectiveMemoryProviderConfig =
+    bestEffortContext && memoryProviderConfig.provider === 'remote' && memoryProviderConfig.remote
+      ? {
+          ...memoryProviderConfig,
+          remote: {
+            ...memoryProviderConfig.remote,
+            timeoutMs: Math.min(
+              memoryProviderConfig.remote.timeoutMs ?? contextLockTimeoutMs ?? 750,
+              contextLockTimeoutMs ?? 750,
+            ),
+          },
+        }
+      : memoryProviderConfig;
+  const knowledgeConfig = await resolveProjectKnowledgeConfig(projectRoot);
+  const effectiveKnowledgeConfig =
+    bestEffortContext && knowledgeConfig.provider === 'remote' && knowledgeConfig.remote
+      ? {
+          ...knowledgeConfig,
+          remote: {
+            ...knowledgeConfig.remote,
+            timeout_ms: Math.min(knowledgeConfig.remote.timeout_ms, contextLockTimeoutMs ?? 750),
+          },
+        }
+      : knowledgeConfig;
   const contextDirector = new ContextDirector({
     applications: applicationStore,
-    defaultCharBudget: memoryProviderConfig.taskContextCharLimit,
+    defaultCharBudget: effectiveMemoryProviderConfig.taskContextCharLimit,
   });
   const runtime = new PluginRuntime({
     cometVersion: options.cometVersion ?? getCurrentVersion(),
-    store: new JsonPluginStateStore(new JsonFileTextStore(path.join(stateRoot, 'state.json'))),
+    store: new JsonPluginStateStore(
+      new JsonFileTextStore(path.join(stateRoot, 'state.json'), lockOptions),
+    ),
     storage,
     journals: { user: userJournal, project: projectJournal },
+    replayPendingLearningOnContext: !bestEffortContext,
     ...(options.scheduleLearning === undefined
       ? {}
       : { scheduleLearning: options.scheduleLearning }),
@@ -476,23 +520,26 @@ export async function createDefaultCometPluginBridge(
               (application.scope === 'user' || application.projectId === options.projectId),
           ),
         createService: () => {
-          if (memoryProviderConfig.provider === 'remote') {
-            if (memoryProviderConfig.remote === undefined) {
+          if (effectiveMemoryProviderConfig.provider === 'remote') {
+            if (effectiveMemoryProviderConfig.remote === undefined) {
               throw new Error('Remote Provider endpoint is not configured');
             }
             return new RemotePersonalMemoryService({
-              ...memoryProviderConfig.remote,
-              profileCharLimit: memoryProviderConfig.profileCharLimit,
-              taskContextCharLimit: memoryProviderConfig.taskContextCharLimit,
+              ...effectiveMemoryProviderConfig.remote,
+              profileCharLimit: effectiveMemoryProviderConfig.profileCharLimit,
+              taskContextCharLimit: effectiveMemoryProviderConfig.taskContextCharLimit,
               projectKey: options.projectId,
             });
           }
           return new PersonalMemoryService({
             language,
-            profileMaxChars: memoryProviderConfig.profileCharLimit,
-            taskMaxChars: memoryProviderConfig.taskContextCharLimit,
+            profileMaxChars: effectiveMemoryProviderConfig.profileCharLimit,
+            taskMaxChars: effectiveMemoryProviderConfig.taskContextCharLimit,
             repository: new FileMemoryRepository(memoryRoot, {
               git: new GitMemorySync(memoryRoot),
+              ...(contextLockTimeoutMs === undefined
+                ? {}
+                : { lockTimeoutMs: contextLockTimeoutMs }),
               projectKey: options.projectId,
               projectName,
             }),
@@ -501,7 +548,7 @@ export async function createDefaultCometPluginBridge(
       }),
       createProjectKnowledgePluginDescriptor({
         projectRoot,
-        knowledgeConfig: await resolveProjectKnowledgeConfig(projectRoot),
+        knowledgeConfig: effectiveKnowledgeConfig,
         updateKnowledgeConfig: async (knowledge) => {
           const current = await readWorkflowProjectConfig(projectRoot);
           if (current === null) throw new Error('Project config is not available');
@@ -528,15 +575,16 @@ export async function createDefaultCometPluginBridge(
       }),
     ],
   });
-  await runtime.reconcileFirstParty();
+  if (!bestEffortContext) await runtime.reconcileFirstParty();
   const bridge = new CometPluginBridge(
     runtime,
     options.projectId,
     language,
     contextDirector,
-    applicationStore,
+    bestEffortContext ? undefined : applicationStore,
+    !bestEffortContext,
   );
-  await bridge.flushContextApplicationOutbox();
+  if (!bestEffortContext) await bridge.flushContextApplicationOutbox();
   return bridge;
 }
 

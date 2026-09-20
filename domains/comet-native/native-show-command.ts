@@ -8,6 +8,7 @@ import { inspectNativeChildren } from './native-children.js';
 import { readNativeProposedSpecs } from './native-specs.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
+import { nativeVerifierExecutionRefForState } from './native-local-execution.js';
 import {
   isNativePortableChange,
   nativePortableChangeDir,
@@ -67,6 +68,7 @@ export async function nativeShowCommand(
         state,
         await inspectNativeChildren({ paths, state }),
         {
+          verifierExecutionRef: nativeVerifierExecutionRefForState(state, runtime.local),
           ...(runtime.local
             ? {
                 verificationCheckPlans: nativePortableCheckPlansFromLocal(

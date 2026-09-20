@@ -408,11 +408,11 @@ describe('Native reliability issue regressions', () => {
         }),
       });
       expect(failed.supervisorState!.children[0]).toMatchObject({
-        status: 'needs-reverify',
+        status: verdict === 'fail' ? 'ready' : 'needs-reverify',
         task: null,
         verifiedCommit: null,
       });
-      expect(failed.supervisorState!.children[0].verification?.checks).toEqual([]);
+      expect(failed.supervisorState!.children[0].verification?.checks ?? []).toEqual([]);
     },
     120000,
   );

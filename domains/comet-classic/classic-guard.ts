@@ -550,9 +550,26 @@ function recoveryCommand(
   scope: CommandCheckScope,
   command: string | readonly string[],
 ): string {
-  const display = typeof command !== 'string' ? null : command;
+  const display = typeof command !== 'string' || parseLegacyArgv(command) !== null ? null : command;
   if (display === null) return `comet check rerun ${change} ${scope}`;
   return `comet check run ${change} ${scope} --local -- ${display}`;
+}
+
+/**
+ * Older command-check records stored argv as a JSON string in `command`.
+ * Never render that serialized array as shell syntax in a recovery hint.
+ */
+function parseLegacyArgv(command: string): readonly string[] | null {
+  const trimmed = command.trim();
+  if (!trimmed.startsWith('[')) return null;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return Array.isArray(parsed) && parsed.every((entry) => typeof entry === 'string')
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function guardEvidenceCwd(root: string, record: RecordedCommandCheck): Promise<string> {

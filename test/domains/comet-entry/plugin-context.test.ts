@@ -9,7 +9,10 @@ vi.mock('../../../domains/comet-plugin/index.js', () => ({
   createDefaultCometPluginBridge: vi.fn(async () => bridge),
 }));
 
-import { collectCometPluginContext } from '../../../domains/comet-entry/plugin-context.js';
+import {
+  collectCometHookContext,
+  collectCometPluginContext,
+} from '../../../domains/comet-entry/plugin-context.js';
 
 describe('Comet plugin context boundary', () => {
   beforeEach(() => {
@@ -46,5 +49,15 @@ describe('Comet plugin context boundary', () => {
     bridge.collectContext.mockResolvedValue([]);
 
     await expect(collectCometPluginContext(process.cwd(), { task: '兼容性' })).resolves.toEqual([]);
+  });
+
+  test('bounds optional Hook context and uses the best-effort bridge path', async () => {
+    vi.useFakeTimers();
+    bridge.collectContext.mockImplementation(() => new Promise(() => undefined));
+    const pending = collectCometHookContext(process.cwd(), { task: 'Hook context' });
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    await expect(pending).resolves.toEqual([]);
+    vi.useRealTimers();
   });
 });
