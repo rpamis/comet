@@ -68,6 +68,29 @@ interface StoredRecord extends MemoryRecord {
   readonly identity: string;
 }
 
+class AutomaticLearningPausedError extends Error {
+  public constructor(readonly reason: string) {
+    super(reason);
+    this.name = 'AutomaticLearningPausedError';
+  }
+}
+
+function automaticLearningPauseReason(
+  state: MemoryRuntimeState,
+  projectKey: string | undefined,
+  language: MemoryLanguage,
+): string | undefined {
+  if (!state.settings.learningEnabled) {
+    return language === 'en' ? 'Personal memory learning is disabled.' : '个人记忆学习已关闭。';
+  }
+  if (projectKey !== undefined && state.settings.pausedLearningProjects.includes(projectKey)) {
+    return language === 'en'
+      ? 'Personal memory learning is paused for this project.'
+      : '当前项目已暂停个人记忆学习。';
+  }
+  return undefined;
+}
+
 export class PersonalMemoryService implements PersonalMemoryServiceLike, PersonalMemoryProvider {
   private readonly repository: MemoryRepository;
   private readonly now: () => Date;
@@ -144,11 +167,25 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
   public async correct(
     id: string,
     correction: MemoryCorrection,
-    options: { readonly idempotencyKey?: string } = {},
+    options: {
+      readonly idempotencyKey?: string;
+      readonly automaticLearning?: {
+        readonly projectKey?: string;
+        readonly language: MemoryLanguage;
+      };
+    } = {},
   ): Promise<MemoryRecord> {
     validateCorrection(correction);
     return this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
+      if (options.automaticLearning !== undefined) {
+        const reason = automaticLearningPauseReason(
+          state,
+          options.automaticLearning.projectKey,
+          options.automaticLearning.language,
+        );
+        if (reason !== undefined) throw new AutomaticLearningPausedError(reason);
+      }
       const current = state.records.find((entry) => entry.id === id) as StoredRecord | undefined;
       const userRemoved =
         current !== undefined &&
@@ -197,10 +234,25 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
 
   public async remove(
     id: string,
-    options: { readonly permanent?: boolean; readonly idempotencyKey?: string } = {},
+    options: {
+      readonly permanent?: boolean;
+      readonly idempotencyKey?: string;
+      readonly automaticLearning?: {
+        readonly projectKey?: string;
+        readonly language: MemoryLanguage;
+      };
+    } = {},
   ): Promise<void> {
     await this.repository.withLock(async () => {
       const state = await this.loadAndReconcile();
+      if (options.automaticLearning !== undefined) {
+        const reason = automaticLearningPauseReason(
+          state,
+          options.automaticLearning.projectKey,
+          options.automaticLearning.language,
+        );
+        if (reason !== undefined) throw new AutomaticLearningPausedError(reason);
+      }
       if (
         options.idempotencyKey !== undefined &&
         state.appliedMutationIds.includes(options.idempotencyKey)
@@ -515,6 +567,21 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     }
     const result = await this.repository.withLock(async () => {
       const state = await this.loadAndReconcile(observation.scope, observation.projectKey);
+      const paused =
+        !state.settings.learningEnabled ||
+        (observation.scope === 'project' &&
+          observation.projectKey !== undefined &&
+          state.settings.pausedLearningProjects.includes(observation.projectKey));
+      if (paused) {
+        return {
+          deduplicated: false,
+          ignored: true,
+          candidate: false,
+          promoted: false,
+          record: null,
+          result: 'ignored' as const,
+        };
+      }
       const projectIdentity = observation.projectIdentity ?? observation.projectKey;
       const normalizedObservation: MemoryObservation = {
         ...observation,
@@ -523,7 +590,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       const candidateKey = observation.candidateKey ?? memoryIdentity(normalizedObservation);
       const key = observationKey(normalizedObservation, projectIdentity, candidateKey);
       const previous = state.observations.find((entry) => entry.key === key);
-      if (previous !== undefined && (previous.success || !observation.success)) {
+      const previousHasEvidence =
+        previous !== undefined &&
+        Object.values(state.evidence).some((keys) => keys.includes(previous.key));
+      if (
+        previous !== undefined &&
+        previousHasEvidence &&
+        (previous.success || !observation.success)
+      ) {
         return {
           deduplicated: true,
           ignored: false,
@@ -586,15 +660,11 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           result: 'ignored' as const,
         };
       }
-      const paused =
-        observation.scope === 'project' &&
-        observation.projectKey !== undefined &&
-        state.settings.pausedLearningProjects.includes(observation.projectKey);
-      if (!state.settings.learningEnabled || paused || !observation.success) {
+      if (!observation.success) {
         await this.persist(state);
         return {
           deduplicated: false,
-          ignored: !state.settings.learningEnabled || paused,
+          ignored: false,
           candidate: false,
           promoted: false,
           record: null,
@@ -863,6 +933,53 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     packet: MemoryReviewPacket,
     actions: MemoryReviewActionSet,
   ): Promise<MemoryReviewResult> {
+    const learningState = await this.repository.withLock(async () => {
+      const state = await this.loadAndReconcile(
+        packet.projectKey === undefined ? 'global' : 'project',
+        packet.projectKey,
+      );
+      return {
+        learningEnabled: state.settings.learningEnabled,
+        projectPaused:
+          packet.projectKey !== undefined &&
+          state.settings.pausedLearningProjects.includes(packet.projectKey),
+      };
+    });
+    if (
+      (!learningState.learningEnabled || learningState.projectPaused) &&
+      packet.explicitRequest === undefined
+    ) {
+      const reason = !learningState.learningEnabled
+        ? packet.language === 'en'
+          ? 'Personal memory learning is disabled.'
+          : '个人记忆学习已关闭。'
+        : packet.language === 'en'
+          ? 'Personal memory learning is paused for this project.'
+          : '当前项目已暂停个人记忆学习。';
+      await this.markLearningCheck(
+        'submitted',
+        'ignored',
+        {
+          ...(packet.projectKey === undefined ? {} : { projectKey: packet.projectKey }),
+          workflow: packet.workflow,
+          changeId: packet.changeId,
+        },
+        reason,
+      );
+      return {
+        action: 'skip',
+        persisted: false,
+        reason,
+        observation: {
+          deduplicated: false,
+          ignored: true,
+          candidate: false,
+          promoted: false,
+          record: null,
+          result: 'ignored',
+        },
+      };
+    }
     // Validate the complete packet and action envelope before touching the repository.
     const validatedPacket = validateMemoryReviewPacket(packet);
     const validatedActions = validateMemoryReviewActions(validatedPacket, actions);
@@ -967,13 +1084,21 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
         });
       }
       case 'experience-delta':
-        return this.applyExperienceDelta(mutation.input.delta, mutation.input.idempotencyKey);
+        return this.applyExperienceDelta(
+          mutation.input.delta,
+          mutation.input.idempotencyKey,
+          mutation.input.automaticLearning,
+        );
     }
   }
 
   private async applyExperienceDelta(
     delta: import('../agent-learning/index.js').AgentLearningDelta,
     idempotencyKey: string,
+    automaticLearning?: {
+      readonly projectKey?: string;
+      readonly language: MemoryLanguage;
+    },
   ): Promise<unknown> {
     if (delta.owner !== 'personal-memory' && delta.owner !== 'comet.personal-memory') {
       throw new Error('Learning Delta owner does not match Personal Memory');
@@ -995,27 +1120,42 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     }
     if (delta.action === 'forget' || delta.action === 'supersede') {
       if (!delta.targetId) throw new Error('Learning Delta target is required');
-      await this.remove(delta.targetId, {
-        permanent: delta.action === 'forget',
-        idempotencyKey,
-      });
+      try {
+        await this.remove(delta.targetId, {
+          permanent: delta.action === 'forget',
+          idempotencyKey,
+          ...(automaticLearning === undefined ? {} : { automaticLearning }),
+        });
+      } catch (error) {
+        if (!(error instanceof AutomaticLearningPausedError)) throw error;
+        return { changed: false, ignored: true, reason: error.reason };
+      }
       return { changed: true, record: null };
     }
     if (delta.action === 'update') {
       if (!delta.targetId) throw new Error('Learning Delta target is required');
-      const record = await this.correct(
-        delta.targetId,
-        {
-          ...(delta.title === undefined ? {} : { title: delta.title }),
-          text: delta.statement,
-          category: delta.kind,
-          pathPatterns: delta.applicability.paths,
-          taskTypes: delta.applicability.tasks,
-          operations: delta.applicability.operations,
-          phases: delta.applicability.phases,
-        },
-        { idempotencyKey },
-      );
+      let record: MemoryRecord;
+      try {
+        record = await this.correct(
+          delta.targetId,
+          {
+            ...(delta.title === undefined ? {} : { title: delta.title }),
+            text: delta.statement,
+            category: delta.kind,
+            pathPatterns: delta.applicability.paths,
+            taskTypes: delta.applicability.tasks,
+            operations: delta.applicability.operations,
+            phases: delta.applicability.phases,
+          },
+          {
+            idempotencyKey,
+            ...(automaticLearning === undefined ? {} : { automaticLearning }),
+          },
+        );
+      } catch (error) {
+        if (!(error instanceof AutomaticLearningPausedError)) throw error;
+        return { changed: false, ignored: true, reason: error.reason };
+      }
       return { changed: true, record };
     }
     const scope = delta.applicability.projectId === undefined ? 'global' : 'project';
@@ -1188,18 +1328,41 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     }
 
     if (action.action === 'update') {
-      await this.correct(action.targetId, {
-        ...(action.text === undefined ? {} : { text: action.text }),
-        ...(action.category === undefined ? {} : { category: action.category }),
-        ...(action.tags === undefined ? {} : { tags: action.tags }),
-        ...(action.pathPatterns === undefined ? {} : { pathPatterns: action.pathPatterns }),
-        ...(action.taskTypes === undefined ? {} : { taskTypes: action.taskTypes }),
-        ...(action.operations === undefined ? {} : { operations: action.operations }),
-        ...(action.phases === undefined ? {} : { phases: action.phases }),
-        ...(action.title === undefined ? {} : { title: action.title }),
-        ...(action.reason === undefined ? {} : { reason: action.reason }),
-        ...(action.memoryClass === undefined ? {} : { memoryClass: action.memoryClass }),
-      });
+      try {
+        await this.correct(
+          action.targetId,
+          {
+            ...(action.text === undefined ? {} : { text: action.text }),
+            ...(action.category === undefined ? {} : { category: action.category }),
+            ...(action.tags === undefined ? {} : { tags: action.tags }),
+            ...(action.pathPatterns === undefined ? {} : { pathPatterns: action.pathPatterns }),
+            ...(action.taskTypes === undefined ? {} : { taskTypes: action.taskTypes }),
+            ...(action.operations === undefined ? {} : { operations: action.operations }),
+            ...(action.phases === undefined ? {} : { phases: action.phases }),
+            ...(action.title === undefined ? {} : { title: action.title }),
+            ...(action.reason === undefined ? {} : { reason: action.reason }),
+            ...(action.memoryClass === undefined ? {} : { memoryClass: action.memoryClass }),
+          },
+          packet.explicitRequest === undefined
+            ? { automaticLearning: { projectKey: packet.projectKey, language: packet.language } }
+            : {},
+        );
+      } catch (error) {
+        if (!(error instanceof AutomaticLearningPausedError)) throw error;
+        return {
+          action: 'skip',
+          persisted: false,
+          reason: error.reason,
+          observation: {
+            deduplicated: false,
+            ignored: true,
+            candidate: false,
+            promoted: false,
+            record: null,
+            result: 'ignored',
+          },
+        };
+      }
       return {
         action: 'update',
         persisted: true,
@@ -1208,9 +1371,29 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       };
     }
 
-    await this.remove(action.targetId, {
-      permanent: action.permanent === true,
-    });
+    try {
+      await this.remove(action.targetId, {
+        permanent: action.permanent === true,
+        ...(packet.explicitRequest === undefined
+          ? { automaticLearning: { projectKey: packet.projectKey, language: packet.language } }
+          : {}),
+      });
+    } catch (error) {
+      if (!(error instanceof AutomaticLearningPausedError)) throw error;
+      return {
+        action: 'skip',
+        persisted: false,
+        reason: error.reason,
+        observation: {
+          deduplicated: false,
+          ignored: true,
+          candidate: false,
+          promoted: false,
+          record: null,
+          result: 'ignored',
+        },
+      };
+    }
     return {
       action: 'forget',
       persisted: true,

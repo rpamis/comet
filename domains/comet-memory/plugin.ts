@@ -19,6 +19,7 @@ import type {
   MemoryQuery,
   MemoryQueryView,
   MemoryObservation,
+  MemoryObservationResult,
   MemoryObservationResultKind,
   MemoryReviewPacket,
   MemoryReviewActionSet,
@@ -108,7 +109,79 @@ async function createModule(
     }
   };
 
+  const automaticLearningPauseReason = async (
+    projectKey: string | undefined,
+    language: 'zh-CN' | 'en',
+  ): Promise<string | undefined> => {
+    let status;
+    try {
+      status = await provider.status();
+    } catch {
+      // Provider availability is already handled by the normal deferred-review path.
+      return undefined;
+    }
+    if (status.learningEnabled === false) {
+      return language === 'en' ? 'Personal memory learning is disabled.' : '个人记忆学习已关闭。';
+    }
+    if (projectKey !== undefined && status.pausedLearningProjects.includes(projectKey)) {
+      return language === 'en'
+        ? 'Personal memory learning is paused for this project.'
+        : '当前项目已暂停个人记忆学习。';
+    }
+    return undefined;
+  };
+
+  const markAutomaticLearningSkipped = async (input: {
+    readonly projectKey?: string;
+    readonly language: 'zh-CN' | 'en';
+    readonly workflow: string;
+    readonly changeId: string;
+  }): Promise<string | undefined> => {
+    const reason = await automaticLearningPauseReason(input.projectKey, input.language);
+    if (reason === undefined) return undefined;
+    await service.markLearningCheck?.(
+      'submitted',
+      'ignored',
+      {
+        ...(input.projectKey === undefined ? {} : { projectKey: input.projectKey }),
+        workflow: input.workflow,
+        changeId: input.changeId,
+      },
+      reason,
+    );
+    return reason;
+  };
+
+  const skippedAutomaticReview = async (
+    packet: MemoryReviewPacket,
+  ): Promise<MemoryReviewResult | null> => {
+    if (packet.explicitRequest !== undefined) return null;
+    const reason = await markAutomaticLearningSkipped({
+      projectKey: packet.projectKey,
+      language: packet.language,
+      workflow: packet.workflow,
+      changeId: packet.changeId,
+    });
+    if (reason === undefined) return null;
+    const observation: MemoryObservationResult = {
+      deduplicated: false,
+      ignored: true,
+      candidate: false,
+      promoted: false,
+      record: null,
+      result: 'ignored',
+    };
+    return {
+      action: 'skip',
+      persisted: false,
+      reason,
+      observation,
+    };
+  };
+
   const applyReview = async (packet: MemoryReviewPacket): Promise<MemoryReviewResult> => {
+    const skipped = await skippedAutomaticReview(packet);
+    if (skipped !== null) return skipped;
     const reviewed = await resolveReviewActions(packet);
     const { actions } = reviewed;
     const result = (await provider.apply({
@@ -338,6 +411,13 @@ async function createModule(
         const observation = observationFromExperience(event, options.language);
         if (observation !== null) {
           const review = async () => {
+            const skippedReason = await markAutomaticLearningSkipped({
+              projectKey: observation.projectKey,
+              language: observation.language ?? options.language ?? 'zh-CN',
+              workflow: observation.workflow,
+              changeId: observation.changeId,
+            });
+            if (skippedReason !== undefined) return;
             const packet = await reviewPacketFromObservation(
               provider,
               observation,
@@ -377,9 +457,26 @@ async function createModule(
     },
     consolidate: async ({ deltas }) => {
       for (const { delta, idempotencyKey } of deltas) {
+        const automaticLearning =
+          delta.authority === 'explicit' || delta.authority === 'user'
+            ? undefined
+            : {
+                ...(delta.applicability.projectId === undefined
+                  ? {}
+                  : { projectKey: delta.applicability.projectId }),
+                language:
+                  delta.payload?.kind === 'memory-action' &&
+                  (delta.payload.language === 'en' || delta.payload.language === 'zh-CN')
+                    ? delta.payload.language
+                    : (options.language ?? 'zh-CN'),
+              };
         await provider.apply({
           operation: 'experience-delta',
-          input: { delta, idempotencyKey },
+          input: {
+            delta,
+            idempotencyKey,
+            ...(automaticLearning === undefined ? {} : { automaticLearning }),
+          },
         });
       }
     },

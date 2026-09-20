@@ -650,6 +650,11 @@ export type MemoryProviderMutation =
       readonly input: {
         readonly delta: AgentLearningDelta;
         readonly idempotencyKey: string;
+        /** Final pause check for automatic reflection mutations. */
+        readonly automaticLearning?: {
+          readonly projectKey?: string;
+          readonly language: MemoryLanguage;
+        };
       };
     };
 

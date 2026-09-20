@@ -2531,4 +2531,127 @@ describe('PersonalMemoryService', () => {
       });
     });
   });
+
+  it('does not persist paused observations and allows the same observation after resume', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FileMemoryRepository(root);
+      const memories = new PersonalMemoryService({ repository });
+      const observation = {
+        scope: 'project' as const,
+        projectKey: 'paused-project',
+        projectIdentity: 'paused-project',
+        category: '协作偏好',
+        text: '以后先说明结论，再列出步骤',
+        language: 'zh-CN' as const,
+        workflow: 'native',
+        changeId: 'paused-change',
+        candidateKey: 'conclusion-first',
+        success: true,
+      };
+
+      await memories.pauseProjectLearning('paused-project', true);
+      await expect(memories.observe(observation)).resolves.toMatchObject({
+        result: 'ignored',
+        ignored: true,
+        deduplicated: false,
+      });
+      await expect(repository.readState()).resolves.toMatchObject({
+        records: [],
+        observations: [],
+      });
+
+      await memories.pauseProjectLearning('paused-project', false);
+      await expect(memories.observe(observation)).resolves.toMatchObject({
+        result: 'candidate-created',
+        candidate: true,
+        deduplicated: false,
+      });
+    });
+  });
+
+  it('does not let an unaccepted legacy observation block the first retry', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FileMemoryRepository(root);
+      const memories = new PersonalMemoryService({ repository });
+      const observation = {
+        scope: 'project' as const,
+        projectKey: 'legacy-paused-project',
+        projectIdentity: 'legacy-paused-project',
+        category: '协作偏好',
+        text: '恢复后仍应正常学习',
+        language: 'zh-CN' as const,
+        workflow: 'native',
+        changeId: 'legacy-paused-change',
+        candidateKey: 'legacy-retry',
+        success: true,
+      };
+
+      await expect(memories.observe(observation)).resolves.toMatchObject({ candidate: true });
+      const state = await repository.readState();
+      await repository.writeState({
+        ...state,
+        records: [],
+        evidence: {},
+        settings: {
+          ...state.settings,
+          pausedLearningProjects: ['legacy-paused-project'],
+          pausedProjects: ['legacy-paused-project'],
+        },
+      });
+
+      await memories.pauseProjectLearning('legacy-paused-project', false);
+      await expect(memories.observe(observation)).resolves.toMatchObject({
+        result: 'candidate-created',
+        candidate: true,
+        deduplicated: false,
+      });
+    });
+  });
+
+  it('does not apply automatic experience deltas after project learning is paused', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FileMemoryRepository(root);
+      const memories = new PersonalMemoryService({ repository });
+      const record = await memories.remember({
+        scope: 'project',
+        projectKey: 'delta-paused-project',
+        category: '协作偏好',
+        text: '暂停前的内容',
+      });
+      const delta = {
+        operation: 'experience-delta' as const,
+        input: {
+          idempotencyKey: 'delta-pause-race',
+          automaticLearning: {
+            projectKey: 'delta-paused-project',
+            language: 'zh-CN' as const,
+          },
+          delta: {
+            action: 'update' as const,
+            owner: 'personal-memory' as const,
+            targetId: record.id,
+            memoryType: 'collaboration-policy' as const,
+            kind: '协作偏好',
+            statement: '暂停期间不应写入',
+            applicability: { projectId: 'delta-paused-project' },
+            evidence: [],
+            recommendedState: 'proven' as const,
+          },
+        },
+      };
+
+      await memories.pauseProjectLearning('delta-paused-project', true);
+      await expect(memories.apply(delta)).resolves.toMatchObject({
+        changed: false,
+        ignored: true,
+      });
+      await expect(memories.get(record.id)).resolves.toMatchObject({ text: '暂停前的内容' });
+
+      await memories.pauseProjectLearning('delta-paused-project', false);
+      await expect(memories.apply(delta)).resolves.toMatchObject({
+        changed: true,
+        record: { text: '暂停期间不应写入' },
+      });
+    });
+  });
 });
