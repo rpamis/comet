@@ -36,6 +36,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Security
 
 - **Vitest dependency security**: Upgrade Vitest, `@vitest/mocker`, and V8 coverage dependencies to 4.1.11 to remove the reachable path traversal and arbitrary file read vulnerability.
+- **Native document comment sanitization**: Use complete HTML comment scanning when validating Markdown documents and requirements, preventing malformed comment boundaries from bypassing visible-content checks.
 
 ## What's Changed [0.4.1] - 2026-09-14
 

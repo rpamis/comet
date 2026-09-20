@@ -4,6 +4,7 @@ import path from 'node:path';
 import { atomicWriteText } from './native-atomic-file.js';
 import {
   nativeBriefHasBlockingQuestion,
+  stripMarkdownHtmlComments,
   validateNativeBrief,
   validateNativeSpecDocumentText,
 } from './native-artifacts.js';
@@ -119,7 +120,7 @@ function isPlaceholderExemptionReason(source: string): boolean {
 function hasExplicitSpecExemption(source: string): boolean {
   const visibleLines: string[] = [];
   let inFence = false;
-  for (const line of source.replace(/<!--[\s\S]*?-->/gu, '').split(/\r?\n/u)) {
+  for (const line of stripMarkdownHtmlComments(source).split(/\r?\n/u)) {
     if (/^\s*(?:```|~~~)/u.test(line)) {
       inFence = !inFence;
       continue;

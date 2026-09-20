@@ -83,8 +83,29 @@ function result(findings: NativeFinding[]): NativeArtifactValidation {
   return { valid: findings.length === 0, findings };
 }
 
+export function stripMarkdownHtmlComments(source: string): string {
+  const visible: string[] = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const start = source.indexOf('<!--', cursor);
+    if (start < 0) {
+      visible.push(source.slice(cursor));
+      break;
+    }
+    visible.push(source.slice(cursor, start));
+    const end = source.indexOf('-->', start + 4);
+    if (end < 0) {
+      // Preserve malformed comments so validation can still inspect their text.
+      visible.push(source.slice(start));
+      break;
+    }
+    cursor = end + 3;
+  }
+  return visible.join('');
+}
+
 function meaningfulMarkdown(source: string): string {
-  return source.replace(/<!--[\s\S]*?-->/gu, '').trim();
+  return stripMarkdownHtmlComments(source).trim();
 }
 
 function markdownBody(source: string): string {

@@ -5,6 +5,7 @@ import path from 'path';
 
 import {
   NATIVE_ARTIFACT_VALIDATION_LIMITS,
+  stripMarkdownHtmlComments,
   validateNativeBrief,
   validateNativeSpecChanges,
   validateNativeVerification,
@@ -68,6 +69,13 @@ describe('Native artifact validation', () => {
       verificationProtocol: 'legacy-v1',
     });
     changeDir = nativeChangeDir(paths, state.name);
+  });
+
+  it('removes complete Markdown HTML comments without dropping malformed text', () => {
+    expect(stripMarkdownHtmlComments('before <!-- hidden --> middle <!-- more --> after')).toBe(
+      'before  middle  after',
+    );
+    expect(stripMarkdownHtmlComments('before <!-- unfinished')).toBe('before <!-- unfinished');
   });
 
   afterEach(async () => {
