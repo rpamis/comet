@@ -9,6 +9,7 @@ import {
   PROJECT_MEMORY_INDEX_FILE,
   isProjectMemoryType,
   readProjectMemory,
+  readProjectMemoryEntries,
   readProjectMemoryIndex,
   removeProjectMemory,
   renderProjectMemoryIndexContext,
@@ -230,6 +231,65 @@ describe('project memory store', () => {
       expect(index.map((entry) => entry.slug).sort()).toEqual(
         [created.slug, refreshed.slug].sort(),
       );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('takes over a stale writer lock and returns entries ordered by update time', async () => {
+    const root = await tempRoot('comet-project-memory-lock-');
+    const cacheRoot = await tempRoot('comet-project-memory-lock-cache-');
+    try {
+      const directory = resolveProjectMemoryDirectory(root, cacheRoot);
+      await fs.mkdir(directory, { recursive: true });
+      const lock = path.join(directory, '.lock');
+      await fs.writeFile(lock, 'crashed writer');
+      const stale = new Date(Date.now() - 20_000);
+      await fs.utimes(lock, stale, stale);
+
+      await writeProjectMemory(
+        root,
+        { title: 'Older lesson', text: '先记录的结论。' },
+        { cacheRoot, now: fixedNow('2026-09-20T08:00:00.000Z') },
+      );
+      await writeProjectMemory(
+        root,
+        { title: 'Newer lesson', text: '后记录的结论。' },
+        { cacheRoot, now: fixedNow('2026-09-21T08:00:00.000Z') },
+      );
+
+      await expect(fs.access(lock)).rejects.toThrow();
+      await expect(readProjectMemory(root, 'Bad_Slug', cacheRoot)).resolves.toBeNull();
+      await expect(readProjectMemory(root, 'missing', cacheRoot)).resolves.toBeNull();
+      await expect(readProjectMemoryIndex(root, cacheRoot)).resolves.toHaveLength(2);
+      await expect(readProjectMemoryEntries(root, cacheRoot)).resolves.toMatchObject([
+        { slug: 'newer-lesson', title: 'Newer lesson' },
+        { slug: 'older-lesson', title: 'Older lesson' },
+      ]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects a new memory when the project memory directory reaches its limit', async () => {
+    const root = await tempRoot('comet-project-memory-limit-');
+    const cacheRoot = await tempRoot('comet-project-memory-limit-cache-');
+    try {
+      const directory = resolveProjectMemoryDirectory(root, cacheRoot);
+      await fs.mkdir(directory, { recursive: true });
+      const document = (slug: string) =>
+        `---\nname: ${slug}\ntitle: ${slug}\ndescription: seed\ntype: pattern\ncreated: 2026-09-20T08:00:00.000Z\nupdated: 2026-09-20T08:00:00.000Z\npaths: []\n---\n\nseed\n`;
+      await Promise.all(
+        Array.from({ length: 200 }, (_, index) =>
+          fs.writeFile(path.join(directory, `seed-${index}.md`), document(`seed-${index}`)),
+        ),
+      );
+
+      await expect(
+        writeProjectMemory(root, { title: 'One too many', text: '这条不能写入。' }, { cacheRoot }),
+      ).rejects.toThrow('项目记忆已达上限');
     } finally {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });
