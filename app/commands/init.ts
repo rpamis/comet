@@ -2,6 +2,7 @@ import path from 'path';
 import os from 'os';
 import { checkbox, select } from '@inquirer/prompts';
 import { platformSelectPrompt } from './platform-select-prompt.js';
+import { workflowSelectPrompt, type WorkflowSelectChoice } from './workflow-select-prompt.js';
 import {
   PLATFORMS,
   getPlatformSkillsDir,
@@ -100,38 +101,71 @@ type InitOptions = {
   codegraph?: 'init' | 'skip';
 };
 
-function workflowChoiceNames(lang: string): Array<{
-  name: string;
-  value: InitWorkflowSelection;
-}> {
+function workflowChoiceNames(lang: string): Array<WorkflowSelectChoice<InitWorkflowSelection>> {
   if (lang === 'zh') {
     return [
       {
-        name: 'Native — 面向强模型的轻量自主流程，自带澄清、状态、检查与自动推进，不依赖外部 Skill',
+        name: 'Native（推荐）',
+        short: 'Native（推荐）',
         value: 'native',
+        details: [
+          '面向强模型的Loop驱动流程，自带高强度澄清，不依赖外部 Skill，Agent自主ReAct选择执行时Skill',
+          '适合：GLM 5.1 及以上的云端旗舰模型',
+          '对比：相比 Classic，token 消耗 ↓75%，耗时 ↓47.8%',
+        ],
       },
       {
-        name: 'Classic — 面向高约束或较弱模型的完整 Spec/TDD 阶段流程，使用 OpenSpec 与 Superpowers',
+        name: 'Classic',
+        short: 'Classic',
         value: 'classic',
+        details: [
+          '面向普通模型的经典高约束Spec流程，使用 OpenSpec 与 Superpowers编排工作流',
+          '适合：token 成本不敏感、私有化部署或低于 GLM 5.1 基线的模型',
+          '特点：token 消耗更高，但文档更丰富',
+        ],
       },
       {
-        name: '两者 — 同时安装两套独立入口；/comet 默认使用 Native，也可显式进入 Classic',
+        name: '两者',
+        short: '两者',
         value: 'both',
+        details: [
+          '安装：Native 与 Classic 两套独立入口',
+          '默认：/comet 使用 Native',
+          '切换：也可显式进入 Classic',
+        ],
       },
     ];
   }
   return [
     {
-      name: 'Native — lightweight autonomy for strong models, with clarification, state, checks, and auto-progression; no external skills',
+      name: 'Native (Recommended)',
+      short: 'Native (Recommended)',
       value: 'native',
+      details: [
+        'Loop-driven workflow for strong models, with intensive clarification; no external skills; the agent autonomously uses ReAct to select skills at execution time',
+        'Best for: cloud flagship models at or above GLM 5.1',
+        'Compared with Classic: token usage ↓75%, time ↓47.8%',
+      ],
     },
     {
-      name: 'Classic — full Spec/TDD phases for high-control work or weaker models, using OpenSpec and Superpowers',
+      name: 'Classic',
+      short: 'Classic',
       value: 'classic',
+      details: [
+        'Classic high-constraint Spec workflow for general-purpose models, orchestrated with OpenSpec and Superpowers',
+        'Best for: token-cost-insensitive scenarios, private deployments, or models below the GLM 5.1 baseline',
+        'Traits: higher token usage, with richer documentation',
+      ],
     },
     {
-      name: 'Both — install two independent entries; /comet defaults to Native and Classic remains explicit',
+      name: 'Both',
+      short: 'Both',
       value: 'both',
+      details: [
+        'Install: independent Native and Classic entries',
+        'Default: /comet uses Native',
+        'Switch: Classic remains available explicitly',
+      ],
     },
   ];
 }
@@ -143,7 +177,7 @@ async function selectWorkflow(
 ): Promise<InitWorkflowSelection> {
   if (options.workflow) return options.workflow;
   if (options.yes || options.json) return suggested;
-  return select({
+  return workflowSelectPrompt({
     message: lang === 'zh' ? '选择要初始化的 Comet 模式：' : 'Select Comet workflow(s):',
     choices: workflowChoiceNames(lang),
     default: suggested,

@@ -339,6 +339,40 @@ export async function readProjectMemory(
   return parsed;
 }
 
+export interface ProjectMemoryEntrySummary {
+  readonly slug: string;
+  readonly title: string;
+  readonly description: string;
+  readonly type: ProjectMemoryType;
+  readonly created: string;
+  readonly updated: string;
+  readonly paths: readonly string[];
+  readonly source?: string;
+}
+
+const MAX_SUMMARY_ENTRIES = 200;
+
+export async function readProjectMemoryEntries(
+  projectRoot: string,
+  cacheRoot?: string,
+): Promise<readonly ProjectMemoryEntrySummary[]> {
+  const directory = resolveProjectMemoryDirectory(projectRoot, cacheRoot);
+  const entries = await scanProjectMemoryEntries(directory);
+  return [...entries]
+    .sort((left, right) => right.updated.localeCompare(left.updated))
+    .slice(0, MAX_SUMMARY_ENTRIES)
+    .map((entry) => ({
+      slug: entry.slug,
+      title: entry.title,
+      description: entry.description,
+      type: entry.type,
+      created: entry.created,
+      updated: entry.updated,
+      paths: entry.paths,
+      ...(entry.source === undefined ? {} : { source: entry.source }),
+    }));
+}
+
 export async function writeProjectMemory(
   projectRoot: string,
   input: WriteProjectMemoryInput,

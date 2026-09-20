@@ -2,6 +2,30 @@
 
 必须采用中文回答用户
 
+## 表达与文档风格
+
+适用于回复、Skill、开发文档、CLI 帮助、错误提示和代码注释。
+
+- 使用自然、具体的表达，先说明结果或动作，再说明必要的原因和条件。Skill 指令写清何时执行、执行什么、完成条件是什么。
+- 用事实、行为和例子解释问题；删去空泛评价、宣传口吻、机械排比、重复总结，以及没有实际区别的“不是 X，而是 Y”句式。标题、加粗和列表只用于帮助阅读。
+- 用准确的常用词表达概念，避免堆砌抽象名词、自造口号或生硬直译。技术术语确有必要时保留，并在首次出现且读者可能不熟悉时简要解释。
+- 精简重复表述，保留需求范围、触发条件、例外、失败处理、确认要求和验收标准。必要内容移到参考文件时，写明读取条件与位置；不能以减少字数代替完整说明。
+
+## Skill 触发表述规范
+
+修改 skill 时，新增或调整依赖 skill 的触发方式必须和既有写法保持一致：
+
+- 中文统一使用：`**立即执行：** 使用 Skill 工具加载 <skill-name> 技能。禁止跳过此步骤。`
+- 英文统一使用：`**Immediately execute:** Use the Skill tool to load the <skill-name> skill. Skipping this step is prohibited.`
+- 后续输入、上下文或执行要求写在“技能加载后 / After the skill loads”段落，不要把 `ARGUMENTS`、`fast-forward` 等另一套调用术语混入触发句。
+
+## 代码与 CLI 术语
+
+- 新增或修改命令、参数、函数、类型、模块和协议字段时，先查仓库中同一概念的既有名称，再参考相关 Agent 工具、依赖库或开源项目的公开接口与文档。优先采用含义一致、已有使用惯例的名称。
+- Agent 概念和架构术语应与实际职责对应，例如 tool、agent、session、handoff、checkpoint、router、adapter、state machine；不能仅为显得专业而套用术语或引入对应抽象。不确定是否通用时先核对来源，不凭印象声称是行业标准。
+- 同一概念在代码、CLI、JSON、帮助和文档中保持一致；不同职责保留区别，不为统一名称而混淆状态或角色。CLI 动作使用明确的动词，参数说明操作对象或选项含义，遵循仓库已有命令结构。
+- 没有合适通用词时，使用能直接说明职责的领域名称，并简要定义。现有公开名称的调整须评估兼容性和迁移影响；本规则不要求批量重命名已有接口或重构架构。
+
 ## 开发工作区保护
 
 开始修改前检查当前分支、比较基线、未提交文件和子模块状态。保留所有无关修改，不得通过 `reset`、`clean`、删除或格式化无关文件来换取检查通过。提交时只显式暂存本任务文件。
@@ -73,7 +97,7 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 当前源码目录按责任分层：
 
 - `app/`：CLI 入口、命令编排和用户交互层。只能组合 domain/platform 能力，不承载领域规则。
-- `domains/`：业务领域模块。每个子目录是一个可独立维护的领域模块，例如 `domains/bundle/`、`domains/comet-classic/`、`domains/comet-native/`、`domains/comet-entry/`、`domains/dashboard/`、`domains/skill/`、`domains/workflow-contract/`。
+- `domains/`：业务领域模块。每个子目录是一个可独立维护的领域模块，例如 `domains/agent-learning/`、`domains/bundle/`、`domains/comet-classic/`、`domains/comet-native/`、`domains/comet-entry/`、`domains/dashboard/`、`domains/project-knowledge/`、`domains/skill/`、`domains/workflow-contract/`。
 - `platform/`：文件系统、进程、安装平台、版本、路径等平台适配能力。domain 不应直接散落平台差异逻辑。
 - `scripts/`：构建、发布、benchmark、lint 等仓库自动化脚本。可调用源码模块，但不要成为运行时业务入口。
 - `assets/`：发布资产和内置 Skill 内容。修改 runtime 源码后必须通过构建同步生成资产，不要把业务逻辑只写在生成物里。
@@ -115,6 +139,7 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 ```
 comet-runtime.mjs ← domains/comet-classic/*
 comet-state.mjs ← domains/comet-classic/classic-state-entry.ts
+comet-check.mjs ← domains/comet-classic/classic-check-entry.ts (执行并绑定验证证据)
 comet-guard.mjs ← domains/comet-classic/classic-guard-entry.ts
 comet-handoff.mjs ← domains/comet-classic/classic-handoff-entry.ts (写入 handoff_context/handoff_hash)
 comet-archive.mjs ← domains/comet-classic/classic-archive-entry.ts
@@ -148,14 +173,6 @@ skill 优化时先写中文版本（`assets/skills-zh/`），用户确认后再�
 - `gate`（阶段性检查/阻塞点）→ 根据语境用“协议”“阶段”“检查”“阻塞点”等，如 `debug gate` → “异常调试协议”
 - 修饰词性质的 `proactive/active` → “主动式”，如 `proactive context compression` → “主动式上下文压缩”，不写作“主动压缩门”
 - 英文版保持原术语（如 Debug Gate），仅中文版需要遵循本规范
-
-## Skill 触发表述规范
-
-修改 skill 时，新增或调整依赖 skill 的触发方式必须和既有写法保持一致：
-
-- 中文统一使用：`**立即执行：** 使用 Skill 工具加载 <skill-name> 技能。禁止跳过此步骤。`
-- 英文统一使用：`**Immediately execute:** Use the Skill tool to load the <skill-name> skill. Skipping this step is prohibited.`
-- 后续输入、上下文或执行要求写在“技能加载后 / After the skill loads”段落，不要把 `ARGUMENTS`、`fast-forward` 等另一套调用术语混入触发句。
 
 ## Changelog 规范
 

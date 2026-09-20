@@ -497,6 +497,6 @@
   ],
   "platformModules": ["fs", "http", "install", "paths", "process", "version"],
   "scriptModules": ["benchmark", "build", "install", "lib", "lint", "release"],
-  "allowedCodeFiles": ["bin/fast-runtime-router.js"],
+  "allowedCodeFiles": ["bin/comet-daemon-router.js", "bin/fast-runtime-router.js"],
   "testRoots": ["test"]
 }

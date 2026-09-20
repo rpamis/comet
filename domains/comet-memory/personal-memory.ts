@@ -1534,6 +1534,16 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       await this.persist(state);
       const projectKey = this.repository.projectFileBinding?.()?.projectKey;
       const learning = projectScopedLearningStatus(state, projectKey);
+      const scopedRecords =
+        projectKey === undefined
+          ? state.records
+          : state.records.filter((record) => scopeMatches(record, { projectKey }));
+      const scopedTombstones =
+        projectKey === undefined
+          ? state.tombstones
+          : state.tombstones.filter(
+              (entry) => entry.scope === 'global' || entry.projectKey === projectKey,
+            );
       return {
         learningEnabled: state.settings.learningEnabled,
         retrievalEnabled: state.settings.retrievalEnabled,
@@ -1564,15 +1574,15 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
           validObservationCount: learning.validObservationCount,
         },
         counts: {
-          active: state.records.filter((record) => isVisibleMemoryRecord(state, record)).length,
-          trial: state.records.filter(
+          active: scopedRecords.filter((record) => isVisibleMemoryRecord(state, record)).length,
+          trial: scopedRecords.filter(
             (record) => isVisibleMemoryRecord(state, record) && record.state === 'trial',
           ).length,
-          proven: state.records.filter(
+          proven: scopedRecords.filter(
             (record) => isVisibleMemoryRecord(state, record) && record.state === 'proven',
           ).length,
-          history: state.records.filter((record) => !isVisibleMemoryRecord(state, record)).length,
-          tombstones: state.tombstones.length,
+          history: scopedRecords.filter((record) => !isVisibleMemoryRecord(state, record)).length,
+          tombstones: scopedTombstones.length,
         },
       };
     });

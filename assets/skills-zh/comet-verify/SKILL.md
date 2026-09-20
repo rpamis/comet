@@ -133,7 +133,7 @@ comet check run <change-name> verify --local -- <program> [args...]
 
 只有确定性的本地检查才使用 `--local`。外部服务检查省略该参数，其结果只能用于一次成功的阶段转换：Guard 预览不会用掉该结果，`--apply` 会重新核对，并在转换成功后将其标记为不可再次使用。丢失上下文后恢复任务，或输入、环境发生变化时，仍由 Runtime 判断哪些检查需要重跑。
 
-Windows 普通 npm/pnpm shim 由平台适配器处理，包含 shell 元字符的 batch 参数会被拒绝。多条必要命令应通过项目已有验证入口统一执行；任何一条失败，入口都必须返回失败，不能用最后一条命令成功掩盖之前的失败。手工 `record-check` 只保存声明，不能据此自动推进阶段，还会遮蔽之前有效的 Runtime 证据并要求重新 `comet check run`。不同检查要求的证据彼此独立；只有 argv、cwd、输入、环境和语义完全相同的本地 full 命令才能由 Runtime 在 Build 与 Verify 之间复用。`COMET_SKIP_BUILD=1` 不能作为可核实的检查记录。需要查看日志时，按 `logRef` 读取。首次实际执行就通过 `comet check run` 完成；失败时修复后使用 `comet check rerun` 精确重试，成功后立即运行 guard，中间不插入任何 `comet state` 写入；提交放在 guard 通过之后。
+Windows 普通 npm/pnpm shim 由平台适配器处理，包含 shell 元字符的 batch 参数会被拒绝。多条必要命令应通过项目已有验证入口统一执行；任何一条失败，入口都必须返回失败，不能用最后一条命令成功掩盖之前的失败。手工 `record-check` 只保存声明，不能据此自动推进阶段，还会遮蔽之前有效的 Runtime 证据并要求重新 `comet check run`。不同检查要求的证据彼此独立；verify 与 build 的检查结果彼此独立，不能互相替代。只有 argv、cwd、输入、环境和语义完全相同的本地 full 命令才能由 Runtime 在 Build 与 Verify 之间复用。`COMET_SKIP_BUILD=1` 不能作为可核实的检查记录。需要查看日志时，按 `logRef` 读取。首次实际执行就通过 `comet check run` 完成；失败时修复后使用 `comet check rerun` 精确重试，成功后立即运行 guard，中间不插入任何 `comet state` 写入；提交放在 guard 通过之后。
 
 集成代码审查的输入限定为本次改动 diff、tasks.md 和必要测试结果；它不替代 spec 覆盖率、Design Doc 一致性或漂移检查。`review_mode: off` 只跳过自动 code review，不跳过构建、测试、安全检查或异常调试协议。
 

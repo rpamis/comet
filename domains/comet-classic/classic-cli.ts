@@ -24,6 +24,11 @@ export interface ClassicCommandOptions {
   projectRoot?: string;
 }
 
+export interface ClassicCliRunOptions {
+  invocationCwd?: string;
+  projectRoot?: string;
+}
+
 export type ClassicCommandHandler = (
   args: string[],
   options: ClassicCommandOptions,
@@ -151,13 +156,23 @@ function jsonResult(
 export async function runClassicCli(
   argv: readonly string[],
   handlers: ClassicCommandHandlers = DEFAULT_HANDLERS,
+  runOptions: ClassicCliRunOptions = {},
 ): Promise<ClassicCommandResult> {
   const boundary = argv.indexOf('--');
   const owns = (index: number) => boundary < 0 || index < boundary;
   const json = argv[0] !== 'openspec' && argv.some((arg, index) => owns(index) && arg === '--json');
   const args = argv.filter((argument, index) => !json || !owns(index) || argument !== '--json');
   const command = args.shift();
-  const result = await dispatch(command, args, { json, invocationCwd: process.cwd() }, handlers);
+  const result = await dispatch(
+    command,
+    args,
+    {
+      json,
+      invocationCwd: runOptions.invocationCwd ?? process.cwd(),
+      ...(runOptions.projectRoot ? { projectRoot: runOptions.projectRoot } : {}),
+    },
+    handlers,
+  );
   return json ? jsonResult(command, result) : result;
 }
 

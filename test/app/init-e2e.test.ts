@@ -26,6 +26,10 @@ vi.mock('../../app/commands/platform-select-prompt.js', () => ({
   platformSelectPrompt: vi.fn(),
 }));
 
+vi.mock('../../app/commands/workflow-select-prompt.js', () => ({
+  workflowSelectPrompt: vi.fn(),
+}));
+
 vi.mock('../../platform/version/version.js', () => ({
   printVersionInfo: vi.fn(async (log: (message: string) => void) => {
     log('  Comet vtest');
@@ -172,13 +176,40 @@ describe('comet init E2E', () => {
     await fs.rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
-  it('offers Native, Classic, and Both with concise user-facing descriptions', async () => {
+  it('offers Native, Classic, and Both with fixed detail rows', async () => {
     const { workflowChoiceNames } = await import('../../app/commands/init.js');
 
     expect(workflowChoiceNames('zh')).toEqual([
-      expect.objectContaining({ value: 'native', name: expect.stringContaining('强模型') }),
-      expect.objectContaining({ value: 'classic', name: expect.stringContaining('Spec/TDD') }),
-      expect.objectContaining({ value: 'both', name: expect.stringContaining('两套独立入口') }),
+      expect.objectContaining({
+        value: 'native',
+        name: 'Native（推荐）',
+        short: 'Native（推荐）',
+        details: [
+          expect.stringMatching(/Loop驱动.*高强度澄清.*ReAct.*执行时Skill/u),
+          expect.stringMatching(/适合：.*GLM 5\.1/u),
+          expect.stringMatching(/对比：.*↓75%.*↓47\.8%/u),
+        ],
+      }),
+      expect.objectContaining({
+        value: 'classic',
+        name: 'Classic',
+        short: 'Classic',
+        details: [
+          expect.stringContaining('经典高约束Spec流程，使用 OpenSpec 与 Superpowers编排工作流'),
+          expect.stringMatching(/适合：.*私有化部署/u),
+          expect.stringMatching(/特点：.*文档更丰富/u),
+        ],
+      }),
+      expect.objectContaining({
+        value: 'both',
+        name: '两者',
+        short: '两者',
+        details: [
+          expect.stringContaining('安装：Native 与 Classic'),
+          expect.stringMatching(/默认：.*Native/u),
+          expect.stringMatching(/切换：.*Classic/u),
+        ],
+      }),
     ]);
   });
 
@@ -1876,7 +1907,9 @@ describe('comet init E2E', () => {
 
       const { checkbox, select } = await import('@inquirer/prompts');
       const { platformSelectPrompt } = await import('../../app/commands/platform-select-prompt.js');
-      vi.mocked(select).mockResolvedValueOnce('both').mockResolvedValueOnce('copy');
+      const { workflowSelectPrompt } = await import('../../app/commands/workflow-select-prompt.js');
+      vi.mocked(workflowSelectPrompt).mockResolvedValueOnce('both');
+      vi.mocked(select).mockResolvedValueOnce('copy');
       vi.mocked(platformSelectPrompt).mockResolvedValue(['codex']);
       vi.mocked(checkbox).mockResolvedValue([]);
 
@@ -1888,8 +1921,7 @@ describe('comet init E2E', () => {
         }),
       );
 
-      expect(select).toHaveBeenNthCalledWith(
-        1,
+      expect(workflowSelectPrompt).toHaveBeenCalledWith(
         expect.objectContaining({
           message: 'Select Comet workflow(s):',
           choices: [
@@ -1922,7 +1954,8 @@ describe('comet init E2E', () => {
 
       const { checkbox, select } = await import('@inquirer/prompts');
       const { platformSelectPrompt } = await import('../../app/commands/platform-select-prompt.js');
-      vi.mocked(select).mockResolvedValueOnce(workflow);
+      const { workflowSelectPrompt } = await import('../../app/commands/workflow-select-prompt.js');
+      vi.mocked(workflowSelectPrompt).mockResolvedValueOnce(workflow);
       if (workflow === 'both') vi.mocked(select).mockResolvedValueOnce('copy');
       vi.mocked(platformSelectPrompt).mockResolvedValue(['codex']);
       vi.mocked(checkbox).mockResolvedValue([]);

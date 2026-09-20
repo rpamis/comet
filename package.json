@@ -73,6 +73,7 @@
     "benchmark:context": "node scripts/benchmark/context-compression-benchmark.mjs",
     "benchmark:execution": "node scripts/benchmark/context-execution-benchmark.mjs",
     "benchmark:classic": "node scripts/benchmark/classic-baseline-regression.mjs",
+    "benchmark:daemon": "node scripts/benchmark/runtime-daemon-benchmark.mjs",
     "benchmark:bundle": "pnpm build && node scripts/benchmark/comet-bundle-compatibility-benchmark.mjs",
     "prepare": "node scripts/release/prepare.js",
     "prepack": "node scripts/release/npm-readme.mjs apply",

@@ -202,6 +202,7 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
       'candidateId',
       'inputFingerprint',
       'inputFingerprintGate',
+      'candidateInputFingerprintGate',
       'workspace',
       'execution',
       'checks',
@@ -319,6 +320,14 @@ export function parseNativeLocalExecution(value: unknown): NativeLocalExecutionS
           ),
         }
       : {}),
+    ...(Object.hasOwn(root, 'candidateInputFingerprintGate')
+      ? {
+          candidateInputFingerprintGate: nullableString(
+            root.candidateInputFingerprintGate,
+            'Native local candidateInputFingerprintGate',
+          ),
+        }
+      : {}),
     workspace: {
       projectRoot: absolutePath(workspaceRoot.projectRoot, 'Native local workspace.projectRoot'),
       worktreeRoot: absolutePath(workspaceRoot.worktreeRoot, 'Native local workspace.worktreeRoot'),
@@ -345,6 +354,7 @@ export function rebuildNativeLocalExecution(options: {
     candidateId: options.portableState.builder_handoff?.candidate_id ?? null,
     inputFingerprint: null,
     inputFingerprintGate: null,
+    candidateInputFingerprintGate: null,
     workspace: {
       projectRoot: path.resolve(options.projectRoot),
       worktreeRoot: path.resolve(options.worktreeRoot ?? options.projectRoot),

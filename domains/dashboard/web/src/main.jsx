@@ -1028,7 +1028,10 @@ function DashboardApp({
           reconcilePluginInvocationResult(current, requestedPluginId, capability, result, input),
         );
       }
-      if (requestedPluginId === 'comet.project-knowledge' && capability === 'read-source') {
+      if (
+        (requestedPluginId === 'comet.project-knowledge' && capability === 'read-source') ||
+        capability === 'memory-get'
+      ) {
         return result;
       }
       const [nextPage] = await Promise.all([
@@ -1073,6 +1076,15 @@ function DashboardApp({
                 modifiedAt: preview.modifiedAt,
                 truncated: false,
               };
+            }
+          }
+          if (pluginId === 'comet.project-knowledge' && capability === 'memory-get') {
+            const memoryEntries = Array.isArray(pluginPage?.data?.projectMemory?.entries)
+              ? pluginPage.data.projectMemory.entries
+              : [];
+            const memory = memoryEntries.find((entry) => entry?.slug === input?.slug);
+            if (memory) {
+              return { kind: 'memory', ...memory };
             }
           }
           if (pluginId === 'comet.project-knowledge' && capability === 'query') {
@@ -1125,6 +1137,14 @@ function DashboardApp({
           );
         } else if (pluginId === 'comet.project-knowledge' && capability === 'create') {
           toast('项目知识已新增');
+        } else if (pluginId === 'comet.project-knowledge' && capability === 'remember') {
+          toast(result?.action === 'updated' ? '项目记忆已更新' : '项目记忆已保存');
+        } else if (
+          pluginId === 'comet.project-knowledge' &&
+          capability === 'forget' &&
+          input?.memory
+        ) {
+          toast('项目记忆已删除');
         } else if (pluginId === 'comet.project-knowledge' && capability === 'correct') {
           toast(input?.restore ? '项目知识已更新并恢复使用' : '项目知识已更新');
         } else if (pluginId === 'comet.project-knowledge' && capability === 'forget') {
@@ -1142,7 +1162,7 @@ function DashboardApp({
                   ? '来源或验证入口已变化，记录已替代并停止应用'
                   : '项目知识已刷新',
           );
-        } else if (capability !== 'read-source') {
+        } else if (capability !== 'read-source' && capability !== 'memory-get') {
           toast(capability === 'lifecycle' ? '插件状态已更新' : '操作已完成');
         }
         return result;
@@ -6564,6 +6584,350 @@ function ContextManifestPreview({
   );
 }
 
+const PROJECT_MEMORY_TYPE_META = {
+  fact: { label: '项目事实', tone: 'blue' },
+  decision: { label: '技术决策', tone: 'purple' },
+  pattern: { label: '工程惯例', tone: 'green' },
+  procedure: { label: '流程步骤', tone: 'cyan' },
+  constraint: { label: '项目约束', tone: 'orange' },
+  'failure-resolution': { label: '故障处理', tone: 'red' },
+};
+
+function projectMemoryTypeLabel(type) {
+  return PROJECT_MEMORY_TYPE_META[type]?.label ?? type ?? '项目记忆';
+}
+
+function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
+  const [searchText, setSearchText] = useState('');
+  const [selectedSlug, setSelectedSlug] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [detailPending, setDetailPending] = useState(false);
+  const [detailError, setDetailError] = useState(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createDraft, setCreateDraft] = useState({
+    title: '',
+    type: 'pattern',
+    description: '',
+    text: '',
+    paths: '',
+  });
+  const entries = useMemo(
+    () => (Array.isArray(summary?.entries) ? summary.entries : []),
+    [summary?.entries],
+  );
+  const visibleEntries = useMemo(() => {
+    const search = searchText.trim().toLocaleLowerCase('zh-CN');
+    if (!search) return entries;
+    return entries.filter((entry) =>
+      [entry.title, entry.description, entry.slug, projectMemoryTypeLabel(entry.type)]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase('zh-CN')
+        .includes(search),
+    );
+  }, [entries, searchText]);
+  const selectedEntry =
+    visibleEntries.find((entry) => entry.slug === selectedSlug) ?? visibleEntries[0] ?? null;
+  const selectedKey = selectedEntry?.slug ?? null;
+  useEffect(() => {
+    if (selectedKey !== selectedSlug) setSelectedSlug(selectedKey);
+  }, [selectedKey, selectedSlug]);
+  useEffect(() => {
+    let cancelled = false;
+    setDetail(null);
+    setDetailError(null);
+    if (!selectedEntry) {
+      setDetailPending(false);
+      return undefined;
+    }
+    setDetailPending(true);
+    onInvoke('memory-get', { slug: selectedEntry.slug })
+      .then((result) => {
+        if (cancelled) return;
+        if (result?.kind !== 'memory') setDetailError('项目记忆内容读取失败');
+        else setDetail(result);
+      })
+      .catch((error) => {
+        if (!cancelled)
+          setDetailError(error instanceof Error ? error.message : '项目记忆内容读取失败');
+      })
+      .finally(() => {
+        if (!cancelled) setDetailPending(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onInvoke, selectedEntry?.slug, summary?.total]);
+  const updateCreateDraft = (field, value) =>
+    setCreateDraft((current) => ({ ...current, [field]: value }));
+  const submitCreate = async () => {
+    if (createSaving) return;
+    setCreateSaving(true);
+    try {
+      await onInvoke('remember', {
+        title: createDraft.title.trim(),
+        text: createDraft.text,
+        type: createDraft.type,
+        ...(createDraft.description.trim() ? { description: createDraft.description.trim() } : {}),
+        ...(createDraft.paths.trim()
+          ? {
+              paths: createDraft.paths
+                .split(/[,，]/u)
+                .map((entry) => entry.trim())
+                .filter(Boolean),
+            }
+          : {}),
+      });
+      setCreateOpen(false);
+      setCreateDraft({ title: '', type: 'pattern', description: '', text: '', paths: '' });
+    } finally {
+      setCreateSaving(false);
+    }
+  };
+  const directory = summary?.directory ?? '';
+  const emptyDescription = searchText.trim()
+    ? '没有匹配的项目记忆'
+    : '还没有项目记忆。任务结束时 Agent 会把验证过、可复用的经验通过 comet knowledge remember 写入这里。';
+  return (
+    <div className="dashboard-project-memory">
+      <section className="dashboard-memory-registry" aria-label="项目记忆列表">
+        <div className="dashboard-memory-registry-toolbar">
+          <div>
+            <span className="dashboard-contextual-title">
+              <strong>项目记忆</strong>
+              <CompactHelpButton
+                ariaLabel="了解项目记忆"
+                title="项目记忆"
+                description="项目记忆是 Agent 在任务结束时直接写入的可复用经验"
+                example="与项目知识不同：写入不经过评审队列，索引每次任务都会注入给 Agent。"
+              />
+            </span>
+            <span>{visibleEntries.length} 条</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              className="dashboard-project-memory-search"
+              value={searchText}
+              prefix={<SearchOutlined />}
+              allowClear
+              placeholder="搜索标题、摘要或 slug"
+              aria-label="搜索项目记忆"
+              onChange={(event) => setSearchText(event.target.value)}
+            />
+            <Button icon={<PlusOutlined />} disabled={readOnly} onClick={() => setCreateOpen(true)}>
+              新增项目记忆
+            </Button>
+          </div>
+        </div>
+        <div className="dashboard-memory-table-head" aria-hidden="true">
+          <span>记忆标题与摘要</span>
+          <span>类型</span>
+          <span>更新时间</span>
+          <span />
+        </div>
+        <div className="dashboard-memory-table-body">
+          {visibleEntries.length === 0 ? (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyDescription} />
+          ) : (
+            visibleEntries.map((entry) => {
+              const isSelected = selectedEntry?.slug === entry.slug;
+              return (
+                <div
+                  key={entry.slug}
+                  className={`dashboard-memory-table-row dashboard-project-memory-row${
+                    isSelected ? ' is-selected' : ''
+                  }`}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={isSelected}
+                  onClick={() => setSelectedSlug(entry.slug)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setSelectedSlug(entry.slug);
+                    }
+                  }}
+                >
+                  <div className="dashboard-memory-table-copy">
+                    <div className="dashboard-memory-table-title-row">
+                      <strong>{entry.title}</strong>
+                      <span className="dashboard-record-origin">{entry.slug}</span>
+                    </div>
+                    <p>{entry.description}</p>
+                  </div>
+                  <div className="dashboard-project-memory-type">
+                    <Tag color={PROJECT_MEMORY_TYPE_META[entry.type]?.tone}>
+                      {projectMemoryTypeLabel(entry.type)}
+                    </Tag>
+                  </div>
+                  <div className="dashboard-memory-table-time">
+                    {formatTimestamp(entry.updated)}
+                  </div>
+                  <div className="dashboard-memory-record-actions">
+                    <Tooltip title="删除项目记忆">
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        aria-label={`删除项目记忆 ${entry.title}`}
+                        disabled={readOnly}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onInvoke('forget', { memory: entry.slug });
+                        }}
+                      />
+                    </Tooltip>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+        {directory && (
+          <div className="dashboard-project-memory-foot" title={directory}>
+            存储位置：{directory}
+          </div>
+        )}
+      </section>
+      <aside className="dashboard-memory-inspector" aria-label="项目记忆详情">
+        {selectedEntry ? (
+          <>
+            <div className="dashboard-memory-inspector-head">
+              <span>{projectMemoryTypeLabel(selectedEntry.type)}</span>
+              <strong>{selectedEntry.title}</strong>
+              <p>{selectedEntry.description}</p>
+            </div>
+            {detailPending ? (
+              <Skeleton active paragraph={{ rows: 6 }} />
+            ) : detailError ? (
+              <Alert type="warning" showIcon message="记忆内容暂不可用" description={detailError} />
+            ) : (
+              <section>
+                <h4>记忆内容</h4>
+                <pre className="dashboard-project-memory-body">{detail?.body ?? ''}</pre>
+              </section>
+            )}
+            <section>
+              <h4>记忆信息</h4>
+              <div className="dashboard-memory-inspector-list">
+                <div>
+                  <span>记忆标识</span>
+                  <strong>{selectedEntry.slug}</strong>
+                </div>
+                <div>
+                  <span>创建时间</span>
+                  <strong>{formatTimestamp(selectedEntry.created)}</strong>
+                </div>
+                <div>
+                  <span>更新时间</span>
+                  <strong>{formatTimestamp(selectedEntry.updated)}</strong>
+                </div>
+                {(selectedEntry.paths ?? []).length > 0 && (
+                  <div>
+                    <span>相关路径</span>
+                    <strong>{selectedEntry.paths.join('、')}</strong>
+                  </div>
+                )}
+                {selectedEntry.source && (
+                  <div>
+                    <span>来源</span>
+                    <strong>{selectedEntry.source}</strong>
+                  </div>
+                )}
+              </div>
+            </section>
+            <section>
+              <h4>使用方式</h4>
+              <div className="dashboard-memory-inspector-list">
+                <div>
+                  <span>Agent 展开</span>
+                  <strong>--expand-context &quot;project-memory:{selectedEntry.slug}&quot;</strong>
+                </div>
+              </div>
+            </section>
+            <div className="dashboard-project-memory-inspector-actions">
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                disabled={readOnly}
+                onClick={() => onInvoke('forget', { memory: selectedEntry.slug })}
+              >
+                删除这条项目记忆
+              </Button>
+            </div>
+          </>
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择一条项目记忆查看完整内容" />
+        )}
+      </aside>
+      <DashboardModal
+        rootClassName="dashboard-create-modal-root dashboard-project-knowledge-modal-root"
+        classNames={{
+          mask: 'dashboard-create-modal-mask',
+          container: 'dashboard-create-modal-content',
+        }}
+        open={createOpen}
+        title="新增项目记忆"
+        okText="保存"
+        cancelText="取消"
+        width={720}
+        okButtonProps={{
+          disabled: createDraft.title.trim().length === 0 || createDraft.text.trim().length === 0,
+        }}
+        confirmLoading={createSaving}
+        onOk={submitCreate}
+        onCancel={() => setCreateOpen(false)}
+        destroyOnClose
+      >
+        <Form layout="vertical">
+          <Form.Item label="标题" required>
+            <Input
+              value={createDraft.title}
+              placeholder="同一标题会更新同一条记忆"
+              onChange={(event) => updateCreateDraft('title', event.target.value)}
+            />
+          </Form.Item>
+          <Form.Item label="类型">
+            <Select
+              value={createDraft.type}
+              aria-label="项目记忆类型"
+              onChange={(value) => updateCreateDraft('type', value)}
+              options={Object.entries(PROJECT_MEMORY_TYPE_META).map(([value, meta]) => ({
+                value,
+                label: meta.label,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="一行摘要">
+            <Input
+              value={createDraft.description}
+              placeholder="缺省取正文首行"
+              onChange={(event) => updateCreateDraft('description', event.target.value)}
+            />
+          </Form.Item>
+          <Form.Item label="正文" required>
+            <Input.TextArea
+              rows={6}
+              value={createDraft.text}
+              placeholder="现象、做法、验证结果"
+              onChange={(event) => updateCreateDraft('text', event.target.value)}
+            />
+          </Form.Item>
+          <Form.Item label="相关路径">
+            <Input
+              value={createDraft.paths}
+              placeholder="逗号分隔，例如 test/domains/, app/commands/"
+              onChange={(event) => updateCreateDraft('paths', event.target.value)}
+            />
+          </Form.Item>
+        </Form>
+      </DashboardModal>
+    </div>
+  );
+}
+
 function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
   const snapshot = data && typeof data === 'object' ? data : {};
   const [workspaceTab, setWorkspaceTab] = useState('model');
@@ -6870,6 +7234,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
         {[
           ['model', '项目概况'],
           ['policy', '项目规范'],
+          ['memory', '项目记忆'],
           ['history', '历史版本'],
           ['sources', '检索语料'],
           ['query', '检索测试'],
@@ -6946,6 +7311,12 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
           onSelectSource={selectSource}
           onCloseSource={closeSource}
           onSelectRecord={selectSourceRecord}
+        />
+      ) : workspaceTab === 'memory' ? (
+        <ProjectMemoryPanel
+          summary={snapshot.projectMemory}
+          readOnly={readOnly}
+          onInvoke={onInvoke}
         />
       ) : (
         <ProjectKnowledgeQuery
@@ -7180,6 +7551,9 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
   const provider = status.provider?.provider ?? 'local';
   const learningDiagnostic = personalMemoryLearningDiagnostic(status.learning, status);
   const learningDetails = personalMemoryLearningDetails(status.learning, status);
+  const learningCheckedAt = status.learning?.lastCheckedAt
+    ? formatTimestamp(status.learning.lastCheckedAt)
+    : '';
   const profileUsage = status.profile
     ? `个人偏好与事实 ${status.profile.usedChars} 字符 · 单次注入预算 ${status.profile.maxChars}`
     : provider === 'remote'
@@ -7487,11 +7861,22 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
             })}
           </nav>
           <div className="dashboard-memory-filter-summary">
-            <div className="dashboard-memory-learning-diagnostic" role="status">
-              <span>最近学习检查</span>
-              <strong>{learningDiagnostic}</strong>
-              {learningDetails && <small>{learningDetails}</small>}
-            </div>
+            <Tooltip title={learningDetails || undefined} placement="right">
+              <div
+                className="dashboard-memory-learning-diagnostic"
+                role="status"
+                tabIndex={learningDetails ? 0 : undefined}
+              >
+                <span>最近学习检查</span>
+                <strong>{learningDiagnostic}</strong>
+                {learningCheckedAt && <small>{learningCheckedAt}</small>}
+                {learningDetails && (
+                  <span className="dashboard-memory-learning-diagnostic-details">
+                    {learningDetails}
+                  </span>
+                )}
+              </div>
+            </Tooltip>
             <div>
               <span
                 className={`dashboard-tool-state-dot ${

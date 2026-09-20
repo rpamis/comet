@@ -4527,3 +4527,38 @@ test('keeps long project names discoverable without widening the selector', asyn
     .first();
   await expect(projectOption).toHaveAttribute('title', longProjectName);
 });
+
+test('shows the project memory tab on the demo knowledge page', async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+
+  await page.getByRole('tab', { name: '项目记忆' }).click();
+  const panel = page.locator('.dashboard-project-memory');
+  await expect(panel).toBeVisible();
+  const memoryList = page.getByRole('region', { name: '项目记忆列表' });
+  await expect(memoryList).toContainText('Dashboard 改动验证顺序');
+  await expect(memoryList).toContainText('Windows 测试临时目录清理');
+  await expect(memoryList).toContainText('2 条');
+
+  const inspector = page.getByRole('complementary', { name: '项目记忆详情' });
+  await expect(inspector).toContainText('Dashboard 改动验证顺序');
+  await expect(inspector).toContainText('cacheRoot');
+  await expect(inspector).toContainText(
+    '--expand-context "project-memory:dashboard-change-verification"',
+  );
+
+  await page.getByLabel('搜索项目记忆').fill('Windows');
+  await expect(memoryList).toContainText('Windows 测试临时目录清理');
+  await expect(memoryList).not.toContainText('Dashboard 改动验证顺序');
+
+  await page.getByLabel('搜索项目记忆').fill('');
+  await inspector.getByRole('button', { name: '删除这条项目记忆' }).click();
+  await expect(page.getByText('当前为只读预览，不会写入本地项目')).toBeVisible();
+
+  await expect(consoleErrors).toEqual([]);
+});

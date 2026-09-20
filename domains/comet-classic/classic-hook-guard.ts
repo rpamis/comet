@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { stripUtf8Bom } from '../../platform/fs/strip-bom.js';
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
-import { readStdinTextWithTimeout } from '../../platform/process/stdin-read.js';
+import { readStdinTextWithTimeoutAsync } from '../../platform/process/stdin-read.js';
 import {
   assertClassicLayoutWritable,
   assertClassicLayoutReadable,
@@ -40,10 +40,10 @@ function allowed(message: string): ClassicCommandResult {
   return result(0, `[COMET-HOOK] allowed: ${message}`);
 }
 
-function inputTarget(): string {
+async function inputTarget(): Promise<string> {
   if (process.env.FILE_PATH) return process.env.FILE_PATH;
   if (process.stdin.isTTY) return '';
-  const stdin = readStdinTextWithTimeout();
+  const stdin = await readStdinTextWithTimeoutAsync();
   if (stdin.text === null) {
     process.stderr.write(
       '[COMET-HOOK] stdin timeout: the host did not provide hook input within the expected window\n',
@@ -1205,7 +1205,7 @@ export async function inspectClassicHookGuard(
 
 export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
   const projectRoot = parseProjectRoot(args);
-  const target = inputTarget();
+  const target = await inputTarget();
   if (!target) return allowed('no file path in tool input');
   return inspectClassicHookTarget(projectRoot, target);
 };

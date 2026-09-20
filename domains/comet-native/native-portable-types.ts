@@ -196,6 +196,8 @@ export interface NativeLocalExecutionState {
    * the clean tracked tree without overlooking generated inputs a check reads.
    */
   inputFingerprintGate?: string | null;
+  /** Fingerprint gate for candidate-owned inputs, excluding generated check inputs. */
+  candidateInputFingerprintGate?: string | null;
   workspace: {
     projectRoot: string;
     worktreeRoot: string;

@@ -77,6 +77,45 @@ describe('Native check input fingerprint', () => {
       process.env.PATH = previous;
     }
   });
+
+  it('excludes only Native-managed change metadata from a configured artifact root', async () => {
+    const artifactRoot = path.join(root, 'docs');
+    const changeDir = path.join(artifactRoot, 'comet', 'changes', 'demo');
+    await fs.mkdir(changeDir, { recursive: true });
+    await fs.writeFile(path.join(changeDir, 'comet-state.yaml'), 'state: one\n');
+    await fs.writeFile(path.join(changeDir, 'brief.md'), 'brief one\n');
+    const input = { ...fingerprintInput(root), managedArtifactRoot: artifactRoot };
+
+    const before = await nativeCheckInputFingerprint(input);
+    await fs.writeFile(path.join(changeDir, 'comet-state.yaml'), 'state: two\n');
+    expect(await nativeCheckInputFingerprint(input)).toBe(before);
+
+    await fs.writeFile(path.join(changeDir, 'brief.md'), 'brief two\n');
+    expect(await nativeCheckInputFingerprint(input)).not.toBe(before);
+
+    await fs.mkdir(path.join(root, 'src'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src', 'comet-state.yaml'), 'source one\n');
+    const withSourceMetadata = await nativeCheckInputFingerprint(input);
+    await fs.writeFile(path.join(root, 'src', 'comet-state.yaml'), 'source two\n');
+    expect(await nativeCheckInputFingerprint(input)).not.toBe(withSourceMetadata);
+  });
+
+  it('supports a project-root artifact directory without excluding source metadata', async () => {
+    const changeDir = path.join(root, 'comet', 'changes', 'demo');
+    await fs.mkdir(changeDir, { recursive: true });
+    await fs.writeFile(path.join(changeDir, 'comet-state.yaml'), 'state: one\n');
+    const input = { ...fingerprintInput(root), managedArtifactRoot: root };
+
+    const before = await nativeCheckInputFingerprint(input);
+    await fs.writeFile(path.join(changeDir, 'comet-state.yaml'), 'state: two\n');
+    expect(await nativeCheckInputFingerprint(input)).toBe(before);
+
+    await fs.mkdir(path.join(root, 'src'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src', 'comet-state.yaml'), 'source one\n');
+    const withSourceMetadata = await nativeCheckInputFingerprint(input);
+    await fs.writeFile(path.join(root, 'src', 'comet-state.yaml'), 'source two\n');
+    expect(await nativeCheckInputFingerprint(input)).not.toBe(withSourceMetadata);
+  });
 });
 
 describe('Native check input gate', () => {

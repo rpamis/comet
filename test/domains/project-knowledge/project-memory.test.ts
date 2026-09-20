@@ -316,4 +316,61 @@ describe('project knowledge plugin project memory context', () => {
       await fs.rm(cacheRoot, { recursive: true, force: true });
     }
   });
+
+  test('exposes project memory through the dashboard snapshot and capabilities', async () => {
+    const root = await tempRoot('comet-project-memory-dashboard-');
+    const cacheRoot = await tempRoot('comet-project-memory-dashboard-cache-');
+    try {
+      await writeProjectMemory(
+        root,
+        {
+          title: 'Cache root discipline',
+          text: '命令测试必须传入独立 cacheRoot，避免污染真实用户缓存。',
+          type: 'constraint',
+        },
+        { cacheRoot },
+      );
+      const storageStore = new MemoryPluginStorageStore();
+      const module = await createProjectKnowledgeModule(
+        {
+          storage: await storageStore.open(
+            'comet.project-knowledge',
+            'project',
+            'project-memory-dashboard',
+          ),
+          reportDiagnostic: () => undefined,
+        } as never,
+        { projectRoot: root, cacheRoot, knowledgeConfig: { provider: 'local' } },
+      );
+      const status = await module.invoke?.('status', {});
+      expect(status).toMatchObject({
+        projectMemory: {
+          total: 1,
+          entries: [expect.objectContaining({ slug: 'cache-root-discipline', type: 'constraint' })],
+        },
+      });
+      const detail = await module.invoke?.('memory-get', { slug: 'cache-root-discipline' });
+      expect(detail).toMatchObject({
+        kind: 'memory',
+        slug: 'cache-root-discipline',
+        body: '命令测试必须传入独立 cacheRoot，避免污染真实用户缓存。',
+      });
+      await expect(module.invoke?.('memory-get', { slug: 'missing' })).rejects.toThrow(
+        '项目记忆不存在',
+      );
+      await expect(
+        module.invoke?.('remember', { title: 'Second lesson', text: '第二条经验。' }),
+      ).resolves.toMatchObject({ action: 'created', slug: 'second-lesson', total: 2 });
+      await expect(module.invoke?.('forget', { memory: 'second-lesson' })).resolves.toMatchObject({
+        changed: true,
+        removed: true,
+      });
+      await expect(module.invoke?.('forget', { memory: 'second-lesson' })).rejects.toThrow(
+        '项目记忆不存在',
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
 });

@@ -61,6 +61,7 @@ const CHILD_KEYS = new Set([
   'blocker',
   'projectRoot',
   'task',
+  'builderFailureCount',
 ]);
 const FINAL_VERIFICATION_KEYS = new Set(['status', 'summary']);
 
@@ -73,9 +74,10 @@ function exactKeys(
   value: Record<string, unknown>,
   expected: ReadonlySet<string>,
   label: string,
+  optional: ReadonlySet<string> = new Set(),
 ): string | null {
   const actual = new Set(Object.keys(value));
-  const missing = [...expected].filter((key) => !actual.has(key));
+  const missing = [...expected].filter((key) => !actual.has(key) && !optional.has(key));
   const unexpected = [...actual].filter((key) => !expected.has(key));
   if (missing.length === 0 && unexpected.length === 0) return null;
   return `${label} fields must be exact (missing: ${missing.join(', ') || 'none'}; unexpected: ${unexpected.join(', ') || 'none'})`;
@@ -151,7 +153,12 @@ function isEmptySupervisorShell(
     const child = record(entry, `Native Supervisor child ${index}`);
     if (!child) return `Native Supervisor child ${index} must be an object`;
     const { acceptanceScope, contractHash, ...legacyChild } = child;
-    const childError = exactKeys(legacyChild, CHILD_KEYS, `Native Supervisor child ${index}`);
+    const childError = exactKeys(
+      legacyChild,
+      CHILD_KEYS,
+      `Native Supervisor child ${index}`,
+      new Set(['builderFailureCount']),
+    );
     if (childError) return childError;
     const definition = contract.children[index];
     const expectedScope =
@@ -197,6 +204,9 @@ function isEmptySupervisorShell(
       child.task !== null
     ) {
       return `Native Supervisor child ${definition.name} contains execution progress`;
+    }
+    if ((child.builderFailureCount ?? 0) !== 0) {
+      return `Native Supervisor child ${definition.name} contains Builder failure progress`;
     }
     if (!Array.isArray(child.checks) || child.checks.length !== 0) {
       return `Native Supervisor child ${definition.name} contains integration checks`;

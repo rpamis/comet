@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import { stripUtf8Bom } from '../fs/strip-bom.js';
-import { readStdinTextWithTimeout, type StdinReadResult } from './stdin-read.js';
+import { readStdinTextWithTimeoutAsync, type StdinReadResult } from './stdin-read.js';
 
 export type CometHookIntent = 'context' | 'write' | 'non-write' | 'unknown';
 
@@ -259,13 +259,15 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
   };
 }
 
-export function readCometHookRequest(
-  options: { readStdin?: () => StdinReadResult } = {},
-): CometHookRequest {
+export async function readCometHookRequest(
+  options: {
+    readStdin?: () => StdinReadResult | Promise<StdinReadResult>;
+  } = {},
+): Promise<CometHookRequest> {
   const filePath = process.env.FILE_PATH;
   if (filePath?.trim()) return parseCometHookRequest('', filePath);
   if (process.stdin.isTTY) return parseCometHookRequest('', filePath);
-  const stdin = (options.readStdin ?? readStdinTextWithTimeout)();
+  const stdin = await (options.readStdin ?? readStdinTextWithTimeoutAsync)();
   if (stdin.text === null) {
     // A host that neither writes nor closes the hook's stdin is broken; failing
     // fast with a diagnostic beats hanging on every tool call. Not injectable as

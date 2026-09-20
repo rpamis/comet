@@ -46,7 +46,7 @@ function parseArgs(args: readonly string[]): ParsedArgs {
 
 export async function projectRootFrom(
   parsed: ParsedArgs,
-  request?: ReturnType<typeof readCometHookRequest>,
+  request?: Awaited<ReturnType<typeof readCometHookRequest>>,
 ): Promise<string | null> {
   if (parsed.projectRoot) {
     const candidate = request
@@ -82,7 +82,7 @@ export async function runCometHookRouter(args: readonly string[]): Promise<numbe
 
   let decision: CometHookDecision;
   try {
-    const request = readCometHookRequest();
+    const request = await readCometHookRequest();
     const projectRoot = await projectRootFrom(parsed, request);
     decision = projectRoot
       ? await runWithHookReadCache(() => inspectCometHook(projectRoot, request))
