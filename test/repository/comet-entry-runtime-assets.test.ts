@@ -132,9 +132,9 @@ describe('Comet entry resolver runtime release asset', () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).not.toContain('Unable to locate package.json');
-    const state = await fs.readFile(path.join(home, '.comet', 'plugins', 'state.json'), 'utf8');
-    expect(state).toContain('comet.personal-memory');
-    expect(state).toContain('comet.project-knowledge');
+    await expect(
+      fs.access(path.join(home, '.comet', 'plugins', 'state.json')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
     const packageVersion = JSON.parse(await fs.readFile(path.resolve('package.json'), 'utf8'))
       .version as string;
     expect(await fs.readFile(skillOnlyHookRouter, 'utf8')).toContain(`return"${packageVersion}"`);
@@ -145,8 +145,12 @@ describe('Comet entry resolver runtime release asset', () => {
     const home = path.join(temporaryRoot, 'broken-home');
     await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });
     await fs.mkdir(path.join(projectRoot, '.comet'), { recursive: true });
-    await fs.mkdir(path.join(home, '.comet'), { recursive: true });
-    await fs.writeFile(path.join(home, '.comet', 'plugins'), 'not a directory', 'utf8');
+    await fs.mkdir(path.join(home, '.comet', 'plugins'), { recursive: true });
+    await fs.writeFile(
+      path.join(home, '.comet', 'plugins', 'state.json'),
+      '{ invalid plugin state',
+      'utf8',
+    );
     await fs.writeFile(
       path.join(projectRoot, '.comet', 'config.yaml'),
       [

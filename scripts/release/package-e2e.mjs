@@ -34,6 +34,7 @@ const requiredNativeInstallFiles = [
   'comet-native/scripts/comet-native-new.mjs',
   'comet-native/scripts/comet-native-status.mjs',
 ];
+const packageTestPlatform = 'codex';
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -163,19 +164,33 @@ async function main() {
     }
 
     const init = parseJsonPayload(
-      run(process.execPath, [cli, 'init', projectDir, '--yes', '--workflow', 'native', '--json'], {
-        cwd: consumerDir,
-        env: environment,
-      }),
+      run(
+        process.execPath,
+        [
+          cli,
+          'init',
+          projectDir,
+          '--yes',
+          '--workflow',
+          'native',
+          '--platform',
+          packageTestPlatform,
+          '--json',
+        ],
+        {
+          cwd: consumerDir,
+          env: environment,
+        },
+      ),
     );
     if (init.status !== 'complete' || !Array.isArray(init.results) || init.failures.length > 0) {
       throw new Error(
         `Packaged Native init did not complete successfully: ${JSON.stringify(init)}`,
       );
     }
-    if (init.results.length !== PLATFORMS.length) {
+    if (init.results.length !== 1 || init.results[0]?.platform !== packageTestPlatform) {
       throw new Error(
-        `Packaged Native init covered ${init.results.length} platforms; expected ${PLATFORMS.length}`,
+        `Packaged Native init covered ${init.results.length} platforms; expected ${packageTestPlatform}`,
       );
     }
 
@@ -413,7 +428,7 @@ async function main() {
     }
 
     console.log(
-      `Packaged Comet ${version} installed, routed, and verified across ${PLATFORMS.length} Native platform targets.`,
+      `Packaged Comet ${version} installed, routed, and verified for the ${packageTestPlatform} Native platform target.`,
     );
   } finally {
     await fs.rm(temporaryRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

@@ -215,9 +215,9 @@ describe('Native portable status', () => {
       working: 1,
       agents: { working: 1 },
     });
+    expect(status.artifacts?.artifactRoot).toBe(path.join(root, 'docs'));
     expect(JSON.stringify(status)).not.toContain('internal-run-id');
     expect(JSON.stringify(status)).not.toContain('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
-    expect(JSON.stringify(status)).not.toContain(root);
     expect(status.history).toBeUndefined();
 
     const firstDetails = await inspectNativePortableStatus({

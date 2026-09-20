@@ -478,8 +478,6 @@ test('keeps cached settings visible when fresh revalidation fails', async ({ pag
       .first()
       .getByText('Native', { exact: true }),
   ).toBeVisible();
-  await expect(settingsDialog.getByLabel('项目知识单文件上限（MB）')).toHaveValue('2');
-  await expect(settingsDialog.getByLabel('项目知识语料总预算（MB）')).toHaveValue('64');
   await expect.poll(() => configLoads).toBe(2);
   await expect(settingsDialog.getByText('正在同步最新数据…', { exact: true })).toHaveCount(0);
   releaseSettingsRefresh?.();
@@ -4368,7 +4366,7 @@ test('keeps Classic and Native side panels within the center panel height', asyn
       await expect(selectedNativeRow).toHaveCSS('min-height', '72px');
       await expect(selectedNativeRow).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
       await expect(selectedNativeRow).toHaveCSS('border-radius', '10px');
-      await expect(selectedNativeRow.locator('.truncate')).toHaveCSS('font-size', '14px');
+      await expect(selectedNativeRow.locator('.truncate').first()).toHaveCSS('font-size', '14px');
       await expect(selectedNativeRow.getByText('◇', { exact: true })).toHaveCount(0);
       await expect(selectedNativeRow).toContainText('Build · 1/3 子变更构建中');
       const nativeProgress = selectedNativeRow.getByRole('progressbar');

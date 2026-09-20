@@ -35,7 +35,13 @@ describe('Comet Native isolation boundaries', () => {
     expect(source).not.toMatch(/openspec[\\/]changes/iu);
     expect(source).toContain("'.comet/config.yaml'");
     expect(new Set(source.match(/\.comet\/[A-Za-z0-9._/-]+/gu) ?? [])).toEqual(
-      new Set(['.comet/config.yaml', '.comet/current-change.json', '.comet/runtime/native']),
+      new Set([
+        '.comet/config.yaml',
+        '.comet/current-change.json',
+        '.comet/runtime',
+        '.comet/runtime/',
+        '.comet/runtime/native',
+      ]),
     );
   });
 

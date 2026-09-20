@@ -31,7 +31,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Ambient Resume duplication**: Projects where `CLAUDE.md` imports `AGENTS.md` receive one managed recovery block, with update migration when an existing project contains duplicates (#433).
 - **Personal Memory pause and Dashboard summaries**: Paused projects no longer review or persist automatic observations, and the Dashboard keeps learning results and project-scoped totals aligned after switching projects (#440).
 - **Native confirmation and verifier recovery**: Shape drift is detected before stale requirements are confirmed, and a registered but never-started Verifier remains visible with a bounded recovery path.
-- **Package and Hook safety**: Incomplete npm assets fail with one actionable reinstall message; user Hook configuration and unrelated staged, working, and untracked files remain intact during managed operations.
+- **Package and Hook safety**: Incomplete npm assets fail with one actionable reinstall message; bounded Hook context failures emit a concise diagnostic while allowing the write to proceed; user Hook configuration and unrelated staged, working, and untracked files remain intact during managed operations.
 
 ### Security
 

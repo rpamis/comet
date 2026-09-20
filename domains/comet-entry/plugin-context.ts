@@ -60,7 +60,7 @@ export async function collectCometHookContext(
     lockTimeoutMs: 750,
     bestEffortContext: true,
   });
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let settled = false;
     const timer = setTimeout(() => {
       if (settled) return;
@@ -74,11 +74,11 @@ export async function collectCometHookContext(
         clearTimeout(timer);
         resolve(value);
       },
-      () => {
+      (error) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        resolve([]);
+        reject(error);
       },
     );
   });
