@@ -1,0 +1,576 @@
+schema: comet.native.v4
+name: node-runtime-performance
+language: zh-CN
+phase: archive
+status: done
+state_version: 30
+brief: brief.md
+document_constraints_version: 1
+shape_confirmation_hash: 831be26b40b14e0bdba99d75e98520bb5af06db7eace2b8fa26a5e0af2fb5130
+spec_changes:
+  - capability: node-runtime-performance
+    operation: create
+    source: specs/node-runtime-performance/spec.md
+workspace:
+  isolation: current
+  change_branch: "042"
+  target_branch: "042"
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 9
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 2
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：现有单次 CLI 与常驻 Runtime 对同一合法请求返回一致的 JSON、退出码、状态变更、错误分类和下一步动作；daemon
+      不可用时单次路径仍可完成。
+    result: passed
+    reason:
+      text: 定向测试与真实 CLI 对照通过：Native status 的 daemon/单进程路径 command、exitCode、24 个条目及
+        summary 一致；Classic state current 的错误结果也一致。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：第一次请求按需启动一个与项目、构建版本和权限上下文匹配的
+      Runtime；同一上下文的后续请求复用该进程，空闲退出后能重新启动，停止命令不会留下可继续接收请求的实例。
+    result: passed
+    reason:
+      text: daemon 协议测试覆盖按需服务、状态、静默连接超时和 stop；基准显示 cold 与 idle restart 启动新 PID，warm
+        样本复用同一 PID。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：两个不同项目或 worktree 的并发只读请求不能共享 cwd、环境、当前 change、授权、锁、缓存或输出；写入请求不进入
+      daemon，继续由现有 mutation lock 和 state-version 检查保护。
+    result: passed
+    reason:
+      text: endpoint 绑定项目根、构建、权限和环境指纹；不同 COMET_TEST_ENV_BINDING 得到不同
+        PID/endpoint，协议测试拒绝环境不匹配请求，写入命令不在只读路由集合。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：慢 Git、文件扫描或 Native 检查运行时，Hook 请求仍在有界时间内得到结果；慢任务失败、取消或超时不会阻塞后续
+      Hook，也不会留下无法恢复的锁。
+    result: passed
+    reason:
+      text: Hook 使用同进程异步有界 stdin，daemon 请求在独立进程中执行；定向 Hook/IPC 测试通过，正常输入实测约 510ms
+        返回，静默连接有界结束。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：daemon 启动竞争、IPC 断开、协议错误、版本不匹配和进程崩溃均返回可解析诊断并回退到单次 CLI；不会无限重试或重复派发写操作。
+    result: passed
+    reason:
+      text: 构建版本不匹配、非法/静默 IPC 连接均返回可解析错误；客户端启动重试为固定有限序列，失败后保留单进程回退路径。
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：写入请求不进入首版 daemon；因此响应丢失仍由现有持久化状态、请求恢复和确认路径处理，客户端不会把 daemon
+      失败当成“未执行”并重放写入。
+    result: passed
+    reason:
+      text: daemon router 仅允许 Classic/Native 只读查询；next、确认、验证派发及其他写命令继续走现有单进程路径，未增加写重放。
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：Hook 输入读取不再为正常已关闭输入额外启动 Node 子进程；无输入、超时、超限和非法输入仍在有界时间内失败关闭，并保持平台输出协议。
+    result: passed
+    reason:
+      text: stdin reader 改为当前进程异步读取，保留 2 秒/1 MiB 边界；定向 stdin 与 Hook 测试通过，超限输入实测快速失败关闭。
+      truncated: false
+  - id: A8
+    source: brief.md
+    text: A8：首版 daemon 不自动合并或重排命令；现有 Skill
+      的确定性批处理继续由调用方显式组织，遇到状态变化、权限边界、检查失败或需要确认时仍按原命令边界停止。
+    result: passed
+    reason:
+      text: 路由器每次只转发一个明确命令，不合并或重排请求；Classic/Native 原始命令入口仍可独立执行。
+      truncated: false
+  - id: A9
+    source: brief.md
+    text: A9：合法成功 fixture 的冷启动、热调用和回退基准记录 Node/OS、构建身份、样本、进程数、Git/文件读取、median/p95
+      和内存；热调用不得重新创建 Runtime 进程，且报告不把失败快速退出算作收益。
+    result: passed
+    reason:
+      text: benchmark v2 自动创建并清理临时 Git/Native fixture，实测输出
+        Node/Windows、source/generated build identity、warmup/sample、PID/process
+        starts、Git/fs、queue、median/p95、RSS/heap；warm PID 保持复用且成功 postcondition
+        已校验。
+      truncated: false
+  - id: A10
+    source: brief.md
+    text: A10：源码、Classic/Native/Entry 生成
+      Runtime、打包资产和测试保持一致；现有锁、指纹、恢复、授权、插件失败隔离和独立验收回归全部通过。
+    result: passed
+    reason:
+      text: pnpm check:generated、TypeScript、lint/architecture 及定向测试通过；Native
+        fingerprint 测试 9/9 通过，managed artifact 只排除配置 artifact root 下 comet
+        changes/archive 元数据，同名源文件仍改变指纹。
+      truncated: false
+  - id: A11
+    source: specs/node-runtime-performance/spec.md
+    text: Single CLI and daemon return the same result - **WHEN** a supported
+      Classic or Native request is executed once through the existing single
+      process path and once through the Node daemon path with the same project
+      root, arguments, environment binding and request payload - **THEN** both
+      paths MUST return the same JSON fields, exit code, error classification,
+      state transition and continuation action - **AND** a daemon startup,
+      handshake or protocol failure MUST return an actionable diagnostic and
+      allow the caller to use the single process path
+    result: passed
+    reason:
+      text: 同一 Native status 请求的 daemon/单进程 JSON 结果、退出码、条目和摘要已实测一致；daemon 不可用时路由函数返回
+        false 进入 fast/single runtime。
+      truncated: false
+  - id: A12
+    source: specs/node-runtime-performance/spec.md
+    text: Runtime starts once and exits when idle - **WHEN** the first request for a
+      project, Runtime build identity and permission context arrives - **THEN**
+      exactly one matching Node Runtime MUST be started and acknowledged through
+      a bounded handshake - **AND** subsequent requests in that context MUST
+      reuse the same Runtime process without creating another Node process -
+      **AND** after the configured idle timeout the Runtime MUST exit cleanly
+      and the next request MUST start a fresh matching process - **AND** an
+      explicit stop operation MUST prevent new requests from reaching the
+      stopped instance
+    result: passed
+    reason:
+      text: 启动锁、协议握手、空闲计时、stop 和回启均有实现及测试/基准证据；warm PID 不变，idle restart PID 改变。
+      truncated: false
+  - id: A13
+    source: specs/node-runtime-performance/spec.md
+    text: Concurrent read-only projects remain isolated - **WHEN** requests for two
+      different projects or linked worktrees execute concurrently - **THEN**
+      each request MUST retain its own project root, cwd, environment, current
+      change, authorization context and output - **AND** no request MAY read or
+      write the other request's locks, transactions, state, cache entries or
+      evidence - **AND** write, confirmation, and verification-dispatch requests
+      MUST bypass the daemon and obey the existing mutation lock and
+      state-version checks
+    result: passed
+    reason:
+      text: 项目根、cwd、permissionContext、environmentFingerprint 和 endpoint key
+        均按请求/实例绑定；不同环境隔离实测通过，写入/确认/验证路径未进入 daemon。
+      truncated: false
+  - id: A14
+    source: specs/node-runtime-performance/spec.md
+    text: Hook stays responsive during a slow Runtime operation - **WHEN** a Native
+      Git or file scan, verification preparation, or another bounded slow
+      operation is running - **AND** a Hook request arrives for the same or
+      another project - **THEN** the Hook request MUST complete within its
+      configured bound or fail closed with a structured diagnostic - **AND**
+      cancellation, timeout or failure of the slow operation MUST release its
+      resources and MUST NOT block the next Hook request
+    result: passed
+    reason:
+      text: Hook stdin 与 daemon 为独立进程，输入和连接都有界超时；定向 Hook、stdin、IPC 测试通过，失败连接不会保留可用请求。
+      truncated: false
+  - id: A15
+    source: specs/node-runtime-performance/spec.md
+    text: Broken daemon falls back without a retry loop - **WHEN** daemon startup
+      races, the IPC endpoint disappears, the protocol version is incompatible,
+      the request is malformed, or the daemon exits unexpectedly - **THEN** the
+      client MUST stop retrying after the configured bounded attempts - **AND**
+      it MUST return a structured diagnostic and run the compatible single
+      process path when the request is safe to retry - **AND** it MUST preserve
+      the existing failure-closed behavior when the request cannot be safely
+      retried
+    result: passed
+    reason:
+      text: 协议/构建错误返回结构化响应，客户端只做固定次数启动尝试并随后回退；无自动写操作重放。
+      truncated: false
+  - id: A16
+    source: specs/node-runtime-performance/spec.md
+    text: Write requests keep the existing at-most-once recovery boundary - **WHEN**
+      a write, confirmation, or verification-dispatch request is submitted -
+      **THEN** the client MUST bypass the read-only daemon and use the existing
+      single-process Runtime path - **AND** a lost response MUST continue to use
+      the existing request identity, persisted state, recovery, or confirmation
+      path - **AND** daemon startup or IPC failure MUST NOT cause that write to
+      be replayed automatically
+    result: passed
+    reason:
+      text: 首版路由白名单排除了写入和验证派发，现有 mutation/state-version/recovery 代码路径未被 daemon 替换。
+      truncated: false
+  - id: A17
+    source: specs/node-runtime-performance/spec.md
+    text: Hook input does not create a normal-path child Node process - **WHEN** a
+      supported Hook host sends a valid, closed input payload within the
+      configured size and time limits - **THEN** the Hook MUST read it in the
+      current process or through a reusable bounded reader without creating a
+      per-request Node child process - **AND** a silent pipe, oversized payload,
+      invalid JSON or timeout MUST finish within the configured bound and fail
+      closed with the existing platform output contract
+    result: passed
+    reason:
+      text: 正常 Hook 输入不再 spawn Node 子进程；有界 reader、非法/空/超限处理和平台输出契约的定向测试通过。
+      truncated: false
+  - id: A18
+    source: specs/node-runtime-performance/spec.md
+    text: Deterministic actions are not implicitly reordered - **WHEN** multiple
+      commands are listed by a Skill or caller - **THEN** the daemon MUST NOT
+      infer a batch, reorder commands, or combine requests across a state or
+      authorization boundary - **AND** explicit deterministic batching remains
+      the caller's responsibility and keeps the existing stop-and-recover
+      behavior - **AND** each individual command path MUST remain available with
+      equivalent results
+    result: passed
+    reason:
+      text: daemon 协议没有批处理或排序字段，路由保持单命令边界；现有 Skill 显式组织流程的状态机未合并。
+      truncated: false
+  - id: A19
+    source: specs/node-runtime-performance/spec.md
+    text: Cold, warm, fallback and idle restart are measured on valid fixtures -
+      **WHEN** the benchmark runs on an isolated temporary project with a
+      successful postcondition - **THEN** it MUST record the Node and OS
+      versions, source and generated build identity, sample and warmup counts,
+      process starts, Git and filesystem work, queue time, median, observed p95
+      and memory - **AND** the warm path MUST show Runtime process reuse without
+      counting fixture setup, cleanup, failed commands or invalid postconditions
+      as performance wins - **AND** the report MUST keep external shell, Agent
+      and model time separate from Runtime time
+    result: passed
+    reason:
+      text: 临时 fixture benchmark 成功完成 cold/warm/fallback/idle restart
+        四类测量，记录构建身份、样本/预热、进程、Git/fs、queue、median/p95、内存，并将外层 setup/cleanup/sleep
+        时间排除。
+      truncated: false
+  - id: A20
+    source: specs/node-runtime-performance/spec.md
+    text: Generated and packaged entrypoints preserve existing safety contracts -
+      **WHEN** the source Runtime, CLI entrypoints or IPC implementation changes
+      - **THEN** the Classic, Native and Entry generated bundles MUST be rebuilt
+      and checked for deterministic equality - **AND** existing input
+      fingerprints, mutation locks, recovery boundaries, authorization checks,
+      plugin failure isolation and independent verification MUST continue to
+      pass - **AND** the package and installed Skill paths MUST expose the same
+      supported command behavior
+    result: passed
+    reason:
+      text: Classic/Native/Entry 生成资产确定性检查通过，TypeScript/lint/定向
+        runtime、stdin、daemon、fingerprint 测试通过；安全边界与独立 Verifier 流程未被移除。
+      truncated: false
+builder_handoff:
+  candidate_id: 982def90-37c7-4c7e-ac36-2595f32baf1c
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:42814f38-bad6-4e4f-8cce-2a8af87051ef
+  iteration: 9
+  summary:
+    text: 实现纯 Node 按需 Runtime daemon：按项目、构建身份、权限和环境指纹隔离，通过本地 IPC 复用安全只读
+      Classic/Native 查询，支持启动竞争保护、空闲退出、显式 stop、连接超时和单次 CLI 回退；Hook 正常 stdin
+      改为同进程有界异步读取，保留失败关闭与现有状态机、锁、指纹、授权和恢复边界；仅排除配置 Native artifact 根下
+      changes/archive 的自管理 state/children/verification 元数据，避免 Builder→Verifier
+      自身状态写入触发候选死循环，同时保留源码同名文件的输入绑定。补充 daemon 生命周期协议测试、默认隔离临时 fixture
+      的冷/热/回退/空闲重启基准、构建身份与运行指标记录和生成资产验证。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A2
+    - A3
+    - A4
+    - A5
+    - A6
+    - A7
+    - A8
+    - A9
+    - A10
+  checks:
+    - name:
+        text: focused runtime and fingerprint tests
+        truncated: false
+      result: passed
+      note:
+        text: 6 个文件，53 个测试通过、1 个跳过，含环境绑定、IPC 静默连接超时和 Native artifact 输入边界
+        truncated: false
+    - name:
+        text: TypeScript
+        truncated: false
+      result: passed
+      note:
+        text: pnpm exec tsc --noEmit 通过
+        truncated: false
+    - name:
+        text: lint and architecture
+        truncated: false
+      result: passed
+      note:
+        text: pnpm lint 通过
+        truncated: false
+    - name:
+        text: generated assets
+        truncated: false
+      result: passed
+      note:
+        text: pnpm check:generated 通过
+        truncated: false
+    - name:
+        text: daemon benchmark
+        truncated: false
+      result: passed
+      note:
+        text: Node v22.20.0 / Windows win32-x64；默认创建隔离临时 Git/Native fixture，预热 1 次、3
+          次热样本 median 605.20ms，单进程回退 median 659.61ms；冷启动 1030.74ms，空闲重启
+          1028.00ms；报告含构建身份、PID、内存、Git/文件读取和请求边界时间
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: 未运行全仓库测试，按用户要求仅执行与改动直接相关的定向测试；未运行真实平台 Hook、真实模型 Eval 或远端 CI。
+      truncated: false
+    - text: 首版 daemon 只复用只读 CLI；写入、确认和验证派发仍由现有单进程 Runtime 处理，未新增跨请求授权或验证结果缓存。
+      truncated: false
+    - text: 性能基准只代表当前 Windows/Node 22.20.0 与本地项目负载，不代表 Agent、模型或跨机器端到端时延。
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-09-20T12:59:17.186Z
+blockers: []
+verification:
+  candidate_id: 982def90-37c7-4c7e-ac36-2595f32baf1c
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:e6362d8d-b08d-449a-b2f0-2bbf7bd1951a
+  iteration: 9
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: daemon-protocol-tests
+      name:
+        text: daemon protocol, Hook, and Native fingerprint regression tests
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/platform/process/comet-daemon.test.ts
+          truncated: false
+        - text: test/platform/process/stdin-read.test.ts
+          truncated: false
+        - text: test/domains/comet-entry/hook-router-entry.test.ts
+          truncated: false
+        - text: test/app/classic-command.test.ts
+          truncated: false
+        - text: test/app/native-command.test.ts
+          truncated: false
+        - text: test/domains/comet-native/native-check-input-fingerprint.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 47041
+    - id: runtime-typecheck
+      name:
+        text: TypeScript typecheck
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: tsc
+          truncated: false
+        - text: --noEmit
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 9790
+    - id: runtime-lint
+      name:
+        text: repository lint and architecture
+        truncated: false
+      argv_display:
+        - text: lint
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 13485
+    - id: generated-runtime-check
+      name:
+        text: generated Runtime determinism
+        truncated: false
+      argv_display:
+        - text: check:generated
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2486
+    - id: daemon-benchmark
+      name:
+        text: daemon cold warm fallback benchmark
+        truncated: false
+      argv_display:
+        - text: benchmark:daemon
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 20892
+  summary:
+    text: 独立复核候选 982def90-37c7-4c7e-ac36-2595f32baf1c（iteration 9 / attempt 1）并确认
+      verifier-started 已登记。daemon 只读路由、环境/项目/权限隔离、生命周期与连接边界、同进程 Hook
+      stdin、Native managed artifact fingerprint、临时 fixture benchmark
+      及生成资产检查均通过；没有发现阻断当前验收的缺陷。已明确未执行全仓、真实平台和远端验证范围。
+    truncated: false
+  risks:
+    - text: 未运行全仓测试、远端 CI、真实平台 Hook 宿主或模型 Eval；结论仅覆盖当前候选和定向 Runtime 证据。
+      truncated: false
+    - text: pnpm lint 无错误但报告 native-portable-checks.ts 的 managedArtifactRoot
+        未使用警告，建议后续清理。
+      truncated: false
+    - text: benchmark 的 Git 计数来自共享 Runtime Git adapter，文件计数使用 Node
+        resourceUsage；未宣称覆盖所有外部集成命令。
+      truncated: false
+    - text: 未进行跨两个真实 worktree 的长时间并发压力测试；隔离结论来自 endpoint/协议实现、单元测试和不同环境实测。
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-20T13:09:42.065Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-20T11:40:48.540Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: "Builder handoff Runtime checks failed: generated-runtime-check,
+        daemon-benchmark"
+      truncated: false
+    completed_at: 2026-09-20T11:43:09.780Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native check input changed after the candidate was built; a new Builder
+        candidate is required before checks can run again.
+      truncated: false
+    completed_at: 2026-09-20T11:47:06.675Z
+  - goal_cycle: 2
+    iteration: 3
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native check input changed after the candidate was built; a new Builder
+        candidate is required before checks can run again.
+      truncated: false
+    completed_at: 2026-09-20T11:50:36.276Z
+  - goal_cycle: 2
+    iteration: 4
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native check input changed after the candidate was built; a new Builder
+        candidate is required before checks can run again.
+      truncated: false
+    completed_at: 2026-09-20T11:55:20.497Z
+  - goal_cycle: 2
+    iteration: 5
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native check input changed after the candidate was built; a new Builder
+        candidate is required before checks can run again.
+      truncated: false
+    completed_at: 2026-09-20T12:08:58.100Z
+  - goal_cycle: 2
+    iteration: 6
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A2
+      - A3
+      - A5
+      - A9
+      - A12
+      - A13
+      - A15
+      - A19
+    summary:
+      text: 独立验证完成。Native 只读结果等价和主要生成检查通过，但环境绑定、IPC 悬挂连接和 benchmark
+        合约存在具体缺口，故当前候选不能通过，需回到 Build 修复后重新验证。
+      truncated: false
+    completed_at: 2026-09-20T12:24:04.459Z
+  - goal_cycle: 2
+    iteration: 7
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native check input changed after the candidate was built; a new Builder
+        candidate is required before checks can run again.
+      truncated: false
+    completed_at: 2026-09-20T12:35:06.947Z
+  - goal_cycle: 2
+    iteration: 8
+    attempt: 1
+    outcome: execution-error
+    unresolved_ids: []
+    summary:
+      text: 候选构建完成后又修正了 Native artifact 输入边界并重建了生成资产；旧候选已不再对应当前实现，原独立验收已终止，需按当前源码重新提交
+        Builder 候选。
+      truncated: false
+    completed_at: 2026-09-20T12:58:02.127Z
+  - goal_cycle: 2
+    iteration: 8
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native check input changed after the candidate was built; a new Builder
+        candidate is required before checks can run again.
+      truncated: false
+    completed_at: 2026-09-20T12:58:37.744Z
+  - goal_cycle: 2
+    iteration: 9
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: 独立复核候选 982def90-37c7-4c7e-ac36-2595f32baf1c（iteration 9 / attempt 1）并确认
+        verifier-started 已登记。daemon 只读路由、环境/项目/权限隔离、生命周期与连接边界、同进程 Hook
+        stdin、Native managed artifact fingerprint、临时 fixture benchmark
+        及生成资产检查均通过；没有发现阻断当前验收的缺陷。已明确未执行全仓、真实平台和远端验证范围。
+      truncated: false
+    completed_at: 2026-09-20T13:09:42.065Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-20T10:30:43.010Z
