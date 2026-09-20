@@ -13,6 +13,7 @@ import {
   projectKnowledgeListCommand,
   projectKnowledgeQueryCommand,
   projectKnowledgeRebuildCommand,
+  projectKnowledgeRememberCommand,
   projectKnowledgeStatusCommand,
   projectKnowledgeReviewCommand,
 } from '../../app/commands/project-knowledge.js';
@@ -158,6 +159,59 @@ describe('comet knowledge commands', () => {
           ]),
         },
       });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('remembers and forgets project memory entries', async () => {
+    const { root, cacheRoot } = await projectFixture();
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await expect(
+        projectKnowledgeRememberCommand(root, {
+          json: true,
+          cacheRoot,
+          title: 'Comet CLI cache root',
+          text: '命令测试必须传入独立 cacheRoot，避免污染真实用户缓存。',
+          type: 'constraint',
+          paths: ['test/app/'],
+          source: 'change memory-1',
+        }),
+      ).resolves.toMatchObject({
+        action: 'created',
+        slug: 'comet-cli-cache-root',
+        total: 1,
+        entry: { type: 'constraint', source: 'change memory-1' },
+      });
+      await expect(
+        projectKnowledgeRememberCommand(root, {
+          json: true,
+          cacheRoot,
+          title: 'Comet CLI cache root',
+          text: '同一标题更新同一条记忆。',
+        }),
+      ).resolves.toMatchObject({ action: 'updated', slug: 'comet-cli-cache-root', total: 1 });
+      await expect(
+        projectKnowledgeForgetCommand(root, {
+          json: true,
+          cacheRoot,
+          memory: 'comet-cli-cache-root',
+        }),
+      ).resolves.toMatchObject({ memory: 'comet-cli-cache-root', removed: true });
+      await expect(
+        projectKnowledgeForgetCommand(root, {
+          json: true,
+          cacheRoot,
+          memory: 'comet-cli-cache-root',
+        }),
+      ).resolves.toMatchObject({ removed: false });
+      expect(process.exitCode).toBe(1);
+      process.exitCode = originalExitCode;
+      await expect(projectKnowledgeForgetCommand(root, { json: true, cacheRoot })).rejects.toThrow(
+        '--memory',
+      );
     } finally {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });

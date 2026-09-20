@@ -347,6 +347,36 @@ knowledge
   });
 
 knowledge
+  .command('remember [path]')
+  .description('记录一条可复用的项目经验（同一标题默认更新同一条记忆）')
+  .requiredOption('--title <title>', '经验标题')
+  .requiredOption('--text <text>', '经验正文：现象、做法、验证结果')
+  .addOption(
+    new Option('--type <type>', '经验类型')
+      .choices(['fact', 'decision', 'pattern', 'procedure', 'constraint', 'failure-resolution'])
+      .default('pattern'),
+  )
+  .option('--description <text>', '一行摘要；缺省取正文首行')
+  .option('--slug <slug>', '固定记忆标识；缺省从标题派生')
+  .option('--paths <paths>', '相关路径，逗号分隔')
+  .option('--source <source>', '经验来源，例如 change 标识')
+  .option('--cache-root <dir>', '项目记忆缓存根目录')
+  .option('--json', 'Output as JSON')
+  .action(async (targetPath = '.', options) => {
+    const { projectKnowledgeRememberCommand } = await import('../commands/project-knowledge.js');
+    await projectKnowledgeRememberCommand(targetPath, {
+      ...options,
+      paths:
+        typeof options.paths === 'string'
+          ? options.paths
+              .split(',')
+              .map((entry: string) => entry.trim())
+              .filter(Boolean)
+          : [],
+    });
+  });
+
+knowledge
   .command('correct [path]')
   .description('纠正一条项目知识记录')
   .requiredOption('--id <id>', '记录标识')
@@ -359,8 +389,10 @@ knowledge
 
 knowledge
   .command('forget [path]')
-  .description('忘记一条项目知识记录')
-  .requiredOption('--id <id>', '记录标识')
+  .description('忘记一条项目知识记录或项目记忆')
+  .option('--id <id>', '记录标识')
+  .option('--memory <slug>', '项目记忆 slug')
+  .option('--cache-root <dir>', '项目记忆缓存根目录')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
     const { projectKnowledgeForgetCommand } = await import('../commands/project-knowledge.js');

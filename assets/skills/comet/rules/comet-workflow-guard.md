@@ -49,6 +49,7 @@ Native 正式产物只认配置解析出的 `<artifact-root>/comet/changes/<chan
 - 任务开始或目标路径明确后运行 `comet task <project-root> --task "<task>" --phase "<phase>" --session "<本次任务稳定标识>" --json`。只使用返回的 `text`；Context Manifest（`manifest` / `<context_manifest>`）中的摘要不是完整规则，需要正文、来源或验证方式时用同一任务参数和 `--expand-context "<id>"` 展开。路径、操作或阶段变化时以同一 `--session` 重新选择，未变化内容不重复投递。
 - `<active_policies>` 中的 `<verification command="...">` 必须加入当前 Verify 的实际检查并记录真实结果；未成功执行的命令不得把策略视为强制执行。
 - 用户明确要求长期记住偏好或项目约定时使用 `comet memory remember`，使显式内容立即生效；只有隐式但可跨任务复用的稳定协作方式才使用 `comet memory observe`。不得把任务摘要、实现进展、命令输出或测试结果作为个人记忆。
+- 任务结束前把本次验证过、后续可复用的项目经验写入项目记忆：`comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --json`。同一标题默认更新同一条记忆，不重复建新条目；没有可复用经验时跳过，任务摘要、一次性命令输出和未验证的猜测不得写入。项目记忆索引会随任务上下文注入，需要某条完整内容时用同一任务参数追加 `--expand-context "project-memory:<slug>"` 展开。
 - 每次任务结束前必须记录学习检查：提交了合格观察后在 `comet task --complete` 传 `--learning-check submitted`，确认没有合格观察时传 `--learning-check no-observation`，没有执行检查时传 `--learning-check not-run`。观察结果以 JSON 的 `learning.result` 和 `status.learning.lastCheck` 为准；首次观察是 `trial` 候选，不能把一次任务成功直接当成长期偏好。
 - 实际使用某条上下文且结果明确后，以 JSON 的 `applications[].applicationId` 或 Hook 文本中的 `application_id` 运行 `comet task <project-root> --task "<task>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`；不得为未使用条目回写成功。编译器、测试或 linter 失败时遵循工作流读取诊断并修复代码。
 - 任务上下文命令不可用、项目未初始化或没有匹配片段时保持中立；插件失败不得伪装成项目检查失败。

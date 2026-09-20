@@ -9,6 +9,9 @@ import {
   createProjectKnowledgeQuery,
   ensureProjectKnowledgeReady,
   projectKnowledgeProviderName,
+  removeProjectMemory,
+  writeProjectMemory,
+  type ProjectMemoryType,
   type ProjectKnowledgeDiagnostic,
   type ProjectKnowledgeProvider,
 } from '../../domains/project-knowledge/index.js';
@@ -27,6 +30,13 @@ export interface ProjectKnowledgeCommandOptions {
   readonly state?: 'trial' | 'proven' | 'enforced' | 'superseded' | 'all';
   readonly limit?: number;
   readonly outcome?: AgentContextOutcomeStatus;
+  readonly title?: string;
+  readonly description?: string;
+  readonly type?: ProjectMemoryType;
+  readonly slug?: string;
+  readonly paths?: readonly string[];
+  readonly source?: string;
+  readonly memory?: string;
 }
 
 export async function projectKnowledgeStatusCommand(
@@ -145,12 +155,68 @@ export async function projectKnowledgeCorrectCommand(
   }
 }
 
+export async function projectKnowledgeRememberCommand(
+  targetPath = '.',
+  options: ProjectKnowledgeCommandOptions = {},
+): Promise<unknown> {
+  const projectRoot = path.resolve(targetPath);
+  const diagnostics: ProjectKnowledgeDiagnostic[] = [];
+  const result = await writeProjectMemory(
+    projectRoot,
+    {
+      title: required(options.title, '--title'),
+      text: required(options.text, '--text'),
+      ...(options.type === undefined ? {} : { type: options.type }),
+      ...(options.description === undefined ? {} : { description: options.description }),
+      ...(options.slug === undefined ? {} : { slug: options.slug }),
+      ...(options.paths === undefined || options.paths.length === 0
+        ? {}
+        : { paths: options.paths }),
+      ...(options.source === undefined ? {} : { source: options.source }),
+    },
+    options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot },
+  );
+  const output = {
+    action: result.action,
+    slug: result.slug,
+    file: result.file,
+    total: result.total,
+    entry: {
+      title: result.entry.title,
+      description: result.entry.description,
+      type: result.entry.type,
+      created: result.entry.created,
+      updated: result.entry.updated,
+      paths: result.entry.paths,
+      ...(result.entry.source === undefined ? {} : { source: result.entry.source }),
+    },
+    diagnostics,
+  };
+  print(output, options);
+  return output;
+}
+
 export async function projectKnowledgeForgetCommand(
   targetPath = '.',
   options: ProjectKnowledgeCommandOptions = {},
 ): Promise<unknown> {
   const projectRoot = path.resolve(targetPath);
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
+  if (options.memory !== undefined) {
+    if (!options.memory.trim()) throw new Error('--memory must not be empty');
+    const removed = await removeProjectMemory(
+      projectRoot,
+      options.memory.trim(),
+      options.cacheRoot,
+    );
+    const output = { memory: options.memory.trim(), removed, diagnostics };
+    if (!removed) process.exitCode = 1;
+    print(output, options);
+    return output;
+  }
+  if (options.id === undefined || !options.id.trim()) {
+    throw new Error('forget requires --id <record> or --memory <slug>');
+  }
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
     const result = await provider.apply({
