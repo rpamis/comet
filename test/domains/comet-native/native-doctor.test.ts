@@ -86,7 +86,7 @@ describe('Native doctor', () => {
     await expect(fs.access(selection)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('reports a malformed oversized selection as invalid JSON after the full read', async () => {
+  it('rejects an oversized selection before parsing untrusted content', async () => {
     const selection = nativeSelectionFile(paths);
     await fs.mkdir(path.dirname(selection), { recursive: true });
     await fs.writeFile(selection, Buffer.alloc(16 * 1024 + 1, 0x61));
@@ -94,12 +94,10 @@ describe('Native doctor', () => {
     const result = await doctorNativeProject({ paths });
 
     expect(result.healthy).toBe(false);
-    // The selection read lost its byte cap, so a large malformed document now
-    // fails at JSON parsing instead of a size rejection.
     expect(result.findings).toContainEqual(
       expect.objectContaining({
         code: 'selection-invalid',
-        message: expect.stringContaining('is not valid JSON'),
+        message: expect.stringContaining('exceeds 16384 bytes'),
       }),
     );
     await expect(fs.stat(selection)).resolves.toMatchObject({ size: 16 * 1024 + 1 });

@@ -625,7 +625,12 @@ export async function nativeDoctorCommand(
         continuation: result.continuation,
       });
     }
-    const supervisorState = await readNativeSupervisorState(paths, name);
+    // Doctor must stay available when a persisted pre-upgrade overlay has
+    // lost its children contract. Diagnostic reads preserve that evidence and
+    // let the continuation explain how to restore children.yaml.
+    const supervisorState = await readNativeSupervisorState(paths, name, {
+      diagnostics: true,
+    });
     const unmetReady =
       supervisorState &&
       supervisorState.children.filter(

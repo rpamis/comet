@@ -1548,6 +1548,18 @@ Run applicable focused checks.
     });
     await expect(fs.readFile(counter, 'utf8')).resolves.toBe('run\n');
 
+    for (const command of ['status', 'show'] as const) {
+      const resumed = json(await runNativeCli([command, name, '--json', ...projectArgs()]));
+      expect(resumed.data?.continuation).toMatchObject({
+        action: 'dispatch-verifier',
+        inputOptions: [
+          expect.objectContaining({
+            template: { kind: 'dispatch-verifier', checks: [verificationCheck] },
+          }),
+        ],
+      });
+    }
+
     const dispatched = await runnerStep(name, inputTemplate(checked, 'runner-input'));
     expect(dispatched).toMatchObject({
       exitCode: 0,
@@ -1603,6 +1615,15 @@ Run applicable focused checks.
       ...builderHandoff(['A1']),
       verification_checks: [
         {
+          id: 'runtime-pass',
+          name: 'Runtime pass',
+          executable: process.execPath,
+          argv: ['-e', 'process.exit(0)'],
+          cwdRef: '.',
+          timeoutMs: 10_000,
+          repeatable: true,
+        },
+        {
           id: 'runtime-timeout',
           name: 'Runtime timeout',
           executable: process.execPath,
@@ -1622,7 +1643,10 @@ Run applicable focused checks.
           status: 'active',
           loop: { stage: 'verify-ready', next_action: 'run-required-checks-and-dispatch-verifier' },
         },
-        checks: [expect.objectContaining({ id: 'runtime-timeout', status: 'interrupted' })],
+        checks: [
+          expect.objectContaining({ id: 'runtime-pass', status: 'passed' }),
+          expect.objectContaining({ id: 'runtime-timeout', status: 'interrupted' }),
+        ],
         runtimeCheckExecution: { disposition: 'executed' },
         continuation: {
           action: 'retry-checks',
@@ -1634,6 +1658,32 @@ Run applicable focused checks.
         },
       },
     });
+
+    const retried = await runnerStep(name, inputTemplate(checked, 'runner-input'));
+    expect(retried).toMatchObject({
+      exitCode: 0,
+      data: { continuation: { action: 'retry-checks' } },
+    });
+    const exhausted = await runnerStep(name, inputTemplate(retried, 'runner-input'));
+    expect(exhausted).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: { phase: 'build', loop: { stage: 'repairing' } },
+        continuation: { action: 'repair' },
+      },
+    });
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const local = await readNativeLocalExecution(nativeLocalExecutionFile(paths, name));
+    expect(local?.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'runtime-pass', status: 'passed', executionCount: 1 }),
+        expect.objectContaining({
+          id: 'runtime-timeout',
+          status: 'interrupted',
+          executionCount: 3,
+        }),
+      ]),
+    );
   });
 
   it('rejects delayed generic Verifier errors and unavailable messages from an older attempt', async () => {

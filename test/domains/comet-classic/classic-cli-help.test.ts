@@ -18,6 +18,8 @@ describe('Classic operational help', () => {
       'data.exitCode',
       '124',
       '70',
+      'comet check rerun',
+      'latest Runtime-recorded argv',
     ]) {
       expect(help).toContain(text);
     }

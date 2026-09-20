@@ -210,7 +210,7 @@ describe('Supervisor integration check execution', () => {
     });
   }, 120000);
 
-  it('preserves a failed integration receipt and retries against the already merged candidate', async () => {
+  it('preserves a failed integration receipt and requires a changed plan before retry', async () => {
     const { paths, state } = await verifiedSupervisor();
     await expect(
       integrateNativeSupervisorChildWorkspace({
@@ -229,17 +229,18 @@ describe('Supervisor integration check execution', () => {
       receiptRef: expect.stringContaining('runtime/evidence/reports/'),
       checks: [{ name: 'fails', status: 'failed' }],
     });
-    const samePlan = await integrateNativeSupervisorChildWorkspace({
-      paths,
-      state: failed,
-      name: 'core',
-      checks: [],
-      checkPlans: [plan('fails', 'process.exit(1)')],
-    });
-    expect(samePlan.integration.checkExecution).toMatchObject({
-      status: 'interrupted',
-      operationId: failed.integration.checkExecution!.operationId,
-    });
+    await expect(
+      integrateNativeSupervisorChildWorkspace({
+        paths,
+        state: failed,
+        name: 'core',
+        checks: [],
+        checkPlans: [plan('fails', 'process.exit(1)')],
+      }),
+    ).rejects.toThrow('already failed on the identical plan');
+    expect((await readNativeSupervisorState(paths, 'parent'))!.integration.checkExecution).toEqual(
+      failed.integration.checkExecution,
+    );
     const completed = await integrateNativeSupervisorChildWorkspace({
       paths,
       state: failed,

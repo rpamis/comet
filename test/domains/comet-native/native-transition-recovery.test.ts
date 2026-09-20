@@ -1600,7 +1600,7 @@ describe('Native transition recovery', () => {
       /already held/u,
     );
     await expect(fs.access(lockFile)).resolves.toBeUndefined();
-    await expect(fs.access(rootLockFile)).resolves.toBeUndefined();
+    await expect(fs.access(rootLockFile)).rejects.toMatchObject({ code: 'ENOENT' });
 
     const repaired = await doctorNativeProject({
       paths,

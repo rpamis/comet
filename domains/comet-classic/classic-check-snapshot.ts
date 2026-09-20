@@ -145,11 +145,13 @@ export async function collectCheckSnapshot(
   const policy = await readCheckPolicy(root, identity, legacy);
   hash.update(bindingDigest(policy, legacy));
   const entries: CheckManifestEntry[] = [];
-  const baseline = options.baseline ? new Map(options.baseline.map((e) => [e.p, e])) : null;
   const contentCache = options.contentCache ?? new Map<string, string>();
   const state = await readClassicState(changeDir, { migrate: false });
   const report = state.classic?.verificationReport;
   const reportPath = report && report.endsWith('.md') ? path.resolve(root, report) : null;
+  const outputMatchers = (policy.outputs ?? []).map((pattern) =>
+    compileCheckPolicyPattern(pattern),
+  );
   const rootVariants = [root, await fs.realpath(root).catch(() => root)];
   const isWithinRoot = (candidate: string, base = root): boolean => {
     const relative = path.relative(base, candidate);
@@ -177,6 +179,9 @@ export async function collectCheckSnapshot(
     ),
   ].filter((home) => rootVariants.some((base) => home !== base && isWithinRoot(home, base)));
   const omitted = (absolute: string) =>
+    outputMatchers.some((matches) =>
+      matches(path.relative(root, absolute).replaceAll('\\', '/')),
+    ) ||
     processHomeRoots.some((home) => absolute === home || absolute.startsWith(home + path.sep)) ||
     absolute === path.join(changeDir, '.comet.yaml') ||
     absolute === path.join(changeDir, '.comet-state.lock') ||
@@ -220,7 +225,7 @@ export async function collectCheckSnapshot(
     return results;
   }
 
-  async function file(absolute: string): Promise<void> {
+  async function file(absolute: string, repositoryContentHash?: string): Promise<void> {
     if (omitted(absolute)) return;
     const relative = path.relative(root, absolute).replaceAll('\\', '/');
     const stat = await fs
@@ -257,22 +262,17 @@ export async function collectCheckSnapshot(
       return;
     }
     const cacheKey = `${relative}|${stat.size}|${stat.mtimeNs}|${stat.mode}`;
-    // An unchanged stat identity proves the content matches the baseline entry,
-    // so the file is not reread. This is the same assumption the manifest
-    // revalidation already relies on; legacy digests keep binding raw bytes and
-    // therefore never take this path.
-    const recorded = baseline?.get(relative) ?? null;
-    const baselineHit =
-      !legacy &&
-      recorded !== null &&
-      recorded.h !== 'missing' &&
-      recorded.s === Number(stat.size) &&
-      recorded.m === stat.mtimeNs.toString();
-    let contentHash = legacy ? undefined : contentCache.get(cacheKey);
-    if (contentHash === undefined && baselineHit) contentHash = recorded.h;
+    const normalizeTasks =
+      policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md');
+    // Git object IDs represent the raw file. They cannot be reused for the
+    // semantic tasks.md snapshot because checkbox-only edits are deliberately
+    // normalized away.
+    let contentHash = legacy
+      ? undefined
+      : normalizeTasks
+        ? contentCache.get(cacheKey)
+        : (repositoryContentHash ?? contentCache.get(cacheKey));
     if (contentHash === undefined) {
-      const normalizeTasks =
-        policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md');
       // Regular files are stream-hashed without retaining their bytes; legacy
       // evidence and the tasks.md normalization still need the full content.
       if (!legacy && !normalizeTasks) {
@@ -334,9 +334,10 @@ export async function collectCheckSnapshot(
       }
       // Include the index separately: staging a different version is a changed input too.
       const index = policy.git === 'all' ? git(directory, ['ls-files', '--stage', '-z']) : '';
-      if (index === null) throw new Error('Cannot inspect check input index');
+      const allIndex = policy.git === 'all' ? index : git(directory, ['ls-files', '--stage', '-z']);
+      if (allIndex === null) throw new Error('Cannot inspect check input index');
       if (policy.git === 'all') {
-        for (const entry of index.split('\0').filter(Boolean)) {
+        for (const entry of allIndex.split('\0').filter(Boolean)) {
           const name = entry.slice(entry.indexOf('\t') + 1);
           if (!omitted(path.resolve(directory, name))) {
             hash.update(entry);
@@ -349,61 +350,47 @@ export async function collectCheckSnapshot(
           }
         }
       }
-      // Undeclared whole-tree scopes take a differential path when a recorded
-      // baseline exists: one `git status` classifies which paths could have
-      // changed, and only those pay the per-file stat and content work. Paths
-      // absent from the status output reuse their recorded manifest entry, which
-      // is the same identity assumption the manifest revalidation already
-      // relies on. Content and mode changes still appear in the status output,
-      // so tampering remains detectable.
-      const prefix = path.relative(root, directory).replaceAll('\\', '/').replace(/\/$/u, '');
-      const keyOf = (name: string) => (prefix ? `${prefix}/${name}` : name);
-      const statusKeys = (): Set<string> | null => {
-        const status = git(directory, [
-          'status',
-          '--porcelain=v1',
-          '-z',
-          '--untracked-files=all',
-          '--ignore-submodules=none',
-        ]);
-        if (status === null) return null;
-        const keys = new Set<string>();
-        const parts = status.split('\0');
-        for (let index = 0; index < parts.length; index += 1) {
-          const record = parts[index];
-          if (!record) continue;
-          const entryPath = record.slice(3);
-          if (entryPath) keys.add(keyOf(entryPath));
+      const names = [...new Set(files.split('\0').filter(Boolean))].sort();
+      const indexHashes = new Map(
+        allIndex
+          .split('\0')
+          .filter(Boolean)
+          .map((entry) => {
+            const separator = entry.indexOf('\t');
+            const metadata = entry.slice(0, separator).split(' ');
+            return [entry.slice(separator + 1), metadata[1] ?? ''] as const;
+          }),
+      );
+      const status = git(directory, [
+        'status',
+        '--porcelain=v1',
+        '-z',
+        '--untracked-files=all',
+        '--ignore-submodules=none',
+      ]);
+      const dirty = new Set<string>();
+      if (status !== null) {
+        const records = status.split('\0');
+        for (let index = 0; index < records.length; index += 1) {
+          const record = records[index];
+          if (record.length < 4) continue;
+          dirty.add(record.slice(3));
           if (/^[RC]/u.test(record.slice(0, 1)) || /[RC]$/u.test(record.slice(1, 2))) {
-            const previous = parts[index + 1];
+            const previous = records[index + 1];
             if (previous) {
-              keys.add(keyOf(previous));
+              dirty.add(previous);
               index += 1;
             }
           }
         }
-        return keys;
-      };
-      const names = [...new Set(files.split('\0').filter(Boolean))].sort();
-      const dirty = baseline ? statusKeys() : null;
-      if (dirty !== null) {
-        for (const name of names) {
-          const absolute = path.resolve(directory, name);
-          if (omitted(absolute)) continue;
-          const key = keyOf(name);
-          const prior = baseline?.get(key);
-          if (prior && prior.h !== 'missing' && prior.s !== null && !dirty.has(key)) {
-            hash.update(JSON.stringify([key, prior.s]));
-            hash.update(prior.h);
-            entries.push({ ...prior, p: key });
-            continue;
-          }
-          await file(absolute);
-        }
-        return;
       }
       for (const name of names) {
-        await file(path.resolve(directory, name));
+        const indexHash = indexHashes.get(name);
+        const contentHash =
+          indexHash && !dirty.has(name)
+            ? indexHash
+            : (git(directory, ['hash-object', '--no-filters', '--', name])?.trim() ?? undefined);
+        await file(path.resolve(directory, name), contentHash ? `git:${contentHash}` : undefined);
       }
       return;
     }

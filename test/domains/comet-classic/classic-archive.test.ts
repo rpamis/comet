@@ -417,7 +417,7 @@ describe('Classic archive command', () => {
     expect(run(dir, ['guard', 'demo', 'archive']).status).toBe(0);
   });
 
-  it('clears the shared selection when the archived change is current', async () => {
+  it('keeps the shared selection while the archived change still needs delivery', async () => {
     const dir = await makeProject();
     await seedArchiveChange(dir);
     confirmArchiveChange(dir);
@@ -426,9 +426,9 @@ describe('Classic archive command', () => {
 
     expect(run(dir, ['archive', 'demo'], { COMET_OPENSPEC: fake.command }).status).toBe(0);
 
-    await expect(fs.access(path.join(dir, '.comet', 'current-change.json'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(
+      JSON.parse(await fs.readFile(path.join(dir, '.comet', 'current-change.json'), 'utf8')),
+    ).toMatchObject({ workflow: 'classic', change: 'demo' });
   });
 
   it('preserves the shared selection when archiving another Classic change', async () => {

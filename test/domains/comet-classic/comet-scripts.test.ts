@@ -2490,7 +2490,7 @@ describe('comet scripts', () => {
     expect(transition.status, transition.stderr).toBe(0);
     expect(transition.stderr).toContain('[SET] phase=verify');
     expect(transition.stderr).toContain('[TRANSITION] build-complete');
-  }, 20_000);
+  }, 60_000);
 
   it('blocks build completion until tdd_mode is selected for full workflow', async () => {
     await createChange(

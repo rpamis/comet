@@ -852,6 +852,7 @@ export async function archiveNativePortableChange(options: {
             paths: options.paths,
             state,
             reason,
+            keepFailureBudget: true,
           });
           throw new Error(`${reason}; Native change returned to Shape and requires confirmation`);
         }

@@ -4,9 +4,13 @@ import { build } from 'esbuild';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { readRepositoryLayout, resolveRepositoryPath } from '../lib/repository-layout.mjs';
+import { writeFileWithTransientRetry } from '../lib/transient-file-write.mjs';
 
 const layout = readRepositoryLayout();
 const repoRoot = resolveRepositoryPath('.');
+const packageVersion = JSON.parse(
+  await fs.readFile(path.join(repoRoot, 'package.json'), 'utf8'),
+).version;
 const runtimeEntry = layout.nativeRuntime?.entries?.runtime;
 const runtimeOutput = layout.nativeRuntime?.outputs?.runtime;
 
@@ -42,25 +46,9 @@ const esbuildOptions = {
   charset: 'utf8',
   treeShaking: true,
   minify: true,
+  define: { __COMET_VERSION__: JSON.stringify(packageVersion) },
   banner,
 };
-
-const RETRYABLE_WRITE_CODES = new Set(['UNKNOWN', 'EPERM', 'EACCES', 'EBUSY']);
-
-async function writeFileWithRetry(outputFile, output) {
-  let lastError;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try {
-      await fs.writeFile(outputFile, output);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (!RETRYABLE_WRITE_CODES.has(error?.code)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
-    }
-  }
-  throw lastError;
-}
 
 async function bundledRuntime(entry) {
   const result = await build({ ...esbuildOptions, entryPoints: [entry] });
@@ -123,6 +111,6 @@ if (process.argv.includes('--check')) {
 } else {
   for (const { outputFile, output } of outputs) {
     await fs.mkdir(path.dirname(outputFile), { recursive: true });
-    await writeFileWithRetry(outputFile, output);
+    await writeFileWithTransientRetry(outputFile, output);
   }
 }

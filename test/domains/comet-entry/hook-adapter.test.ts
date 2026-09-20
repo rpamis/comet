@@ -312,6 +312,23 @@ describe('Comet Hook platform adapter', () => {
     );
   });
 
+  it('emits an allowed context diagnostic on stderr without changing host protocols', () => {
+    expect(
+      renderCometHookDecision('github-copilot', {
+        allowed: true,
+        reason: 'context unavailable',
+        diagnostic: 'bounded diagnostic',
+      }),
+    ).toEqual({ exitCode: 0, stdout: '{}\n', stderr: 'bounded diagnostic\n' });
+    expect(
+      renderCometHookDecision('claude', {
+        allowed: true,
+        reason: 'context unavailable',
+        diagnostic: 'bounded diagnostic',
+      }),
+    ).toEqual({ exitCode: 0, stdout: '', stderr: 'bounded diagnostic\n' });
+  });
+
   it.each(PLATFORM_FIXTURES.filter(({ id }) => id !== 'github-copilot'))(
     'renders $id allow and deny through its exit-code protocol',
     ({ id }) => {

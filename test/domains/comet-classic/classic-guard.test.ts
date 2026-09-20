@@ -259,6 +259,61 @@ describe('Classic guard command', () => {
     );
   });
 
+  it('preserves an explicit failed build instead of replacing it with an inferred command', async () => {
+    const dir = await makeProject();
+    const cli = (...args: string[]) =>
+      withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
+        runClassicCli(args),
+      );
+    expect((await cli('state', 'init', 'demo', 'hotfix', '--isolation', 'current')).exitCode).toBe(
+      0,
+    );
+    const changeDir = path.join(dir, 'openspec/changes/demo');
+    const stateFile = path.join(changeDir, '.comet.yaml');
+    const state = parse(await fs.readFile(stateFile, 'utf8'));
+    await fs.writeFile(stateFile, stringify({ ...state, phase: 'build' }));
+    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] work <!-- comet-task:a -->\n');
+    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+    await fs.writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'root', scripts: { build: 'node -e "process.exit(0)"' } }),
+    );
+    const marker = path.join(dir, 'recovery marker.txt');
+    const exactArgs = ['value with spaces', 'semi;colon', 'quote"value', '$literal'];
+    const code = `
+      const fs = require('node:fs');
+      if (JSON.stringify(process.argv.slice(1)) !== ${JSON.stringify(JSON.stringify(exactArgs))}) process.exit(9);
+      process.exit(fs.existsSync(${JSON.stringify(marker)}) ? 0 : 7);
+    `;
+    expect(
+      (
+        await cli(
+          'check',
+          'run',
+          'demo',
+          'build',
+          '--timeout-ms',
+          '12345',
+          '--',
+          process.execPath,
+          '-e',
+          code,
+          ...exactArgs,
+        )
+      ).exitCode,
+    ).toBe(7);
+
+    const result = await cli('guard', 'demo', 'build');
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Latest recorded build check failed with exit code 7');
+    expect(result.stderr).toContain('comet check rerun demo build');
+    expect(result.stderr).not.toContain('guard auto-ran');
+
+    await fs.writeFile(marker, 'ready\n');
+    const rerun = await cli('check', 'rerun', 'demo', 'build');
+    expect(rerun.exitCode, rerun.stderr).toBe(0);
+  });
+
   it('lists workspace candidates instead of choosing when several packages build', async () => {
     const dir = await makeProject();
     const cli = (...args: string[]) =>

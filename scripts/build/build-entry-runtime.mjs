@@ -4,9 +4,13 @@ import { build } from 'esbuild';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { readRepositoryLayout, resolveRepositoryPath } from '../lib/repository-layout.mjs';
+import { writeFileWithTransientRetry } from '../lib/transient-file-write.mjs';
 
 const layout = readRepositoryLayout();
 const repoRoot = resolveRepositoryPath('.');
+const packageVersion = JSON.parse(
+  await fs.readFile(path.join(repoRoot, 'package.json'), 'utf8'),
+).version;
 const runtimeEntries = Object.entries(layout.entryRuntime?.entries ?? {});
 const runtimeOutputs = layout.entryRuntime?.outputs ?? {};
 if (runtimeEntries.length === 0) throw new Error('Entry runtime requires at least one entry');
@@ -30,6 +34,7 @@ async function bundledRuntime(entry) {
     charset: 'utf8',
     treeShaking: true,
     minify: true,
+    define: { __COMET_VERSION__: JSON.stringify(packageVersion) },
     banner: {
       js: [
         '#!/usr/bin/env node',
@@ -69,6 +74,6 @@ for (const [name, entry] of runtimeEntries) {
     }
   } else {
     await fs.mkdir(path.dirname(outputFile), { recursive: true });
-    await fs.writeFile(outputFile, expected);
+    await writeFileWithTransientRetry(outputFile, expected);
   }
 }

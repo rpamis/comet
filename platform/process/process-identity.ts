@@ -149,11 +149,15 @@ export async function inspectProcessLiveness(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ESRCH') return 'dead';
   }
-  if (!identity) return 'alive';
+  // A legacy or degraded owner without a creation identity cannot prove that
+  // the currently live PID is the process that created the lock. Keep it in
+  // the conservative unknown state so explicit repair can recover it safely.
+  if (!identity) return 'unknown';
   const current = await readProcessIdentity(pid);
   if (current === identity) return 'alive';
   if (current === null) return 'unknown';
   if (
+    identitySource(current) !== identitySource(identity) &&
     INTERCHANGEABLE_IDENTITY_SOURCES.has(identitySource(current)) &&
     INTERCHANGEABLE_IDENTITY_SOURCES.has(identitySource(identity))
   ) {

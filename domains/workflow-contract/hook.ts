@@ -5,4 +5,5 @@ export interface CometHookDecision {
   change?: string;
   phase?: string;
   context?: string;
+  diagnostic?: string;
 }

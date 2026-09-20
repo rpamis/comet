@@ -196,12 +196,20 @@ async function activeChangesImpl(projectRoot: string): Promise<GoverningChange[]
   return governingChanges;
 }
 
-// `activeChanges` is invoked once by the router's `listActiveClassicHookChanges`
-// and again by `inspectClassicHookGuard`. Within a single Hook decision the
-// changes directory is immutable, so memoize the enumeration to avoid a second
-// readdir + per-change state read. CLI commands bypass this cache.
+// Unselected Hook decisions can enumerate changes in both the router and the
+// Guard. Memoize that discovery within one decision; explicit selections use
+// the targeted `activeGoverningChange` path below instead.
 const activeChanges = memoizedHookRead('classicActiveChanges', (projectRoot: string) =>
   activeChangesImpl(projectRoot),
+);
+const activeGoverningChange = memoizedHookRead(
+  'classicActiveChange',
+  async (projectRoot: string, changeName: string): Promise<GoverningChange | null> => {
+    const active = await inspectClassicActiveChangeDirectory(changeName, projectRoot);
+    if (!active.exists || !active.stateExists) return null;
+    const governing = await loadGoverningChange(active.directory);
+    return !governing || governing.archived ? null : governing;
+  },
 );
 const hookPlanReadiness = memoizedHookRead('classicPlanReadiness', inspectClassicPlanReadiness);
 
@@ -223,6 +231,14 @@ export async function listActiveClassicHookChanges(
     name: governingChangeName(change)!,
     phase: change.phase,
   }));
+}
+
+export async function resolveActiveClassicHookChange(
+  projectRoot: string,
+  changeName: string,
+): Promise<ActiveClassicHookChange | null> {
+  const governing = await activeGoverningChange(projectRoot, changeName);
+  return governing ? { workflow: 'classic', name: changeName, phase: governing.phase } : null;
 }
 
 function superpowersArtifactPrefix(projectRoot: string, layout: ClassicLayoutPaths): string {
@@ -364,8 +380,13 @@ function matchesSuperpowersArtifactName(relativePath: string, changeName: string
 async function superpowersArtifactGoverningChange(
   relativePath: string,
   projectRoot: string,
+  selectedChangeName?: string,
 ): Promise<{ governing: GoverningChange; match: 'recorded' | 'named' } | null> {
-  const active = await activeChanges(projectRoot);
+  const active = selectedChangeName
+    ? [await activeGoverningChange(projectRoot, selectedChangeName)].filter(
+        (change): change is GoverningChange => change !== null,
+      )
+    : await activeChanges(projectRoot);
   const recorded = active.find((governing) =>
     matchesRecordedSuperpowersArtifact(relativePath, governing),
   );
@@ -390,13 +411,8 @@ async function repoSourceGoverningChange(
   relativePath: string,
   selectedChangeName?: string,
 ): Promise<GoverningResolution> {
-  const active = await activeChanges(projectRoot);
-  if (active.length === 0) return null;
-
   if (selectedChangeName) {
-    const selected = active.find(
-      (governing) => governingChangeName(governing) === selectedChangeName,
-    );
+    const selected = await activeGoverningChange(projectRoot, selectedChangeName);
     return (
       selected ?? {
         blockedResult: blockedStaleSelection(
@@ -406,6 +422,9 @@ async function repoSourceGoverningChange(
       }
     );
   }
+
+  const active = await activeChanges(projectRoot);
+  if (active.length === 0) return null;
 
   const current = await resolveCurrentChange(projectRoot);
   if (current.status === 'stale') {
@@ -458,28 +477,89 @@ async function repoSourceGoverningChange(
   };
 }
 
+type ClassicChangeTarget =
+  | { kind: 'active'; changeName: string }
+  | { kind: 'archive'; archiveName: string | null; changeName: string | null };
+
+function archivedClassicChangeName(archiveName: string): string | null {
+  const dated = /^\d{4}-\d{2}-\d{2}-(.+)$/u.exec(archiveName);
+  const changeName = dated?.[1] ?? archiveName;
+  return openSpecChangeNameError(changeName) ? null : changeName;
+}
+
+function classicChangeTarget(
+  relativePath: string,
+  projectRoot: string,
+  layout: ClassicLayoutPaths,
+): ClassicChangeTarget | null {
+  const prefix = `${classicProjectRelative(projectRoot, layout.changesDir)}/`;
+  if (!comparisonKey(relativePath).startsWith(comparisonKey(prefix))) return null;
+
+  const segments = relativePath.slice(prefix.length).split('/').filter(Boolean);
+  const [first, second] = segments;
+  if (!first) return null;
+  if (comparisonKey(first) === comparisonKey('archive')) {
+    return {
+      kind: 'archive',
+      archiveName: second ?? null,
+      changeName: second ? archivedClassicChangeName(second) : null,
+    };
+  }
+  return { kind: 'active', changeName: first };
+}
+
+function classicChangeTargetOwnershipBlock(
+  relativePath: string,
+  target: ClassicChangeTarget | null,
+  selectedChangeName?: string,
+): ClassicCommandResult | null {
+  if (target?.kind === 'archive') {
+    return blockedArchivedChangeTarget(
+      relativePath,
+      target.archiveName,
+      target.changeName,
+      selectedChangeName,
+    );
+  }
+  if (
+    target?.kind === 'active' &&
+    selectedChangeName &&
+    comparisonKey(target.changeName) !== comparisonKey(selectedChangeName)
+  ) {
+    return blockedForeignChangeTarget(relativePath, target.changeName, selectedChangeName);
+  }
+  return null;
+}
+
 async function governingChange(
   relativePath: string,
   projectRoot: string,
   layout: ClassicLayoutPaths,
   selectedChangeName?: string,
 ): Promise<GoverningResolution> {
-  const prefix = `${classicProjectRelative(projectRoot, layout.changesDir)}/`;
-  if (relativePath.startsWith(prefix)) {
-    const rest = relativePath.slice(prefix.length);
-    const [name] = rest.split('/');
-    if (name && name !== 'archive') {
-      const active = await inspectClassicActiveChangeDirectory(name, projectRoot);
-      if (active.stateExists) {
-        const governing = await loadGoverningChange(active.directory);
-        if (governing) return governing;
-        return { changeDir: active.directory, phase: 'open', classic: null, archived: false };
-      }
+  const target = classicChangeTarget(relativePath, projectRoot, layout);
+  const ownershipBlock = classicChangeTargetOwnershipBlock(
+    relativePath,
+    target,
+    selectedChangeName,
+  );
+  if (ownershipBlock) return { blockedResult: ownershipBlock };
+  if (target?.kind === 'active') {
+    const name = target.changeName;
+    const active = await inspectClassicActiveChangeDirectory(name, projectRoot);
+    if (active.stateExists) {
+      const governing = await loadGoverningChange(active.directory);
+      if (governing) return governing;
       return { changeDir: active.directory, phase: 'open', classic: null, archived: false };
     }
+    return { changeDir: active.directory, phase: 'open', classic: null, archived: false };
   }
   if (isSuperpowersArtifactPath(relativePath, superpowersArtifactPrefix(projectRoot, layout))) {
-    const superpowers = await superpowersArtifactGoverningChange(relativePath, projectRoot);
+    const superpowers = await superpowersArtifactGoverningChange(
+      relativePath,
+      projectRoot,
+      selectedChangeName,
+    );
     if (superpowers?.match === 'recorded') {
       return { ...superpowers.governing, superpowersArtifact: 'matched' };
     }
@@ -519,10 +599,9 @@ async function governingChange(
       };
     }
 
-    const active = await activeChanges(projectRoot);
     const fallback = selectedChangeName
-      ? (active.find((candidate) => governingChangeName(candidate) === selectedChangeName) ?? null)
-      : (active[0] ?? null);
+      ? await activeGoverningChange(projectRoot, selectedChangeName)
+      : ((await activeChanges(projectRoot))[0] ?? null);
     return fallback ? { ...fallback, superpowersArtifact: 'unmatched' } : null;
   }
   return repoSourceGoverningChange(projectRoot, relativePath, selectedChangeName);
@@ -545,15 +624,13 @@ function openSpecAllowed(
   phase: ClassicPhase,
   openSpecPrefix: string,
 ): string | null {
-  if (!relativePath.startsWith(openSpecPrefix)) return null;
-  const stateFile =
-    relativePath.endsWith('/.comet.yaml') || relativePath.endsWith('/.openspec.yaml');
+  const key = comparisonKey(relativePath);
+  if (!key.startsWith(comparisonKey(openSpecPrefix))) return null;
+  const stateFile = key.endsWith('/.comet.yaml') || key.endsWith('/.openspec.yaml');
   const proposal =
-    relativePath.endsWith('/proposal.md') ||
-    relativePath.endsWith('/design.md') ||
-    relativePath.endsWith('/tasks.md');
-  const handoff = relativePath.includes('/.comet/');
-  const specs = relativePath.includes('/specs/');
+    key.endsWith('/proposal.md') || key.endsWith('/design.md') || key.endsWith('/tasks.md');
+  const handoff = key.includes('/.comet/');
+  const specs = key.includes('/specs/');
 
   if (phase === 'open' && (proposal || stateFile || handoff || specs)) {
     return `${relativePath} (phase: open, openspec artifacts)`;
@@ -561,7 +638,7 @@ function openSpecAllowed(
   if (phase === 'design' && (proposal || stateFile || handoff || specs)) {
     return `${relativePath} (phase: design, handoff/spec)`;
   }
-  if (phase === 'build' && (relativePath.endsWith('/tasks.md') || stateFile || specs)) {
+  if (phase === 'build' && (key.endsWith('/tasks.md') || stateFile || specs)) {
     return `${relativePath} (phase: build, spec/tasks)`;
   }
   if (phase === 'verify' && stateFile) {
@@ -820,6 +897,59 @@ function blockedStaleSelection(relativePath: string, reason: string): ClassicCom
   );
 }
 
+function blockedForeignChangeTarget(
+  relativePath: string,
+  targetChangeName: string,
+  selectedChangeName: string,
+): ClassicCommandResult {
+  return result(
+    2,
+    [
+      '',
+      '╔══════════════════════════════════════════╗',
+      '║     COMET PHASE GUARD — WRITE BLOCKED    ║',
+      '╚══════════════════════════════════════════╝',
+      '',
+      `  BLOCKED: target belongs to Classic change '${targetChangeName}', but the current selection is '${selectedChangeName}'`,
+      `  Target file: ${relativePath}`,
+      '',
+      `  NEXT: write the matching artifact for '${selectedChangeName}', or run comet state select ${targetChangeName} before modifying this target`,
+      '',
+    ].join('\n'),
+  );
+}
+
+function blockedArchivedChangeTarget(
+  relativePath: string,
+  archiveName: string | null,
+  targetChangeName: string | null,
+  selectedChangeName?: string,
+): ClassicCommandResult {
+  const owner = targetChangeName
+    ? `archived Classic change '${targetChangeName}'`
+    : archiveName
+      ? `Classic archive entry '${archiveName}'`
+      : 'the Classic archive';
+  const selection = selectedChangeName
+    ? `, but the current selection is '${selectedChangeName}'`
+    : '';
+  return result(
+    2,
+    [
+      '',
+      '╔══════════════════════════════════════════╗',
+      '║     COMET PHASE GUARD — WRITE BLOCKED    ║',
+      '╚══════════════════════════════════════════╝',
+      '',
+      `  BLOCKED: target belongs to ${owner}${selection}; archived artifacts are immutable`,
+      `  Target file: ${relativePath}`,
+      '',
+      '  NEXT: modify the active change artifact instead; if follow-up work is required, create or select an active change and retry there',
+      '',
+    ].join('\n'),
+  );
+}
+
 async function inspectClassicHookTarget(
   projectRoot: string,
   target: string,
@@ -851,6 +981,17 @@ async function inspectClassicHookTarget(
       `[COMET-HOOK] blocked: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+
+  // Change ownership and archive immutability are stronger than every general
+  // write whitelist below, including the broad `.comet` runtime-state rule.
+  // Resolve them first so a nested handoff/config path cannot bypass its owner.
+  const changeTarget = classicChangeTarget(relativePath, projectRoot, layout);
+  const ownershipBlock = classicChangeTargetOwnershipBlock(
+    relativePath,
+    changeTarget,
+    selectedChangeName,
+  );
+  if (ownershipBlock) return ownershipBlock;
 
   if (isCometConfig(relativePath)) {
     return allowed(`${relativePath} (whitelist: comet config)`);
@@ -1000,9 +1141,9 @@ export async function inspectClassicHookGuard(
       };
     }
   }
-  let active: GoverningChange[];
+  let selected: GoverningChange | null;
   try {
-    active = await activeChanges(projectRoot);
+    selected = await activeGoverningChange(projectRoot, changeName);
   } catch (error) {
     return {
       allowed: false,
@@ -1011,7 +1152,6 @@ export async function inspectClassicHookGuard(
       change: changeName,
     };
   }
-  const selected = active.find((change) => governingChangeName(change) === changeName);
   if (!selected) {
     return {
       allowed: false,

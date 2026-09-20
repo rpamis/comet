@@ -18,6 +18,7 @@ export interface CometHookAdapterDecision {
   allowed: boolean;
   reason: string;
   context?: string;
+  diagnostic?: string;
 }
 
 export interface CometHookProcessOutput {
@@ -301,7 +302,7 @@ export function renderCometHookDecision(
             permissionDecision: 'deny',
             permissionDecisionReason: decision.reason,
           })}\n`,
-      stderr: '',
+      stderr: decision.diagnostic ? `${decision.diagnostic}\n` : '',
     };
   }
   if (decision.allowed && decision.context) {
@@ -313,9 +314,14 @@ export function renderCometHookDecision(
           additionalContext: decision.context,
         },
       })}\n`,
-      stderr: '',
+      stderr: decision.diagnostic ? `${decision.diagnostic}\n` : '',
     };
   }
-  if (decision.allowed) return { exitCode: 0, stdout: '', stderr: '' };
+  if (decision.allowed)
+    return {
+      exitCode: 0,
+      stdout: '',
+      stderr: decision.diagnostic ? `${decision.diagnostic}\n` : '',
+    };
   return { exitCode: 2, stdout: '', stderr: `${decision.reason}\n` };
 }

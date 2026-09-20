@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runGitCommand } from '../../platform/process/git.js';
+import { gitStatusPaths, runGitCommand } from '../../platform/process/git.js';
 import {
   inspectProcessLiveness,
   readProcessIdentity,
@@ -78,6 +78,25 @@ export function nativeLocalCheckPlanKey(check: NativeLocalCheckState, projectRoo
     cwdRef: localCheckCwdRef(projectRoot, check.cwd),
     timeoutMs: check.timeoutMs,
     repeatable: check.repeatable,
+  });
+}
+
+export function nativePortableCheckPlansFromLocal(
+  local: NativeLocalExecutionState,
+  projectRoot = local.workspace.projectRoot,
+): NativeCheckPlan[] {
+  return local.checks.map((check) => {
+    const [executable, ...argv] = check.argv;
+    if (!executable) throw new Error(`Native local check ${check.id} has no executable`);
+    return {
+      id: check.id,
+      name: check.name,
+      executable,
+      argv,
+      cwdRef: localCheckCwdRef(projectRoot, check.cwd),
+      timeoutMs: check.timeoutMs,
+      repeatable: check.repeatable,
+    };
   });
 }
 
@@ -661,15 +680,15 @@ function boundEnvironmentEntries(): Array<[string, string | null]> {
 
 /**
  * Cheap pre-gate over the full fingerprint's decisive inputs. Three fast Git
- * calls (HEAD, porcelain status, staged blob ids) plus untracked content
- * digests cover everything the full fingerprint derives except ignored
- * generated directories, which a matching gate deliberately skips. A gate hit
- * proves the full fingerprint would recompute to its recorded value, letting
- * the reuse decision land before the per-file hashing runs.
+ * calls (HEAD, porcelain status, staged blob ids) plus dirty, untracked, and
+ * ignored generated-input content digests cover every mutable input represented
+ * by the full fingerprint. A gate hit therefore proves the full fingerprint
+ * would recompute to its recorded value without hashing the clean tracked tree.
  */
 export async function nativeCheckInputGate(options: {
   projectRoot: string;
   candidateId: string | null;
+  plans?: readonly NativeCheckPlan[];
 }): Promise<string | null> {
   try {
     const head = runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
@@ -683,33 +702,34 @@ export async function nativeCheckInputGate(options: {
     ]);
     const staged = runGitCommand(options.projectRoot, ['ls-files', '--stage', '-z', '--']);
     if (head === null || status === null) return null;
-    const untracked: Array<{ path: string; digest: string | null }> = [];
-    const parts = status.split('\0');
-    for (let index = 0; index < parts.length; index += 1) {
-      const record = parts[index];
-      if (!record.startsWith('?? ')) continue;
-      const relative = record.slice(3);
-      if (!relative) continue;
-      const target = path.resolve(options.projectRoot, ...relative.split('/'));
+    const workingTree: Array<{ path: string; digest: string | null }> = [];
+    for (const changedPath of gitStatusPaths(options.projectRoot)) {
+      const target = path.resolve(options.projectRoot, ...changedPath.split('/'));
       let digest: string | null = null;
       try {
         digest = (await digestNativeInputFileContent(target)).digest;
       } catch {
-        digest = null;
+        // A dirty submodule is a directory. Its porcelain entry alone cannot
+        // distinguish two different dirty contents, so disable the fast gate
+        // and let the full fingerprint mark the snapshot non-reusable.
+        return null;
       }
-      untracked.push({ path: relative, digest });
+      workingTree.push({ path: changedPath, digest });
     }
-    untracked.sort((left, right) => left.path.localeCompare(right.path, 'en'));
+    workingTree.sort((left, right) => left.path.localeCompare(right.path, 'en'));
+    const ignored = await nativeIgnoredCheckInputSnapshot(options.projectRoot, options.plans ?? []);
+    if (!ignored.complete) return null;
     return canonicalHash('comet.native.check-input-gate.v1', {
       candidateId: options.candidateId,
       head,
       branch,
-      // The porcelain body itself binds every modification, staging and
-      // submodule record; the untracked digests below additionally pin untracked
-      // file content, which porcelain names but does not hash.
+      // Porcelain names dirty files but does not bind their working-tree bytes.
+      // Hash every dirty path so editing an already-dirty tracked file cannot
+      // falsely hit the pre-gate.
       status,
       staged,
-      untracked,
+      workingTree,
+      ignored,
       projectRoot: path.resolve(options.projectRoot),
       machineId: os.hostname(),
       execPath: process.execPath,
@@ -916,10 +936,11 @@ async function reserveNativePortableCheckPlan(options: {
       const gate = await nativeCheckInputGate({
         projectRoot: options.projectRoot,
         candidateId: state.builder_handoff?.candidate_id ?? null,
+        plans: options.plans,
       });
-      // Reuse decides before the full fingerprint: a matching gate proves the
-      // recorded fingerprint is still what a full recomputation would produce,
-      // so the changed-path hashing and the ignored-directory sweep never run.
+      // Reuse decides before the full fingerprint: a matching gate already
+      // binds dirty, untracked and ignored generated inputs, so only the clean
+      // tracked-tree work in the full fingerprint remains safely skippable.
       const gateBindingMatches =
         gate !== null &&
         local.inputFingerprint !== null &&

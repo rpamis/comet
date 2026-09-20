@@ -228,6 +228,33 @@ describe('Classic executed check evidence', () => {
     expect(result.exitCode).not.toBe(0);
   });
 
+  it('reports self-modified input paths and the outputs recovery action', async () => {
+    await readyVerify();
+    const code =
+      'require("fs").writeFileSync("build-id.json", JSON.stringify({ time: Date.now() }))';
+    const result = await cli(
+      'check',
+      'run',
+      'demo',
+      'verify',
+      '--local',
+      '--',
+      process.execPath,
+      '-e',
+      code,
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('Changed inputs: build-id.json');
+    expect(result.stderr).toContain('outputs');
+    expect(result.stderr).toContain('.comet/check-policy.json');
+
+    const guard = await cli('guard', 'demo', 'verify');
+    expect(guard.exitCode).not.toBe(0);
+    expect(guard.stderr).toContain('Changed inputs: build-id.json');
+    expect(guard.stderr).toContain('outputs');
+  });
+
   it('does not share a narrowed recovery snapshot with an unmatched security command', async () => {
     await fs.writeFile(
       path.join(root, '.comet/check-policy.json'),
@@ -779,8 +806,24 @@ describe('Classic executed check evidence', () => {
     expect((await cli('guard', 'demo', 'verify')).exitCode).not.toBe(0);
   });
 
-  it('explains an interrupted check attempt instead of reporting missing evidence', async () => {
-    await readyVerify();
+  it('preserves and reruns an interrupted check instead of inferring another build', async () => {
+    const changeDir = path.join(root, 'openspec', 'changes', 'demo');
+    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] implement\n');
+    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+    await cli('state', 'set', 'demo', 'isolation', 'current');
+    const stateFile = path.join(changeDir, '.comet.yaml');
+    await fs.writeFile(
+      stateFile,
+      (await fs.readFile(stateFile, 'utf8')).replace('phase: open', 'phase: build'),
+    );
+    await fs.writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({
+        scripts: {
+          build: "node -e \"require('fs').writeFileSync('unexpected-build', 'yes')\"",
+        },
+      }),
+    );
     // A symbolic link in the input scope makes the snapshot throw after the
     // started event is written, leaving the interrupted-attempt tombstone
     // behind. A junction works without Windows developer-mode privileges.
@@ -794,7 +837,7 @@ describe('Classic executed check evidence', () => {
       'check',
       'run',
       'demo',
-      'verify',
+      'build',
       '--local',
       '--',
       process.execPath,
@@ -802,9 +845,17 @@ describe('Classic executed check evidence', () => {
     );
     expect(check.exitCode).not.toBe(0);
     expect(`${check.stdout ?? ''}${check.stderr ?? ''}`).toContain('check-policy.json');
-    const guard = await cli('guard', 'demo', 'verify');
+    const guard = await cli('guard', 'demo', 'build');
     expect(guard.exitCode).not.toBe(0);
-    expect(`${guard.stdout ?? ''}${guard.stderr ?? ''}`).toContain('never completed');
+    expect(`${guard.stdout ?? ''}${guard.stderr ?? ''}`).toContain('did not complete');
+    expect(`${guard.stdout ?? ''}${guard.stderr ?? ''}`).toContain('comet check rerun demo build');
+    await expect(fs.stat(path.join(root, 'unexpected-build'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+
+    await fs.rm(path.join(root, 'alias-link'), { recursive: true, force: true });
+    const rerun = await cli('check', 'rerun', 'demo', 'build');
+    expect(rerun.exitCode, rerun.stderr).toBe(0);
   });
 
   it('does not rebuild after an explicit successful build check', async () => {

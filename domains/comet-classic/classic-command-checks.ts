@@ -37,8 +37,11 @@ export interface RecordedCommandCheck {
   cwd: string;
   provenance?: 'runtime';
   argv?: string[];
+  timeoutMs?: number;
   inputBefore?: string;
   inputAfter?: string;
+  /** Input paths whose contents changed during this execution. */
+  changedDuringExecution?: string[];
   environment?: string;
   logRef?: string;
   logHash?: string;
@@ -57,6 +60,23 @@ export interface RecordedCommandCheck {
   reusable?: boolean;
   reused?: boolean;
   checkEpoch?: number;
+}
+
+/**
+ * The exact Runtime command identity persisted before snapshotting or launch.
+ * A started event may be the only durable evidence left after interruption, so
+ * it must contain enough data for `comet check rerun` to retry without guessing.
+ */
+export interface RecordedCommandCheckAttempt {
+  sequence: number;
+  timestamp: string;
+  runId: string;
+  scope: CommandCheckScope;
+  argv: string[];
+  cwd: string;
+  timeoutMs: number;
+  reusable: boolean;
+  tier: 'full' | 'incremental';
 }
 
 export interface RecordCommandCheckInput {
@@ -115,8 +135,19 @@ function validRecord(projectRoot: string, event: TrajectoryEvent): RecordedComma
       ? {
           provenance: 'runtime' as const,
           argv: (data as RecordedCommandCheck).argv,
+          timeoutMs:
+            typeof (data as RecordedCommandCheck).timeoutMs === 'number'
+              ? (data as RecordedCommandCheck).timeoutMs
+              : undefined,
           inputBefore: (data as RecordedCommandCheck).inputBefore,
           inputAfter: (data as RecordedCommandCheck).inputAfter,
+          changedDuringExecution: Array.isArray(
+            (data as RecordedCommandCheck).changedDuringExecution,
+          )
+            ? (data as RecordedCommandCheck).changedDuringExecution?.filter(
+                (entry): entry is string => typeof entry === 'string',
+              )
+            : undefined,
           environment: (data as RecordedCommandCheck).environment,
           logRef: (data as RecordedCommandCheck).logRef,
           logHash: (data as RecordedCommandCheck).logHash,
@@ -204,6 +235,67 @@ export async function latestCommandCheck(
     if (event.type === 'command_check_consumed' && event.data?.scope === scope) return null;
     const record = validRecord(projectRoot, event);
     if (record?.scope === scope) return record;
+  }
+  return null;
+}
+
+function validStartedAttempt(
+  projectRoot: string,
+  event: TrajectoryEvent,
+): RecordedCommandCheckAttempt | null {
+  if (event.type !== 'command_check_started') return null;
+  const data: unknown = event.data;
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return null;
+  const { scope, argv, cwd, timeoutMs, reusable, tier } = data as Record<string, unknown>;
+  if (
+    (scope !== 'build' && scope !== 'verify') ||
+    !Array.isArray(argv) ||
+    argv.length === 0 ||
+    argv.some((argument) => typeof argument !== 'string' || argument.includes('\0')) ||
+    typeof cwd !== 'string' ||
+    !Number.isInteger(timeoutMs) ||
+    Number(timeoutMs) < 1 ||
+    typeof reusable !== 'boolean' ||
+    (tier !== 'full' && tier !== 'incremental')
+  ) {
+    return null;
+  }
+  let normalized: string;
+  try {
+    normalized = normalizedCwd(projectRoot, cwd);
+  } catch {
+    return null;
+  }
+  return {
+    sequence: event.sequence,
+    timestamp: event.timestamp,
+    runId: event.runId,
+    scope,
+    argv: [...argv] as string[],
+    cwd: normalized,
+    timeoutMs: Number(timeoutMs),
+    reusable,
+    tier,
+  };
+}
+
+/** Returns only an unfinished latest attempt; older executions remain fenced. */
+export async function latestInterruptedCommandCheck(
+  projectRoot: string,
+  changeDir: string,
+  run: RunState,
+  scope: CommandCheckScope,
+): Promise<RecordedCommandCheckAttempt | null> {
+  validateScope(scope);
+  const trajectory = (await readCheckIndex(changeDir, run.trajectoryRef)).events;
+  for (let index = trajectory.length - 1; index >= 0; index -= 1) {
+    const event = trajectory[index];
+    if (event.runId !== run.runId) continue;
+    const touchesScope =
+      event.data?.scope === scope ||
+      (Array.isArray(event.data?.scopes) && event.data.scopes.includes(scope));
+    if (!touchesScope) continue;
+    return validStartedAttempt(projectRoot, event);
   }
   return null;
 }
@@ -330,9 +422,53 @@ export async function executeCommandCheck(
       if (usable?.sequence === previous.sequence && usable.timestamp === previous.timestamp)
         return { ...usable, reused: true };
     }
+    if (!previous) {
+      const otherScope: CommandCheckScope = input.scope === 'build' ? 'verify' : 'build';
+      const other = await usableCommandCheck(root, changeDir, run, otherScope);
+      if (
+        other?.reusable &&
+        (other.tier ?? 'full') === tier &&
+        other.cwd === cwd &&
+        JSON.stringify(other.argv) === JSON.stringify(input.argv)
+      ) {
+        const {
+          sequence: _sequence,
+          timestamp: _timestamp,
+          runId: _runId,
+          scope: _scope,
+          reused: _reused,
+          ...evidence
+        } = other;
+        void [_sequence, _timestamp, _runId, _scope, _reused];
+        const checkEpoch =
+          (await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0;
+        const event = await checkEvent(changeDir, run, 'command_check_executed', {
+          ...evidence,
+          scope: input.scope,
+          checkEpoch,
+        });
+        return {
+          ...evidence,
+          scope: input.scope,
+          checkEpoch,
+          sequence: event.sequence,
+          timestamp: event.timestamp,
+          runId: run.runId,
+          reused: true,
+        };
+      }
+    }
   }
   // A failed launch, snapshot, or log write must not expose an older success.
-  const started = await checkEvent(changeDir, run, 'command_check_started', { scope: input.scope });
+  const timeoutMs = input.timeoutMs ?? 300_000;
+  const started = await checkEvent(changeDir, run, 'command_check_started', {
+    scope: input.scope,
+    argv: [...input.argv],
+    cwd,
+    timeoutMs,
+    reusable: input.reusable === true,
+    tier,
+  });
   const checkEpoch =
     (await readClassicState(changeDir, { migrate: false })).classic?.checkEpoch ?? 0;
   const identity = { argv: input.argv, cwd };
@@ -372,7 +508,7 @@ export async function executeCommandCheck(
     const timer = setTimeout(() => {
       timedOut = true;
       void terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
-    }, input.timeoutMs ?? 300_000);
+    }, timeoutMs);
     child.on('close', (code) => {
       clearTimeout(timer);
       resolve({
@@ -385,6 +521,12 @@ export async function executeCommandCheck(
     baseline: before.entries,
   }).catch(() => null);
   let inputAfter = after ? after.digest : 'unavailable';
+  const changedDuringExecution = after
+    ? (() => {
+        const diff = diffCheckManifests(before.entries, after.entries);
+        return [...diff.added, ...diff.removed, ...diff.changed].slice(0, 100);
+      })()
+    : undefined;
   let manifestRef: string | undefined;
   let manifestHash: string | undefined;
   if (after) {
@@ -418,11 +560,13 @@ export async function executeCommandCheck(
     command: JSON.stringify(input.argv),
     checkEpoch,
     argv: input.argv,
+    timeoutMs,
     exitCode: result.exitCode,
     cwd,
     provenance: 'runtime' as const,
     inputBefore,
     inputAfter,
+    changedDuringExecution,
     environment,
     logRef: path.relative(root, logPath).replaceAll('\\', '/'),
     logHash: createHash('sha256').update(result.output).digest('hex'),
@@ -508,7 +652,19 @@ export async function evaluateCommandCheck(
   if (record.exitCode !== 0) return fail(`the last check failed with exit code ${record.exitCode}`);
   if (!Array.isArray(record.argv) || !record.argv.length || !record.inputBefore)
     return fail('the latest record is incomplete');
-  if (record.inputBefore !== record.inputAfter) return fail('inputs changed while the check ran');
+  if (record.inputBefore !== record.inputAfter)
+    return {
+      record: null,
+      reason: record.changedDuringExecution?.length
+        ? 'inputs changed while the check ran; if these paths are generated artifacts, declare them in the matching command outputs in .comet/check-policy.json'
+        : 'inputs changed while the check ran',
+      ...(record.changedDuringExecution?.length
+        ? {
+            changedPaths: record.changedDuringExecution,
+            relevance: 'execution-time command inputs',
+          }
+        : {}),
+    };
   const identity = { argv: record.argv, cwd: record.cwd };
   let documentChangesIgnored: string[] | undefined;
   if (record.manifestRef) {

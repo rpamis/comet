@@ -3,6 +3,7 @@ import path from 'path';
 import {
   inspectClassicHookGuard,
   listActiveClassicHookChanges,
+  resolveActiveClassicHookChange,
 } from '../comet-classic/classic-hook-guard.js';
 import {
   ClassicLayoutUnavailableError,
@@ -13,6 +14,7 @@ import {
   inspectNativeHookGuard,
   inspectNativeUnownedHookTargets,
   listActiveNativeHookChanges,
+  resolveActiveNativeHookChange,
 } from '../comet-native/native-hook-guard.js';
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
@@ -64,7 +66,9 @@ export type HookWorkflowOwnerResolution =
 
 interface HookRouterDependencies {
   listNative: typeof listActiveNativeHookChanges;
+  getNative?: typeof resolveActiveNativeHookChange;
   listClassic: typeof listActiveClassicHookChanges;
+  getClassic?: typeof resolveActiveClassicHookChange;
   inspectNative: typeof inspectNativeHookGuard;
   inspectClassic: typeof inspectClassicHookGuard;
   scopeTargets?: typeof scopeCometHookTargets;
@@ -73,7 +77,9 @@ interface HookRouterDependencies {
 
 const DEFAULT_DEPENDENCIES: HookRouterDependencies = {
   listNative: listActiveNativeHookChanges,
+  getNative: resolveActiveNativeHookChange,
   listClassic: listActiveClassicHookChanges,
+  getClassic: resolveActiveClassicHookChange,
   inspectNative: inspectNativeHookGuard,
   inspectClassic: inspectClassicHookGuard,
   collectContext: collectCometPluginContext,
@@ -176,7 +182,10 @@ function resolveActiveCandidates(
 
 export async function resolveHookWorkflowOwner(
   projectRoot: string,
-  dependencies: Pick<HookRouterDependencies, 'listNative' | 'listClassic'> = DEFAULT_DEPENDENCIES,
+  dependencies: Pick<
+    HookRouterDependencies,
+    'listNative' | 'listClassic' | 'getNative' | 'getClassic'
+  > = DEFAULT_DEPENDENCIES,
 ): Promise<HookWorkflowOwnerResolution> {
   const config = await readCachedProjectConfig(projectRoot);
   const enabled = enabledWorkflows(config);
@@ -199,6 +208,43 @@ export async function resolveHookWorkflowOwner(
         code: 'workflow-disabled',
         reason: `selected workflow '${selection.workflow}' is not enabled for this project`,
       };
+    }
+    if (selection.workflow === 'native' && dependencies.getNative) {
+      try {
+        const owner = await dependencies.getNative(projectRoot, selection.change);
+        if (owner) return { status: 'owned', owner };
+      } catch (error) {
+        return {
+          status: 'stale',
+          code: 'change-state-unreadable',
+          reason: `cannot safely read selected Native change: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    }
+    if (selection.workflow === 'classic' && dependencies.getClassic) {
+      try {
+        const owner = await dependencies.getClassic(projectRoot, selection.change);
+        if (owner) {
+          const resolved = await resolveCurrentChange(projectRoot);
+          if (resolved.status !== 'selected') {
+            return {
+              status: 'stale',
+              code: 'classic-selection-invalid',
+              reason:
+                resolved.status === 'stale'
+                  ? resolved.reason
+                  : `selected Classic change '${selection.change}' is no longer active`,
+            };
+          }
+          return { status: 'owned', owner };
+        }
+      } catch (error) {
+        return {
+          status: 'stale',
+          code: 'change-state-unreadable',
+          reason: `cannot safely read selected Classic change: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
     }
     let selectedCandidates: ActiveHookChange[];
     try {
@@ -286,8 +332,17 @@ export async function inspectCometHook(
       return context?.text
         ? { allowed: true, reason: 'Comet context selected', context: context.text }
         : { allowed: true, reason: 'No matching Comet context' };
-    } catch {
-      return { allowed: true, reason: 'Comet context is temporarily unavailable' };
+    } catch (error) {
+      const detail = (error instanceof Error ? error.message : String(error)).replace(
+        /[\r\n]+/gu,
+        ' ',
+      );
+      const diagnostic = `Comet context is temporarily unavailable${detail ? `: ${detail}` : ''}`;
+      return {
+        allowed: true,
+        reason: 'Comet context is temporarily unavailable',
+        diagnostic: diagnostic.slice(0, 512),
+      };
     }
   }
   if (request.intent === 'non-write') {
@@ -319,11 +374,6 @@ export async function inspectCometHook(
   }
 
   try {
-    const nativeUnownedDecision = await inspectNativeUnownedHookTargets(
-      projectRoot,
-      projectRequest,
-    );
-    if (nativeUnownedDecision) return nativeUnownedDecision;
     const resolution = await resolveHookWorkflowOwner(projectRoot, dependencies);
     if (resolution.status === 'none') {
       const nativeUnownedDecision = await inspectNativeUnownedHookTargets(
@@ -358,21 +408,7 @@ export async function inspectCometHook(
       ? dependencies.inspectNative(projectRoot, projectRequest, owner.name)
       : dependencies.inspectClassic(projectRoot, owner.name, projectRequest));
     if (!decision.allowed) return decision;
-    try {
-      const [context] = await (dependencies.collectContext ?? collectCometPluginContext)(
-        projectRoot,
-        {
-          task: `${request.toolName ?? 'write'} ${projectRequest.targets.join(' ')}`,
-          path: projectRequest.targets[0],
-          operation: request.toolName ?? 'write',
-          phase: owner.phase,
-          ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
-        },
-      );
-      return context?.text ? { ...decision, context: context.text } : decision;
-    } catch {
-      return decision;
-    }
+    return decision;
   } catch (error) {
     return {
       allowed: false,

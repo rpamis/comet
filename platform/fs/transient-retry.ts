@@ -10,7 +10,7 @@ const DELAYS_MS = [50, 100, 200];
  * helpers retry the transient codes with a short backoff and surface the last
  * error otherwise unchanged.
  */
-async function withTransientRetry<T>(operation: () => Promise<T>, label: string): Promise<T> {
+async function withTransientRetry<T>(operation: () => Promise<T>, _label: string): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= DELAYS_MS.length; attempt += 1) {
     try {

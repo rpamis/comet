@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { JsonFileTextStore, withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
+import { readProcessIdentity } from '../../platform/process/process-identity.js';
 
 describe('JsonFileTextStore locking', () => {
   it('recovers a lock whose owning process is no longer alive', async () => {
@@ -21,6 +22,72 @@ describe('JsonFileTextStore locking', () => {
 
       await expect(store.withLock(async () => 'recovered')).resolves.toBe('recovered');
       await expect(fs.stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('recovers a lock when its live pid belongs to a different process instance', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lock-reused-pid-'));
+    try {
+      const file = path.join(root, 'state.json');
+      const lock = `${file}.lock`;
+      const identity = await readProcessIdentity(process.pid);
+      expect(identity).toBeTruthy();
+      await fs.writeFile(
+        lock,
+        JSON.stringify({
+          pid: process.pid,
+          nonce: 'previous-owner',
+          createdAt: 1,
+          hostname: os.hostname(),
+          processIdentity: `${identity}-previous`,
+        }),
+        'utf8',
+      );
+
+      await expect(
+        withRecoverableFileLock(lock, async () => 'recovered', { timeoutMs: 500 }),
+      ).resolves.toBe('recovered');
+      await expect(fs.stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('records the host and process identity for a new lock owner', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lock-identity-'));
+    try {
+      const lock = path.join(root, 'state.lock');
+      const expectedIdentity = await readProcessIdentity(process.pid);
+      await withRecoverableFileLock(lock, async () => {
+        const owner = JSON.parse(await fs.readFile(lock, 'utf8')) as Record<string, unknown>;
+        expect(owner).toMatchObject({ pid: process.pid, hostname: os.hostname() });
+        expect(owner.processIdentity).toBe(expectedIdentity);
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not steal a live same-host lock whose legacy owner lacks process identity', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-lock-unknown-owner-'));
+    try {
+      const lock = path.join(root, 'state.lock');
+      await fs.writeFile(
+        lock,
+        JSON.stringify({
+          pid: process.pid,
+          nonce: 'legacy-owner',
+          createdAt: 1,
+          hostname: os.hostname(),
+        }),
+      );
+
+      await expect(
+        withRecoverableFileLock(lock, async () => 'stolen', { timeoutMs: 100, retryMs: 10 }),
+      ).rejects.toThrow(/Timed out waiting for file lock/u);
+      await expect(fs.readFile(lock, 'utf8')).resolves.toContain('legacy-owner');
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }

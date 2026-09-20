@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 
 import { unlinkWithRetry } from './transient-retry.js';
 import path from 'node:path';
+import { inspectProcessLiveness, readProcessIdentity } from '../process/process-identity.js';
 
 const DEFAULT_LOCK_TIMEOUT_MS = 30_000;
 const DEFAULT_LOCK_RETRY_MS = 20;
@@ -18,6 +20,8 @@ interface PluginStoreLockOwner {
   readonly pid: number;
   readonly nonce: string;
   readonly createdAt: number;
+  readonly hostname?: string;
+  readonly processIdentity?: string;
 }
 
 export interface RecoverableFileLockOptions {
@@ -70,10 +74,13 @@ export async function withRecoverableFileLock<T>(
   const timeoutMs = options.timeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
   const retryMs = options.retryMs ?? DEFAULT_LOCK_RETRY_MS;
   const malformedLockStaleMs = options.malformedLockStaleMs ?? DEFAULT_MALFORMED_LOCK_STALE_MS;
+  const processIdentity = await readProcessIdentity(process.pid);
   const owner: PluginStoreLockOwner = {
     pid: process.pid,
     nonce: randomUUID(),
     createdAt: Date.now(),
+    hostname: os.hostname(),
+    ...(processIdentity === null ? {} : { processIdentity }),
   };
   let acquired = false;
   while (!acquired) {
@@ -114,7 +121,11 @@ async function recoverAbandonedLock(
     return (error as NodeJS.ErrnoException).code === 'ENOENT';
   }
   const owner = parseLockOwner(content);
-  if (owner !== null && processIsAlive(owner.pid)) return false;
+  if (owner !== null) {
+    if (owner.hostname !== undefined && owner.hostname !== os.hostname()) return false;
+    const liveness = await inspectProcessLiveness(owner.pid, owner.processIdentity);
+    if (liveness !== 'dead') return false;
+  }
   if (owner === null) {
     const graceMs = content.trim().length === 0 ? EMPTY_LOCK_GRACE_MS : malformedLockStaleMs;
     if (Date.now() - Number(stat.mtimeMs) < graceMs) {
@@ -155,21 +166,23 @@ function parseLockOwner(content: string): PluginStoreLockOwner | null {
       typeof value.nonce === 'string' &&
       value.nonce.length > 0 &&
       typeof value.createdAt === 'number' &&
-      Number.isFinite(value.createdAt)
-      ? { pid: Number(value.pid), nonce: value.nonce, createdAt: value.createdAt }
+      Number.isFinite(value.createdAt) &&
+      (value.hostname === undefined ||
+        (typeof value.hostname === 'string' && value.hostname.length > 0)) &&
+      (value.processIdentity === undefined ||
+        (typeof value.processIdentity === 'string' && value.processIdentity.length > 0))
+      ? {
+          pid: Number(value.pid),
+          nonce: value.nonce,
+          createdAt: value.createdAt,
+          ...(value.hostname === undefined ? {} : { hostname: value.hostname as string }),
+          ...(value.processIdentity === undefined
+            ? {}
+            : { processIdentity: value.processIdentity as string }),
+        }
       : null;
   } catch {
     return null;
-  }
-}
-
-function processIsAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    return code === 'EPERM' || code !== 'ESRCH';
   }
 }
 

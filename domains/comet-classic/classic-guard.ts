@@ -21,6 +21,7 @@ import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js'
 import {
   evaluateCommandCheck,
   latestCommandCheck,
+  latestInterruptedCommandCheck,
   executeCommandCheck,
   type CommandCheckEvaluation,
   type CommandCheckScope,
@@ -544,8 +545,14 @@ function evidenceDetail(record: RecordedCommandCheck): string {
   return `Evidence: recorded command-check at ${record.timestamp}; command: ${record.command}; cwd: ${record.cwd}`;
 }
 
-function recoveryCommand(change: string, scope: CommandCheckScope, command: string): string {
-  return `comet check run ${change} ${scope} --local -- ${command}`;
+function recoveryCommand(
+  change: string,
+  scope: CommandCheckScope,
+  command: string | readonly string[],
+): string {
+  const display = typeof command !== 'string' ? null : command;
+  if (display === null) return `comet check rerun ${change} ${scope}`;
+  return `comet check run ${change} ${scope} --local -- ${display}`;
 }
 
 async function guardEvidenceCwd(root: string, record: RecordedCommandCheck): Promise<string> {
@@ -588,7 +595,18 @@ async function commandCheckPasses(
       recorded = null;
     }
   }
-  const inferred = scope === 'build' && !recorded ? await inferredBuildCommand() : null;
+  // Never let heuristic command discovery replace a deliberate Runtime check,
+  // including a failed, manual, stale or cwd-mismatched record. The existing
+  // evidence must be surfaced with its recovery action first.
+  const previous = !recorded ? await latestCommandCheck(root, changeDir, run, scope) : null;
+  const interrupted =
+    !recorded && !previous
+      ? await latestInterruptedCommandCheck(root, changeDir, run, scope)
+      : null;
+  const inferred =
+    scope === 'build' && !recorded && !previous && !interrupted
+      ? await inferredBuildCommand()
+      : null;
   if (inferred !== null && typeof inferred !== 'object') {
     // Only this fixed, Runtime-inferred command is shell syntax. Attestations
     // and check-run argv never enter this path.
@@ -609,7 +627,14 @@ async function commandCheckPasses(
     if (recorded.inputBefore !== recorded.inputAfter)
       return {
         status: 1,
-        output: `The detected build command '${inferred}' changed its own check inputs (for example nondeterministic build artifacts); rerun after the workspace is stable, or record a deterministic command with:\n${recoveryCommand(change, scope, '<program> [args...]')}`,
+        output: [
+          `The detected build command '${inferred}' changed its own check inputs (for example nondeterministic build artifacts).`,
+          ...(recorded.changedDuringExecution?.length
+            ? [`Changed inputs: ${recorded.changedDuringExecution.slice(0, 20).join(', ')}.`]
+            : []),
+          'If these paths are generated artifacts, add them to the matching command outputs in .comet/check-policy.json; otherwise stabilize the inputs before rerunning.',
+          `Next: ${recoveryCommand(change, scope, '<program> [args...]')}`,
+        ].join('\n'),
       };
     return {
       status: 0,
@@ -630,11 +655,19 @@ async function commandCheckPasses(
     };
   }
   if (!recorded) {
-    const previous = await latestCommandCheck(root, changeDir, run, scope);
+    if (interrupted)
+      return {
+        status: 1,
+        output: [
+          `The latest Runtime ${scope} check started at ${interrupted.timestamp} but did not complete.`,
+          `Its original argv, cwd, timeout and evidence policy were preserved; automatic command discovery will not replace it.`,
+          `Next: comet check rerun ${change} ${scope}`,
+        ].join('\n'),
+      };
     if (previous && previous.exitCode !== 0)
       return {
         status: previous.exitCode,
-        output: `Latest recorded ${scope} check failed with exit code ${previous.exitCode}.\n${evidenceDetail(previous)}\nNext: ${recoveryCommand(change, scope, previous.command)}`,
+        output: `Latest recorded ${scope} check failed with exit code ${previous.exitCode}.\n${evidenceDetail(previous)}\nNext: ${recoveryCommand(change, scope, previous.argv ?? previous.command)}`,
       };
     if (previous && previous.provenance !== 'runtime')
       return {
@@ -668,7 +701,7 @@ async function commandCheckPasses(
   if (recorded.exitCode !== 0) {
     return {
       status: recorded.exitCode,
-      output: `Latest recorded ${scope} check failed with exit code ${recorded.exitCode}.\n${evidenceDetail(recorded)}\nNext: rerun the command successfully, then record it with:\n${recoveryCommand(change, scope, recorded.command)}`,
+      output: `Latest recorded ${scope} check failed with exit code ${recorded.exitCode}.\n${evidenceDetail(recorded)}\nNext: rerun the command successfully, then record it with:\n${recoveryCommand(change, scope, recorded.argv ?? recorded.command)}`,
     };
   }
   const tierNote =

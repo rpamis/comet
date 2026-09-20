@@ -259,7 +259,7 @@ describe('Chinese Classic efficiency contracts', () => {
     expect(build).toContain('只询问 `missingFields` 和 `invalidFields`');
     expect(build).toContain('不重新列成待选择问题');
     expect(recovery).toContain('`configurationReadiness` 的 `missingFields` 与 `invalidFields`');
-    expect(native).toContain('只在字段缺失、命令被拒绝或需要额外正文时读取详情');
+    expect(native).toContain('只在字段缺失、命令因版本或所有权被拒绝，或需要额外正文时读取详情');
     expect(native).toContain('不因等待工具超时重复派发');
   });
 
@@ -442,14 +442,14 @@ describe('Comet workflow optimization contracts', () => {
       zhSkillRoot,
       '先复现问题并记录失败证据',
       '任务数量本身不触发 `/comet-build`',
-      '开始工作时，由用户选择工作区隔离方式',
+      '开始工作时，先由用户选择工作区隔离方式',
     ],
     [
       'English',
       skillRoot,
       'reproduce the issue and record the failure',
       'Task count alone does not trigger `/comet-build`',
-      'Workspace isolation is a user choice at entry',
+      'Workspace isolation is a user choice made before state initialization',
     ],
   ])(
     '%s hotfix flow preserves regression evidence without task-count routing',

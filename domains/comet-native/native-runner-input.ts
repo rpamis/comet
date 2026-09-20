@@ -1436,6 +1436,33 @@ export async function applyNativeRunnerInput(options: {
     const interrupted = result.checks
       .filter(({ status }) => status === 'interrupted')
       .map(({ id }) => id);
+    if (interrupted.length > 0) {
+      const local = await readNativeLocalExecution(
+        nativeLocalExecutionFile(options.paths, options.name),
+      );
+      const exhausted = (local?.checks ?? [])
+        .filter(
+          ({ id, status, executionCount }) =>
+            interrupted.includes(id) && status === 'interrupted' && executionCount >= 3,
+        )
+        .map(({ id }) => id);
+      if (exhausted.length > 0) {
+        const returned = await returnNativePortableChangeToBuild({
+          paths: options.paths,
+          name: options.name,
+          reason: `Native Runtime checks reached the retry limit after repeated interruptions: ${exhausted.join(', ')}`,
+          failureBudget: { maxVerifyFailures: options.maxVerifyFailures },
+          preserveLocalChecks: true,
+        });
+        return {
+          state: returned,
+          checks: result.checks,
+          requestChecks: null,
+          verifierDispatch: null,
+          continuation: nativePortableContinuation(returned),
+        };
+      }
+    }
     return {
       state: result.state,
       checks: result.checks,

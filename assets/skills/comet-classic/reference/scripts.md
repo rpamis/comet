@@ -28,6 +28,7 @@ comet state delivery <change-name>
 comet state delivery <change-name> --verify
 comet state delivery <change-name> --file <json-path>
 comet check run <change-name> <build|verify> --local -- <program> [args...]
+comet check rerun <change-name> <build|verify>
 comet guard <change-name> <phase> --apply
 comet handoff <change-name> design --write
 comet archive <change-name>
@@ -73,6 +74,10 @@ Archive through `comet archive <change-name>`. OpenSpec first moves the change i
 
 Check evidence reuses by "input scope": the default inputs are working-tree file contents. Commits, staging, ticking tasks.md checkboxes, and environment variable changes no longer invalidate evidence by default; when a build or test actually reads such information, declare the binding through `.comet/check-policy.json`.
 
+The same full command recorded with `--local` (matching argv, cwd, inputs, and environment) can be reused across Build and Verify. Runtime binds the existing evidence to the current phase and returns `reused=true`; do not rerun it merely because the phase name changed. An explicit failure, manual declaration, stale record, or cwd mismatch is reported with its recovery command before any detected build command is considered.
+
+After a Runtime-recorded command fails or is interrupted while snapshotting inputs or launching, use `comet check rerun <change-name> <build|verify>`. Runtime persists argv, cwd, timeout, and reuse tier before execution, so an interrupted attempt retries unchanged instead of running another auto-detected build or reconstructing shell syntax. Guard keeps showing a fresh `comet check run` template only for manual legacy records that have no Runtime argv.
+
 When guard reports evidence as not reusable, it prints the invalidation reason and the changed file list (`Why:`, `Changed inputs:`, `Relevance scope:`). Use that list to decide which command to rerun instead of rerunning everything.
 
 `--incremental` records phase-local evidence: guard previews accept it for quick confirmation, while `--apply` still requires one full rerun of the complete command before advancing the phase. The caller chooses the incremental command (for example, running only related tests); incremental evidence always requires a rerun after cold recovery.
@@ -82,13 +87,13 @@ comet check run <change-name> build --local -- <program> [args...]
 comet check run <change-name> verify --local --incremental -- <program> [args...]
 ```
 
-`.comet/check-policy.json` declares an input scope per command. In the v2 format each command is scoped independently and only the entry matching `argv` and `cwd` applies; editing or adding other entries does not affect this command's existing evidence. `files` accepts literal paths and the `*`, `?`, and `**` wildcards; newly added matching files are picked up automatically without changing the declaration:
+`.comet/check-policy.json` declares an input scope per command. In the v2 format each command is scoped independently and only the entry matching `argv` and `cwd` applies; editing or adding other entries does not affect this command's existing evidence. `files` accepts literal paths and the `*`, `?`, and `**` wildcards; newly added matching files are picked up automatically without changing the declaration. When a build rewrites files inside its input area, declare those artifacts with `outputs`; Runtime excludes them from that command's input snapshot so the command does not invalidate itself:
 
 ```json
 {
   "version": 2,
   "commands": [
-    { "argv": ["pnpm", "build"], "cwd": ".", "files": ["src/**", "package.json", "tsconfig.json"], "git": "all" },
+    { "argv": ["pnpm", "build"], "cwd": ".", "files": ["src/**", "package.json", "tsconfig.json"], "outputs": ["dist/**"], "git": "all" },
     { "argv": ["vitest", "run"], "cwd": ".", "files": ["src/**", "test/**"] }
   ]
 }

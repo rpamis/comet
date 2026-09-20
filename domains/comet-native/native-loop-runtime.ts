@@ -860,7 +860,7 @@ export function returnNativeCandidateToBuild(options: {
           reason: toNativePortableText(
             `Native Runtime checks failed at Builder handoff and reached the configured failed iteration limit: ${options.reason}`,
           ),
-          acceptance_ids: unresolvedIds,
+          acceptance_ids: [...unresolvedIds],
           resolution_action: 'await-user',
         },
       ],

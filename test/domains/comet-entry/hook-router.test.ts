@@ -119,6 +119,35 @@ describe('Comet Hook Router', () => {
     expect(collectContext).toHaveBeenCalledWith(root, { task: 'Independent task' });
   });
 
+  it('keeps optional context failures nonblocking and returns a bounded host diagnostic', async () => {
+    const decision = await inspectCometHook(
+      root,
+      {
+        intent: 'context',
+        targets: [],
+        toolName: null,
+        task: 'Independent task',
+      },
+      {
+        listNative: vi.fn(async () => []),
+        listClassic: vi.fn(async () => []),
+        inspectNative: vi.fn(),
+        inspectClassic: vi.fn(),
+        collectContext: vi.fn(async () => {
+          throw new Error(`bridge failed\n${'detail'.repeat(200)}`);
+        }),
+      },
+    );
+
+    expect(decision).toMatchObject({
+      allowed: true,
+      reason: 'Comet context is temporarily unavailable',
+      diagnostic: expect.stringContaining('bridge failed detail'),
+    });
+    expect(decision.diagnostic?.length).toBeLessThanOrEqual(512);
+    expect(decision.diagnostic).not.toContain('\n');
+  });
+
   it('stays neutral for project-external targets without reading Comet state', async () => {
     const externalTarget = path.join(os.tmpdir(), `comet-memory-${path.basename(root)}.md`);
     const listNative = vi.fn(async () => {
@@ -175,6 +204,9 @@ describe('Comet Hook Router', () => {
     const externalTarget = path.join(os.tmpdir(), `comet-memory-${path.basename(root)}.md`);
     const inspectNative = vi.fn(async () => ({ allowed: true, reason: 'native' }));
     const inspectClassic = vi.fn(async () => ({ allowed: true, reason: 'classic' }));
+    const listNative = vi.fn(async () => {
+      throw new Error('unrelated Native state must not be enumerated');
+    });
 
     const decision = await inspectCometHook(
       root,
@@ -184,9 +216,12 @@ describe('Comet Hook Router', () => {
         toolName: 'Edit',
       },
       {
-        listNative: async () => [
-          { workflow: 'native', name: 'native-change', phase: 'build' as const },
-        ],
+        listNative,
+        getNative: async () => ({
+          workflow: 'native',
+          name: 'native-change',
+          phase: 'build' as const,
+        }),
         listClassic: async () => [],
         inspectNative,
         inspectClassic,
@@ -213,14 +248,20 @@ describe('Comet Hook Router', () => {
     });
     const inspectNative = vi.fn(async () => ({ allowed: true, reason: 'native' }));
     const inspectClassic = vi.fn(async () => ({ allowed: true, reason: 'classic' }));
+    const listNative = vi.fn(async () => {
+      throw new Error('unrelated Native state must not be enumerated');
+    });
 
     const decision = await inspectCometHook(
       root,
       { intent: 'write', targets: ['src/app.ts'], toolName: 'Write' },
       {
-        listNative: async () => [
-          { workflow: 'native', name: 'native-change', phase: 'build' as const },
-        ],
+        listNative,
+        getNative: async () => ({
+          workflow: 'native',
+          name: 'native-change',
+          phase: 'build' as const,
+        }),
         listClassic: async () => [
           { workflow: 'classic', name: 'classic-change', phase: 'design' as const },
         ],
@@ -233,9 +274,10 @@ describe('Comet Hook Router', () => {
     expect(decision).toEqual({ allowed: true, reason: 'native' });
     expect(inspectNative).toHaveBeenCalledOnce();
     expect(inspectClassic).not.toHaveBeenCalled();
+    expect(listNative).not.toHaveBeenCalled();
   });
 
-  it('injects the same progressive Context Manifest and application ids through the Hook', async () => {
+  it('keeps optional context collection outside the synchronous write Hook path', async () => {
     await configureBoth();
     await writeCometCurrentSelection(root, {
       schema: 'comet.selection.v2',
@@ -278,17 +320,8 @@ describe('Comet Hook Router', () => {
       },
     );
 
-    expect(decision).toMatchObject({
-      allowed: true,
-      context: expect.stringContaining('application_id="application-1"'),
-    });
-    expect(collectContext).toHaveBeenCalledWith(root, {
-      task: 'Edit src/app.ts',
-      path: 'src/app.ts',
-      operation: 'Edit',
-      phase: 'build',
-      sessionId: 'session-1',
-    });
+    expect(decision).toEqual({ allowed: true, reason: 'native' });
+    expect(collectContext).not.toHaveBeenCalled();
   });
 
   it('does not enumerate Classic state when Native owns the current selection', async () => {

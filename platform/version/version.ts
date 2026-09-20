@@ -3,7 +3,12 @@ import https from 'https';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+declare const __COMET_VERSION__: string | undefined;
+
 function readCurrentVersion(): string {
+  if (typeof __COMET_VERSION__ === 'string' && __COMET_VERSION__.length > 0) {
+    return __COMET_VERSION__;
+  }
   const here = path.dirname(fileURLToPath(import.meta.url));
   for (const relativePath of ['../../package.json', '../../../package.json']) {
     const candidate = path.resolve(here, relativePath);

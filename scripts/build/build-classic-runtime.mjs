@@ -4,9 +4,13 @@ import { build } from 'esbuild';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { readRepositoryLayout, resolveRepositoryPath } from '../lib/repository-layout.mjs';
+import { writeFileWithTransientRetry } from '../lib/transient-file-write.mjs';
 
 const layout = readRepositoryLayout();
 const repoRoot = resolveRepositoryPath('.');
+const packageVersion = JSON.parse(
+  await fs.readFile(path.join(repoRoot, 'package.json'), 'utf8'),
+).version;
 const runtimeOutput = layout.classicRuntime.outputs.runtime;
 const runtimeEntry = layout.classicRuntime.entries.runtime;
 
@@ -42,6 +46,7 @@ const esbuildOptions = {
   charset: 'utf8',
   treeShaking: true,
   minify: true,
+  define: { __COMET_VERSION__: JSON.stringify(packageVersion) },
   banner,
 };
 
@@ -105,6 +110,6 @@ if (process.argv.includes('--check')) {
 } else {
   for (const { outputFile, output } of outputs) {
     await fs.mkdir(path.dirname(outputFile), { recursive: true });
-    await fs.writeFile(outputFile, output);
+    await writeFileWithTransientRetry(outputFile, output);
   }
 }

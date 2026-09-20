@@ -263,6 +263,32 @@ describe('Classic command check evidence', () => {
     expect(again.reused).toBe(true);
   });
 
+  it('reuses the same reusable command across Build and Verify without rerunning it', async () => {
+    const marker = path.join(changeDir, '.comet', 'check-count.txt');
+    const argv = [
+      process.execPath,
+      '-e',
+      `require('fs').appendFileSync(${JSON.stringify(marker)}, 'run\\n')`,
+    ];
+    const build = await executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'build',
+      argv,
+      reusable: true,
+    });
+    const verify = await executeCommandCheck(projectRoot, changeDir, run, {
+      scope: 'verify',
+      argv,
+      reusable: true,
+    });
+
+    expect(build.reused).toBeUndefined();
+    expect(verify).toMatchObject({ scope: 'verify', reused: true, exitCode: 0 });
+    expect(await fs.readFile(marker, 'utf8')).toBe('run\n');
+    expect(await usableCommandCheck(projectRoot, changeDir, run, 'verify')).toMatchObject({
+      sequence: verify.sequence,
+    });
+  });
+
   it('invalidates manifest evidence on content changes but tolerates timestamp-only touches', async () => {
     const input = path.join(projectRoot, 'input.txt');
     await fs.writeFile(input, 'same');

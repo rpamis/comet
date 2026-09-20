@@ -91,7 +91,9 @@ describe('legacy Supervisor diagnostic recovery', () => {
       for (const command of ['status', 'show', 'doctor']) {
         const result = await runNativeCli([command, 'parent', '--json', '--project-root', root]);
         if (command === 'doctor') {
-          expect(JSON.parse(result.stdout!)).toHaveProperty('data.result.continuation');
+          expect(JSON.parse(result.stdout!), result.stdout!).toHaveProperty(
+            'data.result.continuation',
+          );
         } else {
           expect(JSON.parse(result.stdout!)).not.toHaveProperty('error');
           expect(result.exitCode).toBe(0);

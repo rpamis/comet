@@ -81,7 +81,7 @@ export interface NativePortableContinuation {
 
 export type NativePortableArchiveContinuationMode = 'archive-ready' | 'preview' | 'blocked';
 
-interface NativePortableCheckPlanTemplate {
+export interface NativePortableCheckPlanTemplate {
   id: string;
   name: string;
   executable: string;

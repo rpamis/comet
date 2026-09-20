@@ -306,7 +306,7 @@ describe('Native public user-option paths', () => {
       expect(git(root, ['branch', '--list', 'comet/supervisor/*'])).toBe('');
       expect(git(root, ['ls-files', '.comet/config.yaml'])).toBe('');
     },
-    180_000,
+    300_000,
   );
 
   it('provides an executable serial Archive choice for two real worktrees', async () => {

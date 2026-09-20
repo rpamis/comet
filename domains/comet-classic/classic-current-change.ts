@@ -12,7 +12,12 @@ import {
   resolveBranchBinding,
   unboundDetachedMessage,
 } from './classic-branch-binding.js';
-import { assertOpenSpecChangeName, inspectClassicActiveChangeDirectory } from './classic-paths.js';
+import {
+  assertOpenSpecChangeName,
+  findClassicArchiveChangeDirectory,
+  inspectClassicActiveChangeDirectory,
+} from './classic-paths.js';
+import { readClassicDelivery } from './classic-progress.js';
 import { readClassicState } from './classic-store.js';
 import { resolveClassicWorkspace } from './classic-workspace.js';
 import { ClassicLayoutUnavailableError } from './classic-layout.js';
@@ -121,10 +126,24 @@ export async function resolveCurrentChange(projectRoot: string): Promise<Current
   try {
     changeDir = await validateActiveChange(projectRoot, selection.change);
   } catch (error) {
-    return {
-      status: 'stale',
-      reason: error instanceof Error ? error.message : String(error),
-    };
+    try {
+      const archived = await findClassicArchiveChangeDirectory(selection.change, projectRoot);
+      if (!archived) throw error;
+      const projection = await readClassicState(archived.directory, { migrate: false });
+      const delivery = await readClassicDelivery(projectRoot, archived.directory);
+      if (
+        !projection.classic?.archived ||
+        ['complete', 'local-verified'].includes(delivery.verification.status)
+      ) {
+        throw error;
+      }
+      changeDir = archived.directory;
+    } catch (archiveError) {
+      return {
+        status: 'stale',
+        reason: archiveError instanceof Error ? archiveError.message : String(archiveError),
+      };
+    }
   }
 
   const outcome = await resolveBranchBinding(changeDir, {

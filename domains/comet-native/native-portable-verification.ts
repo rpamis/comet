@@ -685,6 +685,7 @@ export async function returnNativePortableChangeToBuild(options: {
   reason: string;
   expectedContinuation?: NativePortableExpectedContinuation;
   failureBudget?: { maxVerifyFailures: number };
+  preserveLocalChecks?: boolean;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
@@ -697,6 +698,9 @@ export async function returnNativePortableChangeToBuild(options: {
         action: 'revise-implementation',
       });
       if (state.phase === 'build') return state;
+      const local = options.preserveLocalChecks
+        ? await readCurrentLocalExecution({ paths: options.paths, state })
+        : null;
       const next = returnNativeCandidateToBuild({
         state,
         reason: options.reason,
@@ -705,11 +709,17 @@ export async function returnNativePortableChangeToBuild(options: {
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        rebuildNativeLocalExecution({
-          portableState: written,
-          projectRoot: options.paths.projectRoot,
-          branch: currentBranch(options.paths.projectRoot),
-        }),
+        options.preserveLocalChecks
+          ? preservedLocalChecksForVersion({
+              local,
+              state: written,
+              projectRoot: options.paths.projectRoot,
+            })
+          : rebuildNativeLocalExecution({
+              portableState: written,
+              projectRoot: options.paths.projectRoot,
+              branch: currentBranch(options.paths.projectRoot),
+            }),
         { containedRoot: options.paths.runtimeDir },
       );
       return written;

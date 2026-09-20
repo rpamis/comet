@@ -189,13 +189,11 @@ export interface NativeLocalExecutionState {
   /** Fingerprint of the candidate, workspace inputs and tool environment. */
   inputFingerprint?: string | null;
   /**
-   * Cheap gate over the same inputs as the full fingerprint (HEAD, branch,
-   * porcelain status including untracked content, staged blob ids, bound
-   * environment, machine identity). A matching gate proves the full
-   * fingerprint would recompute to the recorded value, so reuse decisions hit
-   * before paying the full per-file hashing. Ignored generated directories are
-   * the deliberate exception: regenerating build output alone no longer breaks
-   * check reuse.
+   * Gate over the same mutable inputs as the full fingerprint (HEAD, branch,
+   * dirty and untracked content, staged blob ids, ignored generated inputs,
+   * bound environment, machine identity). A matching gate proves the full
+   * fingerprint would recompute to the recorded value, so reuse skips hashing
+   * the clean tracked tree without overlooking generated inputs a check reads.
    */
   inputFingerprintGate?: string | null;
   workspace: {

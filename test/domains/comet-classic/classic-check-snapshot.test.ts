@@ -67,6 +67,32 @@ describe('Classic check input snapshots', () => {
     expect(await bound()).not.toBe(committed);
   });
 
+  it('excludes declared command outputs while keeping source inputs bound', async () => {
+    const identity = { argv: [process.execPath, 'build.cjs'], cwd: '.' };
+    await fs.writeFile(
+      path.join(root, '.comet', 'check-policy.json'),
+      JSON.stringify({
+        version: 2,
+        commands: [
+          {
+            ...identity,
+            files: ['source.js', 'dist/**'],
+            outputs: ['dist/**'],
+          },
+        ],
+      }),
+    );
+    await fs.mkdir(path.join(root, 'dist'));
+    await fs.writeFile(path.join(root, 'dist', 'bundle.js'), 'first');
+    const before = await checkInputFingerprint(root, change, identity);
+
+    await fs.writeFile(path.join(root, 'dist', 'bundle.js'), 'second');
+    expect(await checkInputFingerprint(root, change, identity)).toBe(before);
+
+    await fs.writeFile(path.join(root, 'source.js'), 'v2');
+    expect(await checkInputFingerprint(root, change, identity)).not.toBe(before);
+  });
+
   it('includes submodule HEAD and dirty contents', async () => {
     const source = path.join(root, 'library');
     await fs.mkdir(source);
@@ -100,7 +126,12 @@ describe('Classic check input snapshots', () => {
   it('collects per-file entries; repository metadata binds only under legacy semantics', async () => {
     const snapshot = await collectCheckSnapshot(root, change);
     const source = snapshot.entries.find((entry) => entry.p === 'source.js');
-    expect(source?.h).toBe(createHash('sha256').update('v1').digest('hex'));
+    expect(source?.h).toBe(
+      `git:${execFileSync('git', ['hash-object', 'source.js'], {
+        cwd: root,
+        encoding: 'utf8',
+      }).trim()}`,
+    );
     expect(source?.s).toBe(2);
     expect(source?.m).toMatch(/^\d+$/);
     expect(snapshot.entries.map((entry) => entry.p)).not.toContain('\u0000git:.:head');
@@ -122,7 +153,12 @@ describe('Classic check input snapshots', () => {
       baseline: baseline.entries,
     });
     const source = touched.entries.find((entry) => entry.p === 'source.js');
-    expect(source?.h).toBe(createHash('sha256').update('v2').digest('hex'));
+    expect(source?.h).toBe(
+      `git:${execFileSync('git', ['hash-object', 'source.js'], {
+        cwd: root,
+        encoding: 'utf8',
+      }).trim()}`,
+    );
     expect(touched.digest).not.toBe(baseline.digest);
   });
 
@@ -150,8 +186,32 @@ describe('Classic check input snapshots', () => {
       baseline: baseline.entries,
     });
     const addedEntry = added.entries.find((entry) => entry.p === 'added.js');
-    expect(addedEntry?.h).toBe(createHash('sha256').update('new').digest('hex'));
+    expect(addedEntry?.h).toBe(
+      `git:${execFileSync('git', ['hash-object', 'added.js'], {
+        cwd: root,
+        encoding: 'utf8',
+      }).trim()}`,
+    );
     expect(added.digest).not.toBe(modified.digest);
+  });
+
+  it('invalidates recorded content after a different file version is committed', async () => {
+    const baseline = await collectCheckSnapshot(root, change);
+
+    await fs.writeFile(path.join(root, 'source.js'), 'v2');
+    git(root, 'add', 'source.js');
+    git(root, 'commit', '-m', 'replace source');
+
+    const committed = await collectCheckSnapshot(root, change, undefined, {
+      baseline: baseline.entries,
+    });
+    expect(committed.digest).not.toBe(baseline.digest);
+    expect(committed.entries.find((entry) => entry.p === 'source.js')?.h).toBe(
+      `git:${execFileSync('git', ['hash-object', 'source.js'], {
+        cwd: root,
+        encoding: 'utf8',
+      }).trim()}`,
+    );
   });
 
   it('fingerprints tracked files larger than 64 MiB without a byte cap', async () => {
@@ -169,7 +229,12 @@ describe('Classic check input snapshots', () => {
 
     const entry = snapshot.entries.find((candidate) => candidate.p === 'recording.bin');
     expect(entry?.s).toBe(size);
-    expect(entry?.h).toBe(createHash('sha256').update(Buffer.alloc(size)).digest('hex'));
+    expect(entry?.h).toBe(
+      `git:${execFileSync('git', ['hash-object', 'recording.bin'], {
+        cwd: root,
+        encoding: 'utf8',
+      }).trim()}`,
+    );
     const changed = await collectCheckSnapshot(root, change);
     expect(changed.digest).toBe(snapshot.digest);
   });

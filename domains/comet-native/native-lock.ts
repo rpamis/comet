@@ -5,6 +5,10 @@ import os from 'os';
 import path from 'path';
 
 import { RaceSafeReadError, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+import {
+  inspectProcessLiveness,
+  readProcessIdentity,
+} from '../../platform/process/process-identity.js';
 
 import { resolveContainedNativePath } from './native-paths.js';
 import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
@@ -30,6 +34,7 @@ export interface NativeLockOwner {
   hostname: string;
   createdAt: string;
   operation: string;
+  processIdentity?: string;
 }
 
 export interface NativeLockFileIdentity {
@@ -92,7 +97,9 @@ function parseNativeLockOwner(value: unknown, file: string): NativeLockOwner {
     typeof owner.createdAt !== 'string' ||
     owner.createdAt.length === 0 ||
     typeof owner.operation !== 'string' ||
-    owner.operation.length === 0
+    owner.operation.length === 0 ||
+    (owner.processIdentity !== undefined &&
+      (typeof owner.processIdentity !== 'string' || owner.processIdentity.length === 0))
   ) {
     throw new Error(`Invalid Native lock metadata: ${file}`);
   }
@@ -179,14 +186,16 @@ export async function readNativeLock(file: string): Promise<NativeLockOwner | nu
   return (await readNativeLockSnapshot(file))?.owner ?? null;
 }
 
-function diagnosisFromSnapshot(snapshot: NativeLockSnapshot | null): NativeLockDiagnosis {
+async function diagnosisFromSnapshot(
+  snapshot: NativeLockSnapshot | null,
+): Promise<NativeLockDiagnosis> {
   if (!snapshot) return { status: 'missing', owner: null, identity: null };
   if (snapshot.owner.hostname !== os.hostname()) {
     return { status: 'unknown', owner: snapshot.owner, identity: snapshot.identity };
   }
-  const alive = isProcessAlive(snapshot.owner.pid);
+  const liveness = await inspectProcessLiveness(snapshot.owner.pid, snapshot.owner.processIdentity);
   return {
-    status: alive === true ? 'active' : alive === false ? 'stale' : 'unknown',
+    status: liveness === 'alive' ? 'active' : liveness === 'dead' ? 'stale' : 'unknown',
     owner: snapshot.owner,
     identity: snapshot.identity,
   };
@@ -242,13 +251,15 @@ async function removeBoundNativeLock(
   return 'removed';
 }
 
-function newNativeLockOwner(operation: string): NativeLockOwner {
+async function newNativeLockOwner(operation: string): Promise<NativeLockOwner> {
+  const processIdentity = await readProcessIdentity(process.pid);
   return {
     id: randomUUID(),
     pid: process.pid,
     hostname: os.hostname(),
     createdAt: new Date().toISOString(),
     operation,
+    ...(processIdentity === null ? {} : { processIdentity }),
   };
 }
 
@@ -300,7 +311,7 @@ async function publishNativeCoordinatorClaim(
     path.join(locksDir, NATIVE_LOCK_COORDINATOR_DIR),
   );
   await fs.mkdir(coordinatorDir, { recursive: true });
-  const owner = newNativeLockOwner(operation);
+  const owner = await newNativeLockOwner(operation);
   const temporary = path.join(coordinatorDir, `.${owner.id}.tmp`);
   const file = path.join(coordinatorDir, `${owner.id}.claim`);
   try {
@@ -326,7 +337,7 @@ async function hasNativeCoordinatorPredecessor(claim: NativeLock): Promise<boole
     if (path.resolve(file) === path.resolve(claim.file)) continue;
     try {
       const snapshot = await readNativeLockSnapshot(file);
-      const diagnosis = diagnosisFromSnapshot(snapshot);
+      const diagnosis = await diagnosisFromSnapshot(snapshot);
       if (diagnosis.status === 'missing') continue;
       if (diagnosis.status === 'stale' && snapshot) {
         await removeBoundNativeLock(snapshot, coordinatorDir);
@@ -438,7 +449,7 @@ export async function acquireNativeLock(
       paths.runtimeDir,
       path.join(locksDir, lockName(name)),
     );
-    const owner = newNativeLockOwner(operation);
+    const owner = await newNativeLockOwner(operation);
     const identity = await writeNativeLockFile(file, owner);
     return { file, nativeRoot: paths.runtimeDir, locksDir, owner, identity };
   });
@@ -508,7 +519,7 @@ export async function takeOverNativeStaleLock(
       throw new Error(`Native lock takeover target is outside the lock directory: ${file}`);
     }
     const snapshot = await readNativeLockSnapshot(containedFile);
-    const diagnosis = diagnosisFromSnapshot(snapshot);
+    const diagnosis = await diagnosisFromSnapshot(snapshot);
     if (diagnosis.status === 'missing') return { status: 'missing' };
     if (expected && !sameNativeLockDiagnosis(expected, diagnosis)) {
       return { status: 'changed', diagnosis };

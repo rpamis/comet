@@ -317,6 +317,28 @@ describe('Native portable Runtime vertical path', () => {
     });
   });
 
+  it('keeps Shape confirmation valid across newline and trailing-whitespace normalization', async () => {
+    await createNativePortableChange({ paths, name: 'normalized-shape-context', language: 'en' });
+    const changeDir = nativePortableChangeDir(paths, 'normalized-shape-context');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Scope\n- Stable scope.\n\n# Acceptance examples\n- The behavior is accepted.\n',
+    );
+    await prepareNativePortableShapeConfirmation({
+      paths,
+      name: 'normalized-shape-context',
+    });
+
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Scope  \r\n- Stable scope.\t\r\n\r\n# Acceptance examples\r\n- The behavior is accepted.  \r\n\r\n',
+    );
+
+    await expect(
+      confirmNativePortableShapeAtBoundary({ paths, name: 'normalized-shape-context' }),
+    ).resolves.toMatchObject({ phase: 'build', status: 'active' });
+  });
+
   it('returns to active Shape when a blocker is added while confirmation is waiting', async () => {
     await createNativePortableChange({ paths, name: 'late-shape-blocker', language: 'en' });
     const changeDir = nativePortableChangeDir(paths, 'late-shape-blocker');
@@ -1248,7 +1270,7 @@ Ship the behavior.
     expect(completed.state.verification?.risks[0]).toMatchObject({ truncated: true });
   });
 
-  it('invalidates reusable checks when an ignored generated artifact changes', async () => {
+  it('reruns checks when an ignored generated input changes', async () => {
     execFileSync('git', ['-C', root, 'init', '-b', 'master'], { stdio: 'ignore' });
     await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n.comet/\n');
     await fs.writeFile(path.join(root, 'baseline.txt'), 'baseline\n');
@@ -1295,27 +1317,34 @@ Ship the behavior.
       id: 'generated-input',
       name: 'Generated input check',
       executable: process.execPath,
-      argv: ['-e', 'process.exit(0)'],
+      argv: [
+        '-e',
+        "process.exit(require('fs').readFileSync('dist/input.txt', 'utf8').trim() === 'good' ? 0 : 7)",
+      ],
       cwdRef: '.',
       timeoutMs: 10_000,
       repeatable: true,
     } as const;
 
-    await expect(
-      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
-    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'passed' }] });
-    const firstLocal = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
     await fs.mkdir(path.join(root, 'dist'));
-    await fs.writeFile(path.join(root, 'dist', 'generated.txt'), 'generated output v1\n');
+    await fs.writeFile(path.join(root, 'dist', 'input.txt'), 'good\n');
 
     await expect(
       executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
     ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'passed' }] });
+    const firstLocal = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
+    await fs.writeFile(path.join(root, 'dist', 'input.txt'), 'bad\n');
+
+    await expect(
+      executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+    ).resolves.toMatchObject({ checks: [{ id: plan.id, status: 'failed', exit_code: 7 }] });
     const secondLocal = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
     expect(firstLocal?.execution?.operationId).toBeTruthy();
     expect(secondLocal?.execution?.operationId).toBeTruthy();
     expect(secondLocal?.execution?.operationId).not.toBe(firstLocal?.execution?.operationId);
-    expect(secondLocal?.checks).toMatchObject([{ id: plan.id, executionCount: 1 }]);
+    expect(secondLocal?.checks).toMatchObject([
+      { id: plan.id, status: 'failed', exitCode: 7, executionCount: 1 },
+    ]);
   });
 
   it('does not hold the project mutation lock while a requested check is running', async () => {

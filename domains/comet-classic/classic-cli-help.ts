@@ -16,6 +16,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
   const usage: Record<string, string[]> = {
     check: [
       'comet check run <change> <build|verify> [--local] [--incremental] [--cwd <path>] [--timeout-ms <ms>] -- <program> [args...]',
+      'comet check rerun <change> <build|verify>',
       '--local opts deterministic local checks into same-input reuse; other checks are single-use.',
       '--incremental records phase-local evidence: guard previews accept it, --apply requires a full rerun.',
       'Arguments after -- belong to the child. Windows batch arguments containing shell syntax are rejected.',
@@ -33,6 +34,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'Exit: 0 = success with stable inputs; child failures propagate; timeout = 124; invalid invocation/runtime error = 70.',
       'A child exit of 0 with changed inputs returns exitCode 1. Use top-level exitCode, not data.exitCode.',
       'On failure inspect data.logRef or stderr, fix the cause, then rerun. Recovery revalidates local evidence.',
+      'rerun repeats the latest Runtime-recorded argv, cwd, timeout and reuse tier without reconstructing shell syntax.',
       'Optional .comet/check-policy.json binds declared deterministic commands by exact argv and cwd.',
       'A v1 single-command object stays valid; v2 {"commands":[...]} scopes each command separately.',
       "Editing one v2 command entry invalidates only that command's evidence; unmatched commands stay conservative.",
@@ -46,6 +48,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'Examples: (replace demo with your active change; these commands execute code)',
       '  comet check run demo verify --json -- node --test',
       '  comet check run demo build --local --cwd . -- npm run build',
+      '  comet check rerun demo build',
     ],
     state: [
       'comet state <command> [args]',

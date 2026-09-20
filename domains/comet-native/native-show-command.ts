@@ -7,10 +7,11 @@ import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { inspectNativeChildren } from './native-children.js';
 import { readNativeProposedSpecs } from './native-specs.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
+import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
 import {
   isNativePortableChange,
   nativePortableChangeDir,
-  readNativePortableChange,
+  readNativePortableRuntime,
 } from './native-portable-runtime.js';
 import {
   assertNoArguments,
@@ -32,7 +33,8 @@ export async function nativeShowCommand(
   const executionCwd = await discoverNativeChangeProjectRoot({ projectRoot, name });
   const { paths } = await configuredPaths(executionCwd);
   if (await isNativePortableChange(paths, name)) {
-    const state = await readNativePortableChange(paths, name);
+    const runtime = await readNativePortableRuntime({ paths, name });
+    const state = runtime.state;
     const changeDir = nativePortableChangeDir(paths, name);
     const brief = await readNativeBoundedTextFile({
       root: changeDir,
@@ -64,6 +66,16 @@ export async function nativeShowCommand(
       continuation: nativePortableContinuation(
         state,
         await inspectNativeChildren({ paths, state }),
+        {
+          ...(runtime.local
+            ? {
+                verificationCheckPlans: nativePortableCheckPlansFromLocal(
+                  runtime.local,
+                  runtime.local.workspace.projectRoot,
+                ),
+              }
+            : {}),
+        },
       ),
     };
     return { ...success('show', payload), executionCwd };

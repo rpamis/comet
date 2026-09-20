@@ -7,6 +7,7 @@ import { inspectNativeChildren } from './native-children.js';
 import { readNativeSupervisorState, type NativeSupervisorState } from './native-supervisor.js';
 import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
+import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
 import { nativePortableChangeDir, readNativePortableRuntime } from './native-portable-runtime.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
 import type { NativeLocalExecutionState, NativePortableState } from './native-portable-types.js';
@@ -410,7 +411,16 @@ export async function inspectNativePortableStatus(options: {
         projectRoot: '.',
       }
     : projectNativePortableWorkspace(options.paths, runtime.state, options.gitContext);
-  const continuation = nativePortableContinuation(runtime.state, children);
+  const continuation = nativePortableContinuation(runtime.state, children, {
+    ...(runtime.local
+      ? {
+          verificationCheckPlans: nativePortableCheckPlansFromLocal(
+            runtime.local,
+            runtime.local.workspace.projectRoot,
+          ),
+        }
+      : {}),
+  });
   const effectiveContinuation =
     workspace.bindingState === 'mismatch'
       ? {

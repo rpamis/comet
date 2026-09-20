@@ -9,6 +9,7 @@ import {
   resolveCurrentChange,
   selectCurrentChange,
 } from '../../../domains/comet-classic/classic-current-change.js';
+import { driftStaleReason } from '../../../domains/comet-classic/classic-branch-binding.js';
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -142,7 +143,7 @@ describe('Classic current change selection', () => {
 
     expect(await resolveCurrentChange(root)).toEqual({
       status: 'stale',
-      reason: "change 'change-a' is bound to branch 'main', but current branch is 'other'",
+      reason: driftStaleReason('change-a', 'main', 'other'),
     });
   });
 
@@ -156,7 +157,7 @@ describe('Classic current change selection', () => {
 
       expect(await resolveCurrentChange(root)).toEqual({
         status: 'stale',
-        reason: "change 'change-a' is bound to branch 'main', but current branch is 'other'",
+        reason: driftStaleReason('change-a', 'main', 'other'),
       });
     },
   );

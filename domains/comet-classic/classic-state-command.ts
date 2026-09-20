@@ -6,6 +6,7 @@ import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js'
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import {
   clearCurrentChange,
+  clearCurrentChangeIf,
   resolveCurrentChange,
   selectCurrentChange,
 } from './classic-current-change.js';
@@ -1221,6 +1222,15 @@ async function progressCommand(
       );
     await withClassicStateLock(directory, operation);
   } else await operation();
+  if (
+    kind === 'delivery' &&
+    ['complete', 'local-verified'].includes(
+      (output.data as { verification?: { status?: string } } | undefined)?.verification?.status ??
+        '',
+    )
+  ) {
+    await clearCurrentChangeIf(root, args[0]);
+  }
 }
 
 async function check(

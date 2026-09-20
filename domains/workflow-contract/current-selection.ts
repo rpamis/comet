@@ -6,7 +6,7 @@ import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import type { CometProjectWorkflow } from './types.js';
 
 export const COMET_CURRENT_SELECTION_SCHEMA = 'comet.selection.v2' as const;
-export const COMET_CURRENT_SELECTION_MAX_BYTES = Number.MAX_SAFE_INTEGER;
+export const COMET_CURRENT_SELECTION_MAX_BYTES = 16 * 1024;
 
 export type CometWorkflow = CometProjectWorkflow;
 

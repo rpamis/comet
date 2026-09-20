@@ -509,6 +509,26 @@ async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativ
   return { paths, changes };
 }
 
+async function selectedNativeContextImpl(
+  projectRoot: string,
+  name: string,
+): Promise<ActiveNativeContext | null> {
+  const config = await readProjectConfig(projectRoot);
+  if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+  try {
+    if (await isNativePortableChange(paths, name)) {
+      const state = await readNativePortableChange(paths, name);
+      return { paths, changes: state.archived ? [] : [{ kind: 'portable', state }] };
+    }
+    const state = await readNativeChange(paths, name);
+    return { paths, changes: state.archived ? [] : [{ kind: 'legacy', state }] };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { paths, changes: [] };
+    throw error;
+  }
+}
+
 // `activeNativeContext` is invoked once by `listActiveNativeHookChanges`
 // (router) and again by `inspectNativeHookGuard`. Within a single Hook
 // decision the changes directory is immutable, so memoize the enumeration to
@@ -526,6 +546,24 @@ export async function listActiveNativeHookChanges(
     name: change.state.name,
     phase: change.state.phase,
   }));
+}
+
+export async function resolveActiveNativeHookChange(
+  projectRoot: string,
+  name: string,
+): Promise<ActiveNativeHookChange | null> {
+  const config = await readProjectConfig(projectRoot);
+  if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+  try {
+    const state = (await isNativePortableChange(paths, name))
+      ? await readNativePortableChange(paths, name)
+      : await readNativeChange(paths, name);
+    return state.archived ? null : { workflow: 'native', name: state.name, phase: state.phase };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
 }
 
 export function parseNativeHookRequest(source: string): NativeHookRequest {
@@ -572,7 +610,12 @@ export async function inspectNativeHookGuard(
   request: NativeHookRequest,
   selectedChangeName?: string,
 ): Promise<NativeHookGuardResult> {
-  const context = await activeNativeContext(projectRoot);
+  // An explicit selection is authoritative. Read only that change so a damaged
+  // unrelated change cannot block every write or add O(number of changes) I/O
+  // to the Hook critical path.
+  const context = selectedChangeName
+    ? await selectedNativeContextImpl(projectRoot, selectedChangeName)
+    : await activeNativeContext(projectRoot);
   if (!context) return { allowed: true, reason: 'Native workflow is not enabled' };
   if (request.intent === 'non-write') {
     return { allowed: true, reason: 'Hook event is not a write' };
@@ -625,6 +668,7 @@ export async function inspectNativeHookGuard(
 
   const state = change.state;
   const registeredChanges = new Set(context.changes.map(({ state: candidate }) => candidate.name));
+  const foreignRegistration = new Map<string, Promise<boolean>>();
   const preDecisions: NativeHookGuardResult[] = [];
   for (const targetPath of request.targets) {
     const target = path.resolve(projectRoot, targetPath);
@@ -638,6 +682,15 @@ export async function inspectNativeHookGuard(
     }
     const formal = nativeFormalTargetReference(context.paths.changesDir, target);
     if (formal && formal.name !== state.name) {
+      let registered = registeredChanges.has(formal.name);
+      if (!registered && selectedChangeName) {
+        let registration = foreignRegistration.get(formal.name);
+        if (!registration) {
+          registration = resolveActiveNativeHookChange(projectRoot, formal.name).then(Boolean);
+          foreignRegistration.set(formal.name, registration);
+        }
+        registered = await registration;
+      }
       preDecisions.push(
         foreignNativeFormalTargetDecision(
           projectRoot,
@@ -645,7 +698,7 @@ export async function inspectNativeHookGuard(
           state.name,
           formal,
           target,
-          registeredChanges.has(formal.name),
+          registered,
         ),
       );
       continue;

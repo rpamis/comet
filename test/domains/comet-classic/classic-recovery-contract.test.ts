@@ -303,6 +303,10 @@ describe('Classic compact recovery and task reconciliation', () => {
     git('add', '--', '.');
     git('commit', '-m', 'chore: archive demo');
     const commit = git('rev-parse', 'HEAD');
+    expect((await cli('state', 'init', 'other', 'hotfix', '--isolation', 'current')).exitCode).toBe(
+      0,
+    );
+    expect((await cli('state', 'select', 'other')).exitCode).toBe(0);
     await fs.writeFile(
       inputPath,
       JSON.stringify({ action: 'local', targetBranch: 'main', commit }),
@@ -318,5 +322,8 @@ describe('Classic compact recovery and task reconciliation', () => {
     expect(result.exitCode, result.stdout).toBe(0);
     expect(JSON.parse(result.stdout!).data.verification.status).toBe('complete');
     expect(git('status', '--porcelain', '--', path.relative(root, archived))).toBe('');
+    const current = await cli('state', 'current');
+    expect(current.exitCode, current.stderr).toBe(0);
+    expect(current.stdout?.trim()).toBe('other');
   });
 });

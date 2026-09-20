@@ -257,6 +257,29 @@ describe('Native portable Build/Verify loop', () => {
     expect(repairing.loop.previous_unresolved_ids).toEqual(['A2']);
   });
 
+  it('serializes unresolved acceptance IDs when Builder failures exhaust the budget', () => {
+    const prepared = buildState();
+    const blocked = applyNativeVerifierEnvelope({
+      state: prepared.state,
+      envelope: envelope(prepared.runner, prepared.state, 'blocked', ['A2']),
+      checks,
+      maxVerifyFailures: 5,
+    }).state;
+
+    const stopped = returnNativeCandidateToBuild({
+      state: blocked,
+      reason: 'The required Runtime check failed.',
+      failureBudget: { maxVerifyFailures: 1 },
+    });
+
+    expect(stopped).toMatchObject({
+      phase: 'verify',
+      status: 'await-user',
+      blockers: [{ acceptance_ids: ['A2'], resolution_action: 'await-user' }],
+      loop: { stop_reason: 'budget', next_action: 'resolve-loop-stop' },
+    });
+  });
+
   it('allows a parent handoff when every child is done without a mandatory review', () => {
     const state = confirmAcceptance(
       createNativePortableState({ name: 'parent-change', language: 'en' }),

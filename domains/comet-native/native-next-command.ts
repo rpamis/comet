@@ -3,6 +3,7 @@ import {
   nativePortableContinuation,
   type NativePortableContinuationOptions,
 } from './native-portable-continuation.js';
+import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
 import {
   nativePortableWorkspaceMismatch,
@@ -30,6 +31,7 @@ import {
   prepareNativePortableShapeConfirmation,
   assertNativePortableDocuments,
   readNativePortableChange,
+  readNativePortableRuntime,
   recoverNativeSupervisorFinalVerificationOnResume,
   resolveNativePortableVerifierBlocker,
   returnNativePortableChangeToBuild,
@@ -98,6 +100,15 @@ async function portableParentView(
   verificationCheckPlans?: NativePortableContinuationOptions['verificationCheckPlans'],
   retryCheckIds?: NativePortableContinuationOptions['retryCheckIds'],
 ) {
+  if (verificationCheckPlans === undefined) {
+    const runtime = await readNativePortableRuntime({ paths, name: state.name });
+    if (runtime.local) {
+      verificationCheckPlans = nativePortableCheckPlansFromLocal(
+        runtime.local,
+        runtime.local.workspace.projectRoot,
+      );
+    }
+  }
   const children = await inspectNativeChildren({ paths, state });
   const supervisor = children?.confirmed
     ? await readNativeSupervisorState(paths, state.name, { diagnostics: true })

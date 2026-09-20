@@ -87,6 +87,12 @@ export const NATIVE_PORTABLE_BRIEF_TEMPLATE = nativeBriefTemplate('en');
 
 const NATIVE_CAPABILITY_ASSOCIATION_FILE = 'capability-association.yaml';
 
+function normalizedShapeArtifactText(text: string): string {
+  const lines = text.replace(/\r\n?/gu, '\n').split('\n');
+  while (lines.length > 0 && lines.at(-1)?.trim().length === 0) lines.pop();
+  return `${lines.map((line) => line.replace(/[\t ]+$/gu, '')).join('\n')}\n`;
+}
+
 function isPlaceholderExemptionReason(source: string): boolean {
   const normalized = source
     .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/u, '')
@@ -718,12 +724,18 @@ export async function readNativePortableAcceptance(options: {
           );
         }
       }
-      deltaContentHash = canonicalHash('comet.native.shape-artifact-content.v1', delta.text);
+      deltaContentHash = canonicalHash(
+        'comet.native.shape-artifact-content.v1',
+        normalizedShapeArtifactText(delta.text),
+      );
     }
     specs.push({ capability: spec.capability, source: source.ref, markdown: acceptanceMarkdown });
     specArtifacts.push({
       ...spec,
-      contentHash: canonicalHash('comet.native.shape-artifact-content.v1', source.text),
+      contentHash: canonicalHash(
+        'comet.native.shape-artifact-content.v1',
+        normalizedShapeArtifactText(source.text),
+      ),
       ...(deltaContentHash === null ? {} : { deltaContentHash }),
     });
   }
@@ -761,7 +773,7 @@ export async function readNativePortableAcceptance(options: {
     // stale evidence hash as Shape drift would bypass that safe rebase path.
     associationContentHash = canonicalHash(
       'comet.native.shape-artifact-content.v1',
-      association.text,
+      normalizedShapeArtifactText(association.text),
     );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -771,7 +783,10 @@ export async function readNativePortableAcceptance(options: {
     formalHash: canonicalHash('comet.native.shape-formal-artifacts.v1', {
       brief: {
         source: brief.ref,
-        contentHash: canonicalHash('comet.native.shape-artifact-content.v1', brief.text),
+        contentHash: canonicalHash(
+          'comet.native.shape-artifact-content.v1',
+          normalizedShapeArtifactText(brief.text),
+        ),
       },
       specs: specArtifacts,
       association: {
@@ -1036,6 +1051,7 @@ export async function recoverNativePortableShapeConfirmationDrift(options: {
         paths: options.paths,
         state,
         reason,
+        keepFailureBudget: true,
       });
       return { state: recovered, repaired: true, reason };
     },
@@ -1053,6 +1069,7 @@ export async function ensureNativePortableAcceptanceCurrentLocked(options: {
     paths: options.paths,
     state: options.state,
     reason,
+    keepFailureBudget: true,
   });
   throw new Error(`${reason}; Native change returned to Shape and requires confirmation`);
 }
@@ -1460,6 +1477,7 @@ export async function returnNativePortableStateToShapeLocked(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   reason: string;
+  keepFailureBudget?: boolean;
 }): Promise<NativePortableState> {
   const { state } = options;
   if (state.archived) throw new Error(`Native change ${state.name} is already archived`);
@@ -1489,12 +1507,9 @@ export async function returnNativePortableStateToShapeLocked(options: {
       iteration: 0,
       attempt: 0,
       retry_epoch: 0,
-      // The failed-iteration budget survives a drift return to Shape: repair
-      // rounds must not reset the failure budget every time children.yaml
-      // changes, or max_verify_failures can never trigger (issue: a repair
-      // loop through Shape silently zeroed the budget each round). Only a
-      // user-confirmed fresh Shape via --revise-requirements clears it.
-      failed_iteration_count: state.loop.failed_iteration_count,
+      // Drift recovery remains inside the same goal and keeps the budget.
+      // An explicit requirements revision starts a new goal cycle and clears it.
+      failed_iteration_count: options.keepFailureBudget ? state.loop.failed_iteration_count : 0,
       no_progress_count: 0,
       execution_failure_count: 0,
       previous_unresolved_ids: [],

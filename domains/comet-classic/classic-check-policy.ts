@@ -29,6 +29,8 @@ export interface CheckPolicy {
   declaredCwd?: string;
   /** Resolved declaration scope: v1 top-level fields, or the matched v2 entry. */
   files?: string[];
+  /** Declared command outputs excluded from the input snapshot. */
+  outputs?: string[];
   env?: string[];
   git: 'all' | 'none';
   taskCheckboxes: 'include' | 'ignore';
@@ -38,12 +40,13 @@ export interface CheckPolicyCommand {
   argv: string[];
   cwd: string;
   files?: string[];
+  outputs?: string[];
   env?: string[];
   git: 'all' | 'none';
   taskCheckboxes: 'include' | 'ignore';
 }
 
-const COMMAND_KEYS = ['argv', 'cwd', 'files', 'env', 'git', 'taskCheckboxes'];
+const COMMAND_KEYS = ['argv', 'cwd', 'files', 'outputs', 'env', 'git', 'taskCheckboxes'];
 
 function parseCommandEntry(value: unknown, label: string): CheckPolicyCommand {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -67,7 +70,7 @@ function parseCommandEntry(value: unknown, label: string): CheckPolicyCommand {
     git: 'none',
     taskCheckboxes: 'ignore',
   };
-  for (const key of ['files', 'env'] as const) {
+  for (const key of ['files', 'outputs', 'env'] as const) {
     if (record[key] === undefined) continue;
     if (
       !Array.isArray(record[key]) ||
@@ -82,6 +85,17 @@ function parseCommandEntry(value: unknown, label: string): CheckPolicyCommand {
           hasGlobCharacters(file)
             ? normalizeWorkflowSnapshotPattern(file, `${label} file`)
             : normalizeWorkflowRelativePath(file, `${label} file`),
+        ),
+      ),
+    ].sort((left, right) => left.localeCompare(right, 'en'));
+  }
+  if (record.outputs !== undefined) {
+    command.outputs = [
+      ...new Set(
+        (record.outputs as string[]).map((file) =>
+          hasGlobCharacters(file)
+            ? normalizeWorkflowSnapshotPattern(file, `${label} output`)
+            : normalizeWorkflowRelativePath(file, `${label} output`),
         ),
       ),
     ].sort((left, right) => left.localeCompare(right, 'en'));
@@ -113,6 +127,7 @@ function commandEntryDigest(command: CheckPolicyCommand): string {
         argv: command.argv,
         cwd: command.cwd,
         files: command.files ?? null,
+        outputs: command.outputs ?? null,
         env: command.env ?? null,
         git: command.git,
         taskCheckboxes: command.taskCheckboxes,
@@ -175,6 +190,7 @@ export async function readCheckPolicy(
         entryDigest: commandEntryDigest(matched),
         declaredCwd: matched.cwd,
         files: matched.files,
+        outputs: matched.outputs,
         env: matched.env,
         git: matched.git,
         taskCheckboxes: matched.taskCheckboxes,
@@ -183,7 +199,10 @@ export async function readCheckPolicy(
     if (
       value.version !== 1 ||
       Object.keys(value).some(
-        (key) => !['version', 'argv', 'cwd', 'files', 'env', 'git', 'taskCheckboxes'].includes(key),
+        (key) =>
+          !['version', 'argv', 'cwd', 'files', 'outputs', 'env', 'git', 'taskCheckboxes'].includes(
+            key,
+          ),
       )
     )
       throw new Error('Expected version 1 or 2 with known fields');
@@ -200,7 +219,7 @@ export async function readCheckPolicy(
       value.cwd === '.'
         ? '.'
         : normalizeWorkflowRelativePath(value.cwd, 'Classic check policy cwd');
-    for (const key of ['files', 'env'] as const) {
+    for (const key of ['files', 'outputs', 'env'] as const) {
       if (value[key] === undefined) continue;
       if (
         !Array.isArray(value[key]) ||
@@ -211,6 +230,10 @@ export async function readCheckPolicy(
     const files = value.files?.map((file: string) => {
       if (/[?*[\]{}]/.test(file)) throw new Error('files accepts literal paths, not globs');
       return normalizeWorkflowRelativePath(file, 'Classic check policy file');
+    });
+    const outputs = value.outputs?.map((file: string) => {
+      if (/[?*[\]{}]/u.test(file)) throw new Error('outputs accepts literal paths, not globs');
+      return normalizeWorkflowRelativePath(file, 'Classic check policy output');
     });
     if (value.env?.some((name: string) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)))
       throw new Error('Invalid environment variable name');
@@ -227,6 +250,7 @@ export async function readCheckPolicy(
     return {
       digest,
       files,
+      outputs,
       env: value.env,
       git: value.git ?? defaults.git,
       taskCheckboxes: value.taskCheckboxes ?? defaults.taskCheckboxes,

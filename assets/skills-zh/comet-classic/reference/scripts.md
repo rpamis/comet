@@ -28,6 +28,7 @@ comet state delivery <change-name>
 comet state delivery <change-name> --verify
 comet state delivery <change-name> --file <json-path>
 comet check run <change-name> <build|verify> --local -- <program> [args...]
+comet check rerun <change-name> <build|verify>
 comet guard <change-name> <phase> --apply
 comet handoff <change-name> design --write
 comet archive <change-name>
@@ -73,6 +74,10 @@ comet state transition <change-name> preset-escalate
 
 check 证据按"输入面"判定复用：默认输入是工作区文件内容。commit、暂存、勾选 tasks.md 任务和环境变量变化默认不再作废证据；构建或测试确实读取这些信息时，才通过 `.comet/check-policy.json` 显式声明绑定。
 
+使用 `--local` 记录的同一条 full 命令（argv、cwd、输入和环境都一致）可在 Build 与 Verify 之间复用；Runtime 会为当前阶段绑定已有证据，并返回 `reused=true`，无需为了阶段名称不同再执行一次。显式失败、手工声明、过期或目录不匹配的记录会先报告原因和恢复命令，不会被自动探测出的构建命令覆盖。
+
+Runtime 记录的命令失败或在建立输入快照、启动期间中断后，使用 `comet check rerun <change-name> <build|verify>`。Runtime 在执行前保存 argv、cwd、超时和复用级别，因此中断后也能按原样重试，不会改跑自动探测出的其他构建命令，也不会把参数重新拼成 shell 字符串。只对手工声明且没有 Runtime argv 的旧记录，guard 才会继续显示需要重新执行的 `comet check run` 模板。
+
 guard 报告证据不可复用时，会输出失效原因和变化文件清单（`Why:`、`Changed inputs:`、`Relevance scope:`），按清单判断需要重跑的命令即可，不要凭猜测全量重跑。
 
 `--incremental` 记录阶段内证据：guard 预览接受它用于快速确认，`--apply` 推进阶段前仍要求用完整命令重新执行一次。增量命令由调用方选择（如只跑相关测试），冷恢复后增量证据一律要求重跑。
@@ -82,13 +87,13 @@ comet check run <change-name> build --local -- <program> [args...]
 comet check run <change-name> verify --local --incremental -- <program> [args...]
 ```
 
-`.comet/check-policy.json` 按命令声明输入面。v2 格式每条命令独立生效，只绑定匹配 `argv` 和 `cwd` 的那条命令；修改或新增其他条目不影响本命令的既有证据。`files` 接受字面路径和 `*`、`?`、`**` 通配符，新增的匹配文件自动纳入，不需要改声明：
+`.comet/check-policy.json` 按命令声明输入面。v2 格式每条命令独立生效，只绑定匹配 `argv` 和 `cwd` 的那条命令；修改或新增其他条目不影响本命令的既有证据。`files` 接受字面路径和 `*`、`?`、`**` 通配符，新增的匹配文件自动纳入，不需要改声明。构建会改写输入目录时，用 `outputs` 声明产物路径；这些路径不参与本命令的输入快照，避免命令因自身输出被误判为不稳定：
 
 ```json
 {
   "version": 2,
   "commands": [
-    { "argv": ["pnpm", "build"], "cwd": ".", "files": ["src/**", "package.json", "tsconfig.json"], "git": "all" },
+    { "argv": ["pnpm", "build"], "cwd": ".", "files": ["src/**", "package.json", "tsconfig.json"], "outputs": ["dist/**"], "git": "all" },
     { "argv": ["vitest", "run"], "cwd": ".", "files": ["src/**", "test/**"] }
   ]
 }

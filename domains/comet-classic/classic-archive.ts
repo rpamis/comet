@@ -19,6 +19,7 @@ import { appendClassicStateEvent } from './classic-state-events.js';
 import { readClassicState, withClassicStateLock, writeClassicState } from './classic-store.js';
 import { applyClassicTransition } from './classic-transitions.js';
 import { clearCurrentChangeIf } from './classic-current-change.js';
+import { readClassicDelivery } from './classic-progress.js';
 import {
   appendTrajectory,
   clearPendingAction,
@@ -676,7 +677,12 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
       output.stepsTotal += 1;
     }
 
-    if (!dryRun) await clearCurrentChangeIf(layout.projectRoot, change);
+    if (!dryRun) {
+      const delivery = await readClassicDelivery(layout.projectRoot, archiveDir);
+      if (['complete', 'local-verified'].includes(delivery.verification.status)) {
+        await clearCurrentChangeIf(layout.projectRoot, change);
+      }
+    }
 
     output.stderr.push('');
     output.finishEnvelope({ name: change, dryRun, locale: classicLocale(classic.language) });

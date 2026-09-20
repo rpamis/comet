@@ -28,7 +28,7 @@ describe('process creation identity', () => {
   it('resolves three-state liveness with dead, alive, and unknown outcomes', async () => {
     await expect(inspectProcessLiveness(2_147_483_647)).resolves.toBe('dead');
     await expect(inspectProcessLiveness(2_147_483_647, 'linux:boot:1')).resolves.toBe('dead');
-    await expect(inspectProcessLiveness(process.pid)).resolves.toBe('alive');
+    await expect(inspectProcessLiveness(process.pid)).resolves.toBe('unknown');
     const identity = await readProcessIdentity(process.pid);
     await expect(inspectProcessLiveness(process.pid, identity!)).resolves.toBe('alive');
     // A mismatching identity on a live pid is a reuse verdict: the original owner exited.
@@ -42,5 +42,11 @@ describe('process creation identity', () => {
     await expect(inspectProcessLiveness(process.pid, other)).resolves.toBe('unknown');
     // Unknown keeps the legacy boolean semantics of "may be alive".
     await expect(processInstanceMayBeAlive(process.pid, other)).resolves.toBe(true);
+  });
+
+  it('treats a changed identity from the same probe source as pid reuse', async () => {
+    const identity = await readProcessIdentity(process.pid);
+    expect(identity).toBeTruthy();
+    await expect(inspectProcessLiveness(process.pid, `${identity}-previous`)).resolves.toBe('dead');
   });
 });

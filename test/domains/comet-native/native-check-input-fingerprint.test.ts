@@ -117,8 +117,12 @@ describe('Native check input gate', () => {
     expect(afterEdit).not.toBe(before);
     expect(afterEdit).not.toBeNull();
 
+    await fs.writeFile(path.join(root, 'committed.txt'), 'edited again\n');
+    const afterSecondEdit = await nativeCheckInputGate(gate);
+    expect(afterSecondEdit).not.toBe(afterEdit);
+
     git(root, 'add', 'committed.txt');
-    expect(await nativeCheckInputGate(gate)).not.toBe(afterEdit);
+    expect(await nativeCheckInputGate(gate)).not.toBe(afterSecondEdit);
 
     git(root, 'switch', '-c', 'gate-branch', '--quiet');
     expect(await nativeCheckInputGate(gate)).not.toBe(before);
@@ -127,5 +131,64 @@ describe('Native check input gate', () => {
     const withUntracked = await nativeCheckInputGate(gate);
     await fs.writeFile(path.join(root, 'untracked.txt'), 'two\n');
     expect(await nativeCheckInputGate(gate)).not.toBe(withUntracked);
+  });
+
+  it('changes when an ignored generated input changes for a check cwd', async () => {
+    await fs.writeFile(path.join(root, '.gitignore'), 'dist/\n');
+    git(root, 'add', '.gitignore');
+    git(root, 'commit', '--quiet', '-m', 'ignore generated inputs');
+    await fs.mkdir(path.join(root, 'dist'));
+    await fs.writeFile(path.join(root, 'dist', 'input.txt'), 'good\n');
+    const gate = {
+      projectRoot: root,
+      candidateId: null,
+      plans: [
+        {
+          id: 'generated-input',
+          name: 'Generated input',
+          executable: process.execPath,
+          argv: ['-e', 'process.exit(0)'],
+          cwdRef: '.',
+          timeoutMs: 10_000,
+          repeatable: true,
+        },
+      ],
+    };
+
+    const before = await nativeCheckInputGate(gate);
+    await fs.writeFile(path.join(root, 'dist', 'input.txt'), 'bad\n');
+    expect(await nativeCheckInputGate(gate)).not.toBe(before);
+  });
+
+  it('disables the fast gate for a dirty submodule whose contents cannot be hashed as a file', async () => {
+    const source = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-check-gate-submodule-'));
+    try {
+      git(source, 'init', '--quiet');
+      git(source, 'config', 'user.email', 'test@example.com');
+      git(source, 'config', 'user.name', 'Test');
+      await fs.writeFile(path.join(source, 'value.txt'), 'baseline\n');
+      git(source, 'add', '.');
+      git(source, 'commit', '--quiet', '-m', 'baseline');
+      git(
+        root,
+        '-c',
+        'protocol.file.allow=always',
+        'submodule',
+        'add',
+        '--quiet',
+        source,
+        'dependency',
+      );
+      git(root, 'commit', '--quiet', '-am', 'add submodule');
+
+      await fs.writeFile(path.join(root, 'dependency', 'value.txt'), 'first dirty value\n');
+      const gate = { projectRoot: root, candidateId: null };
+      expect(await nativeCheckInputGate(gate)).toBeNull();
+
+      await fs.writeFile(path.join(root, 'dependency', 'value.txt'), 'second dirty value\n');
+      expect(await nativeCheckInputGate(gate)).toBeNull();
+    } finally {
+      await fs.rm(source, { recursive: true, force: true });
+    }
   });
 });
