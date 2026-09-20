@@ -4535,13 +4535,21 @@ test('shows the project memory tab on the demo knowledge page', async ({ page })
   await page.goto('/?demo');
   await page.getByRole('menuitem', { name: '项目知识' }).click();
 
-  await page.getByRole('tab', { name: '项目记忆' }).click();
+  const projectManifest = page.getByRole('region', { name: '最近一次任务使用的项目知识' });
+  await expect(projectManifest).toContainText('3 条项目知识');
+  await projectManifest.getByRole('button', { name: '查看使用明细' }).click();
+  const usageDialog = page.getByRole('dialog');
+  await usageDialog.getByRole('button', { name: /项目记忆索引/u }).click();
   const panel = page.locator('.dashboard-project-memory');
   await expect(panel).toBeVisible();
+  await page.keyboard.press('Escape');
+
   const memoryList = page.getByRole('region', { name: '项目记忆列表' });
   await expect(memoryList).toContainText('Dashboard 改动验证顺序');
   await expect(memoryList).toContainText('Windows 测试临时目录清理');
   await expect(memoryList).toContainText('2 条');
+  await expect(memoryList).toContainText('已随任务注入 3 次');
+  await expect(memoryList.getByRole('button', { name: '新增项目记忆' })).toHaveCount(0);
 
   const inspector = page.getByRole('complementary', { name: '项目记忆详情' });
   await expect(inspector).toContainText('Dashboard 改动验证顺序');

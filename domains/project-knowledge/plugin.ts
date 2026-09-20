@@ -44,17 +44,15 @@ import type {
 import { ProjectKnowledgeHostReview } from './host-review.js';
 import {
   PROJECT_MEMORY_EXPANSION_PREFIX,
-  isProjectMemoryType,
+  PROJECT_MEMORY_INDEX_CANDIDATE_ID,
   readProjectMemory,
   readProjectMemoryEntries,
   readProjectMemoryIndex,
   removeProjectMemory,
   renderProjectMemoryIndexContext,
   resolveProjectMemoryDirectory,
-  writeProjectMemory,
   type ProjectMemoryEntry,
   type ProjectMemoryIndexEntry,
-  type ProjectMemoryType,
 } from './project-memory.js';
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
@@ -359,10 +357,22 @@ async function createProjectKnowledgeModule(
           options.projectRoot,
           options.cacheRoot,
         );
+        const memoryApplications = applications
+          .filter(
+            (entry) =>
+              entry.owner === PROJECT_KNOWLEDGE_PLUGIN_ID &&
+              entry.candidateId === PROJECT_MEMORY_INDEX_CANDIDATE_ID,
+          )
+          .sort((left, right) => right.appliedAt.localeCompare(left.appliedAt));
         projectMemory = {
           directory: resolveProjectMemoryDirectory(options.projectRoot, options.cacheRoot),
           total: memoryEntries.length,
           entries: memoryEntries,
+          applicationCount: memoryApplications.length,
+          ...(memoryApplications[0] === undefined
+            ? {}
+            : { lastApplication: memoryApplications[0] }),
+          applicationHistory: memoryApplications.slice(0, 10),
         };
       } catch (error) {
         const diagnostic = {
@@ -646,41 +656,6 @@ async function createProjectKnowledgeModule(
           );
           if (entry === null) throw new Error('项目记忆不存在');
           return { kind: 'memory', ...entry };
-        }
-        if (capability === 'remember') {
-          if (typeof value.title !== 'string' || !value.title.trim())
-            throw new Error('remember requires title');
-          if (typeof value.text !== 'string' || !value.text.trim())
-            throw new Error('remember requires text');
-          const type = value.type;
-          if (type !== undefined && !isProjectMemoryType(type))
-            throw new Error('remember requires a supported memory type');
-          const paths = Array.isArray(value.paths)
-            ? value.paths.filter((entry): entry is string => typeof entry === 'string')
-            : undefined;
-          const result = await writeProjectMemory(
-            options.projectRoot,
-            {
-              title: value.title,
-              text: value.text,
-              ...(type === undefined ? {} : { type: type as ProjectMemoryType }),
-              ...(typeof value.description === 'string' && value.description.trim()
-                ? { description: value.description }
-                : {}),
-              ...(typeof value.slug === 'string' && value.slug.trim() ? { slug: value.slug } : {}),
-              ...(paths === undefined ? {} : { paths }),
-              ...(typeof value.source === 'string' && value.source.trim()
-                ? { source: value.source }
-                : {}),
-            },
-            options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot },
-          );
-          return {
-            changed: true,
-            action: result.action,
-            slug: result.slug,
-            total: result.total,
-          };
         }
         if (capability === 'forget' && typeof value.memory === 'string' && value.memory.trim()) {
           const slug = value.memory.trim();
@@ -1045,7 +1020,7 @@ function projectMemoryIndexCandidate(
     .map((entry) => entry.title)
     .join(language === 'en' ? '; ' : '；');
   return {
-    id: 'project-memory-index',
+    id: PROJECT_MEMORY_INDEX_CANDIDATE_ID,
     owner: PROJECT_KNOWLEDGE_PLUGIN_ID,
     scope: 'project',
     memoryType: 'project-policy',

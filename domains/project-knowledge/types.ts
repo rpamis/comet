@@ -308,6 +308,9 @@ export interface ProjectMemoryDashboardSummary {
   readonly directory: string;
   readonly total: number;
   readonly entries: readonly import('./project-memory.js').ProjectMemoryEntrySummary[];
+  readonly applicationCount: number;
+  readonly lastApplication?: AgentContextApplicationRecord;
+  readonly applicationHistory?: readonly AgentContextApplicationRecord[];
 }
 
 export interface ProjectKnowledgeDashboardSnapshot {

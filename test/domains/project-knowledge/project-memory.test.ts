@@ -406,6 +406,7 @@ describe('project knowledge plugin project memory context', () => {
       expect(status).toMatchObject({
         projectMemory: {
           total: 1,
+          applicationCount: 0,
           entries: [expect.objectContaining({ slug: 'cache-root-discipline', type: 'constraint' })],
         },
       });
@@ -420,12 +421,14 @@ describe('project knowledge plugin project memory context', () => {
       );
       await expect(
         module.invoke?.('remember', { title: 'Second lesson', text: '第二条经验。' }),
-      ).resolves.toMatchObject({ action: 'created', slug: 'second-lesson', total: 2 });
-      await expect(module.invoke?.('forget', { memory: 'second-lesson' })).resolves.toMatchObject({
+      ).rejects.toThrow('Unknown project knowledge capability: remember');
+      await expect(
+        module.invoke?.('forget', { memory: 'cache-root-discipline' }),
+      ).resolves.toMatchObject({
         changed: true,
         removed: true,
       });
-      await expect(module.invoke?.('forget', { memory: 'second-lesson' })).rejects.toThrow(
+      await expect(module.invoke?.('forget', { memory: 'cache-root-discipline' })).rejects.toThrow(
         '项目记忆不存在',
       );
     } finally {

@@ -1137,8 +1137,6 @@ function DashboardApp({
           );
         } else if (pluginId === 'comet.project-knowledge' && capability === 'create') {
           toast('项目知识已新增');
-        } else if (pluginId === 'comet.project-knowledge' && capability === 'remember') {
-          toast(result?.action === 'updated' ? '项目记忆已更新' : '项目记忆已保存');
         } else if (
           pluginId === 'comet.project-knowledge' &&
           capability === 'forget' &&
@@ -6603,15 +6601,6 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
   const [detail, setDetail] = useState(null);
   const [detailPending, setDetailPending] = useState(false);
   const [detailError, setDetailError] = useState(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createSaving, setCreateSaving] = useState(false);
-  const [createDraft, setCreateDraft] = useState({
-    title: '',
-    type: 'pattern',
-    description: '',
-    text: '',
-    paths: '',
-  });
   const entries = useMemo(
     () => (Array.isArray(summary?.entries) ? summary.entries : []),
     [summary?.entries],
@@ -6659,32 +6648,6 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
       cancelled = true;
     };
   }, [onInvoke, selectedEntry?.slug, summary?.total]);
-  const updateCreateDraft = (field, value) =>
-    setCreateDraft((current) => ({ ...current, [field]: value }));
-  const submitCreate = async () => {
-    if (createSaving) return;
-    setCreateSaving(true);
-    try {
-      await onInvoke('remember', {
-        title: createDraft.title.trim(),
-        text: createDraft.text,
-        type: createDraft.type,
-        ...(createDraft.description.trim() ? { description: createDraft.description.trim() } : {}),
-        ...(createDraft.paths.trim()
-          ? {
-              paths: createDraft.paths
-                .split(/[,，]/u)
-                .map((entry) => entry.trim())
-                .filter(Boolean),
-            }
-          : {}),
-      });
-      setCreateOpen(false);
-      setCreateDraft({ title: '', type: 'pattern', description: '', text: '', paths: '' });
-    } finally {
-      setCreateSaving(false);
-    }
-  };
   const directory = summary?.directory ?? '';
   const emptyDescription = searchText.trim()
     ? '没有匹配的项目记忆'
@@ -6703,7 +6666,15 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
                 example="与项目知识不同：写入不经过评审队列，索引每次任务都会注入给 Agent。"
               />
             </span>
-            <span>{visibleEntries.length} 条</span>
+            <span>
+              {visibleEntries.length} 条
+              {typeof summary?.applicationCount === 'number' && summary.applicationCount > 0
+                ? ` · 已随任务注入 ${summary.applicationCount} 次`
+                : ''}
+              {summary?.lastApplication
+                ? ` · 最近注入 ${formatTimestamp(summary.lastApplication.appliedAt)}`
+                : ''}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <Input
@@ -6715,9 +6686,6 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
               aria-label="搜索项目记忆"
               onChange={(event) => setSearchText(event.target.value)}
             />
-            <Button icon={<PlusOutlined />} disabled={readOnly} onClick={() => setCreateOpen(true)}>
-              新增项目记忆
-            </Button>
           </div>
         </div>
         <div className="dashboard-memory-table-head" aria-hidden="true">
@@ -6862,68 +6830,6 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择一条项目记忆查看完整内容" />
         )}
       </aside>
-      <DashboardModal
-        rootClassName="dashboard-create-modal-root dashboard-project-knowledge-modal-root"
-        classNames={{
-          mask: 'dashboard-create-modal-mask',
-          container: 'dashboard-create-modal-content',
-        }}
-        open={createOpen}
-        title="新增项目记忆"
-        okText="保存"
-        cancelText="取消"
-        width={720}
-        okButtonProps={{
-          disabled: createDraft.title.trim().length === 0 || createDraft.text.trim().length === 0,
-        }}
-        confirmLoading={createSaving}
-        onOk={submitCreate}
-        onCancel={() => setCreateOpen(false)}
-        destroyOnClose
-      >
-        <Form layout="vertical">
-          <Form.Item label="标题" required>
-            <Input
-              value={createDraft.title}
-              placeholder="同一标题会更新同一条记忆"
-              onChange={(event) => updateCreateDraft('title', event.target.value)}
-            />
-          </Form.Item>
-          <Form.Item label="类型">
-            <Select
-              value={createDraft.type}
-              aria-label="项目记忆类型"
-              onChange={(value) => updateCreateDraft('type', value)}
-              options={Object.entries(PROJECT_MEMORY_TYPE_META).map(([value, meta]) => ({
-                value,
-                label: meta.label,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item label="一行摘要">
-            <Input
-              value={createDraft.description}
-              placeholder="缺省取正文首行"
-              onChange={(event) => updateCreateDraft('description', event.target.value)}
-            />
-          </Form.Item>
-          <Form.Item label="正文" required>
-            <Input.TextArea
-              rows={6}
-              value={createDraft.text}
-              placeholder="现象、做法、验证结果"
-              onChange={(event) => updateCreateDraft('text', event.target.value)}
-            />
-          </Form.Item>
-          <Form.Item label="相关路径">
-            <Input
-              value={createDraft.paths}
-              placeholder="逗号分隔，例如 test/domains/, app/commands/"
-              onChange={(event) => updateCreateDraft('paths', event.target.value)}
-            />
-          </Form.Item>
-        </Form>
-      </DashboardModal>
     </div>
   );
 }
@@ -7227,6 +7133,10 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
           toggleLabel: () => '查看项目知识详情',
         }}
         onSelectItem={(item) => {
+          if (item.id === 'project-memory-index') {
+            setWorkspaceTab('memory');
+            return;
+          }
           if (records.some((record) => record.id === item.id)) setSelectedRecordId(item.id);
         }}
       />

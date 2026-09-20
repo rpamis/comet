@@ -17,6 +17,8 @@ export type ProjectMemoryType = (typeof PROJECT_MEMORY_TYPES)[number];
 
 export const PROJECT_MEMORY_INDEX_FILE = 'MEMORY.md';
 export const PROJECT_MEMORY_EXPANSION_PREFIX = 'project-memory:';
+/** Context candidate id of the always-injected MEMORY.md index. */
+export const PROJECT_MEMORY_INDEX_CANDIDATE_ID = 'project-memory-index';
 
 const MEMORY_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 const MAX_TITLE_CHARS = 120;
