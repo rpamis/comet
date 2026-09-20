@@ -1,0 +1,365 @@
+schema: comet.native.v4
+name: issue-440-memory-pause-retry
+language: zh-CN
+phase: archive
+status: done
+state_version: 18
+brief: brief.md
+shape_confirmation_hash: c0aa4b49c7711dc901aa3bbe04638a4a25e644b512930637c2b91449233743f2
+spec_changes:
+  - capability: personal-memory-learning-pause
+    operation: create
+    source: specs/personal-memory-learning-pause/spec.md
+workspace:
+  isolation: current
+  change_branch: "042"
+  target_branch: "042"
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 2
+  iteration: 3
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 1
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: A1：暂停项目学习后自动观察返回 `ignored`，不调用记忆评审，且不新增含正文的 observation。
+    result: passed
+    reason:
+      text: Paused automatic observations are ignored under the observation lock and
+        do not invoke review.
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: A2：暂停期间只允许记录不含正文的跳过原因和计数，已有候选和记录保持不变。
+    result: passed
+    reason:
+      text: Paused paths preserve records, candidates, evidence, and existing
+        observations.
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: A3：恢复学习后重试同一 workflow、change、candidate-key 和正文，首次有效观察可以创建候选，不返回
+      `deduplicated`。
+    result: passed
+    reason:
+      text: After resume the same valid observation can create a candidate.
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: A4：0.4.1 风格的孤立成功 observation（未被 `state.evidence` 引用）不阻止恢复后的首次学习；已形成有效
+      evidence 的 observation 仍保持正常去重。
+    result: passed
+    reason:
+      text: Deduplication only accepts evidence-referenced observations, so 0.4.1
+        orphans do not block retry.
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: A5：全局学习关闭和项目暂停使用一致的自动学习跳过语义，并且学习状态计数不把 ignored 计为有效观察。
+    result: passed
+    reason:
+      text: Global disable and project pause use consistent ignored and non-counting
+        semantics.
+      truncated: false
+  - id: A6
+    source: brief.md
+    text: A6：显式 `remember`、`correct`、`forget` 和 `rollback` 在自动学习暂停时仍遵循原有显式操作语义。
+    result: passed
+    reason:
+      text: Explicit remember/correct/forget/rollback operations remain available
+        while paused.
+      truncated: false
+  - id: A7
+    source: brief.md
+    text: A7：学习状态、文件锁和投影写入失败时保留原有错误/降级语义，不产生半写入或重复记录。
+    result: passed
+    reason:
+      text: Locking, atomic persistence, idempotency, and error propagation show no
+        regression.
+      truncated: false
+  - id: A8
+    source: specs/personal-memory-learning-pause/spec.md
+    text: 项目暂停阻止自动评审和正文入库 - **Given** 项目学习已暂停，且提交了一条带正文、workflow、change 和 candidate
+      key 的自动 observation - **When** Comet 处理这条 observation - **Then** 返回
+      `ignored`，不调用自动记忆评审 - **And** 不新增或更新含正文的 `observations`、Record、evidence 或
+      Markdown 投影 - **And** 只允许保存不含正文的跳过原因、时间和学习检查结果
+    result: passed
+    reason:
+      text: Paused review does not call the reviewer or write plaintext, evidence, or
+        Markdown.
+      truncated: false
+  - id: A9
+    source: specs/personal-memory-learning-pause/spec.md
+    text: 全局关闭与项目暂停一致 - **Given** 全局 Personal Memory learning 已关闭，或项目配置明确关闭
+      `memory.learning` - **When** 入口提交自动 observation - **Then** 入口和领域存储都返回
+      `ignored` - **And** ignored observation 不增加有效观察计数，不创建候选，也不占用去重身份
+    result: passed
+    reason:
+      text: Project config, global disable, and project pause all prevent automatic
+        learning.
+      truncated: false
+  - id: A10
+    source: specs/personal-memory-learning-pause/spec.md
+    text: 恢复后重试暂停期间的观察 - **Given** 一条 observation 在项目暂停期间被忽略，且没有形成 Record 或 evidence
+      - **When** 项目恢复学习后以相同身份和正文重试 - **Then** 该 observation 按首次有效学习处理，并可创建 trial
+      candidate - **And** 返回结果不是 `deduplicated`
+    result: passed
+    reason:
+      text: Ignored observations do not consume deduplication identity after resume.
+      truncated: false
+  - id: A11
+    source: specs/personal-memory-learning-pause/spec.md
+    text: 兼容旧版孤立 observation - **Given** 状态文件来自 0.4.1，包含一条成功 observation，但该 key 没有被
+      `state.evidence` 引用 - **When** 项目恢复学习后重试该 observation - **Then** 旧
+      observation 不阻止候选创建 - **And** 已经被有效 evidence 引用的成功 observation 仍按原规则去重
+    result: passed
+    reason:
+      text: Legacy orphan observations remain retryable while evidence-backed
+        observations deduplicate.
+      truncated: false
+  - id: A12
+    source: specs/personal-memory-learning-pause/spec.md
+    text: 有效证据仍然去重 - **Given** 相同 observation 已创建候选或形成有效 evidence - **When**
+      再次提交相同身份和正文 - **Then** 返回 `deduplicated` - **And** 不新增 Record、evidence 或投影
+    result: passed
+    reason:
+      text: Evidence-backed identical observations continue to deduplicate without
+        extra projections.
+      truncated: false
+  - id: A13
+    source: specs/personal-memory-learning-pause/spec.md
+    text: 显式操作不被自动学习暂停拦截 - **Given** 当前项目暂停自动学习 - **When** 用户显式执行
+      remember、correct、forget 或 rollback - **Then** 操作继续遵循 Personal Memory
+      现有显式操作契约 - **And** 失败时返回真实错误并保持原状态
+    result: passed
+    reason:
+      text: Explicit requests bypass the automatic pause protection.
+      truncated: false
+  - id: A14
+    source: specs/personal-memory-learning-pause/spec.md
+    text: 并发暂停不会产生自动学习写入 - **Given** 自动评审开始前后项目被暂停 - **When** 自动 observation 尝试提交结果
+      - **Then** 存储层按最新暂停状态拒绝自动写入 - **And** 不产生半写入、重复证据或错误的有效观察计数
+    result: passed
+    reason:
+      text: experience-delta update/forget/supersede now carry automaticLearning
+        context and are checked in the correct/remove storage lock; paused
+        update and forget were independently reproduced as ignored with no
+        mutation.
+      truncated: false
+  - id: A15
+    source: specs/personal-memory-learning-pause/spec.md
+    text: 诊断失败不破坏记忆状态 - **Given** 记录学习检查或写入诊断信息失败 - **When** 自动 observation 被跳过 -
+      **Then** 既有 Record、evidence、tombstone 和投影保持一致 - **And** 当前 workflow
+      继续遵循原有后台失败降级语义
+    result: passed
+    reason:
+      text: Pause-specific rejections become ignored results and other error,
+        diagnostic, projection, record, and tombstone paths remain intact.
+      truncated: false
+builder_handoff:
+  candidate_id: 8fed87e3-b985-4015-ad78-055de4d26581
+  identity_provider: skill-coordinated
+  builder_execution_ref: skill-coordinated:builder:25e626b2-ecba-4dbe-8a28-90f1836d5576
+  iteration: 3
+  summary:
+    text: 修复 A14：自动 experience-delta 的 update/forget/supersede 现在携带
+      automaticLearning 上下文，并在正确的存储锁内执行最终暂停检查；新增暂停后恢复回归测试，避免 Reflection 到
+      Consolidate 的竞态写入。
+    truncated: false
+  addressed_acceptance_ids:
+    - A14
+  checks:
+    - name:
+        text: Issue 440 focused Vitest
+        truncated: false
+      result: passed
+      note:
+        text: 98 tests passed across the two focused files.
+        truncated: false
+    - name:
+        text: Issue 440 focused ESLint
+        truncated: false
+      result: passed
+      note:
+        text: Changed memory sources and focused tests pass ESLint.
+        truncated: false
+    - name:
+        text: Generated runtime assets
+        truncated: false
+      result: passed
+      note:
+        text: pnpm check:generated passed.
+        truncated: false
+    - name:
+        text: Comet build
+        truncated: false
+      result: passed
+      note:
+        text: pnpm build completed successfully.
+        truncated: false
+  checks_truncated: false
+  known_limits:
+    - text: Full repository tests, remote runtime, real platform hooks, and model E2E
+        were not run by request.
+      truncated: false
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-09-20T09:46:17.672Z
+blockers: []
+verification:
+  candidate_id: 8fed87e3-b985-4015-ad78-055de4d26581
+  identity_provider: skill-coordinated
+  verifier_execution_ref: skill-coordinated:verifier:0d3c2642-9b14-4b17-9022-c54b24e57bd2
+  iteration: 3
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: issue-440-focused-vitest
+      name:
+        text: Issue 440 focused Vitest
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: vitest
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/comet-memory/personal-memory.test.ts
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-integration.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 30630
+    - id: issue-440-eslint
+      name:
+        text: Issue 440 focused ESLint
+        truncated: false
+      argv_display:
+        - text: exec
+          truncated: false
+        - text: eslint
+          truncated: false
+        - text: domains/comet-memory/plugin.ts
+          truncated: false
+        - text: domains/comet-memory/personal-memory.ts
+          truncated: false
+        - text: test/domains/comet-memory/personal-memory.test.ts
+          truncated: false
+        - text: test/domains/comet-plugin/plugin-integration.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2657
+    - id: issue-440-generated-assets
+      name:
+        text: Generated runtime assets
+        truncated: false
+      argv_display:
+        - text: check:generated
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2125
+    - id: issue-440-build
+      name:
+        text: Comet build
+        truncated: false
+      argv_display:
+        - text: build
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 20984
+  summary:
+    text: All A1-A15 passed. Focused Vitest (98 tests), ESLint, generated-asset
+      checks, build, and independent A14 update/forget race probes passed.
+    truncated: false
+  risks:
+    - text: Remote provider, real platform hooks, model E2E, and the full repository
+        suite were not run by request.
+      truncated: false
+  risks_truncated: false
+  completed_at: 2026-09-20T09:53:54.419Z
+history:
+  - goal_cycle: 1
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native Shape artifacts changed
+      truncated: false
+    completed_at: 2026-09-20T09:15:02.896Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: execution-error
+    unresolved_ids: []
+    summary:
+      text: 独立验收期间发现 A14 并已修正并通过聚焦回归；候选实现已变化，原 Verifier 任务对应的候选已失效，不能提交旧结果，需按 Runtime
+        重新进入 Build/Verify。
+      truncated: false
+    completed_at: 2026-09-20T09:28:25.011Z
+  - goal_cycle: 2
+    iteration: 1
+    attempt: 1
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: 独立审查发现 A14 并发暂停边界，已完成存储锁内最终保护和聚焦回归；返回 Build 重新提交候选。
+      truncated: false
+    completed_at: 2026-09-20T09:29:48.821Z
+  - goal_cycle: 2
+    iteration: 2
+    attempt: 1
+    outcome: fail
+    unresolved_ids:
+      - A14
+    summary:
+      text: A14 is a reproducible blocker. Pass automaticLearning context into
+        experience-delta update/forget and enforce the pause check in the
+        mutation lock, then re-verify.
+      truncated: false
+    completed_at: 2026-09-20T09:42:06.143Z
+  - goal_cycle: 2
+    iteration: 3
+    attempt: 1
+    outcome: pass
+    unresolved_ids: []
+    summary:
+      text: All A1-A15 passed. Focused Vitest (98 tests), ESLint, generated-asset
+        checks, build, and independent A14 update/forget race probes passed.
+      truncated: false
+    completed_at: 2026-09-20T09:53:54.419Z
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-09-20T08:32:50.860Z
