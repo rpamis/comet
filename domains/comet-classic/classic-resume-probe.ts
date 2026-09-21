@@ -1,9 +1,12 @@
+import path from 'node:path';
+
 import { assertClassicLayoutReadable } from './classic-layout.js';
 import { execFile } from 'child_process';
 import { readDir } from '../../platform/fs/file-system.js';
 import type { ClassicDiagnostic } from './classic-diagnostics.js';
 import { readClassicState } from './classic-store.js';
 import type { ClassicStateProjection } from './classic-state.js';
+import { readClassicDelivery } from './classic-progress.js';
 import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
 import {
   classicProjectTargetExists,
@@ -52,6 +55,7 @@ interface ActiveProbeChange {
   buildPause: string | null;
   hasClassicProjection: boolean;
   verifyResult: 'pending' | 'pass' | 'fail' | null;
+  archived: boolean;
   text: string;
   missingCometState: boolean;
 }
@@ -256,6 +260,7 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
         buildPause: null,
         hasClassicProjection: false,
         verifyResult: null,
+        archived: false,
         text: '',
         missingCometState: true,
       };
@@ -281,10 +286,61 @@ async function discoverActiveChanges(projectRoot: string): Promise<ActiveProbeCh
       buildPause: classic?.buildPause ?? null,
       hasClassicProjection,
       verifyResult: classic?.verifyResult ?? null,
+      archived: classic?.archived ?? false,
       text: '',
       missingCometState: false,
     };
     change.text = await changeSearchText(projectRoot, changeDir, change);
+    changes.push(change);
+  }
+  return changes;
+}
+
+function archivedChangeName(entry: string): string | null {
+  const candidate = /^\d{4}-\d{2}-\d{2}-(.+)$/u.exec(entry)?.[1] ?? entry;
+  return openSpecChangeNameError(candidate) === null ? candidate : null;
+}
+
+async function discoverPendingArchivedChanges(projectRoot: string): Promise<ActiveProbeChange[]> {
+  const layout = await assertClassicLayoutReadable(projectRoot);
+  const archiveInspection = await inspectClassicProjectTarget(projectRoot, layout.archiveDir, {
+    label: 'Classic archive directory',
+    expected: 'directory',
+  });
+  if (!archiveInspection.exists) return [];
+
+  const changes: ActiveProbeChange[] = [];
+  for (const entry of await readDir(layout.archiveDir)) {
+    const name = archivedChangeName(entry);
+    if (!name) continue;
+    const directory = path.join(layout.archiveDir, entry);
+    const inspection = await inspectClassicProjectTarget(projectRoot, directory, {
+      label: `Classic archived change ${entry}`,
+      expected: 'directory',
+    });
+    if (!inspection.exists) continue;
+
+    const projection = await readClassicState(inspection.target, { migrate: false });
+    const classic = projection.classic;
+    if (!classic?.archived || classic.phase !== 'archive') continue;
+    const delivery = await readClassicDelivery(projectRoot, inspection.target);
+    if (['complete', 'local-verified'].includes(delivery.verification.status)) continue;
+
+    const diagnostic = diagnosticFromProjection(inspection.target, name, projection);
+    const change: ActiveProbeChange = {
+      name,
+      workflow: classic.workflow,
+      phase: 'archive',
+      nextCommand: '/comet-archive',
+      diagnostic,
+      buildPause: null,
+      hasClassicProjection: true,
+      verifyResult: classic.verifyResult,
+      archived: true,
+      text: '',
+      missingCometState: false,
+    };
+    change.text = await changeSearchText(projectRoot, inspection.target, change);
     changes.push(change);
   }
   return changes;
@@ -440,7 +496,12 @@ export async function resolveCometResumeProbe(
     ]);
   }
 
-  const changes = await discoverActiveChanges(projectRoot);
+  const activeChanges = await discoverActiveChanges(projectRoot);
+  const activeNames = new Set(activeChanges.map(({ name }) => name));
+  const archivedChanges = (await discoverPendingArchivedChanges(projectRoot)).filter(
+    ({ name }) => !activeNames.has(name),
+  );
+  const changes = [...activeChanges, ...archivedChanges];
   if (changes.length === 0) {
     return result('none', null, 'none', 'no active Comet changes');
   }
@@ -470,6 +531,12 @@ export async function resolveCometResumeProbe(
   }
 
   if (hasDecisionPoint(change)) {
+    if (change.archived) {
+      return result('ask_user', change, 'low', 'archived change has pending delivery', [
+        { source: 'state', quote: 'archived: true' },
+        { source: 'state', quote: 'delivery is not complete' },
+      ]);
+    }
     if (change.missingCometState) {
       return result('ask_user', change, 'low', 'active OpenSpec change is missing Comet state');
     }

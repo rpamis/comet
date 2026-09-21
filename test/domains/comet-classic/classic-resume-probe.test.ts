@@ -96,6 +96,51 @@ describe('resolveCometResumeProbe', () => {
     });
   });
 
+  it('finds an archived change whose authorized delivery is still pending', async () => {
+    const archivedRoot = path.join(
+      tmpDir,
+      'openspec',
+      'changes',
+      'archive',
+      '2026-09-21-cache-ttl',
+    );
+    await writeFile(
+      path.join(archivedRoot, '.comet.yaml'),
+      [
+        'workflow: full',
+        'phase: archive',
+        'archived: true',
+        'verify_result: pass',
+        'created_at: 2026-09-21T00:00:00.000Z',
+        'base_ref: main',
+        'design_doc: null',
+        'plan: null',
+        'build_mode: null',
+        'isolation: current',
+        'verify_mode: full',
+        'verified_at: 2026-09-21T00:00:00.000Z',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(path.join(archivedRoot, 'proposal.md'), 'Improve cache ttl\n');
+    await writeFile(path.join(archivedRoot, 'design.md'), 'Cache ttl design\n');
+    await writeFile(path.join(archivedRoot, 'tasks.md'), '- [x] Update cache ttl\n');
+
+    const result = await resolveCometResumeProbe(tmpDir, {
+      schema_version: 'comet.resume_probe.v1',
+      utterance: '继续完成刚才的交付',
+      agent_context: { non_trivial_work: true, already_in_comet_flow: false },
+    });
+
+    expect(result).toMatchObject({
+      action: 'ask_user',
+      changeName: 'cache-ttl',
+      phase: 'archive',
+      nextCommand: '/comet-archive',
+    });
+    expect(result.reason).toContain('pending delivery');
+  });
+
   it('ignores non-change files in the Classic changes directory', async () => {
     await writeFile(path.join(tmpDir, 'openspec', 'changes', 'README.txt'), 'notes\n');
 

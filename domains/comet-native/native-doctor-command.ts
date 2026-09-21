@@ -36,6 +36,7 @@ import {
   writeNativeSupervisorState,
 } from './native-supervisor-state.js';
 import { supervisorDependenciesIntegrated } from './native-supervisor-model.js';
+import { withNativeMutationLock } from './native-mutation-lock.js';
 import {
   isNativePortableChange,
   nativeLocalExecutionFile,
@@ -77,6 +78,33 @@ import type { NativeDoctorFinding, NativeProjectPaths } from './native-types.js'
 async function portableContinuation(paths: NativeProjectPaths, state: NativePortableState) {
   const children = await inspectNativeChildren({ paths, state });
   return nativePortableContinuation(state, children);
+}
+
+/** Repair legacy Supervisor dependency overlays under the same lock as dispatch and integration. */
+export async function repairNativeSupervisorDependencies(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<string[]> {
+  return withNativeMutationLock(
+    paths,
+    `repair Native Supervisor dependencies ${name}`,
+    async () => {
+      const supervisorState = await readNativeSupervisorState(paths, name);
+      if (!supervisorState) return [];
+      const demoted = supervisorState.children.filter(
+        (child) =>
+          child.status === 'ready' &&
+          !supervisorDependenciesIntegrated(child.dependsOn, supervisorState.children),
+      );
+      if (demoted.length === 0) return [];
+      for (const child of demoted) {
+        child.status = 'pending';
+        child.blocker = null;
+      }
+      await writeNativeSupervisorState(paths, supervisorState);
+      return demoted.map(({ name: child }) => child);
+    },
+  );
 }
 
 async function portableCheckExecutionFinding(
@@ -629,32 +657,15 @@ export async function nativeDoctorCommand(
         });
       }
       // Repair legacy overlays that the pre-0.4.2 derivation left self-locked
-      // (issue #439): demote ready children with unmet dependencies to
-      // pending. Integrated work is untouched, and the next advance-children
-      // dispatch picks the dependencies first.
-      const supervisorState = await readNativeSupervisorState(paths, name);
-      const demoted =
-        supervisorState &&
-        supervisorState.children.filter(
-          (child) =>
-            child.status === 'ready' &&
-            !supervisorDependenciesIntegrated(child.dependsOn, supervisorState.children),
-        );
-      if (supervisorState && demoted && demoted.length > 0) {
-        for (const child of demoted) {
-          child.status = 'pending';
-          child.blocker = null;
-        }
-        await writeNativeSupervisorState(paths, supervisorState);
-      }
+      // (issue #439): demote ready children with unmet dependencies to pending
+      // under the same mutation lock used by dispatch and integration.
+      const supervisorDependencyRepair = await repairNativeSupervisorDependencies(paths, name);
       return success('doctor', {
         healthy: true,
         workflow: 'native-portable',
         change: name,
         repaired: true,
-        ...(demoted && demoted.length > 0
-          ? { supervisorDependencyRepair: demoted.map(({ name: child }) => child) }
-          : {}),
+        ...(supervisorDependencyRepair.length > 0 ? { supervisorDependencyRepair } : {}),
         result,
         continuation: await portableContinuation(paths, result.state),
       });

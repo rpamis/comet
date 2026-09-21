@@ -431,6 +431,7 @@ export const PLATFORMS: Platform[] = [
     rulesDir: 'rules',
     rulesFormat: 'md',
     supportsHooks: true,
+    supportsGlobalHooks: true,
     hookFormat: 'zcode',
   },
   {

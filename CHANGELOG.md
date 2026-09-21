@@ -7,7 +7,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Added
 
 - **On-demand Runtime daemon**: Reuse a project-scoped Node process for read-only Classic and Native queries with `comet daemon start|status|stop`, bounded IPC, permission isolation, idle shutdown, and automatic fallback when the daemon is unavailable.
-- **ZCode Hook integration**: `comet init` and `comet update` install the project-scoped phase guard in `.zcode/config.json`, preserve unrelated user settings, and let `comet doctor` inspect and repair the managed entry.
+- **ZCode Hook integration**: `comet init` and `comet update` install the phase guard for project installs in `.zcode/config.json` and for global installs in `~/.zcode/cli/config.json`, preserve unrelated user settings, and let `comet doctor` inspect and repair the managed entry.
 - **Classic check policy v2 and incremental checks**: Declare per-command input files, outputs, working directories, and wildcard scopes in `.comet/check-policy.json`; use `comet check run --incremental` for phase-local evidence while full checks remain required before advancing a phase.
 - **Native document and source coverage rules**: Shape confirmation now requires complete formal documents and canonical Specs, while source review can stay within the user-selected sections and their necessary dependencies with actionable repair guidance.
 - **Native verification handoff**: Builder handoffs can submit a final check plan for Runtime to execute or reuse, and Native status records whether an independently dispatched Verifier actually started.
@@ -32,10 +32,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Personal Memory pause and Dashboard summaries**: Paused projects no longer review or persist automatic observations, and the Dashboard keeps learning results and project-scoped totals aligned after switching projects (#440).
 - **Native confirmation and verifier recovery**: Shape drift is detected before stale requirements are confirmed, and a registered but never-started Verifier remains visible with a bounded recovery path.
 - **Package and Hook safety**: Incomplete npm assets fail with one actionable reinstall message; bounded Hook context failures emit a concise diagnostic while allowing the write to proceed; user Hook configuration and unrelated staged, working, and untracked files remain intact during managed operations.
+- **Classic delivery recovery**: Ambient Resume finds archived changes whose authorized delivery is still incomplete and routes the user back to the delivery step instead of treating the change as finished.
+- **Native Supervisor repair safety**: Doctor repairs stale Supervisor dependency states under the mutation lock so concurrent dispatch and integration cannot overwrite the recovery.
 
 ### Security
 
 - **Vitest dependency security**: Upgrade Vitest, `@vitest/mocker`, and V8 coverage dependencies to 4.1.11 to remove the reachable path traversal and arbitrary file read vulnerability.
+- **AnyIO dependency security**: Upgrade the evaluation environment to AnyIO 4.14.2, including fixes for IDNA TLS certificate validation, supplementary process-group handling, and process-pool stderr deadlocks.
 - **Native document comment sanitization**: Use complete HTML comment scanning when validating Markdown documents and requirements, preventing malformed comment boundaries from bypassing visible-content checks.
 
 ## What's Changed [0.4.1] - 2026-09-14

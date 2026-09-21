@@ -449,6 +449,7 @@
           "domains/comet-native/native-change.ts",
           "domains/comet-native/native-check.ts",
           "domains/comet-native/native-checkpoint-journal.ts",
+          "domains/comet-native/native-doctor-command.ts",
           "domains/comet-native/native-evidence-retention.ts",
           "domains/comet-native/native-portable-archive.ts",
           "domains/comet-native/native-portable-checks.ts",

@@ -2204,6 +2204,52 @@ describe('skills', () => {
       expect(secondInstall).toEqual(firstInstall);
     });
 
+    it('writes ZCode global hooks to the user CLI config directory', async () => {
+      const platform = PLATFORMS.find((candidate) => candidate.id === 'zcode')!;
+      const globalRoot = path.join(tmpDir, 'home');
+      const configPath = path.join(globalRoot, '.zcode', 'cli', 'config.json');
+
+      await configureNativeBuildChange(tmpDir);
+      await copyCometSkillsForPlatform(globalRoot, platform, false, 'skills', 'global');
+      await expect(installCometHooksForPlatform(globalRoot, platform, 'global')).resolves.toEqual({
+        status: 'installed',
+      });
+
+      const config = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+      expect(config.hooks.enabled).toBe(true);
+      expect(config.hooks.events.PreToolUse).toEqual([
+        {
+          matcher: 'Write|Edit',
+          hooks: [
+            {
+              type: 'process',
+              command: 'node',
+              args: [
+                path.join(
+                  globalRoot,
+                  '.zcode',
+                  'skills',
+                  'comet',
+                  'scripts',
+                  'comet-hook-router.mjs',
+                ),
+                '--platform',
+                'zcode',
+              ],
+              timeoutMs: 60000,
+            },
+          ],
+        },
+      ]);
+
+      await expect(removeCometHooksForPlatform(globalRoot, platform, 'global')).resolves.toEqual({
+        removed: 1,
+        failed: 0,
+      });
+      const cleanedConfig = JSON.parse(await fs.readFile(configPath, 'utf-8'));
+      expect(cleanedConfig.hooks).toEqual({ enabled: true });
+    });
+
     it('writes and removes ZCode project hooks while preserving unrelated config', async () => {
       const platform = PLATFORMS.find((candidate) => candidate.id === 'zcode')!;
       const configPath = path.join(tmpDir, '.zcode', 'config.json');
