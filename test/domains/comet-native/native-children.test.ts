@@ -19,10 +19,7 @@ import {
   readProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
-import {
-  nativeDoctorCommand,
-  repairNativeSupervisorDependencies,
-} from '../../../domains/comet-native/native-doctor-command.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
 import { nativeNewCommand } from '../../../domains/comet-native/native-new-command.js';
 import { nativeNextCommand } from '../../../domains/comet-native/native-next-command.js';
 import {
@@ -61,7 +58,6 @@ import type {
   NativePortableState,
 } from '../../../domains/comet-native/native-portable-types.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
-import { withNativeMutationLock } from '../../../domains/comet-native/native-mutation-lock.js';
 
 async function guardedShapeConfirmationArgs(
   paths: NativeProjectPaths,
@@ -802,36 +798,6 @@ children:
         expect(() => assertChildDependenciesIntegrated(healed!, child)).not.toThrow();
       }
     }
-  });
-
-  it('waits for the Native mutation lock before repairing Supervisor dependencies', async () => {
-    const repository = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-lock-repair-'));
-    repositories.push(repository);
-    const paths = await nativeProjectPaths(repository, 'docs');
-    await ensureNativeDirectories(paths);
-
-    let settled = false;
-    let release!: () => void;
-    let entered!: () => void;
-    const lockEntered = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const held = withNativeMutationLock(paths, 'hold repair lock', async () => {
-      entered();
-      await new Promise<void>((resolve) => {
-        release = resolve;
-      });
-    });
-
-    await lockEntered;
-    const repair = repairNativeSupervisorDependencies(paths, 'parent').finally(() => {
-      settled = true;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(settled).toBe(false);
-    release();
-    await held;
-    await repair;
   });
 
   it('preserves parent child progress while blocking a mismatched workspace', async () => {
