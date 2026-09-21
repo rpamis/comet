@@ -155,12 +155,12 @@ nul
 
 # Dashboard local cache snapshots must never enter the project repository.
 dashboard-installed-snapshot.json
+
+# Local agent tooling noise (untracked, never committed)
+.zcodeignore
+.zcode/
 # >>> Comet managed project state >>>
 !/.comet/
 /.comet/*
 !/.comet/config.yaml
 # <<< Comet managed project state <<<
-
-# Local agent tooling noise (untracked, never committed)
-.zcodeignore
-.zcode/
