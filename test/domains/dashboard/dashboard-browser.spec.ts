@@ -96,14 +96,23 @@ test.describe('Dashboard project selection', () => {
     };
     await assertLabels();
     for (const fraction of [1, 0.5, 0]) {
+      const target = fraction === 1 ? 44 : fraction === 0 ? 0 : 22;
+      // Check visibility first and only nudge scrollTop when the virtual list
+      // has not rendered the target yet. Rewriting scrollTop on every poll
+      // tick fights rc-virtual-list's own re-rendering and can livelock on a
+      // slow runner.
       await expect
-        .poll(async () => {
-          await scroller.evaluate((element, amount) => {
-            element.scrollTop = amount * element.scrollHeight;
-          }, fraction);
-          const target = fraction === 1 ? 44 : fraction === 0 ? 0 : 22;
-          return popup.getByText(`/worktrees/project-${target}`, { exact: true }).isVisible();
-        })
+        .poll(
+          async () => {
+            if (await popup.getByText(`/worktrees/project-${target}`, { exact: true }).isVisible())
+              return true;
+            await scroller.evaluate((element, amount) => {
+              element.scrollTop = amount * element.scrollHeight;
+            }, fraction);
+            return false;
+          },
+          { timeout: 15_000 },
+        )
         .toBe(true);
       await assertLabels();
     }
@@ -112,7 +121,7 @@ test.describe('Dashboard project selection', () => {
     await popup.getByText('/worktrees/project-44', { exact: true }).click();
     await expect(selector.locator('.comet-project-selected-label')).toHaveText('project-44');
     await expect(page.getByRole('button', { name: /^Git 未提交 44 / })).toBeVisible();
-  });
+  }, 60_000);
 
   test('ignores a slow overview response after switching back', async ({ page }) => {
     let release!: () => void;
