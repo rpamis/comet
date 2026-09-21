@@ -24,9 +24,14 @@ import {
   nativePortableStateFile,
   prepareNativePortableShapeConfirmation,
   readNativePortableChange,
+  dispatchNativePortableVerifier,
+  executeNativePortableCheckPlan,
   submitNativePortableBuilderCandidate,
 } from '../../../domains/comet-native/native-portable-runtime.js';
-import { readNativeLocalExecution } from '../../../domains/comet-native/native-local-execution.js';
+import {
+  readNativeLocalExecution,
+  writeNativeLocalExecution,
+} from '../../../domains/comet-native/native-local-execution.js';
 import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { parseNativeChildrenContract } from '../../../domains/comet-native/native-children.js';
 import {
@@ -519,6 +524,68 @@ children:
       execution: { status: 'completed' },
       checks: [{ status: 'passed' }],
     });
+  });
+
+  it('takes over a verifier dispatch that never confirmed startup', async () => {
+    const name = 'stale-verifier-dispatch';
+    await createPortable(name);
+    await fs.writeFile(
+      path.join(nativePortableChangeDir(paths, name), 'brief.md'),
+      '# Acceptance examples\n- The verifier can recover after a lost startup.\n',
+    );
+    await confirmNativePortableShape({ paths, name });
+    const runner = createNativeRunnerChannel();
+    await submitNativePortableBuilderCandidate({
+      paths,
+      name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'stale-verifier-builder',
+        }),
+        candidateId: 'stale-verifier-candidate',
+        summary: 'Implemented.',
+        addressedAcceptanceIds: ['A1'],
+        review: null,
+      },
+    });
+    const executed = await executeNativePortableCheckPlan({ paths, name, plans: [] });
+    const dispatched = await dispatchNativePortableVerifier({
+      paths,
+      name,
+      checks: executed.checks,
+      verifierExecutionId: 'stale-verifier-execution',
+    });
+    const local = await readNativeLocalExecution(nativeLocalExecutionFile(paths, name));
+    await writeNativeLocalExecution(
+      nativeLocalExecutionFile(paths, name),
+      {
+        ...local!,
+        basedOnStateVersion: dispatched.state_version,
+        execution: {
+          operationId: 'stale-verifier-operation',
+          stage: 'verifying',
+          actor: 'verifier',
+          executionId: 'stale-verifier-execution',
+          status: 'running',
+          startedAt: new Date(Date.now() - 31 * 60 * 1_000).toISOString(),
+          requestCheckRounds: 0,
+        },
+      },
+      { containedRoot: paths.runtimeDir },
+    );
+
+    await expect(nativeDoctorCommand([name, '--repair'], projectRoot)).resolves.toMatchObject({
+      exitCode: 0,
+      data: {
+        healthy: true,
+        repaired: true,
+        result: { verifierTakeover: true, waitedMinutes: expect.any(Number) },
+      },
+    });
+    const recovered = await readNativeLocalExecution(nativeLocalExecutionFile(paths, name));
+    expect(recovered?.execution?.status).toBe('running');
+    expect(recovered?.execution?.verifierStartedAt).toBeUndefined();
   });
 
   it('repairs an exact empty v2 overlay left beside a legacy v1 child contract', async () => {
