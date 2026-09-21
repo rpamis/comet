@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   isolatedBenchmarkEnvironment,
+  classicCheckEvidenceMatches,
   measureRuntimeSample,
   validateRuntimeProcess,
   writeRuntimeBaseline,
@@ -20,6 +21,27 @@ afterEach(async () => {
 });
 
 describe('Runtime cold-start benchmark evidence', () => {
+  it('accepts reused evidence from the fast-runtime nested JSON envelope', () => {
+    const stdout = JSON.stringify({
+      command: 'check',
+      exitCode: 0,
+      data: {
+        exitCode: 0,
+        inputBefore: 'same',
+        inputAfter: 'same',
+        reusable: true,
+        stdout: JSON.stringify({
+          command: 'check',
+          exitCode: 0,
+          data: { reused: true },
+        }),
+      },
+    });
+
+    expect(classicCheckEvidenceMatches(stdout, true)).toBe(true);
+    expect(classicCheckEvidenceMatches(stdout, false)).toBe(false);
+  });
+
   it('isolates user configuration, caches, and inherited task context', () => {
     const home = path.join(os.tmpdir(), 'isolated-comet-benchmark-home');
     const inherited = {

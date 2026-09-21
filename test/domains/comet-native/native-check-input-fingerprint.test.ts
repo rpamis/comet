@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  hasGitlinksInIndex,
   nativeCheckInputFingerprint,
   nativeCheckInputGate,
 } from '../../../domains/comet-native/native-portable-checks.js';
@@ -41,6 +42,11 @@ describe('Native check input fingerprint', () => {
 
   afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('detects tracked submodules from the staged index stream', () => {
+    expect(hasGitlinksInIndex('100644 abc\tREADME.md\0')).toBe(false);
+    expect(hasGitlinksInIndex('160000 abc\tdependency\0')).toBe(true);
   });
 
   it('stays stable when an unbound environment variable changes', async () => {

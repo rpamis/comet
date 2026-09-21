@@ -67,6 +67,10 @@ export function localCheckCwdRef(projectRoot: string, cwd: string): string {
   return cwdRef;
 }
 
+export function hasGitlinksInIndex(indexOutput: string): boolean {
+  return indexOutput.split('\0').some((record) => record.startsWith('160000 '));
+}
+
 export function nativeLocalCheckPlanKey(check: NativeLocalCheckState, projectRoot: string): string {
   const [executable, ...argv] = check.argv;
   if (!executable) throw new Error(`Native local check ${check.id} has no executable`);
@@ -650,20 +654,17 @@ export async function nativeCheckInputFingerprint(options: {
     }
     // Staged content binds through index blob ids: `ls-files --stage` names each
     // path with its object id, which Git already defines as the content hash.
-    gitSnapshot.stagedDiff = digestNativeCheckInput(
-      runGitCommand(options.projectRoot, [
-        'ls-files',
-        '--stage',
-        '-z',
-        '--',
-        ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
-      ]),
-    );
-    gitSnapshot.submodules = runGitCommand(options.projectRoot, [
-      'submodule',
-      'status',
-      '--recursive',
+    const stagedIndex = runGitCommand(options.projectRoot, [
+      'ls-files',
+      '--stage',
+      '-z',
+      '--',
+      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
     ]);
+    gitSnapshot.stagedDiff = digestNativeCheckInput(stagedIndex);
+    gitSnapshot.submodules = hasGitlinksInIndex(stagedIndex)
+      ? runGitCommand(options.projectRoot, ['submodule', 'status', '--recursive'])
+      : '';
     const untracked = runGitCommand(options.projectRoot, [
       'ls-files',
       '--others',

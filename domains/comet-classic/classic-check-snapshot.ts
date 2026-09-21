@@ -28,6 +28,22 @@ function git(root: string, args: string[]): string | null {
   return result.status === 0 ? result.stdout : null;
 }
 
+/** Hash dirty or untracked paths in bounded batches, preserving Git's input order. */
+export function hashGitPaths(root: string, paths: readonly string[]): Map<string, string> | null {
+  const hashes = new Map<string, string>();
+  const batchSize = 32;
+  for (let offset = 0; offset < paths.length; offset += batchSize) {
+    const batch = paths.slice(offset, offset + batchSize);
+    const output = git(root, ['hash-object', '--no-filters', '--', ...batch]);
+    if (output === null) return null;
+    const values = output.trimEnd().split(/\r?\n/u);
+    if (values.length !== batch.length || values.some((value) => !/^[0-9a-f]+$/iu.test(value)))
+      return null;
+    batch.forEach((relative, index) => hashes.set(relative, values[index]));
+  }
+  return hashes;
+}
+
 /**
  * The declaration binding folded into evidence digests. Legacy evidence always
  * binds the whole file; current evidence binds the matched command entry when
@@ -384,12 +400,17 @@ export async function collectCheckSnapshot(
           }
         }
       }
+      const hashNames = names.filter((name) => !indexHashes.has(name) || dirty.has(name));
+      const batchedHashes = hashGitPaths(directory, hashNames);
       for (const name of names) {
         const indexHash = indexHashes.get(name);
         const contentHash =
           indexHash && !dirty.has(name)
             ? indexHash
-            : (git(directory, ['hash-object', '--no-filters', '--', name])?.trim() ?? undefined);
+            : (batchedHashes?.get(name) ??
+              (batchedHashes === null
+                ? (git(directory, ['hash-object', '--no-filters', '--', name])?.trim() ?? undefined)
+                : undefined));
         await file(path.resolve(directory, name), contentHash ? `git:${contentHash}` : undefined);
       }
       return;

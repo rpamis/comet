@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   checkInputFingerprint,
   collectCheckSnapshot,
+  hashGitPaths,
 } from '../../../domains/comet-classic/classic-check-snapshot.js';
 import {
   diffCheckManifests,
@@ -142,6 +143,24 @@ describe('Classic check input snapshots', () => {
     const legacySnapshot = await collectCheckSnapshot(root, change, undefined, { legacy: true });
     expect(legacySnapshot.entries.map((entry) => entry.p)).toContain('\u0000git:.:head');
     expect(legacySnapshot.digest).not.toBe(snapshot.digest);
+  });
+
+  it('hashes multiple dirty paths in one Git operation while preserving path order', async () => {
+    await fs.writeFile(path.join(root, 'added.js'), 'new');
+    const hashes = hashGitPaths(root, ['source.js', 'added.js']);
+    expect([...hashes.keys()]).toEqual(['source.js', 'added.js']);
+    expect(hashes.get('source.js')).toBe(
+      execFileSync('git', ['hash-object', '--no-filters', '--', 'source.js'], {
+        cwd: root,
+        encoding: 'utf8',
+      }).trim(),
+    );
+    expect(hashes.get('added.js')).toBe(
+      execFileSync('git', ['hash-object', '--no-filters', '--', 'added.js'], {
+        cwd: root,
+        encoding: 'utf8',
+      }).trim(),
+    );
   });
 
   it('reuses baseline content hashes for files whose stat identity still matches', async () => {

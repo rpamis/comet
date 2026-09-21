@@ -88,6 +88,31 @@ function jsonSuccess(stdout) {
   return result;
 }
 
+export function classicCheckEvidenceMatches(stdout, expectedReused) {
+  let result;
+  let envelope;
+  try {
+    envelope = jsonSuccess(stdout);
+    result = envelope.data;
+  } catch {
+    return false;
+  }
+  if (!result || result.exitCode !== 0 || result.inputBefore !== result.inputAfter) return false;
+  let observedReused = typeof result.reused === 'boolean' ? result.reused : undefined;
+  const summaries = [result.stdout, envelope.stdout].filter((value) => typeof value === 'string');
+  for (const summary of summaries) {
+    if (observedReused !== undefined) break;
+    try {
+      const nested = jsonSuccess(summary).data;
+      if (typeof nested?.reused === 'boolean') observedReused = nested.reused;
+    } catch {
+      const match = summary.match(/reused=(true|false)/u);
+      if (match) observedReused = match[1] === 'true';
+    }
+  }
+  return observedReused === expectedReused;
+}
+
 function expectedData(expected) {
   return (stdout) => {
     const result = jsonSuccess(stdout);
@@ -248,6 +273,12 @@ async function createFixture(repoRoot, worktreeCounts) {
       path.join(changeDir, 'brief.md'),
       '# Outcome\nVerify a fixture behavior.\n# Scope\nOne minimal change.\n# Non-goals\nNo extra behavior.\n# Acceptance examples\n- The fixture behaves correctly.\n# Constraints and invariants\nKeep existing behavior.\n# Decisions\nUse the smallest implementation.\n# Open questions\nNone.\n# Verification expectations\nRun the focused check.\n',
     );
+    const nativeSpecDir = path.join(changeDir, 'specs', 'benchmark-native');
+    await fs.mkdir(nativeSpecDir, { recursive: true });
+    await fs.writeFile(
+      path.join(nativeSpecDir, 'spec.md'),
+      '# Fixture behavior\n\n## Requirement: fixture output\nThe fixture keeps its existing output.\n\nScenario: Existing output remains available\n- WHEN the fixture is queried\n- THEN the existing output is returned\n',
+    );
     const snapshotRoots = ['docs', '.comet'].map((part) => path.join(native, part));
     const snapshots = await Promise.all(snapshotRoots.map(directorySnapshot));
     const restore = async () => {
@@ -328,6 +359,8 @@ async function createFixture(repoRoot, worktreeCounts) {
     await fs.mkdir(path.join(checkRoot, 'openspec/changes'), { recursive: true });
     await fs.mkdir(path.join(checkRoot, 'openspec/specs'), { recursive: true });
     await cli(checkRoot, ['state', 'init', 'benchmark-check', 'tweak', '--json']);
+    const materialCheckInput = path.join(checkRoot, 'openspec/changes/benchmark-check/input.txt');
+    await fs.writeFile(materialCheckInput, 'Initial material check input\n');
     const checkArgs = [
       'check',
       'run',
@@ -341,13 +374,7 @@ async function createFixture(repoRoot, worktreeCounts) {
       "console.log('fixture check passed')",
     ];
     const validateCheck = (reused) => (stdout) => {
-      const result = jsonSuccess(stdout).data;
-      if (
-        !result ||
-        result.exitCode !== 0 ||
-        Boolean(result.reused) !== reused ||
-        result.inputBefore !== result.inputAfter
-      ) {
+      if (!classicCheckEvidenceMatches(stdout, reused)) {
         throw new Error('Classic check did not produce the expected valid evidence');
       }
     };
@@ -363,7 +390,7 @@ async function createFixture(repoRoot, worktreeCounts) {
     add('classic-check-invalidate', checkRoot, checkArgs, validateCheck(false), {
       prepare: async () => {
         await restoreSnapshot(checkRoot, passedCheckSnapshot);
-        await fs.writeFile(path.join(checkRoot, 'README.md'), '# Changed check input\n');
+        await fs.writeFile(materialCheckInput, 'Changed material check input\n');
       },
     });
     const nativeCheckRoot = path.join(root, 'native-check');

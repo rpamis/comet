@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.3] - 2026-09-22
+
+### Changed
+
+- **Workflow CLI performance**: Batch Classic check path hashing and skip recursive submodule probing when a repository has no tracked gitlinks, reducing measured Classic check medians by 48.0–59.1% and Native initial check median by 28.5% while preserving evidence and reuse validation. See the [performance comparison](docs/research/2026-09-22-workflow-cli-performance-results.md).
+
 ## What's Changed [0.4.2] - 2026-09-21
 
 ### Added
