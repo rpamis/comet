@@ -6682,7 +6682,7 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
               value={searchText}
               prefix={<SearchOutlined />}
               allowClear
-              placeholder="搜索标题、摘要或 slug"
+              placeholder="搜索标题、摘要或记忆标识"
               aria-label="搜索项目记忆"
               onChange={(event) => setSearchText(event.target.value)}
             />
