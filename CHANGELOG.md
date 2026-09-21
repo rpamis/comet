@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.2] - 2026-09-20
+## What's Changed [0.4.2] - 2026-09-21
 
 ### Added
 
@@ -32,6 +32,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Personal Memory pause and Dashboard summaries**: Paused projects no longer review or persist automatic observations, and the Dashboard keeps learning results and project-scoped totals aligned after switching projects (#440).
 - **Native confirmation and verifier recovery**: Shape drift is detected before stale requirements are confirmed, and a registered but never-started Verifier remains visible with a bounded recovery path.
 - **Package and Hook safety**: Incomplete npm assets fail with one actionable reinstall message; bounded Hook context failures emit a concise diagnostic while allowing the write to proceed; user Hook configuration and unrelated staged, working, and untracked files remain intact during managed operations.
+- **Global Native initialization**: Prepare native skill installation targets and remove legacy managed symlinks or junctions during global initialization, preventing retired-skill safety checks from reporting false failures when upgrading from Symlink mode.
 - **Classic delivery recovery**: Ambient Resume finds archived changes whose authorized delivery is still incomplete and routes the user back to the delivery step instead of treating the change as finished.
 - **Native Supervisor repair safety**: Doctor repairs stale Supervisor dependency states under the mutation lock so concurrent dispatch and integration cannot overwrite the recovery.
 

@@ -737,7 +737,7 @@ export async function initCommand(
 
   await assertBundledAssetsComplete();
 
-  if (includesWorkflow(workflowSelection, 'native') && scope === 'project') {
+  if (includesWorkflow(workflowSelection, 'native')) {
     for (const plan of plans) {
       const action =
         plan.cmAction === 'overwrite' ? 'overwrite' : plan.cmAction === 'install' ? 'fill' : 'skip';
