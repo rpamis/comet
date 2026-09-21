@@ -113,9 +113,11 @@ describe('ordinary Comet task host', () => {
     const { cometTaskCommand } = await import('../../app/commands/comet-task.js');
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const observeWarnings = () =>
+      error.mock.calls.filter(([message]) => String(message).includes('comet memory observe'));
     try {
       recordCometWorkflowResult.mockResolvedValueOnce({ submissionVerified: false });
-      await cometTaskCommand('D:/repo', {
+      const first = await cometTaskCommand('D:/repo', {
         task: '完成变更',
         complete: true,
         workflow: 'native',
@@ -123,8 +125,14 @@ describe('ordinary Comet task host', () => {
         learningCheck: 'submitted',
         json: true,
       });
-      expect(error).toHaveBeenCalledTimes(1);
-      expect(error.mock.calls[0]?.[0]).toContain('comet memory observe');
+      expect(observeWarnings()).toHaveLength(1);
+      expect(first.projectMemory).toMatchObject({
+        count: expect.any(Number),
+        reminder: expect.stringContaining('comet knowledge remember'),
+      });
+      expect(
+        error.mock.calls.some(([message]) => String(message).includes('Project memory:')),
+      ).toBe(true);
 
       recordCometWorkflowResult.mockResolvedValueOnce({ submissionVerified: true });
       await cometTaskCommand('D:/repo', {
@@ -135,7 +143,7 @@ describe('ordinary Comet task host', () => {
         learningCheck: 'submitted',
         json: true,
       });
-      expect(error).toHaveBeenCalledTimes(1);
+      expect(observeWarnings()).toHaveLength(1);
       expect(log).toHaveBeenCalledWith(expect.stringContaining('"learningCheckVerified": true'));
     } finally {
       error.mockRestore();

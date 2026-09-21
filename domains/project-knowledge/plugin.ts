@@ -786,6 +786,25 @@ async function createProjectKnowledgeModule(
       }
     },
     provideContext: async (request) => {
+      // Project memory is a local file layer independent of the configured
+      // provider. Read it first so a provider outage cannot drop the index,
+      // and keep provider retrieval advisory: report the failure instead of
+      // failing the whole context contribution.
+      const candidates: AgentContextCandidate[] = [];
+      try {
+        const memoryIndex = await readProjectMemoryIndex(options.projectRoot, options.cacheRoot);
+        const indexCandidate = projectMemoryIndexCandidate(
+          memoryIndex,
+          request.projectId,
+          options.language,
+        );
+        if (indexCandidate !== null) candidates.push(indexCandidate);
+      } catch (error) {
+        reportDiagnostic({
+          code: 'project-memory-unavailable',
+          message: `项目记忆索引暂不可用：${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
       let activeProvider: ProjectKnowledgeProvider | null = null;
       try {
         const query = createProjectKnowledgeQuery(request);
@@ -794,33 +813,26 @@ async function createProjectKnowledgeModule(
         const response = await activeProvider.query({ kind: 'search', query, limit: 8 });
         clearRecoveredLocalSearchDiagnostic(response);
         const results = response.kind === 'search' ? response.results : [];
-        const candidates = results.map((result) =>
-          projectKnowledgeContextCandidate(result, request.projectId, options.language),
+        candidates.push(
+          ...results.map((result) =>
+            projectKnowledgeContextCandidate(result, request.projectId, options.language),
+          ),
         );
-        try {
-          const memoryIndex = await readProjectMemoryIndex(options.projectRoot, options.cacheRoot);
-          const indexCandidate = projectMemoryIndexCandidate(
-            memoryIndex,
-            request.projectId,
-            options.language,
-          );
-          if (indexCandidate !== null) candidates.unshift(indexCandidate);
-        } catch (error) {
-          reportDiagnostic({
-            code: 'project-memory-unavailable',
-            message: `项目记忆索引暂不可用：${error instanceof Error ? error.message : String(error)}`,
-          });
-        }
-        if (recentChangedHints.length > 0) {
-          recentChangedHints.splice(0, recentChangedHints.length);
-          persistDiagnostics();
-        }
-        await diagnosticWrite;
-        if (candidates.length === 0) return null;
-        return candidates;
+      } catch (error) {
+        reportDiagnostic({
+          code: 'context-provider-unavailable',
+          message: `项目知识检索暂不可用：${error instanceof Error ? error.message : String(error)}`,
+        });
       } finally {
         if (activeProvider instanceof LocalProjectKnowledgeProvider) activeProvider.close();
       }
+      if (recentChangedHints.length > 0) {
+        recentChangedHints.splice(0, recentChangedHints.length);
+        persistDiagnostics();
+      }
+      await diagnosticWrite;
+      if (candidates.length === 0) return null;
+      return candidates;
     },
     resolveContext: async (id, request) => {
       if (id.startsWith(PROJECT_MEMORY_EXPANSION_PREFIX)) {

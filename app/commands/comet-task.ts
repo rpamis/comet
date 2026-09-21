@@ -7,6 +7,11 @@ import {
   recordCometContextOutcome,
   recordCometWorkflowResult,
 } from '../../domains/comet-entry/plugin-context.js';
+import {
+  readProjectMemoryEntries,
+  renderProjectMemoryCompletionReminder,
+  type ProjectMemoryCompletionStatus,
+} from '../../domains/project-knowledge/index.js';
 import type { AgentContextOutcomeStatus } from '../../domains/agent-learning/index.js';
 
 export interface CometTaskCommandOptions {
@@ -35,6 +40,7 @@ export interface CometTaskCommandResult {
   readonly outcomeRecorded?: boolean;
   readonly learningCheck?: 'submitted' | 'no-observation' | 'not-run';
   readonly learningCheckVerified?: boolean;
+  readonly projectMemory?: ProjectMemoryCompletionStatus;
 }
 
 /**
@@ -111,6 +117,7 @@ async function runCometTaskCommand(
       ? []
       : await collectCometPluginContext(projectRoot, request);
   let learningCheckVerified: boolean | undefined;
+  let projectMemory: ProjectMemoryCompletionStatus | undefined;
   if (options.complete) {
     const learningStatus = await recordCometWorkflowResult({
       projectRoot,
@@ -127,6 +134,14 @@ async function runCometTaskCommand(
       console.error(
         'Warning: --learning-check submitted, but no observation was recorded for this change; run comet memory observe first, then submit again',
       );
+    try {
+      projectMemory = renderProjectMemoryCompletionReminder(
+        await readProjectMemoryEntries(projectRoot),
+      );
+      console.error(`Project memory: ${projectMemory.reminder}`);
+    } catch {
+      // The reminder is advisory and must never block the completion checkpoint.
+    }
   }
   const result = {
     context,
@@ -134,6 +149,7 @@ async function runCometTaskCommand(
     ...(options.application === undefined ? {} : { outcomeRecorded: true }),
     ...(options.complete ? { learningCheck: options.learningCheck ?? ('not-run' as const) } : {}),
     ...(learningCheckVerified === undefined ? {} : { learningCheckVerified }),
+    ...(projectMemory === undefined ? {} : { projectMemory }),
   };
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else if (expansion) {

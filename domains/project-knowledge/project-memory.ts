@@ -26,7 +26,7 @@ const MAX_DESCRIPTION_CHARS = 200;
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_MEMORIES = 200;
 const MAX_PATHS = 8;
-const MAX_CONTEXT_ENTRIES = 60;
+const MAX_CONTEXT_ENTRIES = 120;
 const MAX_CONTEXT_CHARS = 3000;
 const LOCK_STALE_MS = 10_000;
 const LOCK_TIMEOUT_MS = 4_000;
@@ -269,14 +269,27 @@ async function scanProjectMemoryEntries(
   return entries;
 }
 
-function renderIndexDocument(entries: readonly ProjectMemoryIndexEntry[]): string {
+interface IndexDocumentEntry extends ProjectMemoryIndexEntry {
+  readonly updated: string;
+}
+
+/**
+ * The index is recency-ordered (newest first). Context injection reads it top
+ * down under a character budget, so a tight budget drops the oldest lessons
+ * instead of arbitrary ones.
+ */
+function renderIndexDocument(entries: readonly IndexDocumentEntry[]): string {
   const lines = [
     '# Project Memory Index',
     '',
-    '<!-- Managed by comet knowledge remember. One line per durable project lesson; the full note lives in the linked file. -->',
+    '<!-- Managed by comet knowledge remember. One line per durable project lesson; the full note lives in the linked file. Newest first. -->',
     '',
   ];
-  for (const entry of entries) {
+  const ordered = [...entries].sort(
+    (left, right) =>
+      right.updated.localeCompare(left.updated) || left.slug.localeCompare(right.slug),
+  );
+  for (const entry of ordered) {
     const title = singleLine(entry.title, MAX_TITLE_CHARS).replace(/[[\]]/gu, '');
     const description = singleLine(entry.description, MAX_DESCRIPTION_CHARS);
     lines.push(`- [${title}](${memoryFileName(entry.slug)}) — ${description}`);
@@ -458,7 +471,7 @@ export async function writeProjectMemory(
         ...(entry.source === undefined ? {} : { source: entry.source }),
         body,
       },
-    ].sort((left, right) => left.slug.localeCompare(right.slug));
+    ];
     await atomicWrite(path.join(directory, PROJECT_MEMORY_INDEX_FILE), renderIndexDocument(merged));
     return {
       action: previous === undefined ? 'created' : 'updated',
@@ -491,11 +504,41 @@ export async function removeProjectMemory(
             slug: entry.slug,
             title: entry.title,
             description: entry.description,
+            updated: entry.updated,
           })),
       ),
     );
     return true;
   });
+}
+
+export interface ProjectMemoryCompletionStatus {
+  readonly count: number;
+  readonly lastWriteAt?: string;
+  readonly reminder: string;
+}
+
+/**
+ * Structural task-end nudge surfaced by `comet task --complete`: the tool
+ * response itself reminds the agent to record reusable lessons, so writing
+ * does not depend on rule compliance alone.
+ */
+export function renderProjectMemoryCompletionReminder(
+  entries: readonly { readonly updated: string }[],
+): ProjectMemoryCompletionStatus {
+  const lastWriteAt = entries.reduce<string | undefined>(
+    (latest, entry) => (latest === undefined || entry.updated > latest ? entry.updated : latest),
+    undefined,
+  );
+  const base =
+    entries.length === 0
+      ? '当前项目还没有项目记忆。'
+      : `当前项目共 ${entries.length} 条项目记忆，最近写入 ${lastWriteAt}。`;
+  return {
+    count: entries.length,
+    ...(lastWriteAt === undefined ? {} : { lastWriteAt }),
+    reminder: `${base}本次任务若有验证过、可复用且尚未记录的项目经验，立即运行 comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <类型> --json 写入；没有可复用经验时跳过。`,
+  };
 }
 
 export function renderProjectMemoryIndexContext(

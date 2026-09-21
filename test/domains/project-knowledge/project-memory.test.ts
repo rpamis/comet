@@ -12,6 +12,7 @@ import {
   readProjectMemoryEntries,
   readProjectMemoryIndex,
   removeProjectMemory,
+  renderProjectMemoryCompletionReminder,
   renderProjectMemoryIndexContext,
   resolveProjectMemoryDirectory,
   writeProjectMemory,
@@ -99,6 +100,41 @@ describe('project memory store', () => {
       const index = await readProjectMemoryIndex(root, cacheRoot);
       expect(index).toHaveLength(1);
       expect(index[0]?.description).toBe('更新后的结论。');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('orders the MEMORY.md index newest first', async () => {
+    const root = await tempRoot('comet-project-memory-');
+    const cacheRoot = await tempRoot('comet-project-memory-cache-');
+    try {
+      await writeProjectMemory(
+        root,
+        { title: 'Older lesson', text: '较早写入。' },
+        { cacheRoot, now: fixedNow('2026-09-19T08:00:00.000Z') },
+      );
+      await writeProjectMemory(
+        root,
+        { title: 'Newer lesson', text: '较晚写入。' },
+        { cacheRoot, now: fixedNow('2026-09-21T08:00:00.000Z') },
+      );
+      const index = await readProjectMemoryIndex(root, cacheRoot);
+      expect(index.map((entry) => entry.slug)).toEqual(['newer-lesson', 'older-lesson']);
+      const directory = resolveProjectMemoryDirectory(root, cacheRoot);
+      const raw = await fs.readFile(path.join(directory, 'MEMORY.md'), 'utf8');
+      expect(raw.indexOf('newer-lesson')).toBeLessThan(raw.indexOf('older-lesson'));
+      expect(
+        renderProjectMemoryCompletionReminder([
+          { updated: '2026-09-19T08:00:00.000Z' },
+          { updated: '2026-09-21T08:00:00.000Z' },
+        ]),
+      ).toMatchObject({
+        count: 2,
+        lastWriteAt: '2026-09-21T08:00:00.000Z',
+        reminder: expect.stringContaining('comet knowledge remember'),
+      });
     } finally {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });
@@ -298,7 +334,7 @@ describe('project memory store', () => {
 
   test('bounds the rendered context index', () => {
     expect(renderProjectMemoryIndexContext([], 'zh-CN')).toBeNull();
-    const entries = Array.from({ length: 65 }, (_, index) => ({
+    const entries = Array.from({ length: 125 }, (_, index) => ({
       slug: `lesson-${index}`,
       title: `经验 ${index}`,
       description: `第 ${index} 条经验摘要`,
@@ -306,7 +342,9 @@ describe('project memory store', () => {
     const rendered = renderProjectMemoryIndexContext(entries, 'zh-CN');
     expect(rendered).toContain('## 项目记忆索引');
     expect(rendered).toContain('--expand-context "project-memory:<slug>"');
-    expect(rendered).toContain('另有 5 条');
+    expect(rendered).toMatch(/另有 \d+ 条/u);
+    expect(rendered).toContain('lesson-0');
+    expect(rendered).not.toContain('lesson-124');
     expect(rendered!.length).toBeLessThan(4000);
     const english = renderProjectMemoryIndexContext(entries.slice(0, 2), 'en');
     expect(english).toContain('## Project memory index');
@@ -371,6 +409,46 @@ describe('project knowledge plugin project memory context', () => {
       expect(
         await module.resolveContext?.(`${PROJECT_MEMORY_EXPANSION_PREFIX}missing`, request),
       ).toBeNull();
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the memory index when the configured provider fails', async () => {
+    const root = await tempRoot('comet-project-memory-provider-');
+    const cacheRoot = await tempRoot('comet-project-memory-provider-cache-');
+    try {
+      await writeProjectMemory(
+        root,
+        { title: 'Provider independent lesson', text: 'Provider 失败时索引仍然注入。' },
+        { cacheRoot },
+      );
+      const storageStore = new MemoryPluginStorageStore();
+      const module = await createProjectKnowledgeModule(
+        {
+          storage: await storageStore.open(
+            'comet.project-knowledge',
+            'project',
+            'project-memory-provider-failure',
+          ),
+          reportDiagnostic: () => undefined,
+        } as never,
+        {
+          projectRoot: root,
+          cacheRoot,
+          knowledgeConfig: {
+            provider: 'remote',
+            remote: { endpoint: 'http://127.0.0.1:9', timeout_ms: 200 },
+          },
+        },
+      );
+      const candidates = await module.provideContext?.({
+        task: 'query project memory',
+        projectId: resolveStableProjectId(root),
+      });
+      expect(candidates?.map((candidate) => candidate.id)).toEqual(['project-memory-index']);
+      expect(candidates?.[0]?.content).toContain('Provider independent lesson');
     } finally {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });
