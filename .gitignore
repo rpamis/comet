@@ -160,3 +160,7 @@ dashboard-installed-snapshot.json
 /.comet/*
 !/.comet/config.yaml
 # <<< Comet managed project state <<<
+
+# Local agent tooling noise (untracked, never committed)
+.zcodeignore
+.zcode/

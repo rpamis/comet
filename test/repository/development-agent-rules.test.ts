@@ -66,21 +66,17 @@ function removeFrontmatter(content: string): string {
 }
 
 describe('development agent rules', () => {
-  it('keeps the shared root development rules aligned', async () => {
+  it('keeps the shared root development rules in AGENTS.md and imports them from CLAUDE.md', async () => {
     const [agents, claude] = await Promise.all([
       fs.readFile(path.join(repositoryRoot, 'AGENTS.md'), 'utf8'),
       fs.readFile(path.join(repositoryRoot, 'CLAUDE.md'), 'utf8'),
     ]);
 
-    const sharedDevelopmentRules = (content: string): string => {
-      const start = content.indexOf('## 开发工作区保护');
-      const end = content.indexOf('## 测试', start);
-      expect(start).toBeGreaterThanOrEqual(0);
-      expect(end).toBeGreaterThan(start);
-      return content.slice(start, end).replaceAll('\r\n', '\n');
-    };
-
-    expect(sharedDevelopmentRules(claude)).toBe(sharedDevelopmentRules(agents));
+    expect(claude.trim()).toBe('@AGENTS.md');
+    const start = agents.indexOf('## 开发工作区保护');
+    const end = agents.indexOf('## 测试', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
   });
 
   it('keeps Codex directory instructions and Claude path rules aligned', async () => {

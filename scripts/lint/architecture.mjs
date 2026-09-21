@@ -725,21 +725,28 @@ function checkSourceDependencies() {
 
 checkSourceDependencies();
 
-for (const guide of ['AGENTS.md', 'CLAUDE.md']) {
-  const content = readFileSync(path.join(root, guide), 'utf8');
-  if (!content.includes('## 项目结构规范')) {
-    fail(`${guide} must document the project structure rules`);
-  }
-  if (!content.includes('test/ts')) {
-    fail(`${guide} must explicitly ban the legacy test/ts bucket`);
-  }
-  if (
-    !content.includes('app/`') ||
-    !content.includes('domains/`') ||
-    !content.includes('platform/`')
-  ) {
-    fail(`${guide} must describe the app/domains/platform source layout`);
-  }
+// AGENTS.md is the single source of the contributor guide. CLAUDE.md must stay
+// a thin import (`@AGENTS.md`) so Claude Code loads the same content instead of
+// drifting into a duplicated copy.
+const agentsGuideContent = readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
+if (!agentsGuideContent.includes('## 项目结构规范')) {
+  fail('AGENTS.md must document the project structure rules');
+}
+if (!agentsGuideContent.includes('test/ts')) {
+  fail('AGENTS.md must explicitly ban the legacy test/ts bucket');
+}
+if (
+  !agentsGuideContent.includes('app/`') ||
+  !agentsGuideContent.includes('domains/`') ||
+  !agentsGuideContent.includes('platform/`')
+) {
+  fail('AGENTS.md must describe the app/domains/platform source layout');
+}
+const claudeGuideContent = readFileSync(path.join(root, 'CLAUDE.md'), 'utf8');
+if (claudeGuideContent.trim() !== '@AGENTS.md') {
+  fail(
+    'CLAUDE.md must import the shared guide with exactly "@AGENTS.md" instead of duplicating AGENTS.md',
+  );
 }
 
 const packageJson = readJson('package.json');
