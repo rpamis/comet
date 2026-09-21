@@ -121,11 +121,7 @@ async function makeMinimalRepository(): Promise<string> {
       'AGENTS.md',
       '## 项目结构规范\n\n`app/` `domains/` `platform/`\n\nlegacy `test/ts` is banned.\n',
     ),
-    writeFile(
-      root,
-      'CLAUDE.md',
-      '## 项目结构规范\n\n`app/` `domains/` `platform/`\n\nlegacy `test/ts` is banned.\n',
-    ),
+    writeFile(root, 'CLAUDE.md', '@AGENTS.md\n'),
   ]);
 
   return root;

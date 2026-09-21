@@ -4186,17 +4186,19 @@ describe('skills', () => {
   });
 
   describe('Repository authoring guidance', () => {
-    it('documents consistent skill invocation wording in CLAUDE.md', async () => {
+    it('documents consistent skill invocation wording in the shared AGENTS guide', async () => {
       const claude = await fs.readFile(path.resolve('CLAUDE.md'), 'utf-8');
+      expect(claude.trim()).toBe('@AGENTS.md');
 
-      expect(claude).toContain('## Skill 触发表述规范');
-      expect(claude).toContain(
+      const agents = await fs.readFile(path.resolve('AGENTS.md'), 'utf-8');
+      expect(agents).toContain('## Skill 触发表述规范');
+      expect(agents).toContain(
         '中文统一使用：`**立即执行：** 使用 Skill 工具加载 <skill-name> 技能。禁止跳过此步骤。`',
       );
-      expect(claude).toContain(
+      expect(agents).toContain(
         '英文统一使用：`**Immediately execute:** Use the Skill tool to load the <skill-name> skill. Skipping this step is prohibited.`',
       );
-      expect(claude).toContain(
+      expect(agents).toContain(
         '后续输入、上下文或执行要求写在“技能加载后 / After the skill loads”段落',
       );
     });
