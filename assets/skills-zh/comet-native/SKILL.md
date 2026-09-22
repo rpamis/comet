@@ -20,11 +20,9 @@ Native 将完整需求、进度和验收结论保存在项目中。Agent 只处�
 
 1. 已知名称时运行 `comet native select <change-name> --json`。active change 已存在时，进入返回的 `workspace.projectRoot`；未知时先运行 `comet native status --json`。由 Runtime 查找工作区；多个工作区同样匹配时才让用户选择。
 2. 没有对应 active change 时，按[工作区选择参考](reference/workspace.md#创建-change)确定隔离方式并创建，再进入 `preparation.projectRoot`。准备失败时，保留已创建的分支和目录，按返回的原因处理。
-3. 进入工作区并取得 `phase` 后，按[记忆接入](reference/commands.md#记忆接入)检索一次上下文。需要详情时再展开；实际使用后记录使用结果，任务结束时按该节分别处理项目记忆和个人记忆，再调用 `comet task --complete`。
+3. 进入工作区并取得 `phase` 后，按[记忆接入](reference/commands.md#记忆接入)检索一次上下文。按需展开并记录使用结果；任务结束时按该节分别处理项目记忆和个人记忆，再调用 `comet task --complete`。
 
-记忆学习只提交可复用的用户信息；任务摘要、进展、命令输出和测试结果不写入个人记忆。任务结束前按记忆接入章节完成学习检查，并记录 `submitted`、`no-observation` 或 `not-run`。
-
-项目经验与个人偏好分开保存：可由当前项目验证、且未来任务仍可复用的经验在任务结束前执行 `comet knowledge remember` 写入项目记忆；用户偏好和稳定协作习惯才进入个人记忆。两者的命令和完成条件见[记忆接入](reference/commands.md#记忆接入)。
+项目经验与个人偏好分开保存：当前项目验证且可复用的经验在任务结束前用 `comet knowledge remember` 写入项目记忆；用户偏好和稳定协作习惯才进入个人记忆。
 
 ## 按需读取
 
