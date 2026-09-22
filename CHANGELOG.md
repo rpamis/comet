@@ -11,7 +11,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Project Knowledge index recovery**: Repair orphaned or missing FTS rows, preserve the last usable projection when reads, writes, discovery, or incremental budgets fail, and let explicit rebuilds process the full corpus without exposing an empty index (#444).
-- **Windows daemon routing**: Keep read-only CLI commands on the single-process Runtime by default on Windows, preventing detached daemon processes from holding IDE terminals open; explicit daemon start and opt-in remain available (#448).
+- **Windows daemon routing**: Start read-only daemons outside the invoking process tree so IDE terminals and Job Object hosts can finish without waiting for the daemon lifetime. Automatic routing now prewarms the daemon while the first command runs directly, then reuses the warm Runtime for later commands, with direct execution retained when startup is unavailable (#448).
 
 ## What's Changed [0.4.2] - 2026-09-21
 

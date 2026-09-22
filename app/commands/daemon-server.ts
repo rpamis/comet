@@ -57,6 +57,7 @@ export async function runCometDaemonServer(argv: readonly string[]): Promise<voi
       projectRoot,
       idleTimeoutMs,
       handler: handleRequest,
+      environmentFingerprint: process.env.COMET_DAEMON_ENVIRONMENT_FINGERPRINT,
     });
   } finally {
     const lockPath = process.env.COMET_DAEMON_START_LOCK;

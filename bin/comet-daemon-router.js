@@ -73,7 +73,10 @@ function route(argv) {
 
 async function daemonModule() {
   try {
-    return await import('../dist/platform/process/comet-daemon.js');
+    const daemon = await import('../dist/platform/process/comet-daemon.js');
+    if (process.platform !== 'win32') return daemon;
+    const broker = await import('../dist/platform/process/windows-process-broker.js');
+    return { ...daemon, ...broker };
   } catch {
     return null;
   }
@@ -107,21 +110,38 @@ function takeLaunchLock(endpoint) {
   }
 }
 
-function startServer(endpoint, buildId, projectRoot) {
+function startServer(module, endpoint, buildId, projectRoot) {
   const entry = serverPath();
   if (!existsSync(entry)) return false;
   const lockPath = takeLaunchLock(endpoint);
   if (!lockPath) return false;
   try {
+    const cwd = fileURLToPath(new URL('../', import.meta.url));
+    const env = {
+      ...process.env,
+      COMET_DAEMON_ENVIRONMENT_FINGERPRINT: endpoint.environmentFingerprint,
+      COMET_DAEMON_SERVER: '1',
+      COMET_DAEMON_START_LOCK: lockPath,
+    };
+    if (process.platform === 'win32') {
+      const launched = module.launchWindowsProcessWithBroker({
+        command: process.execPath,
+        args: [entry, endpoint.endpoint, buildId, projectRoot],
+        cwd,
+        env,
+      });
+      if (!launched.started) throw new Error(launched.error ?? 'Windows daemon launch failed');
+      return true;
+    }
     const child = spawn(process.execPath, [entry, endpoint.endpoint, buildId, projectRoot], {
       // Keep the detached server out of the project workspace. A daemon must
       // not keep a temporary project root as its process cwd after the client
       // command exits, otherwise Windows cannot remove that workspace.
-      cwd: fileURLToPath(new URL('../', import.meta.url)),
+      cwd,
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
-      env: { ...process.env, COMET_DAEMON_SERVER: '1', COMET_DAEMON_START_LOCK: lockPath },
+      env,
     });
     child.unref();
     return true;
@@ -140,14 +160,15 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function requestWithLaunch(module, options, launch) {
+async function requestWithLaunch(module, options, launch, waitForLaunch = true) {
   try {
     return await module.sendCometDaemonRequest(options);
   } catch {
-    if (!launch || !startServer(options.endpoint, options.buildId, options.projectRoot)) {
+    if (!launch || !startServer(module, options.endpoint, options.buildId, options.projectRoot)) {
       return null;
     }
   }
+  if (!waitForLaunch) return null;
   for (const delay of [20, 40, 80, 160, 320, 640, 1_000]) {
     await wait(delay);
     try {
@@ -165,12 +186,8 @@ function writeCommandResponse(response) {
   process.exitCode = response.exitCode ?? (response.ok ? 0 : 70);
 }
 
-export function shouldAutoStartCometDaemon(platform = process.platform, environment = process.env) {
-  if (environment.COMET_DAEMON === 'off') return false;
-  // Node cannot request CREATE_BREAKAWAY_FROM_JOB for a detached child. Keep
-  // Windows read-only commands in the caller so IDE Job Objects can exit.
-  if (platform === 'win32' && environment.COMET_DAEMON !== 'on') return false;
-  return true;
+export function shouldAutoStartCometDaemon(environment = process.env) {
+  return environment.COMET_DAEMON !== 'off';
 }
 
 export async function tryRunCometDaemon(argv = process.argv.slice(2)) {
@@ -195,6 +212,9 @@ export async function tryRunCometDaemon(argv = process.argv.slice(2)) {
       timeoutMs: 5_000,
     },
     true,
+    // Let the first Windows request run in the caller while the broker warms
+    // the daemon. Later requests reuse the server once it is listening.
+    process.platform !== 'win32',
   );
   if (!response?.ok) return false;
   writeCommandResponse(response);
