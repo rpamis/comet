@@ -109,6 +109,7 @@ export function launchWindowsProcessWithBroker(
     );
     launched.on('error', () => undefined);
     if (!launched.pid) return { started: false, error: 'Windows process broker did not start' };
+    launched.unref();
     return { started: true };
   } catch (error) {
     return {

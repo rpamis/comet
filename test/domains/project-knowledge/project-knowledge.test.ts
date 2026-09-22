@@ -1141,6 +1141,41 @@ describe('project knowledge corpus and local provider', () => {
     }
   });
 
+  test('marks corpus discovery incomplete when a Classic state file cannot be inspected', async () => {
+    const root = await tempProject();
+    const archiveRoot = path.join(root, 'docs/openspec/changes/archive');
+    const statePath = path.join(archiveRoot, '2026-08-01-broken/.comet.yaml');
+    try {
+      await fs.mkdir(path.dirname(statePath), { recursive: true });
+      await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, '.comet', 'config.yaml'),
+        'schema: comet.project.v1\ndefault_workflow: classic\nclassic:\n  artifact_layout: docs\n',
+      );
+      await fs.writeFile(statePath, 'verification_report: docs/superpowers/reports/report.md\n');
+      const realLstat = fs.lstat;
+      const lstatSpy = vi.spyOn(fs, 'lstat').mockImplementation((target, options) => {
+        if (String(target) === statePath)
+          return Promise.reject(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+        return realLstat(target, options);
+      });
+      try {
+        const diagnostics: Array<{ code: string; message: string }> = [];
+        const snapshot = await discoverProjectKnowledgeCorpusSnapshot({
+          projectRoot: root,
+          reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+        });
+
+        expect(snapshot.complete).toBe(false);
+        expect(diagnostics.some(({ code }) => code === 'corpus-read')).toBe(true);
+      } finally {
+        lstatSpy.mockRestore();
+      }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('provider factory preserves indexed sources beyond an incomplete discovery result', async () => {
     const root = await tempProject();
     const cacheRoot = path.join(root, '.cache');

@@ -19,8 +19,9 @@ describe('Windows process broker', () => {
 
   it('starts a hidden broker with a bundled PowerShell executable and encoded payload', () => {
     const on = vi.fn();
+    const unref = vi.fn();
     existsSyncMock.mockReturnValue(true);
-    spawnMock.mockReturnValue({ pid: 1234, on });
+    spawnMock.mockReturnValue({ pid: 1234, on, unref });
 
     const result = launchWindowsProcessWithBroker({
       command: 'node.exe',
@@ -52,6 +53,7 @@ describe('Windows process broker', () => {
       cwd: 'C:\\workspace',
     });
     expect(on).toHaveBeenCalledWith('error', expect.any(Function));
+    expect(unref).toHaveBeenCalledOnce();
   });
 
   it('returns a startup error when the broker has no process id', () => {

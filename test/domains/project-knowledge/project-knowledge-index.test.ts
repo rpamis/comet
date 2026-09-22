@@ -812,6 +812,54 @@ describe('project knowledge section index', () => {
     }
   });
 
+  test('preserves the existing projection when FTS repair encounters a SQLite lock', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/lock-recovery.md';
+    const file = path.join(root, ...source.split('/'));
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Lock recovery\n\nExisting indexed content.\n');
+    const initial = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    try {
+      await initial.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
+      initial.close();
+
+      const diagnostics: string[] = [];
+      const blocker = new DatabaseSync(initial.databasePath);
+      blocker.exec('BEGIN IMMEDIATE;');
+      const locked = new ProjectKnowledgeIndexStore({
+        projectRoot: root,
+        cacheRoot,
+        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+      });
+      try {
+        await expect(
+          locked.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
+        ).rejects.toMatchObject({ code: 'ERR_SQLITE_ERROR' });
+        expect(diagnostics).not.toContain('index-recovered');
+        expect(diagnostics).toContain('index-unavailable');
+      } finally {
+        locked.close();
+        blocker.exec('ROLLBACK;');
+        blocker.close();
+      }
+
+      const preserved = new DatabaseSync(initial.databasePath, { readOnly: true });
+      try {
+        expect(
+          (preserved.prepare('SELECT count(*) AS count FROM pk_sources').get() as { count: number })
+            .count,
+        ).toBe(1);
+      } finally {
+        preserved.close();
+      }
+    } finally {
+      initial.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
   test('serves current corpus content through rg in the same request as corruption recovery', async () => {
     const root = await temporaryRoot();
     const cacheRoot = await temporaryRoot();

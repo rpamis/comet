@@ -95,6 +95,16 @@ function countValue(value: unknown): number {
   return typeof value === 'number' ? value : typeof value === 'bigint' ? Number(value) : 0;
 }
 
+function isSqliteLockError(error: unknown): boolean {
+  const candidate = error as { code?: unknown; message?: unknown };
+  if (candidate.code === 'SQLITE_BUSY' || candidate.code === 'SQLITE_LOCKED') return true;
+  return (
+    candidate.code === 'ERR_SQLITE_ERROR' &&
+    typeof candidate.message === 'string' &&
+    /(?:database|table|schema) is locked/iu.test(candidate.message)
+  );
+}
+
 function metaMap(database: ProjectKnowledgeDatabase): Map<string, string> {
   const rows = database.prepare('SELECT key, value FROM pk_meta').all() as Array<{
     key: string;
@@ -305,6 +315,15 @@ export class ProjectKnowledgeIndexStore {
       database.prepare("SELECT rowid FROM pk_fts_terms WHERE pk_fts_terms MATCH 'probe'").all();
       this.database = database;
     } catch (error) {
+      if (isSqliteLockError(error)) {
+        database?.close();
+        this.reportDiagnostic?.({
+          code: 'index-unavailable',
+          message:
+            'Project knowledge section index is temporarily locked; authoritative records were retained.',
+        });
+        throw error;
+      }
       let projectionRecovered = false;
       if (database) {
         try {

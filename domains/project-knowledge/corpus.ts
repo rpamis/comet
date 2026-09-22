@@ -309,11 +309,19 @@ async function walkDirectories(
       if (entry.isSymbolicLink() || !entry.isDirectory()) continue;
       const target = path.join(directory, entry.name);
       if (!isInside(projectRoot, target)) continue;
+      const statePath = path.join(target, '.comet.yaml');
       try {
-        const state = await fs.lstat(path.join(target, '.comet.yaml'));
+        const state = await fs.lstat(statePath);
         if (state.isFile() && !state.isSymbolicLink()) result.push(target);
-      } catch {
-        // Only archived Classic Change directories with state are references.
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          if (budget) budget.complete = false;
+          report(
+            reporter,
+            'corpus-read',
+            `未进入检索：无法读取 Classic 归档状态 ${relativeSource(projectRoot, statePath)}。`,
+          );
+        }
       }
       await visit(target);
     }
