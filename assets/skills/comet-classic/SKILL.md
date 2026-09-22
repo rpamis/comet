@@ -34,6 +34,8 @@ After binding the workspace and obtaining phase, read and follow [Task Context a
 
 Memory learning submits only reusable user information; never save task summaries, progress, command output, or test results as Personal Memory. Complete the learning check in the task context reference before task completion and record `submitted`, `no-observation`, or `not-run`.
 
+Project experience and personal preferences are stored separately: before task completion, write project-validated and reusable experience to Project Memory with `comet knowledge remember`; only user preferences and stable collaboration habits go to Personal Memory. See [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language) for the commands and filtering rules.
+
 | Runtime route or phase        | Entry and responsibility                                                                                        |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | new full / open               | `/comet-open`: clarify scope, create required artifacts, and obtain the user's review and confirmation          |

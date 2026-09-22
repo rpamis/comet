@@ -157,6 +157,37 @@ describe('Classic 中文记忆接入契约', () => {
   });
 });
 
+describe('English memory integration contract', () => {
+  it('keeps project-memory writes separate from Personal Memory learning checks', async () => {
+    const nativeSkill = await readAsset('skills/comet-native/SKILL.md');
+    const nativeCommands = await readAsset('skills/comet-native/reference/commands.md');
+    const classicSkill = await readAsset('skills/comet-classic/SKILL.md');
+    const classicScripts = await readAsset('skills/comet-classic/reference/scripts.md');
+    const hotfix = await readAsset('skills/comet-hotfix/SKILL.md');
+    const tweak = await readAsset('skills/comet-tweak/SKILL.md');
+
+    expect(nativeSkill).toContain(
+      'Project experience and personal preferences are stored separately',
+    );
+    expect(nativeSkill).toContain('comet knowledge remember');
+    expect(nativeCommands).toContain('## Project memory');
+    expect(nativeCommands).toContain('comet knowledge remember <project-root>');
+    expect(nativeCommands).toContain('The same title updates the existing entry');
+    expect(nativeCommands).toContain('The project memory index is injected with task context');
+    expect(nativeCommands).toContain(
+      'Never save task summaries, one-off command output, or unverified guesses',
+    );
+    expect(nativeCommands).toContain('--learning-check submitted|no-observation|not-run');
+    expect(classicSkill).toContain(
+      'Project experience and personal preferences are stored separately',
+    );
+    expect(classicSkill).toContain('comet knowledge remember');
+    expect(classicScripts).toContain('comet knowledge remember <project-root>');
+    expect(hotfix).toContain('comet knowledge remember <project-root>');
+    expect(tweak).toContain('comet knowledge remember <project-root>');
+  });
+});
+
 describe('Native English source-document coverage contract', () => {
   it('keeps the confirmed trigger, classification, mapping, and blocking semantics reachable', async () => {
     const skill = await readNativeAsset(nativeEnRoot, 'SKILL.md');

@@ -22,6 +22,16 @@ Save memory as follows:
 - Only when the user has not requested long-term memory, but a collaboration practice is stable and reusable in future tasks, call `comet memory observe <project-root> --text "<collaboration practice>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`.
 - Neither command may save task summaries, implementation progress, command output, or test results.
 
+### Project memory
+
+Project Memory is separate from Personal Memory. Before task completion, write facts, decisions, patterns, procedures, constraints, or failure resolutions that are verified in the current project and reusable in future tasks:
+
+```text
+comet knowledge remember <project-root> --title "<concise title>" --text "<symptom, approach, verification>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --json
+```
+
+The same title updates the existing entry instead of creating a duplicate. Skip the write when nothing is reusable. The project memory index is injected with task context; expand one entry with the same task arguments plus `--expand-context "project-memory:<slug>"`. Never save task summaries, one-off command output, or unverified guesses in Project Memory.
+
 Before every task ends, complete one learning check. When the task contains a user correction, preference, or collaboration practice with a clear reuse condition, call `comet memory observe` and then pass `--learning-check submitted` to `comet task ... --complete`. If you checked and found no qualifying observation, pass `--learning-check no-observation`; if no check was performed, pass `--learning-check not-run`. The first observation creates only a `trial` candidate; a second independent successful observation from a different change may promote it. Do not submit a task summary or test result to manufacture a record.
 
 The observation JSON `learning.result` reports `candidate-created`, `candidate-promoted`, `deduplicated`, `ignored`, or `skipped`. `status.learning.lastCheck: not-run` means the host did not submit this task's learning check; it does not mean that no reusable information exists.

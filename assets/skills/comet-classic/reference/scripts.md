@@ -131,6 +131,14 @@ If `<active_policies>` includes `<verification command="...">`, add those comman
 
 Use `comet memory remember ... --scope global|project` when the user explicitly asks to retain a preference or project convention long-term. Use `comet memory observe --text "<preference>" --workflow <classic|native> --change <change-id> --candidate-key <change-id>-<behavior-slug>` only for stable collaboration habits reusable across tasks without an explicit request (all three options are required; build `--candidate-key` from the change ID plus a short behavior slug). Neither may store task summaries, progress, command output, or test results.
 
+Project Memory and Personal Memory are separate. Before every task ends, write project-validated and reusable experience to Project Memory:
+
+```text
+comet knowledge remember <project-root> --title "<concise title>" --text "<symptom, approach, verification>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --json
+```
+
+The same title updates the existing entry instead of creating a duplicate. Skip the write when nothing is reusable. The project memory index is injected with task context; expand an entry with the same task arguments plus `--expand-context "project-memory:<slug>"`. Never save task summaries, one-off command output, or unverified guesses in Project Memory.
+
 Before every task ends, complete one learning check. If there is a user correction, preference, or collaboration habit with a clear reuse condition, call `comet memory observe` and pass `--learning-check submitted` to the completion command. If you checked and found no qualifying observation, pass `--learning-check no-observation`; if no check was performed, pass `--learning-check not-run`. The first observation creates only a `trial` candidate, while a second independent successful observation from another change may promote it. Use the observation JSON `learning.result` and `status.learning.lastCheck` to diagnose the result.
 
 After actually using an item and learning its result, take `applications[].applicationId` from JSON (or `application_id` from Hook text) and run `comet task <project-root> --task "<original user request>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`. Report outcomes truthfully; never mark unused items as successfully used. At task end, still run `comet task` with `--complete --workflow <workflow> --change <change-id> --learning-check submitted|no-observation|not-run` to record the checkpoint.
