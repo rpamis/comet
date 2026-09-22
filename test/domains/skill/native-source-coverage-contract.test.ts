@@ -9,6 +9,10 @@ async function readNativeAsset(root: string, relativePath: string): Promise<stri
   return fs.readFile(path.join(root, relativePath), 'utf8');
 }
 
+async function readAsset(relativePath: string): Promise<string> {
+  return fs.readFile(path.resolve('assets', relativePath), 'utf8');
+}
+
 async function readChineseSourceCoverage(): Promise<string> {
   const skill = await readNativeAsset(nativeZhRoot, 'SKILL.md');
   const clarification = await readNativeAsset(nativeZhRoot, 'reference/clarification.md');
@@ -122,6 +126,34 @@ describe('Native 中文源文档完整覆盖契约', () => {
     const superseded = rows.find((row) => row[5] === 'superseded');
     expect(superseded?.slice(3, 5)).toEqual(['—', '—']);
     expect(superseded?.[6]).toContain('替代');
+  });
+});
+
+describe('Native 中文记忆接入契约', () => {
+  it('明确区分项目记忆写入和个人记忆学习检查', async () => {
+    const skill = await readNativeAsset(nativeZhRoot, 'SKILL.md');
+    const commands = await readNativeAsset(nativeZhRoot, 'reference/commands.md');
+
+    expect(skill).toContain('项目记忆');
+    expect(skill).toContain('comet knowledge remember');
+    expect(skill).toContain('个人记忆');
+    expect(commands).toContain('## 项目记忆');
+    expect(commands).toContain('comet knowledge remember <project-root>');
+    expect(commands).toContain('同一标题默认更新');
+    expect(commands).toContain('项目记忆索引会随任务上下文注入');
+    expect(commands).toContain('任务摘要、一次性命令输出和未验证的猜测不得写入项目记忆');
+    expect(commands).toContain('--learning-check submitted|no-observation|not-run');
+  });
+});
+
+describe('Classic 中文记忆接入契约', () => {
+  it('在主入口和命令参考中说明项目经验写入', async () => {
+    const skill = await readAsset('skills-zh/comet-classic/SKILL.md');
+    const scripts = await readAsset('skills-zh/comet-classic/reference/scripts.md');
+
+    expect(skill).toContain('项目经验与个人偏好分开保存');
+    expect(skill).toContain('comet knowledge remember');
+    expect(scripts).toContain('comet knowledge remember <project-root>');
   });
 });
 

@@ -6,6 +6,7 @@ import {
   copyCometSkillsForPlatform,
   getCentralSkillsDir,
   prepareManagedSkillCopyTarget,
+  removeRetiredCometOwnedSkillPaths,
 } from '../../../domains/skill/platform-install.js';
 import { fileExists } from '../../../platform/fs/file-system.js';
 import { PLATFORMS, type Platform } from '../../../platform/install/platforms.js';
@@ -421,5 +422,31 @@ describe('symlink install mode', () => {
       const stat = await lstat(platformSkillsDir);
       expect(stat.isSymbolicLink()).toBe(false);
     });
+  });
+
+  it('cleans retired bundles through a managed platform junction during copy updates', async () => {
+    const centralRoot = path.join(tmpDir, '.comet', 'skills', 'skills');
+    const platformRoot = path.join(tmpDir, '.zcode', 'skills');
+    const centralNativeRoot = path.join(centralRoot, 'comet-native');
+    await mkdir(path.join(centralNativeRoot, 'scripts'), { recursive: true });
+    await mkdir(platformRoot, { recursive: true });
+    for (const relativePath of RETIRED_NATIVE_BUNDLES) {
+      await writeFile(path.join(centralRoot, ...relativePath.split('/')), 'legacy bundle\n');
+    }
+    await symlink(
+      centralNativeRoot,
+      path.join(platformRoot, 'comet-native'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    await expect(removeRetiredCometOwnedSkillPaths([platformRoot, centralRoot])).resolves.toEqual({
+      removed: RETIRED_NATIVE_BUNDLES.length,
+      failed: 0,
+    });
+    for (const relativePath of RETIRED_NATIVE_BUNDLES) {
+      await expect(lstat(path.join(centralRoot, ...relativePath.split('/')))).rejects.toMatchObject(
+        { code: 'ENOENT' },
+      );
+    }
   });
 });

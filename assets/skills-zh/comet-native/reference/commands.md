@@ -22,6 +22,16 @@ comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --sess
 - 用户没有提出长期记忆要求，但协作方式已经稳定、可供以后任务复用时，才调用 `comet memory observe <project-root> --text "<协作方式>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`。
 - 两者都不得保存任务摘要、实现进展、命令输出或测试结果。
 
+### 项目记忆
+
+项目记忆与个人记忆独立保存。当前项目中已经验证、未来任务仍可复用的事实、决策、模式、步骤、约束或失败处理，任务结束前写入项目记忆：
+
+```text
+comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --json
+```
+
+同一标题默认更新已有条目，不重复创建；没有可复用经验时跳过。任务摘要、一次性命令输出和未验证的猜测不得写入项目记忆。项目记忆索引会随任务上下文注入，需要完整内容时，用同一任务参数追加 `--expand-context "project-memory:<slug>"` 展开。
+
 每次任务结束前必须完成一次学习检查：如果本次出现了有明确后续复用条件的用户纠正、偏好或协作习惯，先调用 `comet memory observe`，再用 `comet task ... --complete --learning-check submitted`；确认没有合格观察时用 `--learning-check no-observation`。没有执行检查时显式使用 `--learning-check not-run`。首次观察只会形成 `trial` 候选，来自不同 change 的第二次独立成功观察才可能晋级；不要为了产生记录而提交任务摘要或测试结果。
 
 观察命令的 JSON `learning.result` 是本次处理结果：`candidate-created` 表示已记录候选，`candidate-promoted` 表示已晋级，`deduplicated` 表示同一 change 重试，`ignored` 或 `skipped` 表示被策略、暂停或安全筛选跳过。若 `status.learning.lastCheck` 显示 `not-run`，说明当前入口没有提交本次学习检查，不能推断为“没有值得学习的内容”。

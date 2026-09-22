@@ -1,6 +1,6 @@
 import path from 'path';
 import { existsSync } from 'fs';
-import { readFile, writeFile, lstat, unlink, symlink, rm, readdir } from 'fs/promises';
+import { readFile, writeFile, lstat, unlink, symlink, rm, readdir, realpath } from 'fs/promises';
 import { fileURLToPath } from 'url';
 
 import { fileExists, readJson, copyFile, ensureDir } from '../../platform/fs/file-system.js';
@@ -583,8 +583,35 @@ async function removeRetiredCometOwnedSkillPaths(
         }
         if (parentMissing) continue;
         if (unsafeParent) {
-          failed++;
-          continue;
+          // A copy-mode update can target a platform directory whose managed
+          // Skill entries are still junctions from an older symlink install.
+          // Resolve only when the junction points into one of the known Comet
+          // storage roots; never follow an unrelated user symlink.
+          try {
+            const resolvedParent = await realpath(current);
+            const resolvedRoots = await Promise.all(
+              [...new Set(skillsRoots.map((root) => path.resolve(root)))].map(async (root) => {
+                try {
+                  return await realpath(root);
+                } catch {
+                  return null;
+                }
+              }),
+            );
+            const isManagedTarget = resolvedRoots.some((root) => {
+              if (root === null) return false;
+              const relative = path.relative(root, resolvedParent);
+              return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+            });
+            if (!isManagedTarget) {
+              failed++;
+              continue;
+            }
+            current = resolvedParent;
+          } catch {
+            failed++;
+            continue;
+          }
         }
 
         const target = path.join(skillsRoot, ...parts);
