@@ -16,7 +16,10 @@ import {
   type ProjectPolicyActivation,
   type ProjectPolicyKind,
 } from '../agent-learning/index.js';
-import { discoverProjectKnowledgeCorpus } from './corpus.js';
+import {
+  discoverProjectKnowledgeCorpus,
+  discoverProjectKnowledgeCorpusSnapshot,
+} from './corpus.js';
 import { createProjectKnowledgeDashboardSnapshot } from './dashboard.js';
 import { LocalProjectKnowledgeProvider } from './local-provider.js';
 import { createProjectKnowledgeQuery } from './query.js';
@@ -232,11 +235,11 @@ async function createProjectKnowledgeModule(
     const key = options.knowledgeConfig.provider;
     const corpus =
       key === 'local' && providerOptions.discoverCorpus !== false
-        ? await discoverProjectKnowledgeCorpus({
+        ? await discoverProjectKnowledgeCorpusSnapshot({
             projectRoot: options.projectRoot,
             reportDiagnostic,
           })
-        : [];
+        : { documents: [], complete: true };
     return key === 'remote'
       ? new RemoteProjectKnowledgeProvider({
           config: options.knowledgeConfig.remote!,
@@ -245,7 +248,8 @@ async function createProjectKnowledgeModule(
         })
       : new LocalProjectKnowledgeProvider({
           projectRoot: options.projectRoot,
-          corpus,
+          corpus: corpus.documents,
+          corpusComplete: corpus.complete,
           ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
           reportDiagnostic,
         });

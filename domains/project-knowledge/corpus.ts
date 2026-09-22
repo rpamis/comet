@@ -28,6 +28,12 @@ const SUPERPOWER_ROOTS = new Set([
 interface DiscoveryBudget {
   readonly deadline: number;
   timedOut: boolean;
+  complete: boolean;
+}
+
+export interface ProjectKnowledgeCorpusSnapshot {
+  readonly documents: readonly ProjectKnowledgeDocument[];
+  readonly complete: boolean;
 }
 
 type MarkdownMatcher = (source: string) => boolean;
@@ -35,6 +41,7 @@ type MarkdownMatcher = (source: string) => boolean;
 function budgetExpired(budget: DiscoveryBudget): boolean {
   if (Date.now() <= budget.deadline) return false;
   budget.timedOut = true;
+  budget.complete = false;
   return true;
 }
 
@@ -76,6 +83,7 @@ async function safeDirectory(
     return isInside(realProjectRoot, realRoot);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (budget) budget.complete = false;
       report(
         reporter,
         'corpus-root',
@@ -103,6 +111,7 @@ async function walkMarkdown(
     try {
       entries = await fs.readdir(directory, { withFileTypes: true });
     } catch {
+      if (budget) budget.complete = false;
       report(
         reporter,
         'corpus-read',
@@ -252,6 +261,7 @@ async function discoverSuperpowers(
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        if (budget) budget.complete = false;
         report(
           reporter,
           'superpowers-state',
@@ -268,8 +278,10 @@ async function discoverSuperpowers(
       if (!(await protectedProjectFileExists(projectRoot, relative, { label: relative }))) continue;
       documents.push({ absolutePath, source: relative, kind: 'superpowers' });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        if (budget) budget.complete = false;
         report(reporter, 'superpowers-file', `未进入检索：无法读取归档引用的文档 ${relative}。`);
+      }
     }
   }
   return documents;
@@ -289,6 +301,7 @@ async function walkDirectories(
     try {
       entries = await fs.readdir(directory, { withFileTypes: true });
     } catch {
+      if (budget) budget.complete = false;
       return;
     }
     for (const entry of entries) {
@@ -309,13 +322,14 @@ async function walkDirectories(
   return result.sort();
 }
 
-export async function discoverProjectKnowledgeCorpus(
+export async function discoverProjectKnowledgeCorpusSnapshot(
   options: ProjectKnowledgeCorpusOptions,
-): Promise<readonly ProjectKnowledgeDocument[]> {
+): Promise<ProjectKnowledgeCorpusSnapshot> {
   const projectRoot = path.resolve(options.projectRoot);
   const budget: DiscoveryBudget = {
     deadline: Date.now() + MAX_CORPUS_DISCOVERY_MS,
     timedOut: false,
+    complete: true,
   };
   let config: WorkflowProjectConfig | null;
   try {
@@ -326,9 +340,10 @@ export async function discoverProjectKnowledgeCorpus(
       'config',
       `Project knowledge configuration is invalid: ${(error as Error).message}`,
     );
-    return [];
+    return { documents: [], complete: false };
   }
-  if (!config || budgetExpired(budget)) return [];
+  if (!config) return { documents: [], complete: true };
+  if (budgetExpired(budget)) return { documents: [], complete: false };
   const localLimits = {
     maxFileMb:
       config.knowledge?.local?.max_file_mb ?? DEFAULT_WORKFLOW_KNOWLEDGE_LOCAL_CONFIG.max_file_mb,
@@ -410,6 +425,7 @@ export async function discoverProjectKnowledgeCorpus(
   )) {
     if (budgetExpired(budget)) break;
     if (bounded.length >= MAX_CORPUS_FILES) {
+      budget.complete = false;
       report(
         options.reportDiagnostic,
         'corpus-limit',
@@ -438,6 +454,7 @@ export async function discoverProjectKnowledgeCorpus(
       totalBytes += size;
       bounded.push(document);
     } catch {
+      budget.complete = false;
       report(
         options.reportDiagnostic,
         'corpus-read',
@@ -452,7 +469,13 @@ export async function discoverProjectKnowledgeCorpus(
       '未进入检索：语料发现超过时间预算，尚未发现的文件当前不会参与召回。',
     );
   }
-  return bounded;
+  return { documents: bounded, complete: budget.complete };
+}
+
+export async function discoverProjectKnowledgeCorpus(
+  options: ProjectKnowledgeCorpusOptions,
+): Promise<readonly ProjectKnowledgeDocument[]> {
+  return (await discoverProjectKnowledgeCorpusSnapshot(options)).documents;
 }
 
 export function knowledgeDocumentKindRank(kind: ProjectKnowledgeDocument['kind']): number {

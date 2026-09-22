@@ -275,6 +275,7 @@ export interface ProjectKnowledgeCorpusOptions {
 
 export interface ProjectKnowledgeProviderOptions extends ProjectKnowledgeCorpusOptions {
   readonly corpus: readonly ProjectKnowledgeDocument[];
+  readonly corpusComplete?: boolean;
 }
 
 export interface ProjectKnowledgePluginOptions {

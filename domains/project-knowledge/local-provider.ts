@@ -201,7 +201,9 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     const store = this.recordStore();
     if (!store) return null;
     try {
-      await store.syncCorpus(this.options.corpus);
+      await store.syncCorpus(this.options.corpus, {
+        complete: this.options.corpusComplete !== false,
+      });
       return await store.indexStatus();
     } catch {
       this.reportDiagnostic?.({
@@ -324,7 +326,9 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     let indexSynced = false;
     if (this.options.indexEnabled !== false && store) {
       try {
-        const sync = await store.syncCorpus(this.options.corpus);
+        const sync = await store.syncCorpus(this.options.corpus, {
+          complete: this.options.corpusComplete !== false,
+        });
         refreshedSources = [...sync.refreshedSources, ...sync.changedSources];
         sections = await this.readCurrentSections(store.searchSections(request.query), diagnostics);
         indexSynced = true;
@@ -447,7 +451,13 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     }
     if (mutation.kind === 'refresh' && !mutation.id) {
       try {
-        await store.rebuildWorkspace(this.options.corpus);
+        if (mutation.projectId === undefined && this.options.corpusComplete !== false) {
+          await store.rebuildWorkspace(this.options.corpus);
+        } else {
+          await store.syncCorpus(this.options.corpus, {
+            complete: this.options.corpusComplete !== false,
+          });
+        }
       } catch {
         this.reportDiagnostic?.({
           code: 'index-rebuild',

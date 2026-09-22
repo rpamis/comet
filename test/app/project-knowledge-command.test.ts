@@ -19,6 +19,7 @@ import {
 } from '../../app/commands/project-knowledge.js';
 import {
   LocalProjectKnowledgeProvider,
+  ProjectKnowledgeIndexStore,
   type ProjectKnowledgeRecord,
 } from '../../domains/project-knowledge/index.js';
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
@@ -159,6 +160,22 @@ describe('comet knowledge commands', () => {
           ]),
         },
       });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('rebuilds the local index without a preliminary incremental sync', async () => {
+    const { root, cacheRoot } = await projectFixture();
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const sync = vi.spyOn(ProjectKnowledgeIndexStore.prototype, 'syncCorpus');
+    const rebuild = vi.spyOn(ProjectKnowledgeIndexStore.prototype, 'rebuild');
+    try {
+      await projectKnowledgeRebuildCommand(root, { json: true, cacheRoot });
+
+      expect(rebuild).toHaveBeenCalledTimes(1);
+      expect(sync).not.toHaveBeenCalled();
     } finally {
       await fs.rm(root, { recursive: true, force: true });
       await fs.rm(cacheRoot, { recursive: true, force: true });

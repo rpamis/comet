@@ -194,6 +194,488 @@ describe('project knowledge section index', () => {
     }
   });
 
+  test('repairs orphan FTS rowids before indexing a new source', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const firstSource = 'docs/comet/specs/first.md';
+    const secondSource = 'docs/comet/specs/second.md';
+    const firstFile = path.join(root, ...firstSource.split('/'));
+    const secondFile = path.join(root, ...secondSource.split('/'));
+    await fs.mkdir(path.dirname(firstFile), { recursive: true });
+    await fs.writeFile(firstFile, '# First\n\nStable indexed source.\n');
+    await fs.writeFile(secondFile, '# Second\n\nNew source after projection damage.\n');
+    const documents = [
+      { absolutePath: firstFile, source: firstSource, kind: 'native-spec' as const },
+      { absolutePath: secondFile, source: secondSource, kind: 'native-spec' as const },
+    ];
+    const initial = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    let repaired: ProjectKnowledgeIndexStore | undefined;
+    try {
+      await initial.syncCorpus([documents[0]]);
+      initial.close();
+
+      const damaged = new DatabaseSync(initial.databasePath);
+      damaged
+        .prepare(
+          'INSERT INTO pk_fts_terms(rowid, workspace_id, source, title, heading_path, body, lexical_terms) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(2, initial.workspaceId, 'orphan.md', 'Orphan', 'Orphan', 'orphan', 'orphan');
+      damaged
+        .prepare(
+          'INSERT INTO pk_fts_trigram(rowid, workspace_id, source, title, heading_path, body) VALUES (?, ?, ?, ?, ?, ?)',
+        )
+        .run(2, initial.workspaceId, 'orphan.md', 'Orphan', 'Orphan', 'orphan');
+      damaged.close();
+
+      repaired = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+      const result = await repaired.syncCorpus(documents);
+
+      expect(result.status).toMatchObject({ sourceCount: 2, sectionCount: 2 });
+      repaired.close();
+      const verified = new DatabaseSync(initial.databasePath, { readOnly: true });
+      const orphanTerms = verified
+        .prepare(
+          'SELECT COUNT(*) AS count FROM pk_fts_terms WHERE rowid NOT IN (SELECT id FROM pk_sections)',
+        )
+        .get() as { count: number };
+      const orphanTrigrams = verified
+        .prepare(
+          'SELECT COUNT(*) AS count FROM pk_fts_trigram WHERE rowid NOT IN (SELECT id FROM pk_sections)',
+        )
+        .get() as { count: number };
+      verified.close();
+      expect(orphanTerms.count).toBe(0);
+      expect(orphanTrigrams.count).toBe(0);
+    } finally {
+      repaired?.close();
+      initial.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('restores missing FTS rows when reopening an unchanged index', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/missing-fts.md';
+    const file = path.join(root, ...source.split('/'));
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Missing FTS\n\nRecoverable indexed content.\n');
+    const document = { absolutePath: file, source, kind: 'native-spec' as const };
+    const first = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    let reopened: ProjectKnowledgeIndexStore | undefined;
+    try {
+      await first.syncCorpus([document]);
+      first.close();
+      const damaged = new DatabaseSync(first.databasePath);
+      damaged.prepare('DELETE FROM pk_fts_terms WHERE rowid = 1').run();
+      damaged.prepare('DELETE FROM pk_fts_trigram WHERE rowid = 1').run();
+      damaged.close();
+
+      reopened = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+      await reopened.syncCorpus([document]);
+      const query = createProjectKnowledgeQuery({ task: 'Recoverable indexed content' });
+
+      expect(reopened.search(query)[0]).toMatchObject({ source, title: 'Missing FTS' });
+    } finally {
+      reopened?.close();
+      first.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('replaces a colliding orphan FTS row without deleting the indexed source', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/collision.md';
+    const file = path.join(root, ...source.split('/'));
+    const diagnostics: string[] = [];
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Collision\n\nStable section.\n');
+    const document = { absolutePath: file, source, kind: 'native-spec' as const };
+    const store = new ProjectKnowledgeIndexStore({
+      projectRoot: root,
+      cacheRoot,
+      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+    });
+    try {
+      await store.syncCorpus([document]);
+      const damaged = new DatabaseSync(store.databasePath);
+      damaged
+        .prepare(
+          'INSERT INTO pk_fts_terms(rowid, workspace_id, source, title, heading_path, body, lexical_terms) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(2, store.workspaceId, 'orphan.md', 'Orphan', 'Orphan', 'orphan', 'orphan');
+      damaged
+        .prepare(
+          'INSERT INTO pk_fts_trigram(rowid, workspace_id, source, title, heading_path, body) VALUES (?, ?, ?, ?, ?, ?)',
+        )
+        .run(2, store.workspaceId, 'orphan.md', 'Orphan', 'Orphan', 'orphan');
+      damaged.close();
+      await fs.writeFile(file, '# Collision\n\nStable section.\n\n## Added\n\nNew section.\n');
+
+      const result = await store.syncCorpus([document]);
+
+      expect(result.status).toMatchObject({ sourceCount: 1, sectionCount: 2 });
+      expect(diagnostics).not.toContain('index-source');
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the previous projection when an index write fails', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/write-failure.md';
+    const file = path.join(root, ...source.split('/'));
+    const diagnostics: string[] = [];
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Write failure\n\nPrevious indexed content.\n');
+    const document = { absolutePath: file, source, kind: 'native-spec' as const };
+    const store = new ProjectKnowledgeIndexStore({
+      projectRoot: root,
+      cacheRoot,
+      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+    });
+    try {
+      await store.syncCorpus([document]);
+      const damaged = new DatabaseSync(store.databasePath);
+      damaged.exec(
+        'DROP TABLE pk_fts_terms; CREATE TABLE pk_fts_terms (rowid INTEGER PRIMARY KEY);',
+      );
+      damaged.close();
+      await fs.writeFile(file, '# Write failure\n\nUpdated content cannot be projected.\n');
+
+      const result = await store.syncCorpus([document]);
+
+      expect(result.status).toMatchObject({ sourceCount: 1, sectionCount: 1 });
+      expect(diagnostics).toContain('index-write');
+      expect(diagnostics).not.toContain('index-source');
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the previous projection when the incremental budget expires during a read', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/budget.md';
+    const file = path.join(root, ...source.split('/'));
+    const diagnostics: string[] = [];
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Budget\n\nPrevious indexed content.\n');
+    const document = { absolutePath: file, source, kind: 'native-spec' as const };
+    const store = new ProjectKnowledgeIndexStore({
+      projectRoot: root,
+      cacheRoot,
+      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+    });
+    let now: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      await store.syncCorpus([document]);
+      await fs.writeFile(file, '# Budget\n\nUpdated content.\n');
+      const ticks = [0, 0, 3_000];
+      now = vi.spyOn(Date, 'now').mockImplementation(() => ticks.shift() ?? 3_000);
+
+      const result = await store.syncCorpus([document]);
+
+      expect(result.status).toMatchObject({ sourceCount: 1, sectionCount: 1 });
+      expect(diagnostics).toContain('index-budget');
+      expect(diagnostics).not.toContain('index-source');
+    } finally {
+      now?.mockRestore();
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the previous projection when a discovered source becomes unreadable', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/read-failure.md';
+    const file = path.join(root, ...source.split('/'));
+    const diagnostics: string[] = [];
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Read failure\n\nPrevious indexed content.\n');
+    const document = { absolutePath: file, source, kind: 'native-spec' as const };
+    const store = new ProjectKnowledgeIndexStore({
+      projectRoot: root,
+      cacheRoot,
+      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+    });
+    try {
+      await store.syncCorpus([document]);
+      await fs.rm(file);
+      await fs.mkdir(file);
+
+      const result = await store.syncCorpus([document]);
+
+      expect(result.status).toMatchObject({ sourceCount: 1, sectionCount: 1 });
+      expect(diagnostics).toContain('index-source');
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the previous projection when a discovered source disappears before indexing', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/disappeared.md';
+    const file = path.join(root, ...source.split('/'));
+    const diagnostics: string[] = [];
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Disappeared\n\nPrevious indexed content.\n');
+    const document = { absolutePath: file, source, kind: 'native-spec' as const };
+    const store = new ProjectKnowledgeIndexStore({
+      projectRoot: root,
+      cacheRoot,
+      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+    });
+    try {
+      await store.syncCorpus([document]);
+      await fs.rm(file);
+
+      const result = await store.syncCorpus([document]);
+
+      expect(result.status).toMatchObject({ sourceCount: 1, sectionCount: 1 });
+      expect(diagnostics).toContain('index-source');
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('does not delete indexed sources when corpus discovery is incomplete', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const sources = ['docs/comet/specs/first.md', 'docs/comet/specs/second.md'];
+    const documents = sources.map((source) => ({
+      absolutePath: path.join(root, ...source.split('/')),
+      source,
+      kind: 'native-spec' as const,
+    }));
+    await fs.mkdir(path.dirname(documents[0].absolutePath), { recursive: true });
+    await Promise.all(
+      documents.map((document, index) =>
+        fs.writeFile(document.absolutePath, `# Source ${index + 1}\n\nIndexed content.\n`),
+      ),
+    );
+    const store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    try {
+      await store.syncCorpus(documents);
+
+      const result = await store.syncCorpus([documents[0]], { complete: false });
+
+      expect(result.status).toMatchObject({ sourceCount: 2, sectionCount: 2 });
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('provider refresh preserves sources omitted by incomplete discovery', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const sources = ['docs/comet/specs/first.md', 'docs/comet/specs/second.md'];
+    const documents = sources.map((source) => ({
+      absolutePath: path.join(root, ...source.split('/')),
+      source,
+      kind: 'native-spec' as const,
+    }));
+    await fs.mkdir(path.dirname(documents[0].absolutePath), { recursive: true });
+    await Promise.all(
+      documents.map((document, index) =>
+        fs.writeFile(document.absolutePath, `# Source ${index + 1}\n\nIndexed content.\n`),
+      ),
+    );
+    const complete = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus: documents,
+    });
+    let incomplete: LocalProjectKnowledgeProvider | undefined;
+    try {
+      await complete.refreshIndex();
+      complete.close();
+      incomplete = new LocalProjectKnowledgeProvider({
+        projectRoot: root,
+        cacheRoot,
+        corpus: [documents[0]],
+        corpusComplete: false,
+      });
+
+      await incomplete.apply({ kind: 'refresh', projectId: 'incomplete-corpus' });
+
+      await expect(incomplete.indexStatus()).resolves.toMatchObject({ sourceCount: 2 });
+    } finally {
+      incomplete?.close();
+      complete.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the current index visible while a rebuild starts', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const sources = ['docs/comet/specs/first.md', 'docs/comet/specs/second.md'];
+    const documents = sources.map((source) => ({
+      absolutePath: path.join(root, ...source.split('/')),
+      source,
+      kind: 'native-spec' as const,
+    }));
+    await fs.mkdir(path.dirname(documents[0].absolutePath), { recursive: true });
+    await Promise.all(
+      documents.map((document, index) =>
+        fs.writeFile(document.absolutePath, `# Source ${index + 1}\n\nIndexed content.\n`),
+      ),
+    );
+    const replacement = {
+      absolutePath: path.join(root, 'docs/comet/specs/replacement.md'),
+      source: 'docs/comet/specs/replacement.md',
+      kind: 'native-spec' as const,
+    };
+    await fs.writeFile(replacement.absolutePath, '# Replacement\n\nNew indexed content.\n');
+    const writer = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    const reader = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    try {
+      await writer.syncCorpus(documents);
+      await reader.open();
+
+      const rebuilding = writer.rebuild([replacement]);
+      await Promise.resolve();
+      const visibleSourceCount = reader.status().sourceCount;
+      const rebuilt = await rebuilding;
+
+      expect(visibleSourceCount).toBe(2);
+      expect(rebuilt.sourceCount).toBe(1);
+    } finally {
+      reader.close();
+      writer.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('rebuild processes the complete corpus without the incremental time budget', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const sources = [
+      'docs/comet/specs/first.md',
+      'docs/comet/specs/second.md',
+      'docs/comet/specs/third.md',
+    ];
+    const documents = sources.map((source) => ({
+      absolutePath: path.join(root, ...source.split('/')),
+      source,
+      kind: 'native-spec' as const,
+    }));
+    await fs.mkdir(path.dirname(documents[0].absolutePath), { recursive: true });
+    await Promise.all(
+      documents.map((document, index) =>
+        fs.writeFile(document.absolutePath, `# Source ${index + 1}\n\nIndexed content.\n`),
+      ),
+    );
+    const store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    let clock = 0;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 1_000));
+    try {
+      const result = await store.rebuild(documents);
+
+      expect(result).toMatchObject({ sourceCount: 3, sectionCount: 3 });
+    } finally {
+      now.mockRestore();
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('rebuild replaces stale FTS content even when the source digest is unchanged', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/rebuild.md';
+    const file = path.join(root, ...source.split('/'));
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Rebuild\n\nAuthoritative source content.\n');
+    const document = { absolutePath: file, source, kind: 'native-spec' as const };
+    const store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    try {
+      await store.syncCorpus([document]);
+      const damaged = new DatabaseSync(store.databasePath);
+      damaged.prepare("UPDATE pk_fts_terms SET body = 'stale projection' WHERE rowid = 1").run();
+      damaged.prepare("UPDATE pk_fts_trigram SET body = 'stale projection' WHERE rowid = 1").run();
+      damaged.close();
+
+      await store.rebuild([document]);
+      store.close();
+
+      const verified = new DatabaseSync(store.databasePath, { readOnly: true });
+      const term = verified.prepare('SELECT body FROM pk_fts_terms WHERE rowid = 1').get() as {
+        body: string;
+      };
+      const trigram = verified.prepare('SELECT body FROM pk_fts_trigram WHERE rowid = 1').get() as {
+        body: string;
+      };
+      verified.close();
+      expect(term.body).toContain('Authoritative source content.');
+      expect(trigram.body).toContain('Authoritative source content.');
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('automatic refresh preserves unchanged index rows', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'docs/comet/specs/automatic-refresh.md';
+    const file = path.join(root, ...source.split('/'));
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, '# Automatic refresh\n\nStable content.\n');
+    const document = { absolutePath: file, source, kind: 'native-spec' as const };
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus: [document],
+    });
+    const location = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    try {
+      await provider.refreshIndex();
+      const before = new DatabaseSync(location.databasePath, { readOnly: true });
+      const initial = before
+        .prepare('SELECT indexed_at FROM pk_sources WHERE source = ?')
+        .get(source) as { indexed_at: string };
+      before.close();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      await provider.apply({ kind: 'refresh', projectId: 'automatic-refresh-project' });
+
+      const after = new DatabaseSync(location.databasePath, { readOnly: true });
+      const refreshed = after
+        .prepare('SELECT indexed_at FROM pk_sources WHERE source = ?')
+        .get(source) as { indexed_at: string };
+      after.close();
+      expect(refreshed.indexed_at).toBe(initial.indexed_at);
+    } finally {
+      provider.close();
+      location.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
   test('keeps source and section counts scoped to the current workspace inside a shared repository database', async () => {
     const root = await temporaryRoot();
     const worktree = `${root}-worktree`;

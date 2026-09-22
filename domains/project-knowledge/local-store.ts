@@ -23,6 +23,7 @@ import {
   ProjectKnowledgeIndexStore,
   type ProjectKnowledgeIndexStatus,
   type ProjectKnowledgeIndexSyncResult,
+  type ProjectKnowledgeIndexSyncOptions,
   type ProjectKnowledgeIndexOptions,
 } from './index-store.js';
 import type { ProjectKnowledgeDocument } from './types.js';
@@ -1048,8 +1049,9 @@ export class ProjectKnowledgeLocalStore {
 
   async syncCorpus(
     corpus: readonly ProjectKnowledgeDocument[],
+    options?: ProjectKnowledgeIndexSyncOptions,
   ): Promise<ProjectKnowledgeIndexSyncResult> {
-    return this.indexStore.syncCorpus(corpus);
+    return this.indexStore.syncCorpus(corpus, options);
   }
 
   async mutationApplied(idempotencyKey: string): Promise<boolean> {

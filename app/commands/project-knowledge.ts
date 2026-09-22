@@ -241,7 +241,6 @@ export async function projectKnowledgeRebuildCommand(
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
-    await readyProjectKnowledge(projectRoot, provider, diagnostics);
     const result = await provider.apply({ kind: 'refresh' });
     const output = { provider: providerName(provider), result, diagnostics };
     print(output, options);

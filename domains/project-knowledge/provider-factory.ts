@@ -1,4 +1,4 @@
-import { discoverProjectKnowledgeCorpus } from './corpus.js';
+import { discoverProjectKnowledgeCorpusSnapshot } from './corpus.js';
 import { LocalProjectKnowledgeProvider } from './local-provider.js';
 import { RemoteProjectKnowledgeProvider } from './remote-provider.js';
 import type { ProjectKnowledgeDiagnosticReporter, ProjectKnowledgeProvider } from './types.js';
@@ -23,12 +23,14 @@ export async function createProjectKnowledgeProvider(
       ...(options.reportDiagnostic ? { reportDiagnostic: options.reportDiagnostic } : {}),
     });
   }
+  const corpus = await discoverProjectKnowledgeCorpusSnapshot({
+    projectRoot: options.projectRoot,
+    ...(options.reportDiagnostic ? { reportDiagnostic: options.reportDiagnostic } : {}),
+  });
   return new LocalProjectKnowledgeProvider({
     projectRoot: options.projectRoot,
-    corpus: await discoverProjectKnowledgeCorpus({
-      projectRoot: options.projectRoot,
-      ...(options.reportDiagnostic ? { reportDiagnostic: options.reportDiagnostic } : {}),
-    }),
+    corpus: corpus.documents,
+    corpusComplete: corpus.complete,
     ...(options.cacheRoot ? { cacheRoot: options.cacheRoot } : {}),
     ...(options.reportDiagnostic ? { reportDiagnostic: options.reportDiagnostic } : {}),
   });
