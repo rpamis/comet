@@ -48,7 +48,7 @@ describe('Windows process broker', () => {
       Buffer.from(options.env.COMET_WINDOWS_PROCESS_PAYLOAD as string, 'base64').toString('utf8'),
     ) as { commandLine: string; cwd: string };
     expect(payload).toEqual({
-      commandLine: 'node.exe "" "workspace folder" "quote\\\"tail\\\\"',
+      commandLine: 'node.exe "" "workspace folder" "quote\\"tail\\\\"',
       cwd: 'C:\\workspace',
     });
     expect(on).toHaveBeenCalledWith('error', expect.any(Function));
