@@ -20,11 +20,11 @@ Native saves complete requirements, progress, and acceptance results in the proj
 
 1. If the name is known, run `comet native select <change-name> --json`. When an active change exists, enter the returned `workspace.projectRoot`; select returns the same discovery and state information as status, so a separate status call is not needed. Otherwise run `comet native status --json`. Let Runtime locate the workspace; ask the user only when multiple workspaces match equally well.
 2. If there is no matching active change, select isolation and create it using [workspace selection](reference/workspace.md#create-a-change), then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
-3. After entering the workspace and obtaining `phase`, retrieve context via [memory integration](reference/commands.md#memory-integration). Expand as needed, record use, then handle Project and Personal Memory separately and run `comet task --complete`.
+3. After entering the workspace and obtaining `phase`, retrieve context once using [memory integration](reference/commands.md#memory-integration). Expand details only when needed, record actual use outcomes, handle Project Memory and Personal Memory separately at task completion, and call `comet task --complete` as specified there.
 
-Never save task summaries, progress, command output, or test results as Personal Memory.
+Never save task summaries, progress, command output, or test results as Personal Memory; complete the learning check.
 
-Project experience and personal preferences are stored separately. Write experience to Project Memory with `comet knowledge remember`; keep Personal Memory for preferences.
+Project experience and personal preferences are stored separately: before task completion, write project-validated and reusable experience to Project Memory with `comet knowledge remember`; only user preferences and stable collaboration habits go to Personal Memory. See [memory integration](reference/commands.md#memory-integration) for the commands and completion conditions.
 
 ## Read only what the action needs
 
