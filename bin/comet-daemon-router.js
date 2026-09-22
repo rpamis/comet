@@ -165,8 +165,16 @@ function writeCommandResponse(response) {
   process.exitCode = response.exitCode ?? (response.ok ? 0 : 70);
 }
 
+export function shouldAutoStartCometDaemon(platform = process.platform, environment = process.env) {
+  if (environment.COMET_DAEMON === 'off') return false;
+  // Node cannot request CREATE_BREAKAWAY_FROM_JOB for a detached child. Keep
+  // Windows read-only commands in the caller so IDE Job Objects can exit.
+  if (platform === 'win32' && environment.COMET_DAEMON !== 'on') return false;
+  return true;
+}
+
 export async function tryRunCometDaemon(argv = process.argv.slice(2)) {
-  if (process.env.COMET_DAEMON === 'off' || process.env.COMET_DAEMON_SERVER === '1') return false;
+  if (!shouldAutoStartCometDaemon() || process.env.COMET_DAEMON_SERVER === '1') return false;
   const selected = route(argv);
   if (!selected) return false;
   const module = await daemonModule();
