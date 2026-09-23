@@ -150,6 +150,23 @@ describe('Supervisor check process recovery', () => {
     expect(recovered.operationId).toBe(completed.operationId);
   }, 60000);
 
+  it('reconciles a complete check receipt even when the former owner process is alive', async () => {
+    const { paths, marker, release, options } = await setup();
+    await fs.writeFile(release, 'done');
+    const completed = await executeNativeSupervisorChecks(options);
+    expect(completed.status).toBe('completed');
+    await withNativeMutationLock(paths, 'simulate lost completion status', async () => {
+      const state = await readNativeSupervisorState(paths, 'change');
+      state!.children[0].task!.checkExecution!.status = 'running';
+      await writeNativeSupervisorState(paths, state!);
+    });
+
+    const recovered = await executeNativeSupervisorChecks(options);
+    expect(recovered.status).toBe('completed');
+    expect(recovered.operationId).toBe(completed.operationId);
+    expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/u)).toHaveLength(1);
+  }, 60000);
+
   it('does not replay an unregistered process and provides a candidate-preserving recovery route', async () => {
     const { paths, release, options } = await setup();
     await fs.writeFile(release, 'done');

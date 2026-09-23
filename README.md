@@ -67,6 +67,7 @@ It allows you to use a toolchain to handle everything from requirements to archi
 - **A configuration-driven shared entry point** — `/comet` reads only the project's `.comet/config.yaml` and deterministically forwards to `/comet-native` or `/comet-classic`. It does not guess from task size or mix changes, state, or directories across workflows. `comet resume-probe` uses the same configuration to resume through the correct permanent entry point.
 - **Skill platform** — Comet can author reusable Skill packages and use `/comet-any` to organize them into distributable
   Bundles, so Skills you create can be distributed to coding platforms with one command, much like `comet init`.
+- **Composable Skill Runtime SDK** — `@rpamis/comet/runtime` orchestrates Skill/tool steps, approval, outcome validation, and interruption recovery as persistent workflows. The Agent platform keeps its own model, MCP, Hooks, Rules, and tool calls; it does not need to replace its native Agent loop. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md).
 - **Eval platform** — Comet assesses your skills using scientific Rubric, Pass@k, and Pass^k scoring, ensuring skill evolution is based on scientific evidence rather than intuition. It supports integration with LangSmith assessments, bringing evaluation to real-world enterprise production environments. Its dual-agent architecture automates the assessment process in your production environment.
 
 ## Supervisor Change: coordinated delivery across multiple agents

@@ -1,5 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { cancelRuntimeAction } from '../engine/runtime-action.js';
+import { activeNativeVerifierAction } from './native-verifier-action.js';
 import {
   currentGitBranch,
   inspectGitWorktree,
@@ -129,6 +131,23 @@ export async function writePortableMutation(options: {
   previous: NativePortableState;
   next: NativePortableState;
 }): Promise<NativePortableState> {
+  const action = options.next.verifier_action;
+  if (
+    action &&
+    ['pending', 'running', 'unknown'].includes(action.status) &&
+    !activeNativeVerifierAction(options.next)
+  ) {
+    options = {
+      ...options,
+      next: {
+        ...options.next,
+        verifier_action: cancelRuntimeAction(
+          action,
+          'The Native workflow left this Verifier attempt',
+        ),
+      },
+    };
+  }
   const written = await compareAndSwapNativePortableState({
     file: nativePortableStateFile(options.paths, options.previous.name),
     expectedStateVersion: options.previous.state_version,

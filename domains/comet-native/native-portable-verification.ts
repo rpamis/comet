@@ -1,4 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import {
+  activeNativeVerifierAction,
+  completeNativeVerifierAction,
+  createNativeVerifierAction,
+  currentNativeVerifierAction,
+  isDuplicateNativeVerifierResponse,
+  nativeVerifierActionExecutionRef,
+  startNativeVerifierAction,
+} from './native-verifier-action.js';
 import path from 'node:path';
 import {
   inspectNativeChildren,
@@ -73,8 +82,17 @@ export function assertCurrentVerifierAttempt(options: {
   state: NativePortableState;
   local: NativeLocalExecutionState | null;
   expected: NativeVerifierAttemptBinding;
-}): NativeLocalExecutionState {
+}): NativeLocalExecutionState | null {
   const { state, local, expected } = options;
+  const action = activeNativeVerifierAction(state);
+  if (
+    action &&
+    state.state_version === expected.stateVersion &&
+    state.loop.iteration === expected.iteration &&
+    state.loop.attempt === expected.attempt &&
+    nativeVerifierActionExecutionRef(action) === expected.verifierExecutionRef
+  )
+    return local;
   if (
     state.state_version !== expected.stateVersion ||
     state.phase !== 'verify' ||
@@ -119,6 +137,11 @@ export function assertCurrentVerifierEnvelope(options: {
     envelope.verifierExecutionRef === state.builder_handoff.builder_execution_ref
   ) {
     throw new Error('Native Verifier result is stale for the current candidate or identity');
+  }
+  const action = currentNativeVerifierAction(state, local);
+  const executionRef = nativeVerifierActionExecutionRef(action);
+  if (executionRef !== null && executionRef !== envelope.verifierExecutionRef) {
+    throw new Error('Native Verifier result is stale for the active execution');
   }
   if (
     local === null ||
@@ -220,9 +243,16 @@ export async function dispatchNativePortableVerifier(options: {
         supplied: options.checks,
       });
       const next = reserveNativeVerifierAttempt(state);
+      const operationId = randomUUID();
+      const registeredAt = new Date().toISOString();
+      next.verifier_action = createNativeVerifierAction({
+        state: next,
+        operationId,
+        executionRef: options.verifierExecutionId ?? null,
+        registeredAt,
+      });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       const file = nativeLocalExecutionFile(options.paths, state.name);
-      const operationId = randomUUID();
       await writeNativeLocalExecution(
         file,
         {
@@ -234,7 +264,7 @@ export async function dispatchNativePortableVerifier(options: {
             actor: 'verifier',
             executionId: options.verifierExecutionId ?? null,
             status: 'running',
-            startedAt: new Date().toISOString(),
+            startedAt: registeredAt,
             requestCheckRounds: 0,
           },
           checks: localBeforeDispatch.checks.map((check) => ({ ...check, operationId })),
@@ -273,33 +303,60 @@ export async function confirmNativePortableVerifierStart(options: {
       const file = nativeLocalExecutionFile(options.paths, options.name);
       const local = await readNativeLocalExecution(file);
       const execution = local?.execution;
+      const action = currentNativeVerifierAction(state, local);
       if (
-        local === null ||
-        local.change !== state.name ||
-        local.basedOnStateVersion !== state.state_version ||
-        !execution ||
-        execution.stage !== 'verifying' ||
-        execution.actor !== 'verifier' ||
-        execution.status !== 'running' ||
-        execution.executionId === null ||
-        execution.executionId !== options.verifierExecutionRef
+        !state.verifier_action &&
+        (local === null ||
+          local.change !== state.name ||
+          local.basedOnStateVersion !== state.state_version ||
+          !execution ||
+          execution.stage !== 'verifying' ||
+          execution.actor !== 'verifier' ||
+          execution.status !== 'running' ||
+          execution.executionId === null ||
+          execution.executionId !== options.verifierExecutionRef)
       ) {
         throw new Error('Native Verifier start confirmation is stale for the current attempt');
       }
       if (state.builder_handoff?.candidate_id !== options.candidateId) {
         throw new Error('Native Verifier start confirmation is stale for the current candidate');
       }
-      if (execution.verifierStartedAt === undefined) {
+      const started = startNativeVerifierAction(action, options.verifierExecutionRef);
+      const written =
+        state.verifier_action?.status === 'running' || state.verifier_action?.status === 'unknown'
+          ? state
+          : await writePortableMutation({
+              paths: options.paths,
+              previous: state,
+              next: { ...state, state_version: state.state_version + 1, verifier_action: started },
+            });
+      if (
+        local &&
+        execution &&
+        local.change === state.name &&
+        (local.candidateId === state.builder_handoff?.candidate_id ||
+          (local.candidateId === undefined && local.basedOnStateVersion === state.state_version)) &&
+        execution.operationId === action.id &&
+        execution.stage === 'verifying' &&
+        execution.actor === 'verifier' &&
+        (execution.verifierStartedAt === undefined ||
+          local.basedOnStateVersion !== written.state_version)
+      ) {
         await writeNativeLocalExecution(
           file,
           {
             ...local,
-            execution: { ...execution, verifierStartedAt: new Date().toISOString() },
+            basedOnStateVersion: written.state_version,
+            candidateId: state.builder_handoff!.candidate_id,
+            execution: {
+              ...execution,
+              verifierStartedAt: execution.verifierStartedAt ?? new Date().toISOString(),
+            },
           },
           { containedRoot: options.paths.runtimeDir },
         );
       }
-      return state;
+      return written;
     },
   );
 }
@@ -326,6 +383,28 @@ export async function submitNativePortableVerifierResult(options: {
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
       const projectRoot = options.projectRoot ?? options.paths.projectRoot;
+      if (
+        isNativeTrustedVerifierEnvelope(options.envelope) &&
+        isDuplicateNativeVerifierResponse({
+          state,
+          candidateId: options.envelope.candidateId,
+          executionRef: options.envelope.verifierExecutionRef,
+          response: options.envelope.payload,
+        })
+      ) {
+        if (options.envelope.identityProvider !== state.builder_handoff?.identity_provider) {
+          throw new Error('Native Verifier repeated response identity provider is stale');
+        }
+        return {
+          kind: 'final-result' as const,
+          result: {
+            state,
+            response: parseNativeVerifierResponse(options.envelope.payload),
+            checks: state.verification?.checks ?? [],
+            requestChecks: null,
+          },
+        };
+      }
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const local = await readCurrentLocalExecution({ paths: options.paths, state });
       const trustedEnvelope = assertCurrentVerifierEnvelope({
@@ -383,7 +462,7 @@ export async function submitNativePortableVerifierResult(options: {
           });
           return {
             kind: 'request-checks' as const,
-            state,
+            state: reservation.state,
             response: result.response,
             reservation,
           };
@@ -406,9 +485,10 @@ export async function submitNativePortableVerifierResult(options: {
         finalResult = result;
       } catch (error) {
         const summary = `Native Verifier response was invalid: ${(error as Error).message}`;
+        const current = await readNativePortableChange(options.paths, options.name);
         const failed = await persistVerifierExecutionError({
           paths: options.paths,
-          state,
+          state: current,
           summary,
         });
         throw new Error(
@@ -419,7 +499,14 @@ export async function submitNativePortableVerifierResult(options: {
       const written = await writePortableMutation({
         paths: options.paths,
         previous: state,
-        next: finalResult.state,
+        next: {
+          ...finalResult.state,
+          verifier_action: completeNativeVerifierAction({
+            action: currentNativeVerifierAction(state, local),
+            executionRef: trustedEnvelope.verifierExecutionRef,
+            response: trustedEnvelope.payload,
+          }).action,
+        },
       });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
@@ -540,6 +627,8 @@ export async function recordNativePortableVerifierUnavailable(options: {
         local,
         expected: options.expected,
       });
+      if (!activeLocal)
+        throw new Error('Native Verifier unavailable result requires retained Runtime checks');
       if (
         options.requireSkillCoordination &&
         state.builder_handoff?.identity_provider !== 'skill-coordinated'
@@ -557,6 +646,13 @@ export async function recordNativePortableVerifierUnavailable(options: {
         verifierExecutionRef: activeLocal.execution!.executionId!,
         summary: options.summary,
       });
+      const action = currentNativeVerifierAction(state, activeLocal);
+      next.verifier_action = completeNativeVerifierAction({
+        action,
+        executionRef: nativeVerifierActionExecutionRef(action)!,
+        response: { kind: 'verifier-unavailable', summary: options.summary },
+        status: 'failed',
+      }).action;
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),

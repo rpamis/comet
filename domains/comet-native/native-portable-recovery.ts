@@ -1,5 +1,11 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { cancelRuntimeAction, markRuntimeActionUnknown } from '../engine/runtime-action.js';
+import { writePortableMutation } from './native-portable-storage.js';
+import {
+  activeNativeVerifierAction,
+  nativeVerifierActionExecutionRef,
+} from './native-verifier-action.js';
 
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
 
@@ -182,6 +188,50 @@ export async function recoverNativePortableChange(options: {
 
       const file = nativeLocalExecutionFile(options.paths, options.name);
       const inspected = await inspectLocal(file);
+      let durableAction = activeNativeVerifierAction(state);
+      if (
+        durableAction &&
+        !(
+          inspected.local?.execution?.stage === 'checking' &&
+          inspected.local.execution.actor === 'runtime'
+        )
+      ) {
+        if (options.preserveRunningExecution) {
+          return {
+            state,
+            local: inspected.local,
+            action: 'resume-stable-boundary',
+            reason: 'available',
+            message: 'The persisted Verifier action remains bound to this input.',
+          };
+        }
+        if (durableAction.status === 'running' && inspected.reason !== 'available') {
+          state = await writePortableMutation({
+            paths: options.paths,
+            previous: state,
+            next: {
+              ...state,
+              state_version: state.state_version + 1,
+              verifier_action: markRuntimeActionUnknown(
+                durableAction,
+                'Local execution metadata is unavailable; the host must reconcile this dispatched task',
+              ),
+            },
+          });
+          durableAction = state.verifier_action!;
+        }
+        const executionRef = nativeVerifierActionExecutionRef(durableAction);
+        return {
+          state,
+          local: inspected.local,
+          action: 'await-user',
+          reason: 'execution-active',
+          message:
+            durableAction.status === 'pending' && !inspected.local?.execution?.requestCheckRounds
+              ? `Native Verifier execution ${executionRef ?? durableAction.id} is registered but never confirmed startup; if the task did not start, record an explicit Verifier failure before retrying it.`
+              : `Native Verifier execution ${executionRef ?? durableAction.id} remains owned by its host task; record an explicit Verifier failure before retrying it.`,
+        };
+      }
       let reason: NativePortableRecoveryResult['reason'] =
         inspected.reason === 'available' &&
         (inspected.local?.change !== state.name ||
@@ -265,6 +315,11 @@ export async function recoverNativePortableChange(options: {
           state,
           reason: `Check ${unsafeInterruptedCheck.id} was interrupted and is not declared repeatable; a new Builder candidate is required before retrying.`,
         });
+        if (next.verifier_action)
+          next.verifier_action = cancelRuntimeAction(
+            next.verifier_action,
+            'A non-repeatable Runtime check was interrupted',
+          );
         state = await compareAndSwapNativePortableState({
           file: nativePortableStateFile(options.paths, state.name),
           expectedStateVersion: state.state_version,
@@ -306,6 +361,11 @@ export async function recoverNativePortableChange(options: {
             : 'The previous Verifier execution was unavailable; dispatch a new attempt from the stable Verify boundary.',
           lostArchivePass,
         );
+        if (next.verifier_action)
+          next.verifier_action = cancelRuntimeAction(
+            next.verifier_action,
+            'The prior execution boundary cannot be resumed',
+          );
         state = await compareAndSwapNativePortableState({
           file: nativePortableStateFile(options.paths, state.name),
           expectedStateVersion: state.state_version,

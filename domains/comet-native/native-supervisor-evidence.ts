@@ -254,32 +254,15 @@ export async function executeNativeSupervisorChecks(options: {
         // An expired lease cannot prove a live owner stopped; never start overlapping checks.
         const expiresAt =
           Date.parse(previous.expiresAt ?? '') || Date.parse(previous.startedAt) + 30000;
-        if (alive) {
-          if (!(Date.now() < expiresAt))
-            throw new Error(
-              'Native Supervisor check lease expired while owner PID is alive; inspect the original execution before retrying',
-            );
-          if (previous.key !== key)
-            throw new Error(
-              'Native Supervisor check plan is already running with different inputs',
-            );
-          return { task: structuredClone(task), execute: false };
-        }
-        const active = previous.activeProcess;
-        if (active === undefined || active?.status === 'starting') {
+        if (alive && !(Date.now() < expiresAt))
           throw new Error(
-            `Native Supervisor check process registration is incomplete. Check logs in ${path.join(nativePreferredChangeRuntimeDir(options.paths, options.parent), 'logs', 'checks')} for operation ${previous.operationId}; stop any remaining check process in ${task.projectRoot}, then submit supervisor-cancel for child ${options.child} and runId ${task.runId}, and dispatch a new Verifier for the preserved candidate.`,
+            'Native Supervisor check lease expired while owner PID is alive; inspect the original execution before retrying',
           );
-        }
-        if (active && (await processInstanceMayBeAlive(active.pid, active.identity))) {
-          if (!(Date.now() < expiresAt)) {
-            throw new Error(
-              `Native Supervisor check ${active.checkId} is still running as PID ${active.pid} after its owner exited and lease expired; stop that original check process, then retry supervisor-checks for ${options.child}.`,
-            );
-          }
-          return { task: structuredClone(task), execute: false };
-        }
+        if (alive && previous.key !== key)
+          throw new Error('Native Supervisor check plan is already running with different inputs');
+        const active = previous.activeProcess;
         const completedStates =
+          active === null &&
           previous.checkStates?.length &&
           previous.checkStates.every(({ status }) => status === 'passed' || status === 'failed') &&
           previous.receiptRef;
@@ -295,8 +278,22 @@ export async function executeNativeSupervisorChecks(options: {
             await writeNativeSupervisorState(options.paths, state!);
             return { task: structuredClone(task), execute: false, key: previous.key };
           } catch {
-            previous.status = 'interrupted';
+            previous.status = 'running';
           }
+        }
+        if (alive) return { task: structuredClone(task), execute: false };
+        if (active === undefined || active?.status === 'starting') {
+          throw new Error(
+            `Native Supervisor check process registration is incomplete. Check logs in ${path.join(nativePreferredChangeRuntimeDir(options.paths, options.parent), 'logs', 'checks')} for operation ${previous.operationId}; stop any remaining check process in ${task.projectRoot}, then submit supervisor-cancel for child ${options.child} and runId ${task.runId}, and dispatch a new Verifier for the preserved candidate.`,
+          );
+        }
+        if (active && (await processInstanceMayBeAlive(active.pid, active.identity))) {
+          if (!(Date.now() < expiresAt)) {
+            throw new Error(
+              `Native Supervisor check ${active.checkId} is still running as PID ${active.pid} after its owner exited and lease expired; stop that original check process, then retry supervisor-checks for ${options.child}.`,
+            );
+          }
+          return { task: structuredClone(task), execute: false };
         }
         previous.status = 'interrupted';
         for (const check of previous.checkStates ?? []) {

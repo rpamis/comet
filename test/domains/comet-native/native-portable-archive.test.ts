@@ -846,11 +846,11 @@ children:
     const first = await archiveReady('serial-first');
     const secondDir = nativePortableChangeDir(paths, 'serial-second');
     await fs.cp(nativePortableChangeDir(paths, first.name), secondDir, { recursive: true });
-    await writeNativePortableState(
-      path.join(secondDir, 'comet-state.yaml'),
-      { ...first, name: 'serial-second' },
-      { containedRoot: paths.nativeRoot },
-    );
+    const secondState = { ...first, name: 'serial-second' };
+    delete secondState.verifier_action;
+    await writeNativePortableState(path.join(secondDir, 'comet-state.yaml'), secondState, {
+      containedRoot: paths.nativeRoot,
+    });
 
     await expect(inspectNativePortableArchive({ paths, name: first.name })).resolves.toMatchObject({
       ready: false,

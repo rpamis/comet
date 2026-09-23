@@ -22,6 +22,9 @@ const requiredPackageFiles = [
   'bin/comet.js',
   'bin/fast-runtime-router.js',
   'dist/app/cli/index.js',
+  'dist/domains/engine/runtime.js',
+  'dist/domains/engine/runtime.d.ts',
+  'dist/platform/install/platforms.js',
   'eval/schemas/comet.eval/v1alpha1.schema.json',
   'scripts/install/postinstall.js',
 ];
@@ -160,6 +163,105 @@ async function main() {
     if (version !== packageJson.version) {
       throw new Error(
         `Installed CLI version mismatch: expected ${packageJson.version}, got ${version}`,
+      );
+    }
+
+    const runtimeImport = `${packageName}/runtime`;
+    const runtimeRoot = path.join(projectDir, '.comet', 'runtime-sdk-store');
+    const runtimeRunId = 'package-e2e-sdk-run';
+    const sdkStart = run(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `
+          import { createFileRuntimeStore, createRuntime } from ${JSON.stringify(runtimeImport)};
+          await import(${JSON.stringify(`${packageName}/dist/platform/install/platforms.js`)});
+          const runtime = createRuntime({
+            store: createFileRuntimeStore({ rootDir: ${JSON.stringify(runtimeRoot)} }),
+            workflows: [{
+              id: 'package-sdk', version: '1', entry: 'collect',
+              steps: { collect: { type: 'invoke_skill', ref: 'research.collect' } },
+            }],
+          });
+          const run = await runtime.start({
+            runId: ${JSON.stringify(runtimeRunId)},
+            workflow: { id: 'package-sdk', version: '1' },
+            input: { topic: 'tarball consumer' },
+          });
+          if (run.status !== 'running' || run.actions[0]?.type !== 'invoke_skill') {
+            throw new Error('Runtime SDK did not persist its initial Skill action');
+          }
+          process.stdout.write(JSON.stringify({ runId: run.runId, revision: run.revision }));
+        `,
+      ],
+      { cwd: consumerDir, env: environment },
+    );
+    const sdkStarted = JSON.parse(sdkStart);
+    if (sdkStarted.runId !== runtimeRunId || sdkStarted.revision !== 1) {
+      throw new Error(`Installed JavaScript SDK returned an invalid Run: ${sdkStart}`);
+    }
+
+    const sdkTypeScript = path.join(consumerDir, 'runtime-consumer.ts');
+    await fs.writeFile(
+      sdkTypeScript,
+      `import { approval, tool, createMemoryRuntimeStore, createRuntime, defineWorkflow, skill, type RuntimeExecutor, type WorkflowRun } from ${JSON.stringify(runtimeImport)};\n` +
+        `const workflow = defineWorkflow({\n` +
+        `  id: 'typed', version: '1', entry: 'collect',\n` +
+        `  steps: { collect: skill({ ref: 'research.collect' }), approve: approval({ proposalFrom: 'collect' }), publish: tool({ ref: 'reports.write' }) },\n` +
+        `  transitions: [{ from: 'collect', to: 'approve' }, { from: 'approve', to: 'publish', on: 'approved' }],\n` +
+        `});\n` +
+        `const executor: RuntimeExecutor = { id: 'host', capabilities: [], supports: () => true, async execute() { return { status: 'succeeded', output: null }; } };\n` +
+        `const runtime = createRuntime({ store: createMemoryRuntimeStore<WorkflowRun>(), workflows: [workflow], executors: [executor] });\n` +
+        `const request: Parameters<typeof runtime.start>[0] = { runId: 'typed-run', workflow: { id: 'typed', version: '1' }, input: null };\n` +
+        `void runtime.start(request).then((run) => { const revision: number = run.revision; void revision; });\n`,
+    );
+    run(
+      process.execPath,
+      [
+        path.join(repositoryRoot, 'node_modules', 'typescript', 'bin', 'tsc'),
+        '--module',
+        'NodeNext',
+        '--moduleResolution',
+        'NodeNext',
+        '--target',
+        'ES2022',
+        '--strict',
+        '--skipLibCheck',
+        '--noEmit',
+        sdkTypeScript,
+      ],
+      { cwd: consumerDir, env: environment },
+    );
+
+    const runtimeInspectRequest = path.join(consumerDir, 'runtime-inspect.json');
+    await fs.writeFile(
+      runtimeInspectRequest,
+      JSON.stringify({ operation: 'inspect', requestId: 'inspect-from-cli', runId: runtimeRunId }),
+    );
+    const inspected = parseJsonPayload(
+      run(
+        process.execPath,
+        [
+          cli,
+          'runtime',
+          'dispatch',
+          '--request',
+          runtimeInspectRequest,
+          '--root-dir',
+          runtimeRoot,
+          '--json',
+        ],
+        { cwd: consumerDir, env: environment },
+      ),
+    );
+    if (
+      inspected.status !== 'succeeded' ||
+      inspected.data?.runId !== runtimeRunId ||
+      inspected.data?.actions?.[0]?.ref !== 'research.collect'
+    ) {
+      throw new Error(
+        `Packaged CLI could not reopen the JavaScript SDK Run: ${JSON.stringify(inspected)}`,
       );
     }
 

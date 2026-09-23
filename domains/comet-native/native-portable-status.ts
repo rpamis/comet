@@ -9,6 +9,7 @@ import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
 import { nativeVerifierExecutionRefForState } from './native-local-execution.js';
+import { activeNativeVerifierAction, nativeVerifierActionInput } from './native-verifier-action.js';
 import { nativePortableChangeDir, readNativePortableRuntime } from './native-portable-runtime.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
 import type { NativeLocalExecutionState, NativePortableState } from './native-portable-types.js';
@@ -205,6 +206,25 @@ function verifierStartupProjection(
   state: NativePortableState,
   local: NativeLocalExecutionState | null | undefined,
 ): NativePortableStatusProjection['localExecution']['verifierStartup'] {
+  const action = activeNativeVerifierAction(state);
+  if (action) {
+    const registeredAt = nativeVerifierActionInput(action).registeredAt;
+    const confirmed = action.status !== 'pending';
+    return {
+      attempt: action.attempt,
+      registeredAt,
+      confirmedAt: confirmed ? (local?.execution?.verifierStartedAt ?? null) : null,
+      confirmation: confirmed ? 'confirmed' : 'unconfirmed',
+      ...(confirmed
+        ? {}
+        : {
+            waitingMinutes: Math.max(
+              0,
+              Math.floor((Date.now() - Date.parse(registeredAt)) / 60_000),
+            ),
+          }),
+    };
+  }
   const execution = local?.execution;
   if (
     state.phase !== 'verify' ||

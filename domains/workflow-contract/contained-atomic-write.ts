@@ -15,6 +15,8 @@ export interface ContainedAtomicWriteOptions {
   afterTemporaryClose?: () => void | Promise<void>;
   beforeCommit?: () => void | Promise<void>;
   exclusive?: boolean;
+  /** Refuse copy-based exclusive publication on filesystems without hard links. */
+  requireAtomicPublication?: boolean;
 }
 
 export interface ContainedFileRemoveOptions {
@@ -261,7 +263,8 @@ async function atomicWriteContained(
       throw new Error('Contained atomic write temporary file changed before commit');
     }
     if (options.exclusive) {
-      await publishFileExclusively(temporary, file);
+      if (options.requireAtomicPublication) await linkWithRetry(temporary, file);
+      else await publishFileExclusively(temporary, file);
       await fs.unlink(temporary);
     } else {
       await renameWithRetry(temporary, file);

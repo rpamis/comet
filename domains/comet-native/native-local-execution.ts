@@ -4,6 +4,10 @@ import path from 'node:path';
 
 import { atomicWriteJson, type NativeAtomicWriteOptions } from './native-atomic-file.js';
 import {
+  activeNativeVerifierAction,
+  nativeVerifierActionExecutionRef,
+} from './native-verifier-action.js';
+import {
   NATIVE_LOCAL_EXECUTION_SCHEMA,
   type NativeLocalCheckState,
   type NativeLocalExecutionState,
@@ -396,6 +400,8 @@ export function nativeVerifierExecutionRefForState(
   state: NativePortableState,
   local: NativeLocalExecutionState | null,
 ): string | undefined {
+  const action = activeNativeVerifierAction(state);
+  if (action) return nativeVerifierActionExecutionRef(action) ?? undefined;
   const execution = local?.execution;
   if (
     state.phase !== 'verify' ||

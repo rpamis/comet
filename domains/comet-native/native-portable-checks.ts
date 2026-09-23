@@ -1,5 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
+import {
+  activeNativeVerifierAction,
+  completeNativeVerifierAction,
+  currentNativeVerifierAction,
+  nativeVerifierActionExecutionRef,
+  startNativeVerifierAction,
+} from './native-verifier-action.js';
 import type { Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -938,14 +945,20 @@ export async function readCurrentLocalExecution(options: {
     const local = await readNativeLocalExecution(
       nativeLocalExecutionFile(options.paths, options.state.name),
     );
+    const action = activeNativeVerifierAction(options.state);
+    const boundToAction =
+      action &&
+      local?.execution?.operationId === action.id &&
+      local?.candidateId === options.state.builder_handoff?.candidate_id;
     if (
       local === null ||
       local.change !== options.state.name ||
-      local.basedOnStateVersion !== options.state.state_version
+      (local.basedOnStateVersion !== options.state.state_version && !boundToAction) ||
+      (action && !boundToAction)
     ) {
       return null;
     }
-    return local;
+    return { ...local, basedOnStateVersion: options.state.state_version };
   } catch {
     return null;
   }
@@ -961,6 +974,15 @@ export async function persistVerifierExecutionError(options: {
     state: options.state,
     summary: options.summary,
   });
+  const action = currentNativeVerifierAction(options.state, local);
+  const executionRef = nativeVerifierActionExecutionRef(action);
+  if (executionRef)
+    next.verifier_action = completeNativeVerifierAction({
+      action,
+      executionRef,
+      response: { kind: 'execution-error', summary: options.summary },
+      status: 'failed',
+    }).action;
   const written = await writePortableMutation({
     paths: options.paths,
     previous: options.state,
@@ -1693,6 +1715,29 @@ export async function reserveVerifierRequestedChecks(options: {
   response: Extract<NativeVerifierResponse, { kind: 'request-checks' }>;
   suppliedChecks: readonly NativePortableCheckSummary[];
 }): Promise<NativeVerifierRequestedCheckReservation> {
+  const action = currentNativeVerifierAction(options.state, options.local);
+  const started = startNativeVerifierAction(action, options.envelope.verifierExecutionRef);
+  if (!options.state.verifier_action || action.status === 'pending') {
+    const written = await writePortableMutation({
+      paths: options.paths,
+      previous: options.state,
+      next: {
+        ...options.state,
+        state_version: options.state.state_version + 1,
+        verifier_action: started,
+      },
+    });
+    options = {
+      ...options,
+      state: written,
+      local: { ...options.local, basedOnStateVersion: written.state_version },
+    };
+    await writeNativeLocalExecution(
+      nativeLocalExecutionFile(options.paths, written.name),
+      options.local,
+      { containedRoot: options.paths.runtimeDir },
+    );
+  }
   const file = nativeLocalExecutionFile(options.paths, options.state.name);
   const local = options.local;
   if (

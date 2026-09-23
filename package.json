@@ -1,6 +1,6 @@
 {
   "name": "@rpamis/comet",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Agent Skill Harness For Turning Ideas Into Evaluated Workflows",
   "keywords": [
     "comet",
@@ -18,6 +18,13 @@
   "license": "MIT",
   "author": "benym",
   "type": "module",
+  "exports": {
+    "./runtime": {
+      "types": "./dist/domains/engine/runtime.d.ts",
+      "import": "./dist/domains/engine/runtime.js"
+    },
+    "./*": "./*"
+  },
   "publishConfig": {
     "access": "public"
   },

@@ -59,6 +59,12 @@ import {
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import { createNativeRunnerChannel, NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
+import {
+  activeNativeVerifierAction,
+  isDuplicateNativeVerifierResponse,
+  nativeVerifierActionExecutionRef,
+  nativeVerifierActionInput,
+} from './native-verifier-action.js';
 import type {
   NativeBuilderHandoff,
   NativeLocalExecutionState,
@@ -642,6 +648,25 @@ async function currentVerifierExecution(options: {
   const local = await readNativeLocalExecution(
     nativeLocalExecutionFile(options.paths, options.state.name),
   );
+  if (
+    local?.execution?.stage === 'checking' &&
+    local.execution.status === 'running' &&
+    local.basedOnStateVersion === options.state.state_version
+  ) {
+    throw new Error('Native Runner input must wait for the active Runtime checks');
+  }
+  const action = activeNativeVerifierAction(options.state);
+  const executionRef = action ? nativeVerifierActionExecutionRef(action) : null;
+  if (action && executionRef)
+    return {
+      operationId: action.id,
+      stage: 'verifying',
+      actor: 'verifier',
+      executionId: executionRef,
+      status: 'running',
+      startedAt: nativeVerifierActionInput(action).registeredAt,
+      requestCheckRounds: 0,
+    };
   const execution = local?.execution;
   if (
     local === null ||
@@ -668,6 +693,18 @@ export async function validateNativeRunnerInputBoundary(options: {
   input: NativeRunnerInput;
   projectRoot: string;
 }): Promise<void> {
+  if (
+    options.input.kind === 'verifier-response' &&
+    isDuplicateNativeVerifierResponse({
+      state: options.state,
+      candidateId: options.input.candidateId,
+      executionRef: options.input.verifierExecutionRef,
+      response: options.input.response,
+    })
+  ) {
+    assertSkillCoordinatedCandidate(options.state);
+    return;
+  }
   const overlay = await inspectNativeSupervisorOverlay({
     paths: options.paths,
     state: options.state,
@@ -1025,6 +1062,11 @@ async function currentSkillVerifierExecutionRef(options: {
   state: NativePortableState;
 }): Promise<string> {
   assertSkillCoordinatedCandidate(options.state);
+  const action = activeNativeVerifierAction(options.state);
+  if (action) {
+    const ref = nativeVerifierActionExecutionRef(action);
+    if (ref) return ref;
+  }
   const local = await readNativeLocalExecution(
     nativeLocalExecutionFile(options.paths, options.state.name),
   );
@@ -1051,6 +1093,24 @@ export async function applyNativeRunnerInput(options: {
 }) {
   const input = options.input;
   const portableBeforeInput = await readNativePortableChange(options.paths, options.name);
+  if (
+    input.kind === 'verifier-response' &&
+    isDuplicateNativeVerifierResponse({
+      state: portableBeforeInput,
+      candidateId: input.candidateId,
+      executionRef: input.verifierExecutionRef,
+      response: input.response,
+    })
+  ) {
+    assertSkillCoordinatedCandidate(portableBeforeInput);
+    return {
+      state: portableBeforeInput,
+      checks: portableBeforeInput.verification?.checks ?? [],
+      requestChecks: null,
+      verifierDispatch: null,
+      continuation: nativePortableContinuation(portableBeforeInput),
+    };
+  }
   const supervisorOverlay = await inspectNativeSupervisorOverlay({
     paths: options.paths,
     state: portableBeforeInput,

@@ -66,6 +66,7 @@
 - **长程任务稳定的核心**— Comet 的 Classic Spec 模式结合 OpenSpec 和 Superpowers，用状态机、阶段检查与脚本串联五阶段流程，适合需要明确方法和强约束的任务；永久入口是 `/comet-classic`。
 - **配置驱动的统一入口** — `/comet` 只读取项目的 `.comet/config.yaml`，确定性转发到 `/comet-native` 或 `/comet-classic`。它不按任务大小猜工作流，也不混用两边的 change、状态和目录。`comet resume-probe` 使用同一配置恢复正确的永久入口。
 - **Skill 平台** — Comet能够编写可复用 Skill 包，并通过 `/comet-any` 把它们整理成可分发 Bundle，你制作的Skill可以像如comet init一样一键分发到所有Coding平台。
+- **可复用的 Skill Runtime SDK** — `@rpamis/comet/runtime` 将 Skill/工具步骤、用户确认、结果验收和中断恢复编排成可持久化工作流；Agent 平台继续提供模型、MCP、Hooks、Rules 与工具调用，不必重写原生 Agent loop。详见 [Runtime SDK 指南](docs/architecture/runtime-sdk.zh.md)。
 - **Eval 平台**— Comet基于科学的Rubric、Pass@k、Pass^k评分评估你的Skill，让Skill演进是基于科学依据，而不是依靠感觉，支持接入LangSmith评估，让评估真实走进企业级生产环境。基于双Agent架构自动化在你的生产环境完成评估工作
 
 ## Supervisor Change：让多个 Agent 协同交付复杂目标

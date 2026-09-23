@@ -13,8 +13,10 @@ const PUBLIC_CLASSIC_COMMANDS = ['state', 'guard', 'handoff', 'archive', 'check'
 type PublicClassicCommand = (typeof PUBLIC_CLASSIC_COMMANDS)[number];
 
 const program = new Command();
+const runtimeCommandRequested =
+  process.argv.slice(process.argv[2] === '--' ? 3 : 2)[0] === 'runtime';
 // Subcommands inherit the exit handler when they are created.
-if (process.argv.includes('--json')) program.exitOverride();
+if (process.argv.includes('--json') || runtimeCommandRequested) program.exitOverride();
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
 
 program
@@ -605,6 +607,32 @@ program
     process.exitCode = await runNativeFacade(args);
   });
 
+const runtime = program
+  .command('runtime')
+  .description('Run portable Skill workflows through the Runtime SDK');
+
+runtime
+  .command('dispatch')
+  .description('Submit a JSON Runtime request and return its persisted Run as JSON')
+  .requiredOption('--request <file>', 'JSON request containing operation and command fields')
+  .option(
+    '--workflow <file>',
+    'JSON workflow definition; repeat to register multiple workflows',
+    collect,
+    [],
+  )
+  .requiredOption('--root-dir <dir>', 'Directory for persistent Runtime state')
+  .option('--project-root <dir>', 'Project context passed to this request', '.')
+  .option('--json', 'Output as JSON (default)')
+  .action(async (options) => {
+    const { runtimeDispatchCommand } = await import('../commands/runtime.js');
+    const result = await runtimeDispatchCommand(options);
+    console.log(JSON.stringify(result.response, null, 2));
+    process.exitCode = result.exitCode;
+  });
+
+if (runtimeCommandRequested) runtime.configureOutput({ writeErr: () => undefined });
+
 const skill = program
   .command('skill')
   .description('Install, inspect, and debug local Skill packages');
@@ -1043,6 +1071,16 @@ async function runCli(): Promise<void> {
     await program.parseAsync();
   } catch (error) {
     if (error instanceof Error && 'exitCode' in error && error.exitCode === 0) return;
+    if (runtimeCommandRequested) {
+      const { runtimeCommandFailure } = await import('../commands/runtime.js');
+      const { RuntimeProtocolError } = await import('../../domains/engine/runtime.js');
+      const result = runtimeCommandFailure(
+        new RuntimeProtocolError('INVALID_REQUEST', `Runtime 命令参数无效：${errorMessage(error)}`),
+      );
+      console.log(JSON.stringify(result.response, null, 2));
+      process.exitCode = result.exitCode;
+      return;
+    }
     const cancelled = error instanceof Error && error.name === 'ExitPromptError';
     const message = cancelled ? 'Command cancelled by user' : errorMessage(error);
     if (process.argv.includes('--json')) {

@@ -1,6 +1,11 @@
 import { promises as fs } from 'node:fs';
 
 import { parseDocument, stringify } from 'yaml';
+import { parseRuntimeAction } from '../engine/runtime-action.js';
+import {
+  nativeVerifierActionInput,
+  nativeVerifierActionMatchesState,
+} from './native-verifier-action.js';
 
 import { atomicWriteText, type NativeAtomicWriteOptions } from './native-atomic-file.js';
 import {
@@ -45,6 +50,7 @@ const ROOT_KEYS = new Set([
   'loop',
   'acceptance',
   'builder_handoff',
+  'verifier_action',
   'blockers',
   'verification',
   'history',
@@ -620,6 +626,20 @@ function parseHistoryOverflow(value: unknown): NativePortableHistoryOverflow {
 }
 
 function assertReferences(state: NativePortableState): void {
+  if (state.verifier_action) {
+    nativeVerifierActionInput(state.verifier_action);
+    if (state.verifier_action.runId !== state.name)
+      throw new Error('Native Verifier action belongs to another change');
+    if (
+      state.phase === 'verify' &&
+      state.status === 'active' &&
+      state.loop.next_action === 'await-verifier-result' &&
+      ['pending', 'running', 'unknown'].includes(state.verifier_action.status) &&
+      !nativeVerifierActionMatchesState(state, state.verifier_action)
+    ) {
+      throw new Error('Native Verifier action is stale for the current candidate or attempt');
+    }
+  }
   const acceptanceIds = new Set(state.acceptance.map((entry) => entry.id));
   for (const id of state.loop.previous_unresolved_ids) {
     if (!acceptanceIds.has(id))
@@ -832,6 +852,9 @@ export function parseNativePortableState(value: unknown): NativePortableState {
     acceptance,
     builder_handoff:
       root.builder_handoff === null ? null : parseBuilderHandoff(root.builder_handoff),
+    ...(root.verifier_action === undefined
+      ? {}
+      : { verifier_action: parseRuntimeAction(root.verifier_action) }),
     blockers: arrayValue(root.blockers, 'Native blockers', parseBlocker),
     verification: root.verification === null ? null : parseVerification(root.verification),
     history,

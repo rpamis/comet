@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.4] - 2026-09-23
+
+### Added
+
+- **Composable Runtime SDK**: Publish `@rpamis/comet/runtime` for host-owned Skill and tool workflows with persistent approvals, version-pinned DAG execution, explicit execution outcomes, pluggable stores/executors/validators, and process recovery. Add `comet runtime dispatch` for structured JSON hosts; the platform remains responsible for model and tool calls. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md).
+
+### Fixed
+
+- **Native Verifier interruption recovery**: Preserve the active verifier identity with the portable change so it can be recovered when local execution metadata is missing, while rejecting responses for a different candidate or attempt.
+
 ## What's Changed [0.4.3] - 2026-09-22
 
 ### Changed

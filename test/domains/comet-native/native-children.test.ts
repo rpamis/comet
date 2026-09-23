@@ -271,20 +271,20 @@ async function writeMergedChildProjection(options: {
 }): Promise<void> {
   const directory = path.join(options.paths.archiveDir, `2026-08-11-${options.name}`);
   await fs.mkdir(directory, { recursive: true });
-  await writeNativePortableState(
-    path.join(directory, 'comet-state.yaml'),
-    {
-      ...options.source,
-      name: options.name,
-      workspace: {
-        isolation: 'worktree',
-        change_branch: `comet/${options.name}`,
-        target_branch: options.parentBranch,
-        finish: 'merge',
-      },
+  const projection = {
+    ...options.source,
+    name: options.name,
+    workspace: {
+      isolation: 'worktree' as const,
+      change_branch: `comet/${options.name}`,
+      target_branch: options.parentBranch,
+      finish: 'merge' as const,
     },
-    { containedRoot: options.paths.nativeRoot },
-  );
+  };
+  delete projection.verifier_action;
+  await writeNativePortableState(path.join(directory, 'comet-state.yaml'), projection, {
+    containedRoot: options.paths.nativeRoot,
+  });
 }
 
 describe('Native parent and child changes', () => {

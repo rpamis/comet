@@ -30,6 +30,13 @@ import {
   NATIVE_SKILL_COORDINATION,
 } from '../../../domains/comet-native/native-runner-protocol.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import {
+  readNativePortableState,
+  writeNativePortableState,
+} from '../../../domains/comet-native/native-portable-state.js';
+import { nativePortableStateFile } from '../../../domains/comet-native/native-portable-storage.js';
+import { validateNativeRunnerInputBoundary } from '../../../domains/comet-native/native-runner-input.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 
 describe('Native Verifier startup receipts', () => {
   let root: string;
@@ -79,6 +86,12 @@ describe('Native Verifier startup receipts', () => {
   it('keeps a dispatched attempt unconfirmed until the Verifier reports startup', async () => {
     const dispatched = await dispatchVerifier('receipt-observable');
     const verifierExecutionRef = dispatched.verifierDispatch!.verifierExecutionRef;
+    expect(dispatched.state.verifier_action).toMatchObject({
+      type: 'handoff',
+      ref: 'native-verifier',
+      status: 'pending',
+      attempt: 1,
+    });
 
     const before = await inspectNativePortableStatus({ paths, name: 'receipt-observable' });
     expect(before.localExecution.verifierStartup).toMatchObject({
@@ -99,6 +112,10 @@ describe('Native Verifier startup receipts', () => {
       maxVerifyFailures: 5,
     });
     expect(confirmed.state.loop.next_action).toBe('await-verifier-result');
+    expect(confirmed.state.verifier_action).toMatchObject({
+      status: 'running',
+      claim: { token: verifierExecutionRef },
+    });
 
     const after = await inspectNativePortableStatus({ paths, name: 'receipt-observable' });
     expect(after.localExecution.verifierStartup).toMatchObject({
@@ -128,6 +145,215 @@ describe('Native Verifier startup receipts', () => {
     expect(afterRepeat.localExecution.verifierStartup!.confirmedAt).toBe(
       after.localExecution.verifierStartup!.confirmedAt,
     );
+  });
+
+  it('keeps the dispatched identity when the machine overlay is lost', async () => {
+    const dispatched = await dispatchVerifier('receipt-overlay-lost');
+    await fs.unlink(nativeLocalExecutionFile(paths, 'receipt-overlay-lost'));
+    const recovered = await recoverNativePortableChange({ paths, name: 'receipt-overlay-lost' });
+    expect(recovered).toMatchObject({ action: 'await-user', reason: 'execution-active' });
+    expect(recovered.state.verifier_action?.id).toBe(dispatched.state.verifier_action?.id);
+    const status = await inspectNativePortableStatus({ paths, name: 'receipt-overlay-lost' });
+    expect(status.continuation.action).toBe('await-verifier');
+    expect(JSON.stringify(status.continuation)).toContain(
+      dispatched.verifierDispatch!.verifierExecutionRef,
+    );
+    const state = recovered.state;
+    const failed = await applyNativeRunnerInput({
+      paths,
+      name: state.name,
+      maxVerifyFailures: 5,
+      input: {
+        kind: 'verifier-execution-error',
+        summary: 'The host confirmed that the task was lost.',
+        stateVersion: state.state_version,
+        iteration: state.loop.iteration,
+        attempt: state.loop.attempt,
+        verifierExecutionRef: dispatched.verifierDispatch!.verifierExecutionRef,
+      },
+    });
+    expect(failed.state.verifier_action?.status).toBe('failed');
+    expect(failed.state.loop.execution_failure_count).toBe(1);
+  });
+
+  it('migrates a legacy current attempt on mutation without changing read-only inspection', async () => {
+    const dispatched = await dispatchVerifier('receipt-legacy');
+    const { verifier_action: _action, ...legacy } = dispatched.state;
+    const file = nativePortableStateFile(paths, legacy.name);
+    await writeNativePortableState(file, legacy);
+    const before = await fs.readFile(file, 'utf8');
+    const input = {
+      kind: 'verifier-started' as const,
+      candidateId: legacy.builder_handoff!.candidate_id,
+      verifierExecutionRef: dispatched.verifierDispatch!.verifierExecutionRef,
+    };
+    await inspectNativePortableStatus({ paths, name: legacy.name });
+    await validateNativeRunnerInputBoundary({
+      paths,
+      name: legacy.name,
+      state: legacy,
+      input,
+      projectRoot: root,
+    });
+    expect(await fs.readFile(file, 'utf8')).toBe(before);
+    const started = await applyNativeRunnerInput({
+      paths,
+      name: legacy.name,
+      input,
+      maxVerifyFailures: 5,
+    });
+    expect(started.state.verifier_action).toMatchObject({
+      id: _action!.id,
+      status: 'running',
+      claim: { token: input.verifierExecutionRef },
+    });
+    expect((await readNativePortableState(file)).verifier_action).toEqual(
+      started.state.verifier_action,
+    );
+  });
+
+  it('keeps one active action while a Verifier requests Runtime checks', async () => {
+    const dispatched = await dispatchVerifier('receipt-request-checks');
+    const requested = await applyNativeRunnerInput({
+      paths,
+      name: dispatched.state.name,
+      maxVerifyFailures: 5,
+      input: {
+        kind: 'verifier-response',
+        candidateId: dispatched.state.builder_handoff!.candidate_id,
+        verifierExecutionRef: dispatched.verifierDispatch!.verifierExecutionRef,
+        response: {
+          kind: 'request-checks',
+          iteration: 1,
+          attempt: 1,
+          checks: [
+            {
+              id: 'probe',
+              name: 'Probe',
+              executable: process.execPath,
+              argv: ['-e', 'process.exit(0)'],
+              cwdRef: '.',
+              timeoutMs: 10000,
+              repeatable: true,
+            },
+          ],
+        },
+      },
+    });
+    expect(requested.state.verifier_action).toMatchObject({
+      id: dispatched.state.verifier_action!.id,
+      status: 'running',
+      receipts: [],
+    });
+    expect(requested.state.verifier_action?.outcome).toBeUndefined();
+    expect(requested.state.loop.next_action).toBe('await-verifier-result');
+    expect(requested.checks).toMatchObject([{ id: 'probe', status: 'passed' }]);
+  });
+
+  it('marks a started action unknown after losing its machine metadata without redispatching', async () => {
+    const dispatched = await dispatchVerifier('receipt-unknown');
+    const file = path.join(root, 'startup.json');
+    await fs.writeFile(
+      file,
+      JSON.stringify({
+        kind: 'verifier-started',
+        candidateId: dispatched.state.builder_handoff!.candidate_id,
+        verifierExecutionRef: dispatched.verifierDispatch!.verifierExecutionRef,
+      }),
+    );
+    const result = await runNativeCli([
+      'next',
+      dispatched.state.name,
+      '--runner-input',
+      file,
+      '--project-root',
+      root,
+      '--json',
+    ]);
+    expect(result.exitCode).toBe(0);
+    const state = await readNativePortableState(
+      nativePortableStateFile(paths, dispatched.state.name),
+    );
+    expect(state.verifier_action?.status).toBe('running');
+    await fs.unlink(nativeLocalExecutionFile(paths, state.name));
+    const recovered = await recoverNativePortableChange({ paths, name: state.name });
+    expect(recovered.state.verifier_action).toMatchObject({
+      id: state.verifier_action!.id,
+      status: 'unknown',
+    });
+    expect(recovered).toMatchObject({ action: 'await-user', reason: 'execution-active' });
+    const repeated = await recoverNativePortableChange({ paths, name: state.name });
+    expect(repeated.state.state_version).toBe(recovered.state.state_version);
+    expect(repeated.state.loop.attempt).toBe(1);
+  });
+
+  it('accepts the same final outcome once and rejects a conflicting repeated outcome', async () => {
+    const dispatched = await dispatchVerifier('receipt-terminal');
+    const input = {
+      kind: 'verifier-response' as const,
+      candidateId: dispatched.state.builder_handoff!.candidate_id,
+      verifierExecutionRef: dispatched.verifierDispatch!.verifierExecutionRef,
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: 1,
+          attempt: 1,
+          verdict: 'pass',
+          acceptance: dispatched.state.acceptance.map(({ id }) => ({
+            id,
+            result: 'passed',
+            reason: 'Inspected.',
+          })),
+          risks: [],
+          summary: 'Verified.',
+        },
+      },
+    };
+    const first = await applyNativeRunnerInput({
+      paths,
+      name: 'receipt-terminal',
+      input,
+      maxVerifyFailures: 5,
+    });
+    expect(first.state.verifier_action?.status).toBe('succeeded');
+    const repeated = await applyNativeRunnerInput({
+      paths,
+      name: 'receipt-terminal',
+      input,
+      maxVerifyFailures: 5,
+    });
+    expect(repeated.state.state_version).toBe(first.state.state_version);
+    expect(repeated.state.verifier_action?.receipts).toHaveLength(1);
+    const file = path.join(root, 'final-response.json');
+    await fs.writeFile(file, JSON.stringify(input));
+    const viaCli = await runNativeCli([
+      'next',
+      first.state.name,
+      '--runner-input',
+      file,
+      '--project-root',
+      root,
+      '--json',
+    ]);
+    expect(viaCli.exitCode).toBe(0);
+    expect(
+      (await readNativePortableState(nativePortableStateFile(paths, first.state.name)))
+        .state_version,
+    ).toBe(first.state.state_version);
+    await expect(
+      applyNativeRunnerInput({
+        paths,
+        name: 'receipt-terminal',
+        input: {
+          ...input,
+          response: {
+            ...input.response,
+            result: { ...input.response.result, summary: 'Different.' },
+          },
+        },
+        maxVerifyFailures: 5,
+      }),
+    ).rejects.toThrow();
   });
 
   it('rejects startup receipts that are stale for the current attempt or candidate', async () => {

@@ -1,3 +1,5 @@
+import type { RuntimeAction } from '../engine/runtime-action.js';
+
 export const NATIVE_PORTABLE_STATE_SCHEMA = 'comet.native.v4' as const;
 export const NATIVE_LOCAL_EXECUTION_SCHEMA = 'comet.native.local-execution.v4' as const;
 export const NATIVE_PORTABLE_HISTORY_LIMIT = 50 as const;
@@ -170,6 +172,8 @@ export interface NativePortableState {
   loop: NativePortableLoopState;
   acceptance: NativePortableAcceptanceState[];
   builder_handoff: NativeBuilderHandoff | null;
+  /** Durable external execution identity and result; absent on legacy states. */
+  verifier_action?: RuntimeAction;
   blockers: NativePortableBlockerState[];
   verification: NativePortableVerificationState | null;
   history: NativePortableHistoryEntry[];
