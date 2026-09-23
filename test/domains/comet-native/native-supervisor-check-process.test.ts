@@ -167,6 +167,38 @@ describe('Supervisor check process recovery', () => {
     expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/u)).toHaveLength(1);
   }, 60000);
 
+  it('does not reuse a completed receipt for changed inputs after the former owner exits', async () => {
+    const { paths, marker, release, options } = await setup();
+    await fs.writeFile(release, 'done');
+    const completed = await executeNativeSupervisorChecks(options);
+    expect(completed.status).toBe('completed');
+    const stoppedPid = Number(
+      execFileSync(process.execPath, ['-p', 'process.pid'], { encoding: 'utf8' }).trim(),
+    );
+    await withNativeMutationLock(
+      paths,
+      'simulate lost completion status and exited owner',
+      async () => {
+        const state = await readNativeSupervisorState(paths, 'change');
+        const execution = state!.children[0].task!.checkExecution!;
+        execution.status = 'running';
+        execution.ownerPid = stoppedPid;
+        await writeNativeSupervisorState(paths, state!);
+      },
+    );
+
+    const changedMarker = path.join(path.dirname(marker), 'changed-starts.txt');
+    const changed = await executeNativeSupervisorChecks({
+      ...options,
+      plans: [
+        { ...options.plans[0], argv: ['-e', options.plans[0].argv[1], changedMarker, release] },
+      ],
+    });
+    expect(changed.status).toBe('completed');
+    expect(changed.operationId).not.toBe(completed.operationId);
+    expect((await fs.readFile(changedMarker, 'utf8')).trim().split(/\r?\n/u)).toHaveLength(1);
+  }, 60000);
+
   it('does not replay an unregistered process and provides a candidate-preserving recovery route', async () => {
     const { paths, release, options } = await setup();
     await fs.writeFile(release, 'done');

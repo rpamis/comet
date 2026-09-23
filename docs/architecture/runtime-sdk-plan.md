@@ -47,7 +47,7 @@
 - 初始：工作区干净；从 master 创建 `044`；website 未修改。
 - 通过：最终候选的 `pnpm build`、`pnpm check:generated`、`pnpm lint`、`pnpm exec tsc --noEmit`、`pnpm test:package-e2e`，以及受影响源码、测试和文档的 Prettier 检查。打包消费者实际安装 0.4.4 tarball，验证新 JS/TS Runtime 入口、旧深路径和结构化 CLI 共享持久化 Run。
 - 通过：修复后的 Runtime Engine/CLI 定向套件（10 个文件、135 个测试）；`pnpm verify:changed --base 899d1fb0` 中的架构、TypeScript、格式和生成物检查；其 app 组 31 个文件、661 个测试通过，另有 1 个 daemon 用例失败。中断后单独补跑 scripts、Native、Engine、workflow-contract 组，171 个文件、1729 个测试通过，33 个跳过。
-- 最终全量测试：`pnpm test` 完成一轮，427 个文件中 426 通过、1 失败；5562 个测试中 5504 通过、57 跳过、1 失败。唯一失败为下述 Windows daemon 基线用例。前两轮全量测试还暴露了 Native Supervisor 完整收据恢复与租约安全检查的顺序冲突；已用失败测试定位并修复，相关 2 个测试文件 9 个用例及最终全量运行均通过。整仓测试命令本身因 daemon 基线退出码为 1，不能记作全绿。
+- 最终全量测试：`pnpm test` 完成一轮，427 个文件中 426 通过、1 失败；5563 个测试中 5505 通过、57 跳过、1 失败。唯一失败为下述 Windows daemon 基线用例。先前全量测试暴露了 Native Supervisor 完整收据恢复与租约安全检查的顺序冲突；独立审查又发现旧收据恢复未核对本次检查输入。两处均先用失败测试复现，再修复；相关 2 个测试文件 10 个用例及最终全量运行均通过。整仓测试命令本身因 daemon 基线退出码为 1，不能记作全绿。
 - Windows daemon 基线：`test/app/comet-daemon-router.test.ts` 的 Broker 启动用例在当前分支及干净 master 工作树均以相同错误失败；Broker 与 daemon router 不在本次 SDK 差异内。手动启动 daemon 能成功，自动启动测试仍失败；原因尚未确定，未扩大本次修复范围。
 - 真实宿主演练：Codex Agent 通过公开 `@rpamis/comet/runtime` 入口跨进程领取、回传两个 Skill Action，在持久化 Wait 处恢复并用本地测试决定完成 Run；该决定只用于演练，不代表真实用户批准。
 - 独立代码审查已执行多轮。发现并修复定义内容只读检查、被拒绝 Outcome 持久化、CLI/SDK Outcome 解析差异、工具构造器命名、验证器抛错后的结果丢失，以及已记录结果经 `markUnknown` 绕入“未执行重试”的路径；相关回归测试已通过。最后一项经复审确认封住，未见同等级直接绕过路径。

@@ -249,6 +249,10 @@ export async function executeNativeSupervisorChecks(options: {
         inputFingerprint,
       });
       const previous = task.checkExecution;
+      const sameBinding =
+        previous?.key === key &&
+        previous.machineId === machineId &&
+        previous.inputFingerprint === inputFingerprint;
       if (previous?.status === 'running') {
         const alive = await processInstanceMayBeAlive(previous.ownerPid, previous.ownerIdentity);
         // An expired lease cannot prove a live owner stopped; never start overlapping checks.
@@ -262,6 +266,7 @@ export async function executeNativeSupervisorChecks(options: {
           throw new Error('Native Supervisor check plan is already running with different inputs');
         const active = previous.activeProcess;
         const completedStates =
+          sameBinding &&
           active === null &&
           previous.checkStates?.length &&
           previous.checkStates.every(({ status }) => status === 'passed' || status === 'failed') &&
@@ -302,10 +307,6 @@ export async function executeNativeSupervisorChecks(options: {
           }
         }
       }
-      const sameBinding =
-        previous?.key === key &&
-        previous.machineId === machineId &&
-        previous.inputFingerprint === inputFingerprint;
       if (requestedRetryIds) {
         if (!sameBinding || previous?.status !== 'interrupted') {
           throw new Error(
