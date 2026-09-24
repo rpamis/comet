@@ -100,6 +100,32 @@ def test_save_artifacts_excludes_controller_cli_snapshot(tmp_path: Path):
     assert not (snapshot / "_eval_current_comet").exists()
 
 
+def test_save_artifacts_ignores_inaccessible_excluded_node_modules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from conftest import _save_artifacts
+
+    workspace = tmp_path / "workspace"
+    excluded = workspace / ".comet" / "openspec-runtime" / "node_modules" / ".bin"
+    excluded.mkdir(parents=True)
+    inaccessible = excluded / "node-which"
+    inaccessible.write_text("shim", encoding="utf-8")
+    (workspace / "result.md").write_text("ok", encoding="utf-8")
+    original_is_file = Path.is_file
+
+    def is_file(path: Path) -> bool:
+        if path == inaccessible:
+            raise OSError("inaccessible Windows reparse point")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", is_file)
+    _save_artifacts(tmp_path, "COMET_CLASSIC_DOCS_LAYOUT", 1, workspace)
+
+    snapshot = tmp_path / "artifacts/comet_classic_docs_layout_rep1/claude"
+    assert (snapshot / "result.md").read_text(encoding="utf-8") == "ok"
+    assert not (snapshot / ".comet/openspec-runtime/node_modules").exists()
+
+
 def test_extract_events_captures_token_usage_and_cost():
     stdout = "\n".join(
         [

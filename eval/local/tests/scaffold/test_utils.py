@@ -12,6 +12,7 @@ import pytest
 
 from scaffold.python import utils
 from scaffold.python.skill_parser import load_skill_content, parse_skill_md
+from scaffold.python.tasks import load_task
 
 
 # The unchanged three-turn driver also takes about 16 s under Git Bash here;
@@ -1067,6 +1068,28 @@ def test_decision_point_detector_accepts_batch_labels_and_reply_confirmation():
     assert reply_confirmation.returncode == 0
 
 
+def test_decision_point_detector_accepts_archive_choice_request():
+    result = utils.run_shell(
+        "decision-point.sh",
+        "Archive is pending confirmation.\nA. Archive locally\nE. Leave pending\n"
+        "Reply one of A–E.",
+        check=False,
+    )
+
+    assert result.returncode == 0
+
+
+def test_decision_point_detector_accepts_numbered_archive_reply():
+    result = utils.run_shell(
+        "decision-point.sh",
+        "Archive is pending. Reply `Q10: A`, `Q10: D`, or `Q10: E`. "
+        "I will not archive until you choose.",
+        check=False,
+    )
+
+    assert result.returncode == 0
+
+
 def test_completion_point_detector_requires_explicit_non_negated_workflow_completion():
     archived = utils.run_shell(
         "completion-point.sh",
@@ -1119,6 +1142,184 @@ def test_completion_point_detector_requires_explicit_non_negated_workflow_comple
     assert phase_done.returncode == 1
     assert negated.returncode == 1
     assert negated_through_archive.returncode == 1
+
+
+def test_completion_point_does_not_treat_archive_confirmation_as_completion():
+    confirmation = utils.run_shell(
+        "completion-point.sh",
+        "Archive locally; do not push. Local archive completes the workflow fully. "
+        "Reply A to confirm the archive or E to leave it pending.",
+        check=False,
+    )
+
+    assert confirmation.returncode == 1
+
+
+def test_completion_point_rejects_conditional_archive_with_pending_state():
+    confirmation = utils.run_shell(
+        "completion-point.sh",
+        "Nothing has been archived yet. If you choose A, the change is archived. "
+        "I will not archive until you choose.",
+        check=False,
+    )
+
+    assert confirmation.returncode == 1
+
+
+def test_image_cache_changes_when_copied_package_manifest_changes(tmp_path: Path):
+    (tmp_path / "Dockerfile").write_text(
+        "FROM node:22\nCOPY current-comet-package.json /opt/comet-cli/package.json\n",
+        encoding="utf-8",
+    )
+    package = tmp_path / "current-comet-package.json"
+    package.write_text('{"dependencies":{"yaml":"1.0.0"}}\n', encoding="utf-8")
+    first = _get_image_name(tmp_path)
+
+    package.write_text(
+        '{"dependencies":{"yaml":"1.0.0","smol-toml":"1.8.0"}}\n',
+        encoding="utf-8",
+    )
+
+    assert _get_image_name(tmp_path) != first
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows bind-mount ownership regression")
+def test_agent_workspace_owner_prepare_allows_hermetic_git_without_recursive_chown(
+    tmp_path: Path,
+):
+    environment = (
+        Path(__file__).resolve().parents[2]
+        / "tasks/comet-classic-layout-lifecycle/environment"
+    )
+    image = _get_image_name(environment).removeprefix("image=")
+    if subprocess.run(
+        ["docker", "image", "inspect", image], capture_output=True, check=False
+    ).returncode != 0:
+        pytest.skip("cached Classic Eval image is unavailable")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    volume = f"{workspace}:/workspace"
+    setup = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--user",
+            "root",
+            "-v",
+            volume,
+            image,
+            "sh",
+            "-ec",
+            "git init -q -b main /workspace; "
+            "chown -R agent:agent /workspace/.git; "
+            "touch /workspace/sentinel; chown root:root /workspace",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert setup.returncode == 0, setup.stderr
+
+    git_command = [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        volume,
+        image,
+        "sh",
+        "-ec",
+        "GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 "
+        "git -C /workspace symbolic-ref --quiet --short HEAD",
+    ]
+    before = subprocess.run(git_command, capture_output=True, text=True, check=False)
+    assert before.returncode == 128
+    assert "dubious ownership" in before.stderr
+
+    prepare = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            'source "$1"; prepare_agent_workspace_owner "$2" "$3"',
+            "_",
+            utils._to_bash_path(utils.SHELL_DIR / "docker.sh"),
+            utils._to_bash_path(workspace),
+            image,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert prepare.returncode == 0, prepare.stderr
+
+    after = subprocess.run(git_command, capture_output=True, text=True, check=False)
+    assert after.returncode == 0, after.stderr
+    assert after.stdout.strip() == "main"
+    ownership = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            volume,
+            image,
+            "sh",
+            "-ec",
+            "stat -c '%u:%g' /workspace /workspace/sentinel",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ownership.returncode == 0, ownership.stderr
+    assert ownership.stdout.splitlines() == ["1001:1001", "0:0"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows bind-mount ownership regression")
+def test_claude_loop_prepares_workspace_owner_before_starting_agent(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    calls = tmp_path / "docker-calls.txt"
+    script = """
+source "$1"
+resolve_runtime_image() { printf '%s' fake-image; }
+build_env_args() { ENV_ARGS=(); }
+build_agent_runtime_mount_args() { RUNTIME_CONFIG_MOUNT_ARGS=(); RUNTIME_CONFIG_TMPFS_ARGS=(); }
+build_plugin_args() { PLUGIN_MOUNT_ARGS=(); PLUGIN_CLI_ARGS=(); }
+build_langfuse_plugin_args() { LANGFUSE_PLUGIN_MOUNT_ARGS=(); LANGFUSE_PLUGIN_CLI_ARGS=(); }
+build_trusted_oracle_mount_args() { TRUSTED_ORACLE_MOUNT_ARGS=(); }
+docker() { printf '%s\\n' "$*" >> "$DOCKER_CALL_LOG"; }
+docker_run_claude_loop "$2" 'Test prompt' --max-turns 1
+"""
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            script,
+            "_",
+            utils._to_bash_path(utils.SHELL_DIR / "docker.sh"),
+            utils._to_bash_path(workspace),
+        ],
+        env={**os.environ, "DOCKER_CALL_LOG": utils._to_bash_path(calls)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    runs = [
+        line for line in calls.read_text(encoding="utf-8").splitlines() if line.startswith("run ")
+    ]
+    assert len(runs) == 2
+    assert "--user root" in runs[0]
+    assert "--name comet-eval-loop-" in runs[1]
+
+
+def test_classic_layout_lifecycle_allows_full_model_workflow():
+    task = load_task("comet-classic-layout-lifecycle")
+
+    assert task.config.timeout_sec >= 2400
 
 
 def test_copied_scaffold_is_importable_by_validator_script(tmp_path: Path):

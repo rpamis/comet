@@ -2327,13 +2327,13 @@ def _save_artifacts(
 
     claude_files = []
     for item in test_dir.rglob("*"):
-        if not item.is_file():
-            continue
         if item.name.startswith("."):
             continue
         if item.name in exclude_files:
             continue
         if any(excl in item.parts for excl in exclude_dirs):
+            continue
+        if not item.is_file():
             continue
         try:
             rel_path = item.relative_to(test_dir)

@@ -188,7 +188,7 @@ check_docker() {
 # HASH-BASED IMAGE CACHING
 # =============================================================================
 
-# Get hash of build inputs for cache key (Dockerfile + requirements.txt)
+# Get hash of build inputs for cache key (Dockerfile + dependency manifests).
 get_dockerfile_hash() {
     local dir="$1"
     local dockerfile="$dir/Dockerfile"
@@ -203,13 +203,16 @@ get_dockerfile_hash() {
         return 1
     fi
 
-    # Hash Dockerfile + requirements.txt (the files that affect the image).
+    # Dependency manifests copied into the image must invalidate the cache.
     # Don't hash the entire directory — test scripts and scaffold files are
     # added at runtime and would cause a different hash every run.
     local combined
     combined=$(cat "$dockerfile")
     if [[ -f "$dir/requirements.txt" ]]; then
         combined="$combined$(cat "$dir/requirements.txt")"
+    fi
+    if [[ -f "$dir/current-comet-package.json" ]]; then
+        combined="$combined$(cat "$dir/current-comet-package.json")"
     fi
 
     if command -v md5 &> /dev/null; then
@@ -555,6 +558,32 @@ build_trusted_oracle_mount_args() {
     fi
 }
 
+# Docker Desktop presents Windows bind-mount roots as root-owned even when the
+# task image runs its Agent as a non-root user. Git rejects /workspace as unsafe
+# when Comet deliberately ignores user/global Git configuration. Change only
+# this isolated workspace mount point, never its contents or the image config.
+prepare_agent_workspace_owner() {
+    local dir="$1"
+    local image_id="$2"
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) ;;
+        *) return 0 ;;
+    esac
+
+    local windir
+    windir=$(_winpath "$dir")
+    docker run --rm --user root \
+        -v "$windir://workspace" \
+        "$image_id" \
+        sh -ec '
+            owner="$(id -u agent):$(id -g agent)"
+            if [ "$(stat -c %u:%g /workspace)" != "$owner" ]; then
+                chown --no-dereference "$owner" /workspace
+            fi
+            test "$(stat -c %u:%g /workspace)" = "$owner"
+        '
+}
+
 # Run command in Docker container
 # Usage: docker_run <directory> <command...>
 docker_run() {
@@ -686,6 +715,7 @@ docker_run_claude() {
 
     local image_id
     image_id=$(resolve_runtime_image "$dir" "$expected_image_id") || return 1
+    prepare_agent_workspace_owner "$dir" "$image_id" || return 1
 
     build_env_args
     build_agent_runtime_mount_args
@@ -770,6 +800,7 @@ docker_run_agent() {
 
     local image_id
     image_id=$(resolve_runtime_image "$dir" "$expected_image_id" "$agent") || return 1
+    prepare_agent_workspace_owner "$dir" "$image_id" || return 1
 
     build_env_args
     build_agent_runtime_mount_args
@@ -847,6 +878,7 @@ docker_run_claude_loop() {
 
     local image_id
     image_id=$(resolve_runtime_image "$dir" "$expected_image_id" "claude-code") || return 1
+    prepare_agent_workspace_owner "$dir" "$image_id" || return 1
 
     build_env_args
     build_agent_runtime_mount_args
@@ -915,6 +947,7 @@ docker_run_agent_loop() {
 
     local image_id
     image_id=$(resolve_runtime_image "$dir" "$expected_image_id" "$agent") || return 1
+    prepare_agent_workspace_owner "$dir" "$image_id" || return 1
 
     build_env_args
     build_agent_runtime_mount_args
