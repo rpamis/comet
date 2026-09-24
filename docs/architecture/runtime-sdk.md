@@ -162,6 +162,12 @@ Example `start.json`:
 
 Each command processes one structured request and returns JSON containing `protocolVersion`, `requestId`, and either the Run or a machine-readable error. `inspect` can read a Run from a new process without a workflow file; provide the pinned definitions to verify their content or change state. If an external execution disconnects after claim, use `mark-unknown` to preserve the indeterminate fact. `retry` creates a new attempt only when given `reconciliation: { "resolution": "not-executed", "evidence": ... }`. Relative request, workflow, and root paths use the CLI invocation directory; `--project-root` is passed as explicit host context to executor-related interfaces.
 
+## How Comet uses the SDK
+
+Native Verifier and Classic `comet check` are two applications of the SDK Action lifecycle. Both use Actions to bind execution inputs, claim identity, and returned results. After an interruption, the saved attempt provides the evidence needed to decide whether to reconcile or rerun. Classic persists a claimed Action in its existing trajectory before starting a check command, then records the result on that same Action. Reusing a check across scopes creates a separate Action for the target scope. Older Classic trajectories without Actions remain readable.
+
+Neither integration moves the entire Native or Classic workflow into `createRuntime`. Their stage orchestration, user approvals, recovery rules, and authoritative state remain in their existing Runtimes. The SDK's `RuntimeStore`, `RuntimeExecutor`, and Workflow definitions are available to new host workflows; these built-in integrations demonstrate that the Action protocol can also be adopted on its own. They do not merge the two existing state machines.
+
 ## Scope
 
 Runtime is a reusable deterministic orchestration core, not another Agent platform. It provides the Run/Action/Outcome/Wait protocol, workflow scheduling, persistence and recovery, approval, and acceptance extension points. The host continues to provide the Agent loop, system prompts, Skills, Hooks, Rules, MCP, sandbox, tool authorization, and model context. Restrictions expressed in platform prompts, Hooks, or tool policy must still be implemented and verified by that platform.

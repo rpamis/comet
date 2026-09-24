@@ -8,6 +8,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Composable Runtime SDK**: Publish `@rpamis/comet/runtime` for host-owned Skill and tool workflows with persistent approvals, version-pinned DAG execution, explicit execution outcomes, pluggable stores/executors/validators, and process recovery. Add `comet runtime dispatch` for structured JSON hosts; the platform remains responsible for model and tool calls. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md).
 
+### Changed
+
+- **Classic check execution records**: Bind `comet check run` results and cross-scope reuse to the same SDK Action lifecycle used by Native verification, so interrupted attempts and recorded outcomes remain tied to the exact check inputs without changing Classic's workflow state machine.
+
 ### Fixed
 
 - **Native Verifier interruption recovery**: Preserve the active verifier identity with the portable change so it can be recovered when local execution metadata is missing, while rejecting responses for a different candidate or attempt.

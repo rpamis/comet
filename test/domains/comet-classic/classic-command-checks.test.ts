@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import type { RunState, TrajectoryEvent } from '../../../domains/engine/types.js';
 import { appendTrajectory, readTrajectory } from '../../../domains/engine/run-store.js';
+import { writeRunState } from '../../../domains/engine/state.js';
 import {
   latestCommandCheck,
   recordCommandCheck,
@@ -205,6 +206,16 @@ describe('Classic command check evidence', () => {
       exitCode: 0,
       cwd: 'src',
     });
+  });
+
+  it('rejects a check when a persisted Run belongs to a different execution', async () => {
+    await writeRunState(changeDir, runState('another-run'));
+    await expect(
+      executeCommandCheck(projectRoot, changeDir, run, {
+        scope: 'build',
+        argv: [process.execPath, '-e', 'process.exit(0)'],
+      }),
+    ).rejects.toThrow('Classic check Run changed before launch');
   });
 
   it.each([

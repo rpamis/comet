@@ -162,6 +162,12 @@ comet runtime dispatch --request ./start.json --workflow ./report.workflow.json 
 
 每条命令只处理一个结构化请求，并返回包含 `protocolVersion`、`requestId` 和 Run 或机器可读错误的 JSON。`inspect` 可不提供工作流文件，在新进程只读查看 Run；要核对定义或推进状态，需提供已固定的工作流定义。领取后的外部执行失联时可用 `mark-unknown` 保留不确定事实；`retry` 只有收到 `reconciliation: { "resolution": "not-executed", "evidence": ... }` 才会创建新 attempt。相对 request/workflow/root 路径以 CLI 的调用目录解析；`--project-root` 作为显式宿主上下文传给执行器相关接口。
 
+## Comet 自身的接入方式
+
+Native Verifier 和 Classic `comet check` 是 SDK Action 生命周期的两个应用案例。两者都用 Action 绑定执行输入、领取身份与回传结果；进程中断后，可依据已保存的尝试判断是否需要人工核对或重跑。Classic 在启动检查命令前将已领取的 Action 写入现有轨迹，执行结果写回同一 Action；复用另一作用域的检查结果时，也会为目标作用域生成独立的 Action。旧版没有 Action 的 Classic 轨迹仍可读取。
+
+这两个接入点没有将整个 Native 或 Classic 工作流迁入 `createRuntime`。各自的阶段编排、用户确认、恢复规则和权威状态仍由原 Runtime 负责。SDK 的 `RuntimeStore`、`RuntimeExecutor` 和 Workflow 定义适合新宿主工作流；这些内置应用案例展示的是可单独采用的 Action 协议，不表示现有两套状态机已经统一。
+
 ## 保证范围
 
 Runtime 是可复用的确定性编排内核，不是另一套 Agent 平台。它提供稳定的 Run/Action/Outcome/Wait 协议、工作流调度、持久化与恢复、确认和验收扩展点；宿主平台继续提供 Agent loop、system prompt、Skills、Hooks、Rules、MCP、沙箱、工具授权与模型上下文。平台在提示、Hook 或工具行为上的约束仍需由对应平台实施和验证。
