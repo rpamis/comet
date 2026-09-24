@@ -4577,3 +4577,164 @@ test('shows the project memory tab on the demo knowledge page', async ({ page })
 
   await expect(consoleErrors).toEqual([]);
 });
+
+test('scrolls a long project memory list inside the knowledge page', async ({ page }) => {
+  const entries = Array.from({ length: 24 }, (_, index) => ({
+    slug: `memory-${String(index + 1).padStart(2, '0')}`,
+    title: `项目记忆 ${index + 1}`,
+    description: '用于验证项目记忆条数过多时，列表可以沿用 Dashboard 内页滚动查看。',
+    type: 'procedure',
+    created: '2026-09-20T09:12:00.000Z',
+    updated: '2026-09-20T09:12:00.000Z',
+    body: `项目记忆 ${index + 1} 的完整内容。`,
+  }));
+  const knowledgePage = {
+    pluginId: 'comet.project-knowledge',
+    label: '项目知识',
+    route: '/plugins/project-knowledge',
+    status: 'enabled',
+    globallyDisabled: false,
+    projectPaused: false,
+    diagnostics: [],
+    data: {
+      provider: 'local',
+      configured: true,
+      records: [],
+      manifestPreview: [],
+      counts: { trial: 0, proven: 0, enforced: 0, superseded: 0 },
+      diagnostics: [],
+      projectMemory: {
+        directory: '/tmp/comet-project-memory',
+        total: entries.length,
+        entries,
+        applicationCount: 0,
+      },
+    },
+  };
+
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              lastSeenAt: null,
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: {
+            name: 'Fixture',
+            path: '/fixture',
+            generatedAt: '2026-09-24T00:00:00.000Z',
+          },
+          summary: {
+            activeChanges: 0,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 0,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          git: { branch: 'main', dirty: false, dirtyFiles: 0, ahead: 0, behind: 0 },
+          native: null,
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins')) {
+      await route.fulfill({
+        json: {
+          pages: [
+            {
+              pluginId: knowledgePage.pluginId,
+              label: knowledgePage.label,
+              route: knowledgePage.route,
+              status: knowledgePage.status,
+              globallyDisabled: knowledgePage.globallyDisabled,
+              projectPaused: knowledgePage.projectPaused,
+              diagnostics: knowledgePage.diagnostics,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins/comet.project-knowledge')) {
+      await route.fulfill({ json: knowledgePage });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins/comet.project-knowledge/invoke')) {
+      const body = route.request().postDataJSON() as {
+        capability?: string;
+        input?: { slug?: string };
+      };
+      const memory = entries.find((entry) => entry.slug === body.input?.slug) ?? entries[0];
+      await route.fulfill({ json: { result: { kind: 'memory', ...memory } } });
+      return;
+    }
+    await route.fulfill({ json: {} });
+  });
+
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('tab', { name: '项目记忆' }).click();
+
+  const memoryList = page.getByRole('region', { name: '项目记忆列表' });
+  const memoryRows = memoryList.locator('.dashboard-memory-table-body');
+  await expect(memoryList).toContainText('项目记忆 1');
+  await expect(memoryList).toContainText('24 条');
+
+  const memoryFoot = memoryList.locator('.dashboard-project-memory-foot');
+  for (const viewport of [
+    { width: 1600, height: 900 },
+    { width: 1280, height: 720 },
+    { width: 1280, height: 640 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect
+      .poll(() => memoryRows.evaluate((element) => element.scrollHeight > element.clientHeight))
+      .toBe(true);
+    await memoryRows.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await memoryRows.hover();
+    await page.mouse.wheel(0, 10000);
+    await expect.poll(() => memoryRows.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    const lastRow = memoryList.getByText('项目记忆 24', { exact: true });
+    await expect
+      .poll(async () => {
+        const [rowBox, bodyBox] = await Promise.all([
+          lastRow.boundingBox(),
+          memoryRows.boundingBox(),
+        ]);
+        if (!rowBox || !bodyBox) return false;
+        return (
+          rowBox.y >= bodyBox.y - 1 && rowBox.y + rowBox.height <= bodyBox.y + bodyBox.height + 1
+        );
+      })
+      .toBe(true);
+    await expect
+      .poll(async () => {
+        const box = await memoryFoot.boundingBox();
+        return box ? box.y + box.height : Number.POSITIVE_INFINITY;
+      })
+      .toBeLessThanOrEqual(viewport.height);
+    await expect
+      .poll(() => memoryFoot.evaluate((element) => element.scrollHeight <= element.clientHeight))
+      .toBe(true);
+  }
+});

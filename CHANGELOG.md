@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.4] - 2026-09-24
+
+### Fixed
+
+- **Project Memory scrolling**: Keep the project memory tab on the same Dashboard inner-page flex layout as retrieval test, so long memory lists scroll inside the knowledge page instead of being clipped (#452).
+
 ## What's Changed [0.4.3] - 2026-09-22
 
 ### Changed
