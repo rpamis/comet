@@ -4,7 +4,7 @@
 
 新建 Native change 和 Classic full/hotfix/tweak change 默认创建 SDK Run；旧 change 继续由原 Runtime 管理，不自动迁移。两套应用使用同一 SDK 内核的 Run、Action、Wait、命令、证据与恢复机制，各自保留领域状态机。Native 的公开 new/status/select/next/spec remove/Archive/Doctor 已按持久化归属路由；Classic 的公开 state、Guard、check、workspace、交付入口按 SDK 归属推进，Skill 中英文均已写入 SDK 路径。SDK Run 是新 change 的唯一状态权威，不额外创建旧状态文件。
 
-本地自动化已覆盖 Native 普通 change、Supervisor 双 Child，以及 Classic full/hotfix/tweak 的关键路径、失败/未知结果与跨 worktree 归属。2026-09-27 最近一轮全量测试为 433 个文件全部通过，5783 个用例通过、57 个跳过。生成物一致性检查和发布包 E2E 已通过；发布包 E2E 在独立消费项目中用安装产物的公开 SDK 入口跨进程完成 Skill Action、审批 Wait、Tool Action 和完成态恢复，并验证审批前没有发布文件。它还验证 Native 与 Classic full/hotfix/tweak 省略 runtime 参数时默认创建 SDK Run、显式 legacy 仍可用、各 SDK Run 可冷启动读取，以及 Hook Router 可直接调用。这些仍是本地证据，不能证明真实平台行为。真实平台 Hook、Agent 宿主交接、两套模型 Eval、完整异常矩阵仍需分别验收；此前用户已停止继续模型 Eval，不能把旧 Eval 结果算作当前候选通过。显式迁移旧 change 尚未实现；是否提供迁移命令应按真实需求单独决定，不是默认切换的前置条件。
+本地自动化已覆盖 Native 普通 change、Supervisor 双 Child，以及 Classic full/hotfix/tweak 的关键路径、失败/未知结果与跨 worktree 归属。2026-09-28 最近一轮全量测试为 433 个文件全部通过，5784 个用例通过、57 个跳过。生成物一致性检查和发布包 E2E 已通过；发布包 E2E 在独立消费项目中用安装产物的公开 SDK 入口跨进程完成 Skill Action、审批 Wait、Tool Action 和完成态恢复，并验证审批前没有发布文件。它还验证 Native 与 Classic full/hotfix/tweak 省略 runtime 参数时默认创建 SDK Run、显式 legacy 仍可用、各 SDK Run 可冷启动读取，以及 Hook Router 可直接调用。这些仍是本地证据，不能证明真实平台行为。真实平台 Hook、Agent 宿主交接、两套模型 Eval、完整异常矩阵仍需分别验收；此前用户已停止继续模型 Eval，不能把旧 Eval 结果算作当前候选通过。显式迁移旧 change 尚未实现；是否提供迁移命令应按真实需求单独决定，不是默认切换的前置条件。
 
 ## 目标与现状
 
@@ -83,7 +83,7 @@ Native Supervisor 的 SDK 路径沿用同一个父 change 的 Run。`children.ya
 
 本轮新增 Supervisor 专属的 `supervisor.cleanup` Action：Archive 完成后，先核对已交付的目标提交、Child 与集成 worktree 的身份、干净状态和分支祖先关系，再清理已登记的临时 worktree 与分支。脏 worktree 会在删除前阻止清理；清理已完成或只清理了部分 worktree 时，可从持久化 Run 在新进程完成原 Action。本地集成测试覆盖正常清理、脏 worktree 拒绝、目标分支漂移拒绝及部分清理后的冷恢复；部分清理后目标分支发生漂移时，恢复拒绝继续且保留剩余 worktree。若 Git 分支引用锁在 worktree 已移除后阻止删分支，原 Action 保留为结果未知，锁解除后可冷恢复完成清理。单次清理操作内部的并发漂移等异常仍需补充验证。
 
-冷恢复由 Native 应用函数实现，公开 `native archive <change> --recover` 已能在确认原宿主停止后处理唯一的 `unknown` Supervisor 交付、归档或清理 Action。交付恢复只在目标分支仍精确指向已验证集成提交时提交原 Action 的结果；目标分支漂移或尚未交付时拒绝，绝不重新执行快进。交付和部分清理后的 CLI 恢复已在临时 Git 项目的完整 Supervisor 路径验证；真实平台宿主是否正确判断原执行已停止，仍需平台层验收。
+冷恢复由 Native 应用函数实现，公开 `native archive <change> --recover` 已能在确认原宿主停止后处理唯一的 `unknown` Supervisor 交付、归档或清理 Action。交付恢复只在目标分支仍精确指向已验证集成提交时提交原 Action 的结果；目标分支漂移或尚未交付时拒绝，绝不重新执行快进。若目标分支引用锁使快进未提交、但 Git 已暂存候选树，`--recover` 仍拒绝将其当作已交付。解除锁并核对原尝试未执行后，可按 SDK reconciliation 协议重试；只有索引精确匹配已验证集成提交且工作区没有额外改动时，Git 才继续快进，无关文件会阻止交付并保留现场。交付和部分清理后的 CLI 恢复已在临时 Git 项目的完整 Supervisor 路径验证；真实平台宿主是否正确判断原执行已停止，仍需平台层验收。
 
 ## 实施顺序与验收
 

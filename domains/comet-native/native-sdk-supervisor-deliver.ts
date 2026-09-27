@@ -111,6 +111,37 @@ function deliveryOutput(current: Awaited<ReturnType<typeof currentDelivery>>) {
   };
 }
 
+/** Git may stage the verified tree before a ref lock rejects the fast-forward. */
+function safeInterruptedFastForward(
+  current: Awaited<ReturnType<typeof currentDelivery>>,
+  allowed: readonly string[],
+): boolean {
+  try {
+    const root = current.targetRoot;
+    runGitCommand(root, ['diff', '--cached', '--quiet', current.integrationCommit]);
+    runGitCommand(root, ['diff', '--quiet']);
+    const expectedPaths = runGitCommand(root, [
+      'diff',
+      '--name-only',
+      '--no-renames',
+      '-z',
+      current.targetCommit,
+      current.integrationCommit,
+    ])
+      .split('\0')
+      .filter(Boolean)
+      .map((value) => value.replaceAll('\\', '/'));
+    const untracked = runGitCommand(root, ['ls-files', '--others', '--exclude-standard', '-z'])
+      .split('\0')
+      .filter(Boolean)
+      .map((value) => value.replaceAll('\\', '/'));
+    if (untracked.some((file) => expectedPaths.includes(file))) return false;
+    return nativeWorkspaceIsClean(root, [...allowed, ...expectedPaths]);
+  } catch {
+    return false;
+  }
+}
+
 export const nativeSdkSupervisorDeliverExecutor: RuntimeExecutor = {
   id: 'native-supervisor-parent-deliver',
   capabilities: [],
@@ -131,12 +162,18 @@ export const nativeSdkSupervisorDeliverExecutor: RuntimeExecutor = {
           .relative(current.targetRoot, path.join(paths.changesDir, current.state.name))
           .replaceAll('\\', '/')
       : null;
+    const allowed = [
+      ...(changeDir ? [changeDir] : []),
+      '.comet/current-change.json',
+      '.comet/runtime',
+    ];
     if (
-      !nativeWorkspaceIsClean(current.targetRoot, [
-        ...(changeDir ? [changeDir] : []),
-        '.comet/current-change.json',
-        '.comet/runtime',
-      ])
+      !nativeWorkspaceIsClean(current.targetRoot, allowed) &&
+      !(
+        current.targetCommit !== current.integrationCommit &&
+        action.reconciliations.some((item) => item.attempt === action.attempt - 1) &&
+        safeInterruptedFastForward(current, allowed)
+      )
     ) {
       throw new Error('Native SDK Supervisor target worktree has unrelated changes');
     }

@@ -1148,6 +1148,7 @@ children:
     'partial-recovery',
     'branch-lock-recovery',
     'delivery-recovery',
+    'delivery-ref-lock',
     'target-drift',
   ] as const)(
     'handles parent repair, delivery, and cleanup after Supervisor DAG restart (%s)',
@@ -1907,6 +1908,118 @@ children:
         stepId: 'supervisor.parent.deliver',
         type: 'call_tool',
       });
+      if (scenario === 'delivery-ref-lock') {
+        const approvedTargetCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).trim();
+        const branchRefLock = path.resolve(
+          root,
+          execFileSync('git', ['rev-parse', '--git-path', `refs/heads/${branch}.lock`], {
+            cwd: root,
+            encoding: 'utf8',
+          }).trim(),
+        );
+        await fs.mkdir(path.dirname(branchRefLock), { recursive: true });
+        await fs.writeFile(branchRefLock, 'Simulated concurrent target ref update.\n');
+        try {
+          await expect(
+            runtime.execute({
+              runId: run.runId,
+              actionId: run.actions.at(-1)!.id,
+              executorId: 'native-supervisor-parent-deliver',
+              context: { requestId: 'parent-delivery-with-ref-lock', projectRoot: root },
+            }),
+          ).rejects.toThrow(/已保留执行归属/);
+        } finally {
+          await fs.unlink(branchRefLock);
+        }
+        const interrupted = await runtime.inspect(run.runId);
+        expect(interrupted.actions.at(-1)).toMatchObject({
+          stepId: 'supervisor.parent.deliver',
+          status: 'unknown',
+          reason: expect.stringMatching(/lock/),
+        });
+        expect(
+          execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+        ).toBe(approvedTargetCommit);
+        await registerSdkChangeOwner(root, {
+          schema: COMET_CHANGE_OWNER_SCHEMA,
+          workflow: 'native',
+          change: 'sdk-shape',
+          format: 'sdk',
+          application: 'native',
+          runId: run.runId,
+        });
+        const recovery = await nativeDomain.runNativeCliDetailed([
+          'archive',
+          'sdk-shape',
+          '--recover',
+          '--json',
+          '--project-root',
+          root,
+        ]);
+        expect(recovery.dispatch.exitCode).not.toBe(0);
+        expect(recovery.dispatch.error?.message).toMatch(/has not received/);
+        expect((await runtime.inspect(run.runId)).actions.at(-1)?.status).toBe('unknown');
+        expect(() =>
+          execFileSync('git', ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], {
+            cwd: root,
+            stdio: 'ignore',
+          }),
+        ).toThrow();
+        const deliveryAction = interrupted.actions.at(-1)!;
+        run = await runtime.retry({
+          runId: run.runId,
+          actionId: deliveryAction.id,
+          attempt: deliveryAction.attempt,
+          reconciliation: {
+            resolution: 'not-executed',
+            evidence: { targetBranch: branch, targetCommit: approvedTargetCommit },
+          },
+        });
+        expect(run.actions.at(-1)).toMatchObject({
+          id: deliveryAction.id,
+          status: 'pending',
+          attempt: deliveryAction.attempt + 1,
+        });
+        const unrelatedFile = path.join(root, 'unexpected.txt');
+        await fs.writeFile(unrelatedFile, 'Unrelated work must survive delivery.\n');
+        await expect(
+          runtime.execute({
+            runId: run.runId,
+            actionId: deliveryAction.id,
+            executorId: 'native-supervisor-parent-deliver',
+            context: { requestId: 'parent-delivery-with-unrelated-file', projectRoot: root },
+          }),
+        ).rejects.toThrow(/已保留执行归属/);
+        const dirtyRetry = await runtime.inspect(run.runId);
+        expect(dirtyRetry.actions.at(-1)).toMatchObject({
+          status: 'unknown',
+          reason: expect.stringMatching(/unrelated changes/),
+        });
+        expect(await fs.readFile(unrelatedFile, 'utf8')).toBe(
+          'Unrelated work must survive delivery.\n',
+        );
+        await fs.unlink(unrelatedFile);
+        run = await runtime.retry({
+          runId: run.runId,
+          actionId: deliveryAction.id,
+          attempt: dirtyRetry.actions.at(-1)!.attempt,
+          reconciliation: {
+            resolution: 'not-executed',
+            evidence: { targetBranch: branch, targetCommit: approvedTargetCommit },
+          },
+        });
+        run = await runtime.execute({
+          runId: run.runId,
+          actionId: deliveryAction.id,
+          executorId: 'native-supervisor-parent-deliver',
+          context: { requestId: 'parent-delivery-after-ref-lock', projectRoot: root },
+        });
+        expect(run.actions.at(-1)?.stepId).toBe('archive.prepare');
+        return;
+      }
       if (scenario === 'target-drift') {
         const approvedTargetCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
           cwd: root,
