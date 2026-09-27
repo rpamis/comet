@@ -4,7 +4,7 @@
 
 新建 Native change 和 Classic full/hotfix/tweak change 默认创建 SDK Run；旧 change 继续由原 Runtime 管理，不自动迁移。两套应用使用同一 SDK 内核的 Run、Action、Wait、命令、证据与恢复机制，各自保留领域状态机。Native 的公开 new/status/select/next/spec remove/Archive/Doctor 已按持久化归属路由；Classic 的公开 state、Guard、check、workspace、交付入口按 SDK 归属推进，Skill 中英文均已写入 SDK 路径。SDK Run 是新 change 的唯一状态权威，不额外创建旧状态文件。
 
-本地自动化已覆盖 Native 普通 change、Supervisor 双 Child，以及 Classic full/hotfix/tweak 的关键路径、失败/未知结果与跨 worktree 归属。2026-09-27 最近一轮全量测试为 433 个文件全部通过，5780 个用例通过、57 个跳过。上一轮唯一失败的 Native portable 冷恢复测试用较弱的 PID 存活判断推断原进程已退出，但 Runtime 在进程身份无法核实时按协议拒绝重试；测试现按相同证据边界验收，生产恢复规则未放松。生成物一致性检查和发布包 E2E 已通过；发布包 E2E 在安装产物中验证 Native 与 Classic full/hotfix/tweak 省略 runtime 参数时默认创建 SDK Run、显式 legacy 仍可用、各 SDK Run 可冷启动读取，以及 Hook Router 可直接调用。这些仍是本地证据，不能证明真实平台行为。真实平台 Hook、Agent 宿主交接、两套模型 Eval、完整异常矩阵仍需分别验收；此前用户已停止继续模型 Eval，不能把旧 Eval 结果算作当前候选通过。显式迁移旧 change 尚未实现；是否提供迁移命令应按真实需求单独决定，不是默认切换的前置条件。
+本地自动化已覆盖 Native 普通 change、Supervisor 双 Child，以及 Classic full/hotfix/tweak 的关键路径、失败/未知结果与跨 worktree 归属。2026-09-27 最近一轮全量测试为 433 个文件全部通过，5780 个用例通过、57 个跳过。上一轮唯一失败的 Native portable 冷恢复测试用较弱的 PID 存活判断推断原进程已退出，但 Runtime 在进程身份无法核实时按协议拒绝重试；测试现按相同证据边界验收，生产恢复规则未放松。生成物一致性检查和发布包 E2E 已通过；发布包 E2E 在独立消费项目中用安装产物的公开 SDK 入口跨进程完成 Skill Action、审批 Wait、Tool Action 和完成态恢复，并验证审批前没有发布文件。它还验证 Native 与 Classic full/hotfix/tweak 省略 runtime 参数时默认创建 SDK Run、显式 legacy 仍可用、各 SDK Run 可冷启动读取，以及 Hook Router 可直接调用。这些仍是本地证据，不能证明真实平台行为。真实平台 Hook、Agent 宿主交接、两套模型 Eval、完整异常矩阵仍需分别验收；此前用户已停止继续模型 Eval，不能把旧 Eval 结果算作当前候选通过。显式迁移旧 change 尚未实现；是否提供迁移命令应按真实需求单独决定，不是默认切换的前置条件。
 
 ## 目标与现状
 

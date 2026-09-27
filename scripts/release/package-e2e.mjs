@@ -216,6 +216,130 @@ async function main() {
       throw new Error(`Installed JavaScript SDK returned an invalid Run: ${sdkStart}`);
     }
 
+    const integrationRunId = 'package-e2e-sdk-integration';
+    const publishedReport = path.join(projectDir, 'sdk-report.md');
+    const integrationSetup = `
+      import { writeFileSync } from 'node:fs';
+      import { createFileRuntimeStore, createRuntime } from ${JSON.stringify(runtimeImport)};
+      const runId = ${JSON.stringify(integrationRunId)};
+      const runtime = createRuntime({
+        store: createFileRuntimeStore({ rootDir: ${JSON.stringify(runtimeRoot)} }),
+        workflows: [{
+          id: 'package-sdk-integration', version: '1', entry: 'collect',
+          steps: {
+            collect: { type: 'invoke_skill', ref: 'research.collect' },
+            approve: { type: 'ask_user', proposalFrom: 'collect' },
+            publish: { type: 'call_tool', ref: 'reports.write' },
+          },
+          transitions: [
+            { from: 'collect', to: 'approve' },
+            { from: 'approve', to: 'publish', on: 'approved' },
+          ],
+        }],
+        executors: [{
+          id: 'consumer-host', capabilities: [],
+          supports: (action) => ['invoke_skill', 'call_tool'].includes(action.type),
+          async execute(action) {
+            if (action.ref === 'research.collect') {
+              return { status: 'succeeded', output: { report: 'Packaged SDK resumed across processes' } };
+            }
+            if (action.ref === 'reports.write') {
+              if (action.input.outputs.approve?.choice !== 'approved') {
+                throw new Error('The package consumer did not approve this report');
+              }
+              writeFileSync(${JSON.stringify(publishedReport)}, action.input.outputs.collect.report);
+              return { status: 'succeeded', output: { published: true } };
+            }
+            throw new Error('Unsupported package consumer action');
+          },
+        }],
+      });
+    `;
+    function runIntegration(operation) {
+      return JSON.parse(
+        run(process.execPath, ['--input-type=module', '-e', `${integrationSetup}\n${operation}`], {
+          cwd: consumerDir,
+          env: environment,
+        }),
+      );
+    }
+    const integrationStarted = runIntegration(`
+      const result = await runtime.start({
+        runId, workflow: { id: 'package-sdk-integration', version: '1' }, input: null,
+      });
+      process.stdout.write(JSON.stringify({ status: result.status, action: result.actions.at(-1) }));
+    `);
+    if (
+      integrationStarted.status !== 'running' ||
+      integrationStarted.action?.stepId !== 'collect'
+    ) {
+      throw new Error('Installed SDK did not create the initial Skill action');
+    }
+    const integrationWaiting = runIntegration(`
+      const current = await runtime.inspect(runId);
+      const result = await runtime.execute({
+        runId, actionId: current.actions.at(-1).id, executorId: 'consumer-host',
+      });
+      process.stdout.write(JSON.stringify({
+        status: result.status,
+        wait: result.waits.at(-1),
+        pendingActions: result.actions.filter((action) => action.status === 'pending').length,
+      }));
+    `);
+    if (
+      integrationWaiting.status !== 'waiting' ||
+      integrationWaiting.wait?.stepId !== 'approve' ||
+      integrationWaiting.wait?.status !== 'pending' ||
+      integrationWaiting.pendingActions !== 0 ||
+      (await fs.stat(publishedReport).then(
+        () => true,
+        (error) => {
+          if (error.code === 'ENOENT') return false;
+          throw error;
+        },
+      ))
+    ) {
+      throw new Error(
+        `Installed SDK did not persist an approval Wait before publishing: ${JSON.stringify(integrationWaiting)}`,
+      );
+    }
+    const integrationApproved = runIntegration(`
+      const current = await runtime.inspect(runId);
+      const wait = current.waits.at(-1);
+      const result = await runtime.resolveWait({
+        runId, waitId: wait.id, proposalHash: wait.proposalHash,
+        decisionId: 'package-consumer-approval', choice: 'approved',
+      });
+      process.stdout.write(JSON.stringify({ status: result.status, action: result.actions.at(-1) }));
+    `);
+    if (
+      integrationApproved.status !== 'running' ||
+      integrationApproved.action?.stepId !== 'publish'
+    ) {
+      throw new Error('Installed SDK did not resume the approved Tool action');
+    }
+    const integrationPublished = runIntegration(`
+      const current = await runtime.inspect(runId);
+      const result = await runtime.execute({
+        runId, actionId: current.actions.at(-1).id, executorId: 'consumer-host',
+      });
+      process.stdout.write(JSON.stringify({ status: result.status }));
+    `);
+    if (integrationPublished.status !== 'completed') {
+      throw new Error('Installed SDK did not complete the approved workflow');
+    }
+    const integrationRecovered = runIntegration(`
+      const result = await runtime.inspect(runId);
+      process.stdout.write(JSON.stringify({ status: result.status, published: result.outputs.publish?.value }));
+    `);
+    if (
+      integrationRecovered.status !== 'completed' ||
+      integrationRecovered.published?.published !== true ||
+      (await fs.readFile(publishedReport, 'utf8')) !== 'Packaged SDK resumed across processes'
+    ) {
+      throw new Error('Installed SDK did not preserve the completed Run and published report');
+    }
+
     const sdkTypeScript = path.join(consumerDir, 'runtime-consumer.ts');
     await fs.writeFile(
       sdkTypeScript,
