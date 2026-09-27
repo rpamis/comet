@@ -1143,7 +1143,7 @@ children:
     expect(run.actions.at(-1)?.stepId).toBe('supervisor.parent.builder');
   });
 
-  it.each(['normal', 'partial-recovery', 'target-drift'] as const)(
+  it.each(['normal', 'partial-recovery', 'branch-lock-recovery', 'target-drift'] as const)(
     'handles parent repair, delivery, and cleanup after Supervisor DAG restart (%s)',
     async (scenario) => {
       const { root, paths, changeDir } = await fixture();
@@ -1984,6 +1984,62 @@ children:
           executorId: 'native-supervisor-cleanup',
           context: { requestId: 'parent-cleanup', projectRoot: root },
         });
+      } else if (scenario === 'branch-lock-recovery') {
+        const branchLock = path.join(
+          root,
+          '.git',
+          'refs',
+          'heads',
+          'comet',
+          'supervisor',
+          'sdk-shape',
+          'api.lock',
+        );
+        await fs.mkdir(path.dirname(branchLock), { recursive: true });
+        await fs.writeFile(branchLock, 'Simulated concurrent Git ref update.\n');
+        await expect(
+          runtime.execute({
+            runId: run.runId,
+            actionId: cleanupAction.id,
+            executorId: 'native-supervisor-cleanup',
+            context: { requestId: 'parent-cleanup-with-ref-lock', projectRoot: root },
+          }),
+        ).rejects.toThrow(/已保留执行归属/);
+        const interrupted = await runtime.inspect(run.runId);
+        expect(interrupted.actions.at(-1)).toMatchObject({
+          stepId: 'supervisor.cleanup',
+          status: 'unknown',
+          reason: expect.stringMatching(/lock/),
+        });
+        expect(
+          execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' }),
+        ).not.toContain(integrationWorktree.replaceAll('\\', '/'));
+        expect(
+          execFileSync('git', ['branch', '--list', 'comet/supervisor/sdk-shape/api'], {
+            cwd: root,
+            encoding: 'utf8',
+          }).trim(),
+        ).toBe('comet/supervisor/sdk-shape/api');
+        await fs.unlink(branchLock);
+        await registerSdkChangeOwner(root, {
+          schema: COMET_CHANGE_OWNER_SCHEMA,
+          workflow: 'native',
+          change: 'sdk-shape',
+          format: 'sdk',
+          application: 'native',
+          runId: run.runId,
+        });
+        const recovered = await nativeDomain.runNativeCliDetailed([
+          'archive',
+          'sdk-shape',
+          '--recover',
+          '--json',
+          '--project-root',
+          root,
+        ]);
+        expect(recovered.dispatch.exitCode, recovered.output).toBe(0);
+        runtime = createSupervisorRuntime();
+        run = await runtime.inspect(run.runId);
       } else {
         const cleanupContext = { requestId: 'parent-cleanup', projectRoot: root };
         const claimedCleanup = await runtime.claim({
