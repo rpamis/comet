@@ -46,6 +46,7 @@ import {
 } from '../../helpers/native-portable-process.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import { recoverNativePortableChange } from '../../../domains/comet-native/native-portable-recovery.js';
+import { inspectProcessLiveness } from '../../../platform/process/process-identity.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 
 function passedReview(reviewerExecutionRef: string) {
@@ -661,7 +662,7 @@ children:
     ]);
   });
 
-  it('recovers an orphaned running check after its Runtime owner process exits', async () => {
+  it('recovers an orphaned running check only when process exit can be proven', async () => {
     await createNativePortableChange({ paths, name: 'orphaned-owner', language: 'en' });
     const changeDir = nativePortableChangeDir(paths, 'orphaned-owner');
     await fs.writeFile(
@@ -727,13 +728,28 @@ children:
 
     owner.kill('SIGKILL');
     await waitForProcessExit(owner);
-    expect(processIsAlive(owner.pid!)).toBe(false);
     if (activePid !== undefined && processIsAlive(activePid)) process.kill(activePid, 'SIGKILL');
     await waitForCondition(
       () => activePid !== undefined && !processIsAlive(activePid),
       'Check process remained alive after its Runtime owner was terminated',
     );
     expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/)).toHaveLength(1);
+
+    const ownerLiveness = await inspectProcessLiveness(
+      owner.pid!,
+      running?.execution?.ownerIdentity,
+    );
+    const activeProcess = running?.checks[0]?.activeProcess;
+    const checkLiveness =
+      activeProcess?.status === 'running'
+        ? await inspectProcessLiveness(activeProcess.pid, activeProcess.identity)
+        : 'unknown';
+    if (ownerLiveness !== 'dead' || checkLiveness !== 'dead') {
+      await expect(
+        executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
+      ).rejects.toThrow('could not be proven to have exited');
+      return;
+    }
 
     await expect(
       executeNativePortableCheckPlan({ paths, name: state.name, plans: [plan] }),
