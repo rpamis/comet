@@ -61,7 +61,7 @@ const reportWorkflow = {
 
 `next` 中的字符串表示激活一次已声明步骤；`{ stepId, input }` 可以按不同 JSON 输入多次激活同一步骤。每次激活生成独立 Action，其 `input.activation` 保存对应输入，并参与 Action 输入摘要和 Run 持久化。完全重复的激活和未声明的转移会被拒绝；显式返回空数组表示此次事件不新增步骤，例如等待已派发的并行 Action。激活输入同样会持久化，不得包含凭据。Native Supervisor 已用这套机制完成双 Child 依赖场景的正常路径，包括父级独立验收、目标分支交付、Archive 和临时 worktree 清理；并行 Child 的集成和集成检查按 Run 顺序串行推进，公开 `native next` 返回全部 `pendingActions`。失败的集成检查可转为绑定原检查和提交的宿主修复 Action，成功修复后用新提交重新检查。清理步骤拒绝脏 worktree 或未合入的分支；清理完成或部分清理后宿主中断时，可在新进程核对并完成原 Action。交付前及部分清理后发现目标分支漂移时会拒绝继续；其他失败、结果未知和 Git 操作内部的并发漂移尚未完整验收，不能据此认为 Supervisor 流程已完整通过验收。
 
-上述清理中断恢复由 Native 应用函数完成，并通过 `comet native archive <change> --recover` 显式暴露给 CLI 宿主。它只处理 Archive 阶段唯一的 `unknown` 归档或清理 Action，在确认原宿主已停止后核对证据、完成剩余安全操作并提交原 Action；普通 `archive` 不会自动重发结果未知的动作。
+Native 应用通过 `comet native archive <change> --recover` 向 CLI 宿主提供中断恢复。它只处理 Archive 阶段唯一的 `unknown` Supervisor 交付、归档或清理 Action，且要求宿主先确认原执行已停止。交付恢复核对目标分支是否仍精确指向已验证集成提交，再提交原 Action 的结果；未交付或分支漂移时拒绝，不重新执行快进。清理恢复核对工作区与分支后完成剩余安全操作；普通 `archive` 不会自动重发结果未知的动作。
 
 不由 Action Outcome 直接产生的工件，可用 `await_evidence` 步骤声明证据种类与版本化验证器。宿主在 `evidenceValidators` 注册验证器，调用 `recordEvidence({ runId, evidenceId, kind, ref, contentHash, submissionId, expectedRevision })`。验证器会收到当前 Run 的隔离副本，可据此核对证据是否属于该 Run，再检查引用范围与当前内容摘要；SDK 只在验证通过且 revision 未变化时记录收据并推进。外部文件可能在验证后再次变化，后续依赖它的动作仍须按已记录摘要重新核对。若工作流为该等待项声明 `on: invalidated` 转移，宿主可在收据遭拒后调用 `invalidateEvidence`：SDK 会再次验证原收据，只有确认已失效才记录原因、结束该 Wait 并沿声明的转移继续；它不会重发此前成功的 Action。CLI 中对应 `invalidate-evidence` 操作。没有失效转移或收据仍有效时，Run 保持原等待状态。自定义 JSON Workflow 尚不能通过 CLI 注册处理器和验证器；CLI 的内置 Native/Classic 应用会注册自己的实现。
 

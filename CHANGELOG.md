@@ -20,7 +20,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **SDK-owned new changes**: Native `new` and Classic `state init` now create SDK-owned changes by default, while existing legacy changes retain their original Runtime and new changes can explicitly opt into `--runtime legacy`.
-- **Native SDK public commands**: Route capability removal, requirements revision, Archive progression, and named Doctor diagnostics through the owning SDK Run. Let `native archive --recover` reconcile one interrupted Archive Action against its original evidence after the former process has stopped, without repeating the action. Keep legacy-only check and reference-sync commands from reading or changing SDK-owned state.
+- **Native SDK public commands**: Route capability removal, requirements revision, Archive progression, and named Doctor diagnostics through the owning SDK Run. Let `native archive --recover` reconcile one interrupted Supervisor delivery, Archive, or cleanup Action against its original evidence after the former process has stopped, without repeating an already completed side effect. Keep legacy-only check and reference-sync commands from reading or changing SDK-owned state.
 - **Native and Classic Skill routing**: Guide new SDK-owned changes through their Run Actions, current approval hashes, verified evidence, and interruption recovery in both Chinese and English; keep existing legacy changes on their original instructions.
 - **Classic check execution records**: Bind `comet check run` results and cross-scope reuse to the same SDK Action lifecycle used by Native verification, so interrupted attempts and recorded outcomes remain tied to the exact check inputs without changing Classic's workflow state machine.
 

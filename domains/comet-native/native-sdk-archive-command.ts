@@ -1,6 +1,7 @@
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import { recoverNativeSdkArchiveOutcome } from './native-sdk-archive.js';
 import { recoverNativeSdkSupervisorCleanupOutcome } from './native-sdk-supervisor-cleanup.js';
+import { recoverNativeSdkSupervisorDeliveryOutcome } from './native-sdk-supervisor-deliver.js';
 import { inspectNativeSdkStatus } from './native-sdk-status.js';
 import { createNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
@@ -35,19 +36,30 @@ export async function archiveNativeSdkChange(options: {
     if (
       state.phase !== 'archive' ||
       !action ||
-      !['archive.execute', 'archive.finalize', 'supervisor.cleanup'].includes(action.stepId)
+      ![
+        'supervisor.parent.deliver',
+        'archive.execute',
+        'archive.finalize',
+        'supervisor.cleanup',
+      ].includes(action.stepId)
     ) {
       return {
         command: 'archive',
         exitCode: 73,
         error: {
           code: 'conflict',
-          message: `Native SDK Archive for ${options.name} has no single recoverable Archive Action`,
+          message: `Native SDK Archive for ${options.name} has no single recoverable delivery, Archive, or cleanup Action`,
         },
       };
     }
     const runtime = createNativeSdkRuntime(options.projectRoot);
-    if (action.stepId === 'supervisor.cleanup') {
+    if (action.stepId === 'supervisor.parent.deliver') {
+      await recoverNativeSdkSupervisorDeliveryOutcome({
+        runtime,
+        runId: run.runId,
+        projectRoot: options.projectRoot,
+      });
+    } else if (action.stepId === 'supervisor.cleanup') {
       await recoverNativeSdkSupervisorCleanupOutcome({
         runtime,
         runId: run.runId,

@@ -1143,7 +1143,13 @@ children:
     expect(run.actions.at(-1)?.stepId).toBe('supervisor.parent.builder');
   });
 
-  it.each(['normal', 'partial-recovery', 'branch-lock-recovery', 'target-drift'] as const)(
+  it.each([
+    'normal',
+    'partial-recovery',
+    'branch-lock-recovery',
+    'delivery-recovery',
+    'target-drift',
+  ] as const)(
     'handles parent repair, delivery, and cleanup after Supervisor DAG restart (%s)',
     async (scenario) => {
       const { root, paths, changeDir } = await fixture();
@@ -1935,14 +1941,91 @@ children:
         expect(
           execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' }),
         ).toContain(integrationWorktree.replaceAll('\\', '/'));
+        await registerSdkChangeOwner(root, {
+          schema: COMET_CHANGE_OWNER_SCHEMA,
+          workflow: 'native',
+          change: 'sdk-shape',
+          format: 'sdk',
+          application: 'native',
+          runId: run.runId,
+        });
+        const recoverDelivery = () =>
+          nativeDomain.runNativeCliDetailed([
+            'archive',
+            'sdk-shape',
+            '--recover',
+            '--json',
+            '--project-root',
+            root,
+          ]);
+        const driftedRecovery = await recoverDelivery();
+        expect(driftedRecovery.dispatch.exitCode).not.toBe(0);
+        expect(driftedRecovery.dispatch.error?.message).toMatch(/target branch changed/);
+        execFileSync(
+          'git',
+          ['update-ref', `refs/heads/${branch}`, approvedTargetCommit, concurrentTargetCommit],
+          { cwd: root, stdio: 'ignore' },
+        );
+        const notDeliveredRecovery = await recoverDelivery();
+        expect(notDeliveredRecovery.dispatch.exitCode).not.toBe(0);
+        expect(notDeliveredRecovery.dispatch.error?.message).toMatch(/has not received/);
+        expect((await runtime.inspect(run.runId)).actions.at(-1)?.status).toBe('unknown');
         return;
       }
-      run = await runtime.execute({
-        runId: run.runId,
-        actionId: run.actions.at(-1)!.id,
-        executorId: 'native-supervisor-parent-deliver',
-        context: { requestId: 'parent-delivery', projectRoot: root },
-      });
+      if (scenario === 'delivery-recovery') {
+        const deliveryAction = run.actions.at(-1)!;
+        const deliveryContext = { requestId: 'parent-delivery', projectRoot: root };
+        const claimedDelivery = await runtime.claim({
+          runId: run.runId,
+          actionId: deliveryAction.id,
+          attempt: deliveryAction.attempt,
+          inputHash: deliveryAction.inputHash,
+          executorId: 'native-supervisor-parent-deliver',
+          claimToken: 'parent-delivery-owner',
+          context: deliveryContext,
+        });
+        const deliveryExecutor = application.executors.find(
+          (executor) => executor.id === 'native-supervisor-parent-deliver',
+        )!;
+        const delivered = await deliveryExecutor.execute(
+          claimedDelivery.actions.at(-1)!,
+          deliveryContext,
+          claimedDelivery,
+        );
+        expect(delivered.status).toBe('succeeded');
+        await runtime.markUnknown({
+          runId: run.runId,
+          actionId: deliveryAction.id,
+          attempt: deliveryAction.attempt,
+          reason: 'Host stopped after fast-forward delivery',
+        });
+        await registerSdkChangeOwner(root, {
+          schema: COMET_CHANGE_OWNER_SCHEMA,
+          workflow: 'native',
+          change: 'sdk-shape',
+          format: 'sdk',
+          application: 'native',
+          runId: run.runId,
+        });
+        const recovered = await nativeDomain.runNativeCliDetailed([
+          'archive',
+          'sdk-shape',
+          '--recover',
+          '--json',
+          '--project-root',
+          root,
+        ]);
+        expect(recovered.dispatch.exitCode, recovered.output).toBe(0);
+        runtime = createSupervisorRuntime();
+        run = await runtime.inspect(run.runId);
+      } else {
+        run = await runtime.execute({
+          runId: run.runId,
+          actionId: run.actions.at(-1)!.id,
+          executorId: 'native-supervisor-parent-deliver',
+          context: { requestId: 'parent-delivery', projectRoot: root },
+        });
+      }
       expect(run.actions.at(-1)).toMatchObject({ stepId: 'archive.prepare', type: 'call_tool' });
       expect(
         execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
@@ -1977,7 +2060,7 @@ children:
         type: 'call_tool',
       });
       const cleanupAction = run.actions.at(-1)!;
-      if (scenario === 'normal') {
+      if (scenario === 'normal' || scenario === 'delivery-recovery') {
         run = await runtime.execute({
           runId: run.runId,
           actionId: cleanupAction.id,

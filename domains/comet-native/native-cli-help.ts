@@ -228,7 +228,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--finish <action>  Persist merge, push, pull-request, or keep for an isolated workspace.',
       '--serial-first <current-change>  During execution only, confirm that this change archives before detected capability peers; the value must equal <change-name>.',
       '--confirmed        Confirm Archive when project policy requires it.',
-      '--recover          For an SDK-owned change, reconcile one unknown Archive or cleanup Action only after confirming the original execution process has stopped; never retry it as new work.',
+      '--recover          For an SDK-owned change, reconcile one unknown Supervisor delivery, Archive, or cleanup Action only after confirming the original execution process has stopped; never retry it as new work.',
     ],
     output:
       'Readiness, every blocker, and the exact next continuation, or the completed Archive transaction and workspace finish result. Execute the returned confirmed command only after ready is true; Archive does not repeat verification.',

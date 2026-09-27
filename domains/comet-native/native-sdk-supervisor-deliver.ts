@@ -12,6 +12,7 @@ import type {
   RuntimeExecutor,
   RuntimeValidator,
   WorkflowRun,
+  WorkflowRuntime,
 } from '../engine/runtime.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { nativeProjectPaths } from './native-paths.js';
@@ -100,6 +101,16 @@ async function currentDelivery(
   };
 }
 
+function deliveryOutput(current: Awaited<ReturnType<typeof currentDelivery>>) {
+  return {
+    contractHash: current.state.children_contract_hash!,
+    integrationCommit: current.integrationCommit,
+    targetBranch: current.targetBranch,
+    targetRoot: current.targetRoot,
+    targetCommit: current.integrationCommit,
+  };
+}
+
 export const nativeSdkSupervisorDeliverExecutor: RuntimeExecutor = {
   id: 'native-supervisor-parent-deliver',
   capabilities: [],
@@ -138,16 +149,45 @@ export const nativeSdkSupervisorDeliverExecutor: RuntimeExecutor = {
     }
     return {
       status: 'succeeded',
-      output: {
-        contractHash: current.state.children_contract_hash!,
-        integrationCommit: current.integrationCommit,
-        targetBranch: current.targetBranch,
-        targetRoot: current.targetRoot,
-        targetCommit,
-      },
+      output: deliveryOutput(current),
     };
   },
 };
+
+/** Reconcile the original delivery Action only after its host has stopped. */
+export async function recoverNativeSdkSupervisorDeliveryOutcome(options: {
+  runtime: WorkflowRuntime;
+  runId: string;
+  projectRoot: string;
+}): Promise<WorkflowRun> {
+  const run = await options.runtime.inspect(options.runId);
+  const action = [...run.actions]
+    .reverse()
+    .find((item) => item.stepId === 'supervisor.parent.deliver' && item.status === 'unknown');
+  if (!action?.claim || action.claim.executorId !== nativeSdkSupervisorDeliverExecutor.id) {
+    throw new Error('Native SDK Supervisor has no lost delivery Action to recover');
+  }
+  const current = await currentDelivery(run, action, options.projectRoot);
+  if (current.targetCommit !== current.integrationCommit) {
+    throw new Error('Native SDK Supervisor target has not received the verified integration');
+  }
+  return options.runtime.recordOutcome({
+    runId: run.runId,
+    context: {
+      requestId: `native-sdk-supervisor-delivery-recovery:${run.runId}:${action.id}`,
+      projectRoot: options.projectRoot,
+    },
+    outcome: {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: action.claim.token,
+      outcomeId: `${action.id}:${action.attempt}:executor-result`,
+      status: 'succeeded',
+      output: deliveryOutput(current),
+    },
+  });
+}
 
 export const nativeSdkSupervisorDeliverValidator: RuntimeValidator = {
   id: 'native-supervisor-parent-deliver-outcome',

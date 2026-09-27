@@ -251,7 +251,7 @@ describe('Supervisor check process recovery', () => {
         ...options.plans[0],
         id: 'interrupted',
         name: 'Interrupted check',
-        timeoutMs: 1000,
+        timeoutMs: 5000,
         argv: [
           '-e',
           "const fs=require('node:fs');const f=process.argv[1];if(fs.existsSync(f))process.exit(0);setInterval(()=>{},25)",
