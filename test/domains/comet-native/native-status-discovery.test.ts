@@ -3,6 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
+import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
 import { createNativeChange } from '../../../domains/comet-native/native-change.js';
 import {
   defaultProjectConfig,
@@ -16,6 +18,7 @@ import {
   ensureNativeDirectories,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
+import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 
 describe('Native status discovery pagination', () => {
   let projectRoot: string;
@@ -47,6 +50,50 @@ describe('Native status discovery pagination', () => {
     expect(
       files.filter((file) => file.includes('/change-24/') && file.includes('/runtime/')),
     ).toEqual([]);
+  });
+
+  it('does not inspect an SDK Run until its status page is requested', async () => {
+    const request = path.join(projectRoot, 'sdk-start.json');
+    await fs.writeFile(
+      request,
+      JSON.stringify({
+        operation: 'start',
+        runId: 'sdk-change',
+        workflow: { id: 'comet-native', version: '1' },
+        input: { name: 'sdk-change', artifactRootRef: '.' },
+        initialState: createNativePortableState({
+          name: 'sdk-change',
+          language: 'en',
+          createdAt: '2026-09-25T00:00:00.000Z',
+          nextAction: 'prepare-shape-confirmation',
+        }),
+      }),
+    );
+    const started = await runtimeDispatchCommand(
+      { request, application: 'native', projectRoot },
+      { invocationCwd: projectRoot },
+    );
+    expect(started.response.status).toBe('succeeded');
+    const store = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'native'),
+    });
+    const run = await store.read('sdk-change');
+    if (!run) throw new Error('SDK Run was not persisted');
+    expect(
+      await store.compareAndSwap('sdk-change', run.revision, {
+        ...run,
+        revision: run.revision + 1,
+        workflow: { ...run.workflow, id: 'unavailable-workflow' },
+      }),
+    ).toBe(true);
+
+    const first = await listDiscoveredNativeStatusPage({ projectRoot });
+    expect(first.total).toBe(26);
+    expect(first.items).toHaveLength(24);
+    expect(first.nextCursor).not.toBeNull();
+    await expect(
+      listDiscoveredNativeStatusPage({ projectRoot, cursor: first.nextCursor }),
+    ).rejects.toThrow();
   });
 
   it('keeps JSON mode in the public continuation command', async () => {

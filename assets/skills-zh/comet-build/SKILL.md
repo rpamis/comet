@@ -7,6 +7,17 @@ description: '制定计划、实施并验收 Classic 任务。在用户调用 /c
 
 收到入口返回的 layout 后，按 `comet-classic/reference/classic-layout.md` 确定各逻辑根对应的目录。当前上下文已有这份协议时，无需重复加载。本文件中的 OpenSpec CLI 调用均通过适配器执行，文件路径均基于已绑定的 `<classic-*>` 根目录，无需先额外运行 root show。
 
+## SDK Run 路径
+
+先运行 `comet state next <change-name> --json`。`data.runtimeFormat` 为 `sdk` 时，只按本节推进 Run；下文的执行策略选项、计划内容要求、实施与审查方法仍适用，下文的旧状态写入和旧证据命令不执行。`data.phase` 必须为 `build`。先运行 `comet state check <change-name> build --json` 取得 layout 与当前配置；若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> build --recover --json` 核对原 Action 的结果，在结果明确前不重发外部工作。
+
+1. `full.build.configure` 待执行时，按下文 Step 1 核对已有选择，只补真正缺失的执行方式、TDD 和审查决定。将已确认的 `build_mode`、`tdd_mode`、`review_mode`、`subagent_dispatch` 和需要时的 `direct_override` 写入仓库内的临时 JSON；运行 `comet state propose-build <change-name> --file <configuration-json>`。从返回的 `data.wait.proposalHash` 保存 `<proposalHash>`，向用户展示实际配置并按 decision-point.md 等待确认。确认或拒绝时运行 `comet state decide-build <change-name> --proposal-hash <proposalHash> --choice <approved|rejected>`；拒绝后从新配置重新提案。恢复已有待决定 Wait 时复用原提案，不重复提问或新建配置 Action。
+2. `full.build.plan` 待执行时，按下文 Step 2 创建或核对计划。计划引用当前 Design Doc 和 tasks.md，以 `<!-- comet-task-authority: <classic-task-authority-ref> -->` 及 `<!-- comet-task-ref:<task-id> -->` 映射任务，不能另建 checkbox。运行 `comet state submit-plan <change-name> --plan <plan-ref>` 提交计划及证据。只有用户明确要求写完计划暂停时加 `--pause`；恢复 `plan-ready` Wait 时，必须等用户明确继续，再用该 Wait 的当前哈希运行 `comet state continue-plan <change-name> --proposal-hash <proposalHash>`。计划或任务要求变化后不复用原批准。
+3. `full.build.execute` 待执行时，按下文 Step 3 的已选方法实施、做任务级或分段审查并运行相关检查。任务实际完成且审查合格后勾选同一 tasks.md；SDK 分支不调用旧 `state task-complete`、`state checkpoint` 或 `comet handoff --write`。核对计划、任务和工作区后运行 `comet state complete-build <change-name>`，由 Run 进入检查 Action。实现或计划与已接受证据不一致时先解决具体漂移，不绕过 SDK 校验。
+4. `full.build.check` 待执行时，先运行 `comet guard <change-name> build` 只读预检，再以当前工作区中明确的完整构建或验收入口运行 `comet guard <change-name> build --apply -- <program> [args...]`。Guard 执行真实检查并向同一 Run 提交收据；仅在检查成功且证据仍有效时进入 Verify。若收据提交中断，先核对同一 Action 和检查记录，按 Guard 的恢复结果补交，不重新执行已完成的外部检查。失败后从 `state next --json` 指示的 Build Action 继续，修复原因并重新验证。
+
+每次推进后以 `comet state next <change-name> --json` 核对新的 Action、Wait 或证据状态；只有 `action` 且指向下一阶段时才加载下一 Skill。`decision`、`evidence`、`reconcile` 均先完成当前 Run 的恢复或用户决定。以下旧 Runtime 步骤仅用于 `runtimeFormat: legacy`。
+
 ## 前置条件
 
 - Design Doc 已创建（阶段 2 完成）

@@ -50,7 +50,11 @@ function state(cwd, ...args) {
     // benchmark scenarios.
     options.env = { ...process.env, COMET_FORCE_PHASE: '1' };
   }
-  return run(cwd, ['state', ...args], options);
+  return run(
+    cwd,
+    ['state', ...args, ...(args[0] === 'init' ? ['--runtime', 'legacy'] : [])],
+    options,
+  );
 }
 
 function camelToSnake(str) {

@@ -10,7 +10,9 @@ import {
 } from '../../../domains/comet-native/native-change.js';
 import {
   inspectNativeHookGuard,
+  listActiveNativeHookChanges,
   parseNativeHookRequest,
+  resolveActiveNativeHookChange,
   type NativeHookRequest,
 } from '../../../domains/comet-native/native-hook-guard.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
@@ -31,6 +33,10 @@ import {
 } from '../../../domains/comet-native/native-portable-runtime.js';
 import { confirmNativePortableShape } from '../../helpers/native-portable-confirmed-transition.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
+import {
+  createNativeSdkRuntime,
+  inspectNativeSdkRun,
+} from '../../../domains/comet-native/native-runtime-ownership.js';
 
 function passedReview(reviewerExecutionRef: string) {
   return {
@@ -166,6 +172,150 @@ describe('Native phase Hook guard', () => {
       allowed,
       phase,
       change: `guard-${phase}`,
+    });
+  });
+
+  it('guards an SDK-owned Shape from its Run without creating legacy state', async () => {
+    const created = await runNativeCli([
+      'new',
+      'sdk-guard',
+      '--runtime',
+      'sdk',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(created.exitCode, created.stderr).toBe(0);
+
+    await expect(listActiveNativeHookChanges(projectRoot)).resolves.toContainEqual({
+      workflow: 'native',
+      name: 'sdk-guard',
+      phase: 'shape',
+    });
+    await expect(resolveActiveNativeHookChange(projectRoot, 'sdk-guard')).resolves.toMatchObject({
+      workflow: 'native',
+      name: 'sdk-guard',
+      phase: 'shape',
+    });
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts'), 'sdk-guard'),
+    ).resolves.toMatchObject({ allowed: false, change: 'sdk-guard', phase: 'shape' });
+    await expect(
+      inspectNativeHookGuard(
+        projectRoot,
+        writeRequest('docs/comet/changes/sdk-guard/brief.md'),
+        'sdk-guard',
+      ),
+    ).resolves.toMatchObject({ allowed: true, change: 'sdk-guard', phase: 'shape' });
+
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const changeDir = path.join(paths.changesDir, 'sdk-guard');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      '# Outcome\nShip the workflow.\n# Scope\nKeep compatibility.\n# Non-goals\nNone.\n# Acceptance examples\n- The workflow resumes.\n# Constraints and invariants\nPreserve state.\n# Decisions\nNone.\n# Open questions\nNone.\n# Verification expectations\nRun focused checks.\n',
+    );
+    await fs.mkdir(path.join(changeDir, 'specs', 'workflow'), { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, 'specs', 'workflow', 'spec.md'),
+      '# Workflow\nThe workflow resumes without losing confirmed work.\n',
+    );
+    const prepared = await runNativeCli([
+      'next',
+      'sdk-guard',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(prepared.exitCode, prepared.stderr).toBe(0);
+    const stateVersion = (JSON.parse(prepared.stdout!) as { data: { stateVersion: number } }).data
+      .stateVersion;
+    const confirmed = await runNativeCli([
+      'next',
+      'sdk-guard',
+      '--confirmed',
+      '--summary',
+      'User approved Shape.',
+      '--expected-state-version',
+      String(stateVersion),
+      '--expected-action',
+      'confirm-shape',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(confirmed.exitCode, confirmed.stderr).toBe(0);
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts'), 'sdk-guard'),
+    ).resolves.toMatchObject({ allowed: true, change: 'sdk-guard', phase: 'build' });
+    await expect(
+      inspectNativeHookGuard(
+        projectRoot,
+        writeRequest('docs/comet/changes/sdk-guard/brief.md'),
+        'sdk-guard',
+      ),
+    ).resolves.toMatchObject({ allowed: false, change: 'sdk-guard', phase: 'build' });
+    const { run } = await inspectNativeSdkRun(projectRoot, 'sdk-guard');
+    const builder = run.actions.at(-1)!;
+    const runtime = createNativeSdkRuntime(projectRoot);
+    const context = { requestId: 'sdk-hook-builder', projectRoot };
+    const claimed = await runtime.claim({
+      runId: run.runId,
+      actionId: builder.id,
+      attempt: builder.attempt,
+      inputHash: builder.inputHash,
+      executorId: 'native-host',
+      sessionId: 'sdk-hook-builder-session',
+      claimToken: 'sdk-hook-builder-claim',
+      context,
+    });
+    await runtime.recordOutcome({
+      runId: run.runId,
+      outcome: {
+        actionId: builder.id,
+        attempt: builder.attempt,
+        inputHash: builder.inputHash,
+        claimToken: claimed.actions.find((action) => action.id === builder.id)!.claim!.token,
+        outcomeId: 'sdk-hook-builder-result',
+        status: 'succeeded',
+        output: {
+          summary: 'Implemented the workflow.',
+          addressedAcceptanceIds: ['A1'],
+          checks: [],
+          knownLimits: [],
+          submittedAt: new Date().toISOString(),
+          verificationChecks: [
+            {
+              id: 'focused',
+              name: 'Focused check',
+              executable: process.execPath,
+              argv: ['-e', 'process.exit(0)'],
+              cwdRef: '.',
+              timeoutMs: 5_000,
+              repeatable: true,
+            },
+          ],
+        },
+      },
+      context,
+    });
+    const checked = await runNativeCli([
+      'next',
+      'sdk-guard',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(checked.exitCode, checked.stderr).toBe(0);
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts'), 'sdk-guard'),
+    ).resolves.toMatchObject({ allowed: false, change: 'sdk-guard', phase: 'verify' });
+    await expect(inspectNativeSdkRun(projectRoot, 'sdk-guard')).resolves.toMatchObject({
+      state: { phase: 'verify' },
+    });
+    await expect(
+      fs.access(path.join(paths.changesDir, 'sdk-guard', 'comet-state.yaml')),
+    ).rejects.toMatchObject({
+      code: 'ENOENT',
     });
   });
 

@@ -1,4 +1,4 @@
-import { promises as fs } from 'fs';
+import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
 
 import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
@@ -8,9 +8,11 @@ import {
 } from '../../platform/process/hook-adapter.js';
 import type { CometHookIntent, CometHookRequest } from '../../platform/process/hook-adapter.js';
 import type { CometHookDecision } from '../workflow-contract/hook.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { nativeChangeDir, readNativeChange } from './native-change.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
+import { inspectNativeSdkRun, listNativeSdkChangeNames } from './native-runtime-ownership.js';
 import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
 import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
 import { resolveSelectedNativeChange } from './native-selection.js';
@@ -203,7 +205,8 @@ function foreignNativeFormalTargetDecision(
 interface ActiveNativeContext {
   paths: NativeProjectPaths;
   changes: Array<
-    { kind: 'legacy'; state: NativeChangeState } | { kind: 'portable'; state: NativePortableState }
+    | { kind: 'legacy'; state: NativeChangeState }
+    | { kind: 'portable' | 'sdk'; state: NativePortableState }
   >;
 }
 
@@ -229,8 +232,10 @@ async function inspectPortableWriteTargets(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   request: NativeHookRequest;
+  runtimeFormat?: 'legacy' | 'sdk';
 }): Promise<NativeHookGuardResult> {
   const { projectRoot, paths, state, request } = options;
+  const sdkOwned = options.runtimeFormat === 'sdk';
   const changeDir = nativePortableChangeDir(paths, state.name);
   const formalTargets: string[] = [];
   const invalidFormalTargets: string[] = [];
@@ -334,6 +339,15 @@ async function inspectPortableWriteTargets(options: {
   }
   if (formalTargets.length > 0) {
     if (state.phase !== 'shape') {
+      if (sdkOwned) {
+        return {
+          allowed: false,
+          reason: `Native SDK requirements can only be edited in Shape. Read comet native status ${state.name} --json and use the current SDK Run decision before changing formal artifacts.`,
+          workflow: 'native',
+          phase: state.phase,
+          change: state.name,
+        };
+      }
       const returned = await returnNativePortableChangeToShape({
         paths,
         name: state.name,
@@ -375,6 +389,15 @@ async function inspectPortableWriteTargets(options: {
       };
     }
     if (state.phase === 'verify' || state.phase === 'archive') {
+      if (sdkOwned) {
+        return {
+          allowed: false,
+          reason: `Native SDK candidate must return to Build through its current Run decision before implementation changes. Read comet native status ${state.name} --json.`,
+          workflow: 'native',
+          phase: state.phase,
+          change: state.name,
+        };
+      }
       const returned = await returnNativePortableChangeToBuild({
         paths,
         name: state.name,
@@ -487,24 +510,33 @@ async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativ
   if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
 
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
-  let entries;
+  const sdkNames = new Set(await listNativeSdkChangeNames(projectRoot));
+  let entries: Dirent[];
   try {
     entries = await fs.readdir(paths.changesDir, { withFileTypes: true });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { paths, changes: [] };
-    throw error;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') entries = [];
+    else throw error;
   }
 
   const changes: ActiveNativeContext['changes'] = [];
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-    if (await isNativePortableChange(paths, entry.name)) {
+    if (sdkNames.has(entry.name)) {
+      const { state } = await inspectNativeSdkRun(projectRoot, entry.name);
+      if (!state.archived) changes.push({ kind: 'sdk', state });
+      sdkNames.delete(entry.name);
+    } else if (await isNativePortableChange(paths, entry.name)) {
       const state = await readNativePortableChange(paths, entry.name);
       if (!state.archived) changes.push({ kind: 'portable', state });
     } else {
       const state = await readNativeChange(paths, entry.name);
       if (!state.archived) changes.push({ kind: 'legacy', state });
     }
+  }
+  for (const name of sdkNames) {
+    const { state } = await inspectNativeSdkRun(projectRoot, name);
+    if (!state.archived) changes.push({ kind: 'sdk', state });
   }
   return { paths, changes };
 }
@@ -517,6 +549,10 @@ async function selectedNativeContextImpl(
   if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   try {
+    if (await readSdkChangeOwner(projectRoot, 'native', name)) {
+      const { state } = await inspectNativeSdkRun(projectRoot, name);
+      return { paths, changes: state.archived ? [] : [{ kind: 'sdk', state }] };
+    }
     if (await isNativePortableChange(paths, name)) {
       const state = await readNativePortableChange(paths, name);
       return { paths, changes: state.archived ? [] : [{ kind: 'portable', state }] };
@@ -556,6 +592,10 @@ export async function resolveActiveNativeHookChange(
   if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   try {
+    if (await readSdkChangeOwner(projectRoot, 'native', name)) {
+      const { state } = await inspectNativeSdkRun(projectRoot, name);
+      return state.archived ? null : { workflow: 'native', name: state.name, phase: state.phase };
+    }
     const state = (await isNativePortableChange(paths, name))
       ? await readNativePortableChange(paths, name)
       : await readNativeChange(paths, name);
@@ -706,7 +746,7 @@ export async function inspectNativeHookGuard(
     if (!isWithin(projectRoot, target)) continue;
     if (isWithin(context.paths.specsDir, target)) {
       const selectedChangeDir =
-        change.kind === 'portable'
+        change.kind !== 'legacy'
           ? nativePortableChangeDir(context.paths, state.name)
           : nativeChangeDir(context.paths, state.name);
       preDecisions.push({
@@ -720,7 +760,7 @@ export async function inspectNativeHookGuard(
     }
     if (!isWithin(context.paths.nativeRoot, target)) continue;
     const selectedChangeDir =
-      change.kind === 'portable'
+      change.kind !== 'legacy'
         ? nativePortableChangeDir(context.paths, state.name)
         : nativeChangeDir(context.paths, state.name);
     if (isWithin(selectedChangeDir, target)) {
@@ -772,12 +812,13 @@ export async function inspectNativeHookGuard(
       change: state.name,
     };
   }
-  if (change.kind === 'portable') {
+  if (change.kind !== 'legacy') {
     return inspectPortableWriteTargets({
       projectRoot,
       paths: context.paths,
       state: change.state,
       request,
+      runtimeFormat: change.kind === 'sdk' ? 'sdk' : 'legacy',
     });
   }
 

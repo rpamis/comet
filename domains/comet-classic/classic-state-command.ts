@@ -3,7 +3,42 @@ import path from 'path';
 import { Document, parseDocument } from 'yaml';
 import { samePath } from '../../platform/paths/git-worktree.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
+import {
+  assertChangeNotSdkOwned,
+  COMET_CHANGE_OWNER_SCHEMA,
+  readChangeRuntimeOwner,
+  registerLegacyChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
+import {
+  assertClassicSdkStartAvailable,
+  resolveClassicChangeRuntimeOwner,
+  withClassicChangeOwnershipLock,
+} from './classic-runtime-ownership.js';
+import { createClassicSdkRun } from './classic-sdk-create.js';
+import {
+  decideClassicSdkArchive,
+  proposeClassicSdkArchive,
+} from './classic-sdk-archive-decision.js';
+import { completeClassicSdkDelivery } from './classic-sdk-delivery.js';
+import {
+  completeClassicSdkBuild,
+  continueClassicSdkBuildPlan,
+  decideClassicSdkBuild,
+  proposeClassicSdkBuild,
+  submitClassicSdkBuildPlan,
+} from './classic-sdk-build.js';
+import {
+  completeClassicSdkDesign,
+  decideClassicSdkDesign,
+  proposeClassicSdkDesign,
+} from './classic-sdk-design.js';
+import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
+import { failClassicSdkVerify } from './classic-sdk-verify-failure.js';
+import {
+  decideClassicSdkEscalation,
+  proposeClassicSdkEscalation,
+} from './classic-sdk-escalation.js';
 import {
   clearCurrentChange,
   clearCurrentChangeIf,
@@ -36,7 +71,12 @@ import {
 import { resolveClassicStepId } from './classic-resolver.js';
 import { reconcileClassicRuntimeRun, transitionClassicRuntimeRun } from './classic-runtime-run.js';
 import { appendClassicStateEvent } from './classic-state-events.js';
-import { parseClassicStateDocument, type ClassicState } from './classic-state.js';
+import {
+  parseClassicStateDocument,
+  classicStateToDocument,
+  type ClassicProfile,
+  type ClassicState,
+} from './classic-state.js';
 import { FIELD_ENUMS, MACHINE_OWNED_FIELDS, SETTABLE_FIELDS } from './classic-state-options.js';
 import { readClassicState, writeClassicState, withClassicStateLock } from './classic-store.js';
 import {
@@ -457,6 +497,15 @@ async function readField(name: string, field: string): Promise<string> {
   return readRecordField(record, field);
 }
 
+async function getField(name: string, field: string): Promise<string> {
+  const owner = await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
+  if (owner?.format !== 'legacy') {
+    const sdkWorkspace = await findClassicSdkWorkspace(classicCommandProjectRoot(), name);
+    if (sdkWorkspace) return readRecordField(classicStateToDocument(sdkWorkspace.state), field);
+  }
+  return readField(name, field);
+}
+
 async function readRecordField(record: Record<string, unknown>, field: string): Promise<string> {
   const value = record[field];
   if (field === 'language') {
@@ -650,6 +699,7 @@ async function init(
   name: string,
   workflow: string,
   isolation: string | null = null,
+  runtimeFormat: 'legacy' | 'sdk' = 'legacy',
 ): Promise<void> {
   validateChangeName(name);
   validateEnum(workflow, PROFILES);
@@ -660,41 +710,89 @@ async function init(
       `ERROR: cannot bind isolation=${isolation} while HEAD is detached; checkout a branch first`,
     );
   }
-  const change = await ensureClassicActiveChangeDirectory(name, classicCommandProjectRoot());
-  const { label, directory } = change;
-  const file = path.join(directory, '.comet.yaml');
-  if (await exists(file)) fail(`ERROR: .comet.yaml already exists at ${label}/.comet.yaml`);
+  const projectRoot = classicCommandProjectRoot();
+  await withClassicChangeOwnershipLock(projectRoot, name, async () => {
+    if (runtimeFormat === 'legacy') {
+      await assertChangeNotSdkOwned(projectRoot, 'classic', name);
+    } else if (await readChangeRuntimeOwner(projectRoot, 'classic', name)) {
+      fail(`ERROR: Classic change ${name} already has Runtime ownership`);
+    }
+    const change = await ensureClassicActiveChangeDirectory(name, projectRoot);
+    const { label, directory } = change;
+    const file = path.join(directory, '.comet.yaml');
+    if (await exists(file)) fail(`ERROR: .comet.yaml already exists at ${label}/.comet.yaml`);
 
-  const preset = workflow !== 'full';
-  const reviewMode = preset ? 'off' : await reviewModeDefault();
-  const document = new Document({
-    workflow,
-    language: await projectLanguageDefault(),
-    phase: 'open',
-    context_compression: await contextCompression(),
-    build_mode: preset ? 'direct' : null,
-    build_pause: null,
-    subagent_dispatch: null,
-    tdd_mode: preset ? 'direct' : null,
-    review_mode: reviewMode,
-    isolation,
-    verify_mode: preset ? 'light' : null,
-    auto_transition: (await autoTransition()) === 'true',
-    base_ref: gitOutput(['rev-parse', '--verify', 'HEAD']),
-    design_doc: null,
-    plan: null,
-    verify_result: 'pending',
-    verify_failures: 0,
-    verification_report: null,
-    branch_status: 'pending',
-    created_at: new Date().toISOString().slice(0, 10),
-    verified_at: null,
-    archive_confirmation: null,
-    archived: false,
+    const preset = workflow !== 'full';
+    const reviewMode = preset ? 'off' : await reviewModeDefault();
+    const document = new Document({
+      workflow,
+      language: await projectLanguageDefault(),
+      phase: 'open',
+      context_compression: await contextCompression(),
+      build_mode: preset ? 'direct' : null,
+      build_pause: null,
+      subagent_dispatch: null,
+      tdd_mode: preset ? 'direct' : null,
+      review_mode: reviewMode,
+      isolation,
+      verify_mode: preset ? 'light' : null,
+      auto_transition: (await autoTransition()) === 'true',
+      base_ref: gitOutput(['rev-parse', '--verify', 'HEAD']),
+      design_doc: null,
+      plan: null,
+      verify_result: 'pending',
+      verify_failures: 0,
+      verification_report: null,
+      branch_status: 'pending',
+      created_at: new Date().toISOString().slice(0, 10),
+      verified_at: null,
+      archive_confirmation: null,
+      archived: false,
+    });
+    if (isolation !== null) document.set('bound_branch', boundBranch);
+    if (runtimeFormat === 'sdk') {
+      await assertClassicSdkStartAvailable({
+        projectRoot,
+        changeDirRef: path.relative(projectRoot, directory),
+      });
+      const projection = parseClassicStateDocument(document.toJS());
+      if (!projection.classic) fail('ERROR: Classic SDK initial state is incomplete');
+      const run = await createClassicSdkRun({
+        projectRoot,
+        name,
+        profile: workflow as ClassicProfile,
+        changeDir: directory,
+        initialState: projection.classic,
+      });
+      output.data = {
+        change: name,
+        phase: projection.classic.phase,
+        configuration: projection.classic,
+        run: {
+          id: run.runId,
+          revision: run.revision,
+          status: run.status,
+          actions: run.actions.map(({ id, stepId, status, attempt, inputHash }) => ({
+            id,
+            stepId,
+            status,
+            attempt,
+            inputHash,
+          })),
+        },
+      };
+      output.stdout.push(green(`Initialized: ${label} (workflow=${workflow}, runtime=sdk)`));
+    } else {
+      await atomicWrite(file, document.toString());
+      await registerLegacyChangeOwner(projectRoot, {
+        schema: COMET_CHANGE_OWNER_SCHEMA,
+        workflow: 'classic',
+        change: name,
+        format: 'legacy',
+      });
+      output.stdout.push(green(`Initialized: ${label}/.comet.yaml (workflow=${workflow})`));
+    }
   });
-  if (isolation !== null) document.set('bound_branch', boundBranch);
-  await atomicWrite(file, document.toString());
-  output.stdout.push(green(`Initialized: ${label}/.comet.yaml (workflow=${workflow})`));
 }
 
 async function requirePhase(name: string, expected: string): Promise<void> {
@@ -955,6 +1053,91 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
 
 async function next(output: CommandOutput, name: string): Promise<void> {
   validateChangeName(name);
+  const owner = await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
+  const sdkWorkspace =
+    owner?.format === 'legacy'
+      ? null
+      : await findClassicSdkWorkspace(classicCommandProjectRoot(), name);
+  if (sdkWorkspace) {
+    const { run, state } = sdkWorkspace;
+    const pending = run.actions.find((action) => action.status === 'pending');
+    const unresolved = run.actions.find(
+      (action) => action.status === 'running' || action.status === 'unknown',
+    );
+    const pendingEvidence = run.evidenceWaits?.find((wait) => wait.status === 'pending');
+    const pendingDecision = run.waits.find((wait) => wait.status === 'pending');
+    output.data = {
+      change: name,
+      runtimeFormat: 'sdk',
+      phase: state.phase,
+      configuration: state,
+      run: {
+        id: run.runId,
+        revision: run.revision,
+        status: run.status,
+        actions: run.actions.map(({ id, stepId, status, attempt, inputHash }) => ({
+          id,
+          stepId,
+          status,
+          attempt,
+          inputHash,
+        })),
+        evidenceWaits: (run.evidenceWaits ?? []).map(({ id, stepId, kind, status }) => ({
+          id,
+          stepId,
+          kind,
+          status,
+        })),
+        waits: run.waits.map(({ id, stepId, status, proposal, proposalHash, choices }) => ({
+          id,
+          stepId,
+          status,
+          proposal,
+          proposalHash,
+          choices,
+        })),
+      },
+      nextAction:
+        run.status === 'completed'
+          ? { kind: 'done' }
+          : pending
+            ? { kind: 'action', stepId: pending.stepId }
+            : unresolved
+              ? { kind: 'reconcile', stepId: unresolved.stepId }
+              : pendingEvidence
+                ? {
+                    kind: 'evidence',
+                    stepId: pendingEvidence.stepId,
+                    evidenceKind: pendingEvidence.kind,
+                  }
+                : pendingDecision
+                  ? { kind: 'decision', stepId: pendingDecision.stepId }
+                  : null,
+    };
+    if (run.status === 'completed') {
+      output.stdout.push('NEXT: done');
+      return;
+    }
+    if (unresolved) {
+      output.stdout.push(
+        `NEXT: reconcile`,
+        `ACTION: ${unresolved.stepId}`,
+        'Inspect the claimed Action outcome before retrying external work.',
+      );
+      return;
+    }
+    if (!pending && pendingEvidence) {
+      output.stdout.push(`NEXT: evidence`, `EVIDENCE: ${pendingEvidence.kind}`);
+      return;
+    }
+    if (!pending && pendingDecision) {
+      output.stdout.push(`NEXT: decision`, `WAIT: ${pendingDecision.stepId}`);
+      return;
+    }
+    if (!pending?.ref) fail(`ERROR: Classic SDK Run ${name} has no pending Skill Action`);
+    output.stdout.push('NEXT: auto', `SKILL: ${pending.ref}`);
+    return;
+  }
   const { file, label, directory } = await stateFile(name);
   if (!(await exists(file))) fail(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
   const record = (await readDocument(file)).toJS() as Record<string, unknown>;
@@ -969,6 +1152,7 @@ async function next(output: CommandOutput, name: string): Promise<void> {
       sparseClassicState(record),
     )),
     change: name,
+    runtimeFormat: 'legacy',
     phase,
     configuration: sparseClassicState(record),
   };
@@ -977,6 +1161,7 @@ async function next(output: CommandOutput, name: string): Promise<void> {
     const complete = ['complete', 'local-verified'].includes(delivery.verification.status);
     output.data = {
       change: name,
+      runtimeFormat: 'legacy',
       phase,
       configuration: sparseClassicState(record),
       delivery,
@@ -1241,6 +1426,114 @@ async function progressCommand(
   }
 }
 
+async function checkSdkEntry(
+  output: CommandOutput,
+  name: string,
+  phase: string,
+  projectRoot: string,
+): Promise<void> {
+  const { run, state } = await inspectClassicSdkRun(projectRoot, name);
+  output.stdout.push(`=== Entry Check: comet-${phase} ===`);
+  const issues: ClassicIssue[] = [];
+  let passed = 0;
+  let total = 0;
+  const pass = (message: string) => {
+    output.stdout.push(`  ${green('[PASS]')} ${message}`);
+    passed += 1;
+    total += 1;
+  };
+  const reject = (message: string) => {
+    output.stdout.push(`  ${red('[FAIL]')} ${message}`);
+    issues.push(classicIssue(message, { code: 'CLASSIC_ENTRY_CHECK_FAILED' }));
+    total += 1;
+  };
+  if (state.phase === phase) pass(`phase=${state.phase} (expected: ${phase})`);
+  else reject(`phase=${state.phase} (expected: ${phase})`);
+  if (phase === 'design') {
+    if (state.workflow === 'full') pass('workflow=full');
+    else reject(`workflow=${state.workflow} (expected: full)`);
+    const change = await resolveClassicChangeDirectory(name, projectRoot);
+    const requirements = await readClassicArtifactRequirements(projectRoot, change.directory);
+    for (const problem of requirements.problems) reject(problem);
+    for (const artifact of requirements.files) {
+      const present = await nonempty(artifact);
+      (present ? pass : reject)(`${artifact} ${present ? 'non-empty' : 'missing or empty'}`);
+    }
+  } else if (phase === 'build') {
+    const change = await resolveClassicChangeDirectory(name, projectRoot);
+    if (state.workflow === 'full') {
+      const designDoc = state.designDoc;
+      const present = designDoc !== null && (await nonempty(designDoc));
+      (present ? pass : reject)(
+        `design_doc=${designDoc ?? 'null'} (expected: non-null and non-empty file)`,
+      );
+    } else {
+      pass(`workflow=${state.workflow} (design_doc not required)`);
+    }
+    for (const artifact of ['proposal.md', 'tasks.md']) {
+      const present = await nonempty(path.join(change.directory, artifact));
+      (present ? pass : reject)(`${artifact} ${present ? 'non-empty' : 'missing or empty'}`);
+    }
+  } else if (phase === 'verify') {
+    (state.verifyResult === 'pending' ? pass : reject)(
+      `verify_result=${state.verifyResult} (expected: pending)`,
+    );
+  } else if (phase === 'archive') {
+    (state.verifyResult === 'pass' ? pass : reject)(
+      `verify_result=${state.verifyResult} (expected: pass)`,
+    );
+    pass(
+      state.archived
+        ? 'archived=true; resume delivery only, do not archive again'
+        : 'archived=false (ready for archive confirmation)',
+    );
+  } else if (phase !== 'open') {
+    reject(`Classic SDK ${phase} entry checks are not yet available`);
+  }
+  if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
+    reject('Classic SDK has a claimed Action with an unknown outcome; reconcile it before entry');
+  }
+  const currentBranch = liveGitBranch(projectRoot);
+  const binding = evaluateBranchBinding({
+    isolation: state.isolation,
+    boundBranch: state.boundBranch,
+    currentBranch,
+    gitWorkTree: isGitWorkTree(projectRoot),
+  });
+  if (binding.status === 'drift') {
+    reject(driftBlockedMessage(name, binding.boundBranch, currentBranch));
+  } else if (binding.status === 'unbound-detached') {
+    reject(unboundDetachedMessage(name));
+  } else if (binding.status === 'needs-heal') {
+    reject(`Classic SDK change '${name}' has no bound branch in its Run`);
+  } else if (state.isolation !== null) {
+    pass('bound_branch matches current branch');
+  }
+  const blocked = issues.length > 0;
+  output.data = {
+    change: name,
+    phase: state.phase,
+    requestedPhase: phase,
+    configuration: state,
+    run: { id: run.runId, revision: run.revision, status: run.status },
+    checks: { passed, total, blocked },
+    issues,
+  };
+  output.envelope = classicEntryCheckEnvelope({
+    name,
+    phase,
+    passed,
+    total,
+    locale: classicLocale(state.language ?? ''),
+  });
+  output.stdout.push(output.envelope.summary);
+  if (blocked) {
+    output.stderr.push(red('BLOCKED — fix failing checks before proceeding'));
+    throw new CommandFailure('', 1);
+  }
+  output.stderr.push(green('ALL CHECKS PASSED — ready to proceed'));
+}
+
 async function check(
   output: CommandOutput,
   name: string,
@@ -1249,6 +1542,14 @@ async function check(
 ): Promise<void> {
   validateChangeName(name);
   validateEnum(phase, PHASES);
+  const projectRoot = classicCommandProjectRoot();
+  const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, name);
+  const sdkWorkspace =
+    localOwner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, name);
+  if (sdkWorkspace) {
+    await checkSdkEntry(output, name, phase, sdkWorkspace.projectRoot);
+    return;
+  }
   const { file, directory, label } = await stateFile(name);
   output.stdout.push(`=== Entry Check: comet-${phase} ===`);
   if (!(await exists(file))) fail(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
@@ -1387,9 +1688,32 @@ async function completeDesign(
   name: string,
   designRef: string,
   options: Parameters<ClassicCommandHandler>[1],
+  approvalHash?: string,
 ): Promise<void> {
   validateChangeName(name);
   validateRelativePath(designRef, 'design_doc');
+  const projectRoot = classicCommandProjectRoot();
+  const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, name);
+  const sdkWorkspace =
+    localOwner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, name);
+  if (sdkWorkspace) {
+    if (!approvalHash) fail('ERROR: Classic SDK Design requires --approval-hash');
+    const run = await completeClassicSdkDesign({
+      projectRoot: sdkWorkspace.projectRoot,
+      change: name,
+      designDoc: designRef,
+      approvalHash,
+    });
+    output.data = {
+      change: name,
+      phase: 'build',
+      configuration: run.state,
+      run: { id: run.runId, revision: run.revision, status: run.status },
+    };
+    output.stderr.push(green(`[TRANSITION] Classic SDK Design completed for ${name}`));
+    return;
+  }
+  if (approvalHash) fail('ERROR: --approval-hash is only valid for an SDK-owned Classic change');
   const phase = await readField(name, 'phase');
   const recorded = await readField(name, 'design_doc');
   if (!['design', 'build'].includes(phase) || (await readField(name, 'workflow')) !== 'full')
@@ -1813,7 +2137,69 @@ const MUTATING_STATE_COMMANDS = new Set([
   'select',
   'clear-selection',
   'complete-design',
+  'propose-design',
+  'decide-design',
+  'propose-build',
+  'decide-build',
+  'submit-plan',
+  'continue-plan',
+  'complete-build',
+  'propose-escalation',
+  'decide-escalation',
 ]);
+
+const CHANGE_SCOPED_STATE_COMMANDS = new Set([
+  ...MUTATING_STATE_COMMANDS,
+  'get',
+  'next',
+  'artifacts',
+  'tasks',
+  'checkpoint',
+  'delivery',
+]);
+
+async function assertStateChangeNotSdkOwned(
+  subcommand: string | undefined,
+  args: readonly string[],
+): Promise<void> {
+  if (
+    !subcommand ||
+    !CHANGE_SCOPED_STATE_COMMANDS.has(subcommand) ||
+    subcommand === 'clear-selection'
+  ) {
+    return;
+  }
+  const name = args[0];
+  if (!name) return;
+  validateChangeName(name);
+  if (
+    subcommand === 'next' ||
+    subcommand === 'get' ||
+    subcommand === 'select' ||
+    subcommand === 'artifacts' ||
+    subcommand === 'check' ||
+    subcommand === 'propose-design' ||
+    subcommand === 'decide-design' ||
+    subcommand === 'complete-design' ||
+    subcommand === 'propose-build' ||
+    subcommand === 'decide-build' ||
+    subcommand === 'submit-plan' ||
+    subcommand === 'continue-plan' ||
+    subcommand === 'complete-build' ||
+    subcommand === 'propose-escalation' ||
+    subcommand === 'decide-escalation' ||
+    subcommand === 'transition'
+  )
+    return;
+  try {
+    if (subcommand !== 'init' && (subcommand !== 'get' || args.length > 1)) {
+      await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
+    }
+    await assertChangeNotSdkOwned(classicCommandProjectRoot(), 'classic', name);
+  } catch (error) {
+    fail(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
 async function assertStateCommandWritable(subcommand: string | undefined): Promise<void> {
   if (!subcommand || !MUTATING_STATE_COMMANDS.has(subcommand)) return;
@@ -1824,10 +2210,24 @@ async function assertStateCommandWritable(subcommand: string | undefined): Promi
   }
 }
 
-async function selectChange(output: CommandOutput, name: string): Promise<void> {
+async function selectChange(output: CommandOutput, name: string): Promise<boolean> {
   validateChangeName(name);
   try {
     const requestedRoot = classicCommandProjectRoot();
+    const localOwner = await resolveClassicChangeRuntimeOwner(requestedRoot, name);
+    const sdkWorkspace =
+      localOwner?.format === 'legacy' ? null : await findClassicSdkWorkspace(requestedRoot, name);
+    if (sdkWorkspace) {
+      const { run, state } = sdkWorkspace;
+      const selection = await selectCurrentChange(sdkWorkspace.projectRoot, name);
+      output.stderr.push(
+        green(
+          `[SELECTED] current change: ${selection.change}${state.boundBranch ? ` (branch: ${state.boundBranch})` : ''}${samePath(sdkWorkspace.projectRoot, requestedRoot) ? '' : ` (workspace: ${sdkWorkspace.projectRoot})`}`,
+        ),
+      );
+      output.data = { change: name, phase: state.phase, run, configuration: state };
+      return true;
+    }
     // Fast path: when the recorded selection already routes this change to this
     // workspace and its directory is present, the per-worktree enumeration is
     // pure overhead — selecting again only rewrites the same selection.
@@ -1842,7 +2242,7 @@ async function selectChange(output: CommandOutput, name: string): Promise<void> 
           `[SELECTED] current change: ${selection.change}${bound ? ` (branch: ${bound})` : ''}`,
         ),
       );
-      return;
+      return false;
     }
     const workspace = await resolveClassicWorkspace({ projectRoot: requestedRoot, name });
     const selection = await selectCurrentChange(workspace.projectRoot, name);
@@ -1854,6 +2254,7 @@ async function selectChange(output: CommandOutput, name: string): Promise<void> 
         `[SELECTED] current change: ${selection.change}${bound ? ` (branch: ${bound})` : ''}${workspace.routed ? ` (workspace: ${workspace.projectRoot})` : ''}`,
       ),
     );
+    return false;
   } catch (error) {
     fail(`ERROR: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -1911,9 +2312,10 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
     const output = new CommandOutput();
     try {
       const [subcommand, ...rest] = args;
+      let initializedSdk = false;
+      let selectedSdk = false;
       const arity: Record<string, number> = {
         get: 2,
-        transition: 2,
         scale: 1,
         'task-checkoff': 2,
         rebind: 1,
@@ -1939,6 +2341,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       ) {
         fail('Usage: comet state check <change-name> <phase> [--recover] [--details]');
       }
+      await assertStateChangeNotSdkOwned(subcommand, rest);
       await assertStateCommandWritable(subcommand);
       if (subcommand === 'tasks' && rest.includes('--assign-ids'))
         await assertStateCommandWritable('set');
@@ -1946,17 +2349,39 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         required(rest, 2, 'Usage: comet state init <change-name> <workflow>');
         const initOptions = rest.slice(2);
         let isolation: string | null = null;
-        if (initOptions.length > 0) {
-          if (initOptions.length !== 2 || initOptions[0] !== '--isolation') {
-            fail('Usage: comet state init <change-name> <workflow> [--isolation <mode>]');
-          }
-          isolation = initOptions[1];
+        let runtimeFormat: 'legacy' | 'sdk' = 'sdk';
+        const seen = new Set<string>();
+        if (initOptions.length % 2 !== 0) {
+          fail(
+            'Usage: comet state init <change-name> <workflow> [--isolation <mode>] [--runtime legacy|sdk]',
+          );
         }
-        await init(output, rest[0], rest[1], isolation);
+        for (let index = 0; index < initOptions.length; index += 2) {
+          const option = initOptions[index];
+          const value = initOptions[index + 1];
+          if (
+            seen.has(option) ||
+            !['--isolation', '--runtime'].includes(option) ||
+            !value ||
+            value.startsWith('--')
+          ) {
+            fail(
+              'Usage: comet state init <change-name> <workflow> [--isolation <mode>] [--runtime legacy|sdk]',
+            );
+          }
+          seen.add(option);
+          if (option === '--isolation') isolation = value;
+          else {
+            validateEnum(value, ['legacy', 'sdk']);
+            runtimeFormat = value as 'legacy' | 'sdk';
+          }
+        }
+        await init(output, rest[0], rest[1], isolation, runtimeFormat);
+        initializedSdk = runtimeFormat === 'sdk';
       } else if (subcommand === 'get') {
         required(rest, 2, 'Usage: comet state get <change-name> <field>');
         validateChangeName(rest[0]);
-        output.stdout.push(await readField(rest[0], rest[1]));
+        output.stdout.push(await getField(rest[0], rest[1]));
       } else if (subcommand === 'set') {
         if (rest.length < 3 || rest.length % 2 !== 1) {
           fail('Usage: comet state set <change-name> <field> <value> [<field> <value> ...]');
@@ -1967,30 +2392,405 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           updates.push([rest[index], rest[index + 1]]);
         await setFields(output, rest[0], updates);
       } else if (subcommand === 'complete-design') {
-        if (rest.length !== 3 || rest[1] !== '--design-doc')
-          fail('Usage: comet state complete-design <change-name> --design-doc <repo-relative-ref>');
-        await completeDesign(output, rest[0], rest[2], options);
+        if (
+          (rest.length !== 3 && rest.length !== 5) ||
+          rest[1] !== '--design-doc' ||
+          (rest.length === 5 && rest[3] !== '--approval-hash')
+        )
+          fail(
+            'Usage: comet state complete-design <change-name> --design-doc <repo-relative-ref> [--approval-hash <sha256>]',
+          );
+        await completeDesign(output, rest[0], rest[2], options, rest[4]);
+      } else if (subcommand === 'propose-design') {
+        if (rest.length !== 3 || rest[1] !== '--proposal')
+          fail('Usage: comet state propose-design <change-name> --proposal <text>');
+        validateChangeName(rest[0]);
+        const projectRoot = classicCommandProjectRoot();
+        const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+        const workspace =
+          localOwner?.format === 'legacy'
+            ? null
+            : await findClassicSdkWorkspace(projectRoot, rest[0]);
+        if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
+        const run = await proposeClassicSdkDesign({
+          projectRoot: workspace.projectRoot,
+          change: rest[0],
+          proposal: rest[2],
+        });
+        const wait = run.waits.find(
+          (candidate) =>
+            candidate.stepId === 'full.design.confirm' && candidate.status === 'pending',
+        );
+        if (!wait) fail('ERROR: Classic SDK Design proposal did not create a pending decision');
+        output.data = {
+          change: rest[0],
+          phase: 'design',
+          run: { id: run.runId, revision: run.revision, status: run.status },
+          wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices },
+        };
+        output.stdout.push(`Design proposal recorded for ${rest[0]}; user approval is pending.`);
+      } else if (subcommand === 'decide-design') {
+        if (
+          rest.length !== 5 ||
+          rest[1] !== '--proposal-hash' ||
+          rest[3] !== '--choice' ||
+          !['approved', 'rejected'].includes(rest[4])
+        ) {
+          fail(
+            'Usage: comet state decide-design <change-name> --proposal-hash <sha256> --choice <approved|rejected>',
+          );
+        }
+        validateChangeName(rest[0]);
+        const projectRoot = classicCommandProjectRoot();
+        const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+        const workspace =
+          localOwner?.format === 'legacy'
+            ? null
+            : await findClassicSdkWorkspace(projectRoot, rest[0]);
+        if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
+        const run = await decideClassicSdkDesign({
+          projectRoot: workspace.projectRoot,
+          change: rest[0],
+          proposalHash: rest[2],
+          choice: rest[4] as 'approved' | 'rejected',
+        });
+        output.data = {
+          change: rest[0],
+          phase: 'design',
+          configuration: run.state,
+          run: { id: run.runId, revision: run.revision, status: run.status },
+        };
+        output.stdout.push(`Design proposal ${rest[4]} for ${rest[0]}.`);
+      } else if (subcommand === 'propose-escalation' || subcommand === 'decide-escalation') {
+        const proposing = subcommand === 'propose-escalation';
+        if (
+          (proposing && (rest.length !== 3 || rest[1] !== '--reason' || !rest[2]?.trim())) ||
+          (!proposing &&
+            (rest.length !== 5 ||
+              rest[1] !== '--proposal-hash' ||
+              rest[3] !== '--choice' ||
+              !['continue', 'upgrade'].includes(rest[4])))
+        ) {
+          fail(
+            proposing
+              ? 'Usage: comet state propose-escalation <change-name> --reason <text>'
+              : 'Usage: comet state decide-escalation <change-name> --proposal-hash <sha256> --choice <continue|upgrade>',
+          );
+        }
+        validateChangeName(rest[0]);
+        const projectRoot = classicCommandProjectRoot();
+        const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+        const workspace =
+          localOwner?.format === 'legacy'
+            ? null
+            : await findClassicSdkWorkspace(projectRoot, rest[0]);
+        if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
+        const run = proposing
+          ? await proposeClassicSdkEscalation({
+              projectRoot: workspace.projectRoot,
+              change: rest[0],
+              reason: rest[2],
+            })
+          : await decideClassicSdkEscalation({
+              projectRoot: workspace.projectRoot,
+              change: rest[0],
+              proposalHash: rest[2],
+              choice: rest[4] as 'continue' | 'upgrade',
+            });
+        if (proposing) {
+          const wait = run.waits
+            .slice()
+            .reverse()
+            .find((candidate) => candidate.stepId.endsWith('.build.escalation-confirm'));
+          if (!wait || wait.status !== 'pending') {
+            fail('Classic SDK escalation proposal did not create a pending decision');
+          }
+          output.data = {
+            change: rest[0],
+            phase: 'build',
+            run: { id: run.runId, revision: run.revision, status: run.status },
+            wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices },
+          };
+          output.stdout.push(`Escalation proposed for ${rest[0]}; user decision is pending.`);
+        } else {
+          await next(output, rest[0]);
+        }
+      } else if (subcommand === 'propose-build' || subcommand === 'decide-build') {
+        const proposing = subcommand === 'propose-build';
+        if (
+          (proposing && (rest.length !== 3 || rest[1] !== '--file' || !rest[2])) ||
+          (!proposing &&
+            (rest.length !== 5 ||
+              rest[1] !== '--proposal-hash' ||
+              rest[3] !== '--choice' ||
+              !['approved', 'rejected'].includes(rest[4])))
+        ) {
+          fail(
+            proposing
+              ? 'Usage: comet state propose-build <change-name> --file <json>'
+              : 'Usage: comet state decide-build <change-name> --proposal-hash <sha256> --choice <approved|rejected>',
+          );
+        }
+        validateChangeName(rest[0]);
+        const projectRoot = classicCommandProjectRoot();
+        const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+        const workspace =
+          localOwner?.format === 'legacy'
+            ? null
+            : await findClassicSdkWorkspace(projectRoot, rest[0]);
+        if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
+        const run = proposing
+          ? await proposeClassicSdkBuild({
+              projectRoot: workspace.projectRoot,
+              change: rest[0],
+              configurationRef: rest[2],
+            })
+          : await decideClassicSdkBuild({
+              projectRoot: workspace.projectRoot,
+              change: rest[0],
+              proposalHash: rest[2],
+              choice: rest[4] as 'approved' | 'rejected',
+            });
+        const wait = run.waits
+          .slice()
+          .reverse()
+          .find((candidate) => candidate.stepId === 'full.build.confirm');
+        output.data = {
+          change: rest[0],
+          phase: 'build',
+          configuration: run.state,
+          run: { id: run.runId, revision: run.revision, status: run.status },
+          ...(proposing && wait
+            ? { wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices } }
+            : {}),
+        };
+        output.stdout.push(
+          proposing
+            ? `Build configuration proposed for ${rest[0]}; user decision is pending.`
+            : `Build configuration ${rest[4]} for ${rest[0]}.`,
+        );
+      } else if (subcommand === 'propose-archive' || subcommand === 'decide-archive') {
+        const proposing = subcommand === 'propose-archive';
+        if (!rest[0]) {
+          fail(
+            `Usage: comet state ${subcommand} <change-name> ${proposing ? '--summary <text> [--remote <name>] [--pr-base <branch>]' : '--proposal-hash <sha256> --choice <local|push|pr|reverify|later>'}`,
+          );
+        }
+        validateChangeName(rest[0]);
+        let summary: string | undefined;
+        let remote: string | undefined;
+        let prBaseBranch: string | undefined;
+        if (proposing) {
+          if (rest.length < 3 || rest.length % 2 !== 1) {
+            fail(
+              'Usage: comet state propose-archive <change-name> --summary <text> [--remote <name>] [--pr-base <branch>]',
+            );
+          }
+          for (let index = 1; index < rest.length; index += 2) {
+            const flag = rest[index];
+            const value = rest[index + 1];
+            if (!value) fail('Classic Archive proposal option is missing a value');
+            if (flag === '--summary' && summary === undefined) summary = value;
+            else if (flag === '--remote' && remote === undefined) remote = value;
+            else if (flag === '--pr-base' && prBaseBranch === undefined) prBaseBranch = value;
+            else fail(`Unknown or repeated Classic Archive proposal option: ${flag}`);
+          }
+          if (!summary) fail('Classic Archive proposal requires --summary');
+        } else if (
+          rest.length !== 5 ||
+          rest[1] !== '--proposal-hash' ||
+          rest[3] !== '--choice' ||
+          !['local', 'push', 'pr', 'reverify', 'later'].includes(rest[4])
+        ) {
+          fail(
+            'Usage: comet state decide-archive <change-name> --proposal-hash <sha256> --choice <local|push|pr|reverify|later>',
+          );
+        }
+        const projectRoot = classicCommandProjectRoot();
+        const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+        const workspace =
+          localOwner?.format === 'legacy'
+            ? null
+            : await findClassicSdkWorkspace(projectRoot, rest[0]);
+        if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
+        const run = proposing
+          ? await proposeClassicSdkArchive({
+              projectRoot: workspace.projectRoot,
+              change: rest[0],
+              summary: summary!,
+              ...(remote ? { remote } : {}),
+              ...(prBaseBranch ? { prBaseBranch } : {}),
+            })
+          : await decideClassicSdkArchive({
+              projectRoot: workspace.projectRoot,
+              change: rest[0],
+              proposalHash: rest[2],
+              choice: rest[4] as 'local' | 'push' | 'pr' | 'reverify' | 'later',
+            });
+        if (proposing) {
+          const wait = run.waits
+            .slice()
+            .reverse()
+            .find(
+              (candidate) => candidate.stepId === `${workspace.state.workflow}.archive.confirm`,
+            );
+          if (!wait || wait.status !== 'pending') {
+            fail('Classic SDK Archive proposal did not create a pending decision');
+          }
+          output.data = {
+            change: rest[0],
+            phase: 'archive',
+            run: { id: run.runId, revision: run.revision, status: run.status },
+            wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices },
+          };
+          output.stdout.push(`Archive proposal recorded for ${rest[0]}; user decision is pending.`);
+        } else {
+          await next(output, rest[0]);
+        }
+      } else if (subcommand === 'complete-delivery') {
+        if (
+          (rest.length !== 3 && rest.length !== 5) ||
+          rest[1] !== '--commit' ||
+          (rest.length === 5 && rest[3] !== '--pr-url')
+        ) {
+          fail(
+            'Usage: comet state complete-delivery <change-name> --commit <sha> [--pr-url <url>]',
+          );
+        }
+        validateChangeName(rest[0]);
+        const projectRoot = classicCommandProjectRoot();
+        const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+        const workspace =
+          localOwner?.format === 'legacy'
+            ? null
+            : await findClassicSdkWorkspace(projectRoot, rest[0]);
+        if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
+        const run = await completeClassicSdkDelivery({
+          projectRoot: workspace.projectRoot,
+          change: rest[0],
+          commit: rest[2],
+          ...(rest[4] ? { prUrl: rest[4] } : {}),
+        });
+        output.data = {
+          change: rest[0],
+          phase: 'archive',
+          configuration: run.state,
+          run: { id: run.runId, revision: run.revision, status: run.status },
+        };
+        output.stdout.push(`Archive delivery recorded for ${rest[0]}.`);
+      } else if (subcommand === 'submit-plan' || subcommand === 'continue-plan') {
+        const submitting = subcommand === 'submit-plan';
+        if (
+          (submitting &&
+            ((rest.length !== 3 && rest.length !== 4) ||
+              rest[1] !== '--plan' ||
+              !rest[2] ||
+              (rest.length === 4 && rest[3] !== '--pause'))) ||
+          (!submitting && (rest.length !== 3 || rest[1] !== '--proposal-hash' || !rest[2]))
+        ) {
+          fail(
+            submitting
+              ? 'Usage: comet state submit-plan <change-name> --plan <repo-relative-ref> [--pause]'
+              : 'Usage: comet state continue-plan <change-name> --proposal-hash <sha256>',
+          );
+        }
+        validateChangeName(rest[0]);
+        const projectRoot = classicCommandProjectRoot();
+        const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+        const workspace =
+          localOwner?.format === 'legacy'
+            ? null
+            : await findClassicSdkWorkspace(projectRoot, rest[0]);
+        if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
+        if (submitting) {
+          await submitClassicSdkBuildPlan({
+            projectRoot: workspace.projectRoot,
+            change: rest[0],
+            planRef: rest[2],
+            pause: rest.length === 4,
+          });
+        } else {
+          await continueClassicSdkBuildPlan({
+            projectRoot: workspace.projectRoot,
+            change: rest[0],
+            proposalHash: rest[2],
+          });
+        }
+        await next(output, rest[0]);
+      } else if (subcommand === 'complete-build') {
+        requiredExact(rest, 1, 'Usage: comet state complete-build <change-name>');
+        validateChangeName(rest[0]);
+        const projectRoot = classicCommandProjectRoot();
+        const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+        const workspace =
+          localOwner?.format === 'legacy'
+            ? null
+            : await findClassicSdkWorkspace(projectRoot, rest[0]);
+        if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
+        await completeClassicSdkBuild({ projectRoot: workspace.projectRoot, change: rest[0] });
+        await next(output, rest[0]);
       } else if (subcommand === 'transition') {
         required(rest, 2, 'Usage: comet state transition <change-name> <event>');
-        await transition(output, rest[0], rest[1]);
+        const projectRoot = classicCommandProjectRoot();
+        const owner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+        const workspace =
+          owner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, rest[0]);
+        if (workspace) {
+          if (
+            rest.length !== 4 ||
+            rest[1] !== 'verify-fail' ||
+            rest[2] !== '--reason' ||
+            !rest[3].trim()
+          ) {
+            fail('Usage: comet state transition <change-name> verify-fail --reason <text>');
+          }
+          await failClassicSdkVerify({
+            projectRoot: workspace.projectRoot,
+            change: rest[0],
+            reason: rest[3],
+          });
+          await next(output, rest[0]);
+        } else {
+          requiredExact(rest, 2, 'Usage: comet state transition <change-name> <event>');
+          await transition(output, rest[0], rest[1]);
+        }
       } else if (subcommand === 'check') {
         required(rest, 2, 'Usage: comet state check <change-name> <phase> [--recover]');
         validateEnum(rest[1], PHASES);
-        if (rest.includes('--recover'))
-          await recover(output, rest[0], rest.includes('--details'), options.json);
-        else await check(output, rest[0], rest[1], rest.includes('--details'));
+        if (rest.includes('--recover')) {
+          const projectRoot = classicCommandProjectRoot();
+          const owner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+          const sdkWorkspace =
+            owner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, rest[0]);
+          if (sdkWorkspace) {
+            const { state } = sdkWorkspace;
+            if (state.phase !== rest[1]) {
+              fail(`ERROR: Classic SDK change '${rest[0]}' is in ${state.phase}, not ${rest[1]}`);
+            }
+            await next(output, rest[0]);
+          } else {
+            await recover(output, rest[0], rest.includes('--details'), options.json);
+          }
+        } else {
+          await check(output, rest[0], rest[1], rest.includes('--details'));
+        }
       } else if (subcommand === 'scale') {
         required(rest, 1, 'Usage: comet state scale <change-name>');
         await scale(output, rest[0]);
       } else if (subcommand === 'artifacts') {
         validateChangeName(rest[0]);
-        const { directory } = await stateFile(rest[0]);
-        const requirements = await readClassicArtifactRequirements(
-          classicCommandProjectRoot(),
-          directory,
-        );
+        const projectRoot = classicCommandProjectRoot();
+        const owner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
+        const sdkWorkspace =
+          owner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, rest[0]);
+        const artifactRoot = sdkWorkspace?.projectRoot ?? projectRoot;
+        const { directory } = sdkWorkspace
+          ? await resolveClassicChangeDirectory(rest[0], artifactRoot)
+          : await stateFile(rest[0]);
+        const sdkState = sdkWorkspace?.state ?? null;
+        const requirements = await readClassicArtifactRequirements(artifactRoot, directory);
         if (requirements.source === 'legacy') {
-          const full = (await readField(rest[0], 'workflow')) === 'full';
+          const full = (sdkState?.workflow ?? (await readField(rest[0], 'workflow'))) === 'full';
           requirements.designRequired = full;
           if (!full) {
             requirements.required = requirements.required.filter((id) => id !== 'design');
@@ -2038,7 +2838,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         await rebind(output, rest[0]);
       } else if (subcommand === 'select') {
         requiredExact(rest, 1, 'Usage: comet state select <change-name>');
-        await selectChange(output, rest[0]);
+        selectedSdk = await selectChange(output, rest[0]);
       } else if (subcommand === 'current') {
         requiredExact(rest, 0, 'Usage: comet state current');
         await currentChange(output);
@@ -2051,7 +2851,12 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       } else {
         fail(`Unknown subcommand: ${subcommand ?? ''}`);
       }
-      if (options.json && ['init', 'set', 'transition', 'select'].includes(subcommand)) {
+      if (
+        options.json &&
+        !initializedSdk &&
+        !selectedSdk &&
+        ['init', 'set', 'transition', 'select'].includes(subcommand)
+      ) {
         const { directory } = await stateFile(rest[0]);
         const updated = await readClassicState(directory, { migrate: false });
         const state = updated.classic;

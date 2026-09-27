@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import { inspectClassicAutonomousBuildProblems } from './classic-plan-readiness.js';
 import { classicIssue, type ClassicIssue } from './classic-issues.js';
+import { classicDocumentLanguageMismatch } from './classic-document-language.js';
 import { classicRecoveryContext } from './classic-recovery.js';
 import { handoffSourceHash } from './classic-handoff-source.js';
 import {
@@ -43,6 +44,15 @@ import { CLASSIC_GUARD_TRANSITION_EVENT, applyClassicTransition } from './classi
 import { classicValidateCommand } from './classic-validate-command.js';
 import { readClassicState, withClassicStateLock } from './classic-store.js';
 import { readClassicConfigValue } from './classic-project-config.js';
+import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
+import {
+  classicSdkArchiveGuard,
+  classicSdkBuildGuard,
+  classicSdkDesignGuard,
+  classicSdkOpenGuard,
+  classicSdkVerifyGuard,
+} from './classic-sdk-guard.js';
+import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 import { readWorkflowProjectConfigDocument } from '../workflow-contract/project-config-reader.js';
 import {
   classicProjectFileNonempty,
@@ -210,51 +220,16 @@ async function configuredLanguage(changeDir: string): Promise<'en' | 'zh-CN'> {
   throw new Error(`configured language '${language}' is invalid; expected en or zh-CN.`);
 }
 
-function stripFencedCodeBlocks(source: string): string {
-  const kept: string[] = [];
-  let inFence = false;
-  for (const line of source.split(/\r?\n/u)) {
-    if (/^\s*```/u.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (!inFence) kept.push(line);
-  }
-  return kept.join('\n');
-}
-
-function countCjkChars(source: string): number {
-  return source.match(/[\u4e00-\u9fff]/gu)?.length ?? 0;
-}
-
-function countEnglishWords(source: string): number {
-  return source.match(/[A-Za-z][A-Za-z0-9_-]{2,}/gu)?.length ?? 0;
-}
-
 async function documentLanguageMatchesConfigured(
   changeDir: string,
   file: string,
 ): Promise<CheckResult> {
   const language = await configuredLanguage(changeDir);
-  const source = stripFencedCodeBlocks(
-    await readClassicProjectFile(classicCommandProjectRoot(), file, {
-      label: `Classic language-check artifact ${file}`,
-    }),
-  );
-  const cjk = countCjkChars(source);
-  const englishWords = countEnglishWords(source);
-
-  if (language === 'zh-CN' && cjk < 20 && englishWords >= 20) {
-    return fail(
-      `configured language is zh-CN, but ${file} appears to be English-dominant (cjk_chars=${cjk}, english_words=${englishWords}).\nNext: regenerate or rewrite this artifact in Chinese while preserving necessary technical terms.`,
-    );
-  }
-  if (language === 'en' && cjk > 20 && cjk > englishWords) {
-    return fail(
-      `configured language is en, but ${file} appears to be Chinese-dominant (cjk_chars=${cjk}, english_words=${englishWords}).\nNext: regenerate or rewrite this artifact in English while preserving necessary technical terms.`,
-    );
-  }
-  return pass();
+  const source = await readClassicProjectFile(classicCommandProjectRoot(), file, {
+    label: `Classic language-check artifact ${file}`,
+  });
+  const issue = classicDocumentLanguageMismatch(source, language, file);
+  return issue ? fail(issue) : pass();
 }
 
 async function hashFile(file: string): Promise<string> {
@@ -405,9 +380,12 @@ const INFERRED_COMMAND_SOURCES = [
   'Cargo.toml',
 ] as const;
 
-async function removedProjectCommandField(field: 'build_command' | 'verify_command') {
+async function removedProjectCommandField(
+  field: 'build_command' | 'verify_command',
+  projectRoot = classicCommandProjectRoot(),
+) {
   try {
-    const document = await readWorkflowProjectConfigDocument(classicCommandProjectRoot(), {
+    const document = await readWorkflowProjectConfigDocument(projectRoot, {
       allowPartialProject: true,
     });
     if (!document) return false;
@@ -427,10 +405,6 @@ function removedProjectCommandRun(field: 'build_command' | 'verify_command'): Co
   };
 }
 
-function invocationTarget(relative: string): string {
-  return path.resolve(classicCommandInvocationCwd(), relative);
-}
-
 /**
  * Expands one workspace pattern level (`packages/*`, `apps/*`); deeper globs
  * are left unexpanded so pathological repositories stay cheap to probe.
@@ -445,7 +419,11 @@ function workspaceGlobDirectories(pattern: string): { prefix: string; wildcard: 
 
 const WORKSPACE_PACKAGE_LIMIT = 32;
 
-async function workspacePackageDirectories(rootWorkspaces: unknown): Promise<string[]> {
+async function workspacePackageDirectories(
+  rootWorkspaces: unknown,
+  basePath = classicCommandInvocationCwd(),
+  projectRoot = classicCommandProjectRoot(),
+): Promise<string[]> {
   const listed = Array.isArray(rootWorkspaces)
     ? rootWorkspaces
     : rootWorkspaces &&
@@ -454,11 +432,12 @@ async function workspacePackageDirectories(rootWorkspaces: unknown): Promise<str
       ? (rootWorkspaces as { packages: unknown[] }).packages
       : [];
   const patterns = listed.filter((entry): entry is string => typeof entry === 'string');
-  const pnpmWorkspace = invocationTarget('pnpm-workspace.yaml');
+  const target = (relative: string) => path.resolve(basePath, relative);
+  const pnpmWorkspace = target('pnpm-workspace.yaml');
   if (await exists(pnpmWorkspace)) {
     try {
       const document = parseDocument(
-        await readClassicProjectFile(classicCommandProjectRoot(), pnpmWorkspace, {
+        await readClassicProjectFile(projectRoot, pnpmWorkspace, {
           label: 'pnpm-workspace.yaml',
         }),
       );
@@ -477,7 +456,7 @@ async function workspacePackageDirectories(rootWorkspaces: unknown): Promise<str
       directories.add(parsed.prefix);
       continue;
     }
-    const base = parsed.prefix ? invocationTarget(parsed.prefix) : classicCommandInvocationCwd();
+    const base = parsed.prefix ? target(parsed.prefix) : basePath;
     let entries: import('fs').Dirent[];
     try {
       entries = await fs.readdir(base, { withFileTypes: true });
@@ -491,28 +470,42 @@ async function workspacePackageDirectories(rootWorkspaces: unknown): Promise<str
   return [...directories].sort();
 }
 
-async function inferredBuildCommand(): Promise<string | { ambiguous: string[] } | null> {
-  const packageJson = invocationTarget('package.json');
+interface InferredBuildCommand {
+  display: string;
+  argv: string[];
+}
+
+async function inferredBuildCommand(
+  basePath = classicCommandInvocationCwd(),
+  projectRoot = classicCommandProjectRoot(),
+): Promise<InferredBuildCommand | { ambiguous: string[] } | null> {
+  const target = (relative: string) => path.resolve(basePath, relative);
+  const packageJson = target('package.json');
   if (await exists(packageJson)) {
     const parsed = JSON.parse(
-      await readClassicProjectFile(classicCommandProjectRoot(), packageJson, {
+      await readClassicProjectFile(projectRoot, packageJson, {
         label: 'package.json',
       }),
     ) as {
       scripts?: Record<string, unknown>;
       workspaces?: unknown;
     };
-    if (typeof parsed.scripts?.build === 'string') return 'npm run build';
+    if (typeof parsed.scripts?.build === 'string')
+      return { display: 'npm run build', argv: ['npm', 'run', 'build'] };
     // A monorepo root without its own build script falls back to workspace
     // packages; exactly one candidate auto-runs like a root script, several
     // candidates stay explicit because choosing for the user would be a guess.
     const candidates: string[] = [];
-    for (const directory of await workspacePackageDirectories(parsed.workspaces)) {
-      const subPackage = invocationTarget(path.posix.join(directory, 'package.json'));
+    for (const directory of await workspacePackageDirectories(
+      parsed.workspaces,
+      basePath,
+      projectRoot,
+    )) {
+      const subPackage = target(path.posix.join(directory, 'package.json'));
       if (!(await exists(subPackage))) continue;
       try {
         const sub = JSON.parse(
-          await readClassicProjectFile(classicCommandProjectRoot(), subPackage, {
+          await readClassicProjectFile(projectRoot, subPackage, {
             label: `package.json (${directory})`,
           }),
         ) as {
@@ -525,19 +518,25 @@ async function inferredBuildCommand(): Promise<string | { ambiguous: string[] } 
     }
     if (candidates.length === 1) {
       const directory = candidates[0].includes(' ') ? `"${candidates[0]}"` : candidates[0];
-      return `npm --prefix ${directory} run build`;
+      return {
+        display: `npm --prefix ${directory} run build`,
+        argv: ['npm', '--prefix', candidates[0], 'run', 'build'],
+      };
     }
     if (candidates.length > 1) return { ambiguous: candidates };
   }
-  if (await exists(invocationTarget('pom.xml'))) {
+  if (await exists(target('pom.xml'))) {
     if (process.platform === 'win32') {
-      if (await exists(invocationTarget('mvnw.cmd'))) return 'mvnw.cmd compile -q';
-      return 'mvn.cmd compile -q';
+      if (await exists(target('mvnw.cmd')))
+        return { display: 'mvnw.cmd compile -q', argv: ['mvnw.cmd', 'compile', '-q'] };
+      return { display: 'mvn.cmd compile -q', argv: ['mvn.cmd', 'compile', '-q'] };
     }
-    if (await exists(invocationTarget('mvnw'))) return './mvnw compile -q';
-    return 'mvn compile -q';
+    if (await exists(target('mvnw')))
+      return { display: './mvnw compile -q', argv: ['./mvnw', 'compile', '-q'] };
+    return { display: 'mvn compile -q', argv: ['mvn', 'compile', '-q'] };
   }
-  if (await exists(invocationTarget('Cargo.toml'))) return 'cargo build';
+  if (await exists(target('Cargo.toml')))
+    return { display: 'cargo build', argv: ['cargo', 'build'] };
   return null;
 }
 
@@ -624,7 +623,7 @@ async function commandCheckPasses(
     scope === 'build' && !recorded && !previous && !interrupted
       ? await inferredBuildCommand()
       : null;
-  if (inferred !== null && typeof inferred !== 'object') {
+  if (inferred !== null && 'argv' in inferred) {
     // Only this fixed, Runtime-inferred command is shell syntax. Attestations
     // and check-run argv never enter this path.
     recorded = await executeCommandCheck(root, changeDir, run, {
@@ -633,19 +632,19 @@ async function commandCheckPasses(
       cwd: invocationDir,
       argv:
         process.platform === 'win32'
-          ? [process.env.ComSpec || 'cmd.exe', '/d', '/s', '/c', inferred]
-          : ['/bin/sh', '-c', inferred],
+          ? [process.env.ComSpec || 'cmd.exe', '/d', '/s', '/c', inferred.display]
+          : ['/bin/sh', '-c', inferred.display],
     });
     if (recorded.exitCode !== 0)
       return {
         status: recorded.exitCode,
-        output: `Build failed (guard auto-ran the detected command '${inferred}' in '${invocationDir}'; disable with COMET_SKIP_BUILD=1). Log: ${recorded.logRef}`,
+        output: `Build failed (guard auto-ran the detected command '${inferred.display}' in '${invocationDir}'; disable with COMET_SKIP_BUILD=1). Log: ${recorded.logRef}`,
       };
     if (recorded.inputBefore !== recorded.inputAfter)
       return {
         status: 1,
         output: [
-          `The detected build command '${inferred}' changed its own check inputs (for example nondeterministic build artifacts).`,
+          `The detected build command '${inferred.display}' changed its own check inputs (for example nondeterministic build artifacts).`,
           ...(recorded.changedDuringExecution?.length
             ? [`Changed inputs: ${recorded.changedDuringExecution.slice(0, 20).join(', ')}.`]
             : []),
@@ -655,10 +654,10 @@ async function commandCheckPasses(
       };
     return {
       status: 0,
-      output: `${evidenceDetail(recorded)} (guard auto-ran the detected command '${inferred}' in '${invocationDir}')`,
+      output: `${evidenceDetail(recorded)} (guard auto-ran the detected command '${inferred.display}' in '${invocationDir}')`,
     };
   }
-  if (inferred !== null && typeof inferred === 'object') {
+  if (inferred !== null && 'ambiguous' in inferred) {
     const example = inferred.ambiguous[0].includes(' ')
       ? `"${inferred.ambiguous[0]}"`
       : inferred.ambiguous[0];
@@ -1371,7 +1370,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
     const output = new GuardOutput();
     const [change, phase, flag] = args;
     try {
-      if (args.length < 2 || args.length > 3 || (flag !== undefined && flag !== '--apply')) {
+      if (args.length < 2) {
         throw new GuardFailure(
           'Usage: comet guard <change-name> <open|design|build|verify|archive> [--apply]',
         );
@@ -1380,6 +1379,178 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
       if (!phase || !PHASES.includes(phase as (typeof PHASES)[number])) {
         throw new GuardFailure(
           `${red(`Unknown phase: ${phase ?? ''}`)}\nValid phases: open, design, build, verify, archive`,
+        );
+      }
+      const projectRoot = classicCommandProjectRoot();
+      const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, change);
+      const sdkWorkspace =
+        localOwner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, change);
+      if (sdkWorkspace) {
+        if (phase === 'open') {
+          const apply = args.length === 5 && args[2] === '--apply' && args[3] === '--approval-hash';
+          if (args.length !== 2 && !apply) {
+            throw new GuardFailure(
+              'Usage: comet guard <change-name> open [--apply --approval-hash <sha256>]',
+            );
+          }
+          return classicSdkOpenGuard({
+            projectRoot: sdkWorkspace.projectRoot,
+            change,
+            apply,
+            ...(apply ? { approvalHash: args[4] } : {}),
+          });
+        }
+        if (phase === 'design') {
+          const apply = args.length === 7 && args[4] === '--apply' && args[5] === '--approval-hash';
+          if (args[2] !== '--design-doc' || !args[3] || (args.length !== 4 && !apply)) {
+            throw new GuardFailure(
+              'Usage: comet guard <change-name> design --design-doc <repo-relative-ref> [--apply --approval-hash <sha256>]',
+            );
+          }
+          return classicSdkDesignGuard({
+            projectRoot: sdkWorkspace.projectRoot,
+            change,
+            designDoc: args[3],
+            apply,
+            ...(apply ? { approvalHash: args[6] } : {}),
+          });
+        }
+        if (phase === 'build') {
+          const apply = args[2] === '--apply';
+          const separator = args.indexOf('--');
+          if (
+            args.length !== 2 &&
+            !(apply && args.length === 3) &&
+            !(apply && separator === 3 && args.length >= 5)
+          ) {
+            throw new GuardFailure(
+              'Usage: comet guard <change-name> build [--apply [-- <program> [args...]]]',
+            );
+          }
+          let argv = separator === 3 ? args.slice(separator + 1) : undefined;
+          let checkCwd: string | undefined;
+          if (apply && !argv) {
+            const pendingReceipt = sdkWorkspace.run.evidenceWaits?.some(
+              (wait) =>
+                wait.stepId === `${sdkWorkspace.state.workflow}.build.check.evidence` &&
+                wait.status === 'pending',
+            );
+            const previous = sdkWorkspace.run.actions
+              .slice()
+              .reverse()
+              .find((action) => action.stepId === `${sdkWorkspace.state.workflow}.build.check`);
+            const recorded = previous?.outcome?.output as
+              { argv?: unknown; cwd?: unknown } | undefined;
+            if (
+              pendingReceipt &&
+              Array.isArray(recorded?.argv) &&
+              recorded.argv.every((arg) => typeof arg === 'string') &&
+              typeof recorded.cwd === 'string'
+            ) {
+              argv = recorded.argv as string[];
+              checkCwd = recorded.cwd;
+            } else if (previous) {
+              throw new GuardFailure(
+                `A previous Classic SDK Build check exists; run comet check run ${change} build -- <program> [args...] explicitly`,
+              );
+            } else {
+              if (await removedProjectCommandField('build_command', sdkWorkspace.projectRoot)) {
+                throw new GuardFailure(removedProjectCommandRun('build_command').output);
+              }
+              const inferred = await inferredBuildCommand(
+                sdkWorkspace.projectRoot,
+                sdkWorkspace.projectRoot,
+              );
+              if (!inferred) {
+                throw new GuardFailure(
+                  `No unambiguous Build command was found; run comet guard ${change} build --apply -- <program> [args...]`,
+                );
+              }
+              if ('ambiguous' in inferred) {
+                throw new GuardFailure(
+                  `Several workspace packages declare a Build command: ${inferred.ambiguous.join(', ')}. Choose one explicitly.`,
+                );
+              }
+              argv = inferred.argv;
+            }
+          }
+          return classicSdkBuildGuard({
+            projectRoot: sdkWorkspace.projectRoot,
+            invocationCwd: classicCommandInvocationCwd(),
+            change,
+            apply,
+            ...(argv ? { argv } : {}),
+            ...(checkCwd ? { checkCwd } : {}),
+          });
+        }
+        if (phase === 'verify') {
+          const apply = args[4] === '--apply';
+          const separator = args.indexOf('--');
+          if (
+            args[2] !== '--report' ||
+            !args[3] ||
+            (args.length !== 4 &&
+              !(apply && args.length === 5) &&
+              !(apply && separator === 5 && args.length >= 7))
+          ) {
+            throw new GuardFailure(
+              'Usage: comet guard <change-name> verify --report <repo-relative-ref> [--apply -- <program> [args...]]',
+            );
+          }
+          let argv = separator === 5 ? args.slice(separator + 1) : undefined;
+          let checkCwd: string | undefined;
+          if (apply && !argv) {
+            const pendingReceipt = sdkWorkspace.run.evidenceWaits?.some(
+              (wait) =>
+                wait.stepId === `${sdkWorkspace.state.workflow}.verify.check.evidence` &&
+                wait.status === 'pending',
+            );
+            const previous = sdkWorkspace.run.actions
+              .slice()
+              .reverse()
+              .find((action) => action.stepId === `${sdkWorkspace.state.workflow}.verify.check`);
+            const recorded = previous?.outcome?.output as
+              { argv?: unknown; cwd?: unknown } | undefined;
+            if (
+              pendingReceipt &&
+              previous?.status === 'succeeded' &&
+              Array.isArray(recorded?.argv) &&
+              recorded.argv.every((arg) => typeof arg === 'string') &&
+              typeof recorded.cwd === 'string'
+            ) {
+              argv = recorded.argv as string[];
+              checkCwd = recorded.cwd;
+            } else {
+              throw new GuardFailure(
+                `A literal Verify check command is required; run comet guard ${change} verify --report ${args[3]} --apply -- <program> [args...]`,
+              );
+            }
+          }
+          return classicSdkVerifyGuard({
+            projectRoot: sdkWorkspace.projectRoot,
+            invocationCwd: classicCommandInvocationCwd(),
+            change,
+            reportRef: args[3],
+            apply,
+            ...(argv ? { argv } : {}),
+            ...(checkCwd ? { checkCwd } : {}),
+          });
+        }
+        if (phase === 'archive') {
+          if (args.length !== 2 && !(args.length === 3 && args[2] === '--apply')) {
+            throw new GuardFailure('Usage: comet guard <change-name> archive [--apply]');
+          }
+          return classicSdkArchiveGuard({
+            projectRoot: sdkWorkspace.projectRoot,
+            change,
+            apply: args.length === 3,
+          });
+        }
+        throw new GuardFailure(`Classic SDK ${phase} Guard is not yet available`);
+      }
+      if (args.length > 3 || (flag !== undefined && flag !== '--apply')) {
+        throw new GuardFailure(
+          'Usage: comet guard <change-name> <open|design|build|verify|archive> [--apply]',
         );
       }
       await assertClassicLayoutWritable(classicCommandProjectRoot());

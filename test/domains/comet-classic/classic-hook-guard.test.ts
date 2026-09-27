@@ -4,7 +4,13 @@ import os from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readRunState } from '../../../domains/engine/state.js';
-import { inspectClassicHookGuard } from '../../../domains/comet-classic/classic-hook-guard.js';
+import { classicStateCommand } from '../../../domains/comet-classic/classic-state-command.js';
+import { classicGuardCommand } from '../../../domains/comet-classic/classic-guard.js';
+import {
+  inspectClassicHookGuard,
+  listActiveClassicHookChanges,
+  resolveActiveClassicHookChange,
+} from '../../../domains/comet-classic/classic-hook-guard.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const scriptByCommand: Record<string, string> = {
@@ -77,7 +83,7 @@ function hookInput(filePath: string): string {
 }
 
 async function seedDesignChange(dir: string): Promise<string> {
-  run(dir, 'state', ['init', 'demo', 'full']);
+  run(dir, 'state', ['init', 'demo', 'full', '--runtime', 'legacy']);
   const changeDir = path.join(dir, 'openspec', 'changes', 'demo');
   // Open→design transition requires the open artifacts to exist first.
   await fs.writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
@@ -139,6 +145,53 @@ async function seedChange(
 }
 
 describe('Classic hook guard command', () => {
+  it('recognizes an SDK-owned change without a legacy state file', async () => {
+    const dir = await makeProject();
+    await initializeGitProject(dir);
+    const created = await classicStateCommand(
+      ['init', 'sdk-hook', 'hotfix', '--runtime', 'sdk', '--isolation', 'current'],
+      { json: false, invocationCwd: dir, projectRoot: dir },
+    );
+    expect(created.exitCode, created.stderr).toBe(0);
+    await expect(listActiveClassicHookChanges(dir)).resolves.toContainEqual({
+      workflow: 'classic',
+      name: 'sdk-hook',
+      phase: 'open',
+    });
+    await expect(resolveActiveClassicHookChange(dir, 'sdk-hook')).resolves.toMatchObject({
+      workflow: 'classic',
+      name: 'sdk-hook',
+      phase: 'open',
+    });
+    await expect(
+      inspectClassicHookGuard(dir, 'sdk-hook', { intent: 'write', targets: ['src/app.ts'] }),
+    ).resolves.toMatchObject({ allowed: false, change: 'sdk-hook', phase: 'open' });
+    const changeDir = path.join(dir, 'openspec', 'changes', 'sdk-hook');
+    await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Change\n');
+    await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
+    await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Implement the change\n');
+    const options = { json: false, invocationCwd: dir, projectRoot: dir };
+    const preview = await classicGuardCommand(['sdk-hook', 'open'], options);
+    expect(preview.exitCode, preview.stderr).toBe(0);
+    const opened = await classicGuardCommand(
+      [
+        'sdk-hook',
+        'open',
+        '--apply',
+        '--approval-hash',
+        (preview.data as { approvalHash: string }).approvalHash,
+      ],
+      options,
+    );
+    expect(opened.exitCode, opened.stderr).toBe(0);
+    await expect(
+      inspectClassicHookGuard(dir, 'sdk-hook', { intent: 'write', targets: ['src/app.ts'] }),
+    ).resolves.toMatchObject({ allowed: true, change: 'sdk-hook', phase: 'build' });
+    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
   it.each(['Write', 'Edit'])(
     'recovers an autonomous plan without external Skills for %s',
     async (toolName) => {
@@ -972,7 +1025,7 @@ describe('Classic hook guard command', () => {
   it('selects, reads, and clears the current change through the state launcher', async () => {
     const dir = await makeProject();
     await initializeGitProject(dir);
-    expect(run(dir, 'state', ['init', 'demo', 'hotfix']).status).toBe(0);
+    expect(run(dir, 'state', ['init', 'demo', 'hotfix', '--runtime', 'legacy']).status).toBe(0);
 
     const selected = run(dir, 'state', ['select', 'demo']);
 
@@ -1053,7 +1106,7 @@ describe('Classic hook guard command', () => {
 
   it('allows Superpowers workspace writes during guarded phases', async () => {
     const dir = await makeProject();
-    run(dir, 'state', ['init', 'demo', 'full']);
+    run(dir, 'state', ['init', 'demo', 'full', '--runtime', 'legacy']);
 
     const openResult = run(
       dir,

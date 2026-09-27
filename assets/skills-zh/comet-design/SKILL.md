@@ -7,6 +7,17 @@ description: '完成 Classic 技术设计并请用户确认。在用户调用 /c
 
 收到入口返回的 layout 后，按 `comet-classic/reference/classic-layout.md` 确定各逻辑根对应的目录。当前上下文已有这份协议时，无需重复加载。本文件中的 OpenSpec CLI 调用均通过适配器执行，文件路径均基于已绑定的 `<classic-*>` 根目录，无需先额外运行 root show。
 
+## SDK Run 路径
+
+先运行 `comet state next <change-name> --json`。当 `data.runtimeFormat` 为 `sdk` 时，只执行本节的状态命令；下文 Step 1b 的 brainstorming 方法、Step 1c 的提问格式和 Step 2 的 Design Doc 要求仍适用，下文针对旧状态文件的命令不执行。`data.phase` 必须为 `design`；已进入 Build 时交回当前阶段入口。`data.nextAction.kind` 为 `reconcile` 时，运行 `comet state check <change-name> design --recover --json` 核对已领取 Action 的原结果，在结果明确前停止，不重新提案或重发工作。
+
+1. 待执行 Action 为 `full.design.handoff` 时，先运行 `comet state check <change-name> design --json` 取得 layout 与产物引用，直接读取当前 OpenSpec proposal、tasks、delta specs 和已有 design.md 中本次设计需要的内容。使用下文 Step 1b 的 brainstorming 方法形成候选技术方案；此时还没有 SDK handoff 包，不执行旧 `comet handoff ... --write`，也不把手写摘要当作 SDK handoff。持续保存 `brainstorm-summary.md`，未确认内容标为候选。
+2. 如候选方案需要 Spec Patch，先按下文 Step 1c 向用户说明具体补丁并取得明确同意，再修改 delta spec。范围发生实质变化时重新澄清。待 OpenSpec 来源稳定后，执行 `comet state propose-design <change-name> --proposal "<candidate-summary>"`，其中摘要必须覆盖将请用户确认的方案、关键取舍、风险和 Spec Patch；保存返回的 `data.wait.proposalHash` 为 `<proposalHash>`。此命令生成并记录可追溯的 handoff；随后运行 `comet state next <change-name> --json`，读取 `data.configuration.handoffContext` 对应的 Markdown 包，核对它与候选方案及当前源文件一致。用户尚未决定时，恢复应复用这个 Wait，不重复运行 propose-design。
+3. 按下文 Step 1c 展示最终方案，请用户选择确认、调整或暂缓。SDK 决定命令为 `comet state decide-design <change-name> --proposal-hash <proposalHash> --choice <approved|rejected>`：确认时填 `approved`，要求调整时填 `rejected`，随后继续 brainstorming 并重新提案；暂缓时保留待决定的 Wait，不执行决定命令。哈希必须来自当前提案。OpenSpec 来源或 handoff 变化导致批准被拒绝时，停止并核对变化，不用旧确认继续。
+4. 已批准后，按下文 Step 2 写入唯一 Design Doc，包含要求的 frontmatter；如恢复时 `nextAction.kind` 已为 `action` 且 stepId 为 `full.design.document`，直接从这一步继续。先运行 `comet guard <change-name> design --design-doc <design-doc-ref>` 预检，再运行 `comet state complete-design <change-name> --design-doc <design-doc-ref> --approval-hash <proposalHash>`，由同一 Run 提交文档 Action 和证据。两者任一失败都保留原 Run 并按具体原因处理，不创建旧 `.comet.yaml` 或手动推进 phase。成功后运行 `comet state next <change-name> --json`，按返回的 Build Action 路由。
+
+以下旧 Runtime 步骤仅用于 `runtimeFormat: legacy`。
+
 ## 前置条件
 
 - 活跃 change 已存在，Open 必需产物检查通过

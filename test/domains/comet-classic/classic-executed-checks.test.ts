@@ -24,7 +24,7 @@ describe('Classic executed check evidence', () => {
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-executed-'));
     await prepareClassicLegacyProject(root);
-    expect((await cli('state', 'init', 'demo', 'hotfix')).exitCode).toBe(0);
+    expect((await cli('state', 'init', 'demo', 'hotfix', '--runtime', 'legacy')).exitCode).toBe(0);
     await fs.writeFile(path.join(root, 'input.txt'), 'good');
     await fs.writeFile(
       path.join(root, 'check.cjs'),

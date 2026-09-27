@@ -124,6 +124,32 @@ describe('Classic check input snapshots', () => {
     expect(await fingerprint()).not.toBe(ignored);
   });
 
+  it('does not invalidate a completed check when change ownership or SDK Run metadata is recorded', async () => {
+    const before = await fingerprint();
+    const ownerDir = path.join(root, '.comet/runtime/change-owners/classic');
+    const runDir = path.join(root, '.comet/runtime/sdk-runs/classic');
+    await fs.mkdir(ownerDir, { recursive: true });
+    await fs.mkdir(runDir, { recursive: true });
+    await fs.writeFile(path.join(ownerDir, 'demo.json'), '{"format":"legacy"}\n');
+    await fs.writeFile(path.join(runDir, 'demo.json'), '{"status":"running"}\n');
+
+    expect(await fingerprint()).toBe(before);
+    await fs.writeFile(path.join(root, 'source.js'), 'v2');
+    expect(await fingerprint()).not.toBe(before);
+  });
+
+  it('uses the SDK Run report path when collecting check inputs', async () => {
+    await fs.writeFile(path.join(root, 'sdk-verification.md'), '# Verification\n');
+    await fs.writeFile(path.join(change, '.comet.yaml'), 'invalid: [yaml');
+
+    const snapshot = await collectCheckSnapshot(root, change, undefined, {
+      verificationReport: 'sdk-verification.md',
+    });
+
+    expect(snapshot.entries.map((entry) => entry.p)).not.toContain('sdk-verification.md');
+    expect(snapshot.entries.map((entry) => entry.p)).toContain('source.js');
+  });
+
   it('collects per-file entries; repository metadata binds only under legacy semantics', async () => {
     const snapshot = await collectCheckSnapshot(root, change);
     const source = snapshot.entries.find((entry) => entry.p === 'source.js');

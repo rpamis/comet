@@ -28,6 +28,7 @@ import {
 import { WORKFLOW_PROJECT_CONFIG_MAX_BYTES } from '../workflow-contract/project-config.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { classicLayoutPaths, readClassicArtifactLayout } from './classic-layout.js';
+import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 
 async function ensureWorkspaceConfig(sourceRoot: string, targetRoot: string): Promise<void> {
   if (samePath(sourceRoot, targetRoot)) return;
@@ -511,9 +512,39 @@ export async function resolveClassicWorkspace(options: {
 }): Promise<ClassicWorkspaceResolution> {
   const requestedRoot = path.resolve(options.projectRoot);
   const { candidates } = await workspaceCandidates(requestedRoot, options.name);
+  const localLegacy = candidates.some((candidate) =>
+    samePath(candidate.projectRoot, requestedRoot),
+  );
+  const sdkWorkspace = localLegacy
+    ? null
+    : await findClassicSdkWorkspace(requestedRoot, options.name);
+  const sdkResolution = (): ClassicWorkspaceResolution => {
+    if (!sdkWorkspace) throw new Error(`Classic SDK change '${options.name}' was not found`);
+    return {
+      schema: 'comet.classic.workspace-resolution.v1',
+      change: options.name,
+      projectRoot: sdkWorkspace.projectRoot,
+      branch:
+        sdkWorkspace.state.boundBranch ??
+        inspectGitWorktree(sdkWorkspace.projectRoot).currentBranch,
+      isolation: sdkWorkspace.state.isolation,
+      routed: !samePath(sdkWorkspace.projectRoot, requestedRoot),
+      recreatedWorktree: false,
+    };
+  };
+  if (sdkWorkspace && samePath(sdkWorkspace.projectRoot, requestedRoot)) return sdkResolution();
   if (candidates.length === 0) {
+    if (sdkWorkspace) return sdkResolution();
     throw new Error(
       `Classic change '${options.name}' was not found in any registered Git worktree`,
+    );
+  }
+  if (
+    sdkWorkspace &&
+    !candidates.some((candidate) => samePath(candidate.projectRoot, requestedRoot))
+  ) {
+    throw new Error(
+      `Classic change '${options.name}' exists in both SDK and legacy worktrees; select its owning workspace explicitly`,
     );
   }
 

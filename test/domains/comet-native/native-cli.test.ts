@@ -190,7 +190,14 @@ describe('Comet Native CLI dispatcher', () => {
     );
 
     const created = json(
-      await runNativeCli(['new', 'portable-change', '--json', ...projectArgs()]),
+      await runNativeCli([
+        'new',
+        'portable-change',
+        '--runtime',
+        'legacy',
+        '--json',
+        ...projectArgs(),
+      ]),
     );
 
     expect(created).toMatchObject({
@@ -242,7 +249,16 @@ describe('Comet Native CLI dispatcher', () => {
 
   it('binds one current-workspace change and requires isolation for a second change', async () => {
     const branch = currentBranch();
-    const first = json(await runNativeCli(['new', 'first-change', '--json', ...projectArgs()]));
+    const first = json(
+      await runNativeCli([
+        'new',
+        'first-change',
+        '--runtime',
+        'legacy',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
     expect(first).toMatchObject({
       exitCode: 0,
       data: {
@@ -260,7 +276,16 @@ describe('Comet Native CLI dispatcher', () => {
       branch: null,
     });
 
-    const second = json(await runNativeCli(['new', 'second-change', '--json', ...projectArgs()]));
+    const second = json(
+      await runNativeCli([
+        'new',
+        'second-change',
+        '--runtime',
+        'legacy',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
     expect(second).toMatchObject({
       exitCode: 73,
       data: {
@@ -275,7 +300,16 @@ describe('Comet Native CLI dispatcher', () => {
   it('fails closed when a current-workspace change is opened from another branch', async () => {
     const boundBranch = await initializeAndCommit();
     expect(
-      json(await runNativeCli(['new', 'current-bound', '--json', ...projectArgs()])),
+      json(
+        await runNativeCli([
+          'new',
+          'current-bound',
+          '--runtime',
+          'legacy',
+          '--json',
+          ...projectArgs(),
+        ]),
+      ),
     ).toMatchObject({
       exitCode: 0,
       data: {
@@ -305,7 +339,9 @@ describe('Comet Native CLI dispatcher', () => {
     const results = await Promise.all(
       ['race-alpha', 'race-beta'].map(async (name) => ({
         name,
-        result: json(await runNativeCli(['new', name, '--json', ...projectArgs()])),
+        result: json(
+          await runNativeCli(['new', name, '--runtime', 'legacy', '--json', ...projectArgs()]),
+        ),
       })),
     );
     const succeeded = results.filter(({ result }) => result.exitCode === 0);
@@ -333,6 +369,8 @@ describe('Comet Native CLI dispatcher', () => {
       await runNativeCli([
         'new',
         'branch-owned',
+        '--runtime',
+        'legacy',
         '--isolation',
         'branch',
         '--target-branch',
@@ -394,6 +432,8 @@ describe('Comet Native CLI dispatcher', () => {
       pending = runNativeCli([
         'new',
         'locked-binding',
+        '--runtime',
+        'legacy',
         '--isolation',
         'branch',
         '--change-branch',
@@ -436,6 +476,8 @@ describe('Comet Native CLI dispatcher', () => {
         await runNativeCli([
           'new',
           'worktree-owned',
+          '--runtime',
+          'legacy',
           '--isolation',
           'worktree',
           '--target-branch',
@@ -565,7 +607,17 @@ describe('Comet Native CLI dispatcher', () => {
       try {
         await expect(projectRootFrom(projectRoot)).resolves.toBe(path.resolve(secondary));
         expect(
-          json(await runNativeCli(['new', 'root-routed', '--json', '--project-root', projectRoot])),
+          json(
+            await runNativeCli([
+              'new',
+              'root-routed',
+              '--runtime',
+              'legacy',
+              '--json',
+              '--project-root',
+              projectRoot,
+            ]),
+          ),
         ).toMatchObject({ exitCode: 0 });
       } finally {
         cwd.mockRestore();
@@ -610,7 +662,14 @@ describe('Comet Native CLI dispatcher', () => {
       data: { artifactRoot: 'artifacts/native', language: 'zh-CN' },
     });
     const created = json(
-      await runNativeCli(['new', 'sentence-counting', '--json', ...projectArgs()]),
+      await runNativeCli([
+        'new',
+        'sentence-counting',
+        '--runtime',
+        'legacy',
+        '--json',
+        ...projectArgs(),
+      ]),
     );
     expect(created).toMatchObject({
       exitCode: 0,
@@ -777,7 +836,7 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('returns acceptance scenarios through the typed details page', async () => {
-    await runNativeCli(['new', 'complete-acceptance', ...projectArgs()]);
+    await runNativeCli(['new', 'complete-acceptance', '--runtime', 'legacy', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'complete-acceptance');
     const acceptanceExamples = Array.from(
@@ -834,7 +893,16 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('creates default config from new and keeps Classic paths untouched', async () => {
-    const result = json(await runNativeCli(['new', 'default-root', '--json', ...projectArgs()]));
+    const result = json(
+      await runNativeCli([
+        'new',
+        'default-root',
+        '--runtime',
+        'legacy',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
     expect(result).toMatchObject({
       exitCode: 0,
       data: { schema: 'comet.native.v4', name: 'default-root', phase: 'shape' },
@@ -875,12 +943,15 @@ describe('Comet Native CLI dispatcher', () => {
     expect(nextHelp.stdout).toContain(
       '--confirmed --expected-state-version <n> --expected-action confirm-shape',
     );
-    expect(nextHelp.stdout).toContain('Supervisor task operations');
-    expect(nextHelp.stdout).toContain('skill-coordinated JSON');
+    expect(nextHelp.stdout).toContain('Supervisor task fields');
+    expect(nextHelp.stdout).toContain('Skill-coordinated JSON');
     expect(nextHelp.stdout).toContain(
       'Builder/dispatch identity fields are rejected; verifier responses must echo the current candidateId and verifierExecutionRef',
     );
     expect(nextHelp.stdout).not.toMatch(/^\s+--(?:result|report|artifact)\b/mu);
+    const archiveHelp = await runNativeCli(['archive', '--help', ...projectArgs()]);
+    expect(archiveHelp.stdout).toContain('--recover');
+    expect(archiveHelp.stdout).toContain('original execution process has stopped');
     const specHelp = await runNativeCli(['spec', 'remove', '--help', ...projectArgs()]);
     expect(specHelp.stdout).toContain('spec remove <change-name> <capability>');
     const disassociateHelp = await runNativeCli([
@@ -921,7 +992,7 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('returns the v2 confirmation continuation when Shape has not been confirmed', async () => {
-    await runNativeCli(['new', 'blocked-shape', ...projectArgs()]);
+    await runNativeCli(['new', 'blocked-shape', '--runtime', 'legacy', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await fs.writeFile(path.join(paths.changesDir, 'blocked-shape', 'brief.md'), brief);
     const result = await prepareShape('blocked-shape', 'Ready for the user to review');
@@ -959,7 +1030,7 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('records explicit Shape confirmation in portable state and advances to Builder handoff', async () => {
-    await runNativeCli(['new', 'confirmed-shape', ...projectArgs()]);
+    await runNativeCli(['new', 'confirmed-shape', '--runtime', 'legacy', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await fs.writeFile(path.join(paths.changesDir, 'confirmed-shape', 'brief.md'), brief);
 
@@ -1044,7 +1115,7 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('revises implementation only after a trusted Runner submitted the Builder candidate', async () => {
-    await runNativeCli(['new', 'revise-implementation', ...projectArgs()]);
+    await runNativeCli(['new', 'revise-implementation', '--runtime', 'legacy', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     await fs.writeFile(path.join(paths.changesDir, 'revise-implementation', 'brief.md'), brief);
 
@@ -1146,7 +1217,7 @@ describe('Comet Native CLI dispatcher', () => {
         ...initialConfig!,
         native: { ...initialConfig!.native, clarification_mode: clarificationMode },
       });
-      await runNativeCli(['new', 'mode-boundary', ...projectArgs()]);
+      await runNativeCli(['new', 'mode-boundary', '--runtime', 'legacy', ...projectArgs()]);
       const paths = await nativeProjectPaths(projectRoot, 'docs');
       await fs.writeFile(path.join(paths.changesDir, 'mode-boundary', 'brief.md'), brief);
 
@@ -1191,7 +1262,7 @@ describe('Comet Native CLI dispatcher', () => {
   );
 
   it('records a complete remove intent without a canonical hash', async () => {
-    await runNativeCli(['new', 'remove-capability', ...projectArgs()]);
+    await runNativeCli(['new', 'remove-capability', '--runtime', 'legacy', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const canonical = path.join(paths.specsDir, 'legacy-capability', 'spec.md');
     await fs.mkdir(path.dirname(canonical), { recursive: true });
@@ -1222,7 +1293,7 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('shows a brief larger than the retired per-file read budget', async () => {
-    await runNativeCli(['new', 'large-brief', ...projectArgs()]);
+    await runNativeCli(['new', 'large-brief', '--runtime', 'legacy', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const largeBrief = `${brief}\n# Notes\n${'x'.repeat(1024 * 1024 + 1024)}\n`;
     await fs.writeFile(path.join(paths.changesDir, 'large-brief', 'brief.md'), largeBrief);
@@ -1233,7 +1304,7 @@ describe('Comet Native CLI dispatcher', () => {
   });
 
   it('shows complete proposed Specs beyond the retired count, aggregate, and output budgets', async () => {
-    await runNativeCli(['new', 'large-spec-set', ...projectArgs()]);
+    await runNativeCli(['new', 'large-spec-set', '--runtime', 'legacy', ...projectArgs()]);
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const changeDir = path.join(paths.changesDir, 'large-spec-set');
     await fs.writeFile(path.join(changeDir, 'brief.md'), brief);

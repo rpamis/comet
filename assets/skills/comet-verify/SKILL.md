@@ -7,6 +7,16 @@ description: 'Verify a Classic change and record the results. Use when the user 
 
 After entry returns layout, follow `comet-classic/reference/classic-layout.md` to bind each logical root to its directory. Do not reload the protocol if it is already in context. Use the adapter for OpenSpec CLI calls and the bound `<classic-*>` roots for paths; do not run an extra root show first.
 
+## SDK Run path
+
+Run `comet state next <change-name> --json` and confirm `data.runtimeFormat: sdk`, `data.phase: verify`, and `nextAction.kind`. Enter the `projectRoot` returned by `comet classic workspace resolve <change-name> --json`. Use `comet state check <change-name> verify --json` for tasks, workspace, and evidence. For `reconcile`, use `comet state check <change-name> verify --recover --json` to investigate the original Action and check; stop if its result remains unknown.
+
+1. Follow the risk assessment, integrated review, and light/full verification methods below, but use the SDK Run as evidence authority. Do not call legacy `state scale`, `state set`, `comet handoff`, or `comet check` evidence commands. For implementation or task defects, report the specific failure. Only when `<profile>.verify.run` is pending (`<profile>` is full, hotfix, or tweak), run `comet state transition <change-name> verify-fail --reason "<failure-reason>"`. It records a failed Verify Action and returns to Build. Investigate existing failed or unknown checks before reporting another failure.
+2. When verification passes, write actual checks, evidence references, independent review, and acceptable deviations in a repository report at `<report-ref>`. Preview with `comet guard <change-name> verify --report <report-ref>`. Repair report or task mismatches. Then run `comet guard <change-name> verify --report <report-ref> --apply -- <program> [args...]` with an explicit complete verification command. Guard records the report, evidence, and real check receipt in one Run; a manual claim is insufficient. On check failure, read `state next --json` and the failure receipt and follow the returned Build or Verify Action.
+3. After Guard succeeds, read `comet state next <change-name> --json` again. Load `/comet-archive` only when phase is Archive and `nextAction.kind` points there. Verify passing does not itself authorize Archive; obtain the current delivery decision there.
+
+The remaining legacy Runtime steps apply only to `runtimeFormat: legacy`.
+
 ## Prerequisites
 
 - Code is committed; Phase 3 is complete.

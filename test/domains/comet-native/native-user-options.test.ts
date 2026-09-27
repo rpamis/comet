@@ -161,7 +161,14 @@ describe('Native public user-option paths', () => {
       const primary = await repository();
       const original = git(primary, ['rev-parse', 'main']);
       // Exercise Runtime-created configuration, not a precommitted fixture config.
-      const created = await cli(primary, ['new', 'parent', '--isolation', isolation]);
+      const created = await cli(primary, [
+        'new',
+        'parent',
+        '--runtime',
+        'legacy',
+        '--isolation',
+        isolation,
+      ]);
       const root = created.preparation.projectRoot;
       const dir = path.join(root, 'docs/comet/changes/parent');
       await fs.mkdir(path.join(dir, 'specs/options'), { recursive: true });
@@ -313,8 +320,9 @@ describe('Native public user-option paths', () => {
     const primary = await repository();
     const worktrees: string[] = [];
     for (const name of ['first', 'second']) {
-      const root = (await cli(primary, ['new', name, '--isolation', 'worktree'])).preparation
-        .projectRoot;
+      const root = (
+        await cli(primary, ['new', name, '--runtime', 'legacy', '--isolation', 'worktree'])
+      ).preparation.projectRoot;
       worktrees.push(root);
       const dir = path.join(root, 'docs/comet/changes', name);
       await fs.writeFile(path.join(dir, 'brief.md'), supervisorBrief('Shared behavior works.'));

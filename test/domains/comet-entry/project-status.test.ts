@@ -62,10 +62,14 @@ async function writeClassicOnlyConfig(projectRoot: string): Promise<void> {
 
 async function initializeClassicChange(projectRoot: string, name: string): Promise<void> {
   await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
-  const result = spawnSync(process.execPath, [classicStateScript, 'init', name, 'full'], {
-    cwd: projectRoot,
-    encoding: 'utf8',
-  });
+  const result = spawnSync(
+    process.execPath,
+    [classicStateScript, 'init', name, 'full', '--runtime', 'legacy'],
+    {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    },
+  );
   expect(result.status, result.stderr).toBe(0);
 }
 

@@ -2,19 +2,35 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.4] - 2026-09-23
+## What's Changed [0.4.4] - 2026-09-27
 
 ### Added
 
 - **Composable Runtime SDK**: Publish `@rpamis/comet/runtime` for host-owned Skill and tool workflows with persistent approvals, version-pinned DAG execution, explicit execution outcomes, pluggable stores/executors/validators, and process recovery. Add `comet runtime dispatch` for structured JSON hosts; the platform remains responsible for model and tool calls. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md).
+- **Workflow-owned state and evidence**: Let JavaScript SDK workflows validate their Run state with JSON Schema and versioned domain validators, select declared next steps through a versioned transition handler, and wait for externally verified evidence before advancing. A transition can activate the same declared step more than once with distinct inputs, then wait for sibling Actions before continuing. Hosts can invalidate rejected evidence only when a validator confirms it is stale and the workflow declares a recovery transition. These decisions and evidence receipts persist with the Run revision so hosts can resume them after interruption.
+- **Workflow commands**: Let SDK applications declare an external command that replaces unclaimed work or a pending approval with a durable Action. JavaScript and JSON CLI hosts can submit it with a Run revision and idempotent command ID; claimed or uncertain external work blocks interruption until reconciled.
+- **Built-in workflow applications**: Let CLI hosts select Native or Classic full/hotfix/tweak through `comet runtime dispatch --application`, execute registered Runtime checks, and submit verified artifact evidence to a project-scoped SDK Run. Named SDK requests can reach Runs in registered worktrees without overriding a same-named local legacy change. Native status lists SDK and legacy changes together, reads SDK-owned changes across registered worktrees, and discovers them for resumption without creating a legacy state file. Native Supervisor removes verified temporary worktrees and branches after Archive, preserves dirty or unintegrated work, and can resume the original cleanup Action after interruption. Explicit Native and Classic initialization can create SDK-owned changes; Classic `state get`, `state next`, `state select`, `state current`, and `state artifacts` use those Runs without creating a second state file. Classic `state check` validates SDK Open, Design, and Build entry prerequisites and recovers the next SDK action from the Run.
+- **Classic SDK Open validation**: Let SDK-owned Classic changes preview a content-bound Open approval and advance through the public Guard command. Reject empty task lists, mismatched document language, and changed artifacts through both Guard and direct SDK evidence submission before the Run advances.
+- **Classic SDK Design coordination**: Persist full-workflow design proposals and source-traceable handoff context for user approval, then submit a Design Doc through the state or Guard command to the same Run with a matching approval hash. Reject changed OpenSpec inputs, handoff context, or invalid document metadata before entering Build.
+- **Classic SDK Build decisions**: Let SDK-owned full changes propose execution, TDD, and review choices as one user decision, then approve or reject the exact proposal before planning. Preserve the Open workspace binding and reject invalid combinations or stale approvals.
+- **Classic SDK Build progression**: Let full-workflow changes submit task-mapped plans, explicitly pause and continue planning, and declare completed implementation. Full, hotfix, and tweak changes can preview Build readiness and apply a real Build check through the public Guard command, using an explicit program or one unambiguous detected build. Failed or stale checks return to Build work; changed plans or tasks block continuation, and an interrupted successful check can submit its original receipt without rerunning the command.
+- **Classic SDK verification**: Let SDK-owned full, hotfix, and tweak changes preview a verification report, submit it through the public Guard command, and run a real verification check before Archive. Reject mismatched report language, changed report evidence, and failed checks; recover an interrupted successful check by submitting its original receipt without rerunning it.
+- **Classic SDK Archive delivery**: Let SDK-owned changes record a delivery proposal and exact user choice, then archive through the public Guard or Archive command only while verified evidence and the approved branch remain current. Keep Git delivery separate, and close the Run only after validating the actual scoped archive commit and any approved remote branch or pull request.
 
 ### Changed
 
+- **SDK-owned new changes**: Native `new` and Classic `state init` now create SDK-owned changes by default, while existing legacy changes retain their original Runtime and new changes can explicitly opt into `--runtime legacy`.
+- **Native SDK public commands**: Route capability removal, requirements revision, Archive progression, and named Doctor diagnostics through the owning SDK Run. Let `native archive --recover` reconcile one interrupted Archive Action against its original evidence after the former process has stopped, without repeating the action. Keep legacy-only check and reference-sync commands from reading or changing SDK-owned state.
+- **Native and Classic Skill routing**: Guide new SDK-owned changes through their Run Actions, current approval hashes, verified evidence, and interruption recovery in both Chinese and English; keep existing legacy changes on their original instructions.
 - **Classic check execution records**: Bind `comet check run` results and cross-scope reuse to the same SDK Action lifecycle used by Native verification, so interrupted attempts and recorded outcomes remain tied to the exact check inputs without changing Classic's workflow state machine.
 
 ### Fixed
 
 - **Native Verifier interruption recovery**: Preserve the active verifier identity with the portable change so it can be recovered when local execution metadata is missing, while rejecting responses for a different candidate or attempt.
+
+### Security
+
+- **Native artifact replacement checks**: Reject a file replaced during a bounded artifact read even when the filesystem quickly reuses its file ID, so stale content cannot pass as the current path.
 
 ## What's Changed [0.4.3] - 2026-09-22
 

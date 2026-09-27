@@ -86,7 +86,13 @@ describe('Classic runtime CLI adapter', () => {
           encoding: 'utf8',
         });
 
-      const initialized = run(stateScript, ['init', 'nested-layout', 'full']);
+      const initialized = run(stateScript, [
+        'init',
+        'nested-layout',
+        'full',
+        '--runtime',
+        'legacy',
+      ]);
       expect(initialized.status, initialized.stderr).toBe(0);
       const changeDir = path.join(changesRoot, 'nested-layout');
       await fs.writeFile(
@@ -164,7 +170,7 @@ describe('Classic runtime CLI adapter', () => {
     process.chdir(directory);
     try {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
-      const result = await runClassicCli(['state', 'init', 'demo', 'full']);
+      const result = await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy']);
 
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain('Classic artifact layout is unavailable');
@@ -199,7 +205,7 @@ describe('Classic runtime CLI adapter', () => {
     process.chdir(directory);
     try {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
-      const result = await runClassicCli(['state', 'init', 'demo', 'full']);
+      const result = await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy']);
 
       expect(result.exitCode).toBe(0);
       await expect(
@@ -272,7 +278,9 @@ describe('Classic runtime CLI adapter', () => {
     process.chdir(directory);
     try {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
-      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      expect(
+        (await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy'])).exitCode,
+      ).toBe(0);
       expect((await runClassicCli(['state', 'get', 'demo', 'phase'])).stdout).toBe('open\n');
       await expect(
         fs.stat(path.join(directory, 'docs', 'openspec', 'changes', 'demo', '.comet.yaml')),
@@ -302,7 +310,9 @@ describe('Classic runtime CLI adapter', () => {
     process.chdir(directory);
     try {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
-      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      expect(
+        (await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy'])).exitCode,
+      ).toBe(0);
       const changeDir = path.join(directory, 'openspec', 'changes', 'demo');
 
       await expect(ensureClassicRuntimeRun(changeDir)).resolves.toBeDefined();
@@ -322,7 +332,9 @@ describe('Classic runtime CLI adapter', () => {
     process.chdir(directory);
     try {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
-      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      expect(
+        (await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy'])).exitCode,
+      ).toBe(0);
       await ensureClassicRuntimeRun(path.join(directory, 'openspec', 'changes', 'demo'));
       const result = await runClassicCli([
         'state',
@@ -353,8 +365,18 @@ describe('Classic runtime CLI adapter', () => {
     try {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
       expect(
-        (await runClassicCli(['state', 'init', 'demo', 'tweak', '--isolation', 'current']))
-          .exitCode,
+        (
+          await runClassicCli([
+            'state',
+            'init',
+            'demo',
+            'tweak',
+            '--isolation',
+            'current',
+            '--runtime',
+            'legacy',
+          ])
+        ).exitCode,
       ).toBe(0);
       const changeDir = path.join(directory, 'openspec', 'changes', 'demo');
       await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\nRename a label.\n');
@@ -415,7 +437,9 @@ describe('Classic runtime CLI adapter', () => {
     process.chdir(directory);
     try {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
-      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      expect(
+        (await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy'])).exitCode,
+      ).toBe(0);
       const changeDir = path.join(directory, 'openspec', 'changes', 'demo');
       const yamlPath = path.join(changeDir, '.comet.yaml');
       const yaml = (await fs.readFile(yamlPath, 'utf8')).replace(/^run_id:.*\r?\n/mu, '');
@@ -453,7 +477,9 @@ describe('Classic runtime CLI adapter', () => {
     process.chdir(directory);
     try {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
-      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      expect(
+        (await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy'])).exitCode,
+      ).toBe(0);
       const changeDir = path.join(directory, 'openspec', 'changes', 'demo');
       await ensureClassicRuntimeRun(changeDir);
       if (fault === 'marker') {
@@ -503,7 +529,9 @@ describe('Classic runtime CLI adapter', () => {
     process.chdir(directory);
     try {
       const { runClassicCli } = await import('../../../domains/comet-classic/classic-cli.js');
-      expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+      expect(
+        (await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy'])).exitCode,
+      ).toBe(0);
       const result = await runClassicCli(['state', 'record-check', 'demo', ...tail]);
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain(message);
@@ -716,10 +744,14 @@ describe('Classic script bundles', () => {
     temporaryDirectories.push(directory);
     await seedClassicProject(directory);
 
-    const init = spawnSync(process.execPath, [stateScript, 'init', 'demo', 'full'], {
-      cwd: directory,
-      encoding: 'utf8',
-    });
+    const init = spawnSync(
+      process.execPath,
+      [stateScript, 'init', 'demo', 'full', '--runtime', 'legacy'],
+      {
+        cwd: directory,
+        encoding: 'utf8',
+      },
+    );
     const demoDir = path.join(directory, 'openspec', 'changes', 'demo');
     await fs.writeFile(path.join(demoDir, 'proposal.md'), 'proposal\n');
     await fs.writeFile(path.join(demoDir, 'design.md'), 'design\n');
@@ -799,7 +831,7 @@ describe('Classic script bundles', () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-script-owned-'));
     temporaryDirectories.push(directory);
     await seedClassicProject(directory);
-    spawnSync(process.execPath, [stateScript, 'init', 'demo', 'full'], {
+    spawnSync(process.execPath, [stateScript, 'init', 'demo', 'full', '--runtime', 'legacy'], {
       cwd: directory,
       encoding: 'utf8',
     });
@@ -818,7 +850,7 @@ describe('Classic script bundles', () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-script-sync-'));
     temporaryDirectories.push(directory);
     await seedClassicProject(directory);
-    spawnSync(process.execPath, [stateScript, 'init', 'demo', 'full'], {
+    spawnSync(process.execPath, [stateScript, 'init', 'demo', 'full', '--runtime', 'legacy'], {
       cwd: directory,
       encoding: 'utf8',
     });

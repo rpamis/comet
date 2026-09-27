@@ -1,4 +1,6 @@
 import { promises as fs } from 'node:fs';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { inspectNativeSdkRun, resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
 
 /**
  * A dispatched Verifier that never confirmed startup is presumed lost after
@@ -402,6 +404,56 @@ export async function nativeDoctorCommand(
   const name = args[0]?.startsWith('--') ? undefined : args.shift();
   assertNoArguments(args);
   const paths = await doctorPaths(projectRoot);
+  const portableTransactions = await inspectPortableTransactions(paths, name);
+  if (name && portableTransactions.findings.length === 0) {
+    const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
+    if (await readSdkChangeOwner(commandRoot, 'native', name)) {
+      if (recoveryStrategy) {
+        throw new NativeUsageError('--strategy is only available to the legacy transaction doctor');
+      }
+      try {
+        const { run, state } = await inspectNativeSdkRun(commandRoot, name);
+        const unresolved = run.actions.filter(
+          (action) => action.status === 'unknown' || action.status === 'running',
+        );
+        const data = {
+          workflow: 'native-sdk',
+          runtimeFormat: 'sdk',
+          change: name,
+          healthy: unresolved.length === 0 && run.status !== 'failed',
+          repaired: false,
+          phase: state.phase,
+          run: { id: run.runId, status: run.status, revision: run.revision },
+          ...(unresolved.length > 0
+            ? {
+                findings: unresolved.map((action) => ({
+                  code: 'sdk-action-outcome-unresolved',
+                  actionId: action.id,
+                  stepId: action.stepId,
+                  status: action.status,
+                  message: 'Reconcile this SDK Action before continuing; doctor will not replay it',
+                })),
+              }
+            : {}),
+        };
+        return data.healthy ? success('doctor', data) : unhealthyDoctor(data);
+      } catch (error) {
+        return unhealthyDoctor({
+          workflow: 'native-sdk',
+          runtimeFormat: 'sdk',
+          change: name,
+          healthy: false,
+          repaired: false,
+          findings: [
+            {
+              code: 'sdk-run-invalid',
+              message: error instanceof Error ? error.message : String(error),
+            },
+          ],
+        });
+      }
+    }
+  }
   const workspaceFinishJournalErrors = await inspectWorkspaceFinishJournalErrors(paths, name);
   if (name && workspaceFinishJournalErrors.length > 0) {
     const finding = workspaceFinishJournalFinding(paths, workspaceFinishJournalErrors[0]);
@@ -441,7 +493,6 @@ export async function nativeDoctorCommand(
       workspaceFinishJournal: { quarantined, finding },
     });
   }
-  const portableTransactions = await inspectPortableTransactions(paths, name);
   if (name && portableTransactions.findings.length > 0) {
     if (recoveryStrategy) {
       throw new NativeUsageError('--strategy is only available to the legacy transaction doctor');

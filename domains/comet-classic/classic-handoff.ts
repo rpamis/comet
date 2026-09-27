@@ -458,6 +458,125 @@ async function writeSpecJsonContext(
   );
 }
 
+/** Build the legacy-compatible context pack without creating a second Runtime state. */
+export async function writeClassicSdkDesignContext(options: {
+  projectRoot: string;
+  changeDir: string;
+  change: string;
+  contextCompression: 'off' | 'beta' | null;
+}): Promise<{ handoffContext: string; handoffHash: string }> {
+  const { projectRoot, changeDir, change } = options;
+  const changeRef = classicProjectRelative(projectRoot, changeDir);
+  const requirements = await readClassicArtifactRequirements(projectRoot, changeDir);
+  if (requirements.problems.length) throw new Error(requirements.problems.join('\n'));
+  for (const file of requirements.files) {
+    if (!(await classicProjectFileNonempty(projectRoot, file, `Classic handoff source ${file}`))) {
+      throw new Error(`Required OpenSpec artifact is missing or empty: ${file}`);
+    }
+  }
+  const handoffDir = `${changeDir}/.comet/handoff`;
+  await ensureClassicProjectDirectory(
+    projectRoot,
+    `${changeDir}/.comet`,
+    'Classic change runtime directory',
+  );
+  await ensureClassicProjectDirectory(projectRoot, handoffDir, 'Classic handoff directory');
+  const beta = options.contextCompression === 'beta';
+  const basename = beta ? 'spec-context' : 'design-context';
+  const json = `${handoffDir}/${basename}.json`;
+  const markdown = `${handoffDir}/${basename}.md`;
+  const handoffHash = await computeContextHash(projectRoot, changeDir, changeRef);
+  if (beta) {
+    await writeSpecMarkdownContext(
+      projectRoot,
+      changeDir,
+      changeRef,
+      change,
+      handoffHash,
+      markdown,
+    );
+    await writeSpecJsonContext(projectRoot, changeDir, changeRef, change, handoffHash, json);
+  } else {
+    await writeMarkdownContext(
+      projectRoot,
+      changeDir,
+      changeRef,
+      change,
+      'compact',
+      handoffHash,
+      markdown,
+    );
+    await writeJsonContext(projectRoot, changeDir, changeRef, change, 'compact', handoffHash, json);
+  }
+  return { handoffContext: classicProjectRelative(projectRoot, json), handoffHash };
+}
+
+/** Recheck the files behind an SDK handoff outcome at the point of Run commit. */
+export async function validateClassicSdkDesignContext(options: {
+  projectRoot: string;
+  changeDir: string;
+  change: string;
+  contextCompression: 'off' | 'beta' | null;
+  handoffContext: string;
+  handoffHash: string;
+}): Promise<boolean> {
+  const { projectRoot, changeDir, change, handoffContext, handoffHash } = options;
+  const changeRef = classicProjectRelative(projectRoot, changeDir);
+  const basename = options.contextCompression === 'beta' ? 'spec-context' : 'design-context';
+  if (
+    handoffContext !== `${changeRef}/.comet/handoff/${basename}.json` ||
+    !/^[a-f0-9]{64}$/u.test(handoffHash) ||
+    handoffHash !== (await computeContextHash(projectRoot, changeDir, changeRef))
+  )
+    return false;
+  const json = await readProtectedIfExists(projectRoot, handoffContext, 'Classic SDK handoff JSON');
+  const markdown = await readProtectedIfExists(
+    projectRoot,
+    handoffContext.replace(/\.json$/u, '.md'),
+    'Classic SDK handoff markdown',
+  );
+  if (!json || !markdown || !markdown.split(/\r?\n/u).includes(`- Context hash: ${handoffHash}`)) {
+    return false;
+  }
+  const parsed: unknown = JSON.parse(json);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  const document = parsed as Record<string, unknown>;
+  if (
+    document.change !== change ||
+    document.phase !== 'design' ||
+    document.canonical_spec !== 'openspec' ||
+    document.context_hash !== handoffHash ||
+    document.mode !== (options.contextCompression === 'beta' ? 'beta' : 'compact') ||
+    !Array.isArray(document.files)
+  )
+    return false;
+  const expected: Array<{ path: string; sha256: string }> = [];
+  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
+    const reference = handoffSourceReference(changeDir, changeRef, file);
+    const content = await readProtectedIfExists(
+      projectRoot,
+      file,
+      `Classic handoff source ${reference}`,
+    );
+    if (content === null) continue;
+    const sha256 = handoffSourceHash(file, content);
+    expected.push({ path: reference, sha256 });
+    if (
+      !markdown.includes(`- Source: ${reference}\n`) ||
+      !markdown.includes(`- SHA256: ${sha256}`)
+    ) {
+      return false;
+    }
+  }
+  return (
+    document.files.length === expected.length &&
+    document.files.every((entry, index) => {
+      const actual = entry as { path?: unknown; sha256?: unknown };
+      return actual.path === expected[index]?.path && actual.sha256 === expected[index]?.sha256;
+    })
+  );
+}
+
 async function readField(projectRoot: string, changeDir: string, field: string): Promise<string> {
   const file = path.join(changeDir, '.comet.yaml');
   const document = parseDocument(

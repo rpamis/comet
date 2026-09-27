@@ -7,15 +7,22 @@ import {
   RuntimeProtocolError,
   type DefineWorkflowOptions,
   type RuntimeInvocationContext,
+  type RuntimeStore,
   type RuntimeValue,
   type WorkflowRun,
   type WorkflowRuntime,
 } from '../../domains/engine/runtime.js';
 import { parseRuntimeOutcome } from '../../domains/engine/runtime-action.js';
+import {
+  readSdkChangeOwner,
+  type SdkApplication,
+} from '../../domains/workflow-contract/change-runtime-owner.js';
+import type { CometProjectWorkflow } from '../../domains/workflow-contract/types.js';
 
 export interface RuntimeCommandOptions {
   request?: string;
   workflow?: string[];
+  application?: string;
   rootDir?: string;
   projectRoot?: string;
   json?: boolean;
@@ -42,9 +49,11 @@ export interface RuntimeCommandResult {
 type JsonObject = { [key: string]: RuntimeValue };
 
 const operationFields = {
-  start: ['runId', 'workflow', 'input'],
+  start: ['runId', 'workflow', 'input', 'initialState'],
   inspect: ['runId'],
   next: ['runId', 'expectedRevision'],
+  execute: ['runId', 'expectedRevision', 'actionId', 'executorId'],
+  'dispatch-command': ['runId', 'expectedRevision', 'commandId', 'name', 'input'],
   claim: [
     'runId',
     'expectedRevision',
@@ -57,6 +66,24 @@ const operationFields = {
     'capabilities',
   ],
   'record-outcome': ['runId', 'expectedRevision', 'outcome'],
+  'record-evidence': [
+    'runId',
+    'expectedRevision',
+    'evidenceId',
+    'kind',
+    'ref',
+    'contentHash',
+    'submissionId',
+  ],
+  'invalidate-evidence': [
+    'runId',
+    'expectedRevision',
+    'evidenceId',
+    'kind',
+    'ref',
+    'contentHash',
+    'submissionId',
+  ],
   'resolve-wait': ['runId', 'expectedRevision', 'waitId', 'proposalHash', 'decisionId', 'choice'],
   'revise-wait': ['runId', 'expectedRevision', 'waitId', 'proposalHash', 'proposal'],
   'mark-unknown': ['runId', 'expectedRevision', 'actionId', 'attempt', 'reason'],
@@ -136,7 +163,23 @@ function parseRequest(value: unknown): JsonObject & { operation: keyof typeof op
       request.capabilities.forEach((capability) => text(capability, 'capabilities'));
     }
   }
+  if (name === 'execute') {
+    text(request.actionId, 'actionId');
+    text(request.executorId, 'executorId');
+  }
+  if (name === 'dispatch-command') {
+    positiveInteger(request.expectedRevision, 'expectedRevision');
+    text(request.commandId, 'commandId');
+    text(request.name, 'name');
+    if (!Object.hasOwn(request, 'input')) invalid('input 必须显式提供，可使用 null');
+  }
   if (name === 'record-outcome') validateOutcome(request.outcome);
+  if (name === 'record-evidence' || name === 'invalidate-evidence') {
+    for (const field of ['evidenceId', 'kind', 'ref', 'contentHash', 'submissionId']) {
+      text(request[field], field);
+    }
+    positiveInteger(request.expectedRevision, 'expectedRevision');
+  }
   if (name === 'mark-unknown' || name === 'retry') {
     text(request.actionId, 'actionId');
     positiveInteger(request.attempt, 'attempt');
@@ -197,11 +240,25 @@ function dispatch(
       return runtime.inspect(request.runId as string);
     case 'next':
       return runtime.next(command as unknown as Parameters<WorkflowRuntime['next']>[0]);
+    case 'execute':
+      return runtime.execute(command as unknown as Parameters<WorkflowRuntime['execute']>[0]);
+    case 'dispatch-command':
+      return runtime.dispatchCommand(
+        command as unknown as Parameters<WorkflowRuntime['dispatchCommand']>[0],
+      );
     case 'claim':
       return runtime.claim(command as unknown as Parameters<WorkflowRuntime['claim']>[0]);
     case 'record-outcome':
       return runtime.recordOutcome(
         command as unknown as Parameters<WorkflowRuntime['recordOutcome']>[0],
+      );
+    case 'record-evidence':
+      return runtime.recordEvidence(
+        command as unknown as Parameters<WorkflowRuntime['recordEvidence']>[0],
+      );
+    case 'invalidate-evidence':
+      return runtime.invalidateEvidence(
+        command as unknown as Parameters<WorkflowRuntime['invalidateEvidence']>[0],
       );
     case 'resolve-wait':
       return runtime.resolveWait(
@@ -217,6 +274,92 @@ function dispatch(
       return runtime.retry(command as unknown as Parameters<WorkflowRuntime['retry']>[0]);
     case 'cancel':
       return runtime.cancel(command as unknown as Parameters<WorkflowRuntime['cancel']>[0]);
+  }
+}
+
+async function assertBuiltInChangeInput(
+  projectRoot: string,
+  application: SdkApplication,
+  change: string,
+  input: JsonObject,
+): Promise<void> {
+  if (application === 'native') {
+    if (input.name !== change) invalid('Native Run ID 必须与 change name 一致');
+    const { assertNativeSdkStartAvailable } =
+      await import('../../domains/comet-native/native-sdk-application.js');
+    await assertNativeSdkStartAvailable({
+      projectRoot,
+      name: change,
+      artifactRootRef: text(input.artifactRootRef, 'input.artifactRootRef'),
+    });
+  } else {
+    const changeDir = text(input.changeDir, 'input.changeDir').replaceAll('\\', '/');
+    if (
+      changeDir.startsWith('/') ||
+      changeDir.split('/').includes('..') ||
+      path.posix.basename(changeDir) !== change ||
+      (input.change !== undefined && input.change !== change)
+    ) {
+      invalid('Classic Run ID 必须与 change directory 和 change name 一致');
+    }
+    const { assertClassicSdkStartAvailable } =
+      await import('../../domains/comet-classic/classic-runtime-ownership.js');
+    await assertClassicSdkStartAvailable({ projectRoot, changeDirRef: changeDir });
+  }
+}
+
+async function bindBuiltInApplication(
+  projectRoot: string,
+  application: SdkApplication,
+  workflow: DefineWorkflowOptions,
+  request: ReturnType<typeof parseRequest>,
+  runtime: WorkflowRuntime,
+): Promise<void> {
+  const change = text(request.runId, 'runId');
+  const ownerWorkflow: CometProjectWorkflow = application === 'native' ? 'native' : 'classic';
+  if (request.operation === 'start') {
+    const requestedWorkflow = request.workflow as { id: string; version: string };
+    if (requestedWorkflow.id !== workflow.id || requestedWorkflow.version !== workflow.version) {
+      invalid(`--application ${application} 与请求的 workflow 不匹配`);
+    }
+    const input = object(request.input, 'input');
+    await assertBuiltInChangeInput(projectRoot, application, change, input);
+    return;
+  }
+  const owner = await readSdkChangeOwner(projectRoot, ownerWorkflow, change);
+  if (!owner || owner.application !== application || owner.runId !== change) {
+    invalid(`Change ${ownerWorkflow}/${change} 未绑定到 ${application} SDK Run`);
+  }
+  const run = await runtime.inspect(change);
+  if (run.workflow.id !== workflow.id || run.workflow.version !== workflow.version) {
+    invalid(`Change ${ownerWorkflow}/${change} 的 SDK Workflow 与 ${application} 不匹配`);
+  }
+  await assertBuiltInChangeInput(projectRoot, application, change, object(run.input, 'Run input'));
+}
+
+async function registerBuiltInStartOwner(
+  projectRoot: string,
+  application: SdkApplication,
+  change: string,
+  input: JsonObject,
+): Promise<void> {
+  if (application === 'native') {
+    const { registerNativeSdkStartOwner } =
+      await import('../../domains/comet-native/native-sdk-application.js');
+    await registerNativeSdkStartOwner({
+      projectRoot,
+      name: change,
+      artifactRootRef: text(input.artifactRootRef, 'input.artifactRootRef'),
+    });
+  } else {
+    const { registerClassicSdkStartOwner } =
+      await import('../../domains/comet-classic/classic-runtime-ownership.js');
+    await registerClassicSdkStartOwner({
+      projectRoot,
+      change,
+      changeDirRef: text(input.changeDir, 'input.changeDir'),
+      application,
+    });
   }
 }
 
@@ -246,7 +389,7 @@ export async function runtimeDispatchCommand(
   let requestId: string = randomUUID();
   try {
     const invocationCwd = path.resolve(host.invocationCwd ?? process.cwd());
-    const projectRoot = path.resolve(invocationCwd, options.projectRoot ?? '.');
+    let projectRoot = path.resolve(invocationCwd, options.projectRoot ?? '.');
     const environment = Object.freeze(
       Object.fromEntries(
         Object.entries(host.environment ?? process.env).filter(
@@ -255,9 +398,74 @@ export async function runtimeDispatchCommand(
       ),
     );
     const requestFile = path.resolve(invocationCwd, text(options.request, '--request'));
-    const rootDir = path.resolve(invocationCwd, text(options.rootDir, '--root-dir'));
     const request = parseRequest(await readJson(requestFile, 'REQUEST'));
     requestId = (request.requestId as string | undefined) ?? requestId;
+    const application = options.application;
+    if (application !== undefined && (options.workflow?.length ?? 0) > 0) {
+      invalid('--application 与 --workflow 不能同时使用');
+    }
+    if (application?.startsWith('classic-') && request.operation !== 'start') {
+      const { resolveClassicSdkCommandRoot } =
+        await import('../../domains/comet-classic/classic-sdk-status.js');
+      projectRoot = await resolveClassicSdkCommandRoot(projectRoot, text(request.runId, 'runId'));
+    }
+    if (application === 'native' && request.operation !== 'start') {
+      const { resolveNativeSdkCommandRoot } =
+        await import('../../domains/comet-native/native-runtime-ownership.js');
+      projectRoot = await resolveNativeSdkCommandRoot(projectRoot, text(request.runId, 'runId'));
+    }
+    let transitionHandlers;
+    let evidenceValidators;
+    let validators;
+    let stateValidators;
+    let commandValidators;
+    let executors;
+    let builtInWorkflow: DefineWorkflowOptions | undefined;
+    if (application === 'native') {
+      const { defineNativeWorkflowApplication } =
+        await import('../../domains/comet-native/native-sdk-application.js');
+      const defined = defineNativeWorkflowApplication();
+      builtInWorkflow = defined.workflow;
+      transitionHandlers = [defined.transitionHandler];
+      validators = defined.validators;
+      stateValidators = defined.stateValidators;
+      commandValidators = defined.commandValidators;
+      executors = defined.executors;
+    } else if (
+      application === 'classic-full' ||
+      application === 'classic-hotfix' ||
+      application === 'classic-tweak'
+    ) {
+      const { defineClassicWorkflowApplication } =
+        await import('../../domains/comet-classic/classic-sdk-application.js');
+      const profile = application.slice('classic-'.length) as 'full' | 'hotfix' | 'tweak';
+      const defined = defineClassicWorkflowApplication(profile);
+      builtInWorkflow = defined.workflow;
+      transitionHandlers = [defined.transitionHandler];
+      evidenceValidators = defined.evidenceValidators;
+      validators = defined.validators;
+      executors = defined.executors;
+    } else if (application !== undefined) {
+      invalid(`不支持的内置应用：${application}`);
+    }
+    const builtInRootDir = path.join(
+      projectRoot,
+      '.comet',
+      'runtime',
+      'sdk-runs',
+      application === 'native' ? 'native' : 'classic',
+    );
+    const rootDir =
+      application === undefined
+        ? path.resolve(invocationCwd, text(options.rootDir, '--root-dir'))
+        : builtInRootDir;
+    if (
+      application !== undefined &&
+      options.rootDir !== undefined &&
+      path.resolve(invocationCwd, options.rootDir) !== builtInRootDir
+    ) {
+      invalid('内置应用必须使用项目中对应 workflow 的 .comet/runtime/sdk-runs 目录');
+    }
     const workflows = await Promise.all(
       (options.workflow ?? []).map(
         async (file) =>
@@ -267,10 +475,61 @@ export async function runtimeDispatchCommand(
           )) as DefineWorkflowOptions,
       ),
     );
+    const persistentStore = createFileRuntimeStore<WorkflowRun>({ rootDir });
+    const store: RuntimeStore<WorkflowRun> =
+      application !== undefined && request.operation === 'start'
+        ? {
+            async read(runId) {
+              const current = await persistentStore.read(runId);
+              if (current) {
+                const owner = await readSdkChangeOwner(
+                  projectRoot,
+                  application === 'native' ? 'native' : 'classic',
+                  runId,
+                );
+                if (!owner || owner.application !== application || owner.runId !== runId) {
+                  throw new RuntimeProtocolError(
+                    'RUN_OWNER_MISSING',
+                    `SDK Run ${runId} 缺少匹配的 change 归属记录`,
+                  );
+                }
+              }
+              return current;
+            },
+            async compareAndSwap(runId, expectedRevision, next) {
+              if (expectedRevision === null) {
+                const change = text(request.runId, 'runId');
+                if (runId !== change) invalid('SDK Run ID 与 change name 不一致');
+                await registerBuiltInStartOwner(
+                  projectRoot,
+                  application as SdkApplication,
+                  change,
+                  object(request.input, 'input'),
+                );
+              }
+              return persistentStore.compareAndSwap(runId, expectedRevision, next);
+            },
+          }
+        : persistentStore;
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({ rootDir }),
-      workflows,
+      store,
+      workflows: builtInWorkflow ? [builtInWorkflow] : workflows,
+      ...(transitionHandlers ? { transitionHandlers } : {}),
+      ...(evidenceValidators ? { evidenceValidators } : {}),
+      ...(validators ? { validators } : {}),
+      ...(stateValidators ? { stateValidators } : {}),
+      ...(commandValidators ? { commandValidators } : {}),
+      ...(executors ? { executors } : {}),
     });
+    if (application !== undefined && builtInWorkflow) {
+      await bindBuiltInApplication(
+        projectRoot,
+        application as SdkApplication,
+        builtInWorkflow,
+        request,
+        runtime,
+      );
+    }
     const context = { requestId, projectRoot, invocationCwd, environment };
     const data = await dispatch(runtime, request, context);
     return { exitCode: 0, response: { protocolVersion: 1, requestId, status: 'succeeded', data } };

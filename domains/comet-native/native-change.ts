@@ -2,7 +2,16 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { parseDocument, stringify } from 'yaml';
 
-import { listGitWorktreeRoots, samePath } from '../../platform/paths/git-worktree.js';
+import {
+  inspectGitWorktree,
+  listGitWorktreeRoots,
+  samePath,
+} from '../../platform/paths/git-worktree.js';
+import { createFileRuntimeStore, createRuntime, type WorkflowRun } from '../engine/runtime.js';
+import {
+  listSdkChangeNames,
+  readSdkChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
 
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { atomicWriteText } from './native-atomic-file.js';
@@ -14,6 +23,7 @@ import {
   writeProjectConfig,
 } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import { parseNativePortableState } from './native-portable-state.js';
 import {
   isInsidePath,
   nativeChangeRuntimeDir,
@@ -548,7 +558,39 @@ export async function listActiveNativeChangesOwnedByWorkspace(
   paths: NativeProjectPaths,
 ): Promise<string[]> {
   const owned: string[] = [];
-  for (const name of await listNativeChangeNames(paths)) {
+  const names = new Set([
+    ...(await listNativeChangeNames(paths)),
+    ...(await listSdkChangeNames(paths.projectRoot, 'native')),
+  ]);
+  for (const name of [...names].sort()) {
+    const sdkOwner = await readSdkChangeOwner(paths.projectRoot, 'native', name);
+    if (sdkOwner) {
+      const runtime = createRuntime({
+        store: createFileRuntimeStore<WorkflowRun>({
+          rootDir: path.join(paths.projectRoot, '.comet', 'runtime', 'sdk-runs', 'native'),
+        }),
+        workflows: [],
+      });
+      const run = await runtime.inspect(sdkOwner.runId);
+      if (run.workflow.id !== 'comet-native' || run.workflow.version !== '1') {
+        throw new Error(`Native SDK Run ${name} does not match its change ownership`);
+      }
+      const state = parseNativePortableState(run.state);
+      if (state.name !== name) {
+        throw new Error(`Native SDK Run ${name} has a different state name`);
+      }
+      if (state.archived) continue;
+      const workspace = inspectGitWorktree(paths.projectRoot);
+      if (
+        (state.workspace.change_branch !== null &&
+          workspace.currentBranch !== state.workspace.change_branch) ||
+        (state.workspace.isolation === 'worktree' && !workspace.isSecondaryWorktree)
+      ) {
+        continue;
+      }
+      owned.push(name);
+      continue;
+    }
     const inspection = await inspectNativeChangeStateDocument(paths, name);
     if (!inspection.state) {
       if (await hasForeignRegisteredWorkspaceOwner(paths, name)) continue;

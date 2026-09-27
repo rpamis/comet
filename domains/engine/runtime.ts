@@ -4,9 +4,19 @@ export type {
   StartRuntimeRun,
   ClaimRuntimeRunAction,
   ResolveRuntimeWait,
+  DispatchRuntimeCommand,
+  RecordRuntimeEvidence,
+  InvalidateRuntimeEvidence,
   WorkflowRuntime,
 } from './runtime-service.js';
-export { defineWorkflow, skill, approval, tool, childWorkflow } from './workflow-definition.js';
+export {
+  defineWorkflow,
+  skill,
+  approval,
+  tool,
+  childWorkflow,
+  evidence,
+} from './workflow-definition.js';
 export type {
   WorkflowDefinition,
   DefineWorkflowOptions,
@@ -16,6 +26,7 @@ export type {
   ExternalWorkflowStepOptions,
   ApprovalWorkflowStepOptions,
   ChildWorkflowStepOptions,
+  EvidenceWorkflowStepOptions,
   WorkflowReference,
   WorkflowTransition,
 } from './workflow-definition.js';
@@ -37,8 +48,15 @@ export type {
   WorkflowRef,
   WorkflowResult,
   RuntimeWait,
+  RuntimeEvidenceWait,
   RuntimeInvocationContext,
   RuntimeValidation,
   RuntimeValidator,
+  RuntimeStateValidator,
+  RuntimeEvidenceValidator,
+  RuntimeCommandValidator,
   RuntimeExecutor,
+  WorkflowTransitionEvent,
+  WorkflowTransitionHandler,
+  WorkflowStepActivation,
 } from './workflow-run.js';

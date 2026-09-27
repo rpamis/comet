@@ -33,9 +33,20 @@ describe('Classic executable artifact and recovery contract', () => {
       withClassicCommandContext({ projectRoot: root, invocationCwd: cwd }, () =>
         runClassicCli([...args, '--json']),
       );
-    expect((await cli(['state', 'init', 'demo', 'full', '--isolation', 'current'])).exitCode).toBe(
-      0,
-    );
+    expect(
+      (
+        await cli([
+          'state',
+          'init',
+          'demo',
+          'full',
+          '--isolation',
+          'current',
+          '--runtime',
+          'legacy',
+        ])
+      ).exitCode,
+    ).toBe(0);
     const prefix = layout === 'docs' ? 'docs/openspec' : 'openspec';
     const change = path.join(root, prefix, 'changes/demo');
     await fs.writeFile(

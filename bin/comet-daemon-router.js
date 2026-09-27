@@ -110,7 +110,7 @@ function takeLaunchLock(endpoint) {
   }
 }
 
-function startServer(module, endpoint, buildId, projectRoot) {
+async function startServer(module, endpoint, buildId, projectRoot) {
   const entry = serverPath();
   if (!existsSync(entry)) return false;
   const lockPath = takeLaunchLock(endpoint);
@@ -124,7 +124,7 @@ function startServer(module, endpoint, buildId, projectRoot) {
       COMET_DAEMON_START_LOCK: lockPath,
     };
     if (process.platform === 'win32') {
-      const launched = module.launchWindowsProcessWithBroker({
+      const launched = await module.launchWindowsProcessWithBroker({
         command: process.execPath,
         args: [entry, endpoint.endpoint, buildId, projectRoot],
         cwd,
@@ -164,7 +164,7 @@ async function requestWithLaunch(module, options, launch, waitForLaunch = true) 
   try {
     return await module.sendCometDaemonRequest(options);
   } catch {
-    if (!launch || !startServer(module, options.endpoint, options.buildId, options.projectRoot)) {
+    if (!launch || !(await startServer(module, options.endpoint, options.buildId, options.projectRoot))) {
       return null;
     }
   }

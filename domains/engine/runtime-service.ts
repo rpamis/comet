@@ -19,11 +19,17 @@ import {
   type WorkflowDefinition,
 } from './workflow-definition.js';
 import type {
+  RuntimeEvidenceValidator,
+  RuntimeCommandValidator,
   RuntimeExecutor,
   RuntimeInvocationContext,
   RuntimeValidator,
+  RuntimeStateValidator,
   WorkflowRef,
   WorkflowRun,
+  WorkflowStepActivation,
+  WorkflowTransitionEvent,
+  WorkflowTransitionHandler,
 } from './workflow-run.js';
 import { advanceWorkflow, scheduleWorkflow, workflowOutputs } from './workflow-scheduler.js';
 
@@ -31,7 +37,11 @@ export interface CreateRuntimeOptions {
   store: RuntimeStore<WorkflowRun>;
   workflows: readonly DefineWorkflowOptions[];
   validators?: readonly RuntimeValidator[];
+  stateValidators?: readonly RuntimeStateValidator[];
   executors?: readonly RuntimeExecutor[];
+  transitionHandlers?: readonly WorkflowTransitionHandler[];
+  evidenceValidators?: readonly RuntimeEvidenceValidator[];
+  commandValidators?: readonly RuntimeCommandValidator[];
 }
 
 interface RunCommand {
@@ -44,6 +54,7 @@ export interface StartRuntimeRun {
   runId?: string;
   workflow: WorkflowRef;
   input: unknown;
+  initialState?: unknown;
   context?: RuntimeInvocationContext;
 }
 
@@ -63,6 +74,24 @@ export interface ResolveRuntimeWait extends RunCommand {
   decisionId: string;
   choice: string;
 }
+
+export interface DispatchRuntimeCommand extends RunCommand {
+  expectedRevision: number;
+  commandId: string;
+  name: string;
+  input: unknown;
+}
+
+export interface RecordRuntimeEvidence extends RunCommand {
+  evidenceId: string;
+  kind: string;
+  ref: string;
+  contentHash: string;
+  submissionId: string;
+  expectedRevision: number;
+}
+
+export type InvalidateRuntimeEvidence = RecordRuntimeEvidence;
 
 function referenceKey(reference: WorkflowRef): string {
   return JSON.stringify([reference.id, reference.version]);
@@ -93,8 +122,46 @@ export function createRuntime(options: CreateRuntimeOptions) {
       throw new RuntimeProtocolError('DUPLICATE_VALIDATOR', '不能重复注册同一验证器版本');
     validators.set(key, validator);
   }
+  const stateValidators = new Map<string, RuntimeStateValidator>();
+  for (const validator of options.stateValidators ?? []) {
+    const key = referenceKey(validator);
+    if (stateValidators.has(key))
+      throw new RuntimeProtocolError('DUPLICATE_STATE_VALIDATOR', '不能重复注册同一状态验证器版本');
+    stateValidators.set(key, validator);
+  }
   const ajv = new Ajv({ strict: true, allErrors: true });
   const executors = new Map<string, RuntimeExecutor>();
+  const transitionHandlers = new Map<string, WorkflowTransitionHandler>();
+  for (const handler of options.transitionHandlers ?? []) {
+    const key = referenceKey(handler);
+    if (transitionHandlers.has(key))
+      throw new RuntimeProtocolError(
+        'DUPLICATE_TRANSITION_HANDLER',
+        '不能重复注册同一转移处理器版本',
+      );
+    transitionHandlers.set(key, handler);
+  }
+  const evidenceValidators = new Map<string, RuntimeEvidenceValidator>();
+  for (const validator of options.evidenceValidators ?? []) {
+    const key = referenceKey(validator);
+    if (evidenceValidators.has(key))
+      throw new RuntimeProtocolError(
+        'DUPLICATE_EVIDENCE_VALIDATOR',
+        '不能重复注册同一证据验证器版本',
+      );
+    evidenceValidators.set(key, validator);
+  }
+  const commandValidators = new Map<string, RuntimeCommandValidator>();
+  for (const validator of options.commandValidators ?? []) {
+    const key = referenceKey(validator);
+    if (commandValidators.has(key)) {
+      throw new RuntimeProtocolError(
+        'DUPLICATE_COMMAND_VALIDATOR',
+        '不能重复注册同一命令验证器版本',
+      );
+    }
+    commandValidators.set(key, validator);
+  }
   for (const executor of options.executors ?? []) {
     if (executors.has(executor.id))
       throw new RuntimeProtocolError('DUPLICATE_EXECUTOR', '不能重复注册同一执行器');
@@ -114,6 +181,142 @@ export function createRuntime(options: CreateRuntimeOptions) {
     return definition;
   }
 
+  function requireTransitionHandler(definition: WorkflowDefinition): void {
+    if (
+      definition.transitionHandler &&
+      !transitionHandlers.has(referenceKey(definition.transitionHandler))
+    ) {
+      throw new RuntimeProtocolError(
+        'TRANSITION_HANDLER_UNAVAILABLE',
+        '未注册工作流所要求的转移处理器版本',
+      );
+    }
+  }
+
+  function requireStateValidator(definition: WorkflowDefinition): void {
+    if (
+      definition.stateValidator &&
+      !stateValidators.has(referenceKey(definition.stateValidator))
+    ) {
+      throw new RuntimeProtocolError(
+        'STATE_VALIDATOR_UNAVAILABLE',
+        '未注册工作流所要求的状态验证器版本',
+      );
+    }
+  }
+
+  function requireEvidenceValidators(definition: WorkflowDefinition): void {
+    for (const step of Object.values(definition.steps)) {
+      if (step.type === 'await_evidence' && !evidenceValidators.has(referenceKey(step.validator))) {
+        throw new RuntimeProtocolError(
+          'EVIDENCE_VALIDATOR_UNAVAILABLE',
+          '未注册工作流所要求的证据验证器版本',
+        );
+      }
+    }
+  }
+
+  function requireCommandValidators(definition: WorkflowDefinition): void {
+    for (const command of Object.values(definition.commands ?? {})) {
+      if (command.validator && !commandValidators.has(referenceKey(command.validator))) {
+        throw new RuntimeProtocolError(
+          'COMMAND_VALIDATOR_UNAVAILABLE',
+          '未注册工作流所要求的命令验证器版本',
+        );
+      }
+    }
+  }
+
+  function validateWorkflowState(
+    definition: WorkflowDefinition,
+    state: unknown,
+    code: string,
+  ): void {
+    if (definition.stateSchema !== undefined) {
+      const validate = ajv.compile(definition.stateSchema as boolean | object);
+      if (!validate(state)) throw new RuntimeProtocolError(code, ajv.errorsText(validate.errors));
+    }
+    if (definition.stateValidator) {
+      const validator = stateValidators.get(referenceKey(definition.stateValidator));
+      if (!validator)
+        throw new RuntimeProtocolError(
+          'STATE_VALIDATOR_UNAVAILABLE',
+          '未注册工作流所要求的状态验证器版本',
+        );
+      try {
+        const result = validator.validate({ state: cloneRuntimeValue(state) });
+        if (!result.accepted) throw new Error(result.reason ?? '业务状态未通过验证');
+      } catch (error) {
+        throw new RuntimeProtocolError(
+          code,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+  }
+
+  function applyTransitionHandler(
+    run: WorkflowRun,
+    definition: WorkflowDefinition,
+    event: WorkflowTransitionEvent,
+    routeEvent: string,
+  ): Array<string | WorkflowStepActivation> | undefined {
+    if (!definition.transitionHandler) return undefined;
+    const handler = transitionHandlers.get(referenceKey(definition.transitionHandler));
+    if (!handler)
+      throw new RuntimeProtocolError(
+        'TRANSITION_HANDLER_UNAVAILABLE',
+        '未注册工作流所要求的转移处理器版本',
+      );
+    const transition = handler.apply({ run: structuredClone(run), event });
+    const state = cloneRuntimeValue(transition.state);
+    validateWorkflowState(definition, state, 'TRANSITION_STATE_INVALID');
+    const allowedTargets = new Set(
+      definition.transitions
+        .filter((edge) => edge.from === event.stepId && edge.on === routeEvent)
+        .map((edge) => edge.to),
+    );
+    if (!Array.isArray(transition.next)) {
+      throw new RuntimeProtocolError(
+        'TRANSITION_TARGET_INVALID',
+        '转移处理器选择了未声明或重复的后续步骤',
+      );
+    }
+    const selected: Array<string | WorkflowStepActivation> = [];
+    const identities = new Set<string>();
+    for (const target of transition.next) {
+      let normalized: string | WorkflowStepActivation;
+      if (typeof target === 'string') {
+        normalized = target;
+      } else if (target !== null && typeof target === 'object' && !Array.isArray(target)) {
+        const fields = Object.keys(target);
+        if (
+          fields.length !== 2 ||
+          !fields.includes('stepId') ||
+          !fields.includes('input') ||
+          typeof target.stepId !== 'string'
+        ) {
+          throw new RuntimeProtocolError('TRANSITION_TARGET_INVALID', '后续步骤的输入绑定无效');
+        }
+        normalized = { stepId: target.stepId, input: cloneRuntimeValue(target.input) };
+      } else {
+        throw new RuntimeProtocolError('TRANSITION_TARGET_INVALID', '后续步骤的输入绑定无效');
+      }
+      const stepId = typeof normalized === 'string' ? normalized : normalized.stepId;
+      const identity = hashRuntimeValue(normalized);
+      if (!allowedTargets.has(stepId) || identities.has(identity)) {
+        throw new RuntimeProtocolError(
+          'TRANSITION_TARGET_INVALID',
+          '转移处理器选择了未声明或重复的后续步骤',
+        );
+      }
+      identities.add(identity);
+      selected.push(normalized);
+    }
+    run.state = state;
+    return selected;
+  }
+
   async function inspect(runId: string): Promise<WorkflowRun> {
     const persisted = await options.store.read(runId);
     if (!persisted) throw new RuntimeProtocolError('RUN_NOT_FOUND', `找不到工作流实例：${runId}`);
@@ -121,7 +324,45 @@ export function createRuntime(options: CreateRuntimeOptions) {
     if (definitions.size > 0) {
       for (const [key, hash] of Object.entries(run.definitionHashes)) {
         const [id, version] = JSON.parse(key) as [string, string];
-        definitionFor({ id, version, hash });
+        const definition = definitionFor({ id, version, hash });
+        requireTransitionHandler(definition);
+        requireStateValidator(definition);
+        requireEvidenceValidators(definition);
+        requireCommandValidators(definition);
+        if (id === run.workflow.id && version === run.workflow.version) {
+          for (const command of run.commands ?? []) {
+            const action = run.actions.find((candidate) => candidate.id === command.actionId);
+            if (
+              !action ||
+              !Object.hasOwn(definition.commands ?? {}, command.name) ||
+              definition.commands?.[command.name].stepId !== action.stepId ||
+              action.input === null ||
+              typeof action.input !== 'object' ||
+              !Object.hasOwn(action.input, 'activation') ||
+              hashRuntimeValue((action.input as { activation?: unknown }).activation) !==
+                command.inputHash
+            ) {
+              throw new RuntimeProtocolError('INVALID_RUN', '命令记录与固定工作流 Action 不一致');
+            }
+          }
+          if (
+            definition.stateSchema !== undefined &&
+            definition.initialState === undefined &&
+            run.initialStateHash === undefined
+          ) {
+            throw new RuntimeProtocolError('INVALID_RUN', '已保存的 Run 缺少启动时的初始状态绑定');
+          }
+          validateWorkflowState(definition, run.state, 'RUN_STATE_INVALID');
+          for (const wait of run.evidenceWaits ?? []) {
+            const step = definition.steps[wait.stepId];
+            if (!step || step.type !== 'await_evidence' || step.kind !== wait.kind) {
+              throw new RuntimeProtocolError(
+                'INVALID_RUN',
+                '已保存的证据等待项与固定工作流定义不一致',
+              );
+            }
+          }
+        }
       }
     }
     return run;
@@ -178,6 +419,28 @@ export function createRuntime(options: CreateRuntimeOptions) {
     if (lineage.length > 32)
       throw new RuntimeProtocolError('CHILD_DEPTH_LIMIT', '子工作流嵌套超过 32 层');
     const definition = definitionFor(input.workflow);
+    requireTransitionHandler(definition);
+    requireStateValidator(definition);
+    requireEvidenceValidators(definition);
+    requireCommandValidators(definition);
+    const suppliedState = Object.hasOwn(input, 'initialState');
+    if (suppliedState && definition.initialState !== undefined) {
+      throw new RuntimeProtocolError(
+        'INITIAL_STATE_CONFLICT',
+        '工作流定义和启动请求不能同时指定初始状态',
+      );
+    }
+    const initialState = suppliedState
+      ? cloneRuntimeValue(input.initialState)
+      : definition.initialState;
+    if (definition.stateSchema !== undefined && initialState === undefined) {
+      throw new RuntimeProtocolError('INITIAL_STATE_REQUIRED', '启动请求必须提供工作流初始状态');
+    }
+    if (initialState !== undefined) {
+      validateWorkflowState(definition, initialState, 'INITIAL_STATE_INVALID');
+    }
+    const initialStateHash =
+      initialState === undefined ? undefined : hashRuntimeValue(initialState);
     const runId = input.runId ?? randomUUID();
     const value = cloneRuntimeValue(input.input);
     const workflow = {
@@ -190,7 +453,11 @@ export function createRuntime(options: CreateRuntimeOptions) {
       if (
         hashRuntimeValue(previous.workflow) !== hashRuntimeValue(workflow) ||
         hashRuntimeValue(previous.input) !== hashRuntimeValue(value) ||
-        hashRuntimeValue(previous.lineage) !== hashRuntimeValue(lineage)
+        hashRuntimeValue(previous.lineage) !== hashRuntimeValue(lineage) ||
+        (previous.initialStateHash ??
+          (definition.initialState === undefined
+            ? undefined
+            : hashRuntimeValue(definition.initialState))) !== initialStateHash
       ) {
         throw new RuntimeProtocolError('RUN_CONFLICT', '该 Run 标识已绑定不同工作流或输入');
       }
@@ -204,6 +471,9 @@ export function createRuntime(options: CreateRuntimeOptions) {
       workflow,
       definitionHashes: pinnedDefinitions(definition),
       input: value,
+      ...(initialState === undefined
+        ? {}
+        : { state: cloneRuntimeValue(initialState), initialStateHash: initialStateHash! }),
       status: 'running',
       sequence: 0,
       actions: [],
@@ -224,6 +494,106 @@ export function createRuntime(options: CreateRuntimeOptions) {
 
   async function start(input: StartRuntimeRun): Promise<WorkflowRun> {
     return startInternal(input, []);
+  }
+
+  async function dispatchCommand(command: DispatchRuntimeCommand): Promise<WorkflowRun> {
+    const activation = cloneRuntimeValue(command.input);
+    const inputHash = hashRuntimeValue(activation);
+    if (
+      !command.commandId.trim() ||
+      command.commandId.length > 4096 ||
+      !command.name.trim() ||
+      command.name.length > 4096
+    ) {
+      throw new RuntimeProtocolError('INVALID_COMMAND', '命令标识和名称不能为空');
+    }
+    for (let attempt = 0; attempt < 32; attempt += 1) {
+      checkContext(command.context);
+      const before = await inspect(command.runId);
+      const previous = before.commands?.find((receipt) => receipt.id === command.commandId);
+      if (previous) {
+        if (previous.name !== command.name || previous.inputHash !== inputHash) {
+          throw new RuntimeProtocolError('COMMAND_CONFLICT', '同一命令标识不能提交不同内容');
+        }
+        return before;
+      }
+      if (command.expectedRevision !== before.revision) {
+        throw new RuntimeProtocolError('REVISION_CONFLICT', 'Run 已变化，请重新读取当前状态');
+      }
+      const definition = definitionFor(before.workflow);
+      const declared = Object.hasOwn(definition.commands ?? {}, command.name)
+        ? definition.commands?.[command.name]
+        : undefined;
+      if (!declared) throw new RuntimeProtocolError('COMMAND_NOT_FOUND', '工作流未声明此命令');
+      const stepId = declared.stepId;
+      if (!['running', 'waiting'].includes(before.status)) {
+        throw new RuntimeProtocolError('RUN_TERMINAL', '已停止的 Run 不能接受命令');
+      }
+      if (before.actions.some((action) => ['running', 'unknown'].includes(action.status))) {
+        throw new RuntimeProtocolError('ACTION_IN_FLIGHT', '已有 Action 的执行结果不明，不能中断');
+      }
+      if (declared.validator) {
+        const validator = commandValidators.get(referenceKey(declared.validator));
+        if (!validator) {
+          throw new RuntimeProtocolError(
+            'COMMAND_VALIDATOR_UNAVAILABLE',
+            '未注册工作流所要求的命令验证器版本',
+          );
+        }
+        let checked;
+        try {
+          checked = await validator.validate({
+            run: structuredClone(before),
+            name: command.name,
+            input: activation,
+            context: command.context,
+          });
+        } catch (error) {
+          throw new RuntimeProtocolError(
+            'COMMAND_VALIDATION_ERROR',
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        if (!checked.accepted) {
+          throw new RuntimeProtocolError(
+            'COMMAND_REJECTED',
+            checked.reason ?? '命令未通过当前工作流状态验证',
+          );
+        }
+      }
+      const next = structuredClone(before);
+      next.actions = next.actions.map((action) =>
+        action.status === 'pending'
+          ? cancelRuntimeAction(action, `命令 ${command.name} 已取代待执行 Action`)
+          : action,
+      );
+      for (const wait of next.waits) if (wait.status === 'pending') wait.status = 'cancelled';
+      for (const wait of next.evidenceWaits ?? []) {
+        if (wait.status === 'pending') wait.status = 'cancelled';
+      }
+      next.ready = [{ from: null, to: stepId, results: {}, activation }];
+      next.joins = {};
+      scheduleWorkflow(next, definition);
+      const action = next.actions.at(-1);
+      if (!action || action.stepId !== stepId || action.status !== 'pending') {
+        throw new RuntimeProtocolError('COMMAND_DISPATCH_FAILED', '命令未生成可执行的 Action');
+      }
+      next.commands = [
+        ...(next.commands ?? []),
+        {
+          id: command.commandId,
+          name: command.name,
+          inputHash,
+          actionId: action.id,
+        },
+      ];
+      next.revision = before.revision + 1;
+      checkContext(command.context);
+      if (await options.store.compareAndSwap(command.runId, before.revision, next)) {
+        return structuredClone(next);
+      }
+    }
+    throw new RuntimeProtocolError('REVISION_CONFLICT', '并发提交持续冲突，请重新读取当前状态');
   }
 
   async function cancelChildren(run: WorkflowRun): Promise<void> {
@@ -379,6 +749,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
               '未注册工作流所要求的验证器版本',
             );
           const result = await validator.validate({
+            run: structuredClone(run),
             action: structuredClone(action),
             outcome: structuredClone(command.outcome),
             context: command.context,
@@ -394,6 +765,14 @@ export function createRuntime(options: CreateRuntimeOptions) {
           const advanced = structuredClone(run);
           advanced.actions[actionIndex] = accepted.action;
           const context = advanced.actionContexts[action.id];
+          const routeEvent =
+            command.outcome.status === 'failed' ? 'failed' : (command.outcome.event ?? 'succeeded');
+          const selectedTargets = applyTransitionHandler(
+            advanced,
+            definition,
+            { kind: 'action-outcome', stepId: action.stepId, outcome: command.outcome },
+            routeEvent,
+          );
           advanceWorkflow(
             advanced,
             definition,
@@ -401,7 +780,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
             context.sequence,
             context.results,
             command.outcome.output,
-            command.outcome.status === 'failed' ? 'failed' : (command.outcome.event ?? 'succeeded'),
+            routeEvent,
+            selectedTargets,
           );
           scheduleWorkflow(advanced, definition);
           Object.assign(run, advanced);
@@ -463,6 +843,18 @@ export function createRuntime(options: CreateRuntimeOptions) {
         choice: command.choice,
         proposalHash: command.proposalHash,
       };
+      const selectedTargets = applyTransitionHandler(
+        run,
+        definition,
+        {
+          kind: 'wait-resolved',
+          stepId: wait.stepId,
+          choice: command.choice,
+          proposalHash: command.proposalHash,
+          decisionId: command.decisionId,
+        },
+        command.choice,
+      );
       advanceWorkflow(
         run,
         definition,
@@ -471,6 +863,165 @@ export function createRuntime(options: CreateRuntimeOptions) {
         wait.results,
         { choice: command.choice, proposal: wait.proposal },
         command.choice,
+        selectedTargets,
+      );
+      scheduleWorkflow(run, definition);
+    });
+  }
+
+  async function recordEvidence(command: RecordRuntimeEvidence): Promise<WorkflowRun> {
+    return mutate(command, async (run, definition) => {
+      ensureActive(run);
+      if (run.status === 'failed')
+        throw new RuntimeProtocolError('RUN_FAILED', 'Run 已因失败停止，不能提交证据');
+      const wait = run.evidenceWaits?.find((candidate) => candidate.id === command.evidenceId);
+      if (!wait)
+        throw new RuntimeProtocolError('EVIDENCE_WAIT_NOT_FOUND', 'Run 不包含此证据等待项');
+      if (wait.status !== 'pending')
+        throw new RuntimeProtocolError('EVIDENCE_WAIT_RESOLVED', '证据等待项已结束');
+      if (wait.kind !== command.kind)
+        throw new RuntimeProtocolError('EVIDENCE_KIND_MISMATCH', '证据种类与等待项不一致');
+      if (
+        !command.ref.trim() ||
+        /^(?:[a-zA-Z]:|[\\/~])/u.test(command.ref) ||
+        command.ref.split(/[\\/]/u).includes('..') ||
+        !/^[a-f0-9]{64}$/u.test(command.contentHash) ||
+        !command.submissionId.trim()
+      ) {
+        throw new RuntimeProtocolError('INVALID_EVIDENCE', '证据引用、摘要或提交标识无效');
+      }
+      const step = definition.steps[wait.stepId];
+      if (!step || step.type !== 'await_evidence' || step.kind !== command.kind) {
+        throw new RuntimeProtocolError('EVIDENCE_STEP_CHANGED', '证据等待项与固定工作流不一致');
+      }
+      const validator = evidenceValidators.get(referenceKey(step.validator));
+      if (!validator)
+        throw new RuntimeProtocolError('EVIDENCE_VALIDATOR_UNAVAILABLE', '未注册证据验证器版本');
+      const checked = await validator.validate({
+        run: structuredClone(run),
+        kind: command.kind,
+        ref: command.ref,
+        contentHash: command.contentHash,
+        context: command.context,
+      });
+      if (!checked.accepted || checked.actualHash !== command.contentHash) {
+        throw new RuntimeProtocolError(
+          'EVIDENCE_REJECTED',
+          checked.reason ?? '证据未通过验证或内容已改变',
+        );
+      }
+      wait.status = 'resolved';
+      wait.receipt = {
+        ref: command.ref,
+        contentHash: command.contentHash,
+        submissionId: command.submissionId,
+      };
+      const selectedTargets = applyTransitionHandler(
+        run,
+        definition,
+        {
+          kind: 'evidence-recorded',
+          stepId: wait.stepId,
+          evidenceKind: command.kind,
+          ref: command.ref,
+          contentHash: command.contentHash,
+          submissionId: command.submissionId,
+        },
+        'succeeded',
+      );
+      advanceWorkflow(
+        run,
+        definition,
+        wait.stepId,
+        wait.sequence,
+        wait.results,
+        { ref: command.ref, contentHash: command.contentHash },
+        'succeeded',
+        selectedTargets,
+      );
+      scheduleWorkflow(run, definition);
+    });
+  }
+
+  async function invalidateEvidence(command: InvalidateRuntimeEvidence): Promise<WorkflowRun> {
+    return mutate(command, async (run, definition) => {
+      ensureActive(run);
+      if (run.status === 'failed')
+        throw new RuntimeProtocolError('RUN_FAILED', 'Run 已因失败停止，不能使证据失效');
+      const wait = run.evidenceWaits?.find((candidate) => candidate.id === command.evidenceId);
+      if (!wait)
+        throw new RuntimeProtocolError('EVIDENCE_WAIT_NOT_FOUND', 'Run 不包含此证据等待项');
+      if (wait.status !== 'pending')
+        throw new RuntimeProtocolError('EVIDENCE_WAIT_RESOLVED', '证据等待项已结束');
+      if (wait.kind !== command.kind)
+        throw new RuntimeProtocolError('EVIDENCE_KIND_MISMATCH', '证据种类与等待项不一致');
+      if (
+        !command.ref.trim() ||
+        /^(?:[a-zA-Z]:|[\\/~])/u.test(command.ref) ||
+        command.ref.split(/[\\/]/u).includes('..') ||
+        !/^[a-f0-9]{64}$/u.test(command.contentHash) ||
+        !command.submissionId.trim()
+      ) {
+        throw new RuntimeProtocolError('INVALID_EVIDENCE', '证据引用、摘要或提交标识无效');
+      }
+      const step = definition.steps[wait.stepId];
+      if (!step || step.type !== 'await_evidence' || step.kind !== command.kind) {
+        throw new RuntimeProtocolError('EVIDENCE_STEP_CHANGED', '证据等待项与固定工作流不一致');
+      }
+      if (
+        !definition.transitions.some(
+          (edge) => edge.from === wait.stepId && edge.on === 'invalidated',
+        )
+      ) {
+        throw new RuntimeProtocolError(
+          'EVIDENCE_INVALIDATION_UNAVAILABLE',
+          '当前工作流未声明证据失效后的恢复路径',
+        );
+      }
+      const validator = evidenceValidators.get(referenceKey(step.validator));
+      if (!validator)
+        throw new RuntimeProtocolError('EVIDENCE_VALIDATOR_UNAVAILABLE', '未注册证据验证器版本');
+      const checked = await validator.validate({
+        run: structuredClone(run),
+        kind: command.kind,
+        ref: command.ref,
+        contentHash: command.contentHash,
+        context: command.context,
+      });
+      if (checked.accepted && checked.actualHash === command.contentHash) {
+        throw new RuntimeProtocolError('EVIDENCE_STILL_VALID', '当前证据仍然有效，不能使其失效');
+      }
+      const reason = (checked.reason?.trim() || '证据未通过验证或内容已改变').slice(0, 4096);
+      wait.status = 'invalidated';
+      wait.invalidation = {
+        ref: command.ref,
+        contentHash: command.contentHash,
+        submissionId: command.submissionId,
+        reason,
+      };
+      const selectedTargets = applyTransitionHandler(
+        run,
+        definition,
+        {
+          kind: 'evidence-invalidated',
+          stepId: wait.stepId,
+          evidenceKind: command.kind,
+          ref: command.ref,
+          contentHash: command.contentHash,
+          submissionId: command.submissionId,
+          reason,
+        },
+        'invalidated',
+      );
+      advanceWorkflow(
+        run,
+        definition,
+        wait.stepId,
+        wait.sequence,
+        wait.results,
+        { ref: command.ref, contentHash: command.contentHash, reason },
+        'invalidated',
+        selectedTargets,
       );
       scheduleWorkflow(run, definition);
     });
@@ -495,6 +1046,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
       if (run.status === 'cancelled' || run.status === 'completed') return;
       run.actions = run.actions.map((action) => cancelRuntimeAction(action, command.reason));
       for (const wait of run.waits) if (wait.status === 'pending') wait.status = 'cancelled';
+      for (const wait of run.evidenceWaits ?? [])
+        if (wait.status === 'pending') wait.status = 'cancelled';
       run.ready = [];
       run.status = 'cancelled';
       run.reason = command.reason;
@@ -567,7 +1120,11 @@ export function createRuntime(options: CreateRuntimeOptions) {
     let result: Awaited<ReturnType<RuntimeExecutor['execute']>>;
     try {
       checkContext(command.context);
-      result = await executor.execute(structuredClone(action), command.context);
+      result = await executor.execute(
+        structuredClone(action),
+        command.context,
+        structuredClone(started),
+      );
     } catch (error) {
       const current = await inspect(command.runId);
       const latest = requiredAction(current, action.id);
@@ -634,11 +1191,14 @@ export function createRuntime(options: CreateRuntimeOptions) {
 
   return {
     start,
+    dispatchCommand,
     inspect,
     next,
     claim,
     recordOutcome,
     resolveWait,
+    recordEvidence,
+    invalidateEvidence,
     reviseWait,
     cancel,
     markUnknown,

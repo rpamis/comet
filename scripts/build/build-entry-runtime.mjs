@@ -28,7 +28,9 @@ async function bundledRuntime(entry) {
     format: 'esm',
     target: ['node20'],
     packages: 'bundle',
-    preserveSymlinks: true,
+    // Resolve dependencies from pnpm's physical package directory so bundled
+    // transitive imports are found beside their owning package.
+    preserveSymlinks: false,
     sourcemap: false,
     legalComments: 'none',
     charset: 'utf8',

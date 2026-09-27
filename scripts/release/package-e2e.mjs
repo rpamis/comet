@@ -87,13 +87,20 @@ async function main() {
     const packageDir = path.join(temporaryRoot, 'package');
     const consumerDir = path.join(temporaryRoot, 'consumer');
     const projectDir = path.join(temporaryRoot, 'project');
+    const sdkNativeProjectDir = path.join(temporaryRoot, 'sdk-native-project');
     const classicProjectDir = path.join(temporaryRoot, 'classic-project');
     const homeDir = path.join(temporaryRoot, 'home');
     const npmCache = path.join(temporaryRoot, 'npm-cache');
     await Promise.all(
-      [packageDir, consumerDir, projectDir, classicProjectDir, homeDir, npmCache].map((directory) =>
-        fs.mkdir(directory, { recursive: true }),
-      ),
+      [
+        packageDir,
+        consumerDir,
+        projectDir,
+        sdkNativeProjectDir,
+        classicProjectDir,
+        homeDir,
+        npmCache,
+      ].map((directory) => fs.mkdir(directory, { recursive: true })),
     );
 
     // npm pack runs with --ignore-scripts, so drive the npm README transform
@@ -181,7 +188,14 @@ async function main() {
             store: createFileRuntimeStore({ rootDir: ${JSON.stringify(runtimeRoot)} }),
             workflows: [{
               id: 'package-sdk', version: '1', entry: 'collect',
+              initialState: { phase: 'collect' },
+              stateSchema: { type: 'object', required: ['phase'], properties: { phase: { const: 'collect' } } },
+              transitionHandler: { id: 'package-transition', version: '1' },
               steps: { collect: { type: 'invoke_skill', ref: 'research.collect' } },
+            }],
+            transitionHandlers: [{
+              id: 'package-transition', version: '1',
+              apply: () => ({ state: { phase: 'collect' }, next: [] }),
             }],
           });
           const run = await runtime.start({
@@ -189,7 +203,7 @@ async function main() {
             workflow: { id: 'package-sdk', version: '1' },
             input: { topic: 'tarball consumer' },
           });
-          if (run.status !== 'running' || run.actions[0]?.type !== 'invoke_skill') {
+          if (run.status !== 'running' || run.actions[0]?.type !== 'invoke_skill' || run.state?.phase !== 'collect') {
             throw new Error('Runtime SDK did not persist its initial Skill action');
           }
           process.stdout.write(JSON.stringify({ runId: run.runId, revision: run.revision }));
@@ -205,13 +219,17 @@ async function main() {
     const sdkTypeScript = path.join(consumerDir, 'runtime-consumer.ts');
     await fs.writeFile(
       sdkTypeScript,
-      `import { approval, tool, createMemoryRuntimeStore, createRuntime, defineWorkflow, skill, type RuntimeExecutor, type WorkflowRun } from ${JSON.stringify(runtimeImport)};\n` +
+      `import { approval, evidence, tool, createMemoryRuntimeStore, createRuntime, defineWorkflow, skill, type RuntimeEvidenceValidator, type RuntimeExecutor, type WorkflowRun, type WorkflowTransitionHandler } from ${JSON.stringify(runtimeImport)};\n` +
         `const workflow = defineWorkflow({\n` +
         `  id: 'typed', version: '1', entry: 'collect',\n` +
         `  steps: { collect: skill({ ref: 'research.collect' }), approve: approval({ proposalFrom: 'collect' }), publish: tool({ ref: 'reports.write' }) },\n` +
         `  transitions: [{ from: 'collect', to: 'approve' }, { from: 'approve', to: 'publish', on: 'approved' }],\n` +
         `});\n` +
         `const executor: RuntimeExecutor = { id: 'host', capabilities: [], supports: () => true, async execute() { return { status: 'succeeded', output: null }; } };\n` +
+        `const transition: WorkflowTransitionHandler = { id: 'transition', version: '1', apply: () => ({ state: { phase: 'done' }, next: [] }) };\n` +
+        `const evidenceValidator: RuntimeEvidenceValidator = { id: 'evidence', version: '1', validate: () => ({ accepted: true, actualHash: 'a'.repeat(64) }) };\n` +
+        `const evidenceStep = evidence({ kind: 'check-receipt', validator: { id: 'evidence', version: '1' } });\n` +
+        `void transition; void evidenceValidator; void evidenceStep;\n` +
         `const runtime = createRuntime({ store: createMemoryRuntimeStore<WorkflowRun>(), workflows: [workflow], executors: [executor] });\n` +
         `const request: Parameters<typeof runtime.start>[0] = { runId: 'typed-run', workflow: { id: 'typed', version: '1' }, input: null };\n` +
         `void runtime.start(request).then((run) => { const revision: number = run.revision; void revision; });\n`,
@@ -399,14 +417,23 @@ async function main() {
     const createdChange = parseJsonPayload(
       run(
         process.execPath,
-        [installedNativeNew, 'package-runtime-change', '--project-root', projectDir, '--json'],
+        [
+          installedNativeNew,
+          'package-runtime-change',
+          '--runtime',
+          'legacy',
+          '--project-root',
+          projectDir,
+          '--json',
+        ],
         { cwd: projectDir, env: environment },
       ),
     );
     if (
       createdChange.command !== 'new' ||
       createdChange.exitCode !== 0 ||
-      createdChange.data?.name !== 'package-runtime-change'
+      createdChange.data?.name !== 'package-runtime-change' ||
+      createdChange.data?.run !== undefined
     ) {
       throw new Error(
         `Installed Native runtime could not create a change: ${JSON.stringify(createdChange)}`,
@@ -431,6 +458,105 @@ async function main() {
     ) {
       throw new Error(
         `Installed Native runtime returned an invalid status: ${JSON.stringify(nativeStatus)}`,
+      );
+    }
+
+    const sdkNativeInit = parseJsonPayload(
+      run(
+        process.execPath,
+        [
+          cli,
+          'init',
+          sdkNativeProjectDir,
+          '--yes',
+          '--workflow',
+          'native',
+          '--platform',
+          packageTestPlatform,
+          '--json',
+        ],
+        { cwd: consumerDir, env: environment },
+      ),
+    );
+    if (sdkNativeInit.status !== 'complete') {
+      throw new Error(`Packaged Native SDK project init failed: ${JSON.stringify(sdkNativeInit)}`);
+    }
+    const nativeSdkChange = 'package-native-sdk';
+    const nativeSdkCreated = parseJsonPayload(
+      run(
+        process.execPath,
+        [cli, 'native', 'new', nativeSdkChange, '--project-root', sdkNativeProjectDir, '--json'],
+        { cwd: sdkNativeProjectDir, env: environment },
+      ),
+    );
+    if (
+      nativeSdkCreated.exitCode !== 0 ||
+      nativeSdkCreated.data?.run?.id !== nativeSdkChange ||
+      nativeSdkCreated.data?.run?.actions?.[0]?.stepId !== 'shape.prepare'
+    ) {
+      throw new Error(
+        `Packaged Native SDK new did not create its Run: ${JSON.stringify(nativeSdkCreated)}`,
+      );
+    }
+    const nativeSdkInspectFile = path.join(consumerDir, 'native-sdk-inspect.json');
+    await fs.writeFile(
+      nativeSdkInspectFile,
+      JSON.stringify({
+        operation: 'inspect',
+        requestId: 'native-sdk-cold-inspect',
+        runId: nativeSdkChange,
+      }),
+    );
+    const nativeSdkReopened = parseJsonPayload(
+      run(
+        process.execPath,
+        [
+          cli,
+          'runtime',
+          'dispatch',
+          '--application',
+          'native',
+          '--request',
+          nativeSdkInspectFile,
+          '--project-root',
+          sdkNativeProjectDir,
+          '--json',
+        ],
+        { cwd: consumerDir, env: environment },
+      ),
+    );
+    if (
+      nativeSdkReopened.status !== 'succeeded' ||
+      nativeSdkReopened.data?.runId !== nativeSdkChange ||
+      nativeSdkReopened.data?.state?.phase !== 'shape' ||
+      nativeSdkReopened.data?.actions?.[0]?.stepId !== 'shape.prepare'
+    ) {
+      throw new Error(
+        `Packaged Native SDK Run did not cold-reopen: ${JSON.stringify(nativeSdkReopened)}`,
+      );
+    }
+    const nativeSdkHookDecision = parseJsonPayload(
+      run(
+        process.execPath,
+        [
+          installedHookRouter,
+          '--platform',
+          'github-copilot',
+          '--project-root',
+          sdkNativeProjectDir,
+        ],
+        {
+          cwd: sdkNativeProjectDir,
+          env: { ...environment, FILE_PATH: 'src/index.ts' },
+        },
+      ),
+    );
+    if (
+      nativeSdkHookDecision.permissionDecision !== 'deny' ||
+      !String(nativeSdkHookDecision.permissionDecisionReason).includes(nativeSdkChange)
+    ) {
+      throw new Error(
+        `Packaged Native SDK Hook did not guard Shape: ${JSON.stringify(nativeSdkHookDecision)}`,
       );
     }
 
@@ -518,15 +644,162 @@ async function main() {
     }
 
     const classicState = parseJsonPayload(
-      run(process.execPath, [cli, 'state', 'init', 'package-classic-change', 'full', '--json'], {
+      run(
+        process.execPath,
+        [cli, 'state', 'init', 'package-classic-change', 'full', '--runtime', 'legacy', '--json'],
+        {
+          cwd: classicProjectDir,
+          env: environment,
+        },
+      ),
+    );
+    if (
+      classicState.command !== 'state' ||
+      classicState.exitCode !== 0 ||
+      classicState.data?.run !== undefined
+    ) {
+      throw new Error(
+        `CLI did not use the packaged Classic fast runtime: ${JSON.stringify(classicState)}`,
+      );
+    }
+
+    const classicSdkChange = 'package-classic-sdk';
+    const classicSdkCreated = parseJsonPayload(
+      run(process.execPath, [cli, 'state', 'init', classicSdkChange, 'full', '--json'], {
         cwd: classicProjectDir,
         env: environment,
       }),
     );
-    if (classicState.command !== 'state' || classicState.exitCode !== 0) {
+    if (
+      classicSdkCreated.exitCode !== 0 ||
+      classicSdkCreated.data?.run?.id !== classicSdkChange ||
+      classicSdkCreated.data?.run?.actions?.[0]?.stepId !== 'full.open'
+    ) {
       throw new Error(
-        `CLI did not use the packaged Classic fast runtime: ${JSON.stringify(classicState)}`,
+        `Packaged Classic SDK init did not create its Run: ${JSON.stringify(classicSdkCreated)}`,
       );
+    }
+    const classicSdkInspectFile = path.join(consumerDir, 'classic-sdk-inspect.json');
+    await fs.writeFile(
+      classicSdkInspectFile,
+      JSON.stringify({
+        operation: 'inspect',
+        requestId: 'classic-sdk-cold-inspect',
+        runId: classicSdkChange,
+      }),
+    );
+    const classicSdkReopened = parseJsonPayload(
+      run(
+        process.execPath,
+        [
+          cli,
+          'runtime',
+          'dispatch',
+          '--application',
+          'classic-full',
+          '--request',
+          classicSdkInspectFile,
+          '--project-root',
+          classicProjectDir,
+          '--json',
+        ],
+        { cwd: consumerDir, env: environment },
+      ),
+    );
+    if (
+      classicSdkReopened.status !== 'succeeded' ||
+      classicSdkReopened.data?.runId !== classicSdkChange ||
+      classicSdkReopened.data?.state?.phase !== 'open' ||
+      classicSdkReopened.data?.actions?.[0]?.stepId !== 'full.open'
+    ) {
+      throw new Error(
+        `Packaged Classic SDK Run did not cold-reopen: ${JSON.stringify(classicSdkReopened)}`,
+      );
+    }
+    const classicSdkSelected = parseJsonPayload(
+      run(process.execPath, [cli, 'state', 'select', classicSdkChange, '--json'], {
+        cwd: classicProjectDir,
+        env: environment,
+      }),
+    );
+    if (classicSdkSelected.exitCode !== 0) {
+      throw new Error(
+        `Packaged Classic SDK change could not be selected: ${JSON.stringify(classicSdkSelected)}`,
+      );
+    }
+    const classicSdkHookDecision = parseJsonPayload(
+      run(
+        process.execPath,
+        [installedHookRouter, '--platform', 'github-copilot', '--project-root', classicProjectDir],
+        {
+          cwd: classicProjectDir,
+          env: { ...environment, FILE_PATH: 'src/index.ts' },
+        },
+      ),
+    );
+    if (
+      classicSdkHookDecision.permissionDecision !== 'deny' ||
+      !String(classicSdkHookDecision.permissionDecisionReason).includes(classicSdkChange)
+    ) {
+      throw new Error(
+        `Packaged Classic SDK Hook did not guard Open: ${JSON.stringify(classicSdkHookDecision)}`,
+      );
+    }
+
+    for (const profile of ['hotfix', 'tweak']) {
+      const change = `package-classic-${profile}`;
+      const created = parseJsonPayload(
+        run(process.execPath, [cli, 'state', 'init', change, profile, '--json'], {
+          cwd: classicProjectDir,
+          env: environment,
+        }),
+      );
+      if (
+        created.exitCode !== 0 ||
+        created.data?.run?.id !== change ||
+        created.data?.run?.actions?.[0]?.stepId !== `${profile}.open`
+      ) {
+        throw new Error(
+          `Packaged Classic ${profile} did not create its SDK Run: ${JSON.stringify(created)}`,
+        );
+      }
+      const requestFile = path.join(consumerDir, `classic-${profile}-sdk-inspect.json`);
+      await fs.writeFile(
+        requestFile,
+        JSON.stringify({
+          operation: 'inspect',
+          requestId: `classic-${profile}-cold-inspect`,
+          runId: change,
+        }),
+      );
+      const reopened = parseJsonPayload(
+        run(
+          process.execPath,
+          [
+            cli,
+            'runtime',
+            'dispatch',
+            '--application',
+            `classic-${profile}`,
+            '--request',
+            requestFile,
+            '--project-root',
+            classicProjectDir,
+            '--json',
+          ],
+          { cwd: consumerDir, env: environment },
+        ),
+      );
+      if (
+        reopened.status !== 'succeeded' ||
+        reopened.data?.runId !== change ||
+        reopened.data?.state?.phase !== 'open' ||
+        reopened.data?.actions?.[0]?.stepId !== `${profile}.open`
+      ) {
+        throw new Error(
+          `Packaged Classic ${profile} SDK Run did not cold-reopen: ${JSON.stringify(reopened)}`,
+        );
+      }
     }
 
     console.log(

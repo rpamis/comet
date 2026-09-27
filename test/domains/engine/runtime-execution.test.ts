@@ -11,6 +11,51 @@ const workflow = {
 };
 
 describe('Runtime execution extensions and recovery', () => {
+  it('passes the claimed Run snapshot to an executor before it performs external work', async () => {
+    const store = createMemoryRuntimeStore<WorkflowRun>();
+    const runtime = createRuntime({
+      store,
+      workflows: [
+        {
+          id: 'stateful-check',
+          version: '1',
+          entry: 'check',
+          stateSchema: {
+            type: 'object',
+            required: ['candidate'],
+            properties: { candidate: { type: 'string' } },
+          },
+          steps: { check: { type: 'call_tool', ref: 'run-check' } },
+        },
+      ],
+      executors: [
+        {
+          id: 'check-host',
+          capabilities: [],
+          supports: (action) => action.ref === 'run-check',
+          async execute(action, _context, run) {
+            expect(run?.state).toEqual({ candidate: 'current' });
+            expect(run?.actions.find((item) => item.id === action.id)?.status).toBe('running');
+            expect((await store.read(action.runId))?.actions[0].status).toBe('running');
+            return { status: 'succeeded', output: { checked: true } };
+          },
+        },
+      ],
+    });
+    const run = await runtime.start({
+      runId: 'stateful-check-run',
+      workflow: { id: 'stateful-check', version: '1' },
+      input: null,
+      initialState: { candidate: 'current' },
+    });
+    const completed = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions[0].id,
+      executorId: 'check-host',
+    });
+    expect(completed.status).toBe('completed');
+  });
+
   it('commits an executor claim before invoking code and records its result', async () => {
     const store = createMemoryRuntimeStore<WorkflowRun>();
     let sawDurableClaim = false;

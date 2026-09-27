@@ -1,4 +1,6 @@
 import { checkNativeChange } from './native-check.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
 import { isNativePortableChange } from './native-portable-runtime.js';
 import {
   assertNoArguments,
@@ -14,6 +16,12 @@ export async function nativeCheckCommand(
 ): Promise<DispatchResult> {
   const name = requiredPositional(args, 'change name');
   assertNoArguments(args);
+  const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
+  if (await readSdkChangeOwner(commandRoot, 'native', name)) {
+    throw new NativeUsageError(
+      `comet native check is a legacy-only command. Run comet native status ${name} --json and follow its SDK Run Action through comet native next.`,
+    );
+  }
   const { paths } = await configuredPaths(projectRoot);
   if (await isNativePortableChange(paths, name)) {
     throw new NativeUsageError(

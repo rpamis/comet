@@ -134,6 +134,8 @@ export interface CheckSnapshot {
 }
 
 export interface CheckSnapshotOptions {
+  /** SDK-owned report path; an explicit null avoids reading legacy Classic state. */
+  verificationReport?: string | null;
   /**
    * Recorded entries from the check execution. Files whose stat identity still
    * matches the baseline reuse the recorded content hash without rereading.
@@ -162,8 +164,10 @@ export async function collectCheckSnapshot(
   hash.update(bindingDigest(policy, legacy));
   const entries: CheckManifestEntry[] = [];
   const contentCache = options.contentCache ?? new Map<string, string>();
-  const state = await readClassicState(changeDir, { migrate: false });
-  const report = state.classic?.verificationReport;
+  const report =
+    options.verificationReport === undefined
+      ? (await readClassicState(changeDir, { migrate: false })).classic?.verificationReport
+      : options.verificationReport;
   const reportPath = report && report.endsWith('.md') ? path.resolve(root, report) : null;
   const outputMatchers = (policy.outputs ?? []).map((pattern) =>
     compileCheckPolicyPattern(pattern),
@@ -194,6 +198,7 @@ export async function collectCheckSnapshot(
       ).flat(),
     ),
   ].filter((home) => rootVariants.some((base) => home !== base && isWithinRoot(home, base)));
+  const runtimeRecords = path.join(root, '.comet', 'runtime');
   const omitted = (absolute: string) =>
     outputMatchers.some((matches) =>
       matches(path.relative(root, absolute).replaceAll('\\', '/')),
@@ -203,6 +208,8 @@ export async function collectCheckSnapshot(
     absolute === path.join(changeDir, '.comet-state.lock') ||
     absolute === path.join(changeDir, '.comet-state-transaction.json') ||
     absolute.startsWith(path.join(changeDir, '.comet') + path.sep) ||
+    absolute === runtimeRecords ||
+    absolute.startsWith(runtimeRecords + path.sep) ||
     absolute === reportPath ||
     absolute === path.join(root, '.comet', 'current-change.json');
 

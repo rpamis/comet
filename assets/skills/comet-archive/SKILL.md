@@ -7,6 +7,18 @@ description: 'Archive and deliver a Classic change. Use when the user invokes /c
 
 After entry returns layout, follow `comet-classic/reference/classic-layout.md` to bind each logical root to its directory. Do not reload the protocol if it is already in context. Use the adapter for OpenSpec CLI calls and the bound `<classic-*>` roots for paths; do not run an extra root show first.
 
+## SDK Run path
+
+Run `comet state next <change-name> --json` to confirm `data.runtimeFormat: sdk`, phase, and `nextAction.kind`. Enter the `projectRoot` returned by `comet classic workspace resolve <change-name> --json`. Verify receipts must still be valid; a report file or missing legacy state does not authorize delivery. For `reconcile`, use `comet state check <change-name> archive --recover --json` to inspect the original Action and disk/Git evidence. Do not repeat archive, commit, push, or PR while the result is unknown.
+
+1. Run `comet state check <change-name> archive --json`. Under Step 1 below, inspect verification, the bound branch, archive impact, and unrelated edits. For push or PR, confirm remote and PR base; do not guess among alternatives. Run `comet state propose-archive <change-name> --summary "<delivery-summary>"`, adding `--remote <name>` and `--pr-base <branch>` as needed. Save `data.wait.proposalHash` as `<proposalHash>`. Reuse an existing pending Wait.
+2. Present the proposal and Step 1's A–E effects under decision-point.md and await an explicit choice. Run `comet state decide-archive <change-name> --proposal-hash <proposalHash> --choice <local|push|pr|reverify|later>`. A/B/C mean local/push/PR; D returns to Verify; E stops this invocation. Recheck and request a new choice if target or Verify evidence changes.
+3. Only with a valid `local|push|pr` decision, preview `comet guard <change-name> archive`, then apply `comet guard <change-name> archive --apply`. Guard checks authorization, branch, and Verify receipts and archives OpenSpec once in the Run. After interruption inspect `state next --json` and `--recover`; do not apply an already completed archive again.
+4. Under Step 4's dirty-worktree protocol, stage only this change's archive directory, main spec, and Design Doc/Plan annotations. Inspect the staged diff, then create one archive commit. SDK Guard does not perform Git operations. Do not use legacy `state set branch_status`, `state delivery`, or `archive-confirm`. For push, push only the approved remote/branch. For PR, push first, then create a PR with the approved target. On an unknown result, read the remote or PR before retrying.
+5. Run `comet state complete-delivery <change-name> --commit <sha>` with the real commit; for PR add `--pr-url <url>`. It validates the archive commit and approved remote/PR delivery and completes the Run; it does not commit, push, or create a PR. On failure preserve the Run and decision and address the reported gap. Claim delivery complete only when `state next --json` shows a completed Run.
+
+The remaining legacy Runtime steps apply only to `runtimeFormat: legacy`.
+
 ## Prerequisites
 
 - Verification passed; Phase 4 is complete.

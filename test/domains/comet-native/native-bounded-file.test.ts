@@ -79,6 +79,37 @@ describe('Native bounded artifact reader', () => {
     ).rejects.toThrow('changed while reading');
   });
 
+  it('rejects replacement when a filesystem reuses the prior file ID', async () => {
+    const file = path.join(root, 'report.md');
+    await fs.writeFile(file, 'old');
+    const original = await fs.lstat(file);
+    const originalLstat = fs.lstat.bind(fs);
+    let replaced = false;
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      const stat = await originalLstat(...args);
+      if (replaced && path.resolve(args[0].toString()) === file) {
+        Object.defineProperties(stat, {
+          dev: { value: original.dev },
+          ino: { value: original.ino },
+        });
+      }
+      return stat;
+    });
+    await expect(
+      readNativeBoundedTextFile({
+        root,
+        ref: 'report.md',
+        hooks: {
+          afterOpen: async () => {
+            await fs.rename(file, path.join(root, 'old-report.md'));
+            await fs.writeFile(file, 'replacement');
+            replaced = true;
+          },
+        },
+      }),
+    ).rejects.toThrow('changed while reading');
+  });
+
   it('reads and hashes a Spec larger than 4 MiB when no size limit is requested', async () => {
     const content = 'x'.repeat(4 * 1024 * 1024 + 1);
     await fs.writeFile(path.join(root, 'large-spec.md'), content);

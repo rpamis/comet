@@ -44,7 +44,9 @@ describe('Classic nested capability paths', () => {
         withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
           runClassicCli(args),
         );
-      expect((await cli('state', 'init', 'nested', 'full')).exitCode).toBe(0);
+      expect((await cli('state', 'init', 'nested', 'full', '--runtime', 'legacy')).exitCode).toBe(
+        0,
+      );
       expect((await cli('state', 'set', 'nested', 'context_compression', mode)).exitCode).toBe(0);
       const change = path.join(root, 'openspec', 'changes', 'nested');
       for (const file of ['proposal.md', 'design.md', 'tasks.md']) {

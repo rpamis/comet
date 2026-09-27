@@ -52,7 +52,7 @@ async function makeProject(): Promise<string> {
 }
 
 async function seedDesignChange(dir: string, name = 'demo'): Promise<string> {
-  run(dir, 'state', 'init', name, 'full');
+  run(dir, 'state', 'init', name, 'full', '--runtime', 'legacy');
   const changeDir = path.join(dir, 'openspec', 'changes', name);
   // Open→design transition requires the open artifacts to exist first.
   await fs.writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
@@ -68,7 +68,10 @@ describe('Classic handoff command', () => {
     const previous = process.cwd();
     process.chdir(dir);
     try {
-      expect((await runClassicCli(['state', 'init', 'linked-handoff', 'full'])).exitCode).toBe(0);
+      expect(
+        (await runClassicCli(['state', 'init', 'linked-handoff', 'full', '--runtime', 'legacy']))
+          .exitCode,
+      ).toBe(0);
       const changeDir = path.join(dir, 'openspec', 'changes', 'linked-handoff');
       await fs.writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
       await fs.writeFile(path.join(changeDir, 'design.md'), 'design\n');

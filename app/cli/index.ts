@@ -621,7 +621,11 @@ runtime
     collect,
     [],
   )
-  .requiredOption('--root-dir <dir>', 'Directory for persistent Runtime state')
+  .option('--application <id>', 'Built-in application: native or classic-full/hotfix/tweak')
+  .option(
+    '--root-dir <dir>',
+    'Directory for persistent Runtime state; fixed for built-in applications',
+  )
   .option('--project-root <dir>', 'Project context passed to this request', '.')
   .option('--json', 'Output as JSON (default)')
   .action(async (options) => {

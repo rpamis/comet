@@ -32,6 +32,9 @@ import { prepareNativeWorkspace } from './native-workspace-preparation.js';
 import { recordNativeWorkspaceConfig } from './native-workspace-config.js';
 import { type NativeWorkspaceIsolation } from './native-workspace.js';
 import { ensureCometProjectGitignore } from '../workflow-contract/project-gitignore.js';
+import { assertChangeNotSdkOwned } from '../workflow-contract/change-runtime-owner.js';
+import { createNativeSdkChange } from './native-sdk-create.js';
+import { parseNativePortableState } from './native-portable-state.js';
 import {
   assertNoArguments,
   languageOption,
@@ -167,7 +170,12 @@ export async function nativeNewCommand(
   const worktreePath = takeOption(args, '--worktree-path');
   const task = takeOption(args, '--task');
   const capability = takeOption(args, '--capability');
+  const runtimeFormat = takeOption(args, '--runtime') ?? 'sdk';
+  if (runtimeFormat !== 'legacy' && runtimeFormat !== 'sdk') {
+    throw new NativeUsageError('--runtime must be legacy or sdk');
+  }
   assertNoArguments(args);
+  if (runtimeFormat === 'legacy') await assertChangeNotSdkOwned(projectRoot, 'native', name);
   const sourceConfig = config;
   if (config?.native.pending_root_move) {
     throw new Error(`Native root move ${config.native.pending_root_move.id} is incomplete`);
@@ -182,6 +190,7 @@ export async function nativeNewCommand(
     sourceConfig,
   });
   projectRoot = prepared.projectRoot;
+  if (runtimeFormat === 'legacy') await assertChangeNotSdkOwned(projectRoot, 'native', name);
   config = await readProjectConfig(projectRoot);
   const initialProjectConfig = config === null ? defaultProjectConfig('docs', language) : undefined;
   if (!config) config = initialProjectConfig!;
@@ -200,13 +209,25 @@ export async function nativeNewCommand(
     task,
     capability,
   );
-  const state = await createNativePortableChange({
-    paths,
-    name,
-    language,
-    workspaceBinding: prepared.binding,
-    ...(initialProjectConfig ? { initialProjectConfig } : {}),
-  });
+  const sdkRun =
+    runtimeFormat === 'sdk'
+      ? await createNativeSdkChange({
+          paths,
+          name,
+          language,
+          workspaceBinding: prepared.binding,
+          ...(initialProjectConfig ? { initialProjectConfig } : {}),
+        })
+      : null;
+  const state = sdkRun
+    ? parseNativePortableState(sdkRun.state)
+    : await createNativePortableChange({
+        paths,
+        name,
+        language,
+        workspaceBinding: prepared.binding,
+        ...(initialProjectConfig ? { initialProjectConfig } : {}),
+      });
   let associationPath: string | undefined;
   let deltaProposal: Awaited<ReturnType<typeof initializeNativeDeltaProposal>> | undefined;
   if (capabilityDiscovery?.associationDraft) {
@@ -235,6 +256,22 @@ export async function nativeNewCommand(
         ...state,
         artifacts: nativeChangeArtifactPaths(paths, state.name),
         preparation: prepared.preparation,
+        ...(sdkRun
+          ? {
+              run: {
+                id: sdkRun.runId,
+                revision: sdkRun.revision,
+                status: sdkRun.status,
+                actions: sdkRun.actions.map(({ id, stepId, status, attempt, inputHash }) => ({
+                  id,
+                  stepId,
+                  status,
+                  attempt,
+                  inputHash,
+                })),
+              },
+            }
+          : {}),
         ...(capabilityDiscovery === null
           ? {}
           : {
@@ -242,7 +279,7 @@ export async function nativeNewCommand(
               ...(associationPath === undefined ? {} : { associationPath }),
               ...(deltaProposal === undefined ? {} : { deltaProposal }),
             }),
-        continuation: nativePortableContinuation(state),
+        ...(sdkRun ? {} : { continuation: nativePortableContinuation(state) }),
       },
       `Created Native change ${state.name}\n`,
     ),

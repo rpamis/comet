@@ -30,6 +30,9 @@ import {
 } from './native-workspace-finish.js';
 import { isInsidePath } from './native-paths.js';
 import { readNativeStatusRecord } from './native-archived-status.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
+import { archiveNativeSdkChange } from './native-sdk-archive-command.js';
 import {
   assertNoArguments,
   configuredPaths,
@@ -47,6 +50,7 @@ export async function nativeArchiveCommand(
 ): Promise<DispatchResult> {
   const name = requiredPositional(args, 'change name');
   const dryRun = takeFlag(args, '--dry-run');
+  const recover = takeFlag(args, '--recover');
   const expectedPreflightHash = takeOption(args, '--expect-preflight');
   const confirmed = takeFlag(args, '--confirmed');
   const finishOption = takeOption(args, '--finish');
@@ -66,6 +70,22 @@ export async function nativeArchiveCommand(
     finish !== 'keep'
   ) {
     throw new NativeUsageError('--finish must be merge, push, pull-request, or keep');
+  }
+  const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
+  if (await readSdkChangeOwner(commandRoot, 'native', name)) {
+    return archiveNativeSdkChange({
+      projectRoot: commandRoot,
+      name,
+      dryRun,
+      recover,
+      confirmed,
+      ...(expectedPreflightHash === undefined ? {} : { expectedPreflightHash }),
+      ...(finishOption === undefined ? {} : { finish: finishOption }),
+      ...(serialFirstOption === undefined ? {} : { serialFirst: serialFirstOption }),
+    });
+  }
+  if (recover) {
+    throw new NativeUsageError('--recover is only available for SDK-owned Native changes');
   }
   const configured = await configuredPaths(projectRoot);
   const portableActive = await isNativePortableChange(configured.paths, name);

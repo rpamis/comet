@@ -19,4 +19,7 @@ _Avoid_: 将执行回报直接称为验收证明。
 
 **Workflow Definition**：工作流允许的步骤、转换、输入输出与业务规则的版本化定义。
 
+**Workflow Application**：基于 SDK 管理完整 Run，并提供自身工作流定义、业务规则和宿主适配的产品流程。Native 与 Classic 是目标中的两个内置应用。
+_Avoid_: 将只复用某个 SDK 协议的局部接入称为完整的 Workflow Application。
+
 **Host**：提供 Agent 推理、工具执行和会话能力的平台，不是工作流状态的另一份权威存储。

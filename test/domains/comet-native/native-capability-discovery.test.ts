@@ -6,6 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { nativeNewCommand } from '../../../domains/comet-native/native-new-command.js';
 import { nativeSpecCommand } from '../../../domains/comet-native/native-spec-command.js';
+import { assertNativeSdkRemovalResult } from '../../../domains/comet-native/native-sdk-remove-command.js';
+import { nativeShowCommand } from '../../../domains/comet-native/native-show-command.js';
+import {
+  createNativeSdkRuntime,
+  inspectNativeSdkRun,
+} from '../../../domains/comet-native/native-runtime-ownership.js';
 import {
   defaultProjectConfig,
   writeProjectConfig,
@@ -18,6 +24,60 @@ afterEach(async () => {
 });
 
 describe('Native capability association during change creation', () => {
+  it('does not accept a failed or unresolved removal Action as successful', () => {
+    expect(() => assertNativeSdkRemovalResult('failed', false, 'authentication')).toThrow(
+      'Native SDK capability removal failed',
+    );
+    expect(() => assertNativeSdkRemovalResult('unknown', false, 'authentication')).toThrow(
+      'outcome is unknown',
+    );
+    expect(() => assertNativeSdkRemovalResult('succeeded', false, 'authentication')).toThrow(
+      'did not update',
+    );
+    expect(() => assertNativeSdkRemovalResult('succeeded', true, 'authentication')).not.toThrow();
+  });
+
+  it('records a capability removal on the default SDK Run without creating legacy state', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-sdk-remove-'));
+    roots.push(root);
+    await fs.mkdir(path.join(root, '.git'));
+    await fs.mkdir(path.join(root, 'docs', 'comet', 'specs', 'authentication'), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(root, 'docs', 'comet', 'specs', 'authentication', 'spec.md'),
+      '# Authentication\n',
+    );
+
+    const created = await nativeNewCommand(['retire-auth'], root);
+    expect(created.exitCode).toBe(0);
+    const removed = await nativeSpecCommand(['remove', 'retire-auth', 'authentication'], root);
+
+    expect(removed).toMatchObject({
+      exitCode: 0,
+      data: {
+        spec_changes: [{ capability: 'authentication', operation: 'remove', source: null }],
+        continuation: { action: 'prepare-shape-confirmation' },
+      },
+    });
+    expect((await inspectNativeSdkRun(root, 'retire-auth')).state.spec_changes).toEqual([
+      { capability: 'authentication', operation: 'remove', source: null },
+    ]);
+    await expect(
+      fs.access(
+        path.join(
+          root,
+          '.comet',
+          'runtime',
+          'native',
+          'changes',
+          'retire-auth',
+          'comet-state.yaml',
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('validates an explicit capability and writes a revocable association draft', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-capability-'));
     roots.push(root);
@@ -43,6 +103,15 @@ describe('Native capability association during change creation', () => {
       capability: 'authentication',
     });
     expect(data.associationPath).toBeDefined();
+    const shown = await nativeShowCommand(['extend-auth'], root);
+    expect(shown).toMatchObject({
+      exitCode: 0,
+      data: {
+        state: { name: 'extend-auth', phase: 'shape' },
+        brief: expect.any(String),
+        continuation: { action: 'prepare-shape-confirmation' },
+      },
+    });
     await expect(fs.readFile(data.associationPath!, 'utf8')).resolves.toContain(
       'schema: comet.capability-association.v1',
     );
@@ -99,6 +168,18 @@ describe('Native capability association during change creation', () => {
     const created = await nativeNewCommand(['extend-auth', '--capability', 'authentication'], root);
     const createdData = created.data as { associationPath?: string; state_version: number };
     expect(createdData.associationPath).toBeDefined();
+    const initialRun = (await inspectNativeSdkRun(root, 'extend-auth')).run;
+    await expect(
+      createNativeSdkRuntime(root).dispatchCommand({
+        runId: initialRun.runId,
+        expectedRevision: initialRun.revision,
+        commandId: 'stale-direct-revocation',
+        name: 'disassociate-capability',
+        input: { expectedStateVersion: createdData.state_version + 1 },
+        context: { requestId: 'stale-direct-revocation', projectRoot: root },
+      }),
+    ).rejects.toMatchObject({ code: 'COMMAND_REJECTED' });
+    expect((await inspectNativeSdkRun(root, 'extend-auth')).run).toEqual(initialRun);
     await expect(nativeSpecCommand(['disassociate', 'extend-auth'], root)).rejects.toThrow(
       '--expected-state-version and --expected-action are required',
     );
@@ -187,7 +268,10 @@ describe('Native capability association during change creation', () => {
     );
 
     const task = 'Improve authentication login security';
-    const first = await nativeNewCommand(['extend-auth', '--task', task], root);
+    const first = await nativeNewCommand(
+      ['extend-auth', '--task', task, '--runtime', 'legacy'],
+      root,
+    );
     expect(first.exitCode).toBe(0);
     const cache = path.join(root, '.comet', 'runtime', 'native', 'capability-discovery-cache.json');
     await expect(fs.readFile(cache, 'utf8')).resolves.toContain('comet.native.capability-cache.v1');
@@ -201,7 +285,10 @@ describe('Native capability association during change creation', () => {
       recursive: true,
       force: true,
     });
-    const second = await nativeNewCommand(['extend-auth-again', '--task', task], root);
+    const second = await nativeNewCommand(
+      ['extend-auth-again', '--task', task, '--runtime', 'legacy'],
+      root,
+    );
     expect(second.exitCode).toBe(0);
     expect(
       (second.data as { capabilityDiscovery?: { associationDraft?: unknown } }).capabilityDiscovery
@@ -223,7 +310,10 @@ describe('Native capability association during change creation', () => {
     );
 
     const task = 'Improve login security';
-    const first = await nativeNewCommand(['extend-auth', '--task', task], root);
+    const first = await nativeNewCommand(
+      ['extend-auth', '--task', task, '--runtime', 'legacy'],
+      root,
+    );
     expect(first.exitCode).toBe(0);
     const originalStat = await fs.stat(source);
     await fs.writeFile(
@@ -241,7 +331,10 @@ describe('Native capability association during change creation', () => {
       force: true,
     });
 
-    const second = await nativeNewCommand(['extend-auth-again', '--task', task], root);
+    const second = await nativeNewCommand(
+      ['extend-auth-again', '--task', task, '--runtime', 'legacy'],
+      root,
+    );
     expect(second.exitCode).toBe(0);
     expect(
       (second.data as { capabilityDiscovery?: { associationDraft?: unknown } }).capabilityDiscovery

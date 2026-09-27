@@ -60,6 +60,13 @@ import {
   type DispatchResult,
 } from './native-cli-shared.js';
 import type { NativeProjectPaths } from './native-types.js';
+import {
+  assertChangeNotSdkOwned,
+  readSdkChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
+import { readProjectConfig } from './native-config.js';
+import { resolveNativeChangeRuntimeOwner } from './native-runtime-ownership.js';
+import { advanceNativeSdkChange } from './native-sdk-next.js';
 
 const EXPECTED_CONTINUATION_ACTIONS = new Set<NativePortableExpectedContinuationAction>([
   'prepare-shape-confirmation',
@@ -170,6 +177,7 @@ export async function nativeNextCommand(
 ): Promise<DispatchResult> {
   const name = requiredPositional(args, 'change name');
   const summary = takeOption(args, '--summary');
+  const proposalHash = takeOption(args, '--proposal-hash');
   const runnerInputFile = takeOption(args, '--runner-input');
   const validateOnly = takeFlag(args, '--validate-only');
   const confirmed = takeFlag(args, '--confirmed');
@@ -211,8 +219,7 @@ export async function nativeNextCommand(
   }
   if (
     coordinationMode !== undefined &&
-    (confirmed ||
-      acceptResult ||
+    (acceptResult ||
       reviseImplementation ||
       reviseRequirements ||
       retryVerifier ||
@@ -228,7 +235,101 @@ export async function nativeNextCommand(
   // invocation from silently accepting one of those old fields.
   assertNoArguments(args);
 
+  if (
+    (await readSdkChangeOwner(projectRoot, 'native', name)) &&
+    (await readProjectConfig(projectRoot)) === null
+  ) {
+    throw new Error(`Native SDK Run ${name} requires .comet/config.yaml before next`);
+  }
   const configured = await configuredPaths(projectRoot);
+  const owner = await resolveNativeChangeRuntimeOwner(configured.paths, name);
+  if (owner?.format === 'sdk') {
+    if (
+      runnerInputFile !== undefined ||
+      validateOnly ||
+      resolveVerifierBlocker ||
+      maxParallelText !== undefined
+    ) {
+      throw new NativeUsageError(
+        'This Native SDK next action does not accept legacy transition options',
+      );
+    }
+    if (reviseRequirements) {
+      if (
+        summary === undefined ||
+        proposalHash !== undefined ||
+        expectedContinuation?.action !== 'revise-requirements'
+      ) {
+        throw new NativeUsageError(
+          'SDK requirements revision requires --summary, --expected-state-version, and --expected-action revise-requirements',
+        );
+      }
+      return advanceNativeSdkChange(projectRoot, name, {
+        summary,
+        expectedStateVersion: expectedContinuation.stateVersion,
+        expectedAction: 'revise-requirements',
+      });
+    }
+    if (confirmed) {
+      if (
+        summary === undefined ||
+        proposalHash !== undefined ||
+        expectedContinuation?.action !== 'confirm-shape'
+      ) {
+        throw new NativeUsageError(
+          'SDK Shape confirmation requires --summary, --expected-state-version, and --expected-action confirm-shape',
+        );
+      }
+      return advanceNativeSdkChange(projectRoot, name, {
+        summary,
+        expectedStateVersion: expectedContinuation.stateVersion,
+        expectedAction: 'confirm-shape',
+        ...(coordinationMode === undefined ? {} : { coordinationMode }),
+      });
+    }
+    if (acceptResult || reviseImplementation || retryVerifier) {
+      const action = acceptResult
+        ? 'accept-result'
+        : reviseImplementation
+          ? 'revise-implementation'
+          : 'retry-verifier';
+      if (
+        summary === undefined ||
+        proposalHash === undefined ||
+        expectedContinuation?.action !== action
+      ) {
+        throw new NativeUsageError(
+          `SDK Verify decision requires --summary, --proposal-hash, --expected-state-version, and --expected-action ${action}`,
+        );
+      }
+      return advanceNativeSdkChange(projectRoot, name, {
+        summary,
+        proposalHash,
+        expectedStateVersion: expectedContinuation.stateVersion,
+        expectedAction: action,
+      });
+    }
+    if (
+      summary !== undefined ||
+      proposalHash !== undefined ||
+      expectedContinuation !== undefined ||
+      coordinationMode !== undefined
+    ) {
+      throw new NativeUsageError(
+        'This Native SDK next action does not accept legacy transition options',
+      );
+    }
+    return advanceNativeSdkChange(projectRoot, name);
+  }
+  if (coordinationMode !== undefined && confirmed) {
+    throw new NativeUsageError(
+      '--coordination-mode is only valid when preparing a Supervisor Shape confirmation',
+    );
+  }
+  if (proposalHash !== undefined) {
+    throw new NativeUsageError('--proposal-hash is only valid for a Native SDK Verify decision');
+  }
+  await assertChangeNotSdkOwned(projectRoot, 'native', name);
   const finishJournal = await readNativeWorkspaceFinishJournal(configured.paths, name);
   if (!(await isNativePortableChange(configured.paths, name))) {
     if (finishJournal) {

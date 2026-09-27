@@ -23,6 +23,10 @@ import {
 } from '../comet-native/native-diagnostics.js';
 import { nativeProjectPaths } from '../comet-native/native-paths.js';
 import {
+  inspectNativeSdkRun,
+  listNativeSdkChangeNames,
+} from '../comet-native/native-runtime-ownership.js';
+import {
   isNativePortableChange,
   nativePortableChangeDir,
   readNativePortableChange,
@@ -41,6 +45,7 @@ import type {
   NativeProjectPaths,
 } from '../comet-native/native-types.js';
 import type { NativePortableState } from '../comet-native/native-portable-types.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { resolveCometEntry } from './resolve-entry.js';
 import type { CometEntryResolutionSource, CometEntrySkill, CometWorkflow } from './types.js';
 
@@ -231,6 +236,10 @@ async function nativeResumeCandidates(
   return Promise.all(
     displayedNames.map(async (name) => {
       try {
+        if (await readSdkChangeOwner(paths.projectRoot, 'native', name)) {
+          const { state } = await inspectNativeSdkRun(paths.projectRoot, name);
+          return { name, phase: state.phase, selected: name === selectedName };
+        }
         if (await isNativePortableChange(paths, name)) {
           const state = await readNativePortableChange(paths, name);
           return {
@@ -365,7 +374,20 @@ async function resolveNativeResumeProbe(
   }
   await assertNoPendingNativeRootMove(projectRoot);
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
-  const names = await listNativeChangeNames(paths);
+  const sdkNames = await listNativeSdkChangeNames(projectRoot);
+  const resumableSdkNames = (
+    await Promise.all(
+      sdkNames.map(async (name) => {
+        const { run, state } = await inspectNativeSdkRun(projectRoot, name);
+        return (run.status === 'running' || run.status === 'waiting') && state.status !== 'done'
+          ? name
+          : null;
+      }),
+    )
+  ).filter((name): name is string => name !== null);
+  const names = [...new Set([...(await listNativeChangeNames(paths)), ...resumableSdkNames])].sort(
+    (left, right) => left.localeCompare(right, 'en'),
+  );
   let selectedName: string | null = null;
   let selectionError: string | null = null;
   try {
@@ -448,7 +470,9 @@ async function resolveNativeResumeProbe(
   let targetStateError: string | null = null;
   if (target) {
     try {
-      if (await isNativePortableChange(paths, target.name)) {
+      if (await readSdkChangeOwner(projectRoot, 'native', target.name)) {
+        targetState = (await inspectNativeSdkRun(projectRoot, target.name)).state;
+      } else if (await isNativePortableChange(paths, target.name)) {
         targetState = await readNativePortableChange(paths, target.name);
         targetPortableStatus = await inspectNativePortableStatus({ paths, name: target.name });
       } else {

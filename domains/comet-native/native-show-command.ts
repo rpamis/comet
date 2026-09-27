@@ -24,6 +24,59 @@ import {
 } from './native-cli-shared.js';
 import { nativeChangeArtifactPaths } from './native-paths.js';
 import { discoverNativeChangeProjectRoot } from './native-status-discovery.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { inspectNativeSdkRun } from './native-runtime-ownership.js';
+import type { NativeProjectPaths } from './native-types.js';
+import type { NativePortableState } from './native-portable-types.js';
+
+async function portableShowResult(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+  local: Awaited<ReturnType<typeof readNativePortableRuntime>>['local'],
+  executionCwd: string,
+): Promise<DispatchResult> {
+  const changeDir = nativePortableChangeDir(paths, state.name);
+  const brief = await readNativeBoundedTextFile({
+    root: changeDir,
+    ref: state.brief,
+    maxBytes: null,
+    includeHash: false,
+  });
+  const proposedSpecs = [];
+  for (const spec of state.spec_changes) {
+    if (spec.source === null) continue;
+    const source = await readNativeBoundedTextFile({
+      root: changeDir,
+      ref: spec.source,
+      maxBytes: null,
+      includeHash: false,
+    });
+    proposedSpecs.push({
+      capability: spec.capability,
+      operation: spec.operation,
+      source: spec.source,
+      content: source.text,
+    });
+  }
+  const payload = {
+    state,
+    artifacts: nativeChangeArtifactPaths(paths, state.name),
+    brief: brief.text,
+    proposedSpecs,
+    continuation: nativePortableContinuation(state, await inspectNativeChildren({ paths, state }), {
+      verifierExecutionRef: nativeVerifierExecutionRefForState(state, local),
+      ...(local
+        ? {
+            verificationCheckPlans: nativePortableCheckPlansFromLocal(
+              local,
+              local.workspace.projectRoot,
+            ),
+          }
+        : {}),
+    }),
+  };
+  return { ...success('show', payload), executionCwd };
+}
 
 export async function nativeShowCommand(
   args: string[],
@@ -33,54 +86,13 @@ export async function nativeShowCommand(
   assertNoArguments(args);
   const executionCwd = await discoverNativeChangeProjectRoot({ projectRoot, name });
   const { paths } = await configuredPaths(executionCwd);
+  if (await readSdkChangeOwner(executionCwd, 'native', name)) {
+    const { state } = await inspectNativeSdkRun(executionCwd, name);
+    return portableShowResult(paths, state, null, executionCwd);
+  }
   if (await isNativePortableChange(paths, name)) {
     const runtime = await readNativePortableRuntime({ paths, name });
-    const state = runtime.state;
-    const changeDir = nativePortableChangeDir(paths, name);
-    const brief = await readNativeBoundedTextFile({
-      root: changeDir,
-      ref: state.brief,
-      maxBytes: null,
-      includeHash: false,
-    });
-    const proposedSpecs = [];
-    for (const spec of state.spec_changes) {
-      if (spec.source === null) continue;
-      const source = await readNativeBoundedTextFile({
-        root: changeDir,
-        ref: spec.source,
-        maxBytes: null,
-        includeHash: false,
-      });
-      proposedSpecs.push({
-        capability: spec.capability,
-        operation: spec.operation,
-        source: spec.source,
-        content: source.text,
-      });
-    }
-    const payload = {
-      state,
-      artifacts: nativeChangeArtifactPaths(paths, state.name),
-      brief: brief.text,
-      proposedSpecs,
-      continuation: nativePortableContinuation(
-        state,
-        await inspectNativeChildren({ paths, state }),
-        {
-          verifierExecutionRef: nativeVerifierExecutionRefForState(state, runtime.local),
-          ...(runtime.local
-            ? {
-                verificationCheckPlans: nativePortableCheckPlansFromLocal(
-                  runtime.local,
-                  runtime.local.workspace.projectRoot,
-                ),
-              }
-            : {}),
-        },
-      ),
-    };
-    return { ...success('show', payload), executionCwd };
+    return portableShowResult(paths, runtime.state, runtime.local, executionCwd);
   }
   const inspection = await inspectNativeChange(paths, name);
   if (inspection.status === 'migration-required') {

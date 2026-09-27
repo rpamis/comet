@@ -23,8 +23,8 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     agentQuickStart: [
       'Run `comet native status --json` to discover active changes.',
       'Select an existing change with `select`, or create one with `new`.',
-      'In `agent.workspace.cwd`, execute the exact `agent.continuation.commandArgs` returned by Runtime.',
-      'Use `agent.continuation.inputOptions` templates for JSON input; do not reconstruct fields from memory.',
+      'For SDK-owned changes, use the current Run Action or Wait; `next` executes Runtime-owned actions, and host handoffs use `comet runtime dispatch --application native`.',
+      'For legacy changes, execute `agent.continuation.commandArgs` in `agent.workspace.cwd` and fill `agent.continuation.inputOptions` templates.',
     ],
     subcommands: [
       'init                         Initialize Native project configuration.',
@@ -83,9 +83,10 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   new: {
     usage:
-      'comet native new <change-name> [--language en|zh-CN] [--task <text>] [--capability <id>] [--isolation current|branch|worktree] [--change-branch <branch>] [--target-branch <branch>] [--worktree-path <path>]',
+      'comet native new <change-name> [--runtime legacy|sdk] [--language en|zh-CN] [--task <text>] [--capability <id>] [--isolation current|branch|worktree] [--change-branch <branch>] [--target-branch <branch>] [--worktree-path <path>]',
     purpose: 'Create a portable Native change and prepare the requested branch or linked worktree.',
     options: [
+      '--runtime legacy|sdk        Runtime format for this new change; defaults to sdk.',
       '--language en|zh-CN          Artifact language; defaults to project configuration.',
       '--task <text>                Search Project Knowledge for an existing capability and save a revocable association draft.',
       '--capability <id>            Directly validate and associate an existing capability without retrieval.',
@@ -95,7 +96,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--worktree-path <path>       Worktree directory; defaults to .worktrees/<change-name>.',
     ],
     output:
-      'The portable state, canonical artifact paths, workspace preparation result, and continuation with the next Runner action.',
+      'The SDK Run or portable state, canonical artifact paths, and workspace preparation result; legacy changes include the next Runner continuation.',
     examples: [
       'comet native new session-timeout --language zh-CN',
       'comet native new add-sms-login --task "add SMS login to authentication"',
@@ -111,7 +112,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     subcommands: [
       'disassociate <change-name>  Revoke a capability association and return to Shape.',
       'remove <change-name> <capability>  Record a capability removal.',
-      'sync <change-name> <capability> --input <json-file>  Audit local Markdown reference corrections without changing prose or acceptance.',
+      'sync <change-name> <capability> --input <json-file>  Legacy-only Markdown reference correction; SDK changes return to Shape for revision.',
     ],
     output: 'The updated portable state and continuation.',
   },
@@ -133,12 +134,12 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   'spec sync': {
     usage: 'comet native spec sync <change-name> <capability> --input <json-file>',
     purpose:
-      'Sync local Markdown link destinations in an already confirmed target spec; semantic edits require Shape.',
+      'Legacy-only reference correction. SDK changes use Shape edits or next --revise-requirements from Verify/Archive.',
     options: [
       '--input <json-file>  Fields: expectedStateVersion, actor, reason, affectedAcceptanceIds, replacements [{from,to}]. Include all acceptance IDs from the affected spec.',
     ],
     output:
-      'The audited portable state, preserved unaffected acceptance results and Build continuation for re-verification.',
+      'For legacy changes, the audited state and Build continuation for re-verification. SDK changes receive revise-requirements guidance.',
   },
   show: {
     usage: 'comet native show <change-name>',
@@ -174,13 +175,13 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   next: {
     usage:
-      'comet native next <change-name> --summary <text> [--coordination-mode multi-session|single-session] [--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <change-name> --runner-input <json-file> [--validate-only]',
+      'comet native next <change-name> --summary <text> [--coordination-mode multi-session|single-session] [--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <sdk-change> --confirmed --coordination-mode multi-session|single-session --summary <text> --expected-state-version <n> --expected-action confirm-shape\n       comet native next <sdk-change> --accept-result|--revise-implementation|--retry-verifier --summary <text> --proposal-hash <hash> --expected-state-version <n> --expected-action <action>\n       comet native next <change-name> --runner-input <json-file> [--validate-only]',
     purpose:
-      'Confirm or recover an Agent boundary, advance parent child changes, handle Supervisor task operations, or use one skill-coordinated JSON bridge for Builder handoff, check-plan dispatch, and Verifier response/error.',
+      'Advance SDK-owned Runtime actions and bound user decisions, or recover a legacy Agent boundary and use its skill-coordinated Builder/Verifier JSON bridge.',
     options: [
       '--summary <text>    Required transition or recovery summary.',
       '--confirmed         Confirm the persisted Shape boundary with both expected guards, or confirm an explicitly degraded verifier-unavailable fallback before Archive.',
-      '--coordination-mode multi-session|single-session  Select how a multi-child Supervisor proceeds while preparing its Shape confirmation; final Shape confirmation is a later, separate step.',
+      '--coordination-mode multi-session|single-session  Select how a multi-child Supervisor proceeds. SDK changes combine this choice with --confirmed for the complete Shape; legacy changes prepare it before a separate final confirmation.',
       '--accept-result     Accept the current skill-coordinated Verify result and make it archive-ready.',
       '--revise-implementation  Keep confirmed requirements unchanged and return Verify to Build for implementation revision.',
       '--revise-requirements    Return Verify or Archive to Shape when user-visible goals or acceptance criteria must change.',
@@ -189,6 +190,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--max-parallel <n>  Supervisor task concurrency cap; defaults to 2, use 1 for serial fallback.',
       '--expected-state-version <n>  Continuation-issued guard that rejects stale public transition decisions.',
       '--expected-action <action>    Continuation-issued guard that binds the public transition decision to its intended action.',
+      '--proposal-hash <hash>       SDK Verify decision guard from the current pending Wait; required with --accept-result, --revise-implementation, or --retry-verifier for SDK changes.',
       '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, retry-checks, verifier-response, verifier-started, verifier-execution-error, or verifier-unavailable. Builder/dispatch identity fields are rejected; verifier responses must echo the current candidateId and verifierExecutionRef from the Verifier dispatch.',
       '--validate-only       Validate the Runner JSON shape and current boundary without writing state or starting a process; requires --runner-input.',
       '  Choose one object template from an inputOptions exclusiveGroup and save it as UTF-8 JSON (BOM accepted). Field errors return issues with JSON pointer, missingFields and unknownFields. Execute agent.continuation in agent.workspace.cwd; Supervisor results use task.returnAction.',
@@ -205,7 +207,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '  supervisor-integrate checks are non-empty Runtime check plans executed after the merge in the integration worktree, not declared statuses.',
     ],
     output:
-      'A compact portable state summary, explicit skill-coordinated label, Runtime-owned check results, scoped verifierDispatch, bounded request-check response, continuation.runnerAction, machine-readable continuation.inputOptions, and continuation.userCommunication with a user-ready message and Agent relay guidance. Read acceptance text and other long fields from paged status --details output. Human-readable verification statuses include "Host independently verified", "Checks completed, but your confirmation is required", "Full verification was unavailable; only automatic checks completed", and "You accepted the incomplete verification result". This generic bridge is not trusted identity attestation: a passing result waits for explicit user confirmation before Archive.',
+      'SDK-owned changes return the current Run Action or Wait; Runtime-owned checks, reports, and Archive advance one Action per call, while Builder and Verifier host handoffs require `comet runtime dispatch --application native`. Legacy changes return the portable state, Runner result, continuation.inputOptions, and userCommunication. The legacy JSON bridge is not trusted identity attestation: a passing skill-coordinated result waits for explicit user confirmation before Archive.',
     examples: [
       'comet native next session-timeout --summary "Shape confirmed" --confirmed --expected-state-version <n> --expected-action confirm-shape',
       'comet native next session-timeout --summary "Current result accepted" --accept-result',
@@ -218,7 +220,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   archive: {
     usage:
-      'comet native archive <change-name> --dry-run [--finish merge|push|pull-request|keep]\n       comet native archive <change-name> [--confirmed] [--serial-first <current-change>]',
+      'comet native archive <change-name> --dry-run [--finish merge|push|pull-request|keep]\n       comet native archive <change-name> [--confirmed] [--serial-first <current-change>]\n       comet native archive <sdk-change-name> --recover',
     purpose:
       'Preview or execute deterministic Archive after the portable state reaches archive-ready.',
     options: [
@@ -226,6 +228,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--finish <action>  Persist merge, push, pull-request, or keep for an isolated workspace.',
       '--serial-first <current-change>  During execution only, confirm that this change archives before detected capability peers; the value must equal <change-name>.',
       '--confirmed        Confirm Archive when project policy requires it.',
+      '--recover          For an SDK-owned change, reconcile one unknown Archive or cleanup Action only after confirming the original execution process has stopped; never retry it as new work.',
     ],
     output:
       'Readiness, every blocker, and the exact next continuation, or the completed Archive transaction and workspace finish result. Execute the returned confirmed command only after ready is true; Archive does not repeat verification.',

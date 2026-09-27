@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
   resolveCometEntryResumeProbe,
@@ -17,6 +18,7 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import {
   nativeSelectionFile,
   selectNativeChange,
@@ -174,6 +176,81 @@ describe('Comet entry resume probe v2', () => {
       changeName: 'portable-resume',
       phase: 'shape',
       reasonCode: 'native-change-named',
+    });
+  });
+
+  it('auto-resumes an SDK-owned Native change with no legacy state file', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const request = path.join(projectRoot, 'sdk-start.json');
+    await fs.writeFile(
+      request,
+      JSON.stringify({
+        operation: 'start',
+        runId: 'sdk-resume',
+        workflow: { id: 'comet-native', version: '1' },
+        input: { name: 'sdk-resume', artifactRootRef: '.' },
+        initialState: createNativePortableState({
+          name: 'sdk-resume',
+          language: 'en',
+          createdAt: '2026-09-25T00:00:00.000Z',
+          nextAction: 'prepare-shape-confirmation',
+        }),
+      }),
+    );
+    const started = await runtimeDispatchCommand(
+      { request, application: 'native', projectRoot },
+      { invocationCwd: projectRoot },
+    );
+    expect(started.response.status).toBe('succeeded');
+
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续 sdk-resume')),
+    ).resolves.toMatchObject({
+      workflow: 'native',
+      action: 'auto_resume',
+      changeName: 'sdk-resume',
+      phase: 'shape',
+      reasonCode: 'native-change-named',
+      candidates: [{ name: 'sdk-resume', phase: 'shape' }],
+    });
+  });
+
+  it('does not auto-resume a cancelled Native SDK Run', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const request = path.join(projectRoot, 'sdk-start.json');
+    await fs.writeFile(
+      request,
+      JSON.stringify({
+        operation: 'start',
+        runId: 'sdk-cancelled',
+        workflow: { id: 'comet-native', version: '1' },
+        input: { name: 'sdk-cancelled', artifactRootRef: '.' },
+        initialState: createNativePortableState({
+          name: 'sdk-cancelled',
+          language: 'en',
+          createdAt: '2026-09-25T00:00:00.000Z',
+          nextAction: 'prepare-shape-confirmation',
+        }),
+      }),
+    );
+    const options = { invocationCwd: projectRoot };
+    const cli = { request, application: 'native', projectRoot };
+    expect((await runtimeDispatchCommand(cli, options)).response.status).toBe('succeeded');
+    await fs.writeFile(
+      request,
+      JSON.stringify({
+        operation: 'cancel',
+        runId: 'sdk-cancelled',
+        reason: 'User cancelled this change',
+      }),
+    );
+    expect((await runtimeDispatchCommand(cli, options)).response.status).toBe('succeeded');
+
+    await expect(resolveCometEntryResumeProbe(projectRoot, input('继续'))).resolves.toMatchObject({
+      workflow: 'native',
+      action: 'none',
+      reasonCode: 'no-active-native-changes',
+      candidates: [],
     });
   });
 

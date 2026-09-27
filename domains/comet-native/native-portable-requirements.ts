@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import {
+  assertChangeNotSdkOwned,
+  COMET_CHANGE_OWNER_SCHEMA,
+  registerLegacyChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import {
   nativeBriefHasBlockingQuestion,
@@ -300,6 +305,7 @@ export async function createNativePortableChange(options: {
     async () => {
       if (!NAME_PATTERN.test(options.name))
         throw new Error(`Invalid Native change name: ${options.name}`);
+      await assertChangeNotSdkOwned(options.paths.projectRoot, 'native', options.name);
       if (
         options.initialProjectConfig &&
         (await readProjectConfig(options.paths.projectRoot)) === null
@@ -359,6 +365,12 @@ export async function createNativePortableChange(options: {
           }),
           { containedRoot: options.paths.runtimeDir },
         );
+        await registerLegacyChangeOwner(options.paths.projectRoot, {
+          schema: COMET_CHANGE_OWNER_SCHEMA,
+          workflow: 'native',
+          change: options.name,
+          format: 'legacy',
+        });
         return state;
       } catch (error) {
         if (createdRuntime) await fs.rm(runtimeDir, { recursive: true, force: true });

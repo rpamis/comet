@@ -13,6 +13,7 @@ import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './
 import { inspectClassicProjectTarget } from './classic-protected-path.js';
 import type { CometHookRequest } from '../../platform/process/hook-adapter.js';
 import type { CometHookDecision } from '../workflow-contract/hook.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { scopeCometHookTargets } from '../workflow-contract/hook-target-scope.js';
 import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
@@ -25,6 +26,7 @@ import { resolveCurrentChange } from './classic-current-change.js';
 import { classicGuardUserMessage, classicLocale } from './classic-output-language.js';
 import { readClassicState, readLegacyState } from './classic-store.js';
 import type { ClassicPhase, ClassicState } from './classic-state.js';
+import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import {
   inspectClassicPlanReadiness,
   inspectClassicAutonomousBuildProblems,
@@ -174,6 +176,20 @@ async function loadGoverningChange(changeDir: string): Promise<GoverningChange |
   }
 }
 
+async function loadSdkGoverningChange(
+  projectRoot: string,
+  changeName: string,
+  changeDir: string,
+): Promise<GoverningChange> {
+  const { state } = await inspectClassicSdkRun(projectRoot, changeName);
+  return {
+    changeDir,
+    phase: state.phase,
+    classic: state,
+    archived: state.archived,
+  };
+}
+
 async function activeChangesImpl(projectRoot: string): Promise<GoverningChange[]> {
   const changesDir = (await assertClassicLayoutReadable(projectRoot)).changesDir;
   const governingChanges: GoverningChange[] = [];
@@ -188,8 +204,12 @@ async function activeChangesImpl(projectRoot: string): Promise<GoverningChange[]
     if (entry.name === 'archive') continue;
     if (openSpecChangeNameError(entry.name)) continue;
     const active = await inspectClassicActiveChangeDirectory(entry.name, projectRoot);
-    if (!active.exists || !active.stateExists) continue;
-    const governing = await loadGoverningChange(active.directory);
+    if (!active.exists) continue;
+    const governing = (await readSdkChangeOwner(projectRoot, 'classic', entry.name))
+      ? await loadSdkGoverningChange(projectRoot, entry.name, active.directory)
+      : active.stateExists
+        ? await loadGoverningChange(active.directory)
+        : null;
     if (!governing || governing.archived) continue;
     governingChanges.push(governing);
   }
@@ -206,6 +226,10 @@ const activeGoverningChange = memoizedHookRead(
   'classicActiveChange',
   async (projectRoot: string, changeName: string): Promise<GoverningChange | null> => {
     const active = await inspectClassicActiveChangeDirectory(changeName, projectRoot);
+    if (await readSdkChangeOwner(projectRoot, 'classic', changeName)) {
+      const governing = await loadSdkGoverningChange(projectRoot, changeName, active.directory);
+      return governing.archived ? null : governing;
+    }
     if (!active.exists || !active.stateExists) return null;
     const governing = await loadGoverningChange(active.directory);
     return !governing || governing.archived ? null : governing;
@@ -547,6 +571,17 @@ async function governingChange(
   if (target?.kind === 'active') {
     const name = target.changeName;
     const active = await inspectClassicActiveChangeDirectory(name, projectRoot);
+    if (await readSdkChangeOwner(projectRoot, 'classic', name)) {
+      const sdk = await loadSdkGoverningChange(projectRoot, name, active.directory);
+      return sdk.archived
+        ? {
+            blockedResult: blockedStaleSelection(
+              relativePath,
+              `Classic SDK change '${name}' is already archived`,
+            ),
+          }
+        : sdk;
+    }
     if (active.stateExists) {
       const governing = await loadGoverningChange(active.directory);
       if (governing) return governing;

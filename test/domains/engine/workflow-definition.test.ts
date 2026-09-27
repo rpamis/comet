@@ -4,6 +4,7 @@ import {
   approval,
   childWorkflow,
   defineWorkflow,
+  evidence,
   skill,
   tool,
   type DefineWorkflowOptions,
@@ -31,6 +32,16 @@ function editorialOptions(): DefineWorkflowOptions {
 describe('workflow definition contract', () => {
   it('exposes a tool builder for call_tool steps', () => {
     expect(workflowDefinition).toHaveProperty('tool');
+  });
+
+  it('exposes an evidence builder for validated external receipts', () => {
+    expect(workflowDefinition).toHaveProperty('evidence');
+    expect(evidence({ kind: 'check-receipt', validator: { id: 'check', version: '1' } })).toEqual({
+      type: 'await_evidence',
+      kind: 'check-receipt',
+      validator: { id: 'check', version: '1' },
+      retry: 'manual',
+    });
   });
 
   it('normalizes a cyclic editorial workflow into a portable frozen definition', () => {

@@ -66,7 +66,7 @@
 - **长程任务稳定的核心**— Comet 的 Classic Spec 模式结合 OpenSpec 和 Superpowers，用状态机、阶段检查与脚本串联五阶段流程，适合需要明确方法和强约束的任务；永久入口是 `/comet-classic`。
 - **配置驱动的统一入口** — `/comet` 只读取项目的 `.comet/config.yaml`，确定性转发到 `/comet-native` 或 `/comet-classic`。它不按任务大小猜工作流，也不混用两边的 change、状态和目录。`comet resume-probe` 使用同一配置恢复正确的永久入口。
 - **Skill 平台** — Comet能够编写可复用 Skill 包，并通过 `/comet-any` 把它们整理成可分发 Bundle，你制作的Skill可以像如comet init一样一键分发到所有Coding平台。
-- **可复用的 Skill Runtime SDK** — `@rpamis/comet/runtime` 将 Skill/工具步骤、用户确认、结果验收和中断恢复编排成可持久化工作流；Agent 平台继续提供模型、MCP、Hooks、Rules 与工具调用，不必重写原生 Agent loop。详见 [Runtime SDK 指南](docs/architecture/runtime-sdk.zh.md)。
+- **可复用的 Skill Runtime SDK** — `@rpamis/comet/runtime` 将 Skill/工具步骤、用户确认、结果验收和中断恢复编排成可持久化工作流；Native 和 Classic 是两个内置应用，新 change 默认使用 SDK Run，旧 change 沿用原 Runtime。Agent 平台继续提供模型、MCP、Hooks、Rules 与工具调用。详见 [Runtime SDK 指南](docs/architecture/runtime-sdk.zh.md)。
 - **Eval 平台**— Comet基于科学的Rubric、Pass@k、Pass^k评分评估你的Skill，让Skill演进是基于科学依据，而不是依靠感觉，支持接入LangSmith评估，让评估真实走进企业级生产环境。基于双Agent架构自动化在你的生产环境完成评估工作
 
 ## Supervisor Change：让多个 Agent 协同交付复杂目标
@@ -190,7 +190,7 @@ classic:
 
 - `default_workflow` 决定 `/comet` 默认入口，且必须出现在 `workflows` 中；`ambient_resume`、`memory`、`knowledge` 和 `hook` 由两套工作流共享。
 - `memory.learning` / `retrieval` 控制个人记忆学习与注入；`knowledge.local.include` 可追加项目相对 Markdown glob。`hook.allow_paths` 默认为空，仅在受保护阶段确需写入共享目录时添加项目相对路径，不能绕过 `.comet` 或工作流产物保护。
-- Native 用户可读产物默认位于 `docs/comet/`，机器 Runtime 固定在 `.comet/runtime/native/`；可用 `comet init --workflow native --root artifacts` 改为 `artifacts/comet/`。Classic 专属默认值放在 `classic:`，旧顶层字段会由 `comet init` / `comet update` 迁移。
+- Native 用户可读产物默认位于 `docs/comet/`；新 change 的 SDK Run 保存在 `.comet/runtime/sdk-runs/native/`，旧 change 仍使用原状态目录。可用 `comet init --workflow native --root artifacts` 将用户产物根改为 `artifacts/comet/`。Classic 专属默认值放在 `classic:`，旧顶层字段会由 `comet init` / `comet update` 迁移。
 
 云端知识、私有化 PR 等高级配置详见 [Native 配置](https://docs.comet.rpamis.com/zh/native/configuration) 与 [Classic 配置](https://docs.comet.rpamis.com/zh/classic/configuration)。Native v4 不再把旧 `snapshot` 预算持久化到用户配置中。
 

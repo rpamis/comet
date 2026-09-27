@@ -15,15 +15,17 @@ description: '创建 Classic change，整理需求并请用户确认。在用户
 
 ### 0. 设置输出语言
 
-向 OpenSpec 传递提问和文档生成要求时，都必须明确指定 Comet 配置的产物语言，使用 `en`、`zh-CN` 这类规范化 ID。`.comet.yaml` 尚不存在时，依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；change 初始化后，使用 `comet state get <name> language` 读取。没有配置语言时，才采用当前用户请求的语言。生成的 `proposal.md`、`design.md`、`tasks.md` 必须以该语言为主。
+向 OpenSpec 传递提问和文档生成要求时，都必须明确指定 Comet 配置的产物语言，使用 `en`、`zh-CN` 这类规范化 ID。change 尚未初始化时，依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；初始化后，无论由 SDK Run 还是旧状态管理，都使用 `comet state get <name> language` 读取。没有配置语言时，才采用当前用户请求的语言。生成的 `proposal.md`、`design.md`、`tasks.md` 必须以该语言为主。
 
 ### 0a. 当前 change 绑定
 
-恢复已有 change 时先检查 `<classic-change-dir>/.comet.yaml`：
+恢复已有 change 时，先运行 `comet state next <name> --json` 确认 Runtime 归属，再按 `data.runtimeFormat` 处理：
 
-- 状态文件存在且可解析：先运行 `comet classic workspace resolve <change-name> --json`，进入返回的 `projectRoot` 后再选择 change
-- 状态文件缺失但 change 目录有效：先使用所选隔离方式准备工作区，再进入返回的 `projectRoot` 运行 `comet state init <change-name> full --isolation <selected-isolation>`，最后选择 change
-- 状态文件格式异常：停止并报告解析错误；根据版本控制、备份或能够核实的产物人工修复后再继续，不得用 `state set` 覆盖损坏文件
+- `sdk`：复用现有 Run，按 `data.nextAction.kind` 恢复；已领取但结果未明的 Action 先核对原结果，不重新创建 change 或重发外部工作。
+- `legacy`：复用旧 `.comet.yaml`，保留该 change 的原流程；不能自动把它改建为 SDK Run。
+- 命令失败：核对错误、归属记录、Run 和旧状态文件。归属冲突或状态格式异常时停止并报告；只有证实尚无任何 Runtime 归属、change 目录有效时，才按所选隔离方式准备工作区并用 `--runtime sdk` 初始化。不得因缺少 `.comet.yaml` 就重新初始化。
+
+SDK 与旧 change 都通过以下命令绑定工作区：
 
 ```bash
 comet classic workspace resolve <change-name> --json
@@ -31,11 +33,11 @@ comet classic workspace resolve <change-name> --json
 comet state select <change-name>
 ```
 
-创建新 change 时，必须先初始化 `.comet.yaml`，再立即运行上述 select 命令；状态文件尚不存在时，不得手工写入 change 选择记录。
+创建新 change 时，在创建 OpenSpec 基础目录后立即初始化 SDK Run，再运行上述 select 命令；初始化前不得手工写入 change 选择记录。
 
 ### 0b. Open 前工作区决策与准备
 
-创建 Classic change 时，读取 `comet-classic/reference/workspace.md`。必须先确定工作区，再创建 OpenSpec 产物和 `.comet.yaml`，不能推迟到 Build：
+创建 Classic change 时，读取 `comet-classic/reference/workspace.md`。必须先确定工作区，再创建 OpenSpec 产物和 SDK Run，不能推迟到 Build：
 
 - 用户明确要求并行工作时，直接使用 `worktree`；先准备好独立工作区，再创建 OpenSpec 产物和 state
 - 用户未指定隔离方式时，按参考文档处理：需要用户选择时，展示可用的 `current`、`branch`、`worktree` 选项，推荐理由不能代替用户选择
@@ -114,11 +116,11 @@ comet classic openspec -- --version
 - 「保持为一个 change」— 继续单 change 流程，并在 proposal/design/tasks 中记录不拆分原因
 - 「调整拆分方案后继续」— 用户说明调整方向后，重新输出候选拆分清单并再次确认
 
-每个被接受的拆分项都必须通过 `/comet-open` 创建独立 change，不得直接调用 `/opsx:new`。`/comet-open` 负责同时创建 OpenSpec 产物和 `.comet.yaml`，确保每个 change 都由 Comet 状态机管理。
+每个被接受的拆分项都必须通过 `/comet-open` 创建独立 change，不得直接调用 `/opsx:new`。`/comet-open` 负责创建 OpenSpec 产物并初始化独立的 SDK Run，确保每个 change 都由 Comet 管理。
 
 不得在用户完成 PRD 拆分选择前创建 proposal.md、design.md 或 tasks.md。若用户选择创建多个 change，当前 `/comet-open` 调用只负责完成拆分确认与调度，随后按用户确认的顺序分别进入每个拆分项的 `/comet-open`。
 
-用户确认创建多个 changes 后，必须立即把确认结果保存到 `.comet/batches/<batch-id>.json`。`batch-id` 使用固定的 kebab-case 标识。文件至少记录 `version`、原始目标摘要、创建时间、按顺序排列的 change 名称，以及每项的目标、范围、非目标、验收场景和 `pending|open-complete|selected` 状态。每创建或完成一个拆分项，都要原子更新该文件。这份清单用于记录批量创建顺序和进度，不替代各 change 的 `.comet.yaml`。
+用户确认创建多个 changes 后，必须立即把确认结果保存到 `.comet/batches/<batch-id>.json`。`batch-id` 使用固定的 kebab-case 标识。文件至少记录 `version`、原始目标摘要、创建时间、按顺序排列的 change 名称，以及每项的目标、范围、非目标、验收场景和 `pending|open-complete|selected` 状态。每创建或完成一个拆分项，都要原子更新该文件。这份清单用于记录批量创建顺序和进度，不替代各 change 的 SDK Run。
 
 批量拆分模式下，进入每个拆分项的 `/comet-open` 时，必须明确标注「已确认拆分项」，并传入该项的目标、范围、非目标和验收场景。已确认的拆分项默认跳过 PRD 拆分预检，除非该项本身仍明显包含多个独立功能。
 
@@ -134,7 +136,7 @@ comet state check <name> design --json
 
 该入口已检查 OpenSpec 的全部必需依赖、实际输出和 Comet 状态，不再额外重复查询 status。`isComplete` 仅用于诊断，非必需产物不会阻止流程继续。检查失败时，再查询 status，找出尚未生成的依赖，或处理已报告的路径错误、缺少必需能力等问题。
 
-任一拆分项未通过检查时，不能宣告拆分完成，也不能询问用户开始哪个 change。应停止后续推进，从该 change 的第一个 `ready` 或 `blocked` 产物恢复 `/comet-open`。OpenSpec 检查通过、但 Comet state 检查失败时，必须先修复 `.comet.yaml` 初始化或 phase，再重新执行整批检查。
+任一拆分项未通过检查时，不能宣告拆分完成，也不能询问用户开始哪个 change。应停止后续推进，从该 change 的第一个 `ready` 或 `blocked` 产物恢复 `/comet-open`。OpenSpec 检查通过、但 Comet state 检查失败时，先核对该 change 的 Runtime 归属、Run 和 phase，再重新执行整批检查；旧 change 才按旧状态文件恢复。
 
 只有所有拆分项都通过入口检查后，才暂停，请用户选择从哪一个 change 开始。用户选择后，将批量清单中的该项标记为 `selected`，只推进该 change 进入 `/comet-design`；其他 change 保持未归档状态，稍后通过 `/comet-classic` 恢复。
 
@@ -171,14 +173,15 @@ resolved brief 或 change 名称仍不明确时不得运行 `comet classic opens
 
 直接使用 Step 1b 的 resolved brief 填充产物内容。只有 brief 仍有会改变范围的歧义时，才回退到技能的提问流程。
 
-change 的基础目录和文件创建后，立即初始化状态，以便中断后恢复；不能等所有产物都生成后再写 `.comet.yaml`（入口状态验证统一在 Step 3 执行，这里不重复）：
+change 的基础目录和文件创建后，立即初始化 SDK Run，以便中断后恢复；不能等所有产物都生成后才初始化（入口状态验证统一在 Step 3 执行，这里不重复）：
 
 ```bash
-comet state init <name> full --isolation <selected-isolation>
+comet state init <name> full --isolation <selected-isolation> --runtime sdk
 comet state select <name>
+comet state next <name> --json
 ```
 
-任一命令失败都停止。随后运行一次 `comet classic openspec --agent-json -- status --change "<name>" --json` 并执行兼容性预检：
+任一命令失败都停止。`state next` 必须返回 `runtimeFormat: sdk`、`phase: open` 和当前 Run 的待执行 Action。随后运行一次 `comet classic openspec --agent-json -- status --change "<name>" --json` 并执行兼容性预检：
 
 - `changeRoot` 解析后必须等于路径解析器绑定的 `<classic-change-dir>`，`planningHome`（如存在）也必须位于当前仓库；不支持仓库外的产物路径
 - `artifacts` 必须包含 Classic 必需 ID `proposal`、`tasks`，其他要求沿 `requires` 递归展开
@@ -218,11 +221,12 @@ Agent JSON 模式下，从 `data.upstream.data` 读取上游字段。下一步�
 ```
 <classic-change-dir>/
 ├── .openspec.yaml
-├── .comet.yaml
 ├── proposal.md       # Why + What：问题、目标、范围
 ├── design.md         # 仅在依赖要求或实际需要时创建，保存技术决策，不复制到第二份设计文档
 └── tasks.md          # 任务清单（勾选框）
 ```
+
+SDK Run 保存在项目 `.comet/runtime/sdk-runs/classic/`，不在 change 目录创建 `.comet.yaml`；恢复时通过 `state next` 和 `state check` 读取 Run，不直接编辑其存储文件。
 
 ### 3. 入口状态验证
 
@@ -236,7 +240,7 @@ comet state check <name> open
 
 **恢复未完成的创建步骤**：open 阶段的操作允许安全重试；恢复时按以下顺序识别已完成的部分，只补未完成的工作：
 
-1. 状态文件缺失时先使用所选隔离方式准备工作区，再进入返回的 `projectRoot` 运行 `comet state init <name> full --isolation <selected-isolation>`；格式异常时停止并修复，不得覆盖。随后选择 change 并运行 `comet state check <name> open`。
+1. 先运行 `comet state next <name> --json` 确认归属。`runtimeFormat: sdk` 时复用原 Run；`runtimeFormat: legacy` 时保留旧流程。只有证实没有 Run、归属记录和旧状态，才准备工作区并运行 `comet state init <name> full --isolation <selected-isolation> --runtime sdk`；格式异常或归属冲突时停止，不覆盖。随后选择 change 并运行 `comet state check <name> open`。
 2. 运行 `comet classic openspec --agent-json -- status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
 3. `done`：该产物已完成，保持原文件不变，不重复生成。
 4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后用 `comet state artifacts <name> --json` 做本地闭包校验，不重新运行 status。
@@ -253,7 +257,7 @@ comet state check <name> open
 
 ### 5. 请用户确认产物
 
-全部 OpenSpec 产物完成且内容完整性检查通过后，**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户确认**。不得在用户确认前执行阶段守卫或自动进入下一阶段。
+全部 OpenSpec 产物完成且内容完整性检查通过后，先运行 `comet state next <name> --json` 确认当前 `runtimeFormat`。SDK change 再运行 `comet guard <change-name> open --json` 取得预检结果、内容摘要和 `data.approvalHash`；预检未通过时先修复问题。随后**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户确认**。不得在用户确认前应用阶段守卫或自动进入下一阶段。
 
 最终审视同时确认 change 名称、范围和产物内容；不得因 Step 1b 已完成解析而省略，也不得在此之前再增加一次常规摘要/命名确认。
 
@@ -272,25 +276,26 @@ comet state check <name> open
 - 「确认，继续下一阶段」— 产物符合预期，执行阶段守卫流转
 - 「需要调整」— 附带调整说明，修改后重新请求确认
 
-用户选择「确认」后继续执行退出条件。用户选择「需要调整」时，按其说明修改对应文件，然后重新请求确认。
+用户选择「确认」后继续执行退出条件。SDK change 必须沿用向用户展示的同一次预检返回的 `approvalHash`；用户选择「需要调整」时，按其说明修改对应文件，重新预检并请求确认，不能沿用旧哈希。
 
 ## 退出条件
 
 - `comet state artifacts <name> --json` 通过：完整必需闭包已完成或合法跳过，所需实际输出非空
 - **用户已确认** 全部 OpenSpec 产物的内容符合预期
-- **阶段守卫**：运行 `comet guard <change-name> open --apply`，全部 PASS 后由守卫推进到下一阶段（此步骤更新 `phase` 字段，与 `auto_transition` 无关）
+- **阶段守卫**：SDK change 使用当前预检的 `approvalHash` 应用；旧 change 保留原有 `comet guard <change-name> open --apply`。全部 PASS 后由守卫推进到下一阶段。
 
-退出前必须使用 `--apply`，否则 `.comet.yaml` 仍停留在 `phase: open`，下一阶段入口检查会失败。
+退出前必须应用阶段守卫，否则 Run 或旧 `.comet.yaml` 仍停留在 Open，下一阶段入口检查会失败。SDK 预检后若产物变化，应重新预检并让用户确认当前内容，不能拿旧哈希重试。
 
 ```bash
-comet guard <change-name> open --apply
+comet guard <change-name> open --apply --approval-hash <approvalHash>  # SDK
+comet guard <change-name> open --apply                           # legacy
 ```
 
 完整流程会自动更新为 `phase: design`；hotfix/tweak 预设会自动更新为 `phase: build`。
 
 ## 自动衔接下一阶段
 
-按 `comet-classic/reference/auto-transition.md` 和成功结果中的 `agent.continuation` 继续。已有仍然有效的状态信息时，不重复 next、select 或 check。只有丢失上下文后恢复任务、外部状态变化，或旧结果未提供这些信息时，才运行：
+SDK change 应运行 `comet state next <change-name> --json`，根据同一 Run 返回的 `nextAction.kind` 和 phase 继续：`action` 才加载返回的 Skill；`decision`、`evidence`、`reconcile` 先进入对应恢复步骤，不自动重放。旧 change 按 `comet-classic/reference/auto-transition.md` 和成功结果中的 `agent.continuation` 继续。已有仍然有效的旧状态信息时，不重复 next、select 或 check。只有丢失上下文后恢复任务、外部状态变化，或旧结果未提供这些信息时，才运行：
 
 ```bash
 comet state next <change-name>

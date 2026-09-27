@@ -1251,7 +1251,7 @@ describe('doctor command', () => {
   });
 
   it('fails a Classic change check without reading through its runtime directory link', async () => {
-    const initialized = await state(tmpDir, 'init', 'runtime-link', 'full');
+    const initialized = await state(tmpDir, 'init', 'runtime-link', 'full', '--runtime', 'legacy');
     expect(initialized.status, initialized.stderr).toBe(0);
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'runtime-link');
     const runtimeDir = path.join(changeDir, '.comet');
@@ -1282,7 +1282,7 @@ describe('doctor command', () => {
 
   it('accepts current Comet state fields while a standalone OpenSpec root coexists', async () => {
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'current-state');
-    await state(tmpDir, 'init', 'current-state', 'full');
+    await state(tmpDir, 'init', 'current-state', 'full', '--runtime', 'legacy');
     await state(tmpDir, 'set', 'current-state', 'phase', 'verify');
     await fs.mkdir(path.join(tmpDir, 'docs', 'openspec'), { recursive: true });
     const before = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
@@ -2060,7 +2060,7 @@ describe('doctor command', () => {
 
   it('uses the shared schema and leaves invalid state untouched', async () => {
     const invalidChangeDir = path.join(tmpDir, 'openspec', 'changes', 'top-level-invalid');
-    await state(tmpDir, 'init', 'top-level-invalid', 'full');
+    await state(tmpDir, 'init', 'top-level-invalid', 'full', '--runtime', 'legacy');
     await fs.appendFile(path.join(invalidChangeDir, '.comet.yaml'), 'unknown_root_field: true\n');
     const before = await fs.readFile(path.join(invalidChangeDir, '.comet.yaml'), 'utf8');
 
@@ -2089,7 +2089,7 @@ describe('doctor command', () => {
   });
 
   it('uses Classic diagnostics for comet yaml validity messages', async () => {
-    await state(tmpDir, 'init', 'demo', 'full');
+    await state(tmpDir, 'init', 'demo', 'full', '--runtime', 'legacy');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     let json: string;
@@ -2109,7 +2109,7 @@ describe('doctor command', () => {
   });
 
   it('does not synthesize runtime evidence while inspecting a legacy change', async () => {
-    await state(tmpDir, 'init', 'demo', 'full');
+    await state(tmpDir, 'init', 'demo', 'full', '--runtime', 'legacy');
     const stateFile = path.join(tmpDir, 'openspec', 'changes', 'demo', '.comet.yaml');
     const before = await fs.readFile(stateFile, 'utf8');
 
@@ -2129,7 +2129,7 @@ describe('doctor command', () => {
 
   it('prints invalid comet yaml errors together with a concrete next step', async () => {
     const invalidChangeDir = path.join(tmpDir, 'openspec', 'changes', 'top-level-invalid');
-    await state(tmpDir, 'init', 'top-level-invalid', 'full');
+    await state(tmpDir, 'init', 'top-level-invalid', 'full', '--runtime', 'legacy');
     await fs.appendFile(path.join(invalidChangeDir, '.comet.yaml'), 'unknown_root_field: true\n');
 
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);

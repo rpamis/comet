@@ -62,7 +62,9 @@ describe('Classic OpenSpec adapter', () => {
       status: 1,
       signal: null,
     });
-    expect((await runClassicCli(['state', 'init', 'demo', 'full'])).exitCode).toBe(0);
+    expect(
+      (await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy'])).exitCode,
+    ).toBe(0);
     const previousForcePhase = process.env.COMET_FORCE_PHASE;
     process.env.COMET_FORCE_PHASE = '1';
     try {

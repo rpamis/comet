@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
 
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import {
   gitWorktreeContextFromEntries,
   inspectGitWorktree,
@@ -10,13 +11,15 @@ import {
 
 import { canonicalHash } from './native-canonical-hash.js';
 import { inspectNativeChangeStateDocument } from './native-change.js';
-import { readProjectConfig } from './native-config.js';
+import { defaultProjectConfig, readProjectConfig } from './native-config.js';
 import {
   inspectNativeStatus,
   listNativeChangeNames,
   NATIVE_STATUS_PAGE_LIMITS,
 } from './native-diagnostics.js';
 import { nativeProjectPaths } from './native-paths.js';
+import { listNativeSdkChangeNames } from './native-runtime-ownership.js';
+import { inspectNativeSdkStatus, type NativeSdkStatusProjection } from './native-sdk-status.js';
 import {
   listNativeArchivedStatusRecords,
   nativeArchiveSupersedes,
@@ -73,6 +76,7 @@ interface NativeStatusCandidate {
 export type NativeDiscoveredStatusProjection =
   | NativeStatusProjection
   | NativePortableStatusProjection
+  | NativeSdkStatusProjection
   | NativeLegacyMigrationStatusProjection
   | NativeInspectionErrorStatusProjection;
 
@@ -144,7 +148,8 @@ export interface NativeLegacyMigrationStatusProjection {
 }
 
 export interface NativeDiscoveredStatusPageProjection {
-  schema: 'comet.native.status-page.v1' | 'comet.native.status-page.v2';
+  schema:
+    'comet.native.status-page.v1' | 'comet.native.status-page.v2' | 'comet.native.status-page.v3';
   total: number;
   offset: number;
   items: NativeDiscoveredStatusProjection[];
@@ -211,8 +216,9 @@ async function discoverSources(
     const key = process.platform === 'win32' ? identity.toLowerCase() : identity;
     if (seen.has(key)) continue;
     seen.add(key);
-    const config = await readProjectConfig(candidate);
-    if (!config) continue;
+    const configured = await readProjectConfig(candidate);
+    if (!configured && (await listNativeSdkChangeNames(candidate)).length === 0) continue;
+    const config = configured ?? defaultProjectConfig();
     const paths = await nativeProjectPaths(candidate, config.native.artifact_root);
     sources.push({
       projectRoot: candidate,
@@ -718,6 +724,30 @@ export async function inspectDiscoveredNativeStatus(options: {
     options.projectRoot,
     options.name,
   );
+  const sdkSources = (
+    await Promise.all(
+      sources.map(async (source) =>
+        (await readSdkChangeOwner(source.projectRoot, 'native', options.name)) ? source : null,
+      ),
+    )
+  ).filter((source): source is NativeWorkspaceSource => source !== null);
+  if (sdkSources.length > 1) {
+    throw new Error(`Native SDK change ${options.name} has multiple workspace owners`);
+  }
+  if (sdkSources.length === 1) {
+    if (candidates.some((candidate) => !candidate.record?.state.archived)) {
+      throw new Error(`Native change ${options.name} has conflicting SDK and legacy Runtime state`);
+    }
+    if (options.detailsCursor) {
+      throw new Error('SDK Native status details do not use --cursor');
+    }
+    options.onSelectedRoot?.(sdkSources[0].projectRoot);
+    return inspectNativeSdkStatus({
+      projectRoot: sdkSources[0].projectRoot,
+      name: options.name,
+      details: options.details,
+    });
+  }
   if (candidates.length === 0) {
     const current =
       sources.find((source) => samePath(source.projectRoot, options.projectRoot)) ?? sources[0];
@@ -774,13 +804,53 @@ export async function listDiscoveredNativeStatusPage(options: {
   cursor?: string | null;
 }): Promise<NativeDiscoveredStatusPageProjection> {
   const sources = await discoverSources(options.projectRoot);
-  const candidates = await discoverCandidates(options.projectRoot, sources);
+  const legacyCandidates = await discoverCandidates(options.projectRoot, sources);
+  const sdkCandidates = (
+    await Promise.all(
+      sources.map(async (source) =>
+        (await listNativeSdkChangeNames(source.projectRoot)).map((name) => ({
+          kind: 'sdk' as const,
+          name,
+          projectRoot: source.projectRoot,
+          bindingState: 'aligned' as const,
+        })),
+      ),
+    )
+  ).flat();
+  const sdkNames = new Set<string>();
+  for (const sdk of sdkCandidates) {
+    if (sdkNames.has(sdk.name)) {
+      throw new Error(`Native SDK change ${sdk.name} has multiple workspace owners`);
+    }
+    sdkNames.add(sdk.name);
+    if (
+      legacyCandidates.some(
+        (candidate) => candidate.name === sdk.name && !candidate.record?.state.archived,
+      )
+    ) {
+      throw new Error(`Native change ${sdk.name} has conflicting SDK and legacy Runtime state`);
+    }
+  }
+  const candidates = [
+    ...legacyCandidates.filter((candidate) => !sdkNames.has(candidate.name)),
+    ...sdkCandidates,
+  ].sort((left, right) =>
+    `${left.name}\0${left.kind === 'sdk' ? left.projectRoot : left.source.projectRoot}`.localeCompare(
+      `${right.name}\0${right.kind === 'sdk' ? right.projectRoot : right.source.projectRoot}`,
+    ),
+  );
+  if (candidates.length > NATIVE_STATUS_PAGE_LIMITS.maxChanges) {
+    throw new Error(
+      `Native status discovery exceeds ${NATIVE_STATUS_PAGE_LIMITS.maxChanges} visible changes`,
+    );
+  }
   const candidatesHash = canonicalHash(
     'comet.native.workspace-status-candidates.v1',
     candidates.map((candidate) => ({
       name: candidate.name,
-      projectRoot: candidate.source.projectRoot,
-      bindingState: candidate.workspace.bindingState,
+      projectRoot: candidate.kind === 'sdk' ? candidate.projectRoot : candidate.source.projectRoot,
+      bindingState:
+        candidate.kind === 'sdk' ? candidate.bindingState : candidate.workspace.bindingState,
       kind: candidate.kind,
     })),
   );
@@ -792,12 +862,18 @@ export async function listDiscoveredNativeStatusPage(options: {
   const projected = await Promise.all(
     candidates
       .slice(offset, offset + NATIVE_STATUS_PAGE_LIMITS.maxItems)
-      .map((candidate) => inspectCandidate(candidate, false)),
+      .map((candidate) =>
+        candidate.kind === 'sdk'
+          ? inspectNativeSdkStatus({ projectRoot: candidate.projectRoot, name: candidate.name })
+          : inspectCandidate(candidate, false),
+      ),
   );
   const items: NativeDiscoveredStatusProjection[] = [];
-  const schema = candidates.some(({ kind }) => kind === 'portable')
-    ? ('comet.native.status-page.v2' as const)
-    : ('comet.native.status-page.v1' as const);
+  const schema = candidates.some(({ kind }) => kind === 'sdk')
+    ? ('comet.native.status-page.v3' as const)
+    : candidates.some(({ kind }) => kind === 'portable')
+      ? ('comet.native.status-page.v2' as const)
+      : ('comet.native.status-page.v1' as const);
   for (const candidate of projected) {
     const trialItems = [...items, candidate];
     const nextOffset = offset + trialItems.length;

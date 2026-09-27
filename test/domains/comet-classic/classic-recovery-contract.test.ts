@@ -20,7 +20,7 @@ describe('Classic compact recovery and task reconciliation', () => {
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-recovery-contract-'));
     await prepareClassicLegacyProject(root);
-    expect((await cli('state', 'init', 'demo', 'hotfix')).exitCode).toBe(0);
+    expect((await cli('state', 'init', 'demo', 'hotfix', '--runtime', 'legacy')).exitCode).toBe(0);
     change = path.join(root, 'openspec/changes/demo');
     await fs.writeFile(path.join(change, 'tasks.md'), tasks);
     await fs.writeFile(path.join(change, 'proposal.md'), 'Repair implementation\n');
@@ -303,9 +303,20 @@ describe('Classic compact recovery and task reconciliation', () => {
     git('add', '--', '.');
     git('commit', '-m', 'chore: archive demo');
     const commit = git('rev-parse', 'HEAD');
-    expect((await cli('state', 'init', 'other', 'hotfix', '--isolation', 'current')).exitCode).toBe(
-      0,
-    );
+    expect(
+      (
+        await cli(
+          'state',
+          'init',
+          'other',
+          'hotfix',
+          '--isolation',
+          'current',
+          '--runtime',
+          'legacy',
+        )
+      ).exitCode,
+    ).toBe(0);
     expect((await cli('state', 'select', 'other')).exitCode).toBe(0);
     await fs.writeFile(
       inputPath,

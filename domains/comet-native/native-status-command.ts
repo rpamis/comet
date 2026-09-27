@@ -1,3 +1,6 @@
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { nativeStatusSummaryLine } from './native-output-language.js';
+import { inspectNativeSdkStatus, type NativeSdkStatusProjection } from './native-sdk-status.js';
 import {
   inspectDiscoveredNativeStatus,
   listDiscoveredNativeStatusPage,
@@ -10,6 +13,22 @@ import {
   takeOption,
   type DispatchResult,
 } from './native-cli-shared.js';
+
+function sdkStatusResult(data: NativeSdkStatusProjection, executionCwd: string): DispatchResult {
+  return {
+    ...success('status', data),
+    executionCwd,
+    envelope: {
+      summary: nativeStatusSummaryLine({
+        name: data.name,
+        phase: data.phase,
+        status: data.status,
+        acceptance: data.acceptance,
+        locale: data.language === 'zh-CN' ? 'zh-CN' : 'en',
+      }),
+    },
+  };
+}
 
 export async function nativeStatusCommand(
   args: string[],
@@ -24,6 +43,13 @@ export async function nativeStatusCommand(
   }
   assertNoArguments(args);
   let executionCwd = projectRoot;
+  if (name && (await readSdkChangeOwner(projectRoot, 'native', name))) {
+    if (cursor) throw new NativeUsageError('SDK Native status details do not use --cursor');
+    return sdkStatusResult(
+      await inspectNativeSdkStatus({ projectRoot, name, details }),
+      projectRoot,
+    );
+  }
   const data = name
     ? await inspectDiscoveredNativeStatus({
         projectRoot,
@@ -38,5 +64,8 @@ export async function nativeStatusCommand(
         projectRoot,
         ...(cursor ? { cursor } : {}),
       });
+  if (name && 'run' in data && data.schema === 'comet.native.sdk-status.v1') {
+    return sdkStatusResult(data, executionCwd);
+  }
   return { ...success('status', data), executionCwd };
 }

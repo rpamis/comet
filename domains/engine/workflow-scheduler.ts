@@ -2,7 +2,12 @@ import { createRuntimeAction } from './runtime-action.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
 import { hashRuntimeValue, type RuntimeValue } from './runtime-json.js';
 import type { WorkflowDefinition } from './workflow-definition.js';
-import type { WorkflowResult, WorkflowRun, WorkflowToken } from './workflow-run.js';
+import type {
+  WorkflowResult,
+  WorkflowRun,
+  WorkflowStepActivation,
+  WorkflowToken,
+} from './workflow-run.js';
 
 function put<T>(target: Record<string, T>, key: string, value: T): void {
   Object.defineProperty(target, key, {
@@ -60,6 +65,7 @@ export function scheduleWorkflow(run: WorkflowRun, definition: WorkflowDefinitio
     const input = {
       input: step.input === undefined ? run.input : step.input,
       outputs: workflowOutputs(results),
+      ...(incoming.activation === undefined ? {} : { activation: incoming.activation }),
     };
     if (step.type === 'ask_user') {
       const outputs = Object.fromEntries(
@@ -73,7 +79,11 @@ export function scheduleWorkflow(run: WorkflowRun, definition: WorkflowDefinitio
           return [source, results[source].value];
         }),
       );
-      const proposal = { input: input.input, outputs };
+      const proposal = {
+        input: input.input,
+        outputs,
+        ...(incoming.activation === undefined ? {} : { activation: incoming.activation }),
+      };
       run.waits.push({
         id,
         stepId: incoming.to,
@@ -82,6 +92,16 @@ export function scheduleWorkflow(run: WorkflowRun, definition: WorkflowDefinitio
         proposal,
         proposalHash: hashRuntimeValue(proposal),
         choices: [...step.choices],
+        results,
+      });
+    } else if (step.type === 'await_evidence') {
+      run.evidenceWaits ??= [];
+      run.evidenceWaits.push({
+        id,
+        stepId: incoming.to,
+        sequence,
+        kind: step.kind,
+        status: 'pending',
         results,
       });
     } else {
@@ -111,7 +131,9 @@ export function scheduleWorkflow(run: WorkflowRun, definition: WorkflowDefinitio
   const active = run.actions.some((action) =>
     ['pending', 'running', 'unknown'].includes(action.status),
   );
-  const waiting = run.waits.some((wait) => wait.status === 'pending');
+  const waiting =
+    run.waits.some((wait) => wait.status === 'pending') ||
+    (run.evidenceWaits?.some((wait) => wait.status === 'pending') ?? false);
   const incompleteJoin = Object.values(run.joins).some((queues) =>
     Object.values(queues).some((queue) => queue.length > 0),
   );
@@ -126,6 +148,7 @@ export function advanceWorkflow(
   previous: Record<string, WorkflowResult>,
   output: RuntimeValue,
   event: string,
+  selectedTargets?: readonly (string | WorkflowStepActivation)[],
 ): void {
   const result = { sequence, value: output };
   const results = { ...previous };
@@ -134,17 +157,29 @@ export function advanceWorkflow(
     put(run.outputs, stepId, result);
   }
   const outgoing = definition.transitions.filter((edge) => edge.from === stepId);
-  const selected = outgoing.filter((edge) => edge.on === event);
+  const declared = outgoing.filter((edge) => edge.on === event);
+  const selected = selectedTargets ?? declared.map((edge) => edge.to);
   if (selected.length === 0 && event === 'failed') {
     run.status = 'failed';
     run.reason = `ACTION_FAILED: ${stepId}`;
     return;
   }
-  if (selected.length === 0 && outgoing.length > 0) {
+  if (selected.length === 0 && selectedTargets === undefined && outgoing.length > 0) {
     throw new RuntimeProtocolError(
       'TRANSITION_UNAVAILABLE',
       `步骤 ${stepId} 未声明 ${event} 的后续转换`,
     );
   }
-  for (const edge of selected) run.ready.push({ from: stepId, to: edge.to, results });
+  for (const target of selected) {
+    const to = typeof target === 'string' ? target : target.stepId;
+    if (!declared.some((edge) => edge.to === to)) {
+      throw new RuntimeProtocolError('TRANSITION_TARGET_INVALID', '后续步骤必须由工作流声明');
+    }
+    run.ready.push({
+      from: stepId,
+      to,
+      results,
+      ...(typeof target === 'string' ? {} : { activation: target.input }),
+    });
+  }
 }

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as gitWorktree from '../../../platform/paths/git-worktree.js';
 
+import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import { createNativeChange } from '../../../domains/comet-native/native-change.js';
 import {
@@ -16,6 +17,7 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import { listDiscoveredNativeStatusPage } from '../../../domains/comet-native/native-status-discovery.js';
 
 interface RepositoryFixture {
@@ -65,7 +67,15 @@ describe('Native v4 registered-worktree status discovery', () => {
     const { runNativeCli } = await import('../../../domains/comet-native/native-cli.js');
     for (const name of ['target', 'unrelated']) {
       const root = addWorktree(repository, name, `comet/${name}`);
-      const result = await runNativeCli(['new', name, '--project-root', root, '--json']);
+      const result = await runNativeCli([
+        'new',
+        name,
+        '--runtime',
+        'legacy',
+        '--project-root',
+        root,
+        '--json',
+      ]);
       expect(result.exitCode).toBe(0);
     }
     const archiveDir = path.join(repository.root, 'docs/comet/archive/2026-09-10-unrelated');
@@ -177,6 +187,51 @@ describe('Native v4 registered-worktree status discovery', () => {
     expect(
       gitWorktree.samePath(listedData.items?.[0]?.workspace?.projectRoot ?? '', worktreeRoot),
     ).toBe(true);
+  });
+
+  it('finds an SDK-owned Native change in its linked worktree from the primary checkout', async () => {
+    const repository = await createRepository();
+    roots.push(repository.root);
+    const worktreeRoot = addWorktree(repository, 'sdk-side', 'comet/sdk-side');
+    const request = path.join(worktreeRoot, 'sdk-start.json');
+    await fs.writeFile(
+      request,
+      JSON.stringify({
+        operation: 'start',
+        runId: 'sdk-side',
+        workflow: { id: 'comet-native', version: '1' },
+        input: { name: 'sdk-side', artifactRootRef: 'docs' },
+        initialState: createNativePortableState({
+          name: 'sdk-side',
+          language: 'en',
+          createdAt: '2026-09-25T00:00:00.000Z',
+          nextAction: 'prepare-shape-confirmation',
+          workspace: {
+            isolation: 'worktree',
+            change_branch: 'comet/sdk-side',
+            target_branch: repository.targetBranch,
+            finish: null,
+          },
+        }),
+      }),
+    );
+    const started = await runtimeDispatchCommand(
+      { request, application: 'native', projectRoot: worktreeRoot },
+      { invocationCwd: worktreeRoot },
+    );
+    expect(started.response.status).toBe('succeeded');
+
+    const status = json(
+      await runNativeCli(['status', 'sdk-side', '--json', '--project-root', repository.root]),
+    );
+    const data = status.data as { workspace?: { projectRoot?: string; bindingState?: string } };
+    expect(data).toMatchObject({
+      schema: 'comet.native.sdk-status.v1',
+      name: 'sdk-side',
+      phase: 'shape',
+      workspace: { bindingState: 'aligned' },
+    });
+    expect(gitWorktree.samePath(data.workspace?.projectRoot ?? '', worktreeRoot)).toBe(true);
   });
 
   it('merges portable and legacy changes instead of returning early on the current v4', async () => {

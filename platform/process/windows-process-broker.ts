@@ -77,9 +77,9 @@ function windowsCommandLine(command: string, args: readonly string[]): string {
   return [command, ...args].map(quoteWindowsArgument).join(' ');
 }
 
-export function launchWindowsProcessWithBroker(
+export async function launchWindowsProcessWithBroker(
   options: WindowsBrokerProcessOptions,
-): WindowsBrokerProcessResult {
+): Promise<WindowsBrokerProcessResult> {
   const payload = Buffer.from(
     JSON.stringify({
       commandLine: windowsCommandLine(options.command, options.args),
@@ -103,14 +103,30 @@ export function launchWindowsProcessWithBroker(
       {
         cwd: options.cwd,
         env: { ...options.env, [WINDOWS_PROCESS_PAYLOAD]: payload },
-        stdio: 'ignore',
+        stdio: ['ignore', 'ignore', 'pipe'],
         windowsHide: true,
       },
     );
-    launched.on('error', () => undefined);
     if (!launched.pid) return { started: false, error: 'Windows process broker did not start' };
-    launched.unref();
-    return { started: true };
+    return await new Promise<WindowsBrokerProcessResult>((resolve) => {
+      let errorOutput = '';
+      launched.stderr?.on('data', (chunk: Buffer) => {
+        errorOutput = (errorOutput + chunk.toString('utf8')).slice(-8192);
+      });
+      launched.once('error', (error: Error) => {
+        resolve({ started: false, error: error.message });
+      });
+      launched.once('close', (code: number | null) => {
+        resolve(
+          code === 0
+            ? { started: true }
+            : {
+                started: false,
+                error: errorOutput.trim() || `Windows process broker exited with code ${code}`,
+              },
+        );
+      });
+    });
   } catch (error) {
     return {
       started: false,

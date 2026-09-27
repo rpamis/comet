@@ -20,6 +20,17 @@ Use it for configuration, documentation, or prompt adjustments, and moderate cha
 
 **When the preset may no longer fit:** If implementation encounters a change listed under “Escalation decisions,” let the user decide whether to use the full `/comet-classic` flow.
 
+## SDK Run path
+
+When resuming, first run `comet state next <change-name> --json` and route by `data.runtimeFormat`. For `sdk`, use this section for state changes. The applicability, OpenSpec apply method, escalation, and file-count authorization rules below still apply; legacy state writes, evidence commands, and `.comet.yaml` tests do not. For `nextAction.kind: reconcile`, run `comet state check <change-name> <phase> --recover --json` to investigate the original Action; do not repeat implementation, checks, or archive while its result is unknown.
+
+1. For a new change, have the user select workspace isolation as described below. Run `comet classic workspace prepare <name> --isolation <selected-isolation> --json`, enter `projectRoot`, then run `comet state init <name> tweak --isolation <selected-isolation> --runtime sdk` and `comet state select <name>`. Create OpenSpec artifacts under Step 1, including any delta spec this change needs. Run `comet state check <change-name> open --json` and preview `comet guard <change-name> open`, then apply `comet guard <change-name> open --apply`. Open completes only when the Run enters Build.
+2. At `tweak.build.execute`, follow Step 2's OpenSpec apply method and complete the same tasks.md. On a material escalation signal or file-count overage without valid authorization, run `comet state propose-escalation <change-name> --reason "<reason>"`. Present the reason and effects of continuing tweak versus upgrading to full; save `data.wait.proposalHash`. After explicit choice, run `comet state decide-escalation <change-name> --proposal-hash <proposalHash> --choice <continue|upgrade>`. Continuing still requires the scope, risk, and ruling conditions below. Upgrade enters full Design in the same Run and workspace; immediately load comet-design through the standard trigger. Reuse a pending Wait on recovery.
+3. When tasks are complete and tweak still fits, preview `comet guard <change-name> build`, then run `comet guard <change-name> build --apply -- <program> [args...]` with the full build or acceptance command. Guard executes the real check and records it; only valid success enters Verify. On failure follow the new `state next --json`; do not replay an unknown Action.
+4. When the Run enters Verify, **Immediately execute:** Use the Skill tool to load the comet-verify skill. Skipping this step is prohibited. Cover delta-spec consistency in full verification when applicable; do not call legacy `state set verify_mode`. When the Run enters Archive, **Immediately execute:** Use the Skill tool to load the comet-archive skill. Skipping this step is prohibited. Archive and delivery still need current user authorization; claim completion only after `state next --json` shows a completed Run.
+
+Read `comet state next <change-name> --json` after each phase change. Resolve `decision`, `evidence`, or `reconcile` within the current Run; execute the corresponding step only for `action`. The remaining legacy Runtime steps apply only to `runtimeFormat: legacy`.
+
 ---
 
 ## Preset flow: 4 phases

@@ -74,7 +74,7 @@ describe('resumeProbe command', () => {
     await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
     await fs.writeFile(path.join(tmpDir, '.comet', 'config.yaml'), classicProjectConfig(), 'utf8');
     await fs.mkdir(path.join(tmpDir, 'openspec'), { recursive: true });
-    state(tmpDir, ['init', activeChange, 'full']);
+    state(tmpDir, ['init', activeChange, 'full', '--runtime', 'legacy']);
     state(tmpDir, ['set', activeChange, 'build_mode', 'executing-plans']);
     state(tmpDir, ['set', activeChange, 'tdd_mode', 'direct']);
     state(tmpDir, ['set', activeChange, 'isolation', 'branch']);

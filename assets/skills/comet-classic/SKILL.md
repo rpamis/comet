@@ -13,16 +13,16 @@ Before starting or recovering, use `comet-classic/reference/classic-layout.md` t
 
 - When Classic was not explicitly invoked and existing work may need to resume: read Ambient Resume in `comet-classic/reference/context-recovery.md` and follow `comet resume-probe . --stdin --json`. Only `auto_resume` enters automatically; for `ask_user` ask by `reason` using the Ambient Resume table's question and options; `out_of_scope`/`none` does not enter.
 - When starting a new request or the target change is unclear: read the minimal example and target-selection rules in `comet-classic/reference/intent-frame.md`. List active changes, fill a CometIntentFrame, and run `comet classic intent route --stdin`. The Agent extracts intent fields from evidence; Runtime computes the route. Follow its result without inventing a separate set of prose scoring rules.
-- When the target change is explicit and already initialized (`.comet.yaml` exists): bind its workspace below. Do not bind early when several active changes exist and none has been selected. A new change (not yet initialized) goes straight to `/comet-open` or the matching preset Skill, which prepares the workspace before initializing; `workspace resolve` reports not-found for an uninitialized change.
+- When the target change is explicit and Runtime has initialized it, bind its workspace below. An SDK Run and a legacy `.comet.yaml` are both valid ownership; absence of the legacy file does not mean a change is new. Do not bind early when several active changes exist and none has been selected. A genuinely new change goes to `/comet-open` or the matching preset Skill, which prepares the workspace before initializing; `workspace resolve` reports not-found for an uninitialized change.
 
 ```bash
 comet classic workspace resolve <change-name> --json
 # Enter the returned projectRoot before selecting the change
 comet state select <change-name>
-comet state next <name> --json
+comet state next <change-name> --json
 ```
 
-Continue from the returned phase, configuration, and next route. Send a new full change to `/comet-open`, which prepares the workspace and creates OpenSpec artifacts and `.comet.yaml`. Send confirmed hotfix/tweak choices to `/comet-hotfix` or `/comet-tweak` for their own initialization steps. Do not call `/opsx:new` directly. If an existing change has no state file, follow “Entry Errors and Recovery” in context-recovery.md to establish its workflow and recover. Report malformed state rather than guessing a phase from existing artifacts.
+Use `data.runtimeFormat` to distinguish `sdk` from `legacy`, then follow the returned phase, configuration, and `data.nextAction.kind`. Only an SDK `action` loads the returned Skill. For `decision`, `evidence`, or `reconcile`, first resolve the current Run's decision, evidence, or claimed Action; never replay it as a fresh Skill action. Keep legacy routing for legacy changes. Send a new full change to `/comet-open`, which prepares the workspace, creates OpenSpec artifacts, and initializes an SDK Run. Send confirmed hotfix/tweak choices to their preset Skills. Do not call `/opsx:new` directly. On ownership conflicts or malformed state, follow “Entry Errors and Recovery” in context-recovery.md and stop; do not infer phase from artifacts or create another state record.
 
 A new full change must have its workspace selected before Open creates artifacts. Full-workflow `isolation` may be `current`, `branch`, or `worktree`; prepare a Worktree for explicit parallel-work requests, and otherwise follow `comet-classic/reference/workspace.md`. Hotfix/tweak confirm and bind workspaces during their own initialization. Resume in the bound workspace. If branch ownership has changed, rebind according to the user's confirmed choice; ask only when valid authorization is missing.
 

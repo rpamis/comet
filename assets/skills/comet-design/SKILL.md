@@ -7,6 +7,17 @@ description: 'Complete the Classic technical design and obtain user confirmation
 
 After the entry returns layout, use `comet-classic/reference/classic-layout.md` to resolve each logical root. Reuse this protocol if it is already in context. Route all OpenSpec CLI calls through the adapter and use the bound `<classic-*>` roots for file paths; do not run an extra root show first.
 
+## SDK Run path
+
+Run `comet state next <change-name> --json` first. For `data.runtimeFormat: sdk`, use this section for state changes; retain the brainstorming method in Step 1b, questions in Step 1c, and Design Doc requirements in Step 2, but do not execute legacy state commands below. `data.phase` must be `design`. If Build has begun, return to its entry. For `nextAction.kind: reconcile`, run `comet state check <change-name> design --recover --json` and establish the claimed Action's original outcome before proposing or redispatching.
+
+1. At `full.design.handoff`, run `comet state check <change-name> design --json` for layout and references. Read the current OpenSpec proposal, tasks, delta specs, and relevant existing design.md. Develop candidate solutions using Step 1b's brainstorming method and keep `brainstorm-summary.md` current, marking unapproved content as a candidate. There is no SDK handoff packet yet; do not call legacy `comet handoff ... --write` or substitute a handwritten summary.
+2. For a needed Spec Patch, explain it and obtain explicit agreement under Step 1c before editing the delta spec. Reclarify material scope changes. When sources are stable, run `comet state propose-design <change-name> --proposal "<candidate-summary>"`; the summary must cover the proposed design, tradeoffs, risks, and Spec Patch. Save `data.wait.proposalHash` as `<proposalHash>`. This creates the traceable handoff. Then read `data.configuration.handoffContext` from `comet state next <change-name> --json` and verify the Markdown packet matches the candidate and source files. Reuse an existing pending Wait on recovery.
+3. Present the design under Step 1c and ask the user to approve, request changes, or defer. Submit `comet state decide-design <change-name> --proposal-hash <proposalHash> --choice <approved|rejected>` only for an explicit approval or rejection. Rework and propose again after rejection; leave the Wait untouched when deferred. If source or handoff drift invalidates approval, investigate rather than applying an old decision.
+4. After approval, write the single Design Doc with required frontmatter. If recovery already points to `full.design.document`, continue here. Preview with `comet guard <change-name> design --design-doc <design-doc-ref>`, then run `comet state complete-design <change-name> --design-doc <design-doc-ref> --approval-hash <proposalHash>`. On failure preserve the Run and address the specific cause; do not create legacy state or manually advance phase. Read `state next --json` afterward and route to the returned Build Action.
+
+The remaining legacy Runtime steps apply only to `runtimeFormat: legacy`.
+
 ## Prerequisites
 
 - An active change exists and its required Open artifacts have passed checks.

@@ -1,4 +1,8 @@
 import { nativePortableContinuation } from './native-portable-continuation.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
+import { disassociateNativeSdkCapability } from './native-sdk-disassociate-command.js';
+import { removeNativeSdkCapability } from './native-sdk-remove-command.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
@@ -29,6 +33,12 @@ export async function nativeSpecCommand(
     const capability = requiredPositional(args, 'capability');
     assertNoArguments(args);
     if (!inputFile) throw new NativeUsageError('spec sync requires --input <json-file>');
+    const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
+    if (await readSdkChangeOwner(commandRoot, 'native', name)) {
+      throw new NativeUsageError(
+        `Native SDK spec sync does not bypass Run acceptance. Edit the proposal in Shape, or use comet native next ${name} --revise-requirements from Verify or Archive before changing requirements.`,
+      );
+    }
     const file = path.resolve(projectRoot, inputFile);
     const stat = await fs.lstat(file).catch(() => {
       throw new NativeUsageError(`Spec sync input file is unreadable: ${inputFile}`);
@@ -91,6 +101,14 @@ export async function nativeSpecCommand(
       );
     }
     assertNoArguments(args);
+    const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
+    if (await readSdkChangeOwner(commandRoot, 'native', name)) {
+      return disassociateNativeSdkCapability({
+        projectRoot: commandRoot,
+        name,
+        expectedStateVersion: Number(expectedStateVersion),
+      });
+    }
     const { paths } = await configuredPaths(projectRoot);
     if (!(await isNativePortableChange(paths, name))) {
       throw new NativeUsageError('spec disassociate requires a current portable Native change');
@@ -115,6 +133,11 @@ export async function nativeSpecCommand(
   const name = requiredPositional(args, 'change name');
   const capability = requiredPositional(args, 'capability');
   assertNoArguments(args);
+
+  const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
+  if (await readSdkChangeOwner(commandRoot, 'native', name)) {
+    return removeNativeSdkCapability({ projectRoot: commandRoot, name, capability });
+  }
 
   const { paths } = await configuredPaths(projectRoot);
   if (!(await isNativePortableChange(paths, name))) {

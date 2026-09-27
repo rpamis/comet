@@ -7,6 +7,17 @@ description: 'Plan, implement, and accept Classic tasks. Use when the user invok
 
 After entry returns layout, follow `comet-classic/reference/classic-layout.md` to bind each logical root to its directory. Do not reload the protocol if it is already in context. Use the adapter for all OpenSpec CLI calls and the bound `<classic-*>` roots for paths; do not run an extra root show first.
 
+## SDK Run path
+
+Run `comet state next <change-name> --json` first. For `data.runtimeFormat: sdk`, advance only this Run; the implementation methods, plan content, and reviews below still apply, but their legacy state writes and evidence commands do not. `data.phase` must be `build`. Use `comet state check <change-name> build --json` for layout and configuration. For `nextAction.kind: reconcile`, run `comet state check <change-name> build --recover --json` and establish the original outcome before repeating external work.
+
+1. At `full.build.configure`, inspect existing choices under Step 1 and ask only for missing decisions about execution, TDD, and review. Put confirmed `build_mode`, `tdd_mode`, `review_mode`, `subagent_dispatch`, and, when required, `direct_override` in a temporary JSON file inside the repository. Run `comet state propose-build <change-name> --file <configuration-json>`. Save `data.wait.proposalHash`, show the actual configuration, and await confirmation under decision-point.md. Then run `comet state decide-build <change-name> --proposal-hash <proposalHash> --choice <approved|rejected>`. Propose revised choices after rejection. Reuse an existing pending Wait on recovery.
+2. At `full.build.plan`, create or inspect the plan under Step 2. Refer to the current Design Doc and tasks.md, mapping tasks with `<!-- comet-task-authority: <classic-task-authority-ref> -->` and `<!-- comet-task-ref:<task-id> -->`, not another checkbox list. Run `comet state submit-plan <change-name> --plan <plan-ref>`. Add `--pause` only if the user explicitly requested a pause after planning. For a `plan-ready` Wait, await an explicit instruction to proceed and use its current hash in `comet state continue-plan <change-name> --proposal-hash <proposalHash>`. Do not reuse approval after plan or task requirements change.
+3. At `full.build.execute`, implement using the chosen method, review tasks or segments, and run relevant checks. Check off the same tasks.md only after actual completion and satisfactory review. Do not call legacy `state task-complete`, `state checkpoint`, or `comet handoff --write`. Once plan, tasks, and workspace agree, run `comet state complete-build <change-name>` to enter the check Action. Resolve drift before submission.
+4. At `full.build.check`, preview with `comet guard <change-name> build`, then run `comet guard <change-name> build --apply -- <program> [args...]` with an explicit complete build or acceptance command for this workspace. Guard executes the check and records a receipt in the same Run; only valid successful evidence advances to Verify. After interrupted receipt submission, investigate the Action and check record before re-executing anything. On failure, repair the cause from the new `state next --json`.
+
+After every advance, read `comet state next <change-name> --json`. Load the next Skill only for an `action` in the next phase; resolve `decision`, `evidence`, and `reconcile` within the current Run. The remaining legacy Runtime steps apply only to `runtimeFormat: legacy`.
+
 ## Prerequisites
 
 - The Design Doc exists; Phase 2 is complete.

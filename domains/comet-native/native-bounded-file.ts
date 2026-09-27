@@ -4,7 +4,7 @@ import path from 'node:path';
 import { TextDecoder } from 'node:util';
 
 import { nativeSensitiveRelativePathReason } from './native-sensitive-paths.js';
-import { hasComparableNativeFileObject, sameNativeFileObject } from './native-file-identity.js';
+import { sameNativeFileObject } from './native-file-identity.js';
 
 export const DEFAULT_NATIVE_ARTIFACT_MAX_BYTES = 1024 * 1024;
 
@@ -115,9 +115,6 @@ function sameDirectoryIdentity(
 function sameFileIdentity(left: import('node:fs').Stats, right: import('node:fs').Stats): boolean {
   const leftObject = { ...left, birthtime: left.birthtimeMs };
   const rightObject = { ...right, birthtime: right.birthtimeMs };
-  if (hasComparableNativeFileObject(leftObject, rightObject)) {
-    return sameNativeFileObject(leftObject, rightObject);
-  }
   return (
     sameNativeFileObject(leftObject, rightObject) &&
     left.birthtimeMs === right.birthtimeMs &&

@@ -1,4 +1,10 @@
 import { createHash } from 'crypto';
+import { annotatedMarkdown } from './classic-archive-annotation.js';
+export { annotatedMarkdown } from './classic-archive-annotation.js';
+import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
+import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
+import { classicSdkArchiveGuard } from './classic-sdk-guard.js';
+import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 import {
   classicArchivedRequirementsProblems,
   recordClassicArchiveRequirements,
@@ -32,11 +38,7 @@ import {
   writePendingAction,
 } from '../../domains/engine/run-store.js';
 import type { Checkpoint, EngineAction, RunState } from '../../domains/engine/types.js';
-import {
-  assertClassicLayoutWritable,
-  classicProjectRelative,
-  discoverClassicProject,
-} from './classic-layout.js';
+import { assertClassicLayoutWritable, classicProjectRelative } from './classic-layout.js';
 import {
   classicProjectTargetExists,
   ensureClassicProjectDirectory,
@@ -200,40 +202,6 @@ async function verifyFinalArchiveIntegrity(projectRoot: string, archiveDir: stri
   }
 }
 
-function exactlyOneFinalNewline(markdown: string): string {
-  return `${markdown.replace(/\n+$/u, '')}\n`;
-}
-
-export function annotatedMarkdown(
-  original: string,
-  archiveName: string,
-  extraFields: string,
-): string {
-  const normalized = original.replace(/\r\n/gu, '\n');
-  const lines = normalized.split('\n');
-  const closingDelimiter = lines[0] === '---' ? lines.indexOf('---', 1) : -1;
-  const extraFieldName = extraFields.match(/^([^:\n]+):/u)?.[1]?.trim();
-
-  if (closingDelimiter !== -1) {
-    const frontmatter = lines.slice(1, closingDelimiter).filter((line) => {
-      const fieldName = line.match(/^([^:\n]+):/u)?.[1]?.trim();
-      if (fieldName === undefined) return true;
-      return fieldName !== 'archived-with' && fieldName !== extraFieldName;
-    });
-    frontmatter.push(`archived-with: ${archiveName}`);
-    if (extraFields) frontmatter.push(extraFields);
-    return exactlyOneFinalNewline(
-      ['---', ...frontmatter, '---', ...lines.slice(closingDelimiter + 1)].join('\n'),
-    );
-  }
-
-  const header = ['---', `archived-with: ${archiveName}`];
-  if (extraFields) header.push(extraFields);
-  if (extraFieldName !== 'status') header.push('status: final');
-  header.push('---');
-  return exactlyOneFinalNewline([...header, normalized].join('\n'));
-}
-
 async function appendRecoveryEvent(
   changeDir: string,
   run: RunState,
@@ -322,7 +290,7 @@ async function verifyMainSpecsClean(projectRoot: string, specsRoot: string): Pro
   if (found) throw new ArchiveFailure('');
 }
 
-export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
+export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(async (args) => {
   if (args.length < 1 || args.length > 2 || (args[1] !== undefined && args[1] !== '--dry-run')) {
     return { exitCode: 64, stderr: 'Usage: comet archive <change-name> [--dry-run]' };
   }
@@ -331,7 +299,17 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
   const dryRun = args[1] === '--dry-run';
   try {
     validateChangeName(change);
-    const projectRoot = await discoverClassicProject(process.cwd());
+    const projectRoot = classicCommandProjectRoot();
+    const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, change);
+    const sdkWorkspace =
+      localOwner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, change);
+    if (sdkWorkspace) {
+      return classicSdkArchiveGuard({
+        projectRoot: sdkWorkspace.projectRoot,
+        change,
+        apply: !dryRun,
+      });
+    }
     const layout = await assertClassicLayoutWritable(projectRoot);
     const active = await inspectClassicActiveChangeDirectory(change, layout.projectRoot);
     const activeDir = active.directory;
@@ -701,4 +679,4 @@ export const classicArchiveCommand: ClassicCommandHandler = async (args) => {
     }
     throw error;
   }
-};
+});

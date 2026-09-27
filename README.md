@@ -67,7 +67,7 @@ It allows you to use a toolchain to handle everything from requirements to archi
 - **A configuration-driven shared entry point** — `/comet` reads only the project's `.comet/config.yaml` and deterministically forwards to `/comet-native` or `/comet-classic`. It does not guess from task size or mix changes, state, or directories across workflows. `comet resume-probe` uses the same configuration to resume through the correct permanent entry point.
 - **Skill platform** — Comet can author reusable Skill packages and use `/comet-any` to organize them into distributable
   Bundles, so Skills you create can be distributed to coding platforms with one command, much like `comet init`.
-- **Composable Skill Runtime SDK** — `@rpamis/comet/runtime` orchestrates Skill/tool steps, approval, outcome validation, and interruption recovery as persistent workflows. The Agent platform keeps its own model, MCP, Hooks, Rules, and tool calls; it does not need to replace its native Agent loop. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md).
+- **Composable Skill Runtime SDK** — `@rpamis/comet/runtime` orchestrates Skill/tool steps, approval, outcome validation, and interruption recovery as persistent workflows. Native and Classic are two built-in applications: new changes use SDK Runs by default, while existing changes keep their original Runtime. The Agent platform still provides model, MCP, Hooks, Rules, and tool calls. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md).
 - **Eval platform** — Comet assesses your skills using scientific Rubric, Pass@k, and Pass^k scoring, ensuring skill evolution is based on scientific evidence rather than intuition. It supports integration with LangSmith assessments, bringing evaluation to real-world enterprise production environments. Its dual-agent architecture automates the assessment process in your production environment.
 
 ## Supervisor Change: coordinated delivery across multiple agents
@@ -207,7 +207,7 @@ classic:
 
 - `default_workflow` selects the default `/comet` entry and must be present in `workflows`. `ambient_resume`, `memory`, `knowledge`, and `hook` are shared by both workflows.
 - `memory.learning` / `retrieval` control personal-memory learning and injection. `knowledge.local.include` can append project-relative Markdown globs. `hook.allow_paths` is empty by default; add project-relative directories only when guarded phases must write shared files. It cannot bypass protection for `.comet` or workflow artifacts.
-- Native stores user-readable artifacts under `docs/comet/` and machine Runtime under `.comet/runtime/native/`. Use `comet init --workflow native --root artifacts` for `artifacts/comet/`. Classic-only defaults stay under `classic:`; `comet init` / `comet update` migrate legacy top-level fields.
+- Native stores user-readable artifacts under `docs/comet/` by default. New changes store their SDK Runs under `.comet/runtime/sdk-runs/native/`; existing changes retain their original state directory. Use `comet init --workflow native --root artifacts` to move the user-artifact root to `artifacts/comet/`. Classic-only defaults stay under `classic:`; `comet init` / `comet update` migrate legacy top-level fields.
 
 Cloud Knowledge and self-hosted PR providers remain advanced settings; see [Native configuration](https://docs.comet.rpamis.com/en/native/configuration) and [Classic configuration](https://docs.comet.rpamis.com/en/classic/configuration). Native v4 no longer persists the legacy `snapshot` budgets in user configuration.
 

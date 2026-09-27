@@ -2,6 +2,7 @@ import { parseRuntimeAction, type RuntimeAction } from './runtime-action.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
 import { cloneRuntimeValue, hashRuntimeValue, type RuntimeValue } from './runtime-json.js';
 import type {
+  RuntimeEvidenceWait,
   RuntimeWait,
   WorkflowRef,
   WorkflowResult,
@@ -18,12 +19,16 @@ const RUN_FIELDS = [
   'revision',
   'workflow',
   'definitionHashes',
+  'initialStateHash',
   'input',
+  'state',
   'status',
   'sequence',
   'actions',
+  'commands',
   'actionContexts',
   'waits',
+  'evidenceWaits',
   'ready',
   'joins',
   'outputs',
@@ -105,7 +110,7 @@ function parseResults(value: unknown, label: string): Record<string, WorkflowRes
 
 function parseToken(value: unknown, label: string): WorkflowToken {
   const data = object(value, label);
-  onlyFields(data, ['from', 'to', 'results'], label);
+  onlyFields(data, ['from', 'to', 'results', 'activation'], label);
   if (
     !Object.hasOwn(data, 'from') ||
     !Object.hasOwn(data, 'to') ||
@@ -118,6 +123,7 @@ function parseToken(value: unknown, label: string): WorkflowToken {
     from,
     to: text(data.to, `${label}.to`),
     results: parseResults(data.results, `${label}.results`),
+    ...(Object.hasOwn(data, 'activation') ? { activation: data.activation } : {}),
   };
 }
 
@@ -212,11 +218,73 @@ function parseWait(value: unknown, runId: string, maximum: number): RuntimeWait 
   return result;
 }
 
+function parseEvidenceWait(value: unknown, runId: string, maximum: number): RuntimeEvidenceWait {
+  const data = object(value, 'EvidenceWait');
+  onlyFields(
+    data,
+    ['id', 'stepId', 'sequence', 'kind', 'status', 'results', 'receipt', 'invalidation'],
+    'EvidenceWait',
+  );
+  const id = text(data.id, 'EvidenceWait.id');
+  const sequence = integer(data.sequence, 'EvidenceWait.sequence', 1);
+  if (sequence > maximum || sequenceFromId(id, runId, 'EvidenceWait.id', maximum) !== sequence) {
+    invalid('EvidenceWait 的 id 与 sequence 不一致');
+  }
+  if (!['pending', 'resolved', 'invalidated', 'cancelled'].includes(String(data.status))) {
+    invalid('EvidenceWait.status 无效');
+  }
+  const wait: RuntimeEvidenceWait = {
+    id,
+    stepId: text(data.stepId, 'EvidenceWait.stepId'),
+    sequence,
+    kind: text(data.kind, 'EvidenceWait.kind'),
+    status: data.status as RuntimeEvidenceWait['status'],
+    results: parseResults(data.results, 'EvidenceWait.results'),
+  };
+  if (data.receipt !== undefined) {
+    const receipt = object(data.receipt, 'EvidenceWait.receipt');
+    onlyFields(receipt, ['ref', 'contentHash', 'submissionId'], 'EvidenceWait.receipt');
+    wait.receipt = {
+      ref: text(receipt.ref, 'EvidenceWait.receipt.ref'),
+      contentHash: hash(receipt.contentHash, 'EvidenceWait.receipt.contentHash'),
+      submissionId: text(receipt.submissionId, 'EvidenceWait.receipt.submissionId'),
+    };
+  }
+  if (data.invalidation !== undefined) {
+    const invalidation = object(data.invalidation, 'EvidenceWait.invalidation');
+    onlyFields(
+      invalidation,
+      ['ref', 'contentHash', 'submissionId', 'reason'],
+      'EvidenceWait.invalidation',
+    );
+    wait.invalidation = {
+      ref: text(invalidation.ref, 'EvidenceWait.invalidation.ref'),
+      contentHash: hash(invalidation.contentHash, 'EvidenceWait.invalidation.contentHash'),
+      submissionId: text(invalidation.submissionId, 'EvidenceWait.invalidation.submissionId'),
+      reason: text(invalidation.reason, 'EvidenceWait.invalidation.reason'),
+    };
+  }
+  if (
+    (wait.status === 'resolved') !== Boolean(wait.receipt) ||
+    (wait.status === 'invalidated') !== Boolean(wait.invalidation)
+  ) {
+    invalid('EvidenceWait.receipt 与状态不一致');
+  }
+  return wait;
+}
+
 /** 在恢复边界完整验证 Run 聚合，并返回与持久化输入隔离的副本。 */
 export function parseWorkflowRun(value: unknown, expectedRunId?: string): WorkflowRun {
   const data = object(cloneRuntimeValue(value), 'WorkflowRun');
   onlyFields(data, RUN_FIELDS, 'WorkflowRun');
-  for (const field of RUN_FIELDS.filter((field) => field !== 'reason')) {
+  for (const field of RUN_FIELDS.filter(
+    (field) =>
+      field !== 'reason' &&
+      field !== 'state' &&
+      field !== 'evidenceWaits' &&
+      field !== 'initialStateHash' &&
+      field !== 'commands',
+  )) {
     if (!Object.hasOwn(data, field)) invalid(`WorkflowRun 缺少 ${field}`);
   }
   if (data.protocolVersion !== 1 || data.schemaVersion !== 1) {
@@ -292,7 +360,32 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
     }
     return action;
   });
+  if (data.commands !== undefined && !Array.isArray(data.commands)) {
+    invalid('WorkflowRun.commands 必须是数组');
+  }
+  const commands = data.commands?.map((raw) => {
+    const command = object(raw, 'WorkflowRun.commands item');
+    onlyFields(command, ['id', 'name', 'inputHash', 'actionId'], 'WorkflowRun.commands item');
+    const receipt = {
+      id: text(command.id, 'WorkflowRun.commands.id'),
+      name: text(command.name, 'WorkflowRun.commands.name'),
+      inputHash: hash(command.inputHash, 'WorkflowRun.commands.inputHash'),
+      actionId: text(command.actionId, 'WorkflowRun.commands.actionId'),
+    };
+    if (!actions.some((action) => action.id === receipt.actionId)) {
+      invalid('WorkflowRun.commands 指向不存在的 Action');
+    }
+    return receipt;
+  });
+  if (commands && new Set(commands.map((command) => command.id)).size !== commands.length) {
+    invalid('WorkflowRun.commands 标识不能重复');
+  }
   const waits = data.waits.map((wait) => parseWait(wait, runId, sequence));
+  if (data.evidenceWaits !== undefined && !Array.isArray(data.evidenceWaits)) {
+    invalid('WorkflowRun.evidenceWaits 必须是数组');
+  }
+  const evidenceWaits =
+    data.evidenceWaits?.map((wait) => parseEvidenceWait(wait, runId, sequence)) ?? [];
   const sequences = new Map<number, string>();
   for (const action of actions) {
     const actionSequence = sequenceFromId(action.id, runId, 'Action.id', sequence);
@@ -300,6 +393,10 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
     sequences.set(actionSequence, action.stepId);
   }
   for (const wait of waits) {
+    if (sequences.has(wait.sequence)) invalid('WorkflowRun 的步骤序号不能重复');
+    sequences.set(wait.sequence, wait.stepId);
+  }
+  for (const wait of evidenceWaits) {
     if (sequences.has(wait.sequence)) invalid('WorkflowRun 的步骤序号不能重复');
     sequences.set(wait.sequence, wait.stepId);
   }
@@ -334,6 +431,7 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
     validateResultOrigins(results, contextSequence);
   }
   for (const wait of waits) validateResultOrigins(wait.results, wait.sequence);
+  for (const wait of evidenceWaits) validateResultOrigins(wait.results, wait.sequence);
 
   if (!Array.isArray(data.ready)) invalid('WorkflowRun.ready 必须是数组');
   const ready = data.ready.map((token) => parseToken(token, 'WorkflowRun.ready token'));
@@ -393,6 +491,7 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
     ['pending', 'running', 'unknown'].includes(action.status),
   );
   const pendingWait = waits.some((wait) => wait.status === 'pending');
+  const pendingEvidence = evidenceWaits.some((wait) => wait.status === 'pending');
   const incompleteJoin = Object.values(joins).some((queues) =>
     Object.values(queues).some((queue) => queue.length > 0),
   );
@@ -401,13 +500,13 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
   }
   if (
     data.status === 'waiting' &&
-    (activeAction || (!pendingWait && !incompleteJoin) || ready.length > 0)
+    (activeAction || (!pendingWait && !pendingEvidence && !incompleteJoin) || ready.length > 0)
   ) {
     invalid('waiting Run 必须只有未解决的 Wait 或不完整 join');
   }
   if (
     data.status === 'completed' &&
-    (activeAction || pendingWait || incompleteJoin || ready.length > 0)
+    (activeAction || pendingWait || pendingEvidence || incompleteJoin || ready.length > 0)
   ) {
     invalid('completed Run 不能遗留待执行、等待或 join 工作');
   }
@@ -422,12 +521,18 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
     revision,
     workflow,
     definitionHashes: definitionHashes as Record<string, string>,
+    ...(data.initialStateHash === undefined
+      ? {}
+      : { initialStateHash: hash(data.initialStateHash, 'WorkflowRun.initialStateHash') }),
     input: data.input,
+    ...(data.state === undefined ? {} : { state: data.state }),
     status: data.status as WorkflowRun['status'],
     sequence,
     actions,
+    ...(commands === undefined ? {} : { commands }),
     actionContexts: actionContexts as unknown as WorkflowRun['actionContexts'],
     waits,
+    ...(data.evidenceWaits === undefined ? {} : { evidenceWaits }),
     ready,
     joins,
     outputs,

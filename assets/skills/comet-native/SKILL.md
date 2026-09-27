@@ -5,11 +5,11 @@ description: 'Comet Native workflow. Use when the user explicitly invokes /comet
 
 # Comet Native
 
-Native saves complete requirements, progress, and acceptance results in the project. The Agent works only on the phase specified by Runtime. After each action, read the latest `continuation` and follow it until the task is complete, a user decision is needed, or an external dependency blocks progress.
+Identify runtime format before acting; Runtime stores requirements and acceptance in the project.
 
 ## Required rules
 
-- Treat `.comet/config.yaml`, the current change, `comet-state.yaml`, and formal artifacts on disk as authoritative; chat memory is supplementary. Among formal workflow files, the Agent edits only the brief, complete target Specs, association `delta.yaml`, and `children.yaml`. Runtime owns state, check results, reports, locks, and transactions.
+- Treat `.comet/config.yaml`, the current change's SDK Run or legacy `comet-state.yaml`, and formal artifacts on disk as authoritative; chat memory is supplementary. Among formal workflow files, the Agent edits only the brief, complete target Specs, association `delta.yaml`, and `children.yaml`. Runtime owns state, check results, reports, locks, and transactions.
 - Advance through the public `comet native` CLI on PATH; do not ask the user to run commands manually. If the command is unavailable, report an incomplete installation and stop. Consult `comet native <command> --help` for arguments.
 - Create changes with the CLI; use returned paths and follow denial commands or targets before retrying. Custom and non-Comet writes stay neutral.
 - The Builder submits code as the candidate implementation. Each iteration requires a new read-only Verifier to assess every acceptance item independently. Assessing every item does not mean rerunning every command: reuse Runtime check records that still match the current candidate and add only missing or invalidated checks. Failed, blocked, unexecuted, and timed-out work cannot count as passed.
@@ -19,12 +19,16 @@ Native saves complete requirements, progress, and acceptance results in the proj
 ## Start or resume
 
 1. If the name is known, run `comet native select <change-name> --json`. When an active change exists, enter the returned `workspace.projectRoot`; select returns the same discovery and state information as status, so a separate status call is not needed. Otherwise run `comet native status --json`. Let Runtime locate the workspace; ask the user only when multiple workspaces match equally well.
-2. If there is no matching active change, select isolation and create it using [workspace selection](reference/workspace.md#create-a-change), then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
+2. If there is no matching active change, select isolation and create it using [workspace selection](reference/workspace.md#create-a-change). When choosing an SDK Run, pass `--runtime sdk` to `native new`, then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
 3. After entering the workspace and obtaining `phase`, retrieve context once using [memory integration](reference/commands.md#memory-integration). Expand details only when needed, record actual use outcomes, handle Project Memory and Personal Memory separately at task completion, and call `comet task --complete` as specified there.
 
 Never save task summaries, progress, command output, or test results as Personal Memory; complete the learning check.
 
-Project experience and personal preferences are stored separately: before task completion, write project-validated and reusable experience to Project Memory with `comet knowledge remember`; only user preferences and stable collaboration habits go to Personal Memory. See [memory integration](reference/commands.md#memory-integration) for the commands and completion conditions.
+Project experience and personal preferences are stored separately: use `comet knowledge remember` for reusable verified project facts and Personal Memory for stable user preferences. See [memory integration](reference/commands.md#memory-integration) for completion conditions.
+
+## SDK Run path
+
+For `data.schema: comet.native.sdk-status.v1` in `native status <change> --json`, follow [SDK Run commands and recovery](reference/commands.md#sdk-run). The `continuation`, `--runner-input`, Supervisor, and Archive instructions below are legacy-only. SDK still requires approval, independent verification, and workspace authorization. Do not migrate legacy changes automatically.
 
 ## Read only what the action needs
 
