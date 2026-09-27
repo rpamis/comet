@@ -1143,9 +1143,9 @@ children:
     expect(run.actions.at(-1)?.stepId).toBe('supervisor.parent.builder');
   });
 
-  it.each(['normal', 'partial-recovery'] as const)(
-    'resumes a dependent Supervisor DAG after restart through parent repair and delivery (%s)',
-    async (cleanupMode) => {
+  it.each(['normal', 'partial-recovery', 'target-drift'] as const)(
+    'handles parent repair, delivery, and cleanup after Supervisor DAG restart (%s)',
+    async (scenario) => {
       const { root, paths, changeDir } = await fixture();
       await fs.writeFile(
         path.join(changeDir, 'children.yaml'),
@@ -1901,6 +1901,42 @@ children:
         stepId: 'supervisor.parent.deliver',
         type: 'call_tool',
       });
+      if (scenario === 'target-drift') {
+        const approvedTargetCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).trim();
+        execFileSync('git', ['commit', '--allow-empty', '-m', 'drift before delivery'], {
+          cwd: root,
+          stdio: 'ignore',
+        });
+        const concurrentTargetCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).trim();
+        expect(concurrentTargetCommit).not.toBe(approvedTargetCommit);
+        await expect(
+          runtime.execute({
+            runId: run.runId,
+            actionId: run.actions.at(-1)!.id,
+            executorId: 'native-supervisor-parent-deliver',
+            context: { requestId: 'parent-delivery-after-target-drift', projectRoot: root },
+          }),
+        ).rejects.toThrow(/已保留执行归属/);
+        const blockedDelivery = await runtime.inspect(run.runId);
+        expect(blockedDelivery.actions.at(-1)).toMatchObject({
+          stepId: 'supervisor.parent.deliver',
+          status: 'unknown',
+          reason: expect.stringMatching(/target branch changed after Shape confirmation/),
+        });
+        expect(
+          execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
+        ).toBe(concurrentTargetCommit);
+        expect(
+          execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' }),
+        ).toContain(integrationWorktree.replaceAll('\\', '/'));
+        return;
+      }
       run = await runtime.execute({
         runId: run.runId,
         actionId: run.actions.at(-1)!.id,
@@ -1941,7 +1977,7 @@ children:
         type: 'call_tool',
       });
       const cleanupAction = run.actions.at(-1)!;
-      if (cleanupMode === 'normal') {
+      if (scenario === 'normal') {
         run = await runtime.execute({
           runId: run.runId,
           actionId: cleanupAction.id,
@@ -2013,6 +2049,33 @@ children:
           application: 'native',
           runId: run.runId,
         });
+        execFileSync('git', ['commit', '--allow-empty', '-m', 'drift during cleanup recovery'], {
+          cwd: root,
+          stdio: 'ignore',
+        });
+        const concurrentDriftCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).trim();
+        const blockedRecovery = await nativeDomain.runNativeCliDetailed([
+          'archive',
+          'sdk-shape',
+          '--recover',
+          '--json',
+          '--project-root',
+          root,
+        ]);
+        expect(blockedRecovery.dispatch.exitCode).not.toBe(0);
+        expect(blockedRecovery.dispatch.error?.message).toMatch(/verified delivery/);
+        expect(
+          execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: root, encoding: 'utf8' }),
+        ).toContain(integrationWorktree.replaceAll('\\', '/'));
+        expect((await runtime.inspect(run.runId)).actions.at(-1)?.status).toBe('unknown');
+        execFileSync(
+          'git',
+          ['update-ref', `refs/heads/${branch}`, deliveredCommit, concurrentDriftCommit],
+          { cwd: root, stdio: 'ignore' },
+        );
         const recovered = await nativeDomain.runNativeCliDetailed([
           'archive',
           'sdk-shape',
