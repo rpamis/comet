@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.4] - 2026-09-29
+
+### Added
+
+- **Native brief directory structure**: New Native changes create `brief.md` with a "Directory structure" section under Scope, listing Created/Modified/Deleted paths as annotated trees plus a deliberate "Not created" list, in both artifact languages. Runtime validates at the Shape confirmation boundary that the section exists with all four subsections (write "None" when a subsection has no content), and Build instructions keep implementation consistent with the confirmed structure. Existing changes need the section added before their next Shape reconfirmation or archive.
+
 ## What's Changed [0.4.3] - 2026-09-22
 
 ### Changed

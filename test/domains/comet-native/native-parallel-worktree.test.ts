@@ -32,6 +32,15 @@ const BRIEF = `# Outcome
 Keep Native parallel worktrees recoverable.
 # Scope
 Exercise two independent linked worktrees.
+## Directory structure
+### Created
+None.
+### Modified
+None.
+### Deleted
+None.
+### Not created
+None.
 # Non-goals
 No model or network access.
 # Acceptance examples

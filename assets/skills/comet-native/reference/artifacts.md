@@ -50,6 +50,37 @@ Runtime's `artifacts` object is the sole location authority for the current work
 # Verification expectations
 ```
 
+Under `# Scope`, include a "## Directory structure" subsection that presents the change scope as a tree. It has four fixed level-three subsections; keep every heading and write "None" when a subsection has no content:
+
+- `### Created`, `### Modified`, `### Deleted`: present path hierarchies with tree characters (`├─`, `└─`, `│`); annotate each path with " — " followed by its purpose or change point, with approximate line numbers where useful; wrap long annotations with aligned indentation.
+- `### Not created`: a bullet list of items deliberately not created and why, such as skipping a store slice, hook, or subdirectory.
+
+Fill the directory structure together with the scope description; it is confirmed with the final confirmation. Runtime checks at the Shape boundary that the section exists and all four subsections are present. Choose locations by the project's own directory and naming rules; without project rules, follow repository conventions and state the basis in the annotation. Example:
+
+```text
+## Directory structure
+
+### Created
+
+src/pages/index/features/Common/CouponPopup/
+  ├─ index.tsx — coupon popup component, props: { visible, data, onClose }
+  └─ index.less
+
+### Modified
+
+src/pages/index/index.tsx
+  — trigger the popup data request from the main API success callback (around L1085)
+  — render <CouponPopup> (around L170, beside existing popups)
+
+### Deleted
+
+None
+
+### Not created
+
+- No separate popup store slice — popup state is page-local; local state is enough
+```
+
 Use these markers in Open questions only for genuinely unresolved user questions:
 
 ```text

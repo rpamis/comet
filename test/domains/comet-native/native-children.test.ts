@@ -83,6 +83,16 @@ Integrate the child changes into one verified result.
 # Scope
 Coordinate the child changes and verify the integrated result.
 
+## Directory structure
+### Created
+None.
+### Modified
+None.
+### Deleted
+None.
+### Not created
+None.
+
 # Non-goals
 Do not introduce behavior outside the child changes.
 
@@ -108,6 +118,16 @@ Implement one independently verified child result.
 
 # Scope
 Implement the assigned child behavior and its checks.
+
+## Directory structure
+### Created
+None.
+### Modified
+None.
+### Deleted
+None.
+### Not created
+None.
 
 # Non-goals
 Do not change unrelated capabilities.

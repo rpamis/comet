@@ -44,7 +44,7 @@ Investigate facts that can be established without the user. Ask only about decis
 
 Complete when requirements sources are fully processed within the coverage boundary and classified by purpose, all outcome-affecting decisions and assumptions are resolved, no `[blocking]` remains, the user explicitly confirms the outcome, scope, key decisions, all acceptance items, and non-goals, and Runtime has entered Build.
 
-At a new or reconfirmed Shape, Runtime checks all eight brief sections, a complete target Spec or an explicit no-product-behavior-change reason, and formal paths. Failures name the artifact and repair action; edit it and rerun continuation. Later-phase existing changes keep their progress until Shape.
+At a new or reconfirmed Shape, Runtime checks all eight brief sections, the directory structure under `# Scope`, a complete target Spec or an explicit no-product-behavior-change reason, and formal paths. Failures name the artifact and repair action; edit it and rerun continuation. Later-phase existing changes keep their progress until Shape.
 
 ## Build ↔ Verify Loop
 
@@ -54,7 +54,7 @@ After the Builder submits a candidate, Runtime runs required checks and a new re
 
 ## Build
 
-Before the first implementation, read the current brief, complete target Specs, and every acceptance item. Edit project code and tests within confirmed scope. During repair, prioritize the Verifier's failed or blocked items and failed checks, then recheck other confirmed behavior before submission. `previous_unresolved_ids` identifies the repair focus; the next formal verification still covers every acceptance item.
+Before the first implementation, read the current brief, complete target Specs, and every acceptance item. Edit project code and tests within confirmed scope. Keep changes consistent with the directory structure; update it and the corresponding Decision before deviating. During repair, prioritize the Verifier's failed or blocked items and failed checks, then recheck other confirmed behavior before submission. `previous_unresolved_ids` identifies the repair focus; the next formal verification still covers every acceptance item.
 
 Build, Verify, and Archive recheck bound documents. Drift or stale reports return a repair action and preserve work; Runtime still checks without a Hook. Ordinary Markdown is unaffected. Ordinary documentation writes (Markdown/text and LICENSE-style files at the repository root or under `docs/`, `doc/`, `documentation/`, `.github/`, outside the Native artifact root) are neutral during Shape, Verify, and Archive: they do not return the change to Build and do not invalidate the current candidate. Set `native.document_writes: revert` in `.comet/config.yaml` to restore the strict behavior.
 

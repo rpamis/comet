@@ -27,6 +27,15 @@ const completeBrief = `# Outcome
 Ship the documented behavior.
 # Scope
 The requested behavior only.
+## Directory structure
+### Created
+None.
+### Modified
+- The behavior module.
+### Deleted
+None.
+### Not created
+None.
 # Non-goals
 None.
 # Acceptance examples
@@ -88,6 +97,73 @@ describe('Native document constraints', () => {
     });
 
     await fs.writeFile(path.join(root, 'brief.md'), completeBrief);
+    await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toEqual({
+      valid: true,
+      findings: [],
+    });
+  });
+
+  it('requires the directory structure section under Scope at the strict boundary', async () => {
+    await fs.writeFile(
+      path.join(root, 'brief.md'),
+      completeBrief.replace(
+        '## Directory structure\n### Created\nNone.\n### Modified\n- The behavior module.\n### Deleted\nNone.\n### Not created\nNone.\n',
+        '',
+      ),
+    );
+    await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ code: 'brief-structure-missing' })],
+    });
+
+    await fs.writeFile(
+      path.join(root, 'brief.md'),
+      completeBrief.replace('### Not created\nNone.\n', ''),
+    );
+    await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ code: 'brief-structure-subsection-missing' })],
+    });
+
+    await fs.writeFile(path.join(root, 'brief.md'), completeBrief);
+    await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toEqual({
+      valid: true,
+      findings: [],
+    });
+  });
+
+  it('accepts Chinese directory structure headings and fenced tree content', async () => {
+    const zhBrief = `# 目标
+交付文档描述的行为。
+# 范围
+仅请求的行为。
+## 目录结构
+### 新建
+\`\`\`
+src/features/Common/CouponPopup/
+  ├─ index.tsx — 优惠券弹窗组件
+  └─ index.less
+\`\`\`
+### 修改
+无
+### 删除
+无
+### 明确不建
+- 不新建弹窗 store slice —— 弹窗状态仅在页面内使用
+# 非目标
+无
+# 验收示例
+- 行为可用。
+# 约束与不变量
+保持既有兼容性。
+# 决策
+无
+# 待解决问题
+无
+# 验证预期
+运行相关检查。
+`;
+    await fs.writeFile(path.join(root, 'brief.md'), zhBrief);
     await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toEqual({
       valid: true,
       findings: [],

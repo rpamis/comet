@@ -44,7 +44,7 @@ Agent 先调查能够查明的事实，只询问会改变用户可见结果、�
 
 完成标准：需求来源已在用户指定的覆盖边界内完整处理并按用途分类，所有影响结果的决定和假设已处理，没有 `[blocking]`，用户明确确认目标、范围、关键决定、全部验收项和非目标，并且 Runtime 已进入 Build。
 
-新建需求或重新确认 Shape 时，Runtime 检查 brief 八个章节、完整目标 Spec 或明确的无产品行为变更理由及正式路径。失败会给出文件和修复动作；补齐后重跑 continuation。后续阶段的旧需求保留进度，回到 Shape 时再检查。
+新建需求或重新确认 Shape 时，Runtime 检查 brief 八个章节、`# Scope` 下的目录结构、完整目标 Spec 或明确的无产品行为变更理由及正式路径。失败会给出文件和修复动作；补齐后重跑 continuation。后续阶段的旧需求保留进度，回到 Shape 时再检查。
 
 ## Build ↔ Verify Loop
 
@@ -54,7 +54,7 @@ Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的
 
 ## Build
 
-首次实现前，读取当前 brief、完整目标规格和全部验收项，在已确认的需求范围内修改项目代码和测试。修复时优先处理 Verifier 指出的未通过项、无法验证的原因和失败检查；提交前仍要核对其他已确认行为。`previous_unresolved_ids` 只提示本轮修复重点，下一次正式验收仍覆盖全部验收项。
+首次实现前，读取当前 brief、完整目标规格和全部验收项，在已确认的需求范围内修改项目代码和测试。实际改动与目录结构保持一致；需要偏离时，先更新目录结构和对应 Decision，再继续实现。修复时优先处理 Verifier 指出的未通过项、无法验证的原因和失败检查；提交前仍要核对其他已确认行为。`previous_unresolved_ids` 只提示本轮修复重点，下一次正式验收仍覆盖全部验收项。
 
 Build、Verify 和 Archive 会复查文档绑定。文档漂移或报告过期时保留工作并返回修复动作；Hook 未触发仍检查，普通 Markdown 不受影响。Shape、Verify 和 Archive 阶段的普通文档写入（仓库根目录及 `docs/`、`doc/`、`documentation/`、`.github/` 下的 Markdown/text 和 LICENSE 类文件，且位于 Native 产物根目录之外）按中性处理：不会把 change 打回 Build，也不作废当前候选实现。在 `.comet/config.yaml` 设置 `native.document_writes: revert` 可恢复严格行为。
 

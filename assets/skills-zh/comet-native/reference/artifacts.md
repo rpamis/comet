@@ -50,6 +50,37 @@ Runtime 返回的 `artifacts` 是当前工作区的唯一位置依据：`briefPa
 # Verification expectations
 ```
 
+`# Scope` 下必须包含「## 目录结构」二级章节，用树形结构呈现该需求的改动范围。章节固定四个三级子节，无内容的子节保留标题并写「无」：
+
+- `### 新建`、`### 修改`、`### 删除`：各自用树形结构（`├─`、`└─`、`│`）呈现路径层级；每个路径后以「— 说明」标注职责或改动点，可带大致行号；说明过长可折行并对齐缩进。
+- `### 明确不建`：无序列表写出明确不建的内容与理由，例如不新建 store slice、hook 或子目录的取舍。
+
+目录结构与范围说明一起填写，随最终确认一并确认；Runtime 在 Shape 确认边界检查该章节存在且四个子节齐全。落点选择遵循项目自身的目录层级与命名规则；项目没有相关规则时按仓库现状选择，并在说明中写明依据。示例：
+
+```text
+## 目录结构
+
+### 新建
+
+src/pages/index/features/Common/CouponPopup/
+  ├─ index.tsx — 优惠券弹窗组件，props: { visible, data, onClose }
+  └─ index.less
+
+### 修改
+
+src/pages/index/index.tsx
+  — 主接口成功回调（约 L1085）触发弹窗数据请求
+  — 渲染 <CouponPopup>（约 L170 附近，与既有弹窗并列）
+
+### 删除
+
+无
+
+### 明确不建
+
+- 不新建弹窗 store slice —— 弹窗状态仅在页面内使用，本地 state 足够
+```
+
 Open questions 中只有真实未解决的用户问题使用：
 
 ```text
