@@ -190,7 +190,10 @@ describe('packaged Runtime issue regressions', () => {
       });
       hook({ tool_name: 'write', tool_input: { path: 'agent:/Main' } });
       expect(invoke(['show', name]).data.state).toEqual(before);
-      hook({ tool_name: 'write', tool_input: { targets: ['agent:/Main', 'src/new-file.ts'] } });
+      hook({
+        tool_name: 'write',
+        tool_input: { targets: ['file://%broken', 'agent:/Main', 'src/new-file.ts'] },
+      });
       expect(invoke(['show', name]).data.state).toMatchObject({
         phase: 'build',
         verification_result: 'pending',
