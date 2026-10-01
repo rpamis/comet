@@ -324,6 +324,17 @@ describe('Comet Hook platform adapter', () => {
     },
   );
 
+  it('retains real file targets when a mixed request has a malformed file URI', () => {
+    expect(
+      parseCometHookRequest(
+        JSON.stringify({
+          tool_name: 'Write',
+          tool_input: { file_paths: ['src/real.ts', 'file://%broken'] },
+        }),
+      ),
+    ).toMatchObject({ intent: 'write', targets: ['src/real.ts', 'file://%broken'] });
+  });
+
   it('renders Copilot structured denial without granting permission on allow', () => {
     expect(
       renderCometHookDecision('github-copilot', { allowed: false, reason: 'blocked' }),

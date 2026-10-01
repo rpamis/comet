@@ -167,7 +167,14 @@ export function normalizeCometHookTargets(targets: readonly string[]): string[] 
       targets.flatMap((value) => {
         const target = value.trim();
         if (!target) return [];
-        if (/^file:/iu.test(target)) return [fileURLToPath(target)];
+        if (/^file:/iu.test(target)) {
+          try {
+            return [fileURLToPath(target)];
+          } catch {
+            // 保留无效文件地址，继续让 Guard 检查同一请求中的其他文件。
+            return [target];
+          }
+        }
         if (/^[A-Za-z]:/u.test(target)) return [target];
         return /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(target) ? [] : [target];
       }),
