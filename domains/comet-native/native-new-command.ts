@@ -171,11 +171,11 @@ export async function nativeNewCommand(
   const task = takeOption(args, '--task');
   const capability = takeOption(args, '--capability');
   const runtimeFormat = takeOption(args, '--runtime') ?? 'sdk';
-  if (runtimeFormat !== 'legacy' && runtimeFormat !== 'sdk') {
-    throw new NativeUsageError('--runtime must be legacy or sdk');
+  if (runtimeFormat !== 'compat' && runtimeFormat !== 'sdk') {
+    throw new NativeUsageError('--runtime must be compat or sdk');
   }
   assertNoArguments(args);
-  if (runtimeFormat === 'legacy') await assertChangeNotSdkOwned(projectRoot, 'native', name);
+  if (runtimeFormat === 'compat') await assertChangeNotSdkOwned(projectRoot, 'native', name);
   const sourceConfig = config;
   if (config?.native.pending_root_move) {
     throw new Error(`Native root move ${config.native.pending_root_move.id} is incomplete`);
@@ -190,7 +190,7 @@ export async function nativeNewCommand(
     sourceConfig,
   });
   projectRoot = prepared.projectRoot;
-  if (runtimeFormat === 'legacy') await assertChangeNotSdkOwned(projectRoot, 'native', name);
+  if (runtimeFormat === 'compat') await assertChangeNotSdkOwned(projectRoot, 'native', name);
   config = await readProjectConfig(projectRoot);
   const initialProjectConfig = config === null ? defaultProjectConfig('docs', language) : undefined;
   if (!config) config = initialProjectConfig!;

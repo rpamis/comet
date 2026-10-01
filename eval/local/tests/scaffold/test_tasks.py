@@ -220,10 +220,14 @@ def test_comet_task_index_lists_real_tasks():
     }
 
 
-def test_native_task_uses_its_own_skill_contract():
+def test_native_workflow_task_uses_current_sdk_cli_and_skill_contract():
     task = load_task("comet-native-workflow")
+    environment = get_tasks_dir() / "comet-native-workflow/environment"
 
     assert task.config.evaluation.profile == "generic"
+    assert task.default_treatments == ["COMET_NATIVE_SDK_CURRENT"]
+    assert (environment / ".include-current-comet-cli").is_file()
+    assert (environment / "current-comet.sh").is_file()
     assert task.config.evaluation.required_skills == ["comet-native"]
     assert task.config.evaluation.require_skill_invocation is True
     assert task.config.interaction.mode == "auto_user"
@@ -234,7 +238,9 @@ def test_native_task_uses_its_own_skill_contract():
     assert prompt.startswith("You are working on a Python project")
     assert "Begin by invoking the `/comet-native` Skill" in prompt
     assert "/comet` Skill/slash command" not in prompt
-    assert "portable `comet.native.v4` state" in prompt
+    assert "SDK Run" in prompt
+    assert "comet runtime dispatch" in prompt
+    assert "beta17" not in prompt
     assert "required final shared-understanding confirmation" in prompt
 
 
@@ -985,12 +991,7 @@ def test_native_interrupted_transition_fixture_is_recovered_by_current_runtime(t
     assert repeated["data"]["healthy"] is True
 
     local_runtime = (
-        workspace
-        / ".comet"
-        / "runtime"
-        / "native"
-        / "changes"
-        / "add-character-counting"
+        workspace / ".comet" / "runtime" / "native" / "changes" / "add-character-counting"
     )
     assert (local_runtime / "state.json").exists()
     assert not (local_runtime / "trajectory.jsonl").exists()

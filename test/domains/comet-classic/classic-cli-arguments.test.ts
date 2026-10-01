@@ -6,15 +6,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { classicStateCommand } from '../../../domains/comet-classic/classic-state-command.js';
 import { classicGuardCommand } from '../../../domains/comet-classic/classic-guard.js';
 import { classicCheckCommand } from '../../../domains/comet-classic/classic-check-command.js';
-import { classicHandoffCommand } from '../../../domains/comet-classic/classic-handoff.js';
+import { classicHandoffCommand } from '../../../domains/comet-classic/classic-handoff-command.js';
 import {
   classicDesignEvidenceReceipt,
   classicOpenEvidenceReceipt,
   defineClassicWorkflowApplication,
 } from '../../../domains/comet-classic/classic-sdk-application.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import {
-  createFileRuntimeStore,
   createRuntime,
   type WorkflowRun,
   type WorkflowRuntime,
@@ -33,7 +33,7 @@ describe('Classic public argument safety', () => {
     );
     await fs.mkdir(path.join(root, 'openspec/changes'), { recursive: true });
     const result = await classicStateCommand(
-      ['init', 'demo', 'tweak', '--runtime', 'legacy'],
+      ['init', 'demo', 'tweak', '--runtime', 'compat'],
       options(),
     );
     expect(result.exitCode, result.stderr).toBe(0);
@@ -72,7 +72,7 @@ describe('Classic public argument safety', () => {
     const result = await runClassicCli(['state', '--help'], {}, options());
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('defaults to sdk');
-    expect(result.stdout).toContain('--runtime <legacy|sdk>');
+    expect(result.stdout).toContain('--runtime <compat|sdk>');
   });
 
   it('shows the SDK Design Guard approval syntax in guard help', async () => {
@@ -110,6 +110,7 @@ describe('Classic public argument safety', () => {
     expect(guard.stdout).toContain(
       'SDK-owned Archive: comet guard <change-name> archive [--apply]',
     );
+    expect(guard.stdout).toContain('Compat Guard validates phase requirements');
   });
 
   it('shows the SDK Build decision commands in state help', async () => {
@@ -147,9 +148,9 @@ describe('Classic public argument safety', () => {
         options(),
       );
       expect(result.exitCode, result.stderr).toBe(0);
-      await expect(
-        fs.access(path.join(root, 'openspec/changes', name, '.comet.yaml')),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(
+        await fs.readFile(path.join(root, 'openspec/changes', name, '.comet.yaml'), 'utf8'),
+      ).toContain('phase: open');
       expect(
         JSON.parse(
           await fs.readFile(
@@ -159,9 +160,7 @@ describe('Classic public argument safety', () => {
         ),
       ).toMatchObject({ format: 'sdk', application: `classic-${profile}`, runId: name });
       const runtime = createRuntime({
-        store: createFileRuntimeStore<WorkflowRun>({
-          rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-        }),
+        store: createClassicSdkStateStore(root),
         workflows: [],
       });
       expect(await runtime.inspect(name)).toMatchObject({
@@ -178,11 +177,9 @@ describe('Classic public argument safety', () => {
       const name = `default-${profile}`;
       const result = await classicStateCommand(['init', name, profile], options());
       expect(result.exitCode, result.stderr).toBe(0);
-      await expect(
-        fs.access(path.join(root, 'openspec/changes', name, '.comet.yaml')),
-      ).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
+      expect(
+        await fs.readFile(path.join(root, 'openspec/changes', name, '.comet.yaml'), 'utf8'),
+      ).toContain('phase: open');
       expect(
         JSON.parse(
           await fs.readFile(
@@ -207,7 +204,7 @@ describe('Classic public argument safety', () => {
     });
     await expect(
       fs.access(path.join(root, 'openspec/changes/sdk-json/.comet.yaml')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+    ).resolves.toBeUndefined();
   });
 
   it('reads Classic state get fields from an SDK Run without creating legacy state', async () => {
@@ -227,7 +224,7 @@ describe('Classic public argument safety', () => {
     expect(plan.stdout).toBe('null\n');
     await expect(
       fs.access(path.join(root, 'openspec/changes', name, '.comet.yaml')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+    ).resolves.toBeUndefined();
   });
 
   it('selects and resolves a Classic SDK change without creating legacy state', async () => {
@@ -245,7 +242,7 @@ describe('Classic public argument safety', () => {
     expect(current.stdout).toBe(`${name}\n`);
     await expect(
       fs.access(path.join(root, 'openspec/changes', name, '.comet.yaml')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+    ).resolves.toBeUndefined();
   });
 
   it('checks Classic SDK Open artifacts without relying on a legacy state file', async () => {
@@ -269,9 +266,7 @@ describe('Classic public argument safety', () => {
     const complete = await classicStateCommand(['artifacts', name], options());
     expect(complete.exitCode, complete.stderr).toBe(0);
     expect(complete.stdout).toContain('dependency closure is ready');
-    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
   });
 
   it('advances Classic SDK full Open only with the artifact hash shown for approval', async () => {
@@ -305,9 +300,7 @@ describe('Classic public argument safety', () => {
     expect(applied.data).toMatchObject({ change: name, phase: 'design' });
     const phase = await classicStateCommand(['get', name, 'phase'], options());
     expect(phase.stdout).toBe('design\n');
-    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
   });
 
   it('records a Classic SDK Design proposal with a source-traceable handoff', async () => {
@@ -376,9 +369,7 @@ describe('Classic public argument safety', () => {
         }),
       ]),
     );
-    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
     const proposalHash = (proposed.data as { wait: { proposalHash: string } }).wait.proposalHash;
     const stale = await classicStateCommand(
       ['decide-design', name, '--proposal-hash', '0'.repeat(64), '--choice', 'rejected'],
@@ -477,9 +468,7 @@ describe('Classic public argument safety', () => {
     expect(applied.exitCode, applied.stderr).toBe(0);
     expect(applied.data).toMatchObject({ change: name, phase: 'build' });
     expect((await classicStateCommand(['get', name, 'phase'], options())).stdout).toBe('build\n');
-    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
   });
 
   it('keeps Classic SDK Build configuration pending until the current proposal is approved', async () => {
@@ -651,9 +640,7 @@ describe('Classic public argument safety', () => {
     ).toMatchObject({
       nextAction: { kind: 'action', stepId: 'full.build.plan' },
     });
-    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
   });
 
   it('advances a Classic SDK Build through plan pause and completed implementation without replaying planning', async () => {
@@ -827,9 +814,7 @@ describe('Classic public argument safety', () => {
       nextAction: { kind: 'action', stepId: 'full.verify.run' },
     });
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-      }),
+      store: createClassicSdkStateStore(root),
       workflows: [],
     });
     const run = await runtime.inspect(name);
@@ -1022,9 +1007,7 @@ describe('Classic public argument safety', () => {
         phase: 'verify',
         nextAction: { kind: 'action', stepId: 'full.verify.run' },
       });
-      await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
+      await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
     },
   );
 
@@ -1055,6 +1038,11 @@ describe('Classic public argument safety', () => {
         ).exitCode,
       ).toBe(0);
       const changeDir = path.join(root, 'openspec', 'changes', name);
+      if (profile === 'hotfix') {
+        expect(
+          (await classicStateCommand(['set', name, 'language', 'zh-CN'], options())).exitCode,
+        ).toBe(0);
+      }
       await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Change\n');
       await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
       await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] Implement the change\n');
@@ -1123,9 +1111,7 @@ describe('Classic public argument safety', () => {
       );
       expect(verified.exitCode, verified.stderr).toBe(0);
       expect(verified.data).toMatchObject({ change: name, phase: 'archive' });
-      await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-        code: 'ENOENT',
-      });
+      await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
     },
   );
 
@@ -1160,9 +1146,7 @@ describe('Classic public argument safety', () => {
     expect(rejectedProposal.exitCode, rejectedProposal.stderr).toBe(0);
     const application = defineClassicWorkflowApplication('full');
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-      }),
+      store: createClassicSdkStateStore(root),
       workflows: [application.workflow],
       transitionHandlers: [application.transitionHandler],
       evidenceValidators: application.evidenceValidators,
@@ -1219,9 +1203,7 @@ describe('Classic public argument safety', () => {
     expect(phase.stdout).toBe('build\n');
     const design = await classicStateCommand(['get', name, 'design_doc'], options());
     expect(design.stdout).toBe(`${designRef}\n`);
-    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
   });
 
   it('keeps Classic SDK Design pending when OpenSpec changes after the proposal', async () => {
@@ -1390,7 +1372,7 @@ describe('Classic public argument safety', () => {
     expect(design.data).toMatchObject({ checks: { blocked: true } });
     await expect(
       fs.access(path.join(root, 'openspec/changes', name, '.comet.yaml')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+    ).resolves.toBeUndefined();
   });
 
   it('blocks Classic SDK Open entry when its Skill Action has an unknown outcome', async () => {
@@ -1402,9 +1384,7 @@ describe('Classic public argument safety', () => {
     expect(initialized.exitCode, initialized.stderr).toBe(0);
     const application = defineClassicWorkflowApplication('full');
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-      }),
+      store: createClassicSdkStateStore(root),
       workflows: [application.workflow],
       transitionHandlers: [application.transitionHandler],
       evidenceValidators: application.evidenceValidators,
@@ -1439,9 +1419,7 @@ describe('Classic public argument safety', () => {
     expect(initialized.exitCode, initialized.stderr).toBe(0);
     const application = defineClassicWorkflowApplication('full');
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-      }),
+      store: createClassicSdkStateStore(root),
       workflows: [application.workflow],
       transitionHandlers: [application.transitionHandler],
       evidenceValidators: application.evidenceValidators,
@@ -1470,7 +1448,7 @@ describe('Classic public argument safety', () => {
     });
     await expect(
       fs.access(path.join(root, 'openspec/changes', name, '.comet.yaml')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+    ).resolves.toBeUndefined();
   });
 
   it('rejects Classic SDK recovery for a phase other than the Run phase', async () => {
@@ -1507,9 +1485,7 @@ describe('Classic public argument safety', () => {
     );
     const application = defineClassicWorkflowApplication('full');
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-      }),
+      store: createClassicSdkStateStore(root),
       workflows: [application.workflow],
       transitionHandlers: [application.transitionHandler],
       evidenceValidators: application.evidenceValidators,
@@ -1581,9 +1557,7 @@ describe('Classic public argument safety', () => {
     );
     const application = defineClassicWorkflowApplication('hotfix');
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-      }),
+      store: createClassicSdkStateStore(root),
       workflows: [application.workflow],
       transitionHandlers: [application.transitionHandler],
       evidenceValidators: application.evidenceValidators,
@@ -1657,9 +1631,7 @@ describe('Classic public argument safety', () => {
       nextAction: { kind: 'action', stepId: 'full.design.handoff' },
     });
     expect((await runtime.inspect(name)).runId).toBe(name);
-    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
     const designProposal = await classicStateCommand(
       ['propose-design', name, '--proposal', 'Design the required public API'],
       { ...options(), json: true },
@@ -1694,9 +1666,7 @@ describe('Classic public argument safety', () => {
     );
     const application = defineClassicWorkflowApplication('full');
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-      }),
+      store: createClassicSdkStateStore(root),
       workflows: [application.workflow],
       transitionHandlers: [application.transitionHandler],
       evidenceValidators: application.evidenceValidators,
@@ -1815,7 +1785,7 @@ describe('Classic public argument safety', () => {
 
   it('marks the legacy Classic next result without treating it as an SDK Run', async () => {
     const initialized = await classicStateCommand(
-      ['init', 'legacy-next', 'full', '--runtime', 'legacy'],
+      ['init', 'legacy-next', 'full', '--runtime', 'compat'],
       options(),
     );
     expect(initialized.exitCode, initialized.stderr).toBe(0);
@@ -1824,7 +1794,7 @@ describe('Classic public argument safety', () => {
     expect(next.exitCode, next.stderr).toBe(0);
     expect(next.data).toMatchObject({
       change: 'legacy-next',
-      runtimeFormat: 'legacy',
+      runtimeFormat: 'compat',
       phase: 'open',
     });
   });
@@ -1838,9 +1808,7 @@ describe('Classic public argument safety', () => {
     expect(initialized.exitCode, initialized.stderr).toBe(0);
     const application = defineClassicWorkflowApplication('full');
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-      }),
+      store: createClassicSdkStateStore(root),
       workflows: [application.workflow],
       transitionHandlers: [application.transitionHandler],
       evidenceValidators: application.evidenceValidators,
@@ -1872,9 +1840,7 @@ describe('Classic public argument safety', () => {
     expect(initialized.exitCode, initialized.stderr).toBe(0);
     const application = defineClassicWorkflowApplication('full');
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-      }),
+      store: createClassicSdkStateStore(root),
       workflows: [application.workflow],
       transitionHandlers: [application.transitionHandler],
       evidenceValidators: application.evidenceValidators,
@@ -1924,9 +1890,7 @@ describe('Classic public argument safety', () => {
     expect(initialized.exitCode, initialized.stderr).toBe(0);
     const application = defineClassicWorkflowApplication('full');
     const runtime = createRuntime({
-      store: createFileRuntimeStore<WorkflowRun>({
-        rootDir: path.join(root, '.comet/runtime/sdk-runs/classic'),
-      }),
+      store: createClassicSdkStateStore(root),
       workflows: [application.workflow],
       transitionHandlers: [application.transitionHandler],
       evidenceValidators: application.evidenceValidators,

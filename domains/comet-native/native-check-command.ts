@@ -19,13 +19,13 @@ export async function nativeCheckCommand(
   const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
   if (await readSdkChangeOwner(commandRoot, 'native', name)) {
     throw new NativeUsageError(
-      `comet native check is a legacy-only command. Run comet native status ${name} --json and follow its SDK Run Action through comet native next.`,
+      `comet native check is not available for this change. Run comet native status ${name} --json and follow its next action through comet native next.`,
     );
   }
   const { paths } = await configuredPaths(projectRoot);
   if (await isNativePortableChange(paths, name)) {
     throw new NativeUsageError(
-      `comet native check is a legacy-only command. Run comet native status ${name} --json and follow its continuation to dispatch verification through comet native next.`,
+      `comet native check is not available for this change. Run comet native status ${name} --json and follow its continuation to dispatch verification through comet native next.`,
     );
   }
   const checked = await checkNativeChange({ paths, name });

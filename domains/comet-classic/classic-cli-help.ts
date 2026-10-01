@@ -52,8 +52,9 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
     ],
     state: [
       'comet state <command> [args]',
-      'init <change-name> <full|hotfix|tweak> [--isolation <current|branch|worktree>] [--runtime <legacy|sdk>]',
-      'state init defaults to sdk; pass --runtime legacy to create a legacy-format change.',
+      'init <change-name> <full|hotfix|tweak> [--isolation <current|branch|worktree>] [--runtime <compat|sdk>]',
+      'state init defaults to sdk; pass --runtime compat to create a compat Runtime change.',
+      'restore <change-name> --confirmed (recover a copied SDK Run; older states without a checkpoint restart at Open)',
       'get <change-name> <field>',
       'set <change-name> <field> <value> [<field> <value> ...]',
       'propose-design <change-name> --proposal <text> (SDK full workflow)',
@@ -87,6 +88,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'Start with current or next <change-name> to inspect workflow guidance.',
       'Advanced writes: init, set, transition, task-checkoff, select, rebind, clear-selection.',
       'Use comet state <command> --help for details. --recover is for cold recovery, not normal progression.',
+      'A copied SDK change with a Run checkpoint in .comet.yaml resumes at its saved phase. If the checkpoint is absent, state restore requires confirmation and restarts at Open with fresh approvals and checks.',
       'For SDK Design, propose-design records the exact proposal before asking the user; decide-design accepts only its current hash and may return a rejected proposal to Design. complete-design requires the approved hash and records the Design Doc in the same Run.',
       'For SDK Build, propose-build reads build_mode, tdd_mode, review_mode and subagent_dispatch from a project-relative JSON file; optional direct_override is required for full direct execution. Workspace isolation remains the Open decision.',
       'decide-build resolves only the current proposal. Rejecting it returns to configuration; approving it stores the choices and advances to planning.',
@@ -96,7 +98,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'For SDK hotfix/tweak, propose-escalation records why full Design is needed; decide-escalation applies only the current user choice. Upgrading continues the same Run and workspace through full Design.',
       'For SDK Archive, propose-archive binds the current branch and verified change to a user decision; decide-archive accepts only its current proposal hash. A local, push, or PR choice is required before the Archive Guard can perform filesystem archiving.',
       'After an SDK Archive, commit only the approved change files; complete-delivery validates that commit and any approved remote or PR before closing the Run. It does not create the commit, push, or PR.',
-      'For legacy Design, complete-design registers the reference, refreshes handoff, and applies the guard; interrupted retries retain completed work.',
+      'For compat Design, complete-design registers the reference, refreshes handoff, and applies the guard; interrupted retries retain completed work.',
       'Use data.artifactRefs for state references and task-authority markers; absolute paths are for file operations.',
     ],
     guard: [
@@ -109,8 +111,8 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'SDK Verify preview checks the report and pending Run without advancing it; apply submits report evidence and runs a literal verification check before Archive. An interrupted successful check can resume with --apply and no program.',
       'SDK-owned Archive: comet guard <change-name> archive [--apply]',
       'SDK Archive preview checks the approved delivery and current Verify evidence; apply runs preflight and OpenSpec Archive once. Commit, push, and PR delivery remain a separate pending SDK Action.',
-      'Legacy Guard validates phase requirements; --apply advances the phase after all checks pass.',
-      'Legacy Build preview is not read-only: it may execute a detected build and write evidence/logs.',
+      'Compat Guard validates phase requirements; --apply advances the phase after all checks pass.',
+      'Compat Build preview is not read-only: it may execute a detected build and write evidence/logs.',
       'Preview does not consume single-use evidence. Successful phase advancement consumes it atomically.',
       'Failed or repeated previews preserve evidence; changed inputs still require a new check.',
       'Do not poll guard for status. Use comet state next <change-name> for guidance.',
@@ -124,7 +126,10 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'comet handoff <change-name> design --write [--full]',
       'comet handoff <change-name> --hash-only',
     ],
-    archive: ['comet archive <change-name> [--dry-run]'],
+    archive: [
+      'comet archive <change-name> [--dry-run|--recover]',
+      '--recover reconciles one moved SDK Archive after the original executor has stopped; it never runs OpenSpec Archive again.',
+    ],
     validate: ['comet classic validate <change-name>'],
     workspace: [
       'comet classic workspace prepare <change-name> --isolation <current|branch|worktree> [--change-branch <branch>] [--target-branch <branch>] [--worktree-path <path>]',
@@ -168,7 +173,7 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'JSON: data.source, required, skipped, designRequired, files and problems. This does not execute implementation or verification.',
       'Optional design is omitted only when the active schema excludes it from the required closure.',
       'Skipped specs require explicit skip_specs: true, upstream support and no conflicting spec files.',
-      'Legacy changes without .openspec.yaml retain the existing Classic artifact requirements.',
+      'Compat changes without .openspec.yaml retain the existing Classic artifact requirements.',
     ],
     'task-checkoff': [
       'comet state task-checkoff <file> <task-text>',
@@ -247,6 +252,12 @@ export function classicCommandHelp(command: string, args: readonly string[]): st
       'Examples:',
       '  comet state check demo build --json',
       '  comet state check demo build --recover --json',
+    ],
+    restore: [
+      'comet state restore <change-name> --confirmed',
+      'Only for a copied SDK change whose .comet.yaml survived but local Run history did not.',
+      'Confirm the original execution process stopped before using this command. A portable checkpoint restores the saved phase and decisions; an older state without one restarts at Open and requires fresh evidence and approvals.',
+      'Unknown external actions are not replayed. A branch binding mismatch or archived change is rejected.',
     ],
     'record-check': [
       'comet state record-check <change> <build|verify> --command <text> --exit-code <int> [--cwd <path>]',

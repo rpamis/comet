@@ -1,4 +1,4 @@
-"""Validate the self-contained Comet Native workflow task for beta17."""
+"""Validate the current-checkout SDK-backed Comet Native workflow task."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import date, datetime
 from pathlib import Path
 
@@ -144,7 +145,7 @@ def check_native_artifacts():
         or native.get("max_verify_failures") != 5
         or native.get("archive_confirmation", "automatic") != "automatic"
     ):
-        return failed("native_artifacts", "beta17 .comet/config.yaml is invalid")
+        return failed("native_artifacts", ".comet/config.yaml is invalid")
 
     archived = archive_directory()
     if archived is None:
@@ -176,12 +177,111 @@ def check_native_artifacts():
         or not _all_acceptance_passed(state)
         or not _history_is_valid(state)
     ):
-        return failed("native_artifacts", "Archive state is not a terminal beta17 pass")
+        return failed("native_artifacts", "Archive state is not a terminal Native pass")
     return passed("native_artifacts")
 
 
+def check_sdk_run():
+    archived = archive_directory()
+    if archived is None or len(archived.name) <= 11:
+        return failed("sdk_run", "No Native archive identifies an SDK Run")
+    name = archived.name[11:]
+    owner_path = WORKSPACE / ".comet/runtime/change-owners/native" / f"{name}.json"
+    try:
+        if owner_path.is_symlink():
+            raise ValueError("SDK owner is a symlink")
+        owner = json.loads(owner_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        return failed("sdk_run", f"Native SDK owner is unavailable or invalid: {error}")
+    expected_owner = {
+        "schema": "comet.change-owner.v1",
+        "workflow": "native",
+        "change": name,
+        "format": "sdk",
+        "application": "native",
+        "runId": name,
+    }
+    if owner != expected_owner:
+        return failed("sdk_run", "Native change is not owned by the expected SDK application")
+
+    state_path = archived / "comet-state.yaml"
+    try:
+        source = state_path.read_text(encoding="utf-8")
+    except OSError as error:
+        return failed("sdk_run", f"Native archive state is unavailable: {error}")
+    state = _read_yaml(state_path)
+    checkpoint = state.get("run_checkpoint") if isinstance(state, dict) else None
+    if (
+        not source.startswith("# comet-execution: managed-run\n")
+        or not isinstance(checkpoint, dict)
+        or checkpoint.get("schema") != "comet.workflow-run-checkpoint.v1"
+        or not isinstance(checkpoint.get("hash"), str)
+        or not isinstance(checkpoint.get("run"), dict)
+        or checkpoint["run"].get("runId") != name
+    ):
+        return failed("sdk_run", "Native archive lacks a managed SDK Run checkpoint")
+
+    try:
+        with tempfile.TemporaryDirectory(prefix=".eval-sdk-", dir=WORKSPACE) as request_dir:
+            request = Path(request_dir) / "inspect.json"
+            request.write_text(
+                json.dumps({"operation": "inspect", "runId": name}), encoding="utf-8"
+            )
+            result = subprocess.run(
+                [
+                    "comet",
+                    "runtime",
+                    "dispatch",
+                    "--application",
+                    "native",
+                    "--project-root",
+                    str(WORKSPACE),
+                    "--request",
+                    str(request),
+                ],
+                cwd=WORKSPACE,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=60,
+                check=False,
+            )
+        response = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as error:
+        return failed("sdk_run", f"Cannot inspect Native SDK Run: {error}")
+    if not isinstance(response, dict):
+        return failed("sdk_run", "Native SDK Run inspect returned an invalid response")
+    if result.returncode != 0 or response.get("status") != "succeeded":
+        return failed(
+            "sdk_run", f"Native SDK Run inspect failed: {response.get('error', result.stderr)}"
+        )
+    run = response.get("data")
+    actions = run.get("actions") if isinstance(run, dict) else None
+    workflow = run.get("workflow") if isinstance(run, dict) else None
+    if (
+        not isinstance(run, dict)
+        or run.get("runId") != name
+        or not isinstance(workflow, dict)
+        or workflow.get("id") != "comet-native"
+        or run.get("status") != "completed"
+        or not isinstance(actions, list)
+    ):
+        return failed("sdk_run", "Native SDK Run is not the completed workflow for this archive")
+    succeeded = {
+        action.get("stepId")
+        for action in actions
+        if isinstance(action, dict) and action.get("status") == "succeeded"
+    }
+    required = {"build.builder", "verify.verifier", "archive.finalize"}
+    if not required.issubset(succeeded):
+        return failed(
+            "sdk_run", f"Native SDK Run lacks successful steps: {sorted(required - succeeded)}"
+        )
+    return passed("sdk_run")
+
+
 def check_loop():
-    """Check portable Loop state; a valid direct pass need not contain failed history."""
+    """Check the required failed Verify, Build repair, and final pass."""
     archived = archive_directory()
     state = _read_yaml(archived / "comet-state.yaml") if archived else None
     if not isinstance(state, dict):
@@ -191,6 +291,19 @@ def check_loop():
         return failed("loop", "Portable loop is not in the done stage")
     if not _history_is_valid(state):
         return failed("loop", "Portable history is invalid")
+    history = state["history"]
+    failed_index = next(
+        (
+            index
+            for index, entry in enumerate(history)
+            if entry["outcome"] == "fail" and entry["unresolved_ids"]
+        ),
+        None,
+    )
+    if failed_index is None or not any(
+        entry["outcome"] == "pass" for entry in history[failed_index + 1 :]
+    ):
+        return failed("loop", "A failed Verify with unresolved items must precede the final pass")
     return passed("loop")
 
 
@@ -232,7 +345,13 @@ def check_isolation():
 
 
 def main():
-    results = [check_feature(), check_native_artifacts(), check_loop(), check_isolation()]
+    results = [
+        check_feature(),
+        check_native_artifacts(),
+        check_sdk_run(),
+        check_loop(),
+        check_isolation(),
+    ]
     output = {
         "passed": [result["check"] for result in results if result["status"] == "passed"],
         "failed": [

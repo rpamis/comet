@@ -5,6 +5,14 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
+import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
+import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
+import {
+  COMET_CHANGE_OWNER_SCHEMA,
+  readChangeRuntimeOwner,
+  registerSdkChangeOwner,
+} from '../../../domains/workflow-contract/change-runtime-owner.js';
 import {
   COMET_RESUME_PROBE_SCHEMA_VERSION,
   resolveCometEntryResumeProbe,
@@ -18,6 +26,7 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
+import { createNativeSdkChange } from '../../../domains/comet-native/native-sdk-create.js';
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import {
   nativeSelectionFile,
@@ -29,6 +38,7 @@ import {
   nativeLocalExecutionFile,
 } from '../../../domains/comet-native/native-portable-runtime.js';
 import { nativeVerificationFixtureReport } from '../../helpers/native-verification.js';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const VALID_BRIEF = `# Outcome
 Ship cache controls.
@@ -160,6 +170,147 @@ describe('Comet entry resume probe v2', () => {
     });
   });
 
+  it('does not auto-resume a Classic state file after its local Run records are lost', async () => {
+    await writeClassicProjectConfig(projectRoot);
+    await createClassic(projectRoot, 'copied-classic');
+    const stateFile = path.join(
+      projectRoot,
+      'openspec',
+      'changes',
+      'copied-classic',
+      '.comet.yaml',
+    );
+    await fs.writeFile(
+      stateFile,
+      `# comet-execution: managed-run\n${await fs.readFile(stateFile, 'utf8')}`,
+    );
+
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续 copied-classic')),
+    ).resolves.toMatchObject({
+      workflow: 'classic',
+      action: 'ask_user',
+      changeName: 'copied-classic',
+      nextCommand: null,
+    });
+  });
+
+  it('does not auto-resume a Classic change with ownership but no Run record', async () => {
+    await writeClassicProjectConfig(projectRoot);
+    await createClassic(projectRoot, 'orphaned-classic');
+    const stateFile = path.join(
+      projectRoot,
+      'openspec',
+      'changes',
+      'orphaned-classic',
+      '.comet.yaml',
+    );
+    await fs.writeFile(
+      stateFile,
+      `# comet-execution: managed-run\n${await fs.readFile(stateFile, 'utf8')}`,
+    );
+    await registerSdkChangeOwner(projectRoot, {
+      schema: COMET_CHANGE_OWNER_SCHEMA,
+      workflow: 'classic',
+      change: 'orphaned-classic',
+      format: 'sdk',
+      application: 'classic-full',
+      runId: 'orphaned-classic',
+    });
+
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续 orphaned-classic')),
+    ).resolves.toMatchObject({
+      workflow: 'classic',
+      action: 'ask_user',
+      changeName: 'orphaned-classic',
+      nextCommand: null,
+    });
+  });
+
+  it('resumes a Classic SDK change while retaining its state file', async () => {
+    await prepareClassicLegacyProject(projectRoot);
+    const created = await withClassicCommandContext(
+      { projectRoot, invocationCwd: projectRoot },
+      () => runClassicCli(['state', 'init', 'working-classic', 'full', '--json']),
+    );
+    expect(created.exitCode, created.stderr).toBe(0);
+
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续 working-classic')),
+    ).resolves.toMatchObject({
+      workflow: 'classic',
+      action: 'auto_resume',
+      changeName: 'working-classic',
+      nextCommand: '/comet-classic',
+    });
+  });
+
+  it('auto-resumes an untouched Classic SDK state file without creating its Run during probing', async () => {
+    await prepareClassicLegacyProject(projectRoot);
+    const created = await withClassicCommandContext(
+      { projectRoot, invocationCwd: projectRoot },
+      () => runClassicCli(['state', 'init', 'copied-classic-sdk', 'full', '--json']),
+    );
+    expect(created.exitCode, created.stderr).toBe(0);
+    const restored = path.join(projectRoot, 'restored-classic');
+    await fs.mkdir(restored);
+    await prepareClassicLegacyProject(restored);
+    await fs.cp(
+      path.join(projectRoot, 'openspec', 'changes', 'copied-classic-sdk'),
+      path.join(restored, 'openspec', 'changes', 'copied-classic-sdk'),
+      { recursive: true },
+    );
+
+    await expect(
+      resolveCometEntryResumeProbe(restored, input('继续 copied-classic-sdk')),
+    ).resolves.toMatchObject({
+      workflow: 'classic',
+      action: 'auto_resume',
+      changeName: 'copied-classic-sdk',
+      phase: 'open',
+      nextCommand: '/comet-classic',
+    });
+    expect(await readChangeRuntimeOwner(restored, 'classic', 'copied-classic-sdk')).toBeNull();
+  });
+
+  it('uses the Classic Run phase when its state file projection is one revision behind', async () => {
+    await prepareClassicLegacyProject(projectRoot);
+    const created = await withClassicCommandContext(
+      { projectRoot, invocationCwd: projectRoot },
+      () => runClassicCli(['state', 'init', 'lagging-classic', 'full', '--json']),
+    );
+    expect(created.exitCode, created.stderr).toBe(0);
+    const store = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'classic'),
+    });
+    const run = await store.read('lagging-classic');
+    expect(run).not.toBeNull();
+    expect(
+      await store.compareAndSwap('lagging-classic', run!.revision, {
+        ...run!,
+        revision: run!.revision + 1,
+        state: { ...run!.state, phase: 'design' },
+      }),
+    ).toBe(true);
+    const advanced = await store.read('lagging-classic');
+    expect(advanced?.state).toMatchObject({ phase: 'design' });
+    expect(
+      await fs.readFile(
+        path.join(projectRoot, 'openspec', 'changes', 'lagging-classic', '.comet.yaml'),
+        'utf8',
+      ),
+    ).toContain('phase: open');
+
+    await expect(
+      resolveCometEntryResumeProbe(projectRoot, input('继续 lagging-classic')),
+    ).resolves.toMatchObject({
+      workflow: 'classic',
+      changeName: 'lagging-classic',
+      phase: 'design',
+    });
+  });
+
   it('auto-resumes a portable v4 change without a local execution overlay', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
@@ -213,6 +364,33 @@ describe('Comet entry resume probe v2', () => {
       reasonCode: 'native-change-named',
       candidates: [{ name: 'sdk-resume', phase: 'shape' }],
     });
+  });
+
+  it('auto-resumes an untouched SDK state file without creating its Run during probing', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const paths = await nativeProjectPaths(projectRoot, '.');
+    await createNativeSdkChange({
+      paths,
+      name: 'copied-sdk',
+      language: 'en',
+      workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    const restored = path.join(projectRoot, 'restored');
+    await fs.mkdir(restored);
+    await writeProjectConfig(restored, defaultProjectConfig('.'));
+    await fs.cp(paths.nativeRoot, path.join(restored, 'comet'), { recursive: true });
+
+    await expect(
+      resolveCometEntryResumeProbe(restored, input('继续 copied-sdk')),
+    ).resolves.toMatchObject({
+      workflow: 'native',
+      action: 'auto_resume',
+      reasonCode: 'native-change-named',
+      changeName: 'copied-sdk',
+      phase: 'shape',
+      nextCommand: '/comet-native',
+    });
+    expect(await readChangeRuntimeOwner(restored, 'native', 'copied-sdk')).toBeNull();
   });
 
   it('does not auto-resume a cancelled Native SDK Run', async () => {

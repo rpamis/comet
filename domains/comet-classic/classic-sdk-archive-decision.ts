@@ -36,7 +36,9 @@ export async function proposeClassicSdkArchive(options: {
   ) {
     throw new Error('Classic Archive proposal branch or delivery fields are invalid');
   }
-  await assertVerifyEvidenceCurrent(run, projectRoot, state, 1);
+  // A proposal must remain available when Verify evidence has become stale:
+  // the user can choose reverify without authorizing a delivery side effect.
+  // Delivery choices and the Archive preflight still revalidate the evidence.
   const output = {
     targetBranch: state.boundBranch,
     summary: options.summary.trim(),
@@ -109,7 +111,15 @@ export async function decideClassicSdkArchive(options: {
     throw new Error('Classic Archive proposal no longer matches the delivery target');
   }
   if (!['reverify', 'later'].includes(options.choice)) {
-    await assertVerifyEvidenceCurrent(run, options.projectRoot, state, 1);
+    try {
+      await assertVerifyEvidenceCurrent(run, options.projectRoot, state, 1);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `${reason}\nRevalidate before delivery: comet state decide-archive ${options.change} --proposal-hash ${options.proposalHash} --choice reverify`,
+        { cause: error },
+      );
+    }
   }
   return runtime.resolveWait({
     runId: run.runId,

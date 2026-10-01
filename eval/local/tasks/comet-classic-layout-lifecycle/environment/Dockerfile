@@ -10,13 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --break-system-packages --no-cache-dir pyyaml
 
-# Match Comet's supported OpenSpec floor. The current-checkout CLI and its
-# dependencies remain separate so the benchmark does not depend on a published
-# Comet package.
-RUN npm install -g @fission-ai/openspec@1.5.0
-
+# Use the current checkout's dependencies, including its supported OpenSpec,
+# without depending on a published Comet package.
 COPY current-comet-package.json /opt/comet-cli/package.json
 RUN npm install --prefix /opt/comet-cli --omit=dev --ignore-scripts
+RUN ln -s /opt/comet-cli/node_modules/.bin/openspec /usr/local/bin/openspec
 
 # Claude Code CLI (the agent runtime; version overridable via BENCH_CC_VERSION).
 ARG CLAUDE_CODE_VERSION=latest

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRuntime } from '../../../domains/engine/runtime-service.js';
+import { createPortableRunCheckpoint } from '../../../domains/engine/portable-run-checkpoint.js';
 import { createMemoryRuntimeStore } from '../../../domains/engine/runtime-store.js';
 import type { WorkflowRun } from '../../../domains/engine/workflow-run.js';
 
@@ -163,6 +164,7 @@ describe('Runtime execution extensions and recovery', () => {
       executorId: 'host',
       claimToken: 'token',
     });
+    const portableBeforeRejection = createPortableRunCheckpoint(await runtime.inspect('r'));
     const outcome = {
       actionId: action.id,
       attempt: 1,
@@ -179,6 +181,9 @@ describe('Runtime execution extensions and recovery', () => {
       status: 'running',
       rejectedOutcomes: [{ outcome, code: 'OUTCOME_REJECTED', reason: '来源未核实' }],
     });
+    expect(createPortableRunCheckpoint(await runtime.inspect('r'))).toEqual(
+      portableBeforeRejection,
+    );
     expect(
       (
         await runtime.recordOutcome({

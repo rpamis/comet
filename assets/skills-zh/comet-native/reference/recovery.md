@@ -12,6 +12,8 @@
 
 ## 故障恢复
 
+若 SDK change 的本机 Run 记录丢失，先用 `comet native doctor <change-name> --json` 检查。`comet-state.yaml` 含 `run_checkpoint` 时，具名 `native status` 或 `native next` 会在新设备恢复已保存的阶段、Action 和确认；继续外部工作前确认原设备的执行进程已停止，结果未明的 Action 先核对，不重放。只有旧状态文件没有检查点时，才向用户说明显式恢复会回到 Shape、旧确认与检查需要重做；获得明确同意后运行 `comet native doctor <change-name> --repair --confirmed`。
+
 Runtime 出现故障时，先停止修改项目，再重新运行 `status --details --json` 和只读 `doctor`。只执行 `continuation` 或 `doctor` 明确返回的恢复动作。跨设备状态、本机执行状态、锁和事务始终由 Runtime 管理；无法确定自动恢复是否安全时，保留现场并等待用户决定。
 
 仅等待外部输入时，按[等待外部输入与监控](#等待外部输入与监控)处理，独立工作继续。恢复后重新分配 Supervisor 任务前，必须读取[Supervisor 协作](commands.md#supervisor-协作)；重新启动 Verifier 前，必须读取[Verify 协议](commands.md#verify-协议)，核对当前任务标识、待验收的实现版本和执行状态。
@@ -22,9 +24,9 @@ Runtime 出现故障时，先停止修改项目，再重新运行 `status --deta
 
 如果项目根目录、分支、工作区类型或 Git 状态与 `comet-state.yaml` 中的记录不一致，Runtime 会阻止写入。Runtime 能安全找到或创建已声明的 worktree 时，按返回动作继续；否则进入阻塞等待用户决定（`disposition: blocked`，recovery action 为 `await-user`）。原目录或分支确实丢失时，由用户决定使用哪个恢复目录、是否从可信备份重建，或是否放弃 change。
 
-### 工作流记录与本机执行状态
+### 旧 Runtime 的工作流记录与本机执行状态
 
-`comet-state.yaml` 记录最后一个可以安全恢复的工作流状态。本机 `state.json` 只说明这台机器正在执行什么；如果它缺失、版本落后或属于旧任务，Runtime 会根据 YAML、brief 和目标 Spec 重建。本机状态不能覆盖版本更新的 YAML。
+SDK Run 从 `comet-state.yaml` 的 `run_checkpoint` 恢复；本节以下的 `state.json` 重建规则只适用于旧 Runtime。旧 Runtime 的 `comet-state.yaml` 记录最后一个可以安全恢复的工作流状态。本机 `state.json` 只说明这台机器正在执行什么；如果它缺失、版本落后或属于旧任务，Runtime 会根据 YAML、brief 和目标 Spec 重建。本机状态不能覆盖版本更新的 YAML。
 
 - Shape：保持 Shape，继续澄清或确认。
 - Build：如果 Runtime 显示 `repairing`，表示 Verify 未通过后已返回 Build。普通 change 保持当前验收轮次并继续修改；Supervisor Change 按 `repair-child` 添加新的修复子任务，处理尚未通过的验收项（编辑 `children.yaml` 后运行 `comet native next <parent> --summary "<说明>"`，契约变化会让 Runtime 退回 Shape 重新确认），不重新打开已经归档的子任务。
@@ -42,13 +44,13 @@ Runtime 出现故障时，先停止修改项目，再重新运行 `status --deta
 
 ### 没有聊天记录时跨设备恢复
 
-在没有聊天记录的新设备上恢复时，需要取得同一份已同步项目代码、`comet-state.yaml`、brief 和目标 Spec。如果 change 使用非默认产物目录，还需要同步 `.comet/config.yaml`。
+在没有聊天记录的新设备上恢复时，需要取得同一份已同步项目代码、`comet-state.yaml`、brief 和目标 Spec。如果 change 使用非默认产物目录，还需要同步 `.comet/config.yaml`。SDK change 的 `run_checkpoint` 随状态文件一起复制，恢复时保留已完成的 Shape、Build 及仍有效的决定；本机执行中的 Action 需要核对实际结果。
 
 先停止旧设备上的推进并完成同步。发现 Git 冲突，或同一状态版本出现两份不同内容时，进入阻塞状态并交给用户处理。
 
-旧设备上尚未同步的代码，不能仅靠工作流状态恢复；同一个 subagent 任务也不能跨设备继续。新设备根据 YAML 中的工作目录、验收轮次、验收结果、阻塞原因、Builder handoff 和下一步，创建新的本机执行任务。如果同步后的实现不完整，新的 Verifier 会指出缺失内容，并返回 Build。
+旧设备上尚未同步的代码，不能仅靠工作流状态恢复；同一个 subagent 任务也不能跨设备继续。旧 Runtime 根据 YAML 中的工作目录、验收轮次、验收结果、阻塞原因、Builder handoff 和下一步，创建新的本机执行任务。如果同步后的实现不完整，新的 Verifier 会指出缺失内容，并返回 Build。
 
-处于 Verify 或待归档状态的 change，在新设备上重新验收属于恢复操作，不增加验收轮次、失败轮次或无进展次数。只有实际启动新的 Verifier 时，Verifier 尝试次数才增加。已经完成的 Shape 和 Build 不会重做，Runtime 也不会扫描整个项目来猜测进度。
+旧 Runtime 处于 Verify 或待归档状态的 change，在新设备上重新验收属于恢复操作，不增加验收轮次、失败轮次或无进展次数。只有实际启动新的 Verifier 时，Verifier 尝试次数才增加。已经完成的 Shape 和 Build 不会重做，Runtime 也不会扫描整个项目来猜测进度。
 
 ### Verify 未通过与持续无进展
 

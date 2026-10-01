@@ -1,6 +1,26 @@
 # Self-contained Comet Native treatment. It loads only the current repository's
 # Native Skill package; no Classic, OpenSpec, Superpowers, or dependency snapshot
 # is injected.
+COMET_NATIVE_SDK_CURRENT:
+  description: 'Current-checkout SDK-backed Comet Native full workflow'
+  claude_md: |
+    Begin by invoking /comet-native as the only workflow Skill. Use the
+    current-checkout `comet` CLI and its SDK-backed Native Runtime. Create a
+    Native change owned by an SDK Run, then continue through Shape, Build,
+    Verify, and Archive. The public `comet.native.v4` state and canonical
+    specification remain user-facing artifacts. Before claiming completion,
+    inspect the Run with `comet runtime dispatch --application native` and
+    confirm its terminal state. Do not create OpenSpec, Classic, Superpowers,
+    or change-local machine artifacts.
+  skills:
+    - name: comet-native
+      source: path
+      path: ../assets/skills/comet-native
+      profile: generic
+      required_skills:
+        - comet-native
+      require_skill_invocation: true
+
 COMET_NATIVE_PHASE1:
   description: 'Self-contained Comet Native Phase 1 workflow for strong coding models'
   claude_md: |

@@ -64,7 +64,7 @@ async function initializeClassicChange(projectRoot: string, name: string): Promi
   await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
   const result = spawnSync(
     process.execPath,
-    [classicStateScript, 'init', name, 'full', '--runtime', 'legacy'],
+    [classicStateScript, 'init', name, 'full', '--runtime', 'compat'],
     {
       cwd: projectRoot,
       encoding: 'utf8',

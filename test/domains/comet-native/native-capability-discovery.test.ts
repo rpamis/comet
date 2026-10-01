@@ -269,7 +269,7 @@ describe('Native capability association during change creation', () => {
 
     const task = 'Improve authentication login security';
     const first = await nativeNewCommand(
-      ['extend-auth', '--task', task, '--runtime', 'legacy'],
+      ['extend-auth', '--task', task, '--runtime', 'compat'],
       root,
     );
     expect(first.exitCode).toBe(0);
@@ -286,7 +286,7 @@ describe('Native capability association during change creation', () => {
       force: true,
     });
     const second = await nativeNewCommand(
-      ['extend-auth-again', '--task', task, '--runtime', 'legacy'],
+      ['extend-auth-again', '--task', task, '--runtime', 'compat'],
       root,
     );
     expect(second.exitCode).toBe(0);
@@ -311,7 +311,7 @@ describe('Native capability association during change creation', () => {
 
     const task = 'Improve login security';
     const first = await nativeNewCommand(
-      ['extend-auth', '--task', task, '--runtime', 'legacy'],
+      ['extend-auth', '--task', task, '--runtime', 'compat'],
       root,
     );
     expect(first.exitCode).toBe(0);
@@ -332,7 +332,7 @@ describe('Native capability association during change creation', () => {
     });
 
     const second = await nativeNewCommand(
-      ['extend-auth-again', '--task', task, '--runtime', 'legacy'],
+      ['extend-auth-again', '--task', task, '--runtime', 'compat'],
       root,
     );
     expect(second.exitCode).toBe(0);

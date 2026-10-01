@@ -25,6 +25,7 @@ import {
 import type { SkillPackage } from '../../domains/skill/types.js';
 import { discoverClassicProject } from './classic-layout.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
+import { hasClassicManagedRunMarker } from './classic-state.js';
 
 export interface ClassicRunContext {
   classic: ClassicState;
@@ -138,6 +139,13 @@ async function ensureClassicRunLocked(
   changeDir: string,
   options: EnsureClassicRunOptions,
 ): Promise<ClassicRunContext> {
+  const projectRoot = await discoverClassicProject(changeDir);
+  const source = await readClassicProjectFile(projectRoot, path.join(changeDir, '.comet.yaml'), {
+    label: 'Classic migration state',
+  });
+  if (hasClassicManagedRunMarker(source)) {
+    throw new Error('Classic managed Run is owned by the SDK and cannot be migrated to compat');
+  }
   const projection = await readClassicState(changeDir);
   if (!projection.classic) {
     throw new Error('Classic migration requires a legacy state projection');

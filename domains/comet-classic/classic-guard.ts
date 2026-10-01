@@ -1384,7 +1384,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
       const projectRoot = classicCommandProjectRoot();
       const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, change);
       const sdkWorkspace =
-        localOwner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, change);
+        localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, change);
       if (sdkWorkspace) {
         if (phase === 'open') {
           const apply = args.length === 5 && args[2] === '--apply' && args[3] === '--approval-hash';

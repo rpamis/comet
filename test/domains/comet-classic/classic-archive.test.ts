@@ -56,7 +56,7 @@ async function makeProject(): Promise<string> {
 }
 
 async function seedArchiveChange(dir: string): Promise<string> {
-  run(dir, ['state', 'init', 'demo', 'full', '--runtime', 'legacy']);
+  run(dir, ['state', 'init', 'demo', 'full', '--runtime', 'compat']);
   const changeDir = path.join(dir, 'openspec', 'changes', 'demo');
   await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
   await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
@@ -257,7 +257,7 @@ describe('Classic archive command', () => {
 
   it('rejects a change that is not in the archive phase', async () => {
     const dir = await makeProject();
-    run(dir, ['state', 'init', 'demo', 'full', '--runtime', 'legacy']); // phase = open
+    run(dir, ['state', 'init', 'demo', 'full', '--runtime', 'compat']); // phase = open
 
     const result = run(dir, ['archive', 'demo']);
     expect(result.status).not.toBe(0);
@@ -266,7 +266,7 @@ describe('Classic archive command', () => {
 
   it('rejects an unverified change in the archive phase', async () => {
     const dir = await makeProject();
-    run(dir, ['state', 'init', 'demo', 'full', '--runtime', 'legacy']);
+    run(dir, ['state', 'init', 'demo', 'full', '--runtime', 'compat']);
     run(dir, ['state', 'set', 'demo', 'phase', 'archive'], { COMET_FORCE_PHASE: '1' });
 
     const result = run(dir, ['archive', 'demo']);
@@ -435,7 +435,7 @@ describe('Classic archive command', () => {
     const dir = await makeProject();
     await seedArchiveChange(dir);
     confirmArchiveChange(dir);
-    expect(run(dir, ['state', 'init', 'other', 'full', '--runtime', 'legacy']).status).toBe(0);
+    expect(run(dir, ['state', 'init', 'other', 'full', '--runtime', 'compat']).status).toBe(0);
     expect(run(dir, ['state', 'select', 'other']).status).toBe(0);
     const fake = await fakeOpenSpec(dir, 'success');
 

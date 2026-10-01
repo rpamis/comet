@@ -22,8 +22,8 @@ description: '创建 Classic change，整理需求并请用户确认。在用户
 恢复已有 change 时，先运行 `comet state next <name> --json` 确认 Runtime 归属，再按 `data.runtimeFormat` 处理：
 
 - `sdk`：复用现有 Run，按 `data.nextAction.kind` 恢复；已领取但结果未明的 Action 先核对原结果，不重新创建 change 或重发外部工作。
-- `legacy`：复用旧 `.comet.yaml`，保留该 change 的原流程；不能自动把它改建为 SDK Run。
-- 命令失败：核对错误、归属记录、Run 和旧状态文件。归属冲突或状态格式异常时停止并报告；只有证实尚无任何 Runtime 归属、change 目录有效时，才按所选隔离方式准备工作区并用 `--runtime sdk` 初始化。不得因缺少 `.comet.yaml` 就重新初始化。
+- `compat`：复用原流程和 `.comet.yaml`；不能自动把该 change 改建为 SDK Run。
+- 命令失败：核对错误、归属记录、Run 和 `.comet.yaml`。归属冲突或状态格式异常时停止并报告；若本地 Run 记录丢失，先检查状态文件中的 `run_checkpoint`，按 `/comet-classic` 的恢复步骤沿用已保存阶段。旧状态没有检查点且用户明确同意重启时，才回到 Open 重新核对证据和确认。只有证实尚无任何 Runtime 归属、change 目录有效时，才按所选隔离方式准备工作区并初始化。不得因缺少 `.comet.yaml` 就重新初始化。
 
 SDK 与旧 change 都通过以下命令绑定工作区：
 
@@ -136,7 +136,7 @@ comet state check <name> design --json
 
 该入口已检查 OpenSpec 的全部必需依赖、实际输出和 Comet 状态，不再额外重复查询 status。`isComplete` 仅用于诊断，非必需产物不会阻止流程继续。检查失败时，再查询 status，找出尚未生成的依赖，或处理已报告的路径错误、缺少必需能力等问题。
 
-任一拆分项未通过检查时，不能宣告拆分完成，也不能询问用户开始哪个 change。应停止后续推进，从该 change 的第一个 `ready` 或 `blocked` 产物恢复 `/comet-open`。OpenSpec 检查通过、但 Comet state 检查失败时，先核对该 change 的 Runtime 归属、Run 和 phase，再重新执行整批检查；旧 change 才按旧状态文件恢复。
+任一拆分项未通过检查时，不能宣告拆分完成，也不能询问用户开始哪个 change。应停止后续推进，从该 change 的第一个 `ready` 或 `blocked` 产物恢复 `/comet-open`。OpenSpec 检查通过、但 Comet state 检查失败时，先核对该 change 的 Runtime 归属、Run 和 phase，再重新执行整批检查；`compat` change 按原状态机恢复。
 
 只有所有拆分项都通过入口检查后，才暂停，请用户选择从哪一个 change 开始。用户选择后，将批量清单中的该项标记为 `selected`，只推进该 change 进入 `/comet-design`；其他 change 保持未归档状态，稍后通过 `/comet-classic` 恢复。
 
@@ -176,7 +176,7 @@ resolved brief 或 change 名称仍不明确时不得运行 `comet classic opens
 change 的基础目录和文件创建后，立即初始化 SDK Run，以便中断后恢复；不能等所有产物都生成后才初始化（入口状态验证统一在 Step 3 执行，这里不重复）：
 
 ```bash
-comet state init <name> full --isolation <selected-isolation> --runtime sdk
+comet state init <name> full --isolation <selected-isolation>
 comet state select <name>
 comet state next <name> --json
 ```
@@ -226,7 +226,7 @@ Agent JSON 模式下，从 `data.upstream.data` 读取上游字段。下一步�
 └── tasks.md          # 任务清单（勾选框）
 ```
 
-SDK Run 保存在项目 `.comet/runtime/sdk-runs/classic/`，不在 change 目录创建 `.comet.yaml`；恢复时通过 `state next` 和 `state check` 读取 Run，不直接编辑其存储文件。
+SDK Run 保存在项目 `.comet/runtime/sdk-runs/classic/`，change 目录仍保留 `.comet.yaml`；恢复时通过 `state next` 和 `state check` 读取 Run，不直接编辑 Run 的存储文件。
 
 ### 3. 入口状态验证
 
@@ -240,7 +240,7 @@ comet state check <name> open
 
 **恢复未完成的创建步骤**：open 阶段的操作允许安全重试；恢复时按以下顺序识别已完成的部分，只补未完成的工作：
 
-1. 先运行 `comet state next <name> --json` 确认归属。`runtimeFormat: sdk` 时复用原 Run；`runtimeFormat: legacy` 时保留旧流程。只有证实没有 Run、归属记录和旧状态，才准备工作区并运行 `comet state init <name> full --isolation <selected-isolation> --runtime sdk`；格式异常或归属冲突时停止，不覆盖。随后选择 change 并运行 `comet state check <name> open`。
+1. 先运行 `comet state next <name> --json` 确认归属。`runtimeFormat: sdk` 时复用原 Run；`runtimeFormat: compat` 时保留原流程。只有证实没有 Run、归属记录和 `.comet.yaml`，才准备工作区并运行 `comet state init <name> full --isolation <selected-isolation>`；格式异常或归属冲突时停止，不覆盖。随后选择 change 并运行 `comet state check <name> open`。
 2. 运行 `comet classic openspec --agent-json -- status --change "<name>" --json`，重新验证 `changeRoot`、核心 ID、`applyRequires`、`artifacts` 和 `missingDeps`。
 3. `done`：该产物已完成，保持原文件不变，不重复生成。
 4. `ready`：依赖已经满足，可以生成。先运行 `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`，按返回内容写入；写完后用 `comet state artifacts <name> --json` 做本地闭包校验，不重新运行 status。

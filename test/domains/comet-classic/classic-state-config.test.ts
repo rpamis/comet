@@ -23,7 +23,7 @@ describe('Classic atomic configuration', () => {
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-config-'));
     await prepareClassicLegacyProject(root);
-    expect((await cli('state', 'init', 'demo', 'full', '--runtime', 'legacy')).exitCode).toBe(0);
+    expect((await cli('state', 'init', 'demo', 'full', '--runtime', 'compat')).exitCode).toBe(0);
   });
   afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

@@ -12,6 +12,8 @@ Read only the section relevant to the current blocker.
 
 ## Fault recovery
 
+If local SDK Run history is missing, first inspect with `comet native doctor <change-name> --json`. When `comet-state.yaml` contains `run_checkpoint`, named `native status` or `native next` restores the saved phase, Actions, and approvals on the new device. Confirm the original device's execution process has stopped before continuing external work; reconcile an Action with an unknown outcome instead of replaying it. Only when an older state file has no checkpoint, explain that explicit restoration returns to Shape and requires fresh approvals and checks, then obtain consent before running `comet native doctor <change-name> --repair --confirmed`.
+
 On Runtime failure, stop editing the project and rerun `status --details --json` and read-only `doctor`. Execute only recovery actions explicitly returned by `continuation` or `doctor`. Runtime owns portable state, local execution state, locks, and transactions. If safe automatic recovery cannot be established, preserve the workspace and wait for a user decision.
 
 For external-input waits, follow [external input and monitoring](#external-input-and-monitoring) while independent work continues. Before redispatching Supervisor tasks after recovery, read [Supervisor coordination](commands.md#supervisor-coordination). Before relaunching a Verifier, read [Verify protocol](commands.md#verify-protocol) and check current task identifiers, candidate version, and execution state.
@@ -22,9 +24,9 @@ For external-input waits, follow [external input and monitoring](#external-input
 
 Runtime blocks writes if project root, branch, workspace type, or Git state disagrees with `comet-state.yaml`. Follow its action if Runtime can safely find or create the declared worktree; otherwise it enters blocked await-user (`disposition: blocked`, recovery action `await-user`). If the original directory or branch is truly lost, the user chooses the recovery location, whether to restore from a trusted backup, or whether to abandon the change.
 
-### Workflow records and local execution
+### Older Runtime workflow records and local execution
 
-`comet-state.yaml` records the last safely recoverable workflow state. Local `state.json` only describes execution on this machine. If missing, behind, or associated with an old task, Runtime rebuilds it from YAML, the brief, and target Specs. Local state cannot override newer YAML.
+SDK Runs recover from `run_checkpoint` in `comet-state.yaml`; the `state.json` rebuild rules below apply only to the older Runtime. For that Runtime, `comet-state.yaml` records the last safely recoverable workflow state. Local `state.json` only describes execution on this machine. If missing, behind, or associated with an old task, Runtime rebuilds it from YAML, the brief, and target Specs. Local state cannot override newer YAML.
 
 - Shape: stay in Shape and continue clarification or confirmation.
 - Build: `repairing` means Verify failed and returned to Build. Ordinary changes retain the current iteration and continue implementation. Supervisor Changes use `repair-child` to add a new repair child for unresolved items (edit `children.yaml`, then run `comet native next <parent> --summary "<note>"` so the contract change returns the change to Shape for reconfirmation) rather than reopening archived children.
@@ -42,13 +44,13 @@ Older active changes appear read-only as `migration-required`. Use `doctor --rep
 
 ### Cross-device recovery without chat history
 
-A new device without chat history needs the same synchronized project code, `comet-state.yaml`, brief, and target Specs. Synchronize `.comet/config.yaml` too when the change uses a nondefault artifact directory.
+A new device without chat history needs the same synchronized project code, `comet-state.yaml`, brief, and target Specs. Synchronize `.comet/config.yaml` too when the change uses a nondefault artifact directory. An SDK change's `run_checkpoint` travels with the state file and restores completed Shape and Build work and still-valid decisions; reconcile any Action that was executing locally.
 
 Stop advancement on the old device and finish synchronization first. Git conflicts or different contents for the same state version block progress and require user resolution.
 
-Workflow state cannot recover code that was never synchronized from the old device. The same subagent execution cannot continue across devices. The new device creates local execution from YAML's working directory, iteration, acceptance results, blockers, Builder handoff, and next action. If synchronized implementation is incomplete, the new Verifier identifies the omissions and returns to Build.
+Workflow state cannot recover code that was never synchronized from the old device. The same subagent execution cannot continue across devices. Under the older Runtime, the new device creates local execution from YAML's working directory, iteration, acceptance results, blockers, Builder handoff, and next action. If synchronized implementation is incomplete, the new Verifier identifies the omissions and returns to Build.
 
-Reverification of Verify or Archive-ready work on a new device is recovery; it does not increase iteration, failure, or no-progress counters. The Verifier attempt count increases only when a new Verifier actually launches. Completed Shape and Build are not repeated, and Runtime does not scan the entire project to guess progress.
+Under the older Runtime, reverification of Verify or Archive-ready work on a new device is recovery; it does not increase iteration, failure, or no-progress counters. The Verifier attempt count increases only when a new Verifier actually launches. Completed Shape and Build are not repeated, and Runtime does not scan the entire project to guess progress.
 
 ### Failed Verify and repeated lack of progress
 

@@ -42,6 +42,9 @@ describe('Comet Native isolation boundaries', () => {
         '.comet/runtime/',
         '.comet/runtime/native',
         '.comet/runtime/native/sdk-checks/',
+        '.comet/runtime/state-projections/native',
+        '.comet/runtime/transfers/native',
+        '.comet/runtime/transfers/native/',
       ]),
     );
   });

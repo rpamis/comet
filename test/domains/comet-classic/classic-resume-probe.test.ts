@@ -141,6 +141,44 @@ describe('resolveCometResumeProbe', () => {
     expect(result.reason).toContain('pending delivery');
   });
 
+  it('does not offer Archive continuation for a copied SDK archive without Run history', async () => {
+    const archivedRoot = path.join(
+      tmpDir,
+      'openspec',
+      'changes',
+      'archive',
+      '2026-09-21-copied-archive',
+    );
+    await writeFile(
+      path.join(archivedRoot, '.comet.yaml'),
+      [
+        '# comet-execution: managed-run',
+        'workflow: full',
+        'phase: archive',
+        'archived: true',
+        'verify_result: pass',
+        'design_doc: null',
+        'plan: null',
+        'build_mode: null',
+        'isolation: current',
+        'verify_mode: full',
+        'verified_at: 2026-09-21T00:00:00.000Z',
+        '',
+      ].join('\n'),
+    );
+
+    const result = await resolveCometResumeProbe(tmpDir, {
+      schema_version: 'comet.resume_probe.v1',
+      utterance: '继续 copied-archive',
+      agent_context: { non_trivial_work: true, already_in_comet_flow: false },
+    });
+    expect(result).toMatchObject({
+      action: 'ask_user',
+      changeName: 'copied-archive',
+      nextCommand: null,
+    });
+  });
+
   it('ignores non-change files in the Classic changes directory', async () => {
     await writeFile(path.join(tmpDir, 'openspec', 'changes', 'README.txt'), 'notes\n');
 

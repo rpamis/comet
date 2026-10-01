@@ -232,7 +232,7 @@ async function inspectPortableWriteTargets(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   request: NativeHookRequest;
-  runtimeFormat?: 'legacy' | 'sdk';
+  runtimeFormat?: 'compat' | 'sdk';
 }): Promise<NativeHookGuardResult> {
   const { projectRoot, paths, state, request } = options;
   const sdkOwned = options.runtimeFormat === 'sdk';
@@ -818,7 +818,7 @@ export async function inspectNativeHookGuard(
       paths: context.paths,
       state: change.state,
       request,
-      runtimeFormat: change.kind === 'sdk' ? 'sdk' : 'legacy',
+      runtimeFormat: change.kind === 'sdk' ? 'sdk' : 'compat',
     });
   }
 

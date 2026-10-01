@@ -110,6 +110,17 @@ capture_agent() {
     capture_agent_runtime "$AGENT" "$role" "$@"
 }
 
+# Copy each received JSONL line to the harness and the current turn's buffer.
+# Shell redirection works with both pipes and files, including Git Bash where
+# external tools cannot always reopen inherited descriptors through /dev/fd.
+forward_subject_stream() {
+    local line
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        printf '%s\n' "$line" >&3 || return $?
+        printf '%s\n' "$line" || return $?
+    done
+}
+
 run_agent_turn() {
     local prompt="$1"
     local resume_id="${2:-}"
@@ -258,25 +269,25 @@ print(values[-1] if values else "")
 
 SESSION_ID=""
 FRESH_PROMPT=""
-COMBINED_OUT=""
+# Preserve the harness stream outside command substitution without reopening
+# or truncating it when stdout is a file.
+exec 3>&1
 TURN=0
 DECISION_REPLY_STEP_INDEX=0
 
 while [[ $TURN -lt $MAX_TURNS ]]; do
     TURN=$((TURN + 1))
     echo "[loop] turn $TURN/$MAX_TURNS" >&2
-    SUBJECT_STDERR=$(mktemp)
-
     if [[ -z "$SESSION_ID" ]]; then
         # The first turn uses the task prompt. A requested cold-resume boundary
         # starts another session with only the continuation prompt.
         SUBJECT_PROMPT="${FRESH_PROMPT:-$PROMPT}"
         FRESH_PROMPT=""
-        RAW=$(run_agent_turn "$SUBJECT_PROMPT" "" "subject" 2>"$SUBJECT_STDERR")
+        RAW=$(run_agent_turn "$SUBJECT_PROMPT" "" "subject" | forward_subject_stream)
         SUBJECT_STATUS=$?
     else
         # Subsequent turns: resume the session with the simulated user reply.
-        RAW=$(run_agent_turn "$USER_REPLY" "$SESSION_ID" "subject" 2>"$SUBJECT_STDERR")
+        RAW=$(run_agent_turn "$USER_REPLY" "$SESSION_ID" "subject" | forward_subject_stream)
         SUBJECT_STATUS=$?
     fi
 
@@ -290,14 +301,8 @@ while [[ $TURN -lt $MAX_TURNS ]]; do
             echo "[loop] subject stdout:" >&2
             printf '%s\n' "$RAW" >&2
         fi
-        cat "$SUBJECT_STDERR" >&2
-        rm -f "$SUBJECT_STDERR"
-        printf '%s\n%s\n' "$COMBINED_OUT" "$RAW"
         exit "$SUBJECT_STATUS"
     fi
-    rm -f "$SUBJECT_STDERR"
-
-    COMBINED_OUT="${COMBINED_OUT}${RAW}"$'\n'
 
     # Extract session id and the final assistant text from this turn.
     SESSION_ID=$(printf '%s' "$RAW" | extract_session_id) || true
@@ -376,5 +381,3 @@ except: print('')
 done
 
 echo "[loop] finished after $TURN turns" >&2
-# Emit the combined stream-json on stdout for the harness to parse.
-printf '%s' "$COMBINED_OUT"

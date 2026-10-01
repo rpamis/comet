@@ -9,7 +9,7 @@ Identify runtime format before acting; Runtime stores requirements and acceptanc
 
 ## Required rules
 
-- Treat `.comet/config.yaml`, the current change's SDK Run or legacy `comet-state.yaml`, and formal artifacts on disk as authoritative; chat memory is supplementary. Among formal workflow files, the Agent edits only the brief, complete target Specs, association `delta.yaml`, and `children.yaml`. Runtime owns state, check results, reports, locks, and transactions.
+- Treat `.comet/config.yaml`, the current change's `comet-state.yaml`, Runtime progress, and formal artifacts on disk as authoritative; chat memory is supplementary. Among formal workflow files, the Agent edits only the brief, complete target Specs, association `delta.yaml`, and `children.yaml`. Runtime owns state, check results, reports, locks, and transactions.
 - Advance through the public `comet native` CLI on PATH; do not ask the user to run commands manually. If the command is unavailable, report an incomplete installation and stop. Consult `comet native <command> --help` for arguments.
 - Create changes with the CLI; use returned paths and follow denial commands or targets before retrying. Custom and non-Comet writes stay neutral.
 - The Builder submits code as the candidate implementation. Each iteration requires a new read-only Verifier to assess every acceptance item independently. Assessing every item does not mean rerunning every command: reuse Runtime check records that still match the current candidate and add only missing or invalidated checks. Failed, blocked, unexecuted, and timed-out work cannot count as passed.
@@ -18,8 +18,8 @@ Identify runtime format before acting; Runtime stores requirements and acceptanc
 
 ## Start or resume
 
-1. If the name is known, run `comet native select <change-name> --json`. When an active change exists, enter the returned `workspace.projectRoot`; select returns the same discovery and state information as status, so a separate status call is not needed. Otherwise run `comet native status --json`. Let Runtime locate the workspace; ask the user only when multiple workspaces match equally well.
-2. If there is no matching active change, select isolation and create it using [workspace selection](reference/workspace.md#create-a-change). When choosing an SDK Run, pass `--runtime sdk` to `native new`, then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
+1. If known, run `comet native select <change-name> --json`; otherwise run `comet native status --json`. When an active change exists, enter its `workspace.projectRoot`. Runtime locates the workspace; ask the user only if several workspaces match equally. If local Run history is missing, read [fault recovery](reference/recovery.md#fault-recovery): resume the saved phase when a checkpoint exists; otherwise diagnose and wait for a recovery decision.
+2. If there is no matching active change, select isolation and create it using [workspace selection](reference/workspace.md#create-a-change). Run `native new`, then enter `preparation.projectRoot`. If preparation fails, preserve any branches and directories already created and address the reported cause.
 3. After entering the workspace and obtaining `phase`, retrieve context once using [memory integration](reference/commands.md#memory-integration). Expand details only when needed, record actual use outcomes, handle Project Memory and Personal Memory separately at task completion, and call `comet task --complete` as specified there.
 
 Never save task summaries, progress, command output, or test results as Personal Memory; complete the learning check.

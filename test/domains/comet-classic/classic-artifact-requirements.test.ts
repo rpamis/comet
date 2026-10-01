@@ -30,7 +30,7 @@ describe('Classic OpenSpec artifact adapter', () => {
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-artifacts-'));
     await prepareClassicLegacyProject(root);
-    expect((await cli('state', 'init', 'demo', 'full', '--runtime', 'legacy')).exitCode).toBe(0);
+    expect((await cli('state', 'init', 'demo', 'full', '--runtime', 'compat')).exitCode).toBe(0);
     directory = path.join(root, 'openspec/changes/demo');
     await fs.writeFile(
       path.join(directory, '.openspec.yaml'),

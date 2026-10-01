@@ -59,6 +59,8 @@ const ROOT_KEYS = new Set([
   'verification_report',
   'archived',
   'created_at',
+  'run_checkpoint',
+  'archive_receipt',
 ]);
 
 export class NativePortableStateVersionConflictError extends Error {

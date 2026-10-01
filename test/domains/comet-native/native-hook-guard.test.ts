@@ -175,7 +175,7 @@ describe('Native phase Hook guard', () => {
     });
   });
 
-  it('guards an SDK-owned Shape from its Run without creating legacy state', async () => {
+  it('guards an SDK-owned Shape from its Run while retaining the portable state file', async () => {
     const created = await runNativeCli([
       'new',
       'sdk-guard',
@@ -313,10 +313,8 @@ describe('Native phase Hook guard', () => {
       state: { phase: 'verify' },
     });
     await expect(
-      fs.access(path.join(paths.changesDir, 'sdk-guard', 'comet-state.yaml')),
-    ).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+      fs.readFile(path.join(paths.changesDir, 'sdk-guard', 'comet-state.yaml'), 'utf8'),
+    ).resolves.toContain('phase: verify');
   });
 
   it('allows a configured project-local path during Native Shape', async () => {

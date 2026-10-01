@@ -9,7 +9,7 @@ description: '归档并交付 Classic change。在用户调用 /comet-archive，
 
 ## SDK Run 路径
 
-先运行 `comet state next <change-name> --json` 确认 `data.runtimeFormat: sdk`、phase 和 `nextAction.kind`，并进入 `comet classic workspace resolve <change-name> --json` 返回的 `projectRoot`。SDK Run 的 Verify 收据必须仍有效；不得因报告存在或旧状态文件缺失而推断已授权。`reconcile` 时运行 `comet state check <change-name> archive --recover --json` 核对原 Action 与磁盘、Git 证据，结果未明时不重做归档、提交、push 或 PR。
+先运行 `comet state next <change-name> --json` 确认 `data.runtimeFormat: sdk`、phase 和 `nextAction.kind`，并进入 `comet classic workspace resolve <change-name> --json` 返回的 `projectRoot`。SDK Run 的 Verify 收据必须仍有效；`.comet.yaml` 和验证报告存在并不表示已获归档授权。`reconcile` 时运行 `comet state check <change-name> archive --recover --json` 核对原 Action 与磁盘、Git 证据，结果未明时不重做归档、提交、push 或 PR。
 
 1. 运行 `comet state check <change-name> archive --json`，按下文 Step 1 核对验证结论、当前绑定分支、归档影响和无关改动。需要推送或 PR 时，先确认 remote 和 PR base；多个可选目标不能猜测。用当前目标与效果摘要运行 `comet state propose-archive <change-name> --summary "<delivery-summary>"`，需要时附 `--remote <name>`、`--pr-base <branch>`。保存返回的 `data.wait.proposalHash` 为 `<proposalHash>`；恢复已有待决定 Wait 时复用它，不重复提案。
 2. 按 decision-point.md 展示当前提案及下文 Step 1 的 A–E 影响，并等待用户明确选择。用 `comet state decide-archive <change-name> --proposal-hash <proposalHash> --choice <local|push|pr|reverify|later>` 提交选择。A、B、C 分别对应 `local`、`push`、`pr`；D 对应 `reverify` 并回到 Verify；E 对应 `later`，本次停止。目标或 Verify 证据改变时，重新核对并取得新的决定；旧提案哈希不能继续使用。
@@ -17,7 +17,7 @@ description: '归档并交付 Classic change。在用户调用 /comet-archive，
 4. 按下文 Step 4 的 dirty-worktree 协议，只暂存本 change 的归档目录、主 spec 及 Design Doc/Plan 标注，检查 staged diff，再创建唯一归档提交。SDK Guard 不代替 Agent 执行 Git；不调用旧 `state set branch_status`、`state delivery` 或 `archive-confirm`。选择 `push` 时推送已批准的 remote/分支；选择 `pr` 时先推送再创建目标匹配的 PR。调用结果未知时先只读核对远端或 PR，不盲目重试。
 5. 使用真实提交 SHA 运行 `comet state complete-delivery <change-name> --commit <sha>`；PR 选择还需附 `--pr-url <url>`。该命令只核对归档提交及已批准的远端/PR 结果并结束 Run，不执行提交、push 或建 PR。验证失败时保留原 Run 与选择，按返回的具体缺口恢复；直到 `state next --json` 表明 Run 已完成，才宣告交付完成。
 
-以下旧 Runtime 步骤仅用于 `runtimeFormat: legacy`。
+以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`。
 
 ## 前置条件
 

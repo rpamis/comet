@@ -9,7 +9,7 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 
 ## 必须遵守的规则
 
-- 以磁盘上的 `.comet/config.yaml`、当前 change 的 SDK Run 或旧 `comet-state.yaml`，以及正式文件为准，聊天记忆只作辅助。工作流保存的正式文件中，Agent 只编辑 brief、完整目标 Spec、关联时的 `delta.yaml` 和 `children.yaml`；状态、检查结果、报告、锁和事务由 Runtime 管理。
+- 以磁盘上的 `.comet/config.yaml`、当前 change 的 `comet-state.yaml`、Runtime 返回的进度，以及正式文件为准，聊天记忆只作辅助。工作流保存的正式文件中，Agent 只编辑 brief、完整目标 Spec、关联时的 `delta.yaml` 和 `children.yaml`；状态、检查结果、报告、锁和事务由 Runtime 管理。
 - 通过 PATH 中公开的 `comet native` 命令推进，用户不手工执行命令。命令不可用时报告安装不完整并停止；参数以 `comet native <command> --help` 为准。
 - 新建 change 走 CLI 并使用响应路径；拒绝后按信息中的命令或目标修正并重试；自定义 Hook、非 Comet 工作和普通同名文件保持中立。
 - Builder 提交本轮待验收的代码和相关文件，称为“候选实现”。每轮都由新的只读 Verifier 独立判断全部验收项。判断全部验收项不等于重跑全部命令：仍与当前候选实现匹配的 Runtime 检查记录可以复用，只补充缺失或失效的检查。失败、阻塞、未执行和超时不能算通过。
@@ -18,8 +18,8 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 
 ## 开始或恢复
 
-1. 已知名称时运行 `comet native select <change-name> --json`。active change 已存在时，进入返回的 `workspace.projectRoot`；未知时先运行 `comet native status --json`。由 Runtime 查找工作区；多个工作区同样匹配时才让用户选择。
-2. 没有对应 active change 时，按[工作区选择参考](reference/workspace.md#创建-change)确定隔离方式并创建；明确采用 SDK Run 时在 `native new` 中加入 `--runtime sdk`，再进入 `preparation.projectRoot`。准备失败时，保留已创建的分支和目录，按返回的原因处理。
+1. 已知名称时运行 `comet native select <change-name> --json`，否则运行 `comet native status --json`。active change 已存在时，进入 `workspace.projectRoot`；工作区有歧义时才让用户选择。若 Run 记录丢失，读取[故障恢复](reference/recovery.md#故障恢复)：有检查点则沿用阶段；否则先诊断并等待恢复决定。
+2. 没有对应 active change 时，按[工作区选择参考](reference/workspace.md#创建-change)确定隔离方式，运行 `native new` 创建，再进入 `preparation.projectRoot`。准备失败时，保留已创建的分支和目录，按返回的原因处理。
 3. 进入工作区并取得 `phase` 后，按[记忆接入](reference/commands.md#记忆接入)检索一次上下文。需要详情时再展开；实际使用后记录使用结果，任务结束时按该节分别处理项目记忆和个人记忆，再调用 `comet task --complete`。
 
 记忆学习只提交可复用的用户信息；任务摘要、进展、命令输出和测试结果不写入个人记忆。任务结束前按记忆接入章节完成学习检查，并记录 `submitted`、`no-observation` 或 `not-run`。

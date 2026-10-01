@@ -7,6 +7,7 @@ import random
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -195,8 +196,42 @@ def _bash_env(source_env: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-def run_shell(script, *args, timeout=None, check=True, env=None):
+def run_shell(script, *args, timeout=None, check=True, env=None, capture_to_file=False):
     cmd = [BASH_EXEC, _to_bash_path(SHELL_DIR / script)] + [_to_bash_path(a) for a in args]
+    if capture_to_file:
+        # On Windows, a Docker child can inherit Bash's stdout pipe. Python's
+        # subprocess.run waits for that pipe to close even after killing Bash,
+        # delaying the timeout handler that removes the named container.
+        with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
+            try:
+                result = subprocess.run(
+                    cmd,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    timeout=timeout,
+                    check=False,
+                    env=_bash_env(env),
+                )
+            except subprocess.TimeoutExpired as error:
+                stdout_file.seek(0)
+                stderr_file.seek(0)
+                raise subprocess.TimeoutExpired(
+                    cmd,
+                    error.timeout,
+                    output=stdout_file.read().decode("utf-8", errors="replace"),
+                    stderr=stderr_file.read().decode("utf-8", errors="replace"),
+                ) from error
+            stdout_file.seek(0)
+            stderr_file.seek(0)
+            completed = subprocess.CompletedProcess(
+                cmd,
+                result.returncode,
+                stdout_file.read().decode("utf-8", errors="replace"),
+                stderr_file.read().decode("utf-8", errors="replace"),
+            )
+            if check:
+                completed.check_returncode()
+            return completed
     return subprocess.run(
         cmd,
         capture_output=True,
@@ -325,7 +360,9 @@ def run_claude_loop_in_docker(test_dir, loop_args, timeout=600, environment=None
     """Run the interactive driver and remove its container after host-side timeout."""
     cmd = ["run-claude-loop", str(test_dir), *loop_args]
     try:
-        return run_shell("docker.sh", *cmd, timeout=timeout, check=False, env=environment)
+        return run_shell(
+            "docker.sh", *cmd, timeout=timeout, check=False, env=environment, capture_to_file=True
+        )
     except subprocess.TimeoutExpired as error:
         cleanup_error = ""
         try:
@@ -360,7 +397,9 @@ def run_agent_loop_in_docker(test_dir, loop_args, timeout=600, environment=None)
     """Run the shared interactive driver for a non-default evaluation agent."""
     cmd = ["run-agent-loop", str(test_dir), *loop_args]
     try:
-        return run_shell("docker.sh", *cmd, timeout=timeout, check=False, env=environment)
+        return run_shell(
+            "docker.sh", *cmd, timeout=timeout, check=False, env=environment, capture_to_file=True
+        )
     except subprocess.TimeoutExpired as error:
         cleanup_error = ""
         try:

@@ -10,8 +10,8 @@ if [[ "$TEXT" =~ $NEGATED_PATTERN ]]; then
     exit 1
 fi
 
-COMPLETION_PATTERN='archive(d)?([[:space:]]+is)?[[:space:]]+(complete|completed)|change([[:space:]]+is)?[[:space:]]+archived|native[[:space:]]+change[^[:cntrl:]]*archived|archived[[:space:]]+(at|to)|completed[[:space:]]+through[[:space:]]+archive|completed[[:space:]]+through[[:space:]]+all[[:space:]]+phases[[:space:]]+and[[:space:]]+archived|terminal[[:space:]]+archived[[:space:]]+state|fully[[:space:]]+archived|workflow([[:space:]]+is)?[[:space:]]+(complete|completed)|all[[:space:]]+(5|five)[[:space:]]+phases([[:space:]]+are)?[[:space:]]+(complete|completed|recorded)'
-BOUNDED_COMPLETION_PATTERN="($COMPLETION_PATTERN)([^[:alnum:]_]|$)"
+COMPLETION_PATTERN='archive(d)?([[:space:]]+is)?[[:space:]]+(complete|completed)|change([[:space:]]+is)?[[:space:]]+archived|native[[:space:]]+change[^[:cntrl:]]*[^[:alnum:]_]archived|archived[[:space:]]+(at|to)|completed[[:space:]]+through[[:space:]]+archive|completed[[:space:]]+through[[:space:]]+all[[:space:]]+phases[[:space:]]+and[[:space:]]+archived|terminal[[:space:]]+archived[[:space:]]+state|fully[[:space:]]+archived|workflow([[:space:]]+is)?[[:space:]]+(complete|completed)|all[[:space:]]+(5|five)[[:space:]]+phases([[:space:]]+are)?[[:space:]]+(complete|completed|recorded)'
+BOUNDED_COMPLETION_PATTERN="(^|[^[:alnum:]_])($COMPLETION_PATTERN)([^[:alnum:]_]|$)"
 if [[ "$TEXT" =~ $BOUNDED_COMPLETION_PATTERN ]]; then
     exit 0
 fi

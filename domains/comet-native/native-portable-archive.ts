@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { parseDocument } from 'yaml';
 
 import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 
@@ -856,6 +857,50 @@ interface NativeSdkArchiveReceipt {
   specs: Array<{ capability: string; resultHash: string | null }>;
 }
 
+const PORTABLE_ARCHIVE_RECEIPT_KEY = 'archive_receipt';
+
+async function writePortableArchiveReceipt(
+  paths: NativeProjectPaths,
+  archiveRef: string,
+  receipt: NativeSdkArchiveReceipt,
+): Promise<void> {
+  const file = path.join(archiveDirectory(paths, archiveRef), 'comet-state.yaml');
+  let source: string;
+  try {
+    source = await fs.readFile(file, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  if (!source.startsWith('# comet-execution: managed-run\n')) {
+    return; // External SDK stores do not project a built-in portable state file.
+  }
+  const document = parseDocument(source, { uniqueKeys: true });
+  if (document.errors.length > 0) throw new Error('Native SDK Archive state is invalid');
+  document.set(PORTABLE_ARCHIVE_RECEIPT_KEY, receipt);
+  await atomicWriteText(file, document.toString(), { containedRoot: paths.nativeRoot });
+}
+
+async function readPortableArchiveReceipt(
+  paths: NativeProjectPaths,
+  archiveRef: string,
+): Promise<NativeSdkArchiveReceipt> {
+  const file = path.join(archiveDirectory(paths, archiveRef), 'comet-state.yaml');
+  const source = await readNativeBoundedTextFile({
+    root: paths.nativeRoot,
+    ref: path.relative(paths.nativeRoot, file).replaceAll('\\', '/'),
+    maxBytes: null,
+  });
+  if (!source.text.startsWith('# comet-execution: managed-run\n')) {
+    throw new Error('Native SDK Archive portable receipt has no managed Run');
+  }
+  const document = parseDocument(source.text, { uniqueKeys: true });
+  if (document.errors.length > 0) throw new Error('Native SDK Archive state is invalid');
+  return (document.toJS() as Record<string, unknown>)[
+    PORTABLE_ARCHIVE_RECEIPT_KEY
+  ] as NativeSdkArchiveReceipt;
+}
+
 function sdkArchiveReceiptFile(paths: NativeProjectPaths, runId: string): string {
   if (!runId.trim()) throw new Error('Native SDK Archive Run ID is missing');
   const key = createHash('sha256').update(runId).digest('hex');
@@ -940,6 +985,7 @@ export async function finalizeNativeSdkArchive(options: {
                 (change.content === null ? null : nativeTotalSpecHash(change.content))),
         })),
       };
+      await writePortableArchiveReceipt(paths, transaction.archive_ref, receipt);
       const receiptFile = sdkArchiveReceiptFile(paths, runId);
       await fs.mkdir(path.dirname(receiptFile), { recursive: true });
       await atomicWriteJson(receiptFile, receipt, { containedRoot: paths.runtimeDir });
@@ -956,16 +1002,34 @@ export async function inspectNativeSdkArchiveFinalization(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
   runId: string;
+  archiveRef?: string;
 }): Promise<NativeSdkArchiveReceipt> {
   const { paths, state, runId } = options;
-  const source = await fs.readFile(sdkArchiveReceiptFile(paths, runId), 'utf8');
-  const receipt = JSON.parse(source) as NativeSdkArchiveReceipt;
+  let receipt: NativeSdkArchiveReceipt;
+  try {
+    receipt = JSON.parse(
+      await fs.readFile(sdkArchiveReceiptFile(paths, runId), 'utf8'),
+    ) as NativeSdkArchiveReceipt;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || !options.archiveRef) throw error;
+    receipt = await readPortableArchiveReceipt(paths, options.archiveRef);
+  }
   if (
+    !receipt ||
     receipt.runId !== runId ||
     receipt.change !== state.name ||
     receipt.stateVersion !== state.state_version ||
+    (options.archiveRef !== undefined && receipt.archiveRef !== options.archiveRef) ||
     !/^[0-9a-f]{64}$/u.test(receipt.reportSha256) ||
     !Array.isArray(receipt.specs) ||
+    receipt.specs.length !== state.spec_changes.length ||
+    receipt.specs.some(
+      (spec, index) =>
+        spec?.capability !== state.spec_changes[index].capability ||
+        (state.spec_changes[index].operation === 'remove'
+          ? spec.resultHash !== null
+          : typeof spec.resultHash !== 'string' || !/^[0-9a-f]{64}$/u.test(spec.resultHash)),
+    ) ||
     (await readTransaction(paths, state.name)) !== null ||
     (await exists(nativePortableChangeDir(paths, state.name)))
   ) {

@@ -44,7 +44,8 @@
       "select": "domains/comet-native/native-select-entry.ts",
       "next": "domains/comet-native/native-next-entry.ts",
       "archive": "domains/comet-native/native-archive-entry.ts",
-      "doctor": "domains/comet-native/native-doctor-entry.ts"
+      "doctor": "domains/comet-native/native-doctor-entry.ts",
+      "transfer": "domains/comet-native/native-transfer-entry.ts"
     },
     "outputs": {
       "runtime": "assets/skills/comet-native/scripts/comet-native-runtime.mjs",
@@ -58,7 +59,8 @@
       "select": "assets/skills/comet-native/scripts/comet-native-select.mjs",
       "next": "assets/skills/comet-native/scripts/comet-native-next.mjs",
       "archive": "assets/skills/comet-native/scripts/comet-native-archive.mjs",
-      "doctor": "assets/skills/comet-native/scripts/comet-native-doctor.mjs"
+      "doctor": "assets/skills/comet-native/scripts/comet-native-doctor.mjs",
+      "transfer": "assets/skills/comet-native/scripts/comet-native-transfer.mjs"
     }
   },
   "entryRuntime": {

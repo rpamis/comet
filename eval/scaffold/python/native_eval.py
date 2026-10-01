@@ -12,7 +12,7 @@ NATIVE_CLARIFICATION_MODES = {
     "COMET_NATIVE_SEQUENTIAL": "sequential",
     "COMET_NATIVE_BATCH": "batch",
 }
-NATIVE_TREATMENTS = {"COMET_NATIVE_PHASE1", *NATIVE_CLARIFICATION_MODES}
+NATIVE_TREATMENTS = {"COMET_NATIVE_SDK_CURRENT", "COMET_NATIVE_PHASE1", *NATIVE_CLARIFICATION_MODES}
 CONTROL_BUSINESS_ONLY_TREATMENTS = {"CONTROL"}
 CLASSIC_WORKFLOW_CHECK_PREFIXES = (
     "openspec_artifacts",
@@ -27,6 +27,7 @@ NATIVE_WORKFLOW_CHECK_PREFIXES = (
     "native_state",
     "native_loop",
     "native_isolation",
+    "sdk_run",
 )
 COMET_WORKFLOW_CHECK_PREFIXES = (
     *CLASSIC_WORKFLOW_CHECK_PREFIXES,
@@ -46,6 +47,18 @@ artifact_root `docs`. {terminal_instruction}
 Do not create OpenSpec, Classic, Superpowers, snapshot, evidence, receipt,
 checkpoint, trajectory, or change-local `runtime` artifacts. `.comet/config.yaml`
 and `.comet/runtime` are the only Native machine state expected for this task.
+
+[ORIGINAL BUSINESS TASK]
+"""
+
+SDK_NATIVE_PROMPT_PREFIX = """[COMET NATIVE SDK TREATMENT]
+Invoke /comet-native as the only workflow Skill. Use the current-checkout
+Comet CLI and SDK-backed Native Runtime for Shape, Build, Verify, and Archive.
+The public `comet.native.v4` state is retained; the change must also have an
+SDK owner, portable Run checkpoint, and terminal Run. Inspect it with
+`comet runtime dispatch --application native` before claiming completion.
+Initialize artifact_root `docs`. {terminal_instruction}
+Do not create OpenSpec, Classic, Superpowers, or change-local machine artifacts.
 
 [ORIGINAL BUSINESS TASK]
 """
@@ -123,8 +136,13 @@ def adapt_prompt_for_native(
         if clarification_mode
         else ""
     )
+    prefix = (
+        SDK_NATIVE_PROMPT_PREFIX
+        if treatment_name == "COMET_NATIVE_SDK_CURRENT"
+        else NATIVE_PROMPT_PREFIX
+    )
     return (
-        f"{NATIVE_PROMPT_PREFIX.format(terminal_instruction=terminal_instruction, clarification_instruction=clarification_instruction)}"
+        f"{prefix.format(terminal_instruction=terminal_instruction, clarification_instruction=clarification_instruction)}"
         f"{prompt}"
     )
 

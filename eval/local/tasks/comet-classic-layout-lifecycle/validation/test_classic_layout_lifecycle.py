@@ -206,10 +206,7 @@ def check_current_cli_init_smoke():
                     f"Current Comet init did not create a valid project config: {config_error}",
                 )
             classic = config.get("classic") if isinstance(config, dict) else None
-            if (
-                not isinstance(classic, dict)
-                or classic.get("artifact_layout") != expected_layout
-            ):
+            if not isinstance(classic, dict) or classic.get("artifact_layout") != expected_layout:
                 return failed(
                     "current_cli_init_smoke",
                     f"Current Comet init did not preserve the {expected_layout} Classic layout",
@@ -262,6 +259,118 @@ def _terminal_state_error(change_dir: Path):
         if state.get(field) != value:
             return f".comet.yaml {field} must be {value!r}"
     return None
+
+
+def check_sdk_run():
+    """Require the current layout's archive to be backed by the same SDK Run."""
+    selected = CURRENT_LAYOUTS.get(current_treatment())
+    if selected is None:
+        return passed("sdk_run")
+    _layout, relative_changes, _forbidden = selected
+    candidates = _archived_candidates(WORKSPACE / relative_changes)
+    if not candidates:
+        return failed("sdk_run", "No archived Classic change identifies an SDK Run")
+    run, error = _inspect_classic_sdk_archive(candidates[-1])
+    if error:
+        return failed("sdk_run", error)
+    succeeded = {
+        action.get("stepId")
+        for action in run["actions"]
+        if isinstance(action, dict) and action.get("status") == "succeeded"
+    }
+    required = {"full.build.check", "full.verify.run", "full.archive.execute"}
+    if not required.issubset(succeeded):
+        return failed(
+            "sdk_run", f"Classic SDK Run lacks successful steps: {sorted(required - succeeded)}"
+        )
+    return passed("sdk_run")
+
+
+def _inspect_classic_sdk_archive(archived: Path):
+    """Inspect the owning Run through Runtime, rather than trusting copied JSON."""
+    if len(archived.name) <= 11:
+        return None, "Classic archive name does not identify a change"
+    name = archived.name[11:]
+    owner_path = WORKSPACE / ".comet/runtime/change-owners/classic" / f"{name}.json"
+    try:
+        if owner_path.is_symlink():
+            raise ValueError("SDK owner is a symlink")
+        owner = json.loads(owner_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        return None, f"Classic SDK owner is unavailable or invalid: {error}"
+    expected_owner = {
+        "schema": "comet.change-owner.v1",
+        "workflow": "classic",
+        "change": name,
+        "format": "sdk",
+        "application": "classic-full",
+        "runId": name,
+    }
+    if owner != expected_owner:
+        return None, "Classic change is not owned by the full SDK application"
+
+    state_path = archived / ".comet.yaml"
+    try:
+        source = state_path.read_text(encoding="utf-8")
+    except OSError as error:
+        return None, f"Classic archive state is unavailable: {error}"
+    state, _error = _read_yaml(state_path)
+    checkpoint = state.get("run_checkpoint") if isinstance(state, dict) else None
+    if (
+        not source.startswith("# comet-execution: managed-run\n")
+        or not isinstance(checkpoint, dict)
+        or checkpoint.get("schema") != "comet.workflow-run-checkpoint.v1"
+        or not isinstance(checkpoint.get("hash"), str)
+        or not isinstance(checkpoint.get("run"), dict)
+        or checkpoint["run"].get("runId") != name
+    ):
+        return None, "Classic archive lacks a managed SDK Run checkpoint"
+
+    try:
+        with tempfile.TemporaryDirectory(prefix=".eval-sdk-", dir=WORKSPACE) as request_dir:
+            request = Path(request_dir) / "inspect.json"
+            request.write_text(
+                json.dumps({"operation": "inspect", "runId": name}), encoding="utf-8"
+            )
+            result = subprocess.run(
+                [
+                    "comet",
+                    "runtime",
+                    "dispatch",
+                    "--application",
+                    "classic-full",
+                    "--project-root",
+                    str(WORKSPACE),
+                    "--request",
+                    str(request),
+                ],
+                cwd=WORKSPACE,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=60,
+                check=False,
+            )
+        response = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as error:
+        return None, f"Cannot inspect Classic SDK Run: {error}"
+    if not isinstance(response, dict):
+        return None, "Classic SDK Run inspect returned an invalid response"
+    if result.returncode != 0 or response.get("status") != "succeeded":
+        return None, f"Classic SDK Run inspect failed: {response.get('error', result.stderr)}"
+    run = response.get("data")
+    actions = run.get("actions") if isinstance(run, dict) else None
+    workflow = run.get("workflow") if isinstance(run, dict) else None
+    if (
+        not isinstance(run, dict)
+        or run.get("runId") != name
+        or not isinstance(workflow, dict)
+        or workflow.get("id") != "comet-classic-full"
+        or run.get("status") != "completed"
+        or not isinstance(actions, list)
+    ):
+        return None, "Classic SDK Run is not the completed workflow for this archive"
+    return run, None
 
 
 def _nonempty_file(path: Path):
@@ -351,6 +460,57 @@ def _read_json_lines(path: Path):
 
 
 def _transition_error(change_dir: Path):
+    state, state_error = _read_state(change_dir)
+    if state_error:
+        return state_error
+    owner_path = WORKSPACE / ".comet/runtime/change-owners/classic" / f"{change_dir.name[11:]}.json"
+    owner = None
+    if owner_path.exists() or owner_path.is_symlink():
+        try:
+            if owner_path.is_symlink():
+                raise ValueError("Classic owner is a symlink")
+            owner = json.loads(owner_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            return f"Classic owner is unavailable or invalid: {error}"
+        if not isinstance(owner, dict):
+            return "Classic owner is invalid"
+    managed = (
+        (change_dir / ".comet.yaml")
+        .read_text(encoding="utf-8")
+        .startswith("# comet-execution: managed-run\n")
+    )
+    if managed or "run_checkpoint" in state or (owner and owner.get("format") == "sdk"):
+        run, error = _inspect_classic_sdk_archive(change_dir)
+        if error:
+            return error
+        # Successful Actions are appended in execution order. Retries may add
+        # failed/cancelled attempts, but cannot substitute for a successful step.
+        required = (
+            "full.open",
+            "full.open.revalidate",
+            "full.design.handoff",
+            "full.design.document",
+            "full.build.configure",
+            "full.build.plan",
+            "full.build.execute",
+            "full.build.check",
+            "full.verify.run",
+            "full.verify.check",
+            "full.archive.prepare",
+            "full.archive.preflight",
+            "full.archive.execute",
+            "full.archive.deliver",
+        )
+        successful = iter(
+            action.get("stepId")
+            for action in run["actions"]
+            if isinstance(action, dict) and action.get("status") == "succeeded"
+        )
+        for step in required:
+            if not any(observed == step for observed in successful):
+                return f"Classic SDK trajectory lacks ordered successful step: {step}"
+        return None
+
     events_path = change_dir / ".comet/state-events.jsonl"
     events, error = _read_json_lines(events_path)
     if error:
@@ -550,8 +710,8 @@ def check_workflow_phases():
         )
 
     # Frozen legacy treatments retain their existing artifact-based compatibility
-    # signal; current docs and legacy treatments require current state events and
-    # trajectory files.
+    # signal. Current layouts require verified SDK Actions or, for compat-owned
+    # changes, the original state events and trajectory files.
     # Look for evidence of multiple phases in any markdown files
     md_files = list(WORKSPACE.rglob("*.md"))
     all_content = " ".join(f.read_text() for f in md_files if f.exists())
@@ -582,6 +742,8 @@ def main():
     results.append(check_sentence_feature())
     results.append(check_tests_exist())
     results.append(check_comet_state())
+    if _uses_current_layout():
+        results.append(check_sdk_run())
     results.append(check_workflow_phases())
 
     passed_list = [r["check"] for r in results if r["status"] == "passed"]

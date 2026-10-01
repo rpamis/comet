@@ -18,7 +18,7 @@ describe('Classic diagnostics', () => {
     changeDir = path.join(projectRoot, 'openspec', 'changes', 'demo');
     await fs.mkdir(changeDir, { recursive: true });
     process.chdir(projectRoot);
-    await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy']);
+    await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'compat']);
     await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
     await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [ ] build\n');

@@ -165,7 +165,7 @@ describe('Native public user-option paths', () => {
         'new',
         'parent',
         '--runtime',
-        'legacy',
+        'compat',
         '--isolation',
         isolation,
       ]);
@@ -321,7 +321,7 @@ describe('Native public user-option paths', () => {
     const worktrees: string[] = [];
     for (const name of ['first', 'second']) {
       const root = (
-        await cli(primary, ['new', name, '--runtime', 'legacy', '--isolation', 'worktree'])
+        await cli(primary, ['new', name, '--runtime', 'compat', '--isolation', 'worktree'])
       ).preparation.projectRoot;
       worktrees.push(root);
       const dir = path.join(root, 'docs/comet/changes', name);

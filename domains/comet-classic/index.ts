@@ -6,6 +6,7 @@ export * from './classic-cli.js';
 export * from './classic-current-change.js';
 export * from './classic-guard.js';
 export * from './classic-handoff.js';
+export * from './classic-handoff-command.js';
 export * from './classic-hook-guard.js';
 export * from './classic-runtime-evals.js';
 export * from './classic-runtime-run.js';

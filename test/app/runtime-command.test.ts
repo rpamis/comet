@@ -487,7 +487,7 @@ describe('Runtime JSON command', () => {
       'new',
       'legacy-change',
       '--runtime',
-      'legacy',
+      'compat',
       '--project-root',
       projectRoot,
       '--json',
@@ -561,7 +561,7 @@ describe('Runtime JSON command', () => {
         operation: 'start',
         runId: 'shared-change',
         workflow: { id: 'comet-classic-full', version: '1' },
-        input: { changeDir: 'openspec/changes/shared-change' },
+        input: { change: 'shared-change', changeDir: 'openspec/changes/shared-change' },
         initialState: projected.classic,
       },
       { application: 'classic-full', workflow: [], rootDir: undefined },
@@ -615,6 +615,20 @@ describe('Runtime JSON command', () => {
     );
     expect(initialized.exitCode, initialized.stderr).toBe(0);
 
+    const stateFile = path.join(
+      prepared.projectRoot,
+      'openspec',
+      'changes',
+      'linked-sdk',
+      '.comet.yaml',
+    );
+    const stateSource = await fs.readFile(stateFile, 'utf8');
+    expect(stateSource).toContain('auto_transition: true');
+    await fs.writeFile(
+      stateFile,
+      stateSource.replace('auto_transition: true', 'auto_transition: false'),
+    );
+
     const inspected = await dispatch(
       { operation: 'inspect', runId: 'linked-sdk' },
       {
@@ -626,6 +640,7 @@ describe('Runtime JSON command', () => {
     );
     expect(inspected.exitCode, inspected.response).toBe(0);
     if (inspected.response.status !== 'succeeded') throw new Error('Classic inspect failed');
+    expect(inspected.response.data.state).toMatchObject({ autoTransition: false });
     const action = inspected.response.data.actions[0];
     const claimed = await dispatch(
       {
@@ -694,7 +709,7 @@ describe('Runtime JSON command', () => {
       'new',
       name,
       '--runtime',
-      'legacy',
+      'compat',
       '--json',
       '--project-root',
       projectRoot,
@@ -875,7 +890,7 @@ describe('Runtime JSON command', () => {
       'new',
       'native-change',
       '--runtime',
-      'legacy',
+      'compat',
       '--project-root',
       projectRoot,
       '--json',
@@ -936,7 +951,7 @@ describe('Runtime JSON command', () => {
       'new',
       'native-change',
       '--runtime',
-      'legacy',
+      'compat',
       '--project-root',
       projectRoot,
       '--json',
@@ -976,7 +991,7 @@ describe('Runtime JSON command', () => {
       schema: 'comet.change-owner.v1',
       workflow: 'native',
       change: 'native-change',
-      format: 'legacy',
+      format: 'compat',
     });
   });
 
@@ -985,7 +1000,7 @@ describe('Runtime JSON command', () => {
       'new',
       'native-change',
       '--runtime',
-      'legacy',
+      'compat',
       '--project-root',
       projectRoot,
       '--json',
@@ -1006,7 +1021,7 @@ describe('Runtime JSON command', () => {
       schema: 'comet.change-owner.v1',
       workflow: 'native',
       change: 'native-change',
-      format: 'legacy',
+      format: 'compat',
     });
   });
 
@@ -1261,7 +1276,7 @@ describe('Runtime JSON command', () => {
     );
     expect(started.response.status).toBe('succeeded');
     const legacy = await runClassicCli(
-      ['state', 'init', 'classic-change', 'full', '--runtime', 'legacy'],
+      ['state', 'init', 'classic-change', 'full', '--runtime', 'compat'],
       undefined,
       {
         projectRoot,
@@ -1381,7 +1396,7 @@ describe('Runtime JSON command', () => {
     );
     await withRecoverableFileLock(lock, async () => {
       const result = await runClassicCli(
-        ['state', 'init', 'classic-change', 'full', '--runtime', 'legacy'],
+        ['state', 'init', 'classic-change', 'full', '--runtime', 'compat'],
         undefined,
         {
           projectRoot,
@@ -1409,7 +1424,7 @@ describe('Runtime JSON command', () => {
     await fs.mkdir(path.join(projectRoot, 'openspec', 'changes'), { recursive: true });
 
     const result = await runClassicCli(
-      ['state', 'init', 'classic-change', 'full', '--runtime', 'legacy'],
+      ['state', 'init', 'classic-change', 'full', '--runtime', 'compat'],
       undefined,
       {
         projectRoot,
@@ -1435,7 +1450,7 @@ describe('Runtime JSON command', () => {
       schema: 'comet.change-owner.v1',
       workflow: 'classic',
       change: 'classic-change',
-      format: 'legacy',
+      format: 'compat',
     });
   });
 
@@ -1473,7 +1488,7 @@ describe('Runtime JSON command', () => {
       schema: 'comet.change-owner.v1',
       workflow: 'classic',
       change: 'classic-change',
-      format: 'legacy',
+      format: 'compat',
     });
   });
 

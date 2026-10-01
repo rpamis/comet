@@ -2,10 +2,19 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { parse, stringify } from 'yaml';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
+import {
+  COMET_RESUME_PROBE_SCHEMA_VERSION,
+  resolveCometEntryResumeProbe,
+} from '../../../domains/comet-entry/resume-probe.js';
+import {
+  readChangeRuntimeOwner,
+  registerSdkChangeOwner,
+} from '../../../domains/workflow-contract/change-runtime-owner.js';
 import {
   createFileRuntimeStore,
   createRuntime,
@@ -63,7 +72,7 @@ describe('Native v4 public CLI surface', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
-  it('creates an SDK-owned Native change with user artifacts and no legacy state', async () => {
+  it('creates an SDK-owned Native change with its portable state file', async () => {
     const created = json(
       await runNativeCli(['new', 'sdk-change', '--runtime', 'sdk', '--json', ...projectArgs()]),
     );
@@ -78,9 +87,14 @@ describe('Native v4 public CLI surface', () => {
       await fs.readFile(path.join(paths.changesDir, 'sdk-change', 'brief.md'), 'utf8'),
     ).toContain('# Outcome');
     expect(await readNativeSelectionRecord(paths)).toMatchObject({ change: 'sdk-change' });
-    await expect(fs.access(nativePortableStateFile(paths, 'sdk-change'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(await fs.readFile(nativePortableStateFile(paths, 'sdk-change'), 'utf8')).toContain(
+      'schema: comet.native.v4',
+    );
+    expect(await fs.readFile(nativePortableStateFile(paths, 'sdk-change'), 'utf8')).toContain(
+      'phase: shape',
+    );
+    const status = json(await runNativeCli(['status', 'sdk-change', '--json', ...projectArgs()]));
+    expect(status.exitCode, status.error?.message).toBe(0);
     const sdk = createRuntime({
       store: createFileRuntimeStore<WorkflowRun>({
         rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'native'),
@@ -93,13 +107,27 @@ describe('Native v4 public CLI surface', () => {
     });
   });
 
+  it('lists a new SDK change once on the unnamed status page', async () => {
+    const created = json(await runNativeCli(['new', 'page-sdk', '--json', ...projectArgs()]));
+    expect(created.exitCode, created.error?.message).toBe(0);
+
+    const page = json(await runNativeCli(['status', '--json', ...projectArgs()]));
+    expect(page, page.error?.message).toMatchObject({
+      exitCode: 0,
+      data: {
+        total: 1,
+        items: [{ name: 'page-sdk', phase: 'shape', run: { revision: 1 } }],
+      },
+    });
+  });
+
   it('does not reinterpret a legacy Archive as SDK recovery', async () => {
     const created = json(
       await runNativeCli([
         'new',
         'legacy-recovery',
         '--runtime',
-        'legacy',
+        'compat',
         '--json',
         ...projectArgs(),
       ]),
@@ -112,6 +140,31 @@ describe('Native v4 public CLI surface', () => {
     expect(recovery.error?.message).toMatch(/only available for SDK-owned/);
   });
 
+  it('uses compat for the previous Runtime option without accepting an unpublished legacy alias', async () => {
+    const created = json(
+      await runNativeCli([
+        'new',
+        'compat-change',
+        '--runtime',
+        'compat',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(created.exitCode, created.error?.message).toBe(0);
+    const rejected = json(
+      await runNativeCli([
+        'new',
+        'legacy-alias',
+        '--runtime',
+        'compat',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(rejected.exitCode).not.toBe(0);
+  });
+
   it('creates an SDK Run when Native new omits the runtime option', async () => {
     const created = json(await runNativeCli(['new', 'default-sdk', '--json', ...projectArgs()]));
     expect(created.exitCode, created.error?.message).toBe(0);
@@ -120,15 +173,411 @@ describe('Native v4 public CLI surface', () => {
       run: { revision: 1, actions: [{ stepId: 'shape.prepare' }] },
     });
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    await expect(fs.access(nativePortableStateFile(paths, 'default-sdk'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(await fs.readFile(nativePortableStateFile(paths, 'default-sdk'), 'utf8')).toContain(
+      'state_version: 1',
+    );
     expect((await inspectNativeSdkRun(projectRoot, 'default-sdk')).run.workflow.id).toBe(
       'comet-native',
     );
   });
 
-  it('diagnoses a default SDK change from its Run without looking for legacy state', async () => {
+  it('recovers an untouched SDK change from its portable state in a fresh checkout', async () => {
+    const created = json(await runNativeCli(['new', 'portable-sdk', '--json', ...projectArgs()]));
+    expect(created.exitCode, created.error?.message).toBe(0);
+
+    const restoredRoot = path.join(projectRoot, 'restored-project');
+    await fs.mkdir(path.join(restoredRoot, '.comet'), { recursive: true });
+    await fs.cp(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      path.join(restoredRoot, '.comet', 'config.yaml'),
+    );
+    await fs.cp(path.join(projectRoot, 'docs'), path.join(restoredRoot, 'docs'), {
+      recursive: true,
+    });
+    execFileSync('git', ['init'], { cwd: restoredRoot, stdio: 'ignore' });
+
+    const namedStatus = json(
+      await runNativeCli(['status', 'portable-sdk', '--json', '--project-root', restoredRoot]),
+    );
+    expect(namedStatus, namedStatus.error?.message).toMatchObject({
+      exitCode: 0,
+      data: { name: 'portable-sdk', phase: 'shape' },
+    });
+    const page = json(await runNativeCli(['status', '--json', '--project-root', restoredRoot]));
+    expect(page.data.items).toEqual([
+      expect.objectContaining({
+        name: 'portable-sdk',
+        phase: 'shape',
+      }),
+    ]);
+    expect(await readChangeRuntimeOwner(restoredRoot, 'native', 'portable-sdk')).toMatchObject({
+      format: 'sdk',
+    });
+
+    const diagnosed = json(
+      await runNativeCli(['doctor', 'portable-sdk', '--json', '--project-root', restoredRoot]),
+    );
+    expect(diagnosed.data).toMatchObject({
+      healthy: true,
+      repaired: false,
+    });
+
+    const resumed = json(
+      await runNativeCli(['next', 'portable-sdk', '--json', '--project-root', restoredRoot]),
+    );
+    expect(resumed.error?.message).toMatch(/Native shape document checks failed/);
+    const status = json(
+      await runNativeCli(['status', 'portable-sdk', '--json', '--project-root', restoredRoot]),
+    );
+    expect(status, status.error?.message).toMatchObject({
+      exitCode: 0,
+      data: {
+        name: 'portable-sdk',
+        phase: 'shape',
+        run: { actions: [{ stepId: 'shape.prepare' }] },
+      },
+    });
+  });
+
+  it('does not silently convert an existing pristine Native change after local records are lost', async () => {
+    const created = json(
+      await runNativeCli([
+        'new',
+        'portable-original',
+        '--runtime',
+        'compat',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(created.exitCode, created.error?.message).toBe(0);
+
+    const restoredRoot = path.join(projectRoot, 'restored-original');
+    await fs.mkdir(path.join(restoredRoot, '.comet'), { recursive: true });
+    await fs.cp(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      path.join(restoredRoot, '.comet', 'config.yaml'),
+    );
+    await fs.cp(path.join(projectRoot, 'docs'), path.join(restoredRoot, 'docs'), {
+      recursive: true,
+    });
+    execFileSync('git', ['init'], { cwd: restoredRoot, stdio: 'ignore' });
+
+    await runNativeCli(['next', 'portable-original', '--json', '--project-root', restoredRoot]);
+    expect(await readChangeRuntimeOwner(restoredRoot, 'native', 'portable-original')).toMatchObject(
+      {
+        format: 'compat',
+      },
+    );
+  });
+
+  it('selects an untouched SDK change from its portable state in a fresh checkout', async () => {
+    const created = json(await runNativeCli(['new', 'selectable-sdk', '--json', ...projectArgs()]));
+    expect(created.exitCode, created.error?.message).toBe(0);
+
+    const restoredRoot = path.join(projectRoot, 'restored-selectable');
+    await fs.mkdir(path.join(restoredRoot, '.comet'), { recursive: true });
+    await fs.cp(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      path.join(restoredRoot, '.comet', 'config.yaml'),
+    );
+    await fs.cp(path.join(projectRoot, 'docs'), path.join(restoredRoot, 'docs'), {
+      recursive: true,
+    });
+    execFileSync('git', ['init'], { cwd: restoredRoot, stdio: 'ignore' });
+
+    const selected = json(
+      await runNativeCli(['select', 'selectable-sdk', '--json', '--project-root', restoredRoot]),
+    );
+    expect(selected.exitCode, selected.error?.message).toBe(0);
+    expect(selected.data).toMatchObject({
+      selected: 'selectable-sdk',
+      schema: 'comet.native.sdk-status.v1',
+      name: 'selectable-sdk',
+      phase: 'shape',
+    });
+    expect(await readChangeRuntimeOwner(restoredRoot, 'native', 'selectable-sdk')).toMatchObject({
+      format: 'sdk',
+    });
+  });
+
+  it('diagnoses a progressed Native change whose portable state outlived its Run history', async () => {
+    const created = json(await runNativeCli(['new', 'progressed-sdk', '--json', ...projectArgs()]));
+    expect(created.exitCode, created.error?.message).toBe(0);
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const changeDir = path.join(paths.changesDir, 'progressed-sdk');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      `# Outcome
+Keep the work recoverable.
+# Scope
+Update the relevant behavior.
+# Non-goals
+No unrelated changes.
+# Acceptance examples
+- The work can resume safely.
+# Constraints and invariants
+Preserve existing files.
+# Decisions
+Use the existing workflow.
+# Open questions
+None.
+# Verification expectations
+Run the focused checks.
+`,
+    );
+    await fs.mkdir(path.join(changeDir, 'specs', 'recovery'), { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, 'specs', 'recovery', 'spec.md'),
+      '# Recovery\nThe workflow preserves its existing work.\n',
+    );
+    const advanced = json(
+      await runNativeCli(['next', 'progressed-sdk', '--json', ...projectArgs()]),
+    );
+    expect(advanced.exitCode, advanced.error?.message).toBe(0);
+    const originalRun = (await inspectNativeSdkRun(projectRoot, 'progressed-sdk')).run;
+    const checkpoint = parse(await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8'));
+    expect(checkpoint.run_checkpoint.run.actions[0].claim.token).toMatch(/^portable-/u);
+    expect(checkpoint.run_checkpoint.run.actions[0].claim.token).not.toBe(
+      originalRun.actions[0].claim?.token,
+    );
+
+    const restoredRoot = path.join(projectRoot, 'restored-progressed');
+    await fs.mkdir(path.join(restoredRoot, '.comet'), { recursive: true });
+    await fs.cp(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      path.join(restoredRoot, '.comet', 'config.yaml'),
+    );
+    await fs.cp(path.join(projectRoot, 'docs'), path.join(restoredRoot, 'docs'), {
+      recursive: true,
+    });
+    execFileSync('git', ['init'], { cwd: restoredRoot, stdio: 'ignore' });
+
+    const diagnosed = json(
+      await runNativeCli(['doctor', 'progressed-sdk', '--json', '--project-root', restoredRoot]),
+    );
+    expect(diagnosed.data).toMatchObject({
+      healthy: false,
+      repaired: false,
+      findings: [{ code: 'sdk-run-recoverable' }],
+    });
+    const status = json(
+      await runNativeCli(['status', 'progressed-sdk', '--json', '--project-root', restoredRoot]),
+    );
+    expect(status, status.error?.message).toMatchObject({
+      exitCode: 0,
+      data: { name: 'progressed-sdk', phase: 'shape' },
+    });
+    const page = json(await runNativeCli(['status', '--json', '--project-root', restoredRoot]));
+    expect(page, page.error?.message).toMatchObject({
+      exitCode: 0,
+      data: {
+        items: [
+          {
+            name: 'progressed-sdk',
+            phase: 'shape',
+          },
+        ],
+      },
+    });
+    expect(await readChangeRuntimeOwner(restoredRoot, 'native', 'progressed-sdk')).toMatchObject({
+      format: 'sdk',
+    });
+    const restoredPaths = await nativeProjectPaths(restoredRoot, 'docs');
+    expect(
+      await fs.readFile(path.join(restoredPaths.changesDir, 'progressed-sdk', 'brief.md'), 'utf8'),
+    ).toContain('Keep the work recoverable');
+    const restoredState = await fs.readFile(
+      nativePortableStateFile(restoredPaths, 'progressed-sdk'),
+      'utf8',
+    );
+    expect(restoredState).toContain('phase: shape');
+    expect(restoredState).toContain('status: await-user');
+    expect(
+      (await inspectNativeSdkRun(restoredRoot, 'progressed-sdk')).run.actions.map(
+        (action) => action.id,
+      ),
+    ).toEqual(originalRun.actions.map((action) => action.id));
+    const resumed = json(
+      await runNativeCli(['next', 'progressed-sdk', '--json', '--project-root', restoredRoot]),
+    );
+    expect(resumed.exitCode, resumed.error?.message).toBe(0);
+  });
+
+  it('resumes confirmed SDK Build from a copied portable state without local Run history', async () => {
+    expect(
+      json(await runNativeCli(['new', 'portable-build', '--json', ...projectArgs()])).exitCode,
+    ).toBe(0);
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const changeDir = path.join(paths.changesDir, 'portable-build');
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      `# Outcome
+Keep completed work.
+# Scope
+Implement the requested behavior.
+# Non-goals
+No unrelated work.
+# Acceptance examples
+- The copied change resumes at Build.
+# Constraints and invariants
+Preserve the implementation.
+# Decisions
+Use the confirmed workflow.
+# Open questions
+None.
+# Verification expectations
+Run the focused checks.
+`,
+    );
+    await fs.mkdir(path.join(changeDir, 'specs', 'recovery'), { recursive: true });
+    await fs.writeFile(
+      path.join(changeDir, 'specs', 'recovery', 'spec.md'),
+      '# Recovery\nThe change resumes at its confirmed stable boundary.\n',
+    );
+    const prepared = json(
+      await runNativeCli(['next', 'portable-build', '--json', ...projectArgs()]),
+    );
+    expect(prepared.exitCode, prepared.error?.message).toBe(0);
+    const confirmed = json(
+      await runNativeCli([
+        'next',
+        'portable-build',
+        '--confirmed',
+        '--summary',
+        'User approved the Shape.',
+        '--expected-state-version',
+        String(prepared.data?.stateVersion),
+        '--expected-action',
+        'confirm-shape',
+        '--json',
+        ...projectArgs(),
+      ]),
+    );
+    expect(confirmed, confirmed.error?.message).toMatchObject({
+      exitCode: 0,
+      data: { phase: 'build' },
+    });
+    expect(
+      parse(await fs.readFile(path.join(changeDir, 'comet-state.yaml'), 'utf8')).run_checkpoint,
+    ).toBeDefined();
+    await fs.writeFile(path.join(projectRoot, 'implementation.txt'), 'completed source work\n');
+
+    const restoredRoot = path.join(projectRoot, 'copied-build');
+    await fs.mkdir(path.join(restoredRoot, '.comet'), { recursive: true });
+    await fs.cp(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      path.join(restoredRoot, '.comet', 'config.yaml'),
+    );
+    await fs.cp(path.join(projectRoot, 'docs'), path.join(restoredRoot, 'docs'), {
+      recursive: true,
+    });
+    await fs.cp(
+      path.join(projectRoot, 'implementation.txt'),
+      path.join(restoredRoot, 'implementation.txt'),
+    );
+    execFileSync('git', ['init'], { cwd: restoredRoot, stdio: 'ignore' });
+
+    const probe = await resolveCometEntryResumeProbe(restoredRoot, {
+      schema_version: COMET_RESUME_PROBE_SCHEMA_VERSION,
+      utterance: '继续 portable-build',
+      locale: 'zh-CN',
+      agent_context: { non_trivial_work: true, already_in_comet_flow: false },
+    });
+    expect(probe).toMatchObject({
+      action: 'auto_resume',
+      changeName: 'portable-build',
+      phase: 'build',
+    });
+    expect(await readChangeRuntimeOwner(restoredRoot, 'native', 'portable-build')).toBeNull();
+
+    const resumed = json(
+      await runNativeCli(['status', 'portable-build', '--json', '--project-root', restoredRoot]),
+    );
+    expect(resumed, resumed.error?.message).toMatchObject({
+      exitCode: 0,
+      data: { phase: 'build' },
+    });
+    expect(resumed.data?.run.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stepId: 'build.builder', status: 'pending' }),
+      ]),
+    );
+    expect(await fs.readFile(path.join(restoredRoot, 'implementation.txt'), 'utf8')).toBe(
+      'completed source work\n',
+    );
+  });
+
+  it('rejects a changed portable Run checkpoint before creating Native ownership', async () => {
+    expect(
+      json(await runNativeCli(['new', 'changed-checkpoint', '--json', ...projectArgs()])).exitCode,
+    ).toBe(0);
+    const restoredRoot = path.join(projectRoot, 'copied-changed-checkpoint');
+    await fs.mkdir(path.join(restoredRoot, '.comet'), { recursive: true });
+    await fs.cp(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      path.join(restoredRoot, '.comet', 'config.yaml'),
+    );
+    await fs.cp(path.join(projectRoot, 'docs'), path.join(restoredRoot, 'docs'), {
+      recursive: true,
+    });
+    execFileSync('git', ['init'], { cwd: restoredRoot, stdio: 'ignore' });
+    const paths = await nativeProjectPaths(restoredRoot, 'docs');
+    const file = nativePortableStateFile(paths, 'changed-checkpoint');
+    const state = parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+    (state.run_checkpoint as Record<string, unknown>).hash = '0'.repeat(64);
+    await fs.writeFile(file, `# comet-execution: managed-run\n${stringify(state)}`);
+
+    const status = json(
+      await runNativeCli([
+        'status',
+        'changed-checkpoint',
+        '--json',
+        '--project-root',
+        restoredRoot,
+      ]),
+    );
+    expect(status.exitCode).not.toBe(0);
+    expect(status.error?.message).toMatch(/checkpoint/iu);
+    expect(await readChangeRuntimeOwner(restoredRoot, 'native', 'changed-checkpoint')).toBeNull();
+  });
+
+  it('restores when ownership was published but the Native Run commit was interrupted', async () => {
+    expect(
+      json(await runNativeCli(['new', 'owner-gap', '--json', ...projectArgs()])).exitCode,
+    ).toBe(0);
+    const restoredRoot = path.join(projectRoot, 'restored-owner-gap');
+    await fs.mkdir(path.join(restoredRoot, '.comet'), { recursive: true });
+    await fs.cp(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      path.join(restoredRoot, '.comet', 'config.yaml'),
+    );
+    await fs.cp(path.join(projectRoot, 'docs'), path.join(restoredRoot, 'docs'), {
+      recursive: true,
+    });
+    execFileSync('git', ['init'], { cwd: restoredRoot, stdio: 'ignore' });
+    const owner = await readChangeRuntimeOwner(projectRoot, 'native', 'owner-gap');
+    if (owner?.format !== 'sdk') throw new Error('Expected SDK ownership');
+    await registerSdkChangeOwner(restoredRoot, owner);
+
+    const recovered = json(
+      await runNativeCli([
+        'doctor',
+        'owner-gap',
+        '--repair',
+        '--confirmed',
+        '--json',
+        '--project-root',
+        restoredRoot,
+      ]),
+    );
+    expect(recovered.exitCode, recovered.error?.message).toBe(0);
+    expect((await inspectNativeSdkRun(restoredRoot, 'owner-gap')).run.actions[0].stepId).toBe(
+      'shape.prepare',
+    );
+  });
+
+  it('diagnoses a default SDK change while retaining its state file', async () => {
     const created = json(await runNativeCli(['new', 'sdk-doctor', '--json', ...projectArgs()]));
     expect(created.exitCode).toBe(0);
     const diagnosed = json(
@@ -146,9 +595,9 @@ describe('Native v4 public CLI surface', () => {
       },
     });
     const paths = await nativeProjectPaths(projectRoot, 'docs');
-    await expect(fs.access(nativePortableStateFile(paths, 'sdk-doctor'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(await fs.readFile(nativePortableStateFile(paths, 'sdk-doctor'), 'utf8')).toContain(
+      'phase: shape',
+    );
   });
 
   it('requires workspace isolation before creating a second current-workspace SDK change', async () => {
@@ -236,13 +685,19 @@ Run focused Native checks.
         run: { waits: [{ stepId: 'shape.confirm', status: 'pending' }] },
       },
     });
-    await expect(fs.access(nativePortableStateFile(paths, 'sdk-shape'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(await fs.readFile(nativePortableStateFile(paths, 'sdk-shape'), 'utf8')).toContain(
+      'state_version: 2',
+    );
   });
 
-  it.each(['normal', 'recover-finalize'] as const)(
-    'routes Shape confirmation and Runtime checks through the SDK Run without legacy state (%s)',
+  it.each([
+    'normal',
+    'recover-finalize',
+    'resume-builder',
+    'cross-device',
+    'cross-device-tampered',
+  ] as const)(
+    'routes Shape confirmation and Runtime checks while retaining portable state (%s)',
     async (archiveMode) => {
       const created = json(
         await runNativeCli(['new', 'sdk-confirm', '--runtime', 'sdk', '--json', ...projectArgs()]),
@@ -312,6 +767,9 @@ Run focused Native checks.
           },
         },
       });
+      expect(await fs.readFile(nativePortableStateFile(paths, 'sdk-confirm'), 'utf8')).toContain(
+        'phase: build',
+      );
       const builderNext = json(
         await runNativeCli(['next', 'sdk-confirm', '--json', ...projectArgs()]),
       );
@@ -330,8 +788,102 @@ Run focused Native checks.
       expect(builderNext.data).not.toHaveProperty('continuation');
 
       const { run } = await inspectNativeSdkRun(projectRoot, 'sdk-confirm');
-      const builder = run.actions.at(-1)!;
+      let builder = run.actions.at(-1)!;
       const runtime = createNativeSdkRuntime(projectRoot);
+      if (archiveMode === 'resume-builder') {
+        const partialFile = path.join(projectRoot, 'partial-builder.txt');
+        await fs.writeFile(partialFile, 'partial implementation\n');
+        const failureContext = { requestId: 'builder-partial-failure', projectRoot };
+        await runtime.claim({
+          runId: run.runId,
+          actionId: builder.id,
+          attempt: builder.attempt,
+          inputHash: builder.inputHash,
+          executorId: 'native-host',
+          sessionId: 'builder-partial-failure',
+          claimToken: 'builder-partial-failure',
+          context: failureContext,
+        });
+        const failed = await runtime.recordOutcome({
+          runId: run.runId,
+          outcome: {
+            actionId: builder.id,
+            attempt: builder.attempt,
+            inputHash: builder.inputHash,
+            claimToken: 'builder-partial-failure',
+            outcomeId: 'builder-partial-failure',
+            status: 'failed',
+            output: { summary: 'Builder stopped after a partial implementation.' },
+          },
+          context: failureContext,
+        });
+        const wait = failed.waits.at(-1)!;
+        expect(wait).toMatchObject({ stepId: 'build.resume', status: 'pending' });
+        const preview = json(
+          await runNativeCli(['next', 'sdk-confirm', '--json', ...projectArgs()]),
+        );
+        expect(preview, preview.error?.message).toMatchObject({
+          exitCode: 0,
+          data: {
+            pendingBuilderDecisions: [
+              {
+                waitId: wait.id,
+                proposalHash: wait.proposalHash,
+                commandArgs: expect.arrayContaining([
+                  '--continue-builder',
+                  '--proposal-hash',
+                  wait.proposalHash,
+                  '--expected-action',
+                  'continue-builder',
+                ]),
+              },
+            ],
+          },
+        });
+        const decisionArgs = [
+          'next',
+          'sdk-confirm',
+          '--continue-builder',
+          '--summary',
+          'Continue from the inspected partial implementation.',
+          '--proposal-hash',
+          wait.proposalHash,
+          '--expected-state-version',
+          String((failed.state as NativePortableState).state_version),
+          '--expected-action',
+          'continue-builder',
+          '--json',
+          ...projectArgs(),
+        ];
+        const wrongHashArgs = [...decisionArgs];
+        wrongHashArgs[wrongHashArgs.indexOf('--proposal-hash') + 1] = '0'.repeat(64);
+        const wrongHash = json(await runNativeCli(wrongHashArgs));
+        expect(wrongHash).toMatchObject({ exitCode: 73, error: { code: 'conflict' } });
+        expect(
+          (await inspectNativeSdkRun(projectRoot, 'sdk-confirm')).run.waits.at(-1),
+        ).toMatchObject({
+          id: wait.id,
+          status: 'pending',
+        });
+        const resumed = json(await runNativeCli(decisionArgs));
+        expect(resumed, resumed.error?.message).toMatchObject({
+          exitCode: 0,
+          data: {
+            pendingAction: { stepId: 'build.builder' },
+            run: {
+              actions: expect.arrayContaining([
+                expect.objectContaining({ id: builder.id, status: 'failed' }),
+                expect.objectContaining({ stepId: 'build.builder', status: 'pending' }),
+              ]),
+            },
+          },
+        });
+        expect(await fs.readFile(partialFile, 'utf8')).toBe('partial implementation\n');
+        const stale = json(await runNativeCli(decisionArgs));
+        expect(stale).toMatchObject({ exitCode: 73, error: { code: 'conflict' } });
+        builder = (await inspectNativeSdkRun(projectRoot, 'sdk-confirm')).run.actions.at(-1)!;
+        await fs.unlink(partialFile);
+      }
       const context = { requestId: 'builder-result', projectRoot };
       const claimed = await runtime.claim({
         runId: run.runId,
@@ -604,6 +1156,7 @@ Run focused Native checks.
         },
       });
       let finalized: JsonEnvelope;
+      let finalRoot = projectRoot;
       if (archiveMode === 'normal') {
         finalized = json(
           await runNativeCli(['archive', 'sdk-confirm', '--json', ...projectArgs()]),
@@ -631,9 +1184,44 @@ Run focused Native checks.
           attempt: action.attempt,
           reason: 'Host stopped after moving the Archive',
         });
+        if (archiveMode === 'cross-device' || archiveMode === 'cross-device-tampered') {
+          finalRoot = path.join(projectRoot, 'archive-copy');
+          await fs.mkdir(path.join(finalRoot, '.comet'), { recursive: true });
+          await fs.cp(
+            path.join(projectRoot, '.comet', 'config.yaml'),
+            path.join(finalRoot, '.comet', 'config.yaml'),
+          );
+          await fs.cp(path.join(projectRoot, 'docs'), path.join(finalRoot, 'docs'), {
+            recursive: true,
+          });
+          if (archiveMode === 'cross-device-tampered') {
+            const copiedPaths = await nativeProjectPaths(finalRoot, 'docs');
+            const archivedName = (await fs.readdir(copiedPaths.archiveDir)).find((name) =>
+              name.endsWith('-sdk-confirm'),
+            )!;
+            const stateFile = path.join(copiedPaths.archiveDir, archivedName, 'comet-state.yaml');
+            const copied = parse(await fs.readFile(stateFile, 'utf8')) as Record<string, unknown>;
+            (copied.archive_receipt as { specs: unknown[] }).specs = [];
+            await fs.writeFile(stateFile, `# comet-execution: managed-run\n${stringify(copied)}`);
+          }
+          execFileSync('git', ['init'], { cwd: finalRoot, stdio: 'ignore' });
+        }
         finalized = json(
-          await runNativeCli(['archive', 'sdk-confirm', '--recover', '--json', ...projectArgs()]),
+          await runNativeCli([
+            'archive',
+            'sdk-confirm',
+            '--recover',
+            '--json',
+            '--project-root',
+            finalRoot,
+          ]),
         );
+        if (archiveMode === 'cross-device-tampered') {
+          expect(finalized.exitCode).not.toBe(0);
+          expect(finalized.error?.message).toMatch(/receipt|Spec/i);
+          return;
+        }
+        expect(finalized.exitCode, finalized.error?.message).toBe(0);
         expect(finalized.data).toMatchObject({
           recoveredAction: { id: action.id, stepId: 'archive.finalize' },
         });
@@ -642,9 +1230,21 @@ Run focused Native checks.
         exitCode: 0,
         data: { status: 'done', run: { status: 'completed' } },
       });
-      await expect(fs.access(nativePortableStateFile(paths, 'sdk-confirm'))).rejects.toMatchObject({
+      const finalPaths = await nativeProjectPaths(finalRoot, 'docs');
+      await expect(
+        fs.access(nativePortableStateFile(finalPaths, 'sdk-confirm')),
+      ).rejects.toMatchObject({
         code: 'ENOENT',
       });
+      const archiveNames = await fs.readdir(finalPaths.archiveDir);
+      const archiveName = archiveNames.find((name) => name.endsWith('-sdk-confirm'));
+      expect(archiveName).toBeDefined();
+      expect(
+        await fs.readFile(
+          path.join(finalPaths.archiveDir, archiveName!, 'comet-state.yaml'),
+          'utf8',
+        ),
+      ).toContain('archived: true');
     },
   );
 
@@ -1073,7 +1673,7 @@ children:
       '--language',
       language,
       '--runtime',
-      'legacy',
+      'compat',
       ...projectArgs(),
     ]);
     const brief = `# Outcome
@@ -1210,6 +1810,7 @@ Run applicable focused checks.
     expect(next.stdout).toContain('not trusted identity attestation');
     expect(next.stdout).toContain('--proposal-hash <hash>');
     expect(next.stdout).toContain('--retry-verifier');
+    expect(next.stdout).toContain('--continue-builder');
     expect(next.stdout).toContain('--resolve-verifier-blocker');
     expect(next.stdout).toContain('--accept-result');
     expect(next.stdout).toContain('--revise-implementation');
@@ -1239,7 +1840,7 @@ Run applicable focused checks.
   it('explains the SDK default and explicit legacy option in Native new help', async () => {
     const help = await runNativeCli(['new', '--help']);
     expect(help.stdout).toContain('defaults to sdk');
-    expect(help.stdout).toContain('--runtime legacy|sdk');
+    expect(help.stdout).toContain('--runtime compat|sdk');
   });
 
   it('surfaces the coordination choice from an explicit Supervisor Shape decision', async () => {
@@ -1250,7 +1851,7 @@ Run applicable focused checks.
       '--language',
       'zh-CN',
       '--runtime',
-      'legacy',
+      'compat',
       ...projectArgs(),
     ]);
     await fs.writeFile(
@@ -1324,7 +1925,7 @@ Run applicable focused checks.
         'new',
         'surface-test',
         '--runtime',
-        'legacy',
+        'compat',
         '--json',
         ...projectArgs(),
       ]),
@@ -3169,14 +3770,14 @@ Run applicable focused checks.
     expect(text.stdout).not.toContain('choose whether to accept');
   });
 
-  it('explains the legacy-only check command for portable changes', async () => {
+  it('explains when check is unavailable for portable changes', async () => {
     await prepareBuild('check-guidance');
     const result = json(
       await runNativeCli(['check', 'check-guidance', '--json', ...projectArgs()]),
     );
     expect(result).toMatchObject({
       exitCode: 64,
-      error: { message: expect.stringContaining('legacy-only') },
+      error: { message: expect.stringContaining('not available for this change') },
     });
     expect(result.error?.message).toContain('comet native status check-guidance --json');
     expect((await runNativeCli(['check', '--help'])).exitCode).toBe(0);
@@ -3188,7 +3789,7 @@ Run applicable focused checks.
     const checked = json(await runNativeCli(['check', 'sdk-check', '--json', ...projectArgs()]));
     expect(checked).toMatchObject({
       exitCode: 64,
-      error: { message: expect.stringContaining('legacy-only') },
+      error: { message: expect.stringContaining('not available for this change') },
     });
     expect(checked.error?.message).toContain('comet native status sdk-check --json');
     expect((await inspectNativeSdkRun(projectRoot, 'sdk-check')).state.phase).toBe('shape');
@@ -3227,7 +3828,7 @@ Run applicable focused checks.
     expect(synced.error?.message).toContain('revise-requirements');
     expect((await inspectNativeSdkRun(projectRoot, 'sdk-sync')).state.state_version).toBe(1);
     const help = await runNativeCli(['spec', 'sync', '--help']);
-    expect(help.stdout).toContain('Legacy-only');
+    expect(help.stdout).toContain('Compat-only');
     expect(help.stdout).toContain('revise-requirements');
   });
 });

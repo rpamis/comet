@@ -23,6 +23,8 @@ import {
 } from '../comet-native/native-diagnostics.js';
 import { nativeProjectPaths } from '../comet-native/native-paths.js';
 import {
+  assertNativePortableChangeNotOrphaned,
+  inspectPristineNativeSdkChange,
   inspectNativeSdkRun,
   listNativeSdkChangeNames,
 } from '../comet-native/native-runtime-ownership.js';
@@ -241,7 +243,9 @@ async function nativeResumeCandidates(
           return { name, phase: state.phase, selected: name === selectedName };
         }
         if (await isNativePortableChange(paths, name)) {
-          const state = await readNativePortableChange(paths, name);
+          const recoverable = await inspectPristineNativeSdkChange(paths, name);
+          if (!recoverable) await assertNativePortableChangeNotOrphaned(paths, name);
+          const state = recoverable ?? (await readNativePortableChange(paths, name));
           return {
             name,
             phase: state.phase,
@@ -473,7 +477,9 @@ async function resolveNativeResumeProbe(
       if (await readSdkChangeOwner(projectRoot, 'native', target.name)) {
         targetState = (await inspectNativeSdkRun(projectRoot, target.name)).state;
       } else if (await isNativePortableChange(paths, target.name)) {
-        targetState = await readNativePortableChange(paths, target.name);
+        const recoverable = await inspectPristineNativeSdkChange(paths, target.name);
+        if (!recoverable) await assertNativePortableChangeNotOrphaned(paths, target.name);
+        targetState = recoverable ?? (await readNativePortableChange(paths, target.name));
         targetPortableStatus = await inspectNativePortableStatus({ paths, name: target.name });
       } else {
         targetState = await readNativeChange(paths, target.name);

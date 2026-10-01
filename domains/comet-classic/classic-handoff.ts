@@ -37,6 +37,7 @@ import {
 } from './classic-protected-path.js';
 import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
 import { classicHandoffEnvelope, classicLocale } from './classic-output-language.js';
+import { hasClassicManagedRunMarker } from './classic-state.js';
 
 const GREEN = '\u001b[32m';
 const RED = '\u001b[31m';
@@ -682,7 +683,7 @@ async function completedHandoffIsCurrent(
   );
 }
 
-export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(async (args) => {
+export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(async (args) => {
   const output = new HandoffOutput();
   const [change, phase, mode, fullFlag] = args;
   const hashOnly = args.length === 2 && phase === '--hash-only';
@@ -752,10 +753,19 @@ export const classicHandoffCommand: ClassicCommandHandler = withProjectContext(a
           );
           output.stderr.push(`Recorded: ${recordedHash || 'none'}`);
           output.stderr.push(`Current:  ${contextHash}`);
+          const managedRun =
+            active.stateExists &&
+            hasClassicManagedRunMarker(
+              await readClassicProjectFile(layout.projectRoot, `${changeDir}/.comet.yaml`, {
+                label: 'Classic handoff state',
+              }),
+            );
           output.stderr.push(
-            changed?.length
-              ? `NEXT: comet handoff ${change} design --write, then read the changed artifacts listed above in full before verifying acceptance`
-              : `NEXT: comet handoff ${change} design --write, then read every required source file in full because the recorded handoff is missing or predates the current artifacts`,
+            managedRun
+              ? `NEXT: comet state next ${change} --json; reconcile the changed sources with the SDK proposal before continuing. Do not refresh an SDK approval through the compat handoff command.`
+              : changed?.length
+                ? `NEXT: comet handoff ${change} design --write, then read the changed artifacts listed above in full before verifying acceptance`
+                : `NEXT: comet handoff ${change} design --write, then read every required source file in full because the recorded handoff is missing or predates the current artifacts`,
           );
         }
         return output.toResult(0);

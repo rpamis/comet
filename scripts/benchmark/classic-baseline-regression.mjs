@@ -52,7 +52,7 @@ function state(cwd, ...args) {
   }
   return run(
     cwd,
-    ['state', ...args, ...(args[0] === 'init' ? ['--runtime', 'legacy'] : [])],
+    ['state', ...args, ...(args[0] === 'init' ? ['--runtime', 'compat'] : [])],
     options,
   );
 }

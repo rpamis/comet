@@ -15,7 +15,7 @@ Run `comet state next <change-name> --json` and confirm `data.runtimeFormat: sdk
 2. When verification passes, write actual checks, evidence references, independent review, and acceptable deviations in a repository report at `<report-ref>`. Preview with `comet guard <change-name> verify --report <report-ref>`. Repair report or task mismatches. Then run `comet guard <change-name> verify --report <report-ref> --apply -- <program> [args...]` with an explicit complete verification command. Guard records the report, evidence, and real check receipt in one Run; a manual claim is insufficient. On check failure, read `state next --json` and the failure receipt and follow the returned Build or Verify Action.
 3. After Guard succeeds, read `comet state next <change-name> --json` again. Load `/comet-archive` only when phase is Archive and `nextAction.kind` points there. Verify passing does not itself authorize Archive; obtain the current delivery decision there.
 
-The remaining legacy Runtime steps apply only to `runtimeFormat: legacy`.
+The remaining original Runtime steps apply only to `runtimeFormat: compat`.
 
 ## Prerequisites
 

@@ -932,6 +932,13 @@ def pytest_addoption(parser):
         help="Override max interaction turns for auto_user loops",
     )
     parser.addoption(
+        "--agent-timeout",
+        action="store",
+        type=int,
+        default=None,
+        help="Override the per-case Agent execution timeout in seconds",
+    )
+    parser.addoption(
         "--simulator-prompt",
         action="store",
         default=None,
@@ -1324,6 +1331,15 @@ def _resolve_interaction_config(task, profile_name: str, config):
         continue_prompt=continue_prompt,
         fresh_resume_marker=fresh_resume_marker,
     )
+
+
+def _resolve_agent_timeout(config, *, task_timeout: int, floor: int) -> int:
+    override = config.getoption("--agent-timeout")
+    if override is None:
+        return max(floor, task_timeout)
+    if override <= 0:
+        raise pytest.UsageError("--agent-timeout must be a positive number of seconds")
+    return override
 
 
 def _read_required_text(path: Path) -> str:
@@ -2327,7 +2343,9 @@ def _save_artifacts(
 
     claude_files = []
     for item in test_dir.rglob("*"):
-        if item.name.startswith("."):
+        # Classic's public checkpoint is a dotfile, not private Agent config.
+        # Keep this one state file while excluding all other hidden filenames.
+        if item.name.startswith(".") and item.name != ".comet.yaml":
             continue
         if item.name in exclude_files:
             continue

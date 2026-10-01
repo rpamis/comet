@@ -34,9 +34,11 @@ Builder 开始本轮实现前、独立 Verifier 开始验收前，取当前待�
 
 进入 Archive 后先用 `native archive <change> --dry-run --json` 读取当前 Action 的准备状态，再逐次执行 `native archive <change> --json`，核对 `archive.prepare`、`archive.execute`、`archive.finalize` 各 Action 的真实结果。Supervisor 还会有 `supervisor.cleanup`：Runtime 只在目标分支仍是已验收提交、临时 worktree 干净且分支已合入时清理本次创建的 Child 和集成 worktree；遇到脏 worktree 或结果未知，保留现场并按原 Action 核对，不强制删除。只有 SDK Run 为 `completed` 且业务状态为 `done` 才说 SDK 归档完成。merge、push、PR 和非 Supervisor 临时工作区的收尾仍按用户授权分别执行和核对，SDK 归档不自动证明这些外部交付已完成。
 
-中断恢复时先读取 `native status --details --json`，必要时用 `runtime dispatch` 的 `inspect` 请求取得完整 Run。待处理 Action 可继续；`running` 或 `unknown` 的平台 Action 先查原平台会话、任务句柄与原 `claimToken`。实际结果已知时由原领取者提交原 Action 的结果；只有权威证据证明未执行，才按 SDK 的 `retry`/reconciliation 协议重新开放。结果未知时保留现场并报告阻塞，不重派 Builder、Verifier 或其他有外部副作用的工作。旧 Runtime 的 `continuation`、`--runner-input`、`doctor` 修复指令不适用于 SDK Run。
+中断恢复时先读取 `native status --details --json`，必要时用 `runtime dispatch` 的 `inspect` 请求取得完整 Run。待处理 Action 可继续；`running` 或 `unknown` 的平台 Action 先查原平台会话、任务句柄与原 `claimToken`。实际结果已知时由原领取者提交原 Action 的结果；只有权威证据证明未执行，才按 SDK 的 `retry`/reconciliation 协议重新开放。结果未知时保留现场并报告阻塞，不重派 Builder、Verifier 或其他有外部副作用的工作。旧 Runtime 的 `continuation` 和 `--runner-input` 指令不适用于 SDK Run；整个本地 Run 记录丢失时，按主 Skill 的显式恢复步骤处理。
 
-若 `archive.execute`、`archive.finalize` 或 `supervisor.cleanup` 是唯一的 `unknown` Action，且已确认原执行进程停止，可运行 `native archive <change> --recover --json`。Runtime 会核对原领取、持久化归档证据或已交付提交，必要时完成尚未清理的安全工作区，再向同一 Action 提交结果；它不会创建新尝试。证据不足、目标分支变化、worktree 有未保存修改，或原执行进程仍可能运行时，保留现场并先处理这些事实，不执行恢复命令。成功返回后重新读取 Run，继续处理新产生的待办 Action。
+Builder 已部分执行且原 Action 已提交 `failed` 时，保留工作区和原失败结果；不要把它核对成“未执行”后重试，也不要自行重新派发。运行 `native next <change> --json`，从 `pendingBuilderDecisions` 读取对应的 `build.resume`、`supervisor.child.resume` 或 `supervisor.parent.resume` Wait。先向用户说明已完成的修改、失败原因与继续工作的风险，得到明确决定后，填写 `commandArgs` 中的 `--summary` 并原样保留提案摘要、状态版本和预期动作，再执行 `--continue-builder`。Runtime 会创建绑定原失败 Action 的新 Builder Action；在原工作区领取并继续它，完成后重新执行检查和验收。用户尚未决定或提案已过期时停下，重新读取当前 Run，不修改原失败结果。
+
+若 `supervisor.parent.deliver`、`archive.execute`、`archive.finalize` 或 `supervisor.cleanup` 是唯一的 `unknown` Action，且已确认原执行进程停止，可运行 `native archive <change> --recover --json`。交付恢复只在目标分支仍精确指向已验证集成提交时，向原 Action 提交结果；目标尚未交付或分支已漂移时拒绝，不重新执行快进。归档与清理恢复会核对原领取、持久化证据和工作区，必要时完成剩余的安全操作，再向同一 Action 提交结果；恢复不会创建新尝试。证据不足、worktree 有未保存修改，或原执行进程仍可能运行时，保留现场并先处理这些事实。成功返回后重新读取 Run，继续处理新产生的待办 Action。
 
 ## 记忆接入
 

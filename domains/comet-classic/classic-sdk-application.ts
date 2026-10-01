@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
+import { parseDocument } from 'yaml';
 import {
+  createPortableRunCheckpoint,
+  PORTABLE_RUN_CHECKPOINT_KEY,
+  readPortableRunCheckpoint,
   type DefineWorkflowOptions,
   type RuntimeEvidenceValidator,
   type RuntimeExecutor,
@@ -249,10 +254,43 @@ const archiveOutcomeValidator: RuntimeValidator = {
   },
 };
 
+async function onlyRuntimeCheckpointChanged(
+  root: string,
+  archiveRef: string,
+  dirty: string,
+  run: WorkflowRun,
+): Promise<boolean> {
+  const stateRef = `${archiveRef}/.comet.yaml`;
+  if (dirty !== `M ${stateRef}`) return false;
+  const committed = execFileSync('git', ['show', `HEAD:${stateRef}`], {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const current = await readClassicProjectFile(root, path.join(root, stateRef), {
+    label: 'Classic state file',
+  });
+  const before = parseDocument(committed, { uniqueKeys: true });
+  const after = parseDocument(current, { uniqueKeys: true });
+  if (before.errors.length > 0 || after.errors.length > 0) return false;
+  const beforeData = before.toJS() as Record<string, unknown>;
+  const afterData = after.toJS() as Record<string, unknown>;
+  if (
+    !readPortableRunCheckpoint(beforeData[PORTABLE_RUN_CHECKPOINT_KEY], run.runId) ||
+    !readPortableRunCheckpoint(afterData[PORTABLE_RUN_CHECKPOINT_KEY], run.runId) ||
+    !isDeepStrictEqual(afterData[PORTABLE_RUN_CHECKPOINT_KEY], createPortableRunCheckpoint(run))
+  ) {
+    return false;
+  }
+  delete beforeData[PORTABLE_RUN_CHECKPOINT_KEY];
+  delete afterData[PORTABLE_RUN_CHECKPOINT_KEY];
+  return isDeepStrictEqual(beforeData, afterData);
+}
+
 const deliveryOutcomeValidator: RuntimeValidator = {
   id: 'comet-classic-delivery-outcome',
   version: '1',
-  async validate({ action, outcome, context }) {
+  async validate({ run, action, outcome, context }) {
     if (outcome.status === 'failed') return { accepted: true };
     const root = context?.projectRoot;
     const profile = action.stepId.split('.')[0];
@@ -374,12 +412,14 @@ const deliveryOutcomeValidator: RuntimeValidator = {
         file.startsWith(`${archiveRef}/`) ||
         file.startsWith(`${specsRef}/`) ||
         (profile === 'full' && (file === designDoc || file === plan));
+      const checkpointOnlyDirty =
+        dirty !== '' && (await onlyRuntimeCheckpointChanged(root, archiveRef, dirty, run));
       if (
         head !== delivered.commit ||
         parents.length !== 2 ||
         parents[1] !== approved.baseCommit ||
         !files ||
-        dirty ||
+        (dirty && !checkpointOnlyDirty) ||
         !changed.some((file) => file.startsWith(`${archiveRef}/`)) ||
         changed.some((file) => !allowed(file)) ||
         (profile === 'full' &&

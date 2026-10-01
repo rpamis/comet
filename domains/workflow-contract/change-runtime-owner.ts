@@ -22,14 +22,14 @@ export interface SdkChangeOwner {
   runId: string;
 }
 
-export interface LegacyChangeOwner {
+export interface CompatChangeOwner {
   schema: typeof COMET_CHANGE_OWNER_SCHEMA;
   workflow: CometProjectWorkflow;
   change: string;
-  format: 'legacy';
+  format: 'compat';
 }
 
-export type ChangeRuntimeOwner = SdkChangeOwner | LegacyChangeOwner;
+export type ChangeRuntimeOwner = SdkChangeOwner | CompatChangeOwner;
 
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 
@@ -54,7 +54,7 @@ function parseOwner(
     owner.schema === COMET_CHANGE_OWNER_SCHEMA &&
     owner.workflow === workflow &&
     owner.change === change;
-  const validLegacy = owner.format === 'legacy' && Object.keys(owner).length === 4;
+  const validCompat = owner.format === 'compat' && Object.keys(owner).length === 4;
   const validSdk =
     owner.format === 'sdk' &&
     Object.keys(owner).length === 6 &&
@@ -64,7 +64,7 @@ function parseOwner(
       : owner.application === 'classic-full' ||
         owner.application === 'classic-hotfix' ||
         owner.application === 'classic-tweak');
-  if (!validCommon || (!validLegacy && !validSdk)) {
+  if (!validCommon || (!validCompat && !validSdk)) {
     throw new Error(`Invalid change runtime owner for ${workflow}/${change}`);
   }
   return owner as unknown as ChangeRuntimeOwner;
@@ -167,10 +167,10 @@ export function registerSdkChangeOwner(
   return registerChangeRuntimeOwner(projectRoot, owner);
 }
 
-export function registerLegacyChangeOwner(
+export function registerCompatChangeOwner(
   projectRoot: string,
-  owner: LegacyChangeOwner,
-): Promise<LegacyChangeOwner> {
+  owner: CompatChangeOwner,
+): Promise<CompatChangeOwner> {
   return registerChangeRuntimeOwner(projectRoot, owner);
 }
 

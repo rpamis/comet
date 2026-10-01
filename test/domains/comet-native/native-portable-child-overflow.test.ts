@@ -61,7 +61,7 @@ describe('Native portable child worktree discovery', () => {
     git(root, ['add', '.']);
     git(root, ['commit', '-m', 'seed repository']);
 
-    expect((await nativeNewCommand(['parent', '--runtime', 'legacy'], root)).exitCode).toBe(0);
+    expect((await nativeNewCommand(['parent', '--runtime', 'compat'], root)).exitCode).toBe(0);
     const config = await readProjectConfig(root);
     const paths = await nativeProjectPaths(root, config!.native.artifact_root);
     const stateFile = path.join(
@@ -87,7 +87,7 @@ describe('Native portable child worktree discovery', () => {
     git(root, ['commit', '-m', 'persist oversized parent state']);
 
     const child = await nativeNewCommand(
-      ['child', '--isolation', 'worktree', '--target-branch', 'integration', '--runtime', 'legacy'],
+      ['child', '--isolation', 'worktree', '--target-branch', 'integration', '--runtime', 'compat'],
       root,
     );
     expect(child.exitCode).toBe(0);

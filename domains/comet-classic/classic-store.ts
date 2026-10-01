@@ -8,6 +8,7 @@ import {
   removeContainedFile,
 } from '../workflow-contract/contained-atomic-write.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import { hasClassicManagedRunMarker } from './classic-state.js';
 import {
   CLASSIC_WIRE_KEYS,
   classicStateToDocument,
@@ -266,6 +267,10 @@ async function writeClassicStateLocked(
   options: { beforeCommit?: () => void | Promise<void> },
 ): Promise<void> {
   const file = path.join(changeDir, '.comet.yaml');
+  const source = await optionalStateText(changeDir, '.comet.yaml');
+  if (source !== null && hasClassicManagedRunMarker(source)) {
+    throw new Error('Classic managed Run state is owned by the SDK; compat writes are not allowed');
+  }
   const document = await readDocument(file);
   const epoch = document.get('check_epoch') ?? 0;
   if (typeof epoch === 'number' && epoch > (projection.classic?.checkEpoch ?? 0)) {

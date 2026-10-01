@@ -7,15 +7,18 @@ import {
   assertChangeNotSdkOwned,
   COMET_CHANGE_OWNER_SCHEMA,
   readChangeRuntimeOwner,
-  registerLegacyChangeOwner,
+  readSdkChangeOwner,
+  registerCompatChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
 import {
   assertClassicSdkStartAvailable,
   resolveClassicChangeRuntimeOwner,
+  restoreClassicSdkChange,
   withClassicChangeOwnershipLock,
 } from './classic-runtime-ownership.js';
 import { createClassicSdkRun } from './classic-sdk-create.js';
+import { CLASSIC_MANAGED_RUN_MARKER } from './classic-sdk-state-store.js';
 import {
   decideClassicSdkArchive,
   proposeClassicSdkArchive,
@@ -66,6 +69,7 @@ import { assertClassicLayoutWritable, assertClassicLayoutReadable } from './clas
 import {
   classicCommandInvocationCwd,
   classicCommandProjectRoot,
+  withClassicCommandContext,
   withProjectContext,
 } from './classic-command-context.js';
 import { resolveClassicStepId } from './classic-resolver.js';
@@ -111,7 +115,7 @@ import {
 import { resolveClassicWorkspace } from './classic-workspace.js';
 import { classicRecoveryContext } from './classic-recovery.js';
 import { classicConfigurationReadiness } from './classic-build-configuration.js';
-import { classicHandoffCommand } from './classic-handoff.js';
+import { classicHandoffCommand } from './classic-handoff-command.js';
 import { classicIssue, type ClassicIssue } from './classic-issues.js';
 import {
   readClassicCheckpoint,
@@ -499,7 +503,7 @@ async function readField(name: string, field: string): Promise<string> {
 
 async function getField(name: string, field: string): Promise<string> {
   const owner = await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
-  if (owner?.format !== 'legacy') {
+  if (owner?.format !== 'compat') {
     const sdkWorkspace = await findClassicSdkWorkspace(classicCommandProjectRoot(), name);
     if (sdkWorkspace) return readRecordField(classicStateToDocument(sdkWorkspace.state), field);
   }
@@ -565,8 +569,24 @@ async function setFields(
   updates: Array<[string, string]>,
   options: { internal?: boolean; machineOwned?: boolean } = {},
 ): Promise<void> {
+  const projectRoot = classicCommandProjectRoot();
+  const owner = await resolveClassicChangeRuntimeOwner(projectRoot, name);
+  if (owner?.format === 'sdk') {
+    const configurable = new Set([
+      'language',
+      'context_compression',
+      'auto_transition',
+      'review_mode',
+    ]);
+    for (const [field] of updates) {
+      if (!configurable.has(field)) {
+        fail(`ERROR: SDK-owned Classic field '${field}' requires its workflow command`);
+      }
+    }
+  }
   const { directory } = await stateFile(name);
-  return withClassicStateLock(directory, () => setFieldsLocked(output, name, updates, options));
+  await withClassicStateLock(directory, () => setFieldsLocked(output, name, updates, options));
+  if (owner?.format === 'sdk') await inspectClassicSdkRun(projectRoot, name);
 }
 
 async function setFieldsLocked(
@@ -699,7 +719,7 @@ async function init(
   name: string,
   workflow: string,
   isolation: string | null = null,
-  runtimeFormat: 'legacy' | 'sdk' = 'legacy',
+  runtimeFormat: 'compat' | 'sdk' = 'compat',
 ): Promise<void> {
   validateChangeName(name);
   validateEnum(workflow, PROFILES);
@@ -712,7 +732,7 @@ async function init(
   }
   const projectRoot = classicCommandProjectRoot();
   await withClassicChangeOwnershipLock(projectRoot, name, async () => {
-    if (runtimeFormat === 'legacy') {
+    if (runtimeFormat === 'compat') {
       await assertChangeNotSdkOwned(projectRoot, 'classic', name);
     } else if (await readChangeRuntimeOwner(projectRoot, 'classic', name)) {
       fail(`ERROR: Classic change ${name} already has Runtime ownership`);
@@ -764,6 +784,7 @@ async function init(
         changeDir: directory,
         initialState: projection.classic,
       });
+      await atomicWrite(file, CLASSIC_MANAGED_RUN_MARKER + document.toString());
       output.data = {
         change: name,
         phase: projection.classic.phase,
@@ -784,11 +805,11 @@ async function init(
       output.stdout.push(green(`Initialized: ${label} (workflow=${workflow}, runtime=sdk)`));
     } else {
       await atomicWrite(file, document.toString());
-      await registerLegacyChangeOwner(projectRoot, {
+      await registerCompatChangeOwner(projectRoot, {
         schema: COMET_CHANGE_OWNER_SCHEMA,
         workflow: 'classic',
         change: name,
-        format: 'legacy',
+        format: 'compat',
       });
       output.stdout.push(green(`Initialized: ${label}/.comet.yaml (workflow=${workflow})`));
     }
@@ -1055,7 +1076,7 @@ async function next(output: CommandOutput, name: string): Promise<void> {
   validateChangeName(name);
   const owner = await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
   const sdkWorkspace =
-    owner?.format === 'legacy'
+    owner?.format === 'compat'
       ? null
       : await findClassicSdkWorkspace(classicCommandProjectRoot(), name);
   if (sdkWorkspace) {
@@ -1152,7 +1173,7 @@ async function next(output: CommandOutput, name: string): Promise<void> {
       sparseClassicState(record),
     )),
     change: name,
-    runtimeFormat: 'legacy',
+    runtimeFormat: 'compat',
     phase,
     configuration: sparseClassicState(record),
   };
@@ -1161,7 +1182,7 @@ async function next(output: CommandOutput, name: string): Promise<void> {
     const complete = ['complete', 'local-verified'].includes(delivery.verification.status);
     output.data = {
       change: name,
-      runtimeFormat: 'legacy',
+      runtimeFormat: 'compat',
       phase,
       configuration: sparseClassicState(record),
       delivery,
@@ -1545,7 +1566,7 @@ async function check(
   const projectRoot = classicCommandProjectRoot();
   const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, name);
   const sdkWorkspace =
-    localOwner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, name);
+    localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, name);
   if (sdkWorkspace) {
     await checkSdkEntry(output, name, phase, sdkWorkspace.projectRoot);
     return;
@@ -1695,7 +1716,7 @@ async function completeDesign(
   const projectRoot = classicCommandProjectRoot();
   const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, name);
   const sdkWorkspace =
-    localOwner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, name);
+    localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, name);
   if (sdkWorkspace) {
     if (!approvalHash) fail('ERROR: Classic SDK Design requires --approval-hash');
     const run = await completeClassicSdkDesign({
@@ -1994,44 +2015,55 @@ async function recover(
 
 async function scale(output: CommandOutput, name: string): Promise<void> {
   validateChangeName(name);
-  const { file, directory, label } = await stateFile(name);
-  if (!(await exists(file))) fail(`ERROR: .comet.yaml not found at ${label}/.comet.yaml`);
+  const projectRoot = classicCommandProjectRoot();
+  const owner = await resolveClassicChangeRuntimeOwner(projectRoot, name);
+  const sdk = owner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, name);
+  const artifactRoot = sdk?.projectRoot ?? projectRoot;
+  const directory = sdk
+    ? (await resolveClassicChangeDirectory(name, artifactRoot)).directory
+    : (await stateFile(name)).directory;
+  const field = (key: string) =>
+    sdk ? readRecordField(classicStateToDocument(sdk.state), key) : readField(name, key);
   const tasksFile = path.join(directory, 'tasks.md');
   const taskCount = (await exists(tasksFile))
     ? parseClassicTasks(
-        await readClassicProjectFile(classicCommandProjectRoot(), tasksFile, {
+        await readClassicProjectFile(artifactRoot, tasksFile, {
           label: 'Classic scale task file',
         }),
       ).length
     : 0;
   const specs = path.join(directory, 'specs');
-  const deltaSpecs = (await collectClassicSpecFiles(classicCommandProjectRoot(), specs)).length;
-  const plan = await readField(name, 'plan');
+  const deltaSpecs = (await collectClassicSpecFiles(artifactRoot, specs)).length;
+  const plan = await field('plan');
   let baseRef = '';
-  if (plan && plan !== 'null' && (await exists(plan))) {
+  if (plan && plan !== 'null' && (await exists(path.resolve(artifactRoot, plan)))) {
     const match = (
-      await readClassicProjectFile(classicCommandProjectRoot(), plan, {
+      await readClassicProjectFile(artifactRoot, plan, {
         label: 'Classic scale plan',
       })
     ).match(/^base-ref:\s*(.+)$/mu);
     baseRef = match?.[1].trim() ?? '';
   }
-  if (!baseRef) baseRef = await readField(name, 'base_ref');
-  const changed = gitOutput([
-    'diff',
-    '--name-only',
-    ...(baseRef && baseRef !== 'null' ? [`${baseRef}...HEAD`] : ['HEAD']),
-  ]);
+  if (!baseRef) baseRef = await field('base_ref');
+  const changed = await withClassicCommandContext(
+    { projectRoot: artifactRoot, invocationCwd: artifactRoot },
+    async () =>
+      gitOutput([
+        'diff',
+        '--name-only',
+        ...(baseRef && baseRef !== 'null' ? [`${baseRef}...HEAD`] : ['HEAD']),
+      ]),
+  );
   const changedFiles = changed ? changed.split(/\r?\n/u).filter(Boolean).length : 0;
   const result = taskCount > 3 || deltaSpecs > 1 || changedFiles > 8 ? 'full' : 'light';
-  const selected = await readField(name, 'verify_mode');
+  const selected = await field('verify_mode');
   output.data = {
     change: name,
     recommendation: result,
     selected: selected === 'light' || selected === 'full' ? selected : null,
     metrics: { tasks: taskCount, deltaSpecs, changedFiles },
   };
-  const locale = classicLocale(await readField(name, 'language'));
+  const locale = classicLocale(await field('language'));
   output.envelope = classicScaleEnvelope({ name, result, locale });
   output.stderr.push(
     output.envelope.summary,
@@ -2126,12 +2158,12 @@ function requiredExact(args: string[], count: number, usage: string): void {
 
 const MUTATING_STATE_COMMANDS = new Set([
   'init',
+  'restore',
   'set',
   'task-complete',
   'sync-plan',
   'transition',
   'check',
-  'scale',
   'record-check',
   'rebind',
   'select',
@@ -2174,7 +2206,9 @@ async function assertStateChangeNotSdkOwned(
   validateChangeName(name);
   if (
     subcommand === 'next' ||
+    subcommand === 'restore' ||
     subcommand === 'get' ||
+    subcommand === 'set' ||
     subcommand === 'select' ||
     subcommand === 'artifacts' ||
     subcommand === 'check' ||
@@ -2216,7 +2250,7 @@ async function selectChange(output: CommandOutput, name: string): Promise<boolea
     const requestedRoot = classicCommandProjectRoot();
     const localOwner = await resolveClassicChangeRuntimeOwner(requestedRoot, name);
     const sdkWorkspace =
-      localOwner?.format === 'legacy' ? null : await findClassicSdkWorkspace(requestedRoot, name);
+      localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(requestedRoot, name);
     if (sdkWorkspace) {
       const { run, state } = sdkWorkspace;
       const selection = await selectCurrentChange(sdkWorkspace.projectRoot, name);
@@ -2349,11 +2383,11 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         required(rest, 2, 'Usage: comet state init <change-name> <workflow>');
         const initOptions = rest.slice(2);
         let isolation: string | null = null;
-        let runtimeFormat: 'legacy' | 'sdk' = 'sdk';
+        let runtimeFormat: 'compat' | 'sdk' = 'sdk';
         const seen = new Set<string>();
         if (initOptions.length % 2 !== 0) {
           fail(
-            'Usage: comet state init <change-name> <workflow> [--isolation <mode>] [--runtime legacy|sdk]',
+            'Usage: comet state init <change-name> <workflow> [--isolation <mode>] [--runtime compat|sdk]',
           );
         }
         for (let index = 0; index < initOptions.length; index += 2) {
@@ -2366,18 +2400,39 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             value.startsWith('--')
           ) {
             fail(
-              'Usage: comet state init <change-name> <workflow> [--isolation <mode>] [--runtime legacy|sdk]',
+              'Usage: comet state init <change-name> <workflow> [--isolation <mode>] [--runtime compat|sdk]',
             );
           }
           seen.add(option);
           if (option === '--isolation') isolation = value;
           else {
-            validateEnum(value, ['legacy', 'sdk']);
-            runtimeFormat = value as 'legacy' | 'sdk';
+            validateEnum(value, ['compat', 'sdk']);
+            runtimeFormat = value as 'compat' | 'sdk';
           }
         }
         await init(output, rest[0], rest[1], isolation, runtimeFormat);
         initializedSdk = runtimeFormat === 'sdk';
+      } else if (subcommand === 'restore') {
+        requiredExact(rest, 2, 'Usage: comet state restore <change-name> --confirmed');
+        validateChangeName(rest[0]);
+        if (rest[1] !== '--confirmed') {
+          fail('Usage: comet state restore <change-name> --confirmed');
+        }
+        const run = await restoreClassicSdkChange(classicCommandProjectRoot(), rest[0]);
+        output.data = {
+          change: rest[0],
+          phase: 'open',
+          configuration: run.state,
+          run: {
+            id: run.runId,
+            revision: run.revision,
+            status: run.status,
+            actions: run.actions.map(({ id, stepId, status }) => ({ id, stepId, status })),
+          },
+        };
+        output.stdout.push(
+          `Restored ${rest[0]} at Open; revalidate the documents and obtain fresh approval.`,
+        );
       } else if (subcommand === 'get') {
         required(rest, 2, 'Usage: comet state get <change-name> <field>');
         validateChangeName(rest[0]);
@@ -2408,7 +2463,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
         const workspace =
-          localOwner?.format === 'legacy'
+          localOwner?.format === 'compat'
             ? null
             : await findClassicSdkWorkspace(projectRoot, rest[0]);
         if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
@@ -2444,7 +2499,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
         const workspace =
-          localOwner?.format === 'legacy'
+          localOwner?.format === 'compat'
             ? null
             : await findClassicSdkWorkspace(projectRoot, rest[0]);
         if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
@@ -2481,7 +2536,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
         const workspace =
-          localOwner?.format === 'legacy'
+          localOwner?.format === 'compat'
             ? null
             : await findClassicSdkWorkspace(projectRoot, rest[0]);
         if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
@@ -2535,7 +2590,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
         const workspace =
-          localOwner?.format === 'legacy'
+          localOwner?.format === 'compat'
             ? null
             : await findClassicSdkWorkspace(projectRoot, rest[0]);
         if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
@@ -2609,7 +2664,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
         const workspace =
-          localOwner?.format === 'legacy'
+          localOwner?.format === 'compat'
             ? null
             : await findClassicSdkWorkspace(projectRoot, rest[0]);
         if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
@@ -2661,7 +2716,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
         const workspace =
-          localOwner?.format === 'legacy'
+          localOwner?.format === 'compat'
             ? null
             : await findClassicSdkWorkspace(projectRoot, rest[0]);
         if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
@@ -2698,7 +2753,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
         const workspace =
-          localOwner?.format === 'legacy'
+          localOwner?.format === 'compat'
             ? null
             : await findClassicSdkWorkspace(projectRoot, rest[0]);
         if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
@@ -2723,7 +2778,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
         const workspace =
-          localOwner?.format === 'legacy'
+          localOwner?.format === 'compat'
             ? null
             : await findClassicSdkWorkspace(projectRoot, rest[0]);
         if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
@@ -2734,7 +2789,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const projectRoot = classicCommandProjectRoot();
         const owner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
         const workspace =
-          owner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, rest[0]);
+          owner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, rest[0]);
         if (workspace) {
           if (
             rest.length !== 4 ||
@@ -2761,7 +2816,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           const projectRoot = classicCommandProjectRoot();
           const owner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
           const sdkWorkspace =
-            owner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, rest[0]);
+            owner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, rest[0]);
           if (sdkWorkspace) {
             const { state } = sdkWorkspace;
             if (state.phase !== rest[1]) {
@@ -2782,7 +2837,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const projectRoot = classicCommandProjectRoot();
         const owner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
         const sdkWorkspace =
-          owner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, rest[0]);
+          owner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, rest[0]);
         const artifactRoot = sdkWorkspace?.projectRoot ?? projectRoot;
         const { directory } = sdkWorkspace
           ? await resolveClassicChangeDirectory(rest[0], artifactRoot)
@@ -2851,10 +2906,15 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
       } else {
         fail(`Unknown subcommand: ${subcommand ?? ''}`);
       }
+      const updatedSdkChange =
+        rest[0] &&
+        ['set', 'transition'].includes(subcommand ?? '') &&
+        (await readSdkChangeOwner(classicCommandProjectRoot(), 'classic', rest[0]));
       if (
         options.json &&
         !initializedSdk &&
         !selectedSdk &&
+        !updatedSdkChange &&
         ['init', 'set', 'transition', 'select'].includes(subcommand)
       ) {
         const { directory } = await stateFile(rest[0]);

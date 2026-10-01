@@ -28,6 +28,11 @@ import {
   type WorkflowTransitionHandler,
 } from '../../../domains/engine/runtime.js';
 import { registerSdkChangeOwner } from '../../../domains/workflow-contract/change-runtime-owner.js';
+import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
+import { resolveClassicChangeRuntimeOwner } from '../../../domains/comet-classic/classic-runtime-ownership.js';
+import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+import { recordClassicArchiveRequirements } from '../../../domains/comet-classic/classic-artifact-requirements.js';
+import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 
 vi.mock('node:child_process', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:child_process')>();
@@ -332,17 +337,24 @@ async function reachFullBuildCheckAction(
 async function checkedFullBuildRun(
   runId: string,
   taskCompleted: boolean,
-  options: { gitBranch?: string; boundBranch?: string; fileStore?: boolean } = {},
+  options: {
+    gitBranch?: string;
+    boundBranch?: string;
+    fileStore?: boolean;
+    projectedStore?: boolean;
+  } = {},
 ): Promise<{ runtime: WorkflowRuntime; run: WorkflowRun; projectRoot: string }> {
   const application = classicDomain.defineClassicWorkflowApplication('full');
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-build-accept-'));
   temporaryRoots.push(projectRoot);
   const runtime = createRuntime({
-    store: options.fileStore
-      ? createFileRuntimeStore<WorkflowRun>({
-          rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'classic'),
-        })
-      : createMemoryRuntimeStore<WorkflowRun>(),
+    store: options.projectedStore
+      ? createClassicSdkStateStore(projectRoot)
+      : options.fileStore
+        ? createFileRuntimeStore<WorkflowRun>({
+            rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'classic'),
+          })
+        : createMemoryRuntimeStore<WorkflowRun>(),
     workflows: [application.workflow],
     transitionHandlers: [application.transitionHandler],
     evidenceValidators: testEvidenceValidators(application),
@@ -438,7 +450,12 @@ async function acceptBuildCheckEvidence(
 
 async function reachFullVerifyCheckAction(
   runId: string,
-  options: { gitBranch?: string; boundBranch?: string; fileStore?: boolean } = {},
+  options: {
+    gitBranch?: string;
+    boundBranch?: string;
+    fileStore?: boolean;
+    projectedStore?: boolean;
+  } = {},
 ): Promise<{ runtime: WorkflowRuntime; run: WorkflowRun; projectRoot: string }> {
   const { runtime, run, projectRoot } = await checkedFullBuildRun(runId, true, options);
   const verifying = await acceptBuildCheckEvidence(runtime, run, projectRoot);
@@ -468,12 +485,13 @@ async function reachFullVerifyCheckAction(
 
 async function reachFullArchivePrepareAction(
   runId: string,
-  options: { fileStore?: boolean } = {},
+  options: { fileStore?: boolean; projectedStore?: boolean; withoutGit?: boolean } = {},
 ): Promise<{ runtime: WorkflowRuntime; run: WorkflowRun; projectRoot: string }> {
   const { runtime, run, projectRoot } = await reachFullVerifyCheckAction(runId, {
-    gitBranch: 'sdk-build',
-    boundBranch: 'sdk-build',
+    gitBranch: options.withoutGit ? undefined : 'sdk-build',
+    boundBranch: options.withoutGit ? undefined : 'sdk-build',
     fileStore: options.fileStore,
+    projectedStore: options.projectedStore,
   });
   const checked = await classicDomain.executeClassicSdkCommandCheck(runtime, {
     runId: run.runId,
@@ -528,9 +546,12 @@ async function reachFullArchiveExecuteAction(
     deliveryAction?: 'local' | 'push' | 'pr';
     remotePath?: string;
     prBaseBranch?: string;
+    projectedStore?: boolean;
   } = {},
 ): Promise<{ runtime: WorkflowRuntime; run: WorkflowRun; projectRoot: string }> {
-  const { runtime, run, projectRoot } = await reachFullArchivePrepareAction(runId);
+  const { runtime, run, projectRoot } = await reachFullArchivePrepareAction(runId, {
+    projectedStore: options.projectedStore,
+  });
   if (options.remotePath) {
     execFileSync('git', ['remote', 'add', 'origin', options.remotePath], { cwd: projectRoot });
   }
@@ -862,6 +883,140 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     );
     expect(delivered.status).toBe('completed');
     expect(delivered.state).toMatchObject({ archived: true, branchStatus: 'handled' });
+  });
+
+  it('restores a moved Archive with its claimed Action unknown on another device', async () => {
+    const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction('example', {
+      projectedStore: true,
+    });
+    const action = run.actions.at(-1)!;
+    expect(action.stepId).toBe('full.archive.execute');
+    await runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'comet-classic-archive',
+      claimToken: 'archive-moved-before-outcome',
+      context: { requestId: 'archive-moved-before-outcome', projectRoot },
+    });
+    const active = path.join(projectRoot, 'docs', 'openspec', 'changes', 'example');
+    await recordClassicArchiveRequirements(projectRoot, active);
+    const archived = path.join(
+      projectRoot,
+      'docs',
+      'openspec',
+      'changes',
+      'archive',
+      '2026-09-24-example',
+    );
+    await fs.mkdir(path.dirname(archived), { recursive: true });
+    await fs.rename(active, archived);
+
+    const restoredRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-archive-copy-'));
+    temporaryRoots.push(restoredRoot);
+    await fs.mkdir(path.join(restoredRoot, '.comet'));
+    await fs.cp(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      path.join(restoredRoot, '.comet', 'config.yaml'),
+    );
+    await fs.cp(path.join(projectRoot, 'docs'), path.join(restoredRoot, 'docs'), {
+      recursive: true,
+    });
+    execFileSync('git', ['init', '-b', 'sdk-build'], { cwd: restoredRoot });
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Comet Test',
+        '-c',
+        'user.email=comet-test@example.invalid',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'initial',
+      ],
+      { cwd: restoredRoot },
+    );
+
+    expect(await resolveClassicChangeRuntimeOwner(restoredRoot, 'example')).toMatchObject({
+      format: 'sdk',
+    });
+    const restored = await inspectClassicSdkRun(restoredRoot, 'example');
+    expect(restored.state).toMatchObject({ phase: 'archive', archived: false });
+    expect(restored.run.actions.at(-1)).toMatchObject({
+      id: action.id,
+      stepId: 'full.archive.execute',
+      status: 'unknown',
+    });
+    await expect(
+      fs.stat(path.join(restoredRoot, 'docs', 'openspec', 'changes', 'example')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(
+      await fs.stat(
+        path.join(restoredRoot, 'docs', 'openspec', 'changes', 'archive', '2026-09-24-example'),
+      ),
+    ).toBeDefined();
+    const reconciled = await withClassicCommandContext(
+      { projectRoot: restoredRoot, invocationCwd: restoredRoot },
+      () => classicArchiveCommand(['example', '--recover']),
+    );
+    expect(reconciled.exitCode, reconciled.stderr).toBe(0);
+    const continued = await inspectClassicSdkRun(restoredRoot, 'example');
+    expect(continued.state.archived).toBe(true);
+    expect(continued.run.actions.at(-1)).toMatchObject({
+      stepId: 'full.archive.deliver',
+      status: 'pending',
+    });
+  });
+
+  it('restores an archived change awaiting delivery from the copied state file', async () => {
+    const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction('example', {
+      projectedStore: true,
+    });
+    const { pending } = await commitValidLocalArchive(runtime, run, projectRoot);
+    expect(pending.state).toMatchObject({ phase: 'archive', archived: true });
+    expect(pending.actions.at(-1)).toMatchObject({
+      stepId: 'full.archive.deliver',
+      status: 'pending',
+    });
+
+    const restoredRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-delivery-copy-'));
+    temporaryRoots.push(restoredRoot);
+    await fs.mkdir(path.join(restoredRoot, '.comet'));
+    await fs.cp(
+      path.join(projectRoot, '.comet', 'config.yaml'),
+      path.join(restoredRoot, '.comet', 'config.yaml'),
+    );
+    await fs.cp(path.join(projectRoot, 'docs'), path.join(restoredRoot, 'docs'), {
+      recursive: true,
+    });
+    execFileSync('git', ['init', '-b', 'sdk-build'], { cwd: restoredRoot });
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Comet Test',
+        '-c',
+        'user.email=comet-test@example.invalid',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'initial',
+      ],
+      { cwd: restoredRoot },
+    );
+
+    expect(await resolveClassicChangeRuntimeOwner(restoredRoot, 'example')).toMatchObject({
+      format: 'sdk',
+    });
+    const restored = await inspectClassicSdkRun(restoredRoot, 'example');
+    expect(restored.state).toMatchObject({ phase: 'archive', archived: true });
+    expect(restored.run.actions.at(-1)).toMatchObject({
+      id: pending.actions.at(-1)!.id,
+      stepId: 'full.archive.deliver',
+      status: 'pending',
+    });
   });
 
   it('completes push delivery only after the approved remote branch contains the archive commit', async () => {
@@ -2207,9 +2362,12 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         (wait) => wait.stepId === 'full.verify.check.evidence' && wait.status === 'resolved',
       ),
     ).toBe(true);
-    await expect(
-      fs.access(path.join(projectRoot, 'docs/openspec/changes/example/.comet.yaml')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(
+      await fs.readFile(
+        path.join(projectRoot, 'docs/openspec/changes/example/.comet.yaml'),
+        'utf8',
+      ),
+    ).toContain('phase: archive');
   });
 
   it('recovers a pending Classic SDK Verify receipt through the public Guard without rerunning the check', async () => {
@@ -2396,6 +2554,93 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     ).toBe('confirmed\n');
   });
 
+  it.each(['source-change', 'late-git-init'] as const)(
+    'allows revalidation from Archive after %s without authorizing delivery',
+    async (drift) => {
+      const { run, projectRoot } = await reachFullArchivePrepareAction('example', {
+        fileStore: true,
+        withoutGit: drift === 'late-git-init',
+        projectedStore: drift === 'late-git-init',
+      });
+      await registerSdkChangeOwner(projectRoot, {
+        schema: 'comet.change-owner.v1',
+        workflow: 'classic',
+        change: 'example',
+        format: 'sdk',
+        application: 'classic-full',
+        runId: run.runId,
+      });
+      if (drift === 'late-git-init') {
+        execFileSync('git', ['init', '-b', 'sdk-build'], { cwd: projectRoot });
+        execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: projectRoot });
+      } else {
+        await fs.writeFile(path.join(projectRoot, 'changed-after-verify.txt'), 'new input\n');
+      }
+      const options = { json: true, invocationCwd: projectRoot, projectRoot };
+      const proposed = await classicStateCommand(
+        ['propose-archive', 'example', '--summary', 'Review delivery or revalidate'],
+        options,
+      );
+      expect(proposed.exitCode, proposed.stderr).toBe(0);
+      const proposalHash = (proposed.data as { wait: { proposalHash: string } }).wait.proposalHash;
+      const blocked = await classicStateCommand(
+        ['decide-archive', 'example', '--proposal-hash', proposalHash, '--choice', 'local'],
+        options,
+      );
+      expect(blocked.exitCode).not.toBe(0);
+      expect(blocked.stderr).toContain('check inputs changed');
+      expect(blocked.stderr).toContain(
+        `comet state decide-archive example --proposal-hash ${proposalHash} --choice reverify`,
+      );
+      const reopened = await classicStateCommand(
+        ['decide-archive', 'example', '--proposal-hash', proposalHash, '--choice', 'reverify'],
+        options,
+      );
+      expect(reopened.exitCode, reopened.stderr).toBe(0);
+      expect(reopened.data).toMatchObject({
+        phase: 'verify',
+        nextAction: { kind: 'action', stepId: 'full.verify.run' },
+      });
+      expect((await classicStateCommand(['get', 'example', 'verify_result'], options)).stdout).toBe(
+        'pending\n',
+      );
+      await expect(
+        fs.access(path.join(projectRoot, 'docs/openspec/changes/example')),
+      ).resolves.toBeUndefined();
+      const verified = await classicGuardCommand(
+        [
+          'example',
+          'verify',
+          '--report',
+          'docs/superpowers/reports/2026-09-24-example-verify.md',
+          '--apply',
+          '--',
+          process.execPath,
+          '-e',
+          'console.log("reverified")',
+        ],
+        options,
+      );
+      expect(verified.exitCode, verified.stderr).toBe(0);
+      const fresh = await classicStateCommand(
+        ['propose-archive', 'example', '--summary', 'Archive the reverified change'],
+        options,
+      );
+      expect(fresh.exitCode, fresh.stderr).toBe(0);
+      const freshHash = (fresh.data as { wait: { proposalHash: string } }).wait.proposalHash;
+      expect(freshHash).not.toBe(proposalHash);
+      const approved = await classicStateCommand(
+        ['decide-archive', 'example', '--proposal-hash', freshHash, '--choice', 'local'],
+        options,
+      );
+      expect(approved.exitCode, approved.stderr).toBe(0);
+      expect(approved.data).toMatchObject({
+        phase: 'archive',
+        nextAction: { kind: 'action', stepId: 'full.archive.preflight' },
+      });
+    },
+  );
+
   it.each(['guard', 'archive'] as const)(
     'routes approved Classic SDK Archive through the public %s command without rerunning it',
     async (command) => {
@@ -2511,11 +2756,17 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         cwd: projectRoot,
         encoding: 'utf8',
       }).trim();
+      const archivedState = path.join(
+        projectRoot,
+        'docs/openspec/changes/archive/2026-09-26-example/.comet.yaml',
+      );
+      const committedState = await fs.readFile(archivedState, 'utf8');
       const wrongCommit = await classicStateCommand(
         ['complete-delivery', 'example', '--commit', 'a'.repeat(40)],
         options,
       );
       expect(wrongCommit.exitCode).not.toBe(0);
+      expect(await fs.readFile(archivedState, 'utf8')).toBe(committedState);
       const delivered = await classicStateCommand(
         ['complete-delivery', 'example', '--commit', commit],
         options,

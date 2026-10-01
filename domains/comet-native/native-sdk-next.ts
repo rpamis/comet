@@ -86,6 +86,32 @@ function sdkShapeContinuation(
   };
 }
 
+function sdkLoopStopContinuation(state: NativePortableState, proposalHash: string) {
+  const continuation = nativePortableContinuation(state);
+  if (!continuation.commandAlternatives) {
+    throw new Error('Native SDK Verify stop has no recovery choices');
+  }
+  return {
+    ...continuation,
+    commandAlternatives: continuation.commandAlternatives.map((alternative) => {
+      if (alternative.name !== 'revise-implementation' || !alternative.commandArgs) {
+        return alternative;
+      }
+      const position = alternative.commandArgs.indexOf('--expected-state-version');
+      if (position < 0) throw new Error('Native SDK repair command lacks its state version');
+      return {
+        ...alternative,
+        commandArgs: [
+          ...alternative.commandArgs.slice(0, position),
+          '--proposal-hash',
+          proposalHash,
+          ...alternative.commandArgs.slice(position),
+        ],
+      };
+    }),
+  };
+}
+
 async function sdkNextResult(projectRoot: string, name: string): Promise<DispatchResult> {
   const { run, state } = await inspectNativeSdkRun(projectRoot, name);
   const pendingActions = run.actions
@@ -95,24 +121,58 @@ async function sdkNextResult(projectRoot: string, name: string): Promise<Dispatc
       stepId: action.stepId,
       mechanism: 'runtime-dispatch',
     }));
+  const pendingBuilderDecisions = run.waits
+    .filter(
+      (wait) =>
+        wait.status === 'pending' &&
+        ['build.resume', 'supervisor.child.resume', 'supervisor.parent.resume'].includes(
+          wait.stepId,
+        ),
+    )
+    .map((wait) => ({
+      waitId: wait.id,
+      stepId: wait.stepId,
+      proposalHash: wait.proposalHash,
+      commandArgs: [
+        'comet',
+        'native',
+        'next',
+        name,
+        '--continue-builder',
+        '--summary',
+        '<summary>',
+        '--proposal-hash',
+        wait.proposalHash,
+        '--expected-state-version',
+        String(state.state_version),
+        '--expected-action',
+        'continue-builder',
+      ],
+    }));
+  const loopStop = run.waits.find(
+    (wait) => wait.status === 'pending' && wait.stepId === 'verify.stop',
+  );
   return success('next', {
     change: name,
     ...(await inspectNativeSdkStatus({ projectRoot, name })),
-    ...(state.phase === 'shape'
-      ? {
-          continuation: sdkShapeContinuation(
-            state,
-            run.waits.some(
-              (wait) => wait.status === 'pending' && wait.stepId === 'supervisor.shape.confirm',
-            ),
-          ),
-        }
-      : pendingActions.length > 0
+    ...(pendingBuilderDecisions.length > 0 ? { pendingBuilderDecisions } : {}),
+    ...(loopStop
+      ? { continuation: sdkLoopStopContinuation(state, loopStop.proposalHash) }
+      : state.phase === 'shape'
         ? {
-            pendingAction: pendingActions[0],
-            pendingActions,
+            continuation: sdkShapeContinuation(
+              state,
+              run.waits.some(
+                (wait) => wait.status === 'pending' && wait.stepId === 'supervisor.shape.confirm',
+              ),
+            ),
           }
-        : {}),
+        : pendingActions.length > 0
+          ? {
+              pendingAction: pendingActions[0],
+              pendingActions,
+            }
+          : {}),
   });
 }
 
@@ -136,9 +196,46 @@ export async function advanceNativeSdkChange(
         proposalHash: string;
         expectedStateVersion: number;
         expectedAction: 'accept-result' | 'revise-implementation' | 'retry-verifier';
+      }
+    | {
+        summary: string;
+        proposalHash: string;
+        expectedStateVersion: number;
+        expectedAction: 'continue-builder';
       },
 ): Promise<DispatchResult> {
   const { run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name);
+  if (decision?.expectedAction === 'continue-builder') {
+    const wait = run.waits.find(
+      (candidate) =>
+        candidate.status === 'pending' &&
+        ['build.resume', 'supervisor.child.resume', 'supervisor.parent.resume'].includes(
+          candidate.stepId,
+        ) &&
+        candidate.proposalHash === decision.proposalHash,
+    );
+    if (!wait || state.state_version !== decision.expectedStateVersion) {
+      return {
+        command: 'next',
+        exitCode: 73,
+        error: { code: 'conflict', message: `Native SDK Builder decision for ${name} is stale` },
+      };
+    }
+    if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
+    await createNativeSdkRuntime(projectRoot).resolveWait({
+      runId: run.runId,
+      waitId: wait.id,
+      proposalHash: decision.proposalHash,
+      decisionId: hashRuntimeValue({
+        waitId: wait.id,
+        proposalHash: wait.proposalHash,
+        summary: decision.summary.trim(),
+        choice: 'continue',
+      }),
+      choice: 'continue',
+    });
+    return advanceNativeSdkChange(projectRoot, name);
+  }
   if (decision?.expectedAction === 'revise-requirements') {
     if (
       state.state_version !== decision.expectedStateVersion ||
@@ -195,15 +292,19 @@ export async function advanceNativeSdkChange(
     decision?.expectedAction === 'retry-verifier'
   ) {
     const retry = decision.expectedAction === 'retry-verifier';
+    const loopStop =
+      decision.expectedAction === 'revise-implementation' &&
+      state.loop.next_action === 'await-user';
     const wait = run.waits.find(
       (candidate) =>
         candidate.status === 'pending' &&
-        candidate.stepId === (retry ? 'verify.retry' : 'verify.confirm'),
+        candidate.stepId === (retry ? 'verify.retry' : loopStop ? 'verify.stop' : 'verify.confirm'),
     );
     if (
       !wait ||
       state.phase !== 'verify' ||
-      state.loop.next_action !== (retry ? 'retry-verifier' : 'confirm-skill-coordinated-pass') ||
+      state.loop.next_action !==
+        (retry ? 'retry-verifier' : loopStop ? 'await-user' : 'confirm-skill-coordinated-pass') ||
       state.state_version !== decision.expectedStateVersion ||
       wait.proposalHash !== decision.proposalHash
     ) {
@@ -216,9 +317,11 @@ export async function advanceNativeSdkChange(
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
     const choice = retry
       ? 'retry'
-      : decision.expectedAction === 'accept-result'
-        ? 'approved'
-        : 'rejected';
+      : loopStop
+        ? 'repair'
+        : decision.expectedAction === 'accept-result'
+          ? 'approved'
+          : 'rejected';
     await createNativeSdkRuntime(projectRoot).resolveWait({
       runId: run.runId,
       waitId: wait.id,

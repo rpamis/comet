@@ -3,6 +3,10 @@ import { spawnSync } from 'child_process';
 
 import { resolveNodeCliCommand } from '../../platform/process/node-cli-command.js';
 import { projectCliAgentObservation } from '../workflow-contract/output-envelope.js';
+import {
+  listSdkChangeNames,
+  readSdkChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
 import { classicIssue } from './classic-issues.js';
 
 import type { ClassicCommandHandler, ClassicCommandResult } from './classic-cli.js';
@@ -16,6 +20,26 @@ import { writeClassicProjectText } from './classic-protected-path.js';
 
 function normalizedArguments(args: readonly string[]): string[] {
   return args[0] === '--' ? args.slice(1) : [...args];
+}
+
+async function assertPublicArchiveNotSdkOwned(args: readonly string[]): Promise<void> {
+  const forwarded = normalizedArguments(args);
+  if (forwarded[0] !== 'archive') return;
+  const root = await discoverClassicProject(process.cwd());
+  const change = forwarded[1];
+  if (change && !change.startsWith('-')) {
+    if (await readSdkChangeOwner(root, 'classic', change)) {
+      throw new Error(
+        `Classic SDK change '${change}' must use the Comet SDK Archive flow; OpenSpec archive would bypass its Run and leave the change incomplete.`,
+      );
+    }
+    return;
+  }
+  if ((await listSdkChangeNames(root, 'classic')).length > 0) {
+    throw new Error(
+      'Classic SDK changes require the Comet SDK Archive flow; specify a non-SDK change when using the OpenSpec adapter.',
+    );
+  }
 }
 
 function takeCustomOption(args: string[], name: string): string | undefined {
@@ -141,6 +165,7 @@ async function agentOpenSpec(args: string[]): Promise<ClassicCommandResult> {
   const capabilityDiscovery = await discoverClassicCapability(root, layout, task, capability);
   let result: ClassicCommandResult;
   try {
+    await assertPublicArchiveNotSdkOwned(forwarded);
     result = await executeClassicOpenSpec(forwarded, root);
   } catch (error) {
     result = { exitCode: 70, stderr: error instanceof Error ? error.message : String(error) };
@@ -253,7 +278,10 @@ async function agentOpenSpec(args: string[]): Promise<ClassicCommandResult> {
 
 export const classicOpenSpecCommand: ClassicCommandHandler = async (args) => {
   // Opt-in agent projection leaves the historical raw upstream stdout/JSON contract intact.
-  if (args[0] !== '--agent-json') return executeClassicOpenSpec(args);
+  if (args[0] !== '--agent-json') {
+    await assertPublicArchiveNotSdkOwned(args);
+    return executeClassicOpenSpec(args);
+  }
   try {
     return await agentOpenSpec(args);
   } catch (error) {

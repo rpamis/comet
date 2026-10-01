@@ -17,13 +17,20 @@ uv run pytest local/tests/tasks/test_tasks.py -v
 uv run pytest local/tests/tasks/test_tasks.py --task=generic-skill-smoke --treatment=CONTROL -v
 ```
 
-运行只安装 Comet Native、自包含且不注入 OpenSpec / Superpowers 的完整流程评估：
+运行当前 SDK 的完整流程评估。Native 使用当前 checkout 的 CLI 和 Native Skill，不注入 OpenSpec / Superpowers；Classic 使用当前 checkout 的 CLI 与所选产物布局：
 
 ```bash
 uv run pytest local/tests/tasks/test_tasks.py \
   --task=comet-native-workflow \
-  --treatment=COMET_NATIVE_PHASE1 -v
+  --treatment=COMET_NATIVE_SDK_CURRENT -v
+uv run pytest local/tests/tasks/test_tasks.py \
+  --task=comet-classic-layout-lifecycle \
+  --treatment=COMET_CLASSIC_DOCS_LAYOUT,COMET_CLASSIC_LEGACY_LAYOUT -v
 ```
+
+这两个当前版任务的容器验证器会检查归档、SDK owner、状态文件中的 Run checkpoint，以及 `comet runtime dispatch` 返回的已完成 Run。旧的 `COMET_NATIVE_PHASE1` / `COMET_NATIVE_SEQUENTIAL` / `COMET_NATIVE_BATCH` 仍按 beta17 portable 协议评分，不能作为当前 SDK 通过率使用；其余使用这些 treatment 的任务要纳入 SDK 验收时，还需逐个迁移环境和验证器。
+
+Classic 的 SDK 阶段轨迹按所属 Run 中成功的 Action 顺序校验，不要求 compat 的 `state-events.jsonl`；缺步骤、未完成或所有权不匹配均失败。导出的产物保留 `.comet.yaml`，但继续排除平台私有配置和其他隐藏文件。多轮控制器实时输出被测 Agent 的事件和 stderr；超时保留已收到的日志，仍按执行失败计分，不把模拟用户的输出混入被测 Agent 事件。
 
 将 Native 与 0.4.0 基线按相同的 16 个 canonical Comet 任务、每任务 3 次对齐运行：
 

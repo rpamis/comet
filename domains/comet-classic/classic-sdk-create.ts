@@ -1,7 +1,6 @@
 import path from 'node:path';
 
 import {
-  createFileRuntimeStore,
   createRuntime,
   RuntimeProtocolError,
   type RuntimeStore,
@@ -13,6 +12,7 @@ import {
   registerSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
+import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 
 /** Caller holds the Classic per-change ownership lock. */
@@ -22,11 +22,11 @@ export async function createClassicSdkRun(options: {
   profile: ClassicProfile;
   changeDir: string;
   initialState: ClassicState;
+  recoverySourceHash?: string;
+  recoverySource?: string;
 }): Promise<WorkflowRun> {
   const application = defineClassicWorkflowApplication(options.profile);
-  const persistentStore = createFileRuntimeStore<WorkflowRun>({
-    rootDir: path.join(options.projectRoot, '.comet', 'runtime', 'sdk-runs', 'classic'),
-  });
+  const persistentStore = createClassicSdkStateStore(options.projectRoot);
   const store: RuntimeStore<WorkflowRun> = {
     async read(runId) {
       const current = await persistentStore.read(runId);
@@ -66,6 +66,8 @@ export async function createClassicSdkRun(options: {
     input: {
       change: options.name,
       changeDir: path.relative(options.projectRoot, options.changeDir).replaceAll('\\', '/'),
+      ...(options.recoverySourceHash ? { recoverySourceHash: options.recoverySourceHash } : {}),
+      ...(options.recoverySource ? { recoverySource: options.recoverySource } : {}),
     },
     initialState: options.initialState,
   });

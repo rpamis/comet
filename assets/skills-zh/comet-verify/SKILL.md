@@ -15,7 +15,7 @@ description: '验证 Classic change 并记录结果。在用户调用 /comet-ver
 2. 验证结论合格后，将实际检查项、证据引用、独立审查结论及可接受偏差写入仓库内的验证报告 `<report-ref>`。运行 `comet guard <change-name> verify --report <report-ref>` 只读预检；报告或任务与当前 Run 不匹配时先修复具体问题。报告通过预检后，以明确的完整验证命令运行 `comet guard <change-name> verify --report <report-ref> --apply -- <program> [args...]`。Guard 在同一 Run 中提交报告 Action、报告证据和真实检查收据；不能用手工声明代替检查。检查失败后读取 `state next --json` 和失败收据，按返回的 Build/Verify Action 处理，不将失败解释为通过。
 3. Guard 通过后再次运行 `comet state next <change-name> --json`；只有 phase 为 `archive` 且 `nextAction.kind` 指向 Archive，才加载 `/comet-archive`。Verify 通过不等于用户已经授权归档；由 Archive Skill 获取并记录当前交付决定。
 
-以下旧 Runtime 步骤仅用于 `runtimeFormat: legacy`。
+以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`。
 
 ## 前置条件
 

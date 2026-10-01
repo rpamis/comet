@@ -106,6 +106,7 @@ def test_load_treatments_keeps_comet_core_categories_only():
         "COMET_FULL_039",
         "COMET_NATIVE_BATCH",
         "COMET_NATIVE_PHASE1",
+        "COMET_NATIVE_SDK_CURRENT",
         "COMET_NATIVE_SEQUENTIAL",
     }
     assert all(isinstance(treatment, TreatmentConfig) for treatment in treatments.values())
@@ -238,6 +239,15 @@ def test_comet_native_phase1_is_self_contained():
     assert skills["comet-native"]["source_dir"].name == "comet-native"
 
 
+def test_current_native_sdk_treatment_uses_only_current_native_skill():
+    treatment = load_treatments()["COMET_NATIVE_SDK_CURRENT"]
+
+    assert {skill["name"] for skill in treatment.skills} == {"comet-native"}
+    assert treatment.skills[0]["source"] == "path"
+    assert "assets/skills/comet-native" in treatment.skills[0]["path"]
+    assert "comet runtime dispatch --application native" in treatment.claude_md
+
+
 @pytest.mark.parametrize(
     ("name", "mode"),
     [
@@ -348,6 +358,7 @@ def test_list_treatments_is_sorted_for_stable_cli_output():
         "COMET_FULL_040_BETA",
         "COMET_NATIVE_BATCH",
         "COMET_NATIVE_PHASE1",
+        "COMET_NATIVE_SDK_CURRENT",
         "COMET_NATIVE_SEQUENTIAL",
         "CONTROL",
     ]

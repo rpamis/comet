@@ -1,6 +1,6 @@
 # Runtime SDK 实施与验收
 
-目标：将 Comet 的持久化编排能力作为可复用 SDK 提供。宿主负责推理和工具选择，Runtime 负责执行契约、状态提交、确认、证据与恢复。实现分支为 `044`，比较基线为 `899d1fb0`（master 0.4.3）。
+目标：将 Comet 的持久化编排能力作为可复用 SDK 提供。宿主负责推理和工具选择，Runtime 负责执行契约、状态提交、确认、证据与恢复。当前实现分支为 `045`，初始比较基线为 `899d1fb0`（master 0.4.3）。
 
 这份清单保留最初发布 SDK 时的实施和验证记录，不代表当前 Native/Classic 接入的验收状态。当前能力与未完成项见 [Native 与 Classic 接入验收边界](./runtime-sdk-native-classic-integration.zh.md)；完成某一阶段不代表整个 SDK 已完成。
 
@@ -28,7 +28,7 @@
 | 非开发消费者                                              | 无 Git、无 Native、无 init 的资料收集/批准/报告示例，跨进程恢复                                            | 完成     |
 | 宿主调用                                                  | 结构化 CLI 与 SDK 共享命令实现；显式请求上下文；机器可读错误；未知执行的核对与显式重试                     | 完成     |
 | 发布 SDK                                                  | 精选 typed ESM `@rpamis/comet/runtime`；兼容旧深路径；真实 tarball consumer JS/TS/CLI 互通                 | 完成     |
-| 文档与版本                                                | 中文接口/扩展/恢复文档、可运行示例、0.4.4 用户视角 Changelog；不修改 website                               | 完成     |
+| 文档与版本                                                | 中文接口/扩展/恢复文档、可运行示例、0.4.5 用户视角 Changelog；不修改 website                               | 完成     |
 | 当时的最终验证                                            | 构建/生成物、架构/lint、打包消费者与分层测试通过；当时的全量测试有在干净 master 复现的 Windows Broker 失败 | 基线限制 |
 
 ## 执行顺序

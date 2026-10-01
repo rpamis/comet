@@ -10,17 +10,25 @@ import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 
 export function liveGitBranch(cwd: string): string | null {
+  const options = {
+    cwd,
+    encoding: 'utf8' as const,
+    stdio: ['ignore', 'pipe', 'ignore'] as ['ignore', 'pipe', 'ignore'],
+    timeout: 10_000,
+    windowsHide: true,
+  };
   try {
-    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 10_000,
-      windowsHide: true,
-    }).trim();
-    return branch && branch !== 'HEAD' ? branch : null;
+    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], options).trim();
+    if (branch && branch !== 'HEAD') return branch;
   } catch {
-    return null;
+    // An unborn branch has no HEAD commit yet; symbolic-ref still names it.
+  }
+  try {
+    return (
+      execFileSync('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], options).trim() || null
+    );
+  } catch {
+    return null; // Detached HEAD or not a Git worktree.
   }
 }
 

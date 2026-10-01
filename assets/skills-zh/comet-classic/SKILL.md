@@ -13,7 +13,7 @@ Classic 分为 Open → Design → Build → Verify → Archive 五个阶段。O
 
 - 未明确调用 Classic、需要判定是否恢复已有工作时：读取 `comet-classic/reference/context-recovery.md` 的 Ambient Resume，按 `comet resume-probe . --stdin --json` 结果处理；只有 `auto_resume` 自动进入，`ask_user` 按 `reason` 使用 Ambient Resume 表格中的问题与选项提问，`out_of_scope`/`none` 不进入。
 - 启动新需求或目标 change 尚不明确时：读取 `comet-classic/reference/intent-frame.md` 的最小示例与目标选择规则，获取未归档的 change 列表后填写 CometIntentFrame，运行 `comet classic intent route --stdin`。Agent 只负责按证据填写意图字段，路由由 Runtime 计算；以返回结果为准，不另写一套自然语言评分规则。
-- 已明确目标 change 且已由 Runtime 初始化时：按下方绑定工作区；SDK Run 和旧 `.comet.yaml` 都是有效的归属，不能用状态文件是否存在判断 change 是否尚未初始化。有多个未归档的 change 且尚未选定时，不提前绑定。真正的新 change 直接交 `/comet-open` 或对应预设 Skill，它们会先准备工作区再初始化；`workspace resolve` 对未初始化的 change 会报 not found。
+- 已明确目标 change 且已由 Runtime 初始化时：按下方绑定工作区；新旧 change 均保留 `.comet.yaml`，以 `state next` 返回的 Runtime 归属判断恢复路径，不能只看状态文件是否存在。有多个未归档的 change 且尚未选定时，不提前绑定。真正的新 change 直接交 `/comet-open` 或对应预设 Skill，它们会先准备工作区再初始化；`workspace resolve` 对未初始化的 change 会报 not found。
 
 ```bash
 comet classic workspace resolve <change-name> --json
@@ -22,7 +22,9 @@ comet state select <change-name>
 comet state next <change-name> --json
 ```
 
-以 `data.runtimeFormat` 区分 `sdk` 与 `legacy`，并按返回的 phase、configuration 和 `data.nextAction.kind` 继续。SDK 的 `action` 才能加载返回的 Skill；`decision`、`evidence`、`reconcile` 先进入对应阶段的恢复步骤，核对同一 Run 的待决定项、待提交证据或已领取 Action，不能把它们当作未执行的 Skill 重跑。旧 change 保持原有阶段路由。新 full change 交 `/comet-open`，由它准备工作区、创建 OpenSpec 产物并初始化 SDK Run；已确认的 hotfix/tweak 分别交 `/comet-hotfix`、`/comet-tweak`，按各自预设完成初始化。不直接调用 `/opsx:new`。已有 change 的 Runtime 归属与文件冲突或格式异常时，按 context-recovery.md 的“入口错误与恢复”停止并核对，不根据现有产物猜测阶段或新建第二份状态。
+复制到新设备的 SDK change 若在 `.comet.yaml` 中有 `run_checkpoint`，具名 `state select` 或 `state next` 会恢复原阶段、Action 和确认；继续外部工作前先确认原设备的执行进程已停止。结果未明的 Action 先核对，不重发。只有旧状态文件缺少检查点、常规入口明确报告 Run 记录丢失时，才核对正式文档，说明显式恢复会回到 Open、旧确认和检查需要重做，取得用户同意后运行 `comet state restore <change-name> --confirmed`。
+
+以 `data.runtimeFormat` 区分 `sdk` 与 `compat`，并按返回的 phase、configuration 和 `data.nextAction.kind` 继续。SDK 的 `action` 才能加载返回的 Skill；`decision`、`evidence`、`reconcile` 先进入对应阶段的恢复步骤，核对同一 Run 的待决定项、待提交证据或已领取 Action，不能把它们当作未执行的 Skill 重跑。旧 change 保持原有阶段路由。新 full change 交 `/comet-open`，由它准备工作区、创建 OpenSpec 产物并初始化 SDK Run；已确认的 hotfix/tweak 分别交 `/comet-hotfix`、`/comet-tweak`，按各自预设完成初始化。不直接调用 `/opsx:new`。已有 change 的 Runtime 归属与文件冲突或格式异常时，按 context-recovery.md 的“入口错误与恢复”停止并核对，不根据现有产物猜测阶段或新建第二份状态。
 
 新 full change 必须先确定工作区，再在 Open 阶段创建产物。full workflow 的 `isolation` 可为 `current`、`branch` 或 `worktree`；用户明确要求并行工作时准备 Worktree，其他情况按 `comet-classic/reference/workspace.md` 选择。hotfix/tweak 按各自初始化步骤确认并绑定工作区。恢复时使用已经绑定的工作区；分支归属发生变化时，根据用户已确认的选择执行 rebind，缺少有效授权时才询问。
 

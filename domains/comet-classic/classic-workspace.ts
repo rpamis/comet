@@ -29,6 +29,7 @@ import { WORKFLOW_PROJECT_CONFIG_MAX_BYTES } from '../workflow-contract/project-
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { classicLayoutPaths, readClassicArtifactLayout } from './classic-layout.js';
 import { findClassicSdkWorkspace } from './classic-sdk-status.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 
 async function ensureWorkspaceConfig(sourceRoot: string, targetRoot: string): Promise<void> {
   if (samePath(sourceRoot, targetRoot)) return;
@@ -395,6 +396,7 @@ async function readCandidate(
   worktree: GitWorktreeEntry | null,
   name: string,
 ): Promise<ClassicWorkspaceCandidate | null> {
+  if (await readSdkChangeOwner(projectRoot, 'classic', name)) return null;
   let changeDirectory: string | null = null;
   try {
     const active = await inspectClassicActiveChangeDirectory(name, projectRoot);

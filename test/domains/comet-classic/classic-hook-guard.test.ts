@@ -83,7 +83,7 @@ function hookInput(filePath: string): string {
 }
 
 async function seedDesignChange(dir: string): Promise<string> {
-  run(dir, 'state', ['init', 'demo', 'full', '--runtime', 'legacy']);
+  run(dir, 'state', ['init', 'demo', 'full', '--runtime', 'compat']);
   const changeDir = path.join(dir, 'openspec', 'changes', 'demo');
   // Open→design transition requires the open artifacts to exist first.
   await fs.writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
@@ -145,7 +145,7 @@ async function seedChange(
 }
 
 describe('Classic hook guard command', () => {
-  it('recognizes an SDK-owned change without a legacy state file', async () => {
+  it('recognizes an SDK-owned change while retaining its state file', async () => {
     const dir = await makeProject();
     await initializeGitProject(dir);
     const created = await classicStateCommand(
@@ -187,9 +187,7 @@ describe('Classic hook guard command', () => {
     await expect(
       inspectClassicHookGuard(dir, 'sdk-hook', { intent: 'write', targets: ['src/app.ts'] }),
     ).resolves.toMatchObject({ allowed: true, change: 'sdk-hook', phase: 'build' });
-    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
   });
 
   it.each(['Write', 'Edit'])(
@@ -1025,7 +1023,7 @@ describe('Classic hook guard command', () => {
   it('selects, reads, and clears the current change through the state launcher', async () => {
     const dir = await makeProject();
     await initializeGitProject(dir);
-    expect(run(dir, 'state', ['init', 'demo', 'hotfix', '--runtime', 'legacy']).status).toBe(0);
+    expect(run(dir, 'state', ['init', 'demo', 'hotfix', '--runtime', 'compat']).status).toBe(0);
 
     const selected = run(dir, 'state', ['select', 'demo']);
 
@@ -1106,7 +1104,7 @@ describe('Classic hook guard command', () => {
 
   it('allows Superpowers workspace writes during guarded phases', async () => {
     const dir = await makeProject();
-    run(dir, 'state', ['init', 'demo', 'full', '--runtime', 'legacy']);
+    run(dir, 'state', ['init', 'demo', 'full', '--runtime', 'compat']);
 
     const openResult = run(
       dir,

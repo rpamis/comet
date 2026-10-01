@@ -43,7 +43,7 @@ describe('Skill Engine schema compatibility', () => {
   }
 
   it('validates every Classic projection field written as the engine would', async () => {
-    expect(run(stateScript, ['init', 'demo', 'full', '--runtime', 'legacy']).status).toBe(0);
+    expect(run(stateScript, ['init', 'demo', 'full', '--runtime', 'compat']).status).toBe(0);
     const result = run(validateScript, ['demo']);
     expect(result.status).toBe(0);
     expect(result.stderr).not.toContain('unknown field');
@@ -63,7 +63,7 @@ describe('Skill Engine schema compatibility', () => {
     ['phase', 'bad'],
     ['verify_result', 'maybe'],
   ])('rejects invalid %s=%s', async (field, value) => {
-    expect(run(stateScript, ['init', 'demo', 'full', '--runtime', 'legacy']).status).toBe(0);
+    expect(run(stateScript, ['init', 'demo', 'full', '--runtime', 'compat']).status).toBe(0);
     await setYamlField(field, value);
     const result = run(validateScript, ['demo']);
     expect(result.status).not.toBe(0);

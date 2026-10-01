@@ -51,7 +51,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
   const root = classicCommandProjectRoot();
   const owner = await resolveClassicChangeRuntimeOwner(root, name);
   const sdkWorkspace =
-    owner?.format === 'legacy' ? null : await findClassicSdkWorkspace(root, name);
+    owner?.format === 'compat' ? null : await findClassicSdkWorkspace(root, name);
   if (sdkWorkspace) {
     if (rerun) throw new Error('Classic SDK check rerun requires a new pending check Action');
     let cwd = '.';

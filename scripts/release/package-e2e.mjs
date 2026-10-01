@@ -545,7 +545,7 @@ async function main() {
           installedNativeNew,
           'package-runtime-change',
           '--runtime',
-          'legacy',
+          'compat',
           '--project-root',
           projectDir,
           '--json',
@@ -621,6 +621,20 @@ async function main() {
       throw new Error(
         `Packaged Native SDK new did not create its Run: ${JSON.stringify(nativeSdkCreated)}`,
       );
+    }
+    const nativeState = await fs.readFile(
+      path.join(
+        sdkNativeProjectDir,
+        'docs',
+        'comet',
+        'changes',
+        nativeSdkChange,
+        'comet-state.yaml',
+      ),
+      'utf8',
+    );
+    if (!nativeState.includes('schema: comet.native.v4') || !nativeState.includes('phase: shape')) {
+      throw new Error('Packaged Native SDK new did not retain comet-state.yaml');
     }
     const nativeSdkInspectFile = path.join(consumerDir, 'native-sdk-inspect.json');
     await fs.writeFile(
@@ -770,7 +784,7 @@ async function main() {
     const classicState = parseJsonPayload(
       run(
         process.execPath,
-        [cli, 'state', 'init', 'package-classic-change', 'full', '--runtime', 'legacy', '--json'],
+        [cli, 'state', 'init', 'package-classic-change', 'full', '--runtime', 'compat', '--json'],
         {
           cwd: classicProjectDir,
           env: environment,
@@ -802,6 +816,13 @@ async function main() {
       throw new Error(
         `Packaged Classic SDK init did not create its Run: ${JSON.stringify(classicSdkCreated)}`,
       );
+    }
+    const classicStateFile = await fs.readFile(
+      path.join(classicProjectDir, 'openspec', 'changes', classicSdkChange, '.comet.yaml'),
+      'utf8',
+    );
+    if (!classicStateFile.includes('workflow: full') || !classicStateFile.includes('phase: open')) {
+      throw new Error('Packaged Classic SDK init did not retain .comet.yaml');
     }
     const classicSdkInspectFile = path.join(consumerDir, 'classic-sdk-inspect.json');
     await fs.writeFile(

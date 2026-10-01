@@ -75,7 +75,7 @@ describe('Native runtime release asset', () => {
     expect(source).not.toContain('independent-review');
     expect(source).not.toContain('waiver-receipt');
     expect(source).not.toContain('trust authorize');
-    expect(source).toContain('new <change-name> [--runtime legacy|sdk] [--language en|zh-CN]');
+    expect(source).toContain('new <change-name> [--runtime compat|sdk] [--language en|zh-CN]');
     const help = execFileSync(process.execPath, [runtime, '--help'], { encoding: 'utf8' });
     expect(help).toContain('skill-coordinated steps');
     expect(help).not.toMatch(/checkpoint|receipt|evidence|preflight|sha256|--result|--report/iu);
@@ -100,6 +100,7 @@ describe('Native runtime release asset', () => {
       'comet-native-next.mjs',
       'comet-native-archive.mjs',
       'comet-native-doctor.mjs',
+      'comet-native-transfer.mjs',
     ];
     for (const script of commandScripts) {
       const source = await fs.readFile(path.join(scriptsDir, script), 'utf8');
@@ -134,7 +135,7 @@ describe('Native runtime release asset', () => {
       'utf8',
     );
 
-    expect(help).toContain('comet native new <change-name> [--runtime legacy|sdk]');
+    expect(help).toContain('comet native new <change-name> [--runtime compat|sdk]');
     expect(help).toContain('defaults to docs');
     for (const reference of [english, chinese]) {
       expect(reference).toContain('comet native <command> --help');

@@ -22,10 +22,10 @@ Every question and artifact-generation request passed to OpenSpec must specify t
 When resuming an existing change, first run `comet state next <name> --json` to identify Runtime ownership:
 
 - `sdk`: reuse the Run and recover according to `data.nextAction.kind`. Investigate a claimed Action with an unknown outcome before recreating or redispatching work.
-- `legacy`: reuse the old `.comet.yaml` and its flow; never migrate it automatically.
-- If the command fails, inspect its error, ownership record, Run, and old state. Stop on conflict or malformed state. Only when no Runtime owns a valid change directory may you prepare its workspace and initialize with `--runtime sdk`. Missing `.comet.yaml` alone is not evidence.
+- `compat`: reuse the original flow and `.comet.yaml`; never migrate it automatically.
+- If the command fails, inspect its error, ownership record, Run, and `.comet.yaml`. Stop on conflict or malformed state. If local Run history is missing, first check `run_checkpoint` in the state file and follow `/comet-classic`'s recovery steps to resume the saved phase. Only an older state without a checkpoint may return to Open after the user explicitly consents to restoration and fresh evidence and approvals. Prepare and initialize a workspace only when no Runtime owns a valid change directory. Missing `.comet.yaml` alone is not evidence.
 
-Bind the workspace for both SDK and legacy changes:
+Bind the workspace for both SDK and compat changes:
 
 ```bash
 comet classic workspace resolve <change-name> --json
@@ -134,7 +134,7 @@ Combine multiple read-only comet commands (for example `state get`, `state next`
 
 This entry validates the full required closure, actual OpenSpec outputs, and Comet state. Do not repeat a separate status scan. `isComplete` is diagnostic; optional artifacts do not block progress. Query status only after a failed check to locate missing dependencies or diagnose reported path/capability errors.
 
-If any split item fails these checks, do not announce batch completion or ask which change to start. Stop further advancement and resume `/comet-open` at that change's first `ready` or `blocked` artifact. If OpenSpec checks pass but Comet state checks fail, inspect Runtime ownership, Run, and phase first; repair legacy state only for legacy changes, then rerun batch checks.
+If any split item fails these checks, do not announce batch completion or ask which change to start. Stop further advancement and resume `/comet-open` at that change's first `ready` or `blocked` artifact. If OpenSpec checks pass but Comet state checks fail, inspect Runtime ownership, Run, and phase first; recover compat changes through their original state machine, then rerun batch checks.
 
 Only after every item passes entry checks may you ask which change to start. Mark the user's chosen item `selected` in the batch list and advance that change alone to `/comet-design`. Leave the others unarchived for later recovery through `/comet-classic`.
 
@@ -174,7 +174,7 @@ Use that resolved brief to populate the artifacts. Return to the skill's questio
 Initialize a recoverable SDK Run immediately after creating the initial structure; do not wait for every artifact to be generated (the entry check runs once in Step 3, not here):
 
 ```bash
-comet state init <name> full --isolation <selected-isolation> --runtime sdk
+comet state init <name> full --isolation <selected-isolation>
 comet state select <name>
 comet state next <name> --json
 ```
@@ -224,7 +224,7 @@ Confirm these artifacts exist:
 └── tasks.md          # Task checklist
 ```
 
-The SDK Run is stored under project `.comet/runtime/sdk-runs/classic/`, not as `.comet.yaml` in the change directory. Recover it through `state next` and `state check`; do not edit its storage directly.
+The SDK Run is stored under project `.comet/runtime/sdk-runs/classic/`; the change directory still retains `.comet.yaml`. Recover through `state next` and `state check`; do not edit Run storage directly.
 
 ### 3. Validate entry state
 
@@ -238,7 +238,7 @@ Continue to Step 4 when it passes. On failure, the script reports the specific c
 
 **Resume unfinished creation steps:** Open operations can be safely retried. On recovery, process the status in this order, retaining completed work:
 
-1. First run `comet state next <name> --json` to identify ownership. Reuse an SDK Run; retain the old flow for `runtimeFormat: legacy`. Only when there is no Run, ownership record, or old state may you prepare the workspace and run `comet state init <name> full --isolation <selected-isolation> --runtime sdk`. Stop on malformed state or ownership conflicts. Then select and run `comet state check <name> open`.
+1. First run `comet state next <name> --json` to identify ownership. Reuse an SDK Run; retain the original flow for `runtimeFormat: compat`. Only when there is no Run, ownership record, or `.comet.yaml` may you prepare the workspace and run `comet state init <name> full --isolation <selected-isolation>`. Stop on malformed state or ownership conflicts. Then select and run `comet state check <name> open`.
 2. Run `comet classic openspec --agent-json -- status --change "<name>" --json` and recheck `changeRoot`, core IDs, `applyRequires`, `artifacts`, and `missingDeps`.
 3. `done`: keep the artifact unchanged and do not regenerate it.
 4. `ready`: fetch its instructions with `comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json`, write the artifact accordingly, then validate the closure locally with `comet state artifacts <name> --json` instead of refreshing status.
@@ -280,20 +280,20 @@ After confirmation, complete the exit conditions. For SDK, use the `approvalHash
 
 - `comet state artifacts <name> --json` passes: the full required closure is complete or legitimately skipped, and required outputs are nonempty.
 - **The user has confirmed** that all OpenSpec artifact content meets expectations.
-- **Phase guard:** for SDK, apply with the current preview's `approvalHash`; for legacy, retain `comet guard <change-name> open --apply`. The guard advances only after every check passes.
+- **Phase guard:** for SDK, apply with the current preview's `approvalHash`; for compat, retain `comet guard <change-name> open --apply`. The guard advances only after every check passes.
 
 Apply the phase guard before exiting; otherwise the Run or old `.comet.yaml` remains in Open. If SDK artifacts change after preview, preview again and obtain confirmation of the current content.
 
 ```bash
 comet guard <change-name> open --apply --approval-hash <approvalHash>  # SDK
-comet guard <change-name> open --apply                           # legacy
+comet guard <change-name> open --apply                           # compat
 ```
 
 The full workflow moves to `phase: design`; hotfix/tweak presets move to `phase: build`.
 
 ## Continue to the next phase
 
-For SDK, run `comet state next <change-name> --json` and follow the new phase and `nextAction.kind`: load the next Skill only for `action`; resolve `decision`, `evidence`, and `reconcile` in the current Run without replay. For legacy, follow `comet-classic/reference/auto-transition.md` and `agent.continuation` from the successful result. Do not repeat next, select, or check when valid legacy state is already available. Run the following only after context loss, external state changes, or when an older result lacks that information:
+For SDK, run `comet state next <change-name> --json` and follow the new phase and `nextAction.kind`: load the next Skill only for `action`; resolve `decision`, `evidence`, and `reconcile` in the current Run without replay. For compat, follow `comet-classic/reference/auto-transition.md` and `agent.continuation` from the successful result. Do not repeat next, select, or check when valid compat state is already available. Run the following only after context loss, external state changes, or when an older result lacks that information:
 
 ```bash
 comet state next <change-name>

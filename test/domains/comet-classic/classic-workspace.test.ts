@@ -137,7 +137,7 @@ describe('Classic workspace preparation and routing', () => {
     expect(initialized.exitCode, initialized.stderr).toBe(0);
     await expect(
       fs.access(path.join(prepared.projectRoot, 'openspec/changes/sdk-linked/.comet.yaml')),
-    ).rejects.toMatchObject({ code: 'ENOENT' });
+    ).resolves.toBeUndefined();
 
     const resolved = await resolveClassicWorkspace({ projectRoot: root, name: 'sdk-linked' });
     expect(resolved).toMatchObject({
@@ -304,9 +304,7 @@ describe('Classic workspace preparation and routing', () => {
     expect((await classicStateCommand(['get', name, 'phase'], primaryOptions)).stdout).toBe(
       'verify\n',
     );
-    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
   });
 
   it('selects a local legacy Classic change before a same-named SDK change in another worktree', async () => {
@@ -532,7 +530,7 @@ describe('Classic workspace preparation and routing', () => {
   it('initializes a new Classic state with the prepared workspace binding', async () => {
     const result = await withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
       classicStateCommand(
-        ['init', 'serial-change', 'full', '--isolation', 'current', '--runtime', 'legacy'],
+        ['init', 'serial-change', 'full', '--isolation', 'current', '--runtime', 'compat'],
         {
           json: false,
           invocationCwd: root,

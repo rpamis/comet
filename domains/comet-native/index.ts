@@ -24,6 +24,10 @@ export * from './native-root-move.js';
 export * from './native-sdk-application.js';
 export { recoverNativeSdkArchiveOutcome } from './native-sdk-archive.js';
 export { recoverNativeSdkSupervisorCleanupOutcome } from './native-sdk-supervisor-cleanup.js';
+export {
+  exportNativeSupervisorTransfer,
+  importNativeSupervisorTransfer,
+} from './native-sdk-supervisor-transfer.js';
 export * from './native-resume-view.js';
 export * from './native-redaction.js';
 export * from './native-sensitive-paths.js';

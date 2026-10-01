@@ -2,6 +2,7 @@ import path from 'node:path';
 import { realpathSync } from 'node:fs';
 
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
   gitWorktreeContextFromEntries,
   inspectGitWorktree,
@@ -18,8 +19,17 @@ import {
   NATIVE_STATUS_PAGE_LIMITS,
 } from './native-diagnostics.js';
 import { nativeProjectPaths } from './native-paths.js';
-import { listNativeSdkChangeNames } from './native-runtime-ownership.js';
+import {
+  listNativeSdkChangeNames,
+  resolveNativeChangeRuntimeOwner,
+} from './native-runtime-ownership.js';
+import { inspectPristineNativeSdkChange } from './native-sdk-create.js';
 import { inspectNativeSdkStatus, type NativeSdkStatusProjection } from './native-sdk-status.js';
+import {
+  hasNativeManagedRunMarker,
+  hasNativePortableRunCheckpoint,
+} from './native-sdk-state-store.js';
+import { nativeLocalExecutionFile, nativePortableStateFile } from './native-portable-storage.js';
 import {
   listNativeArchivedStatusRecords,
   nativeArchiveSupersedes,
@@ -69,6 +79,8 @@ interface NativeStatusCandidate {
   workspace: NativeWorkspaceProjection | NativePortableStatusProjection['workspace'];
   portableStatus: NativePortableStatusProjection | null;
   inspectionError: string | null;
+  missingRunHistory?: boolean;
+  recoverableRun?: boolean;
   record?: NativeStatusRecord;
   finishJournal?: NativeWorkspaceFinishJournal | null;
 }
@@ -157,6 +169,16 @@ export interface NativeDiscoveredStatusPageProjection {
   nextPageCommand: string | null;
   nextPageArgs: string[] | null;
   limits: typeof NATIVE_STATUS_PAGE_LIMITS;
+}
+
+/** A read-only status lookup leaves an untouched copied change for a mutating command to recover. */
+export class NativePristineSdkRunRecoverableError extends Error {
+  constructor(
+    readonly projectRoot: string,
+    readonly change: string,
+  ) {
+    super(`Native change ${change} can continue with comet native next ${change}`);
+  }
 }
 
 function samePath(left: string, right: string): boolean {
@@ -665,12 +687,20 @@ async function inspectCandidate(
         status: 'blocked',
         disposition: 'blocked',
         action: 'none',
-        commandArgs: ['comet', 'native', 'doctor', candidate.name, '--repair'],
+        commandArgs: candidate.recoverableRun
+          ? ['comet', 'native', 'next', candidate.name]
+          : candidate.missingRunHistory
+            ? ['comet', 'native', 'doctor', candidate.name]
+            : ['comet', 'native', 'doctor', candidate.name, '--repair'],
         requiredInputs: [],
         // Doctor repairs the workspace it runs in. When the broken copy lives in
         // another worktree, name it so the command runs there instead of looping
         // between a healthy primary and the same blocked status.
-        message: `Run the repair command in the workspace holding this change: ${candidate.source.paths.projectRoot}`,
+        message: candidate.recoverableRun
+          ? `This change can continue from its saved state with comet native next ${candidate.name} in ${candidate.source.paths.projectRoot}.`
+          : candidate.missingRunHistory
+            ? `Run history is missing in ${candidate.source.paths.projectRoot}; inspect with Doctor and preserve the change files. Do not replay an unknown Action.`
+            : `Run the repair command in the workspace holding this change: ${candidate.source.paths.projectRoot}`,
         runnerAction: { kind: 'none', candidateId: null, iteration: 0, attempt: 0 },
       },
     };
@@ -711,6 +741,25 @@ async function inspectCandidate(
   return inspectLegacyCandidate(candidate, details, acceptanceCursor);
 }
 
+async function conflictsWithSdkOwner(
+  candidate: NativeStatusCandidate,
+  ownerRoot: string,
+): Promise<boolean> {
+  if (candidate.record?.state.archived) return false;
+  if (!samePath(candidate.source.projectRoot, ownerRoot) || candidate.kind !== 'portable') {
+    return true;
+  }
+  const stateFile = nativePortableStateFile(candidate.source.paths, candidate.name);
+  if (!(await hasNativeManagedRunMarker(stateFile))) return true;
+  const localFile = nativeLocalExecutionFile(candidate.source.paths, candidate.name);
+  const local = await inspectProtectedProjectPath(
+    candidate.source.projectRoot,
+    path.relative(candidate.source.projectRoot, localFile),
+    { label: 'Native local execution state', expected: 'file' },
+  );
+  return local.exists;
+}
+
 export async function inspectDiscoveredNativeStatus(options: {
   projectRoot: string;
   name: string;
@@ -735,7 +784,15 @@ export async function inspectDiscoveredNativeStatus(options: {
     throw new Error(`Native SDK change ${options.name} has multiple workspace owners`);
   }
   if (sdkSources.length === 1) {
-    if (candidates.some((candidate) => !candidate.record?.state.archived)) {
+    if (
+      (
+        await Promise.all(
+          candidates.map((candidate) =>
+            conflictsWithSdkOwner(candidate, sdkSources[0].projectRoot),
+          ),
+        )
+      ).some(Boolean)
+    ) {
       throw new Error(`Native change ${options.name} has conflicting SDK and legacy Runtime state`);
     }
     if (options.detailsCursor) {
@@ -747,6 +804,36 @@ export async function inspectDiscoveredNativeStatus(options: {
       name: options.name,
       details: options.details,
     });
+  }
+  for (const source of sources) {
+    const marked = await hasNativeManagedRunMarker(
+      nativePortableStateFile(source.paths, options.name),
+    ).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return false;
+      throw error;
+    });
+    if (marked) {
+      if (
+        await hasNativePortableRunCheckpoint(
+          nativePortableStateFile(source.paths, options.name),
+          options.name,
+        )
+      ) {
+        await resolveNativeChangeRuntimeOwner(source.paths, options.name);
+        options.onSelectedRoot?.(source.projectRoot);
+        return inspectNativeSdkStatus({
+          projectRoot: source.projectRoot,
+          name: options.name,
+          details: options.details,
+        });
+      }
+      if (await inspectPristineNativeSdkChange(source.paths, options.name)) {
+        throw new NativePristineSdkRunRecoverableError(source.projectRoot, options.name);
+      }
+      throw new Error(
+        `Native change ${options.name} has a portable state file but lost its local Run history`,
+      );
+    }
   }
   if (candidates.length === 0) {
     const current =
@@ -824,17 +911,48 @@ export async function listDiscoveredNativeStatusPage(options: {
     }
     sdkNames.add(sdk.name);
     if (
-      legacyCandidates.some(
-        (candidate) => candidate.name === sdk.name && !candidate.record?.state.archived,
-      )
+      (
+        await Promise.all(
+          legacyCandidates
+            .filter((candidate) => candidate.name === sdk.name)
+            .map((candidate) => conflictsWithSdkOwner(candidate, sdk.projectRoot)),
+        )
+      ).some(Boolean)
     ) {
       throw new Error(`Native change ${sdk.name} has conflicting SDK and legacy Runtime state`);
     }
   }
-  const candidates = [
-    ...legacyCandidates.filter((candidate) => !sdkNames.has(candidate.name)),
-    ...sdkCandidates,
-  ].sort((left, right) =>
+  const unownedCandidates = await Promise.all(
+    legacyCandidates
+      .filter((candidate) => !sdkNames.has(candidate.name))
+      .map(async (candidate) => {
+        if (candidate.kind !== 'portable') return candidate;
+        const marked = await hasNativeManagedRunMarker(
+          nativePortableStateFile(candidate.source.paths, candidate.name),
+        ).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT') return false;
+          throw error;
+        });
+        const recoverable = marked
+          ? (await hasNativePortableRunCheckpoint(
+              nativePortableStateFile(candidate.source.paths, candidate.name),
+              candidate.name,
+            )) ||
+            (await inspectPristineNativeSdkChange(candidate.source.paths, candidate.name)) !== null
+          : false;
+        return marked
+          ? {
+              ...candidate,
+              missingRunHistory: true,
+              recoverableRun: recoverable,
+              inspectionError: recoverable
+                ? `Native change ${candidate.name} can continue from its saved state with comet native next ${candidate.name}`
+                : `Native change ${candidate.name} has a portable state file but lost its local Run history`,
+            }
+          : candidate;
+      }),
+  );
+  const candidates = [...unownedCandidates, ...sdkCandidates].sort((left, right) =>
     `${left.name}\0${left.kind === 'sdk' ? left.projectRoot : left.source.projectRoot}`.localeCompare(
       `${right.name}\0${right.kind === 'sdk' ? right.projectRoot : right.source.projectRoot}`,
     ),

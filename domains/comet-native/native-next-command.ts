@@ -76,6 +76,7 @@ const EXPECTED_CONTINUATION_ACTIONS = new Set<NativePortableExpectedContinuation
   'revise-implementation',
   'revise-requirements',
   'retry-verifier',
+  'continue-builder',
   'resolve-verifier-blocker',
 ]);
 
@@ -185,6 +186,7 @@ export async function nativeNextCommand(
   const reviseImplementation = takeFlag(args, '--revise-implementation');
   const reviseRequirements = takeFlag(args, '--revise-requirements');
   const retryVerifier = takeFlag(args, '--retry-verifier');
+  const continueBuilder = takeFlag(args, '--continue-builder');
   const resolveVerifierBlocker = takeFlag(args, '--resolve-verifier-blocker');
   const coordinationModeText = takeOption(args, '--coordination-mode');
   const coordinationMode = coordinationModeText as NativeSupervisorCoordinationMode | undefined;
@@ -210,11 +212,12 @@ export async function nativeNextCommand(
       reviseImplementation,
       reviseRequirements,
       retryVerifier,
+      continueBuilder,
       resolveVerifierBlocker,
     ].filter(Boolean).length > 1
   ) {
     throw new NativeUsageError(
-      '--confirmed, --accept-result, --revise-implementation, --revise-requirements, --retry-verifier, and --resolve-verifier-blocker are mutually exclusive',
+      '--confirmed, --accept-result, --revise-implementation, --revise-requirements, --retry-verifier, --continue-builder, and --resolve-verifier-blocker are mutually exclusive',
     );
   }
   if (
@@ -223,6 +226,7 @@ export async function nativeNextCommand(
       reviseImplementation ||
       reviseRequirements ||
       retryVerifier ||
+      continueBuilder ||
       resolveVerifierBlocker ||
       runnerInputFile !== undefined)
   ) {
@@ -309,6 +313,23 @@ export async function nativeNextCommand(
         expectedAction: action,
       });
     }
+    if (continueBuilder) {
+      if (
+        summary === undefined ||
+        proposalHash === undefined ||
+        expectedContinuation?.action !== 'continue-builder'
+      ) {
+        throw new NativeUsageError(
+          'SDK Builder continuation requires --summary, --proposal-hash, --expected-state-version, and --expected-action continue-builder',
+        );
+      }
+      return advanceNativeSdkChange(projectRoot, name, {
+        summary,
+        proposalHash,
+        expectedStateVersion: expectedContinuation.stateVersion,
+        expectedAction: 'continue-builder',
+      });
+    }
     if (
       summary !== undefined ||
       proposalHash !== undefined ||
@@ -328,6 +349,11 @@ export async function nativeNextCommand(
   }
   if (proposalHash !== undefined) {
     throw new NativeUsageError('--proposal-hash is only valid for a Native SDK Verify decision');
+  }
+  if (continueBuilder) {
+    throw new NativeUsageError(
+      '--continue-builder is only valid for a Native SDK Builder decision',
+    );
   }
   await assertChangeNotSdkOwned(projectRoot, 'native', name);
   const finishJournal = await readNativeWorkspaceFinishJournal(configured.paths, name);

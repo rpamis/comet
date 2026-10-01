@@ -5,6 +5,10 @@ import os from 'os';
 import path from 'path';
 
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+import {
+  COMET_CHANGE_OWNER_SCHEMA,
+  registerSdkChangeOwner,
+} from '../../../domains/workflow-contract/change-runtime-owner.js';
 
 vi.mock('child_process', () => ({
   spawnSync: vi.fn(),
@@ -63,7 +67,7 @@ describe('Classic OpenSpec adapter', () => {
       signal: null,
     });
     expect(
-      (await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'legacy'])).exitCode,
+      (await runClassicCli(['state', 'init', 'demo', 'full', '--runtime', 'compat'])).exitCode,
     ).toBe(0);
     const previousForcePhase = process.env.COMET_FORCE_PHASE;
     process.env.COMET_FORCE_PHASE = '1';
@@ -103,6 +107,27 @@ describe('Classic OpenSpec adapter', () => {
       stdout: '{"changes":[]}\n',
       stderr: 'warning\n',
     });
+  });
+
+  it('does not forward an SDK-owned Archive through the public OpenSpec adapter', async () => {
+    const change = path.join(projectRoot, 'docs', 'openspec', 'changes', 'demo');
+    await fs.mkdir(change, { recursive: true });
+    await fs.writeFile(path.join(change, '.comet.yaml'), 'workflow: full\nphase: archive\n');
+    await registerSdkChangeOwner(projectRoot, {
+      schema: COMET_CHANGE_OWNER_SCHEMA,
+      workflow: 'classic',
+      change: 'demo',
+      format: 'sdk',
+      application: 'classic-full',
+      runId: 'demo',
+    });
+    const result = await runClassicCli(['openspec', '--', 'archive', 'demo', '--yes']);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toMatch(/SDK.*Archive/);
+    expect(mockedSpawnSync).not.toHaveBeenCalled();
+    await expect(
+      fs.stat(path.join(projectRoot, 'docs', 'openspec', 'changes', 'demo', '.comet.yaml')),
+    ).resolves.toBeDefined();
   });
 
   it('uses the configured docs root when a standalone OpenSpec root also exists', async () => {

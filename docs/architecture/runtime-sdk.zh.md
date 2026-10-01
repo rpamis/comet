@@ -63,6 +63,8 @@ const reportWorkflow = {
 
 Native 应用通过 `comet native archive <change> --recover` 向 CLI 宿主提供中断恢复。它只处理 Archive 阶段唯一的 `unknown` Supervisor 交付、归档或清理 Action，且要求宿主先确认原执行已停止。交付恢复核对目标分支是否仍精确指向已验证集成提交，再提交原 Action 的结果；未交付或分支漂移时拒绝，不重新执行快进。清理恢复核对工作区与分支后完成剩余安全操作；普通 `archive` 不会自动重发结果未知的动作。
 
+若复制 change 到新 checkout 时没有携带被 Git 忽略的本地 Run 记录，已推进的 Native/Classic change 不会自动续跑。确认原执行进程已停止后，可分别用 `comet native doctor <change> --repair --confirmed`、`comet state restore <change> --confirmed` 显式从 Shape/Open 重建 Run。原 `comet-state.yaml` / `.comet.yaml` 仍在原路径；正式文档保留，旧确认和检查结果失效，按正常流程重新核对与确认。归档中的 change 或工作区绑定不符时拒绝恢复；此操作也不重放结果未明的外部动作。
+
 不由 Action Outcome 直接产生的工件，可用 `await_evidence` 步骤声明证据种类与版本化验证器。宿主在 `evidenceValidators` 注册验证器，调用 `recordEvidence({ runId, evidenceId, kind, ref, contentHash, submissionId, expectedRevision })`。验证器会收到当前 Run 的隔离副本，可据此核对证据是否属于该 Run，再检查引用范围与当前内容摘要；SDK 只在验证通过且 revision 未变化时记录收据并推进。外部文件可能在验证后再次变化，后续依赖它的动作仍须按已记录摘要重新核对。若工作流为该等待项声明 `on: invalidated` 转移，宿主可在收据遭拒后调用 `invalidateEvidence`：SDK 会再次验证原收据，只有确认已失效才记录原因、结束该 Wait 并沿声明的转移继续；它不会重发此前成功的 Action。CLI 中对应 `invalidate-evidence` 操作。没有失效转移或收据仍有效时，Run 保持原等待状态。自定义 JSON Workflow 尚不能通过 CLI 注册处理器和验证器；CLI 的内置 Native/Classic 应用会注册自己的实现。
 
 用户在工作流进行中提出修改时，可以在定义中用 `commands: { revise: 'revise.step' }` 声明可外部激活的执行步骤，再调用 `dispatchCommand({ runId, expectedRevision, commandId, name: 'revise', input })`。需要限制当前阶段、输入或外部工件时，改用 `{ revise: { stepId: 'revise.step', validator: { id, version } } }`，并在 `createRuntime` 注册对应的 `commandValidators`；验证器在旧工作被取消前运行，拒绝时 Run 不变，恢复时也要求同一版本可用。SDK 在一次 CAS 提交中取消尚未领取的 Action 和待决定的 Wait，保存命令收据并创建新 Action；相同 `commandId` 和输入可幂等重放。已领取或结果未知的 Action 不能被命令打断，宿主须先核对其执行结果。命令本身不直接改写业务状态或外部文件；执行器完成副作用并提交合格 Outcome 后，版本化转移处理器才能更新 Run。JSON CLI 对应 `dispatch-command` 操作，要求显式传入 `expectedRevision`、`commandId`、`name` 和 `input`。
@@ -116,6 +118,8 @@ Action 的 `id`、`attempt`、`inputHash` 与领取 token 共同约束回传结�
 也可以注册 `RuntimeExecutor` 并调用 `runtime.execute`。Executor 明确声明 id、能力、支持的 Action 和执行函数；`supports` 在提交领取前运行，应保持纯判断。真正的 `execute` 只会在领取提交后调用；若抛错或返回无法提交的结果，Runtime 会记录未知状态，不会自动重发。Runtime 只从宿主提供的适配器执行，不自行发现或调用平台工具。
 
 ## 等待、确认与恢复
+
+丢失 Run 记录后的重建不处理 Archive 阶段、未解决的外部执行或已启动的 Supervisor 协作；此时须找回原 Run 记录并核对原结果。
 
 `ask_user` 会写入一个带 `proposalHash` 的持久化 Wait。宿主把提案呈现给用户后，用用户决定调用：
 
@@ -177,7 +181,7 @@ comet runtime dispatch --request ./start.json --workflow ./report.workflow.json 
 
 每条命令只处理一个结构化请求，并返回包含 `protocolVersion`、`requestId` 和 Run 或机器可读错误的 JSON。`inspect` 可不提供工作流文件，在新进程只读查看 Run；要核对定义或推进状态，需提供已固定的工作流定义。领取后的外部执行失联时可用 `mark-unknown` 保留不确定事实；`retry` 只有收到 `reconciliation: { "resolution": "not-executed", "evidence": ... }` 才会创建新 attempt。相对 request/workflow/root 路径以 CLI 的调用目录解析；`--project-root` 作为显式宿主上下文传给执行器相关接口。
 
-Native 和 Classic 的内置 Workflow Application 可以使用 `--application native|classic-full|classic-hotfix|classic-tweak` 注册。Run 固定写入项目的 `.comet/runtime/sdk-runs/native` 或 `.comet/runtime/sdk-runs/classic`；两个 workflow 可以使用相同的 change 名称，但不能指定另一处 `--root-dir`，也不能与 `--workflow` 混用。每次推进同一 Run 时都传入对应的 `--application`；除了上面的通用操作，还可用 `execute` 领取并执行应用已注册的 Executor，用 `record-evidence` 提交已声明的证据等待，用 `invalidate-evidence` 恢复经验证失效且声明了恢复转移的证据。宿主仍须提供真实的初始状态、工件和外部 Agent 执行结果。Native `new` 与 Classic `state init` 已默认创建 SDK Run；已有 legacy change 继续按原 Runtime 恢复。
+Native 和 Classic 的内置 Workflow Application 可以使用 `--application native|classic-full|classic-hotfix|classic-tweak` 注册。Run 固定写入项目的 `.comet/runtime/sdk-runs/native` 或 `.comet/runtime/sdk-runs/classic`；两个 workflow 可以使用相同的 change 名称，但不能指定另一处 `--root-dir`，也不能与 `--workflow` 混用。每次推进同一 Run 时都传入对应的 `--application`；除了上面的通用操作，还可用 `execute` 领取并执行应用已注册的 Executor，用 `record-evidence` 提交已声明的证据等待，用 `invalidate-evidence` 恢复经验证失效且声明了恢复转移的证据。宿主仍须提供真实的初始状态、工件和外部 Agent 执行结果。Native `new` 与 Classic `state init` 已默认创建 SDK Run，并在 change 原路径保留 `comet-state.yaml` 或 `.comet.yaml`；已有原 Runtime change 继续按 `compat` 路径恢复。
 
 ## Comet 自身的接入方式
 
@@ -189,7 +193,7 @@ SDK 所有的 Classic change 也可以用 `comet guard <change> verify --report 
 
 SDK 所有的 Classic change 进入 Archive 后，可用 `comet state propose-archive` 记录交付提案，再用绑定提案哈希的 `decide-archive` 提交用户决定。已批准时，`comet guard <change> archive --apply` 或 `comet archive <change>` 会重验分支和 Verify 证据，执行 OpenSpec 文件归档一次。Agent 仍负责按决定完成 Git 提交、推送或 PR；`comet state complete-delivery` 核验实际提交及相应远端结果后结束 Run。Archive 命令不会自行创建提交或扩大用户授权。
 
-此外，Native 普通 change 与 Classic full/hotfix/tweak 已各自定义独立的 SDK Workflow Application，可通过 `comet runtime dispatch --application` 创建和推进 Run；它们保留各自的阶段与验收规则，SDK 负责通用调度和提交。新 change 的默认入口已选择 SDK，现有 legacy change 仍按原 Runtime 继续；尚未覆盖的旧命令入口和真实平台执行不能由 SDK 单测代替验收。
+此外，Native 普通 change 与 Classic full/hotfix/tweak 已各自定义独立的 SDK Workflow Application，可通过 `comet runtime dispatch --application` 创建和推进 Run；它们保留各自的阶段与验收规则，SDK 负责通用调度和提交。新 change 的默认入口已选择 SDK，现有 `compat` change 仍按原 Runtime 继续；尚未覆盖的旧命令入口和真实平台执行不能由 SDK 单测代替验收。
 
 ## 保证范围
 

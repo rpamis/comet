@@ -43,7 +43,7 @@ describe('Classic executable artifact and recovery contract', () => {
           '--isolation',
           'current',
           '--runtime',
-          'legacy',
+          'compat',
         ])
       ).exitCode,
     ).toBe(0);

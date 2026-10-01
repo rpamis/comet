@@ -272,7 +272,7 @@ describe('comet scripts', () => {
       'new-full-change',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'new-full-change', '.comet.yaml'),
@@ -289,7 +289,7 @@ describe('comet scripts', () => {
 
   it('validates the optional machine-owned check epoch in generated commands', async () => {
     expect(
-      runNode(tmpDir, stateScript, ['init', 'epoch-check', 'full', '--runtime', 'legacy']).status,
+      runNode(tmpDir, stateScript, ['init', 'epoch-check', 'full', '--runtime', 'compat']).status,
     ).toBe(0);
     const state = path.join(tmpDir, 'openspec', 'changes', 'epoch-check', '.comet.yaml');
     const original = await fs.readFile(state, 'utf8');
@@ -312,7 +312,7 @@ describe('comet scripts', () => {
         `${workflow}-current`,
         workflow,
         '--runtime',
-        'legacy',
+        'compat',
       ]);
       const isolation = runNode(tmpDir, stateScript, ['get', `${workflow}-current`, 'isolation']);
 
@@ -328,7 +328,7 @@ describe('comet scripts', () => {
       'powershell-friendly',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
 
     expect(result.status).toBe(0);
@@ -342,7 +342,7 @@ describe('comet scripts', () => {
     const init = runNode(
       tmpDir,
       stateScript,
-      ['init', 'runtime-root', 'full', '--runtime', 'legacy'],
+      ['init', 'runtime-root', 'full', '--runtime', 'compat'],
       {
         COMET_RUNTIME_CLASSIC_ROOT: classicRuntimeRoot,
         COMET_CLASSIC_SKILL_ROOT: '',
@@ -370,7 +370,7 @@ describe('comet scripts', () => {
     const init = runNode(
       tmpDir,
       stateScript,
-      ['init', 'legacy-root', 'full', '--runtime', 'legacy'],
+      ['init', 'legacy-root', 'full', '--runtime', 'compat'],
       {
         COMET_RUNTIME_CLASSIC_ROOT: '',
         COMET_CLASSIC_SKILL_ROOT: classicRuntimeRoot,
@@ -434,7 +434,7 @@ describe('comet scripts', () => {
     const init = runNode(
       tmpDir,
       stateScript,
-      ['init', 'embedded-runtime', 'full', '--runtime', 'legacy'],
+      ['init', 'embedded-runtime', 'full', '--runtime', 'compat'],
       {
         COMET_RUNTIME_CLASSIC_ROOT: '',
         COMET_CLASSIC_SKILL_ROOT: '',
@@ -461,28 +461,28 @@ describe('comet scripts', () => {
       'Upper_Name',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const underscore = runNode(tmpDir, stateScript, [
       'init',
       'snake_case',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const datePrefixed = runNode(tmpDir, stateScript, [
       'init',
       '2026-05-21-change',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const valid = runNode(tmpDir, stateScript, [
       'init',
       'kebab-case-name',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
 
     expect(upper.status).not.toBe(0);
@@ -506,7 +506,7 @@ describe('comet scripts', () => {
       'language-zh',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'language-zh', '.comet.yaml'),
@@ -539,7 +539,7 @@ describe('comet scripts', () => {
       'legacy-config-ignored',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'legacy-config-ignored', '.comet.yaml'),
@@ -560,7 +560,7 @@ describe('comet scripts', () => {
     const result = runNode(
       tmpDir,
       stateScript,
-      ['init', 'language-global-zh', 'full', '--runtime', 'legacy'],
+      ['init', 'language-global-zh', 'full', '--runtime', 'compat'],
       {
         HOME: fakeHome,
         USERPROFILE: fakeHome,
@@ -586,7 +586,7 @@ describe('comet scripts', () => {
     const result = runNode(
       tmpDir,
       stateScript,
-      ['init', 'language-project-over-global', 'full', '--runtime', 'legacy'],
+      ['init', 'language-project-over-global', 'full', '--runtime', 'compat'],
       {
         HOME: fakeHome,
         USERPROFILE: fakeHome,
@@ -608,7 +608,7 @@ describe('comet scripts', () => {
     const result = runNode(
       tmpDir,
       stateScript,
-      ['init', 'language-global-invalid', 'full', '--runtime', 'legacy'],
+      ['init', 'language-global-invalid', 'full', '--runtime', 'compat'],
       {
         HOME: fakeHome,
         USERPROFILE: fakeHome,
@@ -628,7 +628,7 @@ describe('comet scripts', () => {
     const result = runNode(
       tmpDir,
       stateScript,
-      ['init', 'unrelated-malformed-field', 'full', '--runtime', 'legacy'],
+      ['init', 'unrelated-malformed-field', 'full', '--runtime', 'compat'],
       {},
     );
 
@@ -648,7 +648,7 @@ describe('comet scripts', () => {
     const result = runNode(
       tmpDir,
       stateScript,
-      ['init', 'empty-review-mode', 'full', '--runtime', 'legacy'],
+      ['init', 'empty-review-mode', 'full', '--runtime', 'compat'],
       {},
     );
 
@@ -667,7 +667,7 @@ describe('comet scripts', () => {
       'language-legacy-zh',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
 
     expect(result.status).toBe(1);
@@ -683,7 +683,7 @@ describe('comet scripts', () => {
     const result = runNode(
       tmpDir,
       stateScript,
-      ['init', 'language-env', 'full', '--runtime', 'legacy'],
+      ['init', 'language-env', 'full', '--runtime', 'compat'],
       {
         COMET_LANGUAGE: 'en',
       },
@@ -708,7 +708,7 @@ describe('comet scripts', () => {
       'language-invalid',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
 
     expect(result.status).toBe(1);
@@ -721,7 +721,7 @@ describe('comet scripts', () => {
       'pause-defaults',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'pause-defaults', '.comet.yaml'),
@@ -738,7 +738,7 @@ describe('comet scripts', () => {
       'subagent-dispatch-defaults',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'subagent-dispatch-defaults', '.comet.yaml'),
@@ -755,7 +755,7 @@ describe('comet scripts', () => {
       'tdd-defaults',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'tdd-defaults', '.comet.yaml'),
@@ -772,7 +772,7 @@ describe('comet scripts', () => {
       'review-defaults',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'review-defaults', '.comet.yaml'),
@@ -789,7 +789,7 @@ describe('comet scripts', () => {
       'review-hotfix',
       'hotfix',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'review-hotfix', '.comet.yaml'),
@@ -806,7 +806,7 @@ describe('comet scripts', () => {
       'tdd-hotfix',
       'hotfix',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'tdd-hotfix', '.comet.yaml'),
@@ -823,7 +823,7 @@ describe('comet scripts', () => {
       'context-defaults',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'context-defaults', '.comet.yaml'),
@@ -845,7 +845,7 @@ describe('comet scripts', () => {
       'context-beta',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'context-beta', '.comet.yaml'),
@@ -867,7 +867,7 @@ describe('comet scripts', () => {
       'review-standard',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'review-standard', '.comet.yaml'),
@@ -889,7 +889,7 @@ describe('comet scripts', () => {
       'review-invalid',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
 
     expect(result.status).toBe(1);
@@ -905,7 +905,7 @@ describe('comet scripts', () => {
     const result = runNode(
       tmpDir,
       stateScript,
-      ['init', 'context-env', 'full', '--runtime', 'legacy'],
+      ['init', 'context-env', 'full', '--runtime', 'compat'],
       {
         COMET_CONTEXT_COMPRESSION: 'off',
       },
@@ -925,7 +925,7 @@ describe('comet scripts', () => {
       'auto-transition-defaults',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'auto-transition-defaults', '.comet.yaml'),
@@ -955,7 +955,7 @@ describe('comet scripts', () => {
       'auto-transition-config-false',
       'full',
       '--runtime',
-      'legacy',
+      'compat',
     ]);
     const yaml = await fs.readFile(
       path.join(tmpDir, 'openspec', 'changes', 'auto-transition-config-false', '.comet.yaml'),
@@ -2799,7 +2799,7 @@ describe('comet scripts', () => {
   }, 20_000);
 
   it('allows setting review_mode to off, standard, and thorough', async () => {
-    runNode(tmpDir, stateScript, ['init', 'review-mode-set', 'full', '--runtime', 'legacy']);
+    runNode(tmpDir, stateScript, ['init', 'review-mode-set', 'full', '--runtime', 'compat']);
 
     for (const value of ['off', 'standard', 'thorough']) {
       const set = runNode(tmpDir, stateScript, ['set', 'review-mode-set', 'review_mode', value]);
@@ -4336,7 +4336,8 @@ describe('comet scripts', () => {
     ).toBe('pending');
     expect(verifiedAt.stdout.trim()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(archiveConfirmation.stdout.trim()).toBe('pending');
-  }, 20_000);
+    // This round trip starts more than twenty isolated Runtime processes.
+  }, 60_000);
 
   it('confirms archive only after the final archive confirmation decision', async () => {
     await createChange(
@@ -6796,7 +6797,7 @@ describe('comet scripts', () => {
         'unbound-select',
         'full',
         '--runtime',
-        'legacy',
+        'compat',
       ]);
       expect(init.status).toBe(0);
 
@@ -6819,7 +6820,7 @@ describe('comet scripts', () => {
         'drift-select',
         'full',
         '--runtime',
-        'legacy',
+        'compat',
       ]);
       expect(init.status).toBe(0);
       const stateFile = path.join(tmpDir, 'openspec', 'changes', 'drift-select', '.comet.yaml');
@@ -6921,7 +6922,7 @@ describe('comet scripts', () => {
           'legacy-select',
           'full',
           '--runtime',
-          'legacy',
+          'compat',
         ]);
         expect(init.status).toBe(0);
         const stateFile = path.join(tmpDir, 'openspec', 'changes', 'legacy-select', '.comet.yaml');

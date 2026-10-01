@@ -107,6 +107,17 @@ describe('resolveBranchBinding', () => {
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
+  it('reads the branch of an initialized repository before its first commit', async () => {
+    const unborn = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-unborn-branch-'));
+    try {
+      execFileSync('git', ['init', '-b', 'main'], { cwd: unborn, stdio: 'ignore' });
+      expect(isGitWorkTree(unborn)).toBe(true);
+      expect(liveGitBranch(unborn)).toBe('main');
+    } finally {
+      await fs.rm(unborn, { recursive: true, force: true });
+    }
+  });
+
   it('heals an unbound binding-isolation change when heal is enabled', async () => {
     await seedState(['workflow: hotfix', 'phase: build', 'isolation: current']);
 

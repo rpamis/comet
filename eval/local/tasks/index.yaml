@@ -21,8 +21,8 @@ tasks:
   - name: comet-native-workflow
     category: comet-native
     default_treatments:
-      - COMET_NATIVE_PHASE1
-    description: Self-contained Shape-Build-Verify-Archive workflow using only the Comet Native Skill and its bundled runtime.
+      - COMET_NATIVE_SDK_CURRENT
+    description: Current-checkout SDK Shape-Build-Verify-Archive workflow using the Comet Native Skill and CLI.
 
   - name: comet-native-repository-fact
     category: comet-native

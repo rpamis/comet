@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { WorkflowRun, WorkflowRuntime } from '../engine/runtime.js';
+import { parseDocument } from 'yaml';
+import {
+  readPortableRunCheckpoint,
+  type WorkflowRun,
+  type WorkflowRuntime,
+} from '../engine/runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
   classicArchivedRequirementsProblems,
@@ -14,7 +19,7 @@ import { classicSdkRemoteIdentity } from './classic-sdk-remote.js';
 import { resolveClassicLayout } from './classic-layout.js';
 import { executeClassicOpenSpec } from './classic-openspec-command.js';
 import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
-import type { ClassicState } from './classic-state.js';
+import { hasClassicManagedRunMarker, type ClassicState } from './classic-state.js';
 
 interface ClassicSdkArchiveInput {
   runId: string;
@@ -194,4 +199,89 @@ export async function executeClassicSdkArchive(
     }
     throw error;
   }
+}
+
+/** Reconcile a moved Archive only when its portable checkpoint binds the original claim. */
+export async function recoverClassicSdkArchive(
+  runtime: Pick<WorkflowRuntime, 'inspect' | 'recordOutcome'>,
+  input: ClassicSdkArchiveInput,
+): Promise<WorkflowRun> {
+  const projectRoot = path.resolve(input.projectRoot);
+  const run = await runtime.inspect(input.runId);
+  const state = run.state as unknown as ClassicState;
+  const action = run.actions.filter((candidate) => candidate.status === 'unknown');
+  const lost = action.length === 1 ? action[0] : null;
+  if (
+    state.phase !== 'archive' ||
+    state.archived ||
+    !lost ||
+    lost.stepId !== `${state.workflow}.archive.execute` ||
+    lost.claim?.executorId !== 'comet-classic-archive'
+  ) {
+    throw new Error('Classic SDK Archive has no single moved Action to recover');
+  }
+  const identity = run.input as { change?: unknown; changeDir?: unknown } | null;
+  if (typeof identity?.change !== 'string' || typeof identity.changeDir !== 'string') {
+    throw new Error('Classic SDK Archive change identity is missing');
+  }
+  const layout = await resolveClassicLayout(projectRoot);
+  const active = await inspectProtectedProjectPath(projectRoot, identity.changeDir, {
+    label: 'Classic active change',
+    expected: 'directory',
+  });
+  if (active.exists) throw new Error('Classic SDK Archive still has its active change');
+  const names = await archiveEntries(layout.archiveDir, identity.change);
+  if (names.size !== 1) throw new Error('Classic SDK Archive destination is ambiguous');
+  const archiveName = [...names][0];
+  const archiveDirectory = path.join(layout.archiveDir, archiveName);
+  const archived = await inspectProtectedProjectPath(
+    projectRoot,
+    path.relative(projectRoot, archiveDirectory),
+    { label: 'Classic archived change', expected: 'directory' },
+  );
+  if (!archived.exists) throw new Error('Classic SDK Archive destination is missing');
+  const source = await readClassicProjectFile(
+    projectRoot,
+    path.join(archived.target, '.comet.yaml'),
+    {
+      label: 'Classic archived state',
+    },
+  );
+  if (!hasClassicManagedRunMarker(source)) {
+    throw new Error('Classic archived state is not managed by the SDK');
+  }
+  const document = parseDocument(source, { uniqueKeys: true });
+  if (document.errors.length > 0) throw new Error('Classic archived state is invalid');
+  const saved = readPortableRunCheckpoint(
+    (document.toJS() as Record<string, unknown>).run_checkpoint,
+    run.runId,
+  );
+  const savedAction = saved?.actions.find((candidate) => candidate.id === lost.id);
+  if (
+    !savedAction ||
+    savedAction.status !== 'unknown' ||
+    savedAction.inputHash !== lost.inputHash ||
+    savedAction.claim?.token !== lost.claim.token
+  ) {
+    throw new Error('Classic archived state does not match the lost Archive Action');
+  }
+  const problems = await classicArchivedRequirementsProblems(projectRoot, archived.target);
+  if (problems.length) throw new Error(problems.join('\n'));
+  await annotateIfPresent(projectRoot, state.designDoc, archiveName, 'status: final');
+  await annotateIfPresent(projectRoot, state.plan, archiveName, '');
+  return runtime.recordOutcome({
+    runId: run.runId,
+    context: { requestId: `classic-sdk-archive-recovery:${run.runId}:${lost.id}`, projectRoot },
+    outcome: {
+      actionId: lost.id,
+      attempt: lost.attempt,
+      inputHash: lost.inputHash,
+      claimToken: lost.claim.token,
+      outcomeId: `${lost.id}:${lost.attempt}:recovered`,
+      status: 'succeeded',
+      output: {
+        archiveDirectory: path.relative(projectRoot, archived.target).replaceAll('\\', '/'),
+      },
+    },
+  });
 }

@@ -15,6 +15,8 @@ import {
 } from '../../../domains/comet-native/native-paths.js';
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import { removeNativeWorkspaceConfig } from '../../../domains/comet-native/native-workspace-config.js';
+import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
+import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
 import { nativeSupervisorStateFile } from '../../../domains/comet-native/native-supervisor-state.js';
 import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 import {
@@ -145,15 +147,17 @@ async function succeedLatestAction(
   });
 }
 
-async function preparedShape(storeKind: 'memory' | 'file' = 'memory') {
+async function preparedShape(storeKind: 'memory' | 'file' | 'sdk' = 'memory') {
   const fixtureData = await fixture();
   const application = nativeApplication();
   const store =
-    storeKind === 'file'
-      ? createFileRuntimeStore<WorkflowRun>({
-          rootDir: path.join(fixtureData.root, '.comet', 'runtime', 'sdk-runs'),
-        })
-      : createMemoryRuntimeStore<WorkflowRun>();
+    storeKind === 'sdk'
+      ? createNativeSdkStateStore(fixtureData.root)
+      : storeKind === 'file'
+        ? createFileRuntimeStore<WorkflowRun>({
+            rootDir: path.join(fixtureData.root, '.comet', 'runtime', 'sdk-runs'),
+          })
+        : createMemoryRuntimeStore<WorkflowRun>();
   const runtime = createRuntime({
     store,
     workflows: [application.workflow],
@@ -164,11 +168,21 @@ async function preparedShape(storeKind: 'memory' | 'file' = 'memory') {
     executors: application.executors,
   });
   let run = await runtime.start({
-    runId: 'native-sdk-shape',
+    runId: storeKind === 'sdk' ? 'sdk-shape' : 'native-sdk-shape',
     workflow: { id: application.workflow.id, version: application.workflow.version },
     input: { name: 'sdk-shape', artifactRootRef: 'docs' },
     initialState: fixtureData.initialState,
   });
+  if (storeKind === 'sdk') {
+    await registerSdkChangeOwner(fixtureData.root, {
+      schema: COMET_CHANGE_OWNER_SCHEMA,
+      workflow: 'native',
+      change: 'sdk-shape',
+      format: 'sdk',
+      application: 'native',
+      runId: run.runId,
+    });
+  }
   run = await succeedLatestAction(
     runtime,
     run,
@@ -181,7 +195,7 @@ async function preparedShape(storeKind: 'memory' | 'file' = 'memory') {
 
 async function dispatchedVerifier(
   verificationChecks: unknown[] = [],
-  storeKind: 'memory' | 'file' = 'memory',
+  storeKind: 'memory' | 'file' | 'sdk' = 'memory',
 ) {
   const prepared = await preparedShape(storeKind);
   const { root, paths, runtime } = prepared;
@@ -222,6 +236,62 @@ async function dispatchedVerifier(
     executorId: 'comet-native-checks',
     context: { requestId: 'native-check-execution', projectRoot: root },
   });
+  return { ...prepared, run };
+}
+
+async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
+  const prepared = await dispatchedVerifier([], storeKind);
+  const { root, runtime } = prepared;
+  let run = prepared.run;
+  for (let index = 1; index <= 4; index += 1) {
+    const state = run.state as NativePortableState;
+    run = await succeedLatestAction(
+      runtime,
+      run,
+      {
+        candidateId: state.builder_handoff!.candidate_id,
+        verifierExecutionRef: `stalled-verifier-${index}`,
+        response: {
+          kind: 'final-result',
+          result: {
+            iteration: state.loop.iteration,
+            attempt: state.loop.attempt,
+            verdict: 'fail',
+            acceptance: [{ id: 'A1', result: 'failed', reason: 'The same scenario still fails.' }],
+            risks: [],
+            summary: 'No acceptance progress.',
+          },
+        },
+      },
+      root,
+      `stalled-result-${index}`,
+      `stalled-verifier-${index}`,
+    );
+    if (index === 4) break;
+    expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder' });
+    run = await succeedLatestAction(
+      runtime,
+      run,
+      {
+        summary: 'Tried another repair hypothesis.',
+        addressedAcceptanceIds: ['A1'],
+        checks: [],
+        knownLimits: [],
+        review: null,
+        submittedAt: `2026-09-24T0${index + 1}:00:00.000Z`,
+        verificationChecks: [],
+      },
+      root,
+      `stalled-builder-${index}`,
+      `stalled-builder-session-${index}`,
+    );
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: `stalled-checks-${index}`, projectRoot: root },
+    });
+  }
   return { ...prepared, run };
 }
 
@@ -288,6 +358,87 @@ async function awaitingArchiveFinalization(storeKind: 'memory' | 'file' = 'memor
 }
 
 describe('Native SDK Workflow Application', () => {
+  it('waits for an explicit decision before continuing a partially executed Builder in a new Action', async () => {
+    const prepared = await preparedShape('file');
+    const { root, paths, application, store } = prepared;
+    let { run, runtime } = prepared;
+    const shapeWait = run.waits.at(-1)!;
+    run = await runtime.resolveWait({
+      runId: run.runId,
+      waitId: shapeWait.id,
+      proposalHash: shapeWait.proposalHash,
+      decisionId: 'shape-approved-before-builder-failure',
+      choice: 'approved',
+    });
+    run = await succeedLatestAction(
+      runtime,
+      run,
+      await collectProposal(paths, run.state as NativePortableState),
+      root,
+      'shape-revalidated-before-builder-failure',
+    );
+    const builder = run.actions.at(-1)!;
+    expect(builder).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+    const partialFile = path.join(root, 'partial-builder.txt');
+    await fs.writeFile(partialFile, 'partial implementation\n');
+    const context = { requestId: 'failed-builder', projectRoot: root };
+    run = await runtime.claim({
+      runId: run.runId,
+      actionId: builder.id,
+      attempt: builder.attempt,
+      inputHash: builder.inputHash,
+      executorId: 'native-host',
+      sessionId: 'failed-builder-session',
+      claimToken: 'failed-builder-claim',
+      context,
+    });
+    run = await runtime.recordOutcome({
+      runId: run.runId,
+      outcome: {
+        actionId: builder.id,
+        attempt: builder.attempt,
+        inputHash: builder.inputHash,
+        claimToken: 'failed-builder-claim',
+        outcomeId: 'builder-partial-failure',
+        status: 'failed',
+        output: { summary: 'The Builder stopped after writing a partial implementation.' },
+      },
+      context,
+    });
+    expect(run.actions.filter((action) => action.stepId === 'build.builder')).toHaveLength(1);
+    const resumeWait = run.waits.at(-1)!;
+    expect(resumeWait).toMatchObject({ stepId: 'build.resume', status: 'pending' });
+    expect(await fs.readFile(partialFile, 'utf8')).toBe('partial implementation\n');
+
+    runtime = createRuntime({
+      store,
+      workflows: [application.workflow],
+      transitionHandlers: [application.transitionHandler],
+      validators: application.validators,
+      stateValidators: application.stateValidators,
+      commandValidators: application.commandValidators,
+      executors: application.executors,
+    });
+    run = await runtime.resolveWait({
+      runId: run.runId,
+      waitId: resumeWait.id,
+      proposalHash: resumeWait.proposalHash,
+      decisionId: 'approve-builder-continuation',
+      choice: 'continue',
+    });
+    expect(run.actions.find((action) => action.id === builder.id)).toMatchObject({
+      status: 'failed',
+      attempt: builder.attempt,
+    });
+    expect(run.actions.at(-1)).toMatchObject({
+      stepId: 'build.builder',
+      status: 'pending',
+      input: { activation: { failedBuilderActionId: builder.id } },
+    });
+    expect(run.actions.at(-1)!.id).not.toBe(builder.id);
+    expect(await fs.readFile(partialFile, 'utf8')).toBe('partial implementation\n');
+  });
+
   it('keeps the candidate and checks when a claimed Verifier execution fails, then waits after repeated failures', async () => {
     const { root, runtime, run: dispatched } = await dispatchedVerifier([], 'file');
     const candidateId = (dispatched.state as NativePortableState).builder_handoff!.candidate_id;
@@ -1150,6 +1301,8 @@ children:
     'delivery-recovery',
     'delivery-ref-lock',
     'target-drift',
+    'child-builder-failure',
+    'parent-builder-failure',
   ] as const)(
     'handles parent repair, delivery, and cleanup after Supervisor DAG restart (%s)',
     async (scenario) => {
@@ -1257,8 +1410,59 @@ children:
         executorId: 'native-supervisor-child-prepare',
         context: { requestId: 'candidate-child', projectRoot: root },
       });
-      const builder = run.actions.find((action) => action.stepId === 'supervisor.child.builder')!;
+      let builder = run.actions.find((action) => action.stepId === 'supervisor.child.builder')!;
       const childWorktree = path.join(root, '.worktrees', 'sdk-shape-api');
+      if (scenario === 'child-builder-failure') {
+        await fs.writeFile(path.join(childWorktree, 'api.txt'), 'partial API\n');
+        const failureContext = { requestId: 'candidate-child-builder-failed', projectRoot: root };
+        run = await runtime.claim({
+          runId: run.runId,
+          actionId: builder.id,
+          attempt: builder.attempt,
+          inputHash: builder.inputHash,
+          executorId: 'native-host',
+          sessionId: 'candidate-child-builder-failed',
+          claimToken: 'candidate-child-builder-failed',
+          context: failureContext,
+        });
+        run = await runtime.recordOutcome({
+          runId: run.runId,
+          outcome: {
+            actionId: builder.id,
+            attempt: builder.attempt,
+            inputHash: builder.inputHash,
+            claimToken: 'candidate-child-builder-failed',
+            outcomeId: 'candidate-child-builder-failed',
+            status: 'failed',
+            output: { summary: 'The Child Builder stopped after writing api.txt.' },
+          },
+          context: failureContext,
+        });
+        const resumeWait = run.waits.at(-1)!;
+        expect(resumeWait).toMatchObject({ stepId: 'supervisor.child.resume', status: 'pending' });
+        expect(await fs.readFile(path.join(childWorktree, 'api.txt'), 'utf8')).toBe(
+          'partial API\n',
+        );
+        run = await runtime.resolveWait({
+          runId: run.runId,
+          waitId: resumeWait.id,
+          proposalHash: resumeWait.proposalHash,
+          decisionId: 'continue-candidate-child-builder',
+          choice: 'continue',
+        });
+        expect(run.actions.at(-1)).toMatchObject({
+          stepId: 'supervisor.child.builder',
+          status: 'pending',
+          input: {
+            activation: {
+              child: 'api',
+              worktree: childWorktree,
+              failedBuilderActionId: builder.id,
+            },
+          },
+        });
+        builder = run.actions.at(-1)!;
+      }
       await fs.writeFile(path.join(childWorktree, 'api.txt'), 'API implemented\n');
       await fs.mkdir(path.join(childWorktree, 'api-subdir'));
       await fs.writeFile(path.join(childWorktree, 'api-subdir', 'marker.txt'), 'ready\n');
@@ -1600,6 +1804,59 @@ children:
         type: 'handoff',
         input: { activation: { integrationCommit: expect.any(String) } },
       });
+      if (scenario === 'parent-builder-failure') {
+        const failedBuilder = run.actions.at(-1)!;
+        const integrationWorktree = (
+          failedBuilder.input as { activation: { integrationWorktree: string } }
+        ).activation.integrationWorktree;
+        const partialFile = path.join(integrationWorktree, 'parent-partial.txt');
+        await fs.writeFile(partialFile, 'partial parent review\n');
+        const failureContext = { requestId: 'parent-builder-failed', projectRoot: root };
+        run = await runtime.claim({
+          runId: run.runId,
+          actionId: failedBuilder.id,
+          attempt: failedBuilder.attempt,
+          inputHash: failedBuilder.inputHash,
+          executorId: 'native-host',
+          sessionId: 'parent-builder-failed',
+          claimToken: 'parent-builder-failed',
+          context: failureContext,
+        });
+        run = await runtime.recordOutcome({
+          runId: run.runId,
+          outcome: {
+            actionId: failedBuilder.id,
+            attempt: failedBuilder.attempt,
+            inputHash: failedBuilder.inputHash,
+            claimToken: 'parent-builder-failed',
+            outcomeId: 'parent-builder-failed',
+            status: 'failed',
+            output: { summary: 'Parent Builder stopped during review.' },
+          },
+          context: failureContext,
+        });
+        const resumeWait = run.waits.at(-1)!;
+        expect(resumeWait).toMatchObject({ stepId: 'supervisor.parent.resume', status: 'pending' });
+        expect(await fs.readFile(partialFile, 'utf8')).toBe('partial parent review\n');
+        run = await runtime.resolveWait({
+          runId: run.runId,
+          waitId: resumeWait.id,
+          proposalHash: resumeWait.proposalHash,
+          decisionId: 'continue-parent-builder',
+          choice: 'continue',
+        });
+        expect(run.actions.at(-1)).toMatchObject({
+          stepId: 'supervisor.parent.builder',
+          status: 'pending',
+          input: {
+            activation: {
+              integrationWorktree,
+              failedBuilderActionId: failedBuilder.id,
+            },
+          },
+        });
+        await fs.unlink(partialFile);
+      }
       run = await succeedLatestAction(
         runtime,
         run,
@@ -2984,6 +3241,87 @@ children:
     expect(run.state).toMatchObject({ phase: 'build', status: 'active' });
     expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder', type: 'handoff' });
     expect(run.waits.some((wait) => wait.stepId === 'verify.confirm')).toBe(false);
+  });
+
+  it('keeps a stalled Verify Run waiting so the user can revise requirements or implementation', async () => {
+    const { root, runtime, run } = await stalledVerifier();
+    expect(run.state).toMatchObject({
+      phase: 'verify',
+      status: 'await-user',
+      loop: { stop_reason: 'stalled', next_action: 'await-user' },
+    });
+    expect(run.status).toBe('waiting');
+    expect(run.waits.at(-1)).toMatchObject({ stepId: 'verify.stop', status: 'pending' });
+
+    const stopped = run.waits.at(-1)!;
+    const revised = await runtime.dispatchCommand({
+      runId: run.runId,
+      expectedRevision: run.revision,
+      commandId: 'revise-stalled-requirements',
+      name: 'revise-requirements',
+      input: {
+        reason: 'Correct the impossible acceptance criterion.',
+        expectedStateVersion: (run.state as NativePortableState).state_version,
+      },
+      context: { requestId: 'revise-stalled-requirements', projectRoot: root },
+    });
+    expect(revised.waits.find((wait) => wait.id === stopped.id)?.status).toBe('cancelled');
+    expect(revised.actions.at(-1)).toMatchObject({ stepId: 'shape.revise', status: 'pending' });
+  });
+
+  it('returns a stalled Verify Run to Build only after the matching user decision', async () => {
+    const { runtime, run } = await stalledVerifier();
+    const wait = run.waits.at(-1)!;
+    const resumed = await runtime.resolveWait({
+      runId: run.runId,
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      decisionId: 'user-chose-different-repair',
+      choice: 'repair',
+    });
+    expect(resumed.state).toMatchObject({
+      phase: 'build',
+      status: 'active',
+      loop: { next_action: 'submit-builder-candidate' },
+    });
+    expect((resumed.state as NativePortableState).loop.stop_reason).toBeUndefined();
+    expect(resumed.actions.at(-1)).toMatchObject({ stepId: 'build.builder', status: 'pending' });
+  });
+
+  it('offers a proposal-bound repair command for a persisted stalled SDK Run', async () => {
+    const { root, run } = await stalledVerifier('sdk');
+    const wait = run.waits.at(-1)!;
+    const proposed = await advanceNativeSdkChange(root, 'sdk-shape');
+    expect(proposed.exitCode).toBe(0);
+    const continuation = (
+      proposed.data as {
+        continuation?: { commandAlternatives: Array<{ name: string; commandArgs: string[] }> };
+      }
+    ).continuation;
+    const repair = continuation?.commandAlternatives.find(
+      (alternative) => alternative.name === 'revise-implementation',
+    );
+    expect(repair?.commandArgs).toContain(wait.proposalHash);
+    const stale = await advanceNativeSdkChange(root, 'sdk-shape', {
+      summary: 'Try a different repair.',
+      proposalHash: 'a'.repeat(64),
+      expectedStateVersion: (run.state as NativePortableState).state_version,
+      expectedAction: 'revise-implementation',
+    });
+    expect(stale.exitCode).toBe(73);
+    const command = repair!.commandArgs
+      .slice(4)
+      .map((arg) => (arg === '<summary>' ? 'Try a different repair.' : arg));
+    const resumed = await nativeDomain.runNativeCliDetailed([
+      'next',
+      'sdk-shape',
+      ...command,
+      '--json',
+      '--project-root',
+      root,
+    ]);
+    expect(resumed.dispatch.exitCode, JSON.stringify(resumed.dispatch.error)).toBe(0);
+    expect(resumed.dispatch.data).toMatchObject({ phase: 'build', run: { status: 'running' } });
   });
 
   it('accepts an independent Verifier for a new candidate after the prior candidate failed', async () => {

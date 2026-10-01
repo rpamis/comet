@@ -16,7 +16,7 @@ description: '制定计划、实施并验收 Classic 任务。在用户调用 /c
 3. `full.build.execute` 待执行时，按下文 Step 3 的已选方法实施、做任务级或分段审查并运行相关检查。任务实际完成且审查合格后勾选同一 tasks.md；SDK 分支不调用旧 `state task-complete`、`state checkpoint` 或 `comet handoff --write`。核对计划、任务和工作区后运行 `comet state complete-build <change-name>`，由 Run 进入检查 Action。实现或计划与已接受证据不一致时先解决具体漂移，不绕过 SDK 校验。
 4. `full.build.check` 待执行时，先运行 `comet guard <change-name> build` 只读预检，再以当前工作区中明确的完整构建或验收入口运行 `comet guard <change-name> build --apply -- <program> [args...]`。Guard 执行真实检查并向同一 Run 提交收据；仅在检查成功且证据仍有效时进入 Verify。若收据提交中断，先核对同一 Action 和检查记录，按 Guard 的恢复结果补交，不重新执行已完成的外部检查。失败后从 `state next --json` 指示的 Build Action 继续，修复原因并重新验证。
 
-每次推进后以 `comet state next <change-name> --json` 核对新的 Action、Wait 或证据状态；只有 `action` 且指向下一阶段时才加载下一 Skill。`decision`、`evidence`、`reconcile` 均先完成当前 Run 的恢复或用户决定。以下旧 Runtime 步骤仅用于 `runtimeFormat: legacy`。
+每次推进后以 `comet state next <change-name> --json` 核对新的 Action、Wait 或证据状态；只有 `action` 且指向下一阶段时才加载下一 Skill。`decision`、`evidence`、`reconcile` 均先完成当前 Run 的恢复或用户决定。以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`。
 
 ## 前置条件
 

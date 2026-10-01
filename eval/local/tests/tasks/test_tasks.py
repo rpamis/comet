@@ -532,7 +532,11 @@ def test_task_treatment(task_name, treatment_name):
 
     result = fixtures.run_claude(
         prompt,
-        timeout=max(CLAUDE_TIMEOUT, task.config.timeout_sec),
+        timeout=conftest._resolve_agent_timeout(
+            fixtures.request_config,
+            task_timeout=task.config.timeout_sec,
+            floor=CLAUDE_TIMEOUT,
+        ),
         model=selected_model,
         interaction=interaction,
         image_id=captured_execution.runtime_image_id,

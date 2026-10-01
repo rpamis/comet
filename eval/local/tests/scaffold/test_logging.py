@@ -35,6 +35,32 @@ def test_save_artifacts_excludes_nested_git_metadata(tmp_path: Path):
     assert not (snapshot / ".git").exists()
 
 
+@pytest.mark.parametrize("root", ["docs/openspec/changes", "openspec/changes"])
+def test_save_artifacts_preserves_classic_state_without_other_hidden_files(
+    tmp_path: Path, root: str
+):
+    from conftest import _save_artifacts
+
+    workspace = tmp_path / "workspace"
+    archived = workspace / root / "archive/2026-10-01-example"
+    archived.mkdir(parents=True)
+    source = "# comet-execution: managed-run\nphase: archive\narchived: true\n"
+    (archived / ".comet.yaml").write_text(source, encoding="utf-8")
+    (archived / ".env").write_text("do not export", encoding="utf-8")
+    private = workspace / ".claude"
+    private.mkdir()
+    (private / ".comet.yaml").write_text("private config", encoding="utf-8")
+
+    _save_artifacts(tmp_path, "COMET_CLASSIC_DOCS_LAYOUT", 1, workspace)
+
+    saved = tmp_path / "artifacts/comet_classic_docs_layout_rep1/claude"
+    assert (saved / archived.relative_to(workspace) / ".comet.yaml").read_text(
+        encoding="utf-8"
+    ) == source
+    assert not list(saved.rglob(".env"))
+    assert not (saved / ".claude").exists()
+
+
 def test_save_artifacts_redacts_configured_credentials(tmp_path: Path, monkeypatch):
     from conftest import _save_artifacts
 

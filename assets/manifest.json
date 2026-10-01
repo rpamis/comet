@@ -1,5 +1,5 @@
 {
-  "version": "0.4.4",
+  "version": "0.4.5",
   "skills": [
     "comet/SKILL.md",
     "comet/agents/openai.yaml",
@@ -63,6 +63,7 @@
     "comet-native/scripts/comet-native-next.mjs",
     "comet-native/scripts/comet-native-archive.mjs",
     "comet-native/scripts/comet-native-doctor.mjs",
+    "comet-native/scripts/comet-native-transfer.mjs",
     "comet-open/SKILL.md",
     "comet-open/agents/openai.yaml",
     "comet-design/SKILL.md",

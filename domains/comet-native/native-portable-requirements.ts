@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
   assertChangeNotSdkOwned,
   COMET_CHANGE_OWNER_SCHEMA,
-  registerLegacyChangeOwner,
+  registerCompatChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import {
@@ -263,6 +263,7 @@ export type NativePortableExpectedContinuationAction =
   | 'revise-implementation'
   | 'revise-requirements'
   | 'retry-verifier'
+  | 'continue-builder'
   | 'resolve-verifier-blocker'
   | 'disassociate-capability';
 
@@ -365,11 +366,11 @@ export async function createNativePortableChange(options: {
           }),
           { containedRoot: options.paths.runtimeDir },
         );
-        await registerLegacyChangeOwner(options.paths.projectRoot, {
+        await registerCompatChangeOwner(options.paths.projectRoot, {
           schema: COMET_CHANGE_OWNER_SCHEMA,
           workflow: 'native',
           change: options.name,
-          format: 'legacy',
+          format: 'compat',
         });
         return state;
       } catch (error) {

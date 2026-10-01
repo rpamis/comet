@@ -1,32 +1,33 @@
 import path from 'node:path';
 
 import { listGitWorktrees, samePath } from '../../platform/paths/git-worktree.js';
-import {
-  createFileRuntimeStore,
-  createRuntime,
-  type WorkflowRun,
-  type WorkflowRuntime,
-} from '../engine/runtime.js';
+import { createRuntime, type WorkflowRun, type WorkflowRuntime } from '../engine/runtime.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   listSdkChangeNames,
   readChangeRuntimeOwner,
   readSdkChangeOwner,
-  registerLegacyChangeOwner,
+  registerCompatChangeOwner,
   type ChangeRuntimeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
-import {
-  assertNativeSdkStartAvailable,
-  defineNativeWorkflowApplication,
-} from './native-sdk-application.js';
+import { defineNativeWorkflowApplication } from './native-sdk-application.js';
 import { readProjectConfig } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { parseNativePortableState } from './native-portable-state.js';
-import { nativePortableStateFile } from './native-portable-storage.js';
+import { recoverPristineNativeSdkChange } from './native-sdk-create.js';
+import { createNativeSdkStateStore } from './native-sdk-state-store.js';
+import {
+  findNativeSdkArchivedStateFile,
+  hasNativeManagedRunMarker,
+  hasNativePortableRunCheckpoint,
+} from './native-sdk-state-store.js';
+import { nativeLocalExecutionFile, nativePortableStateFile } from './native-portable-storage.js';
 import type { NativePortableState } from './native-portable-types.js';
 import type { NativeProjectPaths } from './native-types.js';
+
+export { inspectPristineNativeSdkChange } from './native-sdk-create.js';
 
 export async function resolveNativeChangeRuntimeOwner(
   paths: NativeProjectPaths,
@@ -42,14 +43,63 @@ export async function resolveNativeChangeRuntimeOwner(
       label: 'Native legacy change state',
       expected: 'file',
     });
-    if (!state.exists) return null;
-    return registerLegacyChangeOwner(paths.projectRoot, {
+    if (!state.exists) {
+      const archivedFile = await findNativeSdkArchivedStateFile(paths, name);
+      if (!archivedFile) return null;
+      const archivedRef = path.relative(paths.projectRoot, archivedFile);
+      const archived = await inspectProtectedProjectPath(paths.projectRoot, archivedRef, {
+        label: 'Native archived change state',
+        expected: 'file',
+      });
+      if (!archived.exists || !(await hasNativeManagedRunMarker(archived.target))) return null;
+      if (await createNativeSdkStateStore(paths.projectRoot).read(name)) {
+        const recovered = await readSdkChangeOwner(paths.projectRoot, 'native', name);
+        if (!recovered) throw new Error(`Recovered Native change ${name} has no Run ownership`);
+        return recovered;
+      }
+      throw new Error(
+        `Native archived change ${name} has a managed state file but lost its Run checkpoint`,
+      );
+    }
+    const local = await inspectProtectedProjectPath(
+      paths.projectRoot,
+      path.relative(paths.projectRoot, nativeLocalExecutionFile(paths, name)),
+      { label: 'Native local execution state', expected: 'file' },
+    );
+    if (!local.exists && (await createNativeSdkStateStore(paths.projectRoot).read(name))) {
+      const recovered = await readSdkChangeOwner(paths.projectRoot, 'native', name);
+      if (!recovered) throw new Error(`Recovered Native change ${name} has no Run ownership`);
+      return recovered;
+    }
+    if (!local.exists && (await recoverPristineNativeSdkChange(paths, name))) {
+      const recovered = await readSdkChangeOwner(paths.projectRoot, 'native', name);
+      if (!recovered) throw new Error(`Recovered Native change ${name} has no Run ownership`);
+      return recovered;
+    }
+    if (!local.exists) await assertNativePortableChangeNotOrphaned(paths, name);
+    return registerCompatChangeOwner(paths.projectRoot, {
       schema: COMET_CHANGE_OWNER_SCHEMA,
       workflow: 'native',
       change: name,
-      format: 'legacy',
+      format: 'compat',
     });
   });
+}
+
+/** Read-only guard for entry probes that must not register Runtime ownership. */
+export async function assertNativePortableChangeNotOrphaned(
+  paths: NativeProjectPaths,
+  name: string,
+): Promise<void> {
+  const file = nativePortableStateFile(paths, name);
+  if (
+    (await hasNativeManagedRunMarker(file)) &&
+    !(await hasNativePortableRunCheckpoint(file, name))
+  ) {
+    throw new Error(
+      `Native change ${name} has a portable state file but lost its local Run history; inspect it with comet native doctor ${name} before restoring`,
+    );
+  }
 }
 
 export async function listNativeSdkChangeNames(projectRoot: string): Promise<string[]> {
@@ -59,9 +109,7 @@ export async function listNativeSdkChangeNames(projectRoot: string): Promise<str
 export function createNativeSdkRuntime(projectRoot: string): WorkflowRuntime {
   const application = defineNativeWorkflowApplication();
   return createRuntime({
-    store: createFileRuntimeStore<WorkflowRun>({
-      rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'native'),
-    }),
+    store: createNativeSdkStateStore(projectRoot),
     workflows: [application.workflow],
     transitionHandlers: [application.transitionHandler],
     validators: application.validators,
@@ -91,11 +139,6 @@ export async function inspectNativeSdkRun(
   ) {
     throw new Error(`Native SDK Run ${name} does not match its change ownership`);
   }
-  await assertNativeSdkStartAvailable({
-    projectRoot,
-    name,
-    artifactRootRef: run.input.artifactRootRef,
-  });
   const state = parseNativePortableState(run.state);
   if (state.name !== name) throw new Error(`Native SDK Run ${name} has a different state name`);
   return { run, state, artifactRootRef: run.input.artifactRootRef };

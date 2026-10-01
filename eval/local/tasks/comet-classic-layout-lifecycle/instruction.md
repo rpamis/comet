@@ -2,6 +2,8 @@ You are working on a Python project called "wordcount-cli" - a simple command-li
 
 Your task: Use the comet workflow to add a new feature: **sentence counting** (`--sentences` flag).
 
+Before starting the workflow, initialize a local Git repository if one is missing and commit the supplied `wordcount.py` and `test_wordcount.py` as the initial baseline. Classic local Archive includes a commit and needs this repository. Do not configure a remote, push, or create a pull request; complete local Archive only.
+
 The feature requirements:
 - Add a `--sentences` flag to the CLI
 - Count sentences by splitting on `.`, `!`, `?`

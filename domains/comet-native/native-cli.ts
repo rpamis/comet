@@ -10,6 +10,7 @@ import { nativeSelectCommand } from './native-select-command.js';
 import { nativeShowCommand } from './native-show-command.js';
 import { nativeSpecCommand } from './native-spec-command.js';
 import { nativeStatusCommand } from './native-status-command.js';
+import { nativeTransferCommand } from './native-transfer-command.js';
 import { nativeHelp } from './native-cli-help.js';
 import {
   errorResult,
@@ -51,6 +52,7 @@ const COMMAND_HANDLERS: Record<string, NativeCommandHandler> = {
   archive: nativeArchiveCommand,
   check: nativeCheckCommand,
   doctor: nativeDoctorCommand,
+  transfer: nativeTransferCommand,
 };
 
 async function dispatch(

@@ -2,21 +2,14 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { listGitWorktrees, samePath } from '../../platform/paths/git-worktree.js';
-import {
-  createFileRuntimeStore,
-  createRuntime,
-  type WorkflowRun,
-  type WorkflowRuntime,
-} from '../engine/runtime.js';
+import { createRuntime, type WorkflowRun, type WorkflowRuntime } from '../engine/runtime.js';
 import {
   readChangeRuntimeOwner,
   readSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
-import {
-  assertClassicSdkStartAvailable,
-  resolveClassicChangeRuntimeOwner,
-} from './classic-runtime-ownership.js';
+import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
 import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
+import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
 import { resolveClassicChangeDirectory } from './classic-paths.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 
@@ -34,9 +27,7 @@ export async function inspectClassicSdkRun(
   const profile = owner.application.slice('classic-'.length) as ClassicProfile;
   const application = defineClassicWorkflowApplication(profile);
   const runtime = createRuntime({
-    store: createFileRuntimeStore<WorkflowRun>({
-      rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'classic'),
-    }),
+    store: createClassicSdkStateStore(projectRoot),
     workflows: [application.workflow],
     transitionHandlers: [application.transitionHandler],
     evidenceValidators: application.evidenceValidators,
@@ -46,6 +37,26 @@ export async function inspectClassicSdkRun(
   const run = await runtime.inspect(owner.runId);
   const directory = (await resolveClassicChangeDirectory(name, projectRoot)).directory;
   const state = run.state as ClassicState | undefined;
+  const expectedActive =
+    run.input &&
+    typeof run.input === 'object' &&
+    !Array.isArray(run.input) &&
+    typeof run.input.changeDir === 'string'
+      ? path.resolve(projectRoot, run.input.changeDir)
+      : null;
+  const archiveDir = expectedActive ? path.join(path.dirname(expectedActive), 'archive') : null;
+  const archiveMoveUnresolved = run.actions.some(
+    (action) =>
+      action.stepId === `${profile}.archive.execute` &&
+      (action.status === 'running' || action.status === 'unknown'),
+  );
+  const directoryMatches =
+    expectedActive !== null &&
+    (directory === expectedActive ||
+      ((state?.archived === true || archiveMoveUnresolved) &&
+        path.dirname(directory) === archiveDir &&
+        /^\d{4}-\d{2}-\d{2}-/u.test(path.basename(directory)) &&
+        path.basename(directory).slice(11) === name));
   const upgradedFromPreset =
     profile !== 'full' &&
     state?.workflow === 'full' &&
@@ -63,7 +74,7 @@ export async function inspectClassicSdkRun(
     typeof run.input !== 'object' ||
     Array.isArray(run.input) ||
     run.input.change !== name ||
-    run.input.changeDir !== path.relative(projectRoot, directory).replaceAll('\\', '/') ||
+    !directoryMatches ||
     !state ||
     typeof state !== 'object' ||
     Array.isArray(state) ||
@@ -71,10 +82,6 @@ export async function inspectClassicSdkRun(
   ) {
     throw new Error(`Classic SDK Run ${name} does not match its change ownership`);
   }
-  await assertClassicSdkStartAvailable({
-    projectRoot,
-    changeDirRef: run.input.changeDir,
-  });
   return { run, state, runtime, profile: upgradedFromPreset ? 'full' : profile };
 }
 

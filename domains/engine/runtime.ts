@@ -34,6 +34,11 @@ export { createMemoryRuntimeStore, createFileRuntimeStore } from './runtime-stor
 export type { RuntimeStore, RuntimeRecord, FileRuntimeStoreOptions } from './runtime-store.js';
 export { RuntimeProtocolError } from './runtime-errors.js';
 export { hashRuntimeValue } from './runtime-json.js';
+export {
+  createPortableRunCheckpoint,
+  PORTABLE_RUN_CHECKPOINT_KEY,
+  readPortableRunCheckpoint,
+} from './portable-run-checkpoint.js';
 export type { RuntimeValue } from './runtime-json.js';
 export type {
   RuntimeAction,

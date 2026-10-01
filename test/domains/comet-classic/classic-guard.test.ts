@@ -101,7 +101,7 @@ describe('Classic guard command', () => {
             '--isolation',
             'current',
             '--runtime',
-            'legacy',
+            'compat',
           )
         ).exitCode,
       ).toBe(0);
@@ -151,7 +151,7 @@ describe('Classic guard command', () => {
       withClassicCommandContext({ projectRoot: dir, invocationCwd: dir }, () =>
         runClassicCli(args),
       );
-    expect((await cli('state', 'init', 'auto', 'full', '--runtime', 'legacy')).exitCode).toBe(0);
+    expect((await cli('state', 'init', 'auto', 'full', '--runtime', 'compat')).exitCode).toBe(0);
     const changeDir = path.join(dir, 'openspec/changes/auto');
     const statePath = path.join(changeDir, '.comet.yaml');
     const state = {
@@ -215,7 +215,7 @@ describe('Classic guard command', () => {
           '--isolation',
           'current',
           '--runtime',
-          'legacy',
+          'compat',
         )
       ).exitCode,
     ).toBe(0);
@@ -266,7 +266,7 @@ describe('Classic guard command', () => {
           '--isolation',
           'current',
           '--runtime',
-          'legacy',
+          'compat',
         )
       ).exitCode,
     ).toBe(0);
@@ -308,7 +308,7 @@ describe('Classic guard command', () => {
           '--isolation',
           'current',
           '--runtime',
-          'legacy',
+          'compat',
         )
       ).exitCode,
     ).toBe(0);
@@ -374,7 +374,7 @@ describe('Classic guard command', () => {
           '--isolation',
           'current',
           '--runtime',
-          'legacy',
+          'compat',
         )
       ).exitCode,
     ).toBe(0);
@@ -438,7 +438,7 @@ describe('Classic guard command', () => {
           '--isolation',
           'current',
           '--runtime',
-          'legacy',
+          'compat',
         )
       ).exitCode,
     ).toBe(0);
@@ -468,7 +468,7 @@ describe('Classic guard command', () => {
 
   it('blocks the open guard when artifacts are missing and leaves state unchanged', async () => {
     const dir = await makeProject();
-    expect(run(dir, 'state', 'init', 'demo', 'full', '--runtime', 'legacy').status).toBe(0);
+    expect(run(dir, 'state', 'init', 'demo', 'full', '--runtime', 'compat').status).toBe(0);
 
     const result = run(dir, 'guard', 'demo', 'open');
     expect(result.status).toBe(1);
@@ -488,7 +488,7 @@ describe('Classic guard command', () => {
 
   it('passes the open guard and applies the transition when artifacts exist', async () => {
     const dir = await makeProject();
-    run(dir, 'state', 'init', 'demo', 'hotfix', '--runtime', 'legacy');
+    run(dir, 'state', 'init', 'demo', 'hotfix', '--runtime', 'compat');
     run(dir, 'state', 'set', 'demo', 'isolation', 'branch');
     const changeDir = path.join(dir, 'openspec', 'changes', 'demo');
     await fs.writeFile(path.join(changeDir, 'proposal.md'), 'proposal\n');
@@ -541,7 +541,7 @@ describe('Classic guard command', () => {
     'resolves delta specs from nested cwd with design authority %s',
     async (designPath) => {
       const dir = await makeProject();
-      expect(run(dir, 'state', 'init', 'demo', 'full', '--runtime', 'legacy').status).toBe(0);
+      expect(run(dir, 'state', 'init', 'demo', 'full', '--runtime', 'compat').status).toBe(0);
 
       const changeDir = path.join(dir, 'openspec', 'changes', 'demo');
       await fs.mkdir(path.join(changeDir, 'specs', 'feature'), { recursive: true });
@@ -581,7 +581,7 @@ describe('Classic guard command', () => {
 
   it('fails closed for an unknown phase without running checks', async () => {
     const dir = await makeProject();
-    run(dir, 'state', 'init', 'demo', 'full', '--runtime', 'legacy');
+    run(dir, 'state', 'init', 'demo', 'full', '--runtime', 'compat');
 
     const result = run(dir, 'guard', 'demo', 'lint');
     expect(result.status).not.toBe(0);
@@ -591,7 +591,7 @@ describe('Classic guard command', () => {
 
   it('returns resolver diagnostics in json mode', async () => {
     const dir = await makeProject();
-    expect(run(dir, 'state', 'init', 'demo', 'full', '--runtime', 'legacy').status).toBe(0);
+    expect(run(dir, 'state', 'init', 'demo', 'full', '--runtime', 'compat').status).toBe(0);
     await fs.writeFile(
       path.join(dir, 'openspec', 'changes', 'demo', 'proposal.md'),
       '# Proposal\n',

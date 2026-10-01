@@ -44,7 +44,7 @@ describe('Classic nested capability paths', () => {
         withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
           runClassicCli(args),
         );
-      expect((await cli('state', 'init', 'nested', 'full', '--runtime', 'legacy')).exitCode).toBe(
+      expect((await cli('state', 'init', 'nested', 'full', '--runtime', 'compat')).exitCode).toBe(
         0,
       );
       expect((await cli('state', 'set', 'nested', 'context_compression', mode)).exitCode).toBe(0);

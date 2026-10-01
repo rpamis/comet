@@ -613,6 +613,23 @@ def test_resolve_interaction_config_prefers_cli_mode():
     assert interaction.simulator_prompt == "Use CLI override."
 
 
+@pytest.mark.parametrize(
+    ("override", "expected"),
+    [(None, 1500), (3600, 3600)],
+)
+def test_agent_timeout_uses_explicit_run_override(override, expected):
+    config = SimpleNamespace(getoption=lambda name: override if name == "--agent-timeout" else None)
+
+    assert conftest._resolve_agent_timeout(config, task_timeout=900, floor=1500) == expected
+
+
+def test_agent_timeout_rejects_nonpositive_override():
+    config = SimpleNamespace(getoption=lambda name: 0 if name == "--agent-timeout" else None)
+
+    with pytest.raises(pytest.UsageError, match="positive"):
+        conftest._resolve_agent_timeout(config, task_timeout=900, floor=1500)
+
+
 def test_resolve_interaction_config_uses_profile_default_prompt():
     task = load_task("comet-full-workflow")
 

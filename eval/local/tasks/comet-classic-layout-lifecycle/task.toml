@@ -13,7 +13,7 @@ default_treatments = [
 required = []
 
 [environment]
-description = "Current-checkout Comet CLI with OpenSpec 1.5.0. Claude must complete and archive a full Classic workflow in the treatment-selected layout."
+description = "Current-checkout Comet CLI with its supported OpenSpec dependency. Claude must complete and archive a full Classic workflow in the treatment-selected layout."
 dockerfile = "environment/Dockerfile"
 timeout_sec = 3000
 

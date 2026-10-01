@@ -3,6 +3,11 @@ import { runStateFromDocument, type StateDocument } from '../../domains/engine/s
 
 export const CLASSIC_PROFILES = ['full', 'hotfix', 'tweak'] as const;
 export const CLASSIC_MIGRATION_VERSION = 1;
+export const CLASSIC_MANAGED_RUN_MARKER = '# comet-execution: managed-run\n';
+
+export function hasClassicManagedRunMarker(source: string): boolean {
+  return /^# comet-execution: managed-run\r?\n/u.test(source);
+}
 
 const PHASES = ['open', 'design', 'build', 'verify', 'archive'] as const;
 const ARTIFACT_LANGUAGES = ['en', 'zh-CN'] as const;
@@ -100,7 +105,7 @@ export const CLASSIC_WIRE_KEYS = [
 ] as const;
 
 /** Fields that appear in .comet.yaml to link to the Run state. */
-export const RUN_WIRE_KEYS = ['run_id'] as const;
+export const RUN_WIRE_KEYS = ['run_id', 'run_checkpoint'] as const;
 
 const KNOWN_KEYS = new Set<string>([...CLASSIC_WIRE_KEYS, ...RUN_WIRE_KEYS]);
 // NOTE: review_mode is intentionally omitted — pre-0.4.0 state files lack this field,

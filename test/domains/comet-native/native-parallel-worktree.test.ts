@@ -231,7 +231,7 @@ describe('Native parallel linked-worktree Runtime', () => {
       CHANGE_NAMES.map((name) =>
         runNativeCommand(
           'new',
-          [name, '--isolation', 'worktree', '--target-branch', targetBranch, '--runtime', 'legacy'],
+          [name, '--isolation', 'worktree', '--target-branch', targetBranch, '--runtime', 'compat'],
           repository,
         ),
       ),

@@ -5,6 +5,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import dotenv
@@ -23,7 +24,8 @@ AGENT_FIXTURE_TIMEOUT = 30 if os.name == "nt" else 10
 def _isolated_fake_agent_env(fake_bin: Path, agent: str) -> dict[str, str]:
     """Use only fixtures and Bash system tools, with no host Agent/auth fallback."""
     env = {
-        key: value for key, value in os.environ.items()
+        key: value
+        for key, value in os.environ.items()
         if key.upper() in {"SYSTEMROOT", "WINDIR", "TEMP", "TMP"}
     }
     env["PATH"] = f"{utils._to_bash_path(fake_bin)}:/usr/bin:/bin"
@@ -33,8 +35,10 @@ def _isolated_fake_agent_env(fake_bin: Path, agent: str) -> dict[str, str]:
     python_shim = fake_bin / "python3"
     python_shim.write_text(
         "#!/usr/bin/env bash\nexec "
-        + shlex.quote(utils._to_bash_path(Path(sys.executable))) + ' "$@"\n',
-        encoding="utf-8", newline="\n",
+        + shlex.quote(utils._to_bash_path(Path(sys.executable)))
+        + ' "$@"\n',
+        encoding="utf-8",
+        newline="\n",
     )
     python_shim.chmod(0o755)
     # A wrong Agent name must fail closed even if /usr/bin later gains a CLI.
@@ -45,7 +49,11 @@ def _isolated_fake_agent_env(fake_bin: Path, agent: str) -> dict[str, str]:
             target.chmod(0o755)
     resolved = subprocess.run(
         [utils.BASH_EXEC, "-c", 'command -v "$1"', "--", agent],
-        env=env, capture_output=True, text=True, check=True, timeout=5,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=5,
     )
     assert resolved.stdout.strip() == utils._to_bash_path(fake_bin / agent)
     return env
@@ -183,6 +191,22 @@ def test_run_shell_decodes_subprocess_output_as_utf8(monkeypatch):
 
     assert captured["kwargs"]["encoding"] == "utf-8"
     assert captured["kwargs"]["errors"] == "replace"
+
+
+def test_run_shell_file_capture_keeps_stdout_and_stderr(monkeypatch, tmp_path: Path):
+    shell_dir = tmp_path / "shell"
+    shell_dir.mkdir()
+    (shell_dir / "docker.sh").write_text(
+        "#!/usr/bin/env bash\nprintf 'output\\n'\nprintf 'warning\\n' >&2\nexit 7\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(utils, "SHELL_DIR", shell_dir)
+
+    result = utils.run_shell("docker.sh", "check", check=False, capture_to_file=True)
+
+    assert result.returncode == 7
+    assert result.stdout == "output\n"
+    assert result.stderr == "warning\n"
 
 
 def test_to_bash_path_uses_msys_drive_prefix_for_git_bash(monkeypatch):
@@ -408,6 +432,39 @@ def test_agent_loop_timeout_force_removes_its_named_container(monkeypatch, tmp_p
     assert calls[1][1] == ("cleanup-agent-loop", str(tmp_path))
 
 
+@pytest.mark.parametrize(
+    ("runner", "run_mode", "cleanup_mode"),
+    [
+        ("run_claude_loop_in_docker", "run-claude-loop", "cleanup-claude-loop"),
+        ("run_agent_loop_in_docker", "run-agent-loop", "cleanup-agent-loop"),
+    ],
+)
+def test_loop_timeout_cleans_child_before_draining_inherited_pipe(
+    monkeypatch, tmp_path: Path, runner: str, run_mode: str, cleanup_mode: str
+):
+    """A timed-out Bash wrapper must not wait for its output-holding child."""
+    shell_dir = tmp_path / "shell"
+    shell_dir.mkdir()
+    (shell_dir / "docker.sh").write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$1" in\n'
+        f'  {run_mode}) sleep 5 & echo $! > "$2/child.pid"; wait ;;\n'
+        f'  {cleanup_mode}) touch "$2/cleaned"; '
+        'kill "$(cat "$2/child.pid")" 2>/dev/null || true ;;\n'
+        "esac\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(utils, "SHELL_DIR", shell_dir)
+
+    started = time.monotonic()
+    result = getattr(utils, runner)(tmp_path, ["prompt"], timeout=0.2)
+    elapsed = time.monotonic() - started
+
+    assert result.returncode == 124
+    assert (tmp_path / "cleaned").exists()
+    assert elapsed < 3
+
+
 def test_docker_subject_run_uses_controller_verified_immutable_image_identity():
     docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
 
@@ -447,10 +504,14 @@ def test_codex_commands_use_explicit_openai_base_url_config():
     docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
     loop_sh = (utils.SHELL_DIR / "run-claude-loop.sh").read_text(encoding="utf-8")
 
-    assert 'base_url = ' in (utils.SHELL_DIR / "agent-runtime-config.sh").read_text(encoding="utf-8")
-    assert 'model_provider = "comet-eval"' in (utils.SHELL_DIR / "agent-runtime-config.sh").read_text(encoding="utf-8")
-    assert 'openai_base_url=$OPENAI_BASE_URL' not in docker_sh
-    assert 'openai_base_url=$OPENAI_BASE_URL' not in loop_sh
+    assert "base_url = " in (utils.SHELL_DIR / "agent-runtime-config.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'model_provider = "comet-eval"' in (
+        utils.SHELL_DIR / "agent-runtime-config.sh"
+    ).read_text(encoding="utf-8")
+    assert "openai_base_url=$OPENAI_BASE_URL" not in docker_sh
+    assert "openai_base_url=$OPENAI_BASE_URL" not in loop_sh
 
 
 def test_agent_runtime_credentials_use_ephemeral_cli_config_roots():
@@ -475,9 +536,7 @@ def test_agent_runtime_credentials_use_ephemeral_cli_config_roots():
 def test_agent_runtime_config_is_agent_only_and_docker_does_not_inline_secrets():
     docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
     config_sh = (utils.SHELL_DIR / "agent-runtime-config.sh").read_text(encoding="utf-8")
-    generic_run = docker_sh.split("docker_run() {", 1)[1].split(
-        "# Run Claude CLI in Docker", 1
-    )[0]
+    generic_run = docker_sh.split("docker_run() {", 1)[1].split("# Run Claude CLI in Docker", 1)[0]
 
     assert "COMET_EVAL_CODEBUDDY_CONFIG_DIR" in config_sh
     assert 'ENV_ARGS+=("-e" "$key")' in docker_sh
@@ -805,6 +864,158 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","re
     assert len({invocation["invocation_id"] for invocation in invocations}) == 2
 
 
+@pytest.mark.parametrize("pause_on_resume", [False, True])
+def test_claude_loop_timeout_keeps_completed_and_running_subject_events(
+    tmp_path: Path, pause_on_resume: bool
+):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    pid_file = tmp_path / "agent.pid"
+    fake = fake_bin / "claude"
+    fake.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" \'{"type":"system","session_id":"subject-1"}\'\n'
+        'printf "%s\\n" \'{"type":"assistant","message":{"content":[{"type":"tool_use","id":"skill-1","name":"Skill","input":{"skill":"comet"}}]}}\'\n'
+        'if [[ "$PAUSE_ON_RESUME" == "1" && "$*" != *"--resume"* ]]; then\n'
+        '  printf "%s\\n" \'{"type":"result","result":"Question: Which approach should be used?"}\'\n'
+        "  exit 0\n"
+        "fi\n"
+        'echo "$BASHPID" > "$AGENT_PID_FILE"\n'
+        'echo "subject is still running" >&2\n'
+        "exec sleep 60\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake.chmod(0o755)
+    env = _isolated_fake_agent_env(fake_bin, "claude")
+    env["AGENT_PID_FILE"] = utils._to_bash_path(pid_file)
+    env["PAUSE_ON_RESUME"] = "1" if pause_on_resume else "0"
+    try:
+        with pytest.raises(subprocess.TimeoutExpired) as caught:
+            utils.run_shell(
+                "run-claude-loop.sh",
+                "Implement the task.",
+                "--max-turns",
+                "2",
+                "--decision-reply",
+                "Use the recommended approach.",
+                timeout=18 if os.name == "nt" else 3,
+                check=False,
+                env=env,
+                capture_to_file=True,
+            )
+        assert pid_file.exists(), caught.value.stderr
+        assert "subject is still running" in caught.value.stderr
+        from scaffold.python.logging import extract_events, parse_output
+
+        events = extract_events(parse_output(caught.value.stdout))
+        assert "comet" in events["skills_invoked"]
+        assert len(events["invocations"]) == (2 if pause_on_resume else 1)
+        if pause_on_resume:
+            assert events["invocations"][0]["exit_code"] == 0
+        assert events["invocations"][-1]["exit_code"] is None
+    finally:
+        if pid_file.exists():
+            subprocess.run(
+                [
+                    utils.BASH_EXEC,
+                    "-c",
+                    'kill "$1" 2>/dev/null || true',
+                    "_",
+                    pid_file.read_text().strip(),
+                ],
+                env=env,
+                capture_output=True,
+                check=False,
+                timeout=5,
+            )
+
+
+@pytest.mark.parametrize("times_out", [False, True])
+def test_docker_loop_streams_subject_evidence_without_simulator_output(
+    tmp_path: Path, times_out: bool
+):
+    environment = (
+        Path(__file__).resolve().parents[2] / "tasks/comet-classic-layout-lifecycle/environment"
+    )
+    image = _get_image_name(environment).removeprefix("image=")
+    try:
+        available = subprocess.run(
+            ["docker", "image", "inspect", image], capture_output=True, check=False, timeout=10
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pytest.skip("Docker is unavailable")
+    if available.returncode:
+        pytest.skip("cached Classic Eval image is unavailable")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake = fake_bin / "claude"
+    fake.write_text(
+        """#!/usr/bin/env bash
+if [[ "$COMET_EVAL_AGENT_ROLE" == "simulator" ]]; then
+  printf '%s\n' '{"type":"system","session_id":"private-simulator"}'
+  printf '%s\n' '{"type":"result","result":"Proceed with the recommended approach."}'
+  exit 0
+fi
+printf '%s\n' '{"type":"system","session_id":"subject-1"}'
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"skill-1","name":"Skill","input":{"skill":"comet"}}]}}'
+if [[ "$*" != *"--resume"* ]]; then
+  printf '%s\n' '{"type":"result","result":"Question: Which approach should be used?"}'
+elif [[ "$FIXTURE_TIMEOUT" == "1" ]]; then
+  echo "subject is still running" >&2
+  exec sleep 60
+else
+  printf '%s\n' '{"type":"result","result":"Workflow completed through all phases and archived."}'
+fi
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake.chmod(0o755)
+    result = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "-v",
+            f"{tmp_path}:/fixture:ro",
+            "-v",
+            f"{utils.SHELL_DIR.parent}:/harness:ro",
+            "-e",
+            "PATH=/fixture/bin:/usr/local/bin:/usr/bin:/bin",
+            "-e",
+            f"FIXTURE_TIMEOUT={int(times_out)}",
+            image,
+            "timeout",
+            "3",
+            "bash",
+            "/harness/shell/run-claude-loop.sh",
+            "Implement the task.",
+            "--max-turns",
+            "2",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == (124 if times_out else 0), result.stderr
+    from scaffold.python.logging import extract_events, parse_output
+
+    events = extract_events(parse_output(result.stdout))
+    assert "comet" in events["skills_invoked"]
+    assert len(events["invocations"]) == 2
+    assert events["invocations"][0]["exit_code"] == 0
+    assert events["invocations"][-1]["exit_code"] == (None if times_out else 0)
+    assert "private-simulator" not in result.stdout
+    if times_out:
+        assert "subject is still running" in result.stderr
+
+
 def test_claude_loop_surfaces_simulator_failure(tmp_path: Path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -1071,8 +1282,7 @@ def test_decision_point_detector_accepts_batch_labels_and_reply_confirmation():
 def test_decision_point_detector_accepts_archive_choice_request():
     result = utils.run_shell(
         "decision-point.sh",
-        "Archive is pending confirmation.\nA. Archive locally\nE. Leave pending\n"
-        "Reply one of A–E.",
+        "Archive is pending confirmation.\nA. Archive locally\nE. Leave pending\nReply one of A–E.",
         check=False,
     )
 
@@ -1166,6 +1376,21 @@ def test_completion_point_rejects_conditional_archive_with_pending_state():
     assert confirmation.returncode == 1
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Do not archive yet | Stop; keep the change verified and unarchived at `phase: archive` | Yes |",
+        "Change remains unarchived at docs/openspec/changes/example. Reply A to initialize Git and archive locally.",
+        "Native change `example` is unarchived at phase: archive. Please confirm local Archive.",
+        "The workflow is incomplete. Please confirm the remaining Archive step.",
+    ],
+)
+def test_completion_point_rejects_completion_words_inside_pending_words(text: str):
+    result = utils.run_shell("completion-point.sh", text, check=False)
+
+    assert result.returncode == 1
+
+
 def test_image_cache_changes_when_copied_package_manifest_changes(tmp_path: Path):
     (tmp_path / "Dockerfile").write_text(
         "FROM node:22\nCOPY current-comet-package.json /opt/comet-cli/package.json\n",
@@ -1188,13 +1413,15 @@ def test_agent_workspace_owner_prepare_allows_hermetic_git_without_recursive_cho
     tmp_path: Path,
 ):
     environment = (
-        Path(__file__).resolve().parents[2]
-        / "tasks/comet-classic-layout-lifecycle/environment"
+        Path(__file__).resolve().parents[2] / "tasks/comet-classic-layout-lifecycle/environment"
     )
     image = _get_image_name(environment).removeprefix("image=")
-    if subprocess.run(
-        ["docker", "image", "inspect", image], capture_output=True, check=False
-    ).returncode != 0:
+    if (
+        subprocess.run(
+            ["docker", "image", "inspect", image], capture_output=True, check=False
+        ).returncode
+        != 0
+    ):
         pytest.skip("cached Classic Eval image is unavailable")
 
     workspace = tmp_path / "workspace"

@@ -1,6 +1,6 @@
 You are working on a Python project named `wordcount-cli`.
 
-Begin by invoking the `/comet-native` Skill. Use its bundled Native runtime and beta17 portable `comet.native.v4` state; no other workflow Skill is needed to add sentence counting:
+Begin by invoking the `/comet-native` Skill. Use the current-checkout Comet CLI and SDK-backed Native Runtime; no other workflow Skill is needed to add sentence counting. The public `comet.native.v4` state remains, but the change must be owned by an SDK Run. Confirm this with `comet runtime dispatch --application native` inspection before completion:
 
 - initialize Comet Native with `artifact_root: docs`, automatic archive confirmation, and
   `max_verify_failures: 5`;
@@ -12,9 +12,9 @@ Begin by invoking the `/comet-native` Skill. Use its bundled Native runtime and 
 - cover empty input, input without punctuation, and multiple terminators with tests;
 - write a detailed brief and a complete target specification for the `sentence-counting` capability;
 - exercise the completion loop before the final candidate: submit one honest failed Verify report
-  that omits at least one acceptance entry, confirm from Build `status --details` that Runtime
-  projects the omitted item as `missing` and returns `work-phase`, then implement or evidence the
-  remaining gap and continue to the final Verify;
+  with at least one unresolved acceptance item, then confirm from Build `status --details` that
+  Runtime projects that item as `failed`, sets `loop.stage` to `repairing`, and offers
+  `build.builder` as the next Action. Repair the gap and continue to a passing Verify;
 - submit the Builder handoff, let Runtime run required checks, and use a new read-only Verifier to cover every acceptance item before archiving;
 - implement, verify, and archive the change.
 

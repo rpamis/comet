@@ -739,7 +739,7 @@ children:
     await writeProjectConfig(repository, defaultProjectConfig('docs', 'en'));
     git(repository, ['add', '.']);
     git(repository, ['commit', '-m', 'configure comet']);
-    expect((await nativeNewCommand(['parent', '--runtime', 'legacy'], repository)).exitCode).toBe(
+    expect((await nativeNewCommand(['parent', '--runtime', 'compat'], repository)).exitCode).toBe(
       0,
     );
     const paths = await nativeProjectPaths(repository, 'docs');
@@ -811,7 +811,7 @@ children:
     await writeProjectConfig(repository, defaultProjectConfig('docs', 'en'));
     git(repository, ['add', '.']);
     git(repository, ['commit', '-m', 'seed parent']);
-    expect((await nativeNewCommand(['parent', '--runtime', 'legacy'], repository)).exitCode).toBe(
+    expect((await nativeNewCommand(['parent', '--runtime', 'compat'], repository)).exitCode).toBe(
       0,
     );
     const paths = await nativeProjectPaths(repository, 'docs');
@@ -861,7 +861,7 @@ children:
     git(repository, ['add', '.']);
     git(repository, ['commit', '--allow-empty', '-m', 'seed parent integration branch']);
 
-    const parentCreated = await nativeNewCommand(['parent', '--runtime', 'legacy'], repository);
+    const parentCreated = await nativeNewCommand(['parent', '--runtime', 'compat'], repository);
     expect(parentCreated.exitCode).toBe(0);
     const parentPaths = await nativeProjectPaths(repository, 'docs');
     await ensureNativeDirectories(parentPaths);
@@ -914,7 +914,7 @@ children:
     await writeProjectConfig(repository, config);
 
     const parentCreated = await nativeNewCommand(
-      ['parent', '--isolation', 'current', '--runtime', 'legacy'],
+      ['parent', '--isolation', 'current', '--runtime', 'compat'],
       repository,
     );
     expect(parentCreated.exitCode).toBe(0);
@@ -1007,7 +1007,7 @@ children:
     config.workflows = ['native', 'classic'];
     config.default_workflow = 'native';
     await writeProjectConfig(repository, config);
-    await nativeNewCommand(['parent', '--isolation', 'current', '--runtime', 'legacy'], repository);
+    await nativeNewCommand(['parent', '--isolation', 'current', '--runtime', 'compat'], repository);
     const paths = await nativeProjectPaths(repository, 'docs');
     await ensureNativeDirectories(paths);
     const changeDir = nativePortableChangeDir(paths, 'parent');
@@ -1059,7 +1059,7 @@ children:
     config.workflows = ['native', 'classic'];
     config.default_workflow = 'native';
     await writeProjectConfig(repository, config);
-    await nativeNewCommand(['parent', '--isolation', 'current', '--runtime', 'legacy'], repository);
+    await nativeNewCommand(['parent', '--isolation', 'current', '--runtime', 'compat'], repository);
     const paths = await nativeProjectPaths(repository, 'docs');
     await ensureNativeDirectories(paths);
     const changeDir = nativePortableChangeDir(paths, 'parent');
@@ -1142,7 +1142,7 @@ children:
     git(repository, ['add', '.']);
     git(repository, ['commit', '-m', 'seed parent integration branch']);
 
-    const parentCreated = await nativeNewCommand(['parent', '--runtime', 'legacy'], repository);
+    const parentCreated = await nativeNewCommand(['parent', '--runtime', 'compat'], repository);
     expect(parentCreated.exitCode).toBe(0);
     const parentPaths = await nativeProjectPaths(repository, 'docs');
     await ensureNativeDirectories(parentPaths);
@@ -1232,7 +1232,7 @@ children:
         '--target-branch',
         'integration',
         '--runtime',
-        'legacy',
+        'compat',
       ],
       repository,
     );
@@ -1263,7 +1263,7 @@ children:
         '--target-branch',
         'integration',
         '--runtime',
-        'legacy',
+        'compat',
       ],
       repository,
     );
@@ -1333,7 +1333,7 @@ children:
         '--target-branch',
         'integration',
         '--runtime',
-        'legacy',
+        'compat',
       ],
       repository,
     );

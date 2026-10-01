@@ -313,6 +313,7 @@ export const nativeSdkArchiveFinalizeValidator: RuntimeValidator = {
         paths,
         state,
         runId: run.runId,
+        archiveRef: applied.archiveRef as string,
       });
       if (
         receipt.transactionId !== applied.transactionId ||
@@ -375,6 +376,7 @@ export async function recoverNativeSdkArchiveOutcome(options: {
       paths,
       state,
       runId: run.runId,
+      archiveRef: applied.archiveRef as string,
     });
     if (
       receipt.transactionId !== applied.transactionId ||

@@ -71,7 +71,7 @@ describe('Native v4 registered-worktree status discovery', () => {
         'new',
         name,
         '--runtime',
-        'legacy',
+        'compat',
         '--project-root',
         root,
         '--json',

@@ -1,6 +1,15 @@
 import { promises as fs } from 'node:fs';
-import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import {
+  readChangeRuntimeOwner,
+  readSdkChangeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
 import { inspectNativeSdkRun, resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
+import { inspectPristineNativeSdkChange, restoreNativeSdkChange } from './native-sdk-create.js';
+import {
+  hasNativeManagedRunMarker,
+  hasNativePortableRunCheckpoint,
+  readNativeSdkRunRecord,
+} from './native-sdk-state-store.js';
 
 /**
  * A dispatched Verifier that never confirmed startup is presumed lost after
@@ -18,7 +27,11 @@ import { doctorNativeProject } from './native-doctor.js';
 import { inspectNativeChildren, readNativeChildrenContract } from './native-children.js';
 import { archiveNativePortableChange } from './native-portable-archive.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
-import { compareAndSwapNativePortableState } from './native-portable-state.js';
+import {
+  compareAndSwapNativePortableState,
+  parseNativePortableState,
+  readNativePortableState,
+} from './native-portable-state.js';
 import { recordNativeVerifierExecutionError } from './native-loop-runtime.js';
 import {
   hasIncompleteNativePortableMigration,
@@ -393,6 +406,7 @@ export async function nativeDoctorCommand(
   projectRoot: string,
 ): Promise<DispatchResult> {
   const repair = takeFlag(args, '--repair');
+  const confirmed = takeFlag(args, '--confirmed');
   const recoveryStrategy = takeOption(args, '--strategy');
   if (
     recoveryStrategy !== undefined &&
@@ -403,7 +417,72 @@ export async function nativeDoctorCommand(
   }
   const name = args[0]?.startsWith('--') ? undefined : args.shift();
   assertNoArguments(args);
+  if (confirmed && (!repair || !name)) {
+    throw new NativeUsageError('--confirmed requires a named change and --repair');
+  }
   const paths = await doctorPaths(projectRoot);
+  const owner = name ? await readChangeRuntimeOwner(projectRoot, 'native', name) : null;
+  if (
+    name &&
+    (!owner ||
+      (owner.format === 'sdk' &&
+        owner.application === 'native' &&
+        owner.runId === name &&
+        (await readNativeSdkRunRecord(projectRoot, name)) === null))
+  ) {
+    const file = nativePortableStateFile(paths, name);
+    const marked = await hasNativeManagedRunMarker(file).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return false;
+      throw error;
+    });
+    if (marked) {
+      const recoverable = await inspectPristineNativeSdkChange(paths, name);
+      const checkpoint = await hasNativePortableRunCheckpoint(file, name);
+      if (repair && confirmed) {
+        const run = await restoreNativeSdkChange(paths, name);
+        const state = parseNativePortableState(run.state);
+        return success('doctor', {
+          workflow: 'native-sdk',
+          runtimeFormat: 'sdk',
+          change: name,
+          healthy: true,
+          repaired: true,
+          phase: state.phase,
+          run: {
+            id: run.runId,
+            revision: run.revision,
+            status: run.status,
+            actions: run.actions.map(({ id, stepId, status }) => ({ id, stepId, status })),
+          },
+          message: checkpoint
+            ? `Recovered at ${state.phase} from the portable Run checkpoint.`
+            : 'Recovered at Shape. Revalidate documents and obtain fresh confirmation before advancing.',
+        });
+      }
+      return unhealthyDoctor({
+        workflow: 'native-sdk',
+        runtimeFormat: 'sdk',
+        change: name,
+        healthy: false,
+        repaired: false,
+        findings: [
+          {
+            code: recoverable || checkpoint ? 'sdk-run-recoverable' : 'sdk-run-history-missing',
+            message: checkpoint
+              ? `This change can restore its Run at the saved ${parseNativePortableState(await readNativePortableState(file)).phase} phase; continue with comet native next ${name}.`
+              : recoverable
+                ? `This untouched change can safely recreate its Run. Continue with comet native next ${name}; doctor has not changed it.`
+                : `The portable state survived but this checkout has no Run history. Run comet native doctor ${name} --repair --confirmed to restart at Shape and reconfirm the work; unknown external actions will not be replayed.`,
+          },
+        ],
+      });
+    }
+  }
+  if (confirmed) {
+    throw new NativeUsageError(
+      '--confirmed is only for restoring a managed change with missing Run history',
+    );
+  }
   const portableTransactions = await inspectPortableTransactions(paths, name);
   if (name && portableTransactions.findings.length === 0) {
     const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);

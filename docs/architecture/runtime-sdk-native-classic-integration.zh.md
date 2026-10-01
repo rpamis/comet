@@ -1,10 +1,14 @@
 # Native 与 Classic 接入 Runtime SDK：设计与验收边界
 
-状态：Native 与 Classic 的 SDK 接入已通过相关路径、发布包和仓库全量测试的本地验证；真实平台与模型层验收尚未完成。当前已实现的接口以 [Runtime SDK 文档](./runtime-sdk.zh.md) 和源码为准；本文件后文保留设计目标与验收条件，不把单元测试等同于真实平台或模型 Eval。
+状态：Native 与 Classic 新 change 的 SDK 接入、原状态文件投影和活跃 change 跨设备恢复已实现。当前接口以 [Runtime SDK 文档](./runtime-sdk.zh.md) 和源码为准；本文件后文保留设计目标与验收条件，真实平台与模型 Eval 仍需单独验收。
 
-新建 Native change 和 Classic full/hotfix/tweak change 默认创建 SDK Run；旧 change 继续由原 Runtime 管理，不自动迁移。两套应用使用同一 SDK 内核的 Run、Action、Wait、命令、证据与恢复机制，各自保留领域状态机。Native 的公开 new/status/select/next/spec remove/Archive/Doctor 已按持久化归属路由；Classic 的公开 state、Guard、check、workspace、交付入口按 SDK 归属推进，Skill 中英文均已写入 SDK 路径。SDK Run 是新 change 的唯一状态权威，不额外创建旧状态文件。
+新建 Native change 和 Classic full/hotfix/tweak change 默认创建 SDK Run；旧 change 继续由原 Runtime 管理，不自动迁移。两套应用使用同一 SDK 内核的 Run、Action、Wait、命令、证据与恢复机制，各自保留领域状态机。Native 的公开 new/status/select/next/spec remove/Archive/Doctor 已按持久化归属路由；Classic 的公开 state、Guard、check、workspace、交付入口按 SDK 归属推进。新 change 仍在原位置保存 Native `comet-state.yaml` 或 Classic `.comet.yaml`，并随 change 归档；状态文件新增 Runtime 管理的 `run_checkpoint` 字段，保存跨设备恢复所需的 Run 事实，原有阶段字段和读取路径不变。复制状态文件、文档和代码到新设备后，普通 Native 与 Classic change 可从已保存的阶段、Action 和确认继续，本机执行记录会重新建立；结果未明的外部动作需要先核对，不会自动重放。Supervisor Child 的独立 worktree 与未提交代码不包含在父 change 状态文件中，不能仅凭该文件自动接管；可按下述步骤显式转移。旧状态文件若没有检查点，则无法精确恢复；显式确认后可保留正式文档并分别从 Shape 或 Open 重新开始。
 
-本地自动化已覆盖 Native 普通 change、Supervisor 双 Child，以及 Classic full/hotfix/tweak 的关键路径、失败/未知结果与跨 worktree 归属。2026-09-28 最近一轮全量测试为 433 个文件全部通过，5784 个用例通过、57 个跳过。生成物一致性检查和发布包 E2E 已通过；发布包 E2E 在独立消费项目中用安装产物的公开 SDK 入口跨进程完成 Skill Action、审批 Wait、Tool Action 和完成态恢复，并验证审批前没有发布文件。它还验证 Native 与 Classic full/hotfix/tweak 省略 runtime 参数时默认创建 SDK Run、显式 legacy 仍可用、各 SDK Run 可冷启动读取，以及 Hook Router 可直接调用。这些仍是本地证据，不能证明真实平台行为。真实平台 Hook、Agent 宿主交接、两套模型 Eval、完整异常矩阵仍需分别验收；此前用户已停止继续模型 Eval，不能把旧 Eval 结果算作当前候选通过。显式迁移旧 change 尚未实现；是否提供迁移命令应按真实需求单独决定，不是默认切换的前置条件。
+跨设备转移进行中的 Supervisor Child Builder 时，先停止原设备上的 Supervisor 与 Child Agent，再在原项目执行 `comet native transfer export <change> --output <新目录> --confirmed-stopped`。将整个私有目录复制到目标设备；它包含父 change 文件、临时分支的 Git bundle、各 worktree 的已跟踪修改补丁与原始文件字节，以及非忽略的未跟踪文件，可能包含源代码或敏感内容。目标设备需有同一项目的 Git 检出、相同的项目配置，且目标分支仍指向导出时的提交。执行 `comet native transfer import --input <目录>` 后，Runtime 在目标检出中恢复 Child 与集成 worktree、父状态文件和 SDK Run，并记录原始与导入后的 checkpoint 哈希。原设备已领取但未提交结果的 Builder 在目标设备保持 `unknown`，需检查转移的代码并核对结果后再继续；导入不会把它视为完成，也不会自动重放。当前仅支持 Child Builder 阶段、尚未进入 Child 检查或集成的 Supervisor；忽略文件和外部依赖不在转移包内。目标项目若已有同名 change、目标分支漂移或包内容不匹配，导入会拒绝。只复制父状态文件仍会因缺少 Child worktree 而停止恢复。
+
+本地自动化覆盖 Native 普通 change、Supervisor 双 Child，以及 Classic full/hotfix/tweak 的关键路径、失败/未知结果与跨 worktree 归属。当前候选的全量测试、生成 Runtime 检查和发布包 E2E 已通过；这些结果不替代真实平台 Hook、宿主交接和模型 Eval。新 change 默认创建 SDK Run，并在原路径保留状态文件；显式创建原 Runtime change 时使用 `--runtime compat`，未发布的 `--runtime legacy` 不保留。显式迁移旧 change 尚未实现；是否提供迁移命令应按真实需求单独决定，不是默认切换的前置条件。
+
+当前跨设备恢复覆盖活跃 change，以及 Classic 已移动、结果未提交的 Archive 和待交付的归档 change。Classic 可在确认原执行者停止后使用 `comet archive <change> --recover` 核对原 Action、归档目录及工件要求；不会再次运行 OpenSpec Archive。Native 可从归档状态文件恢复已完成文件移动但结果未提交的 Archive Action；归档凭据随状态文件保存，恢复时还会核对验证报告与 canonical Specs。已启动的 Supervisor 协作仍需单独核对，未解决的外部执行保持结果待核对，不能用重建本机记录绕过。
 
 ## 目标与现状
 
@@ -71,7 +75,7 @@ await runtime.recordEvidence({
 
 ## 唯一权威状态与兼容迁移
 
-每个 change 在任一时刻只选择一种权威运行格式，不同时维护可独立推进的旧 Runtime 状态和 SDK Run。新建 change 使用 SDK Run；现有 `comet-state.yaml`、`.comet.yaml` 和 CLI 输出可以保留为兼容读取视图，但其流程决定必须从已提交的 SDK Run 派生。视图滞后时须重建或拒绝读取，不能反向成为第二份权威状态。文档、源码和验证报告仍是外部工件，Run 记录其内容摘要与引用。
+每个 change 在任一时刻只选择一种权威运行格式，不同时维护可独立推进的旧 Runtime 状态和 SDK Run。新建 change 使用 SDK Run；`comet-state.yaml`、`.comet.yaml` 和 CLI 输出保留原有路径及字段，流程决定从已提交的 SDK Run 派生。Classic 状态文件中的用户配置字段可同步回 Run，阶段等执行字段不能通过编辑 YAML 绕过状态机。状态文件滞后时须重建或拒绝读取，不能反向成为第二份可推进的流程状态。文档、源码和验证报告仍是外部工件，Run 记录其内容摘要与引用。
 
 已有未归档 change 默认继续由创建它的旧 Runtime 处理，直到归档。入口依据持久化的格式标识路由，不能靠文件是否存在猜测。本轮不提供活动 change 迁移命令；将来若有真实需求，必须通过显式命令在安全检查点核对旧状态、待执行 Action、用户确认与证据，再以可恢复的迁移记录切换权威格式。存在未知外部副作用、待确认提案或无法证明一致性的状态时应拒绝迁移。不能静默升级，也不能通过双写维持兼容。
 
@@ -81,7 +85,7 @@ Native Supervisor 的 SDK 路径沿用同一个父 change 的 Run。`children.ya
 
 目前 SDK 已有带输入的动态步骤激活，以及依据已集成、进行中子任务和并行上限选择下一批子任务的纯调度函数。Native Supervisor 的 Shape 已能绑定 `children.yaml` 和推进方式；SDK Action 能准备集成与 Child worktree、派发 Builder、校验候选 Git 提交、运行 Child 检查、接收独立 Verifier 结果、合并提交并运行集成检查。两个 Child 可并行 Build 和 Verify，已通过独立验收的 Child 排队串行合并，每次合并的集成检查成功后才合并下一个。Child 检查失败或独立 Verifier 明确判定失败时，Run 会生成绑定原失败 Action 的同一 Child Builder 修复任务。集成检查明确失败时，Run 会生成绑定原检查和集成提交的宿主修复 Action；新提交必须是原提交的后继，且须通过新的可重复检查，修复期间其他 Child 不提前合并。合并冲突会保留为结果待核对的原集成 Action；宿主在原 Git 合并现场完成 merge commit 后，可在冷启动的新进程中提交原 Action 的结果。合并前集成分支的提交必须等于上次成功集成检查的提交，漂移时停止执行；若核对证明确未合并，才可用 reconciliation 重试。依赖 Child 在前置集成检查成功后从新的集成提交准备工作区。全部 Child 完成后，父级 Builder 候选及其真实检查、独立 Verifier、用户确认、目标分支快进交付和 Archive 已在临时 Git 项目验证正常路径。父级独立 Verifier 失败或用户拒绝验收时，Run 会回到父级 Builder；修复后的新集成提交须重新检查、独立验收和确认，交付只接受该提交。公开 `native next` 返回全部 `pendingActions`，保留第一项的 `pendingAction` 兼容字段。交付前目标分支若已漂移，Action 会保留为结果未知且不会快进；其他失败、结果未知及 Git 操作内部的并发漂移仍需验收，不能把正常路径测试当作完整 Supervisor 流程验收。
 
-已提交 `failed` 结果的普通 Builder、Supervisor Child Builder 或父级 Builder，目前会使 Run 进入失败终态。SDK 的手工 `retry` 要求对非幂等 Action 提供“未执行”的核对证据；如果 Builder 已部分写入工作区，这个结论不能如实作出。此类已执行但失败的 Builder 尚无经验证的继续入口，不能将其计入已完成的异常恢复验收。
+普通 Builder、Supervisor Child Builder 或父级 Builder 提交 `failed` 结果后，Run 会保留原失败 Action 和工作区内容，并创建 `build.resume`、`supervisor.child.resume` 或 `supervisor.parent.resume` Wait。宿主应先检查部分修改，再由用户显式决定是否继续；公开 `native next --json` 给出待决 Wait、提案摘要和 `--continue-builder` 命令参数。该决定创建新的 Builder Action，继承原工作区绑定并记录 `failedBuilderActionId`，不会把原 Action 改写成“未执行”或自动重发。SDK 的手工 `retry` 仍只适用于确实核对为未执行的原 Action。三类 Builder 的失败继续路径已在本地临时 Git 项目和公开 CLI 测试中覆盖；真实平台上的用户决策和宿主交接仍需验收。
 
 本轮新增 Supervisor 专属的 `supervisor.cleanup` Action：Archive 完成后，先核对已交付的目标提交、Child 与集成 worktree 的身份、干净状态和分支祖先关系，再清理已登记的临时 worktree 与分支。脏 worktree 会在删除前阻止清理；清理已完成或只清理了部分 worktree 时，可从持久化 Run 在新进程完成原 Action。本地集成测试覆盖正常清理、脏 worktree 拒绝、目标分支漂移拒绝及部分清理后的冷恢复；部分清理后目标分支发生漂移时，恢复拒绝继续且保留剩余 worktree。若 Git 分支引用锁在 worktree 已移除后阻止删分支，原 Action 保留为结果未知，锁解除后可冷恢复完成清理。单次清理操作内部的并发漂移等异常仍需补充验证。
 

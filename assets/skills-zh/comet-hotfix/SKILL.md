@@ -21,12 +21,12 @@ description: '使用 Classic 预设流程修复局部缺陷。在用户明确调
 
 恢复已有 change 时先运行 `comet state next <change-name> --json`，按 `data.runtimeFormat` 路由。`sdk` 只按本节推进；下文的适用条件、复现与根因消除方法、升级判定和文件数授权规则仍适用，下文的旧状态写入、旧证据命令及 `.comet.yaml` 判断不执行。若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> <phase> --recover --json` 核对原 Action；结果未明时不重做实现、检查或归档。
 
-1. 新建时先按下文让用户选择工作区隔离方式，运行 `comet classic workspace prepare <name> --isolation <selected-isolation> --json`，进入返回的 `projectRoot`，再运行 `comet state init <name> hotfix --isolation <selected-isolation> --runtime sdk`、`comet state select <name>`。按下文 Step 1 创建精简版 OpenSpec 产物；运行 `comet state check <change-name> open --json` 与 `comet guard <change-name> open` 预检，再运行 `comet guard <change-name> open --apply`。只有 Run 进入 Build，Open 才完成；不创建旧状态文件。
+1. 新建时先按下文让用户选择工作区隔离方式，运行 `comet classic workspace prepare <name> --isolation <selected-isolation> --json`，进入返回的 `projectRoot`，再运行 `comet state init <name> hotfix --isolation <selected-isolation>`、`comet state select <name>`。按下文 Step 1 创建精简版 OpenSpec 产物；运行 `comet state check <change-name> open --json` 与 `comet guard <change-name> open` 预检，再运行 `comet guard <change-name> open --apply`。只有 Run 进入 Build，Open 才完成；状态文件仍是 change 下的 `.comet.yaml`。
 2. `hotfix.build.execute` 待执行时，按下文 Step 2–3 先复现缺陷、保存失败证据、完成任务并核对根因。出现实质升级信号或文件数超限且无有效授权时，先运行 `comet state propose-escalation <change-name> --reason "<reason>"`；向用户展示当前原因和继续 hotfix / 升级 full 的影响，并保存返回的 `data.wait.proposalHash`。用户明确选择后运行 `comet state decide-escalation <change-name> --proposal-hash <proposalHash> --choice <continue|upgrade>`。`continue` 仍须满足下文的范围、风险与 ruling 要求；`upgrade` 在同一个 Run 和工作区进入 full Design，立即按入口加载 comet-design。恢复待决定 Wait 时复用原提案，不重新提案或替用户选。
 3. 根因消除、任务完成且仍适合 hotfix 时，运行 `comet guard <change-name> build` 只读预检，再以完整构建或验收命令运行 `comet guard <change-name> build --apply -- <program> [args...]`。Guard 执行真实检查并提交收据；只有成功且证据有效时进入 Verify。失败后根据新的 `state next --json` 修复，不重播结果未明的 Action。
 4. Run 进入 Verify 时，**立即执行：** 使用 Skill 工具加载 comet-verify 技能。禁止跳过此步骤。该 Skill 的 SDK 路径完成报告、独立检查和真实命令收据。Run 进入 Archive 时，**立即执行：** 使用 Skill 工具加载 comet-archive 技能。禁止跳过此步骤。归档和交付仍须获得用户当前授权；`state next --json` 显示 Run 完成后才能宣告完成。
 
-每次阶段变化后读取 `comet state next <change-name> --json`。`decision`、`evidence`、`reconcile` 先处理当前 Run 的等待或恢复；`action` 才执行对应步骤。以下旧 Runtime 步骤仅用于 `runtimeFormat: legacy`。
+每次阶段变化后读取 `comet state next <change-name> --json`。`decision`、`evidence`、`reconcile` 先处理当前 Run 的等待或恢复；`action` 才执行对应步骤。以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`。
 
 ---
 

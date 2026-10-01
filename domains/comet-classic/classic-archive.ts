@@ -4,7 +4,8 @@ export { annotatedMarkdown } from './classic-archive-annotation.js';
 import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
 import { classicSdkArchiveGuard } from './classic-sdk-guard.js';
-import { findClassicSdkWorkspace } from './classic-sdk-status.js';
+import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
+import { recoverClassicSdkArchive } from './classic-sdk-archive.js';
 import {
   classicArchivedRequirementsProblems,
   recordClassicArchiveRequirements,
@@ -291,24 +292,51 @@ async function verifyMainSpecsClean(projectRoot: string, specsRoot: string): Pro
 }
 
 export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(async (args) => {
-  if (args.length < 1 || args.length > 2 || (args[1] !== undefined && args[1] !== '--dry-run')) {
-    return { exitCode: 64, stderr: 'Usage: comet archive <change-name> [--dry-run]' };
+  if (
+    args.length < 1 ||
+    args.length > 2 ||
+    (args[1] !== undefined && !['--dry-run', '--recover'].includes(args[1]))
+  ) {
+    return { exitCode: 64, stderr: 'Usage: comet archive <change-name> [--dry-run|--recover]' };
   }
   const output = new ArchiveOutput();
   const change = args[0];
   const dryRun = args[1] === '--dry-run';
+  const recover = args[1] === '--recover';
   try {
     validateChangeName(change);
     const projectRoot = classicCommandProjectRoot();
     const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, change);
     const sdkWorkspace =
-      localOwner?.format === 'legacy' ? null : await findClassicSdkWorkspace(projectRoot, change);
+      localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, change);
     if (sdkWorkspace) {
+      if (recover) {
+        const inspected = await inspectClassicSdkRun(sdkWorkspace.projectRoot, change);
+        const continued = await recoverClassicSdkArchive(inspected.runtime, {
+          projectRoot: sdkWorkspace.projectRoot,
+          runId: inspected.run.runId,
+        });
+        return {
+          exitCode: 0,
+          data: {
+            change,
+            phase: 'archive',
+            projectRoot: sdkWorkspace.projectRoot,
+            recoveredAction: inspected.run.actions.find((action) => action.status === 'unknown')
+              ?.id,
+            pendingAction: continued.actions.find((action) => action.status === 'pending')?.id,
+          },
+          stderr: `Classic SDK Archive recovered for ${change}; continue its delivery Action\n`,
+        };
+      }
       return classicSdkArchiveGuard({
         projectRoot: sdkWorkspace.projectRoot,
         change,
         apply: !dryRun,
       });
+    }
+    if (recover) {
+      return { exitCode: 64, stderr: '--recover is only available for SDK-owned Classic changes' };
     }
     const layout = await assertClassicLayoutWritable(projectRoot);
     const active = await inspectClassicActiveChangeDirectory(change, layout.projectRoot);

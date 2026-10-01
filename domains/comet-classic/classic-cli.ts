@@ -63,7 +63,7 @@ const DEFAULT_HANDLERS: ClassicCommandHandlers = {
   guard: async (args, options) =>
     (await import('./classic-guard.js')).classicGuardCommand(args, options),
   handoff: async (args, options) =>
-    (await import('./classic-handoff.js')).classicHandoffCommand(args, options),
+    (await import('./classic-handoff-command.js')).classicHandoffCommand(args, options),
   archive: async (args, options) =>
     (await import('./classic-archive.js')).classicArchiveCommand(args, options),
   'hook-guard': async (args, options) =>

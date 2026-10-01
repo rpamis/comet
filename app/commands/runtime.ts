@@ -282,16 +282,16 @@ async function assertBuiltInChangeInput(
   application: SdkApplication,
   change: string,
   input: JsonObject,
+  allowExistingStateFile = false,
 ): Promise<void> {
   if (application === 'native') {
     if (input.name !== change) invalid('Native Run ID 必须与 change name 一致');
     const { assertNativeSdkStartAvailable } =
       await import('../../domains/comet-native/native-sdk-application.js');
-    await assertNativeSdkStartAvailable({
-      projectRoot,
-      name: change,
-      artifactRootRef: text(input.artifactRootRef, 'input.artifactRootRef'),
-    });
+    const artifactRootRef = text(input.artifactRootRef, 'input.artifactRootRef');
+    if (!allowExistingStateFile) {
+      await assertNativeSdkStartAvailable({ projectRoot, name: change, artifactRootRef });
+    }
   } else {
     const changeDir = text(input.changeDir, 'input.changeDir').replaceAll('\\', '/');
     if (
@@ -304,7 +304,9 @@ async function assertBuiltInChangeInput(
     }
     const { assertClassicSdkStartAvailable } =
       await import('../../domains/comet-classic/classic-runtime-ownership.js');
-    await assertClassicSdkStartAvailable({ projectRoot, changeDirRef: changeDir });
+    if (!allowExistingStateFile) {
+      await assertClassicSdkStartAvailable({ projectRoot, changeDirRef: changeDir });
+    }
   }
 }
 
@@ -334,7 +336,13 @@ async function bindBuiltInApplication(
   if (run.workflow.id !== workflow.id || run.workflow.version !== workflow.version) {
     invalid(`Change ${ownerWorkflow}/${change} 的 SDK Workflow 与 ${application} 不匹配`);
   }
-  await assertBuiltInChangeInput(projectRoot, application, change, object(run.input, 'Run input'));
+  await assertBuiltInChangeInput(
+    projectRoot,
+    application,
+    change,
+    object(run.input, 'Run input'),
+    true,
+  );
 }
 
 async function registerBuiltInStartOwner(
@@ -475,7 +483,16 @@ export async function runtimeDispatchCommand(
           )) as DefineWorkflowOptions,
       ),
     );
-    const persistentStore = createFileRuntimeStore<WorkflowRun>({ rootDir });
+    const persistentStore: RuntimeStore<WorkflowRun> =
+      application === 'native'
+        ? (
+            await import('../../domains/comet-native/native-sdk-state-store.js')
+          ).createNativeSdkStateStore(projectRoot)
+        : application !== undefined
+          ? (
+              await import('../../domains/comet-classic/classic-sdk-state-store.js')
+            ).createClassicSdkStateStore(projectRoot)
+          : createFileRuntimeStore<WorkflowRun>({ rootDir });
     const store: RuntimeStore<WorkflowRun> =
       application !== undefined && request.operation === 'start'
         ? {
