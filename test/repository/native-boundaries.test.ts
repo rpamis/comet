@@ -41,6 +41,7 @@ describe('Comet Native isolation boundaries', () => {
         '.comet/runtime',
         '.comet/runtime/',
         '.comet/runtime/native',
+        '.comet/runtime/native/runner-input-artifacts.json',
       ]),
     );
   });

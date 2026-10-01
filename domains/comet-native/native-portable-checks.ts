@@ -9,6 +9,7 @@ import {
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
 import { canonicalHash } from './native-canonical-hash.js';
+import { nativeRunnerInputArtifactPaths } from './native-runner-input-artifacts.js';
 import {
   executeNativeCheck,
   nativeCheckPlanKey,
@@ -422,6 +423,7 @@ async function nativeIgnoredCheckInputSnapshot(
   projectRoot: string,
   plans: readonly NativeCheckPlan[],
   managedArtifactRoot?: string,
+  runnerInputs: ReadonlySet<string> = new Set(),
 ): Promise<NativeIgnoredInputSnapshot> {
   const cwdRefs = [...new Set(plans.map(({ cwdRef }) => cwdRef))];
   if (cwdRefs.length === 0) return { complete: true, files: [] };
@@ -454,6 +456,7 @@ async function nativeIgnoredCheckInputSnapshot(
   const files: NativeIgnoredInputFile[] = [];
   let totalBytes = 0;
   for (const relative of ignoredPaths) {
+    if (runnerInputs.has(relative)) continue;
     if (isNativeRuntimeInputPath(relative, projectRoot, managedArtifactRoot)) continue;
     const target = path.resolve(projectRoot, ...relative.split('/'));
     if (!isInsidePath(projectRoot, target) || sensitiveNativeIgnoredInputPath(relative)) {
@@ -478,6 +481,7 @@ async function nativePhysicalCheckInputSnapshot(
   projectRoot: string,
   plans: readonly NativeCheckPlan[],
   managedArtifactRoot?: string,
+  runnerInputs: ReadonlySet<string> = new Set(),
 ): Promise<NativeIgnoredInputSnapshot> {
   const cwdRefs = [...new Set(plans.map(({ cwdRef }) => cwdRef))];
   const files = new Map<string, NativeIgnoredInputFile>();
@@ -501,6 +505,7 @@ async function nativePhysicalCheckInputSnapshot(
     entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
     for (const entry of entries) {
       const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+      if (runnerInputs.has(relative)) continue;
       if (isNativeRuntimeInputPath(relative, projectRoot, managedArtifactRoot)) continue;
       if (entry.isDirectory() && NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES.has(entry.name)) {
         continue;
@@ -593,6 +598,11 @@ export async function nativeCheckInputFingerprint(options: {
   plans: readonly NativeCheckPlan[];
   managedArtifactRoot?: string;
 }): Promise<string> {
+  const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
+  const exclusions = [
+    ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+    ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
+  ];
   const gitSnapshot = {
     complete: true,
     capture: 'git' as 'git' | 'physical-tree',
@@ -623,7 +633,7 @@ export async function nativeCheckInputFingerprint(options: {
       '--untracked-files=all',
       '--ignore-submodules=none',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ]);
     // The working-tree binding no longer digests a full `diff --binary` stream
     // (megabytes of patch text on large trees). HEAD is bound separately, so
@@ -635,7 +645,7 @@ export async function nativeCheckInputFingerprint(options: {
       '-z',
       'HEAD',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ])
       .split('\0')
       .filter(Boolean)
@@ -659,7 +669,7 @@ export async function nativeCheckInputFingerprint(options: {
       '--stage',
       '-z',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ]);
     gitSnapshot.stagedDiff = digestNativeCheckInput(stagedIndex);
     gitSnapshot.submodules = hasGitlinksInIndex(stagedIndex)
@@ -671,7 +681,7 @@ export async function nativeCheckInputFingerprint(options: {
       '--exclude-standard',
       '-z',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ])
       .split('\0')
       .filter(Boolean)
@@ -692,6 +702,7 @@ export async function nativeCheckInputFingerprint(options: {
       options.projectRoot,
       options.plans,
       options.managedArtifactRoot,
+      runnerInputs,
     );
     if (!gitSnapshot.ignored.complete) {
       gitSnapshot.complete = false;
@@ -707,6 +718,7 @@ export async function nativeCheckInputFingerprint(options: {
         options.projectRoot,
         options.plans,
         options.managedArtifactRoot,
+        runnerInputs,
       );
       gitSnapshot.complete = gitSnapshot.physical.complete;
     }
@@ -782,6 +794,11 @@ export async function nativeCheckInputGate(options: {
   managedArtifactRoot?: string;
 }): Promise<string | null> {
   try {
+    const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
+    const exclusions = [
+      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
+    ];
     const head = runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
     const branch = runGitCommand(options.projectRoot, ['branch', '--show-current']);
     const status = runGitCommand(options.projectRoot, [
@@ -791,19 +808,20 @@ export async function nativeCheckInputGate(options: {
       '--untracked-files=all',
       '--ignore-submodules=none',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ]);
     const staged = runGitCommand(options.projectRoot, [
       'ls-files',
       '--stage',
       '-z',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ]);
     if (head === null || status === null) return null;
     const workingTree: Array<{ path: string; digest: string | null }> = [];
     for (const changedPath of gitStatusPaths(options.projectRoot).filter(
       (changedPath) =>
+        !runnerInputs.has(changedPath) &&
         !isNativeRuntimeInputPath(changedPath, options.projectRoot, options.managedArtifactRoot),
     )) {
       const target = path.resolve(options.projectRoot, ...changedPath.split('/'));
@@ -823,6 +841,7 @@ export async function nativeCheckInputGate(options: {
       options.projectRoot,
       options.plans ?? [],
       options.managedArtifactRoot,
+      runnerInputs,
     );
     if (!ignored.complete) return null;
     return canonicalHash('comet.native.check-input-gate.v1', {
@@ -1724,7 +1743,7 @@ export async function reserveVerifierRequestedChecks(options: {
   for (const check of local.checks) {
     const key = nativeLocalCheckPlanKey(check, options.projectRoot);
     existingByKeyAll.set(key, check);
-    if (check.status !== 'interrupted') existingByKey.set(key, check);
+    if (check.status === 'passed') existingByKey.set(key, check);
     existingKeyById.set(check.id, key);
   }
 
@@ -1744,12 +1763,12 @@ export async function reserveVerifierRequestedChecks(options: {
     }
     requestedKeyById.set(plan.id, key);
     const existing = existingByKeyAll.get(key);
-    if (existing?.status === 'interrupted' && !existing.repeatable) {
+    if (existing && existing.status !== 'passed' && !existing.repeatable) {
       throw new Error(
-        `Native check ${existing.id} was interrupted and is not repeatable; user resolution is required`,
+        `Native check ${existing.id} did not pass and is not repeatable; user resolution is required`,
       );
     }
-    if (existing?.status === 'interrupted' && existing.executionCount >= 3) {
+    if (existing && existing.status !== 'passed' && existing.executionCount >= 3) {
       throw new Error(`Native check retry limit (3) reached: ${existing.id}`);
     }
     if (!requestedByKey.has(key)) requestedByKey.set(key, plan);
@@ -1778,8 +1797,13 @@ export async function reserveVerifierRequestedChecks(options: {
       ...local.checks.map((check) => {
         const key = nativeLocalCheckPlanKey(check, options.projectRoot);
         const plan = requestedByKey.get(key);
-        return plan && check.status === 'interrupted'
-          ? resetInterruptedCheck(check, plan, local.execution!.operationId, options.projectRoot)
+        return plan && check.status !== 'passed'
+          ? resetNativeCheckForExecution(
+              check,
+              plan,
+              local.execution!.operationId,
+              options.projectRoot,
+            )
           : check;
       }),
       ...novel

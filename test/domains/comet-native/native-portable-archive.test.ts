@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { markNativeSupervisorChildVerified } from '../../helpers/native-supervisor-results.js';
 import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -93,6 +94,7 @@ describe('Native portable Archive', () => {
         candidateId: `${name}-candidate`,
         summary: 'Implemented.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
         review: passedReview(`${name}-reviewer`),
       },
     });

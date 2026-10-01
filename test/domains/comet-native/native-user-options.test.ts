@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -115,6 +116,7 @@ async function acceptCandidate(root: string, name: string, ids: string[], plans:
     kind: 'builder-handoff',
     summary: 'Protocol regression fixture',
     addressed_acceptance_ids: ids,
+    acceptance_review: fixtureAcceptanceReview(ids),
     checks: [],
     known_limits: ['Fixture semantic verdict'],
     review: {

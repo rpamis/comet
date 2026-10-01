@@ -16,6 +16,7 @@ import { nativePortableStateSummary } from './native-portable-summary.js';
 import {
   applyNativeRunnerInput,
   readNativeRunnerInput,
+  registerNativeRunnerInputFile,
   validateNativeRunnerInputBoundary,
 } from './native-runner-input.js';
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
@@ -320,9 +321,11 @@ export async function nativeNextCommand(
     try {
       input = await readNativeRunnerInput(runnerInputFile!, projectRoot);
     } catch (error) {
+      const rejected = errorResult('next', error);
       return {
-        ...errorResult('next', error),
+        ...rejected,
         data: {
+          ...(rejected.data && typeof rejected.data === 'object' ? rejected.data : {}),
           state: nativePortableStateSummary(initialState, configured.paths),
           continuation: nativePortableContinuation(initialState),
         },
@@ -337,9 +340,11 @@ export async function nativeNextCommand(
         projectRoot,
       });
     } catch (error) {
+      const rejected = errorResult('next', error);
       return {
-        ...errorResult('next', error),
+        ...rejected,
         data: {
+          ...(rejected.data && typeof rejected.data === 'object' ? rejected.data : {}),
           state: nativePortableStateSummary(initialState, configured.paths),
           continuation: nativePortableContinuation(initialState),
         },
@@ -398,6 +403,13 @@ export async function nativeNextCommand(
     let input;
     try {
       input = await readNativeRunnerInput(runnerInputFile, projectRoot);
+      // Valid transport files are bookkeeping even when their action is rejected.
+      // Classifying them grants no authority to change state or supply identities.
+      await registerNativeRunnerInputFile({
+        paths: configured.paths,
+        file: runnerInputFile,
+        input,
+      });
       await validateNativeRunnerInputBoundary({
         paths: configured.paths,
         name,
@@ -409,9 +421,11 @@ export async function nativeNextCommand(
         await assertNativePortableDocuments({ paths: configured.paths, state: initialState });
       }
     } catch (error) {
+      const rejected = errorResult('next', error);
       return {
-        ...errorResult('next', error),
+        ...rejected,
         data: {
+          ...(rejected.data && typeof rejected.data === 'object' ? rejected.data : {}),
           state: nativePortableStateSummary(initialState, configured.paths),
           continuation: nativePortableContinuation(initialState),
         },
@@ -469,12 +483,27 @@ export async function nativeNextCommand(
         );
       }
     }
-    const result = await applyNativeRunnerInput({
-      paths: configured.paths,
-      name,
-      input,
-      maxVerifyFailures: configured.config.native.max_verify_failures,
-    });
+    let result: Awaited<ReturnType<typeof applyNativeRunnerInput>>;
+    try {
+      result = await applyNativeRunnerInput({
+        paths: configured.paths,
+        name,
+        input,
+        inputFile: runnerInputFile,
+        maxVerifyFailures: configured.config.native.max_verify_failures,
+      });
+    } catch (error) {
+      const latest = await readNativePortableChange(configured.paths, name);
+      const rejected = errorResult('next', error);
+      return {
+        ...rejected,
+        data: {
+          ...(rejected.data && typeof rejected.data === 'object' ? rejected.data : {}),
+          state: nativePortableStateSummary(latest, configured.paths),
+          ...(await portableParentView(configured.paths, latest)),
+        },
+      };
+    }
     const continuationCheckPlans =
       'continuationCheckPlans' in result ? result.continuationCheckPlans : undefined;
     const continuationRetryCheckIds =

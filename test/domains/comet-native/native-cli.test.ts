@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
@@ -1077,6 +1078,7 @@ describe('Comet Native CLI dispatcher', () => {
         candidateId: 'candidate-revise-implementation',
         summary: 'Implemented the confirmed acceptance.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('reviewer-revise-implementation'),
       },
     });

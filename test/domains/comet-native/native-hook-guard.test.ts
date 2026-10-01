@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'fs';
@@ -303,6 +304,7 @@ describe('Native phase Hook guard', () => {
         candidateId: 'candidate',
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
         review: passedReview('runtime-owned-state-reviewer'),
       },
     });
@@ -354,6 +356,7 @@ describe('Native phase Hook guard', () => {
         candidateId: 'candidate',
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
         review: passedReview('concurrent-guard-reviewer'),
       },
     });
@@ -376,6 +379,36 @@ describe('Native phase Hook guard', () => {
     });
   });
 
+  it('preserves a Verify candidate for resource messages and still invalidates mixed file writes', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const { paths, state } = await portableBuild('portable-resource-targets');
+    const runner = createNativeRunnerChannel();
+    await submitNativePortableBuilderCandidate({
+      paths,
+      name: state.name,
+      input: {
+        identity: runner.captureExecutionIdentity({
+          identityProvider: 'test-host',
+          executionRef: 'builder',
+        }),
+        summary: 'Built.',
+        addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
+      },
+    });
+    const before = await readNativePortableChange(paths, state.name);
+    await expect(
+      inspectNativeHookGuard(
+        projectRoot,
+        writeRequest('agent:/Main', 'proc:/worker/kill', 'xd:/report_issue'),
+      ),
+    ).resolves.toMatchObject({ allowed: true });
+    expect(await readNativePortableChange(paths, state.name)).toEqual(before);
+    await expect(
+      inspectNativeHookGuard(projectRoot, writeRequest('agent:/Main', 'src/new-file.ts')),
+    ).resolves.toMatchObject({ allowed: true, phase: 'build' });
+  });
+
   it('keeps a portable Verify candidate valid for neutral document writes', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const { paths, state } = await portableBuild('portable-doc-write');
@@ -391,6 +424,7 @@ describe('Native phase Hook guard', () => {
         candidateId: 'candidate',
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
         review: passedReview('doc-write-reviewer'),
       },
     });
@@ -423,6 +457,7 @@ describe('Native phase Hook guard', () => {
         candidateId: 'candidate',
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
         review: passedReview('mixed-write-reviewer'),
       },
     });
@@ -454,6 +489,7 @@ describe('Native phase Hook guard', () => {
         candidateId: 'candidate',
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
         review: passedReview('docs-artifact-reviewer'),
       },
     });
@@ -515,6 +551,7 @@ describe('Native phase Hook guard', () => {
         candidateId: 'candidate',
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
         review: passedReview('doc-revert-reviewer'),
       },
     });

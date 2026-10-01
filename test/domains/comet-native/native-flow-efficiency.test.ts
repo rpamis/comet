@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { describe, expect, it } from 'vitest';
 
 import { buildNativePortableAcceptance } from '../../../domains/comet-native/native-portable-acceptance.js';
@@ -49,6 +50,7 @@ function builderCandidate(
       candidateId: `candidate-${state.loop.iteration}`,
       summary: 'Implemented the candidate.',
       addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+      acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
       review: review as never,
     },
   });
@@ -231,6 +233,7 @@ describe('Native flow efficiency plan', () => {
       kind: 'builder-handoff',
       summary: 'Candidate summary.',
       addressed_acceptance_ids: ['A1'],
+      acceptance_review: fixtureAcceptanceReview(['A1']),
       checks: [],
       known_limits: [],
       review: null,

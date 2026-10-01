@@ -337,14 +337,8 @@ export async function submitNativePortableVerifierResult(options: {
       try {
         parsedResponse = parseNativeVerifierResponse(trustedEnvelope.payload);
       } catch (error) {
-        const summary = `Native Verifier response was invalid: ${(error as Error).message}`;
-        const failed = await persistVerifierExecutionError({
-          paths: options.paths,
-          state,
-          summary,
-        });
         throw new Error(
-          `${summary}; execution error ${failed.loop.execution_failure_count}/${NATIVE_MAX_VERIFIER_EXECUTION_FAILURES} was recorded`,
+          `Native Verifier response was rejected: ${(error as Error).message}; correct the response and continue the same active Verifier`,
           { cause: error },
         );
       }
@@ -405,14 +399,8 @@ export async function submitNativePortableVerifierResult(options: {
         }
         finalResult = result;
       } catch (error) {
-        const summary = `Native Verifier response was invalid: ${(error as Error).message}`;
-        const failed = await persistVerifierExecutionError({
-          paths: options.paths,
-          state,
-          summary,
-        });
         throw new Error(
-          `${summary}; execution error ${failed.loop.execution_failure_count}/${NATIVE_MAX_VERIFIER_EXECUTION_FAILURES} was recorded`,
+          `Native Verifier response was rejected: ${(error as Error).message}; correct the response or request missing checks using the same active Verifier`,
           { cause: error },
         );
       }
@@ -469,7 +457,7 @@ export async function submitNativePortableVerifierResult(options: {
       requestChecks: requested.requestChecks,
     };
   } catch (error) {
-    const summary = `Native Verifier response was invalid: ${(error as Error).message}`;
+    const summary = `Native Verifier-requested check execution failed: ${(error as Error).message}`;
     const failed = await withNativeMutationLock(
       options.paths,
       `record Verifier-requested check failure ${options.name}`,

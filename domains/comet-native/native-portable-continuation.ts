@@ -372,8 +372,8 @@ function nativePortableUserCommunication(
     return noUserUpdate(
       localized(
         state,
-        'Implement the confirmed scope and run focused checks. A separate pre-review is optional, not a prerequisite for Builder handoff. If review is useful, retain the same Reviewer for focused repair follow-ups rather than starting repeated full reviews. Submit the stable candidate for one complete independent verification; release completed helper tasks.',
-        '实现已确认范围并运行相关检查。额外预审是可选项，不是 Builder 交接的前置条件。确有必要审查时，保留同一个 Reviewer 复核修复及受影响范围，避免反复启动完整审查。候选稳定后提交一次完整独立验收，及时释放已完成的辅助任务。',
+        'Implement the complete confirmed brief and Spec scope, then review every acceptance ID with its implementation and evidence before handoff. Fill acceptance_review from this audit; derive remaining work from it. Do not submit a partial candidate just to obtain verification feedback. Run focused checks; a separate pre-review is optional. If review is useful, retain the same Reviewer for focused repair follow-ups. Submit the completed candidate for one complete independent verification and release completed helper tasks.',
+        '完成已确认的 brief 和 Spec 全部范围，交接前逐项核对所有验收 ID 的实现和证据，填写 acceptance_review，并由这份自查生成剩余工作。不得提交未完成的候选来试探验收反馈。开发期运行相关检查，额外预审为可选项；确需审查时，保留同一个 Reviewer 复核修复及受影响范围。全部完成后提交一次完整独立验收，及时释放已完成的辅助任务。',
       ),
     );
   }
@@ -979,6 +979,12 @@ export function nativePortableContinuation(
                 kind: 'builder-handoff',
                 summary: '<summary>',
                 addressed_acceptance_ids: ['<acceptance-id>'],
+                acceptance_review: state.acceptance.map(({ id }) => ({
+                  id,
+                  status: 'not-implemented',
+                  evidence: [],
+                  note: '<implementation and evidence summary>',
+                })),
                 checks: [{ name: '<check-name>', result: 'not-run', note: null }],
                 verification_checks: [nativeCheckPlanTemplate()],
                 known_limits: [],
@@ -1122,6 +1128,12 @@ export function nativePortableContinuation(
             kind: 'builder-handoff',
             summary: '<summary>',
             addressed_acceptance_ids: ['<acceptance-id>'],
+            acceptance_review: state.acceptance.map(({ id }) => ({
+              id,
+              status: 'not-implemented',
+              evidence: [],
+              note: '<implementation and evidence summary>',
+            })),
             checks: [{ name: '<check-name>', result: 'not-run', note: null }],
             verification_checks: [],
             known_limits: [],

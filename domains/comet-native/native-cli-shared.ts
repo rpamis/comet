@@ -23,6 +23,7 @@ import { readProjectConfig, resolveNativeProject } from './native-config.js';
 import { deriveNativeOutputEnvelope, nativeErrorEnvelope } from './native-output-language.js';
 import { NativeReceiptScopeStaleError } from './native-receipt-errors.js';
 import { NativeInputValidationError, type NativeInputIssue } from './native-input-error.js';
+import { NativeBuilderAcceptanceIncompleteError } from './native-builder-acceptance-review.js';
 import { NativeVerificationReceiptBindingError } from './native-verification-runtime.js';
 import { NativeWorkspacePreparationError } from './native-workspace-preparation.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
@@ -254,6 +255,20 @@ export async function readBoundedEvidenceStdin(maxBytes: number): Promise<string
 }
 
 function rawErrorResult(command: string | null, error: unknown): DispatchResult {
+  if (error instanceof NativeBuilderAcceptanceIncompleteError) {
+    return {
+      command,
+      exitCode: 65,
+      data: {
+        builderReadiness: {
+          ready: false,
+          missingIds: error.missingIds,
+          incompleteIds: error.incompleteIds,
+        },
+      },
+      error: { code: 'invalid-data', message: error.message },
+    };
+  }
   if (error instanceof NativeInputValidationError) {
     return {
       command,

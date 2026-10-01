@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { promises as fs } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
 import os from 'node:os';
@@ -11,7 +12,12 @@ interface NativeEnvelope {
     phase?: string;
     preparation?: { projectRoot?: string };
     change?: { phase?: string };
-    state?: { phase?: string; state_version?: number; loop?: { iteration?: number } };
+    state?: {
+      phase?: string;
+      state_version?: number;
+      loop?: { iteration?: number };
+      acceptance?: Array<{ id: string }>;
+    };
     findingSummary?: { codes?: string[] };
     continuation?: { disposition?: string };
   };
@@ -138,6 +144,10 @@ async function submitBuilderHandoff(
   projectRoot: string,
   reviewerExecutionRef = `reviewer-${name}`,
 ): Promise<NativeProcessResult> {
+  const shown = await runNativeCommand('show', [name], projectRoot);
+  assertCompleted(shown, `show ${name}`);
+  const ids = shown.data?.state?.acceptance?.map(({ id }) => id);
+  expect(ids).toBeDefined();
   const input = path.join(projectRoot, `.runner-input-${name}.json`);
   await fs.writeFile(
     input,
@@ -145,6 +155,7 @@ async function submitBuilderHandoff(
       kind: 'builder-handoff',
       summary: 'Implemented the confirmed behavior.',
       addressed_acceptance_ids: ['A1'],
+      acceptance_review: fixtureAcceptanceReview(ids!),
       checks: [],
       known_limits: [],
       review: {

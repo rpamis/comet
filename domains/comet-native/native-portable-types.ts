@@ -84,6 +84,7 @@ export interface NativeBuilderHandoff {
   iteration: number;
   summary: NativePortableText;
   addressed_acceptance_ids: string[];
+  acceptance_review?: import('./native-builder-acceptance-review.js').NativeBuilderAcceptanceReview[];
   checks: NativeBuilderCheckSummary[];
   checks_truncated: boolean;
   known_limits: NativePortableText[];

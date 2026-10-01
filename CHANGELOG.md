@@ -7,6 +7,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Project Memory scrolling**: Keep the project memory tab on the same Dashboard inner-page flex layout as retrieval test, so long memory lists scroll inside the knowledge page instead of being clipped (#452).
+- **Native candidate input isolation**: Keep validated, unchanged, untracked Runner payloads separate from candidate inputs so repository-local handoff files do not invalidate verification. Tracked files, changed payloads, and implementation inputs remain bound to the candidate (#455).
+- **Native Verifier recovery**: Reject correctable result and check-request errors without ending the active Verifier or consuming its execution failure budget. Explicit requests can rerun failed repeatable checks within the existing limits, while passed evidence is reused and failed checks still prevent acceptance (#455).
+- **Native Build readiness**: Require a complete implementation and evidence self-review for every confirmed acceptance item before freezing a new candidate. Missing or unfinished items keep the change in Build; independent verification still determines whether the implementation satisfies the requirements (#456).
+- **Hook resource targets**: Distinguish non-file resource URIs from filesystem targets so Agent messages and process resources preserve verification and acceptance. File URIs, Windows paths, and real file writes in mixed requests continue through the workflow guard (#457).
 
 ## What's Changed [0.4.3] - 2026-09-22
 

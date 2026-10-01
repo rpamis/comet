@@ -5,6 +5,7 @@ import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import {
   parseCometHookRequest,
   readCometHookRequest,
+  normalizeCometHookTargets,
 } from '../../platform/process/hook-adapter.js';
 import type { CometHookIntent, CometHookRequest } from '../../platform/process/hook-adapter.js';
 import type { CometHookDecision } from '../workflow-contract/hook.js';
@@ -610,6 +611,7 @@ export async function inspectNativeHookGuard(
   request: NativeHookRequest,
   selectedChangeName?: string,
 ): Promise<NativeHookGuardResult> {
+  request = { ...request, targets: normalizeCometHookTargets(request.targets) };
   // An explicit selection is authoritative. Read only that change so a damaged
   // unrelated change cannot block every write or add O(number of changes) I/O
   // to the Hook critical path.

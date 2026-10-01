@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -39,12 +40,14 @@ function inputTemplate(result: JsonEnvelope, name: string): Record<string, unkno
 describe('Native v4 public CLI surface', () => {
   let projectRoot: string;
   let runnerInputSequence: number;
+  let confirmedAcceptanceIds: string[];
   const projectArgs = () => ['--project-root', projectRoot] as const;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-v4-cli-'));
     execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
     runnerInputSequence = 0;
+    confirmedAcceptanceIds = [];
   });
 
   afterEach(async () => {
@@ -179,6 +182,7 @@ Run applicable focused checks.
       ]),
     );
     expect(confirmed).toMatchObject({ exitCode: 0, data: { state: { phase: 'build' } } });
+    confirmedAcceptanceIds = acceptance.map((_, index) => `A${index + 1}`);
     expect(confirmed.data?.state).toMatchObject({
       acceptance: { total: acceptance.length, pending: acceptance.length },
     });
@@ -193,6 +197,7 @@ Run applicable focused checks.
       kind: 'builder-handoff',
       summary: 'Implemented the confirmed behavior.',
       addressed_acceptance_ids: addressedAcceptanceIds,
+      acceptance_review: fixtureAcceptanceReview(confirmedAcceptanceIds),
       checks: [],
       known_limits: [],
       review: {
@@ -493,6 +498,7 @@ Run applicable focused checks.
         kind: 'builder-handoff',
         summary: 'Validated candidate input.',
         addressed_acceptance_ids: ['A1'],
+        acceptance_review: fixtureAcceptanceReview(['A1']),
         checks: [],
         known_limits: [],
       }),
@@ -528,6 +534,7 @@ Run applicable focused checks.
       kind: 'builder-handoff',
       summary: 'Implemented the confirmed behavior.',
       addressed_acceptance_ids: ['A1'],
+      acceptance_review: fixtureAcceptanceReview(['A1']),
       checks: [],
       known_limits: [],
     });

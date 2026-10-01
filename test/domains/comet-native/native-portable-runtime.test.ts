@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -598,6 +599,7 @@ children:
         candidateId: 'timeout-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('timeout-reviewer'),
       },
     });
@@ -681,6 +683,7 @@ children:
         candidateId: 'orphaned-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('orphaned-reviewer'),
       },
     });
@@ -765,6 +768,7 @@ children:
         candidateId: 'non-repeatable-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('non-repeatable-reviewer'),
       },
     });
@@ -810,6 +814,7 @@ children:
         candidateId: 'external-verifier-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('external-verifier-reviewer'),
       },
     });
@@ -864,6 +869,7 @@ children:
         candidateId: 'preflight-candidate',
         summary: 'Implemented the candidate.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: null,
       },
     });
@@ -925,6 +931,7 @@ Ship the behavior.
         candidateId: 'candidate-1',
         summary: 'Implemented the behavior.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('reviewer-1'),
       },
     });
@@ -1046,6 +1053,7 @@ Ship the behavior.
         candidateId: 'drift-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('drift-reviewer'),
       },
     });
@@ -1124,6 +1132,7 @@ Ship the behavior.
         candidateId: 'candidate-request-checks',
         summary: 'Implemented the requested behavior.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('request-checks-reviewer'),
       },
     });
@@ -1310,6 +1319,7 @@ Ship the behavior.
         candidateId: 'ignored-generated-candidate',
         summary: 'Implemented the behavior.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('ignored-generated-reviewer'),
       },
     });
@@ -1367,6 +1377,7 @@ Ship the behavior.
         candidateId: 'lock-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('lock-reviewer'),
       },
     });
@@ -1434,7 +1445,7 @@ Ship the behavior.
     expect(lockWaitMs).toBeLessThan(2_000);
   });
 
-  it('records over-budget and malformed requests as execution errors and blocks after three', async () => {
+  it('rejects over-budget and malformed requests without ending the active Verifier or losing checks', async () => {
     await createNativePortableChange({ paths, name: 'invalid-requests', language: 'en' });
     const changeDir = nativePortableChangeDir(paths, 'invalid-requests');
     await fs.writeFile(
@@ -1459,6 +1470,7 @@ Ship the behavior.
         candidateId: 'candidate-invalid-requests',
         summary: 'Implemented the behavior.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('invalid-requests-reviewer'),
       },
     });
@@ -1558,74 +1570,40 @@ Ship the behavior.
       }),
     ).rejects.toThrow('exceeded 2 rounds');
     state = await readNativePortableChange(paths, state.name);
-    expect(state.loop).toMatchObject({ execution_failure_count: 1, stage: 'verify-ready' });
-
-    state = await dispatchNativePortableVerifier({
-      paths,
-      name: state.name,
-      checks,
-      verifierExecutionId: 'verifier-invalid-2',
+    expect(state.loop).toMatchObject({
+      execution_failure_count: 0,
+      stage: 'verify-ready',
+      next_action: 'await-verifier-result',
+      attempt: 1,
     });
-    await expect(
-      submitNativePortableVerifierResult({
-        paths,
-        name: state.name,
-        checks,
-        maxVerifyFailures: 5,
-        envelope: runner.envelopeVerifierResponse({
-          candidateId: 'candidate-invalid-requests',
-          identity: runner.captureExecutionIdentity({
-            identityProvider: 'test-host',
-            executionRef: 'verifier-invalid-2',
+    const before = state;
+    for (let rejected = 0; rejected < 3; rejected++) {
+      await expect(
+        submitNativePortableVerifierResult({
+          paths,
+          name: state.name,
+          checks,
+          maxVerifyFailures: 5,
+          envelope: runner.envelopeVerifierResponse({
+            candidateId: 'candidate-invalid-requests',
+            identity: runner.captureExecutionIdentity({
+              identityProvider: 'test-host',
+              executionRef: 'verifier-invalid-1',
+            }),
+            payload: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [] },
           }),
-          payload: { kind: 'request-checks', iteration: 1, attempt: 2, checks: [] },
         }),
-      }),
-    ).rejects.toThrow('batch must be non-empty');
-    state = await readNativePortableChange(paths, state.name);
-    expect(state.loop.execution_failure_count).toBe(2);
-
-    state = await dispatchNativePortableVerifier({
-      paths,
-      name: state.name,
-      checks,
-      verifierExecutionId: 'verifier-invalid-3',
-    });
-    await expect(
-      submitNativePortableVerifierResult({
-        paths,
-        name: state.name,
-        checks,
-        maxVerifyFailures: 5,
-        envelope: runner.envelopeVerifierResponse({
-          candidateId: 'candidate-invalid-requests',
-          identity: runner.captureExecutionIdentity({
-            identityProvider: 'test-host',
-            executionRef: 'verifier-invalid-3',
-          }),
-          payload: { kind: 'request-checks', iteration: 1, attempt: 3, checks: [] },
-        }),
-      }),
-    ).rejects.toThrow('batch must be non-empty');
-    state = await readNativePortableChange(paths, state.name);
-    expect(state).toMatchObject({
-      phase: 'verify',
-      status: 'blocked',
-      loop: {
-        stage: 'blocked',
-        attempt: 3,
-        execution_failure_count: 3,
-      },
-    });
-
-    state = await retryNativePortableVerifier({ paths, name: state.name });
-    const reused = await executeNativePortableCheckPlan({
-      paths,
-      name: state.name,
-      plans: [baselinePlan, ...requestedPlans],
-    });
+      ).rejects.toThrow('batch must be non-empty');
+      expect(await readNativePortableChange(paths, state.name)).toEqual(before);
+    }
     const local = await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name));
-    expect(reused.checks.map(({ id }) => id)).toEqual(['baseline', 'round-one', 'round-two']);
+    expect(local?.execution).toMatchObject({
+      executionId: 'verifier-invalid-1',
+      status: 'running',
+      stage: 'verifying',
+      requestCheckRounds: 2,
+    });
+    expect(local?.checks.map(({ id }) => id)).toEqual(['baseline', 'round-one', 'round-two']);
     expect(local?.checks.map(({ executionCount }) => executionCount)).toEqual([1, 1, 1]);
   });
 
@@ -1659,6 +1637,7 @@ Ship the behavior.
         candidateId: 'branch-snapshot-candidate',
         summary: 'Implemented the branch snapshot behavior.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('branch-snapshot-reviewer'),
       },
     });
@@ -1698,6 +1677,7 @@ Ship the behavior.
         candidateId: 'late-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('late-reviewer'),
       },
     });
@@ -1784,6 +1764,7 @@ Ship the behavior.
         candidateId: 'candidate-repeat-request',
         summary: 'Implemented the behavior.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('repeat-request-reviewer'),
       },
     });
@@ -1847,8 +1828,9 @@ Ship the behavior.
       }),
     ).rejects.toThrow('equivalent checks');
     expect((await readNativePortableChange(paths, state.name)).loop.execution_failure_count).toBe(
-      1,
+      0,
     );
+    expect(await readNativePortableChange(paths, state.name)).toEqual(state);
   });
 
   it('derives final check status from Runtime execution instead of caller summaries', async () => {
@@ -1876,6 +1858,7 @@ Ship the behavior.
         candidateId: 'candidate-runtime-owned',
         summary: 'Implemented the behavior.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('runtime-owned-reviewer'),
       },
     });
@@ -1930,7 +1913,11 @@ Ship the behavior.
     expect(await readNativePortableChange(paths, state.name)).toMatchObject({
       phase: 'verify',
       verification_result: 'pending',
-      loop: { execution_failure_count: 1, stage: 'verify-ready' },
+      loop: {
+        execution_failure_count: 0,
+        stage: 'verify-ready',
+        next_action: 'await-verifier-result',
+      },
     });
   });
 });

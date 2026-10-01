@@ -1,4 +1,8 @@
 import { promises as fs } from 'node:fs';
+import {
+  assertNativeBuilderAcceptanceComplete,
+  parseNativeBuilderAcceptanceReview,
+} from './native-builder-acceptance-review.js';
 
 import { parseDocument, stringify } from 'yaml';
 
@@ -361,6 +365,7 @@ function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
       'iteration',
       'summary',
       'addressed_acceptance_ids',
+      'acceptance_review',
       'checks',
       'checks_truncated',
       'known_limits',
@@ -396,6 +401,9 @@ function parseBuilderHandoff(value: unknown): NativeBuilderHandoff {
     iteration: integerValue(root.iteration, `${label}.iteration`, 1),
     summary: parsePortableText(root.summary, `${label}.summary`),
     addressed_acceptance_ids,
+    ...(root.acceptance_review === undefined
+      ? {}
+      : { acceptance_review: parseNativeBuilderAcceptanceReview(root.acceptance_review) }),
     checks: arrayValue(root.checks, `${label}.checks`, parseBuilderCheck),
     checks_truncated: booleanValue(root.checks_truncated, `${label}.checks_truncated`),
     known_limits: arrayValue(root.known_limits, `${label}.known_limits`, (entry, index) =>
@@ -629,6 +637,11 @@ function assertReferences(state: NativePortableState): void {
     if (!acceptanceIds.has(id))
       throw new Error(`Native builder handoff references unknown ID ${id}`);
   }
+  if (state.builder_handoff?.acceptance_review)
+    assertNativeBuilderAcceptanceComplete(
+      state.acceptance,
+      state.builder_handoff.acceptance_review,
+    );
   for (const blocker of state.blockers) {
     for (const id of blocker.acceptance_ids) {
       if (!acceptanceIds.has(id)) throw new Error(`Native blocker references unknown ID ${id}`);
