@@ -560,7 +560,15 @@ describe('Native archived workspace finish', () => {
   });
 
   it('merges a branch finish and restores the branch when merge fails', async () => {
-    const merge = plan({ finish: 'merge' });
+    const merge = plan({ finish: 'merge', mergeMessage: 'Merge Native archive' });
+    let mergeFails = false;
+    git.runGitCommand.mockImplementation((_root: string, args: readonly string[]) => {
+      if (args[0] === 'config') return 'Native Test';
+      if (args[0] === 'rev-parse') return 'a'.repeat(40);
+      if (args[0] === 'merge-base') throw new Error('change is not merged');
+      if (args[0] === 'merge' && mergeFails) throw new Error('merge conflict');
+      return '';
+    });
     await expect(
       finishArchivedNativeWorkspace({
         paths,
@@ -571,13 +579,17 @@ describe('Native archived workspace finish', () => {
         plan: merge,
       }),
     ).resolves.toMatchObject({ merged: true, targetRoot: projectRoot });
+    expect(git.runGitCommand).toHaveBeenCalledWith(projectRoot, [
+      'merge',
+      '--no-ff',
+      '--no-edit',
+      '--no-log',
+      '-m',
+      'Merge Native archive',
+      'comet/change',
+    ]);
 
-    git.runGitCommand.mockImplementation((_root: string, args: readonly string[]) => {
-      if (args[0] === 'config') return 'Native Test';
-      if (args[0] === 'rev-parse') return 'a'.repeat(40);
-      if (args[0] === 'merge') throw new Error('merge conflict');
-      return '';
-    });
+    mergeFails = true;
     worktree.inspectGitWorktree
       .mockReturnValueOnce({ currentBranch: 'main' })
       .mockReturnValueOnce({ currentBranch: 'comet/change' });
@@ -592,6 +604,20 @@ describe('Native archived workspace finish', () => {
     await expect(failed).rejects.toMatchObject({ result: { status: 'blocked' } });
     expect(git.runGitCommand).toHaveBeenCalledWith(projectRoot, ['merge', '--abort']);
     expect(git.runGitCommand).toHaveBeenCalledWith(projectRoot, ['switch', 'comet/change']);
+  });
+
+  it('keeps a completed merge without running another merge command', async () => {
+    await expect(
+      finishArchivedNativeWorkspace({
+        paths,
+        state,
+        name: state.name,
+        archiveDir: path.join(projectRoot, 'comet', 'archive', state.name),
+        transactionId: 'tx-already-merged',
+        plan: plan({ finish: 'merge' }),
+      }),
+    ).resolves.toMatchObject({ merged: true, targetRoot: projectRoot });
+    expect(git.runGitCommand.mock.calls.some(([, args]) => args[0] === 'merge')).toBe(false);
   });
 
   it('removes a clean change worktree after a successful merge', async () => {
