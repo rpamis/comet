@@ -40,6 +40,8 @@ Run workspace prepare during Open. If the workspace is unknown, changes, or its 
 
 Entry check --json returns layout, configuration, nextAction, task summaries, coordination, and delivery. Do not separately query fields already returned. If session recovery lacks context, start with --recover for a summary; add --details only for complete tasks, checkpoints, or evidence. See context-recovery.md.
 
+Query only information still missing for the current action. Putting multiple `comet` commands in one shell call reduces tool round trips; each CLI still starts separately. Reduce redundant calls by reusing fields already returned. For dependent commands, run the next only after the previous succeeds and check every exit code; a successful last command must not hide an earlier failure.
+
 checkpoint input requires schemaVersion:1 and taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds; reads return `{checkpoint, stale}`. Runtime validates the data and generates Markdown. See context-recovery.md for JSON. task-complete automatically synchronizes legacy-plan tasks with established comet-task ID mappings. Use sync-plan for a separate update; planSync mapping-required requires completing mappings, not reimplementing tasks.
 
 delivery input includes action (local|push|pr), targetBranch, and optional remote, commit, and prUrl; see comet-archive for examples. Normal entry and delivery reads do not access the network. Only `state delivery <change-name> --verify` checks remote and PR state read-only, returning `{delivery, verification}`. A successful record write does not prove delivery success. Stop for unavailable commands, rejected operations, or inconsistent records; do not bypass checks by editing internal state.
@@ -93,7 +95,13 @@ comet check run <change-name> verify --local --incremental -- <program> [args...
 {
   "version": 2,
   "commands": [
-    { "argv": ["pnpm", "build"], "cwd": ".", "files": ["src/**", "package.json", "tsconfig.json"], "outputs": ["dist/**"], "git": "all" },
+    {
+      "argv": ["pnpm", "build"],
+      "cwd": ".",
+      "files": ["src/**", "package.json", "tsconfig.json"],
+      "outputs": ["dist/**"],
+      "git": "all"
+    },
     { "argv": ["vitest", "run"], "cwd": ".", "files": ["src/**", "test/**"] }
   ]
 }

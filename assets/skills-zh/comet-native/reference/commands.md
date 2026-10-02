@@ -63,7 +63,7 @@ Native 正式产物只能由 `comet native new <name> --json` 登记后创建。
 
 首次填写 Runtime 模板或通过 `returnAction` 回传结果前必须读取本节。
 
-把 `inputOptions.template` 复制到系统临时 JSON 文件，只替换模板要求填写的内容，然后执行 `continuation.commandArgs` 或所选 `commandAlternative.commandArgs`。命令结束后删除临时文件。模板中已有的验收轮次、Verifier 尝试次数、状态版本和任务标识都原样保留；只填写模板公开的字段。
+把 `inputOptions.template` 复制到系统临时 JSON 文件，只替换模板要求填写的内容，然后执行 `continuation.commandArgs` 或所选 `commandAlternative.commandArgs`。Runtime 接受输入后删除临时文件；输入被拒绝时保留原文件，按错误修正后重提。模板中已有的验收轮次、Verifier 尝试次数、状态版本和任务标识都原样保留；只填写模板公开的字段。
 
 `inputOptions` 中同一 `exclusiveGroup` 的选项互斥：选择其中一个，将它的 `template` 作为单个 JSON 对象填入临时文件。字段校验失败时，按 `error.issues` 指出的 JSON 路径、缺失字段和未知字段修正原文件。
 
@@ -78,6 +78,8 @@ Supervisor 子任务在任务包指定的 `projectRoot` 工作。回传结果时
 普通 change 和 Supervisor 主任务进入 Verify 前，不需要额外安排一次只读复核。如果已有独立复核结果，可以按 Runtime 模板填写可选的 `review.status=passed`、`review.summary`、`review.reviewer_execution_ref`；复核执行标识不能与 Builder 执行标识相同。
 
 Builder 的交接摘要必须写明本轮修改、处理的验收项、实际运行和未运行的开发期检查，以及已知限制。前面的复核不能替代正式 Verifier；正式 Verifier 仍须独立检查全部验收项。
+
+交接前逐项核对当前 brief、完整目标 Spec 和所有已确认验收 ID，按 Runtime 模板填写 `acceptance_review`；每个 ID 恰好一项。`id` 沿用模板，`status` 如实填写，`evidence` 列出具体文件位置、检查记录或可复核的观察，`note` 说明实现如何满足该项。只有全部为 `implemented-with-evidence` 且每项证据非空时才提交。`implemented-no-evidence`、`not-implemented`、`known-fail` 对应尚缺证据、尚未实现和已知失败，先据此补齐剩余工作，不把未完成候选交给 Verifier 试探反馈。自查不代表独立验收通过。
 
 开发期只跑定向检查；最终检查计划填入 `builder-handoff.verification_checks`，不要先运行同一完整计划。Runtime 冻结候选后执行：通过则进入 Verify 并预填 `dispatch-verifier`；失败或不可重复检查中断则返回 Build；可重复检查中断只按 `retry-checks` 重试。`runtimeCheckExecution.disposition` 区分执行与复用。
 
@@ -125,6 +127,8 @@ Verifier 最后再阅读 Builder 交接，将其作为调查线索。Builder 只
 
 通过 `verifier-response` 提交结果时，响应只列出当前 `scopeIds`，每项恰好标记一次为 `passed`、`failed` 或 `blocked`；后两种情况写明原因。已通过且仍报告通过的合法超集会由 Runtime 过滤；不存在或重复的 ID、缺少当前 scope，以及 scope 外的 `failed` 或 `blocked` 仍会被拒绝。
 
+结果或检查请求因字段、格式或验收范围被拒绝时，按错误修正原输入，并使用返回的当前 `continuation` 重提；仍在运行的 Verifier 继续使用，不登记 `verifier-execution-error` 或重新派发。候选或执行绑定不匹配时先核对派发身份，旧任务的结果不能改成新任务身份后重提。实际检查执行失败、平台任务失败等情况，仍按对应失败路径处理。
+
 提交修复后的实现时，Runtime 会保留仍然有效的检查回执，并让新的正式 Verifier 在一轮内检查全部验收场景。全部通过后，直接等待用户接受验收结果；不会自动清空结果，再追加一轮相同的完整验收。
 
 Verifier 无法完成任务时，区分以下情况：
@@ -140,6 +144,8 @@ Verifier 无法完成任务时，区分以下情况：
 ### 中断检查重试
 
 - `retry-checks`：只重试本轮实现中由 Runtime 标记为中断、且允许重复执行的检查。复制最新 `continuation` 的 `check_ids`，不要替换检查命令或待验收的实现。每项检查最多执行三次，成功结果和有效日志会保留。
+
+Verifier 明确请求重跑失败检查时，使用当前 `request-checks` 模板提交原检查计划；只有允许重复执行、候选和执行身份仍匹配、且未达到现有限额的检查才能重跑。已通过且仍有效的结果由 Runtime 复用。断言失败不会被当作通过，也不会自动循环重跑；不可重复操作先处理其阻塞条件。
 
 完成标准：Runtime 已接受完整的 Verifier 结果，并明确进入 Build、Archive、等待用户（`await-user`）、阻塞（`blocked`）或完成（`done`）中的一种状态。
 

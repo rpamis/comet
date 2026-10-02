@@ -548,7 +548,7 @@ describe('Comet workflow optimization contracts', () => {
         'comet state set <change-name> branch_status handled',
         execution,
       );
-      const commit = archive.indexOf('git commit -m "chore: archive <change-name>"', handled);
+      const commit = archive.indexOf('git commit -m ', handled);
       const delivery = archive.indexOf(deliveryHeading, commit);
       const clearSelection = archive.indexOf('clear-selection', delivery);
 

@@ -8,6 +8,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Native commit messages**: Set archive and local merge commit messages through `--commit-message` and `--merge-message`, including Unicode and multiline text. Preview the actual messages and retain them through confirmation and retries while keeping existing defaults and project Git hooks (#451).
 
+### Changed
+
+- **Workflow continuation**: Native and Classic Skills reuse current Runtime responses, preserve rejected inputs for correction, and prepare archive messages under project commit conventions. Classic hotfix and tweak advance verification through Guard while retaining final Archive confirmation.
+
 ### Fixed
 
 - **Project Memory scrolling**: Keep the project memory tab on the same Dashboard inner-page flex layout as retrieval test, so long memory lists scroll inside the knowledge page instead of being clipped (#452).

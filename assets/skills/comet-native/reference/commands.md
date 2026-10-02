@@ -63,7 +63,7 @@ When the user explicitly wants to revoke a capability association, first run `co
 
 Read this section before first filling a Runtime template or returning a result through `returnAction`.
 
-Copy `inputOptions.template` into a system temporary JSON file, replace only the requested values, then execute `continuation.commandArgs` or the selected `commandAlternative.commandArgs`. Delete the temporary file after the command completes. Preserve all supplied iteration, attempt, state-version, and task identifiers exactly; fill only fields exposed by the template.
+Copy `inputOptions.template` into a system temporary JSON file, replace only the requested values, then execute `continuation.commandArgs` or the selected `commandAlternative.commandArgs`. Delete the temporary file after Runtime accepts the input; retain rejected input, correct it as directed, and resubmit. Preserve all supplied iteration, attempt, state-version, and task identifiers exactly; fill only fields exposed by the template.
 
 Options in the same `exclusiveGroup` within `inputOptions` are mutually exclusive. Choose one and place its `template` in the temporary file as a single JSON object. On validation failure, correct that file using the JSON paths, missing fields, and unknown fields listed in `error.issues`.
 
@@ -78,6 +78,8 @@ Read this section before submitting `builder-handoff`.
 An ordinary change or Supervisor parent does not need an additional read-only review before Verify. If a separate read-only review already exists, the Runtime template accepts optional `review.status=passed`, `review.summary`, and `review.reviewer_execution_ref`. The review execution identifier must differ from the Builder's.
 
 The Builder handoff must describe this iteration's changes, acceptance items addressed, development checks actually run and not run, and known limitations. An earlier review cannot replace the formal Verifier, which still independently assesses every acceptance item.
+
+Before handoff, review the current brief, complete target Specs, and every confirmed acceptance ID, then fill `acceptance_review` from the Runtime template with exactly one entry per ID. Preserve each template `id`, report `status` truthfully, list specific file locations, check records, or reproducible observations in `evidence`, and explain how the implementation satisfies the item in `note`. Submit only when every item is `implemented-with-evidence` with nonempty evidence. `implemented-no-evidence`, `not-implemented`, and `known-fail` mean missing evidence, missing implementation, and a known failure; complete that work before submitting a candidate for verification. Self-review does not establish independent acceptance.
 
 During development, prefer focused checks that give fast feedback on the current change. At handoff, put the final check plan in `builder-handoff.verification_checks` instead of running the same complete plan directly in the Builder first. Runtime freezes the candidate, executes the plan, and returns `runtimeCheckExecution.disposition`:
 
@@ -129,6 +131,8 @@ A wait-tool timeout means keep waiting for the same Verifier. Record an executio
 
 For `verifier-response`, submit this result shape: The response lists only the current `scopeIds` and marks each scenario exactly once as `passed`, `failed`, or `blocked`. Give a concrete reason for failed or blocked items. Runtime filters a known superset only when the extra criteria already passed and still report `passed`; nonexistent IDs, duplicates, missing scope IDs, and out-of-scope `failed` or `blocked` results remain invalid.
 
+When a result or check request is rejected for fields, format, or acceptance scope, correct the original input and resubmit through the returned current `continuation`. Keep the active Verifier; do not report `verifier-execution-error` or redispatch it. For candidate or execution-binding mismatches, first check the dispatch identity; never relabel an old task's result as a new task's result. Actual check execution failures and platform task failures still follow their corresponding failure paths.
+
 After submission of a repaired implementation, Runtime retains still-valid check receipts and a new formal Verifier assesses every scenario in one round. Once all pass, wait directly for user acceptance. Do not automatically clear results and add another identical full verification round.
 
 Distinguish inability to complete verification:
@@ -144,6 +148,8 @@ After a Skill-launched final Verifier passes and Runtime waits for a decision, u
 ### Retrying interrupted checks
 
 - `retry-checks`: retry only checks Runtime marks interrupted and repeatable for the current candidate. Copy the latest continuation's `check_ids`; do not replace commands or the candidate. Each check may execute at most three times. Successful results and valid logs are retained.
+
+When the Verifier explicitly requests a failed check rerun, submit the original check plan through the current `request-checks` template. Only repeatable checks with matching candidate and execution bindings and remaining attempts can rerun. Runtime reuses passed results that remain valid. Assertion failures remain failures and do not trigger automatic retry loops; resolve blockers before repeating nonrepeatable operations.
 
 Complete when Runtime accepts the complete Verifier result and explicitly enters Build, Archive, `await-user`, `blocked`, or `done`.
 

@@ -12,7 +12,7 @@ Read only the section relevant to the current blocker.
 
 ## Fault recovery
 
-On Runtime failure, stop editing the project and rerun `status --details --json` and read-only `doctor`. Execute only recovery actions explicitly returned by `continuation` or `doctor`. Runtime owns portable state, local execution state, locks, and transactions. If safe automatic recovery cannot be established, preserve the workspace and wait for a user decision.
+When a command returns a specific error, current state, and recovery action, use that response first. Correct Runner validation errors through [filling command inputs](commands.md#filling-command-inputs), and continue commit or merge failures through [Archive completion](workspace.md#archive-completion), keeping active task identifiers. If current state is missing, the call was interrupted, or the workspace disagrees with the response, stop dependent edits and run `status --details --json` once. Run read-only `doctor` only if the state or recovery records still do not explain the issue. Execute only recovery actions explicitly returned by `continuation` or `doctor`. Runtime owns portable state, local execution state, locks, and transactions. If safe automatic recovery cannot be established, preserve the workspace and wait for a user decision.
 
 For external-input waits, follow [external input and monitoring](#external-input-and-monitoring) while independent work continues. Before redispatching Supervisor tasks after recovery, read [Supervisor coordination](commands.md#supervisor-coordination). Before relaunching a Verifier, read [Verify protocol](commands.md#verify-protocol) and check current task identifiers, candidate version, and execution state.
 
@@ -31,8 +31,8 @@ Runtime blocks writes if project root, branch, workspace type, or Git state disa
 - Verify (`verify-ready`): rerun checks needed for the current implementation and launch a new Verifier; do not reuse passes from the old device.
 - Archive (`archive-ready`): safely return to Verify, reset acceptance to `pending`, and assess the implementation synchronized to this device.
 - `await-user` / `blocked`: restore the original blocker, responsible party, and allowed actions, then wait for the corresponding condition.
-- `done` in active: finish only directory moves and cleanup that can be established safely.
-- `done` in archive: show it read-only; the change is finished.
+- `done` in active: perform directory moves and cleanup only as Runtime directs; continue pending Git finishing through [Archive completion](workspace.md#archive-completion).
+- `done` in archive: check workspace finishing in public status first. Show it read-only only after the selected finish is completed or kept; continue incomplete or `blocked` finishing through [Archive completion](workspace.md#archive-completion).
 
 Treat old processes, log connections, and Agent sessions as lost; leftover files do not prove success. If checks ended before YAML recorded them, rerun only safe repeatable checks. Operations that could duplicate external effects require a user decision.
 

@@ -148,7 +148,7 @@ comet state set <change-name> verify_mode full
 
 A tweak without delta spec usually meets light conditions (≤ 3 tasks and changed files below the scale threshold). Follow comet-verify's light-verification checklist. If the user wants more review, they can run `comet state set <name> review_mode standard` or `thorough` before verification.
 
-After verification passes, record `.comet.yaml` `verify_result: pass` under `/comet-verify` rules. Do not omit that state before archive. Passing verification still leads to `/comet-archive` for final confirmation; never run archive automatically without it.
+After verification and its report are complete, `/comet-verify` runs `comet guard <change-name> verify --apply`. Reuse its successful archive state and `agent.continuation`; do not manually set `verify_result: pass` or repeat Guard. If Guard fails, address its reasons without claiming acceptance passed. `/comet-archive` still requires final confirmation before archiving; never run archive automatically.
 
 ### 4. Archive
 

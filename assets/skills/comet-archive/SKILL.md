@@ -28,8 +28,6 @@ comet state select <change-name>
 comet state check <name> archive --json
 ```
 
-Combine multiple read-only comet commands (for example `state get`, `state next`, `state artifacts`) into a single shell invocation to reduce process startup overhead.
-
 When the previous phase's guard already returned this phase's state, continue from that state and `agent.continuation` without repeating select/check; run the entry checks above only when resuming, after workspace changes, or after external state changes. Continue from returned layout, configuration, nextAction, and the delivery summary. After context loss, read details according to context-recovery.md. If authorization is still valid and the delivery target is unchanged, continue only unfinished actions without asking again. Handle the specific cause on failure.
 
 If select/check returns `BLOCKED` — or a branch-binding `ERROR` — because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
@@ -129,7 +127,7 @@ Archive moves files and merges specs; it does not commit. Afterwards, expect the
 - Main spec contains the merged delta changes.
 - The Design Doc/plan contains archive metadata.
 
-Confirm that delivery still records valid authorization, then write the compatibility field and run the final archive guard (both commands in one shell invocation to reduce process startup overhead):
+Confirm that delivery still records valid authorization, then write the compatibility field and run the final archive guard (run the second command only after the first succeeds):
 
 ```bash
 comet state set <change-name> branch_status handled && comet guard <change-name> archive
@@ -141,10 +139,12 @@ Read `git status --short` after archive and reconcile it against the ownership r
 
 Use explicit pathspecs for the inspected paths, then inspect the staged diff. Do not stage the whole repository or include pre-existing user edits:
 
+Prepare the message under the project's active format, language, and body requirements without asking again when conventions are clear. Replace the placeholder below with the actual message; do not treat an English example as project policy. Project Git hooks run normally. If a hook rejects the commit, retain staged contents, correct the message, and continue the same commit. If the call was interrupted or its result is uncertain, inspect actual Git history before retrying; do not retry blindly or bypass hooks.
+
 ```bash
 git add -- <individually-verified-archive-paths...>
 git diff --cached --stat
-git commit -m "chore: archive <change-name>"
+git commit -m "<archive message following project conventions>"
 ```
 
 Stop if commit fails or the staged diff contains unrelated paths. Do not continue branch handling.
