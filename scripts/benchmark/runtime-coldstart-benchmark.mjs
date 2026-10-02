@@ -426,7 +426,8 @@ async function createFixture(repoRoot, worktreeCounts) {
         const runner = createNativeRunnerChannel();
         await runtime.submitNativePortableBuilderCandidate({paths,name,input:{
           identity:runner.captureExecutionIdentity({identityProvider:'benchmark',executionRef:'builder'}),
-          candidateId:'benchmark-candidate',summary:'Fixture implemented.',addressedAcceptanceIds:['A1']
+          candidateId:'benchmark-candidate',summary:'Fixture implemented.',addressedAcceptanceIds:['A1'],
+          acceptanceReview:[{id:'A1',status:'implemented-with-evidence',evidence:['README.md'],note:'Fixture output is implemented.'}]
         }});
       `),
       },

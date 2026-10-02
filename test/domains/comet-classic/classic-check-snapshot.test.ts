@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkInputFingerprint,
   collectCheckSnapshot,
@@ -35,6 +35,7 @@ describe('Classic check input snapshots', () => {
     git(root, 'commit', '-m', 'baseline');
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
@@ -107,6 +108,109 @@ describe('Classic check input snapshots', () => {
     const before = await fingerprint();
     await fs.writeFile(path.join(root, 'vendor', 'api.js'), 'v2');
     expect(await fingerprint()).not.toBe(before);
+  });
+
+  it('binds overlapping declared inputs once and still refreshes edited content', async () => {
+    const identity = { argv: [process.execPath, 'check.cjs'], cwd: '.' };
+    await fs.writeFile(
+      path.join(root, '.comet', 'check-policy.json'),
+      JSON.stringify({
+        version: 2,
+        commands: [{ ...identity, files: ['source.js', '*.js', '.comet/config.yaml'] }],
+      }),
+    );
+    const before = await collectCheckSnapshot(root, change, identity);
+    expect(before.entries.filter(({ p }) => p === 'source.js')).toHaveLength(1);
+    expect(before.entries.filter(({ p }) => p === '.comet/config.yaml')).toHaveLength(1);
+    await fs.writeFile(path.join(root, 'source.js'), 'v2');
+    const after = await collectCheckSnapshot(root, change, identity);
+    expect(after.digest).not.toBe(before.digest);
+    expect(diffCheckManifests(before.entries, after.entries).changed).toContain('source.js');
+  });
+
+  it('bounds parallel input reads while preserving ordered entries and the snapshot digest', async () => {
+    const names = Array.from({ length: 8 }, (_, index) => `input-${index}.txt`);
+    for (const name of names) await fs.writeFile(path.join(root, name), name);
+    const identity = { argv: [process.execPath, 'check.cjs'], cwd: '.' };
+    await fs.writeFile(
+      path.join(root, '.comet', 'check-policy.json'),
+      JSON.stringify({ version: 2, commands: [{ ...identity, files: names }] }),
+    );
+    const before = await collectCheckSnapshot(root, change, identity);
+    let active = 0;
+    let peak = 0;
+    const lstat = fs.lstat.bind(fs);
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args: Parameters<typeof fs.lstat>) => {
+      if (!names.some((name) => String(args[0]) === path.join(root, name))) return lstat(...args);
+      active += 1;
+      peak = Math.max(peak, active);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return await lstat(...args);
+      } finally {
+        active -= 1;
+      }
+    });
+    const after = await collectCheckSnapshot(root, change, identity);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(4);
+    expect(after.digest).toBe(before.digest);
+    expect(after.entries).toEqual(before.entries);
+    expect(after.entries.filter(({ p }) => names.includes(p)).map(({ p }) => p)).toEqual(names);
+  });
+
+  it('binds a directory and its explicitly declared descendant once in traversal order', async () => {
+    await fs.mkdir(path.join(root, 'inputs'));
+    await fs.writeFile(path.join(root, 'inputs', 'first.txt'), 'first');
+    await fs.writeFile(path.join(root, 'inputs', 'second.txt'), 'second');
+    const identity = { argv: [process.execPath, 'check.cjs'], cwd: '.' };
+    await fs.writeFile(
+      path.join(root, '.comet', 'check-policy.json'),
+      JSON.stringify({
+        version: 2,
+        commands: [{ ...identity, files: ['inputs', 'inputs/second.txt'] }],
+      }),
+    );
+    const before = await collectCheckSnapshot(root, change, identity);
+    expect(before.entries.filter(({ p }) => p.startsWith('inputs/')).map(({ p }) => p)).toEqual([
+      'inputs/first.txt',
+      'inputs/second.txt',
+    ]);
+    await fs.writeFile(path.join(root, 'inputs', 'second.txt'), 'edited');
+    expect((await collectCheckSnapshot(root, change, identity)).digest).not.toBe(before.digest);
+  });
+
+  it('settles parallel reads before rejecting an unsafe declared input', async () => {
+    await fs.mkdir(path.join(root, 'real-inputs'));
+    await fs.symlink(
+      path.join(root, 'real-inputs'),
+      path.join(root, 'linked-inputs'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    const identity = { argv: [process.execPath, 'check.cjs'], cwd: '.' };
+    await fs.writeFile(
+      path.join(root, '.comet', 'check-policy.json'),
+      JSON.stringify({
+        version: 2,
+        commands: [{ ...identity, files: ['linked-inputs', 'source.js'] }],
+      }),
+    );
+    let reading = false;
+    let settled = false;
+    const lstat = fs.lstat.bind(fs);
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args: Parameters<typeof fs.lstat>) => {
+      if (String(args[0]) !== path.join(root, 'source.js')) return lstat(...args);
+      reading = true;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      try {
+        return await lstat(...args);
+      } finally {
+        settled = true;
+      }
+    });
+    await expect(collectCheckSnapshot(root, change, identity)).rejects.toThrow(/symbolic link/i);
+    expect(reading).toBe(true);
+    expect(settled).toBe(true);
   });
 
   it('omits runtime records but includes project configuration and ignored dependency metadata', async () => {

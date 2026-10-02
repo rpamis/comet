@@ -1,4 +1,12 @@
 import { classicHandoffCommand } from './classic-handoff.js';
-import { runClassicScript } from './classic-script-entry.js';
+import {
+  createClassicCommandRunner,
+  isClassicScriptEntry,
+  runClassicScript,
+} from './classic-script-entry.js';
 
-process.exitCode = await runClassicScript('handoff', classicHandoffCommand);
+export const runClassicCli = createClassicCommandRunner('handoff', classicHandoffCommand);
+
+if (isClassicScriptEntry(import.meta.url)) {
+  process.exitCode = await runClassicScript('handoff', classicHandoffCommand);
+}

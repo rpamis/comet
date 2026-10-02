@@ -244,8 +244,21 @@ export async function collectCheckSnapshot(
     return results;
   }
 
-  async function file(absolute: string, repositoryContentHash?: string): Promise<void> {
-    if (omitted(absolute)) return;
+  const visitedInputs = new Set<string>();
+  type FileSnapshot = {
+    absolute: string;
+    binding: Array<string | Buffer>;
+    entry?: CheckManifestEntry;
+    directory?: string;
+  };
+  const inputIdentity = (absolute: string) =>
+    process.platform === 'win32' ? absolute.toLowerCase() : absolute;
+  async function captureFile(
+    absolute: string,
+    repositoryContentHash?: string,
+  ): Promise<FileSnapshot | null> {
+    if (omitted(absolute)) return null;
+    if (!legacy && visitedInputs.has(inputIdentity(absolute))) return null;
     const relative = path.relative(root, absolute).replaceAll('\\', '/');
     const stat = await fs
       .lstat(absolute, { bigint: true })
@@ -257,16 +270,15 @@ export async function collectCheckSnapshot(
     // recorded mode to contribute, and a chmod alone does not change check
     // input content. Policies that care bind modes through `git: all` index
     // entries instead.
-    hash.update(
+    const binding: Array<string | Buffer> = [
       JSON.stringify([relative, stat ? (stat.isFile() ? Number(stat.size) : null) : 'missing']),
-    );
+    ];
     if (!stat) {
-      entries.push({ p: relative, h: 'missing', s: null, m: null });
       await inspectClassicProjectTarget(root, absolute, {
         label: 'Classic check input',
         expected: 'any',
       });
-      return;
+      return { absolute, binding, entry: { p: relative, h: 'missing', s: null, m: null } };
     }
     if (stat.isSymbolicLink())
       throw new Error(
@@ -277,8 +289,7 @@ export async function collectCheckSnapshot(
         label: 'Classic check input',
         expected: 'directory',
       });
-      await tree(absolute);
-      return;
+      return { absolute, binding, directory: absolute };
     }
     const cacheKey = `${relative}|${stat.size}|${stat.mtimeNs}|${stat.mode}`;
     const normalizeTasks =
@@ -314,20 +325,57 @@ export async function collectCheckSnapshot(
             bound = bytes;
           }
         }
-        if (legacy) hash.update(bound);
+        if (legacy) binding.push(bound);
         else contentHash = createHash('sha256').update(bound).digest('hex');
       }
     }
     if (contentHash !== undefined) {
       contentCache.set(cacheKey, contentHash);
-      if (!legacy) hash.update(contentHash);
+      if (!legacy) binding.push(contentHash);
     }
-    entries.push({
-      p: relative,
-      h: contentHash as string,
-      s: Number(stat.size),
-      m: stat.mtimeNs.toString(),
-    });
+    return {
+      absolute,
+      binding,
+      entry: {
+        p: relative,
+        h: contentHash as string,
+        s: Number(stat.size),
+        m: stat.mtimeNs.toString(),
+      },
+    };
+  }
+
+  async function appendFile(snapshot: FileSnapshot | null): Promise<void> {
+    if (!snapshot) return;
+    const identity = inputIdentity(snapshot.absolute);
+    if (!legacy && visitedInputs.has(identity)) return;
+    visitedInputs.add(identity);
+    for (const part of snapshot.binding) hash.update(part);
+    if (snapshot.directory) await tree(snapshot.directory);
+    if (snapshot.entry) entries.push(snapshot.entry);
+  }
+
+  async function file(absolute: string, repositoryContentHash?: string): Promise<void> {
+    await appendFile(await captureFile(absolute, repositoryContentHash));
+  }
+
+  /** Read a bounded batch, then append in traversal order rather than completion order. */
+  async function fileBatch(
+    inputs: Array<{ absolute: string; contentHash?: string }>,
+  ): Promise<void> {
+    const concurrency = legacy ? 1 : 4;
+    for (let offset = 0; offset < inputs.length; offset += concurrency) {
+      const results = await Promise.allSettled(
+        inputs
+          .slice(offset, offset + concurrency)
+          .map(({ absolute, contentHash }) => captureFile(absolute, contentHash)),
+      );
+      // All reads settle before propagating an error, so a failed snapshot leaves no pending work.
+      for (const result of results) {
+        if (result.status === 'rejected') throw result.reason;
+        await appendFile(result.value);
+      }
+    }
   }
 
   async function tree(directory: string): Promise<void> {
@@ -405,7 +453,7 @@ export async function collectCheckSnapshot(
       }
       const hashNames = names.filter((name) => !indexHashes.has(name) || dirty.has(name));
       const batchedHashes = hashGitPaths(directory, hashNames);
-      for (const name of names) {
+      const inputs = names.map((name) => {
         const indexHash = indexHashes.get(name);
         const contentHash =
           indexHash && !dirty.has(name)
@@ -414,8 +462,12 @@ export async function collectCheckSnapshot(
               (batchedHashes === null
                 ? (git(directory, ['hash-object', '--no-filters', '--', name])?.trim() ?? undefined)
                 : undefined));
-        await file(path.resolve(directory, name), contentHash ? `git:${contentHash}` : undefined);
-      }
+        return {
+          absolute: path.resolve(directory, name),
+          contentHash: contentHash ? `git:${contentHash}` : undefined,
+        };
+      });
+      await fileBatch(inputs);
       return;
     }
     for (const entry of (await fs.readdir(directory, { withFileTypes: true })).sort((a, b) =>
@@ -450,7 +502,9 @@ export async function collectCheckSnapshot(
       .filter((file) => hasGlobCharacters(file))
       .map((pattern) => compileCheckPolicyPattern(pattern));
     if (!patterns.length) {
-      for (const name of [...new Set(policy.files)].sort()) await file(path.resolve(root, name));
+      await fileBatch(
+        [...new Set(policy.files)].sort().map((name) => ({ absolute: path.resolve(root, name) })),
+      );
     } else {
       const literals = new Set(policy.files.filter((name) => !hasGlobCharacters(name)));
       const matches = new Set<string>();
@@ -461,8 +515,10 @@ export async function collectCheckSnapshot(
         if (literals.has(relative) || patterns.some((match) => match(relative)))
           matches.add(relative);
       }
-      for (const name of [...literals].sort()) await file(path.resolve(root, name));
-      for (const relative of [...matches].sort()) await file(path.resolve(root, relative));
+      await fileBatch([...literals].sort().map((name) => ({ absolute: path.resolve(root, name) })));
+      await fileBatch(
+        [...matches].sort().map((relative) => ({ absolute: path.resolve(root, relative) })),
+      );
     }
     await file(path.join(root, '.comet', 'config.yaml'));
   } else await tree(root);

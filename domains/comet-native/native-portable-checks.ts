@@ -781,18 +781,20 @@ function boundEnvironmentEntries(): Array<[string, string | null]> {
 }
 
 /**
- * Cheap pre-gate over the full fingerprint's decisive inputs. Three fast Git
- * calls (HEAD, porcelain status, staged blob ids) plus dirty, untracked, and
+ * Cheap pre-gate over the full fingerprint's decisive inputs. Git observations
+ * of HEAD, branch, porcelain status, and staged blob IDs plus dirty, untracked, and
  * ignored generated-input content digests cover every mutable input represented
  * by the full fingerprint. A gate hit therefore proves the full fingerprint
  * would recompute to its recorded value without hashing the clean tracked tree.
  */
-export async function nativeCheckInputGate(options: {
+interface NativeCheckInputGateOptions {
   projectRoot: string;
   candidateId: string | null;
   plans?: readonly NativeCheckPlan[];
   managedArtifactRoot?: string;
-}): Promise<string | null> {
+}
+
+async function readNativeCheckInputObservation(options: NativeCheckInputGateOptions) {
   try {
     const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
     const exclusions = [
@@ -837,35 +839,65 @@ export async function nativeCheckInputGate(options: {
       workingTree.push({ path: changedPath, digest });
     }
     workingTree.sort((left, right) => left.path.localeCompare(right.path, 'en'));
+    return {
+      runnerInputs,
+      binding: {
+        candidateId: options.candidateId,
+        head,
+        branch,
+        // Porcelain names dirty files but does not bind their working-tree bytes.
+        // Hash every dirty path so editing an already-dirty tracked file cannot
+        // falsely hit the pre-gate.
+        status,
+        staged,
+        workingTree,
+        projectRoot: path.resolve(options.projectRoot),
+        machineId: os.hostname(),
+        execPath: process.execPath,
+        node: process.version,
+        platform: process.platform,
+        arch: process.arch,
+        boundEnvironment: boundEnvironmentEntries(),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function nativeCheckGateFromObservation(
+  options: NativeCheckInputGateOptions,
+  observation: Awaited<ReturnType<typeof readNativeCheckInputObservation>>,
+): Promise<string | null> {
+  if (observation === null) return null;
+  try {
     const ignored = await nativeIgnoredCheckInputSnapshot(
       options.projectRoot,
       options.plans ?? [],
       options.managedArtifactRoot,
-      runnerInputs,
+      observation.runnerInputs,
     );
-    if (!ignored.complete) return null;
-    return canonicalHash('comet.native.check-input-gate.v1', {
-      candidateId: options.candidateId,
-      head,
-      branch,
-      // Porcelain names dirty files but does not bind their working-tree bytes.
-      // Hash every dirty path so editing an already-dirty tracked file cannot
-      // falsely hit the pre-gate.
-      status,
-      staged,
-      workingTree,
-      ignored,
-      projectRoot: path.resolve(options.projectRoot),
-      machineId: os.hostname(),
-      execPath: process.execPath,
-      node: process.version,
-      platform: process.platform,
-      arch: process.arch,
-      boundEnvironment: boundEnvironmentEntries(),
-    });
+    return ignored.complete
+      ? canonicalHash('comet.native.check-input-gate.v1', { ...observation.binding, ignored })
+      : null;
   } catch {
     return null;
   }
+}
+
+export async function nativeCheckInputGate(
+  options: NativeCheckInputGateOptions,
+): Promise<string | null> {
+  return nativeCheckGateFromObservation(options, await readNativeCheckInputObservation(options));
+}
+
+/** Share only the reservation's observation; checks and later requests still capture fresh inputs. */
+async function nativeCheckInputGates(options: NativeCheckInputGateOptions) {
+  const observation = await readNativeCheckInputObservation(options);
+  return {
+    gate: await nativeCheckGateFromObservation(options, observation),
+    candidateGate: await nativeCheckGateFromObservation({ ...options, plans: [] }, observation),
+  };
 }
 
 export function authoritativePortableChecks(options: {
@@ -1058,16 +1090,10 @@ async function reserveNativePortableCheckPlan(options: {
           containedRoot: options.paths.runtimeDir,
         })
       ).state;
-      const gate = await nativeCheckInputGate({
+      const { gate, candidateGate } = await nativeCheckInputGates({
         projectRoot: options.projectRoot,
         candidateId: state.builder_handoff?.candidate_id ?? null,
         plans: options.plans,
-        managedArtifactRoot: options.paths.artifactRoot,
-      });
-      const candidateGate = await nativeCheckInputGate({
-        projectRoot: options.projectRoot,
-        candidateId: state.builder_handoff?.candidate_id ?? null,
-        plans: [],
         managedArtifactRoot: options.paths.artifactRoot,
       });
       // A null gate means the workspace could not be snapshotted completely
