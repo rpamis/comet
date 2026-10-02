@@ -339,6 +339,18 @@ async function hasNativeCoordinatorPredecessor(claim: NativeLock): Promise<boole
       const snapshot = await readNativeLockSnapshot(file);
       const diagnosis = await diagnosisFromSnapshot(snapshot);
       if (diagnosis.status === 'missing') continue;
+      // Process inspection can outlast the claim. Recheck its bound file before
+      // treating the observed owner as a blocker or removing a stale claim.
+      const current = await readNativeLockSnapshot(file);
+      if (!current) continue;
+      if (
+        !snapshot ||
+        current.owner.id !== snapshot.owner.id ||
+        !sameNativeLockVersion(current.identity, snapshot.identity)
+      ) {
+        if (entry.name < claimName) predecessor = true;
+        continue;
+      }
       if (diagnosis.status === 'stale' && snapshot) {
         await removeBoundNativeLock(snapshot, coordinatorDir);
         continue;

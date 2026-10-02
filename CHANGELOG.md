@@ -16,6 +16,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Native daemon workspace context**: Resolve Native queries and relative project paths from the caller's working directory, preserving linked-worktree ownership when the daemon runs from another directory.
+- **Native concurrent lock acquisition**: Recheck coordinator claims after process inspection so a released owner cannot cause a false busy timeout. Active or replaced claims remain protected, including when Windows process probes are slow.
 - **Project Memory scrolling**: Keep the project memory tab on the same Dashboard inner-page flex layout as retrieval test, so long memory lists scroll inside the knowledge page instead of being clipped (#452).
 - **Native candidate input isolation**: Keep validated, unchanged, untracked Runner payloads separate from candidate inputs so repository-local handoff files do not invalidate verification. Tracked files, changed payloads, and implementation inputs remain bound to the candidate (#455).
 - **Native Verifier recovery**: Reject correctable result and check-request errors without ending the active Verifier or consuming its execution failure budget. Explicit requests can rerun failed repeatable checks within the existing limits, while passed evidence is reused and failed checks still prevent acceptance (#455).
