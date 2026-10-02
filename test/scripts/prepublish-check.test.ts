@@ -74,6 +74,35 @@ async function makePublishFixture(): Promise<string> {
 }
 
 describe('prepublish security check', () => {
+  it('accepts the shipped SDK delivery preflight without treating a placeholder as a credential', async () => {
+    const root = await makePackageFixture();
+    await writeFile(
+      root,
+      'index.js',
+      await fs.readFile('domains/comet-classic/classic-sdk-application.ts', 'utf-8'),
+    );
+
+    const result = spawnSync(process.execPath, [prepublishCheck], {
+      cwd: root,
+      encoding: 'utf-8',
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+
+  it('rejects a real hard-coded claim credential in a published module', async () => {
+    const root = await makePackageFixture();
+    await writeFile(root, 'index.js', 'export const claimToken = "fixture-credential-123456";\n');
+
+    const result = spawnSync(process.execPath, [prepublishCheck], {
+      cwd: root,
+      encoding: 'utf-8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('[SECURITY] Possible Secret/token found in index.js');
+  });
+
   it('packs the eval harness without derived artifacts', async () => {
     const root = await makePublishFixture();
     const npmCache = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-npm-cache-'));

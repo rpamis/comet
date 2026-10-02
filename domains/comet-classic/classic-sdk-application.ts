@@ -489,7 +489,7 @@ export async function validateClassicSdkDeliveryCandidate(
       actionId: action.id,
       attempt: action.attempt,
       inputHash: action.inputHash,
-      claimToken: 'delivery-candidate',
+      claimToken: action.claim?.token ?? '',
       outcomeId: 'delivery-candidate',
       status: 'succeeded',
       output,

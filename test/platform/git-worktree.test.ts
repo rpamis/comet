@@ -1,8 +1,8 @@
-import { spawnSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   inspectGitWorktree,
   currentGitBranch,
@@ -12,6 +12,11 @@ import {
   listGitWorktreeRoots,
   samePath,
 } from '../../platform/paths/git-worktree.js';
+
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+});
 
 describe('Git worktree inspection', () => {
   let primary: string;
@@ -77,6 +82,47 @@ describe('Git worktree inspection', () => {
     expect(
       gitWorktreeContextFromEntries(path.join(primary, 'missing'), listGitWorktrees(primary)),
     ).toBeNull();
+  });
+
+  it('reads current worktree identity and branch without a redundant Git process', () => {
+    vi.mocked(execFileSync).mockClear();
+    expect(inspectGitWorktree(secondary)).toMatchObject({
+      isGitWorktree: true,
+      isSecondaryWorktree: true,
+      currentBranch: 'feature/secondary',
+    });
+    // Count actual operating-system calls while retaining real Git behavior.
+    // Branch ownership must come from this inspection, never a prior-command cache.
+    expect(vi.mocked(execFileSync).mock.calls.length).toBeLessThanOrEqual(2);
+    expect(
+      spawnSync('git', ['-C', secondary, 'switch', '-c', 'feature/changed'], {
+        encoding: 'utf8',
+        timeout: 20_000,
+      }).status,
+    ).toBe(0);
+    expect(inspectGitWorktree(secondary).currentBranch).toBe('feature/changed');
+  });
+
+  it('inspects a nested directory and detached HEAD without borrowing another branch', async () => {
+    const nested = path.join(secondary, 'nested folder');
+    await fs.mkdir(nested);
+    expect(inspectGitWorktree(nested)).toMatchObject({
+      isGitWorktree: true,
+      isSecondaryWorktree: true,
+      currentBranch: 'feature/secondary',
+    });
+    expect(
+      spawnSync('git', ['-C', secondary, 'switch', '--detach'], {
+        encoding: 'utf8',
+        timeout: 20_000,
+      }).status,
+    ).toBe(0);
+    expect(inspectGitWorktree(nested)).toMatchObject({
+      isGitWorktree: true,
+      isSecondaryWorktree: true,
+      currentBranch: null,
+    });
+    expect(currentGitBranch(primary)).toBe('master');
   });
 
   it('returns a stable non-Git result outside a repository', async () => {

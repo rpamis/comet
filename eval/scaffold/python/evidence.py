@@ -34,5 +34,6 @@ def build_eval_artifact_references(
         "raw_stdout": str(base_dir / "raw" / f"{name}_rep{rep}_stdout.json"),
         "raw_stderr": str(base_dir / "raw" / f"{name}_rep{rep}_stderr.txt"),
         "report": str(base_dir / "reports" / f"{name}_rep{rep}_report.json"),
-        "artifacts": str(base_dir / "artifacts" / f"{name}_rep{rep}"),
+        # Snapshots retain the original treatment spelling, lowercased by the writer.
+        "artifacts": str(base_dir / "artifacts" / f"{treatment_name.lower()}_rep{rep}"),
     }

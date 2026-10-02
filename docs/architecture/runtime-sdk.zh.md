@@ -63,7 +63,9 @@ const reportWorkflow = {
 
 Native 应用通过 `comet native archive <change> --recover` 向 CLI 宿主提供中断恢复。它只处理 Archive 阶段唯一的 `unknown` Supervisor 交付、归档或清理 Action，且要求宿主先确认原执行已停止。交付恢复核对目标分支是否仍精确指向已验证集成提交，再提交原 Action 的结果；未交付或分支漂移时拒绝，不重新执行快进。清理恢复核对工作区与分支后完成剩余安全操作；普通 `archive` 不会自动重发结果未知的动作。
 
-若复制 change 到新 checkout 时没有携带被 Git 忽略的本地 Run 记录，已推进的 Native/Classic change 不会自动续跑。确认原执行进程已停止后，可分别用 `comet native doctor <change> --repair --confirmed`、`comet state restore <change> --confirmed` 显式从 Shape/Open 重建 Run。原 `comet-state.yaml` / `.comet.yaml` 仍在原路径；正式文档保留，旧确认和检查结果失效，按正常流程重新核对与确认。归档中的 change 或工作区绑定不符时拒绝恢复；此操作也不重放结果未明的外部动作。
+新 change 在原路径的 `comet-state.yaml` / `.comet.yaml` 中保留 `run_checkpoint`。将状态文件、正式文档和已经修改的代码一起转移到配置一致的新 checkout 后，普通 Native/Classic change 可在缺少本机 Run 记录时恢复同一 Run，保留已保存的阶段、Actions 和确认，不会回到 Shape/Open。检查点摘要、工件或工作区绑定不匹配时拒绝恢复；已领取但结果未知的外部动作保持 `unknown`，必须先停止原执行者、核对现场，再按 reconciliation 协议继续，不能自动重放。
+
+Supervisor Child 的独立 worktree 和未提交代码不包含在父状态文件中。Child Builder 阶段可在确认原执行者停止后，通过 `comet native transfer export <change> --output <新目录> --confirmed-stopped` 和 `comet native transfer import --input <目录>` 显式转移。包内包含临时 Git 分支和非忽略的 worktree 修改，必须作为私有资料保存；忽略文件与外部依赖需要另行准备。只复制父状态文件不能接管已启动的 Child。旧状态文件没有检查点时，才需要用户显式确认后，从 Shape/Open 保留正式文档重建；旧确认和检查结果不能直接沿用。具体支持阶段和拒绝条件见 [Native/Classic 接入边界](./runtime-sdk-native-classic-integration.zh.md)。
 
 不由 Action Outcome 直接产生的工件，可用 `await_evidence` 步骤声明证据种类与版本化验证器。宿主在 `evidenceValidators` 注册验证器，调用 `recordEvidence({ runId, evidenceId, kind, ref, contentHash, submissionId, expectedRevision })`。验证器会收到当前 Run 的隔离副本，可据此核对证据是否属于该 Run，再检查引用范围与当前内容摘要；SDK 只在验证通过且 revision 未变化时记录收据并推进。外部文件可能在验证后再次变化，后续依赖它的动作仍须按已记录摘要重新核对。若工作流为该等待项声明 `on: invalidated` 转移，宿主可在收据遭拒后调用 `invalidateEvidence`：SDK 会再次验证原收据，只有确认已失效才记录原因、结束该 Wait 并沿声明的转移继续；它不会重发此前成功的 Action。CLI 中对应 `invalidate-evidence` 操作。没有失效转移或收据仍有效时，Run 保持原等待状态。自定义 JSON Workflow 尚不能通过 CLI 注册处理器和验证器；CLI 的内置 Native/Classic 应用会注册自己的实现。
 
@@ -119,7 +121,7 @@ Action 的 `id`、`attempt`、`inputHash` 与领取 token 共同约束回传结�
 
 ## 等待、确认与恢复
 
-丢失 Run 记录后的重建不处理 Archive 阶段、未解决的外部执行或已启动的 Supervisor 协作；此时须找回原 Run 记录并核对原结果。
+旧状态文件没有 `run_checkpoint` 时，从文档重建新 Run 的路径不处理 Archive 阶段、未解决的外部执行或已启动的 Supervisor 协作；此时须找回原 Run 记录并核对原结果。这个限制不适用于前述携带有效检查点的普通 SDK change 恢复。
 
 `ask_user` 会写入一个带 `proposalHash` 的持久化 Wait。宿主把提案呈现给用户后，用用户决定调用：
 

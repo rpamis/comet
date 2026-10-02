@@ -130,11 +130,7 @@ def validate_base_url(value: object, *, field: str = "baseUrl") -> str | None:
 def _declared_credential_names(environment: Mapping[str, str]) -> set[str]:
     names: set[str] = set()
     for key in ("COMET_EVAL_CUSTOM_CREDENTIALS", "COMET_EVAL_MAIN_CREDENTIALS"):
-        names.update(
-            item.strip()
-            for item in environment.get(key, "").split(",")
-            if item.strip()
-        )
+        names.update(item.strip() for item in environment.get(key, "").split(",") if item.strip())
     return names
 
 
@@ -153,10 +149,22 @@ def redact_sensitive(value: Any, source_env: Mapping[str, str] | None = None) ->
 
     environment = source_env if source_env is not None else os.environ
     declared = _declared_credential_names(environment)
+    secrets = _credential_values(environment)
+
+    def portable_claim(key: str, item: Any) -> bool:
+        # Portable claims are one-way hashes, not live executor or provider credentials.
+        return (
+            key.lower() in {"token", "claimtoken"}
+            and isinstance(item, str)
+            and re.fullmatch(r"portable-[a-f0-9]{64}", item) is not None
+            and not any(secret in item for secret in secrets)
+        )
+
     if isinstance(value, dict):
         return {
             key: "[REDACTED]"
-            if key in declared or _CREDENTIAL_NAME_RE.search(str(key))
+            if key in declared
+            or (_CREDENTIAL_NAME_RE.search(str(key)) and not portable_claim(str(key), item))
             else redact_sensitive(item, environment)
             for key, item in value.items()
         }
@@ -170,9 +178,18 @@ def redact_sensitive(value: Any, source_env: Mapping[str, str] | None = None) ->
         value,
     )
     redacted = re.sub(r"(?i)(x-api-key\s*:\s*)[^\s,;]+", r"\1[REDACTED]", redacted)
+
+    def redact_assignment(match: re.Match[str]) -> str:
+        key, separator, quote, item, closing_quote = match.groups()
+        if portable_claim(key, item):
+            return match.group(0)
+        delimiter = quote or ('"' if ":" in separator else "")
+        return f"{key}{separator}{delimiter}[REDACTED]{closing_quote or delimiter}"
+
     redacted = re.sub(
-        r"(?i)(api[_-]?key|auth[_-]?token|access[_-]?token|token|secret|password|credential)\s*[=:]\s*[^\s,;]+",
-        r"\1=[REDACTED]",
+        r"(?i)(api[_-]?key|auth[_-]?token|access[_-]?token|token|secret|password|credential)"
+        r"([ \t]*[=:][ \t]*)([\"']?)([^\s,;\"']+)([\"']?)",
+        redact_assignment,
         redacted,
     )
     redacted = re.sub(
@@ -181,7 +198,7 @@ def redact_sensitive(value: Any, source_env: Mapping[str, str] | None = None) ->
         redacted,
     )
     redacted = re.sub(r"(https?://)[^/@\s:]+:[^/@\s]+@", r"\1[REDACTED]@", redacted)
-    for secret in _credential_values(environment):
+    for secret in secrets:
         redacted = redacted.replace(secret, "[REDACTED]")
     return redacted
 
@@ -291,8 +308,7 @@ def resolve_judge(
     enabled = (
         manifest is not None
         or any(value is not None for value in (cli_agent, cli_model, cli_base_url))
-        or str(environment.get("BENCH_LLM_JUDGE", "")).strip().lower()
-        in {"1", "true", "yes", "on"}
+        or str(environment.get("BENCH_LLM_JUDGE", "")).strip().lower() in {"1", "true", "yes", "on"}
     )
     if not enabled:
         return None
@@ -326,16 +342,8 @@ def resolve_judge(
         model=model,
         base_url=base_url,
         sources={
-            "agent": "cli"
-            if cli_agent
-            else "manifest"
-            if manifest_agent
-            else "inherited",
-            "model": "cli"
-            if cli_model
-            else "manifest"
-            if manifest_model
-            else "environment",
+            "agent": "cli" if cli_agent else "manifest" if manifest_agent else "inherited",
+            "model": "cli" if cli_model else "manifest" if manifest_model else "environment",
             "base_url": "cli"
             if cli_base_url
             else "manifest"
@@ -452,12 +460,7 @@ def build_judge_environment(
         _set_if_value(environment, "COMET_EVAL_CUSTOM_INSTALL_PACKAGE", adapter.install_package)
         _set_if_value(environment, "COMET_EVAL_CUSTOM_INSTALL_VERSION", adapter.install_version)
     if "WSLENV" in environment:
-        blocked_wsl = (
-            set(excluded)
-            | _PROVIDER_KEYS
-            | _MAIN_OVERRIDE_KEYS
-            | _JUDGE_KEYS
-        )
+        blocked_wsl = set(excluded) | _PROVIDER_KEYS | _MAIN_OVERRIDE_KEYS | _JUDGE_KEYS
         retained_wsl = [
             item
             for item in environment["WSLENV"].split(":")
@@ -488,9 +491,14 @@ def missing_credentials(
         if not adapter.required_credentials:
             return ()
         if len(adapter.required_credentials) == 1:
-            return () if any(
-                environment.get(key) for key in ("BENCH_JUDGE_API_KEY", "BENCH_JUDGE_AUTH_TOKEN")
-            ) else ("BENCH_JUDGE_API_KEY or BENCH_JUDGE_AUTH_TOKEN",)
+            return (
+                ()
+                if any(
+                    environment.get(key)
+                    for key in ("BENCH_JUDGE_API_KEY", "BENCH_JUDGE_AUTH_TOKEN")
+                )
+                else ("BENCH_JUDGE_API_KEY or BENCH_JUDGE_AUTH_TOKEN",)
+            )
         required = (
             "BENCH_JUDGE_API_KEY",
             "BENCH_JUDGE_AUTH_TOKEN",
@@ -499,7 +507,11 @@ def missing_credentials(
     keys = adapter.required_credentials
     if adapter.custom:
         return tuple(key for key in keys if not environment.get(key))
-    return () if any(environment.get(key) for key in keys) or environment.get("BENCH_API_KEY") else keys
+    return (
+        ()
+        if any(environment.get(key) for key in keys) or environment.get("BENCH_API_KEY")
+        else keys
+    )
 
 
 def preflight_credentials(

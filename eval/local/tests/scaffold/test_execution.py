@@ -3,14 +3,46 @@
 from __future__ import annotations
 
 import pytest
+import yaml
 
 from scaffold.python.execution import (
     build_agent_environment,
     build_judge_environment,
     preflight_credentials,
+    redact_sensitive,
     resolve_execution,
     resolve_judge,
 )
+
+
+def test_redaction_preserves_portable_checkpoint_claim_hashes_and_yaml_structure():
+    token = "portable-" + "a" * 64
+    source = f"claim:\n  token: {token}\n  executorId: fixture\n"
+
+    assert yaml.safe_load(redact_sensitive(source, {})) == {
+        "claim": {"token": token, "executorId": "fixture"}
+    }
+    assert redact_sensitive({"claim": {"token": token}}, {}) == {"claim": {"token": token}}
+
+
+@pytest.mark.parametrize("quoted", [False, True])
+def test_redaction_removes_real_claim_credentials_without_breaking_yaml(quoted):
+    token = '"fixture-private-value"' if quoted else "fixture-private-value"
+    source = f"claim:\n  token: {token}\n  executorId: fixture\n"
+
+    redacted = redact_sensitive(source, {})
+
+    assert "fixture-private-value" not in redacted
+    assert yaml.safe_load(redacted) == {"claim": {"token": "[REDACTED]", "executorId": "fixture"}}
+
+
+def test_redaction_never_exempts_provider_credentials_that_look_like_portable_hashes():
+    token = "portable-" + "b" * 64
+    environment = {"FIXTURE_API_KEY": token}
+
+    assert token not in redact_sensitive(f"token: {token}", environment)
+    assert redact_sensitive({"token": token}, environment) == {"token": "[REDACTED]"}
+    assert redact_sensitive({"api_key": token}, {}) == {"api_key": "[REDACTED]"}
 
 
 def _install_fixture_adapter(root, monkeypatch):
@@ -118,11 +150,14 @@ def test_judge_cli_and_dedicated_environment_never_inherit_main_provider_values(
     )
 
     assert judge is not None
-    child_env = build_judge_environment(judge, source_env={
-        "BENCH_JUDGE_API_KEY": "judge-key",
-        "ANTHROPIC_API_KEY": "subject-key",
-        "ANTHROPIC_BASE_URL": "https://subject.example/v1",
-    })
+    child_env = build_judge_environment(
+        judge,
+        source_env={
+            "BENCH_JUDGE_API_KEY": "judge-key",
+            "ANTHROPIC_API_KEY": "subject-key",
+            "ANTHROPIC_BASE_URL": "https://subject.example/v1",
+        },
+    )
     assert child_env["CODEBUDDY_API_KEY"] == "judge-key"
     assert child_env["CODEBUDDY_BASE_URL"] == "https://judge.example/v1"
     assert "ANTHROPIC_API_KEY" not in child_env
@@ -217,9 +252,7 @@ def test_explicit_agent_model_and_base_url_override_common_fallbacks():
     assert resolved.base_url == "https://native.example/v1"
 
 
-def test_custom_agent_environment_preserves_declared_runtime_contract(
-    tmp_path, monkeypatch
-):
+def test_custom_agent_environment_preserves_declared_runtime_contract(tmp_path, monkeypatch):
     _install_fixture_adapter(tmp_path, monkeypatch)
 
     resolved = resolve_execution(
@@ -271,7 +304,8 @@ def test_custom_main_credentials_require_all_declared_values(tmp_path, monkeypat
     adapter_path = tmp_path / "fixture-agent" / "adapter.yaml"
     adapter_path.write_text(
         adapter_path.read_text(encoding="utf-8").replace(
-            "  - FIXTURE_AGENT_API_KEY\n", "  - FIXTURE_AGENT_API_KEY\n  - FIXTURE_AGENT_AUTH_TOKEN\n"
+            "  - FIXTURE_AGENT_API_KEY\n",
+            "  - FIXTURE_AGENT_API_KEY\n  - FIXTURE_AGENT_AUTH_TOKEN\n",
         ),
         encoding="utf-8",
     )

@@ -6,7 +6,7 @@
 
 跨设备转移进行中的 Supervisor Child Builder 时，先停止原设备上的 Supervisor 与 Child Agent，再在原项目执行 `comet native transfer export <change> --output <新目录> --confirmed-stopped`。将整个私有目录复制到目标设备；它包含父 change 文件、临时分支的 Git bundle、各 worktree 的已跟踪修改补丁与原始文件字节，以及非忽略的未跟踪文件，可能包含源代码或敏感内容。目标设备需有同一项目的 Git 检出、相同的项目配置，且目标分支仍指向导出时的提交。执行 `comet native transfer import --input <目录>` 后，Runtime 在目标检出中恢复 Child 与集成 worktree、父状态文件和 SDK Run，并记录原始与导入后的 checkpoint 哈希。原设备已领取但未提交结果的 Builder 在目标设备保持 `unknown`，需检查转移的代码并核对结果后再继续；导入不会把它视为完成，也不会自动重放。当前仅支持 Child Builder 阶段、尚未进入 Child 检查或集成的 Supervisor；忽略文件和外部依赖不在转移包内。目标项目若已有同名 change、目标分支漂移或包内容不匹配，导入会拒绝。只复制父状态文件仍会因缺少 Child worktree 而停止恢复。
 
-本地自动化覆盖 Native 普通 change、Supervisor 双 Child，以及 Classic full/hotfix/tweak 的关键路径、失败/未知结果与跨 worktree 归属。当前候选的全量测试、生成 Runtime 检查和发布包 E2E 已通过；这些结果不替代真实平台 Hook、宿主交接和模型 Eval。新 change 默认创建 SDK Run，并在原路径保留状态文件；显式创建原 Runtime change 时使用 `--runtime compat`，未发布的 `--runtime legacy` 不保留。显式迁移旧 change 尚未实现；是否提供迁移命令应按真实需求单独决定，不是默认切换的前置条件。
+本地自动化覆盖 Native 普通 change、Supervisor 双 Child，以及 Classic full/hotfix/tweak 的关键路径、失败/未知结果与跨 worktree 归属。全量测试、生成 Runtime、发布包 E2E、真实平台 Hook、宿主交接和模型 Eval 需要分别记录当前候选的结果，不能沿用旧候选的通过结论；正在运行、超时或证据缺失的项目仍未完成。新 change 默认创建 SDK Run，并在原路径保留状态文件；显式创建原 Runtime change 时使用 `--runtime compat`，未发布的 `--runtime legacy` 不保留。显式迁移旧 change 尚未实现；是否提供迁移命令应按真实需求单独决定，不是默认切换的前置条件。
 
 当前跨设备恢复覆盖活跃 change，以及 Classic 已移动、结果未提交的 Archive 和待交付的归档 change。Classic 可在确认原执行者停止后使用 `comet archive <change> --recover` 核对原 Action、归档目录及工件要求；不会再次运行 OpenSpec Archive。Native 可从归档状态文件恢复已完成文件移动但结果未提交的 Archive Action；归档凭据随状态文件保存，恢复时还会核对验证报告与 canonical Specs。已启动的 Supervisor 协作仍需单独核对，未解决的外部执行保持结果待核对，不能用重建本机记录绕过。
 
@@ -14,7 +14,7 @@
 
 Native 和 Classic 应成为两种完整的 Workflow Application：都通过公开 SDK 创建、推进、确认、恢复和结束 Run，分别展示自主的 Native 流程与依赖外部 Skill 的 Classic 流程。SDK 统一承担持久化编排机制；两套流程保留各自的阶段、验收和交互规则。
 
-当前工作分支的新 change 已默认走 SDK；已存在的旧 change 仍由原 Runtime 管理。公开入口、本地恢复、发布包和仓库全量测试已通过；真实平台和模型层尚未达到本提案的完成条件。[实施计划](./runtime-sdk-plan.md)记录的是先前局部接入阶段，不能作为当前验收结果。
+当前工作分支的新 change 已默认走 SDK；已存在的旧 change 仍由原 Runtime 管理。两套流程已有模型运行证据，但最终候选的完整验收仍须逐层核对。流程完成、业务检查、提示评分、执行效率和异常恢复是不同结论；报告的检查全部通过不代表所有质量维度满分。[实施计划](./runtime-sdk-plan.md)记录的是先前局部接入阶段，不能作为当前验收结果。
 
 ## 术语和职责
 

@@ -35,6 +35,30 @@ def test_save_artifacts_excludes_nested_git_metadata(tmp_path: Path):
     assert not (snapshot / ".git").exists()
 
 
+@pytest.mark.parametrize(
+    "treatment",
+    [
+        "comet-native-workflow-COMET_NATIVE_SDK_CURRENT-r1",
+        "comet-classic-layout-lifecycle-COMET_CLASSIC_DOCS_LAYOUT-r1",
+        "COMET-FULL",
+    ],
+)
+def test_artifact_references_point_to_the_saved_workflow_snapshot(tmp_path: Path, treatment: str):
+    from conftest import _save_artifacts
+    from scaffold.python.evidence import build_eval_artifact_references
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "result.md").write_text("verified output", encoding="utf-8")
+
+    _save_artifacts(tmp_path, treatment, 1, workspace)
+    references = build_eval_artifact_references(tmp_path, treatment, 1)
+
+    assert (Path(references["artifacts"]) / "claude/result.md").read_text(
+        encoding="utf-8"
+    ) == "verified output"
+
+
 @pytest.mark.parametrize("root", ["docs/openspec/changes", "openspec/changes"])
 def test_save_artifacts_preserves_classic_state_without_other_hidden_files(
     tmp_path: Path, root: str
@@ -273,9 +297,7 @@ def test_extract_events_trims_shell_suffix_from_runtime_skill_path():
                     {
                         "type": "tool_use",
                         "name": "Bash",
-                        "input": {
-                            "command": 'ls -la /workspace/.claude/skills/demo; echo "---"'
-                        },
+                        "input": {"command": 'ls -la /workspace/.claude/skills/demo; echo "---"'},
                     }
                 ]
             },
@@ -319,9 +341,7 @@ def test_extract_events_ignores_shell_glob_in_runtime_skill_path():
                     {
                         "type": "tool_use",
                         "name": "Bash",
-                        "input": {
-                            "command": "find . -not -path '*/.claude/skills/*'"
-                        },
+                        "input": {"command": "find . -not -path '*/.claude/skills/*'"},
                     }
                 ]
             },

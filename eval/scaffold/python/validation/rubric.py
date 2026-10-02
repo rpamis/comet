@@ -20,7 +20,7 @@ Scoring methodology (aligned with industry best practices from Galileo, Hebbia,
 Dimensions
 ----------
 1. main_flow              - how many workflow-specific phases left evidence (weight 1.5)
-2. gate_guard             - whether comet-guard / comet-state transition / --apply were used (weight 1.5)
+2. gate_guard             - guard/apply usage and accepted SDK checks or compat transitions (weight 1.5)
 3. skill_invocation       - whether the comet entry, nested stage skills, and dependency skills were invoked (weight 1.0)
 4. spec_drift             - whether delta specs created during build were reconciled before archive (weight 1.0)
 5. business_completion    - fraction of business validators that passed (weight 2.0)
@@ -34,10 +34,13 @@ Dimensions
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from scaffold.python.agents import normalize_skill_invocations
 from scaffold.python.validation.comet_workflow import classic_changes_relative, project_config
@@ -175,7 +178,9 @@ def _phase_signals(outputs: dict[str, Any] | None, test_dir: Path | None = None)
     changes = (
         classic_changes_relative(test_dir, outputs).as_posix()
         if test_dir is not None
-        else "docs/openspec/changes" if _uses_docs_layout(outputs) else "openspec/changes"
+        else "docs/openspec/changes"
+        if _uses_docs_layout(outputs)
+        else "openspec/changes"
     )
     escaped = re.escape(changes)
     openspec_root = escaped.removesuffix(re.escape("/changes"))
@@ -233,6 +238,71 @@ def _find_change_dir(
         ):
             return d
     return None
+
+
+class _RuntimeStateLoader(yaml.SafeLoader):
+    """Read SDK JSON values using YAML 1.2 booleans and string timestamps."""
+
+
+_RuntimeStateLoader.yaml_implicit_resolvers = {
+    key: [(tag, pattern) for tag, pattern in resolvers if tag != "tag:yaml.org,2002:bool"]
+    for key, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
+}
+_RuntimeStateLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:bool", re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$"), list("tTfF")
+)
+_RuntimeStateLoader.add_constructor(
+    "tag:yaml.org,2002:timestamp", lambda loader, node: loader.construct_scalar(node)
+)
+
+
+def _runtime_digest(value: Any) -> str:
+    canonical = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _classic_sdk_checkpoint(change: Path | None) -> tuple[dict | None, str | None]:
+    """Observe a digest-bound checkpoint; hard workflow validators still inspect Runtime."""
+    if change is None:
+        return None, None
+    path = change / ".comet.yaml"
+    if not path.exists():
+        return None, None
+    try:
+        if path.is_symlink():
+            return None, "SDK state is a symlink"
+        source = path.read_text(encoding="utf-8")
+        state = yaml.load(source, Loader=_RuntimeStateLoader)
+        if not isinstance(state, dict):
+            return None, "invalid workflow state"
+        if "run_checkpoint" not in state and not source.startswith(
+            "# comet-execution: managed-run\n"
+        ):
+            return None, None
+        checkpoint = state.get("run_checkpoint")
+        run = checkpoint.get("run") if isinstance(checkpoint, dict) else None
+        if (
+            not source.startswith("# comet-execution: managed-run\n")
+            or not isinstance(checkpoint, dict)
+            or checkpoint.get("schema") != "comet.workflow-run-checkpoint.v1"
+            or not isinstance(run, dict)
+            or checkpoint.get("hash") != _runtime_digest(run)
+            or run.get("protocolVersion") != 1
+            or run.get("schemaVersion") != 1
+            or not isinstance(run.get("runId"), str)
+            or not (change.name == run["runId"] or change.name.endswith("-" + run["runId"]))
+            or not isinstance(run.get("workflow"), dict)
+            or run["workflow"].get("id") != "comet-classic-" + str(state.get("workflow"))
+            or not isinstance(run.get("actions"), list)
+            or not isinstance(run.get("waits"), list)
+            or not all(isinstance(item, dict) for item in run["actions"] + run["waits"])
+        ):
+            return None, "invalid or changed SDK checkpoint"
+        return run, None
+    except (OSError, ValueError, TypeError, yaml.YAMLError):
+        return None, "unreadable SDK checkpoint"
 
 
 def _detect_workflow_kind(
@@ -318,13 +388,42 @@ def _score_main_flow(
     )
 
 
-def _score_gate_guard(events: dict[str, Any]) -> tuple[float, str]:
-    """Check guard/state/apply usage. Binary checks: guard used, transitions used, apply used."""
+def _score_gate_guard(
+    events: dict[str, Any],
+    test_dir: Path | None = None,
+    outputs: dict[str, Any] | None = None,
+) -> tuple[float, str]:
+    """Observe guard/apply commands and the owning Runtime's accepted stage checks."""
     cmds = _join_commands(events)
+    guard_pattern = r"comet-guard\b|\bcomet(?:\.sh)?\s+guard\b"
+    guard_hits = len(re.findall(guard_pattern, cmds))
+    apply_hits = len(re.findall(r"--apply", cmds))
+    run, error = _classic_sdk_checkpoint(_find_change_dir(test_dir, outputs) if test_dir else None)
+    if error:
+        return 0.0, error
+    if run is not None:
+        profile = run["workflow"]["id"].removeprefix("comet-classic-")
+        required = {
+            f"{profile}.{step}" for step in ("build.check", "verify.check", "archive.preflight")
+        }
+        if profile == "full":
+            required.add("full.open.revalidate")
+        accepted = {
+            action.get("stepId")
+            for action in run["actions"]
+            if action.get("status") == "succeeded"
+            and isinstance(action.get("outcome"), dict)
+            and action["outcome"].get("status") == "succeeded"
+        }
+        checks = [guard_hits > 0, required <= accepted, apply_hits > 0]
+        return _binary_score(checks)[0], (
+            f"SDK guard={guard_hits} accepted_checks={len(required & accepted)}/{len(required)} "
+            f"apply={apply_hits}"
+        )
     if not cmds:
         return 0.0, "no commands captured"
 
-    guard_used = bool(re.search(r"comet-guard", cmds))
+    guard_used = bool(re.search(guard_pattern, cmds))
     transition_used = bool(
         re.search(r"transition\s+\S+\s+(?:open|design|build|verify|archive)", cmds)
     )
@@ -333,11 +432,9 @@ def _score_gate_guard(events: dict[str, Any]) -> tuple[float, str]:
     checks = [guard_used, transition_used, apply_used]
     score, _ = _binary_score(checks)
 
-    guard_hits = len(re.findall(r"comet-guard", cmds))
     transition_hits = len(
         re.findall(r"transition\s+\S+\s+(?:open|design|build|verify|archive)", cmds)
     )
-    apply_hits = len(re.findall(r"--apply", cmds))
 
     return score, f"guard={guard_hits} transition={transition_hits} apply={apply_hits}"
 
@@ -381,10 +478,68 @@ def _score_skill_invocation(events: dict[str, Any]) -> tuple[float, str]:
     )
 
 
+def _requirement_blocks(source: str) -> list[str]:
+    return re.findall(
+        r"^### Requirement:.*?(?=^### Requirement:|^## |\Z)",
+        source,
+        re.MULTILINE | re.DOTALL,
+    )
+
+
+def _delta_spec_synced(delta: str, canonical: str) -> bool:
+    sections = re.split(r"(?m)^## (ADDED|MODIFIED|REMOVED) Requirements[ \t]*$", delta)
+    canonical_blocks = {" ".join(block.split()) for block in _requirement_blocks(canonical)}
+    canonical_names = {block.splitlines()[0] for block in _requirement_blocks(canonical)}
+    observed = False
+    for mode, source in [("ADDED", sections[0])] + list(zip(sections[1::2], sections[2::2])):
+        for block in _requirement_blocks(source):
+            observed = True
+            if mode == "REMOVED":
+                if block.splitlines()[0] in canonical_names:
+                    return False
+            elif " ".join(block.split()) not in canonical_blocks:
+                return False
+    return observed
+
+
 def _score_spec_drift(events: dict[str, Any], test_dir: Path) -> tuple[float, str]:
     """Check delta spec reconciliation. Binary: spec written AND synced."""
     cmds = _join_commands(events)
     files = list(events.get("files_modified", [])) + list(events.get("files_created", []))
+
+    change = _find_change_dir(test_dir)
+    run, error = _classic_sdk_checkpoint(change)
+    if error:
+        return 0.0, error
+    if run is not None and change is not None:
+        specs = list((change / "specs").glob("*/spec.md"))
+        if not specs:
+            return 1.0, "no delta spec needed (n/a)"
+        archive_ref = change.relative_to(test_dir).as_posix()
+        executed = any(
+            action.get("stepId")
+            == run["workflow"]["id"].removeprefix("comet-classic-") + ".archive.execute"
+            and action.get("status") == "succeeded"
+            and isinstance(action.get("outcome"), dict)
+            and action["outcome"].get("status") == "succeeded"
+            and isinstance(action["outcome"].get("output"), dict)
+            and action["outcome"]["output"].get("archiveDirectory") == archive_ref
+            for action in run["actions"]
+        )
+        synced = executed
+        for delta in specs:
+            canonical = (
+                _changes_root(test_dir, None).parent / "specs" / delta.parent.name / "spec.md"
+            )
+            try:
+                delta_text = delta.read_text(encoding="utf-8")
+                canonical_text = canonical.read_text(encoding="utf-8") if canonical.exists() else ""
+                synced = synced and _delta_spec_synced(delta_text, canonical_text)
+            except OSError:
+                synced = False
+        return _binary_score([True, synced])[
+            0
+        ], f"spec_written=True spec_synced={synced} (SDK archive)"
 
     spec_touched = any("specs/" in f and "openspec/changes" in f for f in files)
     spec_synced = bool(
@@ -433,10 +588,59 @@ def _score_efficiency(events: dict[str, Any]) -> tuple[float, str]:
     return score, f"turns={turns} tools={tool_calls} dur={duration:.0f}s"
 
 
-def _score_decision_point_compliance(events: dict[str, Any], workflow: str) -> tuple[float, str]:
+def _score_decision_point_compliance(
+    events: dict[str, Any],
+    workflow: str,
+    test_dir: Path | None = None,
+    outputs: dict[str, Any] | None = None,
+) -> tuple[float, str]:
     """Check if agent asked user at decision points. Binary: ratio >= 0.5."""
     cmds = _join_commands(events)
     tool_calls = events.get("tool_calls", []) or []
+
+    run, error = _classic_sdk_checkpoint(_find_change_dir(test_dir, outputs) if test_dir else None)
+    if error:
+        return 0.0, error
+    if run is not None:
+        waits = [wait for wait in run["waits"] if wait.get("status") != "cancelled"]
+        approved = 0
+        for wait in waits:
+            decision = wait.get("decision")
+            if (
+                wait.get("status") == "resolved"
+                and isinstance(decision, dict)
+                and isinstance(decision.get("id"), str)
+                and bool(decision["id"])
+                and decision.get("choice") in (wait.get("choices") or [])
+                and decision.get("proposalHash") == wait.get("proposalHash")
+                and wait.get("proposalHash") == _runtime_digest(wait.get("proposal"))
+            ):
+                approved += 1
+        interaction = events.get("interaction") or {}
+        turns = interaction.get("actual_turns")
+        host_replies = (
+            max(turns - 1, 0)
+            if (
+                interaction.get("mode") in {"auto_user", "interactive"}
+                and isinstance(turns, int)
+                and not isinstance(turns, bool)
+            )
+            else 0
+        )
+        asks = sum(
+            tc.get("tool") in {"AskUserQuestion", "ask_user", "AskFollowUpQuestion"}
+            for tc in tool_calls
+        )
+        score = _binary_score(
+            [
+                bool(waits) and approved == len(waits),
+                bool(waits) and host_replies + asks >= len(waits),
+            ]
+        )[0]
+        # Neither self-approved waits nor host replies alone prove a compliant decision.
+        return (1.0 if score == 1.0 else 0.0), (
+            f"SDK approvals={approved}/{len(waits)} host_replies={host_replies} asks={asks}"
+        )
 
     if not cmds:
         return 0.0, "no commands captured"
@@ -550,6 +754,35 @@ def _score_recovery_resilience(
     comet_dir = cdir / ".comet"
     checks: list[bool] = []
     notes: list[str] = []
+
+    run, error = _classic_sdk_checkpoint(cdir)
+    if error:
+        return 0.0, error
+    if run is not None:
+        actions = run["actions"]
+        history_ok = bool(actions) and any(
+            isinstance(action.get("outcome"), dict)
+            and action["outcome"].get("status") == action.get("status")
+            for action in actions
+        )
+        context_ok = bool(
+            list(comet_dir.glob("**/context.*"))
+            or list((comet_dir / "handoff").glob("*.md"))
+            or list((comet_dir / "handoff").glob("*.json"))
+        )
+        pending_clean = (
+            run.get("status") == "completed"
+            and not any(
+                action.get("status") in {"pending", "running", "unknown"} for action in actions
+            )
+            and not any(wait.get("status") == "pending" for wait in run["waits"])
+        )
+        checks = [True, history_ok, pending_clean, run.get("status") == "completed"]
+        if workflow == "full":
+            checks.append(context_ok)
+        return _binary_score(checks)[0], (
+            f"checkpoint=SDK history={history_ok} context={context_ok} pending_clean={pending_clean}"
+        )
 
     # Check 1: Checkpoint exists and valid
     checkpoint_path = comet_dir / "checkpoint.json"
@@ -821,7 +1054,7 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
     else:
         scored = [
             ("main_flow", *_score_main_flow(events, test_dir, workflow, outputs)),
-            ("gate_guard", *_score_gate_guard(events)),
+            ("gate_guard", *_score_gate_guard(events, test_dir, outputs)),
             ("skill_invocation", *_score_skill_invocation(events)),
             ("spec_drift", *_score_spec_drift(events, test_dir)),
             (
@@ -845,7 +1078,10 @@ def comet_rubric_validator(test_dir: Path, outputs: dict) -> tuple[list[str], li
                 ),
             ),
             ("efficiency", *_score_efficiency(events)),
-            ("decision_point_compliance", *_score_decision_point_compliance(events, workflow)),
+            (
+                "decision_point_compliance",
+                *_score_decision_point_compliance(events, workflow, test_dir, outputs),
+            ),
             ("artifact_quality", *_score_artifact_quality(test_dir, workflow, outputs)),
             (
                 "recovery_resilience",

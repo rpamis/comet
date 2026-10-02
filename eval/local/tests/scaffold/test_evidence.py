@@ -11,5 +11,5 @@ def test_build_eval_artifact_references_uses_stable_paths(tmp_path: Path):
         "raw_stdout": str(tmp_path / "raw" / "COMET_FULL_040_BETA_rep2_stdout.json"),
         "raw_stderr": str(tmp_path / "raw" / "COMET_FULL_040_BETA_rep2_stderr.txt"),
         "report": str(tmp_path / "reports" / "COMET_FULL_040_BETA_rep2_report.json"),
-        "artifacts": str(tmp_path / "artifacts" / "COMET_FULL_040_BETA_rep2"),
+        "artifacts": str(tmp_path / "artifacts" / "comet-full_rep2"),
     }
