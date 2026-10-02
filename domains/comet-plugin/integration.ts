@@ -34,7 +34,7 @@ import {
   type RecoverableFileLockOptions,
 } from '../../platform/fs/plugin-store.js';
 import { JsonPluginStateStore, PluginRuntime } from './plugin-runtime.js';
-import type { PluginScopeContext } from './types.js';
+import type { PluginDescriptor, PluginScopeContext } from './types.js';
 import {
   AGENT_EXPERIENCE_SCHEMA,
   AgentExperienceJournal,
@@ -65,6 +65,10 @@ import type { ProjectKnowledgeSemanticReviewer } from '../project-knowledge/lear
 export interface CometPluginBridgeOptions {
   readonly projectRoot: string;
   readonly projectId: string;
+  /** Additional host-provided plugins; built-in IDs cannot be replaced. */
+  readonly descriptors?: readonly PluginDescriptor[];
+  /** Runtime configuration keyed by plugin ID; not persisted as provider settings. */
+  readonly config?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly language?: MemoryLanguage;
   /** Optional isolated user home, primarily for hosts and tests. */
   readonly homeDirectory?: string;
@@ -491,6 +495,7 @@ export async function createDefaultCometPluginBridge(
   });
   const runtime = new PluginRuntime({
     cometVersion: options.cometVersion ?? getCurrentVersion(),
+    config: options.config,
     store: new JsonPluginStateStore(
       new JsonFileTextStore(path.join(stateRoot, 'state.json'), lockOptions),
     ),
@@ -573,6 +578,7 @@ export async function createDefaultCometPluginBridge(
           ? { semanticReviewer: options.runProjectKnowledgeReview }
           : {}),
       }),
+      ...(options.descriptors ?? []),
     ],
   });
   if (!bestEffortContext) await runtime.reconcileFirstParty();

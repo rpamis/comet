@@ -2,8 +2,8 @@ import type {
   PluginDashboardPage,
   PluginRuntime,
   PluginScopeContext,
-} from '../comet-plugin/index.js';
-import { PluginRuntimeError } from '../comet-plugin/index.js';
+} from '../comet-plugin/sdk.js';
+import { PluginRuntimeError } from '../comet-plugin/sdk.js';
 
 export interface DashboardPluginPageRegistration {
   readonly pluginId: string;

@@ -6,7 +6,7 @@ import {
   createDefaultCometPluginBridge,
   type CometPluginContextContribution,
   type CometPluginContextRequest,
-} from '../comet-plugin/index.js';
+} from '../comet-plugin/comet.js';
 import type { MemoryLearningStatus } from '../comet-memory/index.js';
 import {
   AGENT_EXPERIENCE_SCHEMA,

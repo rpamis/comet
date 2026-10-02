@@ -3,5 +3,6 @@ node_modules/
 bin/
 assets/
 test/fixtures/
+config/sdk-api/*.api.md
 README.md
 README-zh.md

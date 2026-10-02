@@ -33,6 +33,7 @@ export type {
 export { createMemoryRuntimeStore, createFileRuntimeStore } from './runtime-store.js';
 export type { RuntimeStore, RuntimeRecord, FileRuntimeStoreOptions } from './runtime-store.js';
 export { RuntimeProtocolError } from './runtime-errors.js';
+export type { RuntimeErrorCode, RuntimeErrorRecovery } from './runtime-errors.js';
 export { hashRuntimeValue } from './runtime-json.js';
 export {
   createPortableRunCheckpoint,

@@ -199,4 +199,6 @@ Native ordinary changes and Classic full/hotfix/tweak each have a distinct SDK W
 
 ## Scope
 
+See the [SDK release contract](./sdk-release-contract.md) for public interface compatibility, TypeScript consumer support, declaration checks, and error recovery guidance.
+
 Runtime is a reusable deterministic orchestration core, not another Agent platform. It provides the Run/Action/Outcome/Wait protocol, workflow scheduling, persistence and recovery, approval, and acceptance extension points. The host continues to provide the Agent loop, system prompts, Skills, Hooks, Rules, MCP, sandbox, tool authorization, and model context. Restrictions expressed in platform prompts, Hooks, or tool policy must still be implemented and verified by that platform.

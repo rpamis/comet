@@ -5,7 +5,7 @@ const bridge = vi.hoisted(() => ({
   diagnostics: vi.fn(),
 }));
 
-vi.mock('../../../domains/comet-plugin/index.js', () => ({
+vi.mock('../../../domains/comet-plugin/comet.js', () => ({
   createDefaultCometPluginBridge: vi.fn(async () => bridge),
 }));
 

@@ -23,6 +23,14 @@
       "types": "./dist/domains/engine/runtime.d.ts",
       "import": "./dist/domains/engine/runtime.js"
     },
+    "./plugins": {
+      "types": "./dist/domains/comet-plugin/sdk.d.ts",
+      "import": "./dist/domains/comet-plugin/sdk.js"
+    },
+    "./plugins/comet": {
+      "types": "./dist/domains/comet-plugin/comet.d.ts",
+      "import": "./dist/domains/comet-plugin/comet.js"
+    },
     "./*": "./*"
   },
   "publishConfig": {
@@ -62,6 +70,8 @@
     "build:native-runtime": "node scripts/build/build-native-runtime.mjs",
     "build:entry-runtime": "node scripts/build/build-entry-runtime.mjs",
     "check:generated": "node scripts/build/build-classic-runtime.mjs --check && node scripts/build/build-native-runtime.mjs --check && node scripts/build/build-entry-runtime.mjs --check",
+    "check:sdk-api": "node scripts/release/check-sdk-api.mjs",
+    "update:sdk-api": "node scripts/release/check-sdk-api.mjs --update",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:native-parallel": "vitest run test/domains/comet-native/native-parallel-worktree.test.ts",
@@ -116,6 +126,7 @@
     "node": "^22.16.0 || >=24.0.0"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "7.59.3",
     "@ant-design/cssinjs": "2.1.2",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.1",

@@ -8,7 +8,11 @@ import {
   CometPluginBridge,
   createDefaultCometPluginBridge as createProductionCometPluginBridge,
 } from '../../../domains/comet-plugin/integration.js';
-import { MemoryPluginStateStore, PluginRuntime } from '../../../domains/comet-plugin/index.js';
+import {
+  MemoryPluginStateStore,
+  PluginRuntime,
+  type PluginDescriptor,
+} from '../../../domains/comet-plugin/index.js';
 import {
   AGENT_EXPERIENCE_SCHEMA,
   AgentExperienceJournal,
@@ -30,6 +34,131 @@ interface WorkflowExperienceFixture {
   readonly userEvidence?: readonly string[];
   readonly operations?: readonly string[];
 }
+
+describe('application plugin registration', () => {
+  const descriptor: PluginDescriptor = {
+    id: 'example.notes',
+    kind: 'third-party',
+    version: '1.0.0',
+    scopes: ['project'],
+    compatible: () => true,
+    create: ({ config, storage, projectId }) => ({
+      async invoke(capability, input) {
+        if (capability === 'write') await storage.write(input);
+        return { value: await storage.read(), greeting: config.greeting, projectId };
+      },
+      provideContext: () => ({
+        id: 'notes',
+        owner: 'example.notes',
+        scope: 'project',
+        memoryType: 'project-policy',
+        kind: 'note',
+        state: 'proven',
+        authority: 'repository',
+        title: 'Project note',
+        summary: 'Keep the example plugin note in context.',
+        selectors: { projectId },
+        sources: [{ type: 'repository' }],
+        verification: [],
+      }),
+      dashboard: { id: 'notes', label: 'Notes', route: 'notes' },
+    }),
+  };
+
+  async function withBridge(
+    operation: (
+      bridge: CometPluginBridge,
+      reopen: () => Promise<CometPluginBridge>,
+    ) => Promise<void>,
+  ) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-extra-plugin-'));
+    const projectRoot = path.join(root, 'project');
+    await fs.mkdir(projectRoot);
+    const reopen = () =>
+      createProductionCometPluginBridge({
+        projectRoot,
+        projectId: 'plugin-project',
+        homeDirectory: root,
+        descriptors: [descriptor],
+        config: { 'example.notes': { greeting: 'hello' } },
+        scheduleLearning: (task) => task(),
+      });
+    try {
+      await operation(await reopen(), reopen);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }
+
+  test('requires explicit installation of an additional third-party plugin', async () => {
+    await withBridge(async (bridge) => {
+      const runtime = bridge.pluginRuntime;
+      expect(await runtime.get('example.notes')).toMatchObject({ status: 'uninstalled' });
+      expect((await runtime.list()).map((plugin) => plugin.id)).toEqual([
+        'comet.personal-memory',
+        'comet.project-knowledge',
+        'example.notes',
+      ]);
+      await expect(runtime.install('example.notes', 'system')).rejects.toThrow(/user action/);
+      await runtime.install('example.notes');
+      expect(await runtime.get('example.notes')).toMatchObject({ status: 'enabled' });
+    });
+  });
+
+  test('uses additional plugin configuration and preserves its project storage after reopening', async () => {
+    await withBridge(async (bridge, reopen) => {
+      await bridge.pluginRuntime.install('example.notes');
+      const scope = { scope: 'project' as const, projectId: 'plugin-project' };
+      await bridge.pluginRuntime.invoke('example.notes', 'write', { note: 'saved' }, scope);
+      const restored = await reopen();
+      await expect(
+        restored.pluginRuntime.invoke('example.notes', 'read', null, scope),
+      ).resolves.toEqual({
+        value: { note: 'saved' },
+        greeting: 'hello',
+        projectId: 'plugin-project',
+      });
+    });
+  });
+
+  test('includes additional plugin context and preserves explicit removal', async () => {
+    await withBridge(async (bridge, reopen) => {
+      await bridge.pluginRuntime.install('example.notes');
+      const contributions = await bridge.collectContext({ task: 'read project notes' });
+      expect(contributions.flatMap((item) => item.applications)).toEqual(
+        expect.arrayContaining([expect.objectContaining({ owner: 'example.notes' })]),
+      );
+      await expect(
+        bridge.pluginRuntime.dashboardPages({ scope: 'project', projectId: 'plugin-project' }),
+      ).resolves.toEqual(
+        expect.arrayContaining([expect.objectContaining({ pluginId: 'example.notes' })]),
+      );
+      await bridge.pluginRuntime.uninstall('example.notes');
+      const restored = await reopen();
+      expect(await restored.pluginRuntime.get('example.notes')).toMatchObject({
+        status: 'uninstalled',
+        explicitRemoval: true,
+      });
+      expect(await restored.collectContext({ task: 'read project notes' })).toEqual([]);
+    });
+  });
+
+  test('rejects an additional descriptor that replaces a built-in plugin', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-plugin-collision-'));
+    try {
+      await expect(
+        createProductionCometPluginBridge({
+          projectRoot: root,
+          projectId: 'collision-project',
+          homeDirectory: root,
+          descriptors: [{ ...descriptor, id: 'comet.personal-memory' }],
+        }),
+      ).rejects.toThrow(/Duplicate plugin descriptor/);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+});
 
 test('remote memory failures reject explicit operations but leave automatic context nonblocking', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-memory-unavailable-'));

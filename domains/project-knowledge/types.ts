@@ -379,7 +379,7 @@ export interface ProjectKnowledgeDashboardSnapshot {
 export interface ProjectKnowledgeDashboardSnapshotOptions {
   readonly config: WorkflowKnowledgeProjectConfig;
   readonly language?: MemoryLanguage;
-  readonly env?: NodeJS.ProcessEnv;
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 export interface ProjectKnowledgePluginDescriptorFactory {

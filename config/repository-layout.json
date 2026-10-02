@@ -400,6 +400,8 @@
       "domains/comet-native/native-types.ts",
       "domains/comet-native/native-workspace.ts",
       "domains/comet-plugin/index.ts",
+      "domains/comet-plugin/sdk.ts",
+      "domains/comet-plugin/comet.ts",
       "domains/engine/loop.ts",
       "domains/engine/protected-run-file.ts",
       "domains/engine/resolver.ts",

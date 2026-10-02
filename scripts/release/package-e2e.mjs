@@ -24,6 +24,10 @@ const requiredPackageFiles = [
   'dist/app/cli/index.js',
   'dist/domains/engine/runtime.js',
   'dist/domains/engine/runtime.d.ts',
+  'dist/domains/comet-plugin/sdk.js',
+  'dist/domains/comet-plugin/sdk.d.ts',
+  'dist/domains/comet-plugin/comet.js',
+  'dist/domains/comet-plugin/comet.d.ts',
   'dist/platform/install/platforms.js',
   'eval/schemas/comet.eval/v1alpha1.schema.json',
   'scripts/install/postinstall.js',
@@ -174,6 +178,66 @@ async function main() {
     }
 
     const runtimeImport = `${packageName}/runtime`;
+    const pluginsImport = `${packageName}/plugins`;
+    const cometPluginsImport = `${packageName}/plugins/comet`;
+    const pluginExample = path.join(consumerDir, 'plugin-example.mjs');
+    await fs.writeFile(
+      pluginExample,
+      await fs.readFile(path.join(repositoryRoot, 'scripts/lib/plugin-sdk-example.mjs'), 'utf8'),
+    );
+    const pluginExampleResult = JSON.parse(
+      run(process.execPath, [pluginExample], { cwd: consumerDir, env: environment }),
+    );
+    if (
+      pluginExampleResult.value?.note !== 'Keep changes scoped.' ||
+      pluginExampleResult.context?.[0]?.owner !== 'example.notes' ||
+      pluginExampleResult.disabledContext?.length !== 0
+    ) {
+      throw new Error(
+        'Installed plugin SDK did not preserve storage, context, and disable behavior',
+      );
+    }
+
+    const pluginAssembly = JSON.parse(
+      run(
+        process.execPath,
+        [
+          '--input-type=module',
+          '-e',
+          `
+            import { createDefaultCometPluginBridge } from ${JSON.stringify(cometPluginsImport)};
+            const bridge = await createDefaultCometPluginBridge({
+              projectRoot: ${JSON.stringify(projectDir)}, projectId: 'package-plugin-project',
+              homeDirectory: ${JSON.stringify(homeDir)},
+              config: { 'example.packaged': { answer: 42 } },
+              descriptors: [{
+                id: 'example.packaged', kind: 'third-party', version: '1', scopes: ['project'],
+                compatible: () => true,
+                create: ({ config }) => ({ invoke: () => config.answer }),
+              }],
+            });
+            const runtime = bridge.pluginRuntime;
+            const before = await runtime.get('example.packaged');
+            await runtime.install('example.packaged');
+            const answer = await runtime.invoke('example.packaged', 'answer', null, {
+              scope: 'project', projectId: 'package-plugin-project',
+            }, { throwOnError: true });
+            console.log(JSON.stringify({ before: before.status, answer, plugins: (await runtime.list()).map(item => item.id) }));
+          `,
+        ],
+        { cwd: consumerDir, env: environment },
+      ),
+    );
+    if (
+      pluginAssembly.before !== 'uninstalled' ||
+      pluginAssembly.answer !== 42 ||
+      !pluginAssembly.plugins.includes('comet.personal-memory') ||
+      !pluginAssembly.plugins.includes('comet.project-knowledge')
+    ) {
+      throw new Error(
+        'Installed Comet plugin assembly did not retain built-ins and explicit installation',
+      );
+    }
     const runtimeRoot = path.join(projectDir, '.comet', 'runtime-sdk-store');
     const runtimeRunId = 'package-e2e-sdk-run';
     const sdkStart = run(
@@ -341,9 +405,32 @@ async function main() {
     }
 
     const sdkTypeScript = path.join(consumerDir, 'runtime-consumer.ts');
+    const pluginsTypeScript = path.join(consumerDir, 'plugin-consumer.ts');
+    await fs.writeFile(
+      pluginsTypeScript,
+      `import { PluginRuntime, MemoryPluginStateStore, AGENT_EXPERIENCE_SCHEMA, type AgentContextCandidate, type AgentExperienceEvent, type PluginDescriptor, type PluginStorageStore } from ${JSON.stringify(pluginsImport)};
+       import { createDefaultCometPluginBridge, type CometPluginBridgeOptions } from ${JSON.stringify(cometPluginsImport)};
+       const descriptor: PluginDescriptor = {
+         id: 'typed-plugin', kind: 'third-party', version: '1', scopes: ['project'], compatible: () => true,
+         create: (context) => ({
+           invoke: async (_capability, input) => { await context.storage.write(input); return context.storage.read(); },
+           provideContext: (): AgentContextCandidate => ({
+             id: 'note', owner: context.pluginId, scope: 'project', memoryType: 'project-policy',
+             kind: 'note', state: 'proven', authority: 'user', title: 'Note', summary: 'Use scoped changes',
+             selectors: {}, sources: [{ type: 'user' }], verification: [],
+           }),
+           onEvent: (event: AgentExperienceEvent) => { const schema: typeof AGENT_EXPERIENCE_SCHEMA = event.schema; void schema; },
+         }),
+       };
+       const storage: PluginStorageStore = { open: async () => ({ read: async () => null, write: async () => {} }) };
+       const runtime = new PluginRuntime({ cometVersion: '0.4.5', store: new MemoryPluginStateStore(), storage, descriptors: [descriptor] });
+       const options: CometPluginBridgeOptions = { projectRoot: '.', projectId: 'typed-project', descriptors: [descriptor], config: { 'typed-plugin': { enabled: true } } };
+       void runtime; void createDefaultCometPluginBridge(options);
+      `,
+    );
     await fs.writeFile(
       sdkTypeScript,
-      `import { approval, evidence, tool, createMemoryRuntimeStore, createRuntime, defineWorkflow, skill, type RuntimeEvidenceValidator, type RuntimeExecutor, type WorkflowRun, type WorkflowTransitionHandler } from ${JSON.stringify(runtimeImport)};\n` +
+      `import { approval, evidence, tool, createMemoryRuntimeStore, createRuntime, defineWorkflow, skill, RuntimeProtocolError, type RuntimeErrorCode, type RuntimeErrorRecovery, type RuntimeEvidenceValidator, type RuntimeExecutor, type WorkflowRun, type WorkflowTransitionHandler } from ${JSON.stringify(runtimeImport)};\n` +
         `const workflow = defineWorkflow({\n` +
         `  id: 'typed', version: '1', entry: 'collect',\n` +
         `  steps: { collect: skill({ ref: 'research.collect' }), approve: approval({ proposalFrom: 'collect' }), publish: tool({ ref: 'reports.write' }) },\n` +
@@ -356,25 +443,64 @@ async function main() {
         `void transition; void evidenceValidator; void evidenceStep;\n` +
         `const runtime = createRuntime({ store: createMemoryRuntimeStore<WorkflowRun>(), workflows: [workflow], executors: [executor] });\n` +
         `const request: Parameters<typeof runtime.start>[0] = { runId: 'typed-run', workflow: { id: 'typed', version: '1' }, input: null };\n` +
-        `void runtime.start(request).then((run) => { const revision: number = run.revision; void revision; });\n`,
+        `void runtime.start(request).then((run) => { const revision: number = run.revision; void revision; });\n` +
+        `const knownCode: RuntimeErrorCode = 'REVISION_CONFLICT';\n` +
+        `const recovery: RuntimeErrorRecovery = new RuntimeProtocolError(knownCode, 'conflict').recovery;\n` +
+        `new RuntimeProtocolError('FUTURE_HOST_ERROR', 'unknown'); void recovery;\n` +
+        `// @ts-expect-error Unknown names are not declared core error codes.\n` +
+        `const invalidCode: RuntimeErrorCode = 'TYPO_ERROR'; void invalidCode;\n`,
     );
-    run(
-      process.execPath,
-      [
-        path.join(repositoryRoot, 'node_modules', 'typescript', 'bin', 'tsc'),
-        '--module',
-        'NodeNext',
-        '--moduleResolution',
-        'NodeNext',
-        '--target',
-        'ES2022',
-        '--strict',
-        '--skipLibCheck',
-        '--noEmit',
-        sdkTypeScript,
-      ],
-      { cwd: consumerDir, env: environment },
+    for (const [module, moduleResolution] of [
+      ['NodeNext', 'NodeNext'],
+      ['ESNext', 'Bundler'],
+    ]) {
+      run(
+        process.execPath,
+        [
+          path.join(repositoryRoot, 'node_modules', 'typescript', 'bin', 'tsc'),
+          '--module',
+          module,
+          '--moduleResolution',
+          moduleResolution,
+          '--target',
+          'ES2022',
+          '--strict',
+          '--noEmit',
+          sdkTypeScript,
+          pluginsTypeScript,
+        ],
+        { cwd: consumerDir, env: environment },
+      );
+    }
+
+    const compatConsumer = path.join(consumerDir, 'sdk-compat-consumer.mjs');
+    const compatFixture = path.join(consumerDir, 'sdk-compat-run.json');
+    await fs.copyFile(
+      path.join(repositoryRoot, 'test/helpers/runtime-sdk-compat-consumer.mjs'),
+      compatConsumer,
     );
+    await fs.copyFile(
+      path.join(repositoryRoot, 'test/fixtures/runtime-sdk-v1-045/run.json'),
+      compatFixture,
+    );
+    const compatibility = JSON.parse(
+      run(process.execPath, [compatConsumer, compatFixture, packageName], {
+        cwd: consumerDir,
+        env: environment,
+      }),
+    );
+    if (
+      compatibility.approval !== 'completed' ||
+      compatibility.unknown !== 'unknown' ||
+      compatibility.executions !== 1 ||
+      !compatibility.staleApprovalRejected ||
+      !compatibility.definitionDriftRejected ||
+      !compatibility.unsafeRetryRejected
+    ) {
+      throw new Error(
+        `Published SDK failed the frozen Run compatibility contract: ${JSON.stringify(compatibility)}`,
+      );
+    }
 
     const runtimeInspectRequest = path.join(consumerDir, 'runtime-inspect.json');
     await fs.writeFile(

@@ -199,4 +199,6 @@ SDK 所有的 Classic change 进入 Archive 后，可用 `comet state propose-ar
 
 ## 保证范围
 
+公开接口兼容策略、类型消费范围、声明检查及错误恢复建议见 [SDK 发行契约](./sdk-release-contract.zh.md)。
+
 Runtime 是可复用的确定性编排内核，不是另一套 Agent 平台。它提供稳定的 Run/Action/Outcome/Wait 协议、工作流调度、持久化与恢复、确认和验收扩展点；宿主平台继续提供 Agent loop、system prompt、Skills、Hooks、Rules、MCP、沙箱、工具授权与模型上下文。平台在提示、Hook 或工具行为上的约束仍需由对应平台实施和验证。
