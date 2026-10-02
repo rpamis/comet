@@ -8970,8 +8970,23 @@ body {
   background: var(--color-bg);
 }
 
+.dashboard-project-memory > .dashboard-memory-registry,
+.dashboard-project-memory > .dashboard-memory-inspector {
+  min-height: 0;
+}
+
 .dashboard-project-memory > .dashboard-memory-registry {
   border-right: 1px solid var(--color-border-soft);
+}
+
+.dashboard-project-memory .dashboard-memory-registry-toolbar,
+.dashboard-project-memory .dashboard-memory-table-head,
+.dashboard-project-memory-foot {
+  flex: 0 0 auto;
+}
+
+.dashboard-project-memory .dashboard-memory-table-body {
+  flex: 1 1 auto;
 }
 
 .dashboard-project-memory .dashboard-memory-table-head,
@@ -9013,6 +9028,16 @@ body {
   justify-content: flex-end;
   padding-top: 12px;
   border-top: 1px solid var(--color-border-soft);
+}
+
+/* Must follow the base min-height above so short desktop windows keep the
+   list scrolling inside the pane instead of overflowing the content shell. */
+@media (min-width: 1181px) {
+  .dashboard-project-memory {
+    min-height: 0;
+    height: auto;
+    flex: 1 1 auto;
+  }
 }
 
 @media (max-width: 1180px) {
