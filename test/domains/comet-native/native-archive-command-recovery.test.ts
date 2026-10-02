@@ -73,6 +73,7 @@ vi.mock('../../../domains/comet-native/native-portable-archive.js', () => ({
   archiveNativePortableChange: vi.fn(),
   hasNativePortableArchiveRecovery: mocks.hasArchiveRecovery,
   inspectNativePortableArchive: vi.fn(),
+  nativePortableArchiveDirectory: vi.fn(),
   NativePortableArchiveOrderRequiredError: class extends Error {},
   NativePortableArchiveRequiresReverificationError: class extends Error {},
 }));
@@ -94,7 +95,12 @@ vi.mock('../../../domains/comet-native/native-portable-runtime.js', () => ({
   setNativePortableWorkspaceFinish: mocks.setWorkspaceFinish,
   tryAutoAdvanceNativeV1SupervisorParent: mocks.autoAdvanceParent,
 }));
-vi.mock('../../../domains/comet-native/native-workspace-finish.js', () => ({
+vi.mock('../../../domains/comet-native/native-workspace-finish.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../domains/comet-native/native-workspace-finish.js')
+  >()),
+  prepareNativeWorkspaceFinishMessages: ({ plan }: { plan: unknown }) => plan,
+  validateNativeWorkspaceFinishMessage: () => undefined,
   clearNativeWorkspaceFinishJournal: mocks.clearJournal,
   finishArchivedNativeWorkspace: mocks.finishArchivedWorkspace,
   NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA: 'comet.native.workspace-finish.v1',
@@ -104,7 +110,8 @@ vi.mock('../../../domains/comet-native/native-workspace-finish.js', () => ({
   readNativeWorkspaceFinishJournal: mocks.readJournal,
   writeNativeWorkspaceFinishJournal: mocks.writeJournal,
 }));
-vi.mock('../../../domains/comet-native/native-paths.js', () => ({
+vi.mock('../../../domains/comet-native/native-paths.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../domains/comet-native/native-paths.js')>()),
   isInsidePath: (parent: string, target: string) => {
     const relative = path.relative(parent, target);
     return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));

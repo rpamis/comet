@@ -4,6 +4,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ## What's Changed [0.4.4] - 2026-09-24
 
+### Added
+
+- **Native commit messages**: Set archive and local merge commit messages through `--commit-message` and `--merge-message`, including Unicode and multiline text. Preview the actual messages and retain them through confirmation and retries while keeping existing defaults and project Git hooks (#451).
+
 ### Fixed
 
 - **Project Memory scrolling**: Keep the project memory tab on the same Dashboard inner-page flex layout as retrieval test, so long memory lists scroll inside the knowledge page instead of being clipped (#452).
@@ -11,6 +15,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native Verifier recovery**: Reject correctable result and check-request errors without ending the active Verifier or consuming its execution failure budget. Explicit requests can rerun failed repeatable checks within the existing limits, while passed evidence is reused and failed checks still prevent acceptance (#455).
 - **Native Build readiness**: Require a complete implementation and evidence self-review for every confirmed acceptance item before freezing a new candidate. Missing or unfinished items keep the change in Build; independent verification still determines whether the implementation satisfies the requirements (#456).
 - **Hook resource targets**: Distinguish non-file resource URIs from filesystem targets so Agent messages and process resources preserve verification and acceptance. File URIs, Windows paths, and real file writes in mixed requests continue through the workflow guard (#457).
+- **Native Archive recovery**: Keep sealed archives discoverable when Git commit or merge hooks reject workspace finish. Doctor and Status report the unfinished Git step consistently; retries preserve completed commits and published Specs, and explicit Doctor repair can reconcile a verified manual commit without recreating it (#451).
 
 ## What's Changed [0.4.3] - 2026-09-22
 

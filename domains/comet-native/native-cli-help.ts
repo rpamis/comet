@@ -218,17 +218,19 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   archive: {
     usage:
-      'comet native archive <change-name> --dry-run [--finish merge|push|pull-request|keep]\n       comet native archive <change-name> [--confirmed] [--serial-first <current-change>]',
+      'comet native archive <change-name> --dry-run [--finish merge|push|pull-request|keep] [--commit-message <text>] [--merge-message <text>]\n       comet native archive <change-name> [--confirmed] [--serial-first <current-change>] [--commit-message <text>] [--merge-message <text>]',
     purpose:
       'Preview or execute deterministic Archive after the portable state reaches archive-ready.',
     options: [
       '--dry-run          Run the complete read-only Archive and workspace-finish readiness check; it persists only an explicit --finish choice.',
       '--finish <action>  Persist merge, push, pull-request, or keep for an isolated workspace.',
+      '--commit-message <text>  Set the archive commit message; Unicode and multiline text are supported. Git hooks still run.',
+      '--merge-message <text>   Set the local merge commit message; requires merge finish. Omit it to use Git defaults.',
       '--serial-first <current-change>  During execution only, confirm that this change archives before detected capability peers; the value must equal <change-name>.',
       '--confirmed        Confirm Archive when project policy requires it.',
     ],
     output:
-      'Readiness, every blocker, and the exact next continuation, or the completed Archive transaction and workspace finish result. Execute the returned confirmed command only after ready is true; Archive does not repeat verification.',
+      'Readiness, every blocker, actual prepared commitMessages (mergeMessage is null when no merge is planned), and the exact next continuation, or the completed Archive transaction and workspace finish result. Messages are retained for retries. After a Git hook rejects a message, provide a corrected message with --confirmed for the unfinished step; completed commits are never rewritten. Execute the returned confirmed command only after ready is true; Archive does not repeat verification.',
   },
   doctor: {
     usage: 'comet native doctor [<change-name>] [--repair]',

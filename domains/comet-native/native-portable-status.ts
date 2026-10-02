@@ -284,6 +284,7 @@ export function projectNativeArchivedStatus(options: {
   const continuation = finishBlocked
     ? {
         ...nativePortableContinuation(state),
+        status: 'blocked' as const,
         disposition: 'blocked' as const,
         action: 'archive' as const,
         commandArgs: finishJournal?.result?.recoveryArgs ?? [

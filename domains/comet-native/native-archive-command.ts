@@ -4,6 +4,7 @@ import {
   archiveNativePortableChange,
   hasNativePortableArchiveRecovery,
   inspectNativePortableArchive,
+  nativePortableArchiveDirectory,
   NativePortableArchiveOrderRequiredError,
   NativePortableArchiveRequiresReverificationError,
 } from './native-portable-archive.js';
@@ -25,11 +26,12 @@ import {
   NativeWorkspaceFinishError,
   NativeWorkspaceFinishPreparationError,
   prepareNativePortableWorkspaceFinish,
+  prepareNativeWorkspaceFinishMessages,
+  validateNativeWorkspaceFinishMessage,
   readNativeWorkspaceFinishJournal,
+  readNativeWorkspaceFinishArchive,
   writeNativeWorkspaceFinishJournal,
 } from './native-workspace-finish.js';
-import { isInsidePath } from './native-paths.js';
-import { readNativeStatusRecord } from './native-archived-status.js';
 import {
   assertNoArguments,
   configuredPaths,
@@ -41,6 +43,31 @@ import {
   type DispatchResult,
 } from './native-cli-shared.js';
 
+function withArchiveMessageOptions<
+  T extends {
+    commandArgs?: string[] | null;
+    commandAlternatives?: Array<{ commandArgs: string[] | null }>;
+  },
+>(continuation: T, options: string[]): T {
+  if (options.length === 0) return continuation;
+  const withOptions = (args: string[]) =>
+    args[0] === 'comet' && args[1] === 'native' && args[2] === 'archive'
+      ? [...args, ...options]
+      : args;
+  return {
+    ...continuation,
+    ...(continuation.commandArgs ? { commandArgs: withOptions(continuation.commandArgs) } : {}),
+    ...(continuation.commandAlternatives
+      ? {
+          commandAlternatives: continuation.commandAlternatives.map((alternative) => ({
+            ...alternative,
+            commandArgs: alternative.commandArgs ? withOptions(alternative.commandArgs) : null,
+          })),
+        }
+      : {}),
+  };
+}
+
 export async function nativeArchiveCommand(
   args: string[],
   projectRoot: string,
@@ -49,8 +76,27 @@ export async function nativeArchiveCommand(
   const dryRun = takeFlag(args, '--dry-run');
   const expectedPreflightHash = takeOption(args, '--expect-preflight');
   const confirmed = takeFlag(args, '--confirmed');
+  if (dryRun && confirmed)
+    throw new NativeUsageError('--confirmed is only valid when executing Archive');
   const finishOption = takeOption(args, '--finish');
   const serialFirstOption = takeOption(args, '--serial-first');
+  const commitMessage = takeOption(args, '--commit-message');
+  const mergeMessage = takeOption(args, '--merge-message');
+  for (const [flag, message] of [
+    ['--commit-message', commitMessage],
+    ['--merge-message', mergeMessage],
+  ] as const) {
+    if (message === undefined) continue;
+    try {
+      validateNativeWorkspaceFinishMessage(message, flag);
+    } catch (error) {
+      throw new NativeUsageError((error as Error).message);
+    }
+  }
+  const messageOptions = [
+    ...(commitMessage === undefined ? [] : ['--commit-message', commitMessage]),
+    ...(mergeMessage === undefined ? [] : ['--merge-message', mergeMessage]),
+  ];
   if (
     serialFirstOption !== undefined &&
     !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u.test(serialFirstOption)
@@ -70,9 +116,10 @@ export async function nativeArchiveCommand(
   const configured = await configuredPaths(projectRoot);
   const portableActive = await isNativePortableChange(configured.paths, name);
   const finishJournal = await readNativeWorkspaceFinishJournal(configured.paths, name);
-  const activeArchiveTransaction = portableActive
-    ? await readNativePortableTransaction(configured.paths, { kind: 'archive', change: name })
-    : null;
+  const activeArchiveTransaction = await readNativePortableTransaction(configured.paths, {
+    kind: 'archive',
+    change: name,
+  });
   const appliedSpecChanges =
     activeArchiveTransaction?.kind === 'archive'
       ? activeArchiveTransaction.journal.spec_changes.slice(
@@ -83,7 +130,12 @@ export async function nativeArchiveCommand(
   const portableRecoveryAvailable = portableActive
     ? false
     : await hasNativePortableArchiveRecovery(configured.paths, name);
-  if (finishJournal && !portableActive && !portableRecoveryAvailable) {
+  if (
+    finishJournal &&
+    !portableActive &&
+    activeArchiveTransaction?.kind !== 'archive' &&
+    (finishJournal.archiveDir || !portableRecoveryAvailable)
+  ) {
     if (expectedPreflightHash) {
       throw new NativeUsageError('A recorded workspace finish does not use preflight hashes');
     }
@@ -92,14 +144,23 @@ export async function nativeArchiveCommand(
     }
     if (
       finishOption &&
-      finishJournal.result?.action &&
-      finishOption !== finishJournal.result.action
+      (finishJournal.plan?.finish ?? finishJournal.result?.action) &&
+      finishOption !== (finishJournal.plan?.finish ?? finishJournal.result?.action)
     ) {
       throw new NativeUsageError(
-        `Recorded workspace finish is '${finishJournal.result.action}'; retry it without changing --finish`,
+        `Recorded workspace finish is '${finishJournal.plan?.finish ?? finishJournal.result?.action}'; retry it without changing --finish`,
       );
     }
     if (dryRun) {
+      const prepared = finishJournal.plan
+        ? await prepareNativeWorkspaceFinishMessages({
+            name,
+            plan: finishJournal.plan,
+            journal: finishJournal,
+            commitMessage,
+            mergeMessage,
+          })
+        : null;
       return {
         command: 'archive --dry-run',
         exitCode: 73,
@@ -107,12 +168,23 @@ export async function nativeArchiveCommand(
           change: name,
           archived: true,
           workspaceFinishResult: finishJournal.result,
-          recovery: finishJournal.result?.recoveryArgs ?? [
-            'comet',
-            'native',
-            'archive',
-            name,
-            '--confirmed',
+          commitMessages: {
+            commitMessage:
+              commitMessage ?? prepared?.commitMessage ?? `chore(native): archive ${name}`,
+            mergeMessage: mergeMessage ?? prepared?.mergeMessage ?? null,
+          },
+          recovery: [
+            ...(finishJournal.result?.recoveryArgs ?? [
+              'comet',
+              'native',
+              'archive',
+              name,
+              '--confirmed',
+            ]),
+            ...messageOptions,
+            ...(prepared?.mergeMessage && mergeMessage === undefined
+              ? ['--merge-message', prepared.mergeMessage]
+              : []),
           ],
         },
         error: {
@@ -127,25 +199,8 @@ export async function nativeArchiveCommand(
       );
     }
     assertNoArguments(args);
-    const archiveDir = finishJournal.archiveDir;
-    if (
-      !archiveDir ||
-      !isInsidePath(configured.paths.archiveDir, path.resolve(archiveDir)) ||
-      path.resolve(archiveDir) === path.resolve(configured.paths.archiveDir)
-    ) {
-      throw new Error('Native workspace finish journal has no safe archived change directory');
-    }
-    const archivedRecord = await readNativeStatusRecord(
-      configured.paths,
-      path.join(archiveDir, 'comet-state.yaml'),
-    );
-    if (
-      archivedRecord.state.name !== name ||
-      !archivedRecord.state.archived ||
-      archivedRecord.state.status !== 'done'
-    ) {
-      throw new Error('Native workspace finish journal does not match a completed Archive record');
-    }
+    const archivedRecord = await readNativeWorkspaceFinishArchive(configured.paths, finishJournal);
+    const archiveDir = finishJournal.archiveDir!;
     let finishPlan;
     try {
       finishPlan = await prepareNativePortableWorkspaceFinish({
@@ -154,6 +209,14 @@ export async function nativeArchiveCommand(
         archiveDir,
         pullRequestFinish: configured.config.native.finish?.pull_request,
       });
+      if (finishPlan)
+        finishPlan = await prepareNativeWorkspaceFinishMessages({
+          name,
+          plan: finishPlan,
+          journal: finishJournal,
+          commitMessage,
+          mergeMessage,
+        });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const blockedResult = {
@@ -202,6 +265,11 @@ export async function nativeArchiveCommand(
       };
     }
     if (finishPlan) {
+      await writeNativeWorkspaceFinishJournal(configured.paths, {
+        ...finishJournal,
+        plan: finishPlan,
+        updatedAt: new Date().toISOString(),
+      });
       try {
         const workspaceFinishResult = await finishArchivedNativeWorkspace({
           paths: configured.paths,
@@ -227,7 +295,7 @@ export async function nativeArchiveCommand(
       } catch (error) {
         if (!(error instanceof NativeWorkspaceFinishError)) throw error;
         await writeNativeWorkspaceFinishJournal(configured.paths, {
-          ...finishJournal,
+          ...((await readNativeWorkspaceFinishJournal(configured.paths, name)) ?? finishJournal),
           status: 'blocked',
           result: error.result,
           updatedAt: new Date().toISOString(),
@@ -288,6 +356,9 @@ export async function nativeArchiveCommand(
     let state =
       recovery?.state ??
       (portableActive ? await readNativePortableChange(configured.paths, name) : null);
+    if (mergeMessage !== undefined && state && (finish ?? state.workspace.finish) !== 'merge') {
+      throw new NativeUsageError('--merge-message requires a merge workspace finish');
+    }
     if (
       !dryRun &&
       confirmed &&
@@ -325,7 +396,7 @@ export async function nativeArchiveCommand(
             continuation: {
               disposition: 'continue',
               reason: 'Resume the interrupted Native Archive transaction.',
-              commandArgs: ['comet', 'native', 'archive', name, '--confirmed'],
+              commandArgs: ['comet', 'native', 'archive', name, '--confirmed', ...messageOptions],
               inputOptions: [],
               runnerAction: null,
             },
@@ -370,6 +441,7 @@ export async function nativeArchiveCommand(
         paths: string[];
         workspaceRoot: string;
       }> = [];
+      let previewFinishPlan = null;
       const finishRequired =
         state.workspace.isolation !== 'current' && state.workspace.finish === null;
       if (finishRequired) {
@@ -377,12 +449,20 @@ export async function nativeArchiveCommand(
       }
       if (!finishRequired) {
         try {
-          await prepareNativePortableWorkspaceFinish({
+          previewFinishPlan = await prepareNativePortableWorkspaceFinish({
             paths: configured.paths,
             state,
             appliedSpecChanges,
             pullRequestFinish: configured.config.native.finish?.pull_request,
           });
+          if (previewFinishPlan)
+            previewFinishPlan = await prepareNativeWorkspaceFinishMessages({
+              name,
+              plan: previewFinishPlan,
+              journal: finishJournal,
+              commitMessage,
+              mergeMessage,
+            });
         } catch (error) {
           const message = (error as Error).message;
           blockers.push(message);
@@ -459,13 +539,23 @@ export async function nativeArchiveCommand(
           blockers: allBlockers,
           ...(workspaceFinishBlockers.length > 0 ? { workspaceFinishBlockers } : {}),
           workspaceFinish: state.workspace.finish,
-          continuation:
+          commitMessages: previewFinishPlan
+            ? {
+                commitMessage: previewFinishPlan.commitMessage,
+                mergeMessage: previewFinishPlan.mergeMessage,
+              }
+            : null,
+          continuation: withArchiveMessageOptions(
             serialFirstOption === name && continuation.commandArgs
               ? {
                   ...continuation,
                   commandArgs: [...continuation.commandArgs, '--serial-first', name],
                 }
               : continuation,
+            previewFinishPlan?.mergeMessage && mergeMessage === undefined
+              ? [...messageOptions, '--merge-message', previewFinishPlan.mergeMessage]
+              : messageOptions,
+          ),
         },
         `Native Archive preview: ${allBlockers.length === 0 ? 'ready' : 'blocked'}\n`,
       );
@@ -484,7 +574,7 @@ export async function nativeArchiveCommand(
           change: name,
           archived: false,
           workspaceFinish: null,
-          continuation,
+          continuation: withArchiveMessageOptions(continuation, messageOptions),
         },
         error: {
           code: 'usage',
@@ -502,6 +592,14 @@ export async function nativeArchiveCommand(
           appliedSpecChanges,
           pullRequestFinish: configured.config.native.finish?.pull_request,
         });
+        if (finishPlan)
+          finishPlan = await prepareNativeWorkspaceFinishMessages({
+            name,
+            plan: finishPlan,
+            journal: finishJournal,
+            commitMessage,
+            mergeMessage,
+          });
       } catch (error) {
         const message = (error as Error).message;
         const blockedPaths =
@@ -547,6 +645,7 @@ export async function nativeArchiveCommand(
     let finishJournalWritten = false;
     if (finishPlan) {
       await writeNativeWorkspaceFinishJournal(configured.paths, {
+        ...finishJournal,
         schema: NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA,
         name,
         transactionId:
@@ -555,10 +654,14 @@ export async function nativeArchiveCommand(
             ? activeArchiveTransaction.journal.id
             : undefined) ??
           randomUUID(),
-        archiveDir: finishJournal?.archiveDir ?? null,
+        archiveDir:
+          finishJournal?.archiveDir ??
+          (state ? nativePortableArchiveDirectory(configured.paths, state) : null),
+        ...(state ? { createdAt: state.created_at } : {}),
         status: 'pending',
         result: null,
         updatedAt: new Date().toISOString(),
+        plan: finishPlan,
       });
       finishJournalWritten = true;
     }
@@ -614,7 +717,7 @@ export async function nativeArchiveCommand(
           continuation: {
             disposition: 'await-user',
             reason: error.message,
-            commandArgs,
+            commandArgs: [...commandArgs, ...messageOptions],
             inputOptions: error.peers.length > 0 ? ['serial-first-change'] : [],
             runnerAction: null,
           },
@@ -631,6 +734,14 @@ export async function nativeArchiveCommand(
           archiveDir: result.archiveDir,
           pullRequestFinish: configured.config.native.finish?.pull_request,
         });
+        if (finishPlan)
+          finishPlan = await prepareNativeWorkspaceFinishMessages({
+            name,
+            plan: finishPlan,
+            journal: finishJournal,
+            commitMessage,
+            mergeMessage,
+          });
       } catch (error) {
         // Archive has already committed the sealed record.  Preparation can
         // still fail because the workspace changed between the preflight and
@@ -689,6 +800,7 @@ export async function nativeArchiveCommand(
     }
     if (finishPlan) {
       await writeNativeWorkspaceFinishJournal(configured.paths, {
+        ...(await readNativeWorkspaceFinishJournal(configured.paths, name)),
         schema: NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA,
         name,
         transactionId: result.transactionId,
@@ -696,6 +808,7 @@ export async function nativeArchiveCommand(
         status: 'pending',
         result: null,
         updatedAt: new Date().toISOString(),
+        plan: finishPlan,
       });
     }
     let workspaceFinishResult = null;
@@ -712,6 +825,7 @@ export async function nativeArchiveCommand(
       } catch (error) {
         if (!(error instanceof NativeWorkspaceFinishError)) throw error;
         await writeNativeWorkspaceFinishJournal(configured.paths, {
+          ...(await readNativeWorkspaceFinishJournal(configured.paths, name)),
           schema: NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA,
           name,
           transactionId: result.transactionId,
@@ -725,6 +839,7 @@ export async function nativeArchiveCommand(
           exitCode: 73,
           data: {
             ...result,
+            archived: true,
             workspaceFinish: result.state.workspace.finish,
             workspaceFinishResult: error.result,
             continuation: {
@@ -751,6 +866,7 @@ export async function nativeArchiveCommand(
       'archive',
       {
         ...result,
+        archived: true,
         artifactRefs: [
           'brief.md',
           ...(result.state.verification_report ? [result.state.verification_report] : []),
