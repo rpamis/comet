@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 
-import { recordCometGitCommand } from './runtime-metrics.js';
+import { measureCometGitCommand } from './runtime-metrics.js';
 
 const GIT_TIMEOUT_MS = 30_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
@@ -17,15 +17,16 @@ export class GitCommandError extends Error {
 }
 
 function executeGitCommand(cwd: string, args: readonly string[]): string {
-  recordCometGitCommand();
   try {
-    return execFileSync('git', ['-C', cwd, ...args], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: GIT_TIMEOUT_MS,
-      maxBuffer: GIT_MAX_BUFFER,
-      windowsHide: true,
-    });
+    return measureCometGitCommand(() =>
+      execFileSync('git', ['-C', cwd, ...args], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: GIT_TIMEOUT_MS,
+        maxBuffer: GIT_MAX_BUFFER,
+        windowsHide: true,
+      }),
+    );
   } catch (error) {
     const stderr =
       typeof (error as { stderr?: unknown }).stderr === 'string'

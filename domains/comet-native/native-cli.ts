@@ -13,6 +13,7 @@ import { nativeStatusCommand } from './native-status-command.js';
 import { nativeHelp } from './native-cli-help.js';
 import {
   errorResult,
+  isNativeReadOnlyCommand,
   NativeUsageError,
   projectRootFrom,
   renderNativeCommandDetailed,
@@ -36,6 +37,10 @@ export interface NativeCliDetailedResult {
   verbose: boolean;
 }
 
+export interface NativeCliRunOptions {
+  invocationCwd?: string;
+}
+
 type NativeCommandHandler = (args: string[], projectRoot: string) => Promise<DispatchResult>;
 
 const COMMAND_HANDLERS: Record<string, NativeCommandHandler> = {
@@ -56,6 +61,7 @@ const COMMAND_HANDLERS: Record<string, NativeCommandHandler> = {
 async function dispatch(
   rawArgs: string[],
   explicitProjectRoot: string | undefined,
+  invocationCwd: string,
 ): Promise<DispatchResult> {
   const helpIndex = rawArgs.indexOf('--help');
   if (rawArgs.length === 0 || helpIndex >= 0 || rawArgs[0] === 'help') {
@@ -75,7 +81,7 @@ async function dispatch(
     };
   }
   const command = rawArgs.shift()!;
-  const projectRoot = await projectRootFrom(explicitProjectRoot);
+  const projectRoot = await projectRootFrom(explicitProjectRoot, invocationCwd);
   const handler = COMMAND_HANDLERS[command];
   if (!handler) {
     throw new NativeUsageError(`Unknown Native command: ${command}`);
@@ -85,6 +91,7 @@ async function dispatch(
 
 export async function runNativeCliDetailed(
   argv: readonly string[],
+  options: NativeCliRunOptions = {},
 ): Promise<NativeCliDetailedResult> {
   const args = [...argv];
   const separator = args.indexOf('--');
@@ -100,7 +107,11 @@ export async function runNativeCliDetailed(
     explicitProjectRoot = takeOption(globalArgs, '--project-root');
     const dispatchArgs = [...globalArgs, ...commandTail];
     command = dispatchArgs[0] ?? null;
-    const dispatchResult = await dispatch(dispatchArgs, explicitProjectRoot);
+    const invoke = () =>
+      dispatch(dispatchArgs, explicitProjectRoot, options.invocationCwd ?? process.cwd());
+    const dispatchResult = isNativeReadOnlyCommand(command ?? '', dispatchArgs.slice(1))
+      ? await withGitWorktreeReadScope(invoke)
+      : await invoke();
     const rendered = renderNativeCommandDetailed(dispatchResult, json, verbose);
     return {
       dispatch: dispatchResult,
@@ -131,3 +142,4 @@ export async function runNativeCliDetailed(
 export async function runNativeCli(argv: readonly string[]): Promise<NativeCommandResult> {
   return (await runNativeCliDetailed(argv)).output;
 }
+import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';

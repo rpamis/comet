@@ -1,3 +1,4 @@
+import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -14,13 +15,15 @@ const MAX_EXTERNAL_DRIFT_PATH_BYTES = 512 * 1024;
 
 function runGit(projectRoot: string, args: readonly string[]): Buffer | null {
   try {
-    return execFileSync('git', ['-C', projectRoot, ...args], {
-      encoding: 'buffer',
-      maxBuffer: 2 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 10_000,
-      windowsHide: true,
-    });
+    return measureCometGitCommand(() =>
+      execFileSync('git', ['-C', projectRoot, ...args], {
+        encoding: 'buffer',
+        maxBuffer: 2 * 1024 * 1024,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 10_000,
+        windowsHide: true,
+      }),
+    );
   } catch {
     return null;
   }

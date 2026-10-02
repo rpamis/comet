@@ -1,5 +1,12 @@
 import type { DispatchResult, NativeCommandResult } from './native-cli-shared.js';
-import { errorResult, projectRootFrom, render, takeFlag, takeOption } from './native-cli-shared.js';
+import {
+  errorResult,
+  isNativeReadOnlyCommand,
+  projectRootFrom,
+  render,
+  takeFlag,
+  takeOption,
+} from './native-cli-shared.js';
 
 type NativeScriptHandler = (args: string[], projectRoot: string) => Promise<DispatchResult>;
 
@@ -28,8 +35,13 @@ export async function runNativeScript(
     takeFlag(globalArgs, '--verbose');
     explicitProjectRoot = takeOption(globalArgs, '--project-root');
     const dispatchArgs = [...globalArgs, ...commandTail];
-    const projectRoot = await projectRootFrom(explicitProjectRoot);
-    result = { executionCwd: projectRoot, ...(await handler(dispatchArgs, projectRoot)) };
+    const invoke = async () => {
+      const projectRoot = await projectRootFrom(explicitProjectRoot);
+      return { executionCwd: projectRoot, ...(await handler(dispatchArgs, projectRoot)) };
+    };
+    result = isNativeReadOnlyCommand(command, dispatchArgs)
+      ? await withGitWorktreeReadScope(invoke)
+      : await invoke();
   } catch (error) {
     result = errorResult(command, error);
   }
@@ -39,3 +51,4 @@ export async function runNativeScript(
     process.stderr.write(output.stderr + (output.stderr.endsWith('\n') ? '' : '\n'));
   return output.exitCode;
 }
+import { withGitWorktreeReadScope } from '../../platform/paths/git-worktree.js';

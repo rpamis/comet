@@ -11,9 +11,11 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Workflow continuation**: Native and Classic Skills reuse current Runtime responses, preserve rejected inputs for correction, and prepare archive messages under project commit conventions. Classic hotfix and tweak advance verification through Guard while retaining final Archive confirmation.
+- **Native query responsiveness**: Reuse Git worktree observations within each Status, Show, or Root Show query, including standalone Runtime bundles. Every new request reads fresh worktree state, and workflow mutations retain their live Git checks. Daemon diagnostics now report request-local Git counts and elapsed time.
 
 ### Fixed
 
+- **Native daemon workspace context**: Resolve Native queries and relative project paths from the caller's working directory, preserving linked-worktree ownership when the daemon runs from another directory.
 - **Project Memory scrolling**: Keep the project memory tab on the same Dashboard inner-page flex layout as retrieval test, so long memory lists scroll inside the knowledge page instead of being clipped (#452).
 - **Native candidate input isolation**: Keep validated, unchanged, untracked Runner payloads separate from candidate inputs so repository-local handoff files do not invalidate verification. Tracked files, changed payloads, and implementation inputs remain bound to the candidate (#455).
 - **Native Verifier recovery**: Reject correctable result and check-request errors without ending the active Verifier or consuming its execution failure budget. Explicit requests can rerun failed repeatable checks within the existing limits, while passed evidence is reused and failed checks still prevent acceptance (#455).

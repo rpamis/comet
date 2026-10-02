@@ -1,3 +1,4 @@
+import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -16,15 +17,17 @@ import {
 } from './classic-check-manifest.js';
 
 function git(root: string, args: string[]): string | null {
-  const result = spawnSync('git', ['-C', root, ...args], {
-    encoding: 'utf8',
-    windowsHide: true,
-    timeout: 30_000,
-    // The buffer ceiling only guards runaway output; memory grows with the
-    // actual listing, so a high ceiling keeps `ls-files --stage` working for
-    // repositories with hundreds of thousands of tracked files.
-    maxBuffer: 256 * 1024 * 1024,
-  });
+  const result = measureCometGitCommand(() =>
+    spawnSync('git', ['-C', root, ...args], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 30_000,
+      // The buffer ceiling only guards runaway output; memory grows with the
+      // actual listing, so a high ceiling keeps `ls-files --stage` working for
+      // repositories with hundreds of thousands of tracked files.
+      maxBuffer: 256 * 1024 * 1024,
+    }),
+  );
   return result.status === 0 ? result.stdout : null;
 }
 

@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { measureCometGitCommand } from './runtime-metrics.js';
 
 import { assertSafeWindowsBatchArguments, resolveWindowsCommand } from './spawn-command.js';
 
@@ -61,17 +62,21 @@ export function runExternalCommand(
     assertSafeWindowsBatchArguments(args);
   }
   try {
-    return execFileSync(resolvedCommand, [...args], {
-      cwd,
-      env,
-      ...(options.input !== undefined ? { input: options.input } : {}),
-      encoding: 'utf8',
-      stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-      timeout: timeoutMs,
-      maxBuffer: maxBufferBytes,
-      windowsHide: true,
-      shell: process.platform === 'win32' && isWindowsBatchCommand,
-    });
+    const execute = () =>
+      execFileSync(resolvedCommand, [...args], {
+        cwd,
+        env,
+        ...(options.input !== undefined ? { input: options.input } : {}),
+        encoding: 'utf8',
+        stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+        timeout: timeoutMs,
+        maxBuffer: maxBufferBytes,
+        windowsHide: true,
+        shell: process.platform === 'win32' && isWindowsBatchCommand,
+      });
+    return /^(?:git|git\.exe)$/iu.test(path.win32.basename(command))
+      ? measureCometGitCommand(execute)
+      : execute();
   } catch (error) {
     const stderr =
       typeof (error as { stderr?: unknown }).stderr === 'string'

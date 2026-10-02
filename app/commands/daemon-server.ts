@@ -41,6 +41,7 @@ async function handleRequest(request: CometDaemonRequest): Promise<CometDaemonHa
   const root = explicitProjectRoot(argv, request.projectRoot);
   const detailed = await runNativeCliDetailed(
     argv.includes('--project-root') ? argv : [...argv, '--project-root', root],
+    { invocationCwd: request.cwd },
   );
   return detailed.output;
 }

@@ -1,3 +1,4 @@
+import { measureCometGitCommandAsync } from '../../platform/process/runtime-metrics.js';
 import path from 'node:path';
 
 import { assertClassicLayoutReadable } from './classic-layout.js';
@@ -453,30 +454,33 @@ function relatedEvidence(utterance: string, change: ActiveProbeChange): CometRes
 }
 
 async function gitDirtyFiles(projectRoot: string): Promise<string[]> {
-  return new Promise((resolve) => {
-    execFile(
-      'git',
-      ['status', '--short', '--untracked-files=all'],
-      {
-        cwd: projectRoot,
-        timeout: 3000,
-        maxBuffer: 2 * 1024 * 1024,
-        windowsHide: true,
-      },
-      (error, stdout) => {
-        if (error || typeof stdout !== 'string') {
-          resolve([]);
-          return;
-        }
-        resolve(
-          stdout
-            .split(/\r?\n/u)
-            .map((line) => line.trim())
-            .filter(Boolean),
+  return measureCometGitCommandAsync(
+    () =>
+      new Promise<string[]>((resolve) => {
+        execFile(
+          'git',
+          ['status', '--short', '--untracked-files=all'],
+          {
+            cwd: projectRoot,
+            timeout: 3000,
+            maxBuffer: 2 * 1024 * 1024,
+            windowsHide: true,
+          },
+          (error, stdout) => {
+            if (error || typeof stdout !== 'string') {
+              resolve([]);
+              return;
+            }
+            resolve(
+              stdout
+                .split(/\r?\n/u)
+                .map((line) => line.trim())
+                .filter(Boolean),
+            );
+          },
         );
-      },
-    );
-  });
+      }),
+  );
 }
 
 export async function resolveCometResumeProbe(

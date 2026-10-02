@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as net from 'node:net';
 import path from 'node:path';
+import { recordCometGitCommand } from '../../../platform/process/runtime-metrics.js';
 
 import {
   COMET_DAEMON_MESSAGE_LIMIT,
@@ -36,6 +37,55 @@ describe('Comet daemon protocol', () => {
 
   afterEach(async () => {
     await Promise.all(servers.splice(0).map((server) => server.close()));
+  });
+
+  it('attributes Git counts and duration to overlapping requests without double counting', async () => {
+    const projectRoot = process.cwd();
+    const buildId = 'test-overlapping-metrics';
+    const endpoint = resolveCometDaemonEndpoint(projectRoot, buildId);
+    let firstStarted!: () => void;
+    let releaseFirst!: () => void;
+    const started = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const server = await createCometDaemonServer({
+      endpoint,
+      buildId,
+      projectRoot,
+      handler: async (request) => {
+        if (request.argv?.[0] === 'first') {
+          recordCometGitCommand(5);
+          firstStarted();
+          await released;
+          recordCometGitCommand(7);
+        } else {
+          recordCometGitCommand(11);
+        }
+        return { exitCode: 0 };
+      },
+    });
+    servers.push(server);
+    const send = (argv: string[]) =>
+      sendCometDaemonRequest({ endpoint, buildId, projectRoot, runtime: 'native', argv });
+    const first = send(['first']);
+    await started;
+    try {
+      expect(await send(['second'])).toMatchObject({ ok: true, exitCode: 0 });
+    } finally {
+      releaseFirst();
+    }
+    expect(await first).toMatchObject({ ok: true, exitCode: 0 });
+    const response = await sendCometDaemonRequest({
+      endpoint,
+      buildId,
+      projectRoot,
+      control: 'status',
+    });
+    expect(response.status?.lastRequest).toMatchObject({ gitCommands: 2, gitDurationMs: 12 });
+    expect(response.status?.totalWork).toMatchObject({ gitCommands: 3, gitDurationMs: 23 });
   });
 
   it('serves an isolated request and reports lifecycle status', async () => {

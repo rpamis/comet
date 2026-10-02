@@ -2,6 +2,8 @@ import { createHash } from 'crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { performance } from 'node:perf_hooks';
+import { recordCometGitCommand } from '../../platform/process/runtime-metrics.js';
 
 import { atomicWriteJson } from './native-atomic-file.js';
 import {
@@ -415,6 +417,7 @@ function startNativeGitProcess(
   const remaining = remainingNativeSnapshotTime(execution);
   if (remaining < 1) throw nativeGitSnapshotTimeoutError();
   const adapter = execution.gitProcess;
+  const started = performance.now();
   const child = spawn(
     adapter.command,
     [...(adapter.argsPrefix ?? []), '-C', projectRoot, ...args],
@@ -444,15 +447,17 @@ function startNativeGitProcess(
     );
   }, remaining);
   timer.unref();
-  const completion = close.then(async (code) => {
-    clearTimeout(timer);
-    if (timedOut) {
-      const result = await termination;
-      if (result?.error) throw nativeGitSnapshotTimeoutError(result.error);
-      throw nativeGitSnapshotTimeoutError();
-    }
-    return { code, spawnError };
-  });
+  const completion = close
+    .then(async (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        const result = await termination;
+        if (result?.error) throw nativeGitSnapshotTimeoutError(result.error);
+        throw nativeGitSnapshotTimeoutError();
+      }
+      return { code, spawnError };
+    })
+    .finally(() => recordCometGitCommand(performance.now() - started));
   return { child, completion };
 }
 

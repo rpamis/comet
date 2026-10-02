@@ -564,6 +564,27 @@ describe('Comet Native CLI dispatcher', () => {
       });
       const cwd = vi.spyOn(process, 'cwd').mockReturnValue(secondary);
       try {
+        const primaryRead = await runNativeCliDetailed(
+          ['status', '--json', '--project-root', projectRoot],
+          { invocationCwd: projectRoot },
+        );
+        expect(primaryRead.dispatch.executionCwd).toBe(path.resolve(projectRoot));
+        const relativeRead = await runNativeCliDetailed(
+          ['status', '--json', '--project-root', '.'],
+          { invocationCwd: projectRoot },
+        );
+        expect(relativeRead.dispatch.executionCwd).toBe(path.resolve(projectRoot));
+        const reads = await Promise.all(
+          [projectRoot, secondary].map((invocationCwd) =>
+            runNativeCliDetailed(['status', '--json', '--project-root', projectRoot], {
+              invocationCwd,
+            }),
+          ),
+        );
+        expect(reads.map((result) => result.dispatch.executionCwd)).toEqual([
+          path.resolve(projectRoot),
+          path.resolve(secondary),
+        ]);
         await expect(projectRootFrom(projectRoot)).resolves.toBe(path.resolve(secondary));
         expect(
           json(await runNativeCli(['new', 'root-routed', '--json', '--project-root', projectRoot])),

@@ -155,11 +155,11 @@ function pathIdentity(value: string): string {
  * process already running inside a linked worktree to silently fall back to
  * the primary checkout. The primary checkout may still explicitly target a
  * secondary worktree; this only makes the current secondary worktree
- * authoritative when it is the process context.
+ * authoritative when it is the invocation context.
  */
-function explicitProjectRootFromCurrentWorktree(explicit: string): string {
-  const requested = path.resolve(explicit);
-  const current = inspectGitWorktree(process.cwd());
+function explicitProjectRootFromCurrentWorktree(explicit: string, invocationCwd: string): string {
+  const requested = path.resolve(invocationCwd, explicit);
+  const current = inspectGitWorktree(invocationCwd);
   if (
     !current.isSecondaryWorktree ||
     current.currentWorktreeRoot === null ||
@@ -179,15 +179,23 @@ function explicitProjectRootFromCurrentWorktree(explicit: string): string {
     return requested;
   }
 
-  return samePath(process.cwd(), current.currentWorktreeRoot)
-    ? path.resolve(process.cwd())
+  return samePath(invocationCwd, current.currentWorktreeRoot)
+    ? path.resolve(invocationCwd)
     : current.currentWorktreeRoot;
 }
 
-export async function projectRootFrom(explicit: string | undefined): Promise<string> {
+export async function projectRootFrom(
+  explicit: string | undefined,
+  invocationCwd = process.cwd(),
+): Promise<string> {
   return explicit
-    ? explicitProjectRootFromCurrentWorktree(explicit)
-    : discoverNativeProject(process.cwd());
+    ? explicitProjectRootFromCurrentWorktree(explicit, invocationCwd)
+    : discoverNativeProject(invocationCwd);
+}
+
+/** Only queries may share Git observations; root move must recheck inside its transaction. */
+export function isNativeReadOnlyCommand(command: string, args: readonly string[]): boolean {
+  return command === 'status' || command === 'show' || (command === 'root' && args[0] === 'show');
 }
 
 export async function configuredPaths(projectRoot: string): Promise<{

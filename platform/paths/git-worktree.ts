@@ -1,6 +1,8 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { measureCometGitCommand } from '../process/runtime-metrics.js';
 
 interface GitWorktreeContext {
   isGitWorktree: boolean;
@@ -16,13 +18,28 @@ export interface GitWorktreeEntry {
   detached: boolean;
 }
 
+const readScope = new AsyncLocalStorage<Map<string, GitWorktreeEntry[]>>();
+
+/** Reuse worktree observations only within one read-only query, never across commands. */
+export function withGitWorktreeReadScope<T>(operation: () => T): T {
+  return readScope.run(new Map(), operation);
+}
+
+function rememberWorktrees(entries: GitWorktreeEntry[]): GitWorktreeEntry[] {
+  const active = readScope.getStore();
+  for (const entry of entries) active?.set(canonicalPathForComparison(entry.root), entries);
+  return entries;
+}
+
 function runGit(projectPath: string, args: string[]): string {
-  return execFileSync('git', ['-C', projectPath, ...args], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore'],
-    timeout: 10_000,
-    windowsHide: true,
-  }).trim();
+  return measureCometGitCommand(() =>
+    execFileSync('git', ['-C', projectPath, ...args], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10_000,
+      windowsHide: true,
+    }).trim(),
+  );
 }
 
 /**
@@ -48,12 +65,15 @@ function canonicalPathForComparison(target: string): string {
 
 function inspectGitWorktree(projectPath: string): GitWorktreeContext {
   try {
+    const observed = readScope.getStore()?.get(canonicalPathForComparison(projectPath));
+    if (observed) return gitWorktreeContextFromEntries(projectPath, observed)!;
     const currentWorktreeRoot = path.resolve(runGit(projectPath, ['rev-parse', '--show-toplevel']));
-    const porcelain = runGit(projectPath, ['worktree', 'list', '--porcelain', '-z']);
-    const primaryToken = porcelain.split('\0').find((token) => token.startsWith('worktree '));
-    const primaryWorktreeRoot = primaryToken
-      ? path.resolve(primaryToken.slice('worktree '.length))
-      : currentWorktreeRoot;
+    const entries =
+      readScope.getStore()?.get(canonicalPathForComparison(currentWorktreeRoot)) ??
+      readGitWorktrees(projectPath);
+    const context = gitWorktreeContextFromEntries(currentWorktreeRoot, entries);
+    if (readScope.getStore() && context) return context;
+    const primaryWorktreeRoot = entries[0]?.root ?? currentWorktreeRoot;
     let currentBranch: string | null = null;
     try {
       currentBranch = runGit(projectPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']) || null;
@@ -81,29 +101,36 @@ function inspectGitWorktree(projectPath: string): GitWorktreeContext {
 
 function listGitWorktrees(projectPath: string): GitWorktreeEntry[] {
   try {
+    const observed = readScope.getStore()?.get(canonicalPathForComparison(projectPath));
+    if (observed) return observed.map((entry) => ({ ...entry }));
     runGit(projectPath, ['rev-parse', '--is-inside-work-tree']);
-    const lines = runGit(projectPath, ['worktree', 'list', '--porcelain']).split(/\r?\n/u);
-    const entries: GitWorktreeEntry[] = [];
-    let current: GitWorktreeEntry | null = null;
-    for (const line of lines) {
-      if (line.startsWith('worktree ')) {
-        if (current) entries.push(current);
-        current = {
-          root: path.resolve(line.slice('worktree '.length)),
-          branch: null,
-          detached: false,
-        };
-      } else if (current && line.startsWith('branch refs/heads/')) {
-        current.branch = line.slice('branch refs/heads/'.length);
-      } else if (current && line === 'detached') {
-        current.detached = true;
-      }
-    }
-    if (current) entries.push(current);
-    return entries;
+    return readGitWorktrees(projectPath);
   } catch {
     return [];
   }
+}
+
+function readGitWorktrees(projectPath: string): GitWorktreeEntry[] {
+  const lines = runGit(projectPath, ['worktree', 'list', '--porcelain', '-z']).split('\0');
+  const entries: GitWorktreeEntry[] = [];
+  let current: GitWorktreeEntry | null = null;
+  for (const line of lines) {
+    if (line.startsWith('worktree ')) {
+      if (current) entries.push(current);
+      current = {
+        root: path.resolve(line.slice('worktree '.length)),
+        branch: null,
+        detached: false,
+      };
+    } else if (current && line.startsWith('branch refs/heads/')) {
+      current.branch = line.slice('branch refs/heads/'.length);
+    } else if (current && line === 'detached') {
+      current.detached = true;
+    }
+  }
+  if (current) entries.push(current);
+  rememberWorktrees(entries);
+  return entries.map((entry) => ({ ...entry }));
 }
 
 function listGitWorktreeRoots(projectPath: string): string[] {

@@ -11,7 +11,9 @@ import {
   isLocalGitBranch,
   listGitWorktreeRoots,
   samePath,
+  withGitWorktreeReadScope,
 } from '../../platform/paths/git-worktree.js';
+import { snapshotCometRuntimeMetrics } from '../../platform/process/runtime-metrics.js';
 
 describe('Git worktree inspection', () => {
   let primary: string;
@@ -93,5 +95,46 @@ describe('Git worktree inspection', () => {
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
     }
+  });
+
+  it('reuses one worktree observation for root resolution and discovery only within a query', async () => {
+    const nested = path.join(secondary, 'nested');
+    await fs.mkdir(nested);
+    const before = snapshotCometRuntimeMetrics();
+    await withGitWorktreeReadScope(async () => {
+      expect(inspectGitWorktree(nested).currentBranch).toBe('feature/secondary');
+      const entries = listGitWorktrees(primary);
+      expect(entries).toHaveLength(2);
+      entries[0].branch = 'caller-mutation';
+      await Promise.resolve();
+      expect(inspectGitWorktree(primary).currentBranch).toBe('master');
+    });
+    const after = snapshotCometRuntimeMetrics();
+    expect(after.gitCommands - before.gitCommands).toBe(2);
+    expect(after.gitDurationMs - before.gitDurationMs).toBeGreaterThan(0);
+    expect(spawnSync('git', ['-C', secondary, 'checkout', '--detach']).status).toBe(0);
+    withGitWorktreeReadScope(() => {
+      expect(inspectGitWorktree(secondary).currentBranch).toBeNull();
+      expect(
+        listGitWorktrees(primary).find((entry) => samePath(entry.root, secondary))?.detached,
+      ).toBe(true);
+    });
+    expect(inspectGitWorktree(secondary).currentBranch).toBeNull();
+  });
+
+  it('isolates overlapping read scopes and does not reuse a previous request branch', async () => {
+    const first = withGitWorktreeReadScope(async () => {
+      const initial = inspectGitWorktree(secondary);
+      await Promise.resolve();
+      return [initial.currentBranch, inspectGitWorktree(secondary).currentBranch];
+    });
+    expect(spawnSync('git', ['-C', secondary, 'checkout', '-b', 'feature/next']).status).toBe(0);
+    const second = withGitWorktreeReadScope(async () => {
+      await Promise.resolve();
+      return inspectGitWorktree(secondary).currentBranch;
+    });
+    expect(await first).toEqual(['feature/secondary', 'feature/secondary']);
+    expect(await second).toBe('feature/next');
+    expect(currentGitBranch(secondary)).toBe('feature/next');
   });
 });
