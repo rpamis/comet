@@ -12,8 +12,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Workflow continuation**: Native and Classic Skills reuse current Runtime responses, preserve rejected inputs for correction, and prepare archive messages under project commit conventions. Classic hotfix and tweak advance verification through Guard while retaining final Archive confirmation.
 - **Native query responsiveness**: Reuse Git worktree observations within each Status, Show, or Root Show query, including standalone Runtime bundles. Every new request reads fresh worktree state, and workflow mutations retain their live Git checks. Daemon diagnostics now report request-local Git counts and elapsed time.
-- **Verification responsiveness**: Avoid collecting the same Native repository inputs twice when reserving checks. Classic checks read files with bounded concurrency and bind overlapping declarations once, while fresh source edits still invalidate prior evidence and legacy evidence keeps its original bindings.
+- **Verification responsiveness**: Reuse Native repository and branch observations when reserving checks. Classic checks read files with bounded concurrency and bind overlapping declarations once, while fresh source edits still invalidate prior evidence and legacy evidence keeps its original bindings.
 - **Classic command startup**: Public State, Check, Guard, Handoff, and Archive commands load their own Runtime bundle while preserving context injection, result recording, command arguments, and JSON output.
+- **Classic query responsiveness**: Read stable Classic state without creating a writer lock, avoiding unnecessary process probes on Windows. Concurrent changes, interrupted transactions, unavailable file identities, and legacy migrations retain the serialized recovery path.
+- **Native Hook responsiveness**: Share selected-change and configuration reads within a Hook decision. Concurrent decisions remain isolated, and Runtime mutations discard prior reads before and after the change so subsequent checks see the updated phase.
 
 ### Fixed
 

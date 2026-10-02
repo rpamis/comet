@@ -895,6 +895,10 @@ export async function nativeCheckInputGate(
 async function nativeCheckInputGates(options: NativeCheckInputGateOptions) {
   const observation = await readNativeCheckInputObservation(options);
   return {
+    branch:
+      observation === null
+        ? currentBranch(options.projectRoot)
+        : observation.binding.branch || null,
     gate: await nativeCheckGateFromObservation(options, observation),
     candidateGate: await nativeCheckGateFromObservation({ ...options, plans: [] }, observation),
   };
@@ -1079,7 +1083,17 @@ async function reserveNativePortableCheckPlan(options: {
       if (state.phase !== 'verify' || state.loop.stage !== 'verify-ready') {
         throw new Error('Native checks require Verify ready state');
       }
-      const branch = currentBranch(options.projectRoot);
+      const {
+        gate,
+        candidateGate,
+        branch: observedBranch,
+      } = await nativeCheckInputGates({
+        projectRoot: options.projectRoot,
+        candidateId: state.builder_handoff?.candidate_id ?? null,
+        plans: options.plans,
+        managedArtifactRoot: options.paths.artifactRoot,
+      });
+      let branch = observedBranch;
       const file = nativeLocalExecutionFile(options.paths, state.name);
       let local = (
         await readOrRebuildNativeLocalExecution({
@@ -1090,12 +1104,12 @@ async function reserveNativePortableCheckPlan(options: {
           containedRoot: options.paths.runtimeDir,
         })
       ).state;
-      const { gate, candidateGate } = await nativeCheckInputGates({
-        projectRoot: options.projectRoot,
-        candidateId: state.builder_handoff?.candidate_id ?? null,
-        plans: options.plans,
-        managedArtifactRoot: options.paths.artifactRoot,
-      });
+      // Older overlays use symbolic-ref's disambiguated short name when a tag
+      // shares the branch name. Keep that binding without a second probe on
+      // the ordinary path. The gate continues to bind the actual branch name.
+      if (branch !== null && local.workspace.branch === `heads/${branch}`) {
+        branch = currentBranch(options.projectRoot);
+      }
       // A null gate means the workspace could not be snapshotted completely
       // (for example, an ignored generated tree is too large or a submodule
       // cannot be hashed as a regular file). The full fingerprint remains

@@ -1,4 +1,5 @@
 import path from 'path';
+import { promises as fs } from 'node:fs';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
@@ -22,6 +23,7 @@ import {
   writeRunState,
   removeRunState,
   runStateFromDocument,
+  RUN_STATE_FILE,
   type StateDocument,
 } from '../../domains/engine/state.js';
 
@@ -210,7 +212,67 @@ export async function readClassicState(
   changeDir: string,
   options: ReadClassicStateOptions = {},
 ): Promise<ClassicStateProjection> {
+  if (stateLock.getStore() !== path.resolve(changeDir)) {
+    const stable = await readStableClassicState(changeDir);
+    if (stable !== null) return stable;
+  }
   return withClassicStateLock(changeDir, () => readClassicStateLocked(changeDir, options));
+}
+
+async function stateFileVersion(changeDir: string, file: string) {
+  const target = await inspectProtectedProjectPath(changeDir, file, {
+    label: 'Classic state snapshot',
+    expected: 'file',
+  });
+  if (!target.exists) return { stamp: 'missing', comparable: true };
+  const stat = await fs.lstat(target.target, { bigint: true });
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Classic state file changed');
+  return {
+    stamp: [stat.dev, stat.ino, stat.birthtimeNs, stat.ctimeNs, stat.mtimeNs, stat.size].join(':'),
+    comparable: stat.dev !== 0n && stat.ino !== 0n && stat.ctimeNs > 0n,
+  };
+}
+
+async function stateReadVersions(changeDir: string) {
+  // Check the writer lock around the file observations. A complete writer that
+  // starts and finishes between these probes still changes a file's identity.
+  const lock = await stateFileVersion(changeDir, '.comet-state.lock');
+  if (lock.stamp !== 'missing') return null;
+  const transaction = await stateFileVersion(changeDir, STATE_TRANSACTION);
+  if (transaction.stamp !== 'missing') return null;
+  const yaml = await stateFileVersion(changeDir, '.comet.yaml');
+  const run = await stateFileVersion(changeDir, RUN_STATE_FILE);
+  if (!yaml.comparable || !run.comparable) return null;
+  return { yaml: yaml.stamp, run: run.stamp };
+}
+
+async function readStableClassicState(changeDir: string): Promise<ClassicStateProjection | null> {
+  try {
+    const before = await stateReadVersions(changeDir);
+    if (before === null) return null;
+    const document = await readDocument(path.join(changeDir, '.comet.yaml'));
+    const doc = documentRecord(document);
+    if (document.has('build_command') || document.has('verify_command')) return null;
+    const run = await readRunState(changeDir);
+    if (!run && doc.run_id && doc.skill) return null;
+    const projection = parseClassicStateDocument(doc, run);
+    const after = await stateReadVersions(changeDir);
+    // Finish with the lock and journal probes: neither may appear after the
+    // final file observations. No snapshot is retained for a later request.
+    if (
+      after === null ||
+      before.yaml !== after.yaml ||
+      before.run !== after.run ||
+      (await stateFileVersion(changeDir, STATE_TRANSACTION)).stamp !== 'missing' ||
+      (await stateFileVersion(changeDir, '.comet-state.lock')).stamp !== 'missing'
+    )
+      return null;
+    return projection;
+  } catch {
+    // A race, recovery or migration must use the existing serialized reader.
+    // It also preserves the original diagnostics for invalid/unsafe files.
+    return null;
+  }
 }
 
 async function readClassicStateLocked(

@@ -91,63 +91,72 @@ describe('Native portable Runtime vertical path', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('reuses passed checks within a seven-Git-operation budget and refreshes edited inputs', async () => {
-    const git = (...args: string[]) =>
-      execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
-    git('init', '--quiet');
-    git('config', 'user.email', 'test@example.com');
-    git('config', 'user.name', 'Test');
-    await fs.writeFile(path.join(root, 'source.txt'), 'first\n');
-    git('add', 'source.txt');
-    git('commit', '--quiet', '-m', 'fixture');
-    await createNativePortableChange({ paths, name: 'reuse-budget', language: 'en' });
-    await fs.writeFile(
-      path.join(nativePortableChangeDir(paths, 'reuse-budget'), 'brief.md'),
-      '# Outcome\nKeep the fixture output.\n\n# Acceptance examples\n- The command prints ready.\n',
-    );
-    const state = await confirmNativePortableShape({ paths, name: 'reuse-budget' });
-    const runner = createNativeRunnerChannel();
-    await submitNativePortableBuilderCandidate({
-      paths,
-      name: state.name,
-      input: {
-        identity: runner.captureExecutionIdentity({
-          identityProvider: 'test-host',
-          executionRef: 'budget-builder',
-        }),
-        candidateId: 'budget-candidate',
-        summary: 'The fixture prints ready.',
-        addressedAcceptanceIds: ['A1'],
-        acceptanceReview: fixtureAcceptanceReview(['A1']),
-      },
-    });
-    const plans = [
-      {
-        id: 'ready',
-        name: 'Ready',
-        executable: process.execPath,
-        argv: ['-e', "console.log('ready')"],
-        cwdRef: '.',
-        timeoutMs: 10000,
-        repeatable: true,
-      },
-    ];
-    await executeNativePortableCheckPlan({ paths, name: state.name, plans });
-    const reused = await withCometRuntimeMetrics(() =>
-      executeNativePortableCheckPlan({ paths, name: state.name, plans }),
-    );
-    expect(reused.result.checks).toMatchObject([{ id: 'ready', status: 'passed' }]);
-    expect(reused.result.disposition).toBe('reused');
-    expect(
-      (await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name)))?.checks[0]
-        .executionCount,
-    ).toBe(1);
-    expect(reused.metrics.gitCommands).toBeLessThanOrEqual(7);
-    await fs.writeFile(path.join(root, 'source.txt'), 'second\n');
-    await expect(
-      executeNativePortableCheckPlan({ paths, name: state.name, plans }),
-    ).rejects.toThrow('Native check input changed after the candidate was built');
-  });
+  it.each([false, true])(
+    'shares branch observation while reusing checks (ambiguous ref: %s)',
+    async (ambiguous) => {
+      const git = (...args: string[]) =>
+        execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
+      git('init', '--quiet');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      await fs.writeFile(path.join(root, 'source.txt'), 'first\n');
+      git('add', 'source.txt');
+      git('commit', '--quiet', '-m', 'fixture');
+      if (ambiguous) {
+        const branch = execFileSync('git', ['-C', root, 'branch', '--show-current'], {
+          encoding: 'utf8',
+        }).trim();
+        git('tag', branch);
+      }
+      await createNativePortableChange({ paths, name: 'reuse-budget', language: 'en' });
+      await fs.writeFile(
+        path.join(nativePortableChangeDir(paths, 'reuse-budget'), 'brief.md'),
+        '# Outcome\nKeep the fixture output.\n\n# Acceptance examples\n- The command prints ready.\n',
+      );
+      const state = await confirmNativePortableShape({ paths, name: 'reuse-budget' });
+      const runner = createNativeRunnerChannel();
+      await submitNativePortableBuilderCandidate({
+        paths,
+        name: state.name,
+        input: {
+          identity: runner.captureExecutionIdentity({
+            identityProvider: 'test-host',
+            executionRef: 'budget-builder',
+          }),
+          candidateId: 'budget-candidate',
+          summary: 'The fixture prints ready.',
+          addressedAcceptanceIds: ['A1'],
+          acceptanceReview: fixtureAcceptanceReview(['A1']),
+        },
+      });
+      const plans = [
+        {
+          id: 'ready',
+          name: 'Ready',
+          executable: process.execPath,
+          argv: ['-e', "console.log('ready')"],
+          cwdRef: '.',
+          timeoutMs: 10000,
+          repeatable: true,
+        },
+      ];
+      await executeNativePortableCheckPlan({ paths, name: state.name, plans });
+      const reused = await withCometRuntimeMetrics(() =>
+        executeNativePortableCheckPlan({ paths, name: state.name, plans }),
+      );
+      expect(reused.result.checks).toMatchObject([{ id: 'ready', status: 'passed' }]);
+      expect(reused.result.disposition).toBe('reused');
+      expect(
+        (await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name)))?.checks[0]
+          .executionCount,
+      ).toBe(1);
+      expect(reused.metrics.gitCommands).toBeLessThanOrEqual(ambiguous ? 7 : 6);
+      await fs.writeFile(path.join(root, 'source.txt'), 'second\n');
+      await expect(
+        executeNativePortableCheckPlan({ paths, name: state.name, plans }),
+      ).rejects.toThrow('Native check input changed after the candidate was built');
+    },
+  );
 
   it('bounds portable names, state discovery, and initial project configuration', async () => {
     expect(() => nativePortableChangeDir(paths, '../escape')).toThrow('Invalid Native change name');

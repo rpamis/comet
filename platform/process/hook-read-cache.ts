@@ -18,15 +18,28 @@
  * cycles (no domain dependency on a higher layer).
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 interface CacheEntry {
   value: unknown;
 }
 
 interface HookReadCacheScope {
   entries: Map<string, CacheEntry>;
+  active: boolean;
 }
 
-let currentScope: HookReadCacheScope | null = null;
+const scopes = new AsyncLocalStorage<HookReadCacheScope>();
+
+function currentScope(): HookReadCacheScope | null {
+  const scope = scopes.getStore();
+  return scope?.active ? scope : null;
+}
+
+/** Discard the current decision's reads before a Runtime mutation. */
+export function invalidateHookReadCache(): void {
+  currentScope()?.entries.clear();
+}
 
 /**
  * Run `work` with a per-invocation read cache active. Reads issued through
@@ -35,17 +48,19 @@ let currentScope: HookReadCacheScope | null = null;
  * never leaks across Hook invocations or into CLI command paths.
  */
 export async function runWithHookReadCache<T>(work: () => Promise<T>): Promise<T> {
-  if (currentScope !== null) {
+  if (currentScope() !== null) {
     // Nested activation: reuse the outer scope rather than splitting caches.
     return work();
   }
-  const scope: HookReadCacheScope = { entries: new Map() };
-  currentScope = scope;
-  try {
-    return await work();
-  } finally {
-    currentScope = null;
-  }
+  const scope: HookReadCacheScope = { entries: new Map(), active: true };
+  return scopes.run(scope, async () => {
+    try {
+      return await work();
+    } finally {
+      scope.active = false;
+      scope.entries.clear();
+    }
+  });
 }
 
 function cacheKey(factoryName: string, args: readonly unknown[]): string {
@@ -71,7 +86,7 @@ export function memoizedHookRead<TArgs extends unknown[], TResult>(
   factory: (...args: TArgs) => Promise<TResult>,
 ): (...args: TArgs) => Promise<TResult> {
   return (...args: TArgs): Promise<TResult> => {
-    const scope = currentScope;
+    const scope = currentScope();
     if (scope === null) {
       return factory(...args);
     }
@@ -84,7 +99,7 @@ export function memoizedHookRead<TArgs extends unknown[], TResult>(
       // Do not cache failures; a later caller in the same Hook may succeed
       // after a transient race, and caching an error would propagate it to
       // every shared caller even if they could have recovered.
-      scope.entries.delete(key);
+      if (scope.entries.get(key)?.value === promise) scope.entries.delete(key);
       throw error;
     });
     scope.entries.set(key, { value: promise });
@@ -103,7 +118,7 @@ export function memoizedHookReadSync<TArgs extends unknown[], TResult>(
   factory: (...args: TArgs) => TResult,
 ): (...args: TArgs) => TResult {
   return (...args: TArgs): TResult => {
-    const scope = currentScope;
+    const scope = currentScope();
     if (scope === null) {
       return factory(...args);
     }
