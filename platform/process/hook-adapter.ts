@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { stripUtf8Bom } from '../fs/strip-bom.js';
 import { readStdinTextWithTimeoutAsync, type StdinReadResult } from './stdin-read.js';
@@ -159,6 +160,28 @@ function patchTargets(source: string): string[] {
   return targets;
 }
 
+/** Resource addresses are not filesystem writes. Drive paths remain file targets. */
+export function normalizeCometHookTargets(targets: readonly string[]): string[] {
+  return [
+    ...new Set(
+      targets.flatMap((value) => {
+        const target = value.trim();
+        if (!target) return [];
+        if (/^file:/iu.test(target)) {
+          try {
+            return [fileURLToPath(target)];
+          } catch {
+            // 保留无效文件地址，继续让 Guard 检查同一请求中的其他文件。
+            return [target];
+          }
+        }
+        if (/^[A-Za-z]:/u.test(target)) return [target];
+        return /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(target) ? [] : [target];
+      }),
+    ),
+  ];
+}
+
 function addTarget(targets: string[], value: unknown): void {
   if (typeof value === 'string') {
     const target = value.trim();
@@ -188,12 +211,13 @@ function collectTargets(input: Record<string, unknown>, args: unknown): string[]
     }
   }
   if (typeof args === 'string') targets.push(...patchTargets(args));
-  return [...new Set(targets)];
+  return normalizeCometHookTargets(targets);
 }
 
 export function parseCometHookRequest(source: string, filePath?: string): CometHookRequest {
   if (filePath?.trim()) {
-    return { intent: 'write', targets: [filePath.trim()], toolName: null };
+    const targets = normalizeCometHookTargets([filePath]);
+    return { intent: targets.length > 0 ? 'write' : 'non-write', targets, toolName: null };
   }
   if (!source.trim()) return { intent: 'unknown', targets: [], toolName: null };
 
@@ -203,7 +227,12 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
   } catch {
     const targets = patchTargets(source);
     if (targets.length > 0) {
-      return { intent: 'write', targets: [...new Set(targets)], toolName: 'apply_patch' };
+      const files = normalizeCometHookTargets(targets);
+      return {
+        intent: files.length > 0 ? 'write' : 'non-write',
+        targets: files,
+        toolName: 'apply_patch',
+      };
     }
     return { intent: 'unknown', targets: [], toolName: null };
   }

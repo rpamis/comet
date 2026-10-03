@@ -224,6 +224,8 @@ function sample(label, environment, count = SAMPLE_COUNT) {
   const durations = [];
   const queues = [];
   const gitCommands = [];
+  const gitDurations = [];
+  const clientOverheads = [];
   const filesystemReads = [];
   const filesystemWrites = [];
   for (let index = 0; index < count; index += 1) {
@@ -240,6 +242,10 @@ function sample(label, environment, count = SAMPLE_COUNT) {
       durations.push(daemon.lastRequest?.durationMs);
       queues.push(daemon.lastRequest?.queueMs);
       gitCommands.push(daemon.lastRequest?.gitCommands);
+      gitDurations.push(daemon.lastRequest?.gitDurationMs);
+      if (Number.isFinite(daemon.lastRequest?.durationMs)) {
+        clientOverheads.push(Math.max(0, result.milliseconds - daemon.lastRequest.durationMs));
+      }
       filesystemReads.push(daemon.lastRequest?.filesystemReads);
       filesystemWrites.push(daemon.lastRequest?.filesystemWrites);
     }
@@ -258,6 +264,8 @@ function sample(label, environment, count = SAMPLE_COUNT) {
     },
     work: {
       requestDurationMs: summarize(durations),
+      gitDurationMs: summarize(gitDurations),
+      clientOverheadMs: summarize(clientOverheads),
       queueMs: summarize(queues),
       gitCommands: gitCommands.reduce((sum, value) => sum + (value ?? 0), 0),
       filesystemReads: filesystemReads.every((value) => value === null || value === undefined)

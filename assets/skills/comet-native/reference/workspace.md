@@ -32,7 +32,7 @@ Only when a branch was renamed, repurposed by the user, or has unclear ownership
 
 ## Archive completion
 
-Continue only when `continuation` permits Archive. Reuse the accepted verification result. A `current` workspace needs no finish choice: show the current branch and directory, explain that no merge, push, or PR creation will occur, and follow the latest `continuation`.
+Continue only when `continuation` permits Archive. Reuse the accepted verification result. Reuse any finish choice made when accepting the result without asking again. A `current` workspace needs no finish choice: show the current branch and directory, explain that no merge, push, or PR creation will occur, and follow the latest `continuation`.
 
 For `branch` or `worktree` isolation that needs a finish choice, show the actual change branch, target branch, and directory once and offer all options below as single choice. Text questions must use this table. Structured questions must use the mode as the short label and its actual impact as the description, not just `merge`, `push`, `pull-request`, or `keep`.
 
@@ -46,15 +46,21 @@ For `branch` or `worktree` isolation that needs a finish choice, show the actual
 
 After A, B, C, or D, execute Runtime's complete command for `keep`, `merge`, `push`, or `pull-request` respectively. Stop after E. At Archive-ready:
 
-1. First execute Runtime's complete `archive --dry-run` command. If an isolated workspace has no finish choice, wait for the user, then either run `comet native archive <change-name> --confirmed --finish <chosen mode>` to archive in one step (Runtime records the choice and revalidates verification freshness inside the transaction, so no second dry-run is needed) or use the matching `--dry-run --finish` command in `commandAlternatives` for a preview. Do not add other arguments yourself.
+Before archiving, prepare the archive commit message under the project's active commit conventions; also prepare a merge message for local merge. Apply known format, language, and body requirements directly without asking again. Ask only for conflicting requirements or missing information the user must supply. Pass the archive message through public `--commit-message <text>` and use `--merge-message <text>` only for merge. Pass Unicode or multiline text as one complete argument. Keep default messages when neither project conventions nor the user require a custom message. Project Git hooks continue to run normally.
+
+1. Follow the latest continuation. If an isolated workspace has no finish choice, wait for the user, then execute the complete matching `--confirmed --finish` alternative, retaining its state-version arguments. Runtime performs preflight and transaction rechecks in one command. To preview custom messages, run `archive --dry-run --finish` with the message options above, checking both archive and merge messages for merge. Apart from the public message options, preserve Runtime's workspace, confirmation, and serial-archive arguments without adding or removing them.
 2. On `ready: false`, address only blockers in that response. Do not first query `status`, repeat Archive, or manually commit Native state and verification files.
-3. Only after `ready: true`, execute the single returned `archive --confirmed` command.
+3. After `ready: true`, check that `commitMessages` match the prepared messages, then execute the single returned `archive --confirmed` command with its message contents intact. Do not repeat the same preview or reconstruct the messages.
 4. If dry-run or confirmed fails, follow only the latest structured `continuation` and `workspaceFinishResult.recoveryArgs`; do not infer commands from error text.
 
 A retains the branch and directory; do not remove that worktree during the same Archive. For other ordinary changes, offer cleanup for an archived worktree with no uncommitted changes. Do not ask again if Runtime already cleaned it. Run `git worktree remove` only after user confirmation; keep any worktree with uncommitted changes or active use.
 
 After final Supervisor delivery, Runtime automatically cleans only child and integration worktrees and their branches that are clean and unused. Uncommitted files, a current process inside a directory, or unfinished Git steps cause Runtime to preserve them and return a blocker; never force deletion.
 
-Commit only this change's implementation and formal artifacts; preserve other user edits. After executing Runtime's `commandArgs`, inspect `workspaceFinishResult`. If `blocked`, preserve the workspace and execute the recovery commands in `recoveryArgs`.
+Commit only this change's implementation and formal artifacts; preserve other user edits. After executing Runtime's `commandArgs`, inspect `workspaceFinishResult`. If `blocked`, preserve the workspace, explain the cause, repair within existing delivery authorization, and execute `recoveryArgs` without asking the user to say "retry". Ask only when recovery needs new permissions, user information, or a delivery choice. Keep delivery pending until recovery completes.
+
+When a project Git hook rejects a commit or merge message, the archive may already be sealed while Git finishing remains incomplete. Correct the message for the unfinished step under project conventions and pass its message option in the returned recovery command. Runtime reuses completed archive commits, Spec publication, and merges. Recovery cannot rewrite a completed commit's message; do not bypass hooks or create a replacement change.
+
+If the user or Agent already completed Git finishing manually under valid authorization, first run `comet native doctor <change-name> --json`, then follow its returned recovery command. For local keep / merge finishing, `doctor --repair` clears records only after proving archive identity, committed contents, and the selected completion conditions. Push / pull-request still use Archive to check remote and platform results. Doctor does not commit, merge, or push. An archive directory or portable `done` state does not establish workspace delivery completion; use public status and finish results.
 
 Complete when state is `done` and authorized workspace finishing is `completed` or `kept`; otherwise follow `continuation`. At task completion, call `comet task --complete` with the original request saved at startup, workflow, change, and the same session. Do not run `printenv COMET_TASK` or inspect undeclared environment variables to guess the task.

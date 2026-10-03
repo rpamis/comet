@@ -112,6 +112,7 @@ import {
 } from './native-loop-runtime.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
+import { parseNativeBuilderAcceptanceReview } from './native-builder-acceptance-review.js';
 import {
   assertNativePortableDocuments,
   discoverNativePortableSpecChanges,
@@ -194,7 +195,10 @@ export async function collectNativeSdkShapeProposal(options: {
   paths: NativeProjectPaths;
   state: NativePortableState;
 }): Promise<NativeShapeProposal> {
-  const state = parseNativePortableState(options.state);
+  const state = parseNativePortableState({
+    ...options.state,
+    document_constraints_version: options.state.document_constraints_version ?? 2,
+  });
   if (state.phase !== 'shape' || !['active', 'await-user'].includes(state.status)) {
     throw new Error('Native Shape proposal requires an active or pending Shape');
   }
@@ -478,6 +482,10 @@ function builderCandidateState(
       identity,
       summary: output.summary,
       addressedAcceptanceIds: output.addressedAcceptanceIds as string[],
+      acceptanceReview:
+        output.acceptanceReview === undefined
+          ? undefined
+          : parseNativeBuilderAcceptanceReview(output.acceptanceReview),
       checks,
       knownLimits: output.knownLimits as string[],
       review: review
@@ -1245,7 +1253,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           const prepared = prepareNativePortableShapeConfirmation({
             state: {
               ...state,
-              document_constraints_version: 1,
+              document_constraints_version: state.document_constraints_version ?? 2,
               spec_changes: proposal.specChanges,
               shape_confirmation_hash: proposal.shapeConfirmationHash,
             },

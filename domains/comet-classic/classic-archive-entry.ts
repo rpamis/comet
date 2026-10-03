@@ -1,4 +1,12 @@
 import { classicArchiveCommand } from './classic-archive.js';
-import { runClassicScript } from './classic-script-entry.js';
+import {
+  createClassicCommandRunner,
+  isClassicScriptEntry,
+  runClassicScript,
+} from './classic-script-entry.js';
 
-process.exitCode = await runClassicScript('archive', classicArchiveCommand);
+export const runClassicCli = createClassicCommandRunner('archive', classicArchiveCommand);
+
+if (isClassicScriptEntry(import.meta.url)) {
+  process.exitCode = await runClassicScript('archive', classicArchiveCommand);
+}

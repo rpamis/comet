@@ -1,8 +1,63 @@
 import { describe, expect, it } from 'vitest';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
+import { execFileSync } from 'child_process';
+import { fileURLToPath } from 'url';
 
 import { resolveFastRuntime } from '../../bin/fast-runtime-router.js';
 
 describe('CLI fast runtime router', () => {
+  it('runs the selected Classic bundle through its facade without loading the aggregate runtime', async () => {
+    const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-fast-entry-'));
+    try {
+      await fs.mkdir(path.join(fixture, 'bin'), { recursive: true });
+      await fs.copyFile(
+        fileURLToPath(new URL('../../bin/fast-runtime-router.js', import.meta.url)),
+        path.join(fixture, 'bin/fast-runtime-router.js'),
+      );
+      await fs.writeFile(path.join(fixture, 'package.json'), '{"type":"module"}');
+      await fs.mkdir(path.join(fixture, 'dist/app/commands'), { recursive: true });
+      await fs.writeFile(
+        path.join(fixture, 'dist/app/commands/classic.js'),
+        `
+        export async function runClassicFacade(command, args, execute) {
+          const result = await execute([command, ...args]);
+          process.stdout.write(JSON.stringify({facade: command, result}) + '\\n');
+          return result.exitCode;
+        }
+      `,
+      );
+      await fs.mkdir(path.join(fixture, 'assets/skills/comet/scripts'), { recursive: true });
+      await fs.writeFile(
+        path.join(fixture, 'assets/skills/comet/scripts/comet-check.mjs'),
+        `
+        export async function runClassicCli(argv) {
+          return {exitCode: 0, data: {argv, selected: 'check'}};
+        }
+      `,
+      );
+      const args = ['check', 'run', 'demo', 'verify', '--', 'node', 'test.js', '--json'];
+      const output = execFileSync(
+        process.execPath,
+        [
+          '--input-type=module',
+          '-e',
+          `
+        import {tryRunFastRuntime} from './bin/fast-runtime-router.js';
+        if (!await tryRunFastRuntime(${JSON.stringify(args)})) throw new Error('unexpected fallback');
+      `,
+        ],
+        { cwd: fixture, encoding: 'utf8' },
+      );
+      expect(JSON.parse(output)).toEqual({
+        facade: 'check',
+        result: { exitCode: 0, data: { argv: args, selected: 'check' } },
+      });
+    } finally {
+      await fs.rm(fixture, { recursive: true, force: true });
+    }
+  });
   it.each(['--task', '--path', '--phase', '--task=repair'])(
     'keeps contextual option %s on the full public CLI',
     (option) => {

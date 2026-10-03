@@ -38,6 +38,19 @@ const BRIEF_NONE_ALLOWED = new Set(['nonGoals', 'decisions', 'openQuestions']);
 export interface NativeBriefValidationOptions {
   /** Apply the full completeness rule used at new/reconfirmed Shape boundaries. */
   strict?: boolean;
+  /** Require the four core sections; validate optional sections when present. */
+  compact?: boolean;
+}
+
+export class NativeDocumentConstraintError extends Error {
+  constructor(
+    message: string,
+    readonly findings: readonly NativeFinding[],
+    readonly change: string,
+  ) {
+    super(message);
+    this.name = 'NativeDocumentConstraintError';
+  }
 }
 
 export const NATIVE_ARTIFACT_VALIDATION_LIMITS = {
@@ -255,7 +268,7 @@ export async function validateNativeBrief(
   for (const [heading, body] of markdownSections(source)) {
     sections.set(nativeHeadingKey(heading) ?? heading, body);
   }
-  for (const heading of BRIEF_ALL) {
+  for (const heading of options.compact ? BRIEF_REQUIRED : BRIEF_ALL) {
     if (!sections.has(heading)) {
       findings.push({
         code: 'brief-section-missing',
@@ -264,7 +277,9 @@ export async function validateNativeBrief(
       });
     }
   }
-  const nonEmptySections = options.strict ? BRIEF_ALL : BRIEF_REQUIRED;
+  const nonEmptySections = options.strict
+    ? BRIEF_ALL.filter((heading) => !options.compact || sections.has(heading))
+    : BRIEF_REQUIRED;
   for (const heading of nonEmptySections) {
     const section = sections.get(heading) ?? '';
     if (markdownBody(section).length === 0) {

@@ -1,4 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import {
+  assertNativeBuilderAcceptanceComplete,
+  parseNativeBuilderAcceptanceReview,
+  type NativeBuilderAcceptanceReview,
+} from './native-builder-acceptance-review.js';
 
 import { appendNativePortableHistory, parseNativePortableState } from './native-portable-state.js';
 import { toNativePortableText } from './native-portable-text.js';
@@ -28,6 +33,7 @@ export interface NativeBuilderCandidateInput {
   identity: NativeTrustedExecutionIdentity;
   summary: string;
   addressedAcceptanceIds: string[];
+  acceptanceReview?: NativeBuilderAcceptanceReview[];
   checks?: Array<{ name: string; result: 'passed' | 'failed' | 'not-run'; note?: string | null }>;
   knownLimits?: string[];
   review?: {
@@ -179,6 +185,11 @@ export function submitNativeBuilderCandidate(options: {
     state.acceptance,
     'Native Builder addressed acceptance',
   );
+  const acceptanceReview =
+    input.acceptanceReview === undefined
+      ? undefined
+      : parseNativeBuilderAcceptanceReview(input.acceptanceReview);
+  assertNativeBuilderAcceptanceComplete(state.acceptance, acceptanceReview);
   // A repaired candidate gets one independent Verifier pass over the complete
   // acceptance set. The previous unresolved IDs remain a hint in the durable
   // loop state, but must not narrow the formal scope or cause a second pass.
@@ -200,6 +211,7 @@ export function submitNativeBuilderCandidate(options: {
       iteration: state.loop.iteration,
       summary: toNativePortableText(input.summary),
       addressed_acceptance_ids: addressed,
+      acceptance_review: acceptanceReview,
       checks: builderChecks(input.checks),
       checks_truncated: false,
       known_limits: (input.knownLimits ?? []).map((entry) => toNativePortableText(entry)),

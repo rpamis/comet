@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -86,6 +87,7 @@ describe('Native portable delta integration', () => {
           candidateId: `${name}-candidate`,
           summary: 'Implemented the delta.',
           addressedAcceptanceIds: shaped.acceptance.map(({ id }) => id),
+          acceptanceReview: fixtureAcceptanceReview(shaped.acceptance.map(({ id }) => id)),
           review: {
             status: 'passed',
             summary: 'Independent read-only review passed.',

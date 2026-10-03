@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -118,6 +119,7 @@ async function verify(paths: Awaited<ReturnType<typeof nativeProjectPaths>>, fai
       candidateId: 'candidate',
       summary: 'Implemented.',
       addressedAcceptanceIds: initial.acceptance.map(({ id }) => id),
+      acceptanceReview: fixtureAcceptanceReview(initial.acceptance.map(({ id }) => id)),
       review: {
         status: 'passed',
         summary: 'Independently reviewed.',

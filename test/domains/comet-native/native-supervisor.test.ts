@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import {
   markNativeSupervisorChildVerified,
   applyNativeSupervisorVerifierResult,
@@ -186,6 +187,7 @@ describe('Native Supervisor v2 state', () => {
           kind: 'builder-handoff',
           summary: 'Submitted the integrated parent candidate.',
           addressed_acceptance_ids: ['A1'],
+          acceptance_review: fixtureAcceptanceReview(['A1']),
           checks: [],
           known_limits: [],
         }),
@@ -1251,7 +1253,7 @@ children:
           // Preserve the assertion failure when setup did not reach a worktree.
         }
       }
-      await fs.rm(repository, { recursive: true, force: true });
+      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 
@@ -2012,6 +2014,7 @@ children:
           kind: 'builder-handoff',
           summary: 'Reviewed the integrated parent candidate.',
           addressed_acceptance_ids: shaped.acceptance.map(({ id }) => id),
+          acceptance_review: fixtureAcceptanceReview(shaped.acceptance.map(({ id }) => id)),
           checks: [],
           known_limits: [],
           review: {

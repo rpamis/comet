@@ -10,6 +10,11 @@ const runNativeCliDetailed = vi.hoisted(() => vi.fn());
 vi.mock('../../platform/process/comet-daemon.js', () => ({ createCometDaemonServer }));
 vi.mock('../../domains/comet-classic/classic-cli.js', () => ({ runClassicCli }));
 vi.mock('../../domains/comet-native/native-cli.js', () => ({ runNativeCliDetailed }));
+vi.mock('../../platform/paths/git-worktree.js', () => ({
+  createGitWorktreeReadCache: () => ({
+    run: (_root: string, operation: () => Promise<unknown>) => operation(),
+  }),
+}));
 
 import { runCometDaemonServer } from '../../app/commands/daemon-server.js';
 
@@ -70,7 +75,7 @@ describe('Comet daemon server entry', () => {
     );
     expect(options).toBeDefined();
 
-    const request = { cwd: path.resolve('.'), projectRoot: path.resolve('.') };
+    const request = { cwd: path.resolve('caller'), projectRoot: path.resolve('.') };
     await expect(
       options!.handler({ ...request, runtime: 'classic', argv: ['state'] }),
     ).resolves.toEqual({ exitCode: 7, stdout: 'classic' });
@@ -85,20 +90,19 @@ describe('Comet daemon server entry', () => {
       exitCode: 8,
       stdout: 'native',
     });
-    expect(runNativeCliDetailed).toHaveBeenCalledWith([
-      'status',
-      '--project-root',
-      request.projectRoot,
-    ]);
+    expect(runNativeCliDetailed).toHaveBeenCalledWith(
+      ['status', '--project-root', request.projectRoot],
+      { invocationCwd: request.cwd },
+    );
 
     await options!.handler({
       ...request,
       runtime: 'native',
       argv: ['--project-root', path.resolve('other')],
     });
-    expect(runNativeCliDetailed).toHaveBeenLastCalledWith([
-      '--project-root',
-      path.resolve('other'),
-    ]);
+    expect(runNativeCliDetailed).toHaveBeenLastCalledWith(
+      ['--project-root', path.resolve('other')],
+      { invocationCwd: request.cwd },
+    );
   });
 });

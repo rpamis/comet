@@ -62,7 +62,7 @@ Batch 使用文本提问时，保留 `Q1`、`Q2` 编号，每题使用独立的�
 1. 调查当前问题依赖的事实，只暂停前置条件尚未确定的分支。
 2. 从当前可以提出的问题中选择一个，先在 brief 的 `# Open questions` 保存 `- [blocking] <问题>`。
 3. 一次只提出这一个问题，给出问题、推荐及理由、各选项影响，然后等待回答。
-4. 用户回答后，立即把已确定的决定写入 Decisions、brief 和完整目标规格，再移除已解决的阻塞项；补充答案写入同一个 change。
+4. 用户回答后，立即把已确定的决定写入 brief 的相关章节和完整目标规格，再移除已解决的阻塞项；补充答案写入同一个 change。
 5. 更新问题之间的依赖关系，重新确定下一轮可以提出的问题，再开始下一轮。
 
 #### Batch 模式
@@ -70,7 +70,7 @@ Batch 使用文本提问时，保留 `Q1`、`Q2` 编号，每题使用独立的�
 1. 列出本轮可以一起提出的全部问题：前置事实和决定已经确定，答案彼此独立。每个独立决定保留为单独问题。
 2. 提问前，在 brief 的 `# Open questions` 为本轮全部问题保存 `- [blocking] Q1: <问题>`、`- [blocking] Q2: <问题>` 等稳定标识；后续轮次不把已有标识改用于其他问题。
 3. 一次提出本轮全部问题，每题分别给出问题、推荐及理由和影响，然后等待回答；不能因为工具限制而分批提出本轮问题。
-4. 用户回答后，逐项更新 Decisions、brief 和完整目标规格，移除已解决项；部分、模糊或未回答的问题保留原标识及 `[blocking]`。
+4. 用户回答后，逐项更新 brief 的相关章节和完整目标规格，移除已解决项；部分、模糊或未回答的问题保留原标识及 `[blocking]`。
 5. 更新已回答和未回答问题及其依赖，再确定下一轮需要一起提出的全部问题。
 
 两种模式都在当前没有可提问项时，继续调查尚未查明的事实，并检查是否遗漏其他情况。当前列表为空不代表澄清完成；最终确认仍需满足下一节的全部完成条件。
@@ -103,9 +103,9 @@ Batch 使用文本提问时，保留 `Q1`、`Q2` 编号，每题使用独立的�
 
 用户已经明确要求“多个会话”“独立会话”“跨会话协作”或“Agent Team”时，视为选择 A，不重复询问推进方式。确认前不得创建子 change、worktree、Codex 独立会话、Claude Code Agent Team 或分配任务。
 
-当最终 Shape 已确定为包含两个或更多 Child 的 Supervisor Change 时，必须在 Decisions 中明确记录 Supervisor Change 和每个 Child 条目，并在准备最终需求确认前要求用户在多会话协作和单会话推进中二选一；不得把普通“确认”视为已选择，也不得替用户默认选择。选择后按 continuation 执行 `prepare-shape-confirmation`，Runtime 保存推进方式并单独进入等待用户确认完整 Shape 的状态；用户仍需再次明确确认完整 Shape，才能执行含 `--confirmed` 的备选动作。
+当最终 Shape 包含两个或更多 Child 时，在 Decisions 中记录 Supervisor Change 和各 Child，先按 continuation 执行 `prepare-shape-confirmation`，由 Runtime 绑定完整 Shape 和子任务方案。展示保存的完整摘要、拆分方案及 A、B 两种方式后，用户可一次回复明确确认方案并选择推进方式，再执行对应的 `--confirmed` 完整备选命令。不得把普通“确认”视为已选择，也不得把仅选择方式视为确认方案。仍可先选择方式再准备确认；仅先选择方式时，用户仍需再次明确确认完整 Shape。正式产物或子任务变化后重新准备并确认，不沿用旧授权。
 
-Runtime 准备需求确认时，把推进方式写入 `comet-state.yaml` 的 `coordination_mode`；用户随后明确确认完整 Shape 后，Runtime 才进入 Build，为 Supervisor Change 创建独立的集成分支和 worktree，并基于集成分支的当前提交，为每个子任务生成包含角色、worktree、基线提交和 `runId` 的任务包。推进方式不写入 `children.yaml`，也不改变 Runtime 的 `readyChildren`、`runId`、验收或集成规则。Skill 只启动 `readyChildren` 中列出的当前可执行子任务；选择 A 时最多同时启动两个不依赖其他子任务的任务，选择 B 时按顺序执行。每个子任务都必须属于 Supervisor Change 已确认的需求范围；出现会改变用户可见结果的新决定时，回到 Supervisor Change 的 Shape。
+Runtime 把已选择的推进方式写入 `comet-state.yaml` 的 `coordination_mode`；完整 Shape 与推进方式都得到明确确认后，Runtime 才进入 Build，为 Supervisor Change 创建独立的集成分支和 worktree，并基于集成分支的当前提交，为每个子任务生成包含角色、worktree、基线提交和 `runId` 的任务包。推进方式不写入 `children.yaml`，也不改变 Runtime 的 `readyChildren`、`runId`、验收或集成规则。Skill 只启动 `readyChildren` 中列出的当前可执行子任务；选择 A 时最多同时启动两个不依赖其他子任务的任务，选择 B 时按顺序执行。每个子任务都必须属于 Supervisor Change 已确认的需求范围；出现会改变用户可见结果的新决定时，回到 Supervisor Change 的 Shape。
 
 恢复 `/comet-native` 时以 Runtime 已保存的 `coordination_mode` 为准，不重复创建已有子任务或 worktree，也不再询问推进方式。`multi-session` 继续使用多会话协作；独立会话或 Agent Team 不可用时自动改用 subagent；`single-session` 继续由当前会话按顺序推进。原来的 Codex 独立会话或 Claude Code Agent Team 已经不存在时，先重新读取 Runtime 状态；不得根据旧会话或旧团队的状态推断子任务已经完成，也不得自动改为单会话推进。
 

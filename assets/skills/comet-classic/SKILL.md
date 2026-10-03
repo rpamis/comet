@@ -30,7 +30,7 @@ A new full change must have its workspace selected before Open creates artifacts
 
 ## 2. Load the Current Phase
 
-While working on the same set of tasks, reuse state returned by the current commands and context already read. Refresh only as needed after a state write, workspace switch, session recovery, or external change; reuse valid state included in the successful result. Select checks according to the risk of the current changes; Verify still owns one final integrated review of the completed implementation.
+While working on the same set of tasks, reuse state returned by the current commands and context already read. When a state update returns the latest state and `agent.continuation`, continue directly. Query again only when those fields are missing, the workspace changes, session recovery lacks context, or external state changes. Select checks according to the risk of the current changes; Verify still owns one final integrated review of the completed implementation.
 
 After binding the workspace and obtaining phase, read and follow [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language), and run `comet task`. Use the configured artifact language. Start from Context Manifest summaries and expand only information still missing for the current step. Report outcomes truthfully after actually using an item, and save a checkpoint at task end.
 

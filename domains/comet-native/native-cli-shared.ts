@@ -23,6 +23,8 @@ import { readProjectConfig, resolveNativeProject } from './native-config.js';
 import { deriveNativeOutputEnvelope, nativeErrorEnvelope } from './native-output-language.js';
 import { NativeReceiptScopeStaleError } from './native-receipt-errors.js';
 import { NativeInputValidationError, type NativeInputIssue } from './native-input-error.js';
+import { NativeDocumentConstraintError } from './native-artifacts.js';
+import { NativeBuilderAcceptanceIncompleteError } from './native-builder-acceptance-review.js';
 import { NativeVerificationReceiptBindingError } from './native-verification-runtime.js';
 import { NativeWorkspacePreparationError } from './native-workspace-preparation.js';
 import type { CometProjectConfig, NativeProjectPaths } from './native-types.js';
@@ -38,6 +40,7 @@ export interface NativeCliErrorShape {
   code:
     | 'usage'
     | 'invalid-data'
+    | 'document-invalid'
     | 'blocked'
     | 'conflict'
     | 'internal'
@@ -154,11 +157,11 @@ function pathIdentity(value: string): string {
  * process already running inside a linked worktree to silently fall back to
  * the primary checkout. The primary checkout may still explicitly target a
  * secondary worktree; this only makes the current secondary worktree
- * authoritative when it is the process context.
+ * authoritative when it is the invocation context.
  */
-function explicitProjectRootFromCurrentWorktree(explicit: string): string {
-  const requested = path.resolve(explicit);
-  const current = inspectGitWorktree(process.cwd());
+function explicitProjectRootFromCurrentWorktree(explicit: string, invocationCwd: string): string {
+  const requested = path.resolve(invocationCwd, explicit);
+  const current = inspectGitWorktree(invocationCwd);
   if (
     !current.isSecondaryWorktree ||
     current.currentWorktreeRoot === null ||
@@ -178,15 +181,23 @@ function explicitProjectRootFromCurrentWorktree(explicit: string): string {
     return requested;
   }
 
-  return samePath(process.cwd(), current.currentWorktreeRoot)
-    ? path.resolve(process.cwd())
+  return samePath(invocationCwd, current.currentWorktreeRoot)
+    ? path.resolve(invocationCwd)
     : current.currentWorktreeRoot;
 }
 
-export async function projectRootFrom(explicit: string | undefined): Promise<string> {
+export async function projectRootFrom(
+  explicit: string | undefined,
+  invocationCwd = process.cwd(),
+): Promise<string> {
   return explicit
-    ? explicitProjectRootFromCurrentWorktree(explicit)
-    : discoverNativeProject(process.cwd());
+    ? explicitProjectRootFromCurrentWorktree(explicit, invocationCwd)
+    : discoverNativeProject(invocationCwd);
+}
+
+/** Only queries may share Git observations; root move must recheck inside its transaction. */
+export function isNativeReadOnlyCommand(command: string, args: readonly string[]): boolean {
+  return command === 'status' || command === 'show' || (command === 'root' && args[0] === 'show');
 }
 
 export async function configuredPaths(projectRoot: string): Promise<{
@@ -254,6 +265,28 @@ export async function readBoundedEvidenceStdin(maxBytes: number): Promise<string
 }
 
 function rawErrorResult(command: string | null, error: unknown): DispatchResult {
+  if (error instanceof NativeDocumentConstraintError) {
+    return {
+      command,
+      exitCode: 65,
+      data: { change: error.change, findings: error.findings },
+      error: { code: 'document-invalid', message: error.message },
+    };
+  }
+  if (error instanceof NativeBuilderAcceptanceIncompleteError) {
+    return {
+      command,
+      exitCode: 65,
+      data: {
+        builderReadiness: {
+          ready: false,
+          missingIds: error.missingIds,
+          incompleteIds: error.incompleteIds,
+        },
+      },
+      error: { code: 'invalid-data', message: error.message },
+    };
+  }
   if (error instanceof NativeInputValidationError) {
     return {
       command,

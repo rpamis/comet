@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { normalizeCometHookTargets } from '../../platform/process/hook-adapter.js';
 
 export interface ScopedCometHookTargets {
   projectTargets: string[];
@@ -49,7 +50,7 @@ export async function scopeCometHookTargets(
   const projectTargets: string[] = [];
   const externalTargets: string[] = [];
 
-  for (const target of targets) {
+  for (const target of normalizeCometHookTargets(targets)) {
     const resolvedTarget = path.isAbsolute(target)
       ? path.resolve(target)
       : path.resolve(resolvedProjectRoot, target);

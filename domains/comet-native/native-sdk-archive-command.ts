@@ -15,15 +15,19 @@ export async function archiveNativeSdkChange(options: {
   expectedPreflightHash?: string;
   finish?: string;
   serialFirst?: string;
+  commitMessage?: string;
+  mergeMessage?: string;
 }): Promise<DispatchResult> {
   if (
     options.expectedPreflightHash !== undefined ||
     options.finish !== undefined ||
     options.serialFirst !== undefined ||
+    options.commitMessage !== undefined ||
+    options.mergeMessage !== undefined ||
     options.confirmed
   ) {
     throw new NativeUsageError(
-      'SDK Archive uses the confirmed Run decision; legacy preflight, finish and confirmation options are not accepted',
+      'SDK Archive uses the confirmed Run decision and keeps Git delivery separate; compat preflight, finish, commit message and confirmation options are not accepted',
     );
   }
   if (options.recover && options.dryRun) {

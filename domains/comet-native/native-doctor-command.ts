@@ -63,7 +63,13 @@ import {
   listNativeWorkspaceFinishJournals,
   quarantineNativeWorkspaceFinishJournal,
   readNativeWorkspaceFinishJournal,
+  readNativeWorkspaceFinishArchive,
+  inspectNativeWorkspaceFinishCompletion,
+  clearNativeWorkspaceFinishJournal,
+  writeNativeWorkspaceFinishJournal,
+  type NativeWorkspaceFinishJournal,
 } from './native-workspace-finish.js';
+import { listNativeArchivedStatusRecords } from './native-archived-status.js';
 import type { NativePortableState } from './native-portable-types.js';
 import type {
   NativeSupervisorChildState,
@@ -72,6 +78,7 @@ import type {
 import {
   inspectNativePortableStatus,
   listNativePortableChangeNames,
+  projectNativeArchivedStatus,
 } from './native-portable-status.js';
 import {
   describeNativePortableTransactionEntry,
@@ -281,6 +288,66 @@ function unhealthyDoctor(data: Record<string, unknown>): DispatchResult {
     data,
     error: { code: 'invalid-data', message: 'Native project needs attention' },
   };
+}
+
+async function workspaceFinishInspection(
+  paths: NativeProjectPaths,
+  journal: NativeWorkspaceFinishJournal,
+  repair: boolean,
+) {
+  const commandArgs = journal.result?.recoveryArgs ?? [
+    'comet',
+    'native',
+    'archive',
+    journal.name,
+    '--confirmed',
+  ];
+  try {
+    const record = await readNativeWorkspaceFinishArchive(paths, journal);
+    if (repair && (await inspectNativeWorkspaceFinishCompletion(paths, journal))) {
+      await clearNativeWorkspaceFinishJournal(paths, journal.name);
+      return {
+        repaired: true,
+        result: projectNativeArchivedStatus({ paths, state: record.state, file: record.file }),
+        findings: [] as NativeDoctorFinding[],
+      };
+    }
+    const result = projectNativeArchivedStatus({
+      paths,
+      state: record.state,
+      file: record.file,
+      finishJournal: journal,
+    });
+    return {
+      repaired: false,
+      result,
+      findings: [
+        {
+          severity: 'error' as const,
+          code: 'workspace-finish-incomplete',
+          message: `${journal.name}: ${journal.result?.message ?? 'Archive files are sealed, but Git workspace finish is pending'}; retry comet native archive ${journal.name} --confirmed after resolving the Git blocker`,
+          path: path.join(paths.transactionsDir, `workspace-finish-${journal.name}.json`),
+          repair: 'continue' as const,
+          repairCommand: `comet native archive ${journal.name} --confirmed`,
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      repaired: false,
+      result: null,
+      findings: [
+        {
+          severity: 'error' as const,
+          code: 'workspace-finish-incomplete',
+          message: `${journal.name}: ${(error as Error).message}`,
+          path: path.join(paths.transactionsDir, `workspace-finish-${journal.name}.json`),
+          repair: 'continue' as const,
+          repairCommand: commandArgs.join(' '),
+        },
+      ],
+    };
+  }
 }
 
 function incompleteMigrationFinding(paths: NativeProjectPaths, name: string): NativeDoctorFinding {
@@ -588,6 +655,23 @@ export async function nativeDoctorCommand(
       const transaction = portableTransactions.transactions[0];
       if (transaction.kind === 'archive') {
         const archived = await archiveNativePortableChange({ paths, name });
+        const journal = await readNativeWorkspaceFinishJournal(paths, name);
+        if (journal) {
+          await writeNativeWorkspaceFinishJournal(paths, {
+            ...journal,
+            archiveDir: archived.archiveDir,
+            updatedAt: new Date().toISOString(),
+          });
+          const inspected = await nativeDoctorCommand([name, '--repair'], projectRoot);
+          return {
+            ...inspected,
+            data: {
+              ...(inspected.data as Record<string, unknown>),
+              repaired: true,
+              archive: { recovered: true, transactionId: archived.transactionId },
+            },
+          };
+        }
         return success('doctor', {
           healthy: true,
           workflow: 'native-portable',
@@ -617,6 +701,41 @@ export async function nativeDoctorCommand(
       ...(result ? { result, continuation: result.continuation } : {}),
       findings: portableTransactions.findings,
     });
+  }
+  const finishJournals = await listNativeWorkspaceFinishJournals(paths, {
+    onError: () => undefined,
+  });
+  if (name && !(await isNativePortableChange(paths, name))) {
+    const finishJournal = finishJournals.find((journal) => journal.name === name);
+    if (finishJournal) {
+      if (recoveryStrategy)
+        throw new NativeUsageError('--strategy is only available to the legacy transaction doctor');
+      const inspected = await workspaceFinishInspection(paths, finishJournal, repair);
+      const data = {
+        healthy: inspected.findings.length === 0,
+        workflow: 'native-portable',
+        change: name,
+        repaired: inspected.repaired,
+        result: inspected.result,
+        continuation: inspected.result?.continuation,
+        findings: inspected.findings,
+      };
+      return data.healthy ? success('doctor', data) : unhealthyDoctor(data);
+    }
+    const records = await listNativeArchivedStatusRecords(paths, undefined, name);
+    const record = records.find((item) => item.state.name === name);
+    if (record) {
+      const result = projectNativeArchivedStatus({ paths, state: record.state, file: record.file });
+      return success('doctor', {
+        healthy: true,
+        workflow: 'native-portable',
+        change: name,
+        repaired: false,
+        result,
+        continuation: result.continuation,
+        findings: [],
+      });
+    }
   }
   if (name && (await isNativePortableChange(paths, name))) {
     if (recoveryStrategy) {
@@ -854,6 +973,20 @@ export async function nativeDoctorCommand(
     });
   }
   if (name) {
+    if (!(await listActiveChangeNames(paths)).includes(name)) {
+      return unhealthyDoctor({
+        healthy: false,
+        change: name,
+        repaired: false,
+        findings: [
+          {
+            severity: 'error',
+            code: 'change-not-found',
+            message: `Native change ${name} was not found in active or archived records`,
+          },
+        ],
+      });
+    }
     if (repair) {
       const state = await migrateNativeLegacyChangeToPortable({ paths, name });
       return success('doctor', {
@@ -885,6 +1018,7 @@ export async function nativeDoctorCommand(
   const projectPortableTransactions = portableTransactions;
   if (
     portableNames.length > 0 ||
+    finishJournals.length > 0 ||
     projectPortableTransactions.findings.length > 0 ||
     workspaceFinishJournalErrors.length > 0
   ) {
@@ -900,6 +1034,14 @@ export async function nativeDoctorCommand(
       }> = [];
       const repairedWorkspaceFinishJournals: Array<{ change: string; quarantined: string | null }> =
         [];
+      const repairedWorkspaceFinishes: string[] = [];
+      for (const journal of finishJournals) {
+        if (
+          !(await isNativePortableChange(paths, journal.name)) &&
+          (await workspaceFinishInspection(paths, journal, true)).repaired
+        )
+          repairedWorkspaceFinishes.push(journal.name);
+      }
       for (const error of workspaceFinishJournalErrors) {
         repairedWorkspaceFinishJournals.push({
           change: error.name,
@@ -908,7 +1050,14 @@ export async function nativeDoctorCommand(
       }
       for (const transaction of projectPortableTransactions.transactions) {
         if (transaction.kind === 'archive') {
-          await archiveNativePortableChange({ paths, name: transaction.change });
+          const archived = await archiveNativePortableChange({ paths, name: transaction.change });
+          const journal = await readNativeWorkspaceFinishJournal(paths, transaction.change);
+          if (journal)
+            await writeNativeWorkspaceFinishJournal(paths, {
+              ...journal,
+              archiveDir: archived.archiveDir,
+              updatedAt: new Date().toISOString(),
+            });
         } else {
           await migrateNativeLegacyChangeToPortable({ paths, name: transaction.change });
         }
@@ -943,6 +1092,7 @@ export async function nativeDoctorCommand(
           repaired: true,
           repairedPortableTransactions,
           repairedWorkspaceFinishJournals,
+          repairedWorkspaceFinishes,
           repairedShapeConfirmations,
           repairFindings: projectRepair.findings,
         },
@@ -990,6 +1140,13 @@ export async function nativeDoctorCommand(
       doctorNativeProject({ paths, projectOnly: true }),
     ]);
     const findings = uniqueFindings([
+      ...(
+        await Promise.all(
+          finishJournals
+            .filter((journal) => !portableSet.has(journal.name))
+            .map((journal) => workspaceFinishInspection(paths, journal, false)),
+        )
+      ).flatMap((inspection) => inspection.findings),
       ...conflicts.filter((finding): finding is NativeDoctorFinding => finding !== null),
       ...portableNames.flatMap((change, index) =>
         incompleteMigrations[index] && !migrationTransactionNames.has(change)

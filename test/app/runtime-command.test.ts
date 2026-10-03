@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../helpers/native-builder-acceptance-review.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -1145,6 +1146,7 @@ describe('Runtime JSON command', () => {
       {
         summary: 'Implemented the workflow.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         checks: [],
         knownLimits: [],
         review: null,

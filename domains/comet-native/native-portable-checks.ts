@@ -16,6 +16,7 @@ import {
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
 import { canonicalHash } from './native-canonical-hash.js';
+import { nativeRunnerInputArtifactPaths } from './native-runner-input-artifacts.js';
 import {
   executeNativeCheck,
   nativeCheckPlanKey,
@@ -429,6 +430,7 @@ async function nativeIgnoredCheckInputSnapshot(
   projectRoot: string,
   plans: readonly NativeCheckPlan[],
   managedArtifactRoot?: string,
+  runnerInputs: ReadonlySet<string> = new Set(),
 ): Promise<NativeIgnoredInputSnapshot> {
   const cwdRefs = [...new Set(plans.map(({ cwdRef }) => cwdRef))];
   if (cwdRefs.length === 0) return { complete: true, files: [] };
@@ -461,6 +463,7 @@ async function nativeIgnoredCheckInputSnapshot(
   const files: NativeIgnoredInputFile[] = [];
   let totalBytes = 0;
   for (const relative of ignoredPaths) {
+    if (runnerInputs.has(relative)) continue;
     if (isNativeRuntimeInputPath(relative, projectRoot, managedArtifactRoot)) continue;
     const target = path.resolve(projectRoot, ...relative.split('/'));
     if (!isInsidePath(projectRoot, target) || sensitiveNativeIgnoredInputPath(relative)) {
@@ -485,6 +488,7 @@ async function nativePhysicalCheckInputSnapshot(
   projectRoot: string,
   plans: readonly NativeCheckPlan[],
   managedArtifactRoot?: string,
+  runnerInputs: ReadonlySet<string> = new Set(),
 ): Promise<NativeIgnoredInputSnapshot> {
   const cwdRefs = [...new Set(plans.map(({ cwdRef }) => cwdRef))];
   const files = new Map<string, NativeIgnoredInputFile>();
@@ -508,6 +512,7 @@ async function nativePhysicalCheckInputSnapshot(
     entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
     for (const entry of entries) {
       const relative = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+      if (runnerInputs.has(relative)) continue;
       if (isNativeRuntimeInputPath(relative, projectRoot, managedArtifactRoot)) continue;
       if (entry.isDirectory() && NATIVE_PHYSICAL_INPUT_EXCLUDED_DIRECTORIES.has(entry.name)) {
         continue;
@@ -600,6 +605,11 @@ export async function nativeCheckInputFingerprint(options: {
   plans: readonly NativeCheckPlan[];
   managedArtifactRoot?: string;
 }): Promise<string> {
+  const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
+  const exclusions = [
+    ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+    ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
+  ];
   const gitSnapshot = {
     complete: true,
     capture: 'git' as 'git' | 'physical-tree',
@@ -630,7 +640,7 @@ export async function nativeCheckInputFingerprint(options: {
       '--untracked-files=all',
       '--ignore-submodules=none',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ]);
     // The working-tree binding no longer digests a full `diff --binary` stream
     // (megabytes of patch text on large trees). HEAD is bound separately, so
@@ -642,7 +652,7 @@ export async function nativeCheckInputFingerprint(options: {
       '-z',
       'HEAD',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ])
       .split('\0')
       .filter(Boolean)
@@ -666,7 +676,7 @@ export async function nativeCheckInputFingerprint(options: {
       '--stage',
       '-z',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ]);
     gitSnapshot.stagedDiff = digestNativeCheckInput(stagedIndex);
     gitSnapshot.submodules = hasGitlinksInIndex(stagedIndex)
@@ -678,7 +688,7 @@ export async function nativeCheckInputFingerprint(options: {
       '--exclude-standard',
       '-z',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ])
       .split('\0')
       .filter(Boolean)
@@ -699,6 +709,7 @@ export async function nativeCheckInputFingerprint(options: {
       options.projectRoot,
       options.plans,
       options.managedArtifactRoot,
+      runnerInputs,
     );
     if (!gitSnapshot.ignored.complete) {
       gitSnapshot.complete = false;
@@ -714,6 +725,7 @@ export async function nativeCheckInputFingerprint(options: {
         options.projectRoot,
         options.plans,
         options.managedArtifactRoot,
+        runnerInputs,
       );
       gitSnapshot.complete = gitSnapshot.physical.complete;
     }
@@ -776,19 +788,26 @@ function boundEnvironmentEntries(): Array<[string, string | null]> {
 }
 
 /**
- * Cheap pre-gate over the full fingerprint's decisive inputs. Three fast Git
- * calls (HEAD, porcelain status, staged blob ids) plus dirty, untracked, and
+ * Cheap pre-gate over the full fingerprint's decisive inputs. Git observations
+ * of HEAD, branch, porcelain status, and staged blob IDs plus dirty, untracked, and
  * ignored generated-input content digests cover every mutable input represented
  * by the full fingerprint. A gate hit therefore proves the full fingerprint
  * would recompute to its recorded value without hashing the clean tracked tree.
  */
-export async function nativeCheckInputGate(options: {
+interface NativeCheckInputGateOptions {
   projectRoot: string;
   candidateId: string | null;
   plans?: readonly NativeCheckPlan[];
   managedArtifactRoot?: string;
-}): Promise<string | null> {
+}
+
+async function readNativeCheckInputObservation(options: NativeCheckInputGateOptions) {
   try {
+    const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
+    const exclusions = [
+      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...[...runnerInputs].map((relative) => `:(exclude,literal)${relative}`),
+    ];
     const head = runGitCommand(options.projectRoot, ['rev-parse', 'HEAD']);
     const branch = runGitCommand(options.projectRoot, ['branch', '--show-current']);
     const status = runGitCommand(options.projectRoot, [
@@ -798,19 +817,20 @@ export async function nativeCheckInputGate(options: {
       '--untracked-files=all',
       '--ignore-submodules=none',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ]);
     const staged = runGitCommand(options.projectRoot, [
       'ls-files',
       '--stage',
       '-z',
       '--',
-      ...nativeRuntimeInputExclusions(options.projectRoot, options.managedArtifactRoot),
+      ...exclusions,
     ]);
     if (head === null || status === null) return null;
     const workingTree: Array<{ path: string; digest: string | null }> = [];
     for (const changedPath of gitStatusPaths(options.projectRoot).filter(
       (changedPath) =>
+        !runnerInputs.has(changedPath) &&
         !isNativeRuntimeInputPath(changedPath, options.projectRoot, options.managedArtifactRoot),
     )) {
       const target = path.resolve(options.projectRoot, ...changedPath.split('/'));
@@ -826,34 +846,69 @@ export async function nativeCheckInputGate(options: {
       workingTree.push({ path: changedPath, digest });
     }
     workingTree.sort((left, right) => left.path.localeCompare(right.path, 'en'));
+    return {
+      runnerInputs,
+      binding: {
+        candidateId: options.candidateId,
+        head,
+        branch,
+        // Porcelain names dirty files but does not bind their working-tree bytes.
+        // Hash every dirty path so editing an already-dirty tracked file cannot
+        // falsely hit the pre-gate.
+        status,
+        staged,
+        workingTree,
+        projectRoot: path.resolve(options.projectRoot),
+        machineId: os.hostname(),
+        execPath: process.execPath,
+        node: process.version,
+        platform: process.platform,
+        arch: process.arch,
+        boundEnvironment: boundEnvironmentEntries(),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function nativeCheckGateFromObservation(
+  options: NativeCheckInputGateOptions,
+  observation: Awaited<ReturnType<typeof readNativeCheckInputObservation>>,
+): Promise<string | null> {
+  if (observation === null) return null;
+  try {
     const ignored = await nativeIgnoredCheckInputSnapshot(
       options.projectRoot,
       options.plans ?? [],
       options.managedArtifactRoot,
+      observation.runnerInputs,
     );
-    if (!ignored.complete) return null;
-    return canonicalHash('comet.native.check-input-gate.v1', {
-      candidateId: options.candidateId,
-      head,
-      branch,
-      // Porcelain names dirty files but does not bind their working-tree bytes.
-      // Hash every dirty path so editing an already-dirty tracked file cannot
-      // falsely hit the pre-gate.
-      status,
-      staged,
-      workingTree,
-      ignored,
-      projectRoot: path.resolve(options.projectRoot),
-      machineId: os.hostname(),
-      execPath: process.execPath,
-      node: process.version,
-      platform: process.platform,
-      arch: process.arch,
-      boundEnvironment: boundEnvironmentEntries(),
-    });
+    return ignored.complete
+      ? canonicalHash('comet.native.check-input-gate.v1', { ...observation.binding, ignored })
+      : null;
   } catch {
     return null;
   }
+}
+
+export async function nativeCheckInputGate(
+  options: NativeCheckInputGateOptions,
+): Promise<string | null> {
+  return nativeCheckGateFromObservation(options, await readNativeCheckInputObservation(options));
+}
+
+/** Share only the reservation's observation; checks and later requests still capture fresh inputs. */
+async function nativeCheckInputGates(options: NativeCheckInputGateOptions) {
+  const observation = await readNativeCheckInputObservation(options);
+  return {
+    branch:
+      observation === null
+        ? currentBranch(options.projectRoot)
+        : observation.binding.branch || null,
+    gate: await nativeCheckGateFromObservation(options, observation),
+    candidateGate: await nativeCheckGateFromObservation({ ...options, plans: [] }, observation),
+  };
 }
 
 export function authoritativePortableChecks(options: {
@@ -1026,6 +1081,89 @@ async function hasNativeRuntimeCheckEvidence(
   return true;
 }
 
+/** Rebind completed evidence only after proving the new candidate has identical inputs. */
+export async function rebindNativeCheckEvidence(options: {
+  paths: NativeProjectPaths;
+  previous: NativePortableState;
+  next: NativePortableState;
+  local: NativeLocalExecutionState | null;
+  plans: readonly NativeCheckPlan[];
+  projectRoot?: string;
+}): Promise<NativeLocalExecutionState | null> {
+  const { local, previous, next, plans, paths } = options;
+  if (
+    !local ||
+    !local.checks.length ||
+    local.checks.some(({ status }) => status !== 'passed') ||
+    local.basedOnStateVersion !== previous.state_version ||
+    local.candidateId !== previous.builder_handoff?.candidate_id ||
+    local.workspace.machineId !== os.hostname() ||
+    local.inputFingerprint == null ||
+    local.inputFingerprintGate == null ||
+    (local.execution?.stage === 'checking' && local.execution.status === 'running') ||
+    previous.shape_confirmation_hash !== next.shape_confirmation_hash ||
+    JSON.stringify(previous.acceptance.map(({ id, source, text }) => ({ id, source, text }))) !==
+      JSON.stringify(next.acceptance.map(({ id, source, text }) => ({ id, source, text })))
+  )
+    return null;
+  const projectRoot = local.workspace.worktreeRoot;
+  if (
+    path.resolve(local.workspace.projectRoot) !==
+      path.resolve(options.projectRoot ?? paths.projectRoot) ||
+    path.resolve(projectRoot) !== path.resolve(options.projectRoot ?? paths.projectRoot)
+  )
+    return null;
+  try {
+    if (
+      local.workspace.branch !== currentBranch(projectRoot) ||
+      !sameNativeCheckCommands(local, plans, projectRoot)
+    )
+      return null;
+    if (
+      !(await hasNativeRuntimeCheckEvidence(
+        local,
+        nativePreferredChangeRuntimeDir(paths, next.name),
+      ))
+    )
+      return null;
+    const oldBinding = {
+      projectRoot,
+      candidateId: local.candidateId ?? null,
+      plans,
+      managedArtifactRoot: paths.artifactRoot,
+    };
+    const oldGate = await nativeCheckInputGate(oldBinding);
+    if (oldGate === null || oldGate !== local.inputFingerprintGate) return null;
+    const fingerprint = await nativeCheckInputFingerprint({
+      state: next,
+      projectRoot,
+      plans,
+      managedArtifactRoot: paths.artifactRoot,
+    });
+    const gates = await nativeCheckInputGates({
+      ...oldBinding,
+      candidateId: next.builder_handoff!.candidate_id,
+    });
+    // The full capture must not adopt a source edit that happened while rebinding.
+    if (
+      gates.gate === null ||
+      gates.candidateGate === null ||
+      (await nativeCheckInputGate(oldBinding)) !== oldGate
+    )
+      return null;
+    return {
+      ...preservedLocalChecksForVersion({ local, state: next, projectRoot: paths.projectRoot }),
+      candidateId: next.builder_handoff!.candidate_id,
+      inputFingerprint: fingerprint,
+      inputFingerprintGate: gates.gate,
+      candidateInputFingerprintGate: gates.candidateGate,
+    };
+  } catch {
+    // Incomplete or unavailable evidence requires execution, never blocks a new candidate.
+    return null;
+  }
+}
+
 async function reserveNativePortableCheckPlan(options: {
   paths: NativeProjectPaths;
   name: string;
@@ -1050,7 +1188,17 @@ async function reserveNativePortableCheckPlan(options: {
       if (state.phase !== 'verify' || state.loop.stage !== 'verify-ready') {
         throw new Error('Native checks require Verify ready state');
       }
-      const branch = currentBranch(options.projectRoot);
+      const {
+        gate,
+        candidateGate,
+        branch: observedBranch,
+      } = await nativeCheckInputGates({
+        projectRoot: options.projectRoot,
+        candidateId: state.builder_handoff?.candidate_id ?? null,
+        plans: options.plans,
+        managedArtifactRoot: options.paths.artifactRoot,
+      });
+      let branch = observedBranch;
       const file = nativeLocalExecutionFile(options.paths, state.name);
       let local = (
         await readOrRebuildNativeLocalExecution({
@@ -1061,18 +1209,12 @@ async function reserveNativePortableCheckPlan(options: {
           containedRoot: options.paths.runtimeDir,
         })
       ).state;
-      const gate = await nativeCheckInputGate({
-        projectRoot: options.projectRoot,
-        candidateId: state.builder_handoff?.candidate_id ?? null,
-        plans: options.plans,
-        managedArtifactRoot: options.paths.artifactRoot,
-      });
-      const candidateGate = await nativeCheckInputGate({
-        projectRoot: options.projectRoot,
-        candidateId: state.builder_handoff?.candidate_id ?? null,
-        plans: [],
-        managedArtifactRoot: options.paths.artifactRoot,
-      });
+      // Older overlays use symbolic-ref's disambiguated short name when a tag
+      // shares the branch name. Keep that binding without a second probe on
+      // the ordinary path. The gate continues to bind the actual branch name.
+      if (branch !== null && local.workspace.branch === `heads/${branch}`) {
+        branch = currentBranch(options.projectRoot);
+      }
       // A null gate means the workspace could not be snapshotted completely
       // (for example, an ignored generated tree is too large or a submodule
       // cannot be hashed as a regular file). The full fingerprint remains
@@ -1769,7 +1911,7 @@ export async function reserveVerifierRequestedChecks(options: {
   for (const check of local.checks) {
     const key = nativeLocalCheckPlanKey(check, options.projectRoot);
     existingByKeyAll.set(key, check);
-    if (check.status !== 'interrupted') existingByKey.set(key, check);
+    if (check.status === 'passed') existingByKey.set(key, check);
     existingKeyById.set(check.id, key);
   }
 
@@ -1789,12 +1931,12 @@ export async function reserveVerifierRequestedChecks(options: {
     }
     requestedKeyById.set(plan.id, key);
     const existing = existingByKeyAll.get(key);
-    if (existing?.status === 'interrupted' && !existing.repeatable) {
+    if (existing && existing.status !== 'passed' && !existing.repeatable) {
       throw new Error(
-        `Native check ${existing.id} was interrupted and is not repeatable; user resolution is required`,
+        `Native check ${existing.id} did not pass and is not repeatable; user resolution is required`,
       );
     }
-    if (existing?.status === 'interrupted' && existing.executionCount >= 3) {
+    if (existing && existing.status !== 'passed' && existing.executionCount >= 3) {
       throw new Error(`Native check retry limit (3) reached: ${existing.id}`);
     }
     if (!requestedByKey.has(key)) requestedByKey.set(key, plan);
@@ -1823,8 +1965,13 @@ export async function reserveVerifierRequestedChecks(options: {
       ...local.checks.map((check) => {
         const key = nativeLocalCheckPlanKey(check, options.projectRoot);
         const plan = requestedByKey.get(key);
-        return plan && check.status === 'interrupted'
-          ? resetInterruptedCheck(check, plan, local.execution!.operationId, options.projectRoot)
+        return plan && check.status !== 'passed'
+          ? resetNativeCheckForExecution(
+              check,
+              plan,
+              local.execution!.operationId,
+              options.projectRoot,
+            )
           : check;
       }),
       ...novel

@@ -120,6 +120,13 @@ function archiveDirectory(paths: NativeProjectPaths, ref: string): string {
   return target;
 }
 
+export function nativePortableArchiveDirectory(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
+): string {
+  return archiveDirectory(paths, archiveRef(state));
+}
+
 async function exists(file: string): Promise<boolean> {
   try {
     await fs.lstat(file);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import path from 'path';
+import { pathToFileURL } from 'node:url';
 
 import {
   COMET_HOOK_PLATFORM_IDS,
@@ -84,6 +85,34 @@ const PLATFORM_FIXTURES = [
 ] as const;
 
 describe('Comet Hook platform adapter', () => {
+  it('ignores non-file resource targets without discarding real files in the same event', () => {
+    const file = path.resolve('src/new-file.ts');
+    expect(
+      parseCometHookRequest(
+        JSON.stringify({
+          tool_name: 'write',
+          tool_input: {
+            paths: [
+              'agent:/Main',
+              'proc:/worker/kill',
+              'xd:/report_issue',
+              'https://example.test/action',
+              pathToFileURL(file).href,
+              'src/other.ts',
+            ],
+          },
+        }),
+      ),
+    ).toMatchObject({ intent: 'write', targets: [file, 'src/other.ts'] });
+    expect(
+      parseCometHookRequest(JSON.stringify({ tool_input: { targets: ['agent:/Main'] } })),
+    ).toMatchObject({ targets: [] });
+    expect(
+      parseCometHookRequest(
+        JSON.stringify({ tool_name: 'write', tool_input: { path: 'C:\\project\\new.ts' } }),
+      ),
+    ).toMatchObject({ intent: 'write', targets: ['C:\\project\\new.ts'] });
+  });
   it('exposes the protocol adapter from the platform layer without changing parsing', () => {
     const source = JSON.stringify({ tool_name: 'Write', file_path: 'src/example.ts' });
     expect(parsePlatformHookRequest(source)).toEqual(parseCometHookRequest(source));
@@ -294,6 +323,17 @@ describe('Comet Hook platform adapter', () => {
       });
     },
   );
+
+  it('retains real file targets when a mixed request has a malformed file URI', () => {
+    expect(
+      parseCometHookRequest(
+        JSON.stringify({
+          tool_name: 'Write',
+          tool_input: { file_paths: ['src/real.ts', 'file://%broken'] },
+        }),
+      ),
+    ).toMatchObject({ intent: 'write', targets: ['src/real.ts', 'file://%broken'] });
+  });
 
   it('renders Copilot structured denial without granting permission on allow', () => {
     expect(

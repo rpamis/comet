@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -219,6 +220,7 @@ async function verifyChild(options: {
       candidateId,
       summary: 'Implemented the child behavior.',
       addressedAcceptanceIds: options.state.acceptance.map(({ id }) => id),
+      acceptanceReview: fixtureAcceptanceReview(options.state.acceptance.map(({ id }) => id)),
       review: {
         status: 'passed',
         summary: 'Independent child review passed.',
@@ -1211,6 +1213,7 @@ children:
           }),
           summary: 'A parent Builder must not run.',
           addressedAcceptanceIds: parentState.acceptance.map(({ id }) => id),
+          acceptanceReview: fixtureAcceptanceReview(parentState.acceptance.map(({ id }) => id)),
           review: {
             status: 'passed',
             summary: 'Independent parent review passed.',
@@ -1444,6 +1447,7 @@ children:
         kind: 'builder-handoff',
         summary: 'Reviewed the final integrated parent result.',
         addressed_acceptance_ids: parentState.acceptance.map(({ id }) => id),
+        acceptance_review: fixtureAcceptanceReview(parentState.acceptance.map(({ id }) => id)),
         checks: [],
         known_limits: [],
         review: {
@@ -1463,6 +1467,7 @@ children:
       phase: 'verify',
       builder_handoff: {
         addressed_acceptance_ids: parentState.acceptance.map(({ id }) => id),
+        acceptance_review: fixtureAcceptanceReview(parentState.acceptance.map(({ id }) => id)),
         review: { reviewer_execution_ref: 'parent-reviewer' },
       },
     });

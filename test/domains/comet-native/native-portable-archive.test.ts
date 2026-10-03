@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { markNativeSupervisorChildVerified } from '../../helpers/native-supervisor-results.js';
 import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -16,6 +17,12 @@ import {
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { nativeStatusCommand } from '../../../domains/comet-native/native-status-command.js';
+import {
+  readNativeWorkspaceFinishJournal,
+  writeNativeWorkspaceFinishJournal,
+  NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA,
+} from '../../../domains/comet-native/native-workspace-finish.js';
 import {
   ensureNativeDirectories,
   nativeProjectPaths,
@@ -23,6 +30,7 @@ import {
 import {
   archiveNativePortableChange,
   inspectNativePortableArchive,
+  nativePortableArchiveDirectory,
 } from '../../../domains/comet-native/native-portable-archive.js';
 import { parseNativeChildrenContract } from '../../../domains/comet-native/native-children.js';
 import { nativeNextCommand } from '../../../domains/comet-native/native-next-command.js';
@@ -34,6 +42,7 @@ import {
   markNativePortableSpecRemoval,
   nativePortableChangeDir,
   readNativePortableChange,
+  setNativePortableWorkspaceFinish,
   returnNativePortableChangeToShape,
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
@@ -93,6 +102,7 @@ describe('Native portable Archive', () => {
         candidateId: `${name}-candidate`,
         summary: 'Implemented.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
         review: passedReview(`${name}-reviewer`),
       },
     });
@@ -148,8 +158,11 @@ describe('Native portable Archive', () => {
     specs: Array<[string, string]> = [
       ['sample', '# Sample\n\nRuntime MUST expose the updated behavior.\n'],
     ],
+    workspaceBinding?: Parameters<typeof createNativePortableChange>[0]['workspaceBinding'],
   ) {
-    await createNativePortableChange({ paths, name, language: 'en' });
+    await createNativePortableChange({ paths, name, language: 'en', workspaceBinding });
+    if (workspaceBinding && workspaceBinding.isolation !== 'current')
+      await setNativePortableWorkspaceFinish({ paths, name, finish: 'merge' });
     const changeDir = nativePortableChangeDir(paths, name);
     await fs.writeFile(
       path.join(changeDir, 'brief.md'),
@@ -161,6 +174,400 @@ describe('Native portable Archive', () => {
     }
     return verifyState(await confirmNativePortableShape({ paths, name }));
   }
+
+  function git(args: string[]) {
+    return execFileSync('git', args, {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  }
+
+  async function commitHookProject(
+    name: string,
+    rejectAll = false,
+    isolation: 'current' | 'branch' | 'worktree' = 'current',
+    objectFormat: 'sha1' | 'sha256' = 'sha1',
+  ) {
+    git(['init', `--object-format=${objectFormat}`, '-b', 'main']);
+    git(['config', 'user.email', 'native-test@example.com']);
+    git(['config', 'user.name', 'Native Test']);
+    const hook = path.join(root, '.git/hooks/commit-msg');
+    git(['config', 'core.hooksPath', path.dirname(hook)]);
+    git(['config', 'commit.gpgsign', 'false']);
+    await fs.writeFile(
+      path.join(root, '.gitignore'),
+      '.comet/runtime/\n.comet/current-change.json\n',
+    );
+    git(['add', '.']);
+    git(['commit', '-m', 'PROJ: baseline']);
+    const primary = root;
+    const changeBranch = `comet/${name}`;
+    if (isolation === 'branch') git(['switch', '-c', changeBranch]);
+    if (isolation === 'worktree') {
+      const secondary = `${root}-worktree`;
+      git(['worktree', 'add', '-b', changeBranch, secondary]);
+      root = secondary;
+      paths = await nativeProjectPaths(root, 'docs');
+      await ensureNativeDirectories(paths);
+    }
+    const state = await archiveReady(
+      name,
+      undefined,
+      isolation === 'current' ? undefined : { isolation, changeBranch, targetBranch: 'main' },
+    );
+    await fs.writeFile(
+      hook,
+      '#!/bin/sh\n' +
+        (rejectAll
+          ? 'test -f .git/accept-commit || { echo PROJECT_COMMIT_MSG_REJECTED >&2; exit 1; }\n'
+          : 'grep -q "^PROJ: " "$1" || { echo PROJECT_COMMIT_MSG_REJECTED >&2; exit 1; }\n'),
+    );
+    await fs.chmod(hook, 0o755);
+    return { ...state, primary };
+  }
+
+  it('previews and commits Unicode messages through the project commit-msg hook', async () => {
+    const state = await commitHookProject('custom-message');
+    const message = 'PROJ: 归档需求\n\n保留项目提交规范。';
+    const args = [state.name, '--commit-message', message];
+    const preview = await nativeArchiveCommand([...args, '--dry-run'], root);
+    expect(preview).toMatchObject({
+      exitCode: 0,
+      data: { ready: true, commitMessages: { commitMessage: message, mergeMessage: null } },
+    });
+    expect(
+      (preview.data as { continuation: { commandArgs: string[] } }).continuation.commandArgs,
+    ).toContain(message);
+    await expect(nativeArchiveCommand([...args, '--confirmed'], root)).resolves.toMatchObject({
+      exitCode: 0,
+    });
+    expect(git(['log', '-1', '--format=%B'])).toBe(message);
+  });
+
+  it('diagnoses a rejected archive commit and resumes it with a corrected message', async () => {
+    const state = await commitHookProject('hook-rejected');
+    const blocked = await nativeArchiveCommand([state.name, '--confirmed'], root);
+    expect(blocked).toMatchObject({
+      exitCode: 73,
+      data: {
+        archived: true,
+        workspaceFinishResult: {
+          status: 'blocked',
+          message: expect.stringContaining('PROJECT_COMMIT_MSG_REJECTED'),
+        },
+      },
+    });
+    for (const args of [[state.name], [state.name, '--repair'], []]) {
+      await expect(nativeDoctorCommand(args, root)).resolves.toMatchObject({
+        data: {
+          healthy: false,
+          findings: expect.arrayContaining([
+            expect.objectContaining({ code: 'workspace-finish-incomplete' }),
+          ]),
+        },
+      });
+    }
+    await expect(nativeStatusCommand([state.name], root)).resolves.toMatchObject({
+      data: {
+        status: 'blocked',
+        archived: true,
+        continuation: {
+          status: 'blocked',
+          disposition: 'blocked',
+          requiresUserDecision: false,
+          userCommunication: { required: true, suggestedReply: null },
+        },
+      },
+    });
+    const journal = await readNativeWorkspaceFinishJournal(paths, state.name);
+    const sealed = await fs.readFile(path.join(journal!.archiveDir!, 'comet-state.yaml'), 'utf8');
+    await expect(
+      nativeArchiveCommand(
+        [state.name, '--confirmed', '--commit-message', 'PROJ: 修正归档说明'],
+        root,
+      ),
+    ).resolves.toMatchObject({ exitCode: 0 });
+    expect(git(['log', '-1', '--format=%s'])).toBe('PROJ: 修正归档说明');
+    expect(await fs.readFile(path.join(journal!.archiveDir!, 'comet-state.yaml'), 'utf8')).toBe(
+      sealed,
+    );
+    expect(await readNativeWorkspaceFinishJournal(paths, state.name)).toBeNull();
+    await expect(nativeDoctorCommand([state.name], root)).resolves.toMatchObject({
+      data: { healthy: true },
+    });
+  });
+
+  it('retains prepared messages across hook failures and retries without message flags', async () => {
+    const state = await commitHookProject('message-retry', true);
+    const message = 'PROJ: 重试沿用归档说明';
+    await expect(
+      nativeArchiveCommand([state.name, '--confirmed', '--commit-message', message], root),
+    ).resolves.toMatchObject({ exitCode: 73 });
+    await fs.writeFile(path.join(root, '.git/accept-commit'), 'accepted\n');
+    await expect(nativeArchiveCommand([state.name, '--confirmed'], root)).resolves.toMatchObject({
+      exitCode: 0,
+    });
+    expect(git(['log', '-1', '--format=%s'])).toBe(message);
+  });
+
+  it('repairs the finish receipt after a verified manual commit without creating another commit', async () => {
+    const state = await commitHookProject('manual-finish');
+    await expect(nativeArchiveCommand([state.name, '--confirmed'], root)).resolves.toMatchObject({
+      exitCode: 73,
+    });
+    git(['commit', '-m', 'PROJ: 人工完成归档']);
+    const head = git(['rev-parse', 'HEAD']);
+    await expect(nativeDoctorCommand([state.name, '--repair'], root)).resolves.toMatchObject({
+      data: { healthy: true, repaired: true },
+    });
+    expect(git(['rev-parse', 'HEAD'])).toBe(head);
+    expect(await readNativeWorkspaceFinishJournal(paths, state.name)).toBeNull();
+    await expect(nativeStatusCommand([state.name], root)).resolves.toMatchObject({
+      data: { status: 'done', continuation: { status: 'done', disposition: 'done' } },
+    });
+  });
+
+  it.each(['branch', 'worktree'] as const)(
+    'recovers a %s merge hook rejection without repeating the archive commit',
+    async (isolation) => {
+      let primary: string | undefined;
+      try {
+        const state = await commitHookProject(`merge-hook-${isolation}`, false, isolation);
+        primary = state.primary;
+        const message = 'PROJ: 归档后保留提交';
+        const blocked = await nativeArchiveCommand(
+          [state.name, '--confirmed', '--commit-message', message],
+          root,
+        );
+        expect(blocked).toMatchObject({
+          exitCode: 73,
+          data: {
+            workspaceFinishResult: {
+              commit: expect.any(String),
+              merged: false,
+              message: expect.stringContaining('PROJECT_COMMIT_MSG_REJECTED'),
+            },
+          },
+        });
+        const archiveCommit = git(['rev-parse', 'HEAD']);
+        expect(git(['branch', '--show-current'])).toBe(`comet/${state.name}`);
+        expect(() =>
+          execFileSync('git', ['rev-parse', '--verify', 'MERGE_HEAD'], {
+            cwd: primary,
+            stdio: 'ignore',
+          }),
+        ).toThrow();
+        const preview = await nativeArchiveCommand(
+          [state.name, '--dry-run', '--merge-message', 'PROJ: 合并归档需求'],
+          root,
+        );
+        expect(preview).toMatchObject({
+          data: { commitMessages: { commitMessage: message, mergeMessage: 'PROJ: 合并归档需求' } },
+        });
+        await expect(
+          nativeArchiveCommand(
+            [state.name, '--confirmed', '--commit-message', 'PROJ: 不应重写归档提交'],
+            root,
+          ),
+        ).resolves.toMatchObject({ exitCode: 73 });
+        expect(git(['rev-parse', 'HEAD'])).toBe(archiveCommit);
+        await expect(
+          nativeArchiveCommand(
+            [state.name, '--confirmed', '--merge-message', 'PROJ: 合并归档需求'],
+            root,
+          ),
+        ).resolves.toMatchObject({
+          exitCode: 0,
+          data: { workspaceFinishResult: { merged: true, commit: archiveCommit } },
+        });
+        const log = execFileSync('git', ['log', '-1', '--format=%B'], {
+          cwd: primary,
+          encoding: 'utf8',
+        }).trim();
+        expect(log).toBe('PROJ: 合并归档需求');
+        expect(
+          execFileSync('git', ['rev-list', '--count', 'main'], {
+            cwd: primary,
+            encoding: 'utf8',
+          }).trim(),
+        ).toBe('3');
+      } finally {
+        if (primary && primary !== root) await fs.rm(primary, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(['sha1', 'sha256'] as const)(
+    'keeps Git default merge messages in %s repositories when message flags are absent',
+    async (objectFormat) => {
+      const state = await commitHookProject('default-merge', false, 'branch', objectFormat);
+      await fs.unlink(path.join(state.primary, '.git/hooks/commit-msg'));
+      git(['config', 'merge.log', objectFormat === 'sha1' ? 'true' : 'false']);
+      if (objectFormat === 'sha256') git(['config', 'branch.main.mergeOptions', '--log=5']);
+      git(['config', 'merge.suppressDest', 'master']);
+      const head = git(['rev-parse', 'HEAD']);
+      const index = git(['write-tree']);
+      const preview = await nativeArchiveCommand([state.name, '--dry-run'], root);
+      const prepared = (preview.data as { commitMessages: { mergeMessage: string } }).commitMessages
+        .mergeMessage;
+      expect(prepared).toContain("Merge branch 'comet/default-merge' into main");
+      expect(prepared.match(/chore\(native\): archive default-merge/gu)).toHaveLength(1);
+      expect(git(['rev-parse', 'HEAD'])).toBe(head);
+      expect(git(['write-tree'])).toBe(index);
+      const command = (preview.data as { continuation: { commandArgs: string[] } }).continuation
+        .commandArgs;
+      expect(command).toContain(prepared);
+      await expect(nativeArchiveCommand(command.slice(3), root)).resolves.toMatchObject({
+        exitCode: 0,
+      });
+      const message = git(['log', '-1', '--format=%B']);
+      expect(message).toContain("Merge branch 'comet/default-merge' into main");
+      expect(message.match(/chore\(native\): archive default-merge/gu)).toHaveLength(1);
+      expect(message).toBe(prepared);
+    },
+  );
+
+  it('rejects the wrong archived identity before staging or committing a pending finish', async () => {
+    const state = await commitHookProject('wrong-archive-identity');
+    await nativeArchiveCommand([state.name, '--confirmed'], root);
+    const journal = await readNativeWorkspaceFinishJournal(paths, state.name);
+    const { commit: _commit, ...pending } = journal!;
+    await writeNativeWorkspaceFinishJournal(paths, { ...pending, status: 'pending', result: null });
+    const file = path.join(journal!.archiveDir!, 'comet-state.yaml');
+    const source = await fs.readFile(file, 'utf8');
+    await fs.writeFile(file, source.replace(state.created_at, '2000-01-01T00:00:00.000Z'));
+    await fs.unlink(path.join(state.primary, '.git/hooks/commit-msg'));
+    const head = git(['rev-parse', 'HEAD']);
+    const index = git(['write-tree']);
+    await expect(nativeArchiveCommand([state.name, '--confirmed'], root)).rejects.toThrow(
+      'does not match a completed Archive record',
+    );
+    expect(git(['rev-parse', 'HEAD'])).toBe(head);
+    expect(git(['write-tree'])).toBe(index);
+  });
+
+  it('does not run a global reference-transaction hook during default message preview', async () => {
+    const state = await commitHookProject('preview-hooks', false, 'branch');
+    const hooks = path.join(root, 'global-hooks');
+    const marker = path.join(root, '.git/preview-hook-ran');
+    const globalConfig = path.join(root, '.git/preview-global-config');
+    await fs.mkdir(hooks);
+    const hook = path.join(hooks, 'reference-transaction');
+    await fs.writeFile(
+      hook,
+      `#!/bin/sh\necho ran > '${marker.replaceAll('\\', '/').replaceAll("'", "'\\''")}'\nexit 1\n`,
+    );
+    await fs.chmod(hook, 0o755);
+    git(['config', '--file', globalConfig, 'core.hooksPath', hooks.replaceAll('\\', '/')]);
+    // Keep the global Hook fixture outside the project's finish scope.
+    git(['config', '--local', 'core.excludesFile', path.join(root, '.git/preview-excludes')]);
+    await fs.writeFile(path.join(root, '.git/preview-excludes'), 'global-hooks/\n');
+    const head = git(['rev-parse', 'HEAD']);
+    const index = git(['write-tree']);
+    vi.stubEnv('GIT_CONFIG_GLOBAL', globalConfig);
+    try {
+      const preview = await nativeArchiveCommand([state.name, '--dry-run'], root);
+      expect((preview.data as { blockers: string[] }).blockers).toEqual([]);
+      expect(preview).toMatchObject({
+        data: { ready: true, commitMessages: { mergeMessage: expect.any(String) } },
+      });
+      await expect(fs.stat(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(git(['rev-parse', 'HEAD'])).toBe(head);
+      expect(git(['write-tree'])).toBe(index);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each([
+    ['afterMove', true],
+    ['afterRuntimeCleanup', false],
+  ] as const)('keeps workspace finish pending after Doctor repairs %s', async (hook, named) => {
+    const state = await commitHookProject(`doctor-finish-${named ? 'named' : 'project'}`);
+    await writeNativeWorkspaceFinishJournal(paths, {
+      schema: NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA,
+      name: state.name,
+      transactionId: 'interrupted-archive',
+      archiveDir: nativePortableArchiveDirectory(paths, state),
+      createdAt: state.created_at,
+      status: 'pending',
+      result: null,
+      updatedAt: new Date().toISOString(),
+    });
+    await expect(
+      archiveNativePortableChange({
+        paths,
+        name: state.name,
+        hooks: { [hook]: () => Promise.reject(new Error('interrupted-archive')) },
+      }),
+    ).rejects.toThrow('interrupted-archive');
+    const head = git(['rev-parse', 'HEAD']);
+    await expect(
+      nativeDoctorCommand([...(named ? [state.name] : []), '--repair'], root),
+    ).resolves.toMatchObject({
+      exitCode: 65,
+      data: {
+        healthy: false,
+        findings: expect.arrayContaining([
+          expect.objectContaining({ code: 'workspace-finish-incomplete' }),
+        ]),
+      },
+    });
+    expect(git(['rev-parse', 'HEAD'])).toBe(head);
+    expect(await readNativeWorkspaceFinishJournal(paths, state.name)).not.toBeNull();
+    await expect(
+      nativeArchiveCommand(
+        [state.name, '--confirmed', '--commit-message', 'PROJ: 完成恢复的归档'],
+        root,
+      ),
+    ).resolves.toMatchObject({ exitCode: 0 });
+  });
+
+  it('does not adopt a clean manual commit with altered archived contents', async () => {
+    const state = await commitHookProject('wrong-manual-commit');
+    await nativeArchiveCommand([state.name, '--confirmed'], root);
+    const journal = await readNativeWorkspaceFinishJournal(paths, state.name);
+    const spec = path.join(journal!.archiveDir!, 'specs/sample/spec.md');
+    await fs.appendFile(spec, '\nUnexpected altered content.\n');
+    git(['add', '.']);
+    git(['commit', '-m', 'PROJ: 错误归档内容']);
+    await expect(nativeDoctorCommand([state.name, '--repair'], root)).resolves.toMatchObject({
+      data: { healthy: false, repaired: false },
+    });
+    await expect(nativeArchiveCommand([state.name, '--confirmed'], root)).resolves.toMatchObject({
+      exitCode: 73,
+    });
+    expect(await readNativeWorkspaceFinishJournal(paths, state.name)).not.toBeNull();
+  });
+
+  it('repairs an older finish journal after a manual commit using the archived files as proof', async () => {
+    const state = await commitHookProject('legacy-finish');
+    await nativeArchiveCommand([state.name, '--confirmed'], root);
+    const journal = await readNativeWorkspaceFinishJournal(paths, state.name);
+    const { plan: _plan, commit: _commit, merge: _merge, ...legacy } = journal!;
+    await atomicWriteJson(
+      path.join(paths.transactionsDir, `workspace-finish-${state.name}.json`),
+      legacy,
+    );
+    git(['commit', '-m', 'PROJ: 完成旧版本归档']);
+    await expect(nativeDoctorCommand([state.name, '--repair'], root)).resolves.toMatchObject({
+      data: { healthy: true, repaired: true },
+    });
+    expect(await readNativeWorkspaceFinishJournal(paths, state.name)).toBeNull();
+  });
+
+  it.each(['', '  ', 'message\u0000invalid'])(
+    'rejects invalid commit messages before touching Archive: %j',
+    async (message) => {
+      const state = await archiveReady('invalid-message');
+      await expect(
+        nativeArchiveCommand([state.name, '--confirmed', '--commit-message', message], root),
+      ).rejects.toThrow(/commit-message/);
+      expect((await readNativePortableChange(paths, state.name)).archived).toBe(false);
+      expect(await readNativeWorkspaceFinishJournal(paths, state.name)).toBeNull();
+    },
+  );
 
   it('rejects malformed Archive options before dispatching to storage', async () => {
     await expect(
@@ -856,13 +1263,23 @@ children:
       ready: false,
       capabilityPeers: ['serial-second'],
     });
-    await expect(nativeArchiveCommand([first.name, '--dry-run'], root)).resolves.toMatchObject({
+    await expect(
+      nativeArchiveCommand(
+        [first.name, '--dry-run', '--commit-message', 'PROJ: serial archive'],
+        root,
+      ),
+    ).resolves.toMatchObject({
       exitCode: 0,
       data: {
         capabilityPeers: ['serial-second'],
         continuation: {
           disposition: 'await-user',
           requiredInputs: ['choose-first-archive'],
+          commandAlternatives: [
+            expect.objectContaining({
+              commandArgs: expect.arrayContaining(['--commit-message', 'PROJ: serial archive']),
+            }),
+          ],
         },
       },
     });

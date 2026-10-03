@@ -77,8 +77,6 @@ comet state select <name>
 comet state check <name> open
 ```
 
-多条只读 comet 命令（如 `state get`、`state next`、`state artifacts`）可以合并成一条 shell 调用依次执行，减少进程启动开销。
-
 若上述 `select` / `check` 输出 `BLOCKED` 或分支绑定 `ERROR`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
 
 随后按指引创建精简版产物：
@@ -166,7 +164,7 @@ comet guard <change-name> build --apply
 
 无 delta spec 的小范围 hotfix 通常满足轻量验证条件（≤ 3 tasks、改动文件数低于 scale 阈值），按 comet-verify 的轻量验证清单逐项检查；默认 `review_mode: off` 时，不自动安排代码审查。若用户希望增加审查，可在验证前运行 `comet state set <name> review_mode standard` 或 `thorough`。若 hotfix 创建了 delta spec，则根据 comet-verify 的规模评估规则进入完整验证路径。
 
-验证通过后，按 `/comet-verify` 的规则将 `.comet.yaml` 的 `verify_result` 记录为 `pass`，归档前不得跳过该状态。验证通过后仍必须进入 `/comet-archive` 的归档前最终确认，不得自动运行归档脚本。
+验证及报告完成后，由 `/comet-verify` 执行 `comet guard <change-name> verify --apply`；复用它成功返回的 archive 状态和 `agent.continuation`，不再手动设置 `verify_result: pass` 或重复运行 Guard。Guard 未通过时按其原因处理，不能宣告验收通过。进入 `/comet-archive` 后仍须完成归档前最终确认，不得自动运行归档脚本。
 
 ### 5. 归档（预设 archive）
 

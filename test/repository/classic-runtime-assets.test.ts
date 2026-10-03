@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { existsSync } from 'fs';
 import { promises as fs } from 'fs';
 import path from 'path';
+import os from 'os';
+import { execFileSync } from 'child_process';
+import { pathToFileURL } from 'url';
 
 type AssetsManifest = {
   skills: string[];
@@ -23,6 +26,58 @@ async function readJson<T>(filePath: string): Promise<T> {
 }
 
 describe('Classic runtime release assets', () => {
+  it.each(['state', 'check', 'guard', 'handoff', 'archive'])(
+    'imports the %s command without side effects and keeps standalone help working through a linked directory',
+    async (command) => {
+      const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-bundle-entry-'));
+      try {
+        const bundle = path.join(scriptsDirectory, `comet-${command}.mjs`);
+        const imported = execFileSync(
+          process.execPath,
+          [
+            '--input-type=module',
+            '-e',
+            `
+        const {runClassicCli} = await import(${JSON.stringify(pathToFileURL(bundle).href)});
+        const result = await runClassicCli([${JSON.stringify(command)}, '--help', '--json']);
+        process.stdout.write(result.stdout);
+        process.exitCode = result.exitCode;
+      `,
+          ],
+          { cwd: fixture, encoding: 'utf8' },
+        );
+        const parsed = JSON.parse(imported);
+        expect(parsed.command).toBe(command);
+        expect(parsed.exitCode).toBe(0);
+        expect(parsed.stdout).toContain('Usage:');
+        const linked = path.join(fixture, 'scripts');
+        await fs.symlink(
+          scriptsDirectory,
+          linked,
+          process.platform === 'win32' ? 'junction' : 'dir',
+        );
+        const standalone = execFileSync(
+          process.execPath,
+          [path.join(linked, `comet-${command}.mjs`), '--help', '--json'],
+          { cwd: fixture, encoding: 'utf8' },
+        );
+        expect(JSON.parse(standalone)).toEqual(parsed);
+        const preservedLink = execFileSync(
+          process.execPath,
+          [
+            '--preserve-symlinks-main',
+            path.join(linked, `comet-${command}.mjs`),
+            '--help',
+            '--json',
+          ],
+          { cwd: fixture, encoding: 'utf8' },
+        );
+        expect(JSON.parse(preservedLink)).toEqual(parsed);
+      } finally {
+        await fs.rm(fixture, { recursive: true, force: true });
+      }
+    },
+  );
   it('ships bilingual Classic references under the Classic entry', async () => {
     const manifest = await readJson<AssetsManifest>(path.resolve('assets', 'manifest.json'));
     const englishFiles = (await fs.readdir(classicReferenceDirectory))

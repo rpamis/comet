@@ -18,6 +18,7 @@ import { withNativeMutationLock } from '../../../domains/comet-native/native-mut
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { withNativeTransitionLock } from '../../../domains/comet-native/native-transition-journal.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
+import * as processIdentity from '../../../platform/process/process-identity.js';
 
 describe('Native operation locks', () => {
   let projectRoot: string;
@@ -29,8 +30,55 @@ describe('Native operation locks', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
+
+  it.each(['released', 'active', 'replaced'])(
+    'rechecks a coordinator claim after a slow owner probe (%s)',
+    async (claimState) => {
+      const coordinatorDir = path.join(paths.locksDir, '.coordinator');
+      await fs.mkdir(coordinatorDir, { recursive: true });
+      const predecessor = path.join(coordinatorDir, '00000000-0000-0000-0000-000000000000.claim');
+      await fs.writeFile(
+        predecessor,
+        JSON.stringify({
+          id: '00000000-0000-0000-0000-000000000000',
+          pid: process.pid,
+          hostname: os.hostname(),
+          createdAt: new Date().toISOString(),
+          operation: 'foreign claim',
+          processIdentity: 'test:foreign',
+        }),
+      );
+      let now = 0;
+      vi.spyOn(Date, 'now').mockImplementation(() => now);
+      vi.spyOn(processIdentity, 'readProcessIdentity').mockResolvedValue('test:own');
+      vi.spyOn(processIdentity, 'inspectProcessLiveness').mockImplementation(async () => {
+        if (claimState === 'released') await fs.unlink(predecessor);
+        if (claimState === 'replaced') {
+          const owner = JSON.parse(await fs.readFile(predecessor, 'utf8'));
+          await fs.rename(predecessor, `${predecessor}.old`);
+          await fs.writeFile(predecessor, JSON.stringify({ ...owner, id: 'replacement-owner' }));
+        }
+        now = 6_000;
+        return claimState === 'replaced' ? 'dead' : 'alive';
+      });
+      if (claimState !== 'released') {
+        await expect(acquireNativeLock(paths, 'archive', 'blocked owner')).rejects.toThrow(
+          'coordinator is busy',
+        );
+        await expect(fs.access(predecessor)).resolves.toBeUndefined();
+        if (claimState === 'replaced') {
+          expect(await readNativeLock(predecessor)).toMatchObject({ id: 'replacement-owner' });
+        }
+      } else {
+        const lock = await acquireNativeLock(paths, 'archive', 'owner released during probe');
+        expect(await readNativeLock(lock.file)).toMatchObject({ id: lock.owner.id });
+        await releaseNativeLock(lock);
+      }
+    },
+  );
 
   it('stores owner metadata, rejects contention, and permits owner release', async () => {
     const lock = await acquireNativeLock(paths, 'archive', 'archive example');

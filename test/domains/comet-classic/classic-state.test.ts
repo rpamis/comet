@@ -159,6 +159,123 @@ describe('Classic state projection', () => {
     });
   });
 
+  it('reads stable state without creating a writer lock and observes the next update', async () => {
+    const before = { classic: classicState(), run: runState() };
+    await writeClassicState(changeDir, before);
+    const open = vi.spyOn(fs, 'open');
+
+    expect(await readClassicState(changeDir)).toMatchObject(before);
+    expect(
+      open.mock.calls.filter(
+        ([file, flags]) => String(file).endsWith('.comet-state.lock') && flags === 'wx',
+      ),
+    ).toHaveLength(0);
+
+    await writeClassicState(changeDir, {
+      classic: { ...before.classic, phase: 'verify' },
+      run: { ...before.run, currentStep: 'full.verify.run' },
+    });
+    expect(await readClassicState(changeDir, { migrate: false })).toMatchObject({
+      classic: { phase: 'verify' },
+      run: { currentStep: 'full.verify.run' },
+    });
+  });
+
+  it('falls back to a coherent state when a complete writer crosses the read window', async () => {
+    const before = { classic: classicState(), run: runState() };
+    const after = {
+      classic: { ...before.classic, phase: 'verify' as const },
+      run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },
+    };
+    await writeClassicState(changeDir, before);
+    const originalRead = engineState.readRunState;
+    vi.spyOn(engineState, 'readRunState').mockImplementationOnce(async (...args) => {
+      await writeClassicState(changeDir, after);
+      return originalRead(...args);
+    });
+
+    expect(await readClassicState(changeDir)).toMatchObject(after);
+  });
+
+  it('observes a same-size manual edit even when the original mtime is restored', async () => {
+    await writeClassicState(changeDir, { classic: classicState(), run: runState() });
+    const original = await fs.stat(stateFile);
+    const source = await fs.readFile(stateFile, 'utf8');
+    const read = engineState.readRunState;
+    vi.spyOn(engineState, 'readRunState').mockImplementationOnce(async (...args) => {
+      await fs.writeFile(stateFile, source.replace('phase: build', 'phase: open '));
+      await fs.utimes(stateFile, original.atime, original.mtime);
+      return read(...args);
+    });
+    expect((await readClassicState(changeDir)).classic?.phase).toBe('open');
+  });
+
+  it('uses the serialized reader when file identities are unavailable', async () => {
+    const projection = { classic: classicState(), run: runState() };
+    await writeClassicState(changeDir, projection);
+    const lstat = fs.lstat;
+    vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      const stat = await lstat(...args);
+      if (String(args[0]) === stateFile && typeof stat.ino === 'bigint') {
+        return Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { ino: 0n });
+      }
+      return stat;
+    });
+    const open = vi.spyOn(fs, 'open');
+    expect(await readClassicState(changeDir)).toMatchObject(projection);
+    expect(
+      open.mock.calls.filter(
+        ([file, flags]) => String(file).endsWith('.comet-state.lock') && flags === 'wx',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('waits for a writer that has updated Run but not committed YAML', async () => {
+    const before = { classic: classicState(), run: runState() };
+    const after = {
+      classic: { ...before.classic, phase: 'verify' as const },
+      run: { ...before.run, currentStep: 'full.verify.run', iteration: 4 },
+    };
+    await writeClassicState(changeDir, before);
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const committing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const writer = writeClassicState(changeDir, after, {
+      beforeCommit: async () => {
+        entered();
+        await blocked;
+      },
+    });
+    await committing;
+    let attempted!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      attempted = resolve;
+    });
+    const originalOpen = fs.open;
+    vi.spyOn(fs, 'open').mockImplementation((...args) => {
+      if (String(args[0]).endsWith('.comet-state.lock') && args[1] === 'wx') attempted();
+      return originalOpen(...args);
+    });
+    let settled = false;
+    const reader = readClassicState(changeDir).then((value) => {
+      settled = true;
+      return value;
+    });
+    try {
+      await waiting;
+      expect(settled).toBe(false);
+    } finally {
+      release();
+      await writer;
+    }
+    expect(await reader).toMatchObject(after);
+  });
+
   it('commits the check epoch with the phase and rejects stale writers', async () => {
     const original = { ...classicState(), checkEpoch: 0 };
     await writeClassicState(changeDir, { classic: original, run: runState() });

@@ -77,8 +77,6 @@ comet state select <name>
 comet state check <name> open
 ```
 
-Combine multiple read-only comet commands (for example `state get`, `state next`, `state artifacts`) into a single shell invocation to reduce process startup overhead.
-
 If select/check returns `BLOCKED` — or a branch-binding `ERROR` — because `bound_branch` differs from the current branch, pause under `comet-classic/reference/decision-point.md`. Offer a single choice: return to the bound branch and rerun entry checks, or, after the user explicitly confirms that the current branch should take over this change, run `comet state rebind <change-name>` and rerun entry checks. Do not switch or rebind branches yourself.
 
 Then create the reduced artifacts:
@@ -166,7 +164,7 @@ Reuse `/comet-verify`, whose size assessment chooses light or full verification.
 
 A small hotfix without delta spec usually meets light conditions (≤ 3 tasks and changed files below the scale threshold). Follow comet-verify's light-verification checklist. Default `review_mode: off` does not dispatch automatic code review. If the user wants review, they can set `comet state set <name> review_mode standard` or `thorough` before verification. If the hotfix creates delta spec, follow comet-verify's scale rules into full verification.
 
-After verification passes, record `.comet.yaml` `verify_result: pass` under `/comet-verify` rules. Do not omit that state before archive. Passing verification still leads to `/comet-archive` for final confirmation; never run archive automatically without it.
+After verification and its report are complete, `/comet-verify` runs `comet guard <change-name> verify --apply`. Reuse its successful archive state and `agent.continuation`; do not manually set `verify_result: pass` or repeat Guard. If Guard fails, address its reasons without claiming acceptance passed. `/comet-archive` still requires final confirmation before archiving; never run archive automatically.
 
 ### 5. Archive
 

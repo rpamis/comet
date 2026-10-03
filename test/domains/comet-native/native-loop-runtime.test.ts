@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -70,6 +71,7 @@ function buildState(identityProvider = 'test-host'): {
       candidateId: `candidate-${state.loop.iteration}`,
       summary: 'Implemented the candidate.',
       addressedAcceptanceIds: ['A1', 'A2'],
+      acceptanceReview: fixtureAcceptanceReview(['A1', 'A2']),
       review: {
         status: 'passed',
         summary: 'A read-only reviewer found no blocking issues.',
@@ -130,6 +132,7 @@ function resubmitRepair(
       candidateId: `candidate-${state.loop.iteration}`,
       summary: 'Tried a new repair hypothesis.',
       addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+      acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
       review: {
         status: 'passed',
         summary: 'A fresh read-only review passed after the repair.',
@@ -159,6 +162,7 @@ describe('Native portable Build/Verify loop', () => {
           identity,
           summary: 'Candidate without a separate review.',
           addressedAcceptanceIds: ['A1'],
+          acceptanceReview: fixtureAcceptanceReview(['A1']),
           review: {
             status: 'passed',
             summary: 'Review passed.',
@@ -174,6 +178,7 @@ describe('Native portable Build/Verify loop', () => {
         identity,
         summary: 'Candidate without mandatory review overhead.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
       },
     });
     expect(unreviewed.builder_handoff?.review).toBeNull();
@@ -189,6 +194,7 @@ describe('Native portable Build/Verify loop', () => {
         identity,
         summary: 'Candidate with a valid review.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: {
           status: 'passed',
           summary: 'Independent review passed.',
@@ -226,6 +232,7 @@ describe('Native portable Build/Verify loop', () => {
         }),
         summary: 'Repaired A2.',
         addressedAcceptanceIds: ['A2'],
+        acceptanceReview: fixtureAcceptanceReview(['A1', 'A2']),
         review: null,
       },
     });
@@ -320,7 +327,7 @@ describe('Native portable Build/Verify loop', () => {
     });
   });
 
-  it('requires an explicit coordination choice before confirming a multi-child Supervisor Shape', () => {
+  it('prepares the full Supervisor Shape before asking for its coordination choice', () => {
     const state = createNativePortableState({ name: 'supervisor-shape', language: 'en' });
     const children = {
       schema: 'comet.native.children.v2',
@@ -355,25 +362,17 @@ describe('Native portable Build/Verify loop', () => {
     const continuation = nativePortableContinuation(state, children);
 
     expect(continuation).toMatchObject({
-      disposition: 'await-user',
-      requiresUserDecision: true,
+      disposition: 'continue',
+      requiresUserDecision: false,
       action: 'prepare-shape-confirmation',
-      requiredInputs: ['summary', 'coordination-choice'],
-      commandArgs: expect.arrayContaining(['--coordination-mode', '<coordination-mode>']),
-      inputOptions: [
-        expect.objectContaining({ name: 'summary', flag: '--summary' }),
-        expect.objectContaining({
-          name: 'coordination-mode',
-          flag: '--coordination-mode',
-          valueKind: 'choice',
-          choices: ['multi-session', 'single-session'],
-        }),
-      ],
+      requiredInputs: ['summary'],
+      inputOptions: [expect.objectContaining({ name: 'summary', flag: '--summary' })],
       userCommunication: {
-        required: true,
-        message: expect.stringContaining('coordination'),
+        required: false,
+        message: null,
       },
     });
+    expect(continuation.commandArgs).not.toContain('--coordination-mode');
 
     const resumed = nativePortableContinuation(
       { ...state, coordination_mode: 'multi-session' },
@@ -545,21 +544,28 @@ describe('Native portable Build/Verify loop', () => {
       expect.arrayContaining([
         expect.objectContaining({
           name: 'keep-workspace',
-          expectedAction: 'archive-preview',
+          expectedAction: 'archive',
           commandArgs: [
             'comet',
             'native',
             'archive',
             'loop-change',
-            '--dry-run',
+            '--confirmed',
             '--finish',
             'keep',
+            '--expected-state-version',
+            String(isolated.state_version),
           ],
           description: expect.stringContaining('Keep the current branch'),
         }),
         expect.objectContaining({
           name: 'push-pull-request',
-          commandArgs: expect.arrayContaining(['--dry-run', '--finish', 'pull-request']),
+          commandArgs: expect.arrayContaining([
+            '--confirmed',
+            '--finish',
+            'pull-request',
+            '--expected-state-version',
+          ]),
           description: expect.stringContaining('create a PR'),
         }),
         expect.objectContaining({
@@ -718,6 +724,7 @@ describe('Native portable Build/Verify loop', () => {
         candidateId: 'candidate-repair-2',
         summary: 'Repaired the failing scenario.',
         addressedAcceptanceIds: ['A2'],
+        acceptanceReview: fixtureAcceptanceReview(['A1', 'A2']),
         review: {
           status: 'passed',
           summary: 'The repair passed read-only review.',
@@ -1124,6 +1131,7 @@ describe('Native portable Build/Verify loop', () => {
         candidateId: 'candidate-repair-unavailable',
         summary: 'Repaired A2.',
         addressedAcceptanceIds: ['A2'],
+        acceptanceReview: fixtureAcceptanceReview(['A1', 'A2']),
         review: {
           status: 'passed',
           summary: 'The A2 repair passed review.',

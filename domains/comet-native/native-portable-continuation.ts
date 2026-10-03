@@ -20,7 +20,7 @@ type NativePortableContinuationInputOption = {
 type NativePortableCommandAlternative = {
   name: string;
   stateVersion: number;
-  expectedAction: NativePortableExpectedContinuationAction | 'archive-preview';
+  expectedAction: NativePortableExpectedContinuationAction | 'archive-preview' | 'archive';
   commandArgs: string[] | null;
   requiredInputs: string[];
   inputOptions: NativePortableContinuationInputOption[];
@@ -94,6 +94,7 @@ export interface NativePortableCheckPlanTemplate {
 
 export interface NativePortableContinuationOptions {
   verifierExecutionRef?: string;
+  verifierStartup?: 'unconfirmed' | 'confirmed';
   retryCheckIds?: readonly string[];
   verificationCheckPlans?: readonly NativePortableCheckPlanTemplate[];
   supervisorIntegrationRetryIds?: readonly string[];
@@ -109,6 +110,7 @@ function nativePortableUserCommunication(
   state: NativePortableState,
   coordinationChoiceRequired: boolean,
   children?: NativeChildrenInspection | null,
+  verifierStartup?: NativePortableContinuationOptions['verifierStartup'],
 ): NativePortableUserCommunication {
   const noUserUpdate = (agentInstruction: string): NativePortableUserCommunication => ({
     required: false,
@@ -122,6 +124,22 @@ function nativePortableUserCommunication(
     state.status === 'await-user' &&
     state.loop.next_action === 'confirm-shape'
   ) {
+    if (coordinationChoiceRequired) {
+      return {
+        required: true,
+        message: localized(
+          state,
+          'Shape is ready. Confirm the complete plan and choose A) Multi-session coordination (recommended), or B) Single-session progression in one reply.',
+          'Shape 已整理完成。请确认完整方案，并在同一次回复中选择 A）多会话协作（推荐），或 B）单会话推进。',
+        ),
+        suggestedReply: localized(state, 'Confirm the plan and use A', '确认方案，按 A 开始'),
+        agentInstruction: localized(
+          state,
+          'First present the target, scope, key decisions, acceptance criteria, non-goals, child responsibilities and dependencies, and both coordination choices. Execute the matching confirm-shape alternative only when the user explicitly accepts this complete Shape and chooses its mode. Choosing a mode alone, additions, or corrections are not full confirmation; retain that choice and ask only for the missing decision. Do not run --confirmed before full confirmation.',
+          '先展示目标、范围、关键决定、验收标准、非目标、各 Child 的职责与依赖，以及两种推进方式。只有用户明确同意当前完整 Shape 并选择推进方式后，才执行对应的 confirm-shape 选项。仅选择推进方式、补充或修改要求都不算完整确认；保留已选方式，只补问缺少的决定。完整确认前不要运行 --confirmed。',
+        ),
+      };
+    }
     return state.language === 'zh-CN'
       ? {
           required: true,
@@ -142,20 +160,13 @@ function nativePortableUserCommunication(
   }
 
   if (coordinationChoiceRequired && state.phase === 'shape' && state.status === 'active') {
-    return {
-      required: true,
-      message: localized(
+    return noUserUpdate(
+      localized(
         state,
-        'This Supervisor Change has multiple independent children. Choose one coordination mode before confirming Shape: A) Multi-session coordination (recommended), or B) Single-session progression.',
-        '当前 Supervisor Change 包含多个可独立执行的 Child。确认 Shape 前请选择推进方式：A）多会话协作（推荐），或 B）单会话推进。',
+        'Complete the Shape documents and child plan, resolve blocking questions, then execute prepare-shape-confirmation. Its persisted response combines complete Shape confirmation and coordination choice in one user decision. If the user already chose only a mode, include that --coordination-mode when preparing and ask only for complete Shape confirmation afterward.',
+        '完成 Shape 文档和 Child 计划，解决阻塞问题后执行 prepare-shape-confirmation。持久化后的响应会让用户一次确认完整 Shape 并选择推进方式。如果用户已经仅选择了推进方式，准备时附上对应的 --coordination-mode，随后只确认完整 Shape。',
       ),
-      suggestedReply: localized(state, 'Reply A or B', '回复 A 或 B'),
-      agentInstruction: localized(
-        state,
-        'Relay the two coordination choices and wait for the user decision. After the user chooses, execute the prepare-shape-confirmation commandArgs with the selected --coordination-mode. Do not combine mode selection with final confirmation; confirmation of the complete Shape is a separate await-user step.',
-        '转述这两个推进方式并等待用户选择。用户选择后，使用对应的 --coordination-mode 执行 prepare-shape-confirmation 的完整 commandArgs；不要把推进方式选择和最终确认合并执行，完整 Shape 的确认是后续单独的 await-user 步骤。',
-      ),
-    };
+    );
   }
 
   if (
@@ -178,12 +189,24 @@ function nativePortableUserCommunication(
     state.status === 'active' &&
     state.loop.next_action === 'await-verifier-result'
   ) {
+    const startupInstruction =
+      verifierStartup === 'confirmed'
+        ? localized(
+            state,
+            'The Verifier has confirmed startup. Continue waiting on the same host task and use its actual progress.',
+            'Verifier 已确认启动。继续等待同一个宿主任务，并使用该任务的实际进度。',
+          )
+        : localized(
+            state,
+            'Check whether the host accepted the startup call and locate the task for the current verifierExecutionRef. If the call has not been made, start the dispatched task once; if the host accepted it, check that same task and let the Verifier submit its startup receipt. A missing receipt alone does not prove failure. If local startup state is unavailable, recover the host task context before deciding whether startup is needed.',
+            '先核实宿主是否接受了启动调用，并找到当前 verifierExecutionRef 对应的任务。尚未调用时启动已派发的任务一次；宿主已接受时检查同一个任务，由 Verifier 提交启动回执。仅缺少回执不能证明执行失败。本地启动记录不可用时，先恢复宿主任务上下文，再判断是否需要启动。',
+          );
     return noUserUpdate(
-      localized(
+      `${startupInstruction} ${localized(
         state,
         'Keep the same dispatched Verifier while it is active. A wait-tool timeout is not an execution timeout: check task progress and continue waiting; do not cancel, interrupt, or spawn a replacement just because a wait returned without a result. Request progress without telling the Verifier to stop inspecting. Only after confirmed task failure, a host-reported execution timeout, loss, or termination without a usable result, immediately submit verifier-execution-error. Preserve completed evidence and explain the failure and changed recovery approach before retrying. Submit verifier-unavailable only when the current platform truly has no usable subagent capability. Forward the actual report, including risks and incomplete checks; never turn an uninspected candidate into pass. Do not ask the user to recover files or processes, and do not expose attempt or requestCheckRounds.',
         '已派发的验收任务仍在运行时，继续使用同一个 Verifier。等待工具超时不等于执行超时：检查任务进度并继续等待，不得仅因一次等待没有结果就取消、中断或重新派发。询问进度时不要要求停止核查。仅在确认任务失败、宿主报告执行超时、任务丢失或结束后没有可用结果时，立即提交 verifier-execution-error；保留已完成证据，重试前说明失败原因及恢复方式的变化。只有当前平台确实没有可用的 subagent 能力时才提交 verifier-unavailable。忠实传递原始报告，包括风险和未完成检查；没有核查当前候选不能判定通过。不要让用户恢复文件或进程，也不要向用户展示 attempt、requestCheckRounds 等机器状态。',
-      ),
+      )}`,
     );
   }
 
@@ -320,8 +343,14 @@ function nativePortableUserCommunication(
       required: true,
       message: localized(
         state,
-        'The reported verification passed, but this platform cannot confirm an independent Verifier execution. Review the result and choose whether to accept it for Archive, revise the implementation, or revise the requirements.',
-        '当前验收报告已通过，但当前平台无法确认验收是否独立执行。请检查结果，并选择接受结果进入归档、继续修改实现，或调整需求。',
+        'The reported verification passed, but this platform cannot confirm an independent Verifier execution. Review the result and choose whether to accept it for Archive, revise the implementation, or revise the requirements.' +
+          (state.workspace.isolation !== 'current' && state.workspace.finish === null
+            ? ' If accepting, also choose: keep the workspace, merge locally, push the branch, or push and create a PR. You may accept the result and defer the finish choice.'
+            : ''),
+        '当前验收报告已通过，但当前平台无法确认验收是否独立执行。请检查结果，并选择接受结果进入归档、继续修改实现，或调整需求。' +
+          (state.workspace.isolation !== 'current' && state.workspace.finish === null
+            ? ' 接受时可一起选择：保留工作区、本地合并、推送分支，或推送并创建 PR；也可以先接受结果，稍后再选择收尾方式。'
+            : ''),
       ),
       suggestedReply: localized(state, 'Accept the result', '接受结果'),
       agentInstruction: localized(
@@ -372,8 +401,8 @@ function nativePortableUserCommunication(
     return noUserUpdate(
       localized(
         state,
-        'Implement the confirmed scope and run focused checks. A separate pre-review is optional, not a prerequisite for Builder handoff. If review is useful, retain the same Reviewer for focused repair follow-ups rather than starting repeated full reviews. Submit the stable candidate for one complete independent verification; release completed helper tasks.',
-        '实现已确认范围并运行相关检查。额外预审是可选项，不是 Builder 交接的前置条件。确有必要审查时，保留同一个 Reviewer 复核修复及受影响范围，避免反复启动完整审查。候选稳定后提交一次完整独立验收，及时释放已完成的辅助任务。',
+        'Implement the complete confirmed brief and Spec scope, then review every acceptance ID with its implementation and evidence before handoff. Fill acceptance_review from this audit; derive remaining work from it. Do not submit a partial candidate just to obtain verification feedback. Run focused checks; a separate pre-review is optional. If review is useful, retain the same Reviewer for focused repair follow-ups. Submit the completed candidate for one complete independent verification and release completed helper tasks.',
+        '完成已确认的 brief 和 Spec 全部范围，交接前逐项核对所有验收 ID 的实现和证据，填写 acceptance_review，并由这份自查生成剩余工作。不得提交未完成的候选来试探验收反馈。开发期运行相关检查，额外预审为可选项；确需审查时，保留同一个 Reviewer 复核修复及受影响范围。全部完成后提交一次完整独立验收，及时释放已完成的辅助任务。',
       ),
     );
   }
@@ -395,17 +424,17 @@ function nativePortableArchiveFinishCommunication(
   return state.language === 'zh-CN'
     ? {
         required: true,
-        message: `当前 change 位于 ${branch}，目标分支为 ${target}。请选择一次工作区收尾方式：A) 保留工作区；B) 本地合并；C) 推送分支；D) 推送并创建 PR；E) 暂不归档。选择 A-D 后 Runtime 会先执行完整 dry-run，再给出唯一的 confirmed 命令；选择 E 将保留当前 change 等待稍后继续。`,
+        message: `当前 change 位于 ${branch}，目标分支为 ${target}。请选择一次工作区收尾方式：A) 保留工作区；B) 本地合并；C) 推送分支；D) 推送并创建 PR；E) 暂不归档。选择 A-D 后 Runtime 会完成预检，检查通过后按所选方式归档；选择 E 将保留当前 change 等待稍后继续。`,
         suggestedReply: '回复 A、B、C、D 或 E',
         agentInstruction:
-          '只向用户展示五种收尾方式及实际影响，等待用户选择。选择 A-D 时执行对应 commandAlternatives 中包含 --dry-run --finish 的完整命令；选择 E 时停止，不运行任何 Archive 命令。不要直接运行 --confirmed，也不要自行猜测 finish。',
+          '向用户展示五种收尾方式及实际影响，等待用户选择。选择 A-D 时执行对应 commandAlternatives 的完整命令，Runtime 会在归档前检查状态和证据；选择 E 时停止，不运行 Archive 命令。按用户的明确选择执行 finish。',
       }
     : {
         required: true,
-        message: `This change is on ${branch} and targets ${target}. Choose one workspace finish: A) keep the workspace; B) merge locally; C) push the branch; D) push and create a PR; or E) defer Archive. For A-D, Runtime will run a complete dry-run first, then return one confirmed command; E keeps the current change for later.`,
+        message: `This change is on ${branch} and targets ${target}. Choose one workspace finish: A) keep the workspace; B) merge locally; C) push the branch; D) push and create a PR; or E) defer Archive. For A-D, Runtime will run preflight and archive with the selected finish when the checks pass; E keeps the current change for later.`,
         suggestedReply: 'Reply A, B, C, D, or E',
         agentInstruction:
-          'Show all five finish choices and their actual effects, then wait. For A-D, execute the matching complete commandAlternative containing --dry-run --finish; for E, stop without running an Archive command. Do not run --confirmed directly or guess a finish mode.',
+          'Show all five finish choices and their actual effects, then wait. For A-D, execute the matching complete commandAlternative; Runtime checks state and evidence before archiving. For E, stop without running an Archive command. Use the finish explicitly selected by the user.',
       };
 }
 
@@ -454,8 +483,18 @@ function nativePortableArchiveFinishAlternatives(
     ({ finish, name, description }) => ({
       name,
       stateVersion: state.state_version,
-      expectedAction: 'archive-preview' as const,
-      commandArgs: ['comet', 'native', 'archive', state.name, '--dry-run', '--finish', finish],
+      expectedAction: 'archive' as const,
+      commandArgs: [
+        'comet',
+        'native',
+        'archive',
+        state.name,
+        '--confirmed',
+        '--finish',
+        finish,
+        '--expected-state-version',
+        String(state.state_version),
+      ],
       requiredInputs: [],
       inputOptions: [],
       description: localized(state, description[1], description[0]),
@@ -538,7 +577,6 @@ function supervisorCoordinationRequired(children?: NativeChildrenInspection | nu
 function boundNativeShapePreparationCommandArgs(options: {
   change: string;
   stateVersion: number;
-  coordinationRequired: boolean;
 }): string[] {
   return [
     'comet',
@@ -547,7 +585,6 @@ function boundNativeShapePreparationCommandArgs(options: {
     options.change,
     '--summary',
     '<summary>',
-    ...(options.coordinationRequired ? ['--coordination-mode', '<coordination-mode>'] : []),
     '--expected-state-version',
     String(options.stateVersion),
     '--expected-action',
@@ -668,7 +705,12 @@ export function nativePortableContinuation(
 ): NativePortableContinuation {
   const coordinationRequired =
     supervisorCoordinationRequired(children) && state.coordination_mode === undefined;
-  const userCommunication = nativePortableUserCommunication(state, coordinationRequired, children);
+  const userCommunication = nativePortableUserCommunication(
+    state,
+    coordinationRequired,
+    children,
+    options.verifierStartup,
+  );
   const base = {
     schema: 'comet.native.continuation.v2' as const,
     skill: 'comet-native' as const,
@@ -703,18 +745,42 @@ export function nativePortableContinuation(
         disposition: 'await-user',
         action: 'confirm-shape',
         commandArgs: null,
-        requiredInputs: ['summary', 'shared-understanding-confirmation'],
-        inputOptions: [textInput('summary', '--summary')],
-        commandAlternatives: [
-          nativeNextDecisionAlternative({
-            name: 'confirm-shape',
-            change: state.name,
-            stateVersion: state.state_version,
-            expectedAction: 'confirm-shape',
-            flag: '--confirmed',
-            confirmationInput: 'shared-understanding-confirmation',
-          }),
+        requiredInputs: [
+          'summary',
+          'shared-understanding-confirmation',
+          ...(coordinationRequired ? ['coordination-choice'] : []),
         ],
+        inputOptions: [textInput('summary', '--summary')],
+        commandAlternatives: coordinationRequired
+          ? NATIVE_SUPERVISOR_COORDINATION_MODES.map((mode) => {
+              const alternative = nativeNextDecisionAlternative({
+                name: `confirm-shape-${mode}`,
+                change: state.name,
+                stateVersion: state.state_version,
+                expectedAction: 'confirm-shape',
+                flag: '--confirmed',
+                confirmationInput: 'shared-understanding-confirmation',
+              });
+              return {
+                ...alternative,
+                commandArgs: [...alternative.commandArgs!, '--coordination-mode', mode],
+                requiredInputs: [...alternative.requiredInputs, 'coordination-choice'],
+                inputOptions: [
+                  ...alternative.inputOptions,
+                  choiceInput('coordination-mode', '--coordination-mode', [mode]),
+                ],
+              };
+            })
+          : [
+              nativeNextDecisionAlternative({
+                name: 'confirm-shape',
+                change: state.name,
+                stateVersion: state.state_version,
+                expectedAction: 'confirm-shape',
+                flag: '--confirmed',
+                confirmationInput: 'shared-understanding-confirmation',
+              }),
+            ],
         runnerAction: runner('none'),
       };
     }
@@ -731,6 +797,22 @@ export function nativePortableContinuation(
         requiredInputs: ['summary', 'user-decision'],
         inputOptions: [textInput('summary', '--summary')],
         commandAlternatives: [
+          ...(state.workspace.isolation !== 'current' && state.workspace.finish === null
+            ? (['keep', 'merge', 'push', 'pull-request'] as const).map((finish) => {
+                const alternative = nativeNextDecisionAlternative({
+                  name: `accept-result-${finish}`,
+                  change: state.name,
+                  stateVersion: state.state_version,
+                  expectedAction: 'accept-result',
+                  flag: '--accept-result',
+                  confirmationInput: 'user-decision',
+                });
+                return {
+                  ...alternative,
+                  commandArgs: [...alternative.commandArgs!, '--finish', finish],
+                };
+              })
+            : []),
           nativeNextDecisionAlternative({
             name: 'accept-result',
             change: state.name,
@@ -882,14 +964,13 @@ export function nativePortableContinuation(
   if (state.phase === 'shape') {
     return {
       ...base,
-      disposition: coordinationRequired ? 'await-user' : 'continue',
+      disposition: 'continue',
       action: 'prepare-shape-confirmation',
       commandArgs: boundNativeShapePreparationCommandArgs({
         change: state.name,
         stateVersion: state.state_version,
-        coordinationRequired,
       }),
-      requiredInputs: ['summary', ...(coordinationRequired ? ['coordination-choice'] : [])],
+      requiredInputs: ['summary'],
       inputOptions: [
         {
           name: 'summary',
@@ -898,15 +979,6 @@ export function nativePortableContinuation(
           required: true,
           template: null,
         },
-        ...(coordinationRequired
-          ? [
-              choiceInput(
-                'coordination-mode',
-                '--coordination-mode',
-                NATIVE_SUPERVISOR_COORDINATION_MODES,
-              ),
-            ]
-          : []),
       ],
       runnerAction: runner('none'),
     };
@@ -978,7 +1050,13 @@ export function nativePortableContinuation(
               template: {
                 kind: 'builder-handoff',
                 summary: '<summary>',
-                addressed_acceptance_ids: ['<acceptance-id>'],
+                addressed_acceptance_ids: state.acceptance.map(({ id }) => id),
+                acceptance_review: state.acceptance.map(({ id }) => ({
+                  id,
+                  status: 'not-implemented',
+                  evidence: [],
+                  note: '<implementation and evidence summary>',
+                })),
                 checks: [{ name: '<check-name>', result: 'not-run', note: null }],
                 verification_checks: [nativeCheckPlanTemplate()],
                 known_limits: [],
@@ -1121,7 +1199,30 @@ export function nativePortableContinuation(
           template: {
             kind: 'builder-handoff',
             summary: '<summary>',
-            addressed_acceptance_ids: ['<acceptance-id>'],
+            addressed_acceptance_ids: state.acceptance.map(({ id }) => id),
+            acceptance_review: state.acceptance.map(({ id }) => {
+              const previous = state.builder_handoff?.acceptance_review?.find(
+                (entry) => entry.id === id,
+              );
+              return previous
+                ? {
+                    ...previous,
+                    evidence: [...previous.evidence],
+                    ...(state.loop.previous_unresolved_ids.includes(id)
+                      ? {
+                          status: 'implemented-no-evidence',
+                          evidence: [],
+                          note: '<current repair and evidence summary>',
+                        }
+                      : {}),
+                  }
+                : {
+                    id,
+                    status: 'not-implemented',
+                    evidence: [],
+                    note: '<implementation and evidence summary>',
+                  };
+            }),
             checks: [{ name: '<check-name>', result: 'not-run', note: null }],
             verification_checks: [],
             known_limits: [],

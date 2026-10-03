@@ -132,8 +132,6 @@ comet classic openspec -- --version
 comet state check <name> design --json
 ```
 
-多条只读 comet 命令（如 `state get`、`state next`、`state artifacts`）可以合并成一条 shell 调用依次执行，减少进程启动开销。
-
 该入口已检查 OpenSpec 的全部必需依赖、实际输出和 Comet 状态，不再额外重复查询 status。`isComplete` 仅用于诊断，非必需产物不会阻止流程继续。检查失败时，再查询 status，找出尚未生成的依赖，或处理已报告的路径错误、缺少必需能力等问题。
 
 任一拆分项未通过检查时，不能宣告拆分完成，也不能询问用户开始哪个 change。应停止后续推进，从该 change 的第一个 `ready` 或 `blocked` 产物恢复 `/comet-open`。OpenSpec 检查通过、但 Comet state 检查失败时，先核对该 change 的 Runtime 归属、Run 和 phase，再重新执行整批检查；`compat` change 按原状态机恢复。

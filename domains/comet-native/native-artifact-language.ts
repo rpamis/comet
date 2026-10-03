@@ -159,17 +159,13 @@ export function nativeVerificationHeadingKey(heading: string): NativeVerificatio
   return VERIFICATION_HEADING_KEYS.get(heading.trim().toLocaleLowerCase('en-US')) ?? null;
 }
 
-export function nativeBriefTemplate(language: NativeArtifactLanguage): string {
-  const sections: NativeBriefSection[] = [
-    'outcome',
-    'scope',
-    'nonGoals',
-    'acceptanceExamples',
-    'constraints',
-    'decisions',
-    'openQuestions',
-    'verificationExpectations',
-  ];
+export function nativeBriefTemplate(
+  language: NativeArtifactLanguage,
+  options: { compact?: boolean } = {},
+): string {
+  const sections: NativeBriefSection[] = ['outcome', 'scope', 'nonGoals', 'acceptanceExamples'];
+  if (!options.compact)
+    sections.push('constraints', 'decisions', 'openQuestions', 'verificationExpectations');
   return sections.map((section) => `# ${nativeBriefHeading(language, section)}\n`).join('\n');
 }
 

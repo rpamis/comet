@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { promises as fs } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
@@ -605,6 +606,27 @@ describe('Comet Native CLI dispatcher', () => {
       });
       const cwd = vi.spyOn(process, 'cwd').mockReturnValue(secondary);
       try {
+        const primaryRead = await runNativeCliDetailed(
+          ['status', '--json', '--project-root', projectRoot],
+          { invocationCwd: projectRoot },
+        );
+        expect(primaryRead.dispatch.executionCwd).toBe(path.resolve(projectRoot));
+        const relativeRead = await runNativeCliDetailed(
+          ['status', '--json', '--project-root', '.'],
+          { invocationCwd: projectRoot },
+        );
+        expect(relativeRead.dispatch.executionCwd).toBe(path.resolve(projectRoot));
+        const reads = await Promise.all(
+          [projectRoot, secondary].map((invocationCwd) =>
+            runNativeCliDetailed(['status', '--json', '--project-root', projectRoot], {
+              invocationCwd,
+            }),
+          ),
+        );
+        expect(reads.map((result) => result.dispatch.executionCwd)).toEqual([
+          path.resolve(projectRoot),
+          path.resolve(secondary),
+        ]);
         await expect(projectRootFrom(projectRoot)).resolves.toBe(path.resolve(secondary));
         expect(
           json(
@@ -820,11 +842,7 @@ describe('Comet Native CLI dispatcher', () => {
       ]),
     );
     expect(runnerOnly).toMatchObject({
-      exitCode: 65,
-      error: {
-        code: 'invalid-data',
-        message: expect.stringContaining('public JSON cannot supply identity'),
-      },
+      exitCode: 0,
       data: {
         state: { phase: 'build' },
         continuation: { runnerAction: { kind: 'builder-handoff' } },
@@ -1148,6 +1166,7 @@ describe('Comet Native CLI dispatcher', () => {
         candidateId: 'candidate-revise-implementation',
         summary: 'Implemented the confirmed acceptance.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: passedReview('reviewer-revise-implementation'),
       },
     });

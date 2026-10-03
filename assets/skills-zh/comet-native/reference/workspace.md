@@ -32,7 +32,7 @@ Supervisor Change 中由 `readyChildren` 返回的子任务固定使用独立 `w
 
 ## Archive 收尾
 
-只有 `continuation` 允许 Archive 时才继续。归档直接使用已接受的验收结果。使用 `current` 工作区时，不需要选择收尾方式：展示当前分支和目录，说明不会执行 merge、push 或创建 PR，再按最新 `continuation` 继续。
+只有 `continuation` 允许 Archive 时才继续。归档直接使用已接受的验收结果。用户接受结果时已经选择了收尾方式的，沿用该选择，不再次询问。使用 `current` 工作区时，不需要选择收尾方式：展示当前分支和目录，说明不会执行 merge、push 或创建 PR，再按最新 `continuation` 继续。
 
 使用 `branch` 或 `worktree`、且需要选择收尾方式时，一次展示实际 change 分支、目标分支和目录，用单选题提供以下全部选项。文本提问必须使用下表；结构化提问必须将“方式”作为短标签、“实际影响”作为说明，不得只显示 `merge`、`push`、`pull-request` 或 `keep`。
 
@@ -46,15 +46,21 @@ Supervisor Change 中由 `readyChildren` 返回的子任务固定使用独立 `w
 
 用户选择 A、B、C 或 D 后，分别按 `keep`、`merge`、`push` 或 `pull-request` 执行 Runtime 返回的完整命令；选择 E 后停止。Archive-ready 时按以下顺序操作：
 
-1. 先执行 Runtime 返回的完整 `archive --dry-run` 命令。隔离工作区尚未选择 finish 时，等待用户选择，然后可以直接执行 `comet native archive <change-name> --confirmed --finish <选定的方式>` 一步完成归档（Runtime 会记录选择并在事务内复验验证新鲜度，不再需要第二次 dry-run）；也可以先使用 `commandAlternatives` 中对应的 `--dry-run --finish` 命令预览。不得自行补其他参数。
+归档前沿用已生效的项目提交规范，准备归档提交说明；选择本地合并时也准备合并说明。格式、语言和正文要求已有明确规范时直接采用，无需再次询问；存在冲突或缺少必须由用户提供的信息时，只询问缺失内容。通过公开的 `--commit-message <text>` 传入归档说明，`--merge-message <text>` 仅用于 merge。中文和多行正文须作为一个完整参数传入。没有项目约定或用户要求时可沿用默认说明，项目 Git Hooks 始终正常执行。
+
+1. 执行最新 continuation。隔离工作区尚未选择 finish 时，等待用户选择后执行对应的 `--confirmed --finish` 完整备选命令，保留状态版本参数；Runtime 一次完成预检和事务内复查。需要预览自定义说明时，执行 `archive --dry-run --finish` 并补入上述消息参数，选择 merge 时同时核对合并说明。除公开消息参数外，保留 Runtime 给出的工作区、确认和串行归档参数，不自行增删。
 2. dry-run 返回 `ready: false` 时，只处理同一响应列出的阻塞。不要先额外运行 `status`、重复 Archive，或手工提交 Native 的状态和 verification 文件。
-3. 只有 dry-run 返回 `ready: true` 后，才执行它返回的唯一 `archive --confirmed` 命令。
+3. dry-run 返回 `ready: true` 后，核对 `commitMessages` 与已准备的说明一致，执行它返回的唯一 `archive --confirmed` 命令，完整保留消息内容；不再重跑相同预览或重新拼接说明。
 4. dry-run 或 confirmed 失败时，只按最新结构化 `continuation` 和 `workspaceFinishResult.recoveryArgs` 继续，不从错误文本猜测下一步。
 
 选择 A 表示保留当前分支和目录，同一次归档不得删除该 worktree。其他普通 change 归档后，如果该 change 的 worktree 已没有未提交修改，向用户提供清理选项；Runtime 已清理的无需再次询问。只有用户确认后才执行 `git worktree remove`，存在未提交修改或仍在使用的 worktree 必须保留。
 
 Supervisor 最终交付后，Runtime 只自动清理没有未提交修改、且不再使用的子任务 worktree、集成 worktree 及其分支。发现未提交文件、当前进程仍在其中或 Git 步骤未完成时，保留现场并返回阻塞原因，绝不强制删除。
 
-只提交属于当前 change 的实现和正式文件，保留其他用户改动。执行 Runtime 返回的 `commandArgs` 后，检查工作区收尾结果 `workspaceFinishResult`。结果为阻塞（`blocked`）时，保留现场，并执行 `recoveryArgs` 中的恢复命令。
+只提交属于当前 change 的实现和正式文件，保留其他用户改动。执行 Runtime 返回的 `commandArgs` 后，检查工作区收尾结果 `workspaceFinishResult`。结果为阻塞（`blocked`）时，保留现场，说明原因，并在已有交付授权内修复后执行 `recoveryArgs`，不要求用户再次说“重试”。只有恢复需要新的权限、用户信息或交付方式时才询问；恢复完成前保持交付待完成。
+
+项目 Git Hook 拒绝提交或合并说明时，卷宗可能已封存而 Git 收尾尚未完成。按项目规范修正尚未完成步骤的说明，在返回的恢复命令中传入对应消息参数；Runtime 复用已完成的归档提交、Spec 发布和合并。已完成提交的说明不能通过恢复改写，也不绕过 Hook 或重新创建 change。
+
+用户或 Agent 已按授权手动完成 Git 收尾时，先运行 `comet native doctor <change-name> --json`，按返回的恢复命令继续。`doctor --repair` 对本地 keep / merge 收尾只在卷宗身份、提交内容和所选收尾条件得到证明后清理记录；push / pull-request 仍通过 Archive 核对远端和平台结果。Doctor 不代替提交、合并或推送。归档目录存在或 portable 状态为 done 不代表工作区交付完成；以公开状态和收尾结果为准。
 
 完成标准：状态为 `done`，用户授权的工作区收尾结果为已完成（`completed`）或已保留（`kept`）；其他结果按 `continuation` 继续。任务结束时，用启动时保存的原始请求、workflow、change 和同一个 session 调用 `comet task --complete`。不要运行 `printenv COMET_TASK` 或读取其他未声明的环境变量来猜测任务内容。

@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -220,6 +221,7 @@ async function dispatchedVerifier(
     {
       summary: 'Implemented the selected workflow.',
       addressedAcceptanceIds: ['A1'],
+      acceptanceReview: fixtureAcceptanceReview(['A1']),
       checks: [],
       knownLimits: [],
       review: null,
@@ -275,6 +277,7 @@ async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
       {
         summary: 'Tried another repair hypothesis.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         checks: [],
         knownLimits: [],
         review: null,
@@ -529,7 +532,7 @@ describe('Native SDK Workflow Application', () => {
     expect(run.state).toMatchObject({
       phase: 'shape',
       status: 'await-user',
-      document_constraints_version: 1,
+      document_constraints_version: 2,
       acceptance: [{ source: 'brief.md', text: 'The selected workflow resumes.' }],
     });
     expect(run.waits.at(-1)).toMatchObject({
@@ -1863,6 +1866,7 @@ children:
         {
           summary: 'Integrated API and UI candidates.',
           addressedAcceptanceIds: ['A1'],
+          acceptanceReview: fixtureAcceptanceReview(['A1']),
           checks: [],
           knownLimits: [],
           review: null,
@@ -1995,6 +1999,7 @@ children:
         {
           summary: 'Repaired the parent integration.',
           addressedAcceptanceIds: ['A1'],
+          acceptanceReview: fixtureAcceptanceReview(['A1']),
           checks: [],
           knownLimits: [],
           review: null,
@@ -2086,6 +2091,7 @@ children:
         {
           summary: 'Updated the parent candidate after user feedback.',
           addressedAcceptanceIds: ['A1'],
+          acceptanceReview: fixtureAcceptanceReview(['A1']),
           checks: [],
           knownLimits: [],
           review: null,
@@ -2635,6 +2641,36 @@ children:
     await expect(collectProposal(paths, initialState)).rejects.toThrow(/brief-section-missing/);
   });
 
+  it('keeps SDK Shape approval current after formatting-only document edits', async () => {
+    const { root, paths, changeDir, runtime, run: prepared } = await preparedShape();
+    expect(prepared.state).toMatchObject({ document_constraints_version: 2 });
+    const wait = prepared.waits.at(-1)!;
+    let run = await runtime.resolveWait({
+      runId: prepared.runId,
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      decisionId: 'shape-approved',
+      choice: 'approved',
+    });
+    const brief = path.join(changeDir, 'brief.md');
+    await fs.writeFile(
+      brief,
+      (await fs.readFile(brief, 'utf8')).replace(
+        'Ship the selected workflow.',
+        'Ship the selected workflow.\n',
+      ),
+    );
+    run = await succeedLatestAction(
+      runtime,
+      run,
+      await collectProposal(paths, run.state as NativePortableState),
+      root,
+      'formatted-shape',
+    );
+    expect(run.state).toMatchObject({ phase: 'build' });
+    expect(run.actions.at(-1)).toMatchObject({ stepId: 'build.builder' });
+  });
+
   it('enters Build through a host handoff only after revalidating the approved Shape', async () => {
     const { root, paths, runtime, run: prepared } = await preparedShape();
     const wait = prepared.waits.at(-1)!;
@@ -2803,6 +2839,54 @@ children:
     expect(await afterApply.runtime.inspect(afterApply.run.runId)).toEqual(afterApply.run);
   });
 
+  it.each([
+    undefined,
+    [],
+    [{ id: 'A1', status: 'not-implemented', evidence: [], note: 'Work remains.' }],
+  ])(
+    'keeps an incomplete SDK Builder on its claimed Action for correction: %j',
+    async (acceptanceReview) => {
+      const { root, paths, runtime, run: prepared } = await preparedShape();
+      const wait = prepared.waits.at(-1)!;
+      let run = await runtime.resolveWait({
+        runId: prepared.runId,
+        waitId: wait.id,
+        proposalHash: wait.proposalHash,
+        decisionId: 'shape-approved',
+        choice: 'approved',
+      });
+      run = await succeedLatestAction(
+        runtime,
+        run,
+        await collectProposal(paths, run.state as NativePortableState),
+        root,
+        'shape-revalidated',
+      );
+      const builder = run.actions.at(-1)!;
+      await expect(
+        succeedLatestAction(
+          runtime,
+          run,
+          {
+            summary: 'Incomplete work.',
+            addressedAcceptanceIds: ['A1'],
+            ...(acceptanceReview === undefined ? {} : { acceptanceReview }),
+            checks: [],
+            knownLimits: [],
+            submittedAt: '2026-09-24T01:00:00.000Z',
+          },
+          root,
+          'incomplete-builder',
+          'builder-session',
+        ),
+      ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+      const current = await runtime.inspect(run.runId);
+      expect(current.state).toMatchObject({ phase: 'build', verification_result: 'pending' });
+      expect(current.actions.at(-1)).toMatchObject({ id: builder.id, status: 'running' });
+      expect(current.actions.some((action) => action.stepId === 'verify.checks')).toBe(false);
+    },
+  );
+
   it('records a claimed Builder handoff as a candidate before scheduling independent checks', async () => {
     const { root, paths, runtime, run: prepared } = await preparedShape();
     const wait = prepared.waits.at(-1)!;
@@ -2826,6 +2910,7 @@ children:
       {
         summary: 'Implemented the selected workflow.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         checks: [],
         knownLimits: [],
         review: null,
@@ -2870,6 +2955,7 @@ children:
       {
         summary: 'Implemented the selected workflow.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         checks: [],
         knownLimits: [],
         review: null,
@@ -3354,6 +3440,7 @@ children:
       {
         summary: 'Implemented the corrected candidate.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         checks: [],
         knownLimits: [],
         review: null,

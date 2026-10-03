@@ -393,7 +393,7 @@ export async function readNativeLocalExecution(
 
 /**
  * Return the currently running Verifier execution identity only when the
- * local overlay is bound to this exact portable state and candidate. Status,
+ * portable Action or local overlay is bound to this exact state and candidate. Status,
  * Show, and Next must not print an identity from a stale or completed run.
  */
 export function nativeVerifierExecutionRefForState(
@@ -422,6 +422,19 @@ export function nativeVerifierExecutionRefForState(
     return undefined;
   }
   return execution.executionId;
+}
+
+export function nativeVerifierStartupConfirmationForState(
+  state: NativePortableState,
+  local: NativeLocalExecutionState | null,
+): 'unconfirmed' | 'confirmed' | undefined {
+  const action = activeNativeVerifierAction(state);
+  if (action) return action.claim ? 'confirmed' : 'unconfirmed';
+  if (nativeVerifierExecutionRefForState(state, local) === undefined) return undefined;
+  return local?.execution?.verifierStartedAt != null ||
+    (local?.execution?.requestCheckRounds ?? 0) > 0
+    ? 'confirmed'
+    : 'unconfirmed';
 }
 
 export async function writeNativeLocalExecution(

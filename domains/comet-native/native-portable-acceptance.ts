@@ -55,6 +55,8 @@ function compareText(left: string, right: string): number {
 export function buildNativePortableAcceptance(options: {
   briefMarkdown: string;
   briefSource?: string;
+  /** Enable references only at the versioned Shape boundary; legacy callers retain their IDs. */
+  resolveBriefReferences?: boolean;
   specs?: readonly NativePortableSpecAcceptanceInput[];
 }): NativePortableAcceptanceCriterion[] {
   const briefSource = portableRef(options.briefSource ?? 'brief.md', 'Native brief source');
@@ -71,13 +73,27 @@ export function buildNativePortableAcceptance(options: {
     Number.MAX_SAFE_INTEGER,
     'none',
   ).map(({ source, text }) => ({ source, text }));
+  const briefCount = derived.length;
   for (const spec of specs) {
     const source = portableRef(spec.source, `Native spec source for ${spec.capability}`);
-    derived.push(
-      ...deriveSpecAcceptanceCriteria(spec.markdown, source, Number.MAX_SAFE_INTEGER, 'none').map(
-        ({ text }) => ({ source, text }),
-      ),
-    );
+    for (const scenario of deriveSpecAcceptanceCriteria(
+      spec.markdown,
+      source,
+      Number.MAX_SAFE_INTEGER,
+      'none',
+      { resolveBriefReferences: options.resolveBriefReferences === true },
+    )) {
+      if (scenario.briefAcceptanceRef !== undefined) {
+        const index = Number(scenario.briefAcceptanceRef.slice(1)) - 1;
+        if (!Number.isSafeInteger(index) || index < 0 || index >= briefCount) {
+          throw new Error(
+            `Native Spec references unknown brief acceptance ${scenario.briefAcceptanceRef}: ${source}`,
+          );
+        }
+        continue;
+      }
+      derived.push({ source, text: scenario.text });
+    }
   }
 
   const seen = new Set<string>();

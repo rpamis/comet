@@ -79,7 +79,7 @@ async function checkFreshness(outputRelative, outputFile, expected) {
   }
 }
 
-// Build outputs: the shared runtime (for the in-process CLI facade) plus one
+// Build outputs: the aggregate runtime plus one
 // self-contained bundle per command entry. Each per-command output replaces
 // the former thin launcher, so running e.g. `comet-state.mjs` only loads the
 // state command's dependency graph instead of the whole Classic domain.

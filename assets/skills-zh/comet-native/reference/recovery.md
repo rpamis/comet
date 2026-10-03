@@ -14,7 +14,7 @@
 
 若 SDK change 的本机 Run 记录丢失，先用 `comet native doctor <change-name> --json` 检查。`comet-state.yaml` 含 `run_checkpoint` 时，具名 `native status` 或 `native next` 会在新设备恢复已保存的阶段、Action 和确认；继续外部工作前确认原设备的执行进程已停止，结果未明的 Action 先核对，不重放。只有旧状态文件没有检查点时，才向用户说明显式恢复会回到 Shape、旧确认与检查需要重做；获得明确同意后运行 `comet native doctor <change-name> --repair --confirmed`。
 
-Runtime 出现故障时，先停止修改项目，再重新运行 `status --details --json` 和只读 `doctor`。只执行 `continuation` 或 `doctor` 明确返回的恢复动作。跨设备状态、本机执行状态、锁和事务始终由 Runtime 管理；无法确定自动恢复是否安全时，保留现场并等待用户决定。
+命令已返回具体错误、当前状态和恢复动作时，先按该响应处理。Runner 输入校验失败按[填写命令输入](commands.md#填写命令输入)修正，归档提交或合并失败按[Archive 收尾](workspace.md#archive-收尾)继续，仍在运行的任务保持原标识。没有当前状态、调用中断或现场与响应不一致时，先停止依赖该状态的修改，运行一次 `status --details --json`；状态或恢复记录仍无法解释问题时，再运行只读 `doctor`。只执行 `continuation` 或 `doctor` 明确返回的恢复动作。跨设备状态、本机执行状态、锁和事务始终由 Runtime 管理；无法确定自动恢复是否安全时，保留现场并等待用户决定。
 
 仅等待外部输入时，按[等待外部输入与监控](#等待外部输入与监控)处理，独立工作继续。恢复后重新分配 Supervisor 任务前，必须读取[Supervisor 协作](commands.md#supervisor-协作)；重新启动 Verifier 前，必须读取[Verify 协议](commands.md#verify-协议)，核对当前任务标识、待验收的实现版本和执行状态。
 
@@ -33,8 +33,8 @@ SDK Run 从 `comet-state.yaml` 的 `run_checkpoint` 恢复；本节以下的 `st
 - Verify（`verify-ready`）：重新运行当前实现所需的检查，并启动新的 Verifier；不沿用旧设备上的通过结果。
 - Archive（`archive-ready`）：先安全返回 Verify，把验收结果重置为待检查（`pending`），再验收已经同步到新设备的实现。
 - 等待用户或阻塞（`await-user` / `blocked`）：恢复原来的阻塞原因、负责处理的人和允许动作，等待对应条件满足后再继续。
-- active 目录中的 `done`：只完成可以确定的目录移动与清理。
-- archive 目录中的 `done`：以只读方式展示，这个 change 已经结束。
+- active 目录中的 `done`：只按 Runtime 返回的动作完成目录移动与清理；尚有 Git 收尾时，按[Archive 收尾](workspace.md#archive-收尾)继续。
+- archive 目录中的 `done`：先核对公开状态中的工作区收尾结果。所选收尾已完成或保留时只读展示；仍报告未完成或 `blocked` 时，按[Archive 收尾](workspace.md#archive-收尾)继续。
 
 旧任务的进程、日志连接和 Agent 会话都视为已经丢失，不能根据残留文件猜测它们是否成功。检查已经结束、但 YAML 尚未记录结果时，只能重跑可以安全重复的检查；可能重复产生外部影响的操作，需要等待用户决定。
 

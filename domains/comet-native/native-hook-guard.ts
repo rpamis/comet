@@ -1,10 +1,14 @@
 import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
 
-import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
+import {
+  invalidateHookReadCache,
+  memoizedHookRead,
+} from '../../platform/process/hook-read-cache.js';
 import {
   parseCometHookRequest,
   readCometHookRequest,
+  normalizeCometHookTargets,
 } from '../../platform/process/hook-adapter.js';
 import type { CometHookIntent, CometHookRequest } from '../../platform/process/hook-adapter.js';
 import type { CometHookDecision } from '../workflow-contract/hook.js';
@@ -26,7 +30,20 @@ import {
   returnNativePortableChangeToBuild,
   returnNativePortableChangeToShape,
 } from './native-portable-runtime.js';
+import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
 import type { NativePortableState } from './native-portable-types.js';
+
+const readHookProjectConfig = memoizedHookRead('nativeHookProjectConfig', readProjectConfig);
+
+async function runNativeHookMutation<T>(operation: () => Promise<T>): Promise<T> {
+  invalidateHookReadCache();
+  try {
+    return await operation();
+  } finally {
+    // Reads started while the mutation was pending cannot outlive its result.
+    invalidateHookReadCache();
+  }
+}
 
 export type NativeHookIntent = CometHookIntent;
 export interface NativeHookRequest extends Omit<CometHookRequest, 'toolName'> {
@@ -338,6 +355,21 @@ async function inspectPortableWriteTargets(options: {
     };
   }
   if (formalTargets.length > 0) {
+    if (
+      state.document_constraints_version === 2 &&
+      formalTargets.every(
+        (target) => target === 'brief.md' || /^specs\/[^/]+\/spec\.md$/u.test(target),
+      )
+    ) {
+      return {
+        allowed: true,
+        reason:
+          'Native formal Markdown edit; Runtime rechecks the actual content before an implementation write or workflow transition',
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+      };
+    }
     if (state.phase !== 'shape') {
       if (sdkOwned) {
         return {
@@ -348,11 +380,13 @@ async function inspectPortableWriteTargets(options: {
           change: state.name,
         };
       }
-      const returned = await returnNativePortableChangeToShape({
-        paths,
-        name: state.name,
-        reason: `Formal requirement write requested for ${formalTargets.join(', ')}`,
-      });
+      const returned = await runNativeHookMutation(() =>
+        returnNativePortableChangeToShape({
+          paths,
+          name: state.name,
+          reason: `Formal requirement write requested for ${formalTargets.join(', ')}`,
+        }),
+      );
       return {
         allowed: true,
         reason: `Native requirements changed; returned to Shape goal cycle ${returned.loop.goal_cycle}`,
@@ -370,6 +404,26 @@ async function inspectPortableWriteTargets(options: {
     };
   }
   if (implementationTargets.length > 0) {
+    if (state.document_constraints_version === 2 && state.phase !== 'shape') {
+      const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
+      if (drift.drifted) {
+        const returned = await runNativeHookMutation(() =>
+          returnNativePortableChangeToShape({
+            paths,
+            name: state.name,
+            reason: drift.reason ?? 'Native confirmed requirements changed',
+            keepFailureBudget: true,
+          }),
+        );
+        return {
+          allowed: false,
+          reason: implementationWriteDeniedReason(returned),
+          workflow: 'native',
+          phase: returned.phase,
+          change: returned.name,
+        };
+      }
+    }
     if (state.children_contract_hash) {
       return {
         allowed: false,
@@ -398,11 +452,13 @@ async function inspectPortableWriteTargets(options: {
           change: state.name,
         };
       }
-      const returned = await returnNativePortableChangeToBuild({
-        paths,
-        name: state.name,
-        reason: `Observed implementation write before ${implementationTargets.join(', ')}`,
-      });
+      const returned = await runNativeHookMutation(() =>
+        returnNativePortableChangeToBuild({
+          paths,
+          name: state.name,
+          reason: `Observed implementation write before ${implementationTargets.join(', ')}`,
+        }),
+      );
       return {
         allowed: true,
         reason: `Native candidate was invalidated and returned to Build iteration ${returned.loop.iteration}`,
@@ -463,7 +519,7 @@ function isWithin(parent: string, target: string): boolean {
  * any project write during Shape/Verify/Archive reverts or denies.
  */
 async function nativeDocumentWritesRevert(projectRoot: string): Promise<boolean> {
-  const config = await readProjectConfig(projectRoot);
+  const config = await readHookProjectConfig(projectRoot);
   return config?.native?.document_writes === 'revert';
 }
 
@@ -506,7 +562,7 @@ function requestTargetsAreControlOnly(
 }
 
 async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativeContext | null> {
-  const config = await readProjectConfig(projectRoot);
+  const config = await readHookProjectConfig(projectRoot);
   if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
 
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
@@ -545,7 +601,7 @@ async function selectedNativeContextImpl(
   projectRoot: string,
   name: string,
 ): Promise<ActiveNativeContext | null> {
-  const config = await readProjectConfig(projectRoot);
+  const config = await readHookProjectConfig(projectRoot);
   if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   try {
@@ -573,6 +629,8 @@ const activeNativeContext = memoizedHookRead('nativeActiveContext', (projectRoot
   activeNativeContextImpl(projectRoot),
 );
 
+const selectedNativeContext = memoizedHookRead('selectedNativeContext', selectedNativeContextImpl);
+
 export async function listActiveNativeHookChanges(
   projectRoot: string,
 ): Promise<ActiveNativeHookChange[]> {
@@ -588,22 +646,9 @@ export async function resolveActiveNativeHookChange(
   projectRoot: string,
   name: string,
 ): Promise<ActiveNativeHookChange | null> {
-  const config = await readProjectConfig(projectRoot);
-  if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
-  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
-  try {
-    if (await readSdkChangeOwner(projectRoot, 'native', name)) {
-      const { state } = await inspectNativeSdkRun(projectRoot, name);
-      return state.archived ? null : { workflow: 'native', name: state.name, phase: state.phase };
-    }
-    const state = (await isNativePortableChange(paths, name))
-      ? await readNativePortableChange(paths, name)
-      : await readNativeChange(paths, name);
-    return state.archived ? null : { workflow: 'native', name: state.name, phase: state.phase };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw error;
-  }
+  const context = await selectedNativeContext(projectRoot, name);
+  const state = context?.changes[0]?.state;
+  return state ? { workflow: 'native', name: state.name, phase: state.phase } : null;
 }
 
 export function parseNativeHookRequest(source: string): NativeHookRequest {
@@ -623,7 +668,7 @@ export async function inspectNativeUnownedHookTargets(
   options: { allowCanonicalFormal?: boolean } = {},
 ): Promise<NativeHookGuardResult | null> {
   if (request.intent !== 'write' || request.targets.length === 0) return null;
-  const config = await readProjectConfig(projectRoot);
+  const config = await readHookProjectConfig(projectRoot);
   if (!config || !(config.workflows ?? [config.default_workflow]).includes('native')) return null;
   const context = await activeNativeContext(projectRoot);
   if (!context) return null;
@@ -650,11 +695,12 @@ export async function inspectNativeHookGuard(
   request: NativeHookRequest,
   selectedChangeName?: string,
 ): Promise<NativeHookGuardResult> {
+  request = { ...request, targets: normalizeCometHookTargets(request.targets) };
   // An explicit selection is authoritative. Read only that change so a damaged
   // unrelated change cannot block every write or add O(number of changes) I/O
   // to the Hook critical path.
   const context = selectedChangeName
-    ? await selectedNativeContextImpl(projectRoot, selectedChangeName)
+    ? await selectedNativeContext(projectRoot, selectedChangeName)
     : await activeNativeContext(projectRoot);
   if (!context) return { allowed: true, reason: 'Native workflow is not enabled' };
   if (request.intent === 'non-write') {

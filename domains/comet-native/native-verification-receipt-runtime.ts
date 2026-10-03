@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { measureCometGitCommandAsync } from '../../platform/process/runtime-metrics.js';
 
 import { spawnCommand } from '../../platform/process/spawn-command.js';
 import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
@@ -569,14 +570,18 @@ async function gitWorktreeIdentity(projectRoot: string): Promise<{
 }> {
   try {
     const [{ stdout: rootOutput }, { stdout: commitOutput }] = await Promise.all([
-      execFileAsync('git', ['-C', projectRoot, 'rev-parse', '--show-toplevel'], {
-        windowsHide: true,
-        timeout: 10_000,
-      }),
-      execFileAsync('git', ['-C', projectRoot, 'rev-parse', 'HEAD'], {
-        windowsHide: true,
-        timeout: 10_000,
-      }),
+      measureCometGitCommandAsync(() =>
+        execFileAsync('git', ['-C', projectRoot, 'rev-parse', '--show-toplevel'], {
+          windowsHide: true,
+          timeout: 10_000,
+        }),
+      ),
+      measureCometGitCommandAsync(() =>
+        execFileAsync('git', ['-C', projectRoot, 'rev-parse', 'HEAD'], {
+          windowsHide: true,
+          timeout: 10_000,
+        }),
+      ),
     ]);
     const absoluteRoot = path.resolve(rootOutput.trim());
     const relativeRoot = path.relative(projectRoot, absoluteRoot).replaceAll('\\', '/');

@@ -1,10 +1,14 @@
 import { inspectNativeChildren } from './native-children.js';
+import type { NativeWorkspaceFinish } from './native-workspace.js';
 import {
   nativePortableContinuation,
   type NativePortableContinuationOptions,
 } from './native-portable-continuation.js';
 import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
-import { nativeVerifierExecutionRefForState } from './native-local-execution.js';
+import {
+  nativeVerifierExecutionRefForState,
+  nativeVerifierStartupConfirmationForState,
+} from './native-local-execution.js';
 import { readNativeWorkspaceFinishJournal } from './native-workspace-finish.js';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
 import {
@@ -16,6 +20,7 @@ import { nativePortableStateSummary } from './native-portable-summary.js';
 import {
   applyNativeRunnerInput,
   readNativeRunnerInput,
+  registerNativeRunnerInputFile,
   validateNativeRunnerInputBoundary,
 } from './native-runner-input.js';
 import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
@@ -144,6 +149,10 @@ async function portableParentView(
       : {}),
     continuation: nativePortableContinuation(state, children, {
       verifierExecutionRef,
+      verifierStartup: nativeVerifierStartupConfirmationForState(
+        state,
+        runtime.localStatus === 'available' ? runtime.local : null,
+      ),
       verificationCheckPlans,
       retryCheckIds,
       supervisorIntegrationRetryIds,
@@ -183,6 +192,15 @@ export async function nativeNextCommand(
   const validateOnly = takeFlag(args, '--validate-only');
   const confirmed = takeFlag(args, '--confirmed');
   const acceptResult = takeFlag(args, '--accept-result');
+  const finish = takeOption(args, '--finish') as NativeWorkspaceFinish | undefined;
+  if (
+    finish !== undefined &&
+    (!acceptResult || !['keep', 'merge', 'push', 'pull-request'].includes(finish))
+  ) {
+    throw new NativeUsageError(
+      '--finish requires --accept-result and must be keep, merge, push, or pull-request',
+    );
+  }
   const reviseImplementation = takeFlag(args, '--revise-implementation');
   const reviseRequirements = takeFlag(args, '--revise-requirements');
   const retryVerifier = takeFlag(args, '--retry-verifier');
@@ -231,7 +249,7 @@ export async function nativeNextCommand(
       runnerInputFile !== undefined)
   ) {
     throw new NativeUsageError(
-      '--coordination-mode is only valid when preparing a Supervisor Shape confirmation',
+      '--coordination-mode is only valid when preparing or confirming a Supervisor Shape',
     );
   }
   // Agent-authored Build/Verify completion fields retired with Native v4.
@@ -252,7 +270,8 @@ export async function nativeNextCommand(
       runnerInputFile !== undefined ||
       validateOnly ||
       resolveVerifierBlocker ||
-      maxParallelText !== undefined
+      maxParallelText !== undefined ||
+      finish !== undefined
     ) {
       throw new NativeUsageError(
         'This Native SDK next action does not accept legacy transition options',
@@ -342,11 +361,6 @@ export async function nativeNextCommand(
     }
     return advanceNativeSdkChange(projectRoot, name);
   }
-  if (coordinationMode !== undefined && confirmed) {
-    throw new NativeUsageError(
-      '--coordination-mode is only valid when preparing a Supervisor Shape confirmation',
-    );
-  }
   if (proposalHash !== undefined) {
     throw new NativeUsageError('--proposal-hash is only valid for a Native SDK Verify decision');
   }
@@ -366,6 +380,7 @@ export async function nativeNextCommand(
         phase: 'archive' as const,
         status: 'blocked' as const,
         disposition: 'blocked' as const,
+        requiresUserDecision: false,
         action: 'archive' as const,
         commandArgs: finishJournal.result?.recoveryArgs ?? [
           'comet',
@@ -387,9 +402,9 @@ export async function nativeNextCommand(
           message:
             finishJournal.result?.message ??
             'Native Archive completed, but workspace finish is still pending.',
-          suggestedReply: 'Retry workspace finish',
+          suggestedReply: null,
           agentInstruction:
-            'Retry the recorded Native workspace finish command after resolving the Git blocker; do not treat this change as complete until it succeeds.',
+            'Report the blocker and resolve it within the recorded delivery authorization, then retry the recorded command. Ask only if new information or authorization is needed; a retry of the same finish does not need another confirmation.',
         },
       };
       return {
@@ -447,9 +462,11 @@ export async function nativeNextCommand(
     try {
       input = await readNativeRunnerInput(runnerInputFile!, projectRoot);
     } catch (error) {
+      const rejected = errorResult('next', error);
       return {
-        ...errorResult('next', error),
+        ...rejected,
         data: {
+          ...(rejected.data && typeof rejected.data === 'object' ? rejected.data : {}),
           state: nativePortableStateSummary(initialState, configured.paths),
           continuation: nativePortableContinuation(initialState),
         },
@@ -464,9 +481,11 @@ export async function nativeNextCommand(
         projectRoot,
       });
     } catch (error) {
+      const rejected = errorResult('next', error);
       return {
-        ...errorResult('next', error),
+        ...rejected,
         data: {
+          ...(rejected.data && typeof rejected.data === 'object' ? rejected.data : {}),
           state: nativePortableStateSummary(initialState, configured.paths),
           continuation: nativePortableContinuation(initialState),
         },
@@ -525,6 +544,13 @@ export async function nativeNextCommand(
     let input;
     try {
       input = await readNativeRunnerInput(runnerInputFile, projectRoot);
+      // Valid transport files are bookkeeping even when their action is rejected.
+      // Classifying them grants no authority to change state or supply identities.
+      await registerNativeRunnerInputFile({
+        paths: configured.paths,
+        file: runnerInputFile,
+        input,
+      });
       await validateNativeRunnerInputBoundary({
         paths: configured.paths,
         name,
@@ -536,9 +562,11 @@ export async function nativeNextCommand(
         await assertNativePortableDocuments({ paths: configured.paths, state: initialState });
       }
     } catch (error) {
+      const rejected = errorResult('next', error);
       return {
-        ...errorResult('next', error),
+        ...rejected,
         data: {
+          ...(rejected.data && typeof rejected.data === 'object' ? rejected.data : {}),
           state: nativePortableStateSummary(initialState, configured.paths),
           continuation: nativePortableContinuation(initialState),
         },
@@ -596,12 +624,27 @@ export async function nativeNextCommand(
         );
       }
     }
-    const result = await applyNativeRunnerInput({
-      paths: configured.paths,
-      name,
-      input,
-      maxVerifyFailures: configured.config.native.max_verify_failures,
-    });
+    let result: Awaited<ReturnType<typeof applyNativeRunnerInput>>;
+    try {
+      result = await applyNativeRunnerInput({
+        paths: configured.paths,
+        name,
+        input,
+        inputFile: runnerInputFile,
+        maxVerifyFailures: configured.config.native.max_verify_failures,
+      });
+    } catch (error) {
+      const latest = await readNativePortableChange(configured.paths, name);
+      const rejected = errorResult('next', error);
+      return {
+        ...rejected,
+        data: {
+          ...(rejected.data && typeof rejected.data === 'object' ? rejected.data : {}),
+          state: nativePortableStateSummary(latest, configured.paths),
+          ...(await portableParentView(configured.paths, latest)),
+        },
+      };
+    }
     const continuationCheckPlans =
       'continuationCheckPlans' in result ? result.continuationCheckPlans : undefined;
     const continuationRetryCheckIds =
@@ -657,6 +700,7 @@ export async function nativeNextCommand(
         paths: configured.paths,
         name,
         expectedContinuation,
+        ...(coordinationMode === undefined ? {} : { coordinationMode }),
       });
     } else if (current.phase === 'shape') {
       throw new NativeUsageError(
@@ -693,6 +737,7 @@ export async function nativeNextCommand(
       paths: configured.paths,
       name,
       expectedContinuation,
+      finish,
     });
   } else if (reviseImplementation) {
     if (current.phase !== 'verify') {
@@ -845,19 +890,10 @@ export async function nativeNextCommand(
       current.phase === 'shape'
         ? await inspectNativeChildren({ paths: configured.paths, state: current })
         : null;
-    return {
-      command: 'next',
-      exitCode: 65,
-      data: {
-        state: nativePortableStateSummary(current, configured.paths),
-        continuation: nativePortableContinuation(current, continuationChildren),
-      },
-      error: {
-        code: 'invalid-data',
-        message:
-          'This Native step requires the skill-coordinated --runner-input action returned by continuation; public JSON cannot supply identity, provider, execution ref, or candidate binding',
-      },
-    };
+    return success('next', {
+      state: nativePortableStateSummary(current, configured.paths),
+      continuation: nativePortableContinuation(current, continuationChildren),
+    });
   }
   return success('next', {
     state: nativePortableStateSummary(state, configured.paths),

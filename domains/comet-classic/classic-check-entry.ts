@@ -1,4 +1,12 @@
 import { classicCheckCommand } from './classic-check-command.js';
-import { runClassicScript } from './classic-script-entry.js';
+import {
+  createClassicCommandRunner,
+  isClassicScriptEntry,
+  runClassicScript,
+} from './classic-script-entry.js';
 
-process.exitCode = await runClassicScript('check', classicCheckCommand);
+export const runClassicCli = createClassicCommandRunner('check', classicCheckCommand);
+
+if (isClassicScriptEntry(import.meta.url)) {
+  process.exitCode = await runClassicScript('check', classicCheckCommand);
+}

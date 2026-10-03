@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -128,6 +129,7 @@ Ship a command whose output remains valid at every supported diagnostic size.
         candidateId: 'candidate-1',
         summary: 'Everything is complete and all acceptance criteria pass.',
         addressedAcceptanceIds: ['A1', 'A2'],
+        acceptanceReview: fixtureAcceptanceReview(['A1', 'A2']),
         checks: [{ name: 'Builder self-check', result: 'passed' }],
         review: passedReview('reviewer-confident-1'),
       },
@@ -183,15 +185,13 @@ Ship a command whose output remains valid at every supported diagnostic size.
     expect(state).toMatchObject({
       phase: 'verify',
       verification_result: 'pending',
-      loop: { stage: 'verify-ready', execution_failure_count: 1 },
+      loop: {
+        stage: 'verify-ready',
+        next_action: 'await-verifier-result',
+        execution_failure_count: 0,
+      },
     });
 
-    await dispatchNativePortableVerifier({
-      paths,
-      name,
-      checks: firstChecks.checks,
-      verifierExecutionId: 'verifier-finds-gap',
-    });
     const failed = await submitNativePortableVerifierResult({
       paths,
       name,
@@ -201,13 +201,13 @@ Ship a command whose output remains valid at every supported diagnostic size.
         candidateId: 'candidate-1',
         identity: runner.captureExecutionIdentity({
           identityProvider: 'regression-host',
-          executionRef: 'verifier-finds-gap',
+          executionRef: 'verifier-incomplete',
         }),
         payload: {
           kind: 'final-result',
           result: {
             iteration: 1,
-            attempt: 2,
+            attempt: 1,
             verdict: 'fail',
             acceptance: [
               { id: 'A1', result: 'passed', reason: 'Long output completed.' },
@@ -240,6 +240,7 @@ Ship a command whose output remains valid at every supported diagnostic size.
         candidateId: 'candidate-2',
         summary: 'Repaired the Archive behavior reported by the independent Verifier.',
         addressedAcceptanceIds: ['A1', 'A2'],
+        acceptanceReview: fixtureAcceptanceReview(['A1', 'A2']),
         review: passedReview('reviewer-repair-2'),
       },
     });

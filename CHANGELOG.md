@@ -43,11 +43,38 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Dependency hardening**: Update Dashboard sanitization and URI reference normalization dependencies, and refresh build/test overrides to address known sanitization, recursion, and HTTP client vulnerabilities.
 - **Native artifact replacement checks**: Reject a file replaced during a bounded artifact read even when the filesystem quickly reuses its file ID, so stale content cannot pass as the current path.
 
-## What's Changed [0.4.4] - 2026-09-24
+## What's Changed [0.4.4] - 2026-10-03
+
+### Added
+
+- **Native commit messages**: Set archive and local merge commit messages through `--commit-message` and `--merge-message`, including Unicode and multiline text. Preview the actual messages and retain them through confirmation and retries while keeping existing defaults and project Git hooks (#451).
+
+### Changed
+
+- **Focused Native changes**: Start with four core brief sections and add optional sections when they contain relevant decisions or constraints. Specs can explicitly reference brief acceptance IDs so one requirement does not become duplicate verification work.
+- **Native confirmations**: Confirm a complete Supervisor Shape and choose its coordination mode in one reply. Verification acceptance can include the workspace finish choice, and Archive continuation carries that choice into the confirmed finish command while retaining state and authorization checks.
+- **Native Verifier handoff**: Return the independent Verifier task directly after successful Builder checks, including the acceptance scope and startup receipt input. Continuation distinguishes checking an unconfirmed startup from waiting on the existing running task, without treating a delayed receipt or wait-tool timeout as execution failure.
+- **Workflow continuation**: Native and Classic Skills reuse current Runtime responses, preserve rejected inputs for correction, and prepare archive messages under project commit conventions. Classic hotfix and tweak advance verification through Guard while retaining final Archive confirmation.
+- **Native query responsiveness**: Validate Git metadata on each daemon query and reuse unchanged worktree observations for Status, Show, and Root Show, including calls from subdirectories. Refresh asynchronously after branch or worktree changes, keep Runtime state reads fresh, and retain direct execution when the daemon cannot answer. Standalone Runtime queries share observations within each request; workflow mutations retain live Git checks.
+- **Windows process probes**: Use an optional local creation-time probe to reduce PowerShell startup during locks and checks. Preparation and fallback are asynchronous and bounded; unavailable probes remain unknown, and foreign process identities are rechecked to protect against PID reuse.
+- **Verification responsiveness**: Reuse Native repository and branch observations when reserving checks. Classic checks read files with bounded concurrency and bind overlapping declarations once, while fresh source edits still invalidate prior evidence and legacy evidence keeps its original bindings.
+- **Classic command startup**: Public State, Check, Guard, Handoff, and Archive commands load their own Runtime bundle while preserving context injection, result recording, command arguments, and JSON output.
+- **Classic query responsiveness**: Read stable Classic state without creating a writer lock, avoiding unnecessary process probes on Windows. Concurrent changes, interrupted transactions, unavailable file identities, and legacy migrations retain the serialized recovery path.
+- **Native Hook responsiveness**: Share selected-change and configuration reads within a Hook decision. Concurrent decisions remain isolated, and Runtime mutations discard prior reads before and after the change so subsequent checks see the updated phase.
 
 ### Fixed
 
+- **Native repair continuity**: Preserve still-applicable Builder review context and reuse completed Runtime checks across new candidates only when their inputs, commands, workspace, environment, and evidence remain valid. Source changes continue to require fresh checks.
+- **Native document repairs**: Newly confirmed Shapes tolerate formatting-only brief and Spec edits without discarding implementation progress. Structural document errors identify the document repair instead of reporting a concurrent update.
+- **Windows daemon startup**: Complete the WMI handoff in a bounded background launcher so the invoking CLI can finish without terminating an unfinished broker. Reuse a validated local launcher script to keep PowerShell startup out of the foreground, with direct execution retained when preparation is unavailable.
+- **Native daemon workspace context**: Resolve Native queries and relative project paths from the caller's working directory, preserving linked-worktree ownership when the daemon runs from another directory.
+- **Native concurrent lock acquisition**: Recheck coordinator claims after process inspection so a released owner cannot cause a false busy timeout. Active or replaced claims remain protected, including when Windows process probes are slow.
 - **Project Memory scrolling**: Keep the project memory tab on the same Dashboard inner-page flex layout as retrieval test, so long memory lists scroll inside the knowledge page instead of being clipped (#452).
+- **Native candidate input isolation**: Keep validated, unchanged, untracked Runner payloads separate from candidate inputs so repository-local handoff files do not invalidate verification. Tracked files, changed payloads, and implementation inputs remain bound to the candidate (#455).
+- **Native Verifier recovery**: Reject correctable result and check-request errors without ending the active Verifier or consuming its execution failure budget. Explicit requests can rerun failed repeatable checks within the existing limits, while passed evidence is reused and failed checks still prevent acceptance (#455).
+- **Native Build readiness**: Require a complete implementation and evidence self-review for every confirmed acceptance item before freezing a new candidate. Missing or unfinished items keep the change in Build; independent verification still determines whether the implementation satisfies the requirements (#456).
+- **Hook resource targets**: Distinguish non-file resource URIs from filesystem targets so Agent messages and process resources preserve verification and acceptance. File URIs, Windows paths, and real file writes in mixed requests continue through the workflow guard (#457).
+- **Native Archive recovery**: Keep sealed archives discoverable when Git commit or merge hooks reject workspace finish. Doctor and Status report the unfinished Git step consistently; retries preserve completed commits, published Specs, and the recorded delivery authorization, and explicit Doctor repair can reconcile a verified manual commit without recreating it (#451).
 
 ## What's Changed [0.4.3] - 2026-09-22
 

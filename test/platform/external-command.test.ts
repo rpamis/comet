@@ -7,10 +7,34 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   ExternalCommandError,
   runExternalCommand,
+  runExternalCommandAsync,
 } from '../../platform/process/external-command.js';
 
 describe('external command provider', () => {
   let tempRoot: string | undefined;
+
+  it('keeps timers responsive while an asynchronous child is running', async () => {
+    let completed = false;
+    const probe = runExternalCommandAsync(
+      process.execPath,
+      ['-e', 'setTimeout(() => process.stdout.write("ready"), 300)'],
+      { timeoutMs: 5000 },
+    ).then((value) => {
+      completed = true;
+      return value;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(completed).toBe(false);
+    await expect(probe).resolves.toBe('ready');
+  });
+
+  it('bounds an asynchronous probe and kills the timed-out child', async () => {
+    await expect(
+      runExternalCommandAsync(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+        timeoutMs: 50,
+      }),
+    ).rejects.toMatchObject({ name: 'ExternalCommandError', timedOut: true });
+  });
 
   afterEach(async () => {
     if (tempRoot) await fs.rm(tempRoot, { recursive: true, force: true });

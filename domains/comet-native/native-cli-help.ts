@@ -183,8 +183,9 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
     options: [
       '--summary <text>    Required transition or recovery summary.',
       '--confirmed         Confirm the persisted Shape boundary with both expected guards, or confirm an explicitly degraded verifier-unavailable fallback before Archive.',
-      '--coordination-mode multi-session|single-session  Select how a multi-child Supervisor proceeds. SDK changes combine this choice with --confirmed for the complete Shape; compat Runtime changes prepare it before a separate final confirmation.',
+      '--coordination-mode multi-session|single-session  Choose how a multi-child Supervisor proceeds. Supply it with --confirmed at the persisted Shape boundary to confirm the full plan and mode together, or select it during preparation and confirm the plan afterward.',
       '--accept-result     Accept the current skill-coordinated Verify result and make it archive-ready.',
+      '--finish keep|merge|push|pull-request  For compat changes, with --accept-result record the explicitly chosen isolated-workspace finish in the same guarded decision. SDK Runs keep Git delivery separate.',
       '--revise-implementation  Keep confirmed requirements unchanged and return Verify to Build for implementation revision.',
       '--revise-requirements    Return Verify or Archive to Shape when user-visible goals or acceptance criteria must change.',
       '--retry-verifier    Retry a failed or unavailable Verifier when the continuation allows it.',
@@ -197,7 +198,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, retry-checks, verifier-response, verifier-started, verifier-execution-error, or verifier-unavailable. Builder/dispatch identity fields are rejected; verifier responses must echo the current candidateId and verifierExecutionRef from the Verifier dispatch.',
       '--validate-only       Validate the Runner JSON shape and current boundary without writing state or starting a process; requires --runner-input.',
       '  Choose one object template from an inputOptions exclusiveGroup and save it as UTF-8 JSON (BOM accepted). Field errors return issues with JSON pointer, missingFields and unknownFields. Execute agent.continuation in agent.workspace.cwd; Supervisor results use task.returnAction.',
-      '  builder-handoff fields: kind, summary, addressed_acceptance_ids, checks, verification_checks, known_limits, optional review. checks summarize development feedback. verification_checks is an optional Runtime plan executed after the candidate is frozen; a passing plan is reused without executing the same plan twice when dispatch-verifier receives the unchanged plan. If review is supplied, its fields are status=passed, summary, reviewer_execution_ref from a separate read-only review.',
+      '  builder-handoff fields: kind, summary, addressed_acceptance_ids, acceptance_review, checks, verification_checks, known_limits, optional review. acceptance_review must cover every confirmed ID exactly once with id, status, evidence (concrete references or observations), and note. Only implemented-with-evidence with nonempty evidence is ready for handoff; implemented-no-evidence, not-implemented, and known-fail remain in Build. This Builder declaration does not replace independent verification. checks summarize development feedback. verification_checks is an optional Runtime plan executed after the candidate is frozen; a passing plan returns the Verifier dispatch immediately. Completed Runtime checks can carry to a new candidate only when the implementation, confirmed documents, plan, workspace, environment, and saved evidence still match. If review is supplied, its fields are status=passed, summary, reviewer_execution_ref from a separate read-only review.',
       '  dispatch-verifier fields: kind, checks (an explicitly resolved plan; [] is allowed).',
       '  retry-checks fields: kind, check_ids for repeatable interrupted Runtime checks from the current candidate; each check can be retried at most three times.',
       '  verifier-response fields: kind, candidateId, verifierExecutionRef, response (request-checks or final-result); copy the two binding fields from the current continuation.',
@@ -224,18 +225,21 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   archive: {
     usage:
-      'comet native archive <change-name> --dry-run [--finish merge|push|pull-request|keep]\n       comet native archive <change-name> [--confirmed] [--serial-first <current-change>]\n       comet native archive <sdk-change-name> --recover',
+      'comet native archive <change-name> --dry-run [--finish merge|push|pull-request|keep] [--commit-message <text>] [--merge-message <text>]\n       comet native archive <change-name> [--confirmed] [--serial-first <current-change>] [--commit-message <text>] [--merge-message <text>]\n       comet native archive <sdk-change-name> --recover',
     purpose:
       'Preview or execute deterministic Archive after the portable state reaches archive-ready.',
     options: [
       '--dry-run          Run the complete read-only Archive and workspace-finish readiness check; it persists only an explicit --finish choice.',
       '--finish <action>  Persist merge, push, pull-request, or keep for an isolated workspace.',
+      '--expected-state-version <n>  Preserve this continuation-issued guard when confirming a new finish choice; stale choices are rejected before it is recorded.',
+      '--commit-message <text>  For compat changes, set the archive commit message; Unicode and multiline text are supported. Git hooks still run.',
+      '--merge-message <text>   For compat changes, set the local merge commit message; requires merge finish. Omit it to use Git defaults.',
       '--serial-first <current-change>  During execution only, confirm that this change archives before detected capability peers; the value must equal <change-name>.',
       '--confirmed        Confirm Archive when project policy requires it.',
       '--recover          For an SDK-owned change, reconcile one unknown Supervisor delivery, Archive, or cleanup Action only after confirming the original execution process has stopped; never retry it as new work.',
     ],
     output:
-      'Readiness, every blocker, and the exact next continuation, or the completed Archive transaction and workspace finish result. Execute the returned confirmed command only after ready is true; Archive does not repeat verification.',
+      'Readiness, every blocker, actual prepared commitMessages (mergeMessage is null when no merge is planned), and the exact next continuation, or the completed Archive transaction and workspace finish result. Messages are retained for retries. After a Git hook rejects a message, provide a corrected message with --confirmed for the unfinished step; completed commits are never rewritten. Execute the returned confirmed command only after ready is true; Archive does not repeat verification.',
   },
   doctor: {
     usage: 'comet native doctor [<change-name>] [--repair] [--confirmed]',

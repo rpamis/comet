@@ -17,6 +17,8 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { moveNativeRoot } from '../../../domains/comet-native/native-root-move.js';
+import { runNativeCliDetailed } from '../../../domains/comet-native/native-cli.js';
+import * as nativeLock from '../../../domains/comet-native/native-lock.js';
 import { readNativeTransaction } from '../../../domains/comet-native/native-transaction.js';
 import {
   assertNativeWorkspaceBinding,
@@ -35,7 +37,59 @@ describe('Native artifact root moves', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('rechecks the branch after CLI root resolution before writing a root-move transaction', async () => {
+    await seedNativeRoot(projectRoot, 'docs');
+    await fs.rm(path.join(projectRoot, 'docs/comet/changes/active-change'), {
+      recursive: true,
+      force: true,
+    });
+    execFileSync('git', ['config', 'user.email', 'root-move@example.test'], { cwd: projectRoot });
+    execFileSync('git', ['config', 'user.name', 'Root Move Test'], { cwd: projectRoot });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], {
+      cwd: projectRoot,
+      stdio: 'ignore',
+    });
+    const branch = execFileSync('git', ['branch', '--show-current'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await createNativeChange({
+      paths,
+      name: 'branch-fence',
+      language: 'en',
+      workspaceBinding: {
+        isolation: 'branch',
+        changeBranch: branch,
+        targetBranch: branch,
+      },
+    });
+    const acquire = nativeLock.acquireNativeLock;
+    vi.spyOn(nativeLock, 'acquireNativeLock').mockImplementation(async (...args) => {
+      if (args[1] === 'root-move') {
+        execFileSync('git', ['checkout', '-b', 'changed-before-lock'], {
+          cwd: projectRoot,
+          stdio: 'ignore',
+        });
+      }
+      return acquire(...args);
+    });
+    const result = await runNativeCliDetailed(
+      ['root', 'move', 'artifacts/native', '--json', '--project-root', projectRoot],
+      { invocationCwd: projectRoot },
+    );
+    expect(result.output.exitCode).not.toBe(0);
+    expect(result.dispatch.error?.message).toContain(
+      'must be aligned and repaired before moving the root',
+    );
+    expect((await readProjectConfig(projectRoot))?.native.pending_root_move).toBeUndefined();
+    await expect(fs.access(path.join(projectRoot, 'artifacts/native/comet'))).rejects.toMatchObject(
+      { code: 'ENOENT' },
+    );
   });
 
   it.each([

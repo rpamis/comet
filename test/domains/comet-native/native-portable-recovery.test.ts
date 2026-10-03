@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -98,6 +99,7 @@ describe('Native portable recovery', () => {
           iteration: 1,
           summary: toNativePortableText('Built.'),
           addressed_acceptance_ids: state.acceptance.map(({ id }) => id),
+          acceptance_review: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
           checks: [],
           checks_truncated: false,
           known_limits: [],
@@ -180,6 +182,7 @@ describe('Native portable recovery', () => {
         candidateId: 'candidate',
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
         review: {
           status: 'passed',
           summary: 'Read-only review passed.',
@@ -265,6 +268,7 @@ describe('Native portable recovery', () => {
         candidateId: 'initial-candidate',
         summary: 'Built the initial candidate.',
         addressedAcceptanceIds: ['A1', 'A2'],
+        acceptanceReview: fixtureAcceptanceReview(['A1', 'A2']),
         review: {
           status: 'passed',
           summary: 'Initial read-only review passed.',
@@ -319,6 +323,7 @@ describe('Native portable recovery', () => {
         candidateId: 'repair-candidate',
         summary: 'Repaired the failed item.',
         addressedAcceptanceIds: ['A2'],
+        acceptanceReview: fixtureAcceptanceReview(['A1', 'A2']),
         review: {
           status: 'passed',
           summary: 'Repair read-only review passed.',
@@ -376,6 +381,7 @@ describe('Native portable recovery', () => {
         }),
         summary: 'Built.',
         addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+        acceptanceReview: fixtureAcceptanceReview(state.acceptance.map(({ id }) => id)),
         review: {
           status: 'passed',
           summary: 'Read-only review passed.',

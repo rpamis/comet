@@ -40,6 +40,8 @@ comet classic intent route --stdin
 
 入口 check --json 会返回 layout、configuration、nextAction、任务摘要、coordination 和 delivery；已经返回的字段不再单独查询。恢复会话时若缺少上下文，先用 --recover 取得恢复摘要；需要全部任务、检查点或证据时才加 --details，具体见 context-recovery.md。
 
+只执行当前动作仍缺少的查询。把多条 `comet` 命令放进同一次 shell 调用只减少工具往返，每条 CLI 仍各自启动；要减少重复调用，应复用响应已有字段。存在先后依赖时，上一条成功后再执行下一条，并检查每条退出码；不能用最后一条成功掩盖前面的失败。
+
 checkpoint 输入必须包含 schemaVersion:1，以及 taskIds/revision/stage/sessionId/evidence/unresolved/reviewRounds；读取时返回 `{checkpoint, stale}`。Runtime 检查数据后生成 Markdown，JSON 示例见 context-recovery.md。task-complete 会自动同步旧计划中已经建立 comet-task ID 对应关系的任务。需要单独同步时使用 sync-plan；返回 planSync mapping-required 时，只需补齐对应关系，不应重新实施任务。
 
 delivery 输入包含 action（local|push|pr）、targetBranch，以及可选的 remote、commit、prUrl，示例见 comet-archive。普通入口和 delivery 读取不会访问网络；只有 `state delivery <change-name> --verify` 会只读核对远端和 PR 状态，并返回 `{delivery, verification}`。记录写入成功不等于交付成功。命令不可用、操作被拒绝或记录不一致时停止，不能手改内部状态来绕过检查。
@@ -93,7 +95,13 @@ comet check run <change-name> verify --local --incremental -- <program> [args...
 {
   "version": 2,
   "commands": [
-    { "argv": ["pnpm", "build"], "cwd": ".", "files": ["src/**", "package.json", "tsconfig.json"], "outputs": ["dist/**"], "git": "all" },
+    {
+      "argv": ["pnpm", "build"],
+      "cwd": ".",
+      "files": ["src/**", "package.json", "tsconfig.json"],
+      "outputs": ["dist/**"],
+      "git": "all"
+    },
     { "argv": ["vitest", "run"], "cwd": ".", "files": ["src/**", "test/**"] }
   ]
 }

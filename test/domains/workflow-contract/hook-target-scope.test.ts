@@ -33,6 +33,17 @@ describe('scopeCometHookTargets', () => {
     });
   });
 
+  it('does not attribute non-file resource addresses to a project', async () => {
+    await expect(
+      scopeCometHookTargets(root, [
+        'agent:/Main',
+        'proc:/worker/kill',
+        'xd:/report_issue',
+        'src/new-file.ts',
+      ]),
+    ).resolves.toEqual({ projectTargets: ['src/new-file.ts'], externalTargets: [] });
+  });
+
   it('treats a project path redirected through a symlink or junction as external', async () => {
     const linkedDir = path.join(root, 'linked-memory');
     await fs.symlink(externalRoot, linkedDir, process.platform === 'win32' ? 'junction' : 'dir');

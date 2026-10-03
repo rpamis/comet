@@ -1,3 +1,4 @@
+import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
 import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -18,14 +19,18 @@ export function liveGitBranch(cwd: string): string | null {
     windowsHide: true,
   };
   try {
-    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], options).trim();
+    const branch = measureCometGitCommand(() =>
+      execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], options).trim(),
+    );
     if (branch && branch !== 'HEAD') return branch;
   } catch {
     // An unborn branch has no HEAD commit yet; symbolic-ref still names it.
   }
   try {
     return (
-      execFileSync('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], options).trim() || null
+      measureCometGitCommand(() =>
+        execFileSync('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], options).trim(),
+      ) || null
     );
   } catch {
     return null; // Detached HEAD or not a Git worktree.
@@ -40,13 +45,15 @@ const cachedGitBranch = memoizedHookReadSync('liveGitBranch', (cwd: string) => l
 export function isGitWorkTree(cwd: string): boolean {
   try {
     return (
-      execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
-        cwd,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 10_000,
-        windowsHide: true,
-      }).trim() === 'true'
+      measureCometGitCommand(() =>
+        execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
+          cwd,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+          timeout: 10_000,
+          windowsHide: true,
+        }).trim(),
+      ) === 'true'
     );
   } catch {
     return false;

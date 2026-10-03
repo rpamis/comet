@@ -1,3 +1,4 @@
+import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
@@ -377,6 +378,7 @@ children:
         candidateId: 'orphaned-doctor-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: null,
       },
     });
@@ -465,6 +467,7 @@ children:
         candidateId: 'live-doctor-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: null,
       },
     });
@@ -546,6 +549,7 @@ children:
         candidateId: 'stale-verifier-candidate',
         summary: 'Implemented.',
         addressedAcceptanceIds: ['A1'],
+        acceptanceReview: fixtureAcceptanceReview(['A1']),
         review: null,
       },
     });
@@ -625,6 +629,7 @@ children:
         kind: 'builder-handoff',
         summary: 'The legacy child result is ready for verification.',
         addressed_acceptance_ids: buildState.acceptance.map(({ id }) => id),
+        acceptance_review: fixtureAcceptanceReview(buildState.acceptance.map(({ id }) => id)),
         checks: [],
         known_limits: [],
         review: {
@@ -659,6 +664,7 @@ children:
         kind: 'builder-handoff',
         summary: 'The legacy child result is ready for verification.',
         addressed_acceptance_ids: buildState.acceptance.map(({ id }) => id),
+        acceptance_review: fixtureAcceptanceReview(buildState.acceptance.map(({ id }) => id)),
         checks: [],
         known_limits: [],
         review: {

@@ -159,7 +159,7 @@ comet state set <change-name> verify_mode full
 
 无 delta spec 的 tweak 通常满足轻量验证条件（≤ 3 tasks、改动文件数低于 scale 阈值），按 comet-verify 的轻量验证清单逐项检查。若用户希望增加审查，可在验证前运行 `comet state set <name> review_mode standard` 或 `thorough`。
 
-验证通过后，按 `/comet-verify` 的规则将 `.comet.yaml` 的 `verify_result` 记录为 `pass`，归档前不得跳过该状态。验证通过后仍必须进入 `/comet-archive` 的归档前最终确认，不得自动运行归档脚本。
+验证及报告完成后，由 `/comet-verify` 执行 `comet guard <change-name> verify --apply`；复用它成功返回的 archive 状态和 `agent.continuation`，不再手动设置 `verify_result: pass` 或重复运行 Guard。Guard 未通过时按其原因处理，不能宣告验收通过。进入 `/comet-archive` 后仍须完成归档前最终确认，不得自动运行归档脚本。
 
 ### 4. 归档（预设 archive）
 

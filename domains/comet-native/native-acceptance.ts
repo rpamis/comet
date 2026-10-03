@@ -48,6 +48,8 @@ export interface NativeAcceptanceCriterion {
   source: string;
   context: string[];
   text: string;
+  /** Explicitly reuse the named brief criterion for this Spec scenario. */
+  briefAcceptanceRef?: string;
 }
 
 export interface NativeAcceptanceEvidenceEntry {
@@ -469,6 +471,7 @@ export function deriveSpecAcceptanceCriteria(
   source = 'spec.md',
   maxCriteria: number = NATIVE_ACCEPTANCE_LIMITS.maxCriteria,
   identityMode: NativeAcceptanceIdentityMode = 'content-hash',
+  options: { resolveBriefReferences?: boolean } = {},
 ): NativeAcceptanceCriterion[] {
   if (!Number.isSafeInteger(maxCriteria) || maxCriteria < 0) {
     throw new Error('Native specification acceptance budget is invalid');
@@ -482,15 +485,24 @@ export function deriveSpecAcceptanceCriteria(
     if (criteria.length >= maxCriteria) {
       throw new Error(`Native acceptance exceeds its ${maxCriteria}-criterion acceptance budget`);
     }
-    criteria.push(
-      criterion(
+    const references = (options.resolveBriefReferences ? active.body : [])
+      .map((line) => /^\s*(?:Acceptance|验收)\s*[:：]\s*(.*)$/iu.exec(line)?.[1])
+      .filter((ref): ref is string => ref !== undefined);
+    if (references.some((ref) => !/^A[1-9]\d*$/u.test(ref))) {
+      throw new Error('A Spec acceptance reference must be one brief ID such as A1');
+    }
+    if (references.length > 1)
+      throw new Error('A Spec scenario may reference only one brief acceptance criterion');
+    criteria.push({
+      ...criterion(
         'spec-scenario',
         source,
         [active.title, ...active.body].join('\n'),
         active.context,
         identityMode,
       ),
-    );
+      ...(references[0] === undefined ? {} : { briefAcceptanceRef: references[0] }),
+    });
     active = null;
   };
 

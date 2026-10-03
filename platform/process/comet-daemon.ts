@@ -4,7 +4,7 @@ import * as net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
-import { snapshotCometRuntimeMetrics } from './runtime-metrics.js';
+import { withCometRuntimeMetrics } from './runtime-metrics.js';
 
 /**
  * The daemon deliberately speaks a small, line-delimited protocol.  A request
@@ -74,12 +74,15 @@ export interface CometDaemonRequestMetrics {
   durationMs: number;
   queueMs: number;
   gitCommands: number;
+  /** Sum of Git subprocess elapsed times; overlapping subprocesses can exceed request duration. */
+  gitDurationMs: number;
   filesystemReads: number | null;
   filesystemWrites: number | null;
 }
 
 export interface CometDaemonWorkMetrics {
   gitCommands: number;
+  gitDurationMs: number;
   filesystemReads: number | null;
   filesystemWrites: number | null;
 }
@@ -318,6 +321,7 @@ export async function createCometDaemonServer(
   let requestCount = 0;
   let lastRequest: CometDaemonRequestMetrics | undefined;
   let totalGitCommands = 0;
+  let totalGitDurationMs = 0;
   let totalFilesystemReads: number | null = 0;
   let totalFilesystemWrites: number | null = 0;
   let closed = false;
@@ -378,6 +382,7 @@ export async function createCometDaemonServer(
     ...(lastRequest ? { lastRequest } : {}),
     totalWork: {
       gitCommands: totalGitCommands,
+      gitDurationMs: totalGitDurationMs,
       filesystemReads: totalFilesystemReads,
       filesystemWrites: totalFilesystemWrites,
     },
@@ -486,7 +491,6 @@ export async function createCometDaemonServer(
       lastActivityAt = Date.now();
       const queuedAt = Date.now();
       const usageBefore = process.resourceUsage?.();
-      const runtimeMetricsBefore = snapshotCometRuntimeMetrics();
       const run = async () => {
         if (request.kind === 'control') {
           if (request.control === 'status' || request.control === 'ping') {
@@ -509,10 +513,9 @@ export async function createCometDaemonServer(
           });
         }
       };
-      void run()
-        .then((response) => {
+      void withCometRuntimeMetrics(run)
+        .then(({ result: response, metrics: runtimeMetrics }) => {
           const usageAfter = process.resourceUsage?.();
-          const runtimeMetricsAfter = snapshotCometRuntimeMetrics();
           const filesystemReads =
             usageBefore && usageAfter && Number.isFinite(usageAfter.fsRead - usageBefore.fsRead)
               ? Math.max(0, usageAfter.fsRead - usageBefore.fsRead)
@@ -524,15 +527,14 @@ export async function createCometDaemonServer(
           const metrics: CometDaemonRequestMetrics = {
             durationMs: Math.max(0, Date.now() - queuedAt),
             queueMs: 0,
-            gitCommands: Math.max(
-              0,
-              runtimeMetricsAfter.gitCommands - runtimeMetricsBefore.gitCommands,
-            ),
+            gitCommands: runtimeMetrics.gitCommands,
+            gitDurationMs: runtimeMetrics.gitDurationMs,
             filesystemReads,
             filesystemWrites,
           };
           lastRequest = metrics;
           totalGitCommands += metrics.gitCommands;
+          totalGitDurationMs += metrics.gitDurationMs;
           totalFilesystemReads =
             totalFilesystemReads === null || filesystemReads === null
               ? null

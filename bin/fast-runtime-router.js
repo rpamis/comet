@@ -88,7 +88,7 @@ export async function tryRunFastRuntime(argv = process.argv.slice(2)) {
   if (!existsSync(runtimePath)) return false;
 
   if (route.classicCommand) {
-    const classicRuntimeUrl = assetUrl('assets/skills/comet/scripts/comet-runtime.mjs');
+    const classicRuntimeUrl = assetUrl(`assets/skills/comet/scripts/comet-${route.classicCommand}.mjs`);
     if (!existsSync(fileURLToPath(classicRuntimeUrl))) return false;
     const [{ runClassicFacade }, { runClassicCli }] = await Promise.all([
       import(runtimeUrl.href),

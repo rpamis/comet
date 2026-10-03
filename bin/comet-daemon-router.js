@@ -110,7 +110,7 @@ function takeLaunchLock(endpoint) {
   }
 }
 
-async function startServer(module, endpoint, buildId, projectRoot) {
+function startServer(module, endpoint, buildId, projectRoot) {
   const entry = serverPath();
   if (!existsSync(entry)) return false;
   const lockPath = takeLaunchLock(endpoint);
@@ -124,7 +124,7 @@ async function startServer(module, endpoint, buildId, projectRoot) {
       COMET_DAEMON_START_LOCK: lockPath,
     };
     if (process.platform === 'win32') {
-      const launched = await module.launchWindowsProcessWithBroker({
+      const launched = module.launchWindowsProcessWithBroker({
         command: process.execPath,
         args: [entry, endpoint.endpoint, buildId, projectRoot],
         cwd,
@@ -161,18 +161,34 @@ function wait(milliseconds) {
 }
 
 async function requestWithLaunch(module, options, launch, waitForLaunch = true) {
+  const deadline =
+    process.platform === 'win32' && launch && waitForLaunch ? performance.now() + 10_000 : null;
+  const request = () => {
+    if (deadline === null) return module.sendCometDaemonRequest(options);
+    const remaining = Math.ceil(deadline - performance.now());
+    if (remaining <= 0) throw new Error('Comet daemon startup timed out');
+    return module.sendCometDaemonRequest({
+      ...options,
+      timeoutMs: Math.min(options.timeoutMs ?? 5_000, remaining),
+    });
+  };
   try {
-    return await module.sendCometDaemonRequest(options);
+    return await request();
   } catch {
-    if (!launch || !(await startServer(module, options.endpoint, options.buildId, options.projectRoot))) {
-      return null;
-    }
+    if (!launch) return null;
+    const started = startServer(module, options.endpoint, options.buildId, options.projectRoot);
+    if (!started && (deadline === null || !existsSync(launchLockPath(options.endpoint)))) return null;
   }
   if (!waitForLaunch) return null;
-  for (const delay of [20, 40, 80, 160, 320, 640, 1_000]) {
-    await wait(delay);
+  const delays = [20, 40, 80, 160, 320, 640, 1_000];
+  // Windows explicit start shares one deadline across backoff and IPC. Reads
+  // already returned above; they never wait for the background WMI handoff.
+  for (let attempt = 0; deadline !== null || attempt < delays.length; attempt += 1) {
+    const remaining = deadline === null ? Infinity : deadline - performance.now();
+    if (remaining <= 0) return null;
+    await wait(Math.min(delays[attempt] ?? 1_000, remaining));
     try {
-      return await module.sendCometDaemonRequest(options);
+      return await request();
     } catch {
       // The detached server may still be loading the runtime bundle.
     }

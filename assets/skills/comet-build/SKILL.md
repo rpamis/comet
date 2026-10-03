@@ -201,8 +201,6 @@ Build command detection covers three sources: a build script in the invocation d
 
 **Recording evidence:** finish the implementation and make its checks pass, then record the build evidence and run `comet guard <change-name> build --apply`. Build records build evidence only: external (non-`--local`) verify checks must be recorded **after** guard build --apply succeeds — the phase transition expires externally recorded verify evidence (`crossed a phase boundary`), so expensive non-idempotent external checks would run for nothing; `--local` evidence is exempt and can be recorded in one shell call. Runtime reuses recorded evidence automatically when inputs did not change, so a rerun after a documentation edit does not execute the command again. When guard reports invalid evidence, it names the exact reason and changed files — rerun only the listed scope and follow the message for record-check or phase-boundary situations instead of redoing everything. Commit after guard passes; tick tasks with `comet state task-complete`.
 
-Combine multiple read-only comet commands (such as `state get`, `state next`, `status`) into one shell call executed in sequence to reduce per-command process startup overhead.
-
 Before exiting, advance phase with the guard, independently of `auto_transition`:
 
 ```bash
