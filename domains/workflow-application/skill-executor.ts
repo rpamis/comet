@@ -72,6 +72,35 @@ function requiredBinding(
   return { binding, skill };
 }
 
+/** 领取和结果验证共用声明的输入与批准约束；此函数不调用宿主或重新授权。 */
+export function assertApplicationSkillAction(
+  application: SkillExecutionApplication,
+  action: Readonly<RuntimeAction>,
+  run: Readonly<WorkflowRun>,
+): { binding: ApplicationSkillBinding; skill: AdaptedSkill } {
+  const { binding, skill } = requiredBinding(application, action, run);
+  skill.validateInput(action.input);
+  if (skill.adapter.sideEffect !== 'read') {
+    const inherited = binding.authorizationFrom
+      ? run.actionContexts[action.id]?.results[binding.authorizationFrom]
+      : undefined;
+    const wait = run.waits.find(
+      (wait) => wait.stepId === binding.authorizationFrom && wait.sequence === inherited?.sequence,
+    );
+    if (
+      !inherited ||
+      wait?.status !== 'resolved' ||
+      !wait.decision ||
+      !(binding.authorizationChoices ?? ['approved']).includes(wait.decision.choice) ||
+      wait.decision.proposalHash !== wait.proposalHash ||
+      hashRuntimeValue(inherited.value) !==
+        hashRuntimeValue({ choice: wait.decision.choice, proposal: wait.proposal })
+    )
+      throw new RuntimeProtocolError('STALE_PROPOSAL', '此工作缺少父流程的当前批准记录');
+  }
+  return { binding, skill };
+}
+
 /** 宿主执行端口不自行领取或推进；createRuntime.execute 先持久化领取，再调用它。 */
 export function createApplicationSkillExecutor(
   application: SkillExecutionApplication,
@@ -83,9 +112,8 @@ export function createApplicationSkillExecutor(
     run?: Readonly<WorkflowRun>,
   ) => {
     if (!run) throw new RuntimeProtocolError('INVALID_RUN', 'Skill 执行需要当前 SDK Run');
-    const { binding, skill } = requiredBinding(application, action, run);
+    const { binding, skill } = assertApplicationSkillAction(application, action, run);
     assertApplicationSkillExecutionScope(application, run, action);
-    skill.validateInput(action.input);
     if (
       skill.adapter.requiredCapabilities.some(
         (capability) => !host.capabilities.includes(capability),
@@ -97,25 +125,6 @@ export function createApplicationSkillExecutor(
         'RECONCILIATION_REQUIRED',
         '外部操作没有结果核对适配器，不能执行',
       );
-    if (skill.adapter.sideEffect !== 'read') {
-      const inherited = binding.authorizationFrom
-        ? run.actionContexts[action.id]?.results[binding.authorizationFrom]
-        : undefined;
-      const wait = run.waits.find(
-        (wait) =>
-          wait.stepId === binding.authorizationFrom && wait.sequence === inherited?.sequence,
-      );
-      if (
-        !inherited ||
-        wait?.status !== 'resolved' ||
-        !wait.decision ||
-        !(binding.authorizationChoices ?? ['approved']).includes(wait.decision.choice) ||
-        wait.decision.proposalHash !== wait.proposalHash ||
-        hashRuntimeValue(inherited.value) !==
-          hashRuntimeValue({ choice: wait.decision.choice, proposal: wait.proposal })
-      )
-        throw new RuntimeProtocolError('STALE_PROPOSAL', '此工作缺少父流程的当前批准记录');
-    }
     if (!(await host.authorize({ action, run, binding, skill, context })))
       throw new RuntimeProtocolError('COMMAND_REJECTED', '宿主授权不覆盖此 Skill、范围或副作用');
   };

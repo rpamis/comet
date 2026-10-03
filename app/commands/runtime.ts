@@ -15,6 +15,7 @@ import {
 import { parseRuntimeOutcome } from '../../domains/engine/runtime-action.js';
 import {
   readSdkChangeOwner,
+  SDK_APPLICATIONS,
   type SdkApplication,
 } from '../../domains/workflow-contract/change-runtime-owner.js';
 import type { CometProjectWorkflow } from '../../domains/workflow-contract/types.js';
@@ -421,11 +422,7 @@ export async function runtimeDispatchCommand(
     const request = parseRequest(await readJson(requestFile, 'REQUEST'));
     requestId = (request.requestId as string | undefined) ?? requestId;
     const application = options.application;
-    const builtIn =
-      application === 'native' ||
-      application === 'classic-full' ||
-      application === 'classic-hotfix' ||
-      application === 'classic-tweak';
+    const builtIn = (SDK_APPLICATIONS as readonly string[]).includes(application ?? '');
     if (options.applicationFile !== undefined || (application !== undefined && !builtIn)) {
       if (
         (options.workflow?.length ?? 0) > 0 ||

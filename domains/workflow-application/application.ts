@@ -16,6 +16,7 @@ import {
   readCometCurrentSelection,
   writeCometCurrentSelection,
 } from '../workflow-contract/current-selection.js';
+import { SDK_APPLICATIONS } from '../workflow-contract/change-runtime-owner.js';
 import {
   adaptApplicationSkill,
   applicationError,
@@ -31,6 +32,7 @@ import type {
 } from './types.js';
 import {
   assertApplicationSkillExecutionScope,
+  assertApplicationSkillAction,
   createApplicationSkillExecutor,
 } from './skill-executor.js';
 
@@ -62,6 +64,8 @@ function parseManifest(value: unknown): WorkflowApplicationManifest {
   if (manifest.schema !== 'comet.workflow.application.v1')
     applicationError('应用格式不受支持，请重新生成 SDK 应用；原文件会保留');
   safeId(manifest.id);
+  if ((SDK_APPLICATIONS as readonly string[]).includes(manifest.id))
+    applicationError(`应用身份 ${manifest.id} 与内置应用冲突，请使用独立名称`);
   if (
     !manifest.version?.trim() ||
     !['standalone', 'native', 'classic-full', 'classic-hotfix', 'classic-tweak'].includes(
@@ -358,8 +362,34 @@ export async function loadWorkflowApplication(options: {
               previous.status === 'running' &&
               previous.claim?.token === action.claim?.token,
           )
-        )
+        ) {
           assertApplicationSkillExecutionScope({ manifest, skills }, run, action);
+          if (action.type === 'invoke_skill') {
+            assertApplicationSkillAction({ manifest, skills }, action, run);
+            const executor = implementation.executors?.find(
+              (executor) => executor.id === action.claim?.executorId,
+            );
+            if (!executor)
+              throw new RuntimeProtocolError(
+                'EXECUTOR_UNAVAILABLE',
+                'Skill 必须由应用已配置的执行端口领取',
+              );
+            if (!executor.supports(structuredClone(action)) || !executor.preflight)
+              throw new RuntimeProtocolError(
+                'EXECUTOR_UNSUPPORTED',
+                'Skill 执行端口缺少对应的领取预检',
+              );
+            if (
+              action.requiredCapabilities.some(
+                (capability) => !executor.capabilities.includes(capability),
+              )
+            )
+              throw new RuntimeProtocolError(
+                'CAPABILITY_REQUIRED',
+                '已配置执行端口缺少 Skill 所需能力',
+              );
+          }
+        }
       }
       return persistent.compareAndSwap(runId, expectedRevision, {
         runId,
@@ -372,9 +402,25 @@ export async function loadWorkflowApplication(options: {
   const store = implementation.wrapStore
     ? implementation.wrapStore(pinnedStore, identity)
     : pinnedStore;
+  const checkedImplementation: WorkflowApplicationImplementation = {
+    ...implementation,
+    async validateOutcome(input) {
+      if (input.action.type === 'invoke_skill') {
+        try {
+          assertApplicationSkillAction({ manifest, skills }, input.action, input.run);
+        } catch (error) {
+          return {
+            accepted: false,
+            reason: error instanceof Error ? error.message : 'Skill 结果不满足应用契约',
+          };
+        }
+      }
+      return implementation.validateOutcome?.(input) ?? { accepted: true };
+    },
+  };
   // SDK 自身校验所有 handler、validator、executor 身份；只装载图不足以通过这里。
-  createRuntime({ ...implementation, store });
-  return { manifest, identity, implementation, skills, store };
+  createRuntime({ ...checkedImplementation, store });
+  return { manifest, identity, implementation: checkedImplementation, skills, store };
 }
 
 export async function selectWorkflowApplication(

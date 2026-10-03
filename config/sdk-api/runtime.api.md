@@ -123,6 +123,7 @@ export interface CreateRuntimeOptions {
     store: RuntimeStore<WorkflowRun>;
     // (undocumented)
     transitionHandlers?: readonly WorkflowTransitionHandler[];
+    validateOutcome?: RuntimeValidator['validate'];
     // (undocumented)
     validators?: readonly RuntimeValidator[];
     // (undocumented)

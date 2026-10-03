@@ -61,7 +61,7 @@ describe('application adaptation and SDK authority', () => {
       actionId: action.id,
       attempt: action.attempt,
       inputHash: action.inputHash,
-      executorId: 'host',
+      executorId: 'local-skill',
       claimToken: `${action.id}-claim`,
       capabilities: ['skill-script'],
     });
@@ -159,7 +159,7 @@ describe('application adaptation and SDK authority', () => {
         skills: new Map(skills.map((skill) => [skill.id, skill])),
       },
       {
-        id: 'host',
+        id: 'local-skill',
         capabilities: ['skill-script'],
         authorize: async () => true,
         invokeSkill: async ({ action, run, skill }) => {
@@ -279,7 +279,7 @@ describe('application adaptation and SDK authority', () => {
       run = await runtime.execute({
         runId: 'report',
         actionId: drafts[index].id,
-        executorId: 'host',
+        executorId: 'local-skill',
       });
     expect(run.status).toBe('completed');
     expect(invoked).toHaveLength(2);
@@ -480,7 +480,7 @@ describe('application adaptation and SDK authority', () => {
   it('retains returned invalid outputs and artifacts in SDK rejectedOutcomes', async () => {
     const { loaded } = await application();
     const host: SkillExecutionHost = {
-      id: 'host',
+      id: 'local-skill',
       capabilities: ['skill-script'],
       authorize: async () => true,
       invokeSkill: async () => ({
@@ -500,7 +500,7 @@ describe('application adaptation and SDK authority', () => {
       input,
     });
     await expect(
-      runtime.execute({ runId: 'report', actionId: run.actions[0].id, executorId: 'host' }),
+      runtime.execute({ runId: 'report', actionId: run.actions[0].id, executorId: 'local-skill' }),
     ).rejects.toMatchObject({ code: 'OUTPUT_INVALID' });
     const action = (await runtime.inspect('report')).actions[0];
     expect(action.status).toBe('running');
@@ -540,7 +540,7 @@ describe('application adaptation and SDK authority', () => {
     const { loaded } = await application();
     let calls = 0;
     const host: SkillExecutionHost = {
-      id: 'host',
+      id: 'local-skill',
       capabilities: ['skill-script'],
       authorize: async () => false,
       invokeSkill: async () => {
@@ -559,7 +559,7 @@ describe('application adaptation and SDK authority', () => {
       input,
     });
     await expect(
-      runtime.execute({ runId: 'report', actionId: run.actions[0].id, executorId: 'host' }),
+      runtime.execute({ runId: 'report', actionId: run.actions[0].id, executorId: 'local-skill' }),
     ).rejects.toMatchObject({ code: 'COMMAND_REJECTED' });
     expect(calls).toBe(0);
     expect((await runtime.inspect('report')).actions[0].status).toBe('pending');
@@ -568,7 +568,7 @@ describe('application adaptation and SDK authority', () => {
     const { loaded } = await application();
     let calls = 0;
     const host: SkillExecutionHost = {
-      id: 'host',
+      id: 'local-skill',
       capabilities: ['skill-script'],
       authorize: async () => true,
       invokeSkill: async () => {
@@ -598,11 +598,19 @@ describe('application adaptation and SDK authority', () => {
       input,
     });
     await expect(
-      runtime.execute({ runId: 'report', actionId: initial.actions[0].id, executorId: 'host' }),
+      runtime.execute({
+        runId: 'report',
+        actionId: initial.actions[0].id,
+        executorId: 'local-skill',
+      }),
     ).rejects.toMatchObject({ code: 'EXECUTION_UNKNOWN' });
     const unknown = await runtime.inspect('report');
     await expect(
-      runtime.execute({ runId: 'report', actionId: unknown.actions[0].id, executorId: 'host' }),
+      runtime.execute({
+        runId: 'report',
+        actionId: unknown.actions[0].id,
+        executorId: 'local-skill',
+      }),
     ).rejects.toMatchObject({ code: 'ACTION_ALREADY_CLAIMED' });
     const restored = await loadWorkflowApplication({
       file: path.join(loaded.identity.packageRoot, 'application.json'),
@@ -619,6 +627,79 @@ describe('application adaptation and SDK authority', () => {
       (await runtime.recordOutcome({ runId: 'report', outcome: result.outcome })).actions[0].status,
     ).toBe('succeeded');
     expect(calls).toBe(1);
+  });
+  it('rejects a legacy unauthorized unknown Outcome while retaining its original claim and receipts', async () => {
+    const fixture = await createDiskApplication(root, { external: true });
+    const moduleFile = path.join(fixture.packageRoot, 'application.mjs');
+    await fs.writeFile(
+      moduleFile,
+      (await fs.readFile(moduleFile, 'utf8')).replace('"on":"single-session"', '"on":"rejected"'),
+    );
+    const loaded = await loadWorkflowApplication({ file: fixture.file, projectRoot: root });
+    const store = createMemoryRuntimeStore<WorkflowRun>();
+    // 隔离 Store 重建旧版只校验自报能力的领取记录，不改写真实项目的 SDK 状态。
+    const legacy = createRuntime({
+      ...loaded.implementation,
+      validateOutcome: undefined,
+      executors: [],
+      store,
+    });
+    let run = await legacy.start({
+      runId: 'report',
+      workflow: { id: 'editorial', version: '1' },
+      input,
+    });
+    run = await claim(legacy, run.actions[0]);
+    run = await legacy.recordOutcome({
+      runId: 'report',
+      outcome: outcome(run.actions[0], { output: { scope: 'report' } }),
+    });
+    const wait = run.waits[0];
+    run = await legacy.resolveWait({
+      runId: 'report',
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      decisionId: 'denied',
+      choice: 'rejected',
+    });
+    run = await claim(legacy, run.actions[1]);
+    const action = run.actions[1];
+    const oldOutcome = outcome(action, {
+      outcomeId: 'old-invalid',
+      output: { invalid: true },
+      artifacts: [{ uri: 'old-output.json', sha256: 'a'.repeat(64) }],
+    });
+    await expect(
+      legacy.recordOutcome({ runId: 'report', outcome: oldOutcome }),
+    ).rejects.toMatchObject({ code: 'OUTPUT_INVALID' });
+    const unknown = await legacy.markUnknown({
+      runId: 'report',
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'Legacy return channel lost',
+    });
+    const current = createRuntime({ ...loaded.implementation, store });
+    const returned = outcome(action, {
+      outcomeId: 'recovered-denied',
+      artifacts: [{ uri: 'actual-output.json', sha256: 'b'.repeat(64) }],
+    });
+    await expect(
+      current.recordOutcome({ runId: 'report', outcome: returned }),
+    ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+    const recovered = await current.inspect('report');
+    const preserved = recovered.actions[1];
+    expect(preserved.status).toBe('unknown');
+    expect(preserved.claim).toEqual(unknown.actions[1].claim);
+    expect(preserved.receipts.slice(0, 1)).toEqual(unknown.actions[1].receipts);
+    expect(preserved.rejectedOutcomes?.map(({ outcome }) => outcome)).toEqual([
+      oldOutcome,
+      returned,
+    ]);
+    expect(recovered.actions).toHaveLength(2);
+    await expect(
+      current.recordOutcome({ runId: 'report', outcome: oldOutcome }),
+    ).rejects.toMatchObject({ code: 'OUTPUT_INVALID' });
+    expect(await current.inspect('report')).toEqual(recovered);
   });
   it('fixed Skill discovery includes a real resource closure and never invents missing capability evidence', async () => {
     const fixture = await createDiskApplication(root);
@@ -656,7 +737,7 @@ describe('application adaptation and SDK authority', () => {
     const endpoint = `http://127.0.0.1:${address.port}`;
     try {
       const host: SkillExecutionHost = {
-        id: 'http-host',
+        id: 'local-skill',
         capabilities: ['skill-script'],
         authorize: async ({ run, binding, skill }) =>
           run.waits[0].decision?.choice === 'multi-session' &&
@@ -691,7 +772,7 @@ describe('application adaptation and SDK authority', () => {
       });
       const actionId = run.actions[1].id;
       await expect(
-        runtime.execute({ runId: 'report', actionId, executorId: 'http-host' }),
+        runtime.execute({ runId: 'report', actionId, executorId: 'local-skill' }),
       ).rejects.toMatchObject({ code: 'RECONCILIATION_REQUIRED' });
       expect((await runtime.inspect('report')).actions[1].status).toBe('pending');
       expect(operations).toBe(0);
@@ -705,11 +786,11 @@ describe('application adaptation and SDK authority', () => {
         store: loaded.store,
       });
       await expect(
-        runtime.execute({ runId: 'report', actionId, executorId: 'http-host' }),
+        runtime.execute({ runId: 'report', actionId, executorId: 'local-skill' }),
       ).rejects.toMatchObject({ code: 'EXECUTION_UNKNOWN' });
       const unknown = await runtime.inspect('report');
       await expect(
-        runtime.execute({ runId: 'report', actionId, executorId: 'http-host' }),
+        runtime.execute({ runId: 'report', actionId, executorId: 'local-skill' }),
       ).rejects.toMatchObject({ code: 'ACTION_ALREADY_CLAIMED' });
       const result = await reconcileApplicationSkill(loaded, host, unknown, actionId);
       if (result.resolution !== 'executed') throw new Error('Expected authoritative HTTP receipt');

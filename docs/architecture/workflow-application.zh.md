@@ -6,7 +6,7 @@
 
 ## 应用包与固定身份
 
-`application.json` 使用 `comet.workflow.application.v1`，声明 `id`、`version`、`base`、`runtimeVersion`、`entrySkill`、`module`、`skills` 和 `bindings`。`base` 表示 standalone、Native 或所选 Classic profile，不等同于应用身份。应用目录必须与项目状态目录分开；入口文件固定命名为 `application.json`。
+`application.json` 使用 `comet.workflow.application.v1`，声明 `id`、`version`、`base`、`runtimeVersion`、`entrySkill`、`module`、`skills` 和 `bindings`。`base` 表示 standalone、Native 或所选 Classic profile，不等同于应用身份。`id` 不得占用内置应用名 `native`、`classic-full`、`classic-hotfix`、`classic-tweak`，加载时在创建 Run 前拒绝冲突。应用目录必须与项目状态目录分开；入口文件固定命名为 `application.json`。
 
 `module` 指向自包含 `.mjs` 工厂，导出 `createApplication(context)`。模块及其相对代码依赖只支持可检查的 `.mjs`；JSON 资源可引用。非字面量动态导入、包外相对导入和未固定的第三方包拒绝加载。第三方依赖先 bundle；模块不得有顶层 await。SDK 的公共入口按声明的 Runtime 版本固定。适配代码是经用户选择的可信代码，加载器不提供代码沙箱。
 
@@ -32,9 +32,11 @@
 
 `createApplicationSkillExecutor` 接收宿主 `capabilities`、无副作用的 `authorize`、真实 `invokeSkill` 和可选 `reconcile`。凭据由宿主闭包或本次环境注入，不保存到包或 Run。宿主授权适配器核对 Action、范围、实际 Skill 与现有用户授权；Skill 指令不能扩大授权。
 
-SDK 先执行无副作用的 `preflight`，再原子领取 Action，然后调用宿主。缺少能力、输入不匹配、无授权或外部操作缺少核对能力时保留 pending，宿主不被调用。有副作用的绑定引用 `authorizationFrom` 和允许的 `authorizationChoices`；必须继承当前 Wait 的决定、序列和提案。同一步骤有多个激活时，按当前 Action 继承的精确 Wait 核对批准，不能取该步骤最后一项替代；旧提案和不匹配的批准不能复用。Supervisor 等领域可声明已确认的实际选项，不强制新增一次通用批准。
+自动 `execute` 与手工 `claim` 共用 SDK 的领取预检：先在当前 Run 快照执行无副作用的 `preflight`，再原子提交领取。异步授权期间发生 CAS 冲突时，读取新快照并重新检查；同一合法 claim 幂等重放保留原 token，不重新授权。缺少能力、输入不匹配、无授权或外部操作缺少核对能力时保留 pending，宿主不被调用。有副作用的绑定引用 `authorizationFrom` 和允许的 `authorizationChoices`；必须继承当前 Wait 的决定、序列和提案。同一步骤有多个激活时，按当前 Action 继承的精确 Wait 核对批准，不能取该步骤最后一项替代；旧提案和不匹配的批准不能复用。Supervisor 等领域可声明已确认的实际选项，不强制新增一次通用批准。
 
-宿主返回的原始输出和工件交给 SDK 验证；Schema 或业务检查拒绝时保存到 `rejectedOutcomes`，保留原因，不把已返回结果误报为未知。执行已派发但宿主抛错或断连时才进入 unknown，保留原 Action、attempt 和 claimToken。不得再次调用 execute 来重发。
+Skill 的 `executorId` 选择应用已配置、支持该 Action 且提供领取预检的执行端口，不认证实际执行者身份。手工宿主可沿该端口领取，自行调用真实 Skill，再使用原 claim 回报；领取本身不调用 `invokeSkill`。请求中的能力声明不能代替端口配置的能力和授权检查。普通 SDK handoff 等手工协议仍按自身契约执行。
+
+宿主返回的原始输出和工件交给 SDK 验证。应用通过 `validateOutcome` 核对原输入及精确批准绑定，再沿 Schema 和业务验证器检查；回收结果不重新调用派发授权，不重发 Skill。契约、Schema 或业务检查拒绝时保存到 `rejectedOutcomes`，保留原 claim、已有 receipt、原始输出和工件；原 unknown 状态也保留。执行已派发但宿主抛错或断连时才进入 unknown，保留原 Action、attempt 和 claimToken。不得再次调用 execute 来重发。
 
 `reconcileApplicationSkill` 读取原 running/unknown Action 的外部结果。已执行时返回绑定原 Action 的 Outcome，再沿 SDK 回报；确认未执行时提供可核对证据，再沿 SDK retry。缺少核对能力或结果无法确认时保持原现场。这个接口不会重发外部操作，也不宣称本地 Run 与外部服务之间具有原子提交。
 
