@@ -272,7 +272,12 @@ describe('Native portable Archive', () => {
       data: {
         status: 'blocked',
         archived: true,
-        continuation: { status: 'blocked', disposition: 'blocked' },
+        continuation: {
+          status: 'blocked',
+          disposition: 'blocked',
+          requiresUserDecision: false,
+          userCommunication: { required: true, suggestedReply: null },
+        },
       },
     });
     const journal = await readNativeWorkspaceFinishJournal(paths, state.name);

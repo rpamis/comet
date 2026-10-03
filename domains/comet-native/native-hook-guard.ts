@@ -28,6 +28,7 @@ import {
   returnNativePortableChangeToBuild,
   returnNativePortableChangeToShape,
 } from './native-portable-runtime.js';
+import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
 import type { NativePortableState } from './native-portable-types.js';
 
 const readHookProjectConfig = memoizedHookRead('nativeHookProjectConfig', readProjectConfig);
@@ -349,6 +350,21 @@ async function inspectPortableWriteTargets(options: {
     };
   }
   if (formalTargets.length > 0) {
+    if (
+      state.document_constraints_version === 2 &&
+      formalTargets.every(
+        (target) => target === 'brief.md' || /^specs\/[^/]+\/spec\.md$/u.test(target),
+      )
+    ) {
+      return {
+        allowed: true,
+        reason:
+          'Native formal Markdown edit; Runtime rechecks the actual content before an implementation write or workflow transition',
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+      };
+    }
     if (state.phase !== 'shape') {
       const returned = await runNativeHookMutation(() =>
         returnNativePortableChangeToShape({
@@ -374,6 +390,26 @@ async function inspectPortableWriteTargets(options: {
     };
   }
   if (implementationTargets.length > 0) {
+    if (state.document_constraints_version === 2 && state.phase !== 'shape') {
+      const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
+      if (drift.drifted) {
+        const returned = await runNativeHookMutation(() =>
+          returnNativePortableChangeToShape({
+            paths,
+            name: state.name,
+            reason: drift.reason ?? 'Native confirmed requirements changed',
+            keepFailureBudget: true,
+          }),
+        );
+        return {
+          allowed: false,
+          reason: implementationWriteDeniedReason(returned),
+          workflow: 'native',
+          phase: returned.phase,
+          change: returned.name,
+        };
+      }
+    }
     if (state.children_contract_hash) {
       return {
         allowed: false,

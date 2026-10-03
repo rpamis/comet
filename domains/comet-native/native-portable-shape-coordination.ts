@@ -75,8 +75,14 @@ export async function confirmNativePortableShape(options: {
           'Native Shape can only be confirmed from the persisted user confirmation boundary',
         );
       }
-      if (options.coordinationMode !== undefined) {
-        throw new Error('--coordination-mode must be selected before final Shape confirmation');
+      if (
+        options.coordinationMode !== undefined &&
+        state.coordination_mode !== undefined &&
+        options.coordinationMode !== state.coordination_mode
+      ) {
+        throw new Error(
+          '--coordination-mode is already bound to this Shape confirmation; revise Shape before changing it',
+        );
       }
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
       const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
@@ -124,7 +130,12 @@ export async function confirmNativePortableShape(options: {
         )) ||
         (children?.contract.schema === 'comet.native.children.v2' &&
           children.contract.children.length >= 2);
-      const coordinationMode = state.coordination_mode;
+      const coordinationMode = options.coordinationMode ?? state.coordination_mode;
+      if (!coordinationRequired && options.coordinationMode !== undefined) {
+        throw new Error(
+          '--coordination-mode is only valid for a multi-child Native Supervisor Shape',
+        );
+      }
       if (coordinationRequired && !children) {
         throw new Error('Native Supervisor Shape requires children.yaml before confirmation');
       }
@@ -136,7 +147,7 @@ export async function confirmNativePortableShape(options: {
       const latestShapeConfirmationHash = nativePortableShapeConfirmationHash({
         formalHash: shape.formalHash,
         childrenHash: children?.hash ?? null,
-        coordinationMode,
+        coordinationMode: state.coordination_mode,
       });
       if (
         state.shape_confirmation_hash === undefined ||
@@ -155,7 +166,15 @@ export async function confirmNativePortableShape(options: {
         throw new Error(`${reason}; Native change returned to Shape and requires confirmation`);
       }
       const next = confirmNativePortableAcceptance({
-        state: { ...bound, spec_changes: specChanges },
+        state: {
+          ...bound,
+          spec_changes: specChanges,
+          shape_confirmation_hash: nativePortableShapeConfirmationHash({
+            formalHash: shape.formalHash,
+            childrenHash: children?.hash ?? null,
+            coordinationMode,
+          }),
+        },
         acceptance: acceptance.map((entry) => ({ ...entry })),
       });
       delete next.children_contract_hash;

@@ -31,24 +31,24 @@ Use `comet-state.yaml` to restore workflow state across devices. Runtime updates
 
 Shape, Build, Verify, and Archive recheck the binding between formal files and confirmed requirements. A target specification must be at `specs/<capability>/spec.md`; other files under `specs/` are not formal Specs, and the Hook rejects them with the expected path. Empty documents, heading- or fence-only content, and template-only placeholders such as `TODO`, `<TODO>`, or `{{reason}}` do not satisfy a complete specification. A no-product-behavior exemption must give a concrete reason; comments and placeholder reasons do not count. If Archive dry-run reports only that `verification.md` is missing, stale, or invalid, `continuation` directly supplies `comet native doctor <change> --repair`; rerun dry-run after the repair.
 
+During Shape, Verify, and Archive, ordinary documentation writes preserve the current phase and candidate by default: Markdown/text and LICENSE-style files at the repository root or under `docs/`, `doc/`, `documentation/`, and `.github/`, outside the Native artifact root. Set `native.document_writes: revert` in `.comet/config.yaml` for strict behavior. Formal requirements files always follow the binding rules above.
+
 `.comet/config.yaml` selects the workflow and artifact directory. Synchronize it when a nondefault artifact directory must work across devices; other `.comet/*` data stays local.
 
 Runtime's `artifacts` object is the sole location authority for the current workspace: `briefPath`, `childrenPath`, `specsDir`, and `statePath` are under the configured `<artifact-root>/comet/changes/<change-name>/`; local `runtimeDir` remains under `.comet/runtime/native/`. Do not substitute a same-named file from `.comet/comet/` or another directory when a formal artifact is missing. If the Hook reports a path error, retry the original edit at the exact absolute path it supplies, preserving existing content and reading before merging when needed.
 
 ### Brief
 
-`brief.md` records Native requirements clarification. Use these level-one headings, each with nonempty content:
+`brief.md` records Native requirements clarification. Use these four core level-one headings, each with nonempty content:
 
 ```text
 # Outcome
 # Scope
 # Non-goals
 # Acceptance examples
-# Constraints and invariants
-# Decisions
-# Open questions
-# Verification expectations
 ```
+
+Add `Constraints and invariants`, `Decisions`, `Open questions`, or `Verification expectations` only for actual constraints, key decisions, unresolved questions, or special check requirements. Fill any existing section with meaningful content; simple tasks need no placeholder "none" sections. Record user decisions in relevant core sections, using Decisions when several decisions need tracking.
 
 Use these markers in Open questions only for genuinely unresolved user questions:
 
@@ -57,9 +57,9 @@ Use these markers in Open questions only for genuinely unresolved user questions
 - [blocking] Q1: <Batch question>
 ```
 
-After the user confirms each decision, immediately record it in Decisions and the complete target Specs, then remove its blocker. Runtime saves the final Shape summary and waits through `await-user`; do not add another confirmation question to the brief. Formal artifacts record conclusions and reasons, not the model's hidden reasoning. Use [source-document full coverage](#source-document-full-coverage) to record how requirements sources map to Specs and acceptance items.
+After the user confirms each decision, immediately record it in the relevant brief sections and complete target Specs, then remove its blocker. Runtime saves the final Shape summary and waits through `await-user`; do not add another confirmation question to the brief. Formal artifacts record conclusions and reasons, not the model's hidden reasoning. Use [source-document full coverage](#source-document-full-coverage) to record how requirements sources map to Specs and acceptance items.
 
-Acceptance criteria must be specific, verifiable, and nonduplicative. Runtime generates items only from top-level brief acceptance examples and complete Spec scenarios explicitly marked `Scenario:`. Explanatory paragraphs, ordinary lists, and isolated WHEN/THEN lines are not extra items. Acceptance IDs are sequential, such as `A1`, `A2`, and `A3`; they associate verdicts with items, are not content hashes, and do not identify files. Runtime saves the complete acceptance text and its source when Shape is confirmed.
+Acceptance criteria must be specific, verifiable, and nonduplicative. Runtime generates items only from top-level brief acceptance examples and complete Spec scenarios explicitly marked `Scenario:`. Explanatory paragraphs, ordinary lists, and isolated WHEN/THEN lines are not extra items. Acceptance IDs are sequential, such as `A1`, `A2`, and `A3`; they associate verdicts with items, are not content hashes, and do not identify files. Runtime saves the complete acceptance text and its source when Shape is confirmed. When a Spec scenario corresponds to an existing brief acceptance item, write `Acceptance: A1` (or Chinese `验收：A1`) on its own line in the scenario body, referencing the current brief's actual ID to avoid a duplicate acceptance item. Each scenario may reference one ID; new behavior needs a separate scenario. References combine acceptance identity only: complete Specs remain bound to confirmation and must be checked by the Verifier.
 
 New `children.yaml` files use `comet.native.children.v2`:
 

@@ -504,6 +504,13 @@ export function nativeErrorEnvelope(
       ? (input.data as Record<string, unknown>)
       : {};
   switch (input.code) {
+    case 'document-invalid':
+      return {
+        summary: input.message,
+        ...(typeof record.change === 'string'
+          ? { next: { command: `comet native next ${record.change} --summary <summary>` } }
+          : {}),
+      };
     case 'conflict':
       return {
         summary: phrase(

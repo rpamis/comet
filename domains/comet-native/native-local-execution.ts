@@ -418,6 +418,16 @@ export function nativeVerifierExecutionRefForState(
   return execution.executionId;
 }
 
+export function nativeVerifierStartupConfirmationForState(
+  state: NativePortableState,
+  local: NativeLocalExecutionState | null,
+): 'unconfirmed' | 'confirmed' | undefined {
+  if (nativeVerifierExecutionRefForState(state, local) === undefined) return undefined;
+  return local!.execution!.verifierStartedAt != null || local!.execution!.requestCheckRounds > 0
+    ? 'confirmed'
+    : 'unconfirmed';
+}
+
 export async function writeNativeLocalExecution(
   file: string,
   state: NativeLocalExecutionState,

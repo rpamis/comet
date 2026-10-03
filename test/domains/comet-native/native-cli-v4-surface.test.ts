@@ -247,7 +247,8 @@ Run applicable focused checks.
     expect(next.stdout).toContain('--validate-only');
     expect(next.stdout).toContain('retry-checks');
     expect(next.stdout).toContain('verification_checks');
-    expect(next.stdout).toContain('reused without executing the same plan twice');
+    expect(next.stdout).toContain('a passing plan returns the Verifier dispatch immediately');
+    expect(next.stdout).toContain('saved evidence still match');
     expect(next.stdout).toContain('--coordination-mode multi-session|single-session');
     expect(next.stdout).toContain('not trusted identity attestation');
     expect(next.stdout).toContain('Checks completed, but your confirmation is required');
@@ -282,7 +283,7 @@ Run applicable focused checks.
     expect(retiredSpec).toMatchObject({ exitCode: 64, error: { code: 'usage' } });
   });
 
-  it('surfaces the coordination choice from an explicit Supervisor Shape decision', async () => {
+  it('prepares the complete Supervisor Shape before requesting a joint user decision', async () => {
     const name = 'recorded-supervisor';
     await runNativeCli(['new', name, '--language', 'zh-CN', ...projectArgs()]);
     await fs.writeFile(
@@ -300,11 +301,11 @@ Run applicable focused checks.
     const result = json(await runNativeCli(['status', name, '--json', ...projectArgs()]));
 
     expect(result.data?.continuation).toMatchObject({
-      disposition: 'await-user',
-      requiresUserDecision: true,
+      disposition: 'continue',
+      requiresUserDecision: false,
       action: 'prepare-shape-confirmation',
-      requiredInputs: ['summary', 'coordination-choice'],
-      userCommunication: { required: true, suggestedReply: '回复 A 或 B' },
+      requiredInputs: ['summary'],
+      userCommunication: { required: false, suggestedReply: null },
     });
     expect(result.data?.continuation.userCommunication.agentInstruction).toContain(
       'prepare-shape-confirmation',
@@ -663,7 +664,7 @@ Run applicable focused checks.
               template: {
                 kind: 'builder-handoff',
                 summary: '<summary>',
-                addressed_acceptance_ids: ['<acceptance-id>'],
+                addressed_acceptance_ids: ['A1', 'A2'],
                 known_limits: [],
               },
             },
@@ -740,9 +741,16 @@ Run applicable focused checks.
     const dispatch = (dispatched.data as { verifierDispatch: Record<string, unknown> })
       .verifierDispatch;
     expect(JSON.stringify(dispatch)).not.toMatch(/identity|provider/iu);
-    expect(dispatch).not.toHaveProperty('acceptance');
+    expect(dispatch.acceptance).toEqual([
+      { id: 'A1', source: 'brief.md', text: 'First behavior works.' },
+      { id: 'A2', source: 'brief.md', text: 'Second behavior works.' },
+    ]);
+    expect(dispatch.startupInput).toEqual({
+      kind: 'verifier-started',
+      candidateId: dispatch.candidateId,
+      verifierExecutionRef: dispatch.verifierExecutionRef,
+    });
     expect(dispatch).not.toHaveProperty('builderHandoff');
-    expect(JSON.stringify(dispatch)).not.toContain('First behavior works.');
     expect(dispatch).toMatchObject({
       stateVersion: expect.any(Number),
       verifierExecutionRef: expect.stringContaining('skill-coordinated:verifier:'),
@@ -1514,7 +1522,7 @@ Run applicable focused checks.
     await expect(fs.readFile(counter, 'utf8')).resolves.toBe('run\n');
   });
 
-  it('executes handoff verification checks once and reuses them for Verifier dispatch', async () => {
+  it('dispatches after handoff checks and reuses them for the same Verifier', async () => {
     const name = 'handoff-runtime-check-reuse';
     const counter = path.join(projectRoot, '.comet', 'runtime', 'handoff-check-count.txt');
     const verificationCheck = {
@@ -1539,18 +1547,14 @@ Run applicable focused checks.
         state: {
           phase: 'verify',
           status: 'active',
-          loop: { stage: 'verify-ready', next_action: 'run-required-checks-and-dispatch-verifier' },
+          loop: { stage: 'verify-ready', next_action: 'await-verifier-result' },
         },
         checks: [expect.objectContaining({ id: 'runtime-pass', status: 'passed' })],
         runtimeCheckExecution: { disposition: 'executed' },
         continuation: {
-          action: 'dispatch-verifier',
-          inputOptions: [
-            expect.objectContaining({
-              template: { kind: 'dispatch-verifier', checks: [verificationCheck] },
-            }),
-          ],
+          action: 'await-verifier',
         },
+        verifierDispatch: { runtimeChecks: [expect.objectContaining({ id: 'runtime-pass' })] },
       },
     });
     await expect(fs.readFile(counter, 'utf8')).resolves.toBe('run\n');
@@ -1558,22 +1562,36 @@ Run applicable focused checks.
     for (const command of ['status', 'show'] as const) {
       const resumed = json(await runNativeCli([command, name, '--json', ...projectArgs()]));
       expect(resumed.data?.continuation).toMatchObject({
-        action: 'dispatch-verifier',
-        inputOptions: [
-          expect.objectContaining({
-            template: { kind: 'dispatch-verifier', checks: [verificationCheck] },
-          }),
-        ],
+        action: 'await-verifier',
       });
     }
 
-    const dispatched = await runnerStep(name, inputTemplate(checked, 'runner-input'));
+    const dispatch = checked.data!.verifierDispatch as {
+      candidateId: string;
+      verifierExecutionRef: string;
+      iteration: number;
+      attempt: number;
+    };
+    const dispatched = await runnerStep(name, {
+      kind: 'verifier-response',
+      candidateId: dispatch.candidateId,
+      verifierExecutionRef: dispatch.verifierExecutionRef,
+      response: {
+        kind: 'request-checks',
+        iteration: dispatch.iteration,
+        attempt: dispatch.attempt,
+        checks: [verificationCheck],
+      },
+    });
     expect(dispatched).toMatchObject({
       exitCode: 0,
       data: {
         checks: [expect.objectContaining({ id: 'runtime-pass', status: 'passed' })],
-        runtimeCheckExecution: { disposition: 'reused' },
-        verifierDispatch: { runtimeChecks: [expect.objectContaining({ id: 'runtime-pass' })] },
+        requestChecks: { reusedCheckIds: ['runtime-pass'], executedCheckIds: [] },
+        verifierDispatch: {
+          verifierExecutionRef: dispatch.verifierExecutionRef,
+          runtimeChecks: [expect.objectContaining({ id: 'runtime-pass' })],
+        },
         continuation: { action: 'await-verifier' },
       },
     });

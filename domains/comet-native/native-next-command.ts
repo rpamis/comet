@@ -1,10 +1,14 @@
 import { inspectNativeChildren } from './native-children.js';
+import type { NativeWorkspaceFinish } from './native-workspace.js';
 import {
   nativePortableContinuation,
   type NativePortableContinuationOptions,
 } from './native-portable-continuation.js';
 import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
-import { nativeVerifierExecutionRefForState } from './native-local-execution.js';
+import {
+  nativeVerifierExecutionRefForState,
+  nativeVerifierStartupConfirmationForState,
+} from './native-local-execution.js';
 import { readNativeWorkspaceFinishJournal } from './native-workspace-finish.js';
 import { migrateNativeLegacyChangeToPortable } from './native-portable-migration-runtime.js';
 import {
@@ -137,6 +141,10 @@ async function portableParentView(
       : {}),
     continuation: nativePortableContinuation(state, children, {
       verifierExecutionRef,
+      verifierStartup: nativeVerifierStartupConfirmationForState(
+        state,
+        runtime.localStatus === 'available' ? runtime.local : null,
+      ),
       verificationCheckPlans,
       retryCheckIds,
       supervisorIntegrationRetryIds,
@@ -175,6 +183,15 @@ export async function nativeNextCommand(
   const validateOnly = takeFlag(args, '--validate-only');
   const confirmed = takeFlag(args, '--confirmed');
   const acceptResult = takeFlag(args, '--accept-result');
+  const finish = takeOption(args, '--finish') as NativeWorkspaceFinish | undefined;
+  if (
+    finish !== undefined &&
+    (!acceptResult || !['keep', 'merge', 'push', 'pull-request'].includes(finish))
+  ) {
+    throw new NativeUsageError(
+      '--finish requires --accept-result and must be keep, merge, push, or pull-request',
+    );
+  }
   const reviseImplementation = takeFlag(args, '--revise-implementation');
   const reviseRequirements = takeFlag(args, '--revise-requirements');
   const retryVerifier = takeFlag(args, '--retry-verifier');
@@ -212,8 +229,7 @@ export async function nativeNextCommand(
   }
   if (
     coordinationMode !== undefined &&
-    (confirmed ||
-      acceptResult ||
+    (acceptResult ||
       reviseImplementation ||
       reviseRequirements ||
       retryVerifier ||
@@ -221,7 +237,7 @@ export async function nativeNextCommand(
       runnerInputFile !== undefined)
   ) {
     throw new NativeUsageError(
-      '--coordination-mode is only valid when preparing a Supervisor Shape confirmation',
+      '--coordination-mode is only valid when preparing or confirming a Supervisor Shape',
     );
   }
   // Agent-authored Build/Verify completion fields retired with Native v4.
@@ -240,6 +256,7 @@ export async function nativeNextCommand(
         phase: 'archive' as const,
         status: 'blocked' as const,
         disposition: 'blocked' as const,
+        requiresUserDecision: false,
         action: 'archive' as const,
         commandArgs: finishJournal.result?.recoveryArgs ?? [
           'comet',
@@ -261,9 +278,9 @@ export async function nativeNextCommand(
           message:
             finishJournal.result?.message ??
             'Native Archive completed, but workspace finish is still pending.',
-          suggestedReply: 'Retry workspace finish',
+          suggestedReply: null,
           agentInstruction:
-            'Retry the recorded Native workspace finish command after resolving the Git blocker; do not treat this change as complete until it succeeds.',
+            'Report the blocker and resolve it within the recorded delivery authorization, then retry the recorded command. Ask only if new information or authorization is needed; a retry of the same finish does not need another confirmation.',
         },
       };
       return {
@@ -559,6 +576,7 @@ export async function nativeNextCommand(
         paths: configured.paths,
         name,
         expectedContinuation,
+        ...(coordinationMode === undefined ? {} : { coordinationMode }),
       });
     } else if (current.phase === 'shape') {
       throw new NativeUsageError(
@@ -595,6 +613,7 @@ export async function nativeNextCommand(
       paths: configured.paths,
       name,
       expectedContinuation,
+      finish,
     });
   } else if (reviseImplementation) {
     if (current.phase !== 'verify') {
@@ -747,19 +766,10 @@ export async function nativeNextCommand(
       current.phase === 'shape'
         ? await inspectNativeChildren({ paths: configured.paths, state: current })
         : null;
-    return {
-      command: 'next',
-      exitCode: 65,
-      data: {
-        state: nativePortableStateSummary(current, configured.paths),
-        continuation: nativePortableContinuation(current, continuationChildren),
-      },
-      error: {
-        code: 'invalid-data',
-        message:
-          'This Native step requires the skill-coordinated --runner-input action returned by continuation; public JSON cannot supply identity, provider, execution ref, or candidate binding',
-      },
-    };
+    return success('next', {
+      state: nativePortableStateSummary(current, configured.paths),
+      continuation: nativePortableContinuation(current, continuationChildren),
+    });
   }
   return success('next', {
     state: nativePortableStateSummary(state, configured.paths),

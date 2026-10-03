@@ -144,18 +144,27 @@ describe('Native issue handoff regressions', () => {
 
   it('reuses checks when validated untracked runner input files are replaced inside the repository', async () => {
     const check = plan();
-    expect(
-      (await cli(['next', name], { ...handoff(), verification_checks: [check] }, true)).exitCode,
-    ).toBe(0);
+    const handedOff = await cli(
+      ['next', name],
+      { ...handoff(), verification_checks: [check] },
+      true,
+    );
+    expect(handedOff.exitCode).toBe(0);
+    const d = handedOff.data.verifierDispatch;
     const dispatched = await cli(
       ['next', name],
-      { kind: 'dispatch-verifier', checks: [check] },
+      response(d, {
+        kind: 'request-checks',
+        iteration: d.iteration,
+        attempt: d.attempt,
+        checks: [check],
+      }),
       true,
     );
     expect(dispatched).toMatchObject({
       exitCode: 0,
       data: {
-        runtimeCheckExecution: { disposition: 'reused' },
+        requestChecks: { reusedCheckIds: [check.id], executedCheckIds: [] },
         continuation: { action: 'await-verifier' },
       },
     });
@@ -208,18 +217,27 @@ describe('Native issue handoff regressions', () => {
     expect(rejected.exitCode).toBe(65);
     const retained = path.join(root, `input-${sequence}.json`);
     const check = plan();
-    expect(
-      (await cli(['next', name], { ...handoff(), verification_checks: [check] }, true)).exitCode,
-    ).toBe(0);
+    const handedOff = await cli(
+      ['next', name],
+      { ...handoff(), verification_checks: [check] },
+      true,
+    );
+    expect(handedOff.exitCode).toBe(0);
+    const d = handedOff.data.verifierDispatch;
     await fs.rm(retained);
     const dispatched = await cli(
       ['next', name],
-      { kind: 'dispatch-verifier', checks: [check] },
+      response(d, {
+        kind: 'request-checks',
+        iteration: d.iteration,
+        attempt: d.attempt,
+        checks: [check],
+      }),
       true,
     );
     expect(dispatched).toMatchObject({
       exitCode: 0,
-      data: { runtimeCheckExecution: { disposition: 'reused' } },
+      data: { requestChecks: { reusedCheckIds: [check.id], executedCheckIds: [] } },
     });
     expect(await fs.readFile(path.join(root, '.comet/runtime/check-count.txt'), 'utf8')).toBe(
       'run\n',

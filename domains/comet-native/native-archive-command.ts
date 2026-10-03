@@ -79,6 +79,20 @@ export async function nativeArchiveCommand(
   if (dryRun && confirmed)
     throw new NativeUsageError('--confirmed is only valid when executing Archive');
   const finishOption = takeOption(args, '--finish');
+  const expectedVersionOption = takeOption(args, '--expected-state-version');
+  const expectedStateVersion =
+    expectedVersionOption === undefined ? undefined : Number(expectedVersionOption);
+  if (
+    expectedVersionOption !== undefined &&
+    (!/^\d+$/u.test(expectedVersionOption) ||
+      !Number.isSafeInteger(expectedStateVersion) ||
+      !confirmed ||
+      !finishOption)
+  ) {
+    throw new NativeUsageError(
+      '--expected-state-version requires --confirmed --finish and a non-negative integer',
+    );
+  }
   const serialFirstOption = takeOption(args, '--serial-first');
   const commitMessage = takeOption(args, '--commit-message');
   const mergeMessage = takeOption(args, '--merge-message');
@@ -115,6 +129,11 @@ export async function nativeArchiveCommand(
   }
   const configured = await configuredPaths(projectRoot);
   const portableActive = await isNativePortableChange(configured.paths, name);
+  if (expectedStateVersion !== undefined && !portableActive) {
+    throw new NativeUsageError(
+      'The workspace finish decision is stale; read the current continuation',
+    );
+  }
   const finishJournal = await readNativeWorkspaceFinishJournal(configured.paths, name);
   const activeArchiveTransaction = await readNativePortableTransaction(configured.paths, {
     kind: 'archive',
@@ -356,6 +375,14 @@ export async function nativeArchiveCommand(
     let state =
       recovery?.state ??
       (portableActive ? await readNativePortableChange(configured.paths, name) : null);
+    if (
+      expectedStateVersion !== undefined &&
+      (state?.state_version !== expectedStateVersion || state.workspace.finish !== null)
+    ) {
+      throw new NativeUsageError(
+        'The workspace finish decision is stale; read the current continuation',
+      );
+    }
     if (mergeMessage !== undefined && state && (finish ?? state.workspace.finish) !== 'merge') {
       throw new NativeUsageError('--merge-message requires a merge workspace finish');
     }
@@ -371,7 +398,12 @@ export async function nativeArchiveCommand(
       // the single preflight + in-transaction freshness recheck run. This replaces
       // the mandatory second full dry-run, which repeated the same snapshot fence
       // the transaction already revalidates.
-      state = await setNativePortableWorkspaceFinish({ paths: configured.paths, name, finish });
+      state = await setNativePortableWorkspaceFinish({
+        paths: configured.paths,
+        name,
+        finish,
+        expectedStateVersion,
+      });
     }
     if (recovery?.action === 'reverify' || recovery?.action === 'await-user') {
       return success(

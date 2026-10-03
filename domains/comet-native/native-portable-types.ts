@@ -162,7 +162,7 @@ export interface NativePortableState {
   state_version: number;
   brief: 'brief.md';
   /** Set on changes created or returned to Shape after the document contract was introduced. */
-  document_constraints_version?: 1;
+  document_constraints_version?: 1 | 2;
   shape_confirmation_hash?: string;
   children_contract_hash?: string;
   coordination_mode?: NativeSupervisorCoordinationMode;

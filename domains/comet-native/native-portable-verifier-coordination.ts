@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { NativeWorkspaceFinish } from './native-workspace.js';
 import {
   advanceNativeSupervisorFinalVerificationHead,
   recordNativeSupervisorPortableFinalVerification,
@@ -34,6 +35,7 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
   paths: NativeProjectPaths;
   name: string;
   expectedContinuation?: NativePortableExpectedContinuation;
+  finish?: NativeWorkspaceFinish;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
@@ -46,6 +48,15 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
         action: 'accept-result',
       });
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
+      if (
+        options.finish !== undefined &&
+        !['keep', 'merge', 'push', 'pull-request'].includes(options.finish)
+      ) {
+        throw new Error('Native workspace finish must be keep, merge, push, or pull-request');
+      }
+      if (options.finish !== undefined && state.workspace.isolation === 'current') {
+        throw new Error('A workspace finish choice requires an isolated Native workspace');
+      }
       const supervisor = await readNativeSupervisorState(options.paths, options.name);
       if (supervisor?.finalVerification.status === 'pending') {
         const advanced = advanceNativeSupervisorFinalVerificationHead(supervisor);
@@ -63,6 +74,8 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
         );
       }
       const next = confirmNativeSkillCoordinatedPass(state);
+      if (options.finish !== undefined)
+        next.workspace = { ...next.workspace, finish: options.finish };
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),

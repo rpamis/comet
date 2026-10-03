@@ -1253,7 +1253,7 @@ children:
           // Preserve the assertion failure when setup did not reach a worktree.
         }
       }
-      await fs.rm(repository, { recursive: true, force: true });
+      await fs.rm(repository, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 

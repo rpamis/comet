@@ -33,6 +33,7 @@ import {
   retryNativePortableCheckPlan,
   sameNativeCheckPlan,
   retryNativePortableVerifier,
+  returnNativePortableChangeToBuild,
   submitNativePortableBuilderCandidate,
   submitNativePortableVerifierResult,
 } from '../../../domains/comet-native/native-portable-runtime.js';
@@ -90,6 +91,86 @@ describe('Native portable Runtime vertical path', () => {
   afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
   });
+
+  it.each(['none', 'source', 'plan', 'log', 'environment', 'workspace'])(
+    'reuses completed checks across candidates only when bindings remain unchanged (%s)',
+    async (changed) => {
+      const git = (...args: string[]) =>
+        execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
+      git('init', '--quiet');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      await fs.writeFile(path.join(root, 'source.txt'), 'first\n');
+      git('add', 'source.txt');
+      git('commit', '--quiet', '-m', 'test: fixture');
+      await createNativePortableChange({ paths, name: 'candidate-reuse', language: 'en' });
+      await fs.writeFile(
+        path.join(nativePortableChangeDir(paths, 'candidate-reuse'), 'brief.md'),
+        '# Acceptance examples\n- Output remains correct.\n',
+      );
+      const state = await confirmNativePortableShape({ paths, name: 'candidate-reuse' });
+      const runner = createNativeRunnerChannel();
+      const plans = [
+        {
+          id: 'output',
+          name: 'Output',
+          executable: process.execPath,
+          argv: ['-e', "console.log('ready')"],
+          cwdRef: '.',
+          timeoutMs: 10000,
+          repeatable: true,
+        },
+      ];
+      const submit = (candidateId: string) =>
+        submitNativePortableBuilderCandidate({
+          paths,
+          name: state.name,
+          verificationChecks: plans,
+          input: {
+            identity: runner.captureExecutionIdentity({
+              identityProvider: 'test-host',
+              executionRef: `builder-${candidateId}`,
+            }),
+            candidateId,
+            summary: 'Output is correct.',
+            addressedAcceptanceIds: ['A1'],
+            acceptanceReview: fixtureAcceptanceReview(['A1']),
+          },
+        });
+      await submit('first');
+      expect(
+        (await executeNativePortableCheckPlan({ paths, name: state.name, plans })).disposition,
+      ).toBe('executed');
+      await returnNativePortableChangeToBuild({
+        paths,
+        name: state.name,
+        reason: 'Re-submit the candidate.',
+      });
+      if (changed === 'source') await fs.writeFile(path.join(root, 'source.txt'), 'changed\n');
+      if (changed === 'plan') plans[0].argv = ['-e', "console.log('different')"];
+      const local = (await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name)))!;
+      if (changed === 'log')
+        await fs.writeFile(
+          path.join(nativePreferredChangeRuntimeDir(paths, state.name), local.checks[0].log),
+          'changed evidence',
+        );
+      if (changed === 'workspace') {
+        local.workspace.worktreeRoot = path.join(root, 'wrong-worktree');
+        await fs.writeFile(nativeLocalExecutionFile(paths, state.name), JSON.stringify(local));
+      }
+      const priorNodeEnv = process.env.NODE_ENV;
+      if (changed === 'environment') process.env.NODE_ENV = 'native-rebind-test';
+      try {
+        await submit('second');
+        const result = await executeNativePortableCheckPlan({ paths, name: state.name, plans });
+        expect(result.disposition).toBe(changed === 'none' ? 'reused' : 'executed');
+        expect(result.checks).toMatchObject([{ id: 'output', status: 'passed' }]);
+      } finally {
+        if (priorNodeEnv === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = priorNodeEnv;
+      }
+    },
+  );
 
   it.each([false, true])(
     'shares branch observation while reusing checks (ambiguous ref: %s)',

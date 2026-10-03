@@ -23,6 +23,7 @@ import { readProjectConfig, resolveNativeProject } from './native-config.js';
 import { deriveNativeOutputEnvelope, nativeErrorEnvelope } from './native-output-language.js';
 import { NativeReceiptScopeStaleError } from './native-receipt-errors.js';
 import { NativeInputValidationError, type NativeInputIssue } from './native-input-error.js';
+import { NativeDocumentConstraintError } from './native-artifacts.js';
 import { NativeBuilderAcceptanceIncompleteError } from './native-builder-acceptance-review.js';
 import { NativeVerificationReceiptBindingError } from './native-verification-runtime.js';
 import { NativeWorkspacePreparationError } from './native-workspace-preparation.js';
@@ -39,6 +40,7 @@ export interface NativeCliErrorShape {
   code:
     | 'usage'
     | 'invalid-data'
+    | 'document-invalid'
     | 'blocked'
     | 'conflict'
     | 'internal'
@@ -263,6 +265,14 @@ export async function readBoundedEvidenceStdin(maxBytes: number): Promise<string
 }
 
 function rawErrorResult(command: string | null, error: unknown): DispatchResult {
+  if (error instanceof NativeDocumentConstraintError) {
+    return {
+      command,
+      exitCode: 65,
+      data: { change: error.change, findings: error.findings },
+      error: { code: 'document-invalid', message: error.message },
+    };
+  }
   if (error instanceof NativeBuilderAcceptanceIncompleteError) {
     return {
       command,

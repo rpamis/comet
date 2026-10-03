@@ -111,13 +111,20 @@ const checks = (name: string, files: string[]) => [
     repeatable: true,
   },
 ];
-async function acceptCandidate(root: string, name: string, ids: string[], plans: unknown[]) {
-  await input(root, name, {
+async function acceptCandidate(
+  root: string,
+  name: string,
+  ids: string[],
+  plans: unknown[],
+  finish?: 'keep' | false,
+) {
+  const dispatched = await input(root, name, {
     kind: 'builder-handoff',
     summary: 'Protocol regression fixture',
     addressed_acceptance_ids: ids,
     acceptance_review: fixtureAcceptanceReview(ids),
     checks: [],
+    verification_checks: plans,
     known_limits: ['Fixture semantic verdict'],
     review: {
       status: 'passed',
@@ -125,7 +132,6 @@ async function acceptCandidate(root: string, name: string, ids: string[], plans:
       reviewer_execution_ref: 'fixture-review',
     },
   });
-  const dispatched = await input(root, name, { kind: 'dispatch-verifier', checks: plans });
   const result = await input(root, name, {
     kind: 'verifier-response',
     candidateId: dispatched.verifierDispatch.candidateId,
@@ -142,10 +148,12 @@ async function acceptCandidate(root: string, name: string, ids: string[], plans:
       },
     },
   });
+  if (finish === false) return result;
   return follow(
     root,
     result.continuation.commandAlternatives.find(
-      (item: { name: string }) => item.name === 'accept-result',
+      (item: { name: string }) =>
+        item.name === (finish ? `accept-result-${finish}` : 'accept-result'),
     ).commandArgs,
   );
 }
@@ -157,6 +165,62 @@ afterEach(async () => {
 });
 
 describe('Native public user-option paths', () => {
+  it.each(['branch', 'worktree'] as const)(
+    'accepts the result and keeps its %s workspace in one guarded decision',
+    async (isolation) => {
+      const primary = await repository();
+      const created = await cli(primary, ['new', 'combined', '--isolation', isolation]);
+      const root = created.preparation.projectRoot;
+      await fs.writeFile(
+        path.join(root, 'docs/comet/changes/combined/brief.md'),
+        supervisorBrief('The fixture works.'),
+      );
+      const prepared = await cli(root, ['next', 'combined', '--summary', 'Ready']);
+      await follow(root, prepared.continuation.commandAlternatives[0].commandArgs);
+      const accepted = await acceptCandidate(root, 'combined', ['A1'], [], 'keep');
+      expect(accepted.state).toMatchObject({ phase: 'archive', workspace: { finish: 'keep' } });
+      expect(accepted.continuation.requiresUserDecision).toBe(false);
+      expect(accepted.continuation.requiredInputs).not.toContain('workspace-finish');
+      const preview = await cli(root, ['archive', 'combined', '--dry-run']);
+      expect(preview.ready).toBe(true);
+      expect(
+        (await follow(root, preview.continuation.commandArgs)).workspaceFinishResult.status,
+      ).toBe('kept');
+    },
+  );
+
+  it('rejects an expired one-step Archive choice without recording finish', async () => {
+    const primary = await repository();
+    const root = (await cli(primary, ['new', 'stale-finish', '--isolation', 'branch'])).preparation
+      .projectRoot;
+    await fs.writeFile(
+      path.join(root, 'docs/comet/changes/stale-finish/brief.md'),
+      supervisorBrief('The fixture works.'),
+    );
+    const prepared = await cli(root, ['next', 'stale-finish', '--summary', 'Ready']);
+    await follow(root, prepared.continuation.commandAlternatives[0].commandArgs);
+    const ready = await acceptCandidate(root, 'stale-finish', ['A1'], []);
+    const args = [
+      ...ready.continuation.commandAlternatives.find(
+        (item: { name: string }) => item.name === 'keep-workspace',
+      ).commandArgs,
+    ];
+    args[args.indexOf('--expected-state-version') + 1] = String(ready.state.state_version - 1);
+    const rejected = await runNativeCli([...args.slice(2), '--project-root', root, '--json']);
+    expect(rejected.exitCode).not.toBe(0);
+    expect(JSON.parse(rejected.stdout!).error.message).toMatch(/stale/iu);
+    expect((await cli(root, ['status', 'stale-finish'])).workspace.finish).toBeNull();
+    expect(
+      (
+        await follow(
+          root,
+          ready.continuation.commandAlternatives.find(
+            (item: { name: string }) => item.name === 'keep-workspace',
+          ).commandArgs,
+        )
+      ).workspaceFinishResult.status,
+    ).toBe('kept');
+  });
   it.each(['branch', 'worktree'] as const)(
     'delivers Supervisor to its %s change and preserves keep',
     async (isolation) => {

@@ -595,7 +595,7 @@ describe('Comet Native Skills', () => {
     expect(sequential.indexOf('保存 `- [blocking]')).toBeLessThan(
       sequential.indexOf('一次只提出这一个问题'),
     );
-    expect(sequential).toContain('立即把已确定的决定写入 Decisions、brief 和完整目标规格');
+    expect(sequential).toContain('立即把已确定的决定写入 brief 的相关章节和完整目标规格');
     expect(sequential).toContain('更新问题之间的依赖关系，重新确定下一轮可以提出的问题');
 
     const batch = section(clarification, 'batch-模式');
@@ -614,7 +614,7 @@ describe('Comet Native Skills', () => {
       enSequential.indexOf('Ask only this question'),
     );
     expect(enSequential).toContain(
-      'Immediately record confirmed decisions in Decisions, the brief, and complete target Specs',
+      'Immediately record confirmed decisions in the relevant brief sections and complete target Specs',
     );
     const enBatch = section(en, 'batch-mode');
     expect(enBatch.indexOf('Before asking, save all questions')).toBeLessThan(
@@ -682,8 +682,8 @@ describe('Comet Native Skills', () => {
     expect(enRows[3][2]).toContain('current session handles all children sequentially');
     expect(enSupervisor).toContain('show both A and B');
     expect(enSupervisor).toContain('wait for explicit selection');
-    expect(enSupervisor).toContain('a generic confirmation is insufficient');
-    expect(enSupervisor).toContain('The user must explicitly confirm the complete Shape');
+    expect(enSupervisor).toContain('A generic confirmation is insufficient');
+    expect(enSupervisor).toContain('the user must explicitly confirm the complete Shape');
     expect(markdownLinks(enSupervisor)).toContain('commands.md#supervisor-coordination');
   });
 
@@ -700,7 +700,7 @@ describe('Comet Native Skills', () => {
         'specs/<capability>/spec.md',
         'verification.md',
         '# Acceptance examples',
-        '# Verification expectations',
+        'Verification expectations',
         'comet-state.yaml',
         'verification.md',
         'Runtime',

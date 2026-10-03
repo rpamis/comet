@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { Lexer } from 'marked';
 import { atomicWriteText } from './native-atomic-file.js';
 import {
   nativeBriefHasBlockingQuestion,
+  NativeDocumentConstraintError,
   stripMarkdownHtmlComments,
   validateNativeBrief,
   validateNativeSpecDocumentText,
@@ -84,11 +86,35 @@ import {
 import { returnNativePortableStateToFinalVerificationLocked } from './native-portable-transitions.js';
 import { assertNoActiveNativeSupervisorTasks } from './native-supervisor-state.js';
 
-export const NATIVE_PORTABLE_BRIEF_TEMPLATE = nativeBriefTemplate('en');
+export const NATIVE_PORTABLE_BRIEF_TEMPLATE = nativeBriefTemplate('en', { compact: true });
 
 const NATIVE_CAPABILITY_ASSOCIATION_FILE = 'capability-association.yaml';
 
-function normalizedShapeArtifactText(text: string): string {
+function normalizedShapeArtifactText(text: string, markdown = false): string {
+  if (markdown) {
+    // Bind Markdown structure and content, retaining code, HTML, lists and hard
+    // breaks. Lexer transport spelling and block spacing carry no semantics.
+    const normalize = (value: unknown): unknown => {
+      if (Array.isArray(value)) {
+        return value.filter((entry) => entry?.type !== 'space').map(normalize);
+      }
+      if (value && typeof value === 'object') {
+        const token = value as Record<string, unknown>;
+        return Object.fromEntries(
+          Object.entries(token)
+            .filter(([key]) => key !== 'raw' && !(key === 'text' && Array.isArray(token.tokens)))
+            .map(([key, entry]) => [
+              key,
+              key === 'text' && token.type === 'text' && typeof entry === 'string'
+                ? entry.replace(/[\t ]*\n[\t ]*/gu, ' ')
+                : normalize(entry),
+            ]),
+        );
+      }
+      return value;
+    };
+    return JSON.stringify(normalize(Lexer.lex(text.replace(/\r\n?/gu, '\n'))));
+  }
   const lines = text.replace(/\r\n?/gu, '\n').split('\n');
   while (lines.length > 0 && lines.at(-1)?.trim().length === 0) lines.pop();
   return `${lines.map((line) => line.replace(/[\t ]+$/gu, '')).join('\n')}\n`;
@@ -157,7 +183,12 @@ export async function validateNativePortableDocuments(options: {
 }): Promise<NativeArtifactValidation> {
   const changeDir = nativePortableChangeDir(options.paths, options.state.name);
   const findings: NativeFinding[] = [
-    ...(await validateNativeBrief(changeDir, options.state.brief, { strict: true })).findings,
+    ...(
+      await validateNativeBrief(changeDir, options.state.brief, {
+        strict: true,
+        compact: options.state.document_constraints_version === 2,
+      })
+    ).findings,
   ];
   let briefSource = '';
   try {
@@ -241,11 +272,13 @@ export async function assertNativePortableDocuments(options: {
 }): Promise<void> {
   const validation = await validateNativePortableDocuments(options);
   if (!validation.valid) {
-    throw new Error(
+    throw new NativeDocumentConstraintError(
       formatNativeDocumentConstraintFindings(validation.findings, {
         change: options.state.name,
         phase: options.state.phase,
       }),
+      validation.findings,
+      options.state.name,
     );
   }
 }
@@ -334,7 +367,7 @@ export async function createNativePortableChange(options: {
         await fs.mkdir(path.join(changeDir, 'specs'), { recursive: true });
         await atomicWriteText(
           path.join(changeDir, 'brief.md'),
-          nativeBriefTemplate(options.language),
+          nativeBriefTemplate(options.language, { compact: true }),
         );
         const state = createNativePortableState({
           name: options.name,
@@ -735,7 +768,7 @@ export async function readNativePortableAcceptance(options: {
       ...spec,
       contentHash: canonicalHash(
         'comet.native.shape-artifact-content.v1',
-        normalizedShapeArtifactText(source.text),
+        normalizedShapeArtifactText(source.text, options.state.document_constraints_version === 2),
       ),
       ...(deltaContentHash === null ? {} : { deltaContentHash }),
     });
@@ -780,13 +813,17 @@ export async function readNativePortableAcceptance(options: {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   return {
-    acceptance: buildNativePortableAcceptance({ briefMarkdown: brief.text, specs }),
+    acceptance: buildNativePortableAcceptance({
+      briefMarkdown: brief.text,
+      specs,
+      resolveBriefReferences: options.state.document_constraints_version === 2,
+    }),
     formalHash: canonicalHash('comet.native.shape-formal-artifacts.v1', {
       brief: {
         source: brief.ref,
         contentHash: canonicalHash(
           'comet.native.shape-artifact-content.v1',
-          normalizedShapeArtifactText(brief.text),
+          normalizedShapeArtifactText(brief.text, options.state.document_constraints_version === 2),
         ),
       },
       specs: specArtifacts,
@@ -830,13 +867,21 @@ export async function prepareNativePortableShapeConfirmation(options: {
       if (state.phase !== 'shape' || state.status !== 'active' || state.loop.stage !== 'shape') {
         throw new Error('Native Shape confirmation can only be prepared from active Shape');
       }
+      const shapeBoundary =
+        options.enforceDocumentConstraints === true
+          ? { ...state, document_constraints_version: 2 as const }
+          : state;
       const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
       if (options.enforceDocumentConstraints === true) {
-        await assertNativePortableDocuments({ paths: options.paths, state, specChanges });
+        await assertNativePortableDocuments({
+          paths: options.paths,
+          state: shapeBoundary,
+          specChanges,
+        });
       }
       const shape = await readNativePortableAcceptance({
         paths: options.paths,
-        state,
+        state: shapeBoundary,
         specChanges,
       });
       const { acceptance } = shape;
@@ -887,11 +932,6 @@ export async function prepareNativePortableShapeConfirmation(options: {
       const coordinationMode = coordinationRequired
         ? (options.coordinationMode ?? state.coordination_mode)
         : undefined;
-      if (coordinationRequired && coordinationMode === undefined) {
-        throw new Error(
-          'Native Supervisor Shape requires --coordination-mode multi-session or single-session',
-        );
-      }
       if (!coordinationRequired && options.coordinationMode !== undefined) {
         throw new Error(
           '--coordination-mode is only valid for a multi-child Native Supervisor Shape',
@@ -899,6 +939,9 @@ export async function prepareNativePortableShapeConfirmation(options: {
       }
       const shapeState: NativePortableState = {
         ...bound,
+        ...(shapeBoundary.document_constraints_version === undefined
+          ? {}
+          : { document_constraints_version: shapeBoundary.document_constraints_version }),
         spec_changes: specChanges,
         shape_confirmation_hash: nativePortableShapeConfirmationHash({
           formalHash: shape.formalHash,
@@ -913,7 +956,6 @@ export async function prepareNativePortableShapeConfirmation(options: {
         state: shapeState,
         acceptance: acceptance.map((entry) => ({ ...entry })),
       });
-      if (options.enforceDocumentConstraints === true) next.document_constraints_version = 1;
       if (children) {
         next.children_contract_hash = hashNativeParentContract({
           acceptance: next.acceptance,
@@ -940,7 +982,7 @@ export async function inspectNativePortableAcceptanceDrift(options: {
   state: NativePortableState;
   ignoreSpecOperationFor?: ReadonlySet<string>;
 }): Promise<{ drifted: boolean; reason: string | null }> {
-  if (options.state.document_constraints_version === 1) {
+  if (options.state.document_constraints_version !== undefined) {
     const documents = await validateNativePortableDocuments(options);
     if (!documents.valid) {
       const first = documents.findings[0];
@@ -1407,12 +1449,25 @@ export async function setNativePortableWorkspaceFinish(options: {
   paths: NativeProjectPaths;
   name: string;
   finish: NonNullable<NativePortableWorkspace['finish']>;
+  expectedStateVersion?: number;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
     `set portable workspace finish ${options.name}`,
     async () => {
       const state = await readNativePortableChange(options.paths, options.name);
+      if (
+        options.expectedStateVersion !== undefined &&
+        (state.state_version !== options.expectedStateVersion ||
+          state.phase !== 'archive' ||
+          state.status !== 'active' ||
+          state.loop.stage !== 'archive-ready' ||
+          state.workspace.finish !== null)
+      ) {
+        throw new Error(
+          'Native workspace finish decision is stale; read the current continuation and confirm the finish again',
+        );
+      }
       if (state.workspace.isolation === 'current') {
         throw new Error('Native current-workspace isolation does not accept a finish action');
       }

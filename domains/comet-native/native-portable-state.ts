@@ -809,10 +809,10 @@ export function parseNativePortableState(value: unknown): NativePortableState {
     brief: 'brief.md',
     ...(root.document_constraints_version === undefined
       ? {}
-      : root.document_constraints_version === 1
-        ? { document_constraints_version: 1 as const }
+      : root.document_constraints_version === 1 || root.document_constraints_version === 2
+        ? { document_constraints_version: root.document_constraints_version as 1 | 2 }
         : (() => {
-            throw new Error('Native document_constraints_version must be 1');
+            throw new Error('Native document_constraints_version must be 1 or 2');
           })()),
     ...(root.shape_confirmation_hash === undefined
       ? {}

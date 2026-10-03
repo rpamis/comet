@@ -109,6 +109,62 @@ describe('Native flow efficiency plan', () => {
     expect(template).not.toHaveProperty('review');
   });
 
+  it('prefills unchanged Builder evidence and highlights the repair scope', () => {
+    const runner = createNativeRunnerChannel();
+    const state = reserveNativeVerifierAttempt(
+      builderCandidate(confirmedState('repair-template'), runner),
+    );
+    const failed = applyNativeVerifierEnvelope({
+      state,
+      envelope: verifierEnvelope(runner, state, 'fail', ['A1']),
+      checks: [],
+      maxVerifyFailures: 3,
+    });
+    const template = nativePortableContinuation(failed.state).inputOptions[0].template as {
+      acceptance_review: Array<{ id: string; status: string; evidence: string[] }>;
+    };
+    expect(template.acceptance_review.find(({ id }) => id === 'A2')).toMatchObject({
+      status: 'implemented-with-evidence',
+      evidence: fixtureAcceptanceReview(['A2'])[0].evidence,
+    });
+    expect(template.acceptance_review.find(({ id }) => id === 'A1')?.status).toBe(
+      'implemented-no-evidence',
+    );
+  });
+
+  it('offers acceptance and workspace delivery in one bound decision', () => {
+    const runner = createNativeRunnerChannel();
+    const state = reserveNativeVerifierAttempt(
+      builderCandidate(confirmedState('combined-delivery'), runner),
+    );
+    state.workspace = {
+      isolation: 'branch',
+      change_branch: 'fix/tiny',
+      target_branch: 'master',
+      finish: null,
+    };
+    const passed = applyNativeVerifierEnvelope({
+      state,
+      envelope: verifierEnvelope(runner, state, 'pass'),
+      checks: [],
+      maxVerifyFailures: 3,
+    });
+    const continuation = nativePortableContinuation(passed.state);
+    const keep = continuation.commandAlternatives?.find(
+      ({ name }) => name === 'accept-result-keep',
+    );
+    expect(keep?.commandArgs).toEqual(
+      expect.arrayContaining([
+        '--accept-result',
+        '--finish',
+        'keep',
+        '--expected-state-version',
+        String(passed.state.state_version),
+      ]),
+    );
+    expect(continuation.userCommunication.message).toMatch(/keep|保留/iu);
+  });
+
   it('pauses a fully blocked Supervisor instead of emitting a self-retrying next command', () => {
     const state = confirmedState('blocked-supervisor', ['A1']);
     const continuation = nativePortableContinuation(state, {

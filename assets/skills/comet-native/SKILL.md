@@ -9,6 +9,7 @@ Native saves complete requirements, progress, and acceptance results in the proj
 
 ## Required rules
 
+- Continue confirmed implementation, document repairs, evidence reuse, and recovery. Pause for new decisions, authorization, or external information. Use current continuation commands, templates, and packages; correct inputs within the same task.
 - Treat `.comet/config.yaml`, the current change, `comet-state.yaml`, and formal artifacts on disk as authoritative; chat memory is supplementary. Among formal workflow files, the Agent edits only the brief, complete target Specs, association `delta.yaml`, and `children.yaml`. Runtime owns state, check results, reports, locks, and transactions.
 - Advance through the public `comet native` CLI on PATH; do not ask the user to run commands manually. If the command is unavailable, report an incomplete installation and stop. Consult `comet native <command> --help` for arguments.
 - Create changes with the CLI; use returned paths and follow denial commands or targets before retrying. Custom and non-Comet writes stay neutral.
@@ -40,11 +41,11 @@ Read the section for the current action. Follow links within it only when their 
 
 ## Shape
 
-Investigate facts that can be established without the user. Ask only about decisions that change user-visible outcomes and cannot be inferred reliably. For simple requests, list unresolved questions and dependencies; maintain a decision tree only when several decisions affect one another. Before asking under `native.clarification_mode`, save this round's unresolved questions in the brief. Immediately copy confirmed conclusions into Decisions, the brief, and complete target Specs. Keep unanswered parts `[blocking]`.
+Investigate facts that can be established without the user. Ask only about decisions that change user-visible outcomes and cannot be inferred reliably. For simple requests, list unresolved questions and dependencies; maintain a decision tree only when several decisions affect one another. Before asking under `native.clarification_mode`, save this round's unresolved questions in the brief. Immediately copy confirmed conclusions into the relevant brief sections and complete target Specs. Keep unanswered parts `[blocking]`.
 
 Complete when requirements sources are fully processed within the coverage boundary and classified by purpose, all outcome-affecting decisions and assumptions are resolved, no `[blocking]` remains, the user explicitly confirms the outcome, scope, key decisions, all acceptance items, and non-goals, and Runtime has entered Build.
 
-At a new or reconfirmed Shape, Runtime checks all eight brief sections, a complete target Spec or an explicit no-product-behavior-change reason, and formal paths. Failures name the artifact and repair action; edit it and rerun continuation. Later-phase existing changes keep their progress until Shape.
+New or reconfirmed briefs need outcome, scope, non-goals, and acceptance examples. Add constraints, decisions, open questions, or special verification requirements when applicable. Runtime also checks formal paths and a complete target Spec or concrete no-product-behavior-change reason. Repair reported artifacts and rerun continuation. Existing later-phase changes retain progress until Shape.
 
 ## Build ↔ Verify Loop
 
@@ -56,7 +57,7 @@ After the Builder submits a candidate, Runtime runs required checks and a new re
 
 Before the first implementation, read the current brief, complete target Specs, and every acceptance item. Edit project code and tests within confirmed scope. During repair, prioritize the Verifier's failed or blocked items and failed checks, then recheck other confirmed behavior before submission. `previous_unresolved_ids` identifies the repair focus; the next formal verification still covers every acceptance item.
 
-Build, Verify, and Archive recheck bound documents. Drift or stale reports return a repair action and preserve work; Runtime still checks without a Hook. Ordinary Markdown is unaffected. Ordinary documentation writes (Markdown/text and LICENSE-style files at the repository root or under `docs/`, `doc/`, `documentation/`, `.github/`, outside the Native artifact root) are neutral during Shape, Verify, and Archive: they do not return the change to Build and do not invalidate the current candidate. Set `native.document_writes: revert` in `.comet/config.yaml` to restore the strict behavior.
+Build, Verify, and Archive recheck formal bindings. New Shapes bind Markdown content: blank lines and soft wraps preserve confirmation; content, structure, code, link, or acceptance changes require reconfirmation. After an edit, Hooks check actual content before the next implementation write; Runtime also checks before advancement. Existing Shapes retain their binding. Invalid documents or reports return repair actions and preserve work. Ordinary documents preserve candidates by default; use `native.document_writes: revert` for strict behavior. See [formal artifacts](reference/artifacts.md#formal-artifacts) for paths.
 
 User Hook output can use `hook.allow_paths` in `.comet/config.yaml`; see [User Hook writes](reference/commands.md#user-hook-writes).
 
@@ -74,17 +75,17 @@ Complete when the implementation and relevant checks are ready for verification,
 
 ## Verify
 
-Immediately launch an independent read-only Verifier under the Verify protocol. The dispatch record only registers the attempt: until the platform tool accepts the launch and the Verifier reports `verifier-started`, do not treat "dispatched" as "running" or report it that way to the user; if the launch call itself fails or is rejected, handle it through the exception flow immediately. The Verifier checks that recorded results match the current candidate, workspace, and inputs, adds only missing or invalidated checks, and independently assesses every acceptance item. The Builder passes only the implementation location, acceptance IDs and references, check-record locations, known limitations, and relevant file locations. Read log bodies on demand.
+Launch a new read-only Verifier immediately under the Verify protocol with the unchanged task package. Report it as running only after the platform accepts startup and the Verifier reports `verifier-started`; handle launch failures immediately. Use inline acceptance text or page through every scopeId. The Verifier assesses all acceptance items independently, reuses Runtime checks matching implementation, workspace, and inputs, and adds missing or invalidated evidence. Read files and logs on demand.
 
-While awaiting the result, use `status` to distinguish "registered but not started" from "Verifier confirmed startup"; when startup is unconfirmed and the subagent is unresponsive, verify the dispatch actually succeeded before waiting on or failing the attempt. A wait-tool timeout means keep waiting for the same Verifier. Record an execution error only when the platform confirms execution failure, an execution timeout, a lost task, or completion without a usable result. Once Runtime accepts the complete result, follow the latest state. When user acceptance is required, run `--accept-result` only after explicit acceptance. Results with automated checks but no independent verification also require explicit acceptance.
+After a wait-tool timeout, keep waiting for the same Verifier. If its receipt is missing and it is unresponsive, check launch success. Report errors only for confirmed failure, execution timeout, task loss, or completion without a usable result. Follow current state after Runtime accepts results. Run `--accept-result` only after explicit user acceptance, including automated-check-only results. For isolated workspaces, accept results and choose delivery in one reply with `--finish`; ask separately if no finish was chosen.
 
 Complete when Runtime accepts each verdict and supplies the next action. Continue repairs on Build, or address the specified waiting or blocking condition. Ending a phase does not mean the task is finished.
 
 ## Archive
 
-When `continuation` permits Archive, first read [Archive completion](reference/workspace.md#archive-completion). Use the accepted verification result and execute the complete returned `archive --dry-run` command. Address only blockers in that response. Run its single returned `archive --confirmed` command only after `ready: true`.
+When `continuation` permits Archive, read [Archive completion](reference/workspace.md#archive-completion), reuse the accepted result, and follow continuation. After an explicit finish choice, execute its complete `--confirmed --finish` command; Runtime preflights and rechecks the transaction. If dry-run is returned, preview and run its unique confirmed command after `ready: true`. Address the returned blockers.
 
-Commit only this change's implementation and formal artifacts; preserve unrelated edits. Inspect `workspaceFinishResult`, preserving the workspace and following `recoveryArgs` if blocked.
+Commit only this change's implementation and formal artifacts; preserve unrelated edits. Inspect `workspaceFinishResult`, preserving the workspace and following `recoveryArgs` if blocked. Fix commit messages and local blockers under existing authorization and continue; ask only for new authorization or external information.
 
 Complete when state is `done`, authorized workspace finishing is `completed` or `kept`, and task completion has been recorded through memory integration. Continue handling any other result.
 

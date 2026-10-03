@@ -1059,6 +1059,89 @@ async function hasNativeRuntimeCheckEvidence(
   return true;
 }
 
+/** Rebind completed evidence only after proving the new candidate has identical inputs. */
+export async function rebindNativeCheckEvidence(options: {
+  paths: NativeProjectPaths;
+  previous: NativePortableState;
+  next: NativePortableState;
+  local: NativeLocalExecutionState | null;
+  plans: readonly NativeCheckPlan[];
+  projectRoot?: string;
+}): Promise<NativeLocalExecutionState | null> {
+  const { local, previous, next, plans, paths } = options;
+  if (
+    !local ||
+    !local.checks.length ||
+    local.checks.some(({ status }) => status !== 'passed') ||
+    local.basedOnStateVersion !== previous.state_version ||
+    local.candidateId !== previous.builder_handoff?.candidate_id ||
+    local.workspace.machineId !== os.hostname() ||
+    local.inputFingerprint == null ||
+    local.inputFingerprintGate == null ||
+    (local.execution?.stage === 'checking' && local.execution.status === 'running') ||
+    previous.shape_confirmation_hash !== next.shape_confirmation_hash ||
+    JSON.stringify(previous.acceptance.map(({ id, source, text }) => ({ id, source, text }))) !==
+      JSON.stringify(next.acceptance.map(({ id, source, text }) => ({ id, source, text })))
+  )
+    return null;
+  const projectRoot = local.workspace.worktreeRoot;
+  if (
+    path.resolve(local.workspace.projectRoot) !==
+      path.resolve(options.projectRoot ?? paths.projectRoot) ||
+    path.resolve(projectRoot) !== path.resolve(options.projectRoot ?? paths.projectRoot)
+  )
+    return null;
+  try {
+    if (
+      local.workspace.branch !== currentBranch(projectRoot) ||
+      !sameNativeCheckCommands(local, plans, projectRoot)
+    )
+      return null;
+    if (
+      !(await hasNativeRuntimeCheckEvidence(
+        local,
+        nativePreferredChangeRuntimeDir(paths, next.name),
+      ))
+    )
+      return null;
+    const oldBinding = {
+      projectRoot,
+      candidateId: local.candidateId ?? null,
+      plans,
+      managedArtifactRoot: paths.artifactRoot,
+    };
+    const oldGate = await nativeCheckInputGate(oldBinding);
+    if (oldGate === null || oldGate !== local.inputFingerprintGate) return null;
+    const fingerprint = await nativeCheckInputFingerprint({
+      state: next,
+      projectRoot,
+      plans,
+      managedArtifactRoot: paths.artifactRoot,
+    });
+    const gates = await nativeCheckInputGates({
+      ...oldBinding,
+      candidateId: next.builder_handoff!.candidate_id,
+    });
+    // The full capture must not adopt a source edit that happened while rebinding.
+    if (
+      gates.gate === null ||
+      gates.candidateGate === null ||
+      (await nativeCheckInputGate(oldBinding)) !== oldGate
+    )
+      return null;
+    return {
+      ...preservedLocalChecksForVersion({ local, state: next, projectRoot: paths.projectRoot }),
+      candidateId: next.builder_handoff!.candidate_id,
+      inputFingerprint: fingerprint,
+      inputFingerprintGate: gates.gate,
+      candidateInputFingerprintGate: gates.candidateGate,
+    };
+  } catch {
+    // Incomplete or unavailable evidence requires execution, never blocks a new candidate.
+    return null;
+  }
+}
+
 async function reserveNativePortableCheckPlan(options: {
   paths: NativeProjectPaths;
   name: string;

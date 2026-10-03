@@ -8,7 +8,10 @@ import { readNativeSupervisorState, type NativeSupervisorState } from './native-
 import { inspectNativeSupervisorOverlay } from './native-supervisor-overlay.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { nativePortableCheckPlansFromLocal } from './native-portable-checks.js';
-import { nativeVerifierExecutionRefForState } from './native-local-execution.js';
+import {
+  nativeVerifierExecutionRefForState,
+  nativeVerifierStartupConfirmationForState,
+} from './native-local-execution.js';
 import { nativePortableChangeDir, readNativePortableRuntime } from './native-portable-runtime.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
 import type { NativeLocalExecutionState, NativePortableState } from './native-portable-types.js';
@@ -218,7 +221,9 @@ function verifierStartupProjection(
     return undefined;
   }
   const confirmedAt = execution.verifierStartedAt ?? null;
-  const confirmed = confirmedAt !== null || execution.requestCheckRounds > 0;
+  const confirmation = nativeVerifierStartupConfirmationForState(state, local ?? null);
+  if (confirmation === undefined) return undefined;
+  const confirmed = confirmation === 'confirmed';
   return {
     attempt: state.loop.attempt,
     registeredAt: execution.startedAt,
@@ -287,6 +292,7 @@ export function projectNativeArchivedStatus(options: {
         status: 'blocked' as const,
         disposition: 'blocked' as const,
         action: 'archive' as const,
+        requiresUserDecision: false,
         commandArgs: finishJournal?.result?.recoveryArgs ?? [
           'comet',
           'native',
@@ -299,9 +305,9 @@ export function projectNativeArchivedStatus(options: {
         userCommunication: {
           required: true,
           message: finishMessage,
-          suggestedReply: 'Retry workspace finish',
+          suggestedReply: null,
           agentInstruction:
-            'Retry the recorded Native workspace finish command after resolving the reported Git blocker; do not treat this archived change as complete until it succeeds.',
+            'Report the Git blocker and resolve it within the recorded delivery authorization, then retry the recorded Native workspace finish command. Ask the user only when new information or authorization is required; keep delivery pending until it succeeds.',
         },
         runnerAction: {
           ...nativePortableContinuation(state).runnerAction,
@@ -459,6 +465,10 @@ export async function inspectNativePortableStatus(options: {
     : projectNativePortableWorkspace(options.paths, runtime.state, options.gitContext);
   const continuation = nativePortableContinuation(runtime.state, children, {
     verifierExecutionRef: nativeVerifierExecutionRefForState(runtime.state, runtime.local),
+    verifierStartup: nativeVerifierStartupConfirmationForState(
+      runtime.state,
+      runtime.localStatus === 'available' ? runtime.local : null,
+    ),
     ...(runtime.local
       ? {
           verificationCheckPlans: nativePortableCheckPlansFromLocal(

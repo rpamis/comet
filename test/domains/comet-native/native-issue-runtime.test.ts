@@ -110,12 +110,29 @@ describe('packaged Runtime issue regressions', () => {
       timeoutMs: 10_000,
       repeatable: true,
     };
-    expect((await input({ ...handoff(), verification_checks: [plan] }, true)).exitCode).toBe(0);
+    const handedOff = await input({ ...handoff(), verification_checks: [plan] }, true);
+    expect(handedOff.exitCode).toBe(0);
+    const d = handedOff.data.verifierDispatch;
     await fs.rm(rejectedInput);
-    expect(await input({ kind: 'dispatch-verifier', checks: [plan] }, true)).toMatchObject({
+    expect(
+      await input(
+        {
+          kind: 'verifier-response',
+          candidateId: d.candidateId,
+          verifierExecutionRef: d.verifierExecutionRef,
+          response: {
+            kind: 'request-checks',
+            iteration: d.iteration,
+            attempt: d.attempt,
+            checks: [plan],
+          },
+        },
+        true,
+      ),
+    ).toMatchObject({
       exitCode: 0,
       data: {
-        runtimeCheckExecution: { disposition: 'reused' },
+        requestChecks: { reusedCheckIds: [plan.id], executedCheckIds: [] },
         continuation: { action: 'await-verifier' },
       },
     });

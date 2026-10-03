@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { NativeCheckPlan } from './native-check-executor.js';
 import path from 'node:path';
 import {
   inspectNativeChildren,
@@ -58,6 +59,7 @@ import {
   persistVerifierExecutionError,
   preservedLocalChecksForVersion,
   readCurrentLocalExecution,
+  rebindNativeCheckEvidence,
   reserveVerifierRequestedChecks,
   type NativePortableRequestChecksOutcome,
 } from './native-portable-checks.js';
@@ -147,6 +149,8 @@ export async function submitNativePortableBuilderCandidate(options: {
   paths: NativeProjectPaths;
   name: string;
   input: NativeBuilderCandidateInput;
+  verificationChecks?: readonly NativeCheckPlan[];
+  projectRoot?: string;
 }): Promise<NativePortableState> {
   return withNativeMutationLock(
     options.paths,
@@ -169,14 +173,26 @@ export async function submitNativePortableBuilderCandidate(options: {
         }
       }
       const next = submitNativeBuilderCandidate({ state, input: options.input });
+      const reusable =
+        options.verificationChecks === undefined
+          ? null
+          : await rebindNativeCheckEvidence({
+              paths: options.paths,
+              previous: state,
+              next,
+              plans: options.verificationChecks,
+              projectRoot: options.projectRoot,
+              local: await readCurrentLocalExecution({ paths: options.paths, state }),
+            });
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        rebuildNativeLocalExecution({
-          portableState: written,
-          projectRoot: options.paths.projectRoot,
-          branch: currentBranch(options.paths.projectRoot),
-        }),
+        reusable ??
+          rebuildNativeLocalExecution({
+            portableState: written,
+            projectRoot: options.paths.projectRoot,
+            branch: currentBranch(options.paths.projectRoot),
+          }),
         { containedRoot: options.paths.runtimeDir },
       );
       return written;
@@ -411,18 +427,11 @@ export async function submitNativePortableVerifierResult(options: {
       });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        written.loop.next_action === 'resolve-verifier-blocker' ||
-          written.loop.next_action === 'run-final-full-verification'
-          ? preservedLocalChecksForVersion({
-              local,
-              state: written,
-              projectRoot,
-            })
-          : rebuildNativeLocalExecution({
-              portableState: written,
-              projectRoot,
-              branch: currentBranch(projectRoot),
-            }),
+        preservedLocalChecksForVersion({
+          local,
+          state: written,
+          projectRoot,
+        }),
         { containedRoot: options.paths.runtimeDir },
       );
       if (written.verification !== null) {
@@ -686,7 +695,8 @@ export async function returnNativePortableChangeToBuild(options: {
         action: 'revise-implementation',
       });
       if (state.phase === 'build') return state;
-      const local = options.preserveLocalChecks
+      const preserve = options.preserveLocalChecks !== false;
+      const local = preserve
         ? await readCurrentLocalExecution({ paths: options.paths, state })
         : null;
       const next = returnNativeCandidateToBuild({
@@ -697,7 +707,7 @@ export async function returnNativePortableChangeToBuild(options: {
       const written = await writePortableMutation({ paths: options.paths, previous: state, next });
       await writeNativeLocalExecution(
         nativeLocalExecutionFile(options.paths, state.name),
-        options.preserveLocalChecks
+        preserve
           ? preservedLocalChecksForVersion({
               local,
               state: written,

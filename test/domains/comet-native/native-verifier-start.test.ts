@@ -2,7 +2,7 @@ import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   defaultProjectConfig,
@@ -12,7 +12,11 @@ import {
   ensureNativeDirectories,
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
-import { readNativeLocalExecution } from '../../../domains/comet-native/native-local-execution.js';
+import {
+  nativeVerifierStartupConfirmationForState,
+  readNativeLocalExecution,
+} from '../../../domains/comet-native/native-local-execution.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   applyNativeRunnerInput,
   parseNativeRunnerInput,
@@ -44,6 +48,7 @@ describe('Native Verifier startup receipts', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(root, { recursive: true, force: true });
   });
 
@@ -89,6 +94,30 @@ describe('Native Verifier startup receipts', () => {
       confirmedAt: null,
     });
     expect(before.localExecution.verifierStartup!.registeredAt).toBeTruthy();
+    expect(before.continuation.userCommunication.agentInstruction).toContain(
+      'Check whether the host accepted the startup call',
+    );
+    expect(dispatched.continuation.userCommunication.agentInstruction).toContain(
+      'Check whether the host accepted the startup call',
+    );
+    expect(before.continuation.requiresUserDecision).toBe(false);
+    const resumed = JSON.parse(
+      (
+        await runNativeCli([
+          'next',
+          'receipt-observable',
+          '--summary',
+          'Resume verification.',
+          '--project-root',
+          root,
+          '--json',
+        ])
+      ).stdout!,
+    );
+    expect(resumed.exitCode).toBe(0);
+    expect(resumed.data.continuation.userCommunication.agentInstruction).toContain(
+      'Check whether the host accepted the startup call',
+    );
 
     const confirmed = await applyNativeRunnerInput({
       paths,
@@ -108,11 +137,50 @@ describe('Native Verifier startup receipts', () => {
       confirmation: 'confirmed',
     });
     expect(after.localExecution.verifierStartup!.confirmedAt).toBeTruthy();
+    expect(after.continuation.userCommunication.agentInstruction).toContain(
+      'The Verifier has confirmed startup',
+    );
+    expect(confirmed.continuation.userCommunication.agentInstruction).toContain(
+      'The Verifier has confirmed startup',
+    );
+    expect(after.continuation.userCommunication.agentInstruction).not.toContain(
+      'Check whether the host accepted the startup call',
+    );
     const overlay = await readNativeLocalExecution(
       nativeLocalExecutionFile(paths, 'receipt-observable'),
     );
     expect(overlay?.execution?.verifierStartedAt).toBe(
       after.localExecution.verifierStartup!.confirmedAt,
+    );
+    expect(nativeVerifierStartupConfirmationForState(confirmed.state, overlay)).toBe('confirmed');
+    expect(
+      nativeVerifierStartupConfirmationForState(confirmed.state, {
+        ...overlay!,
+        candidateId: 'stale-candidate',
+      }),
+    ).toBeUndefined();
+    expect(
+      nativeVerifierStartupConfirmationForState(confirmed.state, {
+        ...overlay!,
+        basedOnStateVersion: confirmed.state.state_version - 1,
+      }),
+    ).toBeUndefined();
+    const resumedConfirmed = JSON.parse(
+      (
+        await runNativeCli([
+          'next',
+          'receipt-observable',
+          '--summary',
+          'Resume verification.',
+          '--project-root',
+          root,
+          '--json',
+        ])
+      ).stdout!,
+    );
+    expect(resumedConfirmed.exitCode).toBe(0);
+    expect(resumedConfirmed.data.continuation.userCommunication.agentInstruction).toContain(
+      'The Verifier has confirmed startup',
     );
 
     const repeated = await applyNativeRunnerInput({
@@ -129,6 +197,26 @@ describe('Native Verifier startup receipts', () => {
     const afterRepeat = await inspectNativePortableStatus({ paths, name: 'receipt-observable' });
     expect(afterRepeat.localExecution.verifierStartup!.confirmedAt).toBe(
       after.localExecution.verifierStartup!.confirmedAt,
+    );
+  });
+
+  it('does not turn a delayed startup receipt into failure or another dispatch', async () => {
+    const dispatched = await dispatchVerifier('receipt-delayed');
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 2 * 60 * 60 * 1000);
+    const status = await inspectNativePortableStatus({ paths, name: 'receipt-delayed' });
+    expect(status.localExecution.verifierStartup).toMatchObject({
+      confirmation: 'unconfirmed',
+      waitingMinutes: 120,
+    });
+    expect(status.stateVersion).toBe(dispatched.state.state_version);
+    expect(status.loop.attempt).toBe(dispatched.state.loop.attempt);
+    expect(status.continuation).toMatchObject({
+      action: 'await-verifier',
+      disposition: 'continue',
+      requiresUserDecision: false,
+    });
+    expect(status.continuation.userCommunication.agentInstruction).toContain(
+      'A missing receipt alone does not prove failure',
     );
   });
 

@@ -783,11 +783,7 @@ describe('Comet Native CLI dispatcher', () => {
       ]),
     );
     expect(runnerOnly).toMatchObject({
-      exitCode: 65,
-      error: {
-        code: 'invalid-data',
-        message: expect.stringContaining('public JSON cannot supply identity'),
-      },
+      exitCode: 0,
       data: {
         state: { phase: 'build' },
         continuation: { runnerAction: { kind: 'builder-handoff' } },
