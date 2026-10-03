@@ -91,7 +91,7 @@ describe('shared Comet current selection', () => {
         branch: null,
       })}\n`,
     );
-    await expect(readCometCurrentSelection(root)).rejects.toThrow('native or classic');
+    await expect(readCometCurrentSelection(root)).rejects.toThrow('native, classic or application');
   });
 
   it('bounds and regular-file checks the shared selection before parsing', async () => {

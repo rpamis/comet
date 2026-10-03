@@ -1,5 +1,5 @@
 import path from 'path';
-import { realpathSync } from 'fs';
+import { realpathSync, promises as fs } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 import { discoverNativeProject } from '../comet-native/native-paths.js';
@@ -13,6 +13,7 @@ import { inspectCometHook } from './hook-router.js';
 import type { CometHookDecision } from '../workflow-contract/hook.js';
 import { resolveCometHookProjectRoot } from './hook-project-root.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
+import { readCometCurrentSelection } from '../workflow-contract/current-selection.js';
 
 const USAGE = 'Usage: comet-hook-router --platform <platform-id> [--project-root <project-root>]';
 
@@ -67,6 +68,21 @@ export async function projectRootFrom(
 }
 
 async function configuredProjectFrom(projectRoot: string): Promise<string | null> {
+  let cursor = path.resolve(projectRoot);
+  while (true) {
+    const selection = await readCometCurrentSelection(cursor);
+    if (selection.status === 'selected' && selection.selection.workflow === 'application')
+      return cursor;
+    try {
+      await fs.lstat(path.join(cursor, '.git'));
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
   const discovered = await discoverNativeProject(projectRoot);
   return (await readWorkflowProjectConfig(discovered)) === null ? null : discovered;
 }

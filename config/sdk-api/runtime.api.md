@@ -406,6 +406,7 @@ export interface RuntimeExecutor {
     }>;
     // (undocumented)
     id: string;
+    preflight?(action: Readonly<RuntimeAction>, context?: RuntimeInvocationContext, run?: Readonly<WorkflowRun>): void | Promise<void>;
     // (undocumented)
     supports(action: Readonly<RuntimeAction>): boolean;
 }

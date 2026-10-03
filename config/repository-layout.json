@@ -363,6 +363,18 @@
       {
         "from": "skill",
         "to": "workflow-contract"
+      },
+      {
+        "from": "workflow-application",
+        "to": "engine"
+      },
+      {
+        "from": "workflow-application",
+        "to": "workflow-contract"
+      },
+      {
+        "from": "comet-entry",
+        "to": "workflow-application"
       }
     ],
     "crossDomainEntrypoints": [
@@ -448,7 +460,8 @@
       "domains/workflow-contract/project-config.ts",
       "domains/workflow-contract/project-gitignore.ts",
       "domains/workflow-contract/protected-project-path.ts",
-      "domains/workflow-contract/types.ts"
+      "domains/workflow-contract/types.ts",
+      "domains/workflow-application/index.ts"
     ],
     "restrictedDependencies": [
       {
@@ -508,6 +521,7 @@
     "integrations",
     "project-knowledge",
     "skill",
+    "workflow-application",
     "workflow-contract"
   ],
   "platformModules": ["fs", "http", "install", "paths", "process", "version"],

@@ -1136,6 +1136,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
       );
     if (!executor.supports(structuredClone(pending)))
       throw new RuntimeProtocolError('EXECUTOR_UNSUPPORTED', '执行器不支持此 Action');
+    await executor.preflight?.(structuredClone(pending), command.context, structuredClone(before));
+    checkContext(command.context);
     const started = await claim({
       ...command,
       attempt: pending.attempt,
