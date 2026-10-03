@@ -4,6 +4,8 @@ The Comet Runtime SDK gives host Agent platforms a resumable workflow engine for
 
 It does not replace the platform's native Agent loop or duplicate its model integration. Connect the capabilities the platform already provides through an explicit executor.
 
+Start with [SDK getting started](./sdk-getting-started.md). Use this reference for the full protocol, extension points, and application limits. Simple hosts should prefer `createRuntimeExecutor` and `runUntilBlocked`.
+
 ## Install and import
 
 ```bash
@@ -76,6 +78,29 @@ New built-in Native and Classic changes use their respective SDK Workflow Applic
 Each Run pins hashes for its root workflow and transitive child workflows. To resume, register the same workflow ids, versions, and contents. If a definition changes under the same version, Runtime rejects further mutations with `WORKFLOW_CHANGED` instead of interpreting old state with new logic.
 
 ## Execute Actions in the host
+
+### Common integration path
+
+`createRuntimeExecutor({ id, capabilities?, handlers })` binds step `ref` values to named handlers. `defineRuntimeHandler({ type, parseInput, execute })` checks the step type, parses `{ input, outputs, activation? }`, and calls the business function. The return type of `parseInput` determines the execution function's input type. The execution function returns `{ status, output, artifacts?, summary?, event? }`. The helper does not infer types across the entire workflow; cross-step JSON still needs validation.
+
+After registration, call `runtime.runUntilBlocked({ runId, executorId, maxActions?, context? })` to receive `{ reason, run, actionsExecuted }`. It executes pending Actions in the current Run in persisted order without a handwritten drive loop. It does not choose executors, approve proposals, submit evidence, or retry unknown Actions automatically. `maxActions` defaults to 100 and limits execution attempts in this call, not the duration of an individual tool call. `context.signal` follows the existing execution protocol; it cannot guarantee termination of a host tool or undo its side effects.
+
+| reason                               | Host next step                                                                                                                               |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `completed` / `failed` / `cancelled` | Handle the terminal state and actual result                                                                                                  |
+| `approval-required`                  | Read the current proposal from `run.waits`, obtain the user's decision, then explicitly call `resolveWait`                                   |
+| `evidence-required`                  | Check and submit real evidence; do not fabricate receipts                                                                                    |
+| `execution-unknown`                  | Stop or contact the original executor, inspect external effects, then submit the original result or evidence of non-execution                |
+| `action-in-flight`                   | Wait for the original executor; the host schedules child workflows using `run.children`, without implicitly executing child Runs recursively |
+| `executor-required`                  | The first Action's type, reference, or capabilities are unsupported; leave it unclaimed rather than skipping it                              |
+| `action-limit`                       | This call reached its limit; call again within the host's budget without repeating successful Actions                                        |
+| `idle`                               | No work is executable and no recognized wait exists; inspect the Run and definition                                                          |
+
+Any existing branch with unknown execution, in-flight work, or pending approval stops the call instead of executing other parallel Actions. Once a child Run completes, advancing the parent again accepts its result. Rejected Outcomes, configuration errors, and concurrency conflicts still throw the existing `RuntimeProtocolError` with its `recovery` guidance; they are not converted to success. Input parsing runs after claiming and before the business function. A parsing failure does not execute the business function, but the existing protocol conservatively retains unknown execution ownership.
+
+### Manual dispatch and result submission
+
+For Actions executed in another process or platform, continue using the low-level `claim` / `recordOutcome` protocol:
 
 ```ts
 const runtime = createRuntime({

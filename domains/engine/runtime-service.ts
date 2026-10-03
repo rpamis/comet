@@ -93,6 +93,33 @@ export interface RecordRuntimeEvidence extends RunCommand {
 
 export type InvalidateRuntimeEvidence = RecordRuntimeEvidence;
 
+export interface RunRuntimeUntilBlocked {
+  runId: string;
+  executorId: string;
+  /** 每次调用最多执行多少个 Action，默认 100；不限制单个执行器的耗时。 */
+  maxActions?: number;
+  context?: RuntimeInvocationContext;
+}
+
+export type RuntimeStopReason =
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'approval-required'
+  | 'evidence-required'
+  | 'execution-unknown'
+  | 'action-in-flight'
+  | 'executor-required'
+  | 'action-limit'
+  | 'idle';
+
+export interface RuntimeProgress {
+  reason: RuntimeStopReason;
+  run: WorkflowRun;
+  /** 本次调用已尝试执行的 Action 数，包括结果未知的执行。 */
+  actionsExecuted: number;
+}
+
 function referenceKey(reference: WorkflowRef): string {
   return JSON.stringify([reference.id, reference.version]);
 }
@@ -1189,6 +1216,65 @@ export function createRuntime(options: CreateRuntimeOptions) {
     }
   }
 
+  /** 顺序推进当前 Run；确认、核对和重试始终由宿主显式提交。 */
+  async function runUntilBlocked(command: RunRuntimeUntilBlocked): Promise<RuntimeProgress> {
+    const maxActions = command.maxActions ?? 100;
+    if (!Number.isSafeInteger(maxActions) || maxActions < 1) {
+      throw new RuntimeProtocolError('INVALID_REQUEST', 'maxActions 必须是正安全整数');
+    }
+    const executor = executors.get(command.executorId);
+    if (!executor) throw new RuntimeProtocolError('EXECUTOR_UNAVAILABLE', '未注册指定的执行器');
+    let actionsExecuted = 0;
+    let run = await inspect(command.runId);
+    const stop = (reason: RuntimeStopReason): RuntimeProgress => ({ reason, run, actionsExecuted });
+    const blockedReason = (allowChildProgress: boolean): RuntimeStopReason | undefined => {
+      if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
+        return run.status;
+      }
+      if (run.actions.some((action) => action.status === 'unknown')) return 'execution-unknown';
+      if (
+        run.actions.some(
+          (action) =>
+            action.status === 'running' &&
+            (!allowChildProgress || action.type !== 'child_workflow'),
+        )
+      )
+        return 'action-in-flight';
+      if (run.waits.some((wait) => wait.status === 'pending')) return 'approval-required';
+      if (run.evidenceWaits?.some((wait) => wait.status === 'pending')) return 'evidence-required';
+      return undefined;
+    };
+    for (;;) {
+      checkContext(command.context);
+      // 先检查现有阻塞；next 可能领取并创建 Child，不能先调用再判断未知状态。
+      const existingBlock = blockedReason(true);
+      if (existingBlock) return stop(existingBlock);
+      run = await next({ runId: command.runId, context: command.context });
+      const scheduledBlock = blockedReason(false);
+      if (scheduledBlock) return stop(scheduledBlock);
+      const action = run.actions.find((candidate) => candidate.status === 'pending');
+      if (!action) return stop('idle');
+      if (actionsExecuted >= maxActions) return stop('action-limit');
+      if (
+        !executor.supports(structuredClone(action)) ||
+        action.requiredCapabilities.some(
+          (capability) => !executor.capabilities.includes(capability),
+        )
+      )
+        return stop('executor-required');
+      actionsExecuted++;
+      try {
+        run = await execute({ ...command, actionId: action.id });
+      } catch (error) {
+        if (!(error instanceof RuntimeProtocolError) || error.code !== 'EXECUTION_UNKNOWN')
+          throw error;
+        run = await inspect(command.runId);
+        if (!run.actions.some((candidate) => candidate.status === 'unknown')) throw error;
+        return stop('execution-unknown');
+      }
+    }
+  }
+
   return {
     start,
     dispatchCommand,
@@ -1204,6 +1290,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
     markUnknown,
     retry,
     execute,
+    runUntilBlocked,
   };
 }
 

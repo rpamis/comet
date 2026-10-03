@@ -109,17 +109,19 @@
   },
   "packageManager": "pnpm@10.18.3",
   "overrides": {
-    "brace-expansion": "5.0.9",
+    "brace-expansion": "5.0.12",
     "esbuild": "0.28.2",
+    "fast-uri": "3.1.8",
     "postcss": "8.5.26",
-    "undici": "7.29.0"
+    "undici": "7.29.1"
   },
   "pnpm": {
     "overrides": {
-      "brace-expansion": "5.0.9",
+      "brace-expansion": "5.0.12",
       "esbuild": "0.28.2",
+      "fast-uri": "3.1.8",
       "postcss": "8.5.26",
-      "undici": "7.29.0"
+      "undici": "7.29.1"
     }
   },
   "engines": {
@@ -163,7 +165,7 @@
     "ajv": "^8.17.1",
     "antd": "^6.6.2",
     "commander": "^15.0.0",
-    "dompurify": "^3.4.14",
+    "dompurify": "^3.4.16",
     "highlight.js": "^11.12.0",
     "marked": "^18.0.11",
     "mermaid": "11.17.2",

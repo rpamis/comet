@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import ts from 'typescript';
 
 import { PLATFORMS, getPlatformSkillsDir } from '../../dist/platform/install/platforms.js';
 
@@ -180,6 +181,37 @@ async function main() {
     const runtimeImport = `${packageName}/runtime`;
     const pluginsImport = `${packageName}/plugins`;
     const cometPluginsImport = `${packageName}/plugins/comet`;
+    for (const [name, flags, reason] of [
+      ['runtime-sdk-example', '--approve', 'approval-required'],
+      ['runtime-sdk-recovery-example', '--reconcile', 'execution-unknown'],
+    ]) {
+      const exampleFile = path.join(consumerDir, `${name}.mjs`);
+      const exampleRoot = path.join(temporaryRoot, name);
+      await fs.copyFile(path.join(repositoryRoot, `scripts/lib/${name}.mjs`), exampleFile);
+      const first = JSON.parse(
+        run(process.execPath, [exampleFile, '--root-dir', exampleRoot], {
+          cwd: consumerDir,
+          env: environment,
+        }),
+      );
+      if (first.reason !== reason)
+        throw new Error(`Packaged ${name} did not stop safely: ${JSON.stringify(first)}`);
+      const completed = JSON.parse(
+        run(
+          process.execPath,
+          [
+            exampleFile,
+            '--root-dir',
+            exampleRoot,
+            flags,
+            ...(flags === '--reconcile' ? ['--confirmed-stopped'] : []),
+          ],
+          { cwd: consumerDir, env: environment },
+        ),
+      );
+      if (completed.reason !== 'completed')
+        throw new Error(`Packaged ${name} did not resume: ${JSON.stringify(completed)}`);
+    }
     const pluginExample = path.join(consumerDir, 'plugin-example.mjs');
     await fs.writeFile(
       pluginExample,
@@ -406,6 +438,11 @@ async function main() {
 
     const sdkTypeScript = path.join(consumerDir, 'runtime-consumer.ts');
     const pluginsTypeScript = path.join(consumerDir, 'plugin-consumer.ts');
+    const ergonomicsTypeScript = path.join(consumerDir, 'sdk-ergonomics-consumer.mts');
+    await fs.copyFile(
+      path.join(repositoryRoot, 'test/helpers/sdk-ergonomics-consumer.ts'),
+      ergonomicsTypeScript,
+    );
     await fs.writeFile(
       pluginsTypeScript,
       `import { PluginRuntime, MemoryPluginStateStore, AGENT_EXPERIENCE_SCHEMA, type AgentContextCandidate, type AgentExperienceEvent, type PluginDescriptor, type PluginStorageStore } from ${JSON.stringify(pluginsImport)};
@@ -468,10 +505,19 @@ async function main() {
           '--noEmit',
           sdkTypeScript,
           pluginsTypeScript,
+          ergonomicsTypeScript,
         ],
         { cwd: consumerDir, env: environment },
       );
     }
+
+    const ergonomicsJavaScript = path.join(consumerDir, 'sdk-ergonomics-consumer.mjs');
+    const { outputText: ergonomicsOutput } = ts.transpileModule(
+      await fs.readFile(ergonomicsTypeScript, 'utf8'),
+      { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } },
+    );
+    await fs.writeFile(ergonomicsJavaScript, ergonomicsOutput);
+    run(process.execPath, [ergonomicsJavaScript], { cwd: consumerDir, env: environment });
 
     const compatConsumer = path.join(consumerDir, 'sdk-compat-consumer.mjs');
     const compatFixture = path.join(consumerDir, 'sdk-compat-run.json');

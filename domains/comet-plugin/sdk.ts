@@ -1,4 +1,14 @@
 /** Public plugin contracts; Comet's built-in assembly lives in ./comet.js. */
+export { definePluginCapability, definePlugin, createPluginClient } from './plugin-capabilities.js';
+export type {
+  PluginCapability,
+  PluginCapabilityOptions,
+  PluginCapabilities,
+  PluginCapabilityModule,
+  DefinePluginOptions,
+  TypedPluginDescriptor,
+  PluginClient,
+} from './plugin-capabilities.js';
 export {
   PluginRuntime,
   PluginRuntimeError,

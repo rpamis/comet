@@ -4,6 +4,8 @@
 
 个人记忆和项目知识已经是插件。公开插件接口不要求重写这两个插件，也不改变 Native 的 `comet-state.yaml`、Classic 的 `.comet.yaml` 或现有插件数据目录。
 
+首次接入先读 [SDK 快速接入](./sdk-getting-started.zh.md)。具名能力优先用 `definePlugin`、`definePluginCapability` 和 `createPluginClient`；下文保留原始描述符接口，便于宿主实现高级适配。
+
 ## 安装和入口
 
 公开入口的兼容策略和消费者验证范围见 [SDK 发行契约](./sdk-release-contract.zh.md)。
@@ -34,6 +36,12 @@ node scripts/lib/plugin-sdk-example.mjs
 示例只使用内存存储，不读写真实用户配置，不调用模型或网络。退出后状态消失；它不演示跨进程恢复。发布包验证会在独立项目安装 npm tarball 后运行相同示例，并编译 TypeScript 消费者。
 
 ## 定义插件
+
+`definePlugin` 的 `create` 返回 `capabilities` 映射及可选的上下文、事件、Dashboard、资源释放函数；每个能力用 `definePluginCapability({ parseInput, invoke })` 定义。Runtime 调用能力时先解析未知输入，再调用具备业务参数类型的函数。`createPluginClient(runtime, descriptor, scope?)` 推导名称、输入与返回类型，并固定使用 `throwOnError: true`；不自动安装或启用插件，不改变低层 `PluginRuntime.invoke` 的默认错误行为。
+
+同一个描述符必须注册到客户端使用的 Runtime 中。推导基于可信实现的类型声明，不能验证宿主偷偷注册的另一实现，也不替插件校验输出。原始描述符和客户端可同时使用；插件启停、作用域、数据位置与学习日志协议不变。
+
+能力的 `parseInput` 返回类型也是客户端的输入契约，解析器应接受这一形状的调用参数。需要从对象提取字段等改变输入形状时，在 `invoke` 内处理；不要把只能解析对象的能力声明为接收字符串。
 
 ```ts
 import {

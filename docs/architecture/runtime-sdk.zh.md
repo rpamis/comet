@@ -4,6 +4,8 @@ Comet Runtime SDK 为宿主 Agent 平台提供可恢复的 Skill 工作流编排
 
 它不要求把平台原生 Agent loop 改写成 Runtime，也不在 Comet 中重复实现模型调用。把平台已经会做的事情接到一个显式执行适配器上即可。
 
+首次接入先读 [SDK 快速接入](./sdk-getting-started.zh.md)。本文用于查询完整协议、扩展点和应用限制；简单宿主优先使用 `createRuntimeExecutor` 与 `runUntilBlocked`。
+
 ## 安装与入口
 
 ```bash
@@ -76,6 +78,29 @@ Supervisor Child 的独立 worktree 和未提交代码不包含在父状态文�
 每个 Run 固定根工作流和传递子工作流的内容摘要。恢复时必须注册相同的 workflow id/version 与内容；同版本内容变了会以 `WORKFLOW_CHANGED` 拒绝继续，不能悄悄用新定义解释旧状态。
 
 ## 宿主执行 Action
+
+### 常用接入路径
+
+`createRuntimeExecutor({ id, capabilities?, handlers })` 将步骤的 `ref` 与具名处理函数绑定；`defineRuntimeHandler({ type, parseInput, execute })` 核对步骤类型，解析 `{ input, outputs, activation? }` 后调用业务函数。`parseInput` 的返回值推导执行函数参数类型，执行函数返回 `{ status, output, artifacts?, summary?, event? }`。该助手不推导整张工作流的输入输出类型，跨步骤 JSON 仍需校验。
+
+注册后调用 `runtime.runUntilBlocked({ runId, executorId, maxActions?, context? })`，返回 `{ reason, run, actionsExecuted }`。它按持久化顺序执行当前 Run 的待处理 Action，不要求宿主手写驱动循环；不自动选择执行器、不审批、不提交证据、不重试未知动作。`maxActions` 默认 100，限制本次执行尝试数，不是单个工具的耗时预算。`context.signal` 继续遵循原执行协议，不能保证终止宿主工具或撤回其副作用。
+
+| reason                               | 宿主下一步                                                               |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| `completed` / `failed` / `cancelled` | 处理终态和实际结果                                                       |
+| `approval-required`                  | 从 `run.waits` 读取当前提案，取得用户决定，再显式 `resolveWait`          |
+| `evidence-required`                  | 核对并提交真实证据，不伪造收据                                           |
+| `execution-unknown`                  | 停止或联系原执行者，核对现场，再回传原结果或提交未执行证据               |
+| `action-in-flight`                   | 等待原执行者；子工作流由宿主按 `run.children` 调度，不隐式递归执行子 Run |
+| `executor-required`                  | 当前第一个 Action 的类型、引用或能力不受支持，保持未领取，不跳过它       |
+| `action-limit`                       | 已达到本次上限，宿主可按自身预算再次调用，不重发成功动作                 |
+| `idle`                               | 当前没有可执行工作也没有已识别等待，读取 Run 和定义排查                  |
+
+任何已有未知、正在执行或等待确认的分支都会停止本次调用，不继续执行其他并行 Action。子 Run 完成后再次推进父 Run，会接受其结果。执行结果被验证器拒绝、配置错误或并发冲突仍抛出已有 `RuntimeProtocolError`，保留 `recovery` 建议；不会把这些错误转换成成功。输入解析在领取后、调用业务函数前执行；解析失败不产生业务副作用，但沿原协议保守保留未知归属。
+
+### 手动派发与结果回传
+
+宿主在另一个进程或平台执行 Action 时，继续使用底层 `claim` / `recordOutcome`：
 
 ```ts
 const runtime = createRuntime({

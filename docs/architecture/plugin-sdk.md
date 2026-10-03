@@ -4,6 +4,8 @@ The Plugin SDK registers plugins, manages their enabled state, provides context,
 
 Personal memory and project knowledge are already plugins. The public plugin interface does not require rewriting them or changing Native's `comet-state.yaml`, Classic's `.comet.yaml`, or existing plugin data directories.
 
+Start with [SDK getting started](./sdk-getting-started.md). For named capabilities, prefer `definePlugin`, `definePluginCapability`, and `createPluginClient`. The raw descriptor interface below remains available for advanced host adapters.
+
 ## Install and import
 
 See the [SDK release contract](./sdk-release-contract.md) for public entrypoint compatibility and consumer verification scope.
@@ -34,6 +36,12 @@ node scripts/lib/plugin-sdk-example.mjs
 The example uses only in-memory storage. It does not access real user configuration or call a model or network service. State disappears when the process exits; it does not demonstrate cross-process recovery. Package validation installs the npm tarball in an isolated project, runs the same example, and compiles a TypeScript consumer.
 
 ## Define a plugin
+
+The `create` function in `definePlugin` returns a `capabilities` map and optional context, event, Dashboard, and disposal functions. Define each capability with `definePluginCapability({ parseInput, invoke })`. Runtime parses unknown input before calling the typed business function. `createPluginClient(runtime, descriptor, scope?)` infers capability names, inputs, and return types and always uses `throwOnError: true`. It does not install or enable plugins automatically or change the default error behavior of low-level `PluginRuntime.invoke`.
+
+Register the same descriptor with the Runtime used by the client. Inference relies on trusted implementation types; it cannot detect a different implementation registered by the host or validate plugin output. Raw descriptors and clients can coexist. Plugin lifecycle, scopes, data locations, and learning log protocols remain unchanged.
+
+The return type of a capability's `parseInput` is also the client's input contract. The parser should accept that shape. Perform shape-changing operations such as extracting a field from an object inside `invoke`; do not declare a capability that only parses objects as accepting strings.
 
 ```ts
 import {

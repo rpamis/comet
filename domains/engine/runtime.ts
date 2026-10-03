@@ -1,4 +1,13 @@
 export { createRuntime } from './runtime-service.js';
+export { createRuntimeExecutor, defineRuntimeHandler } from './runtime-handlers.js';
+export type {
+  CreateRuntimeExecutorOptions,
+  RuntimeHandler,
+  RuntimeHandlerContext,
+  RuntimeHandlerOptions,
+  RuntimeHandlerResult,
+  RuntimeStepInput,
+} from './runtime-handlers.js';
 export type {
   CreateRuntimeOptions,
   StartRuntimeRun,
@@ -8,6 +17,9 @@ export type {
   RecordRuntimeEvidence,
   InvalidateRuntimeEvidence,
   WorkflowRuntime,
+  RunRuntimeUntilBlocked,
+  RuntimeStopReason,
+  RuntimeProgress,
 } from './runtime-service.js';
 export {
   defineWorkflow,

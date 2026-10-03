@@ -16,6 +16,7 @@ test.each([
   ['WORKFLOW_CHANGED', 'restore-definition'],
   ['STORE_CORRUPT_RECORD', 'repair-storage'],
   ['INVALID_JSON', 'correct-input'],
+  ['INVALID_REQUEST', 'correct-input'],
   ['FUTURE_HOST_ERROR', 'manual-review'],
   ['toString', 'manual-review'],
 ])('provides recovery guidance for %s without changing its code', (code, recovery) => {

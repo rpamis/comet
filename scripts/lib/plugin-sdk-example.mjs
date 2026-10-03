@@ -4,22 +4,37 @@ import {
   MemoryPluginStateStore,
   MemoryPluginStorageStore,
   PluginRuntime,
+  definePlugin,
+  definePluginCapability,
+  createPluginClient,
 } from '@rpamis/comet/plugins';
 
-const notesPlugin = {
+function parseNote(value) {
+  if (typeof value?.note !== 'string') throw new Error('Expected a note');
+  return { note: value.note };
+}
+
+const notesPlugin = definePlugin({
   id: 'example.notes',
   kind: 'third-party',
   version: '1.0.0',
   scopes: ['project'],
   compatible: () => true,
   create: ({ storage, projectId }) => ({
-    async invoke(capability, input) {
-      if (capability === 'write') {
-        await storage.write(input);
-        return { saved: true };
-      }
-      if (capability === 'read') return storage.read();
-      throw new Error(`Unsupported notes capability: ${capability}`);
+    capabilities: {
+      write: definePluginCapability({
+        parseInput: parseNote,
+        async invoke(input) {
+          await storage.write(input);
+          return { saved: true };
+        },
+      }),
+      read: definePluginCapability({
+        parseInput: () => null,
+        async invoke() {
+          return parseNote(await storage.read());
+        },
+      }),
     },
     async provideContext() {
       const value = await storage.read();
@@ -40,7 +55,7 @@ const notesPlugin = {
       };
     },
   }),
-};
+});
 
 const runtime = new PluginRuntime({
   cometVersion: '0.4.5',
@@ -53,10 +68,9 @@ const request = { task: 'implement the next scoped change', projectId: scope.pro
 
 // The host installs trusted third-party code only after user authorization.
 await runtime.install(notesPlugin.id, 'user');
-await runtime.invoke(notesPlugin.id, 'write', { note: 'Keep changes scoped.' }, scope, {
-  throwOnError: true,
-});
-const value = await runtime.invoke(notesPlugin.id, 'read', null, scope, { throwOnError: true });
+const client = createPluginClient(runtime, notesPlugin, scope);
+await client.invoke('write', { note: 'Keep changes scoped.' });
+const value = await client.invoke('read', null);
 const context = await runtime.collectContext(request, scope);
 await runtime.disable(notesPlugin.id);
 const disabledContext = await runtime.collectContext(request, scope);

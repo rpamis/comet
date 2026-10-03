@@ -2,7 +2,15 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { createFileRuntimeStore, createRuntime } from '@rpamis/comet/runtime';
+import {
+  createFileRuntimeStore,
+  createRuntime,
+  createRuntimeExecutor,
+  defineRuntimeHandler,
+  skill,
+  tool,
+  approval,
+} from '@rpamis/comet/runtime';
 
 function option(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -19,9 +27,9 @@ const workflow = {
   version: '1',
   entry: 'collect',
   steps: {
-    collect: { type: 'invoke_skill', ref: 'research.collect' },
-    approve: { type: 'ask_user', proposalFrom: 'collect' },
-    publish: { type: 'call_tool', ref: 'reports.write' },
+    collect: skill({ ref: 'research.collect' }),
+    approve: approval({ proposalFrom: 'collect' }),
+    publish: tool({ ref: 'reports.write' }),
   },
   transitions: [
     { from: 'collect', to: 'approve' },
@@ -33,68 +41,74 @@ const runtime = createRuntime({
   store: createFileRuntimeStore({ rootDir: path.join(rootDir, 'state') }),
   workflows: [workflow],
   executors: [
-    {
+    createRuntimeExecutor({
       id: 'example-host',
-      capabilities: [],
-      supports: (action) => ['invoke_skill', 'call_tool'].includes(action.type),
-      async execute(action) {
-        const request = action.input.input;
-        const outputs = action.input.outputs;
-        if (action.ref === 'research.collect') {
-          return {
+      handlers: {
+        'research.collect': defineRuntimeHandler({
+          type: 'invoke_skill',
+          parseInput: ({ input }) => {
+            if (typeof input?.topic !== 'string') throw new Error('Expected a topic');
+            return input.topic;
+          },
+          execute: (topic) => ({
             status: 'succeeded',
             output: {
-              title: `Report: ${request.topic}`,
-              body: `This local example collected a report for “${request.topic}”.`,
+              title: `Report: ${topic}`,
+              body: `This local example collected a report for “${topic}”.`,
             },
-          };
-        }
-        if (action.ref === 'reports.write') {
-          if (outputs.approve?.choice !== 'approved') {
-            throw new Error('The report cannot be written before explicit approval');
-          }
-          const report = outputs.collect;
-          const file = path.join(rootDir, 'published', 'report.md');
-          await fs.mkdir(path.dirname(file), { recursive: true });
-          await fs.writeFile(file, `# ${report.title}\n\n${report.body}\n`);
-          return { status: 'succeeded', output: { path: file } };
-        }
-        throw new Error(`Unsupported example action: ${action.ref}`);
+          }),
+        }),
+        'reports.write': defineRuntimeHandler({
+          type: 'call_tool',
+          parseInput: ({ outputs }) => {
+            if (outputs.approve?.choice !== 'approved')
+              throw new Error('Explicit approval required');
+            const report = outputs.collect;
+            if (typeof report?.title !== 'string' || typeof report?.body !== 'string')
+              throw new Error('Expected a report');
+            return { title: report.title, body: report.body };
+          },
+          async execute(report) {
+            const file = path.join(rootDir, 'published', 'report.md');
+            await fs.mkdir(path.dirname(file), { recursive: true });
+            await fs.writeFile(file, `# ${report.title}\n\n${report.body}\n`);
+            return { status: 'succeeded', output: { path: file } };
+          },
+        }),
       },
-    },
+    }),
   ],
 });
 
-let run = await runtime.start({
+await runtime.start({
   runId,
   workflow: { id: workflow.id, version: workflow.version },
   input: { topic },
 });
 
-while (true) {
-  const action = run.actions.find((candidate) => candidate.status === 'pending');
-  if (action) {
-    run = await runtime.execute({ runId, actionId: action.id, executorId: 'example-host' });
-    continue;
-  }
-
-  const wait = run.waits.find((candidate) => candidate.status === 'pending');
-  if (wait) {
-    if (!approve) {
-      console.log(JSON.stringify({ status: 'waiting', runId, wait }, null, 2));
-      break;
-    }
-    run = await runtime.resolveWait({
-      runId,
-      waitId: wait.id,
-      proposalHash: wait.proposalHash,
-      decisionId: `approve-${wait.id}`,
-      choice: 'approved',
-    });
-    continue;
-  }
-
-  console.log(JSON.stringify({ status: run.status, runId, outputs: run.outputs }, null, 2));
-  if (run.status === 'failed' || run.status === 'cancelled') process.exitCode = 1;
-  break;
+let progress = await runtime.runUntilBlocked({ runId, executorId: 'example-host' });
+if (progress.reason === 'approval-required' && approve) {
+  const wait = progress.run.waits.find((candidate) => candidate.status === 'pending');
+  await runtime.resolveWait({
+    runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: `approve-${wait.id}`,
+    choice: 'approved',
+  });
+  progress = await runtime.runUntilBlocked({ runId, executorId: 'example-host' });
 }
+console.log(
+  JSON.stringify(
+    {
+      status: progress.run.status,
+      reason: progress.reason,
+      runId,
+      wait: progress.run.waits.find((candidate) => candidate.status === 'pending'),
+      outputs: progress.run.outputs,
+    },
+    null,
+    2,
+  ),
+);
+if (!['completed', 'approval-required'].includes(progress.reason)) process.exitCode = 1;

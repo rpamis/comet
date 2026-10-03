@@ -93,7 +93,21 @@ export function createRuntime(options: CreateRuntimeOptions): {
         actionId: string;
         executorId: string;
     }) => Promise<WorkflowRun>;
+    runUntilBlocked: (command: RunRuntimeUntilBlocked) => Promise<RuntimeProgress>;
 };
+
+// @public
+export function createRuntimeExecutor(options: CreateRuntimeExecutorOptions): RuntimeExecutor;
+
+// @public (undocumented)
+export interface CreateRuntimeExecutorOptions {
+    // (undocumented)
+    capabilities?: readonly string[];
+    // (undocumented)
+    handlers: Readonly<Record<string, RuntimeHandler>>;
+    // (undocumented)
+    id: string;
+}
 
 // @public (undocumented)
 export interface CreateRuntimeOptions {
@@ -114,6 +128,9 @@ export interface CreateRuntimeOptions {
     // (undocumented)
     workflows: readonly DefineWorkflowOptions[];
 }
+
+// @public (undocumented)
+export function defineRuntimeHandler<Input, Output>(options: RuntimeHandlerOptions<Input, Output>): RuntimeHandler;
 
 // @public (undocumented)
 export function defineWorkflow(options: DefineWorkflowOptions): WorkflowDefinition;
@@ -224,6 +241,17 @@ export interface ResolveRuntimeWait extends RunCommand {
 }
 
 // @public (undocumented)
+export interface RunRuntimeUntilBlocked {
+    // (undocumented)
+    context?: RuntimeInvocationContext;
+    // (undocumented)
+    executorId: string;
+    maxActions?: number;
+    // (undocumented)
+    runId: string;
+}
+
+// @public (undocumented)
 export interface RuntimeAction {
     // (undocumented)
     attempt: number;
@@ -310,7 +338,7 @@ export interface RuntimeCommandValidator {
 }
 
 // @public
-export type RuntimeErrorCode = 'ACTION_ACTIVE' | 'ACTION_ALREADY_ADVANCED' | 'ACTION_ALREADY_CLAIMED' | 'ACTION_IN_FLIGHT' | 'ACTION_NOT_FOUND' | 'ACTION_NOT_PENDING' | 'ACTION_NOT_RUNNING' | 'ACTION_TERMINAL' | 'CAPABILITY_REQUIRED' | 'CHILD_DEPTH_LIMIT' | 'CHILD_MANAGED' | 'COMMAND_CONFLICT' | 'COMMAND_DISPATCH_FAILED' | 'COMMAND_NOT_FOUND' | 'COMMAND_REJECTED' | 'COMMAND_VALIDATION_ERROR' | 'COMMAND_VALIDATOR_UNAVAILABLE' | 'DECISION_CONFLICT' | 'DUPLICATE_COMMAND_VALIDATOR' | 'DUPLICATE_EVIDENCE_VALIDATOR' | 'DUPLICATE_EXECUTOR' | 'DUPLICATE_STATE_VALIDATOR' | 'DUPLICATE_TRANSITION_HANDLER' | 'DUPLICATE_VALIDATOR' | 'DUPLICATE_WORKFLOW' | 'EVIDENCE_INVALIDATION_UNAVAILABLE' | 'EVIDENCE_KIND_MISMATCH' | 'EVIDENCE_REJECTED' | 'EVIDENCE_STEP_CHANGED' | 'EVIDENCE_STILL_VALID' | 'EVIDENCE_VALIDATOR_UNAVAILABLE' | 'EVIDENCE_WAIT_NOT_FOUND' | 'EVIDENCE_WAIT_RESOLVED' | 'EXECUTION_UNKNOWN' | 'EXECUTOR_UNAVAILABLE' | 'EXECUTOR_UNSUPPORTED' | 'INITIAL_STATE_CONFLICT' | 'INITIAL_STATE_INVALID' | 'INITIAL_STATE_REQUIRED' | 'INVALID_ACTION' | 'INVALID_COMMAND' | 'INVALID_DECISION' | 'INVALID_EVIDENCE' | 'INVALID_JOIN' | 'INVALID_JSON' | 'INVALID_OUTCOME' | 'INVALID_RUN' | 'INVALID_WORKFLOW' | 'OUTCOME_ALREADY_RECORDED' | 'OUTCOME_CONFLICT' | 'OUTCOME_PROCESSING_ERROR' | 'OUTCOME_REJECTED' | 'OUTPUT_INVALID' | 'PROPOSAL_INPUT_MISSING' | 'RECONCILIATION_REQUIRED' | 'REQUEST_ABORTED' | 'REVISION_CONFLICT' | 'RUN_CANCELLED' | 'RUN_CONFLICT' | 'RUN_FAILED' | 'RUN_NOT_FOUND' | 'RUN_STATE_INVALID' | 'RUN_TERMINAL' | 'STALE_ACTION' | 'STALE_PROPOSAL' | 'STATE_VALIDATOR_UNAVAILABLE' | 'STORE_ATOMIC_PUBLICATION_UNSUPPORTED' | 'STORE_CHANGED_DIRECTORY' | 'STORE_CORRUPT_RECORD' | 'STORE_INVALID_ENTRY' | 'STORE_INVALID_REVISION' | 'STORE_INVALID_ROOT' | 'STORE_INVALID_RUN_ID' | 'STORE_MISSING_REVISION' | 'TRANSITION_HANDLER_UNAVAILABLE' | 'TRANSITION_STATE_INVALID' | 'TRANSITION_TARGET_INVALID' | 'TRANSITION_UNAVAILABLE' | 'UNSUPPORTED_PROTOCOL' | 'VALIDATOR_UNAVAILABLE' | 'WAIT_NOT_FOUND' | 'WORKFLOW_CHANGED' | 'WORKFLOW_UNAVAILABLE';
+export type RuntimeErrorCode = 'ACTION_ACTIVE' | 'ACTION_ALREADY_ADVANCED' | 'ACTION_ALREADY_CLAIMED' | 'ACTION_IN_FLIGHT' | 'ACTION_NOT_FOUND' | 'ACTION_NOT_PENDING' | 'ACTION_NOT_RUNNING' | 'ACTION_TERMINAL' | 'CAPABILITY_REQUIRED' | 'CHILD_DEPTH_LIMIT' | 'CHILD_MANAGED' | 'COMMAND_CONFLICT' | 'COMMAND_DISPATCH_FAILED' | 'COMMAND_NOT_FOUND' | 'COMMAND_REJECTED' | 'COMMAND_VALIDATION_ERROR' | 'COMMAND_VALIDATOR_UNAVAILABLE' | 'DECISION_CONFLICT' | 'DUPLICATE_COMMAND_VALIDATOR' | 'DUPLICATE_EVIDENCE_VALIDATOR' | 'DUPLICATE_EXECUTOR' | 'DUPLICATE_STATE_VALIDATOR' | 'DUPLICATE_TRANSITION_HANDLER' | 'DUPLICATE_VALIDATOR' | 'DUPLICATE_WORKFLOW' | 'EVIDENCE_INVALIDATION_UNAVAILABLE' | 'EVIDENCE_KIND_MISMATCH' | 'EVIDENCE_REJECTED' | 'EVIDENCE_STEP_CHANGED' | 'EVIDENCE_STILL_VALID' | 'EVIDENCE_VALIDATOR_UNAVAILABLE' | 'EVIDENCE_WAIT_NOT_FOUND' | 'EVIDENCE_WAIT_RESOLVED' | 'EXECUTION_UNKNOWN' | 'EXECUTOR_UNAVAILABLE' | 'EXECUTOR_UNSUPPORTED' | 'INITIAL_STATE_CONFLICT' | 'INITIAL_STATE_INVALID' | 'INITIAL_STATE_REQUIRED' | 'INVALID_ACTION' | 'INVALID_COMMAND' | 'INVALID_DECISION' | 'INVALID_EVIDENCE' | 'INVALID_JOIN' | 'INVALID_JSON' | 'INVALID_OUTCOME' | 'INVALID_REQUEST' | 'INVALID_RUN' | 'INVALID_WORKFLOW' | 'OUTCOME_ALREADY_RECORDED' | 'OUTCOME_CONFLICT' | 'OUTCOME_PROCESSING_ERROR' | 'OUTCOME_REJECTED' | 'OUTPUT_INVALID' | 'PROPOSAL_INPUT_MISSING' | 'RECONCILIATION_REQUIRED' | 'REQUEST_ABORTED' | 'REVISION_CONFLICT' | 'RUN_CANCELLED' | 'RUN_CONFLICT' | 'RUN_FAILED' | 'RUN_NOT_FOUND' | 'RUN_STATE_INVALID' | 'RUN_TERMINAL' | 'STALE_ACTION' | 'STALE_PROPOSAL' | 'STATE_VALIDATOR_UNAVAILABLE' | 'STORE_ATOMIC_PUBLICATION_UNSUPPORTED' | 'STORE_CHANGED_DIRECTORY' | 'STORE_CORRUPT_RECORD' | 'STORE_INVALID_ENTRY' | 'STORE_INVALID_REVISION' | 'STORE_INVALID_ROOT' | 'STORE_INVALID_RUN_ID' | 'STORE_MISSING_REVISION' | 'TRANSITION_HANDLER_UNAVAILABLE' | 'TRANSITION_STATE_INVALID' | 'TRANSITION_TARGET_INVALID' | 'TRANSITION_UNAVAILABLE' | 'UNSUPPORTED_PROTOCOL' | 'VALIDATOR_UNAVAILABLE' | 'WAIT_NOT_FOUND' | 'WORKFLOW_CHANGED' | 'WORKFLOW_UNAVAILABLE';
 
 // @public
 export type RuntimeErrorRecovery = 'inspect-run' | 'review-proposal' | 'reconcile-execution' | 'inspect-outcome' | 'correct-input' | 'restore-definition' | 'repair-storage' | 'manual-review';
@@ -382,6 +410,38 @@ export interface RuntimeExecutor {
     supports(action: Readonly<RuntimeAction>): boolean;
 }
 
+// @public (undocumented)
+export interface RuntimeHandler {
+    // (undocumented)
+    execute(action: Readonly<RuntimeAction>, context?: RuntimeInvocationContext, run?: Readonly<WorkflowRun>): Promise<RuntimeHandlerResult>;
+    // (undocumented)
+    type: RuntimeHandlerOptions<unknown, RuntimeValue>['type'];
+}
+
+// @public (undocumented)
+export interface RuntimeHandlerContext {
+    // (undocumented)
+    action: Readonly<RuntimeAction>;
+    // (undocumented)
+    context?: RuntimeInvocationContext;
+    // (undocumented)
+    run?: Readonly<WorkflowRun>;
+}
+
+// @public (undocumented)
+export interface RuntimeHandlerOptions<Input, Output> {
+    // (undocumented)
+    execute(input: Input, context: RuntimeHandlerContext): RuntimeHandlerResult<Output> | Promise<RuntimeHandlerResult<Output>>;
+    parseInput(value: RuntimeStepInput): Input;
+    // (undocumented)
+    type: 'invoke_skill' | 'call_tool' | 'handoff';
+}
+
+// @public (undocumented)
+export type RuntimeHandlerResult<Output = RuntimeValue> = Pick<RuntimeOutcome, 'status' | 'artifacts' | 'summary' | 'event'> & {
+    output: Output;
+};
+
 // @public
 export interface RuntimeInvocationContext {
     // (undocumented)
@@ -421,6 +481,15 @@ export interface RuntimeOutcome {
 }
 
 // @public (undocumented)
+export interface RuntimeProgress {
+    actionsExecuted: number;
+    // (undocumented)
+    reason: RuntimeStopReason;
+    // (undocumented)
+    run: WorkflowRun;
+}
+
+// @public (undocumented)
 export class RuntimeProtocolError extends Error {
     constructor(code: RuntimeErrorCode | (string & Record<never, never>), message: string);
     // (undocumented)
@@ -451,6 +520,19 @@ export interface RuntimeStateValidator {
     // (undocumented)
     version: string;
 }
+
+// @public (undocumented)
+export interface RuntimeStepInput {
+    // (undocumented)
+    activation?: RuntimeValue;
+    // (undocumented)
+    input: RuntimeValue;
+    // (undocumented)
+    outputs: Readonly<Record<string, RuntimeValue>>;
+}
+
+// @public (undocumented)
+export type RuntimeStopReason = 'completed' | 'failed' | 'cancelled' | 'approval-required' | 'evidence-required' | 'execution-unknown' | 'action-in-flight' | 'executor-required' | 'action-limit' | 'idle';
 
 // @public (undocumented)
 export interface RuntimeStore<T extends RuntimeRecord> {

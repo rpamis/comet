@@ -33,4 +33,34 @@ describe('published Runtime SDK example', () => {
       'skill harness design',
     );
   });
+
+  it('reconciles an interrupted external operation only after explicit stopped confirmation', async () => {
+    rootDir = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-runtime-sdk-recovery-'));
+    const recovery = path.join(repositoryRoot, 'scripts/lib/runtime-sdk-recovery-example.mjs');
+    const execute = (...args: string[]) =>
+      spawnSync(process.execPath, [recovery, '--root-dir', rootDir, ...args], {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+      });
+    const first = execute();
+    expect(first.status, first.stderr).toBe(0);
+    const uncertain = JSON.parse(first.stdout);
+    expect(uncertain.reason).toBe('execution-unknown');
+    const receiptFile = path.join(rootDir, 'external-receipt.json');
+    const originalReceipt = await fs.readFile(receiptFile, 'utf8');
+    const refused = execute('--reconcile');
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain('--confirmed-stopped');
+    const completed = execute('--reconcile', '--confirmed-stopped');
+    expect(completed.status, completed.stderr).toBe(0);
+    const accepted = JSON.parse(completed.stdout);
+    expect(accepted.reason).toBe('completed');
+    expect(accepted.actionId).toBe(uncertain.actionId);
+    expect(accepted.attempt).toBe(1);
+    expect(await fs.readFile(receiptFile, 'utf8')).toBe(originalReceipt);
+    const repeated = execute();
+    expect(repeated.status, repeated.stderr).toBe(0);
+    expect(JSON.parse(repeated.stdout).reason).toBe('completed');
+    expect(await fs.readFile(receiptFile, 'utf8')).toBe(originalReceipt);
+  });
 });

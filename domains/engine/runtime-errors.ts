@@ -57,6 +57,7 @@ export type RuntimeErrorCode =
   | 'INVALID_JOIN'
   | 'INVALID_JSON'
   | 'INVALID_OUTCOME'
+  | 'INVALID_REQUEST'
   | 'INVALID_RUN'
   | 'INVALID_WORKFLOW'
   | 'OUTCOME_ALREADY_RECORDED'
@@ -142,6 +143,7 @@ const recoveryByCode: Readonly<Record<RuntimeErrorCode, RuntimeErrorRecovery>> =
   INVALID_JOIN: 'correct-input',
   INVALID_JSON: 'correct-input',
   INVALID_OUTCOME: 'correct-input',
+  INVALID_REQUEST: 'correct-input',
   INVALID_RUN: 'correct-input',
   INVALID_WORKFLOW: 'correct-input',
   OUTCOME_ALREADY_RECORDED: 'inspect-run',

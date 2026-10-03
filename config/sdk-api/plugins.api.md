@@ -254,6 +254,21 @@ export interface AgentReflectionRequest {
     readonly evidenceOffset: number;
 }
 
+// @public
+export function createPluginClient<Capabilities extends PluginCapabilities>(runtime: PluginRuntime, descriptor: TypedPluginDescriptor<Capabilities>, scope?: PluginScope | PluginScopeContext): PluginClient<Capabilities>;
+
+// @public
+export function definePlugin<Capabilities extends PluginCapabilities>(options: DefinePluginOptions<Capabilities>): TypedPluginDescriptor<Capabilities>;
+
+// @public (undocumented)
+export function definePluginCapability<Input, Output>(options: PluginCapabilityOptions<Input, Output>): PluginCapability<Input, Output>;
+
+// @public (undocumented)
+export interface DefinePluginOptions<Capabilities extends PluginCapabilities> extends Omit<PluginDescriptor, 'create'> {
+    // (undocumented)
+    create(context: PluginContext): PluginCapabilityModule<Capabilities> | Promise<PluginCapabilityModule<Capabilities>>;
+}
+
 // @public (undocumented)
 export class JsonPluginStateStore implements PluginStateStore {
     constructor(file: PluginStateFile);
@@ -293,6 +308,36 @@ export class MemoryPluginStorageStore implements PluginStorageStore {
 
 // @public (undocumented)
 export type PluginActionSource = 'user' | 'system';
+
+// @public (undocumented)
+export type PluginCapabilities = Readonly<Record<string, PluginCapability>>;
+
+// @public (undocumented)
+export interface PluginCapability<Input = unknown, Output = unknown> {
+    // (undocumented)
+    invoke(value: unknown): Promise<Output>;
+    // (undocumented)
+    parseInput(value: unknown): Input;
+}
+
+// @public (undocumented)
+export type PluginCapabilityModule<Capabilities extends PluginCapabilities> = Omit<PluginModule, 'invoke'> & {
+    readonly capabilities: Capabilities;
+};
+
+// @public (undocumented)
+export interface PluginCapabilityOptions<Input, Output> {
+    // (undocumented)
+    invoke(input: Input): Output | Promise<Output>;
+    // (undocumented)
+    parseInput(value: unknown): Input;
+}
+
+// @public (undocumented)
+export interface PluginClient<Capabilities extends PluginCapabilities> {
+    // (undocumented)
+    invoke<Name extends keyof Capabilities & string>(name: Name, input: ReturnType<Capabilities[Name]['parseInput']>): Promise<Awaited<ReturnType<Capabilities[Name]['invoke']>>>;
+}
 
 // @public (undocumented)
 export interface PluginContext {
@@ -569,6 +614,12 @@ export class StorageAgentExperienceJournalStore implements AgentExperienceJourna
     withLock<T>(operation: () => Promise<T>): Promise<T>;
     // (undocumented)
     write(state: AgentExperienceJournalState): Promise<void>;
+}
+
+// @public (undocumented)
+export interface TypedPluginDescriptor<Capabilities extends PluginCapabilities> extends PluginDescriptor {
+    // (undocumented)
+    create(context: PluginContext): Promise<PluginModule & PluginCapabilityModule<Capabilities>>;
 }
 
 // (No @packageDocumentation comment for this package)
