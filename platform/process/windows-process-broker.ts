@@ -21,7 +21,7 @@ const WINDOWS_BROKER_WORKER = [
   `const script = process.env.${WINDOWS_PROCESS_SCRIPT}`,
   `delete process.env.${WINDOWS_PROCESS_SCRIPT}`,
   "const child = spawn(process.argv[2], ['-NoLogo', '-NoProfile', '-NonInteractive', '-InputFormat', 'None', '-EncodedCommand', script], { stdio: 'ignore', windowsHide: true })",
-  'const deadline = setTimeout(() => { child.kill(); process.exit(1) }, 5000)',
+  'const deadline = setTimeout(() => { child.kill(); process.exit(1) }, 10000)',
   "child.on('error', () => { clearTimeout(deadline); process.exitCode = 1 })",
   "child.on('exit', (code) => { clearTimeout(deadline); process.exitCode = code ?? 1 })",
 ].join('; ');

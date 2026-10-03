@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { runInNewContext } from 'node:vm';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -23,7 +25,46 @@ describe('Windows process broker', () => {
     existsSyncMock.mockReturnValue(false);
     cacheRoot = mkdtempSync(path.join(os.tmpdir(), 'comet-broker-test-'));
   });
-  afterEach(() => rmSync(cacheRoot, { recursive: true, force: true }));
+  afterEach(() => {
+    vi.useRealTimers();
+    rmSync(cacheRoot, { recursive: true, force: true });
+  });
+
+  function runWorker() {
+    spawnMock.mockReturnValue({ pid: 1234, on: vi.fn(), unref: vi.fn() });
+    launchWindowsProcessWithBroker({ command: 'node.exe', args: [], cwd: '.', env: {}, cacheRoot });
+    const worker = readFileSync(spawnMock.mock.calls[0][1][0], 'utf8');
+    const child = Object.assign(new EventEmitter(), { kill: vi.fn() });
+    const exit = vi.fn();
+    runInNewContext(worker, {
+      require: () => ({ spawn: () => child }),
+      process: { argv: ['node', 'worker.cjs', 'powershell.exe'], env: {}, exit },
+      setTimeout,
+      clearTimeout,
+    });
+    return { child, exit };
+  }
+
+  it('allows a six-second WMI handoff to finish without killing PowerShell', async () => {
+    vi.useFakeTimers();
+    const { child, exit } = runWorker();
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(child.kill).not.toHaveBeenCalled();
+    child.emit('exit', 0);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(child.kill).not.toHaveBeenCalled();
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it('still terminates a handoff that exceeds ten seconds', async () => {
+    vi.useFakeTimers();
+    const { child, exit } = runWorker();
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(child.kill).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(child.kill).toHaveBeenCalledOnce();
+    expect(exit).toHaveBeenCalledWith(1);
+  });
 
   it('starts a detached Node worker that owns the hidden PowerShell handoff', () => {
     const on = vi.fn();

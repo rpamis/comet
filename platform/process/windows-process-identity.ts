@@ -19,7 +19,8 @@ class CometProcessIdentity {
  }
 }`;
 const sourceHash = createHash('sha256').update(SOURCE).digest('hex');
-const preparations = new Map<string, Promise<string | null>>();
+const PREPARATION_RETRY_DELAY_MS = 10_000;
+const preparations = new Map<string, { promise: Promise<string | null>; retryAfter: number }>();
 
 async function plainFile(target: string, maxBytes: number): Promise<Buffer> {
   const before = await fs.lstat(target, { bigint: true });
@@ -133,6 +134,19 @@ async function legacyProbe(
   }
 }
 
+function prepareProbeWithCooldown(root: string, systemRoot: string): Promise<string | null> {
+  const existing = preparations.get(root);
+  if (existing && performance.now() < existing.retryAfter) return existing.promise;
+  const preparation = { promise: prepareProbe(root, systemRoot), retryAfter: Infinity };
+  preparations.set(root, preparation);
+  void preparation.promise.then((executable) => {
+    if (preparations.get(root) !== preparation) return;
+    if (executable) preparations.delete(root);
+    else preparation.retryAfter = performance.now() + PREPARATION_RETRY_DELAY_MS;
+  });
+  return preparation.promise;
+}
+
 /** 可选本地探测器直接调用 GetProcessTimes，返回与旧 PowerShell 相同的 UTC ticks。 */
 export async function readWindowsProcessIdentity(
   pid: number,
@@ -164,11 +178,7 @@ export async function readWindowsProcessIdentity(
     return legacyProbe(pid, systemRoot, new AbortController().signal);
   }
   // 首次准备与原有探测并行；任意可用结果即可继续，所有子进程都有上限。
-  let preparation = preparations.get(root);
-  if (!preparation) {
-    preparation = prepareProbe(root, systemRoot);
-    preparations.set(root, preparation);
-  }
+  const preparation = prepareProbeWithCooldown(root, systemRoot);
   const controller = new AbortController();
   const available = (value: string | null): string => {
     if (!value) throw new Error('Probe unavailable');

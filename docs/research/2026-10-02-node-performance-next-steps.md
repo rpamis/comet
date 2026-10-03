@@ -199,13 +199,13 @@ Native daemon 的 Status、Show、Root Show 现在可以跨请求复用 Git 工�
 
 元数据检查有 100 ms 预算；配置路径发现的单次 Git 调用最多 500 ms，工作树刷新最多 1000 ms。刷新通过异步外部进程执行，不占住 daemon 的事件循环；控制请求在刷新等待期间仍能响应。准备异常由既有 CLI 路由回退到本地执行，不以空工作树列表代替失败查询。确定性回归覆盖慢刷新时的控制响应、同大小 HEAD 编辑后恢复 mtime、工作树增删、子目录调用和嵌套仓库。
 
-Windows 身份探测使用一个可选的本地小程序读取 OpenProcess / GetProcessTimes，保持原有 `win32-ps:<UTC ticks>` 身份格式。准备和探测采用异步进程并有超时；首次准备可以同时尝试旧探测。不可用、权限不足或超时继续按 unknown 保守处理，不当作 owner 已退出。自身成功身份可复用，其他 PID 的成功身份下一次重新探测，避免长期 daemon 使用旧身份错误识别被复用的 PID。缓存清单、普通文件类型和程序摘要在执行前核对，测试与缓存都不写开发者 HOME。
+Windows 身份探测使用一个可选的本地小程序读取 OpenProcess / GetProcessTimes，保持原有 `win32-ps:<UTC ticks>` 身份格式。准备和探测采用异步进程并有超时；首次准备可以同时尝试旧探测。准备失败冷却十秒后可以重试，不让编译超时或临时锁占用永久禁用快路径；在途准备仍去重，成功后不保留未校验的程序路径。不可用、权限不足或超时继续按 unknown 保守处理，不当作 owner 已退出。自身成功身份可复用，其他 PID 的成功身份下一次重新探测，避免长期 daemon 使用旧身份错误识别被复用的 PID。缓存清单、普通文件类型和程序摘要在执行前核对，测试与缓存都不写开发者 HOME。
 
 ### Windows 自动启动修复
 
 扩大验证时，上一版包与本轮候选都能复现：公开查询已经返回，PowerShell 还没有完成 WMI 交接，之后 daemon 始终未就绪。直接运行服务和保留启动器父进程都能成功。libuv 的 Windows 实现会在 Node 退出时终止未 detached 的直接子进程；直接 detached PowerShell 还存在脚本未执行就退出的兼容问题。[libuv Windows process implementation](https://github.com/libuv/libuv/blob/v1.51.0/src/win/process.c)、[Node issue 51018](https://github.com/nodejs/node/issues/51018)
 
-现在前台启动一个短暂的后台 Node launcher，由它持有 PowerShell，完成 WMI 交接后退出，等待超时则终止启动器。固定 launcher 以 `.cjs` 保存到临时缓存，逐次核对类型、完整内容和文件状态，使用独立临时文件及原子重命名准备。缓存不保存目标命令、项目路径、用户环境或凭据；准备失败继续本地执行。`.cjs` 也确保继承 `NODE_OPTIONS=--experimental-default-type=module` 时仍能运行，临时协议变量在交接前删除。
+现在前台启动一个短暂的后台 Node launcher，由它持有 PowerShell，完成 WMI 交接后退出，十秒超时后终止未完成交接。固定 launcher 以 `.cjs` 保存到临时缓存，逐次核对类型、完整内容和文件状态，使用独立临时文件及原子重命名准备。缓存不保存目标命令、项目路径、用户环境或凭据；准备失败继续本地执行。`.cjs` 也确保继承 `NODE_OPTIONS=--experimental-default-type=module` 时仍能运行，临时协议变量在交接前删除。
 
 诊断原型中，同一 launcher 通过 `node -e` 首次调用仍使前台等待约 2395 ms；改为文件入口后首次调用约 20 ms，二者都完成实际 WMI 操作。独立复审在新临时缓存中测得 20.80 ms。公开首次查询的一个成功样本为 546.56 ms，daemon 后续就绪、状态和停止均通过。这些是诊断样本，不能作为冷启动中位数或所有机器的耗时承诺。
 
@@ -217,16 +217,16 @@ Windows 自动查询不等待 daemon 就绪，继续执行本地 Runtime。显�
 
 | 场景                                        | 基线中位 ms | 候选中位 ms | 基线样本 P95 ms | 候选样本 P95 ms | 中位下降 |
 | ------------------------------------------- | ----------: | ----------: | --------------: | --------------: | -------: |
-| Native Status，公开 CLI，项目根目录         |      298.73 |      150.10 |          482.50 |          204.85 |    49.8% |
-| Native Status，公开 CLI，项目子目录         |      289.43 |      141.56 |          332.77 |          160.67 |    51.1% |
-| Native Status，直接 daemon IPC              |      151.56 |       23.44 |          267.92 |           54.70 |    84.5% |
-| Native 首次检查，独立 Node 调用 Runtime API |     3185.38 |     2366.10 |         4887.33 |         2583.45 |    25.7% |
-| Native 检查复用，独立 Node 调用 Runtime API |     1396.79 |     1016.00 |         1553.37 |         1048.17 |    27.3% |
+| Native Status，公开 CLI，项目根目录         |      339.36 |      171.02 |          349.14 |          186.88 |    49.6% |
+| Native Status，公开 CLI，项目子目录         |      340.86 |      165.64 |          402.87 |          188.84 |    51.4% |
+| Native Status，直接 daemon IPC              |      205.07 |       30.48 |          214.57 |           43.94 |    85.1% |
+| Native 首次检查，独立 Node 调用 Runtime API |     7713.14 |     7362.41 |        10981.97 |         9825.06 |     4.5% |
+| Native 检查复用，独立 Node 调用 Runtime API |     2303.79 |     1705.03 |         3472.84 |         3678.14 |    26.0% |
 
-五个场景共 90 次正式调用全部完成退出码、结果和持久化检查。热查询的请求内 Git 启动次数从 2 降到 0，根目录与子目录的返回数据相同。P95 是九个样本中的观测值，不代表生产尾延迟保证；不同轮次的改善比例不相加。
+五个场景共 90 次正式调用全部完成退出码、结果和持久化检查。热查询的请求内 Git 启动次数从 2 降到 0，根目录与子目录的返回数据相同。P95 是九个样本中的观测值，不代表生产尾延迟保证；不同轮次的改善比例不相加。本轮首次检查中位只下降 4.5%，检查复用的 P95 略慢，不能宣称所有检查或尾延迟全面改善。两份包的首次检查绝对耗时都比前一轮更高，没有 CPU profile 证据解释这次差异，不把前一轮的较大改善比例代替最终包结果。
 
-本轮摘要覆盖 `package.json`、全部 `bin/*.js`、`dist/app`、`dist/domains`、`dist/platform` 和两套 Runtime 脚本，与前文只覆盖两个 bin 文件的摘要口径不同。基线构建 SHA-256 为 `8a6c267bf6c3ea9ee1ae2db97b70d669309025cdfd4ac683dbfa5fd69ba48b72`，候选为 `49e4e77b61de0fa414342234ced615c7ce1d850592837c86802ba076e3dadf51`；tarball SHA-256 分别为 `decb059407779fe34aec772043b15b7717e022f3bba304545c57a6f46a2f75f5` 和 `ce26e3f49affb6f3f7baa370fd87b2feb2e76042e2de77b058b30bb57b832df8`。原始样本、解包产物和兼容结果位于系统临时目录 `comet-perf-priority-a1b9139724024ab6bbe883f72a8acafc/delivery-priority-results.json`，`complete: true`。测量候选来自未提交差异，报告中的基线 HEAD 不作为候选提交身份；交付前核对工作区构建摘要与测量包一致。
+本轮摘要覆盖 `package.json`、全部 `bin/*.js`、`dist/app`、`dist/domains`、`dist/platform` 和两套 Runtime 脚本，与前文只覆盖两个 bin 文件的摘要口径不同。基线构建 SHA-256 为 `8a6c267bf6c3ea9ee1ae2db97b70d669309025cdfd4ac683dbfa5fd69ba48b72`，候选为 `b2ac97dc1065f659af6ecbeb5a4b03045d115041fd37cd944fbfbee1a1616627`；tarball SHA-256 分别为 `decb059407779fe34aec772043b15b7717e022f3bba304545c57a6f46a2f75f5` 和 `f733b323a56f3d4f6b00ae56556a9c47c2312dafc234d3e4ddd1c6773a2d548d`。原始样本、解包产物和兼容结果位于系统临时目录 `comet-perf-priority-a1b9139724024ab6bbe883f72a8acafc/review-priority-results.json`，`complete: true`。测量候选来自未提交差异，报告中的基线 HEAD 不作为候选提交身份；交付前核对工作区构建摘要与测量包一致。
 
-本地 `pnpm verify:changed --base 4861f3893d1af955cea19b44dbee5e6d952848f3` 通过架构、TypeScript、全范围格式、生成物确定性及 App / 平台检查：App 657 项通过，平台 231 项通过、4 项跳过。最后的启动回归三文件为 12 项通过、1 项非 Windows 条件跳过；Native 锁、检查摘要、进程、归档及 Runtime 资产十文件为 74 项通过、2 项跳过。测试批次有重叠，不能相加为唯一测试总数。完整构建、ESLint / 架构、npm 打包安装 E2E 和两项独立代码审核均通过。本地未重跑仓库全量套件，交由新交付提交的线上 CI 执行；非 Windows 专属的启动回归也由该 CI 验证。
+初版候选 `2a0b6200` 的 `pnpm verify:changed --base 4861f3893d1af955cea19b44dbee5e6d952848f3` 通过架构、TypeScript、全范围格式、生成物确定性及 App / 平台检查：App 657 项通过，平台 231 项通过、4 项跳过。Native 锁、检查摘要、进程、归档及 Runtime 资产十文件为 74 项通过、2 项跳过，npm 打包安装 E2E 通过。补充 Windows 恢复边界后，完整构建及变更检查的静态项通过；平台套件以 `--maxWorkers=1` 执行，235 项通过、4 项跳过，真实启动、启动预算及命令 shim 回归三文件为 9 项通过、1 项非 Windows 条件跳过。锁与生成资产五文件仍为 47 项通过、2 项跳过。新增回归先复现后台交接过早终止及准备失败永久缓存，再验证六秒交接完成、十秒终止、编译超时和临时锁占用后的冷却重试；相关三文件 16 项通过。并发批次曾出现临时目录占用和后台启动超时，探测器清理加入有界重试，进程密集测试改为顺序执行后通过，没有改动旧命令启动测试。测试批次有重叠，不相加为唯一总数。ESLint / 架构和两项独立代码审核通过。本地未重跑仓库全量套件，最终候选的全量及跨平台打包安装交由新提交的线上 CI 执行；非 Windows 专属启动回归也由该 CI 验证。
 
 结果只描述 Windows / Node 22.20.0 上的小型 fixture。热查询已复用同一 daemon PID，返回数据一致；检查仍能复用基线通过记录，并仅重试基线中断项。Windows 探测小程序在预热中已经准备，不把检查耗时作为首次安装或准备耗时。没有测试生产大仓库、多 change、完整工作流、macOS/Linux 性能、真实模型 Eval、Agent 宿主 Hook 或 CPU profile；不承诺归档、检查或新 Node CLI 全部达到毫秒级。

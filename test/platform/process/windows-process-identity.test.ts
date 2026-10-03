@@ -1,15 +1,73 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readWindowsProcessIdentity } from '../../../platform/process/windows-process-identity.js';
 import { runExternalCommandAsync } from '../../../platform/process/external-command.js';
+import * as externalCommand from '../../../platform/process/external-command.js';
 
 describe('optional Windows process creation probe', () => {
   let cacheRoot: string;
   afterEach(async () => {
-    if (cacheRoot) await fs.rm(cacheRoot, { recursive: true, force: true });
+    vi.restoreAllMocks();
+    if (cacheRoot)
+      await fs.rm(cacheRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
+
+  it.each(['compiler timeout', 'busy preparation lock'])(
+    'retries after a cooldown when a transient %s clears',
+    async (failure) => {
+      cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-identity-retry-'));
+      const systemRoot = path.join(cacheRoot, 'system');
+      const compiler = path.join(
+        systemRoot,
+        'Microsoft.NET',
+        'Framework64',
+        'v4.0.30319',
+        'csc.exe',
+      );
+      await fs.mkdir(path.dirname(compiler), { recursive: true });
+      await fs.writeFile(compiler, 'test compiler');
+      let now = 0;
+      vi.spyOn(performance, 'now').mockImplementation(() => now);
+      let failed = false;
+      const execute = vi
+        .spyOn(externalCommand, 'runExternalCommandAsync')
+        .mockImplementation(async (command, args) => {
+          if (command === compiler) {
+            if (failure === 'compiler timeout' && !failed) {
+              failed = true;
+              throw new Error('compiler timeout');
+            }
+            const output = args.find((argument) => argument.startsWith('/out:'))!.slice(5);
+            await fs.writeFile(output, 'test probe');
+            return '';
+          }
+          if (path.basename(command).startsWith('probe-')) return '123456789';
+          throw new Error('legacy probe unavailable');
+        });
+      if (failure === 'busy preparation lock') {
+        vi.spyOn(fs, 'open').mockRejectedValueOnce(
+          Object.assign(new Error('preparation busy'), { code: 'EEXIST' }),
+        );
+      }
+      const options = { cacheRoot: path.join(cacheRoot, 'probe-cache'), systemRoot };
+      await expect(readWindowsProcessIdentity(process.pid, options)).resolves.toBeNull();
+      const initialCompiles = execute.mock.calls.filter(([command]) => command === compiler).length;
+      now = 9999;
+      await expect(readWindowsProcessIdentity(process.pid, options)).resolves.toBeNull();
+      expect(execute.mock.calls.filter(([command]) => command === compiler)).toHaveLength(
+        initialCompiles,
+      );
+      now = 10_000;
+      await expect(readWindowsProcessIdentity(process.pid, options)).resolves.toBe(
+        'win32-ps:123456789',
+      );
+      expect(execute.mock.calls.filter(([command]) => command === compiler)).toHaveLength(
+        initialCompiles + 1,
+      );
+    },
+  );
 
   it('returns unknown when both the helper and legacy probes are unavailable', async () => {
     cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-identity-cache-'));
