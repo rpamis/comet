@@ -89,9 +89,13 @@ describe('CLI daemon router', () => {
     expect(shouldAutoStartCometDaemon({ COMET_DAEMON: 'off' })).toBe(false);
   });
 
-  it.runIf(process.platform === 'win32')(
-    'starts the Windows daemon outside the invoking process tree',
-    async () => {
+  it.runIf(process.platform === 'win32').each([
+    ['', 'native'],
+    ['--experimental-default-type=module', 'native'],
+    ['', 'daemon'],
+  ])(
+    'starts the Windows daemon outside the invoking process tree with NODE_OPTIONS=%s via %s',
+    async (nodeOptions, command) => {
       const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-daemon-router-'));
       temporary.push(root);
       const home = path.join(root, 'home');
@@ -103,11 +107,12 @@ describe('CLI daemon router', () => {
         ...isolatedBenchmarkEnvironment(home),
         COMET_DAEMON: 'auto',
         COMET_DAEMON_IDLE_TIMEOUT_MS: '15000',
+        NODE_OPTIONS: nodeOptions,
       };
 
       const status = runCli(project, env, [
-        'native',
-        'status',
+        command,
+        command === 'daemon' ? 'start' : 'status',
         '--project-root',
         project,
         '--json',

@@ -11,7 +11,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Changed
 
 - **Workflow continuation**: Native and Classic Skills reuse current Runtime responses, preserve rejected inputs for correction, and prepare archive messages under project commit conventions. Classic hotfix and tweak advance verification through Guard while retaining final Archive confirmation.
-- **Native query responsiveness**: Reuse Git worktree observations within each Status, Show, or Root Show query, including standalone Runtime bundles. Every new request reads fresh worktree state, and workflow mutations retain their live Git checks. Daemon diagnostics now report request-local Git counts and elapsed time.
+- **Native query responsiveness**: Validate Git metadata on each daemon query and reuse unchanged worktree observations for Status, Show, and Root Show, including calls from subdirectories. Refresh asynchronously after branch or worktree changes, keep Runtime state reads fresh, and retain direct execution when the daemon cannot answer. Standalone Runtime queries share observations within each request; workflow mutations retain live Git checks.
+- **Windows process probes**: Use an optional local creation-time probe to reduce PowerShell startup during locks and checks. Preparation and fallback are asynchronous and bounded; unavailable probes remain unknown, and foreign process identities are rechecked to protect against PID reuse.
 - **Verification responsiveness**: Reuse Native repository and branch observations when reserving checks. Classic checks read files with bounded concurrency and bind overlapping declarations once, while fresh source edits still invalidate prior evidence and legacy evidence keeps its original bindings.
 - **Classic command startup**: Public State, Check, Guard, Handoff, and Archive commands load their own Runtime bundle while preserving context injection, result recording, command arguments, and JSON output.
 - **Classic query responsiveness**: Read stable Classic state without creating a writer lock, avoiding unnecessary process probes on Windows. Concurrent changes, interrupted transactions, unavailable file identities, and legacy migrations retain the serialized recovery path.
@@ -19,6 +20,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Windows daemon startup**: Complete the WMI handoff in a bounded background launcher so the invoking CLI can finish without terminating an unfinished broker. Reuse a validated local launcher script to keep PowerShell startup out of the foreground, with direct execution retained when preparation is unavailable.
 - **Native daemon workspace context**: Resolve Native queries and relative project paths from the caller's working directory, preserving linked-worktree ownership when the daemon runs from another directory.
 - **Native concurrent lock acquisition**: Recheck coordinator claims after process inspection so a released owner cannot cause a false busy timeout. Active or replaced claims remain protected, including when Windows process probes are slow.
 - **Project Memory scrolling**: Keep the project memory tab on the same Dashboard inner-page flex layout as retrieval test, so long memory lists scroll inside the knowledge page instead of being clipped (#452).

@@ -3,6 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { measureCometGitCommand } from '../process/runtime-metrics.js';
+import { ExternalCommandError, runExternalCommandAsync } from '../process/external-command.js';
+import { gitWorktreeMetadataStamp } from './git-worktree-cache.js';
+import { resolveWindowsCommand } from '../process/spawn-command.js';
 
 interface GitWorktreeContext {
   isGitWorktree: boolean;
@@ -19,10 +22,144 @@ export interface GitWorktreeEntry {
 }
 
 const readScope = new AsyncLocalStorage<Map<string, GitWorktreeEntry[]>>();
+const readRoots = new AsyncLocalStorage<Map<string, string>>();
 
 /** Reuse worktree observations only within one read-only query, never across commands. */
 export function withGitWorktreeReadScope<T>(operation: () => T): T {
+  if (readScope.getStore()) return operation();
   return readScope.run(new Map(), operation);
+}
+
+/** daemon 专用；只复用已核对元数据的查询观察，写命令不进入此作用域。 */
+export function createGitWorktreeReadCache(): {
+  run<T>(projectRoot: string, operation: () => Promise<T>, invocationCwd?: string): Promise<T>;
+} {
+  const entries = new Map<
+    string,
+    { stamp: string; observations: Map<string, GitWorktreeEntry[]>; roots: Map<string, string> }
+  >();
+  let configPaths: Promise<string[] | null> | undefined;
+  let environment = '';
+  const stamp = async (projectRoot: string, configs: readonly string[]) => {
+    let timer: ReturnType<typeof setTimeout>;
+    try {
+      return await Promise.race([
+        gitWorktreeMetadataStamp(projectRoot, configs),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), 100);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer!);
+    }
+  };
+  return {
+    async run(projectRoot, operation, invocationCwd = projectRoot) {
+      const gitExecutable =
+        process.platform === 'win32'
+          ? resolveWindowsCommand('git', process.env, projectRoot)
+          : (process.env.PATH ?? '')
+              .split(path.delimiter)
+              .map((directory) => path.join(directory, 'git'))
+              .find((candidate) => fs.existsSync(candidate));
+      const gitIdentity = gitExecutable
+        ? await fs.promises
+            .stat(gitExecutable, { bigint: true })
+            .then((stat) => `${stat.dev}:${stat.ino}:${stat.ctimeNs}:${stat.mtimeNs}:${stat.size}`)
+            .catch(() => null)
+        : null;
+      const currentEnvironment =
+        JSON.stringify(
+          Object.entries(process.env)
+            .filter(([key]) => /^(?:GIT_|HOME$|USERPROFILE$|XDG_CONFIG_HOME$|PATH$)/iu.test(key))
+            .sort(),
+        ) + gitIdentity;
+      if (environment !== currentEnvironment) {
+        environment = currentEnvironment;
+        configPaths = undefined;
+        entries.clear();
+      }
+      const cacheAllowed =
+        !Object.keys(process.env).some(
+          (key) =>
+            /^GIT_/iu.test(key) && !/^GIT_(?:PAGER|TERMINAL_PROMPT|OPTIONAL_LOCKS)$/iu.test(key),
+        ) && gitIdentity !== null;
+      if (cacheAllowed)
+        configPaths ??= Promise.all(
+          ['GIT_CONFIG_SYSTEM', 'GIT_CONFIG_GLOBAL'].map((name) =>
+            runExternalCommandAsync('git', ['var', name], {
+              cwd: projectRoot,
+              timeoutMs: 500,
+              maxBufferBytes: 16384,
+            }),
+          ),
+        )
+          .then((values) => values.flatMap((value) => value.trim().split(/\r?\n/u).filter(Boolean)))
+          .catch(() => null);
+      const configs = cacheAllowed ? await configPaths! : null;
+      const paths = [...new Set([path.resolve(projectRoot), path.resolve(invocationCwd)])];
+      const key = JSON.stringify(paths.map(canonicalPathForComparison));
+      const metadata = async () => {
+        if (!configs) return null;
+        const stamps = await Promise.all(paths.map((target) => stamp(target, configs)));
+        return stamps.every((value) => value !== null) ? JSON.stringify(stamps) : null;
+      };
+      const before = await metadata();
+      const existing = entries.get(key);
+      const observations =
+        before !== null && before === existing?.stamp
+          ? new Map(existing.observations)
+          : new Map<string, GitWorktreeEntry[]>();
+      const roots =
+        before !== null && before === existing?.stamp
+          ? new Map(existing.roots)
+          : new Map<string, string>();
+      if (observations.size === 0) entries.delete(key);
+      if (observations.size === 0) {
+        // 缓存未命中时异步刷新，避免 Git 子进程阻塞 daemon 的其他连接。
+        await Promise.all(
+          paths.map(async (target) => {
+            try {
+              const [root, output] = await Promise.all([
+                runExternalCommandAsync('git', ['-C', target, 'rev-parse', '--show-toplevel'], {
+                  timeoutMs: 1000,
+                  maxBufferBytes: 16384,
+                }),
+                runExternalCommandAsync(
+                  'git',
+                  ['-C', target, 'worktree', 'list', '--porcelain', '-z'],
+                  { timeoutMs: 1000, maxBufferBytes: 262144 },
+                ),
+              ]);
+              const worktrees = parseGitWorktrees(output.trim());
+              if (worktrees.some((entry) => samePath(entry.root, root.trim()))) {
+                roots.set(
+                  canonicalPathForComparison(target),
+                  canonicalPathForComparison(root.trim()),
+                );
+                for (const entry of worktrees)
+                  observations.set(canonicalPathForComparison(entry.root), worktrees);
+              } else throw new Error('Git worktree root could not be resolved');
+            } catch (error) {
+              if (
+                !(error instanceof ExternalCommandError) ||
+                !/not a git repository/iu.test(error.stderr)
+              )
+                throw error;
+              // 与原查询的非 Git 结果一致；不在后台再次同步启动失败的命令。
+              observations.set(canonicalPathForComparison(target), []);
+            }
+          }),
+        );
+      }
+      const result = await readRoots.run(roots, () => readScope.run(observations, operation));
+      if (before !== null && observations.size > 0 && before === (await metadata())) {
+        if (entries.size >= 8) entries.delete(entries.keys().next().value!);
+        entries.set(key, { stamp: before, observations, roots });
+      } else entries.delete(key);
+      return result;
+    },
+  };
 }
 
 function rememberWorktrees(entries: GitWorktreeEntry[]): GitWorktreeEntry[] {
@@ -65,8 +202,22 @@ function canonicalPathForComparison(target: string): string {
 
 function inspectGitWorktree(projectPath: string): GitWorktreeContext {
   try {
-    const observed = readScope.getStore()?.get(canonicalPathForComparison(projectPath));
-    if (observed) return gitWorktreeContextFromEntries(projectPath, observed)!;
+    const observedRoot = readRoots.getStore()?.get(canonicalPathForComparison(projectPath));
+    const observed = readScope
+      .getStore()
+      ?.get(observedRoot ?? canonicalPathForComparison(projectPath));
+    if (observed) {
+      const context = gitWorktreeContextFromEntries(observedRoot ?? projectPath, observed);
+      if (context) return context;
+      if (observed.length === 0)
+        return {
+          isGitWorktree: false,
+          isSecondaryWorktree: false,
+          currentWorktreeRoot: null,
+          primaryWorktreeRoot: null,
+          currentBranch: null,
+        };
+    }
     const currentWorktreeRoot = path.resolve(runGit(projectPath, ['rev-parse', '--show-toplevel']));
     const entries =
       readScope.getStore()?.get(canonicalPathForComparison(currentWorktreeRoot)) ??
@@ -101,7 +252,12 @@ function inspectGitWorktree(projectPath: string): GitWorktreeContext {
 
 function listGitWorktrees(projectPath: string): GitWorktreeEntry[] {
   try {
-    const observed = readScope.getStore()?.get(canonicalPathForComparison(projectPath));
+    const observed = readScope
+      .getStore()
+      ?.get(
+        readRoots.getStore()?.get(canonicalPathForComparison(projectPath)) ??
+          canonicalPathForComparison(projectPath),
+      );
     if (observed) return observed.map((entry) => ({ ...entry }));
     runGit(projectPath, ['rev-parse', '--is-inside-work-tree']);
     return readGitWorktrees(projectPath);
@@ -111,7 +267,13 @@ function listGitWorktrees(projectPath: string): GitWorktreeEntry[] {
 }
 
 function readGitWorktrees(projectPath: string): GitWorktreeEntry[] {
-  const lines = runGit(projectPath, ['worktree', 'list', '--porcelain', '-z']).split('\0');
+  const entries = parseGitWorktrees(runGit(projectPath, ['worktree', 'list', '--porcelain', '-z']));
+  rememberWorktrees(entries);
+  return entries.map((entry) => ({ ...entry }));
+}
+
+function parseGitWorktrees(output: string): GitWorktreeEntry[] {
+  const lines = output.split('\0');
   const entries: GitWorktreeEntry[] = [];
   let current: GitWorktreeEntry | null = null;
   for (const line of lines) {
@@ -129,8 +291,7 @@ function readGitWorktrees(projectPath: string): GitWorktreeEntry[] {
     }
   }
   if (current) entries.push(current);
-  rememberWorktrees(entries);
-  return entries.map((entry) => ({ ...entry }));
+  return entries;
 }
 
 function listGitWorktreeRoots(projectPath: string): string[] {

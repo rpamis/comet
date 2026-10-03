@@ -10,6 +10,11 @@ const runNativeCliDetailed = vi.hoisted(() => vi.fn());
 vi.mock('../../platform/process/comet-daemon.js', () => ({ createCometDaemonServer }));
 vi.mock('../../domains/comet-classic/classic-cli.js', () => ({ runClassicCli }));
 vi.mock('../../domains/comet-native/native-cli.js', () => ({ runNativeCliDetailed }));
+vi.mock('../../platform/paths/git-worktree.js', () => ({
+  createGitWorktreeReadCache: () => ({
+    run: (_root: string, operation: () => Promise<unknown>) => operation(),
+  }),
+}));
 
 import { runCometDaemonServer } from '../../app/commands/daemon-server.js';
 

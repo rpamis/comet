@@ -9,6 +9,7 @@ import {
 } from '../../platform/process/comet-daemon.js';
 import { runClassicCli } from '../../domains/comet-classic/classic-cli.js';
 import { runNativeCliDetailed } from '../../domains/comet-native/native-cli.js';
+import { createGitWorktreeReadCache } from '../../platform/paths/git-worktree.js';
 
 function requiredArgument(value: string | undefined, name: string): string {
   if (!value || value.startsWith('--')) throw new Error(`${name} is required`);
@@ -51,13 +52,31 @@ export async function runCometDaemonServer(argv: readonly string[]): Promise<voi
   const buildId = requiredArgument(argv[1], 'daemon build ID');
   const projectRoot = path.resolve(requiredArgument(argv[2], 'daemon project root'));
   const idleTimeoutMs = optionNumber(process.env.COMET_DAEMON_IDLE_TIMEOUT_MS, 10 * 60 * 1000);
+  const worktrees = createGitWorktreeReadCache();
   try {
     await createCometDaemonServer({
       endpoint,
       buildId,
       projectRoot,
       idleTimeoutMs,
-      handler: handleRequest,
+      handler: (request) => {
+        const command = request.argv?.[0];
+        const readOnly =
+          request.runtime === 'native' &&
+          (command === 'status' ||
+            command === 'show' ||
+            (command === 'root' && request.argv?.[1] === 'show'));
+        return readOnly
+          ? worktrees.run(
+              path.resolve(
+                request.cwd,
+                explicitProjectRoot(request.argv ?? [], request.projectRoot),
+              ),
+              () => handleRequest(request),
+              request.cwd,
+            )
+          : handleRequest(request);
+      },
       environmentFingerprint: process.env.COMET_DAEMON_ENVIRONMENT_FINGERPRINT,
     });
   } finally {
