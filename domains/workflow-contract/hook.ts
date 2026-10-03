@@ -6,4 +6,6 @@ export interface CometHookDecision {
   phase?: string;
   context?: string;
   diagnostic?: string;
+  applicationId?: string;
+  runId?: string;
 }

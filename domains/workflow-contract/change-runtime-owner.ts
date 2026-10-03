@@ -11,7 +11,13 @@ import type { CometProjectWorkflow } from './types.js';
 
 export const COMET_CHANGE_OWNER_SCHEMA = 'comet.change-owner.v1' as const;
 
-export type SdkApplication = 'native' | 'classic-full' | 'classic-hotfix' | 'classic-tweak';
+export const SDK_APPLICATIONS = [
+  'native',
+  'classic-full',
+  'classic-hotfix',
+  'classic-tweak',
+] as const;
+export type SdkApplication = (typeof SDK_APPLICATIONS)[number];
 
 export interface SdkChangeOwner {
   schema: typeof COMET_CHANGE_OWNER_SCHEMA;

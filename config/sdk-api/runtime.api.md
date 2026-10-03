@@ -123,6 +123,7 @@ export interface CreateRuntimeOptions {
     store: RuntimeStore<WorkflowRun>;
     // (undocumented)
     transitionHandlers?: readonly WorkflowTransitionHandler[];
+    validateOutcome?: RuntimeValidator['validate'];
     // (undocumented)
     validators?: readonly RuntimeValidator[];
     // (undocumented)
@@ -406,6 +407,7 @@ export interface RuntimeExecutor {
     }>;
     // (undocumented)
     id: string;
+    preflight?(action: Readonly<RuntimeAction>, context?: RuntimeInvocationContext, run?: Readonly<WorkflowRun>): void | Promise<void>;
     // (undocumented)
     supports(action: Readonly<RuntimeAction>): boolean;
 }

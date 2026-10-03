@@ -3,6 +3,7 @@ import { createRuntime } from '../../../domains/engine/runtime-service.js';
 import { createPortableRunCheckpoint } from '../../../domains/engine/portable-run-checkpoint.js';
 import { createMemoryRuntimeStore } from '../../../domains/engine/runtime-store.js';
 import type { WorkflowRun } from '../../../domains/engine/workflow-run.js';
+import { RuntimeProtocolError } from '../../../domains/engine/runtime-errors.js';
 
 const workflow = {
   id: 'reader',
@@ -12,6 +13,117 @@ const workflow = {
 };
 
 describe('Runtime execution extensions and recovery', () => {
+  it.each(['claim', 'execute'] as const)(
+    'rechecks asynchronous %s authorization against the snapshot retried after a CAS conflict',
+    async (operation) => {
+      let release!: () => void;
+      let started!: () => void;
+      const paused = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const entered = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      let checks = 0;
+      let executions = 0;
+      const runtime = createRuntime({
+        store: createMemoryRuntimeStore<WorkflowRun>(),
+        workflows: [
+          {
+            id: 'snapshot-authorization',
+            version: '1',
+            entry: ['work', 'revoke'],
+            initialState: { approved: true },
+            stateSchema: { type: 'object' },
+            transitionHandler: { id: 'revoke', version: '1' },
+            steps: {
+              work: { type: 'call_tool', ref: 'work' },
+              revoke: { type: 'call_tool', ref: 'revoke' },
+            },
+          },
+        ],
+        transitionHandlers: [
+          {
+            id: 'revoke',
+            version: '1',
+            apply: ({ run, event }) => ({
+              state: event.stepId === 'revoke' ? { approved: false } : run.state!,
+              next: [],
+            }),
+          },
+        ],
+        executors: [
+          {
+            id: 'configured-host',
+            capabilities: [],
+            supports: (action) => action.ref === 'work',
+            preflight: async (_action, _context, run) => {
+              const approved = (run!.state as { approved: boolean }).approved;
+              checks++;
+              if (checks === 1) {
+                started();
+                await paused;
+              }
+              if (!approved)
+                throw new RuntimeProtocolError(
+                  'COMMAND_REJECTED',
+                  'Current snapshot no longer authorizes dispatch',
+                );
+            },
+            execute: async () => {
+              executions++;
+              return { status: 'succeeded', output: 'worked' };
+            },
+          },
+        ],
+      });
+      const run = await runtime.start({
+        runId: 'r',
+        workflow: { id: 'snapshot-authorization', version: '1' },
+        input: null,
+      });
+      const action = run.actions[0];
+      const work =
+        operation === 'execute'
+          ? runtime.execute({ runId: 'r', actionId: action.id, executorId: 'configured-host' })
+          : runtime.claim({
+              runId: 'r',
+              actionId: action.id,
+              attempt: action.attempt,
+              inputHash: action.inputHash,
+              executorId: 'configured-host',
+              claimToken: 'work-token',
+            });
+      await entered;
+      const revoke = run.actions[1];
+      await runtime.claim({
+        runId: 'r',
+        actionId: revoke.id,
+        attempt: revoke.attempt,
+        inputHash: revoke.inputHash,
+        executorId: 'manual-control',
+        claimToken: 'control-token',
+      });
+      await runtime.recordOutcome({
+        runId: 'r',
+        outcome: {
+          actionId: revoke.id,
+          attempt: revoke.attempt,
+          inputHash: revoke.inputHash,
+          claimToken: 'control-token',
+          outcomeId: 'revoked',
+          status: 'succeeded',
+          output: null,
+        },
+      });
+      const rejected = expect(work).rejects.toMatchObject({ code: 'COMMAND_REJECTED' });
+      release();
+      await rejected;
+      expect(checks).toBe(2);
+      expect(executions).toBe(0);
+      expect((await runtime.inspect('r')).actions[0].status).toBe('pending');
+    },
+  );
   it('passes the claimed Run snapshot to an executor before it performs external work', async () => {
     const store = createMemoryRuntimeStore<WorkflowRun>();
     const runtime = createRuntime({

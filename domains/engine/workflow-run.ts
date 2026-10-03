@@ -171,6 +171,12 @@ export interface RuntimeExecutor {
   id: string;
   capabilities: readonly string[];
   supports(action: Readonly<RuntimeAction>): boolean;
+  /** 自动 execute 与手工 claim 共用的无副作用领取预检。拒绝时保留 pending。 */
+  preflight?(
+    action: Readonly<RuntimeAction>,
+    context?: RuntimeInvocationContext,
+    run?: Readonly<WorkflowRun>,
+  ): void | Promise<void>;
   execute(
     action: Readonly<RuntimeAction>,
     context?: RuntimeInvocationContext,

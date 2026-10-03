@@ -42,6 +42,8 @@ export interface CreateRuntimeOptions {
   transitionHandlers?: readonly WorkflowTransitionHandler[];
   evidenceValidators?: readonly RuntimeEvidenceValidator[];
   commandValidators?: readonly RuntimeCommandValidator[];
+  /** 应用的结果契约检查；不执行派发授权，拒绝时保留原结果与工件。 */
+  validateOutcome?: RuntimeValidator['validate'];
 }
 
 interface RunCommand {
@@ -709,7 +711,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
             requestId: command.context.requestId,
           })
         : randomUUID());
-    return mutate(command, (run) => {
+    return mutate(command, async (run) => {
       ensureActive(run);
       if (run.status === 'failed')
         throw new RuntimeProtocolError('RUN_FAILED', 'Run 已因失败停止；请先完成显式恢复');
@@ -719,13 +721,6 @@ export function createRuntime(options: CreateRuntimeOptions) {
           'CHILD_MANAGED',
           '子工作流由 Runtime 登记与核对，不接受宿主代领',
         );
-      const available = new Set(command.capabilities ?? []);
-      if (action.requiredCapabilities.some((capability) => !available.has(capability))) {
-        throw new RuntimeProtocolError(
-          'CAPABILITY_REQUIRED',
-          '执行者未声明 Action 要求的全部宿主能力',
-        );
-      }
       const claimed = claimRuntimeAction(action, {
         attempt: command.attempt,
         inputHash: command.inputHash,
@@ -733,6 +728,32 @@ export function createRuntime(options: CreateRuntimeOptions) {
         token,
         ...(command.sessionId === undefined ? {} : { sessionId: command.sessionId }),
       });
+      if (!action.claim) {
+        const available = new Set(command.capabilities ?? []);
+        if (action.requiredCapabilities.some((capability) => !available.has(capability)))
+          throw new RuntimeProtocolError(
+            'CAPABILITY_REQUIRED',
+            '执行者未声明 Action 要求的全部宿主能力',
+          );
+        const executor = executors.get(command.executorId);
+        if (executor?.supports(structuredClone(action))) {
+          if (
+            action.requiredCapabilities.some(
+              (capability) => !executor.capabilities.includes(capability),
+            )
+          )
+            throw new RuntimeProtocolError(
+              'CAPABILITY_REQUIRED',
+              '已配置执行端口缺少 Action 要求的宿主能力',
+            );
+          await executor.preflight?.(
+            structuredClone(action),
+            command.context,
+            structuredClone(run),
+          );
+          checkContext(command.context);
+        }
+      }
       run.actions[run.actions.indexOf(action)] = claimed;
     });
   }
@@ -761,8 +782,25 @@ export function createRuntime(options: CreateRuntimeOptions) {
       if (accepted.duplicate) return;
       const actionIndex = run.actions.indexOf(action);
       try {
+        if (options.validateOutcome) {
+          const checked = await options.validateOutcome({
+            run: structuredClone(run),
+            action: structuredClone(action),
+            outcome: structuredClone(command.outcome),
+            context: command.context,
+          });
+          if (!checked.accepted)
+            rejection = {
+              code: 'OUTCOME_REJECTED',
+              reason: checked.reason ?? '应用结果契约拒绝此结果',
+            };
+        }
         const step = definition.steps[action.stepId];
-        if (command.outcome.status === 'succeeded' && step.outputSchema !== undefined) {
+        if (
+          !rejection &&
+          command.outcome.status === 'succeeded' &&
+          step.outputSchema !== undefined
+        ) {
           const validate = ajv.compile(step.outputSchema as boolean | object);
           if (!validate(command.outcome.output)) {
             rejection = { code: 'OUTPUT_INVALID', reason: ajv.errorsText(validate.errors) };
@@ -1136,6 +1174,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
       );
     if (!executor.supports(structuredClone(pending)))
       throw new RuntimeProtocolError('EXECUTOR_UNSUPPORTED', '执行器不支持此 Action');
+    checkContext(command.context);
     const started = await claim({
       ...command,
       attempt: pending.attempt,

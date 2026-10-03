@@ -11,7 +11,7 @@ const arguments_ = process.argv.slice(2);
 const rootIndex = arguments_.indexOf('--project-root');
 const projectRoot = rootIndex < 0 ? repositoryRoot : path.resolve(arguments_[rootIndex + 1]);
 const update = arguments_.includes('--update');
-const entrypoints = ['./runtime', './plugins', './plugins/comet'];
+const entrypoints = ['./runtime', './applications', './plugins', './plugins/comet'];
 
 async function main() {
   const packageJsonPath = path.join(projectRoot, 'package.json');
