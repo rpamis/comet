@@ -624,6 +624,11 @@ children:
 `,
     );
     execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.name', 'Comet Test'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'comet-test@example.com'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
     execFileSync(
       'git',
       ['-c', 'user.name=Comet Test', '-c', 'user.email=comet-test@example.com', 'add', '-A'],
@@ -1116,6 +1121,16 @@ children:
       context: { requestId: 'integration-repair-checks', projectRoot: root },
     });
     expect(run.actions.find((action) => action.id === repairedCheck.id)?.status).toBe('succeeded');
+    const apiArchive = run.actions.find(
+      (action) => action.stepId === 'supervisor.child.archive' && action.status === 'pending',
+    )!;
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: apiArchive.id,
+      executorId: 'native-supervisor-child-archive',
+      context: { requestId: 'api-child-archive', projectRoot: root },
+    });
+    expect(run.actions.find((action) => action.id === apiArchive.id)?.status).toBe('succeeded');
     expect(
       run.actions.filter(
         (action) => action.stepId === 'supervisor.child.integrate' && action.status === 'pending',
@@ -1294,6 +1309,16 @@ children:
       executorId: 'comet-native-checks',
       context: { requestId: 'ui-integration-checks', projectRoot: root },
     });
+    const uiArchive = run.actions.find(
+      (action) => action.stepId === 'supervisor.child.archive' && action.status === 'pending',
+    )!;
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: uiArchive.id,
+      executorId: 'native-supervisor-child-archive',
+      context: { requestId: 'ui-child-archive', projectRoot: root },
+    });
+    expect(run.actions.find((action) => action.id === uiArchive.id)?.status).toBe('succeeded');
     expect(run.actions.at(-1)?.stepId).toBe('supervisor.parent.builder');
   });
 
@@ -1706,6 +1731,16 @@ children:
         status: 'succeeded',
         outcome: { output: { checks: [{ id: 'api-integration', status: 'passed' }] } },
       });
+      const apiArchive = run.actions.find(
+        (action) => action.stepId === 'supervisor.child.archive' && action.status === 'pending',
+      )!;
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: apiArchive.id,
+        executorId: 'native-supervisor-child-archive',
+        context: { requestId: 'api-child-archive', projectRoot: root },
+      });
+      expect(run.actions.find((action) => action.id === apiArchive.id)?.status).toBe('succeeded');
       const integratedHead = execFileSync('git', ['rev-parse', 'HEAD'], {
         cwd: integrationWorktree,
         encoding: 'utf8',
@@ -1802,6 +1837,16 @@ children:
         executorId: 'comet-native-checks',
         context: { requestId: 'ui-integration-checks', projectRoot: root },
       });
+      const uiArchive = run.actions.find(
+        (action) => action.stepId === 'supervisor.child.archive' && action.status === 'pending',
+      )!;
+      run = await runtime.execute({
+        runId: run.runId,
+        actionId: uiArchive.id,
+        executorId: 'native-supervisor-child-archive',
+        context: { requestId: 'ui-child-archive', projectRoot: root },
+      });
+      expect(run.actions.find((action) => action.id === uiArchive.id)?.status).toBe('succeeded');
       expect(run.actions.at(-1)).toMatchObject({
         stepId: 'supervisor.parent.builder',
         type: 'handoff',

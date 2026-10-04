@@ -85,6 +85,10 @@ import {
   nativeSdkSupervisorCleanupExecutor,
   nativeSdkSupervisorCleanupValidator,
 } from './native-sdk-supervisor-cleanup.js';
+import {
+  nativeSdkSupervisorChildArchiveExecutor,
+  nativeSdkSupervisorChildArchiveValidator,
+} from './native-sdk-supervisor-archive.js';
 import { selectNativeSdkReadyChildren } from './native-sdk-supervisor-plan.js';
 import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
 import { supervisorAcceptanceScope } from './native-supervisor-model.js';
@@ -1048,6 +1052,14 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             version: nativeSdkSupervisorIntegrationRepairValidator.version,
           },
         },
+        'supervisor.child.archive': {
+          type: 'call_tool',
+          ref: 'native-supervisor-child-archive',
+          validator: {
+            id: nativeSdkSupervisorChildArchiveValidator.id,
+            version: nativeSdkSupervisorChildArchiveValidator.version,
+          },
+        },
         'supervisor.parent.builder': {
           type: 'handoff',
           ref: 'native-supervisor-parent-builder',
@@ -1177,6 +1189,10 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'supervisor.child.integration-checks', to: 'supervisor.child.integrate' },
         { from: 'supervisor.child.integration-checks', to: 'supervisor.child.prepare' },
         { from: 'supervisor.child.integration-checks', to: 'supervisor.parent.builder' },
+        { from: 'supervisor.child.integration-checks', to: 'supervisor.child.archive' },
+        { from: 'supervisor.child.archive', to: 'supervisor.child.integrate' },
+        { from: 'supervisor.child.archive', to: 'supervisor.child.prepare' },
+        { from: 'supervisor.child.archive', to: 'supervisor.parent.builder' },
         { from: 'supervisor.parent.builder', to: 'verify.checks' },
         { from: 'supervisor.parent.builder', to: 'supervisor.parent.resume', on: 'failed' },
         { from: 'supervisor.parent.resume', to: 'supervisor.parent.builder', on: 'continue' },
@@ -1562,6 +1578,40 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
               ],
             };
           }
+          const checksAction = run.actions.find(
+            (candidate) => candidate.id === event.outcome.actionId,
+          );
+          const checksInput = (
+            checksAction?.input as { activation?: Record<string, RuntimeValue> } | undefined
+          )?.activation;
+          const checksOutput = event.outcome.output as { candidateId: string };
+          if (
+            !checksInput ||
+            typeof checksInput.child !== 'string' ||
+            typeof checksInput.candidateCommit !== 'string'
+          ) {
+            throw new Error('Native SDK Supervisor integration checks lack their child binding');
+          }
+          return {
+            state: state as unknown as RuntimeValue,
+            next: [
+              {
+                stepId: 'supervisor.child.archive',
+                input: {
+                  child: checksInput.child,
+                  candidateCommit: checksInput.candidateCommit,
+                  integrationCommit: checksOutput.candidateId,
+                  checksActionId: event.outcome.actionId,
+                  contractHash: state.children_contract_hash!,
+                },
+              },
+            ],
+          };
+        }
+        if (event.kind === 'action-outcome' && event.stepId === 'supervisor.child.archive') {
+          if (event.outcome.status !== 'succeeded') {
+            return { state: state as unknown as RuntimeValue, next: [] };
+          }
           const proposal = proposalFrom(run.outputs['shape.revalidate']?.value);
           const integration = run.outputs['supervisor.prepare']?.value as
             | {
@@ -1584,7 +1634,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
               ),
           );
           const currentAction = run.actions.find((action) => action.id === event.outcome.actionId);
-          if (!currentAction) throw new Error('Native SDK Supervisor integration Action missing');
+          if (!currentAction) throw new Error('Native SDK Supervisor archive Action missing');
           integrated.add(
             (currentAction.input as { activation: { child: string } }).activation.child,
           );
@@ -1615,7 +1665,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             active: [...active],
             maxParallel: state.coordination_mode === 'single-session' ? 1 : 2,
           });
-          const output = event.outcome.output as { candidateId: string };
+          const output = event.outcome.output as { integrationCommit: string };
           if (integrated.size === proposal.children.contract.children.length) {
             return {
               state: state as unknown as RuntimeValue,
@@ -1626,7 +1676,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                     contractHash: state.children_contract_hash,
                     integrationBranch: integration.integrationBranch,
                     integrationWorktree: integration.integrationWorktree,
-                    integrationCommit: output.candidateId,
+                    integrationCommit: output.integrationCommit,
                     acceptance: state.acceptance.map(({ id, source, text }) => ({
                       id,
                       source,
@@ -1646,7 +1696,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                 contractHash: state.children_contract_hash!,
                 integrationBranch: integration.integrationBranch,
                 integrationWorktree: integration.integrationWorktree,
-                targetCommit: output.candidateId,
+                targetCommit: output.integrationCommit,
               },
             })),
           };
@@ -1979,6 +2029,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
       supervisorParentBuilderValidator,
       nativeSdkSupervisorDeliverValidator,
       nativeSdkSupervisorCleanupValidator,
+      nativeSdkSupervisorChildArchiveValidator,
     ],
     stateValidators: [nativeStateValidator],
     commandValidators: [
@@ -2000,6 +2051,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
       nativeSdkSupervisorChildPrepareExecutor,
       nativeSdkSupervisorIntegrateExecutor,
       nativeSdkSupervisorDeliverExecutor,
+      nativeSdkSupervisorChildArchiveExecutor,
       nativeSdkSupervisorCleanupExecutor,
     ],
   };

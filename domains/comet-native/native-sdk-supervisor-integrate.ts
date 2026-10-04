@@ -95,6 +95,42 @@ async function currentIntegration(
   return { state, plan, input, integrationBranch, integrationWorktree, expectedBaseCommit };
 }
 
+/**
+ * Child archive merges advance the integration head between a passed check and
+ * the next merge. The advance is trusted only when it replays the recorded
+ * archive chain from the checked base to the current head; any unrelated
+ * commit still fails the binding.
+ */
+function archiveChainReaches(
+  run: Readonly<WorkflowRun>,
+  fromCommit: string,
+  toCommit: string,
+): boolean {
+  let cursor = fromCommit;
+  for (const action of run.actions) {
+    if (
+      action.stepId !== 'supervisor.child.archive' ||
+      action.status !== 'succeeded' ||
+      !action.outcome
+    ) {
+      continue;
+    }
+    const output = action.outcome.output as {
+      baseCommit?: unknown;
+      integrationCommit?: unknown;
+    } | null;
+    if (
+      output &&
+      typeof output.baseCommit === 'string' &&
+      typeof output.integrationCommit === 'string' &&
+      output.baseCommit === cursor
+    ) {
+      cursor = output.integrationCommit;
+    }
+  }
+  return cursor === toCommit;
+}
+
 export const nativeSdkSupervisorIntegrateExecutor: RuntimeExecutor = {
   id: 'native-supervisor-integrate',
   capabilities: [],
@@ -120,7 +156,11 @@ export const nativeSdkSupervisorIntegrateExecutor: RuntimeExecutor = {
       throw new Error('Native SDK Supervisor integration worktree must be clean before merge');
     }
     const baseCommit = resolveGitRef(current.integrationWorktree, current.integrationBranch);
-    if (baseCommit !== current.expectedBaseCommit) {
+    if (
+      !baseCommit ||
+      (baseCommit !== current.expectedBaseCommit &&
+        !archiveChainReaches(run, current.expectedBaseCommit, baseCommit))
+    ) {
       throw new Error('Native SDK Supervisor integration branch changed after the prior check');
     }
     runGitCommand(current.integrationWorktree, [
@@ -172,7 +212,9 @@ export const nativeSdkSupervisorIntegrateValidator: RuntimeValidator = {
         !output ||
         output.child !== current.input.child ||
         output.candidateCommit !== current.input.candidateCommit ||
-        output.baseCommit !== current.expectedBaseCommit ||
+        (output.baseCommit !== current.expectedBaseCommit &&
+          (typeof output.baseCommit !== 'string' ||
+            !archiveChainReaches(run, current.expectedBaseCommit, output.baseCommit))) ||
         typeof output.integrationCommit !== 'string' ||
         output.integrationBranch !== current.integrationBranch ||
         typeof output.integrationWorktree !== 'string' ||
