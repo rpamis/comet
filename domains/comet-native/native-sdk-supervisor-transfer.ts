@@ -148,14 +148,15 @@ function workspacesFromRun(
       'Native Supervisor transfer supports Child Builder and candidate review before independent Verify/integration',
     );
   }
-  const prepared = run.actions.find(
-    (action) => action.stepId === 'supervisor.prepare' && action.status === 'succeeded',
-  );
+  const prepared = [...run.actions]
+    .reverse()
+    .find((action) => action.stepId === 'supervisor.prepare' && action.status === 'succeeded');
   const receipt = prepared?.outcome?.output as Record<string, unknown> | null | undefined;
   if (
     !receipt ||
     typeof receipt.integrationWorktree !== 'string' ||
     typeof receipt.integrationBranch !== 'string' ||
+    receipt.integrationBranch !== `comet/supervisor/${state.name}/integration` ||
     typeof receipt.targetBranch !== 'string' ||
     typeof receipt.targetCommit !== 'string'
   ) {
@@ -180,9 +181,25 @@ function workspacesFromRun(
       !output ||
       typeof output.child !== 'string' ||
       typeof output.worktree !== 'string' ||
-      typeof output.branch !== 'string'
+      typeof output.branch !== 'string' ||
+      output.branch !== `comet/supervisor/${state.name}/${output.child}`
     ) {
       throw new Error('Native Supervisor transfer has an invalid Child receipt');
+    }
+    const previous = workspaces.find(
+      (workspace) =>
+        workspace.branch === output.branch ||
+        samePath(workspace.sourcePath, output.worktree as string),
+    );
+    if (previous) {
+      if (
+        previous.kind !== 'child' ||
+        previous.child !== output.child ||
+        previous.branch !== output.branch ||
+        !samePath(previous.sourcePath, output.worktree)
+      )
+        throw new Error('Native Supervisor transfer has conflicting workspace identities');
+      continue;
     }
     workspaces.push({
       kind: 'child',

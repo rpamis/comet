@@ -13,6 +13,7 @@ import {
   nativeSdkSupervisorChildCheckSummaries,
 } from './native-sdk-checks.js';
 import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import {
   nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationBranch,
@@ -72,18 +73,19 @@ async function currentIntegration(
     throw new Error('Native SDK Supervisor integration worktree changed');
   }
   const actionIndex = run.actions.findIndex((candidate) => candidate.id === action.id);
-  const previousCheck = run.actions
-    .slice(0, actionIndex)
+  const previousCheck = currentNativeSdkSupervisorActions(run)
+    .filter((candidate) => run.actions.indexOf(candidate) < actionIndex)
     .reverse()
     .find(
       (candidate) =>
         candidate.stepId === 'supervisor.child.integration-checks' &&
         candidate.status === 'succeeded',
     );
+  const prepared = run.outputs['supervisor.prepare']?.value as
+    { targetCommit?: unknown; integrationCommit?: unknown } | undefined;
   const expectedBaseCommit = previousCheck
     ? (previousCheck.outcome?.output as { candidateId?: unknown } | null)?.candidateId
-    : (run.outputs['supervisor.prepare']?.value as { targetCommit?: unknown } | undefined)
-        ?.targetCommit;
+    : (prepared?.integrationCommit ?? prepared?.targetCommit);
   if (typeof expectedBaseCommit !== 'string') {
     throw new Error('Native SDK Supervisor integration lacks its checked base commit');
   }
