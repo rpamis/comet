@@ -46,6 +46,10 @@ import type { DashboardChangeTab, NativeDashboardChangePage } from './types.js';
 import { DashboardIndexStore, resolveDashboardIndexPath } from './index-store.js';
 import { DashboardIndexReconciler } from './index-reconciler.js';
 import {
+  readNativeDashboardSdkProjection,
+  type NativeDashboardSdkProjection,
+} from './native-sdk-projection.js';
+import {
   collectDashboardWorkspaceSources,
   dashboardWorkspaceIdentity,
   encodeDashboardChangeLocator,
@@ -466,7 +470,8 @@ async function activeParentChildren(
 ): Promise<NativeDashboardChildSummary[]> {
   try {
     if (!(await hasNativeChildrenContract(candidate))) return [];
-    const { changeDir, read } = await readEntryState(candidate.source.paths, candidate.entry);
+    const { changeDir, read, sdk } = await readEntryState(candidate.source.paths, candidate.entry);
+    if (sdk) return sdk.children.map((child) => childSummary(child, []));
     if (read.kind !== 'portable') return [];
     const document = await readNativeChildrenContract({
       changeDir,
@@ -834,9 +839,15 @@ function nativeDashboardOffset(options: {
 async function readEntryState(
   paths: NativeProjectPaths,
   entry: NativeDashboardEntry,
-): Promise<{ changeDir: string; read: NativeDashboardStateRead }> {
+): Promise<{
+  changeDir: string;
+  read: NativeDashboardStateRead;
+  sdk?: NativeDashboardSdkProjection;
+}> {
   const changeDir = entryDirectory(paths, entry);
   await resolveContainedNativePath(paths.nativeRoot, changeDir);
+  const sdk = await readNativeDashboardSdkProjection(paths.projectRoot, entry.name);
+  if (sdk) return { changeDir, read: { kind: 'portable', state: sdk.state }, sdk };
   return {
     changeDir,
     read: await readDashboardState(path.join(changeDir, NATIVE_CHANGE_STATE_FILE)),
@@ -862,7 +873,8 @@ async function collectNativeChangeListItem(
     children,
   };
   try {
-    const { read } = await readEntryState(paths, entry);
+    const { read, sdk } = await readEntryState(paths, entry);
+    if (sdk) common.children = sdk.children.map((child) => childSummary(child, []));
     if (read.kind === 'invalid') {
       return invalidNativeDashboardListItem({ name: entry.name, ...common, message: read.message });
     }
@@ -876,6 +888,12 @@ async function collectNativeChangeListItem(
     if (read.kind === 'legacy') {
       return adaptLegacyNativeDashboardListItem({ state: read.state, ...common });
     }
+    if (sdk)
+      return adaptNativeDashboardListItem({
+        state: read.state,
+        ...common,
+        localExecutionSummary: sdk.localExecution,
+      });
     const local = await readMatchingLocalExecution(paths, read.state, entry.status);
     return adaptNativeDashboardListItem({
       state: read.state,
@@ -887,6 +905,7 @@ async function collectNativeChangeListItem(
     return invalidNativeDashboardListItem({
       name: entry.name,
       ...common,
+      children: [],
       message: error instanceof Error ? error.message : 'Native state is unreadable.',
     });
   }
@@ -907,7 +926,8 @@ async function collectNativeChange(
     children,
   };
   try {
-    const { changeDir, read } = await readEntryState(paths, entry);
+    const { changeDir, read, sdk } = await readEntryState(paths, entry);
+    if (sdk) common.children = sdk.children.map((child) => childSummary(child, []));
     if (read.kind === 'invalid') {
       return invalidNativeDashboardChange({ name: entry.name, ...common, message: read.message });
     }
@@ -922,6 +942,13 @@ async function collectNativeChange(
     if (read.kind === 'legacy') {
       return adaptLegacyNativeDashboardChange({ state: read.state, ...common, artifacts });
     }
+    if (sdk)
+      return adaptNativeDashboardChange({
+        state: read.state,
+        ...common,
+        artifacts,
+        localExecutionSummary: sdk.localExecution,
+      });
     const local = await readMatchingLocalExecution(paths, read.state, entry.status);
     return adaptNativeDashboardChange({
       state: read.state,
@@ -934,6 +961,7 @@ async function collectNativeChange(
     return invalidNativeDashboardChange({
       name: entry.name,
       ...common,
+      children: [],
       message: error instanceof Error ? error.message : 'Native state is unreadable.',
     });
   }

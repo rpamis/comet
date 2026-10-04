@@ -36,6 +36,11 @@ import {
   collectNativeDashboardProjection,
 } from '../../../domains/dashboard/native-collector.js';
 import { DashboardIndexStore } from '../../../domains/dashboard/index-store.js';
+import * as nativeRunStore from '../../../domains/comet-native/native-sdk-state-store.js';
+import * as changeOwnership from '../../../domains/workflow-contract/change-runtime-owner.js';
+import { createNativeSupervisorState } from '../../../domains/comet-native/native-supervisor-model.js';
+import { writeNativeSupervisorState } from '../../../domains/comet-native/native-supervisor-state.js';
+import type { WorkflowRun } from '../../../domains/engine/runtime.js';
 
 const NOW = '2026-08-09T08:00:00.000Z';
 const LEGACY_ARCHIVE_FIXTURE = path.resolve('docs/comet/archive/2026-07-21-classic-config-block');
@@ -230,6 +235,158 @@ describe('Native Dashboard v2 collector', () => {
     await expect(fs.access(path.join(projectRoot, 'docs'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
+  });
+
+  it('uses SDK-authoritative child progress instead of an obsolete blocked Supervisor record', async () => {
+    const paths = await enableNative();
+    const acceptance = ['A1', 'A2'].map((id) => ({
+      id,
+      source: 'brief.md',
+      text: id,
+      result: 'pending' as const,
+      reason: null,
+    }));
+    const contract: NativeChildrenContract = {
+      schema: 'comet.native.children.v2',
+      acceptance_index: {
+        A1: { source: 'brief.md', text: 'A1' },
+        A2: { source: 'brief.md', text: 'A2' },
+      },
+      children: [
+        { name: 'foundation', summary: null, depends_on: [], covers: ['A1'] },
+        { name: 'native-extension', summary: null, depends_on: ['foundation'], covers: ['A2'] },
+      ],
+    };
+    const initial = activeShapeState('sdk-parent');
+    const state = parseNativePortableState({
+      ...initial,
+      phase: 'build',
+      loop: { ...initial.loop, stage: 'building' },
+      state_version: 12,
+      acceptance,
+      children_contract_hash: hashNativeParentContract({ acceptance, children: contract }),
+    });
+    const changeDir = await writeActiveState(state);
+    await fs.writeFile(
+      path.join(changeDir, 'children.yaml'),
+      JSON.stringify({
+        ...contract,
+        children: contract.children.map(({ name, depends_on, covers }) => ({
+          name,
+          depends_on,
+          covers,
+        })),
+      }),
+    );
+    const legacy = createNativeSupervisorState({
+      parent: state.name,
+      targetBranch: 'main',
+      targetCommit: 'a'.repeat(40),
+      integrationBranch: 'integration',
+      integrationWorktree: projectRoot,
+      contract,
+    });
+    legacy.children[0].status = 'blocked';
+    legacy.children[0].blocker =
+      'Supervisor Runtime was lost; portable Child verification evidence is required.';
+    await writeNativeSupervisorState(paths, legacy);
+    const legacyFile = path.join(paths.changesRuntimeDir, state.name, 'supervisor', 'state.json');
+    const legacyBefore = await fs.readFile(legacyFile, 'utf8');
+    const stateBefore = await fs.readFile(path.join(changeDir, NATIVE_CHANGE_STATE_FILE), 'utf8');
+    vi.spyOn(changeOwnership, 'readChangeRuntimeOwner').mockResolvedValue({
+      schema: 'comet.change-owner.v1',
+      workflow: 'native',
+      change: state.name,
+      format: 'sdk',
+      application: 'native',
+      runId: state.name,
+    });
+    const run = {
+      runId: state.name,
+      workflow: { id: 'comet-native' },
+      input: { name: state.name },
+      state,
+      outputs: { 'shape.revalidate': { sequence: 1, value: { children: { contract } } } },
+      actions: [
+        { id: 'sdk-parent:1', stepId: 'shape.revalidate', status: 'succeeded', input: {} },
+        {
+          id: 'sdk-parent:2',
+          stepId: 'supervisor.child.integration-checks',
+          status: 'succeeded',
+          input: {
+            activation: { child: 'foundation', contractHash: state.children_contract_hash },
+          },
+        },
+        {
+          id: 'sdk-parent:3',
+          stepId: 'supervisor.child.checks',
+          status: 'running',
+          input: {
+            activation: { child: 'native-extension', contractHash: state.children_contract_hash },
+          },
+          claim: { executorId: 'native-supervisor-child-checks', token: 'test-claim' },
+        },
+      ],
+    } as unknown as WorkflowRun;
+    const inspect = vi.spyOn(nativeRunStore, 'readNativeSdkRunRecord').mockResolvedValue(run);
+    for (const projection of [
+      (await collectNativeDashboardChangePage(projectRoot, { status: 'active' })).items[0],
+      await collectNativeDashboardChangeDetail(projectRoot, { status: 'active', name: state.name }),
+    ]) {
+      expect(projection?.migration.message).toBeNull();
+      expect(projection?.children.map(({ name, status }) => ({ name, status }))).toEqual([
+        { name: 'foundation', status: 'integrated' },
+        { name: 'native-extension', status: 'active' },
+      ]);
+      expect(projection?.localExecution).toMatchObject({ status: 'running', actor: 'runtime' });
+    }
+    expect(inspect).toHaveBeenCalledWith(projectRoot, state.name);
+
+    // 状态变化不依赖目录索引的三十秒刷新周期。
+    const checking = run.actions[2];
+    checking.status = 'unknown';
+    checking.reason = 'Check process disconnected; reconciliation required.';
+    const interrupted = await collectNativeDashboardChangeDetail(projectRoot, {
+      status: 'active',
+      name: state.name,
+    });
+    expect(interrupted?.children[1]).toMatchObject({ status: 'blocked', message: checking.reason });
+    expect(interrupted?.localExecution).toMatchObject({ status: 'interrupted', actor: 'runtime' });
+    checking.status = 'succeeded';
+    checking.stepId = 'supervisor.child.integration-checks';
+    const refreshed = await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
+    expect(refreshed.items[0].children.map(({ status }) => status)).toEqual([
+      'integrated',
+      'integrated',
+    ]);
+
+    // 新一轮 Shape 之前的成功和其他契约的结果不能算作当前完成数。
+    run.actions.push({
+      id: 'sdk-parent:4',
+      stepId: 'shape.revalidate',
+      status: 'succeeded',
+      input: {},
+    } as WorkflowRun['actions'][number]);
+    run.actions.push({
+      ...checking,
+      id: 'sdk-parent:5',
+      input: { activation: { child: 'foundation', contractHash: 'obsolete' } },
+    });
+    const revised = await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
+    expect(revised.items[0].children.map(({ status }) => status)).toEqual(['ready', 'pending']);
+    expect(revised.items[0].localExecution.status).toBe('absent');
+
+    expect(await fs.readFile(legacyFile, 'utf8')).toBe(legacyBefore);
+    expect(await fs.readFile(path.join(changeDir, NATIVE_CHANGE_STATE_FILE), 'utf8')).toBe(
+      stateBefore,
+    );
+    inspect.mockRejectedValue(new Error('SDK Run is unavailable'));
+    const unavailable = await collectNativeDashboardChangeDetail(projectRoot, {
+      status: 'active',
+      name: state.name,
+    });
+    expect(unavailable?.phase).toBe('invalid');
+    expect(unavailable?.children.some(({ status }) => status === 'integrated')).toBe(false);
   });
 
   it('does not re-enter the removed v1 inspection and hashing pipelines', async () => {

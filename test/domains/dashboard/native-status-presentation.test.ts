@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isNativePhaseRunning,
+  nativeChangeBlockers,
   nativeChangeStatusPresentation,
 } from '../../../domains/dashboard/web/src/native-status-presentation.js';
 
@@ -60,5 +61,19 @@ describe('Native Dashboard status presentation', () => {
       label: '已归档',
       tone: 'neutral',
     });
+  });
+
+  it('shows a blocked child as a parent blocker without claiming lifecycle completion', () => {
+    const change = nativeChange({
+      children: [
+        { name: 'native-extension', status: 'blocked', message: 'Claude evidence is missing.' },
+      ],
+    });
+    expect(nativeChangeStatusPresentation(change)).toEqual({ label: '已阻塞', tone: 'danger' });
+    expect(isNativePhaseRunning(change)).toBe(false);
+    expect(change.phase).toBe('build');
+    expect(nativeChangeBlockers(change)).toMatchObject([
+      { owner: 'native-extension', reason: { text: 'Claude evidence is missing.' } },
+    ]);
   });
 });

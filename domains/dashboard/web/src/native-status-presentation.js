@@ -35,6 +35,8 @@ export function nativeChangeStatusPresentation(change) {
     if (local) return { label: local.label, tone: local.tone };
   }
 
+  if (nativeChangeBlockers(change).length) return { label: '已阻塞', tone: 'danger' };
+
   const loop = LOOP_PRESENTATIONS[change.loop?.stage];
   if (loop) return { label: loop.label, tone: loop.tone };
 
@@ -54,6 +56,23 @@ export function isNativePhaseRunning(change) {
     return local?.phase === change.phase;
   }
 
+  if (nativeChangeBlockers(change).length) return false;
+
   const loop = LOOP_PRESENTATIONS[change.loop?.stage];
   return Boolean(loop?.running && loop.phase === change.phase);
+}
+
+/** 合并页面已有的父级阻塞与子级阻塞，不改变 Runtime 的生命周期状态。 */
+export function nativeChangeBlockers(change) {
+  return [
+    ...(change.blockers ?? []),
+    ...(change.children ?? [])
+      .filter((child) => child.status === 'blocked')
+      .map((child) => ({
+        owner: child.name,
+        reason: { text: child.message ?? '子变更需要处理阻塞。', truncated: false },
+        acceptanceIds: child.covers ?? [],
+        resolutionAction: '处理子变更阻塞',
+      })),
+  ];
 }

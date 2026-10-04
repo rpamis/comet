@@ -225,6 +225,7 @@ export interface NativeDashboardPortableInput {
   artifacts?: NativeDashboardArtifactPreview[];
   localExecution?: NativeLocalExecutionState | null;
   localExecutionReason?: NativeDashboardLocalExecutionReason;
+  localExecutionSummary?: NativeDashboardLocalExecutionSummary;
   locator?: string;
   workspace?: DashboardWorkspaceIdentity;
   children?: NativeDashboardChildSummary[];
@@ -309,11 +310,9 @@ function localExecutionSummary(
 
 function identity(input: NativeDashboardPortableInput): NativeDashboardChangeIdentity {
   const { state } = input;
-  const localExecution = localExecutionSummary(
-    state,
-    input.localExecution,
-    input.localExecutionReason,
-  );
+  const localExecution =
+    input.localExecutionSummary ??
+    localExecutionSummary(state, input.localExecution, input.localExecutionReason);
   return {
     workflow: 'native',
     locator: input.locator ?? `${input.status}:${input.archiveName ?? ''}:${state.name}`,

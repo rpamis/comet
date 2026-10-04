@@ -411,6 +411,8 @@
       "domains/comet-native/native-portable-status.ts",
       "domains/comet-native/native-portable-types.ts",
       "domains/comet-native/native-runtime-ownership.ts",
+      "domains/comet-native/native-sdk-supervisor-plan.ts",
+      "domains/comet-native/native-sdk-state-store.ts",
       "domains/comet-native/native-selection.ts",
       "domains/comet-native/native-specs.ts",
       "domains/comet-native/native-types.ts",
