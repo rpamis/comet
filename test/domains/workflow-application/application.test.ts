@@ -20,6 +20,7 @@ import {
   inspectApplicationSkill,
 } from '../../../domains/workflow-application/index.js';
 import type { SkillExecutionHost } from '../../../domains/workflow-application/index.js';
+import { readWorkflowApplicationRun } from '../../../domains/workflow-application/application.js';
 import {
   createDiskApplication,
   createScopeCycleApplication,
@@ -34,6 +35,24 @@ describe('application adaptation and SDK authority', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
   const input = { topic: 'Actual topic' };
+  it('reads saved progress without loading changed application code or rewriting the Run', async () => {
+    const { runtime, fixture } = await application();
+    const manifest = JSON.parse(await fs.readFile(fixture.file, 'utf8'));
+    const run = await runtime.start({
+      runId: 'report',
+      workflow: { id: 'editorial', version: '1' },
+      input,
+    });
+    const storeDir = path.join(root, '.comet/runtime/applications', manifest.id);
+    const [runDir] = await fs.readdir(storeDir);
+    const [revisionFile] = await fs.readdir(path.join(storeDir, runDir));
+    const recordFile = path.join(storeDir, runDir, revisionFile);
+    const before = await fs.readFile(recordFile, 'utf8');
+    await fs.writeFile(fixture.file, '{}');
+    expect(await readWorkflowApplicationRun(root, manifest.id, 'report')).toEqual(run);
+    expect(await readWorkflowApplicationRun(root, manifest.id, 'missing')).toBeNull();
+    expect(await fs.readFile(recordFile, 'utf8')).toBe(before);
+  });
   async function application(parallel = false) {
     const fixture = await createDiskApplication(root, { parallel });
     const loaded = await loadWorkflowApplication({ file: fixture.file, projectRoot: root });

@@ -57,6 +57,23 @@ function rawStore(projectRoot: string, id: string) {
   });
 }
 
+/** 只读取保存的进度；不加载应用代码、不恢复记录，也不更新领域投影。 */
+export async function readWorkflowApplicationRun(
+  projectRoot: string,
+  applicationId: string,
+  runId: string,
+): Promise<WorkflowRun | null> {
+  const record = await rawStore(projectRoot, applicationId).read(runId);
+  if (!record) return null;
+  if (
+    record.application.id !== applicationId ||
+    record.runId !== record.run.runId ||
+    record.revision !== record.run.revision
+  )
+    throw new RuntimeProtocolError('INVALID_RUN', '应用归属与 SDK Run 不一致');
+  return record.run;
+}
+
 function parseManifest(value: unknown): WorkflowApplicationManifest {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     applicationError('应用文件必须是 JSON 对象');

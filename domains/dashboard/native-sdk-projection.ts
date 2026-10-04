@@ -6,6 +6,7 @@ import { parseNativePortableState } from '../comet-native/native-portable-state.
 import { readNativeSdkRunRecord } from '../comet-native/native-sdk-state-store.js';
 import { currentNativeSdkSupervisorActions } from '../comet-native/native-sdk-supervisor-plan.js';
 import { readChangeRuntimeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { readWorkflowApplicationRun } from '../workflow-application/application.js';
 import type { NativeDashboardLocalExecutionSummary } from './native-adapter.js';
 
 type SdkInspection = {
@@ -136,7 +137,10 @@ export async function readNativeDashboardSdkProjection(
 ): Promise<NativeDashboardSdkProjection | null> {
   const owner = await readChangeRuntimeOwner(projectRoot, 'native', name);
   if (owner?.format !== 'sdk') return null;
-  const run = await readNativeSdkRunRecord(projectRoot, owner.runId);
+  const run =
+    owner.application === 'native'
+      ? await readNativeSdkRunRecord(projectRoot, owner.runId)
+      : await readWorkflowApplicationRun(projectRoot, owner.application, owner.runId);
   const input = record(run?.input);
   if (!run || run.workflow.id !== 'comet-native' || input?.name !== name) {
     throw new Error(`Native SDK Run ${name} is unavailable or does not match its owner.`);

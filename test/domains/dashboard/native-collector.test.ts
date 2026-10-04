@@ -37,6 +37,7 @@ import {
 } from '../../../domains/dashboard/native-collector.js';
 import { DashboardIndexStore } from '../../../domains/dashboard/index-store.js';
 import * as nativeRunStore from '../../../domains/comet-native/native-sdk-state-store.js';
+import * as applicationRunStore from '../../../domains/workflow-application/application.js';
 import * as changeOwnership from '../../../domains/workflow-contract/change-runtime-owner.js';
 import { createNativeSupervisorState } from '../../../domains/comet-native/native-supervisor-model.js';
 import { writeNativeSupervisorState } from '../../../domains/comet-native/native-supervisor-state.js';
@@ -293,7 +294,7 @@ describe('Native Dashboard v2 collector', () => {
     const legacyFile = path.join(paths.changesRuntimeDir, state.name, 'supervisor', 'state.json');
     const legacyBefore = await fs.readFile(legacyFile, 'utf8');
     const stateBefore = await fs.readFile(path.join(changeDir, NATIVE_CHANGE_STATE_FILE), 'utf8');
-    vi.spyOn(changeOwnership, 'readChangeRuntimeOwner').mockResolvedValue({
+    const owner = vi.spyOn(changeOwnership, 'readChangeRuntimeOwner').mockResolvedValue({
       schema: 'comet.change-owner.v1',
       workflow: 'native',
       change: state.name,
@@ -375,6 +376,41 @@ describe('Native Dashboard v2 collector', () => {
     const revised = await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
     expect(revised.items[0].children.map(({ status }) => status)).toEqual(['ready', 'pending']);
     expect(revised.items[0].localExecution.status).toBe('absent');
+
+    owner.mockResolvedValue({
+      schema: 'comet.change-owner.v1',
+      workflow: 'native',
+      change: state.name,
+      format: 'sdk',
+      application: 'native-custom',
+      runId: state.name,
+    });
+    const applicationRead = vi
+      .spyOn(applicationRunStore, 'readWorkflowApplicationRun')
+      .mockResolvedValue(run);
+    const customized = await collectNativeDashboardChangeDetail(projectRoot, {
+      status: 'active',
+      name: state.name,
+    });
+    expect(customized?.phase).toBe('build');
+    expect(applicationRead).toHaveBeenCalledWith(projectRoot, 'native-custom', state.name);
+    applicationRead.mockResolvedValue(null);
+    expect(
+      (
+        await collectNativeDashboardChangeDetail(projectRoot, {
+          status: 'active',
+          name: state.name,
+        })
+      )?.phase,
+    ).toBe('invalid');
+    owner.mockResolvedValue({
+      schema: 'comet.change-owner.v1',
+      workflow: 'native',
+      change: state.name,
+      format: 'sdk',
+      application: 'native',
+      runId: state.name,
+    });
 
     expect(await fs.readFile(legacyFile, 'utf8')).toBe(legacyBefore);
     expect(await fs.readFile(path.join(changeDir, NATIVE_CHANGE_STATE_FILE), 'utf8')).toBe(

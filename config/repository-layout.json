@@ -289,6 +289,10 @@
         "to": "workflow-contract"
       },
       {
+        "from": "dashboard",
+        "to": "workflow-application"
+      },
+      {
         "from": "engine",
         "to": "skill"
       },
@@ -467,7 +471,8 @@
       "domains/workflow-contract/project-gitignore.ts",
       "domains/workflow-contract/protected-project-path.ts",
       "domains/workflow-contract/types.ts",
-      "domains/workflow-application/index.ts"
+      "domains/workflow-application/index.ts",
+      "domains/workflow-application/application.ts"
     ],
     "restrictedDependencies": [
       {
