@@ -97,46 +97,70 @@ async function currentIntegration(
   return { state, plan, input, integrationBranch, integrationWorktree, expectedBaseCommit };
 }
 
+async function currentIntegrationBase(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+) {
+  const current = await currentIntegration(run, action, projectRoot);
+  if (
+    run.actions.some(
+      (candidate) =>
+        candidate.id !== action.id &&
+        candidate.stepId === 'supervisor.child.integrate' &&
+        ['running', 'unknown'].includes(candidate.status),
+    )
+  ) {
+    throw new Error('Another Native SDK Supervisor integration Action is unresolved');
+  }
+  if (!gitWorktreeIsClean(current.integrationWorktree)) {
+    throw new Error('Native SDK Supervisor integration worktree must be clean before merge');
+  }
+  const baseCommit = resolveGitRef(current.integrationWorktree, current.integrationBranch);
+  if (baseCommit !== current.expectedBaseCommit) {
+    throw new Error('Native SDK Supervisor integration branch changed after the prior check');
+  }
+  runGitCommand(current.integrationWorktree, [
+    'merge-base',
+    '--is-ancestor',
+    current.plan.targetCommit,
+    baseCommit,
+  ]);
+  return { ...current, baseCommit };
+}
+
 export const nativeSdkSupervisorIntegrateExecutor: RuntimeExecutor = {
   id: 'native-supervisor-integrate',
   capabilities: [],
   supports(action) {
     return action.stepId === 'supervisor.child.integrate' && action.type === 'call_tool';
   },
+  async preflight(action, context, run) {
+    if (!context?.projectRoot || !run || !this.supports(action)) {
+      throw new Error('Native SDK Supervisor integration requires a bound Run and project');
+    }
+    await currentIntegrationBase(run, action, context.projectRoot);
+  },
   async execute(action, context, run) {
     if (!context?.projectRoot || !run || !this.supports(action)) {
       throw new Error('Native SDK Supervisor integration requires a bound Run and project');
     }
-    const current = await currentIntegration(run, action, context.projectRoot);
-    if (
-      run.actions.some(
-        (candidate) =>
-          candidate.id !== action.id &&
-          candidate.stepId === 'supervisor.child.integrate' &&
-          ['running', 'unknown'].includes(candidate.status),
-      )
-    ) {
-      throw new Error('Another Native SDK Supervisor integration Action is unresolved');
+    const current = await currentIntegrationBase(run, action, context.projectRoot);
+    const { baseCommit } = current;
+    const included =
+      runGitCommand(current.integrationWorktree, [
+        'merge-base',
+        current.input.candidateCommit as string,
+        baseCommit,
+      ]) === current.input.candidateCommit;
+    if (!included) {
+      runGitCommand(current.integrationWorktree, [
+        'merge',
+        '--no-ff',
+        '--no-edit',
+        current.input.candidateCommit as string,
+      ]);
     }
-    if (!gitWorktreeIsClean(current.integrationWorktree)) {
-      throw new Error('Native SDK Supervisor integration worktree must be clean before merge');
-    }
-    const baseCommit = resolveGitRef(current.integrationWorktree, current.integrationBranch);
-    if (baseCommit !== current.expectedBaseCommit) {
-      throw new Error('Native SDK Supervisor integration branch changed after the prior check');
-    }
-    runGitCommand(current.integrationWorktree, [
-      'merge-base',
-      '--is-ancestor',
-      current.plan.targetCommit,
-      baseCommit,
-    ]);
-    runGitCommand(current.integrationWorktree, [
-      'merge',
-      '--no-ff',
-      '--no-edit',
-      current.input.candidateCommit as string,
-    ]);
     const integrationCommit = resolveGitRef(current.integrationWorktree, current.integrationBranch);
     if (!integrationCommit) throw new Error('Native SDK Supervisor merge produced no commit');
     return {
@@ -184,20 +208,32 @@ export const nativeSdkSupervisorIntegrateValidator: RuntimeValidator = {
       ) {
         throw new Error('Native SDK Supervisor integration outcome does not match the worktree');
       }
-      const parents = runGitCommand(current.integrationWorktree, [
-        'rev-list',
-        '--parents',
-        '-n',
-        '1',
-        output.integrationCommit,
-      ]).split(' ');
-      if (
-        parents.length !== 3 ||
-        parents[0] !== output.integrationCommit ||
-        parents[1] !== output.baseCommit ||
-        parents[2] !== output.candidateCommit
-      ) {
-        throw new Error('Native SDK Supervisor integration is not the expected merge commit');
+      if (!gitWorktreeIsClean(current.integrationWorktree)) {
+        throw new Error('Native SDK Supervisor integration worktree changed after execution');
+      }
+      if (output.integrationCommit === output.baseCommit) {
+        runGitCommand(current.integrationWorktree, [
+          'merge-base',
+          '--is-ancestor',
+          output.candidateCommit as string,
+          output.integrationCommit,
+        ]);
+      } else {
+        const parents = runGitCommand(current.integrationWorktree, [
+          'rev-list',
+          '--parents',
+          '-n',
+          '1',
+          output.integrationCommit,
+        ]).split(' ');
+        if (
+          parents.length !== 3 ||
+          parents[0] !== output.integrationCommit ||
+          parents[1] !== output.baseCommit ||
+          parents[2] !== output.candidateCommit
+        ) {
+          throw new Error('Native SDK Supervisor integration is not the expected merge commit');
+        }
       }
       return { accepted: true };
     } catch (error) {

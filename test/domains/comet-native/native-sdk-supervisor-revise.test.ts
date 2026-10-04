@@ -65,7 +65,7 @@ async function supervisor() {
   const targetCommit = git(project, ['rev-parse', 'HEAD']);
   git(project, ['config', 'user.name', 'Comet Test']);
   git(project, ['config', 'user.email', 'comet-test@example.com']);
-  const candidateCli = path.resolve('bin/comet.js');
+  const candidateCli = process.env.COMET_NATIVE_CANDIDATE_CLI ?? path.resolve('bin/comet.js');
   const baselineCli = process.env.COMET_NATIVE_BASELINE_CLI ?? candidateCli;
   function cli(argv: string[], file = candidateCli, projectRoot = project) {
     const result = spawnSync(process.execPath, [file, ...argv, '--project-root', projectRoot], {
@@ -293,6 +293,7 @@ async function supervisor() {
     pending,
     claim,
     report,
+    checkPlan,
     submitChild,
     verifyChild,
     revise,
@@ -399,6 +400,148 @@ it('executes the actual returned Shape continuation with summary and guards with
   expect(summaryOnly.response, JSON.stringify(summaryOnly)).not.toHaveProperty('error');
   expect((await f.inspect()).state).toMatchObject({ phase: 'shape', status: 'await-user' });
 }, 180000);
+
+it('reintegrates an already included Child after public Shape reconfirmation (same)', async () => {
+  const f = await supervisor();
+  await f.submitChild(f.run, f.baselineCli);
+  let run = await f.next(f.baselineCli);
+  run = await f.verifyChild(run, f.baselineCli);
+  const firstIntegration = f.pending(run, 'supervisor.child.integrate');
+  run = await f.next();
+  const firstOutput = run.actions.find((a) => a.id === firstIntegration.id)!.outcome!.output as {
+    baseCommit: string;
+    candidateCommit: string;
+    integrationCommit: string;
+    integrationWorktree: string;
+  };
+  expect(
+    f
+      .git(firstOutput.integrationWorktree, [
+        'rev-list',
+        '--parents',
+        '-n',
+        '1',
+        firstOutput.integrationCommit,
+      ])
+      .split(' '),
+  ).toEqual([firstOutput.integrationCommit, firstOutput.baseCommit, firstOutput.candidateCommit]);
+  await f.next();
+  run = await f.next();
+  const retainedFacts = run.actions.filter((a) => a.status === 'succeeded');
+  expect(f.revise(run).exitCode).toBe(0);
+  await f.confirmAgain();
+  await f.next();
+  run = await f.next();
+  const builder = f.pending(run, 'supervisor.child.builder');
+  const input = (
+    builder.input as { activation: { child: string; worktree: string; baseCommit: string } }
+  ).activation;
+  expect(input.child).toBe('left');
+  expect(input.baseCommit).toBe(firstOutput.integrationCommit);
+  f.git(input.worktree, ['merge', '--ff-only', input.baseCommit]);
+  const candidate = f.git(input.worktree, ['rev-parse', 'HEAD']);
+  expect(candidate).toBe(input.baseCommit);
+  const claimed = await f.claim(builder);
+  await f.report(
+    claimed.actions.find((a) => a.id === builder.id)!,
+    {
+      summary: 'Revalidate the actual retained Child without a new commit',
+      candidateCommit: candidate,
+      verificationChecks: f.checkPlan('left'),
+    },
+  );
+  run = await f.next();
+  const checks = [...run.actions].reverse().find((a) => a.stepId === 'supervisor.child.checks')!;
+  expect(checks.status).toBe('succeeded');
+  expect(retainedFacts.some((a) => a.id === checks.id)).toBe(false);
+  run = await f.verifyChild(run);
+  const integration = f.pending(run, 'supervisor.child.integrate');
+  const beforeHead = f.git(firstOutput.integrationWorktree, ['rev-parse', 'HEAD']);
+  expect(beforeHead).toBe(firstOutput.integrationCommit);
+  const result = f.cli(['native', 'next', f.name, '--json']);
+  console.info(
+    JSON.stringify({
+      candidateKind: 'same',
+      candidate,
+      checkedBase: beforeHead,
+      exitCode: result.exitCode,
+      error: result.response.error,
+    }),
+  );
+  expect(result.exitCode, JSON.stringify(result)).toBe(0);
+  run = await f.inspect();
+  expect(run.actions.find((a) => a.id === integration.id)).toMatchObject({
+    status: 'succeeded',
+    claim: { executorId: 'native-supervisor-integrate' },
+    outcome: {
+      output: {
+        candidateCommit: candidate,
+        baseCommit: beforeHead,
+        integrationCommit: beforeHead,
+      },
+    },
+  });
+  expect(f.git(firstOutput.integrationWorktree, ['rev-parse', 'HEAD'])).toBe(beforeHead);
+  for (const fact of retainedFacts) expect(run.actions.find((a) => a.id === fact.id)).toEqual(fact);
+  const integrationChecks = f.pending(run, 'supervisor.child.integration-checks');
+  expect(integrationChecks).toBeTruthy();
+  expect(f.pending(run, 'supervisor.child.builder')).toBeUndefined();
+  run = await f.next();
+  expect(run.actions.find((a) => a.id === integrationChecks.id)).toMatchObject({
+    status: 'succeeded',
+    outcome: { output: { candidateId: beforeHead } },
+  });
+  run = await f.next();
+  expect(
+    (f.pending(run, 'supervisor.child.builder').input as { activation: { child: string } })
+      .activation.child,
+  ).toBe('right');
+  expect(run.definitionHashes).toEqual(f.started.definitionHashes);
+  await f.submitChild(run, undefined, true);
+  run = await f.next();
+  run = await f.verifyChild(run);
+  const pendingIntegration = f.pending(run, 'supervisor.child.integrate');
+  await fs.writeFile(
+    path.join(firstOutput.integrationWorktree, 'integration-note.txt'),
+    'Actual unbound integration change\n',
+  );
+  f.git(firstOutput.integrationWorktree, ['add', 'integration-note.txt']);
+  f.git(firstOutput.integrationWorktree, ['commit', '-m', 'unbound integration work']);
+  const changedHead = f.git(firstOutput.integrationWorktree, ['rev-parse', 'HEAD']);
+  const beforeDrift = await f.inspect();
+  const rejectedNext = f.cli(['native', 'next', f.name, '--json']);
+  expect(rejectedNext.response.error.message).toContain('branch changed after the prior check');
+  expect(await f.inspect()).toEqual(beforeDrift);
+  for (const operation of ['execute', 'claim']) {
+    const request = {
+      operation,
+      runId: f.name,
+      actionId: pendingIntegration.id,
+      executorId: 'native-supervisor-integrate',
+      ...(operation === 'claim'
+        ? {
+            attempt: pendingIntegration.attempt,
+            inputHash: pendingIntegration.inputHash,
+            sessionId: 'integration-preflight',
+            claimToken: 'integration-preflight-claim',
+          }
+        : {}),
+    };
+    const requestFile = path.join(f.root, operation + '-drifted-integration.json');
+    await fs.writeFile(requestFile, JSON.stringify(request));
+    const rejected = f.cli([
+      'runtime',
+      'dispatch',
+      '--application',
+      'native',
+      '--request',
+      requestFile,
+    ]);
+    expect(rejected.response.error.message).toContain('branch changed after the prior check');
+    expect(await f.inspect()).toEqual(beforeDrift);
+  }
+  expect(f.git(firstOutput.integrationWorktree, ['rev-parse', 'HEAD'])).toBe(changedHead);
+}, 360000);
 
 it('preserves integrated and uncommitted Child work, then rechecks every Child in the new Shape cycle', async () => {
   const f = await supervisor();
