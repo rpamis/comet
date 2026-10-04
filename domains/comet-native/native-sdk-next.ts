@@ -205,6 +205,11 @@ export async function advanceNativeSdkChange(
   name: string,
   decision?:
     | {
+        summary?: string;
+        expectedStateVersion?: number;
+        expectedAction?: 'prepare-shape-confirmation';
+      }
+    | {
         summary: string;
         expectedStateVersion: number;
         expectedAction: 'revise-requirements';
@@ -229,6 +234,34 @@ export async function advanceNativeSdkChange(
       },
 ): Promise<DispatchResult> {
   const { run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name);
+  if (
+    decision &&
+    (decision.expectedAction === undefined ||
+      decision.expectedAction === 'prepare-shape-confirmation')
+  ) {
+    if (
+      (decision.summary !== undefined && !decision.summary.trim()) ||
+      (decision.expectedAction === 'prepare-shape-confirmation' && decision.summary === undefined)
+    )
+      throw new NativeUsageError('--summary 不能为空。');
+    const prepare = run.actions.find((action) => action.status === 'pending');
+    if (
+      (decision.expectedStateVersion !== undefined &&
+        state.state_version !== decision.expectedStateVersion) ||
+      (decision.expectedAction === 'prepare-shape-confirmation' &&
+        (state.phase !== 'shape' ||
+          state.status !== 'active' ||
+          prepare?.stepId !== 'shape.prepare'))
+    )
+      return {
+        command: 'next',
+        exitCode: 73,
+        error: {
+          code: 'conflict',
+          message: 'Native SDK 推进动作已失效，请读取当前阶段、状态版本和待执行 Action。',
+        },
+      };
+  }
   if (decision?.expectedAction === 'continue-builder') {
     const wait = run.waits.find(
       (candidate) =>
@@ -454,6 +487,7 @@ export async function advanceNativeSdkChange(
   const context = { requestId, projectRoot };
   const claimed = await runtime.claim({
     runId: run.runId,
+    expectedRevision: run.revision,
     actionId: pending.id,
     attempt: pending.attempt,
     inputHash: pending.inputHash,

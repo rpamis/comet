@@ -332,6 +332,74 @@ it('revises a quiescent Supervisor Build through the candidate public CLI withou
   ).toBe(true);
 }, 120000);
 
+it('executes the actual returned Shape continuation with summary and guards without implying user confirmation', async () => {
+  const f = await supervisor();
+  const revision = f.revise(f.run);
+  expect(revision.exitCode).toBe(0);
+  const continuation = revision.response.agent.continuation;
+  expect(continuation.action).toBe('prepare-shape-confirmation');
+  const argv: string[] = continuation.commandArgs
+    .slice(1)
+    .map((part: string) =>
+      part === '<summary>' ? 'Prepare the actual revised Shape proposal' : part,
+    );
+  const before = await f.inspect();
+  const versionIndex = argv.indexOf('--expected-state-version') + 1;
+  const actionIndex = argv.indexOf('--expected-action') + 1;
+  expect(versionIndex).toBeGreaterThan(0);
+  expect(actionIndex).toBeGreaterThan(0);
+  const stale = [...argv];
+  stale[versionIndex] = String(Number(argv[versionIndex]) + 1);
+  const staleResult = f.cli([...stale, '--json']);
+  expect(staleResult.exitCode).not.toBe(0);
+  expect(await f.inspect()).toEqual(before);
+  const wrongAction = [...argv];
+  wrongAction[actionIndex] = 'confirm-shape';
+  expect(f.cli([...wrongAction, '--json']).exitCode).not.toBe(0);
+  expect(await f.inspect()).toEqual(before);
+  const prepared = f.cli([...argv, '--json']);
+  expect(prepared.response, JSON.stringify({ prepared, continuation })).not.toHaveProperty('error');
+  expect(prepared.exitCode).toBe(0);
+  const proposed = await f.inspect();
+  expect(proposed.state).toMatchObject({ phase: 'shape', status: 'await-user' });
+  expect(
+    proposed.waits.filter(
+      (wait) => wait.stepId === 'supervisor.shape.confirm' && wait.status === 'pending',
+    ),
+  ).toHaveLength(1);
+  expect(
+    proposed.actions.some(
+      (action) => action.stepId === 'supervisor.prepare' && action.status === 'pending',
+    ),
+  ).toBe(false);
+  expect(proposed.actions.find((action) => action.id === before.actions.at(-1)!.id)).toMatchObject({
+    stepId: 'shape.prepare',
+    status: 'succeeded',
+    attempt: 1,
+  });
+  expect(f.cli([...argv, '--json']).exitCode).toBe(73);
+  expect(await f.inspect()).toEqual(proposed);
+  const stalePhase = [...argv];
+  stalePhase[versionIndex] = String((proposed.state as { state_version: number }).state_version);
+  expect(f.cli([...stalePhase, '--json']).exitCode).toBe(73);
+  expect(await f.inspect()).toEqual(proposed);
+  expect(f.cli([...stalePhase, '--confirmed', '--json']).exitCode).not.toBe(0);
+  expect(await f.inspect()).toEqual(proposed);
+  expect(proposed.definitionHashes).toEqual(f.started.definitionHashes);
+  expect(staleResult.exitCode).toBe(73);
+  expect(f.revise(await f.confirmAgain()).exitCode).toBe(0);
+  const summaryOnly = f.cli([
+    'native',
+    'next',
+    f.name,
+    '--summary',
+    'Prepare revised proposal with current machine state',
+    '--json',
+  ]);
+  expect(summaryOnly.response, JSON.stringify(summaryOnly)).not.toHaveProperty('error');
+  expect((await f.inspect()).state).toMatchObject({ phase: 'shape', status: 'await-user' });
+}, 180000);
+
 it('preserves integrated and uncommitted Child work, then rechecks every Child in the new Shape cycle', async () => {
   const f = await supervisor();
   let run = await f.submitChild(f.run, f.baselineCli);
