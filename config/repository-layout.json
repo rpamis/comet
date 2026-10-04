@@ -375,6 +375,10 @@
       {
         "from": "comet-entry",
         "to": "workflow-application"
+      },
+      {
+        "from": "comet-native",
+        "to": "workflow-application"
       }
     ],
     "crossDomainEntrypoints": [

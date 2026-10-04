@@ -28,6 +28,7 @@ import { inspectNativeSdkStatus, type NativeSdkStatusProjection } from './native
 import {
   hasNativeManagedRunMarker,
   hasNativePortableRunCheckpoint,
+  findNativeSdkArchivedStateFile,
 } from './native-sdk-state-store.js';
 import { nativeLocalExecutionFile, nativePortableStateFile } from './native-portable-storage.js';
 import {
@@ -806,6 +807,20 @@ export async function inspectDiscoveredNativeStatus(options: {
     });
   }
   for (const source of sources) {
+    const archivedFile = await findNativeSdkArchivedStateFile(source.paths, options.name);
+    if (
+      archivedFile &&
+      (await hasNativeManagedRunMarker(archivedFile)) &&
+      (await hasNativePortableRunCheckpoint(archivedFile, options.name))
+    ) {
+      await resolveNativeChangeRuntimeOwner(source.paths, options.name);
+      options.onSelectedRoot?.(source.projectRoot);
+      return inspectNativeSdkStatus({
+        projectRoot: source.projectRoot,
+        name: options.name,
+        details: options.details,
+      });
+    }
     const marked = await hasNativeManagedRunMarker(
       nativePortableStateFile(source.paths, options.name),
     ).catch((error: NodeJS.ErrnoException) => {

@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { realpathSync, existsSync } from 'node:fs';
 import {
   hashRuntimeValue,
   RuntimeProtocolError,
@@ -31,7 +33,32 @@ export function assertApplicationSkillExecutionScope(
       )
       .flatMap((binding) => {
         const skill = application.skills.get(binding.skillId);
-        return skill?.adapter.sideEffect !== 'read' ? (skill?.adapter.scope ?? []) : [];
+        if (!skill || skill.adapter.sideEffect === 'read') return [];
+        if (!binding.workspaceFrom || skill.adapter.sideEffect !== 'write')
+          return skill.adapter.scope.map((ref) => ({
+            ref,
+            workspace: false,
+            write: skill.adapter.sideEffect === 'write',
+          }));
+        let workspace: unknown = candidate.input;
+        for (const field of binding.workspaceFrom.split('.'))
+          workspace =
+            workspace && typeof workspace === 'object'
+              ? (workspace as Record<string, unknown>)[field]
+              : undefined;
+        if (typeof workspace !== 'string' || !path.isAbsolute(workspace))
+          throw new RuntimeProtocolError('COMMAND_REJECTED', 'Skill 缺少实际写入工作区');
+        return skill.adapter.scope.map((ref) => {
+          const target = path.resolve(workspace, ref);
+          let parent = target;
+          while (!existsSync(parent) && parent !== path.dirname(parent))
+            parent = path.dirname(parent);
+          return {
+            ref: path.resolve(realpathSync(parent), path.relative(parent, target)),
+            workspace: true,
+            write: true,
+          };
+        });
       });
   const current = scopes(action);
   if (!current.length) return;
@@ -39,7 +66,26 @@ export function assertApplicationSkillExecutionScope(
     if (
       other.id !== action.id &&
       ['pending', 'running', 'unknown'].includes(other.status) &&
-      scopes(other).some((scope) => current.includes(scope))
+      scopes(other).some((scope) =>
+        current.some((target) => {
+          if (scope.write && target.write && scope.workspace !== target.workspace)
+            throw new RuntimeProtocolError(
+              'COMMAND_REJECTED',
+              '并行写入不能混用声明工作区和默认范围；请为两项工作指定实际工作区',
+            );
+          if (!scope.workspace || !target.workspace) return target.ref === scope.ref;
+          const contains = (root: string, file: string) => {
+            const relative = path.relative(root, file);
+            return (
+              !relative ||
+              (!path.isAbsolute(relative) &&
+                relative !== '..' &&
+                !relative.startsWith('..' + path.sep))
+            );
+          };
+          return contains(scope.ref, target.ref) || contains(target.ref, scope.ref);
+        }),
+      )
     )
       throw new RuntimeProtocolError(
         'COMMAND_REJECTED',

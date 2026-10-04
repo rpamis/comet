@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { hashRuntimeValue } from '../engine/runtime.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import { assertNativePortableExpectedContinuationLocked } from './native-portable-requirements.js';
-import { createNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
+import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { success, type DispatchResult } from './native-cli-shared.js';
 
 export async function disassociateNativeSdkCapability(options: {
@@ -20,7 +20,7 @@ export async function disassociateNativeSdkCapability(options: {
   if (state.phase !== 'shape' || state.archived) {
     throw new Error('Native SDK capability association can only be revoked during Shape');
   }
-  const runtime = createNativeSdkRuntime(options.projectRoot);
+  const { runtime } = await loadOwnedNativeSdkRuntime(options.projectRoot, options.name);
   const commandId = hashRuntimeValue({
     runId: run.runId,
     name: 'disassociate-capability',

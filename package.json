@@ -19,6 +19,10 @@
   "author": "benym",
   "type": "module",
   "exports": {
+    "./applications/native": {
+      "types": "./dist/domains/comet-native/native-application.d.ts",
+      "import": "./dist/domains/comet-native/native-application.js"
+    },
     "./applications": {
       "types": "./dist/domains/workflow-application/index.d.ts",
       "import": "./dist/domains/workflow-application/index.js"

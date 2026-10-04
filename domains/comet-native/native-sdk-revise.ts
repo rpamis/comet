@@ -12,7 +12,17 @@ export const nativeSdkReviseCommandValidator: RuntimeCommandValidator = {
     const state = parseNativePortableState(run.state);
     if (
       name !== 'revise-requirements' ||
-      !['verify', 'archive'].includes(state.phase) ||
+      !(
+        ['verify', 'archive'].includes(state.phase) ||
+        (state.phase === 'build' &&
+          state.children_contract_hash &&
+          run.actions.some(
+            (action) =>
+              action.stepId.startsWith('native.extension.') &&
+              (action.outcome?.output as { verdict?: string } | undefined)?.verdict ===
+                'revise-requirements',
+          ))
+      ) ||
       state.archived ||
       !['active', 'await-user', 'blocked'].includes(state.status) ||
       input === null ||
