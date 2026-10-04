@@ -4,6 +4,7 @@ import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/path
 import { runGitCommand } from '../../platform/process/git.js';
 import {
   type DefineWorkflowOptions,
+  type CreateRuntimeOptions,
   type RuntimeAction,
   type RuntimeOutcome,
   type RuntimeValidator,
@@ -139,6 +140,7 @@ import type {
   NativeSupervisorCoordinationMode,
 } from './native-portable-types.js';
 import { emptyNativePortableHistoryOverflow } from './native-portable-types.js';
+import { validateNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import type { NativeProjectPaths } from './native-types.js';
 
 interface NativeShapeProposal {
@@ -156,6 +158,7 @@ export interface NativeWorkflowApplication {
   stateValidators: readonly RuntimeStateValidator[];
   executors: readonly RuntimeExecutor[];
   commandValidators: readonly RuntimeCommandValidator[];
+  validateRecovery: NonNullable<CreateRuntimeOptions['validateRecovery']>;
 }
 
 export async function assertNativeSdkStartAvailable(options: {
@@ -1475,7 +1478,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             return { state: state as unknown as RuntimeValue, next: [] };
           }
           const output = event.outcome.output as { verdict: string; candidateCommit: string };
-          if (output.verdict === 'fail') {
+          if (output.verdict === 'fail' || output.verdict === 'blocked') {
             const action = run.actions.find((candidate) => candidate.id === event.outcome.actionId);
             if (!action) throw new Error('Native SDK Supervisor Verifier Action is missing');
             return {
@@ -1986,6 +1989,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
       nativeSdkSupervisorCleanupValidator,
     ],
     stateValidators: [nativeStateValidator],
+    validateRecovery: validateNativeSdkSupervisorRecovery,
     commandValidators: [
       nativeSdkReviseCommandValidator,
       nativeSdkRemoveCommandValidator,

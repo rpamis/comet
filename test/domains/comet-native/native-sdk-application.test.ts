@@ -1124,6 +1124,7 @@ children:
     const uiIntegration = run.actions.find(
       (action) => action.stepId === 'supervisor.child.integrate' && action.status === 'pending',
     )!;
+    const beforeIntegrationDrift = structuredClone(run);
     const baseCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: integrationWorktree,
       encoding: 'utf8',
@@ -1152,7 +1153,8 @@ children:
         executorId: 'native-supervisor-integrate',
         context: { requestId: 'ui-integration-drift', projectRoot: root },
       }),
-    ).rejects.toMatchObject({ code: 'EXECUTION_UNKNOWN' });
+    ).rejects.toThrow('Native SDK Supervisor integration branch changed after the prior check');
+    expect(await runtime.inspect(run.runId)).toEqual(beforeIntegrationDrift);
     expect(() =>
       execFileSync('git', ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], {
         cwd: integrationWorktree,
@@ -1167,15 +1169,6 @@ children:
         stdio: 'ignore',
       },
     );
-    run = await runtime.retry({
-      runId: run.runId,
-      actionId: uiIntegration.id,
-      attempt: uiIntegration.attempt,
-      reconciliation: {
-        resolution: 'not-executed',
-        evidence: { branchHead: baseCommit, mergeHeadAbsent: true },
-      },
-    });
     await expect(
       runtime.execute({
         runId: run.runId,

@@ -269,13 +269,29 @@ export async function nativeNextCommand(
     if (
       runnerInputFile !== undefined ||
       validateOnly ||
-      resolveVerifierBlocker ||
       maxParallelText !== undefined ||
       finish !== undefined
     ) {
       throw new NativeUsageError(
         'This Native SDK next action does not accept legacy transition options',
       );
+    }
+    if (resolveVerifierBlocker) {
+      if (
+        summary === undefined ||
+        proposalHash === undefined ||
+        expectedContinuation?.action !== 'resolve-verifier-blocker'
+      ) {
+        throw new NativeUsageError(
+          'SDK blocked 恢复需要 --summary、--proposal-hash、--expected-state-version 和 --expected-action resolve-verifier-blocker',
+        );
+      }
+      return advanceNativeSdkChange(projectRoot, name, {
+        summary,
+        proposalHash,
+        expectedStateVersion: expectedContinuation.stateVersion,
+        expectedAction: 'resolve-verifier-blocker',
+      });
     }
     if (reviseRequirements) {
       if (

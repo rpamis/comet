@@ -177,7 +177,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
   },
   next: {
     usage:
-      'comet native next <change-name> --summary <text> [--coordination-mode multi-session|single-session] [--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <sdk-change> --confirmed --coordination-mode multi-session|single-session --summary <text> --expected-state-version <n> --expected-action confirm-shape\n       comet native next <sdk-change> --accept-result|--revise-implementation|--retry-verifier|--continue-builder --summary <text> --proposal-hash <hash> --expected-state-version <n> --expected-action <action>\n       comet native next <change-name> --runner-input <json-file> [--validate-only]',
+      'comet native next <change-name> --summary <text> [--coordination-mode multi-session|single-session] [--max-parallel <n>] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <change-name> --summary <text> [--confirmed|--accept-result|--revise-implementation|--revise-requirements|--retry-verifier|--resolve-verifier-blocker] [--expected-state-version <n>] [--expected-action <action>]\n       comet native next <sdk-change> --confirmed --coordination-mode multi-session|single-session --summary <text> --expected-state-version <n> --expected-action confirm-shape\n       comet native next <sdk-change> --accept-result|--revise-implementation|--retry-verifier|--continue-builder|--resolve-verifier-blocker --summary <text> --proposal-hash <hash> --expected-state-version <n> --expected-action <action>\n       comet native next <change-name> --runner-input <json-file> [--validate-only]',
     purpose:
       'Advance SDK-owned Runtime actions and bound user decisions, or recover a compat Runtime Agent boundary and use its skill-coordinated Builder/Verifier JSON bridge.',
     options: [
@@ -187,14 +187,14 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '--accept-result     Accept the current skill-coordinated Verify result and make it archive-ready.',
       '--finish keep|merge|push|pull-request  For compat changes, with --accept-result record the explicitly chosen isolated-workspace finish in the same guarded decision. SDK Runs keep Git delivery separate.',
       '--revise-implementation  Keep confirmed requirements unchanged and return Verify to Build for implementation revision.',
-      '--revise-requirements    Return Verify or Archive to Shape when user-visible goals or acceptance criteria must change.',
+      '--revise-requirements    Return Verify, Archive, or a quiescent SDK Supervisor Build to Shape when user-visible goals or acceptance criteria must change. Completed SDK Runs require an application-validated blocked Child recovery.',
       '--retry-verifier    Retry a failed or unavailable Verifier when the continuation allows it.',
       '--continue-builder  After a failed SDK Builder Action, explicitly continue from its preserved workspace in a new Action.',
-      '--resolve-verifier-blocker  Resolve a semantic Verifier blocker without changing the candidate, then dispatch a new attempt.',
+      '--resolve-verifier-blocker  Resolve a compat semantic blocker, or recover an application-validated completed SDK Supervisor by dispatching a new Child Builder. SDK recovery requires the current proposal hash and both expected guards; original candidates, checks, and outcomes remain historical evidence.',
       '--max-parallel <n>  Supervisor task concurrency cap; defaults to 2, use 1 for serial fallback.',
       '--expected-state-version <n>  Continuation-issued guard that rejects stale public transition decisions.',
       '--expected-action <action>    Continuation-issued guard that binds the public transition decision to its intended action.',
-      '--proposal-hash <hash>       SDK Verify or Builder decision guard from the current pending Wait; required with --accept-result, --revise-implementation, --retry-verifier, or --continue-builder for SDK changes.',
+      '--proposal-hash <hash>       SDK decision guard from the current Wait or blocked Child continuation; required with --accept-result, --revise-implementation, --retry-verifier, --continue-builder, or --resolve-verifier-blocker for SDK changes.',
       '--runner-input <file>  Skill-coordinated JSON: builder-handoff, dispatch-verifier, retry-checks, verifier-response, verifier-started, verifier-execution-error, or verifier-unavailable. Builder/dispatch identity fields are rejected; verifier responses must echo the current candidateId and verifierExecutionRef from the Verifier dispatch.',
       '--validate-only       Validate the Runner JSON shape and current boundary without writing state or starting a process; requires --runner-input.',
       '  Choose one object template from an inputOptions exclusiveGroup and save it as UTF-8 JSON (BOM accepted). Field errors return issues with JSON pointer, missingFields and unknownFields. Execute agent.continuation in agent.workspace.cwd; Supervisor results use task.returnAction.',

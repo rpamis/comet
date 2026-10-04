@@ -503,6 +503,7 @@ export function createNativeWorkflowApplication(
     validators,
     stateValidators: base.stateValidators,
     commandValidators: base.commandValidators,
+    validateRecovery: base.validateRecovery,
     executors: [...base.executors, ...(options.executors ?? [])],
     wrapStore(store, identity) {
       const projected = createNativeSdkStateStore(context.projectRoot, { store, identity });

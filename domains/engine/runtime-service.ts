@@ -44,6 +44,10 @@ export interface CreateRuntimeOptions {
   commandValidators?: readonly RuntimeCommandValidator[];
   /** 应用的结果契约检查；不执行派发授权，拒绝时保留原结果与工件。 */
   validateOutcome?: RuntimeValidator['validate'];
+  /** 应用显式核对已提交结果后，可重走其声明的成功转移；原 Action 和回执保持不变。 */
+  validateRecovery?: (
+    input: Parameters<RuntimeValidator['validate']>[0] & { proposalHash: string },
+  ) => ReturnType<RuntimeValidator['validate']>;
 }
 
 interface RunCommand {
@@ -555,12 +559,13 @@ export function createRuntime(options: CreateRuntimeOptions) {
         : undefined;
       if (!declared) throw new RuntimeProtocolError('COMMAND_NOT_FOUND', '工作流未声明此命令');
       const stepId = declared.stepId;
-      if (!['running', 'waiting'].includes(before.status)) {
+      if (['failed', 'cancelled'].includes(before.status)) {
         throw new RuntimeProtocolError('RUN_TERMINAL', '已停止的 Run 不能接受命令');
       }
       if (before.actions.some((action) => ['running', 'unknown'].includes(action.status))) {
         throw new RuntimeProtocolError('ACTION_IN_FLIGHT', '已有 Action 的执行结果不明，不能中断');
       }
+      let allowCompleted = false;
       if (declared.validator) {
         const validator = commandValidators.get(referenceKey(declared.validator));
         if (!validator) {
@@ -583,12 +588,19 @@ export function createRuntime(options: CreateRuntimeOptions) {
             error instanceof Error ? error.message : String(error),
           );
         }
+        allowCompleted = checked.accepted && checked.allowCompleted === true;
+        if (before.status === 'completed' && !allowCompleted) {
+          throw new RuntimeProtocolError('RUN_TERMINAL', '已停止的 Run 不能接受命令');
+        }
         if (!checked.accepted) {
           throw new RuntimeProtocolError(
             'COMMAND_REJECTED',
             checked.reason ?? '命令未通过当前工作流状态验证',
           );
         }
+      }
+      if (before.status === 'completed' && !allowCompleted) {
+        throw new RuntimeProtocolError('RUN_TERMINAL', '已停止的 Run 不能接受命令');
       }
       const next = structuredClone(before);
       next.actions = next.actions.map((action) =>
@@ -1137,14 +1149,88 @@ export function createRuntime(options: CreateRuntimeOptions) {
     command: RunCommand & {
       actionId: string;
       attempt: number;
+      proposalHash?: string;
       reconciliation?: { resolution: 'not-executed'; evidence: unknown };
     },
   ): Promise<WorkflowRun> {
-    return mutate(command, (run, definition) => {
+    return mutate(command, async (run, definition) => {
       ensureActive(run);
       const action = requiredAction(run, command.actionId);
       if (action.attempt !== command.attempt)
         throw new RuntimeProtocolError('STALE_ACTION', 'Action 执行尝试已经改变');
+      if (action.status === 'succeeded' && options.validateRecovery) {
+        if (command.expectedRevision === undefined)
+          throw new RuntimeProtocolError(
+            'REVISION_CONFLICT',
+            '恢复已提交结果必须绑定当前 Run 版本',
+          );
+        if (command.reconciliation !== undefined)
+          throw new RuntimeProtocolError(
+            'OUTCOME_ALREADY_RECORDED',
+            '已提交结果不能声明未执行；请使用应用的语义恢复',
+          );
+        if (typeof command.proposalHash !== 'string' || !command.proposalHash.trim())
+          throw new RuntimeProtocolError('INVALID_REQUEST', '恢复已提交结果必须绑定当前应用决定');
+        if (run.actions.some((item) => ['running', 'unknown'].includes(item.status)))
+          throw new RuntimeProtocolError(
+            'ACTION_IN_FLIGHT',
+            '已有 Action 的执行结果不明，不能恢复',
+          );
+        if (
+          run.status !== 'completed' ||
+          run.ready.length > 0 ||
+          run.actions.some((item) => item.status === 'pending') ||
+          run.waits.some((wait) => wait.status === 'pending') ||
+          run.evidenceWaits?.some((wait) => wait.status === 'pending') ||
+          Object.values(run.joins).some((queues) =>
+            Object.values(queues).some((queue) => queue.length > 0),
+          ) ||
+          !action.outcome ||
+          action.outcome.status !== 'succeeded'
+        )
+          throw new RuntimeProtocolError('RUN_TERMINAL', '当前 Run 不符合已提交结果的恢复条件');
+        const checked = await options.validateRecovery({
+          run: structuredClone(run),
+          action: structuredClone(action),
+          outcome: structuredClone(action.outcome),
+          context: command.context,
+          proposalHash: command.proposalHash,
+        });
+        if (!checked.accepted)
+          throw new RuntimeProtocolError('ACTION_TERMINAL', checked.reason ?? '应用拒绝恢复此结果');
+        const event = action.outcome.event ?? 'succeeded';
+        const targets = applyTransitionHandler(
+          run,
+          definition,
+          {
+            kind: 'action-outcome',
+            stepId: action.stepId,
+            outcome: action.outcome,
+          },
+          event,
+        );
+        if (
+          targets?.length === 0 ||
+          (targets === undefined &&
+            !definition.transitions.some(
+              (edge) => edge.from === action.stepId && edge.on === event,
+            ))
+        )
+          throw new RuntimeProtocolError('ACTION_TERMINAL', '应用未声明可恢复的后续工作');
+        const actionContext = run.actionContexts[action.id];
+        advanceWorkflow(
+          run,
+          definition,
+          action.stepId,
+          actionContext.sequence,
+          actionContext.results,
+          action.outcome.output,
+          event,
+          targets,
+        );
+        scheduleWorkflow(run, definition);
+        return;
+      }
       if (
         action.status === 'failed' &&
         definition.transitions.some((edge) => edge.from === action.stepId && edge.on === 'failed')

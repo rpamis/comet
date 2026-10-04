@@ -164,7 +164,9 @@ export interface RuntimeCommandValidator {
     name: string;
     input: RuntimeValue;
     context?: RuntimeInvocationContext;
-  }): RuntimeValidation | Promise<RuntimeValidation>;
+  }):
+    | (RuntimeValidation & { allowCompleted?: boolean })
+    | Promise<RuntimeValidation & { allowCompleted?: boolean }>;
 }
 
 export interface RuntimeExecutor {

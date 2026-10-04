@@ -87,6 +87,7 @@ async function startNativeSdkRun(options: {
     validators: application.validators,
     stateValidators: application.stateValidators,
     commandValidators: application.commandValidators,
+    validateRecovery: application.validateRecovery,
     executors: application.executors,
   });
   return runtime.start({
