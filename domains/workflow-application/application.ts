@@ -199,6 +199,7 @@ export async function loadWorkflowApplication(options: {
         specifier.startsWith('node:') ||
         specifier === '@rpamis/comet/runtime' ||
         specifier === '@rpamis/comet/applications' ||
+        specifier === '@rpamis/comet/applications/compiler' ||
         specifier === '@rpamis/comet/applications/native' ||
         specifier === '@rpamis/comet/applications/classic'
       )

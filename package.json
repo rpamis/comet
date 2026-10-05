@@ -19,6 +19,10 @@
   "author": "benym",
   "type": "module",
   "exports": {
+    "./applications/compiler": {
+      "types": "./dist/domains/workflow-generation/index.d.ts",
+      "import": "./dist/domains/workflow-generation/index.js"
+    },
     "./applications/classic": {
       "types": "./dist/domains/comet-classic/classic-application.d.ts",
       "import": "./dist/domains/comet-classic/classic-application.js"

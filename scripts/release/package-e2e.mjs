@@ -25,6 +25,8 @@ const requiredPackageFiles = [
   'dist/app/cli/index.js',
   'dist/domains/engine/runtime.js',
   'dist/domains/engine/runtime.d.ts',
+  'dist/domains/workflow-generation/index.js',
+  'dist/domains/workflow-generation/index.d.ts',
   'dist/domains/comet-plugin/sdk.js',
   'dist/domains/comet-plugin/sdk.d.ts',
   'dist/domains/comet-plugin/comet.js',
@@ -179,6 +181,32 @@ async function main() {
     }
 
     const runtimeImport = `${packageName}/runtime`;
+    const compilerExample = path.join(consumerDir, 'workflow-application-compiler-example.mjs');
+    const compilerProject = path.join(consumerDir, 'compiler-project');
+    await fs.copyFile(
+      path.join(repositoryRoot, 'scripts/lib/workflow-application-compiler-example.mjs'),
+      compilerExample,
+    );
+    const waitingReport = parseJsonPayload(
+      run(process.execPath, [compilerExample, compilerProject], {
+        cwd: consumerDir,
+        env: environment,
+      }),
+    );
+    if (waitingReport.status !== 'waiting' || waitingReport.published)
+      throw new Error('Compiled report published before its approval');
+    const completedReport = parseJsonPayload(
+      run(process.execPath, [compilerExample, compilerProject, '--approve'], {
+        cwd: consumerDir,
+        env: environment,
+      }),
+    );
+    if (
+      completedReport.status !== 'completed' ||
+      !completedReport.published ||
+      completedReport.runId !== waitingReport.runId
+    )
+      throw new Error('Compiled report did not resume and publish the same approved Run');
     const pluginsImport = `${packageName}/plugins`;
     const cometPluginsImport = `${packageName}/plugins/comet`;
     for (const [name, flags, reason] of [
