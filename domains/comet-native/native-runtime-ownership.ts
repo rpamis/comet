@@ -1,7 +1,14 @@
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import { parseDocument } from 'yaml';
 
 import { listGitWorktrees, samePath } from '../../platform/paths/git-worktree.js';
-import { createRuntime, type WorkflowRun, type WorkflowRuntime } from '../engine/runtime.js';
+import {
+  createRuntime,
+  type WorkflowRun,
+  type WorkflowRuntime,
+  type RuntimeExecutor,
+} from '../engine/runtime.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   listSdkChangeNames,
@@ -26,6 +33,12 @@ import {
 import { nativeLocalExecutionFile, nativePortableStateFile } from './native-portable-storage.js';
 import type { NativePortableState } from './native-portable-types.js';
 import type { NativeProjectPaths } from './native-types.js';
+import {
+  loadWorkflowApplication,
+  resolveWorkflowApplicationFile,
+  type ApplicationIdentity,
+  type LoadedWorkflowApplication,
+} from '../workflow-application/index.js';
 
 export { inspectPristineNativeSdkChange } from './native-sdk-create.js';
 
@@ -52,6 +65,10 @@ export async function resolveNativeChangeRuntimeOwner(
         expected: 'file',
       });
       if (!archived.exists || !(await hasNativeManagedRunMarker(archived.target))) return null;
+      if (await readNativeApplicationCheckpoint(paths.projectRoot, name)) {
+        await (await loadOwnedNativeSdkRuntime(paths.projectRoot, name)).runtime.inspect(name);
+        return readSdkChangeOwner(paths.projectRoot, 'native', name);
+      }
       if (await createNativeSdkStateStore(paths.projectRoot).read(name)) {
         const recovered = await readSdkChangeOwner(paths.projectRoot, 'native', name);
         if (!recovered) throw new Error(`Recovered Native change ${name} has no Run ownership`);
@@ -66,6 +83,11 @@ export async function resolveNativeChangeRuntimeOwner(
       path.relative(paths.projectRoot, nativeLocalExecutionFile(paths, name)),
       { label: 'Native local execution state', expected: 'file' },
     );
+    const applicationCheckpoint = await readNativeApplicationCheckpoint(paths.projectRoot, name);
+    if (applicationCheckpoint) {
+      await (await loadOwnedNativeSdkRuntime(paths.projectRoot, name)).runtime.inspect(name);
+      return readSdkChangeOwner(paths.projectRoot, 'native', name);
+    }
     if (!local.exists && (await createNativeSdkStateStore(paths.projectRoot).read(name))) {
       const recovered = await readSdkChangeOwner(paths.projectRoot, 'native', name);
       if (!recovered) throw new Error(`Recovered Native change ${name} has no Run ownership`);
@@ -119,18 +141,80 @@ export function createNativeSdkRuntime(projectRoot: string): WorkflowRuntime {
   });
 }
 
+async function readNativeApplicationCheckpoint(
+  projectRoot: string,
+  name: string,
+): Promise<ApplicationIdentity | null> {
+  const config = await readProjectConfig(projectRoot);
+  if (!config) return null;
+  const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
+  let file = nativePortableStateFile(paths, name);
+  try {
+    await fs.access(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    const archived = await findNativeSdkArchivedStateFile(paths, name);
+    if (!archived) return null;
+    file = archived;
+  }
+  const data = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: true });
+  if (data.errors.length) throw new Error('Native application checkpoint is invalid');
+  return (
+    (data.toJS() as { application_checkpoint?: ApplicationIdentity }).application_checkpoint ?? null
+  );
+}
+
+/** 每个公开 Native 入口都恢复 owner 绑定的同一固定应用。 */
+export async function loadOwnedNativeSdkRuntime(
+  projectRoot: string,
+  name: string,
+): Promise<{
+  runtime: WorkflowRuntime;
+  executors: readonly RuntimeExecutor[];
+  application: LoadedWorkflowApplication | null;
+}> {
+  const owner = await readSdkChangeOwner(projectRoot, 'native', name);
+  const checkpoint =
+    owner?.application === 'native'
+      ? null
+      : await readNativeApplicationCheckpoint(projectRoot, name);
+  const id = owner?.application ?? checkpoint?.id ?? 'native';
+  if (id === 'native') {
+    const defined = defineNativeWorkflowApplication();
+    return {
+      runtime: createNativeSdkRuntime(projectRoot),
+      executors: defined.executors,
+      application: null,
+    };
+  }
+  const file = checkpoint?.packageRoot
+    ? path.join(checkpoint.packageRoot, 'application.json')
+    : await resolveWorkflowApplicationFile(projectRoot, id, name);
+  const application = await loadWorkflowApplication({
+    file,
+    projectRoot,
+    runId: name,
+    ...(checkpoint ? { expectedIdentity: checkpoint } : {}),
+  });
+  if (application.identity.id !== id || application.identity.base !== 'native')
+    throw new Error('Native change owner does not match its fixed Application');
+  return {
+    runtime: createRuntime({ ...application.implementation, store: application.store }),
+    executors: application.implementation.executors ?? [],
+    application,
+  };
+}
+
 export async function inspectNativeSdkRun(
   projectRoot: string,
   name: string,
 ): Promise<{ run: WorkflowRun; state: NativePortableState; artifactRootRef: string }> {
   const owner = await readSdkChangeOwner(projectRoot, 'native', name);
   if (!owner) throw new Error(`Native change ${name} is not owned by an SDK Run`);
-  const application = defineNativeWorkflowApplication();
-  const runtime = createNativeSdkRuntime(projectRoot);
+  const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
   const run = await runtime.inspect(owner.runId);
   if (
-    run.workflow.id !== application.workflow.id ||
-    run.workflow.version !== application.workflow.version ||
+    run.workflow.id !== 'comet-native' ||
     !run.input ||
     typeof run.input !== 'object' ||
     Array.isArray(run.input) ||

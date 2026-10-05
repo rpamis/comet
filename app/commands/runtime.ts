@@ -15,14 +15,23 @@ import {
 import { parseRuntimeOutcome } from '../../domains/engine/runtime-action.js';
 import {
   readSdkChangeOwner,
+  SDK_APPLICATIONS,
   type SdkApplication,
 } from '../../domains/workflow-contract/change-runtime-owner.js';
 import type { CometProjectWorkflow } from '../../domains/workflow-contract/types.js';
+import {
+  loadWorkflowApplication,
+  resolveWorkflowApplicationFile,
+  selectWorkflowApplication,
+  applicationSkillWork,
+  type ApplicationIdentity,
+} from '../../domains/workflow-application/index.js';
 
 export interface RuntimeCommandOptions {
   request?: string;
   workflow?: string[];
   application?: string;
+  applicationFile?: string;
   rootDir?: string;
   projectRoot?: string;
   json?: boolean;
@@ -37,7 +46,12 @@ export type RuntimeCommandResponse = {
   protocolVersion: 1;
   requestId: string;
 } & (
-  | { status: 'succeeded'; data: WorkflowRun }
+  | {
+      status: 'succeeded';
+      data: WorkflowRun;
+      application?: ApplicationIdentity;
+      skillWork?: unknown[];
+    }
   | { status: 'failed'; error: { code: string; message: string } }
 );
 
@@ -409,6 +423,45 @@ export async function runtimeDispatchCommand(
     const request = parseRequest(await readJson(requestFile, 'REQUEST'));
     requestId = (request.requestId as string | undefined) ?? requestId;
     const application = options.application;
+    const builtIn = (SDK_APPLICATIONS as readonly string[]).includes(application ?? '');
+    if (options.applicationFile !== undefined || (application !== undefined && !builtIn)) {
+      if (
+        (options.workflow?.length ?? 0) > 0 ||
+        options.rootDir !== undefined ||
+        (options.applicationFile !== undefined && application !== undefined)
+      )
+        invalid(
+          '定制应用使用 --application 或 --application-file，不能同时指定工作流、状态目录或另一应用',
+        );
+      const file = options.applicationFile
+        ? path.resolve(invocationCwd, options.applicationFile)
+        : await resolveWorkflowApplicationFile(
+            projectRoot,
+            application!,
+            text(request.runId, 'runId'),
+          );
+      const loaded = await loadWorkflowApplication({
+        file,
+        projectRoot,
+        runId: request.runId as string | undefined,
+      });
+      const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
+      const context = { requestId, projectRoot, invocationCwd, environment };
+      const data = await dispatch(runtime, request, context);
+      if (request.operation === 'start') await selectWorkflowApplication(loaded, data.runId);
+      const skillWork = applicationSkillWork(loaded, data);
+      return {
+        exitCode: 0,
+        response: {
+          protocolVersion: 1,
+          requestId,
+          status: 'succeeded',
+          data,
+          application: loaded.identity,
+          skillWork,
+        },
+      };
+    }
     if (application !== undefined && (options.workflow?.length ?? 0) > 0) {
       invalid('--application 与 --workflow 不能同时使用');
     }
@@ -421,6 +474,12 @@ export async function runtimeDispatchCommand(
       const { resolveNativeSdkCommandRoot } =
         await import('../../domains/comet-native/native-runtime-ownership.js');
       projectRoot = await resolveNativeSdkCommandRoot(projectRoot, text(request.runId, 'runId'));
+      const owner = await readSdkChangeOwner(projectRoot, 'native', text(request.runId, 'runId'));
+      if (owner && owner.application !== 'native')
+        return runtimeDispatchCommand(
+          { ...options, projectRoot, application: owner.application },
+          host,
+        );
     }
     let transitionHandlers;
     let evidenceValidators;

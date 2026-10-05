@@ -1,4 +1,17 @@
 import type { NativeChildrenContract } from './native-children-contract.js';
+import type { RuntimeAction, WorkflowRun } from '../engine/runtime.js';
+
+/** 历史结果保留在 Run 中；本轮只能使用最近一次 Shape 复核之后的工作事实。 */
+export function currentNativeSdkSupervisorActions(
+  run: Readonly<WorkflowRun>,
+): readonly RuntimeAction[] {
+  for (let index = run.actions.length - 1; index >= 0; index--) {
+    const action = run.actions[index];
+    if (action.stepId === 'shape.revalidate' && action.status === 'succeeded')
+      return run.actions.slice(index + 1);
+  }
+  return run.actions;
+}
 
 /** Selects a bounded wave from the confirmed child DAG using only SDK Run facts. */
 export function selectNativeSdkReadyChildren(options: {

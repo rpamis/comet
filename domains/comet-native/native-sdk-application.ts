@@ -89,7 +89,10 @@ import {
   nativeSdkSupervisorChildArchiveExecutor,
   nativeSdkSupervisorChildArchiveValidator,
 } from './native-sdk-supervisor-archive.js';
-import { selectNativeSdkReadyChildren } from './native-sdk-supervisor-plan.js';
+import {
+  selectNativeSdkReadyChildren,
+  currentNativeSdkSupervisorActions,
+} from './native-sdk-supervisor-plan.js';
 import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
 import { supervisorAcceptanceScope } from './native-supervisor-model.js';
 import {
@@ -354,13 +357,14 @@ function supervisorIntegrationActivation(
 }
 
 function queuedSupervisorIntegration(run: Readonly<WorkflowRun>): RuntimeAction | null {
+  const actions = currentNativeSdkSupervisorActions(run);
   const dispatched = new Set(
-    run.actions
+    actions
       .filter((action) => action.stepId === 'supervisor.child.integrate')
       .map((action) => (action.input as { activation?: { child?: string } }).activation?.child),
   );
   return (
-    run.actions.find(
+    actions.find(
       (action) =>
         action.stepId === 'supervisor.child.verifier' &&
         action.status === 'succeeded' &&
@@ -376,7 +380,7 @@ function supervisorChildRepairActivation(
   failureKey: 'failedCheckActionId' | 'failedVerifierActionId',
 ): Record<string, RuntimeValue> {
   const verified = (source.input as { activation?: Record<string, RuntimeValue> }).activation;
-  const builder = run.actions.find(
+  const builder = currentNativeSdkSupervisorActions(run).find(
     (action) =>
       action.stepId === 'supervisor.child.builder' &&
       action.status === 'succeeded' &&
@@ -396,7 +400,7 @@ function supervisorParentRepairActivation(
   run: Readonly<WorkflowRun>,
   failure: { failedVerifierActionId: string } | { rejectedDecisionId: string },
 ): Record<string, RuntimeValue> {
-  const builder = [...run.actions]
+  const builder = [...currentNativeSdkSupervisorActions(run)]
     .reverse()
     .find(
       (action) => action.stepId === 'supervisor.parent.builder' && action.status === 'succeeded',
@@ -794,7 +798,7 @@ const supervisorParentBuilderValidator: RuntimeValidator = {
       const branch = nativeSupervisorIntegrationBranch(state.name);
       const candidateCommit = nativeSdkSupervisorParentCandidateCommit(action, outcome);
       const integrated = new Set(
-        run.actions
+        currentNativeSdkSupervisorActions(run)
           .filter(
             (candidate) =>
               candidate.stepId === 'supervisor.child.integration-checks' &&
@@ -1337,6 +1341,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             integrationBranch: string;
             integrationWorktree: string;
             targetCommit: string;
+            integrationCommit?: string;
           };
           const ready = selectNativeSdkReadyChildren({
             contract: proposal.children.contract,
@@ -1353,7 +1358,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                 contractHash: state.children_contract_hash!,
                 integrationBranch: output.integrationBranch,
                 integrationWorktree: output.integrationWorktree,
-                targetCommit: output.targetCommit,
+                targetCommit: output.integrationCommit ?? output.targetCommit,
               },
             })),
           };
@@ -1623,7 +1628,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             throw new Error('Native SDK Supervisor continuation lacks its confirmed plan');
           }
           const integrated = new Set(
-            run.actions
+            currentNativeSdkSupervisorActions(run)
               .filter(
                 (action) =>
                   action.stepId === 'supervisor.child.integration-checks' &&
@@ -1654,7 +1659,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             };
           }
           const active = new Set(
-            run.actions
+            currentNativeSdkSupervisorActions(run)
               .filter((action) => action.stepId === 'supervisor.child.prepare')
               .map((action) => (action.input as { activation: { child: string } }).activation.child)
               .filter((child) => !integrated.has(child)),

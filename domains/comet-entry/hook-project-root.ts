@@ -3,6 +3,7 @@ import path from 'path';
 
 import { listGitWorktreeRoots } from '../../platform/paths/git-worktree.js';
 import type { CometHookRequest } from './hook-types.js';
+import { readCometCurrentSelection } from '../workflow-contract/current-selection.js';
 
 function samePath(left: string, right: string): boolean {
   const normalizedLeft = path.resolve(left);
@@ -29,7 +30,11 @@ function owningWorktree(candidate: string, roots: readonly string[]): string | n
 }
 
 async function assertRebasedWorktreeReady(projectRoot: string): Promise<void> {
+  const selected = await readCometCurrentSelection(projectRoot);
+  const applicationSelected =
+    selected.status === 'selected' && selected.selection.workflow === 'application';
   for (const marker of ['.git', path.join('.comet', 'config.yaml')]) {
+    if (marker !== '.git' && applicationSelected) continue;
     try {
       await fs.lstat(path.join(projectRoot, marker));
     } catch (error) {

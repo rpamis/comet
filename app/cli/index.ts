@@ -621,7 +621,8 @@ runtime
     collect,
     [],
   )
-  .option('--application <id>', 'Built-in application: native or classic-full/hotfix/tweak')
+  .option('--application <id>', '内置应用或当前项目已启动的 SDK 应用身份')
+  .option('--application-file <file>', '完整 SDK 应用包的 application.json 入口')
   .option(
     '--root-dir <dir>',
     'Directory for persistent Runtime state; fixed for built-in applications',

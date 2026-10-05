@@ -1,4 +1,5 @@
-import { inspectNativeSdkRun } from './native-runtime-ownership.js';
+import { inspectNativeSdkRun, loadOwnedNativeSdkRuntime } from './native-runtime-ownership.js';
+import { applicationSkillWork } from '../workflow-application/index.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { projectNativePortableWorkspace } from './native-portable-status.js';
 import { nativePortableStateSummary } from './native-portable-summary.js';
@@ -14,8 +15,12 @@ export async function inspectNativeSdkStatus(options: {
   );
   const paths = await nativeProjectPaths(options.projectRoot, artifactRootRef);
   const summary = nativePortableStateSummary(state, paths);
+  const { application } = await loadOwnedNativeSdkRuntime(options.projectRoot, options.name);
   return {
     schema: 'comet.native.sdk-status.v1' as const,
+    ...(application
+      ? { application: application.identity, skillWork: applicationSkillWork(application, run) }
+      : {}),
     name: options.name,
     language: state.language,
     phase: state.phase,

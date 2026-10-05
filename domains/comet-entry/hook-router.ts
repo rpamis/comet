@@ -25,6 +25,7 @@ import { configuredHookWritePath } from '../workflow-contract/hook-write-policy.
 import type { CometHookDecision, CometHookRequest } from './hook-types.js';
 import type { CometWorkflow } from './types.js';
 import { collectCometHookContext, collectCometPluginContext } from './plugin-context.js';
+import { readSelectedWorkflowApplication } from '../workflow-application/index.js';
 
 // Wrap the hot reads so that within one Hook decision the router and the
 // delegated Classic/Native Guard share a single config + selection read
@@ -202,6 +203,7 @@ export async function resolveHookWorkflowOwner(
 
   if (current.status === 'selected') {
     const selection = current.selection;
+    if (selection.workflow === 'application') return { status: 'none' };
     if (!enabled.includes(selection.workflow)) {
       return {
         status: 'stale',
@@ -374,6 +376,35 @@ export async function inspectCometHook(
   }
 
   try {
+    const selected = await readSelectedWorkflowApplication(projectRoot);
+    if (selected) {
+      const { application, run } = selected;
+      const identity = { applicationId: application.identity.id, runId: run.runId };
+      const targets = projectRequest.targets.map((target) =>
+        path.relative(projectRoot, target).replaceAll('\\', '/'),
+      );
+      if (
+        targets.some(
+          (target) =>
+            target === '.comet/current-change.json' || target.startsWith('.comet/runtime/'),
+        )
+      )
+        return {
+          allowed: false,
+          reason: '应用选择与 SDK Run 由公开 Runtime 入口维护',
+          ...identity,
+        };
+      if (['completed', 'cancelled'].includes(run.status))
+        return { allowed: true, reason: '当前应用运行已结束', ...identity };
+      if (!application.implementation.inspectHook)
+        return {
+          allowed: false,
+          reason: '当前应用没有已固定的 Hook Guard，请补齐适配后继续',
+          ...identity,
+        };
+      const decision = await application.implementation.inspectHook(run, projectRequest);
+      return { ...decision, ...identity };
+    }
     const resolution = await resolveHookWorkflowOwner(projectRoot, dependencies);
     if (resolution.status === 'none') {
       const nativeUnownedDecision = await inspectNativeUnownedHookTargets(

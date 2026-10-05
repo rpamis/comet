@@ -77,6 +77,7 @@ describe('repository layout registry', () => {
       'integrations',
       'project-knowledge',
       'skill',
+      'workflow-application',
       'workflow-contract',
     ]);
     expect(layout.platformModules).toEqual([

@@ -200,7 +200,20 @@ async function childArchiveBinding(
   ) {
     throw new Error('Native Supervisor integration worktree moved before the child archive');
   }
-  if (!nativeWorkspaceIsClean(worktree) || !nativeWorkspaceIsClean(prepared.integrationWorktree)) {
+  const untrackedPaths = runGitCommand(worktree, [
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '-z',
+  ])
+    .split('\0')
+    .filter((file) => file && file !== '.comet/config.yaml')
+    .map((file) => file.replaceAll('\\', '/'));
+  // 只提交归档文件，保留 Child 中与候选无关的未跟踪文件。
+  if (
+    !nativeWorkspaceIsClean(worktree, untrackedPaths) ||
+    !nativeWorkspaceIsClean(prepared.integrationWorktree)
+  ) {
     throw new Error('Native Supervisor child archive requires clean worktrees');
   }
   const verifierAcceptance = new Map<string, string>();
@@ -267,13 +280,16 @@ async function childArchiveBinding(
 function buildChildArchiveState(binding: NativeSupervisorChildArchiveBinding): NativePortableState {
   const acceptance = binding.scopedAcceptance
     .filter(({ id }) => ACCEPTANCE_ID_PATTERN.test(id))
-    .map(({ id, source, text }) => ({
-      id,
-      source,
-      text,
-      result: 'passed' as const,
-      reason: binding.verifierAcceptance.get(id) ?? null,
-    }));
+    .map(({ id, source, text }) => {
+      const reason = binding.verifierAcceptance.get(id);
+      return {
+        id,
+        source,
+        text,
+        result: 'passed' as const,
+        reason: reason ? toNativePortableText(reason) : null,
+      };
+    });
   const base = createNativePortableState({
     name: binding.child,
     language: binding.language,
@@ -421,15 +437,28 @@ export const nativeSdkSupervisorChildArchiveExecutor: RuntimeExecutor = {
     const archiveRef = archiveRefFor(binding);
     const location = await childArchiveLocation(binding, archiveRef);
 
-    let archiveCommit: string;
+    let recovered: NativePortableState | null = null;
     if (await pathExists(location.target)) {
-      // Recovery: the archive was materialized before. Verify it instead of rewriting.
-      const recovered = await readNativePortableState(
+      recovered = await readNativePortableState(
         path.join(location.target, 'comet-state.yaml'),
       ).catch(() => null);
-      if (!recovered || recovered.name !== binding.child || !recovered.archived) {
+      if (
+        !recovered ||
+        recovered.name !== binding.child ||
+        !recovered.archived ||
+        recovered.workspace.change_branch !== binding.branch
+      ) {
         throw new Error('Native Supervisor child archive directory holds another change');
       }
+    }
+
+    let archiveCommit: string;
+    if (
+      recovered?.verification?.candidate_id === binding.candidateCommit &&
+      recovered.verification.verifier_execution_ref === binding.verifierSessionId &&
+      recovered.verification.completed_at === binding.integrationChecksCompletedAt
+    ) {
+      // 恢复同一份归档；新的候选或验证记录生成新的归档提交，保留已有 Git 历史。
       const recoveredCommit = resolveGitRef(binding.worktree, binding.branch);
       if (!recoveredCommit || !COMMIT_PATTERN.test(recoveredCommit)) {
         throw new Error('Native Supervisor child worktree has no archive commit');
@@ -458,7 +487,13 @@ export const nativeSdkSupervisorChildArchiveExecutor: RuntimeExecutor = {
       if (alignment !== 'aligned') {
         throw new Error('Native Supervisor child archive report is not aligned');
       }
-      runGitCommand(binding.worktree, ['add', '--', location.relative]);
+      runGitCommand(binding.worktree, [
+        'add',
+        '--force',
+        '--',
+        `${location.relative}/comet-state.yaml`,
+        `${location.relative}/verification.md`,
+      ]);
       const staged = runGitCommand(binding.worktree, [
         'diff',
         '--cached',

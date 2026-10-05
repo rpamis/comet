@@ -11,14 +11,20 @@ import type { CometProjectWorkflow } from './types.js';
 
 export const COMET_CHANGE_OWNER_SCHEMA = 'comet.change-owner.v1' as const;
 
-export type SdkApplication = 'native' | 'classic-full' | 'classic-hotfix' | 'classic-tweak';
+export const SDK_APPLICATIONS = [
+  'native',
+  'classic-full',
+  'classic-hotfix',
+  'classic-tweak',
+] as const;
+export type SdkApplication = (typeof SDK_APPLICATIONS)[number];
 
 export interface SdkChangeOwner {
   schema: typeof COMET_CHANGE_OWNER_SCHEMA;
   workflow: CometProjectWorkflow;
   change: string;
   format: 'sdk';
-  application: SdkApplication;
+  application: string;
   runId: string;
 }
 
@@ -59,11 +65,14 @@ function parseOwner(
     owner.format === 'sdk' &&
     Object.keys(owner).length === 6 &&
     owner.runId === change &&
-    (workflow === 'native'
-      ? owner.application === 'native'
-      : owner.application === 'classic-full' ||
-        owner.application === 'classic-hotfix' ||
-        owner.application === 'classic-tweak');
+    ((typeof owner.application === 'string' &&
+      /^[a-z][a-z\d]*(?:[.-][a-z\d]+)*$/u.test(owner.application) &&
+      !(SDK_APPLICATIONS as readonly string[]).includes(owner.application)) ||
+      (workflow === 'native'
+        ? owner.application === 'native'
+        : owner.application === 'classic-full' ||
+          owner.application === 'classic-hotfix' ||
+          owner.application === 'classic-tweak'));
   if (!validCommon || (!validCompat && !validSdk)) {
     throw new Error(`Invalid change runtime owner for ${workflow}/${change}`);
   }
