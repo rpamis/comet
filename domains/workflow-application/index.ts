@@ -6,7 +6,7 @@ export {
 } from './application.js';
 export { inspectApplicationSkill, adaptApplicationSkill } from './skill-adapter.js';
 export { createApplicationSkillExecutor, reconcileApplicationSkill } from './skill-executor.js';
-export { applicationSkillWork } from './skill-work.js';
+export { applicationSkillWork, applicationWaitSkillWork } from './skill-work.js';
 export { createReportApplication } from './report-application.js';
 export { createStandaloneApplication } from './standalone-application.js';
 export type { StandaloneApplicationOptions } from './standalone-application.js';

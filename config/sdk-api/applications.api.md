@@ -112,6 +112,21 @@ export function applicationSkillWork(application: LoadedWorkflowApplication, run
 }[];
 
 // @public
+export function applicationWaitSkillWork(application: LoadedWorkflowApplication, run: WorkflowRun): {
+    waitId: string;
+    proposalHash: string;
+    binding: ApplicationSkillBinding;
+    skill: {
+        id: string;
+        name: string;
+        root: string;
+        contentHash: string;
+        adapter: SkillAdapterContract;
+        files: Readonly<Record<string, string>>;
+    };
+}[];
+
+// @public
 export function createApplicationArtifactValidator(options: ApplicationArtifactValidatorOptions): RuntimeValidator;
 
 // @public

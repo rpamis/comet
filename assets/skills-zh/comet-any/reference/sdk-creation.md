@@ -4,6 +4,8 @@
 
 ## 分析动作
 
+宿主只领取 `analyze`，完成实际 Skill 调查并回传分析结果。compile / verify / preview / install 是机器步骤，由 `comet creator next <name> --project <项目> --json` 使用固定 `creator-local` 执行器完成；宿主不能领取这些机器 Action，不能把它们交给 `creator-host` 或自行填入成功结果。`next` 停在宿主动作或用户决定时，再处理返回的当前 Action 或 Wait。
+
 先读取当前 `actions` 中的 `analyze`，提交 `operation: claim`，保留 `runId`、`actionId`、`attempt`、`inputHash`；使用 `executorId: creator-host`、实际 `sessionId`、唯一且稳定的 `claimToken`，并提供实际具备的 `capabilities: [skill-load, handoff]`。领取成功后才执行分析。
 
 回传 `operation: record-outcome`。`outcome` 保留相同 Action 身份与 claimToken，并使用唯一 outcomeId、真实 status 和 output。成功 output 包含：

@@ -402,9 +402,12 @@ async function assemblyFiles(
       bindings: manifest.bindings,
     }) + '\n',
   );
+  const skillLoading = manifest.bindings.length
+    ? '\n当前 Action 返回 skillWork 或当前 Wait 返回 waitSkillWork 时，逐项读取 skill.files["SKILL.md"] 的真实 name；没有 name 时按该固定目录的宿主命名规则确定，无法确定时阻塞。skill.id 只是逻辑绑定，不能用应用名称或别名代替实际 Skill 名称。\n\n**立即执行：** 使用 Skill 工具加载 <skill-name> 技能。禁止跳过此步骤。\n\n技能加载后，核对实际加载来源对应当前 skill.root，并核对 SKILL.md、脚本和资源的完整内容摘要与 skill.contentHash 一致；同名不能代替固定版本。宿主无法加载该固定版本时阻塞，保留原 Action。核对通过后，Action 保留 actionId、attempt、inputHash；Wait 保留 waitId、proposalHash，不能把等待点当作 Action 领取。传递当前输入、范围和固定指导，执行工作后提交真实结果；等待点指导不等同用户决定或 machine-check 证据，审批仍只提交当前 Wait 的用户决定。\n'
+    : '';
   textFile(
     'SKILL.md',
-    `---\nname: ${manifest.id}\ndescription: 启动或恢复已确认的 ${manifest.id} 工作流应用。\n---\n\n# ${manifest.id}\n\n固定组合：${compositionHash}\nRuntime：${manifest.runtimeVersion}；基础流程：${manifest.base}。\n\n用 comet runtime dispatch --application-file <本目录>/application.json --project-root <项目> --request <临时JSON> 启动下列流程：\n${plan.workflows.map(({ id, version }) => `- ${id}@${version}`).join('\n')}\n\n查询和恢复使用 --application ${manifest.id} 与原 Run ID，先 inspect 原 Action；保留 attempt、inputHash 和 claimToken。未知执行先核对结果。按返回的 skillWork 加载固定依赖并执行当前 Action；审批只沿 Runtime 当前 Wait 提交。\n流程与绑定见 application.json，安装与恢复身份见 installation.json。不能以完成字符串代替实际 Schema、候选或工件检查；检查拒绝后保留现场，修正实际产物后继续原动作。\n本包通过组合结构和实际注册实现检查；真实宿主、模型执行与完整业务验收须另行记录。\n`,
+    `---\nname: ${manifest.id}\ndescription: 启动或恢复已确认的 ${manifest.id} 工作流应用。\n---\n\n# ${manifest.id}\n\n固定组合：${compositionHash}\nRuntime：${manifest.runtimeVersion}；基础流程：${manifest.base}。\n\n用 comet runtime dispatch --application-file <本目录>/application.json --project-root <项目> --request <临时JSON> 启动下列流程：\n${plan.workflows.map(({ id, version }) => `- ${id}@${version}`).join('\n')}\n\n查询和恢复使用 --application ${manifest.id} 与原 Run ID，先 inspect 原 Action；保留 attempt、inputHash 和 claimToken。未知执行先核对结果。审批只沿 Runtime 当前 Wait 提交。\n${skillLoading}\n流程与绑定见 application.json，安装与恢复身份见 installation.json。不能以完成字符串代替实际 Schema、候选或工件检查；检查拒绝后保留现场，修正实际产物后继续原动作。\n本包通过组合结构和实际注册实现检查；真实宿主、模型执行与完整业务验收须另行记录。\n`,
   );
   return files;
 }

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { WorkflowRun } from '../../domains/engine/runtime.js';
+import { inspectApplicationSkill } from '../../domains/workflow-application/index.js';
 
 /** 使用实际 npm 包和独立 CLI 进程；只借用当前安装的依赖，不接触用户配置。 */
 describe('packed standalone report application through public CLI', () => {
@@ -65,6 +66,13 @@ describe('packed standalone report application through public CLI', () => {
       "export { createReportApplication as createApplication } from '@rpamis/comet/applications';\n",
     );
     applicationFile = path.join(applicationRoot, 'application.json');
+    const guideRoot = path.join(applicationRoot, 'approval-guide');
+    await fs.mkdir(guideRoot);
+    await fs.writeFile(
+      path.join(guideRoot, 'SKILL.md'),
+      '---\nname: actual-report-review\n---\n\n# Approval guidance\nRead the actual report before approval. No publishing or approvals.\n',
+    );
+    const guide = await inspectApplicationSkill(guideRoot);
     await fs.writeFile(
       applicationFile,
       JSON.stringify({
@@ -75,8 +83,42 @@ describe('packed standalone report application through public CLI', () => {
         runtimeVersion: manifest.version,
         entrySkill: 'ENTRY.md',
         module: 'application.mjs',
-        skills: [],
-        bindings: [],
+        skills: [
+          {
+            id: 'logical-review-guide',
+            root: 'approval-guide',
+            contentHash: guide.contentHash,
+            adapter: {
+              kind: 'guidance',
+              inputSchema: { type: 'object' },
+              outputSchema: { type: 'object' },
+              scope: ['reports'],
+              requiredCapabilities: [],
+              interaction: 'none',
+              sideEffect: 'read',
+              controlsApproval: false,
+              completion: 'self-report',
+              failure: 'stop',
+              recovery: 'manual',
+              review: {
+                status: 'accepted',
+                reviewedBy: 'fixture-review',
+                contentHash: guide.contentHash,
+                capabilities: [
+                  { id: 'report-review', file: 'SKILL.md', excerpt: 'Read the actual report' },
+                ],
+                effects: [{ file: 'SKILL.md', excerpt: 'No publishing or approvals.' }],
+              },
+            },
+          },
+        ],
+        bindings: ['approve', 'approve-revision'].map((stepId) => ({
+          workflowId: 'report-publishing',
+          stepId,
+          skillId: 'logical-review-guide',
+          capability: 'report-review',
+          usage: 'guidance',
+        })),
       }),
     );
   }, 120000);
@@ -206,6 +248,48 @@ describe('packed standalone report application through public CLI', () => {
         path.join(project, '.comet'),
         path.join(process.env.COMET_REPORT_EVIDENCE_DIR, 'packed-approved-project/.comet'),
         { recursive: true },
+      );
+  }, 120000);
+  it('discloses approval guidance from the real packed public inspect without changing the Wait or inventing an Action', async () => {
+    const project = path.join(temporary, 'waiting-guidance-project');
+    const waiting = await prepare(project);
+    const request = path.join(temporary, 'waiting-guidance-inspect.json');
+    await fs.writeFile(request, JSON.stringify({ operation: 'inspect', runId: waiting.runId }));
+    const raw = execFileSync(
+      process.execPath,
+      [
+        path.join(packageRoot, 'bin/comet.js'),
+        'runtime',
+        'dispatch',
+        '--application',
+        'local-report',
+        '--project-root',
+        project,
+        '--request',
+        request,
+        '--json',
+      ],
+      { cwd: consumer, encoding: 'utf8', timeout: 30000 },
+    );
+    const response = JSON.parse(raw);
+    expect(response.status).toBe('succeeded');
+    expect(response.skillWork).toEqual([]);
+    expect(response.waitSkillWork).toHaveLength(1);
+    expect(response.waitSkillWork[0]).toMatchObject({
+      waitId: waiting.waits[0].id,
+      proposalHash: waiting.waits[0].proposalHash,
+      binding: { workflowId: 'report-publishing', stepId: 'approve', usage: 'guidance' },
+      skill: { id: 'logical-review-guide', name: 'actual-report-review' },
+    });
+    expect(response.waitSkillWork[0].skill.files['SKILL.md']).toContain('Read the actual report');
+    expect(response.waitSkillWork[0]).not.toHaveProperty('actionId');
+    expect(response.data.revision).toBe(waiting.revision);
+    expect(response.data.waits[0].status).toBe('pending');
+    expect(response.data.waits[0].decision).toBeUndefined();
+    if (process.env.COMET_REPORT_EVIDENCE_DIR)
+      await fs.writeFile(
+        path.join(process.env.COMET_REPORT_EVIDENCE_DIR, 'packed-waiting-guidance.json'),
+        JSON.stringify(response, null, 2),
       );
   }, 120000);
   it('keeps a same-named Run in another project isolated and rejects without publication', async () => {

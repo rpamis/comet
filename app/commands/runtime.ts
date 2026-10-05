@@ -24,6 +24,7 @@ import {
   resolveWorkflowApplicationFile,
   selectWorkflowApplication,
   applicationSkillWork,
+  applicationWaitSkillWork,
   type ApplicationIdentity,
 } from '../../domains/workflow-application/index.js';
 
@@ -51,6 +52,7 @@ export type RuntimeCommandResponse = {
       data: WorkflowRun;
       application?: ApplicationIdentity;
       skillWork?: unknown[];
+      waitSkillWork?: unknown[];
     }
   | { status: 'failed'; error: { code: string; message: string } }
 );
@@ -452,6 +454,7 @@ export async function runtimeDispatchCommand(
       const data = await dispatch(runtime, request, context);
       if (request.operation === 'start') await selectWorkflowApplication(loaded, data.runId);
       const skillWork = applicationSkillWork(loaded, data);
+      const waitSkillWork = applicationWaitSkillWork(loaded, data);
       return {
         exitCode: 0,
         response: {
@@ -461,6 +464,7 @@ export async function runtimeDispatchCommand(
           data,
           application: loaded.identity,
           skillWork,
+          waitSkillWork,
         },
       };
     }

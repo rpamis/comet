@@ -41,6 +41,14 @@ function referencedCommands(doc: string): string[] {
 }
 
 describe('comet-any skill contract', () => {
+  it('Chinese creator delegates machine steps to the fixed executor through next', async () => {
+    const reference = await readText('assets/skills-zh/comet-any/reference/sdk-creation.md');
+    expect(reference).toContain('宿主只领取 `analyze`');
+    expect(reference).toContain('compile / verify / preview / install');
+    expect(reference).toContain('comet creator next');
+    expect(reference).toContain('creator-local');
+    expect(reference).toContain('不能领取这些机器 Action');
+  });
   it('never references the non-existent find-skill command (en + zh)', async () => {
     for (const localeRoot of ['assets/skills/comet-any', 'assets/skills-zh/comet-any']) {
       const docs = await readTree(path.resolve(REPO_ROOT, localeRoot));
