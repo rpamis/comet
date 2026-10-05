@@ -160,11 +160,20 @@ async function currentIntegrationBase(
   ) {
     throw new Error('Native SDK Supervisor integration branch changed after the prior check');
   }
+  const prepared = run.outputs['supervisor.prepare']?.value as { targetCommit?: unknown };
+  if (typeof prepared?.targetCommit !== 'string')
+    throw new Error('Native SDK Supervisor integration lacks its original target binding');
   runGitCommand(current.integrationWorktree, [
     'merge-base',
     '--is-ancestor',
-    current.plan.targetCommit,
+    prepared.targetCommit,
     baseCommit,
+  ]);
+  runGitCommand(current.integrationWorktree, [
+    'merge-base',
+    '--is-ancestor',
+    prepared.targetCommit,
+    current.plan.targetCommit,
   ]);
   return { ...current, baseCommit };
 }
@@ -187,11 +196,26 @@ export const nativeSdkSupervisorIntegrateExecutor: RuntimeExecutor = {
     }
     const current = await currentIntegrationBase(run, action, context.projectRoot);
     const { baseCommit } = current;
+    const targetIncluded =
+      runGitCommand(current.integrationWorktree, [
+        'merge-base',
+        current.plan.targetCommit,
+        baseCommit,
+      ]) === current.plan.targetCommit;
+    if (!targetIncluded)
+      runGitCommand(current.integrationWorktree, [
+        'merge',
+        '--no-ff',
+        '--no-edit',
+        current.plan.targetCommit,
+      ]);
+    const targetMergeCommit = resolveGitRef(current.integrationWorktree, current.integrationBranch);
+    if (!targetMergeCommit) throw new Error('Native SDK Supervisor target sync produced no commit');
     const included =
       runGitCommand(current.integrationWorktree, [
         'merge-base',
         current.input.candidateCommit as string,
-        baseCommit,
+        targetMergeCommit,
       ]) === current.input.candidateCommit;
     if (!included) {
       runGitCommand(current.integrationWorktree, [
@@ -209,6 +233,8 @@ export const nativeSdkSupervisorIntegrateExecutor: RuntimeExecutor = {
         child: current.input.child as string,
         candidateCommit: current.input.candidateCommit as string,
         baseCommit,
+        targetCommit: current.plan.targetCommit,
+        targetMergeCommit,
         integrationCommit,
         integrationBranch: current.integrationBranch,
         integrationWorktree: current.integrationWorktree,
@@ -253,7 +279,34 @@ export const nativeSdkSupervisorIntegrateValidator: RuntimeValidator = {
       if (!gitWorktreeIsClean(current.integrationWorktree)) {
         throw new Error('Native SDK Supervisor integration worktree changed after execution');
       }
-      if (output.integrationCommit === output.baseCommit) {
+      const prepared = run.outputs['supervisor.prepare']?.value as { targetCommit?: unknown };
+      const targetCommit = output.targetCommit ?? prepared.targetCommit;
+      const targetMergeCommit = output.targetMergeCommit ?? output.baseCommit;
+      if (targetCommit !== current.plan.targetCommit || typeof targetMergeCommit !== 'string')
+        throw new Error('Native SDK Supervisor target changed during integration');
+      if (targetMergeCommit !== output.baseCommit) {
+        const targetParents = runGitCommand(current.integrationWorktree, [
+          'rev-list',
+          '--parents',
+          '-n',
+          '1',
+          targetMergeCommit,
+        ]).split(' ');
+        if (
+          targetParents.length !== 3 ||
+          targetParents[0] !== targetMergeCommit ||
+          targetParents[1] !== output.baseCommit ||
+          targetParents[2] !== targetCommit
+        )
+          throw new Error('Native SDK Supervisor target sync is not the expected merge commit');
+      }
+      runGitCommand(current.integrationWorktree, [
+        'merge-base',
+        '--is-ancestor',
+        targetCommit as string,
+        targetMergeCommit,
+      ]);
+      if (output.integrationCommit === targetMergeCommit) {
         runGitCommand(current.integrationWorktree, [
           'merge-base',
           '--is-ancestor',
@@ -271,7 +324,7 @@ export const nativeSdkSupervisorIntegrateValidator: RuntimeValidator = {
         if (
           parents.length !== 3 ||
           parents[0] !== output.integrationCommit ||
-          parents[1] !== output.baseCommit ||
+          parents[1] !== targetMergeCommit ||
           parents[2] !== output.candidateCommit
         ) {
           throw new Error('Native SDK Supervisor integration is not the expected merge commit');

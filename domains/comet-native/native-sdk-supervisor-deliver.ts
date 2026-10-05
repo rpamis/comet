@@ -18,6 +18,7 @@ import { parseNativePortableState } from './native-portable-state.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
 import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 import {
   nativeSupervisorIntegrationBranch,
@@ -81,7 +82,16 @@ async function currentDelivery(
   );
   if (!targetRoot) throw new Error('Native SDK Supervisor target branch worktree is unavailable');
   const targetCommit = resolveGitRef(targetRoot, plan.targetBranch);
-  if (targetCommit !== prepared.targetCommit && targetCommit !== input.integrationCommit) {
+  const lastIntegration = [...currentNativeSdkSupervisorActions(run)]
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.stepId === 'supervisor.child.integrate' && candidate.status === 'succeeded',
+    );
+  const checkedTarget =
+    (lastIntegration?.outcome?.output as { targetCommit?: unknown } | undefined)?.targetCommit ??
+    prepared.targetCommit;
+  if (targetCommit !== checkedTarget && targetCommit !== input.integrationCommit) {
     throw new Error('Native SDK Supervisor target branch changed after Shape confirmation');
   }
   runGitCommand(integrationWorktree, [

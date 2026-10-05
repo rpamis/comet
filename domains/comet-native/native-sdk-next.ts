@@ -233,7 +233,7 @@ export async function advanceNativeSdkChange(
         expectedAction: 'continue-builder';
       },
 ): Promise<DispatchResult> {
-  const { run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name);
+  let { run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name);
   if (
     decision &&
     (decision.expectedAction === undefined ||
@@ -459,7 +459,14 @@ export async function advanceNativeSdkChange(
     )
   )
     return sdkNextResult(projectRoot, name);
-  const pending = run.actions.find((action) => action.status === 'pending');
+  if (run.ready.length > 0) {
+    await (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime.next({ runId: run.runId });
+    ({ run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name));
+  }
+  const pending =
+    run.actions.find(
+      (action) => action.status === 'pending' && action.stepId === 'supervisor.child.archive',
+    ) ?? run.actions.find((action) => action.status === 'pending');
   if (!pending) {
     if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
       throw new Error(`Native SDK change ${name} has a claimed Action with an unknown outcome`);

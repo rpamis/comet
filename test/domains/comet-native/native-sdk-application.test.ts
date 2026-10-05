@@ -18,6 +18,8 @@ import { createNativePortableState } from '../../../domains/comet-native/native-
 import { removeNativeWorkspaceConfig } from '../../../domains/comet-native/native-workspace-config.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
 import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
+import { inspectNativeSdkDefinitionUpgrade } from '../../../domains/comet-native/native-runtime-ownership.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
 import { nativeSupervisorStateFile } from '../../../domains/comet-native/native-supervisor-state.js';
 import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 import {
@@ -100,6 +102,44 @@ function nativeApplication(): NativeApplication {
   const define = (nativeDomain as Record<string, unknown>).defineNativeWorkflowApplication;
   expect(define).toBeTypeOf('function');
   return (define as () => NativeApplication)();
+}
+
+function preChildArchiveApplication(): NativeApplication {
+  const application = nativeApplication();
+  const workflow = structuredClone(application.workflow);
+  delete workflow.steps['supervisor.child.archive'];
+  workflow.transitions = workflow.transitions.filter(
+    ({ from, to }) => from !== 'supervisor.child.archive' && to !== 'supervisor.child.archive',
+  );
+  return {
+    ...application,
+    workflow,
+    transitionHandler: {
+      ...application.transitionHandler,
+      apply({ run, event }) {
+        // 重现旧定义：集成检查成功后直接推进下一 Child，不产生归档 Action。
+        if (
+          event.kind === 'action-outcome' &&
+          event.stepId === 'supervisor.child.integration-checks' &&
+          event.outcome.status === 'succeeded'
+        )
+          return application.transitionHandler.apply({
+            run,
+            event: {
+              ...event,
+              stepId: 'supervisor.child.archive',
+              outcome: {
+                ...event.outcome,
+                output: {
+                  integrationCommit: (event.outcome.output as { candidateId: string }).candidateId,
+                },
+              },
+            },
+          });
+        return application.transitionHandler.apply({ run, event });
+      },
+    },
+  };
 }
 
 function collectProposal(
@@ -361,6 +401,80 @@ async function awaitingArchiveFinalization(storeKind: 'memory' | 'file' = 'memor
 }
 
 describe('Native SDK Workflow Application', () => {
+  it.each(['pending', 'claimed', 'definition-drift'] as const)(
+    'repairs only the known pre-Child-archive definition and preserves Run facts (%s)',
+    async (scenario) => {
+      const { root, initialState } = await fixture();
+      const application = preChildArchiveApplication();
+      if (scenario === 'definition-drift') application.workflow.maxTransitions = 999;
+      const store = createNativeSdkStateStore(root);
+      const runtime = createRuntime({
+        ...application,
+        workflows: [application.workflow],
+        transitionHandlers: [application.transitionHandler],
+        store,
+      });
+      let run = await runtime.start({
+        runId: 'sdk-shape',
+        workflow: { id: application.workflow.id, version: application.workflow.version },
+        input: { name: 'sdk-shape', artifactRootRef: 'docs' },
+        initialState,
+      });
+      await registerSdkChangeOwner(root, {
+        schema: COMET_CHANGE_OWNER_SCHEMA,
+        workflow: 'native',
+        change: run.runId,
+        format: 'sdk',
+        application: 'native',
+        runId: run.runId,
+      });
+      if (scenario === 'claimed') {
+        const action = run.actions[0];
+        run = await runtime.claim({
+          runId: run.runId,
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          executorId: 'native-host',
+          claimToken: 'original-execution',
+        });
+      }
+      const before = await store.read(run.runId);
+      if (scenario === 'definition-drift') {
+        expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, false)).toBeNull();
+        expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).toBeNull();
+        expect(await store.read(run.runId)).toEqual(before);
+        return;
+      }
+      expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, false)).toMatchObject({
+        repaired: false,
+        ready: scenario === 'pending',
+      });
+      expect(await store.read(run.runId)).toEqual(before);
+      if (scenario === 'claimed') {
+        await expect(inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).rejects.toThrow(
+          'running',
+        );
+        expect(await store.read(run.runId)).toEqual(before);
+        return;
+      }
+      expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).toMatchObject({
+        repaired: true,
+        ready: true,
+      });
+      const restored = await createRuntime({
+        ...nativeApplication(),
+        store,
+        workflows: [nativeApplication().workflow],
+        transitionHandlers: [nativeApplication().transitionHandler],
+      }).inspect(run.runId);
+      expect(restored.actions).toEqual(run.actions);
+      expect(restored.state).toEqual(run.state);
+      expect(restored.revision).toBe(run.revision + 1);
+      expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).toBeNull();
+    },
+  );
+
   it('waits for an explicit decision before continuing a partially executed Builder in a new Action', async () => {
     const prepared = await preparedShape('file');
     const { root, paths, application, store } = prepared;
@@ -609,7 +723,8 @@ children:
     });
   });
 
-  it('repairs failed Supervisor Children and serializes integration after independent verification', async () => {
+  it('repairs failed Supervisor Children and serializes integration after a definition upgrade', async () => {
+    const upgradeDefinition = true;
     const { root, paths, changeDir } = await fixture();
     await fs.writeFile(
       path.join(changeDir, 'children.yaml'),
@@ -664,7 +779,7 @@ children:
         finish: null,
       },
     });
-    const application = nativeApplication();
+    let application = upgradeDefinition ? preChildArchiveApplication() : nativeApplication();
     const createSupervisorRuntime = () =>
       createRuntime({
         store: createFileRuntimeStore<WorkflowRun>({
@@ -679,7 +794,7 @@ children:
       });
     let runtime = createSupervisorRuntime();
     let run = await runtime.start({
-      runId: 'supervisor-sdk-build',
+      runId: 'sdk-shape',
       workflow: { id: application.workflow.id, version: application.workflow.version },
       input: { name: 'sdk-shape', artifactRootRef: 'docs' },
       initialState,
@@ -1121,6 +1236,29 @@ children:
       context: { requestId: 'integration-repair-checks', projectRoot: root },
     });
     expect(run.actions.find((action) => action.id === repairedCheck.id)?.status).toBe('succeeded');
+    if (upgradeDefinition) {
+      const savedActions = structuredClone(run.actions);
+      await registerSdkChangeOwner(root, {
+        schema: COMET_CHANGE_OWNER_SCHEMA,
+        workflow: 'native',
+        change: run.runId,
+        format: 'sdk',
+        application: 'native',
+        runId: run.runId,
+      });
+      expect(await nativeDoctorCommand([run.runId], root)).toMatchObject({
+        exitCode: 65,
+        data: { findings: [{ code: 'sdk-definition-upgrade-required', ready: true }] },
+      });
+      expect(await nativeDoctorCommand([run.runId, '--repair'], root)).toMatchObject({
+        exitCode: 0,
+        data: { healthy: true, repaired: true },
+      });
+      application = nativeApplication();
+      runtime = createSupervisorRuntime();
+      run = await runtime.next({ runId: run.runId });
+      expect(run.actions.slice(0, savedActions.length)).toEqual(savedActions);
+    }
     const apiArchive = run.actions.find(
       (action) => action.stepId === 'supervisor.child.archive' && action.status === 'pending',
     )!;
@@ -1139,6 +1277,16 @@ children:
     const uiIntegration = run.actions.find(
       (action) => action.stepId === 'supervisor.child.integrate' && action.status === 'pending',
     )!;
+    await fs.writeFile(path.join(root, 'target-update.txt'), 'preserve target work\n');
+    execFileSync('git', ['add', 'target-update.txt'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'advance target during Supervisor Build'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+    const updatedTarget = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim();
     const baseCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: integrationWorktree,
       encoding: 'utf8',
@@ -1199,6 +1347,13 @@ children:
     run = await runtime.inspect(run.runId);
     const conflicted = run.actions.find((action) => action.id === uiIntegration.id)!;
     expect(conflicted.status).toBe('unknown');
+    const targetMergeCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: integrationWorktree,
+      encoding: 'utf8',
+    }).trim();
+    expect(
+      (await fs.readFile(path.join(integrationWorktree, 'target-update.txt'), 'utf8')).trim(),
+    ).toBe('preserve target work');
     expect(
       execFileSync('git', ['rev-parse', 'MERGE_HEAD'], {
         cwd: integrationWorktree,
@@ -1289,6 +1444,8 @@ children:
           child: 'ui',
           candidateCommit: lateUiCandidateCommit,
           baseCommit,
+          targetCommit: updatedTarget,
+          targetMergeCommit,
           integrationCommit: mergedCommit,
           integrationBranch,
           integrationWorktree,

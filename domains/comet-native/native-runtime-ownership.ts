@@ -5,6 +5,8 @@ import { parseDocument } from 'yaml';
 import { listGitWorktrees, samePath } from '../../platform/paths/git-worktree.js';
 import {
   createRuntime,
+  defineWorkflow,
+  hashRuntimeValue,
   type WorkflowRun,
   type WorkflowRuntime,
   type RuntimeExecutor,
@@ -25,6 +27,7 @@ import { nativeProjectPaths } from './native-paths.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { recoverPristineNativeSdkChange } from './native-sdk-create.js';
 import { createNativeSdkStateStore } from './native-sdk-state-store.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import {
   findNativeSdkArchivedStateFile,
   hasNativeManagedRunMarker,
@@ -139,6 +142,116 @@ export function createNativeSdkRuntime(projectRoot: string): WorkflowRuntime {
     commandValidators: application.commandValidators,
     executors: application.executors,
   });
+}
+
+/** 仅显式恢复增加 Child 归档步骤前的内置定义，不接纳任意同版本漂移。 */
+export async function inspectNativeSdkDefinitionUpgrade(
+  projectRoot: string,
+  name: string,
+  repair: boolean,
+) {
+  const owner = await readSdkChangeOwner(projectRoot, 'native', name);
+  if (owner?.application !== 'native' || owner.runId !== name) return null;
+  const application = defineNativeWorkflowApplication();
+  const definition = defineWorkflow(application.workflow);
+  const previous = structuredClone(definition);
+  delete previous.steps['supervisor.child.archive'];
+  previous.transitions = previous.transitions.filter(
+    ({ from, to }) => from !== 'supervisor.child.archive' && to !== 'supervisor.child.archive',
+  );
+  const previousHash = hashRuntimeValue(previous);
+  // 固定已知前后定义；后续定义变化必须重新评估恢复条件。
+  if (
+    previousHash !== '241450a81ad7237162f72c834e8e7712f1becd90c0a78fa3a1714c86efa4ca06' ||
+    hashRuntimeValue(definition) !==
+      '500dc5be719eb5493dbdadf35c372de49f0232439eef849bb521f6b3db346aff'
+  )
+    return null;
+  const store = createNativeSdkStateStore(projectRoot);
+  const saved = await store.read(name);
+  if (!saved || saved.workflow.hash !== previousHash) return null;
+  const oldRuntime = createRuntime({
+    ...application,
+    store,
+    workflows: [previous],
+    transitionHandlers: [application.transitionHandler],
+  });
+  const run = await oldRuntime.inspect(name);
+  const state = parseNativePortableState(run.state);
+  if (state.name !== name || (run.input as { name?: unknown })?.name !== name)
+    throw new Error('Native SDK definition upgrade does not match its change');
+  const unresolved = run.actions.filter(({ status }) => ['running', 'unknown'].includes(status));
+  const ready = unresolved.length === 0;
+  const result = {
+    ready,
+    repaired: false,
+    fromHash: previousHash,
+    toHash: hashRuntimeValue(definition),
+    unresolvedActions: unresolved.map(({ id, status }) => ({ id, status })),
+    repairCommand: `comet native doctor ${name} --repair`,
+  };
+  if (!repair) return result;
+  if (!ready)
+    throw new Error('Reconcile running or unknown Actions before upgrading the definition');
+  const next = structuredClone(run);
+  next.workflow.hash = result.toHash;
+  next.definitionHashes[JSON.stringify([definition.id, definition.version])] = result.toHash;
+  const current = currentNativeSdkSupervisorActions(run);
+  const unarchived = current.filter(
+    (action) =>
+      action.stepId === 'supervisor.child.integration-checks' &&
+      action.status === 'succeeded' &&
+      !current.some(
+        (archive) =>
+          archive.stepId === 'supervisor.child.archive' &&
+          (archive.input as { activation?: { checksActionId?: unknown } })?.activation
+            ?.checksActionId === action.id,
+      ),
+  );
+  // 旧版本只有当前集成头仍对应此检查时可以直接补归档；不复用较早候选的检查。
+  if (unarchived.length > 1)
+    throw new Error('Multiple unarchived Child integrations require fresh integration checks');
+  for (const check of unarchived) {
+    if (state.phase !== 'build' || state.status !== 'active' || !state.children_contract_hash)
+      throw new Error('Native SDK Child archive upgrade requires the active Supervisor Build');
+    const input = (check.input as { activation?: Record<string, unknown> }).activation;
+    const output = check.outcome?.output as { candidateId?: unknown } | undefined;
+    if (
+      typeof input?.child !== 'string' ||
+      typeof input.candidateCommit !== 'string' ||
+      typeof output?.candidateId !== 'string'
+    )
+      throw new Error('Native SDK Child archive upgrade lacks its integration evidence');
+    next.ready.push({
+      from: check.stepId,
+      to: 'supervisor.child.archive',
+      results: {
+        ...run.actionContexts[check.id].results,
+        [check.stepId]: {
+          sequence: run.actionContexts[check.id].sequence,
+          value: check.outcome!.output,
+        },
+      },
+      activation: {
+        child: input.child,
+        candidateCommit: input.candidateCommit,
+        integrationCommit: output.candidateId,
+        checksActionId: check.id,
+        contractHash: state.children_contract_hash,
+      },
+    });
+  }
+  // 提交前用新定义重新校验，保留所有既有 Action、attempt、确认和检查结果。
+  await createRuntime({
+    ...application,
+    workflows: [application.workflow],
+    transitionHandlers: [application.transitionHandler],
+    store: { read: async () => next, compareAndSwap: async () => false },
+  }).inspect(name);
+  next.revision = run.revision + 1;
+  if (!(await store.compareAndSwap(name, run.revision, next)))
+    throw new Error('Native SDK Run changed while upgrading its definition; inspect again');
+  return { ...result, repaired: true };
 }
 
 async function readNativeApplicationCheckpoint(
