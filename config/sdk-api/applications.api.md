@@ -88,6 +88,11 @@ export function applicationSkillWork(application: LoadedWorkflowApplication, run
 export function createApplicationSkillExecutor(application: SkillExecutionApplication, host: SkillExecutionHost): RuntimeExecutor;
 
 // @public
+export function createReportApplication(context: Pick<WorkflowApplicationFactoryContext, 'projectRoot'> & {
+    manifest: Pick<WorkflowApplicationFactoryContext['manifest'], 'id'>;
+}): WorkflowApplicationImplementation;
+
+// @public
 export function inspectApplicationSkill(root: string): Promise<InspectedSkill>;
 
 // @public (undocumented)
