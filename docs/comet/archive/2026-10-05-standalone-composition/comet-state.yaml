@@ -1,0 +1,352 @@
+schema: comet.native.v4
+name: standalone-composition
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/comet-any-sdk/standalone-composition
+  target_branch: "045"
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A13
+    source: brief.md
+    text: 独立报告流程在审批前不发布，拒绝或修改后走声明路径，跨进程继续同一 Run；不宣称自动继承 Native 独立验收语义。
+    result: passed
+    reason:
+      text: R13完整样板使用自身report-publishing/report-drafting工作流及SDK
+        Run/Action/Wait：draft、sources明确join后compose真实草稿；generate子流程结束才进入approve；approved/rejected/revise按声明转移，report-publishing-transition与state.revisions将修订限制为2次，第三次进入limit。report-application.ts的assertApprovalMaterial/approvedReport/actualReport分别核对当前Run工件、审批提案摘要与真实文件，publish前及原子提交前再次核对，validateOutcome检查实际发布文件。匹配Runtime报告回归覆盖拒绝/修改/修订上限、陈旧提案、错误候选、伪造完成、批准后漂移和unknown恢复；22个打包CLI请求显示审批前无publish
+        Action、同一same-report经新进程修改并重新批准后完成，另一项目同名Run拒绝且无发布文件。实际批准发布文件SHA33b31e8c与报告摘要一致；publication-unknown/reconciled材料保持原quarterly-report:3、attempt1、inputHash、claimToken及文件birthtime/mtime。源码和中文样板明确不继承Native独立验收；依据Action58正式检查及39份已核对SHA材料通过A13，不把后续A24宿主模型未运行算为本项通过证据。
+      truncated: false
+builder_handoff:
+  candidate_id: 80724a55f19dfe5bf39a02898012d78f653ab0f4
+  identity_provider: skill-coordinated
+  builder_execution_ref: /root/standalone_builder
+  iteration: 1
+  summary:
+    text: 公开独立报告 Application 工厂通过 SDK 子流程、明确 join、实际工件审批、拒绝和有界修订路径完成本地发布与跨进程恢复；不继承
+      Native 独立验收。
+    truncated: false
+  addressed_acceptance_ids:
+    - A13
+  checks:
+    - name:
+        text: 构建与发布 Runtime 同步
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: SDK、Application、Native 扩展、CLI 与 Runtime 资产相关回归
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: 实际 npm 包消费者与多进程报告批准/拒绝路径
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: 生产源码 ESLint
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: 仓库职责边界
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: classic 生成物一致性
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: native 生成物一致性
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: entry 生成物一致性
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: 五个公开 SDK API 报告
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: 本任务显式源文件、测试与中文文档格式
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: 父 Run 固定默认 Native 定义没有漂移
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: 相对激活基线的差异空白检查
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-05T16:46:10.595Z
+blockers: []
+verification:
+  candidate_id: 80724a55f19dfe5bf39a02898012d78f653ab0f4
+  identity_provider: skill-coordinated
+  verifier_execution_ref: /root/standalone_verifier59
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: report-build
+      name:
+        text: 构建与发布 Runtime 同步
+        truncated: false
+      argv_display:
+        - text: build.js
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 30242
+    - id: report-sdk-contracts
+      name:
+        text: SDK、Application、Native 扩展、CLI 与 Runtime 资产相关回归
+        truncated: false
+      argv_display:
+        - text: node_modules/vitest/vitest.mjs
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/domains/engine
+          truncated: false
+        - text: test/domains/workflow-application
+          truncated: false
+        - text: test/domains/comet-native/native-application.test.ts
+          truncated: false
+        - text: test/repository/native-runtime-assets.test.ts
+          truncated: false
+        - text: test/repository/comet-entry-runtime-assets.test.ts
+          truncated: false
+        - text: test/app/runtime-command.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 401066
+    - id: report-packed-cli
+      name:
+        text: 实际 npm 包消费者与多进程报告批准/拒绝路径
+        truncated: false
+      argv_display:
+        - text: node_modules/vitest/vitest.mjs
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/app/report-application-cli.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 61537
+    - id: report-eslint
+      name:
+        text: 生产源码 ESLint
+        truncated: false
+      argv_display:
+        - text: node_modules/eslint/bin/eslint.js
+          truncated: false
+        - text: app/
+          truncated: false
+        - text: domains/
+          truncated: false
+        - text: platform/
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 10571
+    - id: report-architecture
+      name:
+        text: 仓库职责边界
+        truncated: false
+      argv_display:
+        - text: scripts/lint/architecture.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2608
+    - id: report-generated-classic
+      name:
+        text: classic 生成物一致性
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-classic-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 662
+    - id: report-generated-native
+      name:
+        text: native 生成物一致性
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-native-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1097
+    - id: report-generated-entry
+      name:
+        text: entry 生成物一致性
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-entry-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 287
+    - id: report-api
+      name:
+        text: 五个公开 SDK API 报告
+        truncated: false
+      argv_display:
+        - text: scripts/release/check-sdk-api.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 12481
+    - id: report-format
+      name:
+        text: 本任务显式源文件、测试与中文文档格式
+        truncated: false
+      argv_display:
+        - text: node_modules/prettier/bin/prettier.cjs
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: domains/workflow-application/report-application.ts
+          truncated: false
+        - text: domains/workflow-application/index.ts
+          truncated: false
+        - text: test/domains/workflow-application/report-application.test.ts
+          truncated: false
+        - text: test/app/report-application-cli.test.ts
+          truncated: false
+        - text: docs/architecture/standalone-report-application.zh.md
+          truncated: false
+        - text: CHANGELOG.md
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1107
+    - id: report-native-definition
+      name:
+        text: 父 Run 固定默认 Native 定义没有漂移
+        truncated: false
+      argv_display:
+        - text: --input-type=module
+          truncated: false
+        - text: -e
+          truncated: false
+        - text: import { defineNativeWorkflowApplication } from
+            './dist/domains/comet-native/native-sdk-application.js'; import {
+            defineWorkflow,hashRuntimeValue } from
+            './dist/domains/engine/runtime.js'; const
+            value=hashRuntimeValue(defineWorkflow(defineNativeWorkflowApplication().workflow));
+            console.log(value);
+            if(value!=='500dc5be719eb5493dbdadf35c372de49f0232439eef849bb521f6b3db346aff')process.exit(1);
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 425
+    - id: report-whitespace
+      name:
+        text: 相对激活基线的差异空白检查
+        truncated: false
+      argv_display:
+        - text: diff
+          truncated: false
+        - text: --check
+          truncated: false
+        - text: 884e4b5395293428dbe1f50a20d9d8bb26446a3e
+          truncated: false
+        - text: HEAD
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 230
+  summary:
+    text: 候选 80724a55f19dfe5bf39a02898012d78f653ab0f4（tree
+      fdd68520dd4f61f2e57917e98bdfbb8699612193），worktree
+      分支与激活基线884e4b53匹配且无未提交修改。独立阅读正式
+      R13/A13、实现、10项报告文件/SDK回归与2项真实npm消费者CLI测试，最后才读取Builder交接。复用
+      comet-any-sdk:58 的12项正式Runtime检查：全部
+      passed/exitCode0，12份日志SHA与冻结候选/输入一致；SDK相关回归32文件348项，打包CLI1文件2项通过。独立重新核对39材料在工作区与保存副本的SHA、22个独立CLI请求、真实审批与发布字节、原unknown
+      Action及其核对后结果。覆盖顺序、分支、明确join、子workflow、有界修订、审批前不发布、拒绝/修改、跨进程同Run、实际文件/审批摘要绑定、旧提案/错Run工件拒绝、批准后漂移与未知结果不重写。样板只证明声明的Markdown格式与本地发布，不证明来源事实，也不自动继承Native独立验收/交付授权。本轮没有重跑有效正式命令计划；没有新的真实Claude/Codex宿主或模型调用，Claude固定12样本正式矩阵属后续A24，CI和全仓测试未执行，不能宣称整体生产验收已完成。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-05T17:02:04.194Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-05T16:46:10.595Z
