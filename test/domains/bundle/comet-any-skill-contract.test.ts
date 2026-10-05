@@ -68,20 +68,21 @@ describe('comet-any skill contract', () => {
     ).toEqual([]);
   });
 
-  it('documents the full six-script generated package', async () => {
-    const bundleAuthoring = await readText('assets/skills/comet-any/reference/bundle-authoring.md');
-    for (const script of [
-      'workflow-state.mjs',
-      'workflow-guard.mjs',
-      'workflow-handoff.mjs',
-      'comet-plan.mjs',
-      'comet-check.mjs',
-      'comet-hook-guard.mjs',
-    ]) {
-      expect(bundleAuthoring, `bundle-authoring.md missing ${script}`).toContain(script);
+  it('documents SDK application material and actual confirmation requests', async () => {
+    for (const root of ['assets/skills/comet-any', 'assets/skills-zh/comet-any']) {
+      const reference = await readText(`${root}/reference/sdk-creation.md`);
+      for (const term of [
+        '@rpamis/comet/applications/compiler',
+        'comet.workflow.application.plan.v1',
+        'record-outcome',
+        'resolve-wait',
+        'confirm-plan',
+        'confirm-install',
+        'proposalHash',
+      ])
+        expect(reference).toContain(term);
     }
   });
-
   it('keeps comet-any guidance on eval evidence, not legacy benchmark commands (en + zh)', async () => {
     for (const localeRoot of ['assets/skills/comet-any', 'assets/skills-zh/comet-any']) {
       const docs = await readTree(path.resolve(REPO_ROOT, localeRoot));
@@ -101,34 +102,18 @@ describe('comet-any skill contract', () => {
     }
   });
 
-  it('dispatches authoring roles directly without platform capability branches (en + zh)', async () => {
-    const localeRoots = ['assets/skills/comet-any', 'assets/skills-zh/comet-any'];
-    const forbidden = [
-      'platform supports subagents',
-      'platform subagent capability',
-      'platform does not support model selection',
-      "current platform's subagent mechanism",
-      '平台支持 subagent',
-      '平台 subagent 能力',
-      '平台不支持 model 选择',
-      '当前平台的 subagent 机制',
-      'platform-native custom agent',
-    ];
-
-    for (const localeRoot of localeRoots) {
-      const docs = await readTree(path.resolve(REPO_ROOT, localeRoot));
-      const combined = Object.values(docs).join('\n');
-      for (const phrase of forbidden) {
-        expect(combined, `${localeRoot} still branches on ${phrase}`).not.toContain(phrase);
-      }
+  it('delegates actual work without requiring a fixed set of authoring roles', async () => {
+    for (const root of ['assets/skills/comet-any', 'assets/skills-zh/comet-any']) {
+      const skill = await readText(`${root}/SKILL.md`);
+      expect(skill).not.toContain('authoring DAG');
+      expect(skill).not.toContain('wave1');
+      expect(skill).not.toContain('six responsibility-specific subagents');
+      expect(skill).not.toContain('六个职责独立的 subagent');
+      expect(skill).toContain('analyze');
+      expect(skill).toContain('confirm-plan');
+      expect(skill).toContain('confirm-install');
     }
-
-    const zh = await readText('assets/skills-zh/comet-any/reference/authoring-subagents.md');
-    const en = await readText('assets/skills/comet-any/reference/authoring-subagents.md');
-    expect(zh).toContain('主会话按 authoring DAG 为每个 lane 派发全新的 subagent');
-    expect(en).toContain('dispatches a fresh subagent for every lane in the authoring DAG');
   });
-
   it('generator source emits honest review evidence, not a fabricated approval', async () => {
     const packageSource = await readText('domains/factory/package.ts');
     expect(packageSource, 'generator must not fabricate review approval').not.toContain(

@@ -123,6 +123,9 @@ export function createReportApplication(context: Pick<WorkflowApplicationFactory
 }): WorkflowApplicationImplementation;
 
 // @public
+export function createStandaloneApplication(options: StandaloneApplicationOptions): WorkflowApplicationImplementation;
+
+// @public
 export function inspectApplicationSkill(root: string): Promise<InspectedSkill>;
 
 // @public (undocumented)
@@ -254,6 +257,25 @@ export interface SkillExecutionHost {
         resolution: 'executed';
         outcome: RuntimeOutcome;
     }>;
+}
+
+// @public (undocumented)
+export interface StandaloneApplicationOptions {
+    // (undocumented)
+    executorIds: readonly string[];
+    // (undocumented)
+    executors: readonly RuntimeExecutor[];
+    // (undocumented)
+    transitionHandlers: readonly WorkflowTransitionHandler[];
+    // (undocumented)
+    validatorRefs: readonly {
+        id: string;
+        version: string;
+    }[];
+    // (undocumented)
+    validators: readonly RuntimeValidator[];
+    // (undocumented)
+    workflows: readonly DefineWorkflowOptions[];
 }
 
 // @public (undocumented)

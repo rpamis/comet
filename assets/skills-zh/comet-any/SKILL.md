@@ -1,119 +1,45 @@
 ---
 name: comet-any
-description: "通过 Comet Creator 创建或升级 Comet Classic workflow Skill。不用于一般 Skill 的编写、整理或评审。"
+description: '根据自然语言目标，创作或继续 Native 扩展、Classic 编排或独立 SDK 工作流；调查真实 Skills，确认方案后生成并预览安装。不用于一般 Skill 的编写、整理或评审。'
 disable-model-invocation: true
 ---
 
-# Comet Any - Skill Creator
+# Comet Any
 
-`/comet-any` 是 Comet 的 Skill 创建向导。用户只需要描述想要的工作流；本 Skill 负责读取真实 Skill、提出方案、等待确认、生成可验证的 Comet-native Skill Bundle，并通过内部 CLI 完成 eval、review、publish readiness 和安装预览。
+用户描述目标后，先调查真实 Skill，再展示具体流程。Creator 保存同一次创作的目标、方案、决定、固定依赖、编译产物和安装预览；通过公开 `comet creator` 命令继续。完成一个阶段后读取当前动作，持续推进到完成、需要用户决定或外部能力阻塞。
 
-普通用户第一层只看到三种起点：
+## 开始或继续
 
-- `基于 /comet-classic 的五阶段定制`：覆盖 `open / design / build / verify / archive` 五阶段的 Skill 编排，但不修改 `/comet-classic` 永久入口本身。
-- `创建全新 workflow Skill`：从目标和候选 Skills 生成新的 `workflow-kernel`。
-- `整理已有 Skill`：读取已有 Skill，补齐 Workflow Node、Skill Binding、Output Schema、Guardrail、Handoff、eval 和 readiness。
+1. 已知创作名称时运行 `comet creator status <name> --project <项目> --json`，再执行 `comet creator next <name> --project <项目> --json`。保留原名称与 Run；中断后先查询原 Action，不重复发起已完成工作。
+2. 新创作先读取 `comet creator guide --project <项目> --json`。从用户描述确定目标与安装位置；只有无法调查且会改变结果的选择才询问用户。使用 `comet creator start <name> --project <项目> --goal <用户目标> --install-target <相对目录> --host codex|claude-code --json` 启动。
+3. 首次领取或提交动作前，读取[创作动作与恢复](reference/sdk-creation.md)。使用返回的 Action、attempt、inputHash 和本次宿主会话标识；当前动作没有所需能力时明确阻塞，保留现场。
 
-后端 Bundle、Factory、composition 仍是内部审计词；不要把它们作为普通用户的第一屏概念。
+## 分析与方案
 
-## 核心模型
+`analyze` 需要宿主读取真实 Skills 并组织具体方案。可按工作量委派调查或创作工作；只在实际需要时交接，传递原目标、当前动作、工作范围和固定依赖，不固定子代理数量。
 
-所有路径都必须编译到同一种 Workflow Contract：
+1. 用 `comet creator candidates --project <项目> --json` 发现候选；读取候选的 `SKILL.md`、脚本和必要资源。检查实际输入、输出、授权、宿主能力、结束条件、失败与恢复；不按名称推测能力，不改第三方原文件。
+2. 对方案中必须使用的 Skill：
 
-- `Workflow Node`：流程中的可恢复节点，例如 `open`、`design`、`plan`、`execute`、`subagent-execute`、`review`、`verify`、`archive`。
-- `Node Responsibility`：该 Node 在 Agent workflow 中承担的职责，用来解释它为什么存在、需要产出什么、能否替换。
-- `Skill Binding`：某个 Node 的实现 Skill 或辅助 Skill。
-- `Required Skill Call`：要求 Node 内必须调用某个 Skill，不替换 Node implementation。例如 `execute` 和 `subagent-execute` 必须调用 `elementui`，`review` 必须调用 `whitebox-code-standard`。
-- `Output Schema`：Node 必须产出的文件、状态或 evidence。Output Schema 必须挂到具体 Workflow Node 才算生效；只定义在 `workflow.outputSchemas` 里不会触发 guard、eval 或 readiness。脚本、eval、readiness 只依赖挂到 Node 的 Output Schema，不依赖 Skill 名称。
-- `Guardrail`：阻断或放行 Node 推进的检查。
-- `Handoff`：子代理或跨 Node 交接时必须带回的 evidence。
-- `workflow-protocol.json`：生成包的唯一运行事实源，kind 为 `comet-five-phase-overlay` 或 `workflow-kernel`。
+   **立即执行：** 使用 Skill 工具加载 <skill-name> 技能。禁止跳过此步骤。
 
-## 受保护边界
+   技能加载后，依据实际内容填写适配契约与内容摘要。加载记录、自报完成、机器检查和独立评审分别说明；自行发布或接管审批的完整流程不能冒充普通指导。
 
-`comet-five-phase-overlay` 保留 Comet Classic 五阶段主流程和 `.comet.yaml` 状态语义。普通模式下：
+3. 选择用户需要的起点：Native 增加步骤、指导和审查；Classic 在 full、hotfix、tweak 的允许位置编排；独立流程声明自己的顺序、分支、汇合、子流程和有界修复。报告审批发布是可运行样板，不代表任意流程自动获得 Native 独立验收。
+4. 按参考中的结构回传当前分析结果。组合器从固定方案装配实际流程与执行绑定；缺少实现、验证器、依赖或能力时停止并给出修正动作。
 
-- `comet-five-phase-overlay` 的主状态只来自 Classic layout resolver 绑定的 `<classic-change-dir>/.comet.yaml`；没有 active change 或多个 active changes 时必须阻塞并请用户选择。
-- 不得创建 `.comet/runs/<workflow>/state.json` 作为 Comet overlay 主状态。Bundle 草稿、eval evidence 和 publish readiness 可以有自己的证据文件，但不能替代 `.comet.yaml`。
-- `control` Node 不允许 override：`open`、`execute`、`verify`、`archive`。
-- `producer` Node 可以 override：`design`、`plan`，但必须满足对应 Output Schema。
-- `handoff` 和 `guardrail` Node 可以 require / augment。
-- 用户坚持替换 control Node 时，改走高级 `workflow-kernel`，并要求重新声明 state、Output Schema 和 Guardrail。
-- 所有 Node 都必须用 responsibility 说明职责，不使用内部坐标作为用户理解流程的方式。
+## 确认、验证与交付
 
-## 工作步骤
+1. `next` 到达方案确认时，向用户展示实际步骤、绑定 Skill、产物、检查、失败路径和能力限制。用职责与行为解释流程，不要求用户理解内部协议名。明确哪些结论只有本地检查、哪些已有真实宿主或模型证据。
+2. 用户明确确认当前方案后，提交当前 `confirm-plan` 的用户决定。摘要只是方案标识；得到摘要不等于获得授权。拒绝则保留现场；修改方案走 `revise`，受影响的确认与验证重新执行。
+3. 连续调用 `next` 完成编译与实际加载验证。失败时修正原现场，沿原 Action 恢复；不得填入成功字符串代替真实产物、Schema、候选或依赖检查。
+4. 安装前展示当前目标目录、将写入的文件、固定版本及冲突，并说明预览没有写入安装目标。只在用户明确批准当前预览后提交 `confirm-install`；沿用仍有效的已有批准，不扩大授权。目标、依赖或文件变化时重新预览和确认。
+5. 当前创作完成后，报告包与入口位置、实际检查、未执行项和限制。真实业务流程、宿主 Hook、交接和模型执行须另有证据；本地编译通过不能写成生产验收通过。
 
-1. 恢复现有状态：先运行 `comet creator guide --project . --json`，展示恢复摘要和下一步。
-2. 读取项目偏好：读取 `.comet/skill-preferences.yaml`，用 `comet creator candidates --json` 发现真实本地 Skill，再用 `comet skill show <name> --json` 读取候选的真实内容与 hash。不得只按名字推测能力。
-3. 生成方案：把用户目标表达为 Workflow Nodes、Skill Bindings、Output Schemas、Guardrails、Handoffs 和 Evidence。
-4. 展示确认页：说明每个 Node 的职责、绑定 Skill、Required Skill Call、Output Schema、可执行披露和 readiness 影响。确认页必须为每个新增 binding 或 schema 显示 enforcement：`guarded`、`handoff-guarded`、`evidence-only` 或 `advisory`。
-5. 等待用户确认：未确认前不得写 Bundle draft；存在 missing / ambiguous Skill 时必须暂停。
-6. 初始化后端状态：确认后调用 `comet creator init <name> --file <plan.json> --confirmed-proposal --json`。
-7. 运行创作管线并生成 Bundle：先运行 `comet creator authoring-plan <name> --depth quick|full --json` 取得 lane DAG。按 DAG 派发 lane——wave1（`script`、`reference`、`pause-points`）并发派发，wave2（`workflow-entry`、`skill-core`）在 script 契约之后并发派发，`skill-review` 作为汇聚 barrier。每个 lane 的产出用 `comet creator authoring-record <name> --lane <id> --file <out.json> --json` 记录（经 schema 校验；BLOCKED/NEEDS_CONTEXT 会被拒绝）。随后运行 `comet creator generate <name> --json`：把记录的内容叶子草稿（entry/node SKILL.md、decision-points、recovery）合并进包，而确定性脊梁（protocol/scripts/manifest）保持模板化，并渲染真实审查证据。产出 entry Skill、Node Skills、`reference/workflow-protocol.json`、六个 scripts、rules、hooks 与 `comet/eval.yaml`。
-8. 验证：展示 quick/full eval 工作量，运行或记录当前 draft hash 的 eval evidence；失败、skip 或证据 hash 过期时不得进入 ready。
-9. Review / readiness：读取 `comet publish review <name> --platform <reference-platform> --json`，展示 `Readiness:`、`Blockers:`、`Warnings:`、`Evidence:`。
-10. Publish / install preview：人工批准后才能 publish；安装前必须先运行 preview，并展示 `No files were written`。
+## 恢复边界
 
-## 方案示例
-
-组件库和白盒审查场景应生成类似 plan：
-
-```json
-{
-  "goal": "基于 /comet-classic 的五阶段定制，要求组件库和白盒审查。",
-  "skillCreatorIntent": "customize-comet",
-  "workflow": {
-    "kind": "comet-five-phase-overlay",
-    "name": "team-comet",
-    "goal": "要求组件库和白盒审查。",
-    "nodes": {
-      "execute": {
-        "requiredSkillCalls": [
-          {
-            "skill": "elementui",
-            "reason": "Use project component library during direct implementation."
-          }
-        ]
-      },
-      "subagent-execute": {
-        "requiredSkillCalls": [
-          {
-            "skill": "elementui",
-            "scope": "handoff"
-          }
-        ]
-      },
-      "review": {
-        "requiredSkillCalls": [
-          {
-            "skill": "whitebox-code-standard",
-            "scope": "review"
-          }
-        ]
-      }
-    }
-  }
-}
-```
-
-## 硬性规则
-
-- 必须先展示方案确认页，再生成。
-- 确认页必须为每个新增 binding 或 schema 显示 enforcement：`guarded`、`handoff-guarded`、`evidence-only` 或 `advisory`。
-- Required Skill Call 不替换 Node implementation。
-- producer override 必须声明 `satisfies` 的 Output Schema。
-- Output Schema 必须挂到具体 Workflow Node 才算生效；只定义在 `workflow.outputSchemas` 里不会触发 guard、eval 或 readiness。
-- control Node 普通模式不得 override。
-- eval、review、publish readiness 必须读取同一份 `workflow-protocol.json`。
-- readiness blockers 必须阻止 publish：缺少当前 draft hash 的 eval evidence、人工 approval、required capability 或 executable disclosure 任一项都不能进入 ready。
-- 子代理 Handoff 必须要求子代理加载 Required Skill Call 并回传 evidence。
-- 脚本只读取 protocol 和 state，不把 Skill 名称当成校验依据。
-- 安装前必须询问用户，不得自动安装。
-
-## 参考资料
-
-- `comet-any/reference/authoring-protocol.json`
-- `comet-any/reference/authored-zone-example.md`
-- `comet-any/reference/bundle-authoring.md`
-- `comet-any/reference/authoring-subagents.md`
-- `comet-any/reference/eval-provider.md`
+- 使用原 Run ID 和当前动作继续；旧 attempt、陈旧方案或错误候选的结果不能推进。
+- 未知结果先核对实际编译或安装文件；无法核对时阻塞，不盲目重复外部工作。
+- 凭据只从执行上下文注入，不能写入方案、生成包、Run、报告或 Agent 配置。
+- Codex 和 Claude Code 保留适配契约；本轮真实宿主与模型是否已验收，以当前候选证据为准。
+- 旧 `workflow-protocol.json` 与旧创作格式须重新生成，保留用户文件，不静默转换。

@@ -722,6 +722,32 @@ const creator = program
   .description('Create or resume Skill Creator candidates for /comet-any');
 
 creator
+  .command('start <name>')
+  .description('从自然语言目标启动可恢复创作')
+  .option('--project <dir>', 'Project root', '.')
+  .requiredOption('--goal <text>', '自然语言工作流目标')
+  .requiredOption('--install-target <directory>', '项目内相对安装目录')
+  .addOption(
+    new Option('--host <host>', '执行宿主').choices(['codex', 'claude-code']).default('codex'),
+  )
+  .option('--json', 'Output as JSON')
+  .action(async (name, options) => {
+    const { creatorStartCommand } = await import('../commands/creator.js');
+    await creatorStartCommand(name, options);
+  });
+
+creator
+  .command('dispatch <name>')
+  .description('领取创作动作、回传真实结果或提交当前用户决定')
+  .option('--project <dir>', 'Project root', '.')
+  .requiredOption('--request <path>', '当前SDK动作的JSON请求')
+  .option('--json', 'Output as JSON')
+  .action(async (name, options) => {
+    const { creatorDispatchCommand } = await import('../commands/creator.js');
+    await creatorDispatchCommand(name, options);
+  });
+
+creator
   .command('list')
   .description('List Skill Creator candidates that can be resumed')
   .option('--project <dir>', 'Project root', '.')

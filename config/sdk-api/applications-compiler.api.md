@@ -8,6 +8,21 @@
 export type ApplicationCompositionPlan = {
     kind: 'report';
 } | {
+    kind: 'standalone';
+    workflows: DefineWorkflowOptions[];
+    transitionHandlers: Array<{
+        id: string;
+        version: string;
+        module: string;
+        exportName: string;
+        sourceHash: string;
+    }>;
+    executorIds: string[];
+    validatorRefs: Array<{
+        id: string;
+        version: string;
+    }>;
+} | {
     kind: 'native';
     extensions: Array<ApplicationExtensionPlan & {
         scopes: Array<'candidate' | 'parent' | 'child' | 'integration'>;
@@ -67,6 +82,9 @@ export interface CompileWorkflowApplicationOptions {
     // (undocumented)
     projectRoot: string;
 }
+
+// @public
+export function hashWorkflowApplicationPlanContent(plan: unknown, dependencyRoot?: string): Promise<string>;
 
 // @public
 export function prepareWorkflowApplicationPlan(options: {

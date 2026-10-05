@@ -395,6 +395,18 @@
       {
         "from": "comet-native",
         "to": "workflow-application"
+      },
+      {
+        "to": "engine",
+        "from": "workflow-creation"
+      },
+      {
+        "to": "workflow-generation",
+        "from": "workflow-creation"
+      },
+      {
+        "to": "workflow-application",
+        "from": "workflow-creation"
       }
     ],
     "crossDomainEntrypoints": [
@@ -485,7 +497,8 @@
       "domains/workflow-contract/types.ts",
       "domains/workflow-application/index.ts",
       "domains/workflow-application/application.ts",
-      "domains/workflow-application/skill-adapter.ts"
+      "domains/workflow-application/skill-adapter.ts",
+      "domains/workflow-generation/index.ts"
     ],
     "restrictedDependencies": [
       {
@@ -547,6 +560,7 @@
     "skill",
     "workflow-application",
     "workflow-contract",
+    "workflow-creation",
     "workflow-generation"
   ],
   "platformModules": ["fs", "http", "install", "paths", "process", "version"],

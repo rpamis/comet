@@ -30,6 +30,20 @@ export interface ApplicationExtensionPlan {
 export type ApplicationCompositionPlan =
   | { kind: 'report' }
   | {
+      kind: 'standalone';
+      workflows: DefineWorkflowOptions[];
+      transitionHandlers: Array<{
+        id: string;
+        version: string;
+        module: string;
+        exportName: string;
+        /** 使用公开SDK的hashRuntimeValue(moduleSource)固定完整源码字符串。 */
+        sourceHash: string;
+      }>;
+      executorIds: string[];
+      validatorRefs: Array<{ id: string; version: string }>;
+    }
+  | {
       kind: 'native';
       extensions: Array<
         ApplicationExtensionPlan & {
@@ -149,6 +163,40 @@ const planSchema = {
         {
           type: 'object',
           additionalProperties: false,
+          required: ['kind', 'workflows', 'transitionHandlers', 'executorIds', 'validatorRefs'],
+          properties: {
+            kind: { const: 'standalone' },
+            workflows: { type: 'array', minItems: 1, items: { type: 'object' } },
+            transitionHandlers: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['id', 'version', 'module', 'exportName', 'sourceHash'],
+                properties: {
+                  id: textSchema,
+                  version: textSchema,
+                  module: textSchema,
+                  exportName: { type: 'string', pattern: '^[A-Za-z_$][A-Za-z0-9_$]*$' },
+                  sourceHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+                },
+              },
+            },
+            executorIds: { type: 'array', uniqueItems: true, items: textSchema },
+            validatorRefs: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['id', 'version'],
+                properties: { id: textSchema, version: textSchema },
+              },
+            },
+          },
+        },
+        {
+          type: 'object',
+          additionalProperties: false,
           required: ['kind'],
           properties: { kind: { const: 'report' } },
         },
@@ -261,6 +309,25 @@ function applicationModule(plan: WorkflowApplicationPlan): string {
   const kind = composition.kind;
   if (plan.manifest.module !== 'application.mjs' || plan.modules['application.mjs'])
     applicationError('application.mjs 由组合器生成，不能以手写工厂覆盖');
+  if (kind === 'standalone') {
+    if (plan.manifest.base !== 'standalone' || !plan.modules['bindings.mjs'])
+      applicationError('独立组合需要standalone基础流程与固定bindings.mjs');
+    const imports: string[] = [];
+    const registrations: string[] = [];
+    for (const [index, handler] of composition.transitionHandlers.entries()) {
+      moduleRef(handler.module);
+      const source = plan.modules[handler.module];
+      if (!source || hashRuntimeValue(source) !== handler.sourceHash)
+        applicationError(`转移处理器源码摘要不匹配：${handler.id}`);
+      imports.push(
+        `import { ${handler.exportName} as handler${index} } from './${handler.module}';`,
+      );
+      registrations.push(
+        `{ id:${JSON.stringify(handler.id)},version:${JSON.stringify(handler.version)},apply:handler${index} }`,
+      );
+    }
+    return `import { createStandaloneApplication } from '@rpamis/comet/applications';\nimport { createBindings } from './bindings.mjs';\n${imports.join('\n')}\nconst composition=${canonicalRuntimeJson(composition)};\nexport async function createApplication(context) {\nconst ports=await createBindings(context);\nfor (const key of Object.keys(ports)) if (!['executors','validators'].includes(key)) throw new Error('独立执行端口不能覆盖流程与转移处理器');\nreturn createStandaloneApplication({workflows:composition.workflows,executorIds:composition.executorIds,validatorRefs:composition.validatorRefs,executors:ports.executors??[],validators:ports.validators??[],transitionHandlers:[${registrations.join(',')}]});\n}\n`;
+  }
   if (kind !== 'report' && !plan.modules['bindings.mjs'])
     applicationError('Native/Classic 组合需要固定 bindings.mjs 实现集合');
   if (
@@ -413,6 +480,14 @@ export async function prepareWorkflowApplicationPlan(options: {
   const files = await assemblyFiles(plan, options.dependencyRoot);
   plan.workflows = await inspectAssembly(files, options);
   return plan;
+}
+
+/** 核对编译/恢复的实际字节与确认方案；此查询不生成包或执行业务动作。 */
+export async function hashWorkflowApplicationPlanContent(
+  plan: unknown,
+  dependencyRoot?: string,
+): Promise<string> {
+  return applicationFilesHash(await assemblyFiles(parsePlan(plan), dependencyRoot));
 }
 
 /** 只装配确认的材料；不启动 Run、不执行 Action，也不覆盖已有目录。 */
