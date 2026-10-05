@@ -1,0 +1,345 @@
+schema: comet.native.v4
+name: application-foundation
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/comet-any-sdk/application-foundation
+  target_branch: "045"
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A14
+    source: brief.md
+    text: 真实内容不支持所要求能力、依赖缺失或输入输出不匹配时不能生成虚假可运行承诺；第三方原文件不被改写。
+    result: passed
+    reason:
+      text: 当前候选 domains/workflow-application/skill-adapter.ts:17/59/85 只读真实
+        Skill、脚本与资源闭包，核对内容摘要、实际片段及严格输入输出 Schema；application.ts:225/247 按已审查
+        capability 与工作输出契约拒绝无能力或不匹配绑定。当前 Action39 contracts 覆盖
+        requires-review、false-evidence、missing-resource、unsupported-capability、schema-mismatch
+        与输入失败，断言原 SKILL.md 字节未改。未采用历史29/30或Builder自报替代结果。
+      truncated: false
+  - id: A15
+    source: brief.md
+    text: 含有自行发布或接管审批逻辑的 Skill 不能作为普通指导绕过父流程；加载、自报完成、机器检查和独立评审能被区分。
+    result: passed
+    reason:
+      text: skill-adapter.ts:122 拒绝带副作用、交互或审批的 guidance；application.ts:228/233/245
+        要求指导只读、完整流程为 child_workflow，接管审批的 Skill 不能普通 Action
+        绑定。application.ts:252 与 Runtime Schema/真实业务验证器区分加载、字符串自报和检查，Action39
+        application.test.ts:449 的伪造结果不推进。补充临时公共 SDK fixture
+        四项均通过：machine-check/independent-review
+        无验证器拒绝启动；真实独立评审验证器拒绝同Builder会话结果、保存原
+        claim/rejectedOutcome，并接受不同评审身份。这是本地契约证据，不表示真实宿主模型已验收。
+      truncated: false
+  - id: A2
+    source: brief.md
+    text: 从入口、CLI 和恢复入口访问同一 Run；修改说明文件或投影视图不能绕过已声明的执行规则。
+    result: passed
+    reason:
+      text: application.ts:85/344/405 从固定归属恢复并用 SDK Store/Run
+        统一推进，投影仅在原子提交后同步；app/commands/runtime.ts:433 通过同一应用加载入口执行公开协议。当前
+        Action39 runtime-application.test.ts:348/371 跨公开CLI进程执行与恢复同一Run、编辑
+        projection.json 不改变原Run、伪造Action999的completed字符串拒绝；:175/261
+        的手工claim也必须通过配置端口、精确父级批准和核对能力，拒绝后原Action保持pending且隔离服务操作计数为0。
+      truncated: false
+  - id: A3
+    source: brief.md
+    text: 定制应用经公开入口启动、查询和继续均路由正确；同名不同项目或 worktree 不会串用 Run。
+    result: passed
+    reason:
+      text: application.ts:55/85/101 固定应用独立身份、项目realpath和包位置，在每个项目的
+        .comet/runtime/applications/<id> 存储；current-selection.ts
+        的applicationId与Run选择、hook-router.ts:378及hook-router-entry.ts:69恢复相同应用。当前
+        Action39 runtime-application.test.ts:422 对相同应用/Run名称在主项目与linked
+        worktree分别执行，主项目仍pending而linked为succeeded；:465/:502
+        验证切换内置与定制Guard只路由当前应用及生成Hook在无内置配置时恢复定制Run。四个Windows条件跳过仅为POSIX
+        symlink/FIFO边界，未计为通过。
+      truncated: false
+  - id: A4
+    source: brief.md
+    text: 修改同版本定义、依赖 Skill 或资源后，活动 Run 拒绝按新内容继续；恢复原依赖后可以沿原记录恢复。
+    result: passed
+    reason:
+      text: application.ts:107/123/136/152
+        固定manifest/module、包中全部文件、Skill完整内容/资源、Runtime版本与项目归属；已有Run在import前核对身份，每次Store读取/CAS重新核对依赖。当前
+        Action39 runtime-application.test.ts:400
+        的application.mjs/application.json/SKILL.md/reference资源同版本漂移均拒绝，恢复原字节后返回原Run；application.test.ts:512
+        的长驻宿主在资源漂移后不能dispatch，恢复资源后继续原pending Action；Runtime定义hash同版本漂移测试同样通过。
+      truncated: false
+  - id: A5
+    source: brief.md
+    text: 未满足依赖的越序回报、旧 attempt、错误 Action 归属和陈旧提案不能推进；合法并行 Action 可按任意完成顺序回报；断连后保留原
+      Action，已发生的外部操作不被自动重发。
+    result: passed
+    reason:
+      text: runtime-action.ts
+        的Action/attempt/inputHash/claim绑定、runtime-service.ts:699/765
+        的CAS领取和结果检查及 skill-executor.ts:76 的精确Wait序列/提案批准共同保护推进。当前 Action39
+        application.test.ts:69/92
+        逆序合法并行只在两项完成后join，未派发Action、旧attempt、错误claim和陈旧提案拒绝；runtime-service.test.ts:248
+        验证并发完成仍只产生一次join，runtime-protocol-adversarial.test.ts:68
+        拒绝跨Run归属。application.test.ts:567与runtime-application.test.ts:288保留断连unknown的原Action/claim，读取原执行结果后回报及幂等重放，隔离服务实际操作计数仍为1，无自动重发。
+      truncated: false
+builder_handoff:
+  candidate_id: 5facee8f1d6d7b374b973ab6cb039ce40d2f204f
+  identity_provider: skill-coordinated
+  builder_execution_ref: 01a10268-46b4-7aa3-a54d-ef1372b97bfa
+  iteration: 1
+  summary:
+    text: 按c50固定控制消费者恢复Action38的Foundation交接；候选/base均5facee8f，六项要求的原实现与代码树未变化，无新增代码。提交同一完整八项verificationChecks，等待新的Runtime检查、独立Verifier及集成。
+    truncated: false
+  addressed_acceptance_ids:
+    - A14
+    - A15
+    - A2
+    - A3
+    - A4
+    - A5
+  checks:
+    - name:
+        text: Build declarations and generated Runtime assets
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: Application CLI, Skill contracts, SDK execution, selection and Hook
+          regressions
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: Source lint
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: Repository ownership and dependency constraints
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: Classic generated asset determinism
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: Native generated asset determinism
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: Entry and Hook Router generated asset determinism
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: Public applications and Runtime API reports
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-04T11:19:37.378Z
+blockers: []
+verification:
+  candidate_id: 5facee8f1d6d7b374b973ab6cb039ce40d2f204f
+  identity_provider: skill-coordinated
+  verifier_execution_ref: 01a106a6-4604-7161-815b-1e47d00fb4e2
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: foundation-build
+      name:
+        text: Build declarations and generated Runtime assets
+        truncated: false
+      argv_display:
+        - text: build.js
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 28322
+    - id: foundation-contracts
+      name:
+        text: Application CLI, Skill contracts, SDK execution, selection and Hook
+          regressions
+        truncated: false
+      argv_display:
+        - text: node_modules/vitest/vitest.mjs
+          truncated: false
+        - text: run
+          truncated: false
+        - text: test/app/runtime-command.test.ts
+          truncated: false
+        - text: test/app/runtime-application.test.ts
+          truncated: false
+        - text: test/domains/workflow-application/application.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-execution.test.ts
+          truncated: false
+        - text: test/domains/comet-entry/hook-router.test.ts
+          truncated: false
+        - text: test/domains/comet-entry/hook-router-entry.test.ts
+          truncated: false
+        - text: test/domains/comet-entry/hook-project-root.test.ts
+          truncated: false
+        - text: test/domains/comet-entry/current-selection.test.ts
+          truncated: false
+        - text: test/domains/comet-entry/current-selection-repair.test.ts
+          truncated: false
+        - text: test/scripts/sdk-api.test.ts
+          truncated: false
+        - text: test/repository/repository-layout.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-transition.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-service.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-action.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-protocol-adversarial.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-children.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-until-blocked.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-handlers.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-run-validation.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-compat.test.ts
+          truncated: false
+        - text: test/domains/engine/runtime-example.test.ts
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 76474
+    - id: foundation-source-lint
+      name:
+        text: Source lint
+        truncated: false
+      argv_display:
+        - text: node_modules/eslint/bin/eslint.js
+          truncated: false
+        - text: app/
+          truncated: false
+        - text: domains/
+          truncated: false
+        - text: platform/
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 28359
+    - id: foundation-architecture
+      name:
+        text: Repository ownership and dependency constraints
+        truncated: false
+      argv_display:
+        - text: scripts/lint/architecture.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2784
+    - id: foundation-classic-assets
+      name:
+        text: Classic generated asset determinism
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-classic-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 684
+    - id: foundation-native-assets
+      name:
+        text: Native generated asset determinism
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-native-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 1087
+    - id: foundation-entry-assets
+      name:
+        text: Entry and Hook Router generated asset determinism
+        truncated: false
+      argv_display:
+        - text: scripts/build/build-entry-runtime.mjs
+          truncated: false
+        - text: --check
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 292
+    - id: foundation-sdk-api
+      name:
+        text: Public applications and Runtime API reports
+        truncated: false
+      argv_display:
+        - text: scripts/release/check-sdk-api.mjs
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 10760
+  summary:
+    text: application-foundation本轮独立本地基础验收：A2/A3/A4/A5/A14/A15六项通过，候选5facee8f、指定worktree/branch及Action39绑定一致；复用当前39八项Runtime检查与匹配SHA256日志，contracts为21文件/253通过/4个Windows条件跳过。补充A15临时公共SDK隔离fixture四项通过。未声明真实宿主/模型、其他Child或整需求完成。
+      完整独立报告：C:\Users\BENYM\AppData\Local\Temp\comet-any-045-host-trial\foundation-verifier40-independent-report.json
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-04T11:36:28.121Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-04T11:19:37.378Z
