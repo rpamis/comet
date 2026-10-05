@@ -377,6 +377,14 @@
         "to": "engine"
       },
       {
+        "from": "workflow-generation",
+        "to": "workflow-application"
+      },
+      {
+        "from": "workflow-generation",
+        "to": "engine"
+      },
+      {
         "from": "workflow-application",
         "to": "workflow-contract"
       },
@@ -476,7 +484,8 @@
       "domains/workflow-contract/protected-project-path.ts",
       "domains/workflow-contract/types.ts",
       "domains/workflow-application/index.ts",
-      "domains/workflow-application/application.ts"
+      "domains/workflow-application/application.ts",
+      "domains/workflow-application/skill-adapter.ts"
     ],
     "restrictedDependencies": [
       {
@@ -537,7 +546,8 @@
     "project-knowledge",
     "skill",
     "workflow-application",
-    "workflow-contract"
+    "workflow-contract",
+    "workflow-generation"
   ],
   "platformModules": ["fs", "http", "install", "paths", "process", "version"],
   "scriptModules": ["benchmark", "build", "install", "lib", "lint", "release"],

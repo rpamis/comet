@@ -14,6 +14,7 @@ const update = arguments_.includes('--update');
 const entrypoints = [
   './runtime',
   './applications',
+  './applications/compiler',
   './applications/native',
   './applications/classic',
   './plugins',

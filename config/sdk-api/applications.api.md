@@ -20,6 +20,33 @@ export interface AdaptedSkill extends InspectedSkill {
 }
 
 // @public (undocumented)
+export interface ApplicationArtifactCheck {
+    // (undocumented)
+    ref: string;
+    requiredText?: readonly string[];
+    schema?: RuntimeValue;
+}
+
+// @public (undocumented)
+export interface ApplicationArtifactValidatorOptions {
+    // (undocumented)
+    artifacts: readonly ApplicationArtifactCheck[];
+    candidateFromAction(input: CandidateInput): RuntimeValue;
+    currentCandidate(input: CandidateInput): RuntimeValue | Promise<RuntimeValue>;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    projectRoot: string;
+    // (undocumented)
+    validateActual?(input: ValidationInput & {
+        files: Readonly<Record<string, string>>;
+        candidate: RuntimeValue;
+    }): RuntimeValidation | Promise<RuntimeValidation>;
+    // (undocumented)
+    version: string;
+}
+
+// @public (undocumented)
 export type ApplicationBase = 'standalone' | 'native' | 'classic-full' | 'classic-hotfix' | 'classic-tweak';
 
 // @public (undocumented)
@@ -83,6 +110,9 @@ export function applicationSkillWork(application: LoadedWorkflowApplication, run
         files: Readonly<Record<string, string>>;
     };
 }[];
+
+// @public
+export function createApplicationArtifactValidator(options: ApplicationArtifactValidatorOptions): RuntimeValidator;
 
 // @public
 export function createApplicationSkillExecutor(application: SkillExecutionApplication, host: SkillExecutionHost): RuntimeExecutor;
