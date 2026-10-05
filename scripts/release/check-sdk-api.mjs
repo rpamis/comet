@@ -15,6 +15,7 @@ const entrypoints = [
   './runtime',
   './applications',
   './applications/native',
+  './applications/classic',
   './plugins',
   './plugins/comet',
 ];

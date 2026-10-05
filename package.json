@@ -19,6 +19,10 @@
   "author": "benym",
   "type": "module",
   "exports": {
+    "./applications/classic": {
+      "types": "./dist/domains/comet-classic/classic-application.d.ts",
+      "import": "./dist/domains/comet-classic/classic-application.js"
+    },
     "./applications/native": {
       "types": "./dist/domains/comet-native/native-application.d.ts",
       "import": "./dist/domains/comet-native/native-application.js"

@@ -182,6 +182,10 @@
       },
       {
         "from": "comet-classic",
+        "to": "workflow-application"
+      },
+      {
+        "from": "comet-classic",
         "to": "project-knowledge"
       },
       {

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { WorkflowRun, WorkflowRuntime } from '../engine/runtime.js';
@@ -111,7 +112,7 @@ export async function executeClassicSdkCommandCheck(
     );
   if (
     !profile ||
-    run.workflow.id !== `comet-classic-${profile}` ||
+    !classicSdkRunMatchesProfile(run, profile) ||
     run.status !== 'running' ||
     scope === null ||
     !state ||

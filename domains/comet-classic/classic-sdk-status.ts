@@ -24,6 +24,10 @@ export async function inspectClassicSdkRun(
 }> {
   const owner = await readSdkChangeOwner(projectRoot, 'classic', name);
   if (!owner) throw new Error(`Classic change ${name} is not owned by an SDK Run`);
+  if (!['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application))
+    throw new Error(
+      `Classic change ${name} belongs to application ${owner.application}; use comet runtime dispatch --application ${owner.application} to continue its Run. Built-in commands cannot bypass composition checks.`,
+    );
   const profile = owner.application.slice('classic-'.length) as ClassicProfile;
   const application = defineClassicWorkflowApplication(profile);
   const runtime = createRuntime({

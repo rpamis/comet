@@ -24,6 +24,7 @@ test('rejects a public method signature change without updating the accepted rep
         './runtime': { types: './dist/index.d.ts' },
         './applications': { types: './dist/index.d.ts' },
         './applications/native': { types: './dist/index.d.ts' },
+        './applications/classic': { types: './dist/index.d.ts' },
         './plugins': { types: './dist/index.d.ts' },
         './plugins/comet': { types: './dist/index.d.ts' },
       },
