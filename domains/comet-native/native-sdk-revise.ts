@@ -2,8 +2,11 @@ import type {
   RuntimeCommandValidator,
   RuntimeExecutor,
   RuntimeValidator,
+  RuntimeValue,
 } from '../engine/runtime.js';
+import { hashRuntimeValue } from '../engine/runtime.js';
 import { parseNativePortableState } from './native-portable-state.js';
+import { collectNativeSupervisorRevisionWorkspaces } from './native-sdk-supervisor-revision.js';
 
 export const nativeSdkReviseCommandValidator: RuntimeCommandValidator = {
   id: 'comet-native-revise-command',
@@ -12,7 +15,10 @@ export const nativeSdkReviseCommandValidator: RuntimeCommandValidator = {
     const state = parseNativePortableState(run.state);
     if (
       name !== 'revise-requirements' ||
-      !['verify', 'archive'].includes(state.phase) ||
+      !(
+        ['verify', 'archive'].includes(state.phase) ||
+        (state.phase === 'build' && state.children_contract_hash)
+      ) ||
       state.archived ||
       !['active', 'await-user', 'blocked'].includes(state.status) ||
       input === null ||
@@ -43,7 +49,7 @@ export const nativeSdkReviseExecutor: RuntimeExecutor = {
   supports(action) {
     return action.stepId === 'shape.revise' && action.ref === 'native-revise-requirements';
   },
-  async execute(action, _context, run) {
+  async execute(action, context, run) {
     if (!run) throw new Error('Native SDK Run is required');
     const activation = (
       action.input as {
@@ -58,21 +64,44 @@ export const nativeSdkReviseExecutor: RuntimeExecutor = {
     ) {
       throw new Error('Native requirements revision references a stale change');
     }
-    return { status: 'succeeded', output: { reason: activation.reason.trim() } };
+    if (state.children_contract_hash && !context?.projectRoot)
+      throw new Error('Native Supervisor 需求修订缺少实际项目');
+    const workspaces = state.children_contract_hash
+      ? collectNativeSupervisorRevisionWorkspaces(run, context!.projectRoot!)
+      : undefined;
+    return {
+      status: 'succeeded',
+      output: { reason: activation.reason.trim(), ...(workspaces ? { workspaces } : {}) },
+    };
   },
 };
 
 export const nativeSdkReviseValidator: RuntimeValidator = {
   id: 'comet-native-revise-outcome',
   version: '1',
-  validate({ action, outcome }) {
+  validate({ run, action, outcome, context }) {
     const activation = (action.input as { activation?: { reason?: unknown } }).activation;
+    const state = parseNativePortableState(run.state);
+    let retained = true;
+    try {
+      if (state.children_contract_hash) {
+        retained =
+          Boolean(context?.projectRoot) &&
+          hashRuntimeValue(
+            (outcome.output as { workspaces?: RuntimeValue } | null)?.workspaces ?? null,
+          ) ===
+            hashRuntimeValue(collectNativeSupervisorRevisionWorkspaces(run, context!.projectRoot!));
+      }
+    } catch {
+      retained = false;
+    }
     return {
       accepted:
         outcome.status === 'succeeded' &&
         action.stepId === 'shape.revise' &&
         typeof activation?.reason === 'string' &&
-        (outcome.output as { reason?: unknown } | null)?.reason === activation.reason.trim(),
+        (outcome.output as { reason?: unknown } | null)?.reason === activation.reason.trim() &&
+        retained,
       reason: 'Native requirements revision has no matching receipt',
     };
   },

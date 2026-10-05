@@ -18,6 +18,7 @@ import { parseNativePortableState } from './native-portable-state.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
 import { nativeSdkSupervisorParentCandidateCommit } from './native-sdk-supervisor-parent.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 import {
   nativeSupervisorIntegrationBranch,
@@ -81,7 +82,16 @@ async function currentDelivery(
   );
   if (!targetRoot) throw new Error('Native SDK Supervisor target branch worktree is unavailable');
   const targetCommit = resolveGitRef(targetRoot, plan.targetBranch);
-  if (targetCommit !== prepared.targetCommit && targetCommit !== input.integrationCommit) {
+  const lastIntegration = [...currentNativeSdkSupervisorActions(run)]
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.stepId === 'supervisor.child.integrate' && candidate.status === 'succeeded',
+    );
+  const checkedTarget =
+    (lastIntegration?.outcome?.output as { targetCommit?: unknown } | undefined)?.targetCommit ??
+    prepared.targetCommit;
+  if (targetCommit !== checkedTarget && targetCommit !== input.integrationCommit) {
     throw new Error('Native SDK Supervisor target branch changed after Shape confirmation');
   }
   runGitCommand(integrationWorktree, [
@@ -142,6 +152,54 @@ function safeInterruptedFastForward(
   }
 }
 
+async function validateDeliveryWorkspace(
+  current: Awaited<ReturnType<typeof currentDelivery>>,
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+): Promise<void> {
+  const paths = await nativeProjectPaths(
+    projectRoot,
+    (run.input as { artifactRootRef: string }).artifactRootRef,
+  );
+  const changeDir = samePath(current.targetRoot, projectRoot)
+    ? path
+        .relative(current.targetRoot, path.join(paths.changesDir, current.state.name))
+        .replaceAll('\\', '/')
+    : null;
+  const allowed = [
+    ...(changeDir ? [changeDir] : []),
+    '.comet/current-change.json',
+    '.comet/runtime',
+  ];
+  if (
+    !nativeWorkspaceIsClean(current.targetRoot, allowed) &&
+    !(
+      current.targetCommit !== current.integrationCommit &&
+      action.reconciliations.some((item) => item.attempt === action.attempt - 1) &&
+      safeInterruptedFastForward(current, allowed)
+    )
+  )
+    throw new Error('Native SDK Supervisor target worktree has unrelated changes');
+}
+
+/** 只读预检复用实际交付的候选、目标分支和工作区检查，不领取 Action 或更新 Git。 */
+export async function inspectNativeSdkSupervisorDelivery(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+) {
+  const current = await currentDelivery(run, action, projectRoot);
+  await validateDeliveryWorkspace(current, run, action, projectRoot);
+  return {
+    targetBranch: current.targetBranch,
+    targetRoot: current.targetRoot,
+    targetCommit: current.targetCommit,
+    integrationBranch: current.integrationBranch,
+    integrationCommit: current.integrationCommit,
+  };
+}
+
 export const nativeSdkSupervisorDeliverExecutor: RuntimeExecutor = {
   id: 'native-supervisor-parent-deliver',
   capabilities: [],
@@ -153,30 +211,7 @@ export const nativeSdkSupervisorDeliverExecutor: RuntimeExecutor = {
       throw new Error('Native SDK Supervisor delivery requires a bound Run and project');
     }
     const current = await currentDelivery(run, action, context.projectRoot);
-    const paths = await nativeProjectPaths(
-      context.projectRoot,
-      (run.input as { artifactRootRef: string }).artifactRootRef,
-    );
-    const changeDir = samePath(current.targetRoot, context.projectRoot)
-      ? path
-          .relative(current.targetRoot, path.join(paths.changesDir, current.state.name))
-          .replaceAll('\\', '/')
-      : null;
-    const allowed = [
-      ...(changeDir ? [changeDir] : []),
-      '.comet/current-change.json',
-      '.comet/runtime',
-    ];
-    if (
-      !nativeWorkspaceIsClean(current.targetRoot, allowed) &&
-      !(
-        current.targetCommit !== current.integrationCommit &&
-        action.reconciliations.some((item) => item.attempt === action.attempt - 1) &&
-        safeInterruptedFastForward(current, allowed)
-      )
-    ) {
-      throw new Error('Native SDK Supervisor target worktree has unrelated changes');
-    }
+    await validateDeliveryWorkspace(current, run, action, context.projectRoot);
     if (current.targetCommit !== current.integrationCommit) {
       runGitCommand(current.targetRoot, ['merge', '--ff-only', current.integrationBranch]);
     }

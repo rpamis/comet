@@ -72,7 +72,7 @@ describe('Native runtime release asset', () => {
     expect(source).not.toContain('comet.native.creation-authorization.v1');
     expect(source).not.toContain('comet.native.review-trust-policy.v2');
     expect(source).not.toContain('implementation-attestation');
-    expect(source).not.toContain('independent-review');
+    // 定制应用加载器使用同名的 Skill 完成条件；旧 Native 信任协议按其 schema 检查。
     expect(source).not.toContain('waiver-receipt');
     expect(source).not.toContain('trust authorize');
     expect(source).toContain('new <change-name> [--runtime compat|sdk] [--language en|zh-CN]');

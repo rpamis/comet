@@ -3,12 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { hashRuntimeValue, type RuntimeValue } from '../engine/runtime.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
-import {
-  collectNativeSdkShapeProposal,
-  defineNativeWorkflowApplication,
-} from './native-sdk-application.js';
+import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import { nativeProjectPaths } from './native-paths.js';
-import { createNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
+import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { inspectNativeSdkStatus } from './native-sdk-status.js';
 import {
   NATIVE_SUPERVISOR_COORDINATION_MODES,
@@ -152,10 +149,37 @@ async function sdkNextResult(projectRoot: string, name: string): Promise<Dispatc
   const loopStop = run.waits.find(
     (wait) => wait.status === 'pending' && wait.stepId === 'verify.stop',
   );
+  const requirementRevisions = run.waits
+    .filter(
+      (wait) => wait.status === 'pending' && wait.stepId.startsWith('native.extension.revise.'),
+    )
+    .map((wait) => ({
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      proposal: wait.proposal,
+      commandArgs: [
+        'comet',
+        'native',
+        'next',
+        name,
+        '--revise-requirements',
+        '--summary',
+        '<用户确认的修订原因>',
+        '--expected-state-version',
+        String(state.state_version),
+        '--expected-action',
+        'revise-requirements',
+      ],
+      message:
+        '扩展发现需求变化。请确认是否修订需求；确认后回到 Shape，原候选和验收不会复用。先核对 running/unknown 工作。',
+    }));
   return success('next', {
     change: name,
     ...(await inspectNativeSdkStatus({ projectRoot, name })),
     ...(pendingBuilderDecisions.length > 0 ? { pendingBuilderDecisions } : {}),
+    ...(requirementRevisions.length > 0
+      ? { pendingRequirementDecisions: requirementRevisions }
+      : {}),
     ...(loopStop
       ? { continuation: sdkLoopStopContinuation(state, loopStop.proposalHash) }
       : state.phase === 'shape'
@@ -181,6 +205,11 @@ export async function advanceNativeSdkChange(
   name: string,
   decision?:
     | {
+        summary?: string;
+        expectedStateVersion?: number;
+        expectedAction?: 'prepare-shape-confirmation';
+      }
+    | {
         summary: string;
         expectedStateVersion: number;
         expectedAction: 'revise-requirements';
@@ -204,7 +233,35 @@ export async function advanceNativeSdkChange(
         expectedAction: 'continue-builder';
       },
 ): Promise<DispatchResult> {
-  const { run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name);
+  let { run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name);
+  if (
+    decision &&
+    (decision.expectedAction === undefined ||
+      decision.expectedAction === 'prepare-shape-confirmation')
+  ) {
+    if (
+      (decision.summary !== undefined && !decision.summary.trim()) ||
+      (decision.expectedAction === 'prepare-shape-confirmation' && decision.summary === undefined)
+    )
+      throw new NativeUsageError('--summary 不能为空。');
+    const prepare = run.actions.find((action) => action.status === 'pending');
+    if (
+      (decision.expectedStateVersion !== undefined &&
+        state.state_version !== decision.expectedStateVersion) ||
+      (decision.expectedAction === 'prepare-shape-confirmation' &&
+        (state.phase !== 'shape' ||
+          state.status !== 'active' ||
+          prepare?.stepId !== 'shape.prepare'))
+    )
+      return {
+        command: 'next',
+        exitCode: 73,
+        error: {
+          code: 'conflict',
+          message: 'Native SDK 推进动作已失效，请读取当前阶段、状态版本和待执行 Action。',
+        },
+      };
+  }
   if (decision?.expectedAction === 'continue-builder') {
     const wait = run.waits.find(
       (candidate) =>
@@ -222,7 +279,9 @@ export async function advanceNativeSdkChange(
       };
     }
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
-    await createNativeSdkRuntime(projectRoot).resolveWait({
+    await (
+      await loadOwnedNativeSdkRuntime(projectRoot, name)
+    ).runtime.resolveWait({
       runId: run.runId,
       waitId: wait.id,
       proposalHash: decision.proposalHash,
@@ -239,7 +298,10 @@ export async function advanceNativeSdkChange(
   if (decision?.expectedAction === 'revise-requirements') {
     if (
       state.state_version !== decision.expectedStateVersion ||
-      !['verify', 'archive'].includes(state.phase)
+      !(
+        ['verify', 'archive'].includes(state.phase) ||
+        (state.phase === 'build' && state.children_contract_hash)
+      )
     ) {
       return {
         command: 'next',
@@ -251,7 +313,7 @@ export async function advanceNativeSdkChange(
       };
     }
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
-    const runtime = createNativeSdkRuntime(projectRoot);
+    const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
     const commandId = hashRuntimeValue({
       runId: run.runId,
       name: 'revise-requirements',
@@ -322,7 +384,9 @@ export async function advanceNativeSdkChange(
         : decision.expectedAction === 'accept-result'
           ? 'approved'
           : 'rejected';
-    await createNativeSdkRuntime(projectRoot).resolveWait({
+    await (
+      await loadOwnedNativeSdkRuntime(projectRoot, name)
+    ).runtime.resolveWait({
       runId: run.runId,
       waitId: wait.id,
       proposalHash: decision.proposalHash,
@@ -374,7 +438,7 @@ export async function advanceNativeSdkChange(
         },
       };
     }
-    const runtime = createNativeSdkRuntime(projectRoot);
+    const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
     await runtime.resolveWait({
       runId: run.runId,
       waitId: wait.id,
@@ -389,7 +453,20 @@ export async function advanceNativeSdkChange(
     });
     return advanceNativeSdkChange(projectRoot, name);
   }
-  const pending = run.actions.find((action) => action.status === 'pending');
+  if (
+    run.waits.some(
+      (wait) => wait.status === 'pending' && wait.stepId.startsWith('native.extension.revise.'),
+    )
+  )
+    return sdkNextResult(projectRoot, name);
+  if (run.ready.length > 0) {
+    await (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime.next({ runId: run.runId });
+    ({ run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name));
+  }
+  const pending =
+    run.actions.find(
+      (action) => action.status === 'pending' && action.stepId === 'supervisor.child.archive',
+    ) ?? run.actions.find((action) => action.status === 'pending');
   if (!pending) {
     if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
       throw new Error(`Native SDK change ${name} has a claimed Action with an unknown outcome`);
@@ -398,11 +475,10 @@ export async function advanceNativeSdkChange(
   }
   if (pending.stepId !== 'shape.prepare' && pending.stepId !== 'shape.revalidate') {
     if (pending.type === 'call_tool') {
-      const executor = defineNativeWorkflowApplication().executors.find((candidate) =>
-        candidate.supports(pending),
-      );
+      const { runtime, executors } = await loadOwnedNativeSdkRuntime(projectRoot, name);
+      const executor = executors.find((candidate) => candidate.supports(pending));
       if (!executor) throw new Error(`Native SDK Action ${pending.stepId} has no executor`);
-      await createNativeSdkRuntime(projectRoot).execute({
+      await runtime.execute({
         runId: run.runId,
         actionId: pending.id,
         executorId: executor.id,
@@ -413,11 +489,12 @@ export async function advanceNativeSdkChange(
   }
   const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
   const proposal = await collectNativeSdkShapeProposal({ paths, state });
-  const runtime = createNativeSdkRuntime(projectRoot);
+  const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
   const requestId = randomUUID();
   const context = { requestId, projectRoot };
   const claimed = await runtime.claim({
     runId: run.runId,
+    expectedRevision: run.revision,
     actionId: pending.id,
     attempt: pending.attempt,
     inputHash: pending.inputHash,

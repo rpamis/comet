@@ -33,7 +33,6 @@ describe('Native dashboard web source contracts', () => {
       'change.acceptance',
       'change.acceptanceItems',
       'change.checks',
-      'change.blockers',
       'change.history',
       'change.historyOverflow',
       'change.localExecution',
@@ -41,6 +40,11 @@ describe('Native dashboard web source contracts', () => {
     ]) {
       expect(source).toContain(field);
     }
+    const presentation = await fs.readFile(
+      path.resolve('domains/dashboard/web/src/native-status-presentation.js'),
+      'utf8',
+    );
+    expect(presentation).toContain('change.blockers');
 
     for (const forbiddenField of [
       '.nextCommand',

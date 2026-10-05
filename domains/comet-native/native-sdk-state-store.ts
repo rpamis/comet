@@ -35,6 +35,8 @@ import {
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
 import type { NativePortableState } from './native-portable-types.js';
+import type { ApplicationIdentity } from '../workflow-application/index.js';
+import { hashRuntimeValue } from '../engine/runtime.js';
 
 interface ProjectionMarker {
   schema: 'comet.native.sdk-state-projection.v1';
@@ -159,6 +161,7 @@ export async function writeNativeManagedRunState(
   containedRoot: string,
   run?: WorkflowRun,
   archiveReceipt?: unknown,
+  applicationIdentity?: ApplicationIdentity,
 ): Promise<void> {
   await atomicWriteText(
     file,
@@ -167,6 +170,7 @@ export async function writeNativeManagedRunState(
         ...parseNativePortableState(state),
         ...(run ? { [PORTABLE_RUN_CHECKPOINT_KEY]: createPortableRunCheckpoint(run) } : {}),
         ...(archiveReceipt === undefined ? {} : { archive_receipt: archiveReceipt }),
+        ...(applicationIdentity ? { application_checkpoint: applicationIdentity } : {}),
       }),
     {
       containedRoot,
@@ -175,10 +179,18 @@ export async function writeNativeManagedRunState(
 }
 
 /** Keep the existing portable state file current when a built-in SDK Run commits. */
-export function createNativeSdkStateStore(projectRoot: string): RuntimeStore<WorkflowRun> {
-  const store = createFileRuntimeStore<WorkflowRun>({
-    rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'native'),
-  });
+export function createNativeSdkStateStore(
+  projectRoot: string,
+  options: {
+    store?: RuntimeStore<WorkflowRun>;
+    identity?: ApplicationIdentity;
+  } = {},
+): RuntimeStore<WorkflowRun> {
+  const store =
+    options.store ??
+    createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'native'),
+    });
   const projectionDir = '.comet/runtime/state-projections/native';
 
   async function recoverFromPortableFile(runId: string): Promise<WorkflowRun | null> {
@@ -204,6 +216,12 @@ export function createNativeSdkStateStore(projectRoot: string): RuntimeStore<Wor
     const data = document.toJS() as Record<string, unknown>;
     const saved = readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], runId);
     if (!saved) return null;
+    if (
+      hashRuntimeValue((data.application_checkpoint ?? null) as never) !==
+      hashRuntimeValue((options.identity ?? null) as never)
+    ) {
+      throw new Error('Native portable checkpoint requires its original fixed Application package');
+    }
     const state = parseNativePortableState(data);
     const input = saved.input as { name?: unknown; artifactRootRef?: unknown } | null;
     if (
@@ -226,7 +244,7 @@ export function createNativeSdkStateStore(projectRoot: string): RuntimeStore<Wor
       workflow: 'native',
       change: runId,
       format: 'sdk',
-      application: 'native',
+      application: options.identity?.id ?? 'native',
       runId,
     });
     await store.compareAndSwap(runId, null, { ...saved, revision: 1 });
@@ -338,6 +356,7 @@ export function createNativeSdkStateStore(projectRoot: string): RuntimeStore<Wor
             paths.nativeRoot,
             run,
             unresolvedFinalization ? archiveReceipt : undefined,
+            options.identity,
           );
         }
         const projection: ProjectionMarker = {

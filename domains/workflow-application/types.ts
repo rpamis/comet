@@ -52,6 +52,8 @@ export interface ApplicationSkillBinding {
   /** 有副作用的工作必须引用本 Run 的已批准 Wait，并由宿主授权适配器核对。 */
   authorizationFrom?: string;
   authorizationChoices?: string[];
+  /** 本地写入范围相对此 Action 的实际工作区解析，如 activation.workspaceRoot。 */
+  workspaceFrom?: string;
 }
 
 export interface WorkflowApplicationManifest {

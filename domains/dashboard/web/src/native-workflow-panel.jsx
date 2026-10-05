@@ -14,6 +14,7 @@ import {
 import { Badge, Button, Skeleton, Tooltip } from 'antd';
 import {
   isNativePhaseRunning,
+  nativeChangeBlockers,
   nativeChangeStatusPresentation,
 } from './native-status-presentation.js';
 import { useAnimatedNumber } from './use-animated-number.js';
@@ -487,7 +488,8 @@ function suggestion(change) {
     return change.migration.message ?? '需要先迁移 Native 状态。';
   }
   if (change.migration?.status === 'legacy-read-only') return '这是旧版归档，仅供查看。';
-  if (change.blockers?.length) return portableText(change.blockers[0].reason, '当前变更已阻塞。');
+  const blockers = nativeChangeBlockers(change);
+  if (blockers.length) return portableText(blockers[0].reason, '当前变更已阻塞。');
   if (change.status === 'archived') return '当前变更已经归档，可查看验收与循环历史。';
   return change.loop?.nextAction ?? 'Runtime 将根据当前 YAML 状态继续执行。';
 }
@@ -530,7 +532,8 @@ function NativeSummaryCards({ native, loadedChanges = [] }) {
     (change) =>
       ['fail', 'blocked'].includes(change.verificationResult) ||
       (change.acceptance?.failed ?? 0) > 0 ||
-      (change.acceptance?.blocked ?? 0) > 0,
+      (change.acceptance?.blocked ?? 0) > 0 ||
+      nativeChangeBlockers(change).length > 0,
   ).length;
   const pending = loadedChanges.reduce((sum, change) => sum + (change.acceptance?.pending ?? 0), 0);
   const cards = [
@@ -889,7 +892,7 @@ function NativeChangeDetail({ change, onPreview, onCopyChangeName }) {
         </div>
         <NativeAcceptanceCard change={change} />
         <NativeVerificationCard change={change} />
-        <NativeBlockersCard blockers={change.blockers ?? []} />
+        <NativeBlockersCard blockers={nativeChangeBlockers(change)} />
         <NativeHistoryCard history={change.history ?? []} overflow={change.historyOverflow} />
       </div>
     </section>
@@ -1304,7 +1307,7 @@ function NativePhaseStepper({ change }) {
 
 function NativeSidePanel({ change, git }) {
   const local = change.localExecution;
-  const blockers = change.blockers ?? [];
+  const blockers = nativeChangeBlockers(change);
   return (
     <aside className="space-y-5">
       <section className="rounded-lg bg-bg p-5 shadow-raised">

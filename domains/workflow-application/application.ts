@@ -57,6 +57,23 @@ function rawStore(projectRoot: string, id: string) {
   });
 }
 
+/** 只读取保存的进度；不加载应用代码、不恢复记录，也不更新领域投影。 */
+export async function readWorkflowApplicationRun(
+  projectRoot: string,
+  applicationId: string,
+  runId: string,
+): Promise<WorkflowRun | null> {
+  const record = await rawStore(projectRoot, applicationId).read(runId);
+  if (!record) return null;
+  if (
+    record.application.id !== applicationId ||
+    record.runId !== record.run.runId ||
+    record.revision !== record.run.revision
+  )
+    throw new RuntimeProtocolError('INVALID_RUN', '应用归属与 SDK Run 不一致');
+  return record.run;
+}
+
 function parseManifest(value: unknown): WorkflowApplicationManifest {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     applicationError('应用文件必须是 JSON 对象');
@@ -97,6 +114,8 @@ export async function loadWorkflowApplication(options: {
   file: string;
   projectRoot: string;
   runId?: string;
+  /** 领域从 portable checkpoint 恢复时，在执行模块加载前核对原固定身份。 */
+  expectedIdentity?: ApplicationIdentity;
 }): Promise<LoadedWorkflowApplication> {
   const projectRoot = await fs.realpath(options.projectRoot);
   const file = path.resolve(options.file);
@@ -148,6 +167,11 @@ export async function loadWorkflowApplication(options: {
         '运行中的应用或依赖发生漂移；恢复原内容后继续原 Action',
       );
   };
+  if (
+    options.expectedIdentity &&
+    hashRuntimeValue(identity) !== hashRuntimeValue(options.expectedIdentity)
+  )
+    throw new RuntimeProtocolError('WORKFLOW_CHANGED', '恢复需要原固定应用包、依赖和工作区');
   const persistent = rawStore(projectRoot, manifest.id);
   const assertIdentity = (record: ApplicationRunRecord) => {
     if (hashRuntimeValue(record.application) !== hashRuntimeValue(identity))
@@ -174,7 +198,8 @@ export async function loadWorkflowApplication(options: {
       if (
         specifier.startsWith('node:') ||
         specifier === '@rpamis/comet/runtime' ||
-        specifier === '@rpamis/comet/applications'
+        specifier === '@rpamis/comet/applications' ||
+        specifier === '@rpamis/comet/applications/native'
       )
         continue;
       if (!specifier.startsWith('.'))
@@ -214,6 +239,11 @@ export async function loadWorkflowApplication(options: {
   const bindingKeys = new Set<string>();
   for (const binding of manifest.bindings) {
     const key = `${binding.workflowId}/${binding.stepId}/${binding.usage}${binding.usage === 'guidance' ? `/${binding.skillId}` : ''}`;
+    if (
+      binding.workspaceFrom !== undefined &&
+      !/^[a-zA-Z][\w]*(?:\.[a-zA-Z][\w]*)*$/u.test(binding.workspaceFrom)
+    )
+      applicationError(`工作区输入路径无效：${key}`);
     if (bindingKeys.has(key)) applicationError(`重复 Skill 绑定：${key}`);
     bindingKeys.add(key);
     const workflow = workflows.find((workflow) => workflow.id === binding.workflowId);
@@ -328,6 +358,18 @@ export async function loadWorkflowApplication(options: {
       for (const other of mutations.slice(i + 1)) {
         const current = mutations[i];
         if (
+          skills.get(current.skillId)!.adapter.sideEffect === 'write' &&
+          skills.get(other.skillId)!.adapter.sideEffect === 'write' &&
+          Boolean(current.workspaceFrom) !== Boolean(other.workspaceFrom) &&
+          !reaches(current.stepId, other.stepId) &&
+          !reaches(other.stepId, current.stepId)
+        )
+          applicationError(
+            `并行写入不能混用声明工作区和默认范围：${current.stepId} / ${other.stepId}`,
+          );
+        if (
+          !current.workspaceFrom &&
+          !other.workspaceFrom &&
           skills
             .get(current.skillId)!
             .adapter.scope.some((scope) =>

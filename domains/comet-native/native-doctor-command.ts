@@ -3,7 +3,11 @@ import {
   readChangeRuntimeOwner,
   readSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
-import { inspectNativeSdkRun, resolveNativeSdkCommandRoot } from './native-runtime-ownership.js';
+import {
+  inspectNativeSdkRun,
+  inspectNativeSdkDefinitionUpgrade,
+  resolveNativeSdkCommandRoot,
+} from './native-runtime-ownership.js';
 import { inspectPristineNativeSdkChange, restoreNativeSdkChange } from './native-sdk-create.js';
 import {
   hasNativeManagedRunMarker,
@@ -558,6 +562,16 @@ export async function nativeDoctorCommand(
         throw new NativeUsageError('--strategy is only available to the legacy transaction doctor');
       }
       try {
+        const upgrade = await inspectNativeSdkDefinitionUpgrade(commandRoot, name, repair);
+        if (upgrade && !upgrade.repaired)
+          return unhealthyDoctor({
+            workflow: 'native-sdk',
+            runtimeFormat: 'sdk',
+            change: name,
+            healthy: false,
+            repaired: false,
+            findings: [{ code: 'sdk-definition-upgrade-required', ...upgrade }],
+          });
         const { run, state } = await inspectNativeSdkRun(commandRoot, name);
         const unresolved = run.actions.filter(
           (action) => action.status === 'unknown' || action.status === 'running',
@@ -567,7 +581,7 @@ export async function nativeDoctorCommand(
           runtimeFormat: 'sdk',
           change: name,
           healthy: unresolved.length === 0 && run.status !== 'failed',
-          repaired: false,
+          repaired: upgrade?.repaired ?? false,
           phase: state.phase,
           run: { id: run.runId, status: run.status, revision: run.revision },
           ...(unresolved.length > 0

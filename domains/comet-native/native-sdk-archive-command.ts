@@ -1,9 +1,12 @@
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import { recoverNativeSdkArchiveOutcome } from './native-sdk-archive.js';
 import { recoverNativeSdkSupervisorCleanupOutcome } from './native-sdk-supervisor-cleanup.js';
-import { recoverNativeSdkSupervisorDeliveryOutcome } from './native-sdk-supervisor-deliver.js';
+import {
+  inspectNativeSdkSupervisorDelivery,
+  recoverNativeSdkSupervisorDeliveryOutcome,
+} from './native-sdk-supervisor-deliver.js';
 import { inspectNativeSdkStatus } from './native-sdk-status.js';
-import { createNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
+import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
 
 export async function archiveNativeSdkChange(options: {
@@ -56,7 +59,7 @@ export async function archiveNativeSdkChange(options: {
         },
       };
     }
-    const runtime = createNativeSdkRuntime(options.projectRoot);
+    const { runtime } = await loadOwnedNativeSdkRuntime(options.projectRoot, options.name);
     if (action.stepId === 'supervisor.parent.deliver') {
       await recoverNativeSdkSupervisorDeliveryOutcome({
         runtime,
@@ -85,12 +88,17 @@ export async function archiveNativeSdkChange(options: {
   }
   const pending = run.actions.find((action) => action.status === 'pending');
   if (options.dryRun) {
+    const delivery =
+      state.phase === 'archive' && pending?.stepId === 'supervisor.parent.deliver'
+        ? await inspectNativeSdkSupervisorDelivery(run, pending, options.projectRoot)
+        : undefined;
     return success('archive --dry-run', {
       change: options.name,
       runtimeFormat: 'sdk',
       phase: state.phase,
       status: run.status,
       ready: state.phase === 'archive' && pending !== undefined,
+      ...(delivery ? { delivery } : {}),
       ...(pending ? { pendingAction: { id: pending.id, stepId: pending.stepId } } : {}),
     });
   }

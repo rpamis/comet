@@ -23,6 +23,7 @@ import {
   loadWorkflowApplication,
   resolveWorkflowApplicationFile,
   selectWorkflowApplication,
+  applicationSkillWork,
   type ApplicationIdentity,
 } from '../../domains/workflow-application/index.js';
 
@@ -448,31 +449,7 @@ export async function runtimeDispatchCommand(
       const context = { requestId, projectRoot, invocationCwd, environment };
       const data = await dispatch(runtime, request, context);
       if (request.operation === 'start') await selectWorkflowApplication(loaded, data.runId);
-      const skillWork = data.actions
-        .filter((action) => ['pending', 'running', 'unknown'].includes(action.status))
-        .flatMap((action) =>
-          loaded.manifest.bindings
-            .filter(
-              (binding) =>
-                binding.workflowId === data.workflow.id && binding.stepId === action.stepId,
-            )
-            .map((binding) => {
-              const skill = loaded.skills.get(binding.skillId)!;
-              return {
-                actionId: action.id,
-                attempt: action.attempt,
-                inputHash: action.inputHash,
-                binding,
-                skill: {
-                  id: skill.id,
-                  root: skill.root,
-                  contentHash: skill.contentHash,
-                  adapter: skill.adapter,
-                  files: skill.files,
-                },
-              };
-            }),
-        );
+      const skillWork = applicationSkillWork(loaded, data);
       return {
         exitCode: 0,
         response: {
@@ -497,6 +474,12 @@ export async function runtimeDispatchCommand(
       const { resolveNativeSdkCommandRoot } =
         await import('../../domains/comet-native/native-runtime-ownership.js');
       projectRoot = await resolveNativeSdkCommandRoot(projectRoot, text(request.runId, 'runId'));
+      const owner = await readSdkChangeOwner(projectRoot, 'native', text(request.runId, 'runId'));
+      if (owner && owner.application !== 'native')
+        return runtimeDispatchCommand(
+          { ...options, projectRoot, application: owner.application },
+          host,
+        );
     }
     let transitionHandlers;
     let evidenceValidators;

@@ -55,6 +55,7 @@ export interface ApplicationSkillBinding {
     usage: 'guidance' | 'action' | 'subworkflow';
     // (undocumented)
     workflowId: string;
+    workspaceFrom?: string;
 }
 
 // @public (undocumented)
@@ -67,6 +68,21 @@ export interface ApplicationSkillDependency {
     id: string;
     root: string;
 }
+
+// @public
+export function applicationSkillWork(application: LoadedWorkflowApplication, run: WorkflowRun): {
+    actionId: string;
+    attempt: number;
+    inputHash: string;
+    binding: ApplicationSkillBinding;
+    skill: {
+        id: string;
+        root: string;
+        contentHash: string;
+        adapter: SkillAdapterContract;
+        files: Readonly<Record<string, string>>;
+    };
+}[];
 
 // @public
 export function createApplicationSkillExecutor(application: SkillExecutionApplication, host: SkillExecutionHost): RuntimeExecutor;
@@ -103,6 +119,7 @@ export function loadWorkflowApplication(options: {
     file: string;
     projectRoot: string;
     runId?: string;
+    expectedIdentity?: ApplicationIdentity;
 }): Promise<LoadedWorkflowApplication>;
 
 // @public (undocumented)

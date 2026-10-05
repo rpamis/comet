@@ -13,6 +13,7 @@ import { readNativeChildrenContract } from './native-children-contract.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { parseNativePortableState } from './native-portable-state.js';
+import { nativeSupervisorRevisionWorkspace } from './native-sdk-supervisor-revision.js';
 import {
   nativeSupervisorIntegrationBranch,
   nativeSupervisorIntegrationWorktree,
@@ -112,11 +113,26 @@ export const nativeSdkSupervisorPrepareExecutor: RuntimeExecutor = {
   supports(action) {
     return action.stepId === 'supervisor.prepare' && action.type === 'call_tool';
   },
+  async preflight(action, context, run) {
+    if (!context?.projectRoot || !run || !this.supports(action))
+      throw new Error('Native SDK Supervisor preparation requires a bound Run and project');
+    const plan = await currentNativeSdkSupervisorPlan(run, context.projectRoot);
+    nativeSupervisorRevisionWorkspace(
+      run,
+      nativeSupervisorIntegrationWorktree(context.projectRoot, plan.state.name),
+      nativeSupervisorIntegrationBranch(plan.state.name),
+    );
+  },
   async execute(action, context, run) {
     if (!context?.projectRoot || !run || !this.supports(action)) {
       throw new Error('Native SDK Supervisor preparation requires a bound Run and project');
     }
     const plan = await currentNativeSdkSupervisorPlan(run, context.projectRoot);
+    const retained = nativeSupervisorRevisionWorkspace(
+      run,
+      nativeSupervisorIntegrationWorktree(context.projectRoot, plan.state.name),
+      nativeSupervisorIntegrationBranch(plan.state.name),
+    );
     const prepared = await prepareNativeSupervisorIntegrationWorkspace({
       projectRoot: context.projectRoot,
       parent: plan.state.name,
@@ -131,6 +147,7 @@ export const nativeSdkSupervisorPrepareExecutor: RuntimeExecutor = {
         integrationWorktree: prepared.projectRoot,
         targetBranch: plan.targetBranch,
         targetCommit: plan.targetCommit,
+        integrationCommit: retained?.head ?? plan.targetCommit,
       },
     };
   },
@@ -152,6 +169,7 @@ export const nativeSdkSupervisorPrepareValidator: RuntimeValidator = {
         plan.state.name,
       );
       const expectedBranch = nativeSupervisorIntegrationBranch(plan.state.name);
+      const retained = nativeSupervisorRevisionWorkspace(run, expectedWorktree, expectedBranch);
       if (
         !output ||
         output.contractHash !== plan.state.children_contract_hash ||
@@ -159,7 +177,8 @@ export const nativeSdkSupervisorPrepareValidator: RuntimeValidator = {
         typeof output.integrationWorktree !== 'string' ||
         !samePath(output.integrationWorktree, expectedWorktree) ||
         output.targetBranch !== plan.targetBranch ||
-        output.targetCommit !== plan.targetCommit
+        output.targetCommit !== plan.targetCommit ||
+        (output.integrationCommit ?? output.targetCommit) !== (retained?.head ?? plan.targetCommit)
       ) {
         throw new Error('Native SDK Supervisor preparation result does not match its plan');
       }
@@ -167,7 +186,9 @@ export const nativeSdkSupervisorPrepareValidator: RuntimeValidator = {
       if (workspace.currentBranch !== expectedBranch) {
         throw new Error('Native SDK Supervisor integration worktree has a different branch');
       }
-      if (resolveGitRef(expectedWorktree, expectedBranch) !== plan.targetCommit) {
+      if (
+        resolveGitRef(expectedWorktree, expectedBranch) !== (retained?.head ?? plan.targetCommit)
+      ) {
         throw new Error('Native SDK Supervisor integration worktree head changed');
       }
       return { accepted: true };
@@ -183,11 +204,26 @@ export const nativeSdkSupervisorChildPrepareExecutor: RuntimeExecutor = {
   supports(action) {
     return action.stepId === 'supervisor.child.prepare' && action.type === 'call_tool';
   },
+  async preflight(action, context, run) {
+    if (!context?.projectRoot || !run || !this.supports(action))
+      throw new Error('Native SDK Supervisor child preparation requires a bound Run and project');
+    const plan = await currentChildPreparation(run, action, context.projectRoot);
+    nativeSupervisorRevisionWorkspace(
+      run,
+      nativeSupervisorChildWorktree(context.projectRoot, plan.state.name, plan.input.child),
+      `comet/supervisor/${plan.state.name}/${plan.input.child}`,
+    );
+  },
   async execute(action, context, run) {
     if (!context?.projectRoot || !run || !this.supports(action)) {
       throw new Error('Native SDK Supervisor child preparation requires a bound Run and project');
     }
     const plan = await currentChildPreparation(run, action, context.projectRoot);
+    nativeSupervisorRevisionWorkspace(
+      run,
+      nativeSupervisorChildWorktree(context.projectRoot, plan.state.name, plan.input.child),
+      `comet/supervisor/${plan.state.name}/${plan.input.child}`,
+    );
     const prepared = await prepareNativeSupervisorChildWorkspace({
       projectRoot: context.projectRoot,
       parent: plan.state.name,
@@ -240,9 +276,10 @@ export const nativeSdkSupervisorChildPrepareValidator: RuntimeValidator = {
         throw new Error('Native SDK Supervisor child preparation result does not match its plan');
       }
       const workspace = inspectGitWorktree(worktree);
+      const retained = nativeSupervisorRevisionWorkspace(run, worktree, branch);
       if (
         workspace.currentBranch !== branch ||
-        resolveGitRef(worktree, branch) !== output.baseCommit
+        (resolveGitRef(worktree, branch) !== output.baseCommit && !retained)
       ) {
         throw new Error('Native SDK Supervisor child worktree changed before Builder dispatch');
       }

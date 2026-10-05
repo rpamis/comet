@@ -35,6 +35,29 @@ export const nativeSdkSupervisorIntegrationRepairValidator: RuntimeValidator = {
       const failed = run.actions.find((candidate) => candidate.id === input?.failedCheckActionId);
       const failedInput = (failed?.input as { activation?: Record<string, unknown> } | undefined)
         ?.activation;
+      const extension = run.actions.find(
+        (candidate) => candidate.id === input?.failedExtensionActionId,
+      );
+      const extensionSource = (
+        extension?.input as
+          | {
+              activation?: {
+                reviewSource?: {
+                  actionId?: string;
+                  scope?: string;
+                  activation?: Record<string, unknown>;
+                };
+              };
+            }
+          | undefined
+      )?.activation?.reviewSource;
+      const extensionFailed =
+        extension?.stepId.startsWith('native.extension.integration.') &&
+        ['succeeded', 'failed'].includes(extension.status) &&
+        (extension.outcome?.output as { verdict?: string } | undefined)?.verdict === 'fail' &&
+        extensionSource?.actionId === failed?.id &&
+        extensionSource?.scope === 'integration' &&
+        extensionSource?.activation?.integrationCommit === input?.integrationCommit;
       const merge = run.actions.find((candidate) => candidate.id === input?.mergeActionId);
       const mergeOutput = merge?.outcome?.output as Record<string, unknown> | null | undefined;
       const worktree = nativeSupervisorIntegrationWorktree(context.projectRoot, plan.state.name);
@@ -51,7 +74,7 @@ export const nativeSdkSupervisorIntegrationRepairValidator: RuntimeValidator = {
         !COMMIT_PATTERN.test(input.integrationCommit) ||
         typeof input.candidateCommit !== 'string' ||
         failed?.stepId !== 'supervisor.child.integration-checks' ||
-        failed.status !== 'failed' ||
+        !(failed.status === 'failed' || (failed.status === 'succeeded' && extensionFailed)) ||
         failedInput?.child !== input.child ||
         failedInput.integrationCommit !== input.integrationCommit ||
         failedInput.mergeActionId !== input.mergeActionId ||

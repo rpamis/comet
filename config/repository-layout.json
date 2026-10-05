@@ -289,6 +289,10 @@
         "to": "workflow-contract"
       },
       {
+        "from": "dashboard",
+        "to": "workflow-application"
+      },
+      {
         "from": "engine",
         "to": "skill"
       },
@@ -375,6 +379,10 @@
       {
         "from": "comet-entry",
         "to": "workflow-application"
+      },
+      {
+        "from": "comet-native",
+        "to": "workflow-application"
       }
     ],
     "crossDomainEntrypoints": [
@@ -407,6 +415,8 @@
       "domains/comet-native/native-portable-status.ts",
       "domains/comet-native/native-portable-types.ts",
       "domains/comet-native/native-runtime-ownership.ts",
+      "domains/comet-native/native-sdk-supervisor-plan.ts",
+      "domains/comet-native/native-sdk-state-store.ts",
       "domains/comet-native/native-selection.ts",
       "domains/comet-native/native-specs.ts",
       "domains/comet-native/native-types.ts",
@@ -461,7 +471,8 @@
       "domains/workflow-contract/project-gitignore.ts",
       "domains/workflow-contract/protected-project-path.ts",
       "domains/workflow-contract/types.ts",
-      "domains/workflow-application/index.ts"
+      "domains/workflow-application/index.ts",
+      "domains/workflow-application/application.ts"
     ],
     "restrictedDependencies": [
       {

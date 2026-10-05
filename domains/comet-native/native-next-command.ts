@@ -349,15 +349,34 @@ export async function nativeNextCommand(
         expectedAction: 'continue-builder',
       });
     }
-    if (
-      summary !== undefined ||
-      proposalHash !== undefined ||
-      expectedContinuation !== undefined ||
-      coordinationMode !== undefined
-    ) {
+    if (proposalHash !== undefined || coordinationMode !== undefined) {
       throw new NativeUsageError(
         'This Native SDK next action does not accept legacy transition options',
       );
+    }
+    if (
+      expectedContinuation !== undefined &&
+      expectedContinuation.action !== 'prepare-shape-confirmation'
+    ) {
+      return {
+        command: 'next',
+        exitCode: 73,
+        error: {
+          code: 'conflict',
+          message: 'Native SDK 机器推进动作不匹配；用户决定须使用对应的确认或修订参数。',
+        },
+      };
+    }
+    if (summary !== undefined || expectedContinuation !== undefined) {
+      return advanceNativeSdkChange(projectRoot, name, {
+        ...(summary === undefined ? {} : { summary }),
+        ...(expectedContinuation === undefined
+          ? {}
+          : {
+              expectedStateVersion: expectedContinuation.stateVersion,
+              expectedAction: 'prepare-shape-confirmation' as const,
+            }),
+      });
     }
     return advanceNativeSdkChange(projectRoot, name);
   }

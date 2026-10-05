@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { hashRuntimeValue } from '../engine/runtime.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
-import { createNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
+import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { success, type DispatchResult } from './native-cli-shared.js';
 
 export function assertNativeSdkRemovalResult(
@@ -36,7 +36,7 @@ export async function removeNativeSdkCapability(options: {
       `Marked Native capability ${options.capability} for removal in ${options.name}\n`,
     );
   }
-  const runtime = createNativeSdkRuntime(options.projectRoot);
+  const { runtime } = await loadOwnedNativeSdkRuntime(options.projectRoot, options.name);
   const commandId = hashRuntimeValue({
     runId: run.runId,
     name: 'remove-capability',
