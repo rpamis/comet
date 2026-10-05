@@ -288,6 +288,7 @@ async function assertSupervisorCheckWorkspace(options: {
   worktree: string;
   branch: string;
   candidateCommit: string;
+  allowCandidateSuccessor?: boolean;
 }): Promise<void> {
   const plan = await currentNativeSdkSupervisorPlan(options.run, options.projectRoot);
   if (
@@ -298,9 +299,18 @@ async function assertSupervisorCheckWorkspace(options: {
     ) ||
     options.branch !== `comet/supervisor/${options.state.name}/${options.child}` ||
     inspectGitWorktree(options.worktree).currentBranch !== options.branch ||
-    resolveGitRef(options.worktree, options.branch) !== options.candidateCommit
+    (!options.allowCandidateSuccessor &&
+      resolveGitRef(options.worktree, options.branch) !== options.candidateCommit)
   ) {
     throw new Error('Native Supervisor checks no longer match the Child candidate');
+  }
+  if (options.allowCandidateSuccessor) {
+    runGitCommand(options.worktree, [
+      'merge-base',
+      '--is-ancestor',
+      options.candidateCommit,
+      resolveGitRef(options.worktree, options.branch)!,
+    ]);
   }
 }
 
@@ -656,6 +666,8 @@ export async function nativeSdkSupervisorChildCheckSummaries(options: {
   run: Readonly<WorkflowRun>;
   checkActionId: string;
   projectRoot: string;
+  /** 仅供 blocked 恢复保留原候选证据；不会把原检查视为后继提交的验收。 */
+  allowCandidateSuccessor?: boolean;
 }): Promise<{ child: string; candidateCommit: string; checkIds: string[] }> {
   const action = options.run.actions.find((candidate) => candidate.id === options.checkActionId);
   if (
@@ -680,6 +692,7 @@ export async function nativeSdkSupervisorChildCheckSummaries(options: {
     worktree: executionRoot,
     branch: supervisorBranch,
     candidateCommit: candidateId,
+    allowCandidateSuccessor: options.allowCandidateSuccessor,
   });
   const checks = await validatedCheckResults({
     run: options.run,

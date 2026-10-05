@@ -1287,6 +1287,7 @@ children:
       cwd: root,
       encoding: 'utf8',
     }).trim();
+    const beforeIntegrationDrift = structuredClone(run);
     const baseCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: integrationWorktree,
       encoding: 'utf8',
@@ -1321,6 +1322,7 @@ children:
       status: 'pending',
       attempt: uiIntegration.attempt,
     });
+    expect(await runtime.inspect(run.runId)).toEqual(beforeIntegrationDrift);
     expect(() =>
       execFileSync('git', ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], {
         cwd: integrationWorktree,

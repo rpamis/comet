@@ -7,11 +7,12 @@ import type {
 import { hashRuntimeValue } from '../engine/runtime.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { collectNativeSupervisorRevisionWorkspaces } from './native-sdk-supervisor-revision.js';
+import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 
 export const nativeSdkReviseCommandValidator: RuntimeCommandValidator = {
   id: 'comet-native-revise-command',
   version: '1',
-  validate({ run, name, input }) {
+  async validate({ run, name, input, context }) {
     const state = parseNativePortableState(run.state);
     if (
       name !== 'revise-requirements' ||
@@ -38,6 +39,16 @@ export const nativeSdkReviseCommandValidator: RuntimeCommandValidator = {
         accepted: false,
         reason: 'Native requirements revision is stale or cannot interrupt Archive application',
       };
+    }
+    if (run.status === 'completed') {
+      try {
+        const recovery = context?.projectRoot
+          ? await inspectNativeSdkSupervisorRecovery(run, context.projectRoot)
+          : null;
+        return { accepted: recovery !== null, allowCompleted: recovery !== null };
+      } catch (error) {
+        return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
+      }
     }
     return { accepted: true };
   },

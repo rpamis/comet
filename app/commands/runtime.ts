@@ -101,7 +101,7 @@ const operationFields = {
   'resolve-wait': ['runId', 'expectedRevision', 'waitId', 'proposalHash', 'decisionId', 'choice'],
   'revise-wait': ['runId', 'expectedRevision', 'waitId', 'proposalHash', 'proposal'],
   'mark-unknown': ['runId', 'expectedRevision', 'actionId', 'attempt', 'reason'],
-  retry: ['runId', 'expectedRevision', 'actionId', 'attempt', 'reconciliation'],
+  retry: ['runId', 'expectedRevision', 'actionId', 'attempt', 'proposalHash', 'reconciliation'],
   cancel: ['runId', 'expectedRevision', 'reason'],
 } as const;
 
@@ -197,6 +197,8 @@ function parseRequest(value: unknown): JsonObject & { operation: keyof typeof op
   if (name === 'mark-unknown' || name === 'retry') {
     text(request.actionId, 'actionId');
     positiveInteger(request.attempt, 'attempt');
+    if (name === 'retry' && request.proposalHash !== undefined)
+      text(request.proposalHash, 'proposalHash');
     if (name === 'mark-unknown') {
       text(request.reason, 'reason');
     } else if (request.reconciliation !== undefined) {
@@ -486,6 +488,7 @@ export async function runtimeDispatchCommand(
     let validators;
     let stateValidators;
     let commandValidators;
+    let validateRecovery;
     let executors;
     let builtInWorkflow: DefineWorkflowOptions | undefined;
     if (application === 'native') {
@@ -497,6 +500,7 @@ export async function runtimeDispatchCommand(
       validators = defined.validators;
       stateValidators = defined.stateValidators;
       commandValidators = defined.commandValidators;
+      validateRecovery = defined.validateRecovery;
       executors = defined.executors;
     } else if (
       application === 'classic-full' ||
@@ -595,6 +599,7 @@ export async function runtimeDispatchCommand(
       ...(validators ? { validators } : {}),
       ...(stateValidators ? { stateValidators } : {}),
       ...(commandValidators ? { commandValidators } : {}),
+      ...(validateRecovery ? { validateRecovery } : {}),
       ...(executors ? { executors } : {}),
     });
     if (application !== undefined && builtInWorkflow) {

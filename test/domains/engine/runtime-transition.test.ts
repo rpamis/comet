@@ -25,6 +25,317 @@ const workflow = {
 } as const;
 
 describe('workflow-owned state transitions', () => {
+  it('creates new work from an application-validated completed result without rewriting the original Actions', async () => {
+    let recoveryEnabled = false;
+    const runtime = createRuntime({
+      store: createMemoryRuntimeStore<WorkflowRun>(),
+      workflows: [
+        {
+          id: 'blocked-recovery',
+          version: '1',
+          entry: 'checks',
+          initialState: { phase: 'build' },
+          stateSchema: { type: 'object' },
+          transitionHandler: { id: 'blocked-recovery-handler', version: '1' },
+          steps: {
+            checks: { type: 'call_tool', ref: 'checks' },
+            verifier: { type: 'handoff', ref: 'verifier' },
+            builder: { type: 'handoff', ref: 'builder' },
+          },
+          transitions: [
+            { from: 'checks', to: 'verifier' },
+            { from: 'verifier', to: 'builder' },
+          ],
+        },
+      ],
+      transitionHandlers: [
+        {
+          id: 'blocked-recovery-handler',
+          version: '1',
+          apply({ run, event }) {
+            return {
+              state: run.state,
+              next: event.stepId === 'checks' ? ['verifier'] : recoveryEnabled ? ['builder'] : [],
+            };
+          },
+        },
+      ],
+      validateRecovery({ action, proposalHash }) {
+        return {
+          accepted:
+            action.stepId === 'verifier' &&
+            action.outcome?.output === 'blocked' &&
+            proposalHash === 'current-blocked-proposal',
+        };
+      },
+    });
+    let run = await runtime.start({
+      runId: 'blocked-recovery-run',
+      workflow: { id: 'blocked-recovery', version: '1' },
+      input: null,
+    });
+    for (const output of ['checks-passed', 'blocked']) {
+      const action = run.actions.at(-1)!;
+      run = await runtime.claim({
+        runId: run.runId,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'host',
+        claimToken: action.id,
+      });
+      run = await runtime.recordOutcome({
+        runId: run.runId,
+        outcome: {
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          claimToken: action.id,
+          outcomeId: action.id + '-result',
+          status: 'succeeded',
+          output,
+        },
+      });
+    }
+    expect(run.status).toBe('completed');
+    recoveryEnabled = true;
+    const blocked = run.actions.at(-1)!;
+    await expect(
+      runtime.retry({ runId: run.runId, actionId: blocked.id, attempt: blocked.attempt }),
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+    expect(await runtime.inspect(run.runId)).toEqual(run);
+    await expect(
+      runtime.retry({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        actionId: blocked.id,
+        attempt: blocked.attempt,
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(
+      runtime.retry({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        actionId: blocked.id,
+        attempt: blocked.attempt,
+        proposalHash: 'stale-blocked-proposal',
+      }),
+    ).rejects.toMatchObject({ code: 'ACTION_TERMINAL' });
+    expect(await runtime.inspect(run.runId)).toEqual(run);
+    await expect(
+      runtime.retry({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        actionId: blocked.id,
+        attempt: blocked.attempt,
+        reconciliation: { resolution: 'not-executed', evidence: 'Incorrect host inference' },
+      }),
+    ).rejects.toMatchObject({ code: 'OUTCOME_ALREADY_RECORDED' });
+    const recovered = await runtime.retry({
+      runId: run.runId,
+      expectedRevision: run.revision,
+      actionId: blocked.id,
+      attempt: blocked.attempt,
+      proposalHash: 'current-blocked-proposal',
+    });
+    expect(recovered.actions.slice(0, run.actions.length)).toEqual(run.actions);
+    expect(recovered.state).toEqual(run.state);
+    expect(recovered.definitionHashes).toEqual(run.definitionHashes);
+    const fresh = recovered.actions.at(-1)!;
+    expect(fresh).toMatchObject({ stepId: 'builder', status: 'pending', attempt: 1 });
+    expect(fresh.id).not.toBe(blocked.id);
+    const claimed = await runtime.claim({
+      runId: run.runId,
+      actionId: fresh.id,
+      attempt: fresh.attempt,
+      inputHash: fresh.inputHash,
+      executorId: 'host',
+      claimToken: fresh.id,
+    });
+    await expect(
+      runtime.retry({
+        runId: run.runId,
+        expectedRevision: claimed.revision,
+        actionId: blocked.id,
+        attempt: blocked.attempt,
+        proposalHash: 'current-blocked-proposal',
+      }),
+    ).rejects.toMatchObject({ code: 'ACTION_IN_FLIGHT' });
+    const unknown = await runtime.markUnknown({
+      runId: run.runId,
+      actionId: fresh.id,
+      attempt: fresh.attempt,
+      reason: 'Host connection lost',
+    });
+    await expect(
+      runtime.retry({
+        runId: run.runId,
+        expectedRevision: unknown.revision,
+        actionId: blocked.id,
+        attempt: blocked.attempt,
+        proposalHash: 'current-blocked-proposal',
+      }),
+    ).rejects.toMatchObject({ code: 'ACTION_IN_FLIGHT' });
+    expect(await runtime.inspect(run.runId)).toEqual(unknown);
+  });
+
+  it('keeps terminal commands closed unless the declared application validator explicitly permits completed recovery', async () => {
+    const store = createMemoryRuntimeStore<WorkflowRun>();
+    const runtime = createRuntime({
+      store,
+      workflows: [
+        {
+          id: 'completed-command',
+          version: '1',
+          entry: 'finish',
+          commands: {
+            recover: { stepId: 'recover', validator: { id: 'recover-guard', version: '1' } },
+          },
+          steps: {
+            finish: { type: 'call_tool', ref: 'finish' },
+            recover: { type: 'call_tool', ref: 'recover' },
+          },
+        },
+      ],
+      commandValidators: [
+        {
+          id: 'recover-guard',
+          version: '1',
+          validate({ input }) {
+            return { accepted: true, allowCompleted: input === 'recover-known-blocker' };
+          },
+        },
+      ],
+    });
+    let run = await runtime.start({
+      runId: 'completed-command-run',
+      workflow: { id: 'completed-command', version: '1' },
+      input: null,
+    });
+    const action = run.actions[0];
+    run = await runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'host',
+      claimToken: 'claim',
+    });
+    run = await runtime.recordOutcome({
+      runId: run.runId,
+      outcome: {
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: 'claim',
+        outcomeId: 'completed',
+        status: 'succeeded',
+        output: null,
+      },
+    });
+    expect(run.status).toBe('completed');
+    await expect(
+      runtime.dispatchCommand({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        commandId: 'ordinary',
+        name: 'recover',
+        input: 'ordinary-completion',
+      }),
+    ).rejects.toMatchObject({ code: 'RUN_TERMINAL' });
+    expect(await runtime.inspect(run.runId)).toEqual(run);
+    const recovered = await runtime.dispatchCommand({
+      runId: run.runId,
+      expectedRevision: run.revision,
+      commandId: 'recover',
+      name: 'recover',
+      input: 'recover-known-blocker',
+    });
+    expect(recovered.actions[0]).toEqual(run.actions[0]);
+    expect(recovered.definitionHashes).toEqual(run.definitionHashes);
+    expect(recovered.actions.at(-1)).toMatchObject({ stepId: 'recover', status: 'pending' });
+    const pending = recovered.actions.at(-1)!;
+    const claimed = await runtime.claim({
+      runId: run.runId,
+      actionId: pending.id,
+      attempt: pending.attempt,
+      inputHash: pending.inputHash,
+      executorId: 'host',
+      claimToken: 'recover-claim',
+    });
+    await expect(
+      runtime.dispatchCommand({
+        runId: run.runId,
+        expectedRevision: claimed.revision,
+        commandId: 'in-flight-recovery',
+        name: 'recover',
+        input: 'recover-known-blocker',
+      }),
+    ).rejects.toMatchObject({ code: 'ACTION_IN_FLIGHT' });
+    const unknown = await runtime.markUnknown({
+      runId: run.runId,
+      actionId: pending.id,
+      attempt: pending.attempt,
+      reason: 'Lost contact with host',
+    });
+    await expect(
+      runtime.dispatchCommand({
+        runId: run.runId,
+        expectedRevision: unknown.revision,
+        commandId: 'unknown-recovery',
+        name: 'recover',
+        input: 'recover-known-blocker',
+      }),
+    ).rejects.toMatchObject({ code: 'ACTION_IN_FLIGHT' });
+    await runtime.cancel({ runId: run.runId, reason: 'Explicit cancellation' });
+    const cancelled = await runtime.inspect(run.runId);
+    await expect(
+      runtime.dispatchCommand({
+        runId: run.runId,
+        expectedRevision: cancelled.revision,
+        commandId: 'cancelled-recovery',
+        name: 'recover',
+        input: 'recover-known-blocker',
+      }),
+    ).rejects.toMatchObject({ code: 'RUN_TERMINAL' });
+    let failedRun = await runtime.start({
+      runId: 'failed-command-run',
+      workflow: { id: 'completed-command', version: '1' },
+      input: null,
+    });
+    const failedAction = failedRun.actions[0];
+    failedRun = await runtime.claim({
+      runId: failedRun.runId,
+      actionId: failedAction.id,
+      attempt: failedAction.attempt,
+      inputHash: failedAction.inputHash,
+      executorId: 'host',
+      claimToken: 'failed-claim',
+    });
+    failedRun = await runtime.recordOutcome({
+      runId: failedRun.runId,
+      outcome: {
+        actionId: failedAction.id,
+        attempt: failedAction.attempt,
+        inputHash: failedAction.inputHash,
+        claimToken: 'failed-claim',
+        outcomeId: 'failed-result',
+        status: 'failed',
+        output: null,
+      },
+    });
+    expect(failedRun.status).toBe('failed');
+    await expect(
+      runtime.dispatchCommand({
+        runId: failedRun.runId,
+        expectedRevision: failedRun.revision,
+        commandId: 'failed-recovery',
+        name: 'recover',
+        input: 'recover-known-blocker',
+      }),
+    ).rejects.toMatchObject({ code: 'RUN_TERMINAL' });
+  });
+
   it('validates an external command before replacing pending work', async () => {
     const runtime = createRuntime({
       store: createMemoryRuntimeStore<WorkflowRun>(),

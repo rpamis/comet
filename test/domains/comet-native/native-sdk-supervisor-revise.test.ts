@@ -76,16 +76,16 @@ async function supervisor() {
     return { exitCode: result.status, response: JSON.parse(result.stdout), stderr: result.stderr };
   }
   let sequence = 0;
+  async function dispatchResult(request: Record<string, unknown>, file = candidateCli) {
+    const requestFile = path.join(root, `request-${++sequence}.json`);
+    await fs.writeFile(requestFile, JSON.stringify(request));
+    return cli(['runtime', 'dispatch', '--application', 'native', '--request', requestFile], file);
+  }
   async function dispatch(
     request: Record<string, unknown>,
     file = candidateCli,
   ): Promise<WorkflowRun> {
-    const requestFile = path.join(root, `request-${++sequence}.json`);
-    await fs.writeFile(requestFile, JSON.stringify(request));
-    const result = cli(
-      ['runtime', 'dispatch', '--application', 'native', '--request', requestFile],
-      file,
-    );
+    const result = await dispatchResult(request, file);
     if (result.exitCode !== 0) throw new Error(JSON.stringify(result));
     return result.response.data;
   }
@@ -307,6 +307,7 @@ async function supervisor() {
     git,
     cli,
     dispatch,
+    dispatchResult,
     inspect,
     next,
     pending,
@@ -321,6 +322,281 @@ async function supervisor() {
     targetCommit,
   };
 }
+
+it('recovers a completed Supervisor Build after an independent Child reports blocked through the public CLI', async () => {
+  const f = await supervisor();
+  let run = await f.submitChild(f.run, f.baselineCli);
+  run = await f.next(f.baselineCli);
+  const verifier = f.pending(run, 'supervisor.child.verifier');
+  const activation = verifier.input as { activation: { candidateCommit: string } };
+  run = await f.claim(verifier, f.baselineCli);
+  run = await f.report(
+    run.actions.find((action) => action.id === verifier.id)!,
+    {
+      candidateCommit: activation.activation.candidateCommit,
+      verdict: 'blocked',
+      evidence: {
+        summary: 'External host evidence has not been supplied',
+        checks: ['artifact-left'],
+        acceptance: [{ id: 'A1', result: 'blocked', reason: 'External host evidence is missing' }],
+      },
+    },
+    f.baselineCli,
+  );
+  const revised = f.revise(run);
+  console.info(
+    JSON.stringify({
+      reproduction: 'blocked-supervisor-completed-build',
+      runId: run.runId,
+      revision: run.revision,
+      status: run.status,
+      phase: (run.state as { phase: string }).phase,
+      blockedActionId: verifier.id,
+      originalDefinitionHashes: run.definitionHashes,
+      revisionResult: revised,
+    }),
+  );
+  expect(revised.exitCode, JSON.stringify(revised.response)).toBe(0);
+  const revisedRun = await f.inspect();
+  expect(revisedRun.runId).toBe(run.runId);
+  expect(revisedRun.definitionHashes).toEqual(run.definitionHashes);
+  expect(revisedRun.state).toMatchObject({ phase: 'shape', status: 'active' });
+  const settled = run.actions.filter((action) => action.status !== 'pending');
+  expect(
+    revisedRun.actions.filter((action) => settled.some((old) => old.id === action.id)),
+  ).toEqual(settled);
+}, 180000);
+
+it('recovers a blocked Child with a successor candidate without replaying an integrated sibling or reusing historical checks as new evidence', async () => {
+  const f = await supervisor();
+  let run = await f.submitChild(f.run, f.baselineCli);
+  run = await f.next(f.baselineCli);
+  run = await f.verifyChild(run, f.baselineCli);
+  for (let index = 0; index < 3; index++) run = await f.next(f.baselineCli);
+  const failedBuilder = f.pending(run, 'supervisor.child.builder');
+  run = await f.claim(failedBuilder, f.baselineCli);
+  run = await f.dispatch(
+    {
+      operation: 'record-outcome',
+      runId: f.name,
+      outcome: {
+        actionId: failedBuilder.id,
+        attempt: failedBuilder.attempt,
+        inputHash: failedBuilder.inputHash,
+        claimToken: run.actions.find((action) => action.id === failedBuilder.id)!.claim!.token,
+        outcomeId: failedBuilder.id + '-failure',
+        status: 'failed',
+        output: { summary: 'Host evidence was unavailable' },
+      },
+    },
+    f.baselineCli,
+  );
+  const resume = run.waits.find((wait) => wait.status === 'pending')!;
+  run = await f.dispatch(
+    {
+      operation: 'resolve-wait',
+      runId: f.name,
+      expectedRevision: run.revision,
+      waitId: resume.id,
+      proposalHash: resume.proposalHash,
+      decisionId: 'continue-after-host-failure',
+      choice: 'continue',
+    },
+    f.baselineCli,
+  );
+  run = await f.submitChild(run, f.baselineCli);
+  run = await f.next(f.baselineCli);
+  const verifier = f.pending(run, 'supervisor.child.verifier');
+  const input = (
+    verifier.input as {
+      activation: { candidateCommit: string; checkActionId: string; worktree: string };
+    }
+  ).activation;
+  run = await f.claim(verifier, f.baselineCli);
+  run = await f.report(
+    run.actions.find((action) => action.id === verifier.id)!,
+    {
+      candidateCommit: input.candidateCommit,
+      verdict: 'blocked',
+      evidence: {
+        summary: 'External evidence must be supplied',
+        checks: ['artifact-right'],
+        acceptance: [{ id: 'A1', result: 'blocked', reason: 'Missing external evidence' }],
+      },
+    },
+    f.baselineCli,
+  );
+  const before = run;
+  const originalChecks = run.actions.find((action) => action.id === input.checkActionId)!;
+  const settled = run.actions.filter((action) =>
+    ['succeeded', 'failed', 'cancelled'].includes(action.status),
+  );
+  const integration = path.join(f.project, '.worktrees', f.name + '-integration');
+  const integratedHead = f.git(integration, ['rev-parse', 'HEAD']);
+  const publicNext = f.cli(['native', 'next', f.name, '--json']);
+  if (before.status === 'completed') {
+    const { inspectNativeSdkSupervisorRecovery } =
+      await import('../../../domains/comet-native/native-sdk-supervisor-recovery.js');
+    const rejectedStates = [
+      { ...before, workflow: { id: 'comet-native', version: 'wrong-version' } },
+      { ...before, status: 'failed' as const },
+      { ...before, status: 'cancelled' as const },
+      {
+        ...before,
+        state: {
+          ...(before.state as Record<string, unknown>),
+          phase: 'archive',
+          status: 'archived',
+          archived: true,
+        },
+      },
+    ];
+    for (const rejected of rejectedStates) {
+      expect(
+        await inspectNativeSdkSupervisorRecovery(rejected as WorkflowRun, f.project).catch(
+          () => null,
+        ),
+      ).toBeNull();
+    }
+    const ordinary = structuredClone(before);
+    (ordinary.actions.at(-1)!.outcome!.output as { verdict: string }).verdict = 'pass';
+    expect(await inspectNativeSdkSupervisorRecovery(ordinary, f.project)).toBeNull();
+    const continuation = publicNext.response.agent.continuation;
+    expect(continuation?.action, JSON.stringify(publicNext.response)).toBe(
+      'resolve-verifier-blocker',
+    );
+    const args = (continuation.commandArgs as string[])
+      .slice(1)
+      .map((value) =>
+        value === '<summary>' ? 'Continue the original Child after inspecting its blocker' : value,
+      );
+    const withGuard = (flag: string, value: string) => {
+      const changed = [...args];
+      changed[changed.indexOf(flag) + 1] = value;
+      return [...changed, '--json'];
+    };
+    expect(
+      f.cli(
+        withGuard(
+          '--expected-state-version',
+          String((run.state as { state_version: number }).state_version + 1),
+        ),
+      ).exitCode,
+    ).toBe(73);
+    expect(f.cli(withGuard('--proposal-hash', 'stale')).exitCode).toBe(73);
+    expect(f.cli(withGuard('--expected-action', 'continue-builder')).exitCode).not.toBe(0);
+    expect(await f.inspect()).toEqual(before);
+    const staleRecovery = await f.dispatchResult({
+      operation: 'retry',
+      runId: run.runId,
+      expectedRevision: run.revision,
+      actionId: verifier.id,
+      attempt: verifier.attempt,
+      proposalHash: 'stale-backend-proposal',
+    });
+    expect(staleRecovery.exitCode).not.toBe(0);
+    expect(staleRecovery.response.error).toMatchObject({ code: 'ACTION_TERMINAL' });
+    expect(staleRecovery.response.error.message).toContain('当前结果不是可恢复的 Native Child');
+    expect(await f.inspect()).toEqual(before);
+    const checkLog = path.join(
+      f.project,
+      (originalChecks.outcome!.output as { checks: Array<{ logRef: string }> }).checks[0].logRef,
+    );
+    const originalLog = await fs.readFile(checkLog);
+    await fs.appendFile(checkLog, 'altered evidence\n');
+    expect(f.cli([...args, '--json']).exitCode).not.toBe(0);
+    expect(await f.inspect()).toEqual(before);
+    await fs.writeFile(checkLog, originalLog);
+    const brief = path.join(f.change, 'brief.md');
+    const originalBrief = await fs.readFile(brief);
+    await fs.appendFile(brief, '\nAdditional unconfirmed scope.\n');
+    expect(f.cli([...args, '--json']).exitCode).not.toBe(0);
+    expect(await f.inspect()).toEqual(before);
+    await fs.writeFile(brief, originalBrief);
+    await fs.writeFile(path.join(input.worktree, 'repair.txt'), 'actual successor repair\n');
+    expect(f.cli([...args, '--json']).exitCode).not.toBe(0);
+    expect(await f.inspect()).toEqual(before);
+    f.git(input.worktree, ['add', 'repair.txt']);
+    f.git(input.worktree, ['commit', '-m', 'repair blocked Child']);
+    expect(f.cli([...args, '--json']).exitCode).toBe(73);
+    expect(await f.inspect()).toEqual(before);
+    const refreshed = f.cli(['native', 'next', f.name, '--json']).response.agent.continuation;
+    const recoveryArgs = (refreshed.commandArgs as string[])
+      .slice(1)
+      .map((value) =>
+        value === '<summary>' ? 'Continue from the inspected successor repair' : value,
+      );
+    const recovered = f.cli([...recoveryArgs, '--json']);
+    expect(recovered.exitCode, JSON.stringify(recovered.response)).toBe(0);
+    expect(f.cli([...recoveryArgs, '--json']).exitCode).toBe(73);
+    run = await f.inspect();
+  } else {
+    expect(before.status).toBe('running');
+    expect(f.pending(before, 'supervisor.child.builder')).toBeDefined();
+    await fs.writeFile(path.join(input.worktree, 'repair.txt'), 'actual successor repair\n');
+    f.git(input.worktree, ['add', 'repair.txt']);
+    f.git(input.worktree, ['commit', '-m', 'repair blocked Child']);
+  }
+  expect(run.runId).toBe(before.runId);
+  expect(run.state).toEqual(before.state);
+  expect(run.definitionHashes).toEqual(before.definitionHashes);
+  expect(run.actions.filter((action) => settled.some((old) => old.id === action.id))).toEqual(
+    settled,
+  );
+  expect(f.git(integration, ['rev-parse', 'HEAD'])).toBe(integratedHead);
+  const builder = f.pending(run, 'supervisor.child.builder');
+  expect(builder.id).not.toBe(failedBuilder.id);
+  expect(builder.input).toMatchObject({
+    activation: { child: 'right', failedVerifierActionId: verifier.id },
+  });
+  const successor = f.git(input.worktree, ['rev-parse', 'HEAD']);
+  expect(successor).not.toBe(input.candidateCommit);
+  run = await f.claim(builder);
+  run = await f.report(
+    run.actions.find((action) => action.id === builder.id)!,
+    {
+      summary: 'Return the preserved successor repair candidate',
+      candidateCommit: successor,
+      verificationChecks: f.checkPlan('right'),
+    },
+  );
+  run = await f.next();
+  const fresh = f.pending(run, 'supervisor.child.verifier');
+  const freshInput = (
+    fresh.input as { activation: { checkActionId: string; candidateCommit: string } }
+  ).activation;
+  expect(fresh.id).not.toBe(verifier.id);
+  expect(freshInput.candidateCommit).toBe(successor);
+  expect(freshInput.checkActionId).not.toBe(originalChecks.id);
+  expect(
+    run.actions.find((action) => action.id === freshInput.checkActionId)?.outcome?.output,
+  ).toMatchObject({ candidateId: successor });
+  expect(run.actions.find((action) => action.id === originalChecks.id)).toEqual(originalChecks);
+  run = await f.verifyChild(run);
+  expect(run.actions.find((action) => action.id === verifier.id)?.outcome?.output).toMatchObject({
+    verdict: 'blocked',
+    candidateCommit: input.candidateCommit,
+  });
+  expect(run.actions.find((action) => action.id === failedBuilder.id)?.status).toBe('failed');
+  expect(run.actions.filter((action) => settled.some((old) => old.id === action.id))).toEqual(
+    settled,
+  );
+  expect(f.git(integration, ['rev-parse', 'HEAD'])).toBe(integratedHead);
+  console.info(
+    JSON.stringify({
+      recovery: 'original-blocked-child-successor',
+      originalStatus: before.status,
+      originalDefinitionHashes: before.definitionHashes,
+      originalCandidate: input.candidateCommit,
+      successor,
+      originalCheckActionId: originalChecks.id,
+      freshCheckActionId: freshInput.checkActionId,
+      blockedActionId: verifier.id,
+      builderActionId: builder.id,
+      freshVerifierActionId: fresh.id,
+    }),
+  );
+}, 360000);
 
 it('revises a quiescent Supervisor Build through the candidate public CLI without changing its original definition', async () => {
   const f = await supervisor();

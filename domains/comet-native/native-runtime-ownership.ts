@@ -140,6 +140,7 @@ export function createNativeSdkRuntime(projectRoot: string): WorkflowRuntime {
     validators: application.validators,
     stateValidators: application.stateValidators,
     commandValidators: application.commandValidators,
+    validateRecovery: application.validateRecovery,
     executors: application.executors,
   });
 }

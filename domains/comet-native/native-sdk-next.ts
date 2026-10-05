@@ -7,6 +7,7 @@ import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { inspectNativeSdkStatus } from './native-sdk-status.js';
+import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import {
   NATIVE_SUPERVISOR_COORDINATION_MODES,
   type NativePortableState,
@@ -111,6 +112,7 @@ function sdkLoopStopContinuation(state: NativePortableState, proposalHash: strin
 
 async function sdkNextResult(projectRoot: string, name: string): Promise<DispatchResult> {
   const { run, state } = await inspectNativeSdkRun(projectRoot, name);
+  const recovery = await inspectNativeSdkSupervisorRecovery(run, projectRoot);
   const pendingActions = run.actions
     .filter((action) => action.status === 'pending')
     .map((action) => ({
@@ -180,23 +182,74 @@ async function sdkNextResult(projectRoot: string, name: string): Promise<Dispatc
     ...(requirementRevisions.length > 0
       ? { pendingRequirementDecisions: requirementRevisions }
       : {}),
-    ...(loopStop
-      ? { continuation: sdkLoopStopContinuation(state, loopStop.proposalHash) }
-      : state.phase === 'shape'
-        ? {
-            continuation: sdkShapeContinuation(
-              state,
-              run.waits.some(
-                (wait) => wait.status === 'pending' && wait.stepId === 'supervisor.shape.confirm',
-              ),
-            ),
-          }
-        : pendingActions.length > 0
+    ...(recovery
+      ? {
+          continuation: {
+            ...nativePortableContinuation(state),
+            action: 'resolve-verifier-blocker',
+            disposition: 'await-user',
+            requiresUserDecision: true,
+            commandArgs: [
+              'comet',
+              'native',
+              'next',
+              name,
+              '--resolve-verifier-blocker',
+              '--summary',
+              '<summary>',
+              '--proposal-hash',
+              recovery.proposalHash,
+              '--expected-state-version',
+              String(state.state_version),
+              '--expected-action',
+              'resolve-verifier-blocker',
+            ],
+            requiredInputs: ['summary', 'proposal-hash'],
+            commandAlternatives: [],
+            inputOptions: [
+              {
+                name: 'summary',
+                flag: '--summary',
+                valueKind: 'text',
+                required: true,
+                template: null,
+              },
+              {
+                name: 'proposal-hash',
+                flag: '--proposal-hash',
+                valueKind: 'text',
+                required: true,
+                template: recovery.proposalHash,
+              },
+            ],
+            runnerAction: { ...nativePortableContinuation(state).runnerAction, kind: 'none' },
+            userCommunication: {
+              required: true,
+              message:
+                '独立 Child 验收被阻塞。确认恢复后，原 Run 将派发新的 Builder，保留原候选、检查和失败记录。后继候选需要重新检查和独立验收。',
+              suggestedReply: '恢复原 Child，由新的 Builder 继续处理阻塞',
+              agentInstruction:
+                '只有明确选择恢复当前 Child 后才执行此命令；不得改写原结果或把原检查作为后继候选的通过证据。',
+            },
+          },
+        }
+      : loopStop
+        ? { continuation: sdkLoopStopContinuation(state, loopStop.proposalHash) }
+        : state.phase === 'shape'
           ? {
-              pendingAction: pendingActions[0],
-              pendingActions,
+              continuation: sdkShapeContinuation(
+                state,
+                run.waits.some(
+                  (wait) => wait.status === 'pending' && wait.stepId === 'supervisor.shape.confirm',
+                ),
+              ),
             }
-          : {}),
+          : pendingActions.length > 0
+            ? {
+                pendingAction: pendingActions[0],
+                pendingActions,
+              }
+            : {}),
   });
 }
 
@@ -230,7 +283,7 @@ export async function advanceNativeSdkChange(
         summary: string;
         proposalHash: string;
         expectedStateVersion: number;
-        expectedAction: 'continue-builder';
+        expectedAction: 'continue-builder' | 'resolve-verifier-blocker';
       },
 ): Promise<DispatchResult> {
   let { run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name);
@@ -261,6 +314,34 @@ export async function advanceNativeSdkChange(
           message: 'Native SDK 推进动作已失效，请读取当前阶段、状态版本和待执行 Action。',
         },
       };
+  }
+  if (decision?.expectedAction === 'resolve-verifier-blocker') {
+    const recovery = await inspectNativeSdkSupervisorRecovery(run, projectRoot);
+    if (!decision.summary.trim()) throw new NativeUsageError('--summary 不能为空。');
+    if (
+      !recovery ||
+      state.state_version !== decision.expectedStateVersion ||
+      recovery.proposalHash !== decision.proposalHash
+    ) {
+      return {
+        command: 'next',
+        exitCode: 73,
+        error: {
+          code: 'conflict',
+          message: 'Native Child blocked 恢复决定已失效，请重新读取原 Run。',
+        },
+      };
+    }
+    const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
+    await runtime.retry({
+      runId: run.runId,
+      expectedRevision: run.revision,
+      actionId: recovery.actionId,
+      attempt: recovery.attempt,
+      proposalHash: decision.proposalHash,
+      context: { requestId: randomUUID(), projectRoot },
+    });
+    return sdkNextResult(projectRoot, name);
   }
   if (decision?.expectedAction === 'continue-builder') {
     const wait = run.waits.find(

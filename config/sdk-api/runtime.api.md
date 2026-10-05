@@ -84,6 +84,7 @@ export function createRuntime(options: CreateRuntimeOptions): {
     retry: (command: RunCommand & {
         actionId: string;
         attempt: number;
+        proposalHash?: string;
         reconciliation?: {
             resolution: "not-executed";
             evidence: unknown;
@@ -124,6 +125,9 @@ export interface CreateRuntimeOptions {
     // (undocumented)
     transitionHandlers?: readonly WorkflowTransitionHandler[];
     validateOutcome?: RuntimeValidator['validate'];
+    validateRecovery?: (input: Parameters<RuntimeValidator['validate']>[0] & {
+        proposalHash: string;
+    }) => ReturnType<RuntimeValidator['validate']>;
     // (undocumented)
     validators?: readonly RuntimeValidator[];
     // (undocumented)
@@ -333,7 +337,11 @@ export interface RuntimeCommandValidator {
         name: string;
         input: RuntimeValue;
         context?: RuntimeInvocationContext;
-    }): RuntimeValidation | Promise<RuntimeValidation>;
+    }): (RuntimeValidation & {
+        allowCompleted?: boolean;
+    }) | Promise<RuntimeValidation & {
+        allowCompleted?: boolean;
+    }>;
     // (undocumented)
     version: string;
 }
