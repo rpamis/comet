@@ -103,6 +103,7 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 - `assets/`：发布资产和内置 Skill 内容。修改 runtime 源码后必须通过构建同步生成资产，不要把业务逻辑只写在生成物里。
 - `domains/workflow-application/`：完整 SDK 应用加载、Skill 适配审查、固定依赖、宿主执行契约和 Run 归属。基础流程种类与应用身份分别表达；Native/Classic 领域可通过 `wrapStore` 同步投影，SDK Run 保持推进权威。
 - `domains/comet-native/native-application.ts`：公开 Native 扩展工厂，复用原领域状态机并绑定候选审查；Native 可依赖 `workflow-application` 的加载及宿主契约，默认主流程仍不依赖外部 Skill。
+- `domains/comet-classic/classic-application.ts`：公开 Classic 组合工厂，替换执行 Skill 并在领域检查点追加有验收和恢复路径的步骤；沿用 Classic 状态机，SDK Run 保持推进权威。
 - `eval/scaffold/shell/` 中仅允许 `config/repository-layout.json` 明确列出的隔离评审 sidecar 入口；它们属于 Eval 容器边界，不是产品 Runtime 入口。
 
 测试目录必须跟随被测对象归属：

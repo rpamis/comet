@@ -105,7 +105,7 @@ export const CLASSIC_WIRE_KEYS = [
 ] as const;
 
 /** Fields that appear in .comet.yaml to link to the Run state. */
-export const RUN_WIRE_KEYS = ['run_id', 'run_checkpoint'] as const;
+export const RUN_WIRE_KEYS = ['run_id', 'run_checkpoint', 'application_checkpoint'] as const;
 
 const KNOWN_KEYS = new Set<string>([...CLASSIC_WIRE_KEYS, ...RUN_WIRE_KEYS]);
 // NOTE: review_mode is intentionally omitted — pre-0.4.0 state files lack this field,

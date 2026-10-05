@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import type { WorkflowRun, WorkflowRuntime } from '../engine/runtime.js';
@@ -65,7 +66,8 @@ export async function assertClassicSdkArchiveReady(
 ): Promise<ClassicSdkArchiveApproval> {
   const state = run.state as ClassicState | undefined;
   if (
-    run.workflow.id !== `comet-classic-${state?.workflow}` ||
+    !state ||
+    !classicSdkRunMatchesProfile(run, state.workflow) ||
     run.status !== 'running' ||
     state?.phase !== 'archive' ||
     state.verifyResult !== 'pass' ||

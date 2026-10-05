@@ -1,4 +1,6 @@
 import { promises as fs } from 'node:fs';
+import type { ApplicationIdentity } from '../workflow-application/index.js';
+import { hashRuntimeValue } from '../engine/runtime.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -96,10 +98,15 @@ async function stateFileCandidates(projectRoot: string, runId: string): Promise<
 }
 
 /** Keep Classic's user-editable YAML at its established path while the SDK owns transitions. */
-export function createClassicSdkStateStore(projectRoot: string): RuntimeStore<WorkflowRun> {
-  const store = createFileRuntimeStore<WorkflowRun>({
-    rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'classic'),
-  });
+export function createClassicSdkStateStore(
+  projectRoot: string,
+  options: { store?: RuntimeStore<WorkflowRun>; identity?: ApplicationIdentity } = {},
+): RuntimeStore<WorkflowRun> {
+  const store =
+    options.store ??
+    createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'classic'),
+    });
   const projectionDir = '.comet/runtime/state-projections/classic';
 
   async function recoverFromPortableFile(runId: string): Promise<WorkflowRun | null> {
@@ -124,6 +131,14 @@ export function createClassicSdkStateStore(projectRoot: string): RuntimeStore<Wo
     const data = document.toJS() as Record<string, unknown>;
     const saved = readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], runId);
     if (!saved) return null;
+    if (
+      hashRuntimeValue((data.application_checkpoint ?? null) as never) !==
+      hashRuntimeValue((options.identity ?? null) as never)
+    ) {
+      throw new Error(
+        'Classic portable checkpoint requires its original fixed Application package',
+      );
+    }
     const state = parseClassicStateDocument(data).classic;
     const input = saved.input as { change?: unknown; changeDir?: unknown } | null;
     const profile = saved.workflow.id.replace(/^comet-classic-/u, '');
@@ -151,7 +166,7 @@ export function createClassicSdkStateStore(projectRoot: string): RuntimeStore<Wo
       workflow: 'classic',
       change: runId,
       format: 'sdk',
-      application: `classic-${profile}` as 'classic-full' | 'classic-hotfix' | 'classic-tweak',
+      application: options.identity?.id ?? `classic-${profile}`,
       runId,
     });
     await store.compareAndSwap(runId, null, {
@@ -327,6 +342,8 @@ export function createClassicSdkStateStore(projectRoot: string): RuntimeStore<Wo
         if (!equal(current[PORTABLE_RUN_CHECKPOINT_KEY], checkpoint)) {
           document.set(PORTABLE_RUN_CHECKPOINT_KEY, checkpoint);
         }
+        if (options.identity && !equal(current.application_checkpoint, options.identity))
+          document.set('application_checkpoint', options.identity);
         const raw = document.toString();
         const rendered = hasClassicManagedRunMarker(raw) ? raw : CLASSIC_MANAGED_RUN_MARKER + raw;
         if (source !== rendered) {
