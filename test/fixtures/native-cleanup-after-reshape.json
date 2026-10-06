@@ -1,0 +1,322 @@
+{
+  "schema": "comet.native.cleanup-receipt-fixture.v1",
+  "provenance": {
+    "sourceRunId": "comet-any-sdk",
+    "sourceRevision": 210,
+    "sourceSha256": "1cc91771fba226678d62a11a314d1ccea0817f3ffaff29e671ceb8083093e60f",
+    "extractedFromActualArchivedRun": true,
+    "normalization": "Only fields read by cleanup are retained. Host roots use PROJECT_ROOT markers; claims, tokens, historical outputs and source documents are omitted. Original phase/status/contract/verification verdict and action ordering are preserved."
+  },
+  "run": {
+    "runId": "comet-any-sdk",
+    "state": {
+      "schema": "comet.native.v4",
+      "name": "comet-any-sdk",
+      "language": "zh-CN",
+      "phase": "archive",
+      "status": "done",
+      "state_version": 17,
+      "brief": "brief.md",
+      "spec_changes": [],
+      "workspace": {
+        "change_branch": "045",
+        "finish": null,
+        "isolation": "current",
+        "target_branch": "045"
+      },
+      "loop": {
+        "attempt": 1,
+        "execution_failure_count": 0,
+        "failed_iteration_count": 0,
+        "goal_cycle": 4,
+        "iteration": 1,
+        "next_action": null,
+        "no_progress_count": 0,
+        "previous_unresolved_ids": [],
+        "retry_epoch": 0,
+        "stage": "done"
+      },
+      "acceptance": [],
+      "builder_handoff": {
+        "candidate_id": "9858ce2fb1e2e027a00d03b087d75f6929c7309b3a7eeaf781ed5946a561df66",
+        "identity_provider": "skill-coordinated",
+        "builder_execution_ref": "recorded-builder",
+        "iteration": 1,
+        "summary": {
+          "text": "Recorded accepted builder handoff from the archived source Run.",
+          "truncated": false
+        },
+        "addressed_acceptance_ids": [],
+        "checks": [],
+        "checks_truncated": false,
+        "known_limits": [],
+        "known_limits_truncated": false,
+        "review": null,
+        "submitted_at": "2026-10-06T13:39:22.858Z"
+      },
+      "blockers": [],
+      "verification": {
+        "candidate_id": "9858ce2fb1e2e027a00d03b087d75f6929c7309b3a7eeaf781ed5946a561df66",
+        "identity_provider": "skill-coordinated",
+        "verifier_execution_ref": "recorded-independent-verifier",
+        "iteration": 1,
+        "attempt": 1,
+        "verdict": "pass",
+        "checks": [],
+        "summary": {
+          "text": "Recorded passing verification from the archived source Run.",
+          "truncated": false
+        },
+        "risks": [],
+        "risks_truncated": false,
+        "completed_at": "2026-10-06T13:52:01.694Z"
+      },
+      "history": [],
+      "history_overflow": {
+        "dropped_entries": 0,
+        "first_dropped_at": null,
+        "last_dropped_at": null,
+        "outcome_counts": {
+          "pass": 0,
+          "fail": 0,
+          "blocked": 0,
+          "execution-error": 0,
+          "recovery": 0
+        }
+      },
+      "verification_result": "pass",
+      "verification_report": null,
+      "archived": true,
+      "created_at": "2026-10-03T14:51:24.939Z",
+      "children_contract_hash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21"
+    },
+    "actions": [
+      {
+        "id": "comet-any-sdk:3",
+        "stepId": "shape.revalidate",
+        "type": "call_tool",
+        "status": "succeeded"
+      },
+      {
+        "id": "comet-any-sdk:4",
+        "stepId": "supervisor.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "contractHash": "ed7b24c19f4724ffc9e5edf13f9aa803e5f1d817c0a7d5cb150eabe10fcd7fcd",
+            "integrationWorktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-integration",
+            "integrationBranch": "comet/supervisor/comet-any-sdk/integration"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:5",
+        "stepId": "supervisor.child.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "child": "application-foundation",
+            "contractHash": "ed7b24c19f4724ffc9e5edf13f9aa803e5f1d817c0a7d5cb150eabe10fcd7fcd",
+            "worktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-application-foundation",
+            "branch": "comet/supervisor/comet-any-sdk/application-foundation"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:14",
+        "stepId": "supervisor.child.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "child": "native-extensions",
+            "contractHash": "ed7b24c19f4724ffc9e5edf13f9aa803e5f1d817c0a7d5cb150eabe10fcd7fcd",
+            "worktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-native-extensions",
+            "branch": "comet/supervisor/comet-any-sdk/native-extensions"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:25",
+        "stepId": "shape.revalidate",
+        "type": "call_tool",
+        "status": "succeeded"
+      },
+      {
+        "id": "comet-any-sdk:26",
+        "stepId": "supervisor.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "contractHash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21",
+            "integrationWorktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-integration",
+            "integrationBranch": "comet/supervisor/comet-any-sdk/integration"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:27",
+        "stepId": "supervisor.child.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "child": "application-foundation",
+            "contractHash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21",
+            "worktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-application-foundation",
+            "branch": "comet/supervisor/comet-any-sdk/application-foundation"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:35",
+        "stepId": "shape.revalidate",
+        "type": "call_tool",
+        "status": "succeeded"
+      },
+      {
+        "id": "comet-any-sdk:36",
+        "stepId": "supervisor.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "contractHash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21",
+            "integrationWorktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-integration",
+            "integrationBranch": "comet/supervisor/comet-any-sdk/integration"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:37",
+        "stepId": "supervisor.child.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "child": "application-foundation",
+            "contractHash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21",
+            "worktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-application-foundation",
+            "branch": "comet/supervisor/comet-any-sdk/application-foundation"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:43",
+        "stepId": "supervisor.child.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "child": "native-extensions",
+            "contractHash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21",
+            "worktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-native-extensions",
+            "branch": "comet/supervisor/comet-any-sdk/native-extensions"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:54",
+        "stepId": "supervisor.child.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "child": "classic-composition",
+            "contractHash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21",
+            "worktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-classic-composition",
+            "branch": "comet/supervisor/comet-any-sdk/classic-composition"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:55",
+        "stepId": "supervisor.child.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "child": "standalone-composition",
+            "contractHash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21",
+            "worktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-standalone-composition",
+            "branch": "comet/supervisor/comet-any-sdk/standalone-composition"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:68",
+        "stepId": "supervisor.child.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "child": "application-compiler",
+            "contractHash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21",
+            "worktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-application-compiler",
+            "branch": "comet/supervisor/comet-any-sdk/application-compiler"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:75",
+        "stepId": "supervisor.child.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "child": "creator-experience",
+            "contractHash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21",
+            "worktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-creator-experience",
+            "branch": "comet/supervisor/comet-any-sdk/creator-experience"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:82",
+        "stepId": "supervisor.child.prepare",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "child": "delivery-validation",
+            "contractHash": "0d705fe1dd5aa6e2fbd2d08abf965cc31accb7b3dc448a089f64a6e2f60ffa21",
+            "worktree": "$PROJECT_ROOT/.worktrees/comet-any-sdk-delivery-validation",
+            "branch": "comet/supervisor/comet-any-sdk/delivery-validation"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:101",
+        "stepId": "supervisor.parent.deliver",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {
+            "targetRoot": "$PROJECT_ROOT",
+            "targetBranch": "045",
+            "targetCommit": "133fbd0f64e1fd9f1e851d9a30c66b235ea7cccf",
+            "integrationCommit": "133fbd0f64e1fd9f1e851d9a30c66b235ea7cccf"
+          }
+        }
+      },
+      {
+        "id": "comet-any-sdk:104",
+        "stepId": "archive.finalize",
+        "type": "call_tool",
+        "status": "succeeded",
+        "outcome": {
+          "output": {}
+        }
+      },
+      {
+        "id": "comet-any-sdk:105",
+        "stepId": "supervisor.cleanup",
+        "type": "call_tool",
+        "status": "unknown"
+      }
+    ]
+  }
+}

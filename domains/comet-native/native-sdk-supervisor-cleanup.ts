@@ -15,6 +15,7 @@ import type {
   WorkflowRuntime,
 } from '../engine/runtime.js';
 import { parseNativePortableState } from './native-portable-state.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import {
   nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationBranch,
@@ -107,7 +108,7 @@ function cleanupBinding(
     throw new Error('Native SDK Supervisor cleanup lacks its integration workspace');
   }
   const children = new Map<string, CleanupCandidate>();
-  for (const item of run.actions) {
+  for (const item of currentNativeSdkSupervisorActions(run)) {
     if (item.stepId !== 'supervisor.child.prepare' || item.status !== 'succeeded') continue;
     const output = item.outcome?.output;
     if (!output || typeof output !== 'object' || Array.isArray(output)) {
