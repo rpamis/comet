@@ -2715,9 +2715,8 @@ export const DEMO_PROJECT_CONFIG = {
 DEMO_SNAPSHOT.changes.active.forEach(addCometArtifacts);
 DEMO_SNAPSHOT.changes.archived.forEach(addCometArtifacts);
 
-// Demo-only data for sidebar visualizations that do not have a dashboard
-// collector yet. Shapes are intentionally close to BundleAuthoringState and
-// RepositoryEvalResult so real collection can replace this without redesigning UI.
+// 静态侧栏示例沿用现有展示字段；应用文件使用当前 SDK 包结构。
+// 这些内容不是实际 Run、宿主调用或模型验收证据。
 export const DEMO_SKILL_VISUALS = {
   compose: {
     summary: {
@@ -2742,14 +2741,14 @@ export const DEMO_SKILL_VISUALS = {
         ],
         generatedControlPlane: [
           'SKILL.md',
-          'reference/workflow-protocol.json',
-          'reference/composition-report.md',
-          'reference/skill-review.md',
-          'comet/eval.yaml',
-          'scripts/comet-check.mjs',
+          'application.json',
+          'application.mjs',
+          'installation.json',
+          'skills/candidate-review/SKILL.md',
+          'skills/candidate-review/scripts/review.mjs',
         ],
         requiredConfirmations: [
-          { label: 'Skill Creator proposal confirmed', required: true, confirmed: true },
+          { label: 'Creator plan confirmed', required: true, confirmed: true },
           { label: 'Eval result attached', required: true, confirmed: true },
           { label: 'Review approved', required: true, confirmed: true },
           { label: 'Executable disclosure reviewed', required: false, confirmed: false },
@@ -2784,18 +2783,18 @@ export const DEMO_SKILL_VISUALS = {
         reusedSkills: [
           { skill: 'brainstorming', status: 'available', sourceCount: 2 },
           { skill: 'writing-skills', status: 'available', sourceCount: 1 },
-          { skill: 'skill-creator', status: 'available', sourceCount: 1 },
+          { skill: 'comet-any', status: 'available', sourceCount: 1 },
         ],
         generatedControlPlane: [
-          'reference/authoring-lanes.json',
-          'reference/resolved-skills.json',
-          'reference/composition-report.md',
-          'reference/decision-points.md',
-          'scripts/comet-plan.mjs',
+          'application.json',
+          'installation.json',
+          'application.mjs',
+          'bindings.mjs',
+          'skills/report-review/SKILL.md',
         ],
         requiredConfirmations: [
           { label: 'Resolved Skill choices', required: true, confirmed: true },
-          { label: 'Authoring lanes complete', required: true, confirmed: true },
+          { label: 'Application compiled and loaded', required: true, confirmed: true },
           { label: 'Run quick eval', required: true, confirmed: true },
         ],
         callChain: [
@@ -2882,19 +2881,19 @@ export const DEMO_SKILL_VISUALS = {
             id: 'route-conformance',
             passed: true,
             passRate: 0.96,
-            evidence: ['workflow-protocol.json', 'route-conformance.json'],
+            evidence: ['application.json', 'route-conformance.json'],
           },
           {
             id: 'control-plane',
             passed: true,
             passRate: 0.92,
-            evidence: ['comet/eval.yaml', 'scripts/comet-check.mjs'],
+            evidence: ['application.mjs', 'installation.json'],
           },
           {
             id: 'publish-readiness',
             passed: true,
             passRate: 0.88,
-            evidence: ['reference/skill-review.md', 'review-summary.json'],
+            evidence: ['installation-preview.json', 'review-summary.json'],
           },
         ],
         bundle: {
@@ -2917,7 +2916,7 @@ export const DEMO_SKILL_VISUALS = {
         level: 'quick',
         draftHash: 'c'.repeat(64),
         evalManifestHash: 'd'.repeat(64),
-        tasks: ['authoring-lanes', 'entry-smoke', 'install-preview'],
+        tasks: ['application-loading', 'entry-smoke', 'install-preview'],
         treatments: ['create-skill-maker-review-flow'],
         passAtK: { 1: 1 },
         weightedScore: { overall: 0.9 },
@@ -2926,13 +2925,13 @@ export const DEMO_SKILL_VISUALS = {
         reports: ['quick-eval-report.html'],
         passed: true,
         summary:
-          'Quick eval passed authoring-lane coverage, entry smoke, and install-preview checks.',
+          'Quick eval passed SDK application loading, entry smoke, and install-preview checks.',
         entries: [
           {
-            id: 'authoring-lanes',
+            id: 'application-loading',
             passed: true,
             passRate: 0.9,
-            evidence: ['authoring-lanes.json', 'skill-review.md'],
+            evidence: ['application.json', 'application.mjs', 'installation.json'],
           },
           {
             id: 'install-preview',
