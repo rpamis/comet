@@ -175,3 +175,21 @@ it('keeps report and package protection after a terminal decision', async () => 
   });
   expect(await inspect(completed, 'unrelated.txt')).toMatchObject({ allowed: true });
 });
+
+it.skipIf(process.platform !== 'win32')(
+  'uses platform path semantics for terminal protected resources',
+  async () => {
+    const { runtime, run, inspect } = await material();
+    const completed = await runtime.cancel({
+      runId: run.runId,
+      reason: 'Guard case-sensitivity fixture',
+    });
+    for (const target of [
+      '.COMET/runtime/forged.json',
+      'NODE_MODULES/@rpamis/comet/package.json',
+      'CUSTOM-FIXED-PACKAGE/application.mjs',
+    ]) {
+      expect(await inspect(completed, target)).toMatchObject({ allowed: false });
+    }
+  },
+);

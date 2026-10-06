@@ -245,8 +245,15 @@ export function createReportApplication(
       try {
         if (!request.targets.length) throw new Error('报告写入必须声明实际文件');
         const terminal = ['completed', 'cancelled'].includes(run.status);
-        const contains = (directory: string, target: string) =>
-          target === directory || target.startsWith(`${directory}/`);
+        const contains = (directory: string, target: string) => {
+          const relative = path.relative(path.resolve(root, directory), path.resolve(root, target));
+          return (
+            !relative ||
+            (relative !== '..' &&
+              !relative.startsWith(`..${path.sep}`) &&
+              !path.isAbsolute(relative))
+          );
+        };
         const packageRef = context.packageRoot
           ? path.relative(root, path.resolve(context.packageRoot)).replaceAll('\\', '/')
           : null;
