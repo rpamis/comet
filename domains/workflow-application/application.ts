@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
+import { createRequire, isBuiltin } from 'node:module';
 import { init, parse } from 'es-module-lexer';
 import {
   createFileRuntimeStore,
@@ -200,7 +200,7 @@ export async function loadWorkflowApplication(options: {
       const specifier = imported.n;
       if (!specifier) applicationError(`应用模块不能动态选择未固定的导入：${ref}`);
       if (
-        specifier.startsWith('node:') ||
+        isBuiltin(specifier) ||
         specifier === '@rpamis/comet/runtime' ||
         specifier === '@rpamis/comet/applications' ||
         specifier === '@rpamis/comet/applications/compiler' ||
