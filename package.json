@@ -47,7 +47,11 @@
       "types": "./dist/domains/comet-plugin/comet.d.ts",
       "import": "./dist/domains/comet-plugin/comet.js"
     },
-    "./*": "./*"
+    "./*": "./*",
+    "./applications/creator": {
+      "types": "./dist/domains/workflow-creation/index.d.ts",
+      "import": "./dist/domains/workflow-creation/index.js"
+    }
   },
   "publishConfig": {
     "access": "public"

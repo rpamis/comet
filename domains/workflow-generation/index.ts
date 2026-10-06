@@ -1,4 +1,8 @@
-export { compileWorkflowApplication, prepareWorkflowApplicationPlan } from './compiler.js';
+export {
+  compileWorkflowApplication,
+  prepareWorkflowApplicationPlan,
+  hashWorkflowApplicationPlanContent,
+} from './compiler.js';
 export type {
   WorkflowApplicationPlan,
   WorkflowApplicationProposal,

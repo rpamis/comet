@@ -43,6 +43,8 @@ const creatorListCommand = vi.fn(async () => undefined);
 const creatorStatusCommand = vi.fn(async () => undefined);
 const creatorNextCommand = vi.fn(async () => undefined);
 const creatorGuideCommand = vi.fn(async () => undefined);
+const creatorStartCommand = vi.fn(async () => undefined);
+const creatorDispatchCommand = vi.fn(async () => undefined);
 const creatorCandidatesCommand = vi.fn(async () => undefined);
 const creatorProposeCommand = vi.fn(async () => undefined);
 const creatorInitCommand = vi.fn(async () => undefined);
@@ -109,6 +111,8 @@ vi.mock('../../app/commands/skill.js', () => ({
   skillCheckCommand,
 }));
 vi.mock('../../app/commands/creator.js', () => ({
+  creatorStartCommand,
+  creatorDispatchCommand,
   creatorListCommand,
   creatorStatusCommand,
   creatorNextCommand,
@@ -156,6 +160,41 @@ describe('CLI lazy command actions', () => {
     process.exitCode = undefined;
     vi.clearAllMocks();
     vi.resetModules();
+  });
+
+  it('dispatches SDK Creator start and current action requests with their required inputs', async () => {
+    await runAction(
+      [
+        'creator',
+        'start',
+        'weekly-report',
+        '--goal',
+        '生成每周报告',
+        '--install-target',
+        '.claude/skills/weekly-report',
+        '--host',
+        'claude-code',
+        '--json',
+      ],
+      creatorStartCommand,
+    );
+    expect(creatorStartCommand).toHaveBeenCalledWith(
+      'weekly-report',
+      expect.objectContaining({
+        goal: '生成每周报告',
+        installTarget: '.claude/skills/weekly-report',
+        host: 'claude-code',
+        json: true,
+      }),
+    );
+    await runAction(
+      ['creator', 'dispatch', 'weekly-report', '--request', 'current-action.json', '--json'],
+      creatorDispatchCommand,
+    );
+    expect(creatorDispatchCommand).toHaveBeenCalledWith(
+      'weekly-report',
+      expect.objectContaining({ request: 'current-action.json', json: true }),
+    );
   });
 
   it('loads and dispatches every deferred command group when invoked', async () => {

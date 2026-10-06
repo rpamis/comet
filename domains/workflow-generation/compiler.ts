@@ -30,6 +30,20 @@ export interface ApplicationExtensionPlan {
 export type ApplicationCompositionPlan =
   | { kind: 'report' }
   | {
+      kind: 'standalone';
+      workflows: DefineWorkflowOptions[];
+      transitionHandlers: Array<{
+        id: string;
+        version: string;
+        module: string;
+        exportName: string;
+        /** 使用公开SDK的hashRuntimeValue(moduleSource)固定完整源码字符串。 */
+        sourceHash: string;
+      }>;
+      executorIds: string[];
+      validatorRefs: Array<{ id: string; version: string }>;
+    }
+  | {
       kind: 'native';
       extensions: Array<
         ApplicationExtensionPlan & {
@@ -149,6 +163,40 @@ const planSchema = {
         {
           type: 'object',
           additionalProperties: false,
+          required: ['kind', 'workflows', 'transitionHandlers', 'executorIds', 'validatorRefs'],
+          properties: {
+            kind: { const: 'standalone' },
+            workflows: { type: 'array', minItems: 1, items: { type: 'object' } },
+            transitionHandlers: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['id', 'version', 'module', 'exportName', 'sourceHash'],
+                properties: {
+                  id: textSchema,
+                  version: textSchema,
+                  module: textSchema,
+                  exportName: { type: 'string', pattern: '^[A-Za-z_$][A-Za-z0-9_$]*$' },
+                  sourceHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+                },
+              },
+            },
+            executorIds: { type: 'array', uniqueItems: true, items: textSchema },
+            validatorRefs: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['id', 'version'],
+                properties: { id: textSchema, version: textSchema },
+              },
+            },
+          },
+        },
+        {
+          type: 'object',
+          additionalProperties: false,
           required: ['kind'],
           properties: { kind: { const: 'report' } },
         },
@@ -261,6 +309,25 @@ function applicationModule(plan: WorkflowApplicationPlan): string {
   const kind = composition.kind;
   if (plan.manifest.module !== 'application.mjs' || plan.modules['application.mjs'])
     applicationError('application.mjs 由组合器生成，不能以手写工厂覆盖');
+  if (kind === 'standalone') {
+    if (plan.manifest.base !== 'standalone' || !plan.modules['bindings.mjs'])
+      applicationError('独立组合需要standalone基础流程与固定bindings.mjs');
+    const imports: string[] = [];
+    const registrations: string[] = [];
+    for (const [index, handler] of composition.transitionHandlers.entries()) {
+      moduleRef(handler.module);
+      const source = plan.modules[handler.module];
+      if (!source || hashRuntimeValue(source) !== handler.sourceHash)
+        applicationError(`转移处理器源码摘要不匹配：${handler.id}`);
+      imports.push(
+        `import { ${handler.exportName} as handler${index} } from './${handler.module}';`,
+      );
+      registrations.push(
+        `{ id:${JSON.stringify(handler.id)},version:${JSON.stringify(handler.version)},apply:handler${index} }`,
+      );
+    }
+    return `import { createStandaloneApplication } from '@rpamis/comet/applications';\nimport { createBindings } from './bindings.mjs';\n${imports.join('\n')}\nconst composition=${canonicalRuntimeJson(composition)};\nexport async function createApplication(context) {\nconst ports=await createBindings(context);\nfor (const key of Object.keys(ports)) if (!['executors','validators'].includes(key)) throw new Error('独立执行端口不能覆盖流程与转移处理器');\nreturn createStandaloneApplication({workflows:composition.workflows,executorIds:composition.executorIds,validatorRefs:composition.validatorRefs,executors:ports.executors??[],validators:ports.validators??[],transitionHandlers:[${registrations.join(',')}]});\n}\n`;
+  }
   if (kind !== 'report' && !plan.modules['bindings.mjs'])
     applicationError('Native/Classic 组合需要固定 bindings.mjs 实现集合');
   if (
@@ -335,9 +402,12 @@ async function assemblyFiles(
       bindings: manifest.bindings,
     }) + '\n',
   );
+  const skillLoading = manifest.bindings.length
+    ? '\n当前 Action 返回 skillWork 或当前 Wait 返回 waitSkillWork 时，逐项读取 skill.files["SKILL.md"] 的真实 name；没有 name 时按该固定目录的宿主命名规则确定，无法确定时阻塞。skill.id 只是逻辑绑定，不能用应用名称或别名代替实际 Skill 名称。\n\n**立即执行：** 使用 Skill 工具加载 <skill-name> 技能。禁止跳过此步骤。\n\n技能加载后，核对实际加载来源对应当前 skill.root，并核对 SKILL.md、脚本和资源的完整内容摘要与 skill.contentHash 一致；同名不能代替固定版本。宿主无法加载该固定版本时阻塞，保留原 Action。核对通过后，Action 保留 actionId、attempt、inputHash；Wait 保留 waitId、proposalHash，不能把等待点当作 Action 领取。传递当前输入、范围和固定指导，执行工作后提交真实结果；等待点指导不等同用户决定或 machine-check 证据，审批仍只提交当前 Wait 的用户决定。\n'
+    : '';
   textFile(
     'SKILL.md',
-    `---\nname: ${manifest.id}\ndescription: 启动或恢复已确认的 ${manifest.id} 工作流应用。\n---\n\n# ${manifest.id}\n\n固定组合：${compositionHash}\nRuntime：${manifest.runtimeVersion}；基础流程：${manifest.base}。\n\n用 comet runtime dispatch --application-file <本目录>/application.json --project-root <项目> --request <临时JSON> 启动下列流程：\n${plan.workflows.map(({ id, version }) => `- ${id}@${version}`).join('\n')}\n\n查询和恢复使用 --application ${manifest.id} 与原 Run ID，先 inspect 原 Action；保留 attempt、inputHash 和 claimToken。未知执行先核对结果。按返回的 skillWork 加载固定依赖并执行当前 Action；审批只沿 Runtime 当前 Wait 提交。\n流程与绑定见 application.json，安装与恢复身份见 installation.json。不能以完成字符串代替实际 Schema、候选或工件检查；检查拒绝后保留现场，修正实际产物后继续原动作。\n本包通过组合结构和实际注册实现检查；真实宿主、模型执行与完整业务验收须另行记录。\n`,
+    `---\nname: ${manifest.id}\ndescription: 启动或恢复已确认的 ${manifest.id} 工作流应用。\n---\n\n# ${manifest.id}\n\n固定组合：${compositionHash}\nRuntime：${manifest.runtimeVersion}；基础流程：${manifest.base}。\n\n用 comet runtime dispatch --application-file <本目录>/application.json --project-root <项目> --request <临时JSON> 启动下列流程：\n${plan.workflows.map(({ id, version }) => `- ${id}@${version}`).join('\n')}\n\n查询和恢复使用 --application ${manifest.id} 与原 Run ID，先 inspect 原 Action；保留 attempt、inputHash 和 claimToken。未知执行先核对结果。审批只沿 Runtime 当前 Wait 提交。\n${skillLoading}\n流程与绑定见 application.json，安装与恢复身份见 installation.json。不能以完成字符串代替实际 Schema、候选或工件检查；检查拒绝后保留现场，修正实际产物后继续原动作。\n本包通过组合结构和实际注册实现检查；真实宿主、模型执行与完整业务验收须另行记录。\n`,
   );
   return files;
 }
@@ -413,6 +483,14 @@ export async function prepareWorkflowApplicationPlan(options: {
   const files = await assemblyFiles(plan, options.dependencyRoot);
   plan.workflows = await inspectAssembly(files, options);
   return plan;
+}
+
+/** 核对编译/恢复的实际字节与确认方案；此查询不生成包或执行业务动作。 */
+export async function hashWorkflowApplicationPlanContent(
+  plan: unknown,
+  dependencyRoot?: string,
+): Promise<string> {
+  return applicationFilesHash(await assemblyFiles(parsePlan(plan), dependencyRoot));
 }
 
 /** 只装配确认的材料；不启动 Run、不执行 Action，也不覆盖已有目录。 */

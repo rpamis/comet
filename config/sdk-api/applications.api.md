@@ -112,6 +112,21 @@ export function applicationSkillWork(application: LoadedWorkflowApplication, run
 }[];
 
 // @public
+export function applicationWaitSkillWork(application: LoadedWorkflowApplication, run: WorkflowRun): {
+    waitId: string;
+    proposalHash: string;
+    binding: ApplicationSkillBinding;
+    skill: {
+        id: string;
+        name: string;
+        root: string;
+        contentHash: string;
+        adapter: SkillAdapterContract;
+        files: Readonly<Record<string, string>>;
+    };
+}[];
+
+// @public
 export function createApplicationArtifactValidator(options: ApplicationArtifactValidatorOptions): RuntimeValidator;
 
 // @public
@@ -121,6 +136,9 @@ export function createApplicationSkillExecutor(application: SkillExecutionApplic
 export function createReportApplication(context: Pick<WorkflowApplicationFactoryContext, 'projectRoot'> & {
     manifest: Pick<WorkflowApplicationFactoryContext['manifest'], 'id'>;
 }): WorkflowApplicationImplementation;
+
+// @public
+export function createStandaloneApplication(options: StandaloneApplicationOptions): WorkflowApplicationImplementation;
 
 // @public
 export function inspectApplicationSkill(root: string): Promise<InspectedSkill>;
@@ -254,6 +272,25 @@ export interface SkillExecutionHost {
         resolution: 'executed';
         outcome: RuntimeOutcome;
     }>;
+}
+
+// @public (undocumented)
+export interface StandaloneApplicationOptions {
+    // (undocumented)
+    executorIds: readonly string[];
+    // (undocumented)
+    executors: readonly RuntimeExecutor[];
+    // (undocumented)
+    transitionHandlers: readonly WorkflowTransitionHandler[];
+    // (undocumented)
+    validatorRefs: readonly {
+        id: string;
+        version: string;
+    }[];
+    // (undocumented)
+    validators: readonly RuntimeValidator[];
+    // (undocumented)
+    workflows: readonly DefineWorkflowOptions[];
 }
 
 // @public (undocumented)

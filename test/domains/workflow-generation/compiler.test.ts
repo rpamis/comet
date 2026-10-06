@@ -95,6 +95,22 @@ const compile = (plan: unknown, name = 'compiled') =>
     projectRoot: root,
   });
 
+it('renders current fixed Skill loading with the standard trigger, real name and exact resource binding', async () => {
+  const plan = await prepare(await nativeProposal(['candidate']));
+  await compile(plan);
+  const entry = await fs.readFile(path.join(root, 'compiled', 'SKILL.md'), 'utf8');
+  expect(entry).toContain('**立即执行：** 使用 Skill 工具加载 <skill-name> 技能。禁止跳过此步骤。');
+  expect(entry).toContain('技能加载后');
+  expect(entry).toContain('skill.files["SKILL.md"]');
+  expect(entry).toContain('skill.root');
+  expect(entry).toContain('skill.contentHash');
+  expect(entry).toContain('waitSkillWork');
+  expect(entry).toContain('waitId、proposalHash');
+  expect(entry).toContain('等待点指导不等同用户决定或 machine-check 证据');
+  expect(entry).toContain('逻辑绑定');
+  expect(entry).toContain('无法加载该固定版本时阻塞');
+});
+
 it('compiles fixed material deterministically and binds entry/install/recovery to the effective implementation', async () => {
   const manifest = {
     schema: 'comet.workflow.application.v1' as const,
@@ -128,6 +144,9 @@ it('compiles fixed material deterministically and binds entry/install/recovery t
     projectRoot: root,
   });
   expect(first.contentHash).toBe(second.contentHash);
+  expect(await fs.readFile(path.join(root, 'first', 'SKILL.md'), 'utf8')).not.toContain(
+    '**立即执行：** 使用 Skill 工具加载',
+  );
   expect(await fs.readFile(path.join(root, 'first', 'SKILL.md'), 'utf8')).toContain(
     first.compositionHash,
   );
