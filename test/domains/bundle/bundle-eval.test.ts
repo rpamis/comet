@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
@@ -8,20 +7,14 @@ import { optimizeBundleDraft } from '../../../domains/bundle/draft.js';
 import {
   planBundleEval,
   recordBundleEval,
-  validateStableFactoryControlPlane,
   type RepositoryEvalResult,
 } from '../../../domains/bundle/eval.js';
 import {
   readBundleAuthoringState,
   reconcileBundleAuthoringState,
-  writeBundleAuthoringState,
 } from '../../../domains/bundle/state.js';
-import {
-  generateBundleDraftFromFactoryState,
-  initializeBundleFactoryState,
-} from '../../../domains/bundle/factory.js';
-import type { BundleAuthoringState, BundleCompilerIr } from '../../../domains/bundle/types.js';
-import { workflowFor as workflowDefinitionFor } from '../../helpers/workflow-plan.js';
+
+import type { BundleCompilerIr } from '../../../domains/bundle/types.js';
 
 function evalIr(entryCount = 1): BundleCompilerIr {
   return {
@@ -86,54 +79,6 @@ engine:
   );
 }
 
-async function writeFactorySkill(projectRoot: string, name: string): Promise<void> {
-  const skillRoot = path.join(projectRoot, '.comet', 'skills', name);
-  await fs.mkdir(skillRoot, { recursive: true });
-  await fs.writeFile(
-    path.join(skillRoot, 'SKILL.md'),
-    `---\nname: ${name}\ndescription: ${name}.\n---\n\n# ${name}\n`,
-    'utf8',
-  );
-}
-
-function workflowFor(name: string, skills: string[]): ReturnType<typeof workflowDefinitionFor> {
-  return workflowDefinitionFor(name, skills);
-}
-
-async function createFactoryStateWithGeneratedPackage(
-  projectRoot: string,
-  planRoot: string,
-  name: string,
-  engineMode: 'none' | 'deterministic' | 'adaptive' = 'deterministic',
-): Promise<BundleAuthoringState> {
-  await writeFactorySkill(projectRoot, `${name}-source`);
-  const planFile = path.join(planRoot, `${name}-plan.json`);
-  await fs.writeFile(
-    planFile,
-    JSON.stringify(
-      {
-        goal: `Generate ${name}.`,
-        preferredSkills: [`${name}-source`],
-        workflow: workflowFor(name, [`${name}-source`]),
-        engineMode,
-        runnerMode: 'standalone',
-        defaultLocale: 'en',
-        locales: ['en'],
-      },
-      null,
-      2,
-    ),
-    'utf8',
-  );
-  const initialized = await initializeBundleFactoryState({
-    projectRoot,
-    name,
-    filePath: planFile,
-    confirmedProposal: true,
-  });
-  return generateBundleDraftFromFactoryState({ projectRoot, state: initialized });
-}
-
 function result(
   draftHash: string,
   overrides: Partial<RepositoryEvalResult> = {},
@@ -155,18 +100,6 @@ function result(
     summary: 'Repository eval gates passed.',
     ...overrides,
   };
-}
-
-function sha256(content: string | Buffer): string {
-  return createHash('sha256').update(content).digest('hex');
-}
-
-async function readGeneratedEvalManifestHash(
-  state: BundleAuthoringState,
-): Promise<{ evalManifestHash: string }> {
-  const evalManifestPath = state.factory?.generatedSkillPackage?.evalManifestPath;
-  if (!evalManifestPath) return { evalManifestHash: 'b'.repeat(64) };
-  return { evalManifestHash: sha256(await fs.readFile(evalManifestPath)) };
 }
 
 describe('Bundle eval planning and evidence', () => {
@@ -270,150 +203,6 @@ describe('Bundle eval planning and evidence', () => {
     });
   });
 
-  it('records generated repository eval evidence only when manifest identity matches', async () => {
-    const generated = await createFactoryStateWithGeneratedPackage(
-      projectRoot,
-      root,
-      'repository-generated',
-    );
-    const evalManifestPath = generated.factory!.generatedSkillPackage!.evalManifestPath!;
-    const evalManifestSource = await fs.readFile(evalManifestPath, 'utf8');
-    const evalManifest = parse(evalManifestSource) as { metadata?: { draftHash?: string } };
-    expect(evalManifest.metadata?.draftHash).toBe('<current-bundle-hash>');
-
-    const repositoryEvalResult = {
-      schemaVersion: 2,
-      provider: 'comet-eval',
-      level: 'full',
-      draftHash: generated.currentHash,
-      evalManifestHash: sha256(evalManifestSource),
-      tasks: ['workflow-overlay-contract'],
-      treatments: ['DYNAMIC_SKILL'],
-      passAtK: { '1': 1 },
-      weightedScore: { overall: 0.96 },
-      instabilityGap: { overall: 0.02 },
-      failures: [],
-      reports: ['eval-report.html'],
-      passed: true,
-      summary: 'Repository eval gates passed.',
-    };
-    const resultFile = await writeUnknownResult(repositoryEvalResult, 'generated-eval.json');
-
-    const updated = await recordBundleEval(projectRoot, 'repository-generated', resultFile);
-
-    expect(updated.eval).toMatchObject({
-      level: 'full',
-      hash: generated.currentHash,
-      passed: true,
-    });
-  });
-
-  it('retains repository eval evidence without advancing when manifest hash is stale', async () => {
-    const generated = await createFactoryStateWithGeneratedPackage(
-      projectRoot,
-      root,
-      'repository-stale-manifest',
-    );
-    const repositoryEvalResult = {
-      schemaVersion: 2,
-      provider: 'comet-eval',
-      level: 'full',
-      draftHash: generated.currentHash,
-      evalManifestHash: 'b'.repeat(64),
-      tasks: ['workflow-overlay-contract'],
-      treatments: ['DYNAMIC_SKILL'],
-      passAtK: { '1': 1 },
-      weightedScore: { overall: 0.96 },
-      instabilityGap: { overall: 0.02 },
-      failures: [],
-      reports: ['eval-report.html'],
-      passed: true,
-      summary: 'Repository eval gates passed.',
-    };
-    const resultFile = await writeUnknownResult(repositoryEvalResult, 'stale-manifest-eval.json');
-
-    const updated = await recordBundleEval(projectRoot, 'repository-stale-manifest', resultFile);
-
-    expect(updated.status).toBe('draft');
-    expect(updated.eval).toBeUndefined();
-    await expect(
-      fs.access(
-        path.join(
-          projectRoot,
-          '.comet',
-          'bundle-evals',
-          'repository-stale-manifest',
-          generated.currentHash!,
-          'b'.repeat(64),
-          'result.json',
-        ),
-      ),
-    ).resolves.toBeUndefined();
-  });
-
-  it('does not overwrite accepted repository eval evidence with stale manifest results', async () => {
-    const generated = await createFactoryStateWithGeneratedPackage(
-      projectRoot,
-      root,
-      'repository-stale-after-valid',
-    );
-    const evalManifestPath = generated.factory!.generatedSkillPackage!.evalManifestPath!;
-    const evalManifestSource = await fs.readFile(evalManifestPath, 'utf8');
-    const validEvalManifestHash = sha256(evalManifestSource);
-    const passing = {
-      schemaVersion: 2,
-      provider: 'comet-eval',
-      level: 'full',
-      draftHash: generated.currentHash,
-      evalManifestHash: validEvalManifestHash,
-      tasks: ['workflow-overlay-contract'],
-      treatments: ['DYNAMIC_SKILL'],
-      passAtK: { '1': 1 },
-      weightedScore: { overall: 0.96 },
-      instabilityGap: { overall: 0.02 },
-      failures: [],
-      reports: ['eval-report.html'],
-      passed: true,
-      summary: 'Repository eval gates passed.',
-    };
-    const accepted = await recordBundleEval(
-      projectRoot,
-      'repository-stale-after-valid',
-      await writeUnknownResult(passing, 'valid-generated-eval.json'),
-    );
-    const acceptedResultPath = accepted.eval!.resultPath;
-    const acceptedEvidence = await fs.readFile(acceptedResultPath, 'utf8');
-
-    const stale = {
-      ...passing,
-      evalManifestHash: 'c'.repeat(64),
-      passed: false,
-      failures: ['stale manifest'],
-      summary: 'Stale manifest should not replace accepted evidence.',
-    };
-    const unchanged = await recordBundleEval(
-      projectRoot,
-      'repository-stale-after-valid',
-      await writeUnknownResult(stale, 'stale-generated-eval.json'),
-    );
-
-    expect(unchanged.eval!.resultPath).toBe(acceptedResultPath);
-    await expect(fs.readFile(acceptedResultPath, 'utf8')).resolves.toBe(acceptedEvidence);
-    await expect(
-      fs.access(
-        path.join(
-          projectRoot,
-          '.comet',
-          'bundle-evals',
-          'repository-stale-after-valid',
-          generated.currentHash!,
-          'c'.repeat(64),
-          'result.json',
-        ),
-      ),
-    ).resolves.toBeUndefined();
-  });
-
   it('rejects pre-release eval evidence schemas', async () => {
     const legacy = await writeUnknownResult(
       {
@@ -507,199 +296,6 @@ describe('Bundle eval planning and evidence', () => {
         ),
       ),
     ).resolves.toBeUndefined();
-  });
-
-  it('rejects passing eval evidence when a factory Bundle lacks required control-plane files', async () => {
-    const generated = await createFactoryStateWithGeneratedPackage(
-      projectRoot,
-      root,
-      'stable-missing-control',
-    );
-    await fs.rm(
-      path.join(
-        generated.draftPath,
-        'skills',
-        'stable-missing-control',
-        'scripts',
-        'comet-check.mjs',
-      ),
-    );
-    const changed = await reconcileBundleAuthoringState(projectRoot, 'stable-missing-control');
-    const resultFile = await writeResult(
-      result(changed.currentHash!, await readGeneratedEvalManifestHash(changed)),
-      'missing-control-plane.json',
-    );
-
-    await expect(
-      recordBundleEval(projectRoot, 'stable-missing-control', resultFile),
-    ).rejects.toThrow(/control plane/iu);
-
-    await expect(
-      fs.access(
-        path.join(
-          projectRoot,
-          '.comet',
-          'bundle-evals',
-          'stable-missing-control',
-          changed.currentHash!,
-          sha256(await fs.readFile(changed.factory!.generatedSkillPackage!.evalManifestPath!)),
-          'result.json',
-        ),
-      ),
-    ).resolves.toBeUndefined();
-    const state = await readBundleAuthoringState(projectRoot, 'stable-missing-control');
-    expect(state.status).not.toBe('eval-passed');
-    expect(state.eval).toBeUndefined();
-  });
-
-  it('rejects passing eval evidence when bundle.yaml drops required stable capabilities', async () => {
-    const generated = await createFactoryStateWithGeneratedPackage(
-      projectRoot,
-      root,
-      'stable-degraded-capabilities',
-    );
-    const manifestPath = path.join(generated.draftPath, 'bundle.yaml');
-    const manifest = parse(await fs.readFile(manifestPath, 'utf8')) as Record<string, unknown>;
-    manifest.platforms = {
-      requires: ['skills', 'scripts', 'rules', 'hooks'],
-      optional: [],
-      overrides: [],
-    };
-    await fs.writeFile(manifestPath, stringify(manifest), 'utf8');
-    const changed = await reconcileBundleAuthoringState(
-      projectRoot,
-      'stable-degraded-capabilities',
-    );
-    const resultFile = await writeResult(
-      result(changed.currentHash!, await readGeneratedEvalManifestHash(changed)),
-      'degraded-capabilities.json',
-    );
-
-    await expect(
-      recordBundleEval(projectRoot, 'stable-degraded-capabilities', resultFile),
-    ).rejects.toThrow(/control plane.*references|required capabilities/iu);
-  });
-
-  it('rejects passing eval evidence when a generated hook descriptor is not block-mode portable', async () => {
-    const generated = await createFactoryStateWithGeneratedPackage(
-      projectRoot,
-      root,
-      'stable-degraded-hook',
-    );
-    await fs.writeFile(
-      path.join(generated.draftPath, 'hooks', 'stable-degraded-hook-before-write-guard.yaml'),
-      `event: before_write
-matcher: Write|Edit
-script: comet-hook-guard
-failure: warn
-requiresConfirmation: false
-`,
-      'utf8',
-    );
-    const changed = await reconcileBundleAuthoringState(projectRoot, 'stable-degraded-hook');
-    const resultFile = await writeResult(
-      result(changed.currentHash!, await readGeneratedEvalManifestHash(changed)),
-      'degraded-hook.json',
-    );
-
-    await expect(recordBundleEval(projectRoot, 'stable-degraded-hook', resultFile)).rejects.toThrow(
-      /control plane[\s\S]*failure must be block/iu,
-    );
-  });
-
-  it('retains failed eval evidence when a factory Bundle lacks control-plane files', async () => {
-    const generated = await createFactoryStateWithGeneratedPackage(
-      projectRoot,
-      root,
-      'stable-failed-missing-control',
-    );
-    await fs.rm(
-      path.join(
-        generated.draftPath,
-        'skills',
-        'stable-failed-missing-control',
-        'scripts',
-        'comet-check.mjs',
-      ),
-    );
-    const changed = await reconcileBundleAuthoringState(
-      projectRoot,
-      'stable-failed-missing-control',
-    );
-    const resultFile = await writeResult(
-      result(changed.currentHash!, {
-        ...(await readGeneratedEvalManifestHash(changed)),
-        failures: ['entry failed before control-plane completion'],
-        passed: false,
-        summary: 'Entry failed before control-plane completion.',
-      }),
-      'failed-missing-control-plane.json',
-    );
-
-    const state = await recordBundleEval(projectRoot, 'stable-failed-missing-control', resultFile);
-
-    expect(state).toMatchObject({
-      status: 'draft',
-      eval: {
-        hash: changed.currentHash,
-        passed: false,
-        resultPath: expect.stringContaining(
-          path.join(
-            '.comet',
-            'bundle-evals',
-            'stable-failed-missing-control',
-            changed.currentHash!,
-            sha256(await fs.readFile(changed.factory!.generatedSkillPackage!.evalManifestPath!)),
-            'result.json',
-          ),
-        ),
-      },
-    });
-    await expect(fs.access(state.eval!.resultPath)).resolves.toBeUndefined();
-  });
-
-  it('does not require Engine control-plane files for none-mode factory packages', async () => {
-    const state = await createFactoryStateWithGeneratedPackage(
-      projectRoot,
-      root,
-      'stable-none-control',
-      'none',
-    );
-
-    await expect(validateStableFactoryControlPlane(state)).resolves.toMatchObject({
-      passed: true,
-      errors: [],
-    });
-  });
-
-  it('rejects stale generated package roots before validating old package contents', async () => {
-    const generated = await createFactoryStateWithGeneratedPackage(
-      projectRoot,
-      root,
-      'stable-stale-root',
-    );
-    const staleRoot = path.join(root, 'stale-generated-package');
-    await fs.cp(generated.factory!.generatedSkillPackage!.packageRoot, staleRoot, {
-      recursive: true,
-    });
-    await writeBundleAuthoringState(projectRoot, {
-      ...generated,
-      factory: {
-        ...generated.factory!,
-        generatedSkillPackage: {
-          ...generated.factory!.generatedSkillPackage!,
-          packageRoot: staleRoot,
-        },
-      },
-    });
-    const resultFile = await writeResult(
-      result(generated.currentHash!, await readGeneratedEvalManifestHash(generated)),
-      'stale-package-root.json',
-    );
-
-    await expect(recordBundleEval(projectRoot, 'stable-stale-root', resultFile)).rejects.toThrow(
-      /control plane.*packageRoot|control plane.*generated package root/iu,
-    );
   });
 
   async function writeResult(

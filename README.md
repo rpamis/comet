@@ -50,7 +50,7 @@ It allows you to use a toolchain to handle everything from requirements to archi
 > - **Native workflows for strong models**: After requirements are confirmed, the Agent chooses how to plan, implement, test, and review. Comet handles state checks, acceptance, and resumable archive. Native runs independently of Classic, which retains the OpenSpec + Superpowers five-phase methodology; both share configuration, status, Dashboard, and Eval entry points.
 > - **Parallel delivery for complex requirements**: Supervisor Changes split a goal into dependency-aware child changes. Independent Codex sessions or Claude Code Agent Teams implement and verify them in isolated worktrees, then integrate them in dependency order before the parent change's final acceptance.
 > - **Manageable Personal Memory and Project Knowledge**: Retain collaboration preferences and reusable experience across tasks, and progressively supply context relevant to the current task. You can inspect, correct, forget, or pause it; new lessons start in trial and gain supporting evidence through actual adoption and verification.
-> - **Skill creation, distribution, and evaluation**: Compose any Skills with `/comet-any` and package them for distribution. Use `comet eval` with Rubric, Pass@k, Pass^k, and LangSmith to compare results and guide Skill improvements.
+> - **Skill creation, delivery, and evaluation**: Create workflows owned by SDK Runs through `/comet-any`, approve a plan, and install or export locally; use `comet eval` to record evidence for the evaluated scope.
 > - **A unified three-pane Dashboard**: Inspect Native and Classic progress, Git worktrees, acceptance results, and archives in your browser, and manage Personal Memory, Project Knowledge, and plugin settings.
 > - **Cross-platform execution and recovery**: A pure Node.js Runtime supports Windows, macOS, and Linux without Bash or WSL. Task state stays in the project so work can resume after interruptions or session changes; CLI output identifies the next step and decisions that need your input.
 >
@@ -65,8 +65,7 @@ It allows you to use a toolchain to handle everything from requirements to archi
 - **Supervisor Changes for complex requirements** — Native can split work along real delivery boundaries, manage dependencies and readiness as a DAG, let multiple agents implement and verify in Runtime-created worktrees, and then integrate the results before the parent change's final acceptance.
 - **The stable core for long-running tasks** — Comet's Classic Spec mode combines OpenSpec and Superpowers into a five-phase flow with a state machine, phase checks, and scripts. It suits work that needs an explicit method and strong constraints; its permanent entry point is `/comet-classic`.
 - **A configuration-driven shared entry point** — `/comet` reads only the project's `.comet/config.yaml` and deterministically forwards to `/comet-native` or `/comet-classic`. It does not guess from task size or mix changes, state, or directories across workflows. `comet resume-probe` uses the same configuration to resume through the correct permanent entry point.
-- **Skill platform** — Comet can author reusable Skill packages and use `/comet-any` to organize them into distributable
-  Bundles, so Skills you create can be distributed to coding platforms with one command, much like `comet init`.
+- **Skill platform** — `/comet-any` turns a goal and real Skills into Native extensions, Classic compositions, or standalone SDK workflows, with plan confirmation, complete local exports, and project or user installation. See the [creation and delivery guide](docs/operations/SKILL-CREATION.md).
 - **Composable Skill Runtime SDK** — `@rpamis/comet/runtime` orchestrates Skill/tool steps, approval, outcome validation, and interruption recovery as persistent workflows. Native and Classic are two built-in applications: new changes use SDK Runs by default, while existing changes keep their original Runtime. The Agent platform still provides model, MCP, Hooks, Rules, and tool calls. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md).
 - **Eval platform** — Comet assesses your skills using scientific Rubric, Pass@k, and Pass^k scoring, ensuring skill evolution is based on scientific evidence rather than intuition. It supports integration with LangSmith assessments, bringing evaluation to real-world enterprise production environments. Its dual-agent architecture automates the assessment process in your production environment.
 
@@ -89,7 +88,7 @@ https://github.com/user-attachments/assets/41428669-a49a-46e3-a0ae-0775e4f4bb6f
 With Comet, you only need to remember two skills and one command, covering coding, creation, and evaluation with an extremely low barrier to entry：
 
 - Use `/comet` to enter the project's configured Native or Classic workflow
-- Use `/comet-any` to compose any Skills
+- Use `/comet-any` to create workflow applications
 - Use `comet eval` to evaluate any Skill
 
 ## Comet 0.4.0 Baseline Comparison
@@ -137,8 +136,7 @@ Many Comet capabilities have parallels in current industry practice.
   tooling.
 - **How to evolve Skills through scientific evaluation** — Comet Eval supports structured rubric scoring plus Pass@k and
   Pass^k metrics, with both local and LangSmith evaluation paths for production use.
-- **How to create Comet-like Skills intelligently** — `/comet-any` composes arbitrary Skills. You describe your Skill
-  preferences, and the agent handles stability-related hooks, rules, scripts, and referenced Skill files for you.
+- **How to create recoverable workflow applications** — `/comet-any` investigates real Skills, fixes dependencies and execution contracts, compiles approved plans, and records local checks separately from real host acceptance.
 
 ## Install
 

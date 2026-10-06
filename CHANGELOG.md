@@ -6,6 +6,9 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **SDK workflow creation**: Create Native extensions, Classic full/hotfix/tweak compositions, and standalone workflows from a goal and real Skills through `/comet-any`. Keep creation, plan approval, compilation, validation, and installation on a recoverable Creator Run, with fixed dependencies and separate business approvals.
+- **Local application delivery**: Export complete SDK application packages and preview project or user installation, including Codex and Claude Code entry Skills. Keep immutable versions available for active Runs during upgrades; uninstall removes managed default entries while explicitly retaining versions and dependencies.
+
 - **Resumable workflow creation**: Use `/comet-any` and `comet creator` to turn natural-language goals into Native extensions, Classic compositions, or standalone SDK workflows. Inspect actual Skills and show steps, artifacts, failure paths, and capability limits before plan confirmation; compile and verify the same fixed plan, then require a separate current installation preview approval. Continue the same creation after interruption while changed plans, dependencies, or installation targets invalidate affected approvals. Codex and Claude Code share local adapter contracts; real host and model evidence remains explicit. See the [Creator guide](docs/architecture/workflow-creator.zh.md).
 - **Workflow application compiler**: Publish `@rpamis/comet/applications/compiler` to assemble confirmed Native extensions, Classic replacements and ordered checks, and standalone workflows through their existing domain factories. Declare actual SDK workflows, branches, joins, child workflows, bounded repair, and fixed transition handlers; the report application remains a runnable sample. Fixed implementations and Skill resources produce deterministic entry and installation material; invalid transitions, missing validators, conflicting identities, or a changed plan block compilation. Application artifact validators check real JSON structure, Action and candidate identity, and current file hashes while retaining rejected results and files for correction.
 - **Standalone report applications**: Publish a report-generation, user-approval, and local-publication application factory through `@rpamis/comet/applications`. Joined child work, content-bound approval, rejection, bounded revisions, and interrupted publication reconciliation continue in the same SDK Run across processes without depending on Native or Classic phases.
@@ -42,6 +45,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Tests
 
 - **SDK workflow Eval**: Run the current Native full-cycle task with the checkout's SDK-backed CLI and require current Native and Classic lifecycle evaluations to inspect their owning completed SDK Runs. Classic validates the ordered SDK lifecycle Actions rather than requiring compat event files, retains `.comet.yaml` in exported artifacts, and uses the checkout's supported OpenSpec dependency and a local Git baseline. Its informational scores observe public Guard commands and accepted SDK stage checks, successful Archive outcomes and canonical requirements, proposal-bound approvals with captured host interaction, and digest-bound portable checkpoints. Exported artifacts preserve portable claim hashes and YAML syntax while redacting live credentials, and report links point to the saved snapshots. Multi-turn evaluations stream subject evidence as it arrives, preserving completed and in-progress turn logs on timeout without treating the timeout as success; pending statements such as `unarchived at` no longer end the Agent loop. Native Eval also verifies the required failed-then-passed Verify loop and rejects recorded shell removal of Runtime-owned state, so a manual reset does not count as SDK recovery.
+
+### Removed
+
+- **Legacy workflow generation**: Remove the previous Creator generator and `workflow-protocol.json` execution format. Old documents require regeneration and retain their original files; new applications use the SDK chain.
 
 ### Security
 

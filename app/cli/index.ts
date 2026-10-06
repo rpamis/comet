@@ -717,6 +717,57 @@ const publish = program
   .command('publish')
   .description('Review, approve, publish, and distribute Skill Creator candidates');
 
+const application = program
+  .command('application')
+  .description('Install, export, and uninstall local SDK workflow applications');
+
+application
+  .command('install <file>')
+  .description('Preview application installation or apply a confirmed preview hash')
+  .option('--project <dir>', 'Project root', '.')
+  .addOption(
+    new Option('--host <host>', 'Install host entry and fixed Skills').choices([
+      'codex',
+      'claude-code',
+    ]),
+  )
+  .addOption(
+    new Option('--scope <scope>', 'Install scope').choices(['project', 'user']).default('project'),
+  )
+  .option('--user-root <dir>', 'User application root')
+  .option('--upgrade', 'Upgrade an installed application')
+  .option('--confirmation-hash <hash>', 'Confirmed current install preview hash')
+  .option('--json', 'Output as JSON')
+  .action(async (file, options) => {
+    const { applicationInstallCommand } = await import('../commands/application.js');
+    await applicationInstallCommand(file, options);
+  });
+
+application
+  .command('export <file> <destination>')
+  .description('Export a complete SDK application and its fixed dependencies')
+  .option('--project <dir>', 'Project root', '.')
+  .option('--json', 'Output as JSON')
+  .action(async (file, destination, options) => {
+    const { applicationExportCommand } = await import('../commands/application.js');
+    await applicationExportCommand(file, destination, options);
+  });
+
+application
+  .command('uninstall <id>')
+  .description('Preview entry removal or apply a confirmed preview hash; retain versions')
+  .option('--project <dir>', 'Project root', '.')
+  .addOption(
+    new Option('--scope <scope>', 'Install scope').choices(['project', 'user']).default('project'),
+  )
+  .option('--user-root <dir>', 'User application root')
+  .option('--confirmation-hash <hash>', 'Confirmed current uninstall preview hash')
+  .option('--json', 'Output as JSON')
+  .action(async (id, options) => {
+    const { applicationUninstallCommand } = await import('../commands/application.js');
+    await applicationUninstallCommand(id, options);
+  });
+
 const creator = program
   .command('creator')
   .description('Create or resume Skill Creator candidates for /comet-any');
@@ -797,78 +848,6 @@ creator
     await creatorCandidatesCommand(options);
   });
 
-creator
-  .command('propose <name>')
-  .description('Preview a Skill Creator proposal without writing candidate state')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--file <path>', 'Skill Creator plan JSON file')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { creatorProposeCommand } = await import('../commands/creator.js');
-    await creatorProposeCommand(name, options);
-  });
-
-creator
-  .command('init <name>')
-  .description('Initialize or update Skill Creator metadata from a structured plan file')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--file <path>', 'Skill Creator plan JSON file')
-  .option('--confirmed-proposal', 'Record that the user approved the Skill Creator proposal')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { creatorInitCommand } = await import('../commands/creator.js');
-    await creatorInitCommand(name, options);
-  });
-
-creator
-  .command('resolve <name>')
-  .description('Resolve a missing or ambiguous Skill Creator candidate')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--candidate <query>', 'Skill Creator candidate query')
-  .option('--source <root-or-hash>', 'Selected source root or exact source hash')
-  .option('--ignore-missing', 'Ignore a missing preference and remove it from the call chain')
-  .option('--reason <text>', 'Reason for ignoring a missing preference')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { creatorResolveCommand } = await import('../commands/creator.js');
-    await creatorResolveCommand(name, options);
-  });
-
-creator
-  .command('authoring-plan <name>')
-  .description('Plan the Skill Creator authoring pipeline for a candidate')
-  .option('--project <dir>', 'Project root', '.')
-  .addOption(
-    new Option('--depth <depth>', 'Authoring depth').choices(['quick', 'full']).default('quick'),
-  )
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { creatorAuthoringPlanCommand } = await import('../commands/creator.js');
-    await creatorAuthoringPlanCommand(name, options);
-  });
-
-creator
-  .command('authoring-record <name>')
-  .description('Validate and record a Skill Creator authoring lane output')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--lane <id>', 'Authoring lane id')
-  .requiredOption('--file <path>', 'Lane output JSON file')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { creatorAuthoringRecordCommand } = await import('../commands/creator.js');
-    await creatorAuthoringRecordCommand(name, options);
-  });
-
-creator
-  .command('generate <name>')
-  .description('Generate candidate source from stored Skill Creator metadata')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { creatorGenerateCommand } = await import('../commands/creator.js');
-    await creatorGenerateCommand(name, options);
-  });
-
 publish
   .command('review <name>')
   .description('Build a validation summary before approval')
@@ -930,6 +909,26 @@ publish
 const bundle = program
   .command('bundle')
   .description('Manage advanced /comet-any Bundle state and audits');
+
+bundle
+  .command('status <name>')
+  .description('Inspect an advanced Bundle and its current evidence')
+  .option('--project <dir>', 'Project root', '.')
+  .option('--json', 'Output as JSON')
+  .action(async (name, options) => {
+    const { bundleStatusCommand } = await import('../commands/bundle.js');
+    await bundleStatusCommand(name, options);
+  });
+
+bundle
+  .command('list')
+  .description('List advanced Bundles without using the SDK Creator Run list')
+  .option('--project <dir>', 'Project root', '.')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    const { bundleListCommand } = await import('../commands/bundle.js');
+    await bundleListCommand(options);
+  });
 
 const draft = bundle.command('draft').description('Manage Bundle drafts');
 

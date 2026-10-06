@@ -160,7 +160,6 @@ describe('CI workflows', () => {
       'workflow',
       'bundle',
       'engine',
-      'factory',
       'integrations',
       'eval',
       'repo',

@@ -8,9 +8,6 @@ export interface BundleCandidateSource {
   platform: string;
   scope: FoundSkillSource['origin'];
   origin: FoundSkillSource['origin'];
-  factory?: {
-    query: string;
-  };
   root: string;
   description: string;
   skillMd: string;
@@ -53,9 +50,6 @@ export async function discoverBundleCandidates(options: {
       platform: source.platform ?? source.origin,
       scope: source.origin,
       origin: source.origin,
-      factory: {
-        query: candidate.query,
-      },
       root: source.root,
       description: source.description,
       skillMd: source.skillMd,

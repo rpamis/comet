@@ -3,17 +3,13 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { parse, stringify } from 'yaml';
-import { createBundleDraft, optimizeBundleDraft } from '../../../domains/bundle/draft.js';
+import { stringify } from 'yaml';
+import { optimizeBundleDraft } from '../../../domains/bundle/draft.js';
 import { recordBundleEval, type RepositoryEvalResult } from '../../../domains/bundle/eval.js';
-import {
-  generateBundleDraftFromFactoryState,
-  initializeBundleFactoryState,
-} from '../../../domains/bundle/factory.js';
+
 import { publishBundle, reviewBundle } from '../../../domains/bundle/publish.js';
 import { reconcileBundleAuthoringState } from '../../../domains/bundle/state.js';
 import type { BundleAuthoringState } from '../../../domains/bundle/types.js';
-import { workflowFor as workflowDefinitionFor } from '../../helpers/workflow-plan.js';
 
 async function writeBundle(root: string, name: string, requiresHooks = false): Promise<void> {
   await fs.mkdir(path.join(root, 'skills', 'entry'), { recursive: true });
@@ -51,20 +47,6 @@ engine:
   );
 }
 
-async function writeFactorySkill(projectRoot: string, name: string): Promise<void> {
-  const skillRoot = path.join(projectRoot, '.comet', 'skills', name);
-  await fs.mkdir(skillRoot, { recursive: true });
-  await fs.writeFile(
-    path.join(skillRoot, 'SKILL.md'),
-    `---\nname: ${name}\ndescription: ${name}.\n---\n\n# ${name}\n`,
-    'utf8',
-  );
-}
-
-function workflowFor(name: string, skills: string[]): ReturnType<typeof workflowDefinitionFor> {
-  return workflowDefinitionFor(name, skills);
-}
-
 function passingResult(hash: string, evalManifestHash = 'b'.repeat(64)): RepositoryEvalResult {
   return {
     schemaVersion: 2,
@@ -82,21 +64,6 @@ function passingResult(hash: string, evalManifestHash = 'b'.repeat(64)): Reposit
     passed: true,
     summary: 'Publish gates passed.',
   };
-}
-
-function passingFactoryResult(
-  hash: string,
-  entry: string,
-  evalManifestHash = 'b'.repeat(64),
-): RepositoryEvalResult {
-  return {
-    ...passingResult(hash, evalManifestHash),
-    treatments: [entry],
-  };
-}
-
-function sha256(content: string | Buffer): string {
-  return createHash('sha256').update(content).digest('hex');
 }
 
 describe('Bundle review and publish', () => {
@@ -325,96 +292,6 @@ describe('Bundle review and publish', () => {
     ).toBe(false);
   });
 
-  it('blocks Factory publish when generated package evidence is missing', async () => {
-    const state = await createBundleDraft({
-      projectRoot,
-      name: 'factory-no-generated-package',
-      candidates: [],
-      defaultLocale: 'en',
-      locales: ['en'],
-      engineEnabled: true,
-      factory: {
-        goal: 'Demo',
-        preferredSkills: ['demo'],
-        resolvedSkills: [],
-        callChain: [{ skill: 'demo', preferenceIndex: 0 }],
-        deviations: [],
-        engineMode: 'deterministic',
-        runnerMode: 'standalone',
-        proposalConfirmation: {
-          confirmed: true,
-          confirmedAt: new Date().toISOString(),
-          proposalHash: 'c'.repeat(64),
-          preferenceHash: null,
-          acceptedCapabilities: ['skills', 'scripts', 'rules', 'hooks', 'references'],
-          warnings: [],
-        },
-      },
-    });
-    await expect(
-      publishBundle({
-        projectRoot,
-        name: state.name,
-        referencePlatform: 'claude',
-      }),
-    ).rejects.toThrow('Factory publish requires generated Skill package evidence');
-  });
-
-  it('blocks publishing an evaluated factory Bundle with missing control-plane files', async () => {
-    const generated = await createFactoryStateWithGeneratedPackage('stable-missing-control');
-    await recordPassingEval('stable-missing-control', passingFactoryResult);
-    await reviewBundle({
-      projectRoot,
-      name: 'stable-missing-control',
-      decision: 'approved',
-      reviewer: 'alice',
-    });
-    await fs.rm(
-      path.join(
-        generated.draftPath,
-        'skills',
-        'stable-missing-control',
-        'scripts',
-        'comet-check.mjs',
-      ),
-    );
-
-    await expect(
-      publishBundle({
-        projectRoot,
-        name: 'stable-missing-control',
-        referencePlatform: 'claude',
-      }),
-    ).rejects.toThrow(/control plane.*scripts\/comet-check\.mjs/iu);
-  });
-
-  it('blocks publishing an evaluated factory Bundle with degraded required capabilities', async () => {
-    const generated = await createFactoryStateWithGeneratedPackage('stable-degraded-capabilities');
-    await recordPassingEval('stable-degraded-capabilities', passingFactoryResult);
-    await reviewBundle({
-      projectRoot,
-      name: 'stable-degraded-capabilities',
-      decision: 'approved',
-      reviewer: 'alice',
-    });
-    const manifestPath = path.join(generated.draftPath, 'bundle.yaml');
-    const manifest = parse(await fs.readFile(manifestPath, 'utf8')) as Record<string, unknown>;
-    manifest.platforms = {
-      requires: ['skills', 'scripts', 'rules', 'hooks'],
-      optional: [],
-      overrides: [],
-    };
-    await fs.writeFile(manifestPath, stringify(manifest), 'utf8');
-
-    await expect(
-      publishBundle({
-        projectRoot,
-        name: 'stable-degraded-capabilities',
-        referencePlatform: 'claude',
-      }),
-    ).rejects.toThrow(/control plane.*references|required capabilities/iu);
-  });
-
   async function createDraft(name: string, requiresHooks = false) {
     const sourceRoot = path.join(root, `${name}-source`);
     await writeBundle(sourceRoot, name, requiresHooks);
@@ -429,37 +306,6 @@ describe('Bundle review and publish', () => {
     });
   }
 
-  async function createFactoryStateWithGeneratedPackage(
-    name: string,
-  ): Promise<BundleAuthoringState> {
-    await writeFactorySkill(projectRoot, `${name}-source`);
-    const planFile = path.join(root, `${name}-plan.json`);
-    await fs.writeFile(
-      planFile,
-      JSON.stringify(
-        {
-          goal: `Generate ${name}.`,
-          preferredSkills: [`${name}-source`],
-          workflow: workflowFor(name, [`${name}-source`]),
-          engineMode: 'deterministic',
-          runnerMode: 'standalone',
-          defaultLocale: 'en',
-          locales: ['en'],
-        },
-        null,
-        2,
-      ),
-      'utf8',
-    );
-    const initialized = await initializeBundleFactoryState({
-      projectRoot,
-      name,
-      filePath: planFile,
-      confirmedProposal: true,
-    });
-    return generateBundleDraftFromFactoryState({ projectRoot, state: initialized });
-  }
-
   async function recordPassingEval(
     name: string,
     createResult: (
@@ -470,10 +316,7 @@ describe('Bundle review and publish', () => {
       passingResult(hash, evalManifestHash),
   ) {
     const state = await reconcileBundleAuthoringState(projectRoot, name);
-    const evalManifestPath = state.factory?.generatedSkillPackage?.evalManifestPath;
-    const evalManifestHash = evalManifestPath
-      ? sha256(await fs.readFile(evalManifestPath))
-      : 'b'.repeat(64);
+    const evalManifestHash = 'b'.repeat(64);
     const resultFile = path.join(root, `${name}-eval.json`);
     await fs.writeFile(
       resultFile,

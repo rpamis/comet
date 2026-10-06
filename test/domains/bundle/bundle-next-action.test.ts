@@ -21,53 +21,41 @@ function state(overrides: Partial<BundleAuthoringState> = {}): BundleAuthoringSt
   };
 }
 
-function proposalConfirmation(preferenceHash: string | null = null) {
-  return {
-    confirmed: true,
-    confirmedAt: '2026-06-24T00:00:00.000Z',
-    proposalHash: 'b'.repeat(64),
-    preferenceHash,
-    acceptedCapabilities: ['skills', 'scripts', 'rules', 'hooks', 'references'] as const,
-    warnings: [],
-  };
-}
-
 describe('Bundle next action', () => {
-  it('uses the generated eval manifest path in the user-facing eval command', () => {
-    const action = determineBundleNextAction(
-      state({
-        factory: {
-          goal: 'Create a demo Skill',
-          preferredSkills: ['brainstorming'],
-          resolvedSkills: [
-            { query: 'brainstorming', preferenceIndex: 0, status: 'available', sources: [] },
-          ],
-          callChain: [{ skill: 'brainstorming', preferenceIndex: 0 }],
-          deviations: [],
-          engineMode: 'deterministic',
-          runnerMode: 'standalone',
-          proposalConfirmation: proposalConfirmation(),
-          generatedSkillPackage: {
-            entrySkill: 'demo-skill',
-            internalSkills: [],
-            packageRoot: '/project/.comet/bundle-drafts/demo-skill/skills/demo-skill',
-            enginePath: null,
-            evalManifestPath:
-              '/project/.comet/bundle-drafts/demo-skill/skills/demo-skill/comet/eval.yaml',
-          },
-        },
-      }),
-    );
-
-    expect(action).toMatchObject({
-      action: 'choose-eval-level',
-      category: 'eval',
-      userLabel: 'Run repository eval for the generated Skill',
-      reason: 'Current draft hash is missing passing eval evidence',
-      userCommand:
-        'comet eval /project/.comet/bundle-drafts/demo-skill/skills/demo-skill/comet/eval.yaml --quick --html',
+  it('reports the Bundle evidence and publish steps without suggesting retired Creator commands', () => {
+    const summary = buildBundleResumeSummary(state());
+    expect(summary).toMatchObject({
+      currentStep: 'needs-eval',
+      evidencePaths: { draft: '/project/.comet/bundle-drafts/demo-skill' },
+      missing: [
+        'Passing eval evidence for the current draft',
+        'Review approval for the current draft',
+      ],
+      recommendedNextStep: {
+        action: 'choose-eval-level',
+        backendCommand: 'comet bundle eval-plan demo-skill --level quick',
+      },
     });
-    expect(action.backendCommand).toBe('comet bundle eval-plan demo-skill --level quick');
+    expect(JSON.stringify(summary)).not.toContain('comet creator');
+    const approved = state({
+      status: 'review-approved',
+      eval: {
+        level: 'quick',
+        hash: 'a'.repeat(64),
+        resultPath: '/project/result.json',
+        passed: true,
+      },
+      review: {
+        hash: 'a'.repeat(64),
+        decision: 'approved',
+        reviewer: 'human',
+        at: '2026-10-06T00:00:00Z',
+      },
+    });
+    expect(buildBundleResumeSummary(approved)).toMatchObject({
+      currentStep: 'needs-publish',
+      recommendedNextStep: { action: 'publish' },
+    });
   });
 
   it('requests review again when the current-hash review was rejected', () => {
@@ -97,86 +85,6 @@ describe('Bundle next action', () => {
       recommendedNextStep: {
         action: 'request-review',
       },
-    });
-  });
-
-  it('builds a resume summary with completed and missing steps', () => {
-    const summary = buildBundleResumeSummary(
-      state({
-        factory: {
-          goal: 'Create a resumable Skill',
-          preferredSkills: ['brainstorming'],
-          resolvedSkills: [
-            { query: 'brainstorming', preferenceIndex: 0, status: 'available', sources: [] },
-          ],
-          callChain: [{ skill: 'brainstorming', preferenceIndex: 0 }],
-          deviations: [],
-          engineMode: 'deterministic',
-          runnerMode: 'standalone',
-          preferenceHash: 'old-hash',
-          proposalConfirmation: proposalConfirmation('old-hash'),
-          generatedSkillPackage: {
-            entrySkill: 'demo-skill',
-            internalSkills: [],
-            packageRoot: '/draft/skills/demo-skill',
-            enginePath: null,
-            evalManifestPath: '/draft/skills/demo-skill/comet/eval.yaml',
-          },
-        },
-      }),
-      { currentPreferenceHash: 'new-hash' },
-    );
-
-    expect(summary).toMatchObject({
-      schemaVersion: 1,
-      name: 'demo-skill',
-      goal: 'Create a resumable Skill',
-      currentStep: 'needs-eval',
-      preferenceDrift: {
-        changed: true,
-        storedHash: 'old-hash',
-        currentHash: 'new-hash',
-      },
-      recommendedNextStep: {
-        action: 'choose-eval-level',
-        category: 'eval',
-      },
-    });
-    expect(summary.completed).toContain('Skill Creator metadata initialized');
-    expect(summary.missing).toContain('Passing eval evidence for the current draft');
-  });
-
-  it('marks preference drift when the stored hash exists and the current hash is null', () => {
-    const summary = buildBundleResumeSummary(
-      state({
-        factory: {
-          goal: 'Create a resumable Skill',
-          preferredSkills: ['brainstorming'],
-          resolvedSkills: [
-            { query: 'brainstorming', preferenceIndex: 0, status: 'available', sources: [] },
-          ],
-          callChain: [{ skill: 'brainstorming', preferenceIndex: 0 }],
-          deviations: [],
-          engineMode: 'deterministic',
-          runnerMode: 'standalone',
-          preferenceHash: 'old-hash',
-          proposalConfirmation: proposalConfirmation('old-hash'),
-          generatedSkillPackage: {
-            entrySkill: 'demo-skill',
-            internalSkills: [],
-            packageRoot: '/draft/skills/demo-skill',
-            enginePath: null,
-            evalManifestPath: '/draft/skills/demo-skill/comet/eval.yaml',
-          },
-        },
-      }),
-      { currentPreferenceHash: null },
-    );
-
-    expect(summary.preferenceDrift).toEqual({
-      changed: true,
-      storedHash: 'old-hash',
-      currentHash: null,
     });
   });
 });

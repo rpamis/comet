@@ -94,8 +94,8 @@ describe('CLI help text', () => {
     expect(bundleHelp.stdout).not.toContain('factory-');
     expect(bundleHelp.stdout).not.toContain('authoring-plan');
     expect(bundleHelp.stdout).not.toContain('authoring-record');
-    expect(bundleHelp.stdout).not.toContain('list [options]');
-    expect(bundleHelp.stdout).not.toContain('status [options] <name>');
+    expect(bundleHelp.stdout).toContain('list [options]');
+    expect(bundleHelp.stdout).toContain('status [options] <name>');
     expect(skillHelp.stdout).toContain('Install, inspect, and debug local Skill packages');
     expect(skillHelp.stdout).toContain('add [options] <path>');
     expect(skillHelp.stdout).toContain('show [options] <skill>');
@@ -276,8 +276,7 @@ describe('CLI help text', () => {
     try {
       const result = runCli('creator', command, 'original', '--project', project, ...args);
       expect(result.status).toBe(1);
-      expect(result.stderr + result.stdout).toContain('旧创作格式不再推进');
-      expect(result.stderr + result.stdout).toContain('comet creator start');
+      expect(result.stderr + result.stdout).toContain('error:');
       expect(readFileSync(marker, 'utf8')).toBe(original);
       expect(existsSync(path.join(project, '.comet'))).toBe(false);
     } finally {

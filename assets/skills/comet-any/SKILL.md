@@ -10,7 +10,7 @@ After the user describes a goal, inspect real Skills and show a concrete workflo
 
 ## Start or resume
 
-1. When the creation name is known, run `comet creator status <name> --project <project> --json`, then `comet creator next <name> --project <project> --json`. Preserve the original name and Run; after interruption, inspect the original Action before repeating completed work.
+1. When the creation name is known, run `comet creator status <name> --project <project> --json`, then `comet creator next <name> --project <project> --json`. Preserve the original name and Run; after interruption, inspect the original Action and do not repeat completed work.
 2. For a new creation, read `comet creator guide --project <project> --json`. Determine the goal and installation location from the user's description; ask only about choices that cannot be investigated and would change the result. Start with `comet creator start <name> --project <project> --goal <user-goal> --install-target <relative-directory> --host codex|claude-code --json`.
 3. Before the first claim or action submission, read [Creation actions and recovery](reference/sdk-creation.md). Use the returned Action, attempt, inputHash, and the current host session identifier; when the current action lacks a required capability, report the blocker and preserve the current work.
 

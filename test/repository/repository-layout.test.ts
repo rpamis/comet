@@ -73,12 +73,13 @@ describe('repository layout registry', () => {
       'dashboard',
       'engine',
       'eval',
-      'factory',
       'integrations',
       'project-knowledge',
       'skill',
       'workflow-application',
       'workflow-contract',
+      'workflow-creation',
+      'workflow-generation',
     ]);
     expect(layout.platformModules).toEqual([
       'fs',

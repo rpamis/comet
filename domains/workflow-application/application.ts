@@ -35,6 +35,7 @@ import {
   assertApplicationSkillAction,
   createApplicationSkillExecutor,
 } from './skill-executor.js';
+import { resolveInstalledWorkflowApplication } from './installed-application.js';
 
 interface ApplicationRunRecord {
   runId: string;
@@ -74,7 +75,7 @@ export async function readWorkflowApplicationRun(
   return record.run;
 }
 
-function parseManifest(value: unknown): WorkflowApplicationManifest {
+export function parseWorkflowApplicationManifest(value: unknown): WorkflowApplicationManifest {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     applicationError('应用文件必须是 JSON 对象');
   const manifest = value as WorkflowApplicationManifest;
@@ -105,9 +106,12 @@ export async function resolveWorkflowApplicationFile(
   runId: string,
 ): Promise<string> {
   const record = await rawStore(await fs.realpath(projectRoot), id).read(runId);
-  return record
-    ? path.join(record.application.packageRoot, 'application.json')
-    : path.join(projectRoot, '.comet/applications', safeId(id), 'application.json');
+  if (record) return path.join(record.application.packageRoot, 'application.json');
+  return (
+    (await resolveInstalledWorkflowApplication({ projectRoot, scope: 'project' }, safeId(id))) ??
+    (await resolveInstalledWorkflowApplication({ projectRoot, scope: 'user' }, safeId(id))) ??
+    path.join(projectRoot, '.comet/applications', safeId(id), 'application.json')
+  );
 }
 
 export async function loadWorkflowApplication(options: {
@@ -124,7 +128,7 @@ export async function loadWorkflowApplication(options: {
   const packageRoot = await fs.realpath(path.dirname(file));
   if (packageRoot === projectRoot) applicationError('应用包须放在独立目录，不能包含项目的运行状态');
   const files = await readApplicationFiles(packageRoot);
-  const manifest = parseManifest(
+  const manifest = parseWorkflowApplicationManifest(
     JSON.parse(Buffer.from(files['application.json'] ?? '', 'base64').toString('utf8')),
   );
   const version = getCurrentVersion();

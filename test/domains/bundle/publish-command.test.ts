@@ -5,12 +5,9 @@ import path from 'path';
 import {
   bundleDraftOptimizeCommand,
   bundleEvalRecordCommand,
+  bundleListCommand,
+  bundleStatusCommand,
 } from '../../../app/commands/bundle.js';
-import {
-  creatorListCommand,
-  creatorNextCommand,
-  creatorStatusCommand,
-} from '../../../app/commands/creator.js';
 import {
   publishApproveCommand,
   publishDistributeCommand,
@@ -112,7 +109,7 @@ async function captureText(run: () => Promise<void>): Promise<string> {
   }
 }
 
-describe('creator and publish command facades', () => {
+describe('Bundle and publish command facades', () => {
   let root: string;
   let projectRoot: string;
   let sourceRoot: string;
@@ -130,12 +127,10 @@ describe('creator and publish command facades', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('lists and inspects Skill Creator candidates through the creator facade', async () => {
-    const listed = await captureJson(() =>
-      creatorListCommand({ project: projectRoot, json: true }),
-    );
+  it('lists and inspects general Bundle drafts through the Bundle facade', async () => {
+    const listed = await captureJson(() => bundleListCommand({ project: projectRoot, json: true }));
     const status = await captureJson(() =>
-      creatorStatusCommand('publish-facade', { project: projectRoot, json: true }),
+      bundleStatusCommand('publish-facade', { project: projectRoot, json: true }),
     );
 
     expect(listed).toMatchObject({
@@ -159,9 +154,9 @@ describe('creator and publish command facades', () => {
     });
 
     const text = await captureText(() =>
-      creatorStatusCommand('publish-facade', { project: projectRoot }),
+      bundleStatusCommand('publish-facade', { project: projectRoot }),
     );
-    expect(text).toContain('Found an unfinished Skill creation');
+    expect(text).toContain('Found an unfinished Bundle');
     expect(text).toContain('Still needed:');
     expect(text).toContain('Current step: needs-eval');
     expect(text).toContain('Suggested user command:');
@@ -170,41 +165,11 @@ describe('creator and publish command facades', () => {
     expect(text).not.toContain('Run a benchmark');
     expect(text).not.toContain('Benchmark: missing');
     expect(text).not.toContain('benchmark-record');
-
-    const next = await captureJson(() =>
-      creatorNextCommand('publish-facade', { project: projectRoot, json: true }),
-    );
-    expect(next).toMatchObject({
-      schemaVersion: 1,
-      name: 'publish-facade',
-      status: 'draft',
-      currentStep: 'needs-eval',
-      nextStep: {
-        action: 'choose-eval-level',
-        category: 'eval',
-        command: expect.stringContaining('comet eval'),
-        requiresUserConfirmation: true,
-      },
-    });
-    expect(JSON.stringify(next)).not.toContain('backendCommand');
-
-    const nextText = await captureText(() =>
-      creatorNextCommand('publish-facade', { project: projectRoot }),
-    );
-    expect(nextText).toContain('Next step for publish-facade');
-    expect(nextText).toContain('Current step: needs-eval');
-    expect(nextText).toContain('Command: comet eval');
-    expect(nextText).not.toContain('Backend command:');
-    expect(nextText).not.toContain('choose-benchmark-level');
-    expect(nextText).not.toContain('needs-benchmark');
-    expect(nextText).not.toContain('Run a benchmark');
-    expect(nextText).not.toContain('Benchmark: missing');
-    expect(nextText).not.toContain('benchmark-record');
   });
 
   it('reviews, approves, publishes, and distributes through the facade', async () => {
     const status = await captureJson(() =>
-      creatorStatusCommand('publish-facade', { project: projectRoot, json: true }),
+      bundleStatusCommand('publish-facade', { project: projectRoot, json: true }),
     );
     const resultFile = path.join(root, 'eval.json');
     await fs.writeFile(resultFile, JSON.stringify(passingResult(String(status.currentHash))));
@@ -313,7 +278,7 @@ describe('creator and publish command facades', () => {
 
   it('previews publish distribution through the facade without writing files', async () => {
     const status = await captureJson(() =>
-      creatorStatusCommand('publish-facade', { project: projectRoot, json: true }),
+      bundleStatusCommand('publish-facade', { project: projectRoot, json: true }),
     );
     const resultFile = path.join(root, 'eval-preview.json');
     await fs.writeFile(resultFile, JSON.stringify(passingResult(String(status.currentHash))));

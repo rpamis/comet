@@ -48,7 +48,6 @@ jobs:
             workflow
             bundle
             engine
-            factory
             integrations
             eval
             repo

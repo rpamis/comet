@@ -87,6 +87,13 @@ export interface CompileWorkflowApplicationOptions {
 export function hashWorkflowApplicationPlanContent(plan: unknown, dependencyRoot?: string): Promise<string>;
 
 // @public
+export function prepareWorkflowApplicationExample(options: {
+    projectRoot: string;
+    packageRoot: string;
+    base: 'native' | 'classic-full' | 'classic-hotfix' | 'classic-tweak' | 'standalone';
+}): Promise<string>;
+
+// @public
 export function prepareWorkflowApplicationPlan(options: {
     proposal: WorkflowApplicationProposal;
     packageRoot: string;

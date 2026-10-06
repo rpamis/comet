@@ -4,22 +4,7 @@ export type BundleReadinessConclusion =
   'blocked' | 'needs-confirmation' | 'can-publish' | 'published';
 
 export interface BundleReadinessUserSummaryItem {
-  code:
-    | 'candidate'
-    | 'proposal'
-    | 'preference'
-    | 'composition'
-    | 'workflow'
-    | 'control-plane'
-    | 'authoring'
-    | 'draft'
-    | 'eval'
-    | 'review'
-    | 'publish'
-    | 'capability'
-    | 'agent'
-    | 'executable'
-    | 'unknown';
+  code: 'draft' | 'eval' | 'review' | 'publish' | 'capability' | 'agent' | 'executable' | 'unknown';
   severity: 'blocker' | 'warning';
   message: string;
   impact: string;
@@ -64,24 +49,7 @@ function fallbackNextSteps(
 function codeOf(message: string): BundleReadinessUserSummaryItem['code'] {
   const match = message.match(/^\[([a-z-]+)\]/u);
   const value = match?.[1] ?? 'unknown';
-  if (
-    [
-      'candidate',
-      'proposal',
-      'preference',
-      'composition',
-      'workflow',
-      'control-plane',
-      'authoring',
-      'draft',
-      'eval',
-      'review',
-      'publish',
-      'capability',
-      'agent',
-      'executable',
-    ].includes(value)
-  ) {
+  if (['draft', 'eval', 'review', 'publish', 'capability', 'agent', 'executable'].includes(value)) {
     return value as BundleReadinessUserSummaryItem['code'];
   }
   return 'unknown';
@@ -92,55 +60,11 @@ function advice(
   bundleName: string,
 ): { impact: string; label: string; command: string } {
   switch (code) {
-    case 'candidate':
-      return {
-        impact: 'Comet cannot safely compose the Skill until every source Skill is resolved.',
-        label: 'Resolve missing or ambiguous Skill candidates',
-        command: `comet creator status ${bundleName}`,
-      };
-    case 'proposal':
-      return {
-        impact: 'The resolved Skill composition has not been confirmed by the user.',
-        label: 'Confirm the resolved composition proposal',
-        command: `comet creator init ${bundleName} --file <plan.json> --confirmed-proposal`,
-      };
-    case 'preference':
-      return {
-        impact: 'The saved project Skill preferences no longer match this candidate.',
-        label: 'Review project Skill preferences and resume /comet-any',
-        command: 'Open .comet/skill-preferences.yaml, then run /comet-any again',
-      };
-    case 'composition':
-      return {
-        impact: 'The generated Skill plan is not stable enough to publish.',
-        label: 'Ask /comet-any to revise the composition proposal',
-        command: 'Ask /comet-any to revise the proposal',
-      };
-    case 'workflow':
-      return {
-        impact:
-          'The generated workflow contract is missing a required Output Schema or violates a protected Node rule.',
-        label: 'Revise the workflow contract',
-        command: 'Ask /comet-any to revise the Workflow Nodes, Skill Bindings, or Output Schemas',
-      };
-    case 'control-plane':
-      return {
-        impact: 'Required scripts, rules, hooks, or checks are missing from the generated Skill.',
-        label: 'Regenerate the Skill Creator package',
-        command: `comet creator generate ${bundleName}`,
-      };
-    case 'authoring':
-      return {
-        impact:
-          'The generated Skill still contains scaffold content that must be authored before publishing.',
-        label: 'Complete generated Skill authoring',
-        command: `comet creator authoring-record ${bundleName} --lane skill-core --file <authoring-output.json>, then run the skill-review lane`,
-      };
     case 'draft':
       return {
         impact: 'The draft cannot be tied to a stable hash.',
         label: 'Reconcile the Bundle status',
-        command: `comet creator status ${bundleName}`,
+        command: `comet bundle status ${bundleName}`,
       };
     case 'eval':
       return {

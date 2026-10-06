@@ -9,6 +9,13 @@ export { createApplicationSkillExecutor, reconcileApplicationSkill } from './ski
 export { applicationSkillWork, applicationWaitSkillWork } from './skill-work.js';
 export { createReportApplication } from './report-application.js';
 export { createStandaloneApplication } from './standalone-application.js';
+export {
+  previewWorkflowApplicationInstall,
+  installWorkflowApplication,
+  exportWorkflowApplication,
+  uninstallWorkflowApplication,
+} from './delivery.js';
+export type { ApplicationDeliveryOptions, ApplicationInstallPreview } from './delivery.js';
 export type { StandaloneApplicationOptions } from './standalone-application.js';
 export { createApplicationArtifactValidator } from './artifact-validator.js';
 export type {
@@ -29,3 +36,5 @@ export type {
   WorkflowApplicationManifest,
   WorkflowApplicationFactoryContext,
 } from './types.js';
+
+export { resolveInstalledWorkflowApplication } from './installed-application.js';

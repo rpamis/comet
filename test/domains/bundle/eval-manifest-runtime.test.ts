@@ -65,7 +65,7 @@ afterEach(async () => {
 });
 
 describe('prepareEvalManifest', () => {
-  it('resolves the current Bundle hash without modifying the Factory manifest', async () => {
+  it('resolves the current Bundle hash without modifying the Bundle manifest', async () => {
     const { root, manifestPath } = await createBundleFixture();
 
     const prepared = await prepareEvalManifest(manifestPath);
@@ -83,7 +83,7 @@ describe('prepareEvalManifest', () => {
     await prepared.cleanup();
   });
 
-  it('returns Creator recording context only for the matching current authoring draft', async () => {
+  it('returns Bundle recording context only for the matching current authoring draft', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-project-test-'));
     temporary.push(projectRoot);
     const { root, manifestPath } = await createBundleFixture({ projectRoot });
@@ -104,21 +104,6 @@ describe('prepareEvalManifest', () => {
         defaultLocale: 'zh',
         locales: ['zh'],
         engineEnabled: false,
-        factory: {
-          generatedSkillPackage: {
-            entrySkill: 'demo',
-            internalSkills: [],
-            packageRoot: path.join(root, 'skills', 'demo'),
-            enginePath: null,
-            evalManifestPath: manifestPath,
-            controlPlane: {
-              checksPath: null,
-              evalManifestPath: manifestPath,
-              compositionReportPath: path.join(root, 'composition-report.json'),
-              scripts: [],
-            },
-          },
-        },
       }),
     );
 
@@ -135,7 +120,7 @@ describe('prepareEvalManifest', () => {
     await prepared.cleanup();
   });
 
-  it('does not attach Creator context when the authoring state points at a stale draft hash', async () => {
+  it('does not attach Bundle context when the authoring state points at a stale draft hash', async () => {
     const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-eval-project-test-'));
     temporary.push(projectRoot);
     const { root, manifestPath } = await createBundleFixture({ projectRoot });
@@ -154,15 +139,6 @@ describe('prepareEvalManifest', () => {
         defaultLocale: 'zh',
         locales: ['zh'],
         engineEnabled: false,
-        factory: {
-          generatedSkillPackage: {
-            entrySkill: 'demo',
-            internalSkills: [],
-            packageRoot: path.join(root, 'skills', 'demo'),
-            enginePath: null,
-            evalManifestPath: manifestPath,
-          },
-        },
       }),
     );
 
