@@ -1,3 +1,4 @@
+import { resolveCometDaemonRoute, shouldAutoStartCometDaemon } from './comet-daemon-route.js';
 import { spawn } from 'node:child_process';
 import {
   closeSync,
@@ -13,8 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const CLASSIC_READ_COMMANDS = new Set(['current', 'next']);
-const NATIVE_READ_COMMANDS = new Set(['status', 'show', 'root']);
+export { resolveCometDaemonRoute, shouldAutoStartCometDaemon } from './comet-daemon-route.js';
 
 function packageVersion() {
   try {
@@ -53,22 +53,6 @@ function projectRootFromArgs(args) {
     if (parent === cursor) return path.resolve(process.cwd());
     cursor = parent;
   }
-}
-
-function route(argv) {
-  if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) return null;
-  if (argv.some((value) => value.startsWith('--comet-'))) return null;
-  if (argv[0] === 'state' && CLASSIC_READ_COMMANDS.has(argv[1])) {
-    return { runtime: 'classic', commandArgs: [...argv] };
-  }
-  if (
-    argv[0] === 'native' &&
-    NATIVE_READ_COMMANDS.has(argv[1]) &&
-    !(argv[1] === 'root' && argv[2] && argv[2] !== 'show')
-  ) {
-    return { runtime: 'native', commandArgs: [argv[1], ...argv.slice(2)] };
-  }
-  return null;
 }
 
 async function daemonModule() {
@@ -160,11 +144,15 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function requestWithLaunch(module, options, launch, waitForLaunch = true) {
-  const deadline =
-    process.platform === 'win32' && launch && waitForLaunch ? performance.now() + 10_000 : null;
+async function requestWithLaunch(
+  module,
+  options,
+  launch,
+  waitForLaunch = true,
+  deadline = performance.now() + (launch && waitForLaunch ? 10_000 : (options.timeoutMs ?? 5_000)),
+) {
+  const waitForPendingLaunch = process.platform === 'win32' && launch && waitForLaunch;
   const request = () => {
-    if (deadline === null) return module.sendCometDaemonRequest(options);
     const remaining = Math.ceil(deadline - performance.now());
     if (remaining <= 0) throw new Error('Comet daemon startup timed out');
     return module.sendCometDaemonRequest({
@@ -175,16 +163,18 @@ async function requestWithLaunch(module, options, launch, waitForLaunch = true) 
   try {
     return await request();
   } catch {
-    if (!launch) return null;
+    if (!launch || performance.now() >= deadline) return null;
     const started = startServer(module, options.endpoint, options.buildId, options.projectRoot);
-    if (!started && (deadline === null || !existsSync(launchLockPath(options.endpoint)))) return null;
+    if (!started && (!waitForPendingLaunch || !existsSync(launchLockPath(options.endpoint)))) {
+      return null;
+    }
   }
   if (!waitForLaunch) return null;
   const delays = [20, 40, 80, 160, 320, 640, 1_000];
-  // Windows explicit start shares one deadline across backoff and IPC. Reads
-  // already returned above; they never wait for the background WMI handoff.
-  for (let attempt = 0; deadline !== null || attempt < delays.length; attempt += 1) {
-    const remaining = deadline === null ? Infinity : deadline - performance.now();
+  // 所有平台的 IPC 和启动重试共用总期限，超时后仍由调用方回退到本地 Runtime。
+  // Windows 自动读取不等待后台启动；显式 start 可等候已有启动锁。
+  for (let attempt = 0; waitForPendingLaunch || attempt < delays.length; attempt += 1) {
+    const remaining = deadline - performance.now();
     if (remaining <= 0) return null;
     await wait(Math.min(delays[attempt] ?? 1_000, remaining));
     try {
@@ -202,13 +192,10 @@ function writeCommandResponse(response) {
   process.exitCode = response.exitCode ?? (response.ok ? 0 : 70);
 }
 
-export function shouldAutoStartCometDaemon(environment = process.env) {
-  return environment.COMET_DAEMON !== 'off';
-}
-
 export async function tryRunCometDaemon(argv = process.argv.slice(2)) {
+  const deadline = performance.now() + (process.platform === 'win32' ? 5_000 : 10_000);
   if (!shouldAutoStartCometDaemon() || process.env.COMET_DAEMON_SERVER === '1') return false;
-  const selected = route(argv);
+  const selected = resolveCometDaemonRoute(argv);
   if (!selected) return false;
   const module = await daemonModule();
   if (!module) return false;
@@ -231,6 +218,7 @@ export async function tryRunCometDaemon(argv = process.argv.slice(2)) {
     // Let the first Windows request run in the caller while the broker warms
     // the daemon. Later requests reuse the server once it is listening.
     process.platform !== 'win32',
+    deadline,
   );
   if (!response?.ok) return false;
   writeCommandResponse(response);
@@ -255,6 +243,7 @@ function parseControlArgs(argv) {
 }
 
 export async function runCometDaemonCommand(argv = process.argv.slice(2)) {
+  const startedAt = performance.now();
   if (argv[0] !== 'daemon') return false;
   const parsed = parseControlArgs(argv);
   if (parsed.action === '--help' || parsed.action === '-h') {
@@ -288,6 +277,8 @@ export async function runCometDaemonCommand(argv = process.argv.slice(2)) {
         timeoutMs: 5_000,
       },
       true,
+      true,
+      startedAt + 10_000,
     );
     if (!response?.ok) {
       process.stderr.write('Unable to start the Comet daemon.\n');
@@ -307,6 +298,8 @@ export async function runCometDaemonCommand(argv = process.argv.slice(2)) {
       timeoutMs: 3_000,
     },
     false,
+    false,
+    startedAt + 3_000,
   );
   if (parsed.action === 'status') {
     const value = response?.ok ? { running: true, ...response.status } : { running: false };

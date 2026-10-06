@@ -52,8 +52,9 @@ export async function resolveCometHookProjectRoot(
   request: CometHookRequest,
 ): Promise<string> {
   const explicitRoot = path.resolve(explicitProjectRoot);
+  if (request.targets.length === 0) return explicitRoot;
   const roots = listGitWorktreeRoots(explicitRoot);
-  if (roots.length < 2 || request.targets.length === 0) return explicitRoot;
+  if (roots.length < 2) return explicitRoot;
 
   const cwdOwner = request.cwd ? owningWorktree(path.resolve(request.cwd), roots) : null;
   const relativeTargetBase = cwdOwner ?? explicitRoot;

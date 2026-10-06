@@ -341,19 +341,18 @@ export async function writeMissingNativeSupervisorArchiveMaterials(
   return missing;
 }
 
-/** 从公开 inspect 读取原 Parent；仅补已成功归档的来源材料，不重写验收和状态。 */
-export async function backfillNativeSdkSupervisorChildArchiveMaterials(options: {
-  projectRoot: string;
-  targetProjectRoot: string;
-  parent: string;
-  expectedRevision: number;
-  dryRun: boolean;
-}) {
-  const { inspectNativeSdkRun } = await import('./native-runtime-ownership.js');
-  const { run, state, artifactRootRef } = await inspectNativeSdkRun(
-    options.projectRoot,
-    options.parent,
-  );
+/** 使用命令层读取的原 Parent，仅补材料，不重写验收和状态。 */
+export async function restoreNativeSupervisorChildArchiveMaterials(
+  options: {
+    projectRoot: string;
+    targetProjectRoot: string;
+    parent: string;
+    expectedRevision: number;
+    dryRun: boolean;
+  },
+  inspection: { run: WorkflowRun; state: NativePortableState; artifactRootRef: string },
+) {
+  const { run, state, artifactRootRef } = inspection;
   if (run.revision !== options.expectedRevision)
     throw new Error('Native Parent revision changed before archive material recovery');
   const prepared = run.outputs['supervisor.prepare']?.value as

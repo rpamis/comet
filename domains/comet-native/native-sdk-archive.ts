@@ -61,8 +61,6 @@ async function archivePreflightBinding(
     throw new Error('Native artifact root changed after Run creation');
   }
   const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
-  const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
-  if (drift.drifted) throw new Error(drift.reason ?? 'Native acceptance changed');
   const reportFile = path.join(paths.changesDir, state.name, 'verification.md');
   const reportRef = path.relative(projectRoot, reportFile).replaceAll('\\', '/');
   const prior = run.outputs['verify.report']?.value as Record<string, unknown> | undefined;
@@ -98,6 +96,7 @@ async function archivePreflightOutput(
     paths: bound.paths,
     name: bound.state.name,
     state: bound.state,
+    requireCurrentAcceptance: true,
   });
   const archiveDirRef = path.relative(projectRoot, inspected.archiveDir).replaceAll('\\', '/');
   if (archiveDirRef.startsWith('../') || path.isAbsolute(archiveDirRef)) {
@@ -126,6 +125,8 @@ export const nativeSdkArchivePreflightExecutor: RuntimeExecutor = {
       throw new Error('Native Archive preflight requires a bound SDK Run');
     }
     const bound = await archivePreflightBinding(run, action, context.projectRoot);
+    const drift = await inspectNativePortableAcceptanceDrift(bound);
+    if (drift.drifted) throw new Error(drift.reason ?? 'Native acceptance changed');
     const previous = await hashProtectedProjectFile(context.projectRoot, bound.reportRef, {
       label: 'Native SDK verification report',
     });

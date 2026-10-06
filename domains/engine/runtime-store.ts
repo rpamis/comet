@@ -126,24 +126,36 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     ) {
       throw new RuntimeProtocolError('STORE_CHANGED_DIRECTORY', '读取版本列表时 Run 目录已变化');
     }
-    const revisions = entries.filter((entry) => !/^\..+\.tmp$/u.test(entry.name));
-    revisions.sort((left, right) => left.name.localeCompare(right.name));
-    for (const [index, entry] of revisions.entries()) {
+    let revisionCount = 0;
+    let latestRevision = 0;
+    let latestName: string | undefined;
+    for (const entry of entries) {
+      if (/^\..+\.tmp$/u.test(entry.name)) continue;
       if (!entry.isFile() || entry.isSymbolicLink() || !/^[0-9]{16}\.json$/u.test(entry.name)) {
         throw new RuntimeProtocolError('STORE_INVALID_ENTRY', `版本文件无效：${entry.name}`);
       }
-      if (Number(entry.name.slice(0, -5)) !== index + 1) {
-        throw new RuntimeProtocolError(
-          'STORE_MISSING_REVISION',
-          `版本历史缺少 revision ${index + 1}`,
-        );
+      const revision = Number(entry.name.slice(0, -5));
+      if (!Number.isSafeInteger(revision) || revision < 1) {
+        throw new RuntimeProtocolError('STORE_INVALID_ENTRY', `版本文件无效：${entry.name}`);
+      }
+      revisionCount += 1;
+      if (revision > latestRevision) {
+        latestRevision = revision;
+        latestName = entry.name;
       }
     }
-    const latest = revisions.at(-1);
-    if (!latest) return null;
+    // 目录文件名唯一，固定宽度的正整数编号在数量等于最大值时恰好覆盖 1..N。
+    // 保留全历史检查；只有异常路径才额外建立集合定位首个缺口。
+    if (latestRevision !== revisionCount) {
+      const names = new Set(entries.map((entry) => entry.name));
+      let missing = 1;
+      while (names.has(`${String(missing).padStart(16, '0')}.json`)) missing += 1;
+      throw new RuntimeProtocolError('STORE_MISSING_REVISION', `版本历史缺少 revision ${missing}`);
+    }
+    if (!latestName) return null;
     const result = await readProtectedProjectFile(
       rootDir,
-      `${runRef}/${latest.name}`,
+      `${runRef}/${latestName}`,
       Number.MAX_SAFE_INTEGER,
       {
         label: 'RuntimeStore revision',
@@ -162,7 +174,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
         '版本文件的 runId 与目标 runId 不一致',
       );
     }
-    if (value.revision !== revisions.length) {
+    if (value.revision !== latestRevision) {
       throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', '版本文件的 revision 与文件名不一致');
     }
     return value;

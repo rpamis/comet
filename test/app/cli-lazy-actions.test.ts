@@ -1,4 +1,5 @@
 import path from 'path';
+import { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const statusCommand = vi.fn(async () => undefined);
@@ -156,6 +157,7 @@ describe('CLI lazy command actions', () => {
     process.argv = originalArgv;
     process.exitCode = undefined;
     vi.clearAllMocks();
+    vi.restoreAllMocks();
     vi.resetModules();
   });
 
@@ -255,6 +257,83 @@ describe('CLI lazy command actions', () => {
       'weekly-report',
       expect.objectContaining({ request: 'current-action.json', json: true }),
     );
+  });
+
+  it('retains root commands without constructing unrelated group subcommands', async () => {
+    const register = vi.spyOn(Command.prototype, 'command');
+    await runAction(['status', 'project'], statusCommand);
+    const commands = register.mock.calls.map(([name]) => name);
+    expect(commands).toEqual(
+      expect.arrayContaining([
+        'workflow',
+        'memory',
+        'knowledge',
+        'skill',
+        'creator',
+        'publish',
+        'bundle',
+      ]),
+    );
+    expect(commands).not.toContain('retrieve [path]');
+    expect(commands).not.toContain('review [path]');
+    expect(commands).not.toContain('draft');
+    expect(commands).not.toContain('generate <name>');
+  });
+
+  it.each([
+    ['memory', '--help'],
+    ['help', 'memory'],
+    ['help', '--', 'memory'],
+  ])('registers group help for %j', async (...args) => {
+    const output: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      output.push(String(chunk));
+      return true;
+    });
+    vi.spyOn(process, 'exit').mockImplementation((exitCode) => {
+      throw Object.assign(new Error('CLI exit'), { exitCode });
+    });
+    process.argv = [process.execPath, cliPath, ...args];
+    vi.resetModules();
+    await import('../../app/cli/index.js');
+    expect(output.join('')).toContain('Usage: comet memory [options] [command]');
+    expect(output.join('')).toContain('retrieve [options] [path]');
+    expect(output.join('')).toContain('rollback [options] [path]');
+    expect(personalMemoryManageCommand).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { args: ['memroy', '--json'], message: "unknown command 'memroy'", suggestion: 'memory' },
+    {
+      args: ['memory', 'retriev', '--json'],
+      message: "unknown command 'retriev'",
+      suggestion: 'retrieve',
+    },
+    { args: ['memory', 'retrieve', '--bogus', '--json'], message: "unknown option '--bogus'" },
+    {
+      args: ['memory', 'remember', '--json'],
+      message: "required option '--text <text>' not specified",
+    },
+  ])('retains Commander errors for $args', async ({ args, message, suggestion }) => {
+    const output: string[] = [];
+    const errors: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((value) => output.push(String(value)));
+    vi.spyOn(console, 'error').mockImplementation((value) => errors.push(String(value)));
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      errors.push(String(chunk));
+      return true;
+    });
+    process.argv = [process.execPath, cliPath, ...args];
+    vi.resetModules();
+    await import('../../app/cli/index.js');
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(output.join(''))).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining(message),
+    });
+    if (suggestion) expect(errors.join('')).toContain(suggestion);
+    expect(personalMemoryRetrieveCommand).not.toHaveBeenCalled();
+    expect(personalMemoryRememberCommand).not.toHaveBeenCalled();
   });
 
   it('loads and dispatches every deferred command group when invoked', async () => {

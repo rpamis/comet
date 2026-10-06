@@ -13,6 +13,14 @@ export async function inspectNativeSdkStatus(options: {
     options.projectRoot,
     options.name,
   );
+  return projectNativeSdkStatus(options, { run, state, artifactRootRef });
+}
+
+/** Project one inspected or committed Run without synchronizing its state file again. */
+export async function projectNativeSdkStatus(
+  options: { projectRoot: string; name: string; details?: boolean },
+  { run, state, artifactRootRef }: Awaited<ReturnType<typeof inspectNativeSdkRun>>,
+) {
   const paths = await nativeProjectPaths(options.projectRoot, artifactRootRef);
   const summary = nativePortableStateSummary(state, paths);
   const { application } = await loadOwnedNativeSdkRuntime(options.projectRoot, options.name);

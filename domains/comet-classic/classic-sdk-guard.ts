@@ -9,12 +9,13 @@ import { classicOpenContentProblem } from './classic-open-content.js';
 import { assertClassicBuildReady, classicOpenEvidenceReceipt } from './classic-sdk-application.js';
 import { completeClassicSdkBuild } from './classic-sdk-build.js';
 import { classicCheckCommand } from './classic-check-command.js';
-import { completeClassicSdkDesign, inspectClassicSdkDesign } from './classic-sdk-design.js';
+import { inspectAndCompleteClassicSdkDesign } from './classic-sdk-design.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import { classicVerificationReportReceipt } from './classic-verification-report.js';
 import { executeClassicSdkArchive } from './classic-sdk-archive.js';
 import {
   assertClassicSdkArchiveReady,
+  ClassicSdkArchiveReadinessError,
   executeClassicSdkArchivePreflight,
 } from './classic-sdk-archive-preflight.js';
 
@@ -255,7 +256,13 @@ export async function classicSdkDesignGuard(options: {
   approvalHash?: string;
 }): Promise<ClassicCommandResult> {
   const { projectRoot, change, designDoc, apply, approvalHash } = options;
-  const inspected = await inspectClassicSdkDesign({ projectRoot, change, designDoc });
+  const { inspected, completed } = await inspectAndCompleteClassicSdkDesign({
+    projectRoot,
+    change,
+    designDoc,
+    apply,
+    approvalHash,
+  });
   if (inspected.state.phase !== 'design') {
     return guardResult(
       change,
@@ -275,7 +282,7 @@ export async function classicSdkDesignGuard(options: {
       'Classic Design approval does not match the pending proposal',
     );
   }
-  const run = await completeClassicSdkDesign({ projectRoot, change, designDoc, approvalHash });
+  const run = completed!;
   return guardResult(
     change,
     String((run.state as { phase?: unknown } | null)?.phase ?? 'unknown'),
@@ -588,7 +595,8 @@ export async function classicSdkArchiveGuard(options: {
     );
   }
   try {
-    await assertClassicSdkArchiveReady(run, projectRoot);
+    // apply 的执行器会在各自副作用边界重新检查；预览仍需独立检查。
+    if (!apply) await assertClassicSdkArchiveReady(run, projectRoot);
   } catch (error) {
     return guardResult(
       change,
@@ -614,10 +622,16 @@ export async function classicSdkArchiveGuard(options: {
     );
   }
   if (!apply) return guardResult(change, 'archive', projectRoot, null);
-  if (preflightPending) {
-    await executeClassicSdkArchivePreflight(runtime, { runId: run.runId, projectRoot });
+  let archived: WorkflowRun;
+  try {
+    if (preflightPending) {
+      await executeClassicSdkArchivePreflight(runtime, { runId: run.runId, projectRoot });
+    }
+    archived = await executeClassicSdkArchive(runtime, { runId: run.runId, projectRoot });
+  } catch (error) {
+    if (!(error instanceof ClassicSdkArchiveReadinessError)) throw error;
+    return guardResult(change, 'archive', projectRoot, null, error.message);
   }
-  const archived = await executeClassicSdkArchive(runtime, { runId: run.runId, projectRoot });
   const archivedState = archived.state as { archived?: unknown } | null;
   return archivedState?.archived === true
     ? guardResult(change, 'archive', projectRoot, null)

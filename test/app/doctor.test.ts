@@ -1553,6 +1553,54 @@ describe('doctor command', () => {
     });
   });
 
+  it('reuses managed asset observations within one report and refreshes the next report', async () => {
+    await installManagedCometSkills(tmpDir, '.claude');
+    await installManagedCometSkills(tmpDir, '.gemini');
+    const managedFile = path.join(
+      tmpDir,
+      '.claude',
+      'skills',
+      'comet-classic',
+      'reference',
+      'auto-transition.md',
+    );
+    const bundledRouter = path.resolve(
+      'assets',
+      'skills',
+      'comet',
+      'scripts',
+      'comet-hook-router.mjs',
+    );
+    const access = vi.spyOn(fs, 'access');
+    const read = vi.spyOn(fs, 'readFile');
+    try {
+      const first = await collectDoctorPayload(tmpDir);
+      expect(first.results).toContainEqual({
+        check: 'skills: Claude Code (project)',
+        status: 'pass',
+        message: expect.stringContaining('complete'),
+      });
+      expect(access.mock.calls.filter(([file]) => file === managedFile)).toHaveLength(1);
+      expect(read.mock.calls.filter(([file]) => file === bundledRouter)).toHaveLength(1);
+      expect(first.results.filter(({ check }) => check.startsWith('hook runtime:'))).toHaveLength(
+        2,
+      );
+
+      await fs.unlink(managedFile);
+      const second = await collectDoctorPayload(tmpDir);
+      expect(second.results).toContainEqual({
+        check: 'skills: Claude Code (project)',
+        status: 'warn',
+        message: expect.stringContaining('partial'),
+      });
+      expect(access.mock.calls.filter(([file]) => file === managedFile)).toHaveLength(2);
+      expect(read.mock.calls.filter(([file]) => file === bundledRouter)).toHaveLength(2);
+    } finally {
+      access.mockRestore();
+      read.mockRestore();
+    }
+  });
+
   it('detects and repairs an outdated Hook Router runtime', async () => {
     const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;
     await installManagedCometSkills(tmpDir);

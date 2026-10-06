@@ -1,6 +1,7 @@
 import { Command, Option } from 'commander';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { COMET_TAGLINE } from './comet-banner.js';
+import { registerRuntimeCommand, reportRuntimeCliFailure } from './runtime-command.js';
 
 // Command handlers are imported lazily inside each `.action()` so that running
 // `comet status` does not load the dashboard/eval/creator/bundle modules (and
@@ -18,6 +19,9 @@ const runtimeCommandRequested =
 // Subcommands inherit the exit handler when they are created.
 if (process.argv.includes('--json') || runtimeCommandRequested) program.exitOverride();
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
+// 顶层描述保留给帮助和命令建议；只有 argv 提到的命令组需要构造完整子树。
+// 保留所有位置的匹配，让 `help <group>`、前置选项和 `--` 仍由 Commander 解析。
+const requestedArgs = process.argv.slice(2);
 
 program
   .name('comet')
@@ -111,314 +115,320 @@ const workflow = program
   .command('workflow')
   .description('Resolve whether /comet should use the configured Native or Classic workflow');
 
-workflow
-  .command('resolve [path]')
-  .description('Resolve /comet to its permanent Native or Classic entry')
-  .option('--activate', 'Create project configuration from global defaults when missing')
-  .option('--task <text>', '当前任务，用于自动选择个人记忆上下文')
-  .option('--path <path>', '当前任务目标路径')
-  .option('--phase <phase>', '当前工作阶段，例如 build 或 verify')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { workflowResolveCommand } = await import('../commands/workflow.js');
-    await workflowResolveCommand(targetPath, options);
-  });
+if (requestedArgs.includes('workflow')) {
+  workflow
+    .command('resolve [path]')
+    .description('Resolve /comet to its permanent Native or Classic entry')
+    .option('--activate', 'Create project configuration from global defaults when missing')
+    .option('--task <text>', '当前任务，用于自动选择个人记忆上下文')
+    .option('--path <path>', '当前任务目标路径')
+    .option('--phase <phase>', '当前工作阶段，例如 build 或 verify')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { workflowResolveCommand } = await import('../commands/workflow.js');
+      await workflowResolveCommand(targetPath, options);
+    });
+}
 
 const memory = program
   .command('memory')
   .description('Inspect and maintain personal memory across sessions');
 
-memory
-  .command('list [path]')
-  .description('查看可管理的个人记忆及其状态')
-  .option('--query <text>', '关键词')
-  .addOption(new Option('--scope <scope>', '记忆范围').choices(['global', 'project']))
-  .option('--category <category>', '记忆类别')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryManageCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryManageCommand(targetPath, options);
-  });
+if (requestedArgs.includes('memory')) {
+  memory
+    .command('list [path]')
+    .description('查看可管理的个人记忆及其状态')
+    .option('--query <text>', '关键词')
+    .addOption(new Option('--scope <scope>', '记忆范围').choices(['global', 'project']))
+    .option('--category <category>', '记忆类别')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryManageCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryManageCommand(targetPath, options);
+    });
 
-memory
-  .command('status [path]')
-  .description('查看个人记忆状态和同步状态')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryStatusCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryStatusCommand(targetPath, options);
-  });
+  memory
+    .command('status [path]')
+    .description('查看个人记忆状态和同步状态')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryStatusCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryStatusCommand(targetPath, options);
+    });
 
-memory
-  .command('retrieve [path]')
-  .description('按当前任务检索相关个人记忆')
-  .addOption(new Option('--scope <scope>', '记忆范围').choices(['global', 'project']))
-  .option('--project <key>', '项目记忆 key')
-  .option('--task <text>', '任务描述')
-  .option('--path <path>', '当前文件或目录')
-  .option('--operation <operation>', '当前操作')
-  .option('--category <category>', '记忆类别')
-  .option('--tag <tag>', '记忆标签', collect, [])
-  .option('--query <text>', '关键词')
-  .option('--max-entries <count>', '最多返回条目数')
-  .option('--max-bytes <bytes>', '最多返回字节数')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryRetrieveCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryRetrieveCommand(targetPath, { ...options, tags: options.tag });
-  });
+  memory
+    .command('retrieve [path]')
+    .description('按当前任务检索相关个人记忆')
+    .addOption(new Option('--scope <scope>', '记忆范围').choices(['global', 'project']))
+    .option('--project <key>', '项目记忆 key')
+    .option('--task <text>', '任务描述')
+    .option('--path <path>', '当前文件或目录')
+    .option('--operation <operation>', '当前操作')
+    .option('--category <category>', '记忆类别')
+    .option('--tag <tag>', '记忆标签', collect, [])
+    .option('--query <text>', '关键词')
+    .option('--max-entries <count>', '最多返回条目数')
+    .option('--max-bytes <bytes>', '最多返回字节数')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryRetrieveCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryRetrieveCommand(targetPath, { ...options, tags: options.tag });
+    });
 
-memory
-  .command('remember [path]')
-  .description('手动记录一条个人记忆')
-  .requiredOption('--text <text>', '记忆内容')
-  .option('--category <category>', '记忆类别')
-  .addOption(
-    new Option('--scope <scope>', '记忆范围').choices(['global', 'project']).default('project'),
-  )
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryRememberCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryRememberCommand(targetPath, options);
-  });
+  memory
+    .command('remember [path]')
+    .description('手动记录一条个人记忆')
+    .requiredOption('--text <text>', '记忆内容')
+    .option('--category <category>', '记忆类别')
+    .addOption(
+      new Option('--scope <scope>', '记忆范围').choices(['global', 'project']).default('project'),
+    )
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryRememberCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryRememberCommand(targetPath, options);
+    });
 
-memory
-  .command('correct [path]')
-  .description('纠正一条个人记忆')
-  .requiredOption('--id <id>', '记忆标识')
-  .option('--text <text>', '新的记忆内容')
-  .option('--category <category>', '新的记忆类别')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryCorrectCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryCorrectCommand(targetPath, options);
-  });
+  memory
+    .command('correct [path]')
+    .description('纠正一条个人记忆')
+    .requiredOption('--id <id>', '记忆标识')
+    .option('--text <text>', '新的记忆内容')
+    .option('--category <category>', '新的记忆类别')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryCorrectCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryCorrectCommand(targetPath, options);
+    });
 
-memory
-  .command('forget [path]')
-  .description('忘记一条个人记忆（默认保留回滚能力）')
-  .requiredOption('--id <id>', '记忆标识')
-  .option('--permanent', '永久删除且不可回滚')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryForgetCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryForgetCommand(targetPath, options);
-  });
+  memory
+    .command('forget [path]')
+    .description('忘记一条个人记忆（默认保留回滚能力）')
+    .requiredOption('--id <id>', '记忆标识')
+    .option('--permanent', '永久删除且不可回滚')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryForgetCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryForgetCommand(targetPath, options);
+    });
 
-memory
-  .command('rollback [path]')
-  .description('回滚一条个人记忆')
-  .requiredOption('--id <id>', '记忆标识')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryRollbackCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryRollbackCommand(targetPath, options);
-  });
+  memory
+    .command('rollback [path]')
+    .description('回滚一条个人记忆')
+    .requiredOption('--id <id>', '记忆标识')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryRollbackCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryRollbackCommand(targetPath, options);
+    });
 
-memory
-  .command('observe [path]')
-  .description('记录一次可跨任务复用的用户偏好或稳定协作方式')
-  .requiredOption('--text <text>', '只填写偏好或约定，不填写任务摘要、命令输出或测试结果')
-  .requiredOption('--workflow <workflow>', '工作流类型')
-  .requiredOption('--change <id>', 'Change ID')
-  .requiredOption('--candidate-key <key>', '候选行为标识')
-  .option('--category <category>', '记忆类别')
-  .option('--no-success', '将本次结果记录为失败')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryObserveCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryObserveCommand(targetPath, options);
-  });
+  memory
+    .command('observe [path]')
+    .description('记录一次可跨任务复用的用户偏好或稳定协作方式')
+    .requiredOption('--text <text>', '只填写偏好或约定，不填写任务摘要、命令输出或测试结果')
+    .requiredOption('--workflow <workflow>', '工作流类型')
+    .requiredOption('--change <id>', 'Change ID')
+    .requiredOption('--candidate-key <key>', '候选行为标识')
+    .option('--category <category>', '记忆类别')
+    .option('--no-success', '将本次结果记录为失败')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryObserveCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryObserveCommand(targetPath, options);
+    });
 
-memory
-  .command('context [path]')
-  .description('为当前任务选择应注入的个人记忆')
-  .requiredOption('--task <text>', '任务描述')
-  .option('--path <path>', '当前文件或目录')
-  .option('--phase <phase>', '验证阶段，例如 build 或 verify')
-  .option('--operation <operation>', '当前操作，例如 edit、review 或 verify')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryContextCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryContextCommand(targetPath, options);
-  });
+  memory
+    .command('context [path]')
+    .description('为当前任务选择应注入的个人记忆')
+    .requiredOption('--task <text>', '任务描述')
+    .option('--path <path>', '当前文件或目录')
+    .option('--phase <phase>', '验证阶段，例如 build 或 verify')
+    .option('--operation <operation>', '当前操作，例如 edit、review 或 verify')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryContextCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryContextCommand(targetPath, options);
+    });
 
-memory
-  .command('sync [path]')
-  .description('同步个人记忆仓库')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemorySyncCommand } = await import('../commands/personal-memory.js');
-    await personalMemorySyncCommand(targetPath, options);
-  });
+  memory
+    .command('sync [path]')
+    .description('同步个人记忆仓库')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemorySyncCommand } = await import('../commands/personal-memory.js');
+      await personalMemorySyncCommand(targetPath, options);
+    });
 
-memory
-  .command('remote [path]')
-  .description('查看或配置专用记忆仓库的 Git remote')
-  .option('--set <url>', '设置 origin remote')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryRemoteCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryRemoteCommand(targetPath, options);
-  });
+  memory
+    .command('remote [path]')
+    .description('查看或配置专用记忆仓库的 Git remote')
+    .option('--set <url>', '设置 origin remote')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryRemoteCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryRemoteCommand(targetPath, options);
+    });
 
-memory
-  .command('pause [path]')
-  .description('暂停或恢复指定项目的记忆学习/检索')
-  .option('--project <key>', '项目记忆 key')
-  .option('--learning', '仅暂停学习')
-  .option('--retrieval', '仅暂停检索')
-  .option('--resume', '恢复项目记忆')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { personalMemoryPauseCommand } = await import('../commands/personal-memory.js');
-    await personalMemoryPauseCommand(targetPath, options);
-  });
+  memory
+    .command('pause [path]')
+    .description('暂停或恢复指定项目的记忆学习/检索')
+    .option('--project <key>', '项目记忆 key')
+    .option('--learning', '仅暂停学习')
+    .option('--retrieval', '仅暂停检索')
+    .option('--resume', '恢复项目记忆')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { personalMemoryPauseCommand } = await import('../commands/personal-memory.js');
+      await personalMemoryPauseCommand(targetPath, options);
+    });
+}
 
 const knowledge = program
   .command('knowledge')
   .description('Inspect and query Project Knowledge for the current project');
-knowledge
-  .command('review [path]')
-  .description('读取宿主 Agent 待评审经验或提交评审结果')
-  .option('--id <id>', '待评审经验 ID')
-  .option('--file <file>', '评审动作 JSON 文件')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeReviewCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeReviewCommand(targetPath, options);
-  });
-
-knowledge
-  .command('status [path]')
-  .description('查看 Local 索引或 Remote Provider 状态')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeStatusCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeStatusCommand(targetPath, options);
-  });
-
-knowledge
-  .command('query [path]')
-  .description('查询项目知识记录与来源')
-  .option('--task <text>', '查询或任务描述')
-  .option('--path <path>', '当前文件或目录')
-  .option('--phase <phase>', '当前阶段')
-  .option('--operation <operation>', '当前操作')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeQueryCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeQueryCommand(targetPath, options);
-  });
-
-knowledge
-  .command('rebuild [path]')
-  .description('重新核对当前项目知识来源')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeRebuildCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeRebuildCommand(targetPath, options);
-  });
-
-knowledge
-  .command('list [path]')
-  .description('列出项目知识记录')
-  .addOption(
-    new Option('--state <state>', '记录状态').choices([
-      'trial',
-      'proven',
-      'enforced',
-      'superseded',
-      'all',
-    ]),
-  )
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeListCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeListCommand(targetPath, options);
-  });
-
-knowledge
-  .command('get [path]')
-  .description('查看一条项目知识记录')
-  .requiredOption('--id <id>', '记录标识')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeGetCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeGetCommand(targetPath, options);
-  });
-
-knowledge
-  .command('remember [path]')
-  .description('记录一条可复用的项目经验（同一标题默认更新同一条记忆）')
-  .requiredOption('--title <title>', '经验标题')
-  .requiredOption('--text <text>', '经验正文：现象、做法、验证结果')
-  .addOption(
-    new Option('--type <type>', '经验类型')
-      .choices(['fact', 'decision', 'pattern', 'procedure', 'constraint', 'failure-resolution'])
-      .default('pattern'),
-  )
-  .option('--description <text>', '一行摘要；缺省取正文首行')
-  .option('--slug <slug>', '固定记忆标识；缺省从标题派生')
-  .option('--paths <paths>', '相关路径，逗号分隔')
-  .option('--source <source>', '经验来源，例如 change 标识')
-  .option('--cache-root <dir>', '项目记忆缓存根目录')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeRememberCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeRememberCommand(targetPath, {
-      ...options,
-      paths:
-        typeof options.paths === 'string'
-          ? options.paths
-              .split(',')
-              .map((entry: string) => entry.trim())
-              .filter(Boolean)
-          : [],
+if (requestedArgs.includes('knowledge')) {
+  knowledge
+    .command('review [path]')
+    .description('读取宿主 Agent 待评审经验或提交评审结果')
+    .option('--id <id>', '待评审经验 ID')
+    .option('--file <file>', '评审动作 JSON 文件')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectKnowledgeReviewCommand } = await import('../commands/project-knowledge.js');
+      await projectKnowledgeReviewCommand(targetPath, options);
     });
-  });
 
-knowledge
-  .command('correct [path]')
-  .description('纠正一条项目知识记录')
-  .requiredOption('--id <id>', '记录标识')
-  .requiredOption('--text <text>', '新的记录说明')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeCorrectCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeCorrectCommand(targetPath, options);
-  });
+  knowledge
+    .command('status [path]')
+    .description('查看 Local 索引或 Remote Provider 状态')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectKnowledgeStatusCommand } = await import('../commands/project-knowledge.js');
+      await projectKnowledgeStatusCommand(targetPath, options);
+    });
 
-knowledge
-  .command('forget [path]')
-  .description('忘记一条项目知识记录或项目记忆')
-  .option('--id <id>', '记录标识')
-  .option('--memory <slug>', '项目记忆 slug')
-  .option('--cache-root <dir>', '项目记忆缓存根目录')
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeForgetCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeForgetCommand(targetPath, options);
-  });
+  knowledge
+    .command('query [path]')
+    .description('查询项目知识记录与来源')
+    .option('--task <text>', '查询或任务描述')
+    .option('--path <path>', '当前文件或目录')
+    .option('--phase <phase>', '当前阶段')
+    .option('--operation <operation>', '当前操作')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectKnowledgeQueryCommand } = await import('../commands/project-knowledge.js');
+      await projectKnowledgeQueryCommand(targetPath, options);
+    });
 
-knowledge
-  .command('feedback [path]')
-  .description('记录一条项目知识在真实任务中的应用结果')
-  .requiredOption('--id <id>', '记录标识')
-  .addOption(
-    new Option('--outcome <outcome>', '应用结果').choices([
-      'used-successfully',
-      'ignored',
-      'overridden',
-      'corrected',
-      'contributed-to-failure',
-    ]),
-  )
-  .option('--json', 'Output as JSON')
-  .action(async (targetPath = '.', options) => {
-    const { projectKnowledgeFeedbackCommand } = await import('../commands/project-knowledge.js');
-    await projectKnowledgeFeedbackCommand(targetPath, options);
-  });
+  knowledge
+    .command('rebuild [path]')
+    .description('重新核对当前项目知识来源')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectKnowledgeRebuildCommand } = await import('../commands/project-knowledge.js');
+      await projectKnowledgeRebuildCommand(targetPath, options);
+    });
+
+  knowledge
+    .command('list [path]')
+    .description('列出项目知识记录')
+    .addOption(
+      new Option('--state <state>', '记录状态').choices([
+        'trial',
+        'proven',
+        'enforced',
+        'superseded',
+        'all',
+      ]),
+    )
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectKnowledgeListCommand } = await import('../commands/project-knowledge.js');
+      await projectKnowledgeListCommand(targetPath, options);
+    });
+
+  knowledge
+    .command('get [path]')
+    .description('查看一条项目知识记录')
+    .requiredOption('--id <id>', '记录标识')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectKnowledgeGetCommand } = await import('../commands/project-knowledge.js');
+      await projectKnowledgeGetCommand(targetPath, options);
+    });
+
+  knowledge
+    .command('remember [path]')
+    .description('记录一条可复用的项目经验（同一标题默认更新同一条记忆）')
+    .requiredOption('--title <title>', '经验标题')
+    .requiredOption('--text <text>', '经验正文：现象、做法、验证结果')
+    .addOption(
+      new Option('--type <type>', '经验类型')
+        .choices(['fact', 'decision', 'pattern', 'procedure', 'constraint', 'failure-resolution'])
+        .default('pattern'),
+    )
+    .option('--description <text>', '一行摘要；缺省取正文首行')
+    .option('--slug <slug>', '固定记忆标识；缺省从标题派生')
+    .option('--paths <paths>', '相关路径，逗号分隔')
+    .option('--source <source>', '经验来源，例如 change 标识')
+    .option('--cache-root <dir>', '项目记忆缓存根目录')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectKnowledgeRememberCommand } = await import('../commands/project-knowledge.js');
+      await projectKnowledgeRememberCommand(targetPath, {
+        ...options,
+        paths:
+          typeof options.paths === 'string'
+            ? options.paths
+                .split(',')
+                .map((entry: string) => entry.trim())
+                .filter(Boolean)
+            : [],
+      });
+    });
+
+  knowledge
+    .command('correct [path]')
+    .description('纠正一条项目知识记录')
+    .requiredOption('--id <id>', '记录标识')
+    .requiredOption('--text <text>', '新的记录说明')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectKnowledgeCorrectCommand } = await import('../commands/project-knowledge.js');
+      await projectKnowledgeCorrectCommand(targetPath, options);
+    });
+
+  knowledge
+    .command('forget [path]')
+    .description('忘记一条项目知识记录或项目记忆')
+    .option('--id <id>', '记录标识')
+    .option('--memory <slug>', '项目记忆 slug')
+    .option('--cache-root <dir>', '项目记忆缓存根目录')
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectKnowledgeForgetCommand } = await import('../commands/project-knowledge.js');
+      await projectKnowledgeForgetCommand(targetPath, options);
+    });
+
+  knowledge
+    .command('feedback [path]')
+    .description('记录一条项目知识在真实任务中的应用结果')
+    .requiredOption('--id <id>', '记录标识')
+    .addOption(
+      new Option('--outcome <outcome>', '应用结果').choices([
+        'used-successfully',
+        'ignored',
+        'overridden',
+        'corrected',
+        'contributed-to-failure',
+      ]),
+    )
+    .option('--json', 'Output as JSON')
+    .action(async (targetPath = '.', options) => {
+      const { projectKnowledgeFeedbackCommand } = await import('../commands/project-knowledge.js');
+      await projectKnowledgeFeedbackCommand(targetPath, options);
+    });
+}
 
 program
   .command('resume-probe [path]')
@@ -607,111 +617,84 @@ program
     process.exitCode = await runNativeFacade(args);
   });
 
-const runtime = program
-  .command('runtime')
-  .description('Run portable Skill workflows through the Runtime SDK');
-
-runtime
-  .command('dispatch')
-  .description('Submit a JSON Runtime request and return its persisted Run as JSON')
-  .requiredOption('--request <file>', 'JSON request containing operation and command fields')
-  .option(
-    '--workflow <file>',
-    'JSON workflow definition; repeat to register multiple workflows',
-    collect,
-    [],
-  )
-  .option('--application <id>', '内置应用或当前项目已启动的 SDK 应用身份')
-  .option('--application-file <file>', '完整 SDK 应用包的 application.json 入口')
-  .option(
-    '--root-dir <dir>',
-    'Directory for persistent Runtime state; fixed for built-in applications',
-  )
-  .option('--project-root <dir>', 'Project context passed to this request', '.')
-  .option('--json', 'Output as JSON (default)')
-  .action(async (options) => {
-    const { runtimeDispatchCommand } = await import('../commands/runtime.js');
-    const result = await runtimeDispatchCommand(options);
-    console.log(JSON.stringify(result.response, null, 2));
-    process.exitCode = result.exitCode;
-  });
-
-if (runtimeCommandRequested) runtime.configureOutput({ writeErr: () => undefined });
+registerRuntimeCommand(program, runtimeCommandRequested);
 
 const skill = program
   .command('skill')
   .description('Install, inspect, and debug local Skill packages');
 
-skill
-  .command('add <path>')
-  .description('Install a Comet Skill into the project Skill pool')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--overwrite', 'Replace an existing project Skill')
-  .option('--json', 'Output as JSON')
-  .action(async (source, options) => {
-    const { skillInstallCommand } = await import('../commands/skill.js');
-    await skillInstallCommand(source, options);
-  });
+if (requestedArgs.includes('skill')) {
+  skill
+    .command('add <path>')
+    .description('Install a Comet Skill into the project Skill pool')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--overwrite', 'Replace an existing project Skill')
+    .option('--json', 'Output as JSON')
+    .action(async (source, options) => {
+      const { skillInstallCommand } = await import('../commands/skill.js');
+      await skillInstallCommand(source, options);
+    });
 
-skill
-  .command('show <skill>')
-  .description('Show Skill package identity, validation status, and runtime metadata')
-  .option('--project <dir>', 'Project root used for Skill discovery', '.')
-  .option('--json', 'Output as JSON')
-  .action(async (selector, options) => {
-    const { skillShowCommand } = await import('../commands/skill.js');
-    await skillShowCommand(selector, options);
-  });
+  skill
+    .command('show <skill>')
+    .description('Show Skill package identity, validation status, and runtime metadata')
+    .option('--project <dir>', 'Project root used for Skill discovery', '.')
+    .option('--json', 'Output as JSON')
+    .action(async (selector, options) => {
+      const { skillShowCommand } = await import('../commands/skill.js');
+      await skillShowCommand(selector, options);
+    });
 
-skill
-  .command('run <skill>')
-  .description('Advanced: start a deterministic Engine Skill Run')
-  .option('--change <dir>', 'Change directory that owns the Run')
-  .option('--run-id <id>', 'Standalone Run id stored under .comet/runs/<id>')
-  .option('--project <dir>', 'Project root used for Skill discovery', '.')
-  .option('--confirm <ref>', 'Confirm a guarded reference', collect, [])
-  .option('--json', 'Output as JSON')
-  .action(async (selector, options) => {
-    const { skillRunCommand } = await import('../commands/skill.js');
-    await skillRunCommand(selector, options);
-  });
+  skill
+    .command('run <skill>')
+    .description('Advanced: start a deterministic Engine Skill Run')
+    .option('--change <dir>', 'Change directory that owns the Run')
+    .option('--run-id <id>', 'Standalone Run id stored under .comet/runs/<id>')
+    .option('--project <dir>', 'Project root used for Skill discovery', '.')
+    .option('--confirm <ref>', 'Confirm a guarded reference', collect, [])
+    .option('--json', 'Output as JSON')
+    .action(async (selector, options) => {
+      const { skillRunCommand } = await import('../commands/skill.js');
+      await skillRunCommand(selector, options);
+    });
 
-skill
-  .command('continue')
-  .description('Advanced: resume a deterministic Engine Skill Run or submit its pending action')
-  .option('--change <dir>', 'Change directory that owns the Run')
-  .option('--run-id <id>', 'Standalone Run id stored under .comet/runs/<id>')
-  .option('--project <dir>', 'Project root used for Skill discovery', '.')
-  .addOption(
-    new Option('--status <status>', 'Pending action outcome').choices(['succeeded', 'failed']),
-  )
-  .option('--summary <text>', 'Outcome summary')
-  .option('--artifact <key=value>', 'Merge an artifact reference', collect, [])
-  .option('--state <key=value>', 'Record outcome state evidence', collect, [])
-  .option('--confirm <ref>', 'Confirm a guarded reference', collect, [])
-  .option('--upgrade <skill>', 'Upgrade the Run to a compatible Skill snapshot')
-  .option('--json', 'Output as JSON')
-  .action(async (options) => {
-    const { skillResumeCommand } = await import('../commands/skill.js');
-    await skillResumeCommand(options);
-  });
+  skill
+    .command('continue')
+    .description('Advanced: resume a deterministic Engine Skill Run or submit its pending action')
+    .option('--change <dir>', 'Change directory that owns the Run')
+    .option('--run-id <id>', 'Standalone Run id stored under .comet/runs/<id>')
+    .option('--project <dir>', 'Project root used for Skill discovery', '.')
+    .addOption(
+      new Option('--status <status>', 'Pending action outcome').choices(['succeeded', 'failed']),
+    )
+    .option('--summary <text>', 'Outcome summary')
+    .option('--artifact <key=value>', 'Merge an artifact reference', collect, [])
+    .option('--state <key=value>', 'Record outcome state evidence', collect, [])
+    .option('--confirm <ref>', 'Confirm a guarded reference', collect, [])
+    .option('--upgrade <skill>', 'Upgrade the Run to a compatible Skill snapshot')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+      const { skillResumeCommand } = await import('../commands/skill.js');
+      await skillResumeCommand(options);
+    });
 
-skill
-  .command('check')
-  .description('Check deterministic Engine Run runtime checks. Use comet eval for eval reports')
-  .option('--change <dir>', 'Change directory that owns the Run')
-  .option('--run-id <id>', 'Standalone Run id stored under .comet/runs/<id>')
-  .option('--project <dir>', 'Project root used for standalone Run lookup', '.')
-  .addOption(
-    new Option('--scope <scope>', 'Runtime check scope')
-      .choices(['progress', 'step', 'completion'])
-      .default('progress'),
-  )
-  .option('--json', 'Output as JSON')
-  .action(async (options) => {
-    const { skillCheckCommand } = await import('../commands/skill.js');
-    await skillCheckCommand(options);
-  });
+  skill
+    .command('check')
+    .description('Check deterministic Engine Run runtime checks. Use comet eval for eval reports')
+    .option('--change <dir>', 'Change directory that owns the Run')
+    .option('--run-id <id>', 'Standalone Run id stored under .comet/runs/<id>')
+    .option('--project <dir>', 'Project root used for standalone Run lookup', '.')
+    .addOption(
+      new Option('--scope <scope>', 'Runtime check scope')
+        .choices(['progress', 'step', 'completion'])
+        .default('progress'),
+    )
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+      const { skillCheckCommand } = await import('../commands/skill.js');
+      await skillCheckCommand(options);
+    });
+}
 
 const publish = program
   .command('publish')
@@ -721,338 +704,350 @@ const application = program
   .command('application')
   .description('Install, export, and uninstall local SDK workflow applications');
 
-application
-  .command('install <file>')
-  .description('Preview application installation or apply a confirmed preview hash')
-  .option('--project <dir>', 'Project root', '.')
-  .addOption(
-    new Option('--host <host>', 'Install host entry and fixed Skills').choices([
-      'codex',
-      'claude-code',
-    ]),
-  )
-  .addOption(
-    new Option('--scope <scope>', 'Install scope').choices(['project', 'user']).default('project'),
-  )
-  .option('--user-root <dir>', 'User application root')
-  .option('--upgrade', 'Upgrade an installed application')
-  .option('--confirmation-hash <hash>', 'Confirmed current install preview hash')
-  .option('--json', 'Output as JSON')
-  .action(async (file, options) => {
-    const { applicationInstallCommand } = await import('../commands/application.js');
-    await applicationInstallCommand(file, options);
-  });
+if (requestedArgs.includes('application')) {
+  application
+    .command('install <file>')
+    .description('Preview application installation or apply a confirmed preview hash')
+    .option('--project <dir>', 'Project root', '.')
+    .addOption(
+      new Option('--host <host>', 'Install host entry and fixed Skills').choices([
+        'codex',
+        'claude-code',
+      ]),
+    )
+    .addOption(
+      new Option('--scope <scope>', 'Install scope')
+        .choices(['project', 'user'])
+        .default('project'),
+    )
+    .option('--user-root <dir>', 'User application root')
+    .option('--upgrade', 'Upgrade an installed application')
+    .option('--confirmation-hash <hash>', 'Confirmed current install preview hash')
+    .option('--json', 'Output as JSON')
+    .action(async (file, options) => {
+      const { applicationInstallCommand } = await import('../commands/application.js');
+      await applicationInstallCommand(file, options);
+    });
 
-application
-  .command('export <file> <destination>')
-  .description('Export a complete SDK application and its fixed dependencies')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--json', 'Output as JSON')
-  .action(async (file, destination, options) => {
-    const { applicationExportCommand } = await import('../commands/application.js');
-    await applicationExportCommand(file, destination, options);
-  });
+  application
+    .command('export <file> <destination>')
+    .description('Export a complete SDK application and its fixed dependencies')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--json', 'Output as JSON')
+    .action(async (file, destination, options) => {
+      const { applicationExportCommand } = await import('../commands/application.js');
+      await applicationExportCommand(file, destination, options);
+    });
 
-application
-  .command('uninstall <id>')
-  .description('Preview entry removal or apply a confirmed preview hash; retain versions')
-  .option('--project <dir>', 'Project root', '.')
-  .addOption(
-    new Option('--scope <scope>', 'Install scope').choices(['project', 'user']).default('project'),
-  )
-  .option('--user-root <dir>', 'User application root')
-  .option('--confirmation-hash <hash>', 'Confirmed current uninstall preview hash')
-  .option('--json', 'Output as JSON')
-  .action(async (id, options) => {
-    const { applicationUninstallCommand } = await import('../commands/application.js');
-    await applicationUninstallCommand(id, options);
-  });
+  application
+    .command('uninstall <id>')
+    .description('Preview entry removal or apply a confirmed preview hash; retain versions')
+    .option('--project <dir>', 'Project root', '.')
+    .addOption(
+      new Option('--scope <scope>', 'Install scope')
+        .choices(['project', 'user'])
+        .default('project'),
+    )
+    .option('--user-root <dir>', 'User application root')
+    .option('--confirmation-hash <hash>', 'Confirmed current uninstall preview hash')
+    .option('--json', 'Output as JSON')
+    .action(async (id, options) => {
+      const { applicationUninstallCommand } = await import('../commands/application.js');
+      await applicationUninstallCommand(id, options);
+    });
+}
 
 const creator = program
   .command('creator')
   .description('Create or resume Skill Creator candidates for /comet-any');
 
-creator
-  .command('start <name>')
-  .description('从自然语言目标启动可恢复创作')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--goal <text>', '自然语言工作流目标')
-  .requiredOption('--install-target <directory>', '项目内相对安装目录')
-  .addOption(
-    new Option('--host <host>', '执行宿主').choices(['codex', 'claude-code']).default('codex'),
-  )
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { creatorStartCommand } = await import('../commands/creator.js');
-    await creatorStartCommand(name, options);
-  });
+if (requestedArgs.includes('creator')) {
+  creator
+    .command('start <name>')
+    .description('从自然语言目标启动可恢复创作')
+    .option('--project <dir>', 'Project root', '.')
+    .requiredOption('--goal <text>', '自然语言工作流目标')
+    .requiredOption('--install-target <directory>', '项目内相对安装目录')
+    .addOption(
+      new Option('--host <host>', '执行宿主').choices(['codex', 'claude-code']).default('codex'),
+    )
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { creatorStartCommand } = await import('../commands/creator.js');
+      await creatorStartCommand(name, options);
+    });
 
-creator
-  .command('dispatch <name>')
-  .description('领取创作动作、回传真实结果或提交当前用户决定')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--request <path>', '当前SDK动作的JSON请求')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { creatorDispatchCommand } = await import('../commands/creator.js');
-    await creatorDispatchCommand(name, options);
-  });
+  creator
+    .command('dispatch <name>')
+    .description('领取创作动作、回传真实结果或提交当前用户决定')
+    .option('--project <dir>', 'Project root', '.')
+    .requiredOption('--request <path>', '当前SDK动作的JSON请求')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { creatorDispatchCommand } = await import('../commands/creator.js');
+      await creatorDispatchCommand(name, options);
+    });
 
-creator
-  .command('list')
-  .description('List Skill Creator candidates that can be resumed')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--json', 'Output as JSON')
-  .action(async (options) => {
-    const { creatorListCommand } = await import('../commands/creator.js');
-    await creatorListCommand(options);
-  });
+  creator
+    .command('list')
+    .description('List Skill Creator candidates that can be resumed')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+      const { creatorListCommand } = await import('../commands/creator.js');
+      await creatorListCommand(options);
+    });
 
-creator
-  .command('status <name>')
-  .description('Show validation readiness and next action for one Skill Creator candidate')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { creatorStatusCommand } = await import('../commands/creator.js');
-    await creatorStatusCommand(name, options);
-  });
+  creator
+    .command('status <name>')
+    .description('Show validation readiness and next action for one Skill Creator candidate')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { creatorStatusCommand } = await import('../commands/creator.js');
+      await creatorStatusCommand(name, options);
+    });
 
-creator
-  .command('next <name>')
-  .description('Print the single recommended next user step')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { creatorNextCommand } = await import('../commands/creator.js');
-    await creatorNextCommand(name, options);
-  });
+  creator
+    .command('next <name>')
+    .description('Print the single recommended next user step')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { creatorNextCommand } = await import('../commands/creator.js');
+      await creatorNextCommand(name, options);
+    });
 
-creator
-  .command('guide')
-  .description('Summarize /comet-any first-use, preferences, and resumable flows')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--json', 'Output as JSON')
-  .action(async (options) => {
-    const { creatorGuideCommand } = await import('../commands/creator.js');
-    await creatorGuideCommand(options);
-  });
+  creator
+    .command('guide')
+    .description('Summarize /comet-any first-use, preferences, and resumable flows')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+      const { creatorGuideCommand } = await import('../commands/creator.js');
+      await creatorGuideCommand(options);
+    });
 
-creator
-  .command('candidates')
-  .description('Discover Skill candidates for Skill Creator authoring')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--json', 'Output as JSON')
-  .action(async (options) => {
-    const { creatorCandidatesCommand } = await import('../commands/creator.js');
-    await creatorCandidatesCommand(options);
-  });
+  creator
+    .command('candidates')
+    .description('Discover Skill candidates for Skill Creator authoring')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+      const { creatorCandidatesCommand } = await import('../commands/creator.js');
+      await creatorCandidatesCommand(options);
+    });
+}
 
-publish
-  .command('review <name>')
-  .description('Build a validation summary before approval')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--platform <id>', 'Reference platform id')
-  .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
-  .option('--locale <locale>', 'Locale to compile')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { publishReviewCommand } = await import('../commands/publish.js');
-    await publishReviewCommand(name, options);
-  });
+if (requestedArgs.includes('publish')) {
+  publish
+    .command('review <name>')
+    .description('Build a validation summary before approval')
+    .option('--project <dir>', 'Project root', '.')
+    .requiredOption('--platform <id>', 'Reference platform id')
+    .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
+    .option('--locale <locale>', 'Locale to compile')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { publishReviewCommand } = await import('../commands/publish.js');
+      await publishReviewCommand(name, options);
+    });
 
-publish
-  .command('approve <name>')
-  .description('Approve a Skill Creator candidate after validation')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--reviewer <name>', 'Reviewer name')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { publishApproveCommand } = await import('../commands/publish.js');
-    await publishApproveCommand(name, options);
-  });
+  publish
+    .command('approve <name>')
+    .description('Approve a Skill Creator candidate after validation')
+    .option('--project <dir>', 'Project root', '.')
+    .requiredOption('--reviewer <name>', 'Reviewer name')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { publishApproveCommand } = await import('../commands/publish.js');
+      await publishApproveCommand(name, options);
+    });
 
-publish
-  .command('run <name>')
-  .description('Generate an install candidate into .comet/bundles')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--platform <id>', 'Reference platform id')
-  .option('--overwrite', 'Replace an existing published Bundle')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { publishRunCommand } = await import('../commands/publish.js');
-    await publishRunCommand(name, options);
-  });
+  publish
+    .command('run <name>')
+    .description('Generate an install candidate into .comet/bundles')
+    .option('--project <dir>', 'Project root', '.')
+    .requiredOption('--platform <id>', 'Reference platform id')
+    .option('--overwrite', 'Replace an existing published Bundle')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { publishRunCommand } = await import('../commands/publish.js');
+      await publishRunCommand(name, options);
+    });
 
-publish
-  .command('distribute <name>')
-  .description('Preview or install a generated Skill Creator candidate')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--platform <id>', 'Platform id', collect, [])
-  .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
-  .option('--locale <locale>', 'Locale to distribute')
-  .option('--overwrite', 'Overwrite existing target files')
-  .option(
-    '--skip-capability <capability>',
-    'Explicitly skip an unsupported optional capability',
-    collect,
-    [],
-  )
-  .option('--confirm-executables', 'Confirm executable hook/script disclosures')
-  .option('--preview', 'Preview platform writes without installing files')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { publishDistributeCommand } = await import('../commands/publish.js');
-    await publishDistributeCommand(name, options);
-  });
+  publish
+    .command('distribute <name>')
+    .description('Preview or install a generated Skill Creator candidate')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--platform <id>', 'Platform id', collect, [])
+    .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
+    .option('--locale <locale>', 'Locale to distribute')
+    .option('--overwrite', 'Overwrite existing target files')
+    .option(
+      '--skip-capability <capability>',
+      'Explicitly skip an unsupported optional capability',
+      collect,
+      [],
+    )
+    .option('--confirm-executables', 'Confirm executable hook/script disclosures')
+    .option('--preview', 'Preview platform writes without installing files')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { publishDistributeCommand } = await import('../commands/publish.js');
+      await publishDistributeCommand(name, options);
+    });
+}
 
 const bundle = program
   .command('bundle')
   .description('Manage advanced /comet-any Bundle state and audits');
 
-bundle
-  .command('status <name>')
-  .description('Inspect an advanced Bundle and its current evidence')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { bundleStatusCommand } = await import('../commands/bundle.js');
-    await bundleStatusCommand(name, options);
-  });
+if (requestedArgs.includes('bundle')) {
+  bundle
+    .command('status <name>')
+    .description('Inspect an advanced Bundle and its current evidence')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { bundleStatusCommand } = await import('../commands/bundle.js');
+      await bundleStatusCommand(name, options);
+    });
 
-bundle
-  .command('list')
-  .description('List advanced Bundles without using the SDK Creator Run list')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--json', 'Output as JSON')
-  .action(async (options) => {
-    const { bundleListCommand } = await import('../commands/bundle.js');
-    await bundleListCommand(options);
-  });
+  bundle
+    .command('list')
+    .description('List advanced Bundles without using the SDK Creator Run list')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--json', 'Output as JSON')
+    .action(async (options) => {
+      const { bundleListCommand } = await import('../commands/bundle.js');
+      await bundleListCommand(options);
+    });
 
-const draft = bundle.command('draft').description('Manage Bundle drafts');
+  const draft = bundle.command('draft').description('Manage Bundle drafts');
 
-draft
-  .command('create <name>')
-  .description('Create an empty Bundle draft')
-  .option('--project <dir>', 'Project root', '.')
-  .addOption(new Option('--default-locale <locale>', 'Default locale').default('en'))
-  .option('--locale-option <locale>', 'Supported locale', collect, [])
-  .option('--engine', 'Enable optional Engine metadata')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { bundleDraftCreateCommand } = await import('../commands/bundle.js');
-    await bundleDraftCreateCommand(name, options);
-  });
+  draft
+    .command('create <name>')
+    .description('Create an empty Bundle draft')
+    .option('--project <dir>', 'Project root', '.')
+    .addOption(new Option('--default-locale <locale>', 'Default locale').default('en'))
+    .option('--locale-option <locale>', 'Supported locale', collect, [])
+    .option('--engine', 'Enable optional Engine metadata')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { bundleDraftCreateCommand } = await import('../commands/bundle.js');
+      await bundleDraftCreateCommand(name, options);
+    });
 
-draft
-  .command('optimize <bundle>')
-  .description('Create an optimization draft from an existing Bundle root')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--name <name>', 'Override draft name')
-  .option('--json', 'Output as JSON')
-  .action(async (source, options) => {
-    const { bundleDraftOptimizeCommand } = await import('../commands/bundle.js');
-    await bundleDraftOptimizeCommand(source, options);
-  });
+  draft
+    .command('optimize <bundle>')
+    .description('Create an optimization draft from an existing Bundle root')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--name <name>', 'Override draft name')
+    .option('--json', 'Output as JSON')
+    .action(async (source, options) => {
+      const { bundleDraftOptimizeCommand } = await import('../commands/bundle.js');
+      await bundleDraftOptimizeCommand(source, options);
+    });
 
-bundle
-  .command('compile <name>')
-  .description('Dry-run compile a Bundle for one platform')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--platform <id>', 'Platform id')
-  .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
-  .option('--locale <locale>', 'Locale to compile')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { bundleCompileCommand } = await import('../commands/bundle.js');
-    await bundleCompileCommand(name, options);
-  });
+  bundle
+    .command('compile <name>')
+    .description('Dry-run compile a Bundle for one platform')
+    .option('--project <dir>', 'Project root', '.')
+    .requiredOption('--platform <id>', 'Platform id')
+    .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
+    .option('--locale <locale>', 'Locale to compile')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { bundleCompileCommand } = await import('../commands/bundle.js');
+      await bundleCompileCommand(name, options);
+    });
 
-bundle
-  .command('eval-plan <name>')
-  .description('Estimate Bundle eval work')
-  .option('--project <dir>', 'Project root', '.')
-  .addOption(
-    new Option('--level <level>', 'Eval level').choices(['quick', 'full']).default('quick'),
-  )
-  .option('--locale <locale>', 'Locale to compile')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { bundleEvalPlanCommand } = await import('../commands/bundle.js');
-    await bundleEvalPlanCommand(name, options);
-  });
+  bundle
+    .command('eval-plan <name>')
+    .description('Estimate Bundle eval work')
+    .option('--project <dir>', 'Project root', '.')
+    .addOption(
+      new Option('--level <level>', 'Eval level').choices(['quick', 'full']).default('quick'),
+    )
+    .option('--locale <locale>', 'Locale to compile')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { bundleEvalPlanCommand } = await import('../commands/bundle.js');
+      await bundleEvalPlanCommand(name, options);
+    });
 
-bundle
-  .command('eval-record <name>')
-  .description('Record structured Bundle eval evidence')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--result <file>', 'Eval result JSON')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { bundleEvalRecordCommand } = await import('../commands/bundle.js');
-    await bundleEvalRecordCommand(name, options);
-  });
+  bundle
+    .command('eval-record <name>')
+    .description('Record structured Bundle eval evidence')
+    .option('--project <dir>', 'Project root', '.')
+    .requiredOption('--result <file>', 'Eval result JSON')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { bundleEvalRecordCommand } = await import('../commands/bundle.js');
+      await bundleEvalRecordCommand(name, options);
+    });
 
-bundle
-  .command('review-summary <name>')
-  .description('Build a Bundle review summary before approval')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--platform <id>', 'Reference platform id')
-  .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
-  .option('--locale <locale>', 'Locale to compile')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { bundleReviewSummaryCommand } = await import('../commands/bundle.js');
-    await bundleReviewSummaryCommand(name, options);
-  });
+  bundle
+    .command('review-summary <name>')
+    .description('Build a Bundle review summary before approval')
+    .option('--project <dir>', 'Project root', '.')
+    .requiredOption('--platform <id>', 'Reference platform id')
+    .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
+    .option('--locale <locale>', 'Locale to compile')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { bundleReviewSummaryCommand } = await import('../commands/bundle.js');
+      await bundleReviewSummaryCommand(name, options);
+    });
 
-bundle
-  .command('review <name>')
-  .description('Approve or reject a Bundle for publishing')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--approve', 'Approve the Bundle')
-  .option('--reject', 'Reject the Bundle')
-  .requiredOption('--reviewer <name>', 'Reviewer name')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { bundleReviewCommand } = await import('../commands/bundle.js');
-    await bundleReviewCommand(name, options);
-  });
+  bundle
+    .command('review <name>')
+    .description('Approve or reject a Bundle for publishing')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--approve', 'Approve the Bundle')
+    .option('--reject', 'Reject the Bundle')
+    .requiredOption('--reviewer <name>', 'Reviewer name')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { bundleReviewCommand } = await import('../commands/bundle.js');
+      await bundleReviewCommand(name, options);
+    });
 
-bundle
-  .command('publish <name>')
-  .description('Publish an approved Bundle into .comet/bundles')
-  .option('--project <dir>', 'Project root', '.')
-  .requiredOption('--platform <id>', 'Reference platform id')
-  .option('--overwrite', 'Replace an existing published Bundle')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { bundlePublishCommand } = await import('../commands/bundle.js');
-    await bundlePublishCommand(name, options);
-  });
+  bundle
+    .command('publish <name>')
+    .description('Publish an approved Bundle into .comet/bundles')
+    .option('--project <dir>', 'Project root', '.')
+    .requiredOption('--platform <id>', 'Reference platform id')
+    .option('--overwrite', 'Replace an existing published Bundle')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { bundlePublishCommand } = await import('../commands/bundle.js');
+      await bundlePublishCommand(name, options);
+    });
 
-bundle
-  .command('distribute <name>')
-  .description('Install a ready Bundle across selected platforms')
-  .option('--project <dir>', 'Project root', '.')
-  .option('--platform <id>', 'Platform id', collect, [])
-  .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
-  .option('--locale <locale>', 'Locale to distribute')
-  .option('--overwrite', 'Overwrite existing target files')
-  .option(
-    '--skip-capability <capability>',
-    'Explicitly skip an unsupported optional capability',
-    collect,
-    [],
-  )
-  .option('--confirm-executables', 'Confirm executable hook/script disclosures')
-  .option('--preview', 'Preview platform writes without installing files')
-  .option('--json', 'Output as JSON')
-  .action(async (name, options) => {
-    const { bundleDistributeCommand } = await import('../commands/bundle.js');
-    await bundleDistributeCommand(name, options);
-  });
+  bundle
+    .command('distribute <name>')
+    .description('Install a ready Bundle across selected platforms')
+    .option('--project <dir>', 'Project root', '.')
+    .option('--platform <id>', 'Platform id', collect, [])
+    .addOption(new Option('--scope <scope>', 'Install scope').choices(['global', 'project']))
+    .option('--locale <locale>', 'Locale to distribute')
+    .option('--overwrite', 'Overwrite existing target files')
+    .option(
+      '--skip-capability <capability>',
+      'Explicitly skip an unsupported optional capability',
+      collect,
+      [],
+    )
+    .option('--confirm-executables', 'Confirm executable hook/script disclosures')
+    .option('--preview', 'Preview platform writes without installing files')
+    .option('--json', 'Output as JSON')
+    .action(async (name, options) => {
+      const { bundleDistributeCommand } = await import('../commands/bundle.js');
+      await bundleDistributeCommand(name, options);
+    });
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -1102,13 +1097,7 @@ async function runCli(): Promise<void> {
   } catch (error) {
     if (error instanceof Error && 'exitCode' in error && error.exitCode === 0) return;
     if (runtimeCommandRequested) {
-      const { runtimeCommandFailure } = await import('../commands/runtime.js');
-      const { RuntimeProtocolError } = await import('../../domains/engine/runtime.js');
-      const result = runtimeCommandFailure(
-        new RuntimeProtocolError('INVALID_REQUEST', `Runtime 命令参数无效：${errorMessage(error)}`),
-      );
-      console.log(JSON.stringify(result.response, null, 2));
-      process.exitCode = result.exitCode;
+      await reportRuntimeCliFailure(error);
       return;
     }
     const cancelled = error instanceof Error && error.name === 'ExitPromptError';

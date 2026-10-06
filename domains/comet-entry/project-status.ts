@@ -201,7 +201,7 @@ async function inspectOpenSpecChanges(
         continue;
       }
 
-      const diagnostic = await inspectClassicChangeReadOnly(changeDir, name);
+      const diagnostic = await inspectClassicChangeReadOnly(changeDir, name, { projection });
       if (diagnostic.valid && projection.classic) {
         if (projection.classic.archived) continue;
         const run = projection.run;

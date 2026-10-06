@@ -168,6 +168,7 @@ function sourceBuildIdentity() {
   const sourceFiles = [
     'app/commands/daemon-server.ts',
     'bin/comet.js',
+    'bin/comet-daemon-route.js',
     'bin/comet-daemon-router.js',
     'platform/process/comet-daemon.ts',
     'platform/process/runtime-metrics.ts',

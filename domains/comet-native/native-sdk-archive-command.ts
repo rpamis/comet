@@ -8,6 +8,19 @@ import {
 import { inspectNativeSdkStatus } from './native-sdk-status.js';
 import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { advanceNativeSdkChange } from './native-sdk-next.js';
+import { restoreNativeSupervisorChildArchiveMaterials } from './native-sdk-supervisor-archive.js';
+
+/** 从公开 inspect 读取原 Parent，再补全已成功归档的来源材料。 */
+export async function backfillNativeSdkSupervisorChildArchiveMaterials(options: {
+  projectRoot: string;
+  targetProjectRoot: string;
+  parent: string;
+  expectedRevision: number;
+  dryRun: boolean;
+}) {
+  const inspection = await inspectNativeSdkRun(options.projectRoot, options.parent);
+  return restoreNativeSupervisorChildArchiveMaterials(options, inspection);
+}
 
 export async function archiveNativeSdkChange(options: {
   projectRoot: string;

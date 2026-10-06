@@ -21,6 +21,8 @@ const requiredPackageFiles = [
   'assets/skills/comet-native/scripts/comet-native-new.mjs',
   'assets/skills/comet-native/scripts/comet-native-status.mjs',
   'bin/comet.js',
+  'bin/comet-daemon-route.js',
+  'bin/comet-daemon-router.js',
   'bin/fast-runtime-router.js',
   'dist/app/cli/index.js',
   'dist/domains/engine/runtime.js',

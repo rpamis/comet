@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as classicDomain from '../../../domains/comet-classic/index.js';
 import { classicStateCommand } from '../../../domains/comet-classic/classic-state-command.js';
 import { classicCheckCommand } from '../../../domains/comet-classic/classic-check-command.js';
+import * as checkSnapshots from '../../../domains/comet-classic/classic-check-snapshot.js';
 import { classicGuardCommand } from '../../../domains/comet-classic/classic-guard.js';
 import { classicArchiveCommand } from '../../../domains/comet-classic/classic-archive.js';
 import { writeClassicSdkDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
@@ -1151,6 +1152,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     await fs.writeFile(
       executable,
       [
+        '#!/usr/bin/env node',
         "import { promises as fs } from 'node:fs';",
         "import path from 'node:path';",
         `await fs.writeFile(${JSON.stringify(invocation)}, process.argv.slice(2).join(' '));`,
@@ -1160,6 +1162,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         'await fs.rename(active, archived);',
       ].join('\n'),
     );
+    await fs.chmod(executable, 0o755);
     const previousCommand = process.env.COMET_OPENSPEC;
     process.env.COMET_OPENSPEC = executable;
     let completed: WorkflowRun;
@@ -2227,12 +2230,24 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       stepId: 'full.build.check.evidence',
       status: 'pending',
     });
-    await expect(
-      classicCheckCommand(
-        ['run', 'example', 'build', '--', process.execPath, '-e', 'console.log("different")'],
-        { invocationCwd: projectRoot, projectRoot },
-      ),
-    ).rejects.toThrow(/does not match the recorded command/u);
+    await inspectClassicSdkRun(projectRoot, 'example');
+    const stateReads = vi.spyOn(fs, 'open');
+    try {
+      await expect(
+        classicCheckCommand(
+          ['run', 'example', 'build', '--', process.execPath, '-e', 'console.log("different")'],
+          { invocationCwd: projectRoot, projectRoot },
+        ),
+      ).rejects.toThrow(/does not match the recorded command/u);
+      expect(
+        stateReads.mock.calls.filter(
+          ([file]) =>
+            String(file) === path.join(projectRoot, 'docs/openspec/changes/example/.comet.yaml'),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      stateReads.mockRestore();
+    }
     const resumed = await classicCheckCommand(
       ['run', 'example', 'build', '--', process.execPath, '-e', 'console.log("sdk-check-ok")'],
       { invocationCwd: projectRoot, projectRoot },
@@ -2675,6 +2690,24 @@ describe('Classic workflow application through the public Runtime SDK', () => {
           )
         ).exitCode,
       ).toBe(0);
+      const sourcePath = path.join(projectRoot, 'source.js');
+      const originalSource = await fs.readFile(sourcePath);
+      const persisted = createFileRuntimeStore<WorkflowRun>({
+        rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'classic'),
+      });
+      const beforeDrift = await persisted.read(run.runId);
+      await fs.appendFile(sourcePath, '\nchanged after delivery approval\n');
+      for (const flags of [[], ['--apply']]) {
+        const stale = await classicGuardCommand(['example', 'archive', ...flags], options);
+        expect(stale.exitCode).toBe(1);
+        expect(stale.data).toMatchObject({
+          checks: { blocked: true },
+          issues: [expect.any(Object)],
+        });
+        expect(stale.stderr).toContain('check inputs changed');
+        expect(await persisted.read(run.runId)).toEqual(beforeDrift);
+      }
+      await fs.writeFile(sourcePath, originalSource);
       const preview = await classicGuardCommand(['example', 'archive'], options);
       expect(preview.exitCode, preview.stderr).toBe(0);
       expect((await classicStateCommand(['next', 'example'], options)).data).toMatchObject({
@@ -2687,6 +2720,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       await fs.writeFile(
         executable,
         [
+          '#!/usr/bin/env node',
           "import { promises as fs } from 'node:fs';",
           "import path from 'node:path';",
           "const active = path.join(process.cwd(), 'openspec', 'changes', 'example');",
@@ -2695,8 +2729,10 @@ describe('Classic workflow application through the public Runtime SDK', () => {
           'await fs.rename(active, archived);',
         ].join('\n'),
       );
+      await fs.chmod(executable, 0o755);
       const previousCommand = process.env.COMET_OPENSPEC;
       process.env.COMET_OPENSPEC = executable;
+      const snapshots = vi.spyOn(checkSnapshots, 'collectCheckSnapshot');
       try {
         const applied =
           command === 'guard'
@@ -2704,7 +2740,10 @@ describe('Classic workflow application through the public Runtime SDK', () => {
             : await classicArchiveCommand(['example'], options);
         expect(applied.exitCode, applied.stderr).toBe(0);
         expect(applied.data).toMatchObject({ change: 'example', phase: 'archive' });
+        // 保留 preflight 与 archive.execute 两个独立的新鲜性边界。
+        expect(snapshots).toHaveBeenCalledTimes(2);
       } finally {
+        snapshots.mockRestore();
         if (previousCommand === undefined) delete process.env.COMET_OPENSPEC;
         else process.env.COMET_OPENSPEC = previousCommand;
       }
@@ -4136,6 +4175,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       await fs.writeFile(
         executable,
         [
+          '#!/usr/bin/env node',
           "import { promises as fs } from 'node:fs';",
           "import path from 'node:path';",
           "const active = path.join(process.cwd(), 'openspec', 'changes', 'example');",
@@ -4144,6 +4184,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
           'await fs.rename(active, archived);',
         ].join('\n'),
       );
+      await fs.chmod(executable, 0o755);
       const previousCommand = process.env.COMET_OPENSPEC;
       process.env.COMET_OPENSPEC = executable;
       try {
@@ -4249,4 +4290,27 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     });
     expect(await store.read(run.runId)).toEqual(run);
   });
+});
+
+describe('Classic SDK check commit freshness', () => {
+  it.each(['same-size-edit', 'added-input', 'deleted-input'] as const)(
+    'rejects %s between command completion and evidence submission',
+    async (mutation) => {
+      const { runtime, run, projectRoot } = await checkedFullBuildRun(`commit-${mutation}`, true);
+      const source = path.join(projectRoot, 'source.js');
+      if (mutation === 'same-size-edit') {
+        const stat = await fs.stat(source);
+        await fs.writeFile(source, 'const ready = null;\n');
+        await fs.utimes(source, stat.atime, stat.mtime);
+      } else if (mutation === 'added-input') {
+        await fs.writeFile(path.join(projectRoot, 'added.js'), 'new input');
+      } else {
+        await fs.unlink(source);
+      }
+      await expect(acceptBuildCheckEvidence(runtime, run, projectRoot)).rejects.toThrow(
+        /EVIDENCE_REJECTED/,
+      );
+      expect((await runtime.inspect(run.runId)).state).toMatchObject({ phase: 'build' });
+    },
+  );
 });

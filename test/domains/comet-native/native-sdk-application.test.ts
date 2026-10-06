@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as nativeDomain from '../../../domains/comet-native/index.js';
 import {
@@ -20,6 +20,8 @@ import { createNativeSdkStateStore } from '../../../domains/comet-native/native-
 import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
 import { inspectNativeSdkDefinitionUpgrade } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
+import { nativeSdkArchivePreflightExecutor } from '../../../domains/comet-native/native-sdk-archive.js';
+import * as nativeRequirements from '../../../domains/comet-native/native-portable-requirements.js';
 import { nativeSupervisorStateFile } from '../../../domains/comet-native/native-supervisor-state.js';
 import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 import {
@@ -48,6 +50,7 @@ type NativeApplication = {
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
@@ -338,7 +341,10 @@ async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
   return { ...prepared, run };
 }
 
-async function awaitingArchiveApplication(storeKind: 'memory' | 'file' = 'memory') {
+async function awaitingArchiveApplication(
+  storeKind: 'memory' | 'file' = 'memory',
+  beforePreflight?: (options: { root: string; run: WorkflowRun }) => void | Promise<void>,
+) {
   const prepared = await dispatchedVerifier([], storeKind);
   const { root, runtime } = prepared;
   let run = prepared.run;
@@ -379,6 +385,7 @@ async function awaitingArchiveApplication(storeKind: 'memory' | 'file' = 'memory
         choice: 'approved',
       });
     }
+    if (executorId === 'comet-native-archive-preflight') await beforePreflight?.({ root, run });
     run = await runtime.execute({
       runId: run.runId,
       actionId: run.actions.at(-1)!.id,
@@ -474,6 +481,65 @@ describe('Native SDK Workflow Application', () => {
       expect(await inspectNativeSdkDefinitionUpgrade(root, run.runId, true)).toBeNull();
     },
   );
+  it('checks Archive acceptance once at each preparation, execution, and commit boundary', async () => {
+    let calls = 0;
+    const inspect = nativeRequirements.inspectNativePortableAcceptanceDrift;
+    const { run } = await awaitingArchiveApplication('memory', () => {
+      vi.spyOn(nativeRequirements, 'inspectNativePortableAcceptanceDrift').mockImplementation(
+        async (options) => {
+          calls += 1;
+          return inspect(options);
+        },
+      );
+    });
+    expect(run.outputs['archive.prepare'].value).toMatchObject({ ready: true });
+    expect(calls).toBe(3);
+  });
+
+  it('rejects Archive document drift before overwriting the confirmed report', async () => {
+    let reportFile = '';
+    let before = '';
+    await expect(
+      awaitingArchiveApplication('memory', async ({ root }) => {
+        const paths = await nativeProjectPaths(root, 'docs');
+        const changeDir = path.join(paths.changesDir, 'sdk-shape');
+        reportFile = path.join(changeDir, 'verification.md');
+        before = await fs.readFile(reportFile, 'utf8');
+        const brief = path.join(changeDir, 'brief.md');
+        await fs.writeFile(
+          brief,
+          (await fs.readFile(brief, 'utf8')).replace(
+            'The selected workflow resumes.',
+            'The selected workflow requires a different result.',
+          ),
+        );
+      }),
+    ).rejects.toThrow(/EXECUTION_UNKNOWN/u);
+    expect(await fs.readFile(reportFile, 'utf8')).toBe(before);
+  });
+
+  it('rechecks Archive documents after executor output and before committing the outcome', async () => {
+    await expect(
+      awaitingArchiveApplication('memory', () => {
+        const execute = nativeSdkArchivePreflightExecutor.execute;
+        vi.spyOn(nativeSdkArchivePreflightExecutor, 'execute').mockImplementation(
+          async (action, context, run) => {
+            const output = await execute(action, context, run);
+            const paths = await nativeProjectPaths(context!.projectRoot!, 'docs');
+            const brief = path.join(paths.changesDir, 'sdk-shape', 'brief.md');
+            await fs.writeFile(
+              brief,
+              (await fs.readFile(brief, 'utf8')).replace(
+                'The selected workflow resumes.',
+                'The selected workflow changed after preflight.',
+              ),
+            );
+            return output;
+          },
+        );
+      }),
+    ).rejects.toThrow(/OUTCOME_REJECTED/u);
+  });
 
   it('waits for an explicit decision before continuing a partially executed Builder in a new Action', async () => {
     const prepared = await preparedShape('file');

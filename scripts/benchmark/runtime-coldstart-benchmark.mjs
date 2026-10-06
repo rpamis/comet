@@ -597,7 +597,13 @@ async function createFixture(repoRoot, worktreeCounts) {
 }
 
 async function buildIdentity(repoRoot, suppliedSourceHead) {
-  const files = ['bin/comet.js', 'bin/fast-runtime-router.js', 'package.json'];
+  const files = [
+    'bin/comet.js',
+    'bin/comet-daemon-route.js',
+    'bin/comet-daemon-router.js',
+    'bin/fast-runtime-router.js',
+    'package.json',
+  ];
   async function collect(relative) {
     for (const entry of await fs.readdir(path.join(repoRoot, relative), { withFileTypes: true })) {
       const file = path.join(relative, entry.name);

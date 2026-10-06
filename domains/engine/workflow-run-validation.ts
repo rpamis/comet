@@ -360,6 +360,7 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
     }
     return action;
   });
+  const actionsById = new Map(actions.map((action) => [action.id, action]));
   if (data.commands !== undefined && !Array.isArray(data.commands)) {
     invalid('WorkflowRun.commands 必须是数组');
   }
@@ -372,7 +373,7 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
       inputHash: hash(command.inputHash, 'WorkflowRun.commands.inputHash'),
       actionId: text(command.actionId, 'WorkflowRun.commands.actionId'),
     };
-    if (!actions.some((action) => action.id === receipt.actionId)) {
+    if (!actionsById.has(receipt.actionId)) {
       invalid('WorkflowRun.commands 指向不存在的 Action');
     }
     return receipt;
@@ -467,7 +468,7 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
     const childWorkflow = reference(child.workflow, 'WorkflowRun.children.workflow');
     const actionId = text(child.actionId, 'WorkflowRun.children.actionId');
     const childRunId = text(child.runId, 'WorkflowRun.children.runId');
-    const action = actions.find((candidate) => candidate.id === actionId);
+    const action = actionsById.get(actionId);
     if (
       !action ||
       action.type !== 'child_workflow' ||

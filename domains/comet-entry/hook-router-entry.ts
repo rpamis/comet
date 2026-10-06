@@ -2,7 +2,6 @@ import path from 'path';
 import { realpathSync, promises as fs } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 
-import { discoverNativeProject } from '../comet-native/native-paths.js';
 import {
   COMET_HOOK_PLATFORM_IDS,
   readCometHookRequest,
@@ -12,8 +11,8 @@ import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js'
 import { inspectCometHook } from './hook-router.js';
 import type { CometHookDecision } from '../workflow-contract/hook.js';
 import { resolveCometHookProjectRoot } from './hook-project-root.js';
-import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import { readCometCurrentSelection } from '../workflow-contract/current-selection.js';
+import { discoverCachedNativeProject, readCachedProjectConfig } from './entry-reads.js';
 
 const USAGE = 'Usage: comet-hook-router --platform <platform-id> [--project-root <project-root>]';
 
@@ -83,8 +82,8 @@ async function configuredProjectFrom(projectRoot: string): Promise<string | null
     if (parent === cursor) break;
     cursor = parent;
   }
-  const discovered = await discoverNativeProject(projectRoot);
-  return (await readWorkflowProjectConfig(discovered)) === null ? null : discovered;
+  const discovered = await discoverCachedNativeProject(projectRoot);
+  return (await readCachedProjectConfig(discovered)) === null ? null : discovered;
 }
 
 export async function runCometHookRouter(args: readonly string[]): Promise<number> {
@@ -99,10 +98,17 @@ export async function runCometHookRouter(args: readonly string[]): Promise<numbe
   let decision: CometHookDecision;
   try {
     const request = await readCometHookRequest();
-    const projectRoot = await projectRootFrom(parsed, request);
-    decision = projectRoot
-      ? await runWithHookReadCache(() => inspectCometHook(projectRoot, request))
-      : { allowed: true, reason: 'No Comet project discovered' };
+    decision = await runWithHookReadCache(async () => {
+      // 确定不写文件的事件不依赖项目配置或 Git worktree 归属。
+      // context 事件仍进入项目发现，以便加载当前任务上下文。
+      if (request.intent === 'non-write') {
+        return { allowed: true, reason: 'Hook event is not a write' };
+      }
+      const projectRoot = await projectRootFrom(parsed, request);
+      return projectRoot
+        ? inspectCometHook(projectRoot, request)
+        : { allowed: true, reason: 'No Comet project discovered' };
+    });
   } catch (error) {
     decision = {
       allowed: false,

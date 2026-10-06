@@ -666,6 +666,8 @@ export async function inspectNativePortableArchive(options: {
   name: string;
   /** SDK Run state is authoritative for new changes; legacy callers omit this. */
   state?: NativePortableState;
+  /** Confirmed SDK candidates must stay current even during transaction recovery. */
+  requireCurrentAcceptance?: boolean;
 }): Promise<{
   ready: boolean;
   blockers: string[];
@@ -707,16 +709,24 @@ export async function inspectNativePortableArchive(options: {
       blockers.push((error as Error).message);
     }
   }
-  if (transaction === null) {
+  if (transaction === null || options.requireCurrentAcceptance) {
     try {
       const drift = await inspectNativePortableAcceptanceDrift({
         paths: options.paths,
         state,
       });
-      if (drift.drifted) blockers.push(drift.reason ?? 'Native confirmed requirements changed');
+      if (drift.drifted) {
+        if (options.requireCurrentAcceptance) {
+          throw new Error(drift.reason ?? 'Native acceptance changed');
+        }
+        blockers.push(drift.reason ?? 'Native confirmed requirements changed');
+      }
     } catch (error) {
+      if (options.requireCurrentAcceptance) throw error;
       blockers.push((error as Error).message);
     }
+  }
+  if (transaction === null) {
     const deltaInspection = await inspectNativePortableDeltaChanges({
       paths: options.paths,
       state,

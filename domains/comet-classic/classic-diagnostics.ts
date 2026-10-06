@@ -3,7 +3,7 @@ import { collectClassicEvidence } from './classic-evidence.js';
 import { ensureStrictClassicRuntimeRun, validateClassicRuntimeRun } from './classic-runtime-run.js';
 import { readClassicState } from './classic-store.js';
 import { resolveClassicStepId } from './classic-resolver.js';
-import { REQUIRED_CLASSIC_KEYS } from './classic-state.js';
+import { REQUIRED_CLASSIC_KEYS, type ClassicStateProjection } from './classic-state.js';
 import {
   evaluateClassicRuntimeStep,
   type ClassicRuntimeEvalStatus,
@@ -25,9 +25,12 @@ export interface ClassicDiagnostic {
 export async function inspectClassicChangeReadOnly(
   changeDir: string,
   name: string,
+  options: { projection?: ClassicStateProjection } = {},
 ): Promise<ClassicDiagnostic> {
   try {
-    const projection = await readClassicState(changeDir, { migrate: false });
+    // 状态列表可以复用同次只读诊断刚读取的投影；后续请求仍重新读取。
+    const projection =
+      options.projection ?? (await readClassicState(changeDir, { migrate: false }));
     const unknownKeys = Array.from(new Set(projection.unknownKeys)).sort();
     if (unknownKeys.length > 0) {
       throw new Error(`Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`);

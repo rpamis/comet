@@ -1,7 +1,7 @@
-import { Ajv } from 'ajv';
 import type { RuntimeRetryPolicy } from './runtime-action.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
 import { cloneRuntimeValue, type RuntimeValue } from './runtime-json.js';
+import { compileRuntimeSchema } from './runtime-schema.js';
 
 export interface WorkflowReference {
   id: string;
@@ -157,7 +157,7 @@ function validateSchema(schema: RuntimeValue, label: string): void {
     if (typeof supported !== 'boolean' && supported.$async === true) {
       invalid(`${label} 仅支持同步校验；异步检查请注册 RuntimeValidator`);
     }
-    new Ajv({ strict: true, allErrors: true }).compile(supported);
+    compileRuntimeSchema(supported);
   } catch (error) {
     invalid(`${label} 不是受支持的 JSON Schema：${(error as Error).message}`);
   }

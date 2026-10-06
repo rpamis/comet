@@ -35,6 +35,12 @@ const readCachedCurrentSelection = memoizedHookRead(
   (projectRoot: string) => readCometCurrentSelection(projectRoot),
 );
 
+// Guard 的 SDK 状态与 selection 分支校验必须基于同一个请求内快照。
+const inspectHookSdkRun = memoizedHookRead(
+  'classicHookSdkRun',
+  (projectRoot: string, name: string) => inspectClassicSdkRun(projectRoot, name),
+);
+
 export type CurrentChangeSelection = CometCurrentSelection;
 
 export type CurrentChangeResolution =
@@ -47,7 +53,7 @@ export function currentChangeFile(projectRoot: string): string {
 }
 
 async function sdkSelectionBranch(projectRoot: string, changeName: string): Promise<string | null> {
-  const { run, state } = await inspectClassicSdkRun(projectRoot, changeName);
+  const { run, state } = await inspectHookSdkRun(projectRoot, changeName);
   if (state.archived || run.status === 'completed') {
     throw new Error(`Cannot select current change '${changeName}': change is archived`);
   }

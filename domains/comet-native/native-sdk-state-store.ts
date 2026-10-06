@@ -23,11 +23,14 @@ import {
 } from '../workflow-contract/change-runtime-owner.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { ensureProtectedProjectDirectory } from '../workflow-contract/protected-project-path.js';
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import {
+  inspectProtectedProjectPath,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import { readProjectConfig } from './native-config.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { nativeProjectPaths } from './native-paths.js';
-import { parseNativePortableState, readNativePortableState } from './native-portable-state.js';
+import { parseNativePortableState } from './native-portable-state.js';
 import { nativePortableStateFile } from './native-portable-storage.js';
 import { assertPortableWorkspaceBindingCurrent } from './native-portable-storage.js';
 import {
@@ -289,16 +292,31 @@ export function createNativeSdkStateStore(
         }
         let current: NativePortableState | null = null;
         let currentSource: string | null = null;
+        let currentDocument: Record<string, unknown> | null = null;
         try {
           currentSource = await fs.readFile(file, 'utf8');
-          current = await readNativePortableState(file);
+          const document = parseDocument(currentSource, { uniqueKeys: true });
+          if (document.errors.length > 0) {
+            throw new Error(`Native portable state is invalid YAML: ${document.errors[0].message}`);
+          }
+          currentDocument = document.toJS({ mapAsMap: false }) as Record<string, unknown>;
+          current = parseNativePortableState(currentDocument);
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         }
         const markerFile = path.join(projectRoot, projectionDir, `${runId}.json`);
         let marker: ProjectionMarker | null = null;
+        let markerSource: string | null = null;
         try {
-          marker = JSON.parse(await fs.readFile(markerFile, 'utf8')) as ProjectionMarker;
+          markerSource = (
+            await readProtectedProjectFile(
+              projectRoot,
+              `${projectionDir}/${runId}.json`,
+              Number.MAX_SAFE_INTEGER,
+              { label: 'Native SDK state projection marker' },
+            )
+          ).bytes.toString('utf8');
+          marker = JSON.parse(markerSource) as ProjectionMarker;
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         }
@@ -329,16 +347,8 @@ export function createNativeSdkStateStore(
           }
         }
         const expectedCheckpoint = createPortableRunCheckpoint(run);
-        const currentCheckpoint = currentSource
-          ? (parseDocument(currentSource, { uniqueKeys: true }).toJS() as Record<string, unknown>)[
-              PORTABLE_RUN_CHECKPOINT_KEY
-            ]
-          : undefined;
-        const archiveReceipt = currentSource
-          ? (parseDocument(currentSource, { uniqueKeys: true }).toJS() as Record<string, unknown>)[
-              'archive_receipt'
-            ]
-          : undefined;
+        const currentCheckpoint = currentDocument?.[PORTABLE_RUN_CHECKPOINT_KEY];
+        const archiveReceipt = currentDocument?.['archive_receipt'];
         const unresolvedFinalization = run.actions.some(
           (action) =>
             action.stepId === 'archive.finalize' &&
@@ -347,7 +357,7 @@ export function createNativeSdkStateStore(
         if (
           !current ||
           !sameState(current, state) ||
-          !(await hasNativeManagedRunMarker(file)) ||
+          !currentSource?.startsWith(NATIVE_MANAGED_RUN_MARKER) ||
           JSON.stringify(currentCheckpoint) !== JSON.stringify(expectedCheckpoint)
         ) {
           await writeNativeManagedRunState(
@@ -365,9 +375,12 @@ export function createNativeSdkStateStore(
           revision: run.revision,
           state,
         };
-        await atomicWriteContainedText(markerFile, JSON.stringify(projection) + '\n', {
-          containedRoot: projectRoot,
-        });
+        const projectionSource = JSON.stringify(projection) + '\n';
+        if (markerSource !== projectionSource) {
+          await atomicWriteContainedText(markerFile, projectionSource, {
+            containedRoot: projectRoot,
+          });
+        }
         return run;
       },
       { timeoutMs: 5_000 },
