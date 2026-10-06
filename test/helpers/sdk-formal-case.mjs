@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import process from 'node:process';
-import { console } from 'node:console';
+import console from 'node:console';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const executeFile = promisify(execFile);
@@ -310,7 +310,7 @@ export async function prepareSdkFormalCase(options) {
     JSON.stringify(chineseFiles)
   )
     throw new Error('comet-any 中文 Skill 与冻结源不一致');
-  const settingsFile = path.join(projectRoot, '.claude', 'settings.json');
+  const settingsFile = path.join(projectRoot, '.claude', 'settings.local.json');
   const settings = JSON.parse(await fs.readFile(settingsFile, 'utf8'));
   if (!JSON.stringify(settings.hooks?.PreToolUse).includes('comet-hook-router.mjs'))
     throw new Error('公开 init 没有安装真实 Claude PreToolUse Router Hook');
@@ -352,10 +352,9 @@ export async function prepareSdkFormalCase(options) {
   );
   skillIds.push(reviewSkill);
   skillSnapshots[reviewSkill] = await snapshot(reviewRoot);
-  await fs.writeFile(
+  await fs.appendFile(
     path.join(projectRoot, '.gitignore'),
-    'node_modules/\n.isolated-home/\n.claude/\n.comet/\n',
-    { flag: 'wx' },
+    '\n# Formal fixture local dependencies and isolated user state\nnode_modules/\n.isolated-home/\n',
   );
   await fs.mkdir(path.join(projectRoot, '.isolated-home', 'empty-git-hooks'), { recursive: true });
   const gitArgs = [

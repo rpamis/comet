@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { execute } = vi.hoisted(() => ({ execute: vi.fn() }));
@@ -18,6 +19,20 @@ import {
 } from '../helpers/sdk-formal-case.mjs';
 
 describe('formal12 preparation without model execution', () => {
+  it('loads the actual ESM entry with Node without Vitest transformation', () => {
+    const helper = path.resolve('test/helpers/sdk-formal-case.mjs');
+    const output = execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        'const module=await import(process.argv[1]);console.log(JSON.stringify({cases:module.FORMAL_CASE_IDS.length,prepare:typeof module.prepareSdkFormalCase}));',
+        pathToFileURL(helper).href,
+      ],
+      { encoding: 'utf8' },
+    );
+    expect(JSON.parse(output)).toEqual({ cases: 12, prepare: 'function' });
+  });
   let root: string;
   let consumerRoot: string;
   let fixtureRoot: string;
@@ -88,7 +103,11 @@ describe('formal12 preparation without model execution', () => {
       await fs.mkdir(path.join(project, '.claude'), { recursive: true });
       await fs.mkdir(path.join(project, '.comet'), { recursive: true });
       await fs.writeFile(
-        path.join(project, '.claude', 'settings.json'),
+        path.join(project, '.gitignore'),
+        '# Public init managed state\n!/.comet/config.yaml\n',
+      );
+      await fs.writeFile(
+        path.join(project, '.claude', 'settings.local.json'),
         JSON.stringify({
           hooks: {
             PreToolUse: [
