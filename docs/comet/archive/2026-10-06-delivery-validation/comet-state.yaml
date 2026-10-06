@@ -1,0 +1,182 @@
+schema: comet.native.v4
+name: delivery-validation
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: worktree
+  change_branch: comet/supervisor/comet-any-sdk/delivery-validation
+  target_branch: "045"
+  finish: merge
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance:
+  - id: A1
+    source: brief.md
+    text: 三种起点均能形成可运行的 Application 包；入口 Skill 能启动并继续对应流程，展示实际验证范围。
+    result: passed
+    reason:
+      text: 工程范围内三种起点的公开工厂、编译、固定包和入口代码及当前绑定通过。Native普通真实完整创建安装运行冷恢复保留；Classic匹配回归复用；Standalone新补充仅静态准备，不称三类模型全完成。
+      truncated: false
+  - id: A21
+    source: brief.md
+    text: 外部操作结果丢失后可按适配契约查询或核对，不盲目重复发送或部署；没有核对能力时明确阻塞；产物和持久化记录不包含凭据。
+    result: passed
+    reason:
+      text: 工程源码阻止无reconcile外部动作领取和盲目重发，结果核对原attempt/inputHash/claimToken，not-executed证据后才retry。历史SDK7基线及报告58本地丢回执范围明确；新增HTTP两faultgreen独立日志未找到，不称通过。
+      truncated: false
+  - id: A22
+    source: brief.md
+    text: 真实导出包在项目级与用户级目标安装后均可启动和恢复；同名冲突、升级与有活动 Run 的卸载按明确规则处理；不要求远程分发服务。
+    result: passed
+    reason:
+      text: 工程安装/冲突/显式升级/不可变版本和活动Run版本保留源码通过；真实693五base
+        project及isolated-user加载导出安装、本地report冷进程completed6/model0保留，businessNotRun明确。完整升级卸载green日志和当前全部业务证据缺失保留。
+      truncated: false
+  - id: A23
+    source: brief.md
+    text: 新产物只走 SDK 应用链，产品不再依赖旧生成和推进逻辑；旧格式被明确拒绝并提示重新生成，不被静默加载或自动转换，用户文件不被自动删除。
+    result: passed
+    reason:
+      text: SDK
+        Application/Creator新入口、旧factory/authoring退出及旧schema拒绝提示重建和用户文件保留符合代码契约；源码及包一致。不把旧missing-dist全仓失败改passed。
+      truncated: false
+  - id: A24
+    source: brief.md
+    text: Claude Code
+      的全部指定流程及恢复场景在当前候选上满足已确认矩阵中的所有规定样本；外部结果核对后操作计数为一；未运行、失败、超时或缺少真实宿主及模型证据时不能完成生产验收。
+    result: passed
+    reason:
+      text: 只按用户2026-10-06最新工程交付决定通过。原完整生产矩阵未完成，Native普通1/6 passed、Tweak/Standalone
+        partial、其余pending；12历史case/失败/超时/22449.883s保留，后续模型授权false，不称原生产全样本通过。
+      truncated: false
+  - id: A25
+    source: brief.md
+    text: 先完成能运行、失败可修复和冷恢复的 Native 样板，再扩展生成能力；基础应用和 SDK 既有契约通过相关回归检查。
+    result: passed
+    reason:
+      text: Native真实失败修复、独立Verifier恢复和completed33/archive/cold-inspect保留。最新Native/Classic/engine/Creator业务字节和语义复用边界已核对，Standalone
+        Guard分段9+4+1真实通过；旧夹具失败/skips/full失败保留。
+      truncated: false
+  - id: A26
+    source: brief.md
+    text: 产品文档与真实行为一致；中英文 Skill 同步后再更新对应发布说明；检查与修改范围可追溯。
+    result: passed
+    reason:
+      text: 中英Skill、公开Creator/固定依赖/恢复/验证限制和工程计划一致。版本0.4.5比origin/master0.4.4高一个，已有发布条目沿用；检查可追溯，website和第三方Skill未改。
+      truncated: false
+builder_handoff:
+  candidate_id: 9990724eef848b5bea0016b48b15a479b9da3b6f
+  identity_provider: skill-coordinated
+  builder_execution_ref: /root/delivery_builder87
+  iteration: 1
+  summary:
+    text: 按用户2026-10-06
+      rev3明确停止模型、按代码交付收尾，提交A1/A21–A26工程候选9990724e。公开SDK应用生成/交付/旧格式拒绝、外部核对接口及新增显式Standalone/report
+      Guard已实现；复用分段14Guard及匹配build/generated/类型/API/Classic/Native等可核验已执行证据；旧693五base真实project/user安装和本地report冷恢复单列；新增HTTP/升级卸载完整green日志未找到，原foundation仅当时基线，固定真实npm包2883完整map。新Standalone补充只静态prepare/compile/load/preview，未Run/服务/模型。原模型只有Native2完整passed（1/6），Tweak/Standalone
+      partial，其他pending，原12case和全部失败/超时/22449.883s预算保留。旧全仓failed/interrupted未复跑，本轮不宣称生产完整矩阵或全仓通过。两个正式只读源包/证据descriptor交Runtime执行，fresh只读Verifier按最新用户范围独立验收；之后再工程集成归档。
+    truncated: false
+  addressed_acceptance_ids:
+    - A1
+    - A21
+    - A22
+    - A23
+    - A24
+    - A25
+    - A26
+  checks:
+    - name:
+        text: 当前候选、源文件及真实2883文件包完整字节绑定
+        truncated: false
+      result: passed
+      note: null
+    - name:
+        text: 已执行证据原hash、工程范围及未完成模型/全仓结论保留
+        truncated: false
+      result: passed
+      note: null
+  checks_truncated: false
+  known_limits: []
+  known_limits_truncated: false
+  review: null
+  submitted_at: 2026-10-06T12:14:11.286Z
+blockers: []
+verification:
+  candidate_id: 9990724eef848b5bea0016b48b15a479b9da3b6f
+  identity_provider: skill-coordinated
+  verifier_execution_ref: /root/delivery_verifier89
+  iteration: 1
+  attempt: 1
+  assurance: skill-coordinated
+  verdict: pass
+  checks:
+    - id: delivery-candidate-package
+      name:
+        text: 当前候选、源文件及真实2883文件包完整字节绑定
+        truncated: false
+      argv_display:
+        - text: C:\Users\BENYM\AppData\Local\Temp\comet-supervisor-sdk-20261005\formal-9990724e\coordinator\verify-code-delivery-binding.mjs
+          truncated: false
+        - text: C:\Users\BENYM\AppData\Local\Temp\comet-supervisor-sdk-20261005\formal-9990724e\coordinator\code-delivery-action87\builder87-code-evidence-manifest.json
+          truncated: false
+        - text: 3e977e0e3fa8b1cfd88a54ff93a09839ef70ff9a7a4f2bb1ed63bf6ce8f30615
+          truncated: false
+        - text: candidate-package
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 2552
+    - id: delivery-evidence-scope
+      name:
+        text: 已执行证据原hash、工程范围及未完成模型/全仓结论保留
+        truncated: false
+      argv_display:
+        - text: C:\Users\BENYM\AppData\Local\Temp\comet-supervisor-sdk-20261005\formal-9990724e\coordinator\verify-code-delivery-binding.mjs
+          truncated: false
+        - text: C:\Users\BENYM\AppData\Local\Temp\comet-supervisor-sdk-20261005\formal-9990724e\coordinator\code-delivery-action87\builder87-code-evidence-manifest.json
+          truncated: false
+        - text: 3e977e0e3fa8b1cfd88a54ff93a09839ef70ff9a7a4f2bb1ed63bf6ce8f30615
+          truncated: false
+        - text: evidence-scope
+          truncated: false
+      argv_truncated: false
+      cwd_ref: .
+      status: passed
+      exit_code: 0
+      duration_ms: 130
+  summary:
+    text: 全新只读Verifier /root/delivery_verifier89 独立核对全部7项、最新工程plan
+      rev3、当前源码/包/Runtime88真实检查和日志，最后读Builder87。候选clean，1307源/2883包/40证据绑定一致，14新Guard分段通过。未执行任何测试/build/helper/模型/HTTP/服务。仅工程集成通过，不代表原完整生产验收；原1/6+partial/pending/12历史case/失败超时预算及全仓failed-interrupted保留。新HTTP和完整升级卸载green日志缺失明确。集成新工作区dist旧，合入后需串行build一次再Runtime两binding，不重复行为测试。
+    truncated: false
+  risks: []
+  risks_truncated: false
+  completed_at: 2026-10-06T12:45:33.973Z
+history: []
+history_overflow:
+  dropped_entries: 0
+  first_dropped_at: null
+  last_dropped_at: null
+  outcome_counts:
+    pass: 0
+    fail: 0
+    blocked: 0
+    execution-error: 0
+    recovery: 0
+verification_result: pass
+verification_report: verification.md
+archived: true
+created_at: 2026-10-06T12:14:11.286Z
