@@ -437,6 +437,130 @@ describe('Native Dashboard v2 collector', () => {
     expect(unavailable?.children.some(({ status }) => status === 'integrated')).toBe(false);
   });
 
+  it('opens an SDK child archive from the parent workspace when another worktree contains the same archive', async () => {
+    git(projectRoot, ['init', '-q', '-b', 'integration']);
+    git(projectRoot, ['config', 'user.email', 'comet@test.local']);
+    git(projectRoot, ['config', 'user.name', 'Comet Test']);
+    const paths = await enableNative();
+    const acceptance = [
+      {
+        id: 'A1',
+        source: 'brief.md',
+        text: 'Archive the child.',
+        result: 'pending' as const,
+        reason: null,
+      },
+    ];
+    const contract: NativeChildrenContract = {
+      schema: 'comet.native.children.v2',
+      acceptance_index: { A1: { source: 'brief.md', text: 'Archive the child.' } },
+      children: [{ name: 'foundation', summary: null, depends_on: [], covers: ['A1'] }],
+    };
+    const base = activeShapeState('sdk-parent');
+    const parent = parseNativePortableState({
+      ...base,
+      phase: 'build',
+      loop: { ...base.loop, stage: 'building' },
+      acceptance,
+      children_contract_hash: hashNativeParentContract({ acceptance, children: contract }),
+    });
+    const parentDir = await writeActiveState(parent);
+    await fs.writeFile(path.join(parentDir, 'children.yaml'), JSON.stringify(contract));
+    const childBase = activeShapeState('foundation');
+    const child = parseNativePortableState({
+      ...childBase,
+      phase: 'archive',
+      status: 'done',
+      archived: true,
+      loop: { ...childBase.loop, stage: 'done' },
+    });
+    const archiveName = '2026-10-06-foundation';
+    const archiveDir = path.join(paths.archiveDir, archiveName);
+    await fs.mkdir(archiveDir, { recursive: true });
+    await writeNativePortableState(path.join(archiveDir, NATIVE_CHANGE_STATE_FILE), child);
+    await fs.writeFile(path.join(archiveDir, 'brief.md'), '# Archived foundation\n');
+    await fs.writeFile(path.join(archiveDir, 'spec.md'), '# Original Parent Spec\n');
+    await fs.writeFile(
+      path.join(archiveDir, 'archive-source.md'),
+      '# Original source references\n',
+    );
+    git(projectRoot, ['add', '.']);
+    git(projectRoot, ['commit', '-q', '-m', 'test: seed duplicated child archive']);
+    const childWorktree = path.join(projectRoot, '.worktrees', 'foundation');
+    git(projectRoot, ['worktree', 'add', '-q', '-b', 'child/foundation', childWorktree]);
+    vi.spyOn(changeOwnership, 'readChangeRuntimeOwner').mockImplementation(
+      async (_root, _workflow, name) =>
+        name === parent.name
+          ? {
+              schema: 'comet.change-owner.v1',
+              workflow: 'native',
+              change: parent.name,
+              format: 'sdk',
+              application: 'native',
+              runId: parent.name,
+            }
+          : null,
+    );
+    vi.spyOn(nativeRunStore, 'readNativeSdkRunRecord').mockResolvedValue({
+      runId: parent.name,
+      workflow: { id: 'comet-native' },
+      input: { name: parent.name },
+      state: parent,
+      outputs: { 'shape.revalidate': { sequence: 1, value: { children: { contract } } } },
+      actions: [
+        { id: 'sdk-parent:1', stepId: 'shape.revalidate', status: 'succeeded', input: {} },
+        {
+          id: 'sdk-parent:2',
+          stepId: 'supervisor.child.archive',
+          status: 'succeeded',
+          input: { activation: { child: child.name, contractHash: parent.children_contract_hash } },
+          outcome: { output: { child: child.name, archiveRef: archiveName } },
+        },
+      ],
+    } as unknown as WorkflowRun);
+    const detail = await collectNativeDashboardChangeDetail(projectRoot, {
+      status: 'active',
+      name: parent.name,
+    });
+    const projected = detail!.children[0];
+    expect(projected).toMatchObject({
+      name: child.name,
+      status: 'integrated',
+      changeStatus: 'archived',
+      archiveName,
+      workspace: { branch: 'integration', current: true },
+    });
+    expect(projected.locator).toEqual(expect.any(String));
+    const archived = await collectNativeDashboardChangeDetail(projectRoot, {
+      status: projected.changeStatus!,
+      name: projected.name,
+      archiveName: projected.archiveName,
+      locator: projected.locator!,
+    });
+    expect(archived).toMatchObject({
+      name: child.name,
+      status: 'archived',
+      workspace: { branch: 'integration', current: true },
+    });
+    expect(archived!.artifacts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'brief', exists: true })]),
+    );
+    expect(archived!.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'parent-spec',
+          exists: true,
+          content: '# Original Parent Spec\n',
+        }),
+        expect.objectContaining({
+          key: 'archive-source',
+          exists: true,
+          content: '# Original source references\n',
+        }),
+      ]),
+    );
+  });
+
   it('does not re-enter the removed v1 inspection and hashing pipelines', async () => {
     const source = await fs.readFile(path.resolve('domains/dashboard/native-collector.ts'), 'utf8');
 

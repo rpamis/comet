@@ -188,9 +188,12 @@ async function collectArtifacts(
   changeDir: string,
   state: NativePortableState | NativeChangeState,
 ): Promise<NativeDashboardArtifactPreview[]> {
-  return Promise.all(
-    artifactDescriptors(state).map((descriptor) => readArtifactPreview(changeDir, descriptor)),
-  );
+  const descriptors = artifactDescriptors(state);
+  if (state.archived && state.spec_changes.length === 0) {
+    descriptors.push(['parent-spec', 'Parent Spec 快照', 'spec.md']);
+    descriptors.push(['archive-source', '归档材料来源', 'archive-source.md']);
+  }
+  return Promise.all(descriptors.map((descriptor) => readArtifactPreview(changeDir, descriptor)));
 }
 
 async function readMatchingLocalExecution(
@@ -471,7 +474,7 @@ async function activeParentChildren(
   try {
     if (!(await hasNativeChildrenContract(candidate))) return [];
     const { changeDir, read, sdk } = await readEntryState(candidate.source.paths, candidate.entry);
-    if (sdk) return sdk.children.map((child) => childSummary(child, []));
+    if (sdk) return sdk.children.map((child) => childSummary(child, candidates));
     if (read.kind !== 'portable') return [];
     const document = await readNativeChildrenContract({
       changeDir,
@@ -861,6 +864,7 @@ function invalidEntryMessage(entry: NativeDashboardEntry): string {
 async function collectNativeChangeListItem(
   candidate: NativeDashboardCandidate,
   children: NativeDashboardChildSummary[] = [],
+  candidates: readonly NativeDashboardCandidate[] = [],
 ): Promise<NativeDashboardChangeListItem> {
   const { paths } = candidate.source;
   const { entry } = candidate;
@@ -874,7 +878,7 @@ async function collectNativeChangeListItem(
   };
   try {
     const { read, sdk } = await readEntryState(paths, entry);
-    if (sdk) common.children = sdk.children.map((child) => childSummary(child, []));
+    if (sdk) common.children = sdk.children.map((child) => childSummary(child, candidates));
     if (read.kind === 'invalid') {
       return invalidNativeDashboardListItem({ name: entry.name, ...common, message: read.message });
     }
@@ -914,6 +918,7 @@ async function collectNativeChangeListItem(
 async function collectNativeChange(
   candidate: NativeDashboardCandidate,
   children: NativeDashboardChildSummary[] = [],
+  candidates: readonly NativeDashboardCandidate[] = [],
 ): Promise<NativeDashboardChangeProjection> {
   const { paths } = candidate.source;
   const { entry } = candidate;
@@ -927,7 +932,7 @@ async function collectNativeChange(
   };
   try {
     const { changeDir, read, sdk } = await readEntryState(paths, entry);
-    if (sdk) common.children = sdk.children.map((child) => childSummary(child, []));
+    if (sdk) common.children = sdk.children.map((child) => childSummary(child, candidates));
     if (read.kind === 'invalid') {
       return invalidNativeDashboardChange({ name: entry.name, ...common, message: read.message });
     }
@@ -1006,7 +1011,9 @@ export async function collectNativeDashboardChangePage(
   return {
     status: options.status,
     items: await Promise.all(
-      pageEntries.map((candidate) => collectNativeChangeListItem(candidate, candidate.children)),
+      pageEntries.map((candidate) =>
+        collectNativeChangeListItem(candidate, candidate.children, index.all),
+      ),
     ),
     total: listed.entries.length,
     nextCursor:
@@ -1062,7 +1069,7 @@ export async function collectNativeDashboardChangeDetail(
   const parent = [...index.active, ...index.archived].find(
     ({ locator }) => locator === candidate!.locator,
   );
-  return collectNativeChange(candidate, parent?.children ?? []);
+  return collectNativeChange(candidate, parent?.children ?? [], index.all);
 }
 
 /** Return directory counts only; change YAML is loaded by the paged endpoint. */
@@ -1101,7 +1108,7 @@ export async function collectNativeDashboardProjection(
     changes: await Promise.all(
       entries
         .slice(0, NATIVE_DASHBOARD_LIMITS.maxChanges)
-        .map((candidate) => collectNativeChange(candidate, candidate.children)),
+        .map((candidate) => collectNativeChange(candidate, candidate.children, index.all)),
     ),
     totalChangeCount: index.activeChangeCount + index.archivedChangeCount,
     activeChangeCount: index.activeChangeCount,

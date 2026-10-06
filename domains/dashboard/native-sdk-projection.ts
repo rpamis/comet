@@ -38,7 +38,10 @@ function failed(action: Action): boolean {
 }
 
 /** 展示已确认的当前轮事实，不创建或修复旧 Supervisor 状态。 */
-function childProgress({ run, state }: SdkInspection): NativeChildStatusProjection[] {
+function childProgress(
+  { run, state }: SdkInspection,
+  projectRoot: string,
+): NativeChildStatusProjection[] {
   const confirmed = record(run.outputs['shape.revalidate']?.value);
   const children = record(confirmed?.children);
   if (!children?.contract || state.phase === 'shape') return [];
@@ -67,6 +70,17 @@ function childProgress({ run, state }: SdkInspection): NativeChildStatusProjecti
   );
   return contract.children.map((child) => {
     const action = latest.get(child.name);
+    const preparation = actions.find(
+      (candidate) =>
+        candidate.stepId === 'supervisor.child.prepare' &&
+        candidate.status === 'succeeded' &&
+        activation(candidate)?.child === child.name,
+    );
+    const childWorktree = record(preparation?.outcome?.output)?.worktree;
+    const archived =
+      action?.stepId === 'supervisor.child.archive' &&
+      action.status === 'succeeded' &&
+      !failed(action);
     const status = integrated.has(child.name)
       ? 'integrated'
       : action && failed(action)
@@ -83,7 +97,11 @@ function childProgress({ run, state }: SdkInspection): NativeChildStatusProjecti
       covers: [...child.covers],
       status,
       phase: action ? 'build' : null,
-      projectRoot: null,
+      projectRoot: archived
+        ? projectRoot
+        : typeof childWorktree === 'string'
+          ? childWorktree
+          : null,
       message:
         status === 'blocked'
           ? (action?.reason ?? action?.outcome?.summary ?? 'SDK Action requires recovery.')
@@ -151,7 +169,7 @@ export async function readNativeDashboardSdkProjection(
   const inspection = { run, state };
   return {
     state: inspection.state,
-    children: childProgress(inspection),
+    children: childProgress(inspection, projectRoot),
     localExecution: executionProgress(inspection),
   };
 }
