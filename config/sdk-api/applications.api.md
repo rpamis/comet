@@ -189,6 +189,7 @@ export function createApplicationSkillExecutor(application: SkillExecutionApplic
 // @public
 export function createReportApplication(context: Pick<WorkflowApplicationFactoryContext, 'projectRoot'> & {
     manifest: Pick<WorkflowApplicationFactoryContext['manifest'], 'id'>;
+    packageRoot?: WorkflowApplicationFactoryContext['packageRoot'];
 }): WorkflowApplicationImplementation;
 
 // @public
