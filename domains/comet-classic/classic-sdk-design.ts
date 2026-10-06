@@ -221,6 +221,28 @@ export async function inspectClassicSdkDesign(options: {
   return { ...inspected, decision, receipt };
 }
 
+/** Guard 在一次预检后立即完成批准；后续 evidence validator 仍独立验证。 */
+export async function inspectAndCompleteClassicSdkDesign(options: {
+  projectRoot: string;
+  change: string;
+  designDoc: string;
+  apply: boolean;
+  approvalHash?: string;
+}) {
+  const inspected = await inspectClassicSdkDesign(options);
+  const completed =
+    options.apply &&
+    inspected.state.phase === 'design' &&
+    options.approvalHash === inspected.decision.proposalHash
+      ? await completeInspectedClassicSdkDesign(inspected, {
+          projectRoot: options.projectRoot,
+          designDoc: options.designDoc,
+          approvalHash: options.approvalHash,
+        })
+      : null;
+  return { inspected, completed };
+}
+
 /** Submit an approved Design Doc to the authoritative SDK Run, resumably. */
 export async function completeClassicSdkDesign(options: {
   projectRoot: string;
@@ -233,6 +255,14 @@ export async function completeClassicSdkDesign(options: {
     throw new Error('Classic Design requires the approved proposal hash');
   }
   const inspected = await inspectClassicSdkDesign({ projectRoot, change, designDoc });
+  return completeInspectedClassicSdkDesign(inspected, { projectRoot, designDoc, approvalHash });
+}
+
+async function completeInspectedClassicSdkDesign(
+  inspected: Awaited<ReturnType<typeof inspectClassicSdkDesign>>,
+  options: { projectRoot: string; designDoc: string; approvalHash: string },
+): Promise<WorkflowRun> {
+  const { projectRoot, designDoc, approvalHash } = options;
   let { run } = inspected;
   const { runtime, decision, receipt } = inspected;
   if (decision.proposalHash !== approvalHash) {

@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { Ajv } from 'ajv';
 import {
   cancelRuntimeAction,
   claimRuntimeAction,
@@ -10,7 +9,8 @@ import {
   type RuntimeOutcome,
 } from './runtime-action.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
-import { cloneRuntimeValue, hashRuntimeValue } from './runtime-json.js';
+import { cloneRuntimeValue, hashRuntimeValue, type RuntimeValue } from './runtime-json.js';
+import { compileRuntimeSchema } from './runtime-schema.js';
 import type { RuntimeStore } from './runtime-store.js';
 import { parseWorkflowRun } from './workflow-run-validation.js';
 import {
@@ -135,12 +135,14 @@ function checkContext(context?: RuntimeInvocationContext): void {
 /** 核心只持久化事实与决定；外部执行在 Action 提交后由宿主完成。 */
 export function createRuntime(options: CreateRuntimeOptions) {
   const definitions = new Map<string, WorkflowDefinition>();
+  const definitionHashes = new Map<WorkflowDefinition, string>();
   for (const raw of options.workflows) {
     const definition = defineWorkflow(raw);
     const key = referenceKey(definition);
     if (definitions.has(key))
       throw new RuntimeProtocolError('DUPLICATE_WORKFLOW', '不能重复注册同一工作流版本');
     definitions.set(key, definition);
+    definitionHashes.set(definition, hashRuntimeValue(definition));
   }
   const validators = new Map<string, RuntimeValidator>();
   for (const validator of options.validators ?? []) {
@@ -156,7 +158,16 @@ export function createRuntime(options: CreateRuntimeOptions) {
       throw new RuntimeProtocolError('DUPLICATE_STATE_VALIDATOR', '不能重复注册同一状态验证器版本');
     stateValidators.set(key, validator);
   }
-  const ajv = new Ajv({ strict: true, allErrors: true });
+  const schemaValidators = new Map<RuntimeValue, ReturnType<typeof compileRuntimeSchema>>();
+  function schemaValidator(schema: RuntimeValue): ReturnType<typeof compileRuntimeSchema> {
+    let compiled = schemaValidators.get(schema);
+    if (!compiled) {
+      compiled = compileRuntimeSchema(schema);
+      // 此处的 schema 仅来自 defineWorkflow 返回的深冻结副本。
+      schemaValidators.set(schema, compiled);
+    }
+    return compiled;
+  }
   const executors = new Map<string, RuntimeExecutor>();
   const transitionHandlers = new Map<string, WorkflowTransitionHandler>();
   for (const handler of options.transitionHandlers ?? []) {
@@ -199,7 +210,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
     const definition = definitions.get(referenceKey(reference));
     if (!definition)
       throw new RuntimeProtocolError('WORKFLOW_UNAVAILABLE', '请提供当前 Run 固定的工作流定义版本');
-    if (reference.hash !== undefined && reference.hash !== hashRuntimeValue(definition)) {
+    if (reference.hash !== undefined && reference.hash !== definitionHashes.get(definition)) {
       throw new RuntimeProtocolError(
         'WORKFLOW_CHANGED',
         '同一版本的工作流内容已改变；请恢复原定义或显式迁移',
@@ -260,8 +271,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
     code: string,
   ): void {
     if (definition.stateSchema !== undefined) {
-      const validate = ajv.compile(definition.stateSchema as boolean | object);
-      if (!validate(state)) throw new RuntimeProtocolError(code, ajv.errorsText(validate.errors));
+      const schema = schemaValidator(definition.stateSchema);
+      if (!schema.validate(state)) throw new RuntimeProtocolError(code, schema.errorsText());
     }
     if (definition.stateValidator) {
       const validator = stateValidators.get(referenceKey(definition.stateValidator));
@@ -357,8 +368,9 @@ export function createRuntime(options: CreateRuntimeOptions) {
         requireEvidenceValidators(definition);
         requireCommandValidators(definition);
         if (id === run.workflow.id && version === run.workflow.version) {
+          const actions = new Map(run.actions.map((action) => [action.id, action]));
           for (const command of run.commands ?? []) {
-            const action = run.actions.find((candidate) => candidate.id === command.actionId);
+            const action = actions.get(command.actionId);
             if (
               !action ||
               !Object.hasOwn(definition.commands ?? {}, command.name) ||
@@ -434,7 +446,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
   ): Record<string, string> {
     const key = referenceKey(definition);
     if (Object.hasOwn(hashes, key)) return hashes;
-    hashes[key] = hashRuntimeValue(definition);
+    hashes[key] = definitionHashes.get(definition)!;
     for (const step of Object.values(definition.steps)) {
       if (step.type === 'child_workflow') pinnedDefinitions(definitionFor(step.workflow), hashes);
     }
@@ -473,7 +485,7 @@ export function createRuntime(options: CreateRuntimeOptions) {
     const workflow = {
       id: definition.id,
       version: definition.version,
-      hash: hashRuntimeValue(definition),
+      hash: definitionHashes.get(definition)!,
     };
     const previous = await options.store.read(runId);
     if (previous) {
@@ -638,6 +650,8 @@ export function createRuntime(options: CreateRuntimeOptions) {
       return run;
     }
     if (run.status === 'failed') return run;
+    // 没有子流程时，本次读取或成功 CAS 已确定返回快照，无需再次读取完整 Run。
+    if (run.children.length === 0) return run;
     for (const child of run.children) {
       let action = requiredAction(run, child.actionId);
       if (!['pending', 'running'].includes(action.status)) continue;
@@ -763,9 +777,9 @@ export function createRuntime(options: CreateRuntimeOptions) {
       try {
         const step = definition.steps[action.stepId];
         if (command.outcome.status === 'succeeded' && step.outputSchema !== undefined) {
-          const validate = ajv.compile(step.outputSchema as boolean | object);
-          if (!validate(command.outcome.output)) {
-            rejection = { code: 'OUTPUT_INVALID', reason: ajv.errorsText(validate.errors) };
+          const schema = schemaValidator(step.outputSchema);
+          if (!schema.validate(command.outcome.output)) {
+            rejection = { code: 'OUTPUT_INVALID', reason: schema.errorsText() };
           }
         }
         if (!rejection && step.validator) {

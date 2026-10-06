@@ -7,6 +7,7 @@ import {
   statSync,
 } from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 import {
   assertSafeWindowsBatchArguments,
@@ -194,7 +195,7 @@ export async function executeNativeCheck(options: {
   plan: NativeCheckPlan;
   now?: () => Date;
   onSpawn?: (child: { pid: number }) => Promise<void>;
-}): Promise<NativeExecutedCheck> {
+}): Promise<NativeExecutedCheck & { logSha256: string }> {
   const { plan } = options;
   safeSegment(options.operationId, 'Native check operation ID');
   const cwd = validateNativeCheckPlan(options.projectRoot, plan);
@@ -206,8 +207,9 @@ export async function executeNativeCheck(options: {
   await fs.mkdir(logDirectory, { recursive: true });
   const started = (options.now ?? (() => new Date()))();
   const stream = createWriteStream(logFile, { flags: 'wx' });
+  const logHash = createHash('sha256');
 
-  return new Promise<NativeExecutedCheck>((resolve, reject) => {
+  return new Promise<NativeExecutedCheck & { logSha256: string }>((resolve, reject) => {
     let child;
     try {
       child = spawnCommand(plan.executable, plan.argv, {
@@ -233,11 +235,15 @@ export async function executeNativeCheck(options: {
 
     child.stdout.pipe(stream, { end: false });
     child.stderr.pipe(stream, { end: false });
+    // These listeners observe the same event order as the log stream writes.
+    // Outcome validation must still hash the finished file before committing it.
+    child.stdout.on('data', (chunk: Buffer) => logHash.update(chunk));
+    child.stderr.on('data', (chunk: Buffer) => logHash.update(chunk));
     child.once('error', (error) => {
       spawnError = error;
-      stream.write(
-        `\n[comet] failed to start check: ${redactNativeCredentialText(error.message)}\n`,
-      );
+      const message = `\n[comet] failed to start check: ${redactNativeCredentialText(error.message)}\n`;
+      stream.write(message);
+      logHash.update(message);
     });
     child.once('close', (exitCode, signal) => {
       closed = true;
@@ -265,6 +271,7 @@ export async function executeNativeCheck(options: {
             completedAt: completed.toISOString(),
             repeatable: plan.repeatable,
             logRef: path.relative(options.runtimeDir, logFile).split(path.sep).join('/'),
+            logSha256: logHash.digest('hex'),
           });
         });
       });

@@ -5,6 +5,7 @@ import { runGitCommand } from '../../platform/process/git.js';
 import {
   hashProtectedProjectFile,
   ensureProtectedProjectDirectory,
+  inspectProtectedProjectPath,
 } from '../workflow-contract/protected-project-path.js';
 import {
   type RuntimeAction,
@@ -493,9 +494,11 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
         plan,
       });
       const logRef = `${runtimeRef}/${executed.logRef}`;
-      const log = await hashProtectedProjectFile(context.projectRoot, logRef, {
+      const log = await inspectProtectedProjectPath(context.projectRoot, logRef, {
         label: 'Native SDK check log',
+        expected: 'file',
       });
+      if (!log.exists) throw new Error('Native SDK check log does not exist');
       checks.push({
         id: executed.id,
         name: executed.name,
@@ -505,7 +508,7 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
         exitCode: executed.exitCode,
         durationMs: executed.durationMs,
         logRef,
-        logSha256: log.digest,
+        logSha256: executed.logSha256,
       });
     }
     return {

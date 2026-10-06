@@ -2,7 +2,9 @@ import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import * as gitWorktrees from '../../../platform/paths/git-worktree.js';
 
 import { resolveCometHookProjectRoot } from '../../../domains/comet-entry/hook-project-root.js';
 
@@ -32,12 +34,26 @@ describe('Comet Hook worktree project root', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     spawnSync('git', ['-C', primary, 'worktree', 'remove', '--force', secondary], {
       encoding: 'utf8',
       timeout: 20_000,
     });
     await fs.rm(secondary, { recursive: true, force: true });
     await fs.rm(primary, { recursive: true, force: true });
+  });
+
+  it('does not probe Git when the request has no targets', async () => {
+    const worktrees = vi.spyOn(gitWorktrees, 'listGitWorktreeRoots');
+    await expect(
+      resolveCometHookProjectRoot(primary, {
+        intent: 'context',
+        targets: [],
+        toolName: null,
+        cwd: secondary,
+      }),
+    ).resolves.toBe(path.resolve(primary));
+    expect(worktrees).not.toHaveBeenCalled();
   });
 
   it('rebases relative targets from the Hook payload cwd to the linked worktree', async () => {

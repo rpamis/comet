@@ -31,6 +31,23 @@ export function resolveFastRuntime(argv) {
   if (argv.length === 0 || hasHelpFlag(argv)) return null;
 
   const [group, command, ...tail] = argv;
+  if (group === 'classic' && CLASSIC_COMMANDS.has(command)) {
+    return {
+      assetPath: 'dist/app/commands/classic.js',
+      args: tail,
+      classicCommand: command,
+    };
+  }
+
+  if (group === 'runtime' && command === 'dispatch') {
+    if (argv.includes('--version') || argv.includes('-v')) return null;
+    return {
+      assetPath: 'dist/app/cli/runtime-command.js',
+      args: argv,
+      runtimeDispatch: true,
+    };
+  }
+
   if (CLASSIC_COMMANDS.has(group))
     return {
       assetPath: 'dist/app/commands/classic.js',
@@ -95,6 +112,11 @@ export async function tryRunFastRuntime(argv = process.argv.slice(2)) {
       import(classicRuntimeUrl.href),
     ]);
     process.exitCode = await runClassicFacade(route.classicCommand, route.args, runClassicCli);
+    return true;
+  }
+  if (route.runtimeDispatch) {
+    const { runRuntimeCli } = await import(runtimeUrl.href);
+    await runRuntimeCli(route.args);
     return true;
   }
   if (route.configuredEntry) {

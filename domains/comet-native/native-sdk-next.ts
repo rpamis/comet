@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { hashRuntimeValue, type RuntimeValue } from '../engine/runtime.js';
+import { hashRuntimeValue, type RuntimeValue, type WorkflowRun } from '../engine/runtime.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import { nativePortableContinuation } from './native-portable-continuation.js';
 import {
@@ -9,7 +9,8 @@ import {
 } from './native-sdk-application.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { createNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
-import { inspectNativeSdkStatus } from './native-sdk-status.js';
+import { projectNativeSdkStatus } from './native-sdk-status.js';
+import { parseNativePortableState } from './native-portable-state.js';
 import {
   NATIVE_SUPERVISOR_COORDINATION_MODES,
   type NativePortableState,
@@ -112,8 +113,13 @@ function sdkLoopStopContinuation(state: NativePortableState, proposalHash: strin
   };
 }
 
-async function sdkNextResult(projectRoot: string, name: string): Promise<DispatchResult> {
-  const { run, state } = await inspectNativeSdkRun(projectRoot, name);
+async function sdkNextResult(
+  projectRoot: string,
+  name: string,
+  run: WorkflowRun,
+  artifactRootRef: string,
+): Promise<DispatchResult> {
+  const state = parseNativePortableState(run.state);
   const pendingActions = run.actions
     .filter((action) => action.status === 'pending')
     .map((action) => ({
@@ -154,7 +160,7 @@ async function sdkNextResult(projectRoot: string, name: string): Promise<Dispatc
   );
   return success('next', {
     change: name,
-    ...(await inspectNativeSdkStatus({ projectRoot, name })),
+    ...(await projectNativeSdkStatus({ projectRoot, name }, { run, state, artifactRootRef })),
     ...(pendingBuilderDecisions.length > 0 ? { pendingBuilderDecisions } : {}),
     ...(loopStop
       ? { continuation: sdkLoopStopContinuation(state, loopStop.proposalHash) }
@@ -276,15 +282,16 @@ export async function advanceNativeSdkChange(
       throw new Error('Native SDK requirements revision outcome is unknown; reconcile its Action');
     }
     if (action.status === 'failed') throw new Error('Native SDK requirements revision failed');
+    let completed = dispatched;
     if (action.status === 'pending') {
-      await runtime.execute({
+      completed = await runtime.execute({
         runId: run.runId,
         actionId: action.id,
         executorId: 'comet-native-revise-requirements',
         context: { requestId: randomUUID(), projectRoot },
       });
     }
-    return sdkNextResult(projectRoot, name);
+    return sdkNextResult(projectRoot, name, completed, artifactRootRef);
   }
   if (
     decision?.expectedAction === 'accept-result' ||
@@ -394,22 +401,23 @@ export async function advanceNativeSdkChange(
     if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
       throw new Error(`Native SDK change ${name} has a claimed Action with an unknown outcome`);
     }
-    return sdkNextResult(projectRoot, name);
+    return sdkNextResult(projectRoot, name, run, artifactRootRef);
   }
   if (pending.stepId !== 'shape.prepare' && pending.stepId !== 'shape.revalidate') {
+    let completed = run;
     if (pending.type === 'call_tool') {
       const executor = defineNativeWorkflowApplication().executors.find((candidate) =>
         candidate.supports(pending),
       );
       if (!executor) throw new Error(`Native SDK Action ${pending.stepId} has no executor`);
-      await createNativeSdkRuntime(projectRoot).execute({
+      completed = await createNativeSdkRuntime(projectRoot).execute({
         runId: run.runId,
         actionId: pending.id,
         executorId: executor.id,
         context: { requestId: randomUUID(), projectRoot },
       });
     }
-    return sdkNextResult(projectRoot, name);
+    return sdkNextResult(projectRoot, name, completed, artifactRootRef);
   }
   const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
   const proposal = await collectNativeSdkShapeProposal({ paths, state });
@@ -427,7 +435,7 @@ export async function advanceNativeSdkChange(
   });
   const claimedAction = claimed.actions.find((action) => action.id === pending.id);
   if (!claimedAction?.claim) throw new Error(`Native SDK Action ${pending.id} was not claimed`);
-  await runtime.recordOutcome({
+  const completed = await runtime.recordOutcome({
     runId: run.runId,
     outcome: {
       actionId: pending.id,
@@ -440,5 +448,5 @@ export async function advanceNativeSdkChange(
     },
     context,
   });
-  return sdkNextResult(projectRoot, name);
+  return sdkNextResult(projectRoot, name, completed, artifactRootRef);
 }

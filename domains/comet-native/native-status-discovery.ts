@@ -65,6 +65,7 @@ interface NativeWorkspaceSource {
   config: CometProjectConfig;
   paths: NativeProjectPaths;
   gitContext: GitWorktreeContext;
+  sdkNames?: string[];
   changes: Array<{ name: string; kind: 'portable' | 'legacy' }>;
   archives?: NativeStatusRecord[];
   archiveErrors?: Array<{ name: string; message: string }>;
@@ -239,13 +240,15 @@ async function discoverSources(
     if (seen.has(key)) continue;
     seen.add(key);
     const configured = await readProjectConfig(candidate);
-    if (!configured && (await listNativeSdkChangeNames(candidate)).length === 0) continue;
+    const sdkNames = !configured ? await listNativeSdkChangeNames(candidate) : undefined;
+    if (!configured && sdkNames?.length === 0) continue;
     const config = configured ?? defaultProjectConfig();
     const paths = await nativeProjectPaths(candidate, config.native.artifact_root);
     sources.push({
       projectRoot: candidate,
       config,
       paths,
+      sdkNames,
       gitContext:
         gitWorktreeContextFromEntries(candidate, worktrees) ?? inspectGitWorktree(candidate),
       changes: await discoverChanges(paths, targetName),
@@ -895,7 +898,7 @@ export async function listDiscoveredNativeStatusPage(options: {
   const sdkCandidates = (
     await Promise.all(
       sources.map(async (source) =>
-        (await listNativeSdkChangeNames(source.projectRoot)).map((name) => ({
+        (source.sdkNames ?? (await listNativeSdkChangeNames(source.projectRoot))).map((name) => ({
           kind: 'sdk' as const,
           name,
           projectRoot: source.projectRoot,
@@ -904,6 +907,12 @@ export async function listDiscoveredNativeStatusPage(options: {
       ),
     )
   ).flat();
+  const legacyByName = new Map<string, NativeStatusCandidate[]>();
+  for (const candidate of legacyCandidates) {
+    const matching = legacyByName.get(candidate.name) ?? [];
+    matching.push(candidate);
+    legacyByName.set(candidate.name, matching);
+  }
   const sdkNames = new Set<string>();
   for (const sdk of sdkCandidates) {
     if (sdkNames.has(sdk.name)) {
@@ -913,9 +922,9 @@ export async function listDiscoveredNativeStatusPage(options: {
     if (
       (
         await Promise.all(
-          legacyCandidates
-            .filter((candidate) => candidate.name === sdk.name)
-            .map((candidate) => conflictsWithSdkOwner(candidate, sdk.projectRoot)),
+          (legacyByName.get(sdk.name) ?? []).map((candidate) =>
+            conflictsWithSdkOwner(candidate, sdk.projectRoot),
+          ),
         )
       ).some(Boolean)
     ) {

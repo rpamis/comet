@@ -34,6 +34,15 @@ import {
 } from './classic-plan-readiness.js';
 import { isClassicNeutralDocumentWrite } from './classic-neutral-documents.js';
 
+// Share the SDK read with current-selection branch checks within this Hook request only.
+const inspectHookSdkRun = memoizedHookRead(
+  'classicHookSdkRun',
+  (projectRoot: string, name: string) => inspectClassicSdkRun(projectRoot, name),
+);
+const hookWritableLayout = memoizedHookRead('classicHookWritableLayout', (projectRoot: string) =>
+  assertClassicLayoutWritable(projectRoot),
+);
+
 function result(exitCode: number, message: string): ClassicCommandResult {
   return { exitCode, stderr: message + '\n' };
 }
@@ -181,7 +190,7 @@ async function loadSdkGoverningChange(
   changeName: string,
   changeDir: string,
 ): Promise<GoverningChange> {
-  const { state } = await inspectClassicSdkRun(projectRoot, changeName);
+  const { state } = await inspectHookSdkRun(projectRoot, changeName);
   return {
     changeDir,
     phase: state.phase,
@@ -1009,7 +1018,7 @@ async function inspectClassicHookTarget(
   const relativePath = await projectRelative(target, projectRoot);
   let layout: ClassicLayoutPaths;
   try {
-    layout = await assertClassicLayoutWritable(projectRoot);
+    layout = await hookWritableLayout(projectRoot);
   } catch (error) {
     return result(
       2,
@@ -1166,7 +1175,7 @@ export async function inspectClassicHookGuard(
 ): Promise<CometHookDecision> {
   if (request.intent !== 'non-write') {
     try {
-      await assertClassicLayoutWritable(projectRoot);
+      await hookWritableLayout(projectRoot);
     } catch (error) {
       return {
         allowed: false,

@@ -19,7 +19,10 @@ import {
 } from '../workflow-contract/change-runtime-owner.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { ensureProtectedProjectDirectory } from '../workflow-contract/protected-project-path.js';
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import {
+  inspectProtectedProjectPath,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
 import { assertOpenSpecChangeName } from './classic-paths.js';
 import {
@@ -227,14 +230,21 @@ export function createClassicSdkStateStore(projectRoot: string): RuntimeStore<Wo
           source === null ? new Document() : parseDocument(source, { uniqueKeys: true });
         if (document.errors.length > 0)
           throw new Error(`Invalid Classic state file: ${document.errors[0].message}`);
-        const fileState =
-          source === null
-            ? null
-            : parseClassicStateDocument(document.toJS() as Record<string, unknown>).classic;
+        const documentData = document.toJS() as Record<string, unknown>;
+        const fileState = source === null ? null : parseClassicStateDocument(documentData).classic;
         const markerFile = path.join(projectRoot, projectionDir, `${runId}.json`);
         let marker: ProjectionMarker | null = null;
+        let markerSource: string | null = null;
         try {
-          marker = JSON.parse(await fs.readFile(markerFile, 'utf8')) as ProjectionMarker;
+          markerSource = (
+            await readProtectedProjectFile(
+              projectRoot,
+              `${projectionDir}/${runId}.json`,
+              Number.MAX_SAFE_INTEGER,
+              { label: 'Classic SDK state projection marker' },
+            )
+          ).bytes.toString('utf8');
+          marker = JSON.parse(markerSource) as ProjectionMarker;
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         }
@@ -317,7 +327,7 @@ export function createClassicSdkStateStore(projectRoot: string): RuntimeStore<Wo
           }
         }
         const target = classicStateToDocument(state);
-        const current = (document.toJS() ?? {}) as Record<string, unknown>;
+        const current = documentData ?? {};
         for (const [key, value] of Object.entries(target)) {
           if (equal(current[key], value)) continue;
           if (value === undefined) document.delete(key);
@@ -340,9 +350,12 @@ export function createClassicSdkStateStore(projectRoot: string): RuntimeStore<Wo
           revision: run.revision,
           state,
         };
-        await atomicWriteContainedText(markerFile, JSON.stringify(projection) + '\n', {
-          containedRoot: projectRoot,
-        });
+        const projectionSource = JSON.stringify(projection) + '\n';
+        if (markerSource !== projectionSource) {
+          await atomicWriteContainedText(markerFile, projectionSource, {
+            containedRoot: projectRoot,
+          });
+        }
         return run;
       },
       { timeoutMs: 5_000 },

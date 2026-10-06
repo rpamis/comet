@@ -144,12 +144,19 @@ function handoffSourceReference(changeDir: string, changeRef: string, file: stri
   return `${changeRef}/${relative}`;
 }
 
-export async function computeContextHash(
+interface HandoffSource {
+  file: string;
+  reference: string;
+  content: string;
+  sha256: string;
+}
+
+async function readHandoffSources(
   projectRoot: string,
   changeDir: string,
   changeRef: string,
-): Promise<string> {
-  const lines: string[] = [];
+): Promise<HandoffSource[]> {
+  const sources: HandoffSource[] = [];
   for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
     const reference = handoffSourceReference(changeDir, changeRef, file);
     const content = await readProtectedIfExists(
@@ -157,11 +164,38 @@ export async function computeContextHash(
       file,
       `Classic handoff source ${reference}`,
     );
-    if (content === null) continue;
-    lines.push(`path:${reference}`, `sha256:${handoffSourceHash(file, content)}`);
+    if (content !== null)
+      sources.push({ file, reference, content, sha256: handoffSourceHash(file, content) });
   }
-  // Command substitution $(...) strips the trailing newline; mirror that exactly.
+  return sources;
+}
+
+function contextHashFromSources(sources: readonly HandoffSource[]): string {
+  // 保持 shell 命令替换去除末尾换行的历史格式。
+  const lines = sources.flatMap(({ reference, sha256 }) => [
+    `path:${reference}`,
+    `sha256:${sha256}`,
+  ]);
   return createHash('sha256').update(lines.join('\n')).digest('hex');
+}
+
+async function requiredSourceNonempty(
+  projectRoot: string,
+  file: string,
+  sources: ReadonlyMap<string, HandoffSource>,
+): Promise<boolean> {
+  const source = sources.get(path.resolve(file));
+  return source
+    ? Buffer.byteLength(source.content) > 0
+    : classicProjectFileNonempty(projectRoot, file, `Classic handoff source ${file}`);
+}
+
+export async function computeContextHash(
+  projectRoot: string,
+  changeDir: string,
+  changeRef: string,
+): Promise<string> {
+  return contextHashFromSources(await readHandoffSources(projectRoot, changeDir, changeRef));
 }
 
 /**
@@ -245,6 +279,7 @@ async function writeMarkdownContext(
   mode: string,
   contextHash: string,
   output: string,
+  sources?: readonly HandoffSource[],
 ): Promise<void> {
   const lines: string[] = [
     '# Comet Design Handoff',
@@ -260,21 +295,15 @@ async function writeMarkdownContext(
     'OpenSpec remains the canonical capability spec. This handoff is a deterministic, source-traceable context pack, not an agent-authored summary.',
     '',
   ];
-  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
-    const reference = handoffSourceReference(changeDir, changeRef, file);
-    const content = await readProtectedIfExists(
-      projectRoot,
-      file,
-      `Classic handoff source ${reference}`,
-    );
-    if (content === null) continue;
+  const material = sources ?? (await readHandoffSources(projectRoot, changeDir, changeRef));
+  for (const { reference, content, sha256 } of material) {
     const total = lineCount(content);
     lines.push(
       `## ${reference}`,
       '',
       `- Source: ${reference}`,
       `- Lines: 1-${total}`,
-      `- SHA256: ${handoffSourceHash(file, content)}`,
+      `- SHA256: ${sha256}`,
       '',
     );
     if (mode === 'full' || total <= 80) {
@@ -308,19 +337,12 @@ async function writeJsonContext(
   mode: string,
   contextHash: string,
   output: string,
+  sources?: readonly HandoffSource[],
 ): Promise<void> {
   const entries: string[] = [];
-  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
-    const reference = handoffSourceReference(changeDir, changeRef, file);
-    const content = await readProtectedIfExists(
-      projectRoot,
-      file,
-      `Classic handoff source ${reference}`,
-    );
-    if (content === null) continue;
-    entries.push(
-      `    { "path": "${jsonEscape(reference)}", "sha256": "${handoffSourceHash(file, content)}" }`,
-    );
+  const material = sources ?? (await readHandoffSources(projectRoot, changeDir, changeRef));
+  for (const { reference, sha256 } of material) {
+    entries.push(`    { "path": "${jsonEscape(reference)}", "sha256": "${sha256}" }`);
   }
   const filesBlock = entries.join(',\n');
   const document = [
@@ -363,6 +385,7 @@ async function writeSpecMarkdownContext(
   change: string,
   contextHash: string,
   output: string,
+  sources?: readonly HandoffSource[],
 ): Promise<void> {
   const lines: string[] = [
     '# Comet Spec Context',
@@ -379,29 +402,16 @@ async function writeSpecMarkdownContext(
     '## Source References',
     '',
   ];
-  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
-    const reference = handoffSourceReference(changeDir, changeRef, file);
-    const content = await readProtectedIfExists(
-      projectRoot,
-      file,
-      `Classic handoff source ${reference}`,
-    );
-    if (content === null) continue;
-    lines.push(`- Source: ${reference}`, `- SHA256: ${handoffSourceHash(file, content)}`);
+  const material = sources ?? (await readHandoffSources(projectRoot, changeDir, changeRef));
+  for (const { reference, sha256 } of material) {
+    lines.push(`- Source: ${reference}`, `- SHA256: ${sha256}`);
   }
   lines.push('', '## Acceptance Projection', '');
-  const specs = `${changeDir}/specs`;
   let projected = false;
-  for (const spec of await collectClassicSpecFiles(projectRoot, specs)) {
-    const content = await readProtectedIfExists(projectRoot, spec, `Classic handoff spec ${spec}`);
-    if (content === null) continue;
+  for (const { reference, content } of material) {
+    if (!reference.startsWith(`${changeRef}/specs/`)) continue;
     projected = true;
-    lines.push(
-      ...(await writeSpecProjectionForFile(
-        handoffSourceReference(changeDir, changeRef, spec),
-        content,
-      )),
-    );
+    lines.push(...(await writeSpecProjectionForFile(reference, content)));
   }
   if (!projected) {
     lines.push('No delta spec files found.', '');
@@ -425,18 +435,13 @@ async function writeSpecJsonContext(
   change: string,
   contextHash: string,
   output: string,
+  sources?: readonly HandoffSource[],
 ): Promise<void> {
   const entries: Array<{ path: string; sha256: string; role: 'spec' | 'supporting' }> = [];
-  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
-    const reference = handoffSourceReference(changeDir, changeRef, file);
-    const content = await readProtectedIfExists(
-      projectRoot,
-      file,
-      `Classic handoff source ${reference}`,
-    );
-    if (content === null) continue;
+  const material = sources ?? (await readHandoffSources(projectRoot, changeDir, changeRef));
+  for (const { reference, sha256 } of material) {
     const role = /\/specs\/.+\/spec\.md$/u.test(reference) ? 'spec' : 'supporting';
-    entries.push({ path: reference, sha256: handoffSourceHash(file, content), role });
+    entries.push({ path: reference, sha256, role });
   }
   await writeProtectedText(
     projectRoot,
@@ -470,8 +475,10 @@ export async function writeClassicSdkDesignContext(options: {
   const changeRef = classicProjectRelative(projectRoot, changeDir);
   const requirements = await readClassicArtifactRequirements(projectRoot, changeDir);
   if (requirements.problems.length) throw new Error(requirements.problems.join('\n'));
+  const sources = await readHandoffSources(projectRoot, changeDir, changeRef);
+  const sourcesByPath = new Map(sources.map((source) => [path.resolve(source.file), source]));
   for (const file of requirements.files) {
-    if (!(await classicProjectFileNonempty(projectRoot, file, `Classic handoff source ${file}`))) {
+    if (!(await requiredSourceNonempty(projectRoot, file, sourcesByPath))) {
       throw new Error(`Required OpenSpec artifact is missing or empty: ${file}`);
     }
   }
@@ -486,7 +493,7 @@ export async function writeClassicSdkDesignContext(options: {
   const basename = beta ? 'spec-context' : 'design-context';
   const json = `${handoffDir}/${basename}.json`;
   const markdown = `${handoffDir}/${basename}.md`;
-  const handoffHash = await computeContextHash(projectRoot, changeDir, changeRef);
+  const handoffHash = contextHashFromSources(sources);
   if (beta) {
     await writeSpecMarkdownContext(
       projectRoot,
@@ -495,8 +502,17 @@ export async function writeClassicSdkDesignContext(options: {
       change,
       handoffHash,
       markdown,
+      sources,
     );
-    await writeSpecJsonContext(projectRoot, changeDir, changeRef, change, handoffHash, json);
+    await writeSpecJsonContext(
+      projectRoot,
+      changeDir,
+      changeRef,
+      change,
+      handoffHash,
+      json,
+      sources,
+    );
   } else {
     await writeMarkdownContext(
       projectRoot,
@@ -506,8 +522,18 @@ export async function writeClassicSdkDesignContext(options: {
       'compact',
       handoffHash,
       markdown,
+      sources,
     );
-    await writeJsonContext(projectRoot, changeDir, changeRef, change, 'compact', handoffHash, json);
+    await writeJsonContext(
+      projectRoot,
+      changeDir,
+      changeRef,
+      change,
+      'compact',
+      handoffHash,
+      json,
+      sources,
+    );
   }
   return { handoffContext: classicProjectRelative(projectRoot, json), handoffHash };
 }
@@ -523,11 +549,12 @@ export async function validateClassicSdkDesignContext(options: {
 }): Promise<boolean> {
   const { projectRoot, changeDir, change, handoffContext, handoffHash } = options;
   const changeRef = classicProjectRelative(projectRoot, changeDir);
+  const sources = await readHandoffSources(projectRoot, changeDir, changeRef);
   const basename = options.contextCompression === 'beta' ? 'spec-context' : 'design-context';
   if (
     handoffContext !== `${changeRef}/.comet/handoff/${basename}.json` ||
     !/^[a-f0-9]{64}$/u.test(handoffHash) ||
-    handoffHash !== (await computeContextHash(projectRoot, changeDir, changeRef))
+    handoffHash !== contextHashFromSources(sources)
   )
     return false;
   const json = await readProtectedIfExists(projectRoot, handoffContext, 'Classic SDK handoff JSON');
@@ -536,7 +563,8 @@ export async function validateClassicSdkDesignContext(options: {
     handoffContext.replace(/\.json$/u, '.md'),
     'Classic SDK handoff markdown',
   );
-  if (!json || !markdown || !markdown.split(/\r?\n/u).includes(`- Context hash: ${handoffHash}`)) {
+  const lines = new Set(markdown?.split(/\r?\n/u));
+  if (!json || !markdown || !lines.has(`- Context hash: ${handoffHash}`)) {
     return false;
   }
   const parsed: unknown = JSON.parse(json);
@@ -552,20 +580,9 @@ export async function validateClassicSdkDesignContext(options: {
   )
     return false;
   const expected: Array<{ path: string; sha256: string }> = [];
-  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
-    const reference = handoffSourceReference(changeDir, changeRef, file);
-    const content = await readProtectedIfExists(
-      projectRoot,
-      file,
-      `Classic handoff source ${reference}`,
-    );
-    if (content === null) continue;
-    const sha256 = handoffSourceHash(file, content);
+  for (const { reference, sha256 } of sources) {
     expected.push({ path: reference, sha256 });
-    if (
-      !markdown.includes(`- Source: ${reference}\n`) ||
-      !markdown.includes(`- SHA256: ${sha256}`)
-    ) {
+    if (!lines.has(`- Source: ${reference}`) || !lines.has(`- SHA256: ${sha256}`)) {
       return false;
     }
   }
@@ -631,6 +648,12 @@ async function handoffMarkdownIsCurrent(
     'Classic handoff markdown output',
   );
   if (markdown === null) return false;
+  const sources = await readHandoffSources(
+    projectRoot,
+    changeDir,
+    classicProjectRelative(projectRoot, changeDir),
+  );
+  if (contextHashFromSources(sources) !== contextHash) return false;
   const lines = new Set(markdown.split(/\r?\n/u));
   // Verifying the exact Context hash line catches not only stale sources but
   // also sources that have since been removed from OpenSpec: a deleted delta
@@ -639,14 +662,8 @@ async function handoffMarkdownIsCurrent(
   // spec embedded in the stale markdown. Any add/remove/edit of a source
   // changes the computed hash, which must match the marker on disk.
   if (!lines.has(`- Context hash: ${contextHash}`)) return false;
-  for (const file of await handoffSourceFiles(projectRoot, changeDir)) {
-    const content = await readProtectedIfExists(
-      projectRoot,
-      file,
-      `Classic handoff source ${file}`,
-    );
-    if (content === null) continue;
-    if (!lines.has(`- SHA256: ${handoffSourceHash(file, content)}`)) return false;
+  for (const { sha256 } of sources) {
+    if (!lines.has(`- SHA256: ${sha256}`)) return false;
   }
   return true;
 }
@@ -710,6 +727,8 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
       const requirements = await readClassicArtifactRequirements(layout.projectRoot, changeDir);
       if (requirements.problems.length)
         throw new HandoffFailure(red(requirements.problems.join('\n')));
+      const sources = await readHandoffSources(layout.projectRoot, changeDir, changeRef);
+      const sourcesByPath = new Map(sources.map((source) => [path.resolve(source.file), source]));
       const requiredArtifacts = requirements.files.map((file) =>
         path.relative(changeDir, file).replaceAll('\\', '/'),
       );
@@ -719,10 +738,10 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
         }
         for (const required of requiredArtifacts) {
           if (
-            !(await classicProjectFileNonempty(
+            !(await requiredSourceNonempty(
               layout.projectRoot,
               `${changeDir}/${required}`,
-              `Classic handoff source ${required}`,
+              sourcesByPath,
             ))
           ) {
             throw new HandoffFailure(
@@ -730,7 +749,7 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
             );
           }
         }
-        const contextHash = await computeContextHash(layout.projectRoot, changeDir, changeRef);
+        const contextHash = contextHashFromSources(sources);
         // stdout keeps the bare hash for scripted callers; stderr carries the
         // semantic verdict so Agents read a conclusion instead of comparing hex.
         output.stdout.push(contextHash);
@@ -790,10 +809,10 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
       }
       for (const required of requiredArtifacts) {
         if (
-          !(await classicProjectFileNonempty(
+          !(await requiredSourceNonempty(
             layout.projectRoot,
             `${changeDir}/${required}`,
-            `Classic handoff source ${required}`,
+            sourcesByPath,
           ))
         ) {
           throw new HandoffFailure(
@@ -837,7 +856,7 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
       }
       const contextJsonRef = classicProjectRelative(layout.projectRoot, contextJson);
       const contextMdRef = classicProjectRelative(layout.projectRoot, contextMd);
-      const contextHash = await computeContextHash(layout.projectRoot, changeDir, changeRef);
+      const contextHash = contextHashFromSources(sources);
       const actionId = `classic-handoff:${contextHash}`;
       const initialProjection = await readClassicState(changeDir);
       if (!initialProjection.classic) {
@@ -944,6 +963,7 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
           change,
           contextHash,
           contextMd,
+          sources,
         );
         await writeSpecJsonContext(
           layout.projectRoot,
@@ -952,6 +972,7 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
           change,
           contextHash,
           contextJson,
+          sources,
         );
       } else {
         await writeMarkdownContext(
@@ -962,6 +983,7 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
           handoffMode,
           contextHash,
           contextMd,
+          sources,
         );
         await writeJsonContext(
           layout.projectRoot,
@@ -971,7 +993,31 @@ export const compatHandoffCommand: ClassicCommandHandler = withProjectContext(as
           handoffMode,
           contextHash,
           contextJson,
+          sources,
         );
+      }
+
+      if (
+        (await computeContextHash(layout.projectRoot, changeDir, changeRef).catch(() => null)) !==
+        contextHash
+      ) {
+        // 只撤销当前 handoff 的未提交状态，保留其他 action 和已完成证据。
+        const current = await readClassicState(changeDir);
+        const pending = await readPendingAction(changeDir, pendingRun.pendingRef);
+        if (
+          current.run?.runId === pendingRun.runId &&
+          current.run.pending === actionId &&
+          pending?.id === actionId &&
+          pending.type === 'handoff' &&
+          pending.ref === contextHash
+        ) {
+          await writeClassicState(changeDir, {
+            ...current,
+            run: { ...current.run, pending: null, status: 'running' },
+          });
+          await clearPendingAction(changeDir, pendingRun.pendingRef);
+        }
+        throw new HandoffFailure(red('ERROR: handoff sources changed before completion'));
       }
 
       const context = await readClassicProjectFile(layout.projectRoot, contextMd, {

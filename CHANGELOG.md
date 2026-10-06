@@ -22,6 +22,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
+- **Workflow command responsiveness**: Reuse unchanged schema validators and inspected Run responses, avoid rewriting synchronized state markers, and share document reads within handoff preparation. Skip project discovery for non-writing hooks, keep grouped Classic and Runtime dispatch startup lightweight, and bound daemon connection retries. Native and Classic commands retain external-edit detection, evidence validation, and recovery checks.
+
 - **SDK-owned new changes**: Native `new` and Classic `state init` now create SDK-owned changes by default while retaining their familiar state files. Existing changes keep their original Runtime; new changes can explicitly opt into `--runtime compat`.
 - **Copied change recovery**: Restore a copied standard Native or Classic SDK change from the checkpoint in its familiar state file when local Run history is missing, preserving the saved phase, Actions, and approvals while requiring reconciliation of uncertain external work. Recover an interrupted Archive move from its portable evidence without repeating the filesystem operation; older state files without a checkpoint still require explicit restoration at Shape or Open and fresh validation.
 - **Native SDK public commands**: Route capability removal, requirements revision, Archive progression, and named Doctor diagnostics through the owning SDK Run. Let `native next --continue-builder` resume a failed Builder only after an explicit user decision, preserving partial workspace changes and the original failed Action. Let `native archive --recover` reconcile one interrupted Supervisor delivery, Archive, or cleanup Action against its original evidence after the former process has stopped, without repeating an already completed side effect. Keep compat-only check and reference-sync commands from reading or changing SDK-owned state.
@@ -29,6 +31,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Classic check execution records**: Bind `comet check run` results and cross-scope reuse to the same SDK Action lifecycle used by Native verification, so interrupted attempts and recorded outcomes remain tied to the exact check inputs without changing Classic's workflow state machine.
 
 ### Fixed
+
+- **Classic checks with deleted inputs**: Keep successful Git hash batches when another input is deleted or unreadable, preventing one missing file from turning a large check into thousands of Git processes. Exclude declared outputs before hashing while continuing to verify inputs before execution, after execution, and before evidence acceptance.
 
 - **Classic branch binding before the first commit**: Recognize an initialized Git branch even when HEAD has no commit yet, so branch-bound changes can continue without a misleading detached-HEAD error.
 - **Windows Eval timeout cleanup**: Stop a timed-out Docker Agent loop promptly even when a child process still holds its output handles, preventing model calls from continuing after the host budget expires.

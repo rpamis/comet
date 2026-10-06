@@ -58,29 +58,39 @@ function archiveApproval(run: WorkflowRun): ClassicSdkArchiveApproval {
   };
 }
 
+/** 仅表示 claim 前的准备检查失败，不包含执行或恢复失败。 */
+export class ClassicSdkArchiveReadinessError extends Error {}
+
 /** Revalidate the approved target and Verify evidence at the side-effect boundary. */
 export async function assertClassicSdkArchiveReady(
   run: WorkflowRun,
   projectRoot: string,
 ): Promise<ClassicSdkArchiveApproval> {
-  const state = run.state as ClassicState | undefined;
-  if (
-    run.workflow.id !== `comet-classic-${state?.workflow}` ||
-    run.status !== 'running' ||
-    state?.phase !== 'archive' ||
-    state.verifyResult !== 'pass' ||
-    state.archiveConfirmation !== 'confirmed' ||
-    state.archived
-  ) {
-    throw new Error('Classic SDK Run is not ready to Archive');
+  try {
+    const state = run.state as ClassicState | undefined;
+    if (
+      run.workflow.id !== `comet-classic-${state?.workflow}` ||
+      run.status !== 'running' ||
+      state?.phase !== 'archive' ||
+      state.verifyResult !== 'pass' ||
+      state.archiveConfirmation !== 'confirmed' ||
+      state.archived
+    ) {
+      throw new Error('Classic SDK Run is not ready to Archive');
+    }
+    const approved = archiveApproval(run);
+    const branch = liveGitBranch(projectRoot);
+    if (!branch || branch !== state.boundBranch || branch !== approved.targetBranch) {
+      throw new Error('Classic Archive branch differs from the approved bound branch');
+    }
+    await assertVerifyEvidenceCurrent(run, projectRoot, state);
+    return approved;
+  } catch (error) {
+    throw new ClassicSdkArchiveReadinessError(
+      error instanceof Error ? error.message : String(error),
+      { cause: error },
+    );
   }
-  const approved = archiveApproval(run);
-  const branch = liveGitBranch(projectRoot);
-  if (!branch || branch !== state.boundBranch || branch !== approved.targetBranch) {
-    throw new Error('Classic Archive branch differs from the approved bound branch');
-  }
-  await assertVerifyEvidenceCurrent(run, projectRoot, state);
-  return approved;
 }
 
 export async function assertVerifyEvidenceCurrent(

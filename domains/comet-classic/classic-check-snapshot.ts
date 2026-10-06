@@ -32,17 +32,25 @@ function git(root: string, args: string[]): string | null {
 }
 
 /** Hash dirty or untracked paths in bounded batches, preserving Git's input order. */
-export function hashGitPaths(root: string, paths: readonly string[]): Map<string, string> | null {
+export function hashGitPaths(root: string, paths: readonly string[]): Map<string, string> {
   const hashes = new Map<string, string>();
+  const hashBatch = (batch: readonly string[]): void => {
+    const output = git(root, ['hash-object', '--no-filters', '--', ...batch]);
+    const values = output?.trimEnd().split(/\r?\n/u);
+    if (values?.length === batch.length && values.every((value) => /^[0-9a-f]+$/iu.test(value))) {
+      batch.forEach((relative, index) => hashes.set(relative, values[index]));
+      return;
+    }
+    // 删除、gitlink 或并发替换只影响所在批次；单个失败路径由文件快照处理。
+    if (batch.length > 1) {
+      const middle = Math.floor(batch.length / 2);
+      hashBatch(batch.slice(0, middle));
+      hashBatch(batch.slice(middle));
+    }
+  };
   const batchSize = 32;
   for (let offset = 0; offset < paths.length; offset += batchSize) {
-    const batch = paths.slice(offset, offset + batchSize);
-    const output = git(root, ['hash-object', '--no-filters', '--', ...batch]);
-    if (output === null) return null;
-    const values = output.trimEnd().split(/\r?\n/u);
-    if (values.length !== batch.length || values.some((value) => !/^[0-9a-f]+$/iu.test(value)))
-      return null;
-    batch.forEach((relative, index) => hashes.set(relative, values[index]));
+    hashBatch(paths.slice(offset, offset + batchSize));
   }
   return hashes;
 }
@@ -140,11 +148,11 @@ export interface CheckSnapshotOptions {
   /** SDK-owned report path; an explicit null avoids reading legacy Classic state. */
   verificationReport?: string | null;
   /**
-   * Recorded entries from the check execution. Files whose stat identity still
-   * matches the baseline reuse the recorded content hash without rereading.
+   * 兼容旧调用方的 manifest 提示。size/mtime 不能证明内容未变，
+   * 因此不会仅凭这些字段跳过当前输入检查。
    */
   baseline?: CheckManifestEntry[];
-  /** Content hash cache keyed by path and stat identity, shareable across revalidations. */
+  /** 基于本轮读取的内容身份复用规范化结果，不使用 stat 作为内容身份。 */
   contentCache?: Map<string, string>;
   /**
    * Pre-manifest binding semantics: records recorded before per-file manifests
@@ -298,17 +306,10 @@ export async function collectCheckSnapshot(
       });
       return { absolute, binding, directory: absolute };
     }
-    const cacheKey = `${relative}|${stat.size}|${stat.mtimeNs}|${stat.mode}`;
     const normalizeTasks =
       policy.taskCheckboxes === 'ignore' && absolute === path.join(changeDir, 'tasks.md');
-    // Git object IDs represent the raw file. They cannot be reused for the
-    // semantic tasks.md snapshot because checkbox-only edits are deliberately
-    // normalized away.
-    let contentHash = legacy
-      ? undefined
-      : normalizeTasks
-        ? contentCache.get(cacheKey)
-        : (repositoryContentHash ?? contentCache.get(cacheKey));
+    // 每轮重新取得内容身份；size/mtime 相同不能证明内容未变。
+    let contentHash = legacy || normalizeTasks ? undefined : repositoryContentHash;
     if (contentHash === undefined) {
       // Regular files are stream-hashed without retaining their bytes; legacy
       // evidence and the tasks.md normalization still need the full content.
@@ -321,25 +322,27 @@ export async function collectCheckSnapshot(
           label: 'Classic check input',
           maxBytes: Number.MAX_SAFE_INTEGER,
         });
-        let bound: Buffer = bytes;
-        if (normalizeTasks) {
-          // A malformed tasks.md cannot produce task requirements; binding the raw
-          // bytes keeps the fingerprint conservative (any change invalidates)
-          // instead of failing the whole snapshot.
-          try {
-            bound = Buffer.from(classicTaskRequirements(bytes.toString('utf8')), 'utf8');
-          } catch {
-            bound = bytes;
+        const cacheKey = `${root}\0${relative}\0${normalizeTasks ? 'tasks-v1' : 'raw'}\0${createHash('sha256').update(bytes).digest('hex')}`;
+        if (!legacy) contentHash = contentCache.get(cacheKey);
+        if (contentHash === undefined) {
+          let bound: Buffer = bytes;
+          if (normalizeTasks) {
+            // tasks.md 格式无效时绑定原始字节，避免忽略实际输入变化。
+            try {
+              bound = Buffer.from(classicTaskRequirements(bytes.toString('utf8')), 'utf8');
+            } catch {
+              bound = bytes;
+            }
+          }
+          if (legacy) binding.push(bound);
+          else {
+            contentHash = createHash('sha256').update(bound).digest('hex');
+            contentCache.set(cacheKey, contentHash);
           }
         }
-        if (legacy) binding.push(bound);
-        else contentHash = createHash('sha256').update(bound).digest('hex');
       }
     }
-    if (contentHash !== undefined) {
-      contentCache.set(cacheKey, contentHash);
-      if (!legacy) binding.push(contentHash);
-    }
+    if (contentHash !== undefined && !legacy) binding.push(contentHash);
     return {
       absolute,
       binding,
@@ -424,7 +427,10 @@ export async function collectCheckSnapshot(
           }
         }
       }
-      const names = [...new Set(files.split('\0').filter(Boolean))].sort();
+      const names = [...new Set(files.split('\0').filter(Boolean))]
+        .filter((name) => !omitted(path.resolve(directory, name)))
+        .sort();
+      const gitlinks = new Set<string>();
       const indexHashes = new Map(
         allIndex
           .split('\0')
@@ -432,6 +438,7 @@ export async function collectCheckSnapshot(
           .map((entry) => {
             const separator = entry.indexOf('\t');
             const metadata = entry.slice(0, separator).split(' ');
+            if (metadata[0] === '160000') gitlinks.add(entry.slice(separator + 1));
             return [entry.slice(separator + 1), metadata[1] ?? ''] as const;
           }),
       );
@@ -443,12 +450,16 @@ export async function collectCheckSnapshot(
         '--ignore-submodules=none',
       ]);
       const dirty = new Set<string>();
+      const deleted = new Set<string>();
       if (status !== null) {
         const records = status.split('\0');
         for (let index = 0; index < records.length; index += 1) {
           const record = records[index];
           if (record.length < 4) continue;
-          dirty.add(record.slice(3));
+          const name = record.slice(3);
+          dirty.add(name);
+          if (record[1] === 'D') deleted.add(name);
+          else deleted.delete(name);
           if (/^[RC]/u.test(record.slice(0, 1)) || /[RC]$/u.test(record.slice(1, 2))) {
             const previous = records[index + 1];
             if (previous) {
@@ -458,17 +469,16 @@ export async function collectCheckSnapshot(
           }
         }
       }
-      const hashNames = names.filter((name) => !indexHashes.has(name) || dirty.has(name));
+      // status 失败时不能将 index 中的旧内容当作当前工作区内容。
+      if (status === null) names.forEach((name) => dirty.add(name));
+      const hashNames = names.filter(
+        (name) =>
+          (!indexHashes.has(name) || dirty.has(name)) && !deleted.has(name) && !gitlinks.has(name),
+      );
       const batchedHashes = hashGitPaths(directory, hashNames);
       const inputs = names.map((name) => {
         const indexHash = indexHashes.get(name);
-        const contentHash =
-          indexHash && !dirty.has(name)
-            ? indexHash
-            : (batchedHashes?.get(name) ??
-              (batchedHashes === null
-                ? (git(directory, ['hash-object', '--no-filters', '--', name])?.trim() ?? undefined)
-                : undefined));
+        const contentHash = indexHash && !dirty.has(name) ? indexHash : batchedHashes.get(name);
         return {
           absolute: path.resolve(directory, name),
           contentHash: contentHash ? `git:${contentHash}` : undefined,

@@ -316,7 +316,7 @@ async function bindBuiltInApplication(
   workflow: DefineWorkflowOptions,
   request: ReturnType<typeof parseRequest>,
   runtime: WorkflowRuntime,
-): Promise<void> {
+): Promise<WorkflowRun | undefined> {
   const change = text(request.runId, 'runId');
   const ownerWorkflow: CometProjectWorkflow = application === 'native' ? 'native' : 'classic';
   if (request.operation === 'start') {
@@ -343,6 +343,7 @@ async function bindBuiltInApplication(
     object(run.input, 'Run input'),
     true,
   );
+  return run;
 }
 
 async function registerBuiltInStartOwner(
@@ -538,8 +539,9 @@ export async function runtimeDispatchCommand(
       ...(commandValidators ? { commandValidators } : {}),
       ...(executors ? { executors } : {}),
     });
+    let boundRun: WorkflowRun | undefined;
     if (application !== undefined && builtInWorkflow) {
-      await bindBuiltInApplication(
+      boundRun = await bindBuiltInApplication(
         projectRoot,
         application as SdkApplication,
         builtInWorkflow,
@@ -548,7 +550,10 @@ export async function runtimeDispatchCommand(
       );
     }
     const context = { requestId, projectRoot, invocationCwd, environment };
-    const data = await dispatch(runtime, request, context);
+    const data =
+      request.operation === 'inspect' && boundRun
+        ? boundRun
+        : await dispatch(runtime, request, context);
     return { exitCode: 0, response: { protocolVersion: 1, requestId, status: 'succeeded', data } };
   } catch (error) {
     return runtimeCommandFailure(error, requestId);

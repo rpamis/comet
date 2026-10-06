@@ -35,6 +35,11 @@ import type { NativePortableState } from './native-portable-types.js';
 
 const readHookProjectConfig = memoizedHookRead('nativeHookProjectConfig', readProjectConfig);
 
+const inspectHookSdkRun = memoizedHookRead(
+  'nativeHookSdkRun',
+  (projectRoot: string, name: string) => inspectNativeSdkRun(projectRoot, name),
+);
+
 async function runNativeHookMutation<T>(operation: () => Promise<T>): Promise<T> {
   invalidateHookReadCache();
   try {
@@ -579,7 +584,7 @@ async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativ
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     if (sdkNames.has(entry.name)) {
-      const { state } = await inspectNativeSdkRun(projectRoot, entry.name);
+      const { state } = await inspectHookSdkRun(projectRoot, entry.name);
       if (!state.archived) changes.push({ kind: 'sdk', state });
       sdkNames.delete(entry.name);
     } else if (await isNativePortableChange(paths, entry.name)) {
@@ -591,7 +596,7 @@ async function activeNativeContextImpl(projectRoot: string): Promise<ActiveNativ
     }
   }
   for (const name of sdkNames) {
-    const { state } = await inspectNativeSdkRun(projectRoot, name);
+    const { state } = await inspectHookSdkRun(projectRoot, name);
     if (!state.archived) changes.push({ kind: 'sdk', state });
   }
   return { paths, changes };
@@ -606,7 +611,7 @@ async function selectedNativeContextImpl(
   const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
   try {
     if (await readSdkChangeOwner(projectRoot, 'native', name)) {
-      const { state } = await inspectNativeSdkRun(projectRoot, name);
+      const { state } = await inspectHookSdkRun(projectRoot, name);
       return { paths, changes: state.archived ? [] : [{ kind: 'sdk', state }] };
     }
     if (await isNativePortableChange(paths, name)) {

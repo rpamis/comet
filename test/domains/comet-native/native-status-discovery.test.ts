@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,6 +26,7 @@ describe('Native status discovery pagination', () => {
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-status-discovery-'));
+    execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
     await ensureNativeDirectories(paths);

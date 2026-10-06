@@ -1,6 +1,7 @@
 import { Command, Option } from 'commander';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { COMET_TAGLINE } from './comet-banner.js';
+import { registerRuntimeCommand, reportRuntimeCliFailure } from './runtime-command.js';
 
 // Command handlers are imported lazily inside each `.action()` so that running
 // `comet status` does not load the dashboard/eval/creator/bundle modules (and
@@ -607,35 +608,7 @@ program
     process.exitCode = await runNativeFacade(args);
   });
 
-const runtime = program
-  .command('runtime')
-  .description('Run portable Skill workflows through the Runtime SDK');
-
-runtime
-  .command('dispatch')
-  .description('Submit a JSON Runtime request and return its persisted Run as JSON')
-  .requiredOption('--request <file>', 'JSON request containing operation and command fields')
-  .option(
-    '--workflow <file>',
-    'JSON workflow definition; repeat to register multiple workflows',
-    collect,
-    [],
-  )
-  .option('--application <id>', 'Built-in application: native or classic-full/hotfix/tweak')
-  .option(
-    '--root-dir <dir>',
-    'Directory for persistent Runtime state; fixed for built-in applications',
-  )
-  .option('--project-root <dir>', 'Project context passed to this request', '.')
-  .option('--json', 'Output as JSON (default)')
-  .action(async (options) => {
-    const { runtimeDispatchCommand } = await import('../commands/runtime.js');
-    const result = await runtimeDispatchCommand(options);
-    console.log(JSON.stringify(result.response, null, 2));
-    process.exitCode = result.exitCode;
-  });
-
-if (runtimeCommandRequested) runtime.configureOutput({ writeErr: () => undefined });
+registerRuntimeCommand(program, runtimeCommandRequested);
 
 const skill = program
   .command('skill')
@@ -1076,13 +1049,7 @@ async function runCli(): Promise<void> {
   } catch (error) {
     if (error instanceof Error && 'exitCode' in error && error.exitCode === 0) return;
     if (runtimeCommandRequested) {
-      const { runtimeCommandFailure } = await import('../commands/runtime.js');
-      const { RuntimeProtocolError } = await import('../../domains/engine/runtime.js');
-      const result = runtimeCommandFailure(
-        new RuntimeProtocolError('INVALID_REQUEST', `Runtime 命令参数无效：${errorMessage(error)}`),
-      );
-      console.log(JSON.stringify(result.response, null, 2));
-      process.exitCode = result.exitCode;
+      await reportRuntimeCliFailure(error);
       return;
     }
     const cancelled = error instanceof Error && error.name === 'ExitPromptError';
