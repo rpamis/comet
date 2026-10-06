@@ -1,119 +1,45 @@
 ---
 name: comet-any
-description: "Create or upgrade a Comet Classic workflow Skill via Comet Creator. Not for general Skill authoring, cleanup, or review."
+description: 'Create or continue Native extensions, Classic compositions, or standalone SDK workflows from a natural-language goal; inspect real Skills, confirm a plan, then generate and preview installation. Not for general Skill authoring, cleanup, or review.'
 disable-model-invocation: true
 ---
 
-# Comet Any - Skill Creator
+# Comet Any
 
-`/comet-any` is the Comet Skill creation guide. The user describes the workflow they want; this Skill resolves real Skills, proposes a plan, waits for confirmation, generates a verifiable Comet-native Skill Bundle, and internally drives eval, review, publish readiness, and install preview.
+After the user describes a goal, inspect real Skills and show a concrete workflow. Creator preserves the goal, plan, decisions, fixed dependencies, compiled artifacts, and installation preview for the same creation; continue through public `comet creator` commands. After each stage, read the current action and keep progressing until completion, a user decision, or an external capability blocker.
 
-Ordinary users see three starting points:
+## Start or resume
 
-- `customize /comet-classic five-phase Skills`: overlay the existing `open / design / build / verify / archive` Skills without modifying the permanent `/comet-classic` entry itself.
-- `create a new workflow Skill`: generate a new `workflow-kernel` from the goal and candidate Skills.
-- `upgrade an existing Skill`: read existing Skills and add Workflow Nodes, Skill Bindings, Output Schemas, Guardrails, Handoffs, eval, and readiness.
+1. When the creation name is known, run `comet creator status <name> --project <project> --json`, then `comet creator next <name> --project <project> --json`. Preserve the original name and Run; after interruption, inspect the original Action before repeating completed work.
+2. For a new creation, read `comet creator guide --project <project> --json`. Determine the goal and installation location from the user's description; ask only about choices that cannot be investigated and would change the result. Start with `comet creator start <name> --project <project> --goal <user-goal> --install-target <relative-directory> --host codex|claude-code --json`.
+3. Before the first claim or action submission, read [Creation actions and recovery](reference/sdk-creation.md). Use the returned Action, attempt, inputHash, and the current host session identifier; when the current action lacks a required capability, report the blocker and preserve the current work.
 
-Bundle, Factory, and composition are backend audit terms, not the first-screen user model.
+## Analysis and plan
 
-## Core Model
+`analyze` requires the host to read real Skills and organize a concrete plan. Delegate investigation or creation work according to its size; hand off only when needed, carrying the original goal, current action, scope, and fixed dependencies. There is no fixed subagent count.
 
-Every path compiles to one Workflow Contract:
+1. Discover candidates with `comet creator candidates --project <project> --json`; read each candidate's `SKILL.md`, scripts, and necessary resources. Inspect actual inputs, outputs, authorization, host capabilities, completion conditions, failures, and recovery. Do not infer capability from a name or modify third-party originals.
+2. For every Skill required by the plan:
 
-- `Workflow Node`: a resumable workflow node such as `open`, `design`, `plan`, `execute`, `subagent-execute`, `review`, `verify`, or `archive`.
-- `Node Responsibility`: the responsibility this Node owns in the Agent workflow, explaining why it exists, what it must produce, and whether it can be replaced.
-- `Skill Binding`: the implementation or helper Skill bound to a Node.
-- `Required Skill Call`: a Skill that must be called inside a Node without replacing the Node implementation. For example, `execute` and `subagent-execute` may require `elementui`, while `review` may require `whitebox-code-standard`.
-- `Output Schema`: the artifacts, state, or evidence a Node must produce. Output Schema must be attached to a concrete Workflow Node before it is effective; defining it only in `workflow.outputSchemas` does not trigger guard, eval, or readiness. Scripts, eval, and readiness depend on Node-attached Output Schemas, not Skill names.
-- `Guardrail`: a check that blocks or allows Node advancement.
-- `Handoff`: evidence returned by a subagent or cross-Node delegation.
-- `workflow-protocol.json`: the package's single runtime source of truth, with kind `comet-five-phase-overlay` or `workflow-kernel`.
+   **Immediately execute:** Use the Skill tool to load the <skill-name> skill. Skipping this step is prohibited.
 
-## Protected Boundary
+   After the skill loads, use its actual content to complete the adapter contract and content hash. Distinguish loading records, self-reported completion, machine checks, and independent review; a complete workflow that publishes or takes over approval cannot pose as ordinary guidance.
 
-`comet-five-phase-overlay` preserves the Comet Classic five-phase control flow and `.comet.yaml` state semantics. In ordinary mode:
+3. Choose the starting point the user needs: add steps, guidance, and review to Native; compose Classic at allowed positions in full, hotfix, and tweak; or declare a standalone workflow's own order, branches, joins, child workflows, and bounded repair. Report approval and publication is a runnable sample; it does not give every workflow Native independent verification.
+4. Return the current analysis result in the reference's structure. The compiler assembles the actual workflow and execution bindings from the fixed plan; missing implementations, validators, dependencies, or capabilities block progress with a corrective action.
 
-- `comet-five-phase-overlay` primary state comes only from `<classic-change-dir>/.comet.yaml` bound by the Classic layout resolver; no active change or multiple active changes must block and ask the user to choose.
-- The overlay must not create `.comet/runs/<workflow>/state.json` as the Comet overlay primary state. Bundle drafts, eval evidence, and publish readiness may keep their own evidence files, but they cannot replace `.comet.yaml`.
-- `control` Nodes cannot be overridden: `open`, `execute`, `verify`, `archive`.
-- `producer` Nodes may be overridden: `design`, `plan`, but only when the replacement satisfies the matching Output Schema.
-- `handoff` and `guardrail` Nodes may require or augment Skills.
-- If the user insists on replacing a control Node, switch to advanced `workflow-kernel` and require a new state model, Output Schemas, and Guardrails.
-- Every Node must explain its responsibility; internal coordinates are not part of the user-facing workflow model.
+## Confirmation, validation, and delivery
 
-## Steps
+1. When `next` reaches plan confirmation, show the actual steps, bound Skills, artifacts, checks, failure paths, and capability limits. Explain responsibilities and behavior without requiring users to understand internal protocol names. State which conclusions have only local checks and which have real host or model evidence.
+2. After the user explicitly approves the current plan, submit the user decision for the current `confirm-plan`. A hash only identifies the plan; having a hash does not grant authorization. Rejection preserves the current work; use `revise` for plan changes and repeat affected confirmation and validation.
+3. Continue calling `next` to compile and validate by actually loading the application. On failure, correct the existing work and resume the original Action; success strings cannot replace real artifacts, Schema, candidate, or dependency checks.
+4. Before installation, show the current target directory, files to be written, fixed versions, and conflicts, and explain that preview has not written the installation target. After the user explicitly approves the current preview, submit `confirm-install`; reuse existing approval that remains valid without expanding its scope. Changes to the target, dependencies, or files require another preview and confirmation.
+5. When the creation completes, report the package and entry locations, actual checks, unexecuted items, and limits. Real business workflows, host Hooks, handoffs, and model execution require their own evidence; local compilation does not establish production acceptance.
 
-1. Resume state: run `comet creator guide --project . --json` and show a resume summary.
-2. Read preferences: load `.comet/skill-preferences.yaml`, then use `comet creator candidates --json` to discover real local Skills and `comet skill show <name> --json` to read each candidate's real content and hash. Do not guess capability from a Skill name.
-3. Build proposal: express the goal as Workflow Nodes, Skill Bindings, Output Schemas, Guardrails, Handoffs, and Evidence.
-4. Show confirmation: list each Node, bound Skill, Required Skill Call, Output Schema, executable disclosure, and readiness impact. The confirmation must show enforcement for each new binding or schema: `guarded`, `handoff-guarded`, `evidence-only`, or `advisory`.
-5. Wait for confirmation: do not write a Bundle draft before confirmation; pause for missing or ambiguous Skills.
-6. Initialize backend state: after confirmation, call `comet creator init <name> --file <plan.json> --confirmed-proposal --json`.
-7. Run the authoring pipeline and generate the Bundle: run `comet creator authoring-plan <name> --depth quick|full --json` for the lane DAG. Dispatch lanes by the DAG — dispatch wave1 (`script`, `reference`, `pause-points`) in parallel, dispatch wave2 (`workflow-entry`, `skill-core`) in parallel after the script contract, and run `skill-review` as the barrier. Record each lane via `comet creator authoring-record <name> --lane <id> --file <out.json> --json` (schema-validated; BLOCKED/NEEDS_CONTEXT is rejected). Then run `comet creator generate <name> --json`; it merges recorded content-leaf drafts (entry/node SKILL.md, decision-points, recovery) into the package while the deterministic backbone (protocol/scripts/manifest) stays templated, and renders real review evidence. Outputs entry Skill, Node Skills, `reference/workflow-protocol.json`, the six scripts, rules, hooks, and `comet/eval.yaml`.
-8. Validate: show quick/full eval workload and run or record current draft hash eval evidence; failed eval, skipped eval, or stale-hash evidence cannot become ready.
-9. Review readiness: read `comet publish review <name> --platform <reference-platform> --json` and show `Readiness:`, `Blockers:`, `Warnings:`, and `Evidence:`.
-10. Publish and install preview: publish only after human approval; installation must start with preview and show `No files were written`.
+## Recovery boundaries
 
-## Plan Example
-
-Component-library and whitebox-review requirements should produce a plan like:
-
-```json
-{
-  "goal": "Customize /comet-classic five-phase Skills with component and whitebox review requirements.",
-  "skillCreatorIntent": "customize-comet",
-  "workflow": {
-    "kind": "comet-five-phase-overlay",
-    "name": "team-comet",
-    "goal": "Require component and whitebox review Skills.",
-    "nodes": {
-      "execute": {
-        "requiredSkillCalls": [
-          {
-            "skill": "elementui",
-            "reason": "Use project component library during direct implementation."
-          }
-        ]
-      },
-      "subagent-execute": {
-        "requiredSkillCalls": [
-          {
-            "skill": "elementui",
-            "scope": "handoff"
-          }
-        ]
-      },
-      "review": {
-        "requiredSkillCalls": [
-          {
-            "skill": "whitebox-code-standard",
-            "scope": "review"
-          }
-        ]
-      }
-    }
-  }
-}
-```
-
-## Hard Rules
-
-- Show the proposal confirmation page before generation.
-- The confirmation must show enforcement for each new binding or schema: `guarded`, `handoff-guarded`, `evidence-only`, or `advisory`.
-- A Required Skill Call does not replace Node implementation.
-- A producer override must declare the Output Schema it satisfies.
-- Output Schema must be attached to a concrete Workflow Node before it is effective; defining it only in `workflow.outputSchemas` does not trigger guard, eval, or readiness.
-- Ordinary mode must not override control Nodes.
-- Eval, review, and publish readiness must read the same `workflow-protocol.json`.
-- Readiness blockers must stop publish: missing current draft hash eval evidence, missing human approval, required capability gaps, or unconfirmed executable disclosures cannot become ready.
-- Handoff must require subagents to load Required Skill Calls and return evidence.
-- Scripts read protocol and state; they do not use Skill names as validation authority.
-- Ask before installation. Never install automatically.
-
-## References
-
-- `comet-any/reference/authoring-protocol.json`
-- `comet-any/reference/authored-zone-example.md`
-- `comet-any/reference/bundle-authoring.md`
-- `comet-any/reference/authoring-subagents.md`
-- `comet-any/reference/eval-provider.md`
+- Continue with the original Run ID and current action; an old attempt, stale plan, or wrong candidate result cannot advance it.
+- Reconcile uncertain results against actual compiled or installed files first; block when reconciliation is unavailable, without blindly repeating external work.
+- Inject credentials only through the execution context, never into plans, generated packages, Runs, reports, or Agent configuration.
+- Keep Codex and Claude Code adapter contracts; current candidate evidence determines whether real host and model acceptance has occurred in this round.
+- Regenerate old `workflow-protocol.json` and legacy creation formats while preserving user files; do not silently convert them.

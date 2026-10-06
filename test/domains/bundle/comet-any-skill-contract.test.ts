@@ -41,13 +41,43 @@ function referencedCommands(doc: string): string[] {
 }
 
 describe('comet-any skill contract', () => {
-  it('Chinese creator delegates machine steps to the fixed executor through next', async () => {
-    const reference = await readText('assets/skills-zh/comet-any/reference/sdk-creation.md');
-    expect(reference).toContain('宿主只领取 `analyze`');
-    expect(reference).toContain('compile / verify / preview / install');
-    expect(reference).toContain('comet creator next');
-    expect(reference).toContain('creator-local');
-    expect(reference).toContain('不能领取这些机器 Action');
+  it.each([
+    ['assets/skills-zh/comet-any', '宿主只领取 `analyze`', '不能领取这些机器 Action'],
+    [
+      'assets/skills/comet-any',
+      'The host claims only `analyze`',
+      'must not claim these machine Actions',
+    ],
+  ])(
+    'creator %s delegates machine steps to the fixed executor through next',
+    async (root, analysis, ownership) => {
+      const reference = await readText(`${root}/reference/sdk-creation.md`);
+      expect(reference).toContain(analysis);
+      expect(reference).toContain('compile / verify / preview / install');
+      expect(reference).toContain('comet creator next');
+      expect(reference).toContain('creator-local');
+      expect(reference).toContain(ownership);
+    },
+  );
+  it('ships the SDK creator reference in both languages without retired authoring resources', async () => {
+    const manifest = JSON.parse(await readText('assets/manifest.json')) as { skills: string[] };
+    expect(manifest.skills.filter((ref) => ref.startsWith('comet-any/'))).toEqual([
+      'comet-any/SKILL.md',
+      'comet-any/agents/openai.yaml',
+      'comet-any/reference/sdk-creation.md',
+    ]);
+    for (const root of ['assets/skills/comet-any', 'assets/skills-zh/comet-any']) {
+      const entries = await fs.readdir(path.resolve(REPO_ROOT, root, 'reference'), {
+        withFileTypes: true,
+      });
+      expect(entries.filter((entry) => entry.isFile()).map((entry) => entry.name)).toEqual([
+        'sdk-creation.md',
+      ]);
+      for (const entry of entries.filter((item) => item.isDirectory()))
+        expect(await fs.readdir(path.resolve(REPO_ROOT, root, 'reference', entry.name))).toEqual(
+          [],
+        );
+    }
   });
   it('never references the non-existent find-skill command (en + zh)', async () => {
     for (const localeRoot of ['assets/skills/comet-any', 'assets/skills-zh/comet-any']) {
