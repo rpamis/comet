@@ -32,7 +32,11 @@ import {
   parseClassicStateDocument,
   type ClassicState,
 } from './classic-state.js';
-import { evaluateBranchBinding, liveGitBranch } from './classic-branch-binding.js';
+import {
+  evaluateBranchBinding,
+  liveGitBranch,
+  requiresBranchBinding,
+} from './classic-branch-binding.js';
 
 const USER_CONFIG_FIELDS = new Set<keyof ClassicState>([
   'language',
@@ -302,8 +306,12 @@ export function createClassicSdkStateStore(projectRoot: string): RuntimeStore<Wo
         // A change created outside Git can acquire a branch later. Bind the
         // SDK Run itself before projecting YAML; healing only .comet.yaml would
         // leave the portable checkpoint and all SDK guards out of agreement.
+        // This block only heals missing bindings. Guards still probe the live
+        // branch separately when rejecting drift; projection reads do not.
         if (
           fileState &&
+          state.boundBranch === null &&
+          requiresBranchBinding(state.isolation) &&
           !state.archived &&
           ['running', 'waiting'].includes(run.status) &&
           !run.actions.some((action) => ['running', 'unknown'].includes(action.status))

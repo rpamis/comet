@@ -2230,12 +2230,24 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       stepId: 'full.build.check.evidence',
       status: 'pending',
     });
-    await expect(
-      classicCheckCommand(
-        ['run', 'example', 'build', '--', process.execPath, '-e', 'console.log("different")'],
-        { invocationCwd: projectRoot, projectRoot },
-      ),
-    ).rejects.toThrow(/does not match the recorded command/u);
+    await inspectClassicSdkRun(projectRoot, 'example');
+    const stateReads = vi.spyOn(fs, 'open');
+    try {
+      await expect(
+        classicCheckCommand(
+          ['run', 'example', 'build', '--', process.execPath, '-e', 'console.log("different")'],
+          { invocationCwd: projectRoot, projectRoot },
+        ),
+      ).rejects.toThrow(/does not match the recorded command/u);
+      expect(
+        stateReads.mock.calls.filter(
+          ([file]) =>
+            String(file) === path.join(projectRoot, 'docs/openspec/changes/example/.comet.yaml'),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      stateReads.mockRestore();
+    }
     const resumed = await classicCheckCommand(
       ['run', 'example', 'build', '--', process.execPath, '-e', 'console.log("sdk-check-ok")'],
       { invocationCwd: projectRoot, projectRoot },

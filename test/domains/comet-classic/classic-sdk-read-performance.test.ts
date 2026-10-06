@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -6,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
+import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
 const roots: string[] = [];
@@ -14,12 +16,22 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function preparedChange() {
+async function preparedChange(
+  options: { git?: boolean; profile?: string; isolation?: string } = {},
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-classic-sdk-read-'));
   roots.push(root);
   await prepareClassicLegacyProject(root);
+  if (options.git) execFileSync('git', ['init', '-b', 'main'], { cwd: root, stdio: 'ignore' });
   const created = await withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
-    runClassicCli(['state', 'init', 'demo', 'tweak', '--json']),
+    runClassicCli([
+      'state',
+      'init',
+      'demo',
+      options.profile ?? 'tweak',
+      ...(options.isolation ? ['--isolation', options.isolation] : []),
+      '--json',
+    ]),
   );
   expect(created.exitCode, created.stderr).toBe(0);
   return {
@@ -46,6 +58,38 @@ describe('Classic SDK read work budgets', () => {
     );
     expect((await fs.stat(stateFile)).mtimeMs).toBe(timestamp.getTime());
     expect((await fs.stat(markerFile)).mtimeMs).toBe(timestamp.getTime());
+  });
+
+  it('does not probe Git while projecting a Run that has no branch binding', async () => {
+    const { store } = await preparedChange({ profile: 'full' });
+    const { result, metrics } = await withCometRuntimeMetrics(() => store.read('demo'));
+    expect(result?.state).toMatchObject({ isolation: null, boundBranch: null });
+    expect(metrics.gitCommands).toBe(0);
+  });
+
+  it('skips projection-only branch probes while entry checks still reject branch drift', async () => {
+    const { root, store, stateFile } = await preparedChange({ git: true, isolation: 'current' });
+    const before = (await store.read('demo'))!;
+    expect(before.state).toMatchObject({ isolation: 'current', boundBranch: 'main' });
+    const stable = await withCometRuntimeMetrics(() => store.read('demo'));
+    expect(stable.result).toEqual(before);
+    expect(stable.metrics.gitCommands).toBe(0);
+
+    execFileSync('git', ['symbolic-ref', 'HEAD', 'refs/heads/other'], { cwd: root });
+    const drifted = await withCometRuntimeMetrics(() => store.read('demo'));
+    expect(drifted.result).toEqual(before);
+    expect(drifted.metrics.gitCommands).toBe(0);
+    const reads = vi.spyOn(fs, 'open');
+    const checked = await withClassicCommandContext(
+      { projectRoot: root, invocationCwd: root },
+      () => runClassicCli(['state', 'check', 'demo', 'open', '--json']),
+    );
+    expect(checked.exitCode).toBe(1);
+    expect(JSON.stringify(JSON.parse(checked.stdout!).data)).toMatch(
+      /bound to branch.*main.*other/u,
+    );
+    expect(reads.mock.calls.filter(([file]) => String(file) === stateFile)).toHaveLength(1);
+    expect(await store.read('demo')).toEqual(before);
   });
 
   it('imports user settings once, advances its marker, and still rejects Runtime-owned edits', async () => {

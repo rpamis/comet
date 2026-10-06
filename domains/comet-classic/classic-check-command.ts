@@ -12,7 +12,7 @@ import { resolveClassicChangeDirectory } from './classic-paths.js';
 import { ensureClassicRuntimeRun } from './classic-runtime-run.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
 import { executeClassicSdkCommandCheck } from './classic-sdk-check.js';
-import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
+import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 import {
   executeCommandCheck,
   latestCommandCheck,
@@ -65,7 +65,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
         throw new Error(`Classic SDK checks require full execution; ${option} is not supported`);
       else throw new Error(`Unknown or incomplete check option: ${option}`);
     }
-    const inspected = await inspectClassicSdkRun(sdkWorkspace.projectRoot, name);
+    const inspected = sdkWorkspace;
     if (inspected.state.phase !== scope) {
       throw new Error(`Classic SDK change ${name} is in ${inspected.state.phase}, not ${scope}`);
     }

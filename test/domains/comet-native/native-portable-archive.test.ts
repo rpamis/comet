@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as gitCommands from '../../../platform/process/git.js';
 import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
 import { atomicWriteJson } from '../../../domains/comet-native/native-atomic-file.js';
 import {
@@ -19,6 +20,7 @@ import {
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
 import { nativeStatusCommand } from '../../../domains/comet-native/native-status-command.js';
 import {
+  inspectNativeWorkspaceFinishCompletion,
   readNativeWorkspaceFinishJournal,
   writeNativeWorkspaceFinishJournal,
   NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA,
@@ -540,6 +542,147 @@ describe('Native portable Archive', () => {
     });
     expect(await readNativeWorkspaceFinishJournal(paths, state.name)).not.toBeNull();
   });
+
+  it.each(['sha1', 'sha256'] as const)(
+    'checks archived content in bounded Git batches with filters and literal paths (%s)',
+    async (objectFormat) => {
+      git(['init', `--object-format=${objectFormat}`, '-b', 'main']);
+      git(['config', 'user.email', 'native-test@example.com']);
+      git(['config', 'user.name', 'Native Test']);
+      git(['config', 'commit.gpgsign', 'false']);
+      await fs.writeFile(
+        path.join(root, '.gitignore'),
+        '.comet/runtime/\n.comet/current-change.json\n',
+      );
+      await fs.writeFile(
+        path.join(root, '.gitattributes'),
+        '*.txt text eol=lf\n*.filter filter=comet-upper\n',
+      );
+      const filter = path.join(root, 'filter.cjs');
+      await fs.writeFile(
+        filter,
+        "process.stdout.write(require('node:fs').readFileSync(0, 'utf8').toUpperCase());\n",
+      );
+      git(['config', 'filter.comet-upper.clean', `"${process.execPath}" "${filter}"`]);
+      git(['add', '.']);
+      git(['commit', '-m', 'baseline']);
+      const state = await archiveReady('batch-finish');
+      const archived = await archiveNativePortableChange({ paths, name: state.name });
+      const files = Array.from({ length: 70 }, (_, index) => `payload-${index}.txt`);
+      files.push('[literal].txt', 'space name.txt', 'clean.filter');
+      if (process.platform !== 'win32') files.push('tab\tname.txt', 'line\nname.txt');
+      for (const file of files) {
+        await fs.writeFile(path.join(archived.archiveDir, file), 'lowercase\r\n');
+      }
+      git(['add', '.']);
+      git(['commit', '-m', 'archive with filtered artifacts']);
+      const journal = {
+        schema: NATIVE_WORKSPACE_FINISH_JOURNAL_SCHEMA,
+        name: state.name,
+        transactionId: archived.transactionId,
+        archiveDir: archived.archiveDir,
+        createdAt: state.created_at,
+        status: 'pending' as const,
+        result: null,
+        updatedAt: new Date().toISOString(),
+      };
+      const archiveFiles = (
+        await fs.readdir(archived.archiveDir, { recursive: true, withFileTypes: true })
+      ).filter((entry) => entry.isFile()).length;
+      const call = vi.spyOn(gitCommands, 'runGitCommand');
+      try {
+        await expect(inspectNativeWorkspaceFinishCompletion(paths, journal)).resolves.toBe(true);
+        const hashes = call.mock.calls.filter(([, args]) => args[0] === 'hash-object');
+        expect(hashes).toHaveLength(Math.ceil((archiveFiles + state.spec_changes.length) / 32));
+        expect(hashes.every(([, args]) => args[1] === '--' && args.length <= 34)).toBe(true);
+        const results = call.mock.results;
+        for (let index = 0; index < call.mock.calls.length; index++) {
+          const [cwd, args] = call.mock.calls[index];
+          if (args[0] !== 'hash-object') continue;
+          const expected = args.slice(2).map((ref) =>
+            execFileSync(
+              'git',
+              ['-C', cwd, 'hash-object', '--path', ref, '--', path.join(cwd, ref)],
+              {
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'pipe'],
+              },
+            ).trim(),
+          );
+          expect(results[index]).toMatchObject({ type: 'return', value: expected.join('\n') });
+        }
+      } finally {
+        call.mockRestore();
+      }
+      const runGit = gitCommands.runGitCommand;
+      let failBatch = true;
+      const failedBatch = vi.spyOn(gitCommands, 'runGitCommand').mockImplementation((cwd, args) => {
+        if (failBatch && args[0] === 'hash-object' && args[1] === '--' && args.length > 3) {
+          failBatch = false;
+          throw Object.assign(new Error('simulated host argument limit'), { code: 'E2BIG' });
+        }
+        return runGit(cwd, args);
+      });
+      try {
+        await expect(inspectNativeWorkspaceFinishCompletion(paths, journal)).resolves.toBe(true);
+        expect(failBatch).toBe(false);
+        expect(
+          failedBatch.mock.calls.some(
+            ([, args]) => args[0] === 'hash-object' && args[1] === '--path',
+          ),
+        ).toBe(true);
+      } finally {
+        failedBatch.mockRestore();
+      }
+      if (objectFormat === 'sha1') {
+        const longDirectory = path.join(
+          archived.archiveDir,
+          'a'.repeat(100),
+          'b'.repeat(100),
+          'c'.repeat(100),
+        );
+        await fs.mkdir(longDirectory, { recursive: true });
+        for (let index = 0; index < 40; index++) {
+          await fs.writeFile(path.join(longDirectory, `long-${index}.txt`), 'long path\r\n');
+        }
+        git(['add', '.']);
+        git(['commit', '-m', 'long archived paths']);
+        const longCalls = vi.spyOn(gitCommands, 'runGitCommand');
+        try {
+          await expect(inspectNativeWorkspaceFinishCompletion(paths, journal)).resolves.toBe(true);
+          const batches = longCalls.mock.calls.filter(([, args]) => args[0] === 'hash-object');
+          expect(
+            batches.some(
+              ([, args]) => args.length < 34 && args.some((ref) => ref.includes('a'.repeat(100))),
+            ),
+          ).toBe(true);
+          for (const [, args] of batches) {
+            expect(
+              args
+                .slice(2)
+                .reduce(
+                  (total, ref) => total + Buffer.byteLength(JSON.stringify(ref), 'utf8') + 1,
+                  0,
+                ),
+            ).toBeLessThanOrEqual(8_192);
+          }
+        } finally {
+          longCalls.mockRestore();
+        }
+      }
+      const altered = path.join(archived.archiveDir, files[0]);
+      const ref = path.relative(root, altered).replaceAll('\\', '/');
+      git(['update-index', '--assume-unchanged', '--', ref]);
+      const stat = await fs.stat(altered);
+      await fs.writeFile(altered, 'different\r\n');
+      await fs.utimes(altered, stat.atime, stat.mtime);
+      expect(git(['status', '--porcelain=v1'])).toBe('');
+      await expect(inspectNativeWorkspaceFinishCompletion(paths, journal)).resolves.toBe(false);
+      git(['update-index', '--no-assume-unchanged', '--', ref]);
+      await fs.unlink(altered);
+      await expect(inspectNativeWorkspaceFinishCompletion(paths, journal)).resolves.toBe(false);
+    },
+  );
 
   it('repairs an older finish journal after a manual commit using the archived files as proof', async () => {
     const state = await commitHookProject('legacy-finish');

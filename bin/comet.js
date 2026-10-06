@@ -9,12 +9,13 @@ try {
 }
 
 const args = process.argv.slice(2);
-const { runCometDaemonCommand, tryRunCometDaemon } = await import('./comet-daemon-router.js');
-if (await runCometDaemonCommand(args)) {
-  // The daemon control command handled its own output and exit code.
-} else if (await tryRunCometDaemon(args)) {
-  // The daemon handled this eligible read-only command.
-} else {
+const { shouldTryCometDaemon } = await import('./comet-daemon-route.js');
+let handled = false;
+if (shouldTryCometDaemon(args)) {
+  const { runCometDaemonCommand, tryRunCometDaemon } = await import('./comet-daemon-router.js');
+  handled = (await runCometDaemonCommand(args)) || (await tryRunCometDaemon(args));
+}
+if (!handled) {
   const { tryRunFastRuntime } = await import('./fast-runtime-router.js');
   if (!(await tryRunFastRuntime(args))) {
     await import('../dist/app/cli/index.js');

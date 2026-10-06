@@ -30,7 +30,7 @@ describe('Classic snapshot work budgets', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('keeps 1000 dirty inputs plus one deleted tracked input within 50 Git calls', async () => {
+  it('keeps 1000 dirty inputs plus one deleted tracked input within 8 Git calls', async () => {
     const names = Array.from(
       { length: 1001 },
       (_, index) => `input-${String(index).padStart(4, '0')}.txt`,
@@ -42,7 +42,7 @@ describe('Classic snapshot work budgets', () => {
     await Promise.all(names.slice(1).map((name) => fs.writeFile(path.join(root, name), 'new')));
     await fs.unlink(path.join(root, names[0]));
     const { result, metrics } = await withCometRuntimeMetrics(snapshot);
-    expect(metrics.gitCommands).toBeLessThanOrEqual(50);
+    expect(metrics.gitCommands).toBeLessThanOrEqual(8);
     expect(result.digest).not.toBe(before.digest);
     expect(result.entries.find(({ p }) => p === names[0])?.h).toBe('missing');
     expect(
@@ -51,7 +51,10 @@ describe('Classic snapshot work budgets', () => {
   });
 
   it('preserves successful batches around missing paths and directories', async () => {
-    const names = Array.from({ length: 70 }, (_, index) => `input-${index}.txt`);
+    const names = Array.from(
+      { length: 70 },
+      (_, index) => `input-${index}${index % 2 ? ' 路径 space' : ''}.txt`,
+    );
     await Promise.all(names.map((name) => fs.writeFile(path.join(root, name), name)));
     await fs.mkdir(path.join(root, 'directory'));
     const paths = [...names.slice(0, 32), 'missing', 'directory', ...names.slice(32)];
@@ -59,6 +62,13 @@ describe('Classic snapshot work budgets', () => {
       hashGitPaths(root, paths),
     );
     expect([...result.keys()]).toEqual(names);
+    const expected = execFileSync('git', ['hash-object', '--no-filters', '--', ...names], {
+      cwd: root,
+      encoding: 'utf8',
+    })
+      .trim()
+      .split(/\r?\n/u);
+    expect([...result.values()]).toEqual(expected);
     expect(metrics.gitCommands).toBeLessThanOrEqual(17);
   });
 

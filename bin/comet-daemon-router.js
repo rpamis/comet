@@ -1,3 +1,4 @@
+import { resolveCometDaemonRoute, shouldAutoStartCometDaemon } from './comet-daemon-route.js';
 import { spawn } from 'node:child_process';
 import {
   closeSync,
@@ -13,8 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const CLASSIC_READ_COMMANDS = new Set(['current', 'next']);
-const NATIVE_READ_COMMANDS = new Set(['status', 'show', 'root']);
+export { resolveCometDaemonRoute, shouldAutoStartCometDaemon } from './comet-daemon-route.js';
 
 function packageVersion() {
   try {
@@ -53,25 +53,6 @@ function projectRootFromArgs(args) {
     if (parent === cursor) return path.resolve(process.cwd());
     cursor = parent;
   }
-}
-
-export function resolveCometDaemonRoute(argv, environment = process.env) {
-  if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) return null;
-  if (argv.some((value) => value.startsWith('--comet-'))) return null;
-  const classicArgs = argv[0] === 'classic' ? argv.slice(1) : argv;
-  if (classicArgs[0] === 'state' && CLASSIC_READ_COMMANDS.has(classicArgs[1])) {
-    // daemon 直接调用领域 CLI；有上下文任务时必须保留 facade 的注入和结果记录。
-    if (environment.COMET_TASK?.trim() || classicArgs.includes('--summary')) return null;
-    return { runtime: 'classic', commandArgs: [...classicArgs] };
-  }
-  if (
-    argv[0] === 'native' &&
-    NATIVE_READ_COMMANDS.has(argv[1]) &&
-    !(argv[1] === 'root' && argv[2] && argv[2] !== 'show')
-  ) {
-    return { runtime: 'native', commandArgs: [argv[1], ...argv.slice(2)] };
-  }
-  return null;
 }
 
 async function daemonModule() {
@@ -209,10 +190,6 @@ function writeCommandResponse(response) {
   if (response.stdout) process.stdout.write(response.stdout);
   if (response.stderr) process.stderr.write(response.stderr);
   process.exitCode = response.exitCode ?? (response.ok ? 0 : 70);
-}
-
-export function shouldAutoStartCometDaemon(environment = process.env) {
-  return environment.COMET_DAEMON !== 'off';
 }
 
 export async function tryRunCometDaemon(argv = process.argv.slice(2)) {

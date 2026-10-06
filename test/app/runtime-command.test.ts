@@ -1769,8 +1769,9 @@ describe('Runtime through the real CLI', () => {
     packageRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-runtime-cli-'));
     await fs.mkdir(path.join(packageRoot, 'bin'));
     await Promise.all(
-      ['comet.js', 'comet-daemon-router.js', 'fast-runtime-router.js'].map((name) =>
-        fs.copyFile(path.join(repositoryRoot, 'bin', name), path.join(packageRoot, 'bin', name)),
+      ['comet.js', 'comet-daemon-route.js', 'comet-daemon-router.js', 'fast-runtime-router.js'].map(
+        (name) =>
+          fs.copyFile(path.join(repositoryRoot, 'bin', name), path.join(packageRoot, 'bin', name)),
       ),
     );
     await fs.copyFile(

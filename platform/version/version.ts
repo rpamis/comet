@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from 'fs';
-import https from 'https';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -134,7 +133,8 @@ export function getCurrentVersion(): string {
  * Fetch the latest version from the npm registry.
  * Returns null if the registry is unreachable or the request fails.
  */
-export function getLatestVersion(): Promise<string | null> {
+export async function getLatestVersion(): Promise<string | null> {
+  const { default: https } = await import('https');
   return new Promise((resolve) => {
     const request = https.get(REGISTRY_URL, { timeout: 5000 }, (res) => {
       if (res.statusCode !== 200) {

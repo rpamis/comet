@@ -493,7 +493,7 @@ async function stateFile(
   };
 }
 
-async function readField(name: string, field: string): Promise<string> {
+async function readFields(name: string, fields: readonly string[]): Promise<string[]> {
   const { file } = await stateFile(name);
   const document = await readDocument(file);
   // Read via toJS so an explicit `field: null` round-trips as JS null (-> "null"),
@@ -501,7 +501,11 @@ async function readField(name: string, field: string): Promise<string> {
   // undefined for null-valued keys, erasing the distinction between "present but
   // null" and "absent" that the frozen 0.3.8 behavior preserves.
   const record = document.toJS() as Record<string, unknown>;
-  return readRecordField(record, field);
+  return Promise.all(fields.map((field) => readRecordField(record, field)));
+}
+
+async function readField(name: string, field: string): Promise<string> {
+  return (await readFields(name, [field]))[0];
 }
 
 async function getField(name: string, field: string): Promise<string> {
@@ -1454,9 +1458,9 @@ async function checkSdkEntry(
   output: CommandOutput,
   name: string,
   phase: string,
-  projectRoot: string,
+  inspected: NonNullable<Awaited<ReturnType<typeof findClassicSdkWorkspace>>>,
 ): Promise<void> {
-  const { run, state } = await inspectClassicSdkRun(projectRoot, name);
+  const { run, state, projectRoot } = inspected;
   output.stdout.push(`=== Entry Check: comet-${phase} ===`);
   const issues: ClassicIssue[] = [];
   let passed = 0;
@@ -1522,7 +1526,7 @@ async function checkSdkEntry(
     isolation: state.isolation,
     boundBranch: state.boundBranch,
     currentBranch,
-    gitWorkTree: isGitWorkTree(projectRoot),
+    gitWorkTree: currentBranch === null ? isGitWorkTree(projectRoot) : true,
   });
   if (binding.status === 'drift') {
     reject(driftBlockedMessage(name, binding.boundBranch, currentBranch));
@@ -1571,7 +1575,7 @@ async function check(
   const sdkWorkspace =
     localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, name);
   if (sdkWorkspace) {
-    await checkSdkEntry(output, name, phase, sdkWorkspace.projectRoot);
+    await checkSdkEntry(output, name, phase, sdkWorkspace);
     return;
   }
   const { file, directory, label } = await stateFile(name);
@@ -1830,9 +1834,11 @@ async function recoverDesign(
     );
     return;
   }
-  const handoff = await readField(name, 'handoff_context');
-  const hash = await readField(name, 'handoff_hash');
-  const design = await readField(name, 'design_doc');
+  const [handoff, hash, design] = await readFields(name, [
+    'handoff_context',
+    'handoff_hash',
+    'design_doc',
+  ]);
   output.stdout.push(
     '',
     '  Design progress:',
@@ -1892,11 +1898,13 @@ async function recoverBuild(
 }
 
 async function recoverVerify(output: CommandOutput, name: string): Promise<void> {
-  const result = await readField(name, 'verify_result');
-  const failures = await readField(name, 'verify_failures');
-  const mode = await readField(name, 'verify_mode');
-  const report = await readField(name, 'verification_report');
-  const branch = await readField(name, 'branch_status');
+  const [result, failures, mode, report, branch] = await readFields(name, [
+    'verify_result',
+    'verify_failures',
+    'verify_mode',
+    'verification_report',
+    'branch_status',
+  ]);
   output.stdout.push(
     '  Verification:',
     await fieldStatus('verify_result', result),
@@ -1916,12 +1924,16 @@ async function recoverVerify(output: CommandOutput, name: string): Promise<void>
 }
 
 async function recoverArchive(output: CommandOutput, name: string): Promise<void> {
-  const archiveConfirmation = await readField(name, 'archive_confirmation');
+  const [archiveConfirmation, result, archived] = await readFields(name, [
+    'archive_confirmation',
+    'verify_result',
+    'archived',
+  ]);
   output.stdout.push(
     '  Archive:',
-    await fieldStatus('verify_result', await readField(name, 'verify_result')),
+    await fieldStatus('verify_result', result),
     await fieldStatus('archive_confirmation', archiveConfirmation),
-    await fieldStatus('archived', await readField(name, 'archived')),
+    await fieldStatus('archived', archived),
     '',
     archiveConfirmation === 'confirmed'
       ? 'Recovery action: Archive is confirmed. Run /comet-archive to complete archiving.'

@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { spawnSync } from 'child_process';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { inspectCometProjectStatus } from '../../../domains/comet-entry/project-status.js';
 import {
@@ -15,6 +15,7 @@ import {
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+import * as classicStore from '../../../domains/comet-classic/classic-store.js';
 
 const VALID_BRIEF = `# Outcome
 Ship one outcome.
@@ -284,6 +285,32 @@ describe('Comet project status', () => {
       }),
     ]);
     expect(status.unmanagedOpenSpec).toEqual([]);
+  });
+
+  it('reads each Classic projection once per status request and observes subsequent edits', async () => {
+    await writeClassicOnlyConfig(projectRoot);
+    await initializeClassicChange(projectRoot, 'read-once');
+    const read = vi.spyOn(classicStore, 'readClassicState');
+    try {
+      const status = await inspectCometProjectStatus(projectRoot);
+      expect(status.workflows.classic.changes[0]).toMatchObject({
+        name: 'read-once',
+        phase: 'open',
+      });
+      expect(read).toHaveBeenCalledTimes(1);
+
+      const statePath = path.join(projectRoot, 'openspec', 'changes', 'read-once', '.comet.yaml');
+      await fs.appendFile(statePath, '\nunknown_status_field: true\n');
+      const updated = await inspectCometProjectStatus(projectRoot);
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(updated.workflows.classic.changes[0]).toMatchObject({
+        name: 'read-once',
+        phase: 'invalid',
+        error: expect.stringContaining('unknown_status_field'),
+      });
+    } finally {
+      read.mockRestore();
+    }
   });
 
   it('reports Classic unavailable without guessing a legacy root when project config is malformed', async () => {

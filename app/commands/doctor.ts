@@ -90,6 +90,35 @@ interface DoctorContext {
 
 type ManagedInstallAvailability = 'ready' | 'partial' | 'missing';
 
+interface DoctorAssetInspection {
+  manifest: Awaited<ReturnType<typeof readManifest>>;
+  skillPresent(file: string): Promise<boolean>;
+  bundledHookRuntime(): Promise<Buffer>;
+}
+
+async function createDoctorAssetInspection(): Promise<DoctorAssetInspection> {
+  const manifest = await readManifest();
+  const presence = new Map<string, Promise<boolean>>();
+  let bundledRuntime: Promise<Buffer> | undefined;
+  return {
+    manifest,
+    skillPresent(file) {
+      const key = path.resolve(file);
+      let result = presence.get(key);
+      if (!result) {
+        result = fileExists(key);
+        presence.set(key, result);
+      }
+      return result;
+    },
+    bundledHookRuntime() {
+      return (bundledRuntime ??= fs.readFile(
+        path.join(getAssetsDir(), 'skills', ...HOOK_ROUTER_RUNTIME.split('/')),
+      ));
+    },
+  };
+}
+
 interface DoctorRuntimeDiagnostic {
   isSecondaryWorktree: boolean;
   currentWorktreeRoot: string | null;
@@ -706,6 +735,7 @@ async function checkPlatformComponents(
   platform: (typeof PLATFORMS)[number],
   scope: InstallScope,
   workflowSelection: InitWorkflowSelection,
+  assets: DoctorAssetInspection,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const ruleDestinations = await getPlatformRuleDestinations(
@@ -771,7 +801,7 @@ async function checkPlatformComponents(
     }
   }
 
-  results.push(...(await checkHookComponents(baseDir, platform, scope, workflowSelection)));
+  results.push(...(await checkHookComponents(baseDir, platform, scope, workflowSelection, assets)));
 
   return results;
 }
@@ -781,6 +811,7 @@ async function checkHookComponents(
   platform: Platform,
   scope: InstallScope,
   workflowSelection: InitWorkflowSelection,
+  assets: DoctorAssetInspection,
 ): Promise<CheckResult[]> {
   if (!platform.supportsHooks || !platform.hookFormat) return [];
 
@@ -788,7 +819,7 @@ async function checkHookComponents(
   const runtime = hookRouterRuntimePaths(baseDir, platform, scope);
   try {
     const [expected, installed] = await Promise.all([
-      fs.readFile(runtime.source),
+      assets.bundledHookRuntime(),
       fs.readFile(runtime.destination),
     ]);
     results.push({
@@ -893,9 +924,10 @@ async function checkSkillCompleteness(
   scope: DoctorScope,
   context: DoctorContext,
   workflowSelection: InitWorkflowSelection,
+  assets: DoctorAssetInspection,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
-  const manifest = await readManifest();
+  const { manifest } = assets;
 
   let anyCometInstall = false;
   const scopeState: Record<InstallScope, { hasInstall: boolean; hasComplete: boolean }> = {
@@ -921,7 +953,7 @@ async function checkSkillCompleteness(
         const candidateMissing: string[] = [];
         for (const relPath of managedSkills) {
           const fullPath = path.join(base.baseDir, skillsDir, 'skills', relPath);
-          if (await fileExists(fullPath)) candidatePresent.push(relPath);
+          if (await assets.skillPresent(fullPath)) candidatePresent.push(relPath);
           else candidateMissing.push(relPath);
         }
         if (candidatePresent.length === 0) continue;
@@ -966,6 +998,7 @@ async function checkSkillCompleteness(
             platform,
             base.scope,
             base.scope === 'global' ? 'classic' : workflowSelection,
+            assets,
           )),
         );
       }
@@ -981,6 +1014,7 @@ async function checkSkillCompleteness(
           platform,
           base.scope,
           base.scope === 'global' ? 'classic' : workflowSelection,
+          assets,
         )),
       );
     }
@@ -1198,8 +1232,9 @@ async function inspectManagedInstallAvailability(
   baseDir: string,
   scope: InstallScope,
   workflowSelection: InitWorkflowSelection,
+  assets: DoctorAssetInspection,
 ): Promise<ManagedInstallAvailability> {
-  const manifest = await readManifest();
+  const { manifest } = assets;
   const managedSkills = getManagedSkillPathsForSelection(
     manifest,
     scope === 'global' ? 'classic' : workflowSelection,
@@ -1211,7 +1246,7 @@ async function inspectManagedInstallAvailability(
     for (const skillsDir of skillsDirs) {
       const presence = await Promise.all(
         managedSkills.map((relative) =>
-          fileExists(path.join(baseDir, skillsDir, 'skills', ...relative.split('/'))),
+          assets.skillPresent(path.join(baseDir, skillsDir, 'skills', ...relative.split('/'))),
         ),
       );
       const present = presence.filter(Boolean).length;
@@ -1226,12 +1261,14 @@ async function inspectDoctorRuntime(
   projectPath: string,
   context: DoctorContext,
   workflowSelection: InitWorkflowSelection,
+  assets: DoctorAssetInspection,
 ): Promise<DoctorRuntimeDiagnostic> {
   const worktree = inspectGitWorktree(projectPath);
   const currentProjectInstall = await inspectManagedInstallAvailability(
     projectPath,
     'project',
     workflowSelection,
+    assets,
   );
   const primaryProjectInstall =
     worktree.isSecondaryWorktree && worktree.primaryWorktreeRoot
@@ -1239,10 +1276,12 @@ async function inspectDoctorRuntime(
           worktree.primaryWorktreeRoot,
           'project',
           workflowSelection,
+          assets,
         )
       : currentProjectInstall;
   const globalFallbackReady =
-    (await inspectManagedInstallAvailability(context.homeDir, 'global', 'classic')) === 'ready';
+    (await inspectManagedInstallAvailability(context.homeDir, 'global', 'classic', assets)) ===
+    'ready';
   const effectiveScope =
     currentProjectInstall !== 'missing' ? 'project' : globalFallbackReady ? 'global' : 'none';
   const remediation =
@@ -1333,7 +1372,9 @@ async function collectResultsWithContext(
         ? 'native'
         : 'classic';
   const classicEnabled = workflowSelection !== 'native';
-  const runtime = await inspectDoctorRuntime(projectPath, context, workflowSelection);
+  // Collect after repair so no installation snapshot crosses a mutation boundary.
+  const assets = await createDoctorAssetInspection();
+  const runtime = await inspectDoctorRuntime(projectPath, context, workflowSelection, assets);
   const worktreeCheck = worktreeRuntimeCheck(runtime);
   if (worktreeCheck) results.push(worktreeCheck);
   if (configError) {
@@ -1367,7 +1408,13 @@ async function collectResultsWithContext(
       results.push(await checkWorkingDirs(projectPath));
     }
   }
-  const skillResults = await checkSkillCompleteness(projectPath, scope, context, workflowSelection);
+  const skillResults = await checkSkillCompleteness(
+    projectPath,
+    scope,
+    context,
+    workflowSelection,
+    assets,
+  );
   if (
     scope === 'project' &&
     runtime.isSecondaryWorktree &&

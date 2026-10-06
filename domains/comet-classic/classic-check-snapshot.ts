@@ -48,10 +48,26 @@ export function hashGitPaths(root: string, paths: readonly string[]): Map<string
       hashBatch(batch.slice(middle));
     }
   };
-  const batchSize = 32;
-  for (let offset = 0; offset < paths.length; offset += batchSize) {
-    hashBatch(paths.slice(offset, offset + batchSize));
+  // Leave room for executable/options and Windows argument quoting. Doubling
+  // UTF-8 bytes bounds quoted UTF-16 characters too, including spaces and
+  // backslashes. A single over-budget path is isolated and may fail normally.
+  const argumentBytes = (value: string) => Buffer.byteLength(value, 'utf8') * 2 + 3;
+  const fixedBytes = argumentBytes(root) + 128;
+  const maxArgumentBytes = 16 * 1024;
+  const maxPaths = 256;
+  let batch: string[] = [];
+  let batchBytes = fixedBytes;
+  for (const relative of paths) {
+    const bytes = argumentBytes(relative);
+    if (batch.length && (batch.length >= maxPaths || batchBytes + bytes > maxArgumentBytes)) {
+      hashBatch(batch);
+      batch = [];
+      batchBytes = fixedBytes;
+    }
+    batch.push(relative);
+    batchBytes += bytes;
   }
+  if (batch.length) hashBatch(batch);
   return hashes;
 }
 

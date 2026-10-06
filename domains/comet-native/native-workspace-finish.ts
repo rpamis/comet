@@ -592,13 +592,62 @@ async function archivedFilesCommitted(
       ])
     )
       return false;
-    return files.every((file) => {
+    const matchesCommittedFile = (file: string) => {
       const ref = portableRelative(paths.projectRoot, file);
       return (
         runGitCommand(root, ['rev-parse', `${sha}:${ref}`]) ===
         runGitCommand(root, ['hash-object', '--path', ref, '--', file])
       );
-    });
+    };
+    // A different Git root needs the explicit path override used by the original check.
+    if (path.resolve(root) !== path.resolve(paths.projectRoot)) {
+      return files.every(matchesCommittedFile);
+    }
+    const refs = files.map((file) => portableRelative(paths.projectRoot, file));
+    for (let offset = 0; offset < refs.length;) {
+      let end = offset;
+      let argumentBytes = 0;
+      while (end < refs.length && end - offset < 32) {
+        const nextBytes = Buffer.byteLength(JSON.stringify(refs[end]), 'utf8') + 1;
+        if (end > offset && argumentBytes + nextBytes > 8_192) break;
+        argumentBytes += nextBytes;
+        end++;
+      }
+      const batch = refs.slice(offset, end);
+      try {
+        const entries = runGitCommand(root, [
+          '--literal-pathspecs',
+          'ls-tree',
+          '-r',
+          '-z',
+          sha,
+          '--',
+          ...batch,
+        ])
+          .split('\0')
+          .filter(Boolean);
+        const committed = new Map<string, string>();
+        for (const entry of entries) {
+          const match = /^\d+ blob ([a-f0-9]+)\t([\s\S]+)$/u.exec(entry);
+          if (!match || !GIT_OBJECT_PATTERN.test(match[1])) return false;
+          committed.set(match[2], match[1]);
+        }
+        // Passing each repository-relative path retains its clean filters and attributes.
+        const hashes = runGitCommand(root, ['hash-object', '--', ...batch]).split(/\r?\n/u);
+        if (
+          hashes.length !== batch.length ||
+          hashes.some(
+            (hash, index) => !GIT_OBJECT_PATTERN.test(hash) || hash !== committed.get(batch[index]),
+          )
+        )
+          return false;
+      } catch {
+        // Keep the single-file behavior for host argument limits and batch command failures.
+        if (!files.slice(offset, end).every(matchesCommittedFile)) return false;
+      }
+      offset = end;
+    }
+    return true;
   } catch {
     return false;
   }

@@ -85,15 +85,19 @@ export async function inspectClassicSdkRun(
   return { run, state, runtime, profile: upgradedFromPreset ? 'full' : profile };
 }
 
+type ClassicSdkWorkspace = Awaited<ReturnType<typeof inspectClassicSdkRun>> & {
+  projectRoot: string;
+};
+
 export async function findClassicSdkWorkspace(
   projectRoot: string,
   name: string,
-): Promise<{ projectRoot: string; run: WorkflowRun; state: ClassicState } | null> {
+): Promise<ClassicSdkWorkspace | null> {
   const requestedRoot = path.resolve(projectRoot);
   if (await readSdkChangeOwner(requestedRoot, 'classic', name)) {
     return { projectRoot: requestedRoot, ...(await inspectClassicSdkRun(requestedRoot, name)) };
   }
-  const candidates: Array<{ projectRoot: string; run: WorkflowRun; state: ClassicState }> = [];
+  const candidates: ClassicSdkWorkspace[] = [];
   for (const worktree of listGitWorktrees(requestedRoot)) {
     if (samePath(worktree.root, requestedRoot)) continue;
     if (!(await readSdkChangeOwner(worktree.root, 'classic', name))) continue;

@@ -4,7 +4,7 @@ export { annotatedMarkdown } from './classic-archive-annotation.js';
 import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
 import { classicSdkArchiveGuard } from './classic-sdk-guard.js';
-import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
+import { findClassicSdkWorkspace } from './classic-sdk-status.js';
 import { recoverClassicSdkArchive } from './classic-sdk-archive.js';
 import {
   classicArchivedRequirementsProblems,
@@ -311,7 +311,7 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
       localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, change);
     if (sdkWorkspace) {
       if (recover) {
-        const inspected = await inspectClassicSdkRun(sdkWorkspace.projectRoot, change);
+        const inspected = sdkWorkspace;
         const continued = await recoverClassicSdkArchive(inspected.runtime, {
           projectRoot: sdkWorkspace.projectRoot,
           runId: inspected.run.runId,
