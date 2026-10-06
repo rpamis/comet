@@ -1,6 +1,10 @@
 import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
+import {
+  withRecoverableFileLock,
+  type RecoverableFileLockOptions,
+} from '../../platform/fs/plugin-store.js';
 
 async function pathExists(target: string): Promise<boolean> {
   try {
@@ -20,23 +24,27 @@ async function latestMtime(root: string): Promise<number> {
   return Math.max(stats.mtimeMs, ...times);
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function removeStaleLock(lockPath: string): Promise<void> {
-  try {
-    const stats = await fs.stat(lockPath);
-    if (Date.now() - stats.mtimeMs > 120_000) await fs.rm(lockPath, { force: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+async function compiledFilesExist(repositoryRoot: string, root: string): Promise<boolean> {
+  for (const entry of await fs.readdir(root, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === 'dist') continue;
+    const file = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      if (!(await compiledFilesExist(repositoryRoot, file))) return false;
+    } else if (entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
+      const output = path.join('dist', path.relative(repositoryRoot, file).slice(0, -3));
+      for (const extension of ['.js', '.js.map', '.d.ts', '.d.ts.map'])
+        if (!(await pathExists(path.join(repositoryRoot, output + extension)))) return false;
+    }
   }
+  return true;
 }
 
 async function cliBuildIsFresh(repositoryRoot: string): Promise<boolean> {
   const cliIndex = path.join(repositoryRoot, 'dist', 'app', 'cli', 'index.js');
   if (!(await pathExists(cliIndex))) return false;
   const sourceRoots = ['app', 'domains', 'platform'];
+  for (const root of sourceRoots)
+    if (!(await compiledFilesExist(repositoryRoot, path.join(repositoryRoot, root)))) return false;
   const sourceMtimes = await Promise.all(
     sourceRoots.map((root) => latestMtime(path.join(repositoryRoot, root))),
   );
@@ -47,37 +55,28 @@ async function cliBuildIsFresh(repositoryRoot: string): Promise<boolean> {
   return distStats.mtimeMs >= Math.max(...sourceMtimes, buildStats.mtimeMs);
 }
 
-export async function ensureCliBuilt(repositoryRoot: string): Promise<void> {
+interface EnsureCliBuiltOptions {
+  lockOptions?: RecoverableFileLockOptions;
+}
+
+export async function ensureCliBuilt(
+  repositoryRoot: string,
+  options: EnsureCliBuiltOptions = {},
+): Promise<void> {
   const lockPath = path.join(repositoryRoot, '.comet-test-build.lock');
-  // Wait for up to ~3 minutes for a concurrent build (test suites fan out across
-  // many files, all racing through this helper). Only the holder of the lock
-  // performs the build; everyone else polls for freshness instead of stacking
-  // redundant `build.js` invocations that can corrupt `dist` under contention.
-  const maxWaitAttempts = 1_800;
-  for (let attempt = 0; attempt < maxWaitAttempts; attempt += 1) {
-    await removeStaleLock(lockPath);
-    let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
-    try {
-      handle = await fs.open(lockPath, 'wx');
+  // 复用进程身份锁；活跃或无法确认退出的 owner 不能按文件年龄被夺取。
+  await withRecoverableFileLock(
+    lockPath,
+    async () => {
       if (!(await cliBuildIsFresh(repositoryRoot))) {
         execFileSync(process.execPath, ['build.js'], {
           cwd: repositoryRoot,
           stdio: 'pipe',
         });
+        if (!(await cliBuildIsFresh(repositoryRoot)))
+          throw new Error('CLI build outputs are incomplete or stale');
       }
-      return;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    } finally {
-      await handle?.close();
-      if (handle) await fs.rm(lockPath, { force: true });
-    }
-
-    // Did not hold the lock: a peer is building (or just released it). Wait for
-    // the build to land rather than immediately re-claiming the lock, which
-    // avoids redundant builds and the mtime races they create on Windows.
-    if (await cliBuildIsFresh(repositoryRoot)) return;
-    await sleep(100);
-  }
-  throw new Error(`Timed out waiting for CLI build to complete: ${lockPath}`);
+    },
+    { timeoutMs: 180_000, retryMs: 100, ...options.lockOptions },
+  );
 }

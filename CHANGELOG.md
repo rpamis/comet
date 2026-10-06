@@ -38,6 +38,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **npm lifecycle controls**: Respect npm's ignore-scripts setting during prepare so packing does not unexpectedly rebuild files or install Git hooks.
 - **Classic branch binding before the first commit**: Recognize an initialized Git branch even when HEAD has no commit yet, so branch-bound changes can continue without a misleading detached-HEAD error.
 - **Windows Eval timeout cleanup**: Stop a timed-out Docker Agent loop promptly even when a child process still holds its output handles, preventing model calls from continuing after the host budget expires.
 - **Native Verifier interruption recovery**: Preserve the active verifier identity with the portable change so it can be recovered when local execution metadata is missing, while rejecting responses for a different candidate or attempt.
