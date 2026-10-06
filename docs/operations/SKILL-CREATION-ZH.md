@@ -1,307 +1,66 @@
-# 使用 `/comet-any` 创建、验证与分发 Skill
+# 使用 `/comet-any` 创建和交付工作流应用
 
-本文只讲新版本推荐开放给普通用户的路径：通过 `/comet-any` 创建、优化、组合、验证并分发可复用 Skill。手工编写 `comet/skill.yaml`、`flow.yaml` 或 Bundle 状态文件不是普通用户路径。
+描述目标后，`/comet-any` 调查真实 Skill，展示流程、工件、检查、失败路径和能力限制。用户确认方案后，Creator 编译完整 SDK 应用包，实际加载验证，再展示安装预览。创作与业务执行分别拥有自己的 Run；查询与恢复都保留原 Run ID。
 
-## 一句话创建
+支持三种起点：Native 的新增步骤、执行指导和附加验收；Classic full、hotfix、tweak 的 Skill 编排；拥有独立业务规则的 SDK 工作流。Native 主流程保留默认行为，报告审批样板不自动获得 Native 独立验收语义。
 
-在 Agent 平台里调用：
+## 开始和继续
 
-```text
-/comet-any
-```
-
-然后描述你想创建或优化的 Skill。`/comet-any` 是 Comet 的 Skill 创建向导：它读取项目级偏好、扫描真实本地 Skill、展示组合方案，用户确认后生成可 Eval、可 review、可发布、可分发的稳定组合 Skill Bundle。
-
-普通用户只需要记住这条主线：
-
-```text
-/comet-any 创建 -> comet eval 验证 -> comet creator status/next -> comet publish review/approve/run -> comet publish distribute --preview -> comet publish distribute
-```
-
-`comet creator status` / `comet creator next` 是普通用户查看 readiness 和唯一推荐下一步的入口。`comet publish` 负责 review、approve、publish 和 distribute；`comet bundle` 仍是用于确定性状态、hash 和深度排障的高级 Bundle 后端；`comet skill run` / `comet skill continue` 是高级 Engine Run 调试入口。它们不是普通用户创建 Skill 的主入口。
-
-## 首次建立项目级偏好
-
-项目级偏好文件位于：
-
-```text
-.comet/skill-preferences.yaml
-```
-
-它和 `.comet/config.yaml` 同级，表达这个项目希望 `/comet-any` 优先复用哪些 Skill，以及遇到缺失、歧义、偏离和 scripts/hooks 时怎么处理。
-
-如果文件不存在，`/comet-any` 应先扫描 Comet 支持的平台 Skill，按能力分组展示可复用能力，并询问是否保存推荐偏好。用户不需要每次在输入框里重新列一长串 Skill。是否写入 `.comet/skill-preferences.yaml` 必须先询问用户。
-
-推荐起点：
-
-```yaml
-version: 1
-mode: advisory
-
-prefer:
-  - brainstorming
-  - writing-plans
-  - systematic-debugging
-  - test-driven-development
-  - requesting-code-review
-  - verification-before-completion
-
-require:
-  - verification-before-completion
-
-policies:
-  missing: ask
-  ambiguous: ask
-  deviation: explain
-  scripts: disclose
-  hooks: disclose
-```
-
-字段含义：
-
-- `mode: advisory`：默认模式，可以补充目标需要的 Skill，但必须解释偏离原因。
-- `mode: strict`：团队标准化模式，required Skill 缺失、歧义或禁止 scripts/hooks 时阻塞。
-- `prefer`：希望优先复用的 Skill，顺序代表偏好优先级。
-- `require`：生成组合 Skill 时必须满足的 Skill。
-- `policies.missing`：偏好 Skill 缺失时询问或失败。
-- `policies.ambiguous`：同名 Skill 有多个不同来源时询问或失败。
-- `policies.deviation`：偏离偏好时解释或失败。
-- `policies.scripts` / `policies.hooks`：生成或分发 scripts/hooks 时允许、披露或禁止。
-
-## 手写偏好
-
-高级用户可以直接编辑 `.comet/skill-preferences.yaml`。这不是内部状态文件，可以手写、提交到项目，也可以由 `/comet-any` 首次扫描后生成。
-
-示例：创建一个偏严谨的 PR 评审 Skill：
-
-```yaml
-version: 1
-mode: advisory
-
-prefer:
-  - brainstorming
-  - writing-plans
-  - requesting-code-review
-  - verification-before-completion
-
-require:
-  - requesting-code-review
-  - verification-before-completion
-
-policies:
-  missing: ask
-  ambiguous: ask
-  deviation: explain
-  scripts: disclose
-  hooks: disclose
-```
-
-然后调用：
-
-```text
-/comet-any
-```
-
-可以这样描述目标：
-
-```text
-请基于项目级偏好创建一个 PR 评审助手。
-它要先澄清评审范围，再制定检查计划，再执行代码审查，最后在完成前要求验证证据。
-目标是给团队复用，不只是当前一次任务。
-```
-
-## 组合方案确认
-
-`/comet-any` 不能直接写 Bundle draft。它必须先展示组合方案，用户确认后才进入生成。
-
-组合方案至少要说明：
-
-- 新 Skill 名称和目标场景。
-- 预计复用的 Skill、来源、hash、用途和调用顺序。
-- 哪些来自 `prefer`，哪些来自 `require`。
-- 哪些由目标语义自动补充。
-- 缺失和歧义候选。
-- 是否偏离偏好顺序，以及原因。
-- scripts/hooks 会产生什么可执行披露。
-- 将生成哪些文件。
-
-proposal 应给用户展示摘要、候选动作和 `proposalHash`。确认页至少要支持：
-
-- `confirm-generate`
-- `revise-proposal`
-- `cancel`
-
-用户确认后，`/comet-any` 才能写入 Skill Creator metadata。`proposalHash` 会由 metadata 记录并校验，不由用户作为参数传入。后端会把规范化 plan 固化到 `.comet/bundle-factory-plans/<name>/plan.json`，并记录 `planHash`、`preferenceHash`、偏好模式、策略、required Skill、resolved Skill 证据和偏离原因。
-
-如果 proposal 还有缺失、歧义或组合 blocker，`/comet-any` 不应确认生成。需要用后端状态做候选修复时，可以暂存 unresolved Skill Creator state；候选和组合解决后，必须重新展示可生成方案并再次记录确认，否则生成、review 和 publish 都会拒绝继续。
-
-## `/comet-any` 的产出
-
-一次完整生成或优化后，产物应包含：
-
-```text
-<bundle-draft>/
-  bundle.yaml
-  skills/<entry-skill>/
-    SKILL.md
-    comet/
-      skill.yaml
-      guardrails.yaml
-      checks.yaml
-      eval.yaml
-    reference/
-      resolved-skills.json
-      composition-report.md
-    scripts/
-  rules/
-  hooks/
-```
-
-关键文件：
-
-- `SKILL.md`：用户真正调用的入口。
-- `reference/resolved-skills.json`：真实 Skill 来源、hash、摘要、选择原因和偏好证据。
-- `reference/composition-report.md`：组合方案、偏离解释、风险和 review evidence。
-- `comet/skill.yaml`：内部运行计划，不是用户手写入口。
-- `comet/guardrails.yaml`：由偏好和风险策略生成的约束。
-- `comet/checks.yaml`：运行完成度和 required Skill 检查。
-- `comet/eval.yaml`：Eval manifest。
-- `scripts/`、`rules/`、`hooks/`：稳定推进流程的 required control plane。
-
-## Eval
-
-有 `comet/eval.yaml` 时，推荐先做发现预检查：
-
-```bash
-comet eval ./generated-skill/comet/eval.yaml --collect
-```
-
-然后跑真实评估并生成 HTML 报告：
-
-```bash
-comet eval ./generated-skill/comet/eval.yaml --html
-```
-
-eval 结果必须绑定当前 draft hash。没有当前 hash 的 eval 证据、eval 失败或 eval 被跳过时，不得 publish。
-
-## Publish
-
-发布前必须先看 readiness。普通用户可以让 `/comet-any` 推进；需要手工命令时优先用：
-
-```bash
-comet creator status <name> --json
-comet creator next <name> --json
-comet publish review <name> --platform <reference-platform> --json
-comet publish approve <name> --reviewer <reviewer> --json
-comet publish run <name> --platform <reference-platform> --json
-```
-
-Review summary 必须展示：
-
-- `planHash`
-- `preferenceHash`
-- 项目级偏好模式和 required Skill
-- resolved Skill 证据
-- 组合方案和偏离原因
-- eval evidence
-- readiness、blockers、warnings、evidence
-- `Publish readiness:`
-- `User next steps:`
-
-阻塞项包括：
-
-- unresolved candidate
-- required Skill 缺失或歧义
-- strict 模式下偏好文件漂移
-- 缺少当前 hash 的 eval 证据
-- 缺少当前 hash 的人工 approval
-- required capability gap
-- executable disclosure 未确认
-
-## Distribute
-
-发布后，`/comet-any` 必须询问用户是否分发，不能自动分发。
-
-真正执行前，必须先跑 preview：
-
-```bash
-comet publish distribute <name> --platform <id> --scope project --preview --json
-```
-
-用户应先看到：
-
-- `Distribution preview`
-- planned files
-- unsupported capability
-- executable disclosures
-- `No files were written`
-
-如果用户确认分发，才运行：
-
-```bash
-comet publish distribute <name> --platform <id> --scope project --json
-```
-
-如果目标平台包含 hook 或脚本等可执行能力，必须先展示披露信息。用户确认后才可加入：
-
-```bash
---confirm-executables
-```
-
-如果用户明确选择跳过 optional 能力，才可加入：
-
-```bash
---skip-capability <capability>
-```
-
-## 恢复中断流程
-
-如果做到一半中断，回来后直接对 Agent 说：
-
-```text
-继续上次的 Skill 创建
-```
-
-`/comet-any` 应先扫描可恢复状态，展示名称、状态、next action、blockers 和上次确认的组合方案摘要。恢复时会检查：
-
-- Skill Creator state 是否存在。
-- draft hash 是否变化。
-- `.comet/skill-preferences.yaml` 的 `preferenceHash` 是否变化。
-- resolved Skill hash 是否变化。
-- eval evidence 是否仍匹配当前 hash。
-- approval 是否仍匹配当前 hash。
-
-面向用户的恢复示例：
-
-```text
-恢复摘要
-Current step: review
-Suggested user command: comet creator next <name>
-```
-
-如果偏好或 Skill 来源发生变化，`advisory` 模式应提示并让用户选择继续旧组合方案或重新生成；`strict` 模式应默认阻塞，要求用户确认继续或重新生成。
-
-## 高级后端参考
-
-普通用户通常让 `/comet-any` 调用下面的命令。它们用于修复候选解析、审计 authoring lane，或在自动化里显式操作 Skill Creator 状态；只有直接排查后端状态时才需要使用原始 `comet bundle` 命令。
+在 Agent 平台调用 `/comet-any` 并描述目标、需要的 Skill 和交付位置。宿主按公开 CLI 的当前 Action 工作：
 
 ```bash
 comet creator guide --project . --json
-comet creator propose <name> --file <plan.json> --json
-comet creator init <name> --file <plan.json> --json
-comet creator resolve <name> --candidate <query> --source <root-or-hash> --json
-comet creator init <name> --file <plan.json> --confirmed-proposal --json
-comet creator generate <name> --json
-comet creator authoring-plan <name> --depth quick --json
-comet creator authoring-record <name> --lane <lane-id> --file <lane-output.json> --json
+comet creator candidates --project . --json
+comet creator start <name> --project . --goal "<目标>" --install-target .claude/skills/<application> --host claude-code --json
+comet creator status <name> --project . --json
+comet creator next <name> --project . --json
 ```
 
-`comet creator status` 的 JSON 会包含 next action，方便 `/comet-any` 或自动化恢复；普通用户只需要看 `comet creator status` / `comet creator next` 的用户命令。
+`analyze` 由宿主真实读取并加载所需 Skill，提交实际内容的适配契约、固定摘要与执行模块。`compile`、`verify`、`preview`、`install` 由 `next` 的机器执行器完成。方案确认和安装确认分别绑定当前 Wait；前者不能代替后者，安装批准也不能代替业务发布批准。
 
-## 用户最少需要记什么
+## 完整包与本地安装
 
-1. `/comet-any` 是创建、优化、组合 Skill 的主入口。
-2. `.comet/skill-preferences.yaml` 是项目级偏好，可以手写，也可以由 `/comet-any` 生成。
-3. 生成前必须先看组合方案，确认后才会写 Bundle draft。
-4. Eval 是发布前证据，不是发布动作。
-5. Creator 状态用 `comet creator status` / `comet creator next` 看下一步；review、publish 和 distribute 仍归 `comet publish`。
+应用包包含 `application.json`、入口 Skill、执行与验证模块，以及固定的 Skill、脚本和资源。依赖缺失、漂移、输出 Schema 不匹配或验证器未注册会阻塞；不能用完成字符串替代实际产物和检查。
+
+Creator 直接安装到当前创作已确认的项目相对目标。需要完整导出、双作用域托管安装或升级时，使用以下入口：
+
+```bash
+comet application export <package>/application.json <empty-export-directory> --project . --json
+comet application install <export>/application.json --project . --scope project --host claude-code --json
+comet application install <export>/application.json --project . --scope user --host codex --json
+```
+
+不带 `--confirmation-hash` 的 install 只返回预览：目标、作用域、文件、固定依赖、宿主入口与冲突。用户明确批准后，将当前预览的 hash 传入同一命令执行安装。内容、目标或已有安装改变后需要重新预览。`--user-root <directory>` 选择隔离用户目录；默认用户作用域使用当前 HOME。只交付包而不安装宿主 Skill 时省略 `--host`。
+
+托管版本保存在目标 `.comet/applications/<id>/versions/<content-hash>/`。升级需显式 `--upgrade`，同版本不同内容拒绝。新的 Run 使用当前默认版本；活动 Run 按自己保存的原 `packageRoot` 继续，不迁移到新定义。固定 Skill 与同名宿主依赖冲突时保留现场，不覆盖用户内容。
+
+```bash
+comet application uninstall <id> --project . --scope user --json
+# 用户批准预览后，使用同一命令加 --confirmation-hash <current-hash>
+```
+
+卸载只取消新 Run 的默认入口和本次管理的宿主入口，保留全部版本及依赖。用户级应用可能有其他项目的活动 Run，因此不会按当前项目的枚举结果清空版本，也不提供隐式 purge。结果会明确展示保留范围。
+
+## SDK 样板与验证范围
+
+`@rpamis/comet/applications/compiler` 的 `prepareWorkflowApplicationExample` 可生成 `native`、`classic-full`、`classic-hotfix`、`classic-tweak` 或 `standalone` 的完整本地样板。传入已有隔离项目的 `projectRoot`、空 `packageRoot` 和 `base`；返回 `application.json`。它不启动 Run、不提交用户决定，也不执行外部操作。
+
+Native 样板检查普通候选、Supervisor 父级、Child 和集成候选各自的 `candidate.txt`。Classic 样板在原 Build 检查后追加真实工件审查，原阶段工作由宿主加载包内独立 Skill 执行；启动输入包含当前项目绝对路径 `projectRoot`，写入按这一实际工作区核对。独立报告样板生成草稿、核对来源、等待审批并本地发布；拒绝、修订和冷恢复保留原 Run。
+
+定义检查、定向测试、生成 Runtime、npm 实际消费者、真实宿主 Hook/交接、真实模型 Eval 分别记录证据。编译成功不代表全部业务或生产验收通过。真实模型验收未运行、失败、超时或缺少轨迹时保持未完成。
+
+## 恢复和边界
+
+中断后先 inspect 原 Action，保留 attempt、inputHash 和领取身份，不重复已完成工作。未知外部结果先通过适配器查询：已执行则回传原结果；确认未执行且有证据时才走 SDK retry；没有核对能力时明确阻塞。凭据只从执行上下文注入，不进入方案、包、Run、报告或 Agent 配置。
+
+只支持本地导出与安装，不提供远程 Git 分发或团队集中服务。旧生成链、旧 Creator 命令和 `workflow-protocol.json` 格式已退出；遇到旧格式提示重新生成，保留用户文件，不转换或迁移旧状态。
+
+## 高级后端参考
+
+```bash
+comet creator dispatch <name> --project . --request <current-action-request.json> --json
+comet runtime dispatch --application-file <package>/application.json --project-root . --request <request.json> --json
+comet runtime dispatch --application <id> --project-root . --request <same-run-request.json> --json
+```
+
+按当前响应填写 claim、record-outcome 或 resolve-wait，使用真实宿主 session ID。`comet bundle`、`comet publish` 和 `comet eval` 的独立高级包与评估能力仍可使用；它们不再作为 SDK Creator 的旧生成或推进后端。

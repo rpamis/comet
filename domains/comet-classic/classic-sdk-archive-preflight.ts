@@ -2,7 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import type { WorkflowRun, WorkflowRuntime } from '../engine/runtime.js';
+import { samePath } from '../../platform/paths/git-worktree.js';
+import type {
+  RuntimeAction,
+  RuntimeExecutor,
+  RuntimeOutcome,
+  WorkflowRun,
+  WorkflowRuntime,
+} from '../engine/runtime.js';
 import {
   hashProtectedProjectFile,
   inspectProtectedProjectPath,
@@ -182,24 +189,20 @@ export async function assertVerifyEvidenceCurrent(
   }
 }
 
-/** Reconcile approval, branch, and Verify evidence before any Archive side effect. */
-export async function executeClassicSdkArchivePreflight(
-  runtime: Pick<WorkflowRuntime, 'inspect' | 'claim' | 'recordOutcome' | 'markUnknown'>,
-  input: ClassicSdkArchivePreflightInput,
-): Promise<WorkflowRun> {
-  const projectRoot = path.resolve(input.projectRoot);
-  const run = await runtime.inspect(input.runId);
-  const profile = (run.state as ClassicState | undefined)?.workflow;
-  const action = run.actions
-    .slice()
-    .reverse()
-    .find(
-      (candidate) =>
-        candidate.stepId === `${profile}.archive.preflight` && candidate.status === 'pending',
-    );
-  if (!action) {
-    throw new Error('Current Classic SDK Run has no pending Archive preflight Action');
-  }
+export async function runClassicSdkArchivePreflight(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  requestedRoot: string,
+): Promise<Pick<RuntimeOutcome, 'status' | 'output'>> {
+  const projectRoot = path.resolve(requestedRoot);
+  const profile = (run.state as unknown as ClassicState).workflow;
+  if (
+    action.runId !== run.runId ||
+    action.stepId !== profile + '.archive.preflight' ||
+    action.type !== 'call_tool' ||
+    action.ref !== 'classic-archive-preflight'
+  )
+    throw new Error('Current Classic SDK Run has no Archive preflight Action');
   const approved = await assertClassicSdkArchiveReady(run, projectRoot);
   const branch = approved.targetBranch;
   const remoteIdentity = approved.remote
@@ -209,8 +212,61 @@ export async function executeClassicSdkArchivePreflight(
     cwd: projectRoot,
     encoding: 'utf8',
   }).trim();
-  const token = randomUUID();
-  const requestId = randomUUID();
+  if (liveGitBranch(projectRoot) !== branch)
+    throw new Error('Classic Archive branch changed during preflight');
+  return {
+    status: 'succeeded',
+    output: {
+      deliveryAction: approved.action,
+      targetBranch: approved.targetBranch,
+      verifiedBranch: branch,
+      baseCommit,
+      ...(approved.remote ? { remote: approved.remote, remoteIdentity } : {}),
+      ...(approved.prBaseBranch ? { prBaseBranch: approved.prBaseBranch } : {}),
+    },
+  };
+}
+export function createClassicSdkArchivePreflightExecutor(projectRoot: string): RuntimeExecutor {
+  const bound = (context: { projectRoot?: string } | undefined) => {
+    if (!context?.projectRoot || !samePath(context.projectRoot, projectRoot))
+      throw new Error('Classic Archive preflight requires its bound project');
+  };
+  return {
+    id: 'comet-classic-archive-preflight',
+    capabilities: [],
+    supports: (action) => action.type === 'call_tool' && action.ref === 'classic-archive-preflight',
+    async preflight(action, context, run) {
+      bound(context);
+      if (!run) throw new Error('Classic Archive requires a Run');
+      await runClassicSdkArchivePreflight(run, action, projectRoot);
+    },
+    async execute(action, context, run) {
+      bound(context);
+      if (!run) throw new Error('Classic Archive requires a Run');
+      return runClassicSdkArchivePreflight(run, action, projectRoot);
+    },
+  };
+}
+/** 旧 CLI 保留领取与回传；实际领域核对和默认机器端口共用。 */
+export async function executeClassicSdkArchivePreflight(
+  runtime: Pick<WorkflowRuntime, 'inspect' | 'claim' | 'recordOutcome' | 'markUnknown'>,
+  input: ClassicSdkArchivePreflightInput,
+): Promise<WorkflowRun> {
+  const projectRoot = path.resolve(input.projectRoot),
+    run = await runtime.inspect(input.runId);
+  const profile = (run.state as unknown as ClassicState).workflow;
+  const action = run.actions
+    .slice()
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.stepId === profile + '.archive.preflight' && candidate.status === 'pending',
+    );
+  if (!action) throw new Error('Current Classic SDK Run has no pending Archive preflight Action');
+  const result = await runClassicSdkArchivePreflight(run, action, projectRoot);
+  const output = result.output as { verifiedBranch: string; baseCommit: string };
+  const token = randomUUID(),
+    requestId = randomUUID();
   await runtime.claim({
     runId: run.runId,
     actionId: action.id,
@@ -223,12 +279,11 @@ export async function executeClassicSdkArchivePreflight(
   });
   try {
     if (
-      liveGitBranch(projectRoot) !== branch ||
+      liveGitBranch(projectRoot) !== output.verifiedBranch ||
       execFileSync('git', ['rev-parse', 'HEAD'], { cwd: projectRoot, encoding: 'utf8' }).trim() !==
-        baseCommit
-    ) {
+        output.baseCommit
+    )
       throw new Error('Classic Archive branch or HEAD changed during preflight');
-    }
     return await runtime.recordOutcome({
       runId: run.runId,
       context: { requestId, projectRoot },
@@ -238,28 +293,19 @@ export async function executeClassicSdkArchivePreflight(
         inputHash: action.inputHash,
         claimToken: token,
         outcomeId: randomUUID(),
-        status: 'succeeded',
-        output: {
-          deliveryAction: approved.action,
-          targetBranch: approved.targetBranch,
-          verifiedBranch: branch,
-          baseCommit,
-          ...(approved.remote ? { remote: approved.remote, remoteIdentity } : {}),
-          ...(approved.prBaseBranch ? { prBaseBranch: approved.prBaseBranch } : {}),
-        },
+        ...result,
       },
     });
   } catch (error) {
     const current = await runtime.inspect(run.runId);
     const latest = current.actions.find((candidate) => candidate.id === action.id);
-    if (latest?.status === 'running' && latest.attempt === action.attempt) {
+    if (latest?.status === 'running' && latest.attempt === action.attempt)
       await runtime.markUnknown({
         runId: run.runId,
         actionId: action.id,
         attempt: action.attempt,
         reason: error instanceof Error ? error.message : String(error),
       });
-    }
     throw error;
   }
 }

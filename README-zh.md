@@ -50,7 +50,7 @@
 > - **面向强模型的 Native 工作流**：确认需求后，由 Agent 自主选择计划、实现、测试与审查方法，Comet 负责状态检查、验收与可恢复归档。Native 与保留 OpenSpec + Superpowers 五阶段方法的 Classic 独立运行，共用配置、状态、Dashboard 和 Eval 入口。
 > - **复杂需求的并行交付**：Supervisor Change 将目标拆成带依赖的子 Change，支持 Codex 多会话或 Claude Code Agent Teams 在独立 worktree 中实现和验证，再按依赖顺序集成，完成父 Change 的最终验收。
 > - **可管理的个人记忆与项目知识**：跨任务保留协作偏好与可复用经验，按当前任务渐进式提供相关上下文。你可以查看、纠正、遗忘或暂停使用；新经验先试用，再依据实际采纳和验证结果积累可信度。
-> - **Skill 创建、分发与评估**：通过 `/comet-any` 组合任意 Skill 并打包分发，用 `comet eval` 结合 Rubric、Pass@k、Pass^k 和 LangSmith 评估效果，让 Skill 的迭代有可比较的依据。
+> - **Skill 创建、交付与评估**：通过 `/comet-any` 创建由 SDK Run 管理的工作流应用，确认方案后本地安装与导出；用 `comet eval` 记录对应范围的评估证据。
 > - **统一的三栏 Dashboard**：在浏览器中查看 Native 与 Classic 进度、Git worktree、验收结果和归档记录，并管理个人记忆、项目知识与插件设置。
 > - **跨平台运行与中断恢复**：纯 Node.js Runtime 支持 Windows、macOS 和 Linux，不再依赖 Bash/WSL；任务状态保存在项目中，换会话或中断后可以继续，CLI 明确提示下一步和需要用户决定的事项。
 >
@@ -65,7 +65,7 @@
 - **复杂需求的 Supervisor Change** — Native 可以按真实交付边界拆分子 Change，用 DAG 管理依赖与就绪顺序，让多个 Agent 在 Runtime 创建的独立 worktree 中实现和验证，再统一集成并对父 Change 做最终验收。
 - **长程任务稳定的核心**— Comet 的 Classic Spec 模式结合 OpenSpec 和 Superpowers，用状态机、阶段检查与脚本串联五阶段流程，适合需要明确方法和强约束的任务；永久入口是 `/comet-classic`。
 - **配置驱动的统一入口** — `/comet` 只读取项目的 `.comet/config.yaml`，确定性转发到 `/comet-native` 或 `/comet-classic`。它不按任务大小猜工作流，也不混用两边的 change、状态和目录。`comet resume-probe` 使用同一配置恢复正确的永久入口。
-- **Skill 平台** — Comet能够编写可复用 Skill 包，并通过 `/comet-any` 把它们整理成可分发 Bundle，你制作的Skill可以像如comet init一样一键分发到所有Coding平台。
+- **Skill 平台** — `/comet-any` 根据目标和真实 Skill 创建 Native 扩展、Classic 编排或独立 SDK 工作流，支持确认方案、本地完整包导出、项目级与用户级安装。详见 [创建与交付指南](docs/operations/SKILL-CREATION-ZH.md)。
 - **可复用的 Skill Runtime SDK** — `@rpamis/comet/runtime` 将 Skill/工具步骤、用户确认、结果验收和中断恢复编排成可持久化工作流；Native 和 Classic 是两个内置应用，新 change 默认使用 SDK Run，旧 change 沿用原 Runtime。Agent 平台继续提供模型、MCP、Hooks、Rules 与工具调用。详见 [Runtime SDK 指南](docs/architecture/runtime-sdk.zh.md)。
 - **Eval 平台**— Comet基于科学的Rubric、Pass@k、Pass^k评分评估你的Skill，让Skill演进是基于科学依据，而不是依靠感觉，支持接入LangSmith评估，让评估真实走进企业级生产环境。基于双Agent架构自动化在你的生产环境完成评估工作
 
@@ -88,7 +88,7 @@ https://github.com/user-attachments/assets/41428669-a49a-46e3-a0ae-0775e4f4bb6f
 使用Comet你只需要记忆2个Skill和1条命令，用极低的使用门槛覆盖Coding、创建与评估
 
 - **用 `/comet` 进入项目配置的 Native 或 Classic 工作流**
-- **用`/comet-any`组合任意Skill**
+- **用 `/comet-any` 创建工作流应用**
 - **用comet eval评估任意Skill**
 
 ## Comet 0.4.0 基线对比
@@ -121,7 +121,7 @@ Comet的许多能力都能够在海内外大厂实践中找到相似之处，想
 - **如何做跨平台 Skill 分发和安装** — Comet 支持多种 AI 编码平台、项目级/全局安装、中文/英文 Skill 选择，以及平台差异化目录（例如 Antigravity 的项目级和全局路径不同），可以作为 CLI 安装器和 Skill 打包结构的参考。
 - **如何把脚本写成 Agent 工作流基础设施** — Comet 的脚本处理 hash、YAML 字段、状态机和归档流程。它展示了如何把原本容易写散在 Prompt 里的流程控制，沉淀成可测试、可复用的工具。
 - **如何基于科学的评估驱动演进Skill**— Comet Eval支持Rubric结构化评分，并支持Pass@k、Pass^k指标，用最科学的方式演进Skill，而不是靠人工感觉和评估，支持Local和Langsmith评估，让Eval真正走进企业生产环境
-- **如何智能的创建Comet一样的Skill**— /comet-any支持组合任意Skill，你只需要告诉Agent你的Skill偏好，其余所有稳定性相关的hook，rule，脚本，Skill引用文件全程都由Agent搞定，帮助你创建出Comet一样好用的Skill
+- **如何创建可恢复的工作流应用** — `/comet-any` 调查真实 Skill、固定依赖与执行契约，用户确认后编译应用，分别记录本地检查与真实宿主验收范围。
 
 ## 安装
 

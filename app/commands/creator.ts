@@ -6,9 +6,13 @@ import {
   listCreatorRuns,
 } from '../../domains/workflow-creation/index.js';
 import type { WorkflowRuntime } from '../../domains/engine/runtime.js';
-import { bundleCandidatesCommand, type BundleCommandOptions } from './bundle.js';
+import { discoverBundleCandidates } from '../../domains/bundle/candidates.js';
+import { readSkillPreferences } from '../../domains/bundle/preferences.js';
 
-export type CreatorCommandOptions = BundleCommandOptions;
+export interface CreatorCommandOptions {
+  project?: string;
+  json?: boolean;
+}
 
 function projectRoot(options: CreatorCommandOptions): string {
   return path.resolve(options.project ?? '.');
@@ -119,47 +123,12 @@ export async function creatorDispatchCommand(
 }
 
 export async function creatorCandidatesCommand(options: CreatorCommandOptions = {}): Promise<void> {
-  await bundleCandidatesCommand(options);
-}
-
-export async function creatorProposeCommand(
-  name: string,
-  _options: CreatorCommandOptions = {},
-): Promise<void> {
-  throw new Error('旧创作格式不再推进；保留用户文件，使用 comet creator start 重新生成SDK应用');
-}
-
-export async function creatorInitCommand(
-  name: string,
-  _options: CreatorCommandOptions = {},
-): Promise<void> {
-  throw new Error('旧创作格式不再推进；保留用户文件，使用 comet creator start 重新生成SDK应用');
-}
-
-export async function creatorResolveCommand(
-  name: string,
-  _options: CreatorCommandOptions = {},
-): Promise<void> {
-  throw new Error('旧创作格式不再推进；保留用户文件，使用 comet creator start 重新生成SDK应用');
-}
-
-export async function creatorAuthoringPlanCommand(
-  name: string,
-  _options: CreatorCommandOptions = {},
-): Promise<void> {
-  throw new Error('旧创作格式不再推进；保留用户文件，使用 comet creator start 重新生成SDK应用');
-}
-
-export async function creatorAuthoringRecordCommand(
-  name: string,
-  _options: CreatorCommandOptions = {},
-): Promise<void> {
-  throw new Error('旧创作格式不再推进；保留用户文件，使用 comet creator start 重新生成SDK应用');
-}
-
-export async function creatorGenerateCommand(
-  name: string,
-  _options: CreatorCommandOptions = {},
-): Promise<void> {
-  throw new Error('旧创作格式不再推进；保留用户文件，使用 comet creator start 重新生成SDK应用');
+  const root = projectRoot(options);
+  const preferences = await readSkillPreferences(root);
+  const candidates = await discoverBundleCandidates({ projectRoot: root, preferences });
+  console.log(
+    options.json
+      ? JSON.stringify({ candidates }, null, 2)
+      : candidates.map((candidate) => `${candidate.name}: ${candidate.status}`).join('\n'),
+  );
 }

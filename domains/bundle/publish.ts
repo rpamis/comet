@@ -3,8 +3,6 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { compileBundleIr } from './compiler.js';
-import { validateStableFactoryControlPlane } from './eval.js';
-import { assertFactoryProposalConfirmed } from './factory.js';
 import { hashBundle } from './hash.js';
 import { loadBundle } from './load.js';
 import { compileBundleForPlatform } from './platform.js';
@@ -36,7 +34,6 @@ export async function reviewBundle(options: {
   reviewer: string;
 }): Promise<BundleAuthoringState> {
   const state = await reconcileBundleAuthoringState(options.projectRoot, options.name);
-  assertFactoryProposalConfirmed(state);
   if (
     state.status !== 'eval-passed' ||
     !state.eval?.passed ||
@@ -69,15 +66,7 @@ export async function publishBundle(options: {
   referencePlatform: string;
 }): Promise<BundleAuthoringState> {
   const state = await reconcileBundleAuthoringState(options.projectRoot, options.name);
-  if (state.factory && !state.factory.generatedSkillPackage) {
-    throw new Error('Factory publish requires generated Skill package evidence');
-  }
-  assertFactoryProposalConfirmed(state);
   const bundle = await loadBundle(state.draftPath);
-  const controlPlane = await validateStableFactoryControlPlane(state);
-  if (!controlPlane.passed) {
-    throw new Error(`Bundle control plane is incomplete: ${controlPlane.errors.join(', ')}`);
-  }
   await assertValidBundle(bundle);
   const currentHash = await hashBundle(bundle);
   if (currentHash !== state.currentHash) {

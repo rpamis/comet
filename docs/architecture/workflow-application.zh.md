@@ -12,6 +12,8 @@
 
 工厂收到 `manifest`、实际读取的 `skills`、`projectRoot`、`packageRoot`、`identity` 和 `createSkillExecutor(host)`，返回 SDK `workflows`、纯转移处理器、验证器与执行器。不能只改变图而遗漏对应实现。`inspectHook(run, request)` 读取相同 SDK Run；缺少 Guard 时当前应用的写入被阻塞。
 
+编译的 Standalone 应用可从固定 `bindings.mjs` 的 `createBindings(context)` 返回 `inspectHook` 函数，与 `executors`、`validators` 一起绑定到应用。它只能检查当前真实 Run 与声明的资源范围，不获得审批权，也不能用无条件放行代替 Guard。函数源码随包固定；SDK 检查端口类型，不提供适配代码沙箱。Native/Classic 的绑定仍只允许执行器与验证器，不能覆盖原领域 Guard。显式提供 Guard 的 Standalone 在结束后仍检查受保护资源；没有 Guard 的旧活动应用保持拒绝写入。
+
 所有包文件、Skill 文件、引用资源、适配契约和实现绑定都进入内容摘要。活动 Run 保存应用身份、项目实际路径、包实际路径和摘要。每次读取与原子提交都重新核对当前文件，持续进程也不能沿用加载时的旧摘要。相同版本的内容变化会拒绝继续；恢复原文件后继续原 Run。不同项目和 linked worktree 使用各自的项目路径与 Store；不会沿 Git 主仓库路径合并同名 Run。
 
 应用归属和 SDK Run 保存在 `.comet/runtime/applications/<id>` 的同一原子版本记录中。归属不负责业务转移。领域工厂可返回 `wrapStore(store, identity)`，包裹此 Store 来维护 `comet-state.yaml`、`.comet.yaml` 等领域投影和恢复事实；必须保留原 SDK Run 的比较与交换语义，不能用投影替代 Run。Native、Classic 的候选、授权、独立验收、Supervisor 与 Archive 规则仍归各自领域模块。

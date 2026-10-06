@@ -35,74 +35,6 @@ function hydrateProjectPath(projectRoot: string, value: string): string {
   return path.resolve(projectRoot, ...value.slice(2).split(/[\\/]/u));
 }
 
-function mapNullableProjectPath(
-  value: string | null,
-  transform: (value: string) => string,
-): string | null {
-  return value === null ? null : transform(value);
-}
-
-function mapFactoryProjectPaths(
-  state: BundleAuthoringState['factory'],
-  transform: (value: string) => string,
-): BundleAuthoringState['factory'] {
-  if (!state) return state;
-  const generated = state.generatedSkillPackage;
-  return {
-    ...state,
-    ...(state.resolvedSkills === undefined
-      ? {}
-      : {
-          resolvedSkills: state.resolvedSkills.map((skill) => ({
-            ...skill,
-            sources: skill.sources.map((source) => ({
-              ...source,
-              root: transform(source.root),
-            })),
-          })),
-        }),
-    ...(state.preferencePath === undefined
-      ? {}
-      : { preferencePath: transform(state.preferencePath) }),
-    ...(state.planPath === undefined ? {} : { planPath: transform(state.planPath) }),
-    ...(generated === undefined
-      ? {}
-      : {
-          generatedSkillPackage: {
-            ...generated,
-            packageRoot: transform(generated.packageRoot),
-            enginePath: mapNullableProjectPath(generated.enginePath, transform),
-            evalManifestPath: mapNullableProjectPath(generated.evalManifestPath, transform),
-            ...(generated.controlPlane === undefined
-              ? {}
-              : {
-                  controlPlane: {
-                    ...generated.controlPlane,
-                    checksPath: mapNullableProjectPath(
-                      generated.controlPlane.checksPath,
-                      transform,
-                    ),
-                    evalManifestPath: mapNullableProjectPath(
-                      generated.controlPlane.evalManifestPath,
-                      transform,
-                    ),
-                    compositionReportPath: transform(generated.controlPlane.compositionReportPath),
-                    scripts: generated.controlPlane.scripts.map(transform),
-                  },
-                }),
-            ...(generated.platformAgents === undefined
-              ? {}
-              : {
-                  platformAgents: generated.platformAgents.map((agent) => ({
-                    ...agent,
-                    path: transform(agent.path),
-                  })),
-                }),
-          },
-        }),
-  };
-}
-
 function mapProjectPaths(
   state: BundleAuthoringState,
   transform: (value: string) => string,
@@ -138,9 +70,6 @@ function mapProjectPaths(
             path: transform(state.ready.path),
           },
         }),
-    ...(state.factory === undefined
-      ? {}
-      : { factory: mapFactoryProjectPaths(state.factory, transform) }),
   };
 }
 
@@ -161,6 +90,11 @@ function hydrateProjectPaths(
 function assertState(value: unknown, file: string): asserts value is BundleAuthoringState {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Invalid Bundle authoring state at ${file}: document must be an object`);
+  }
+  if (Object.hasOwn(value, 'factory')) {
+    throw new Error(
+      `旧创作格式不再推进：${file}；保留用户文件，使用 comet creator start 重新生成 SDK 应用`,
+    );
   }
   const state = value as Partial<BundleAuthoringState>;
   if (state.schemaVersion !== 1 || typeof state.name !== 'string') {
@@ -248,6 +182,7 @@ export async function writeBundleAuthoringState(
   state: BundleAuthoringState,
 ): Promise<void> {
   const file = statePath(projectRoot, state.name);
+  assertState(state, file);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temporary = path.join(path.dirname(file), `.${state.name}.${randomUUID()}.tmp`);
   try {

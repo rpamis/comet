@@ -35,6 +35,28 @@
 
 定制 Classic 使用 `comet runtime dispatch --application <应用身份>` 或 `--application-file <application.json>` 继续同一 Run。基础 Classic state/guard/Archive 命令会明确拒绝替代组合应用推进。`.comet.yaml` 保存可读投影、原 Application 身份及完整 portable checkpoint；本地运行记录丢失后，恢复必须加载原固定应用包，不能改用内置 Classic。
 
+## 领域机器步骤
+
+公开组合工厂默认注册 `comet-classic-check`、`comet-classic-archive-preflight` 和 `comet-classic-archive`。宿主对当前 `call_tool` Action 使用公开 Runtime `execute`，由这些端口执行真实检查、重验当前交付批准并归档文件；不要自行填入成功 Outcome，也不要用基础 CLI 替换组合应用的 Owner。
+
+创建 Run 时，在 `input.checkCommands` 固定 Build 和 Verify 各自的字面量命令：
+
+```js
+input: {
+  change: name,
+  changeDir: `docs/openspec/changes/${name}`,
+  workspaceRoot: projectRoot,
+  checkCommands: {
+    build: { argv: ['node', 'check-source.mjs'], cwd: '.', timeoutMs: 30000 },
+    verify: { argv: ['node', 'check-source.mjs'], cwd: '.', timeoutMs: 30000 },
+  },
+}
+```
+
+命令必须实际覆盖当前验收；可以使用同一脚本，但两个阶段分别执行并绑定各自候选。`argv` 是非空字符串数组，`cwd` 默认 `.` 且实际路径必须在项目内，`timeoutMs` 默认 300000，范围为 1 至 3600000。计划进入当前 Action 的 `inputHash`；缺失、非法或不匹配时在领取前拒绝，保留 pending。Run input 不提供无保护修改入口；Build 修复可调整脚本内容，后续检查重新读取实际输入并生成当轮收据。
+
+检查保留原 Classic 的输入清单、环境摘要、日志、manifest、checkEpoch 和候选新鲜性核对；命令失败、超时或输入变化不能生成成功证据。Archive preflight/execute 重验当前 Wait 批准、分支/HEAD 和 Verify 收据，只执行真实文件归档。Git 提交、推送和 PR 仍属于后续当前交付授权。内置 Classic CLI 的显式检查参数和既有生命周期保持原路径。
+
 ## 验证边界
 
 开发期回归覆盖真实临时项目中的 full、hotfix、tweak 领域检查、实际 OpenSpec Archive、本地交付提交、失败修复、工件变化和公开 CLI 跨进程恢复。真实平台 Hook、Claude Code 模型执行、正式 12 样本矩阵及安装分发由生产验收单独完成，不能用这些开发测试宣称其已通过。

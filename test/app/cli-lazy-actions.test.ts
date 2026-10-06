@@ -46,12 +46,9 @@ const creatorGuideCommand = vi.fn(async () => undefined);
 const creatorStartCommand = vi.fn(async () => undefined);
 const creatorDispatchCommand = vi.fn(async () => undefined);
 const creatorCandidatesCommand = vi.fn(async () => undefined);
-const creatorProposeCommand = vi.fn(async () => undefined);
-const creatorInitCommand = vi.fn(async () => undefined);
-const creatorResolveCommand = vi.fn(async () => undefined);
-const creatorAuthoringPlanCommand = vi.fn(async () => undefined);
-const creatorAuthoringRecordCommand = vi.fn(async () => undefined);
-const creatorGenerateCommand = vi.fn(async () => undefined);
+const applicationInstallCommand = vi.fn(async () => undefined);
+const applicationExportCommand = vi.fn(async () => undefined);
+const applicationUninstallCommand = vi.fn(async () => undefined);
 const publishReviewCommand = vi.fn(async () => undefined);
 const publishApproveCommand = vi.fn(async () => undefined);
 const publishRunCommand = vi.fn(async () => undefined);
@@ -118,12 +115,6 @@ vi.mock('../../app/commands/creator.js', () => ({
   creatorNextCommand,
   creatorGuideCommand,
   creatorCandidatesCommand,
-  creatorProposeCommand,
-  creatorInitCommand,
-  creatorResolveCommand,
-  creatorAuthoringPlanCommand,
-  creatorAuthoringRecordCommand,
-  creatorGenerateCommand,
 }));
 vi.mock('../../app/commands/publish.js', () => ({
   publishReviewCommand,
@@ -144,6 +135,12 @@ vi.mock('../../app/commands/bundle.js', () => ({
 }));
 
 const originalArgv = process.argv;
+
+vi.mock('../../app/commands/application.js', () => ({
+  applicationInstallCommand,
+  applicationExportCommand,
+  applicationUninstallCommand,
+}));
 const cliPath = path.join(path.resolve('.'), 'bin', 'comet.js');
 
 async function runAction(args: string[], command: { mock: { calls: unknown[][] } }): Promise<void> {
@@ -160,6 +157,69 @@ describe('CLI lazy command actions', () => {
     process.exitCode = undefined;
     vi.clearAllMocks();
     vi.resetModules();
+  });
+
+  it('dispatches application previews, explicit confirmations, and export with their scopes', async () => {
+    await runAction(
+      [
+        'application',
+        'install',
+        'application.json',
+        '--scope',
+        'user',
+        '--user-root',
+        'user-apps',
+        '--host',
+        'codex',
+        '--upgrade',
+        '--json',
+      ],
+      applicationInstallCommand,
+    );
+    expect(applicationInstallCommand).toHaveBeenCalledWith(
+      'application.json',
+      expect.objectContaining({
+        scope: 'user',
+        userRoot: 'user-apps',
+        host: 'codex',
+        upgrade: true,
+        json: true,
+      }),
+    );
+    expect(applicationInstallCommand.mock.calls[0][1]).not.toHaveProperty('confirmationHash');
+    await runAction(
+      ['application', 'export', 'application.json', 'exported', '--project', 'project', '--json'],
+      applicationExportCommand,
+    );
+    expect(applicationExportCommand).toHaveBeenCalledWith(
+      'application.json',
+      'exported',
+      expect.objectContaining({ project: 'project', json: true }),
+    );
+    await runAction(
+      [
+        'application',
+        'uninstall',
+        'weekly-report',
+        '--scope',
+        'user',
+        '--user-root',
+        'user-apps',
+        '--confirmation-hash',
+        'current-preview',
+        '--json',
+      ],
+      applicationUninstallCommand,
+    );
+    expect(applicationUninstallCommand).toHaveBeenCalledWith(
+      'weekly-report',
+      expect.objectContaining({
+        scope: 'user',
+        userRoot: 'user-apps',
+        confirmationHash: 'current-preview',
+        json: true,
+      }),
+    );
   });
 
   it('dispatches SDK Creator start and current action requests with their required inputs', async () => {
@@ -294,21 +354,6 @@ describe('CLI lazy command actions', () => {
     await runAction(['creator', 'next', 'example'], creatorNextCommand);
     await runAction(['creator', 'guide'], creatorGuideCommand);
     await runAction(['creator', 'candidates'], creatorCandidatesCommand);
-    await runAction(
-      ['creator', 'propose', 'example', '--file', 'plan.json'],
-      creatorProposeCommand,
-    );
-    await runAction(['creator', 'init', 'example', '--file', 'plan.json'], creatorInitCommand);
-    await runAction(
-      ['creator', 'resolve', 'example', '--candidate', 'source'],
-      creatorResolveCommand,
-    );
-    await runAction(['creator', 'authoring-plan', 'example'], creatorAuthoringPlanCommand);
-    await runAction(
-      ['creator', 'authoring-record', 'example', '--lane', 'lane', '--file', 'result.json'],
-      creatorAuthoringRecordCommand,
-    );
-    await runAction(['creator', 'generate', 'example'], creatorGenerateCommand);
     await runAction(['publish', 'review', 'example', '--platform', 'codex'], publishReviewCommand);
     await runAction(
       ['publish', 'approve', 'example', '--reviewer', 'reviewer'],

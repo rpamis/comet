@@ -394,7 +394,10 @@ export async function inspectCometHook(
           reason: '应用选择与 SDK Run 由公开 Runtime 入口维护',
           ...identity,
         };
-      if (['completed', 'cancelled'].includes(run.status))
+      if (
+        ['completed', 'cancelled'].includes(run.status) &&
+        !(application.manifest.base === 'standalone' && application.implementation.inspectHook)
+      )
         return { allowed: true, reason: '当前应用运行已结束', ...identity };
       if (!application.implementation.inspectHook)
         return {

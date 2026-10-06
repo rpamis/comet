@@ -166,15 +166,7 @@
     "allowedDomainDependencies": [
       {
         "from": "bundle",
-        "to": "factory"
-      },
-      {
-        "from": "bundle",
         "to": "skill"
-      },
-      {
-        "from": "bundle",
-        "to": "workflow-contract"
       },
       {
         "from": "comet-classic",
@@ -319,14 +311,6 @@
       {
         "from": "eval",
         "to": "project-knowledge"
-      },
-      {
-        "from": "factory",
-        "to": "bundle"
-      },
-      {
-        "from": "factory",
-        "to": "workflow-contract"
       },
       {
         "from": "integrations",
@@ -407,11 +391,18 @@
       {
         "to": "workflow-application",
         "from": "workflow-creation"
+      },
+      {
+        "from": "workflow-generation",
+        "to": "comet-native"
+      },
+      {
+        "from": "workflow-generation",
+        "to": "comet-classic"
       }
     ],
     "crossDomainEntrypoints": [
       "domains/agent-learning/index.ts",
-      "domains/bundle/types.ts",
       "domains/comet-classic/classic-command-checks.ts",
       "domains/comet-classic/classic-current-change.ts",
       "domains/comet-classic/classic-diagnostics.ts",
@@ -459,7 +450,6 @@
       "domains/engine/storage-layout.ts",
       "domains/engine/storage-run.ts",
       "domains/engine/types.ts",
-      "domains/factory/package.ts",
       "domains/integrations/openspec.ts",
       "domains/integrations/superpowers.ts",
       "domains/project-knowledge/capability-discovery.ts",
@@ -470,7 +460,6 @@
       "domains/project-knowledge/types.ts",
       "domains/skill/dsh-adapter.ts",
       "domains/skill/find.ts",
-      "domains/skill/inventory.ts",
       "domains/skill/load.ts",
       "domains/skill/platform-install.ts",
       "domains/skill/preferences.ts",
@@ -478,7 +467,6 @@
       "domains/skill/snapshot.ts",
       "domains/skill/types.ts",
       "domains/skill/validate.ts",
-      "domains/workflow-contract/builtins.ts",
       "domains/workflow-contract/change-runtime-owner.ts",
       "domains/workflow-contract/contained-atomic-write.ts",
       "domains/workflow-contract/current-selection.ts",
@@ -498,7 +486,9 @@
       "domains/workflow-application/index.ts",
       "domains/workflow-application/application.ts",
       "domains/workflow-application/skill-adapter.ts",
-      "domains/workflow-generation/index.ts"
+      "domains/workflow-generation/index.ts",
+      "domains/comet-native/native-application.ts",
+      "domains/comet-classic/classic-sdk-application.ts"
     ],
     "restrictedDependencies": [
       {
@@ -554,7 +544,6 @@
     "dashboard",
     "engine",
     "eval",
-    "factory",
     "integrations",
     "project-knowledge",
     "skill",

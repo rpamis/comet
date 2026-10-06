@@ -152,23 +152,4 @@ describe('comet-any skill contract', () => {
       expect(skill).toContain('confirm-install');
     }
   });
-  it('generator source emits honest review evidence, not a fabricated approval', async () => {
-    const packageSource = await readText('domains/factory/package.ts');
-    expect(packageSource, 'generator must not fabricate review approval').not.toContain(
-      'approved by deterministic workflow contract checks',
-    );
-    expect(packageSource, 'generator must mark honest evidence source').toContain(
-      'deterministic-check-only',
-    );
-    for (const script of [
-      'scripts/comet-plan.mjs',
-      'scripts/comet-check.mjs',
-      'scripts/comet-hook-guard.mjs',
-      'scripts/workflow-state.mjs',
-      'scripts/workflow-guard.mjs',
-      'scripts/workflow-handoff.mjs',
-    ]) {
-      expect(packageSource, `generator missing ${script}`).toContain(script);
-    }
-  });
 });

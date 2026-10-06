@@ -50,7 +50,7 @@ jobs:
                 { label: 'area:platform', pattern: /Platform adapter|installer/i },
                 { label: 'area:skills', pattern: /Skill domain|Bundled skills|assets/i },
                 { label: 'area:workflow', pattern: /Workflow contract/i },
-                { label: 'area:core', pattern: /Bundle authoring|Engine|Factory|Integrations/i },
+                { label: 'area:core', pattern: /Bundle authoring|Engine|Integrations/i },
                 { label: 'area:eval', pattern: /Eval/i },
                 { label: 'area:docs', pattern: /Documentation/i },
                 {

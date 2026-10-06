@@ -2,11 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { samePath } from '../../platform/paths/git-worktree.js';
 import { parseDocument } from 'yaml';
 import {
   readPortableRunCheckpoint,
   type WorkflowRun,
   type WorkflowRuntime,
+  type RuntimeAction,
+  type RuntimeExecutor,
+  type RuntimeOutcome,
 } from '../engine/runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
@@ -64,26 +68,23 @@ async function annotateIfPresent(
   );
 }
 
-/** Execute only the filesystem Archive action. Commit/push/PR remain a later SDK delivery Action. */
-export async function executeClassicSdkArchive(
-  runtime: Pick<WorkflowRuntime, 'inspect' | 'claim' | 'recordOutcome' | 'markUnknown'>,
-  input: ClassicSdkArchiveInput,
-): Promise<WorkflowRun> {
-  const projectRoot = path.resolve(input.projectRoot);
-  const run = await runtime.inspect(input.runId);
-  const profile = (run.state as ClassicState | undefined)?.workflow;
-  const action = run.actions
-    .slice()
-    .reverse()
-    .find(
-      (candidate) =>
-        candidate.stepId === `${profile}.archive.execute` && candidate.status === 'pending',
-    );
+async function classicArchiveContext(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+) {
+  const profile = (run.state as unknown as ClassicState).workflow;
   const preflight = run.actions
     .slice()
     .reverse()
     .find((candidate) => candidate.stepId === `${profile}.archive.preflight`);
-  if (!action || preflight?.status !== 'succeeded') {
+  if (
+    action.runId !== run.runId ||
+    action.stepId !== `${profile}.archive.execute` ||
+    action.type !== 'call_tool' ||
+    action.ref !== 'classic-archive' ||
+    preflight?.status !== 'succeeded'
+  ) {
     throw new Error('Classic SDK Run has no preflighted Archive Action');
   }
   const approved = await assertClassicSdkArchiveReady(run, projectRoot);
@@ -126,8 +127,102 @@ export async function executeClassicSdkArchive(
     throw new Error('Classic Archive active change differs from the SDK Run');
   }
   const before = await archiveEntries(layout.archiveDir, runInput.change);
-  const token = randomUUID();
-  const requestId = randomUUID();
+
+  return {
+    active,
+    runInput: { change: runInput.change, changeDir: runInput.changeDir },
+    layout,
+    before,
+  };
+}
+export async function runClassicSdkArchive(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  projectRoot: string,
+): Promise<Pick<RuntimeOutcome, 'status' | 'output'>> {
+  const { active, runInput, layout, before } = await classicArchiveContext(
+    run,
+    action,
+    projectRoot,
+  );
+  await recordClassicArchiveRequirements(projectRoot, active.target);
+  const result = await executeClassicOpenSpec(['archive', runInput.change, '--yes'], projectRoot);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr ?? `OpenSpec Archive exited with code ${result.exitCode}`);
+  }
+  const after = await archiveEntries(layout.archiveDir, runInput.change);
+  const created = [...after].filter((name) => !before.has(name));
+  if (created.length !== 1) {
+    throw new Error('OpenSpec Archive did not produce one unambiguous archived change');
+  }
+  const archiveName = created[0];
+  const archiveDirectory = path.join(layout.archiveDir, archiveName);
+  const archived = await inspectProtectedProjectPath(
+    projectRoot,
+    path.relative(projectRoot, archiveDirectory).replaceAll('\\', '/'),
+    {
+      label: 'Classic archived change',
+      expected: 'directory',
+    },
+  );
+  const remaining = await inspectProtectedProjectPath(projectRoot, runInput.changeDir, {
+    label: 'Classic active change',
+    expected: 'directory',
+  });
+  if (!archived.exists || remaining.exists) {
+    throw new Error('OpenSpec Archive left the change in an inconsistent location');
+  }
+  const problems = await classicArchivedRequirementsProblems(projectRoot, archived.target);
+  if (problems.length) throw new Error(problems.join('\n'));
+  const state = run.state as unknown as ClassicState;
+  await annotateIfPresent(projectRoot, state.designDoc, archiveName, 'status: final');
+  await annotateIfPresent(projectRoot, state.plan, archiveName, '');
+
+  return {
+    status: 'succeeded',
+    output: { archiveDirectory: path.relative(projectRoot, archived.target).replaceAll('\\', '/') },
+  };
+}
+export function createClassicSdkArchiveExecutor(projectRoot: string): RuntimeExecutor {
+  const bound = (context: { projectRoot?: string } | undefined) => {
+    if (!context?.projectRoot || !samePath(context.projectRoot, projectRoot))
+      throw new Error('Classic Archive requires its bound project');
+  };
+  return {
+    id: 'comet-classic-archive',
+    capabilities: [],
+    supports: (action) => action.type === 'call_tool' && action.ref === 'classic-archive',
+    async preflight(action, context, run) {
+      bound(context);
+      if (!run) throw new Error('Classic Archive requires a Run');
+      await classicArchiveContext(run, action, projectRoot);
+    },
+    async execute(action, context, run) {
+      bound(context);
+      if (!run) throw new Error('Classic Archive requires a Run');
+      return runClassicSdkArchive(run, action, projectRoot);
+    },
+  };
+}
+/** 文件副作用与 Runtime 领取/回传分开，旧 CLI 的恢复行为保持原样。 */
+export async function executeClassicSdkArchive(
+  runtime: Pick<WorkflowRuntime, 'inspect' | 'claim' | 'recordOutcome' | 'markUnknown'>,
+  input: ClassicSdkArchiveInput,
+): Promise<WorkflowRun> {
+  const projectRoot = path.resolve(input.projectRoot),
+    run = await runtime.inspect(input.runId),
+    profile = (run.state as unknown as ClassicState).workflow;
+  const action = run.actions
+    .slice()
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.stepId === profile + '.archive.execute' && candidate.status === 'pending',
+    );
+  if (!action) throw new Error('Classic SDK Run has no preflighted Archive Action');
+  await classicArchiveContext(run, action, projectRoot);
+  const token = randomUUID(),
+    requestId = randomUUID();
   await runtime.claim({
     runId: run.runId,
     actionId: action.id,
@@ -139,38 +234,9 @@ export async function executeClassicSdkArchive(
     context: { requestId, projectRoot },
   });
   try {
-    await recordClassicArchiveRequirements(projectRoot, active.target);
-    const result = await executeClassicOpenSpec(['archive', runInput.change, '--yes'], projectRoot);
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr ?? `OpenSpec Archive exited with code ${result.exitCode}`);
-    }
-    const after = await archiveEntries(layout.archiveDir, runInput.change);
-    const created = [...after].filter((name) => !before.has(name));
-    if (created.length !== 1) {
-      throw new Error('OpenSpec Archive did not produce one unambiguous archived change');
-    }
-    const archiveName = created[0];
-    const archiveDirectory = path.join(layout.archiveDir, archiveName);
-    const archived = await inspectProtectedProjectPath(
-      projectRoot,
-      path.relative(projectRoot, archiveDirectory).replaceAll('\\', '/'),
-      {
-        label: 'Classic archived change',
-        expected: 'directory',
-      },
-    );
-    const remaining = await inspectProtectedProjectPath(projectRoot, runInput.changeDir, {
-      label: 'Classic active change',
-      expected: 'directory',
-    });
-    if (!archived.exists || remaining.exists) {
-      throw new Error('OpenSpec Archive left the change in an inconsistent location');
-    }
-    const problems = await classicArchivedRequirementsProblems(projectRoot, archived.target);
-    if (problems.length) throw new Error(problems.join('\n'));
-    const state = run.state as unknown as ClassicState;
-    await annotateIfPresent(projectRoot, state.designDoc, archiveName, 'status: final');
-    await annotateIfPresent(projectRoot, state.plan, archiveName, '');
+    const claimed = await runtime.inspect(run.runId);
+    const claimedAction = claimed.actions.find((entry) => entry.id === action.id)!;
+    const result = await runClassicSdkArchive(claimed, claimedAction, projectRoot);
     return await runtime.recordOutcome({
       runId: run.runId,
       context: { requestId, projectRoot },
@@ -180,27 +246,22 @@ export async function executeClassicSdkArchive(
         inputHash: action.inputHash,
         claimToken: token,
         outcomeId: randomUUID(),
-        status: 'succeeded',
-        output: {
-          archiveDirectory: path.relative(projectRoot, archived.target).replaceAll('\\', '/'),
-        },
+        ...result,
       },
     });
   } catch (error) {
     const current = await runtime.inspect(run.runId);
     const latest = current.actions.find((candidate) => candidate.id === action.id);
-    if (latest?.status === 'running' && latest.attempt === action.attempt) {
+    if (latest?.status === 'running' && latest.attempt === action.attempt)
       await runtime.markUnknown({
         runId: run.runId,
         actionId: action.id,
         attempt: action.attempt,
         reason: error instanceof Error ? error.message : String(error),
       });
-    }
     throw error;
   }
 }
-
 /** Reconcile a moved Archive only when its portable checkpoint binds the original claim. */
 export async function recoverClassicSdkArchive(
   runtime: Pick<WorkflowRuntime, 'inspect' | 'recordOutcome'>,

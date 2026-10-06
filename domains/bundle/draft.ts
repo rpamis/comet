@@ -5,7 +5,7 @@ import type { BundleCandidateSource } from './candidates.js';
 import { hashBundle } from './hash.js';
 import { loadBundle } from './load.js';
 import { writeBundleAuthoringState } from './state.js';
-import type { BundleAuthoringState, BundleFactoryMetadata } from './types.js';
+import type { BundleAuthoringState } from './types.js';
 
 interface BundleDraftChoices {
   projectRoot: string;
@@ -14,7 +14,6 @@ interface BundleDraftChoices {
   defaultLocale: string;
   locales: string[];
   engineEnabled: boolean;
-  factory?: BundleFactoryMetadata;
 }
 
 export type CreateBundleDraftOptions = BundleDraftChoices;
@@ -60,7 +59,6 @@ function baseState(
     defaultLocale: options.defaultLocale,
     locales: [...options.locales],
     engineEnabled: options.engineEnabled,
-    ...(options.factory ? { factory: structuredClone(options.factory) } : {}),
   };
 }
 

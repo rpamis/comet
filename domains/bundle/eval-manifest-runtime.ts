@@ -57,15 +57,9 @@ async function findRepositoryEvalContext(
     try {
       await fs.access(stateFile);
       const state = await readBundleAuthoringState(directory, name);
-      const generated = state.factory?.generatedSkillPackage;
-      const generatedManifest =
-        generated?.evalManifestPath ?? generated?.controlPlane?.evalManifestPath;
       if (
         state.currentHash === draftHash &&
-        path.resolve(state.draftPath) === path.resolve(bundleRoot) &&
-        generatedManifest !== null &&
-        generatedManifest !== undefined &&
-        path.resolve(generatedManifest) === manifestPath
+        path.resolve(state.draftPath) === path.resolve(bundleRoot)
       ) {
         return {
           projectRoot: directory,

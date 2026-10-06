@@ -10,6 +10,11 @@ describe('dashboard demo data', () => {
     expect(source).toContain("currentStep: 'needs-eval'");
     expect(source).not.toContain('Benchmark result attached');
     expect(source).not.toContain("currentStep: 'needs-benchmark'");
+    expect(source).toContain("'application.json'");
+    expect(source).toContain("'installation.json'");
+    expect(source).not.toContain('workflow-protocol.json');
+    expect(source).not.toContain('authoring-lanes.json');
+    expect(source).not.toContain("skill: 'skill-creator'");
   });
 
   it('includes representative Native workflow projections', async () => {

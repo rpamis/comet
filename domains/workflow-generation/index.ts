@@ -11,3 +11,4 @@ export type {
   ApplicationExtensionPlan,
   CompileWorkflowApplicationOptions,
 } from './compiler.js';
+export { prepareWorkflowApplicationExample } from './examples.js';

@@ -26,6 +26,12 @@ import { validateClassicSdkDesignContext } from './classic-handoff.js';
 import { applyClassicTransition } from './classic-transitions.js';
 import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
 import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
+import {
+  createClassicSdkCheckExecutor,
+  assertClassicSdkCheckCommandBinding,
+} from './classic-sdk-check.js';
+import { createClassicSdkArchivePreflightExecutor } from './classic-sdk-archive-preflight.js';
+import { createClassicSdkArchiveExecutor } from './classic-sdk-archive.js';
 import { type ClassicProfile, type ClassicState } from './classic-state.js';
 
 export { parseClassicStateDocument } from './classic-state.js';
@@ -556,6 +562,9 @@ export function createClassicApplication(
     commandValidators: [commandValidator],
     executors: [
       ...base.executors,
+      createClassicSdkCheckExecutor(context.projectRoot),
+      createClassicSdkArchivePreflightExecutor(context.projectRoot),
+      createClassicSdkArchiveExecutor(context.projectRoot),
       {
         id: 'comet-classic-composition-recovery',
         capabilities: [],
@@ -582,6 +591,21 @@ export function createClassicApplication(
     ],
     async validateOutcome(input) {
       if (input.outcome.status === 'failed') return { accepted: true };
+      if (input.action.ref === 'classic-check' && input.outcome.output !== null) {
+        try {
+          await assertClassicSdkCheckCommandBinding(
+            input.run,
+            input.action,
+            context.projectRoot,
+            input.outcome.output as Record<string, unknown>,
+          );
+        } catch (error) {
+          return {
+            accepted: false,
+            reason: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
       if (
         ['classic.composition.repair', 'classic.composition.revise'].includes(input.action.stepId)
       )

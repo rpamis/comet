@@ -24,7 +24,6 @@ body:
         - Dashboard (`domains/dashboard`)
         - Engine (`domains/engine`)
         - Eval (`domains/eval`)
-        - Factory (`domains/factory`)
         - Integrations (`domains/integrations`)
         - Skill domain (`domains/skill`)
         - Workflow contract (`domains/workflow-contract`)

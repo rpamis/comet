@@ -11,7 +11,10 @@ import {
   type WorkflowRun,
 } from '../engine/runtime.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
-import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import {
+  inspectProtectedProjectPath,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import type {
   WorkflowApplicationFactoryContext,
   WorkflowApplicationImplementation,
@@ -96,6 +99,7 @@ function revisionCount(run: Readonly<WorkflowRun>): number {
 export function createReportApplication(
   context: Pick<WorkflowApplicationFactoryContext, 'projectRoot'> & {
     manifest: Pick<WorkflowApplicationFactoryContext['manifest'], 'id'>;
+    packageRoot?: WorkflowApplicationFactoryContext['packageRoot'];
   },
 ): WorkflowApplicationImplementation {
   const root = path.resolve(context.projectRoot);
@@ -235,6 +239,72 @@ export function createReportApplication(
     },
   });
   return {
+    async inspectHook(run, request) {
+      if (request.intent !== 'write')
+        return { allowed: true, reason: '此请求没有可归属的报告写入' };
+      try {
+        if (!request.targets.length) throw new Error('报告写入必须声明实际文件');
+        const terminal = ['completed', 'cancelled'].includes(run.status);
+        const contains = (directory: string, target: string) => {
+          const relative = path.relative(path.resolve(root, directory), path.resolve(root, target));
+          return (
+            !relative ||
+            (relative !== '..' &&
+              !relative.startsWith(`..${path.sep}`) &&
+              !path.isAbsolute(relative))
+          );
+        };
+        const packageRef = context.packageRoot
+          ? path.relative(root, path.resolve(context.packageRoot)).replaceAll('\\', '/')
+          : null;
+        for (const target of request.targets) {
+          const relative = path.relative(root, path.resolve(root, target)).replaceAll('\\', '/');
+          if (
+            !relative ||
+            relative === '..' ||
+            relative.startsWith('../') ||
+            path.isAbsolute(relative)
+          )
+            throw new Error('报告写入必须在当前项目内');
+          const inspected = await inspectProtectedProjectPath(root, relative, {
+            label: '报告写入',
+            expected: 'file',
+          });
+          if (terminal) {
+            if (
+              ['.comet', 'node_modules', '.claude/skills', '.agents/skills'].some((directory) =>
+                contains(directory, relative),
+              ) ||
+              (packageRef !== null && contains(packageRef, relative))
+            )
+              throw new Error('报告运行已结束；报告、固定包和 SDK 资源仍受保护');
+            continue;
+          }
+          const wait = [...run.waits].reverse().find((entry) => entry.status === 'pending');
+          if (
+            run.workflow.id !== 'report-publishing' ||
+            run.workflow.version !== '1' ||
+            !wait ||
+            !['approve', 'approve-revision'].includes(wait.stepId)
+          )
+            throw new Error('只有当前报告审批等待期间可以编辑草稿');
+          const artifact = currentReport(run);
+          if (artifact.ref !== draftRef(run) || relative !== artifact.ref || !inspected.exists)
+            throw new Error('只允许编辑当前 Run 的实际草稿');
+        }
+        return {
+          allowed: true,
+          reason: terminal
+            ? '写入不属于已结束报告或受保护资源'
+            : '当前草稿可修订；发布前仍须重新检查并确认当前提案',
+        };
+      } catch (error) {
+        return {
+          allowed: false,
+          reason: error instanceof Error ? error.message : '无法安全核对报告写入',
+        };
+      }
+    },
     workflows: [
       {
         id: 'report-publishing',

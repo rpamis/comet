@@ -50,6 +50,17 @@ export interface ApplicationArtifactValidatorOptions {
 export type ApplicationBase = 'standalone' | 'native' | 'classic-full' | 'classic-hotfix' | 'classic-tweak';
 
 // @public (undocumented)
+export interface ApplicationDeliveryOptions {
+    // (undocumented)
+    host?: 'codex' | 'claude-code';
+    // (undocumented)
+    projectRoot: string;
+    // (undocumented)
+    scope: 'project' | 'user';
+    userRoot?: string;
+}
+
+// @public (undocumented)
 export interface ApplicationIdentity {
     // (undocumented)
     base: ApplicationBase;
@@ -63,6 +74,49 @@ export interface ApplicationIdentity {
     projectRoot: string;
     // (undocumented)
     runtimeVersion: string;
+    // (undocumented)
+    version: string;
+}
+
+// @public (undocumented)
+export interface ApplicationInstallPreview {
+    // (undocumented)
+    confirmationHash: string;
+    // (undocumented)
+    contentHash: string;
+    // (undocumented)
+    dependencies: Array<{
+        id: string;
+        contentHash: string;
+    }>;
+    // (undocumented)
+    files: string[];
+    // (undocumented)
+    hostSkills: Array<{
+        name: string;
+        root: string;
+        contentHash: string;
+        kind: 'entry' | 'dependency';
+        operation: 'create' | 'replace' | 'unchanged';
+    }>;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    noFilesWritten: true;
+    // (undocumented)
+    operation: 'install' | 'upgrade' | 'unchanged';
+    // (undocumented)
+    previous: InstalledApplication | null;
+    // (undocumented)
+    retainedVersions: true;
+    // (undocumented)
+    schema: 'comet.workflow.application.preview.v1';
+    // (undocumented)
+    scope: 'project' | 'user';
+    // (undocumented)
+    source: string;
+    // (undocumented)
+    target: string;
     // (undocumented)
     version: string;
 }
@@ -135,10 +189,22 @@ export function createApplicationSkillExecutor(application: SkillExecutionApplic
 // @public
 export function createReportApplication(context: Pick<WorkflowApplicationFactoryContext, 'projectRoot'> & {
     manifest: Pick<WorkflowApplicationFactoryContext['manifest'], 'id'>;
+    packageRoot?: WorkflowApplicationFactoryContext['packageRoot'];
 }): WorkflowApplicationImplementation;
 
 // @public
 export function createStandaloneApplication(options: StandaloneApplicationOptions): WorkflowApplicationImplementation;
+
+// @public
+export function exportWorkflowApplication(options: {
+    file: string;
+    projectRoot: string;
+    destination: string;
+}): Promise<{
+    file: string;
+    contentHash: string;
+    files: string[];
+}>;
 
 // @public
 export function inspectApplicationSkill(root: string): Promise<InspectedSkill>;
@@ -152,6 +218,25 @@ export interface InspectedSkill {
     // (undocumented)
     root: string;
 }
+
+// @public
+export function installWorkflowApplication(options: ApplicationDeliveryOptions & {
+    file: string;
+    upgrade?: boolean;
+    confirmationHash: string;
+}): Promise<{
+    file: string;
+    retainedVersions: boolean;
+    schema: "comet.workflow.application.install.v1";
+    id: string;
+    version: string;
+    contentHash: string;
+    packageRef: string;
+    entry?: {
+        root: string;
+        contentHash: string;
+    };
+}>;
 
 // @public (undocumented)
 export interface LoadedWorkflowApplication {
@@ -175,6 +260,12 @@ export function loadWorkflowApplication(options: {
     expectedIdentity?: ApplicationIdentity;
 }): Promise<LoadedWorkflowApplication>;
 
+// @public
+export function previewWorkflowApplicationInstall(options: ApplicationDeliveryOptions & {
+    file: string;
+    upgrade?: boolean;
+}): Promise<ApplicationInstallPreview>;
+
 // @public (undocumented)
 export function readSelectedWorkflowApplication(projectRoot: string): Promise<{
     application: LoadedWorkflowApplication;
@@ -189,6 +280,9 @@ export function reconcileApplicationSkill(application: LoadedWorkflowApplication
     resolution: "executed";
     outcome: RuntimeOutcome;
 }>;
+
+// @public
+export function resolveInstalledWorkflowApplication(options: ApplicationDeliveryOptions, id: string): Promise<string | null>;
 
 // @public
 export function resolveWorkflowApplicationFile(projectRoot: string, id: string, runId: string): Promise<string>;
@@ -292,6 +386,32 @@ export interface StandaloneApplicationOptions {
     // (undocumented)
     workflows: readonly DefineWorkflowOptions[];
 }
+
+// @public
+export function uninstallWorkflowApplication(options: ApplicationDeliveryOptions & {
+    id: string;
+    confirmationHash?: string;
+}): Promise<{
+    uninstalled: boolean;
+    noFilesWritten: boolean;
+    id: string;
+    scope: "project" | "user";
+    target: string;
+    previous: InstalledApplication | null;
+    retainedVersions: boolean;
+    retainedDependencies: boolean;
+    removesDefaultEntryOnly: boolean;
+} | {
+    confirmationHash: string;
+    noFilesWritten: boolean;
+    id: string;
+    scope: "project" | "user";
+    target: string;
+    previous: InstalledApplication | null;
+    retainedVersions: boolean;
+    retainedDependencies: boolean;
+    removesDefaultEntryOnly: boolean;
+}>;
 
 // @public (undocumented)
 export interface WorkflowApplicationFactoryContext {

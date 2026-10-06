@@ -540,9 +540,6 @@ describe('workflow contract normalization', () => {
       expect(source, file).not.toMatch(/from ['"]yaml['"]/u);
       expect(source, file).not.toContain('parseDocument(');
     }
-    await expect(
-      fs.readFile(path.resolve('domains/factory/package.ts'), 'utf8'),
-    ).resolves.toContain('workflowProjectConfigRuntimeHelperScript');
   });
 
   it('normalizes shared project path configuration without allowing root escape', () => {
