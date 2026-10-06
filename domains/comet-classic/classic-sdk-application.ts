@@ -35,6 +35,7 @@ import { classicOpenContentProblem } from './classic-open-content.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
 import { checkEnvironmentFingerprint, collectCheckSnapshot } from './classic-check-snapshot.js';
 import { readCheckPolicy } from './classic-check-policy.js';
+import { assertClassicSdkCheckCommandBinding } from './classic-sdk-check.js';
 import {
   classicSdkPullRequestMatches,
   classicSdkRemoteBranchHead,
@@ -880,6 +881,13 @@ function classicCheckEvidenceValidator(scope: 'build' | 'verify'): RuntimeEviden
         return reject(`Classic ${scope} check receipt is incomplete, failed, or stale`);
       }
       try {
+        if (
+          run.input !== null &&
+          typeof run.input === 'object' &&
+          !Array.isArray(run.input) &&
+          run.input.checkCommands !== undefined
+        )
+          await assertClassicSdkCheckCommandBinding(run, action, root, check);
         const change = await inspectProtectedProjectPath(root, changeDirRef, {
           label: 'Classic change',
           expected: 'directory',

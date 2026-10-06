@@ -7,7 +7,6 @@ import { afterEach, expect, it } from 'vitest';
 import * as classic from '../../../domains/comet-classic/index.js';
 import { writeClassicSdkDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
-import { executeClassicSdkArchive } from '../../../domains/comet-classic/classic-sdk-archive.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
 import {
   createRuntime,
@@ -38,7 +37,12 @@ const git = (root: string, args: string[]) =>
     { cwd: root, encoding: 'utf8', stdio: 'pipe' },
   ).trim();
 
-async function fixture(profile: ClassicProfile, extensionNames = ['review'], checkpoint?: string) {
+async function fixture(
+  profile: ClassicProfile,
+  extensionNames = ['review'],
+  checkpoint?: string,
+  checkCommands: Record<string, unknown> | false | undefined = undefined,
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-composition-'));
   roots.push(root);
   const projectRoot = path.join(root, 'project');
@@ -248,7 +252,35 @@ async function fixture(profile: ClassicProfile, extensionNames = ['review'], che
   let run = await runtime.start({
     runId: 'example',
     workflow: { id: base.workflow.id, version: '1' },
-    input: { change: 'example', changeDir: changeRef, workspaceRoot: projectRoot },
+    input: {
+      change: 'example',
+      changeDir: changeRef,
+      workspaceRoot: projectRoot,
+      ...(checkCommands === false
+        ? {}
+        : {
+            checkCommands: checkCommands ?? {
+              build: {
+                argv: [
+                  process.execPath,
+                  '-e',
+                  'if (!require("fs").readFileSync("source.js","utf8").includes("ready = true")) process.exit(1)',
+                ],
+                cwd: '.',
+                timeoutMs: 10000,
+              },
+              verify: {
+                argv: [
+                  process.execPath,
+                  '-e',
+                  'if (!require("fs").readFileSync("source.js","utf8").includes("ready = true")) process.exit(1)',
+                ],
+                cwd: '.',
+                timeoutMs: 10000,
+              },
+            },
+          }),
+    },
     initialState: initial,
   });
   let counter = 0;
@@ -311,7 +343,7 @@ async function fixture(profile: ClassicProfile, extensionNames = ['review'], che
       context: { requestId: 'evidence', projectRoot },
     });
   };
-  const reachReview = async (escalate = false) => {
+  const reachReview = async (escalate = false, beforeCheck = false) => {
     run = await runtime.execute({
       runId: 'example',
       actionId: run.actions.at(-1)!.id,
@@ -369,14 +401,12 @@ async function fixture(profile: ClassicProfile, extensionNames = ['review'], che
       await evidence();
     }
     await work({ event: 'build-complete' });
-    run = await classic.executeClassicSdkCommandCheck(runtime, {
+    if (beforeCheck) return run;
+    run = await runtime.execute({
       runId: 'example',
-      projectRoot,
-      argv: [
-        process.execPath,
-        '-e',
-        'if (!require("fs").readFileSync("source.js","utf8").includes("ready = true")) process.exit(1)',
-      ],
+      actionId: run.actions.find((action) => action.status === 'pending')!.id,
+      executorId: 'comet-classic-check',
+      context: { requestId: 'real-build-check', projectRoot },
     });
     await evidence();
     return run;
@@ -424,6 +454,195 @@ async function fixture(profile: ClassicProfile, extensionNames = ['review'], che
     store,
   };
 }
+
+it('executes the real check through the public composed factory', async () => {
+  const f = await fixture('tweak');
+  await f.reachReview(false, true);
+  const action = f.run.actions.find((entry) => entry.status === 'pending')!;
+  expect(action).toMatchObject({ stepId: 'tweak.build.check', ref: 'classic-check' });
+  f.run = await f.runtime.execute({
+    runId: 'example',
+    actionId: action.id,
+    executorId: 'comet-classic-check',
+    context: { requestId: 'public-check', projectRoot: f.projectRoot },
+  });
+  const actual = f.run.actions.find((entry) => entry.id === action.id)!;
+  expect(actual).toMatchObject({
+    status: 'succeeded',
+    claim: { executorId: 'comet-classic-check' },
+  });
+  expect(actual.outcome!.output).toMatchObject({ exitCode: 0, scope: 'build', tier: 'full' });
+  await f.evidence();
+  expect(f.run.actions.at(-1)).toMatchObject({ stepId: 'classic.extension.review' });
+});
+
+it.each([
+  ['missing', false],
+  ['empty argv', { build: { argv: [] } }],
+  ['nonliteral argv', { build: { argv: [process.execPath, null] } }],
+  ['outside cwd', { build: { argv: [process.execPath, '-e', 'process.exit(0)'], cwd: '..' } }],
+  [
+    'invalid timeout',
+    { build: { argv: [process.execPath, '-e', 'process.exit(0)'], timeoutMs: 0 } },
+  ],
+] as const)('rejects a %s fixed command before claiming', async (_label, command) => {
+  const f = await fixture('tweak', [], undefined, command as Record<string, unknown> | false);
+  await f.reachReview(false, true);
+  const action = f.run.actions.find((entry) => entry.status === 'pending')!;
+  await expect(
+    f.runtime.execute({
+      runId: 'example',
+      actionId: action.id,
+      executorId: 'comet-classic-check',
+      context: { requestId: 'invalid-command', projectRoot: f.projectRoot },
+    }),
+  ).rejects.toThrow();
+  const current = await f.runtime.inspect('example');
+  expect(current.actions.find((entry) => entry.id === action.id)).toMatchObject({
+    status: 'pending',
+  });
+  expect(current.actions.find((entry) => entry.id === action.id)!.claim).toBeUndefined();
+});
+
+it('binds the fixed command to Action inputHash and rejects a different command receipt', async () => {
+  const f = await fixture('tweak', []);
+  await f.reachReview(false, true);
+  const action = f.run.actions.find((entry) => entry.status === 'pending')!;
+  const changed = structuredClone(action.input) as {
+    input: { checkCommands: { build: { argv: string[] } } };
+  };
+  changed.input.checkCommands.build.argv = ['node', 'another-command.mjs'];
+  await expect(
+    f.runtime.claim({
+      runId: 'example',
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: hashRuntimeValue(changed),
+      executorId: 'comet-classic-check',
+      claimToken: 'wrong-plan',
+      context: { requestId: 'wrong-plan', projectRoot: f.projectRoot },
+    }),
+  ).rejects.toMatchObject({ code: 'STALE_ACTION' });
+  f.run = await f.runtime.claim({
+    runId: 'example',
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'comet-classic-check',
+    claimToken: 'real-plan',
+    context: { requestId: 'real-plan', projectRoot: f.projectRoot },
+  });
+  const claimed = f.run.actions.find((entry) => entry.id === action.id)!;
+  const actual = await classic.runClassicSdkCommandCheck(f.run, claimed, {
+    runId: 'example',
+    projectRoot: f.projectRoot,
+    argv: [process.execPath, '-e', 'console.log("actual different command")'],
+    cwd: '.',
+    timeoutMs: 10000,
+  });
+  await expect(
+    f.runtime.recordOutcome({
+      runId: 'example',
+      outcome: {
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: claimed.claim!.token,
+        outcomeId: 'wrong-command-receipt',
+        ...actual,
+      },
+      context: { requestId: 'wrong-receipt', projectRoot: f.projectRoot },
+    }),
+  ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+  expect(
+    (await f.runtime.inspect('example')).actions.find((entry) => entry.id === action.id)!.status,
+  ).toBe('running');
+});
+
+it('keeps an actual failed command from satisfying domain evidence', async () => {
+  const f = await fixture('tweak', [], undefined, {
+    build: { argv: [process.execPath, '-e', 'process.exit(7)'], cwd: '.', timeoutMs: 10000 },
+  });
+  await f.reachReview(false, true);
+  const action = f.run.actions.find((entry) => entry.status === 'pending')!;
+  f.run = await f.runtime.execute({
+    runId: 'example',
+    actionId: action.id,
+    executorId: 'comet-classic-check',
+    context: { requestId: 'failed-command', projectRoot: f.projectRoot },
+  });
+  expect(f.run.actions.find((entry) => entry.id === action.id)).toMatchObject({
+    status: 'failed',
+    outcome: { status: 'failed', output: { exitCode: 7 } },
+  });
+  expect(f.run.state).toMatchObject({ phase: 'build' });
+});
+
+it('rejects missing Archive approval and stale preflight before filesystem work', async () => {
+  const f = await fixture('tweak', []);
+  await f.reachReview();
+  const report = 'docs/superpowers/reports/boundary-verify.md';
+  await fs.writeFile(
+    path.join(f.projectRoot, report),
+    '# Verification\nPASS: actual source command succeeds.\n',
+  );
+  await f.work({ event: 'verification-ready', verificationReport: report });
+  await f.evidence();
+  const execute = async (id: string) => {
+    f.run = await f.runtime.execute({
+      runId: 'example',
+      actionId: f.run.actions.find((entry) => entry.status === 'pending')!.id,
+      executorId: id,
+      context: { requestId: id, projectRoot: f.projectRoot },
+    });
+  };
+  await execute('comet-classic-check');
+  await f.evidence();
+  await f.work({ targetBranch: 'main', summary: 'Local filesystem archive only' });
+  await f.approve('local');
+  const action = f.run.actions.find((entry) => entry.status === 'pending')!;
+  const unapproved = structuredClone(f.run);
+  const wait = unapproved.waits.find((entry) => entry.stepId === 'tweak.archive.confirm')!;
+  wait.status = 'pending';
+  delete wait.decision;
+  const port = f.implementation.executors!.find(
+    (entry) => entry.id === 'comet-classic-archive-preflight',
+  )!;
+  await expect(
+    port.preflight!(action, { requestId: 'unapproved', projectRoot: f.projectRoot }, unapproved),
+  ).rejects.toThrow(/approval/);
+  expect(
+    await fs.readFile(
+      path.join(f.projectRoot, 'docs/openspec/changes/example/proposal.md'),
+      'utf8',
+    ),
+  ).toContain('Proposal');
+  await execute('comet-classic-archive-preflight');
+  const archive = f.run.actions.find((entry) => entry.status === 'pending')!;
+  await fs.writeFile(
+    path.join(f.projectRoot, 'changed.txt'),
+    'actual new candidate after preflight\n',
+  );
+  git(f.projectRoot, ['add', 'changed.txt']);
+  git(f.projectRoot, ['commit', '-m', 'test: change candidate after archive preflight']);
+  await expect(
+    f.runtime.execute({
+      runId: 'example',
+      actionId: archive.id,
+      executorId: 'comet-classic-archive',
+      context: { requestId: 'stale-archive', projectRoot: f.projectRoot },
+    }),
+  ).rejects.toThrow();
+  expect(
+    (await f.runtime.inspect('example')).actions.find((entry) => entry.id === archive.id),
+  ).toMatchObject({ status: 'pending' });
+  expect(
+    await fs.readFile(
+      path.join(f.projectRoot, 'docs/openspec/changes/example/proposal.md'),
+      'utf8',
+    ),
+  ).toContain('Proposal');
+}, 90000);
 
 it('exposes a Classic composition factory while preserving the default application', () => {
   expect(classic.createClassicApplication).toBeTypeOf('function');
@@ -486,21 +705,26 @@ it.each(['full', 'hotfix', 'tweak'] as const)(
     await fs.writeFile(path.join(f.projectRoot, reportRef), '# Verification\nPASS\n');
     await f.work({ event: 'verification-ready', verificationReport: reportRef });
     await f.evidence();
-    f.run = await classic.executeClassicSdkCommandCheck(f.runtime, {
+    f.run = await f.runtime.execute({
       runId: 'example',
-      projectRoot: f.projectRoot,
-      argv: [process.execPath, '-e', 'process.exit(0)'],
+      actionId: f.run.actions.find((action) => action.status === 'pending')!.id,
+      executorId: 'comet-classic-check',
+      context: { requestId: 'public-verify-check', projectRoot: f.projectRoot },
     });
     await f.evidence();
     await f.work({ targetBranch: 'main', summary: 'Archive the checked change' });
     await f.approve('local');
-    f.run = await classic.executeClassicSdkArchivePreflight(f.runtime, {
+    f.run = await f.runtime.execute({
       runId: 'example',
-      projectRoot: f.projectRoot,
+      actionId: f.run.actions.find((action) => action.status === 'pending')!.id,
+      executorId: 'comet-classic-archive-preflight',
+      context: { requestId: 'public-archive-preflight', projectRoot: f.projectRoot },
     });
-    f.run = await executeClassicSdkArchive(f.runtime, {
+    f.run = await f.runtime.execute({
       runId: 'example',
-      projectRoot: f.projectRoot,
+      actionId: f.run.actions.find((action) => action.status === 'pending')!.id,
+      executorId: 'comet-classic-archive',
+      context: { requestId: 'public-archive', projectRoot: f.projectRoot },
     });
     expect(f.run.state).toMatchObject({ archived: true });
     const archiveRef = (
@@ -592,10 +816,11 @@ it('routes extension failure and requirement revision through declared domain re
   expect(f.run.state).toMatchObject({ phase: 'build', checkEpoch: beforeEpoch + 1 });
   expect(f.run.actions.at(-1)).toMatchObject({ stepId: 'hotfix.build.execute', status: 'pending' });
   await f.work({ event: 'build-complete' });
-  f.run = await classic.executeClassicSdkCommandCheck(f.runtime, {
+  f.run = await f.runtime.execute({
     runId: 'example',
-    projectRoot: f.projectRoot,
-    argv: [process.execPath, '-e', 'process.exit(0)'],
+    actionId: f.run.actions.find((action) => action.status === 'pending')!.id,
+    executorId: 'comet-classic-check',
+    context: { requestId: 'repair-check', projectRoot: f.projectRoot },
   });
   await f.evidence();
   await f.work(await f.reviewOutput('revise-requirements'));
@@ -824,21 +1049,26 @@ it.each(['hotfix', 'tweak'] as const)(
     await fs.writeFile(path.join(f.projectRoot, report), '# Verification\nPASS\n');
     await f.work({ event: 'verification-ready', verificationReport: report });
     await f.evidence();
-    f.run = await classic.executeClassicSdkCommandCheck(f.runtime, {
+    f.run = await f.runtime.execute({
       runId: 'example',
-      projectRoot: f.projectRoot,
-      argv: [process.execPath, '-e', 'process.exit(0)'],
+      actionId: f.run.actions.find((action) => action.status === 'pending')!.id,
+      executorId: 'comet-classic-check',
+      context: { requestId: 'upgrade-verify-check', projectRoot: f.projectRoot },
     });
     await f.evidence();
     await f.work({ targetBranch: 'main', summary: 'Deliver the approved full upgrade' });
     await f.approve('local');
-    f.run = await classic.executeClassicSdkArchivePreflight(f.runtime, {
+    f.run = await f.runtime.execute({
       runId: 'example',
-      projectRoot: f.projectRoot,
+      actionId: f.run.actions.find((action) => action.status === 'pending')!.id,
+      executorId: 'comet-classic-archive-preflight',
+      context: { requestId: 'upgrade-preflight', projectRoot: f.projectRoot },
     });
-    f.run = await executeClassicSdkArchive(f.runtime, {
+    f.run = await f.runtime.execute({
       runId: 'example',
-      projectRoot: f.projectRoot,
+      actionId: f.run.actions.find((action) => action.status === 'pending')!.id,
+      executorId: 'comet-classic-archive',
+      context: { requestId: 'upgrade-archive', projectRoot: f.projectRoot },
     });
     const archiveRef = (
       f.run.actions.findLast((action) => action.stepId === 'full.archive.execute')!.outcome!
