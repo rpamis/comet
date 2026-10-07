@@ -294,17 +294,14 @@ export async function nativeNextCommand(
       });
     }
     if (reviseRequirements) {
-      if (
-        summary === undefined ||
-        proposalHash !== undefined ||
-        expectedContinuation?.action !== 'revise-requirements'
-      ) {
+      if (summary === undefined || expectedContinuation?.action !== 'revise-requirements') {
         throw new NativeUsageError(
           'SDK requirements revision requires --summary, --expected-state-version, and --expected-action revise-requirements',
         );
       }
       return advanceNativeSdkChange(projectRoot, name, {
         summary,
+        ...(proposalHash === undefined ? {} : { proposalHash }),
         expectedStateVersion: expectedContinuation.stateVersion,
         expectedAction: 'revise-requirements',
       });

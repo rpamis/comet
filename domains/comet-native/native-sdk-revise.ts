@@ -3,11 +3,42 @@ import type {
   RuntimeExecutor,
   RuntimeValidator,
   RuntimeValue,
+  WorkflowRun,
 } from '../engine/runtime.js';
 import { hashRuntimeValue } from '../engine/runtime.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import { collectNativeSupervisorRevisionWorkspaces } from './native-sdk-supervisor-revision.js';
 import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
+import type { NativePortableState } from './native-portable-types.js';
+
+/** 普通 Build 只在原 Builder 明确失败且仍等待恢复决定时允许修改需求。 */
+export function nativeSdkStoppedBuilderWait(run: Readonly<WorkflowRun>) {
+  return run.waits.find((wait) => {
+    if (wait.status !== 'pending' || wait.stepId !== 'build.resume') return false;
+    const failedBuilderActionId = (
+      wait.proposal as { activation?: { failedBuilderActionId?: unknown } }
+    )?.activation?.failedBuilderActionId;
+    return run.actions.some(
+      (action) =>
+        action.id === failedBuilderActionId &&
+        action.stepId === 'build.builder' &&
+        action.status === 'failed',
+    );
+  });
+}
+
+export function nativeSdkRequirementsRevisionAllowed(
+  run: Readonly<WorkflowRun>,
+  state: NativePortableState,
+  proposalHash?: unknown,
+): boolean {
+  if (run.actions.some((action) => ['running', 'unknown'].includes(action.status))) return false;
+  if (['verify', 'archive'].includes(state.phase)) return proposalHash === undefined;
+  if (state.phase !== 'build') return false;
+  if (state.children_contract_hash) return proposalHash === undefined;
+  const wait = nativeSdkStoppedBuilderWait(run);
+  return wait !== undefined && wait.proposalHash === proposalHash;
+}
 
 export const nativeSdkReviseCommandValidator: RuntimeCommandValidator = {
   id: 'comet-native-revise-command',
@@ -16,16 +47,15 @@ export const nativeSdkReviseCommandValidator: RuntimeCommandValidator = {
     const state = parseNativePortableState(run.state);
     if (
       name !== 'revise-requirements' ||
-      !(
-        ['verify', 'archive'].includes(state.phase) ||
-        (state.phase === 'build' && state.children_contract_hash)
-      ) ||
       state.archived ||
       !['active', 'await-user', 'blocked'].includes(state.status) ||
       input === null ||
       typeof input !== 'object' ||
       Array.isArray(input) ||
-      Object.keys(input).sort().join(',') !== 'expectedStateVersion,reason' ||
+      !['expectedStateVersion,reason', 'expectedStateVersion,proposalHash,reason'].includes(
+        Object.keys(input).sort().join(','),
+      ) ||
+      !nativeSdkRequirementsRevisionAllowed(run, state, input.proposalHash) ||
       input.expectedStateVersion !== state.state_version ||
       typeof input.reason !== 'string' ||
       !input.reason.trim() ||

@@ -617,6 +617,22 @@ export async function runtimeDispatchCommand(
               await import('../../domains/comet-classic/classic-sdk-state-store.js')
             ).createClassicSdkStateStore(projectRoot)
           : createFileRuntimeStore<WorkflowRun>({ rootDir });
+    let selectedClassicRun: WorkflowRun | null | undefined;
+    if (application?.startsWith('classic-') && request.operation !== 'start') {
+      selectedClassicRun = await persistentStore.read(text(request.runId, 'runId'));
+      const { classicSdkApplicationForRun } =
+        await import('../../domains/comet-classic/classic-sdk-revision-application.js');
+      const defined = classicSdkApplicationForRun(
+        application.slice('classic-'.length) as 'full' | 'hotfix' | 'tweak',
+        selectedClassicRun,
+      );
+      builtInWorkflow = defined.workflow;
+      transitionHandlers = [defined.transitionHandler];
+      evidenceValidators = defined.evidenceValidators;
+      validators = defined.validators;
+      commandValidators = defined.commandValidators;
+      executors = defined.executors;
+    }
     const store: RuntimeStore<WorkflowRun> =
       application !== undefined && request.operation === 'start'
         ? {
@@ -651,7 +667,20 @@ export async function runtimeDispatchCommand(
               return persistentStore.compareAndSwap(runId, expectedRevision, next);
             },
           }
-        : persistentStore;
+        : selectedClassicRun !== undefined
+          ? {
+              async read(runId) {
+                // 仅复用选择定义的首个快照；后续写操作仍读取当前 CAS revision。
+                if (selectedClassicRun !== undefined && runId === request.runId) {
+                  const current = selectedClassicRun;
+                  selectedClassicRun = undefined;
+                  return current;
+                }
+                return persistentStore.read(runId);
+              },
+              compareAndSwap: persistentStore.compareAndSwap,
+            }
+          : persistentStore;
     const runtime = createRuntime({
       store,
       workflows: builtInWorkflow ? [builtInWorkflow] : workflows,

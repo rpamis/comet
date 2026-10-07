@@ -546,6 +546,7 @@ export async function validateClassicSdkDesignContext(options: {
   contextCompression: 'off' | 'beta' | null;
   handoffContext: string;
   handoffHash: string;
+  allowDesignDocumentChanges?: boolean;
 }): Promise<boolean> {
   const { projectRoot, changeDir, change, handoffContext, handoffHash } = options;
   const changeRef = classicProjectRelative(projectRoot, changeDir);
@@ -553,8 +554,7 @@ export async function validateClassicSdkDesignContext(options: {
   const basename = options.contextCompression === 'beta' ? 'spec-context' : 'design-context';
   if (
     handoffContext !== `${changeRef}/.comet/handoff/${basename}.json` ||
-    !/^[a-f0-9]{64}$/u.test(handoffHash) ||
-    handoffHash !== contextHashFromSources(sources)
+    !/^[a-f0-9]{64}$/u.test(handoffHash)
   )
     return false;
   const json = await readProtectedIfExists(projectRoot, handoffContext, 'Classic SDK handoff JSON');
@@ -579,6 +579,24 @@ export async function validateClassicSdkDesignContext(options: {
     !Array.isArray(document.files)
   )
     return false;
+  // 设计文档是本阶段产物；只允许它变化，旧上下文中的完整来源摘要仍须可复算。
+  if (options.allowDesignDocumentChanges) {
+    const oldDesign = document.files.find(
+      (entry: unknown) =>
+        entry !== null &&
+        typeof entry === 'object' &&
+        (entry as { path?: unknown }).path === `${changeRef}/design.md`,
+    ) as { sha256?: unknown } | undefined;
+    const source = sources.find((entry) => entry.reference === `${changeRef}/design.md`);
+    if (
+      !source ||
+      typeof oldDesign?.sha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(oldDesign.sha256)
+    )
+      return false;
+    source.sha256 = oldDesign.sha256;
+  }
+  if (handoffHash !== contextHashFromSources(sources)) return false;
   const expected: Array<{ path: string; sha256: string }> = [];
   for (const { reference, sha256 } of sources) {
     expected.push({ path: reference, sha256 });

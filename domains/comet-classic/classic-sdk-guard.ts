@@ -453,7 +453,15 @@ export async function classicSdkVerifyGuard(options: {
       error instanceof Error ? error.message : String(error),
     );
   }
-  if (state.verificationReport && state.verificationReport !== receipt.ref) {
+  const verifyStep = `${profile}.verify.run`;
+  const currentVerify = run.actions
+    .slice()
+    .reverse()
+    .find((action) => action.stepId === verifyStep);
+  const verifyAction = currentVerify?.status === 'pending' ? currentVerify : undefined;
+  const verifySequence = currentVerify ? run.actionContexts[currentVerify.id]?.sequence : undefined;
+  // 新一轮由新的 Verify Action 确定报告；历史收据只约束其来源轮次。
+  if (!verifyAction && state.verificationReport && state.verificationReport !== receipt.ref) {
     return guardResult(
       change,
       'verify',
@@ -466,7 +474,11 @@ export async function classicSdkVerifyGuard(options: {
     ?.slice()
     .reverse()
     .find(
-      (wait) => wait.stepId === `${profile}.verify.report.evidence` && wait.status === 'resolved',
+      (wait) =>
+        wait.stepId === `${profile}.verify.report.evidence` &&
+        wait.status === 'resolved' &&
+        verifySequence !== undefined &&
+        wait.results[verifyStep]?.sequence === verifySequence,
     )?.receipt;
   if (acceptedReport && acceptedReport.contentHash !== receipt.contentHash) {
     return guardResult(
@@ -477,9 +489,6 @@ export async function classicSdkVerifyGuard(options: {
       'Classic SDK Verify report changed after accepted evidence',
     );
   }
-  const verifyAction = run.actions.find(
-    (action) => action.stepId === `${profile}.verify.run` && action.status === 'pending',
-  );
   const reportWait = run.evidenceWaits?.find(
     (wait) => wait.stepId === `${profile}.verify.report.evidence` && wait.status === 'pending',
   );
@@ -559,16 +568,24 @@ export async function classicSdkVerifyGuard(options: {
       projectRoot,
     },
   );
+  const finished = await inspectClassicSdkRun(projectRoot, change);
   if (checked.exitCode !== 0) {
-    return guardResult(
+    const failed = guardResult(
       change,
-      'verify',
+      finished.state.phase,
       projectRoot,
       null,
       checked.stderr?.trim() || checked.stdout?.trim() || 'Classic Verify check failed',
+      finished.run,
     );
+    return {
+      ...failed,
+      data: {
+        ...(checked.data as Record<string, unknown>),
+        ...(failed.data as Record<string, unknown>),
+      },
+    };
   }
-  const finished = await inspectClassicSdkRun(projectRoot, change);
   return finished.state.phase === 'archive'
     ? guardResult(change, 'archive', projectRoot, null, undefined, finished.run)
     : guardResult(change, 'verify', projectRoot, null, 'Classic SDK Verify check remains pending');

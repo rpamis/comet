@@ -1,10 +1,22 @@
-import type { WorkflowRun, RuntimeAction, RuntimeExecutor } from '../engine/runtime.js';
+import {
+  hashRuntimeValue,
+  type WorkflowRun,
+  type RuntimeAction,
+  type RuntimeExecutor,
+  type RuntimeValue,
+} from '../engine/runtime.js';
 import {
   nativePortableContinuation,
   type NativePortableContinuation,
 } from './native-portable-continuation.js';
 import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import { NATIVE_SDK_ARCHIVE_STEPS } from './native-sdk-archive.js';
+import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
+import { nativeProjectPaths } from './native-paths.js';
+import {
+  nativeSdkRequirementsRevisionAllowed,
+  nativeSdkStoppedBuilderWait,
+} from './native-sdk-revise.js';
 import {
   NATIVE_SUPERVISOR_COORDINATION_MODES,
   type NativePortableState,
@@ -323,6 +335,10 @@ export async function projectNativeSdkContinuation(options: {
   const active = run.actions.filter(
     (action) => action.status === 'running' || action.status === 'unknown',
   );
+  const stoppedBuilder = nativeSdkStoppedBuilderWait(run);
+  const canReviseStoppedBuilder =
+    stoppedBuilder !== undefined &&
+    nativeSdkRequirementsRevisionAllowed(run, state, stoppedBuilder.proposalHash);
   if (recovery) {
     const decision = sdkDecision(state, 'resolve-verifier-blocker', recovery.proposalHash);
     continuation = {
@@ -352,9 +368,13 @@ export async function projectNativeSdkContinuation(options: {
       requiresUserDecision: true,
       commandAlternatives: requirements
         ? [sdkDecision(state, 'revise-requirements')]
-        : pendingBuilderDecisions.map((wait) =>
-            sdkDecision(state, 'continue-builder', wait.proposalHash),
-          ),
+        : pendingBuilderDecisions
+            .map((wait) => sdkDecision(state, 'continue-builder', wait.proposalHash))
+            .concat(
+              canReviseStoppedBuilder
+                ? [sdkDecision(state, 'revise-requirements', stoppedBuilder!.proposalHash)]
+                : [],
+            ),
       requiredInputs: ['summary', 'user-decision'],
       userCommunication: communication(
         localized(
@@ -363,10 +383,15 @@ export async function projectNativeSdkContinuation(options: {
         ),
         requirements
           ? pendingRequirementDecisions[0].message
-          : localized(
-              'The Builder stopped before completing this work. Continue from its preserved workspace?',
-              'Builder 尚未完成本轮工作。是否从保留的工作区继续？',
-            ),
+          : canReviseStoppedBuilder
+            ? localized(
+                'The Builder stopped before completing this work. Continue from its preserved workspace, or revise the requirements and confirm a new Shape?',
+                'Builder 尚未完成本轮工作。请选择从保留的工作区继续，或调整需求并重新确认 Shape。',
+              )
+            : localized(
+                'The Builder stopped before completing this work. Continue from its preserved workspace?',
+                'Builder 尚未完成本轮工作。是否从保留的工作区继续？',
+              ),
       ),
     };
   } else if (verifyWait?.stepId === 'verify.stop') {
@@ -403,10 +428,57 @@ export async function projectNativeSdkContinuation(options: {
       ),
     };
   } else if (state.phase === 'shape' && active.length === 0) {
-    continuation = sdkShapeContinuation(
-      state,
-      waits.some((wait) => wait.stepId === 'supervisor.shape.confirm'),
+    const shapeWait = waits.find((wait) =>
+      ['shape.confirm', 'supervisor.shape.confirm'].includes(wait.stepId),
     );
+    continuation = sdkShapeContinuation(state, shapeWait?.stepId === 'supervisor.shape.confirm');
+    if (shapeWait) {
+      let currentProposal = false;
+      try {
+        const paths = await nativeProjectPaths(
+          projectRoot,
+          (run.input as { artifactRootRef: string }).artifactRootRef,
+        );
+        const current = await collectNativeSdkShapeProposal({ paths, state });
+        const approved = (shapeWait.proposal as { outputs?: Record<string, RuntimeValue> })
+          .outputs?.['shape.prepare'];
+        currentProposal =
+          approved !== undefined &&
+          hashRuntimeValue(current as unknown as RuntimeValue) === hashRuntimeValue(approved) &&
+          current.shapeConfirmationHash === state.shape_confirmation_hash;
+      } catch {
+        // 未完成或无效的文档同样不能批准旧提案，保留 Wait 供明确修订。
+      }
+      continuation = {
+        ...continuation,
+        ...(!currentProposal
+          ? { action: 'none' as const, requiredInputs: ['summary', 'user-decision'] }
+          : {}),
+        commandAlternatives: [
+          ...(currentProposal ? (continuation.commandAlternatives ?? []) : []),
+          sdkDecision(state, 'revise-requirements', shapeWait.proposalHash),
+        ],
+        userCommunication: {
+          ...continuation.userCommunication,
+          ...(!currentProposal
+            ? {
+                message: localized(
+                  'The Shape documents changed or are incomplete. Update the proposal before asking for confirmation again.',
+                  'Shape 文档已变化或尚未完整。请先更新提案，再确认新的完整 Shape。',
+                ),
+                suggestedReply: null,
+              }
+            : {}),
+          agentInstruction:
+            continuation.userCommunication.agentInstruction +
+            ' ' +
+            localized(
+              'When the user requests changed requirements, finish updating the Shape documents and execute revise-requirements to reject this proposal and prepare a new one. Then ask for explicit approval of the new complete Shape; revision never grants approval.',
+              '用户要求调整需求时，先补全 Shape 文档，再执行 revise-requirements 拒绝旧提案并准备新提案。随后请用户明确批准新的完整 Shape；修订本身不代表批准。',
+            ),
+        },
+      };
+    }
   } else if (active.some((action) => action.status === 'unknown')) {
     continuation = {
       ...base,

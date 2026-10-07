@@ -1,3 +1,4 @@
+import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { isDeepStrictEqual } from 'node:util';
@@ -127,6 +128,8 @@ const designHandoffValidator: RuntimeValidator = {
       proposal?: unknown;
       handoffContext?: unknown;
       handoffHash?: unknown;
+      sourceEvidence?: { ref: string; contentHash: string };
+      requirementsEvidence?: { ref: string; contentHash: string };
     } | null;
     if (
       !context?.projectRoot ||
@@ -142,6 +145,25 @@ const designHandoffValidator: RuntimeValidator = {
       };
     }
     try {
+      if (output.sourceEvidence || output.requirementsEvidence) {
+        const source = await classicOpenEvidenceReceipt(context.projectRoot, input.changeDir);
+        const requirements = await classicOpenEvidenceReceipt(
+          context.projectRoot,
+          input.changeDir,
+          {
+            designRequirements: true,
+          },
+        );
+        if (
+          !isDeepStrictEqual(output.sourceEvidence, source) ||
+          !isDeepStrictEqual(output.requirementsEvidence, requirements)
+        ) {
+          return {
+            accepted: false,
+            reason: 'Classic Design proposal sources changed before submission',
+          };
+        }
+      }
       const accepted = await validateClassicSdkDesignContext({
         projectRoot: context.projectRoot,
         changeDir: path.join(context.projectRoot, input.changeDir),
@@ -385,16 +407,29 @@ const deliveryOutcomeValidator: RuntimeValidator = {
       const activeRef = actionInput.input.changeDir.replaceAll('\\', '/');
       const archiveRef = archive.archiveDirectory.replaceAll('\\', '/');
       const specsRef = path.relative(root, layout.specsDir).replaceAll('\\', '/');
-      const designDoc = (outputs?.['full.design.document'] as { designDoc?: unknown } | undefined)
-        ?.designDoc;
-      const plan = (outputs?.['full.build.plan'] as { plan?: unknown } | undefined)?.plan;
+      const acceptedPlan = outputs?.['full.build.plan'] as
+        | {
+            plan?: unknown;
+            designEvidence?: { ref?: unknown; contentHash?: unknown };
+          }
+        | undefined;
+      const designDoc =
+        (outputs?.['full.design.document'] as { designDoc?: unknown } | undefined)?.designDoc ??
+        acceptedPlan?.designEvidence?.ref;
+      const plan = acceptedPlan?.plan;
       if (profile === 'full' && (typeof designDoc !== 'string' || typeof plan !== 'string')) {
         return { accepted: false, reason: 'Classic Archive documents are missing' };
       }
       const archiveName = path.posix.basename(archiveRef);
+      const archivedDesignDoc =
+        typeof designDoc === 'string'
+          ? archivedClassicDocumentRef(designDoc, activeRef, archiveRef)
+          : null;
+      const archivedPlan =
+        typeof plan === 'string' ? archivedClassicDocumentRef(plan, activeRef, archiveRef) : null;
       const committedDesign =
         profile === 'full'
-          ? execFileSync('git', ['show', `HEAD:${designDoc}`], {
+          ? execFileSync('git', ['show', `HEAD:${archivedDesignDoc}`], {
               cwd: root,
               encoding: 'utf8',
               stdio: ['ignore', 'pipe', 'pipe'],
@@ -402,7 +437,7 @@ const deliveryOutcomeValidator: RuntimeValidator = {
           : null;
       const committedPlan =
         profile === 'full'
-          ? execFileSync('git', ['show', `HEAD:${plan}`], {
+          ? execFileSync('git', ['show', `HEAD:${archivedPlan}`], {
               cwd: root,
               encoding: 'utf8',
               stdio: ['ignore', 'pipe', 'pipe'],
@@ -426,8 +461,10 @@ const deliveryOutcomeValidator: RuntimeValidator = {
         (profile === 'full' &&
           (typeof designDoc !== 'string' ||
             typeof plan !== 'string' ||
-            !changed.includes(designDoc) ||
-            !changed.includes(plan) ||
+            !archivedDesignDoc ||
+            !archivedPlan ||
+            !changed.includes(archivedDesignDoc) ||
+            !changed.includes(archivedPlan) ||
             !committedDesign?.includes(`archived-with: ${archiveName}`) ||
             !committedDesign.includes('status: final') ||
             !committedPlan?.includes(`archived-with: ${archiveName}`)))
@@ -503,6 +540,7 @@ export async function validateClassicSdkDeliveryCandidate(
 export async function classicOpenEvidenceReceipt(
   projectRoot: string,
   changeDirRef: string,
+  options: { designRequirements?: boolean } = {},
 ): Promise<{ ref: string; contentHash: string }> {
   const inspected = await inspectProtectedProjectPath(projectRoot, changeDirRef, {
     label: 'Classic change',
@@ -514,11 +552,20 @@ export async function classicOpenEvidenceReceipt(
   const entries: Array<[string, string]> = [];
   for (const file of requirements.files) {
     const relative = path.relative(projectRoot, file).replaceAll('\\', '/');
+    if (options.designRequirements && relative === `${inspected.relative}/design.md`) continue;
     const hashed = await hashProtectedProjectFile(projectRoot, relative, {
       label: 'Classic Open artifact',
     });
     if (hashed.stat.size === 0) throw new Error(`Classic Open artifact is empty: ${relative}`);
-    entries.push([relative, hashed.digest]);
+    const digest =
+      options.designRequirements && relative === `${inspected.relative}/tasks.md`
+        ? classicTaskRevision(
+            await readClassicProjectFile(projectRoot, relative, {
+              label: 'Classic Design task requirements',
+            }),
+          )
+        : hashed.digest;
+    entries.push([relative, digest]);
   }
   entries.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
   return {
@@ -541,6 +588,34 @@ export async function classicDesignEvidenceReceipt(
   });
   if (hashed.stat.size === 0) throw new Error('Classic Design document is empty');
   return { ref: inspected.relative, contentHash: hashed.digest };
+}
+
+/** Reuse only the document accepted by the latest Design evidence. */
+export async function classicAcceptedDesignEvidence(projectRoot: string, run: WorkflowRun) {
+  const state = run.state as unknown as ClassicState;
+  const expected = run.evidenceWaits
+    ?.slice()
+    .reverse()
+    .find(
+      (wait) =>
+        wait.stepId === 'full.design.evidence' &&
+        wait.status === 'resolved' &&
+        wait.receipt?.ref === state.designDoc,
+    )?.receipt;
+  const current = state.designDoc
+    ? await classicDesignEvidenceReceipt(projectRoot, state.designDoc)
+    : null;
+  if (
+    !expected ||
+    !current ||
+    expected.ref !== current.ref ||
+    expected.contentHash !== current.contentHash
+  ) {
+    throw new Error(
+      `Classic Design document changed after accepted evidence; run comet state revise-design ${run.runId} --expected-revision ${run.revision}, then approve the revised design`,
+    );
+  }
+  return current;
 }
 
 export async function classicPlanEvidenceReceipt(
@@ -585,6 +660,44 @@ export async function classicPlanEvidenceReceipt(
   };
 }
 
+export async function assertClassicSdkDesignRequirementsCurrent(
+  projectRoot: string,
+  changeDirRef: string,
+  run: WorkflowRun,
+): Promise<void> {
+  const expected = (
+    run.outputs['full.design.handoff']?.value as
+      | {
+          requirementsEvidence?: { ref: string; contentHash: string };
+        }
+      | undefined
+  )?.requirementsEvidence;
+  const state = run.state as unknown as ClassicState;
+  const current = expected
+    ? await classicOpenEvidenceReceipt(projectRoot, changeDirRef, { designRequirements: true })
+    : null;
+  const handoffCurrent =
+    state.handoffContext &&
+    state.handoffHash &&
+    (await validateClassicSdkDesignContext({
+      projectRoot,
+      changeDir: path.join(projectRoot, changeDirRef),
+      change: (run.input as { change: string }).change,
+      contextCompression: state.contextCompression,
+      handoffContext: state.handoffContext,
+      handoffHash: state.handoffHash,
+      allowDesignDocumentChanges:
+        state.designDoc !== null &&
+        path.resolve(projectRoot, state.designDoc) ===
+          path.resolve(projectRoot, changeDirRef, 'design.md'),
+    }));
+  if (!handoffCurrent || (expected && !isDeepStrictEqual(expected, current))) {
+    throw new Error(
+      `Classic Design requirements changed after approval; run comet state revise-design ${run.runId} --expected-revision ${run.revision}, then propose and approve the changed requirements`,
+    );
+  }
+}
+
 export async function assertClassicBuildReady(
   projectRoot: string,
   changeDirRef: string,
@@ -626,6 +739,8 @@ export async function assertClassicBuildReady(
     throw new Error('Classic Build tasks are not all completed');
   }
   if (state.workflow === 'full') {
+    await assertClassicSdkDesignRequirementsCurrent(projectRoot, changeDirRef, run);
+    await classicAcceptedDesignEvidence(projectRoot, run);
     if (!state.plan) throw new Error('Classic Build plan is missing');
     const currentPlan = await classicPlanEvidenceReceipt(projectRoot, state.plan, changeDirRef);
     const acceptedPlan = run.evidenceWaits
@@ -638,7 +753,9 @@ export async function assertClassicBuildReady(
           wait.receipt?.ref === state.plan,
       )?.receipt;
     if (!acceptedPlan || acceptedPlan.contentHash !== currentPlan.contentHash) {
-      throw new Error('Classic Build plan or task requirements changed after accepted evidence');
+      throw new Error(
+        `Classic Build plan or task requirements changed after accepted evidence; run comet state revise-plan ${run.runId} --expected-revision ${run.revision}, then submit-plan again`,
+      );
     }
   }
   const proposalRef = path.posix.join(change.relative.replaceAll('\\', '/'), 'proposal.md');
@@ -727,6 +844,28 @@ const designEvidenceValidator: RuntimeEvidenceValidator = {
             'Classic Design document is not ready',
         };
       }
+      const proposal = run.outputs['full.design.handoff']?.value as
+        | {
+            requirementsEvidence?: { ref: string; contentHash: string };
+          }
+        | undefined;
+      if (proposal?.requirementsEvidence) {
+        const currentRequirements = await classicOpenEvidenceReceipt(
+          context.projectRoot,
+          changeDir,
+          {
+            designRequirements: true,
+          },
+        );
+        if (!isDeepStrictEqual(proposal.requirementsEvidence, currentRequirements)) {
+          return {
+            accepted: false,
+            actualHash: '',
+            reason:
+              'Classic Design requirements changed after approval; revise-design and approve a new proposal',
+          };
+        }
+      }
       const change = (run.input as { change?: unknown }).change;
       if (
         typeof change !== 'string' ||
@@ -739,6 +878,10 @@ const designEvidenceValidator: RuntimeEvidenceValidator = {
           contextCompression: state.contextCompression,
           handoffContext: state.handoffContext,
           handoffHash: state.handoffHash,
+          allowDesignDocumentChanges:
+            Boolean(proposal?.requirementsEvidence) &&
+            path.resolve(context.projectRoot, ref) ===
+              path.resolve(context.projectRoot, changeDir, 'design.md'),
         }))
       ) {
         return { accepted: false, actualHash: '', reason: 'Classic Design handoff has changed' };
@@ -789,7 +932,22 @@ const planEvidenceValidator: RuntimeEvidenceValidator = {
       return { accepted: false, actualHash: '', reason: '证据不属于当前 Classic Build 计划' };
     }
     try {
+      await assertClassicSdkDesignRequirementsCurrent(context.projectRoot, changeDirRef, run);
       const current = await classicPlanEvidenceReceipt(context.projectRoot, ref, changeDirRef);
+      const recorded = (
+        run.outputs['full.build.plan']?.value as
+          | {
+              planEvidence?: { ref: string; contentHash: string };
+            }
+          | undefined
+      )?.planEvidence;
+      if (recorded && !isDeepStrictEqual(recorded, current)) {
+        return {
+          accepted: false,
+          actualHash: current.contentHash,
+          reason: 'Classic Build plan candidate changed; revise-plan and submit-plan again',
+        };
+      }
       return {
         accepted: current.contentHash === contentHash,
         actualHash: current.contentHash,
@@ -1800,6 +1958,17 @@ export function defineClassicWorkflowApplication(
           return {
             state: {
               ...(run.state as object),
+              ...(run.commands?.some(
+                (command) =>
+                  command.name === 'revise-design' && command.actionId === event.outcome.actionId,
+              )
+                ? {
+                    phase: 'design',
+                    verifyResult: 'pending',
+                    verifiedAt: null,
+                    archiveConfirmation: null,
+                  }
+                : {}),
               ...(output.handoffContext && output.handoffHash
                 ? { handoffContext: output.handoffContext, handoffHash: output.handoffHash }
                 : {}),
@@ -1845,7 +2014,18 @@ export function defineClassicWorkflowApplication(
           );
           return {
             state: state.classic as unknown as RuntimeValue,
-            next: ['full.build.configure'],
+            next: [
+              run.commands?.some(
+                (command) =>
+                  command.name === 'revise-design' &&
+                  (
+                    run.actions.find((action) => action.id === command.actionId)?.input as
+                      { activation?: { fromPhase?: string } } | undefined
+                  )?.activation?.fromPhase === 'build',
+              )
+                ? 'full.build.plan'
+                : 'full.build.configure',
+            ],
           };
         }
         if (

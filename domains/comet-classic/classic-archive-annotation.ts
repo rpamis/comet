@@ -32,3 +32,16 @@ export function annotatedMarkdown(
   header.push('---');
   return exactlyOneFinalNewline([...header, normalized].join('\n'));
 }
+
+/** Documents inside the change move with OpenSpec; external references stay in place. */
+export function archivedClassicDocumentRef(
+  pointer: string | null,
+  activeRef: string,
+  archiveRef: string,
+): string | null {
+  if (!pointer) return null;
+  const normalized = pointer.replaceAll('\\', '/');
+  return normalized.startsWith(`${activeRef}/`)
+    ? `${archiveRef}/${normalized.slice(activeRef.length + 1)}`
+    : normalized;
+}

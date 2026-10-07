@@ -293,9 +293,11 @@ describe('Runtime execution extensions and recovery', () => {
       status: 'running',
       rejectedOutcomes: [{ outcome, code: 'OUTCOME_REJECTED', reason: '来源未核实' }],
     });
-    expect(createPortableRunCheckpoint(await runtime.inspect('r'))).toEqual(
-      portableBeforeRejection,
-    );
+    const portableAfterRejection = createPortableRunCheckpoint(await runtime.inspect('r'));
+    expect(portableAfterRejection.run).toEqual(portableBeforeRejection.run);
+    expect(portableAfterRejection.hash).toBe(portableBeforeRejection.hash);
+    expect(portableAfterRejection.sourceRevision).toBe(portableBeforeRejection.sourceRevision! + 1);
+    expect(portableAfterRejection.sourceHash).not.toBe(portableBeforeRejection.sourceHash);
     expect(
       (
         await runtime.recordOutcome({

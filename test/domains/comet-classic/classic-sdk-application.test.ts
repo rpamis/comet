@@ -249,6 +249,7 @@ async function reachFullBuildConfigurationDecision(
   application: ClassicApplication,
   runId: string,
   boundBranch?: string,
+  projectRoot?: string,
 ): Promise<WorkflowRun> {
   let run = await runtime.start({
     runId,
@@ -258,10 +259,26 @@ async function reachFullBuildConfigurationDecision(
   });
   run = await completeLatestAction(runtime, run, { event: 'open-complete' }, `${runId}-open`);
   run = await acceptOpenEvidence(runtime, run);
+  const handoff = projectRoot
+    ? await writeClassicSdkDesignContext({
+        projectRoot,
+        changeDir: path.join(projectRoot, 'docs/openspec/changes/example'),
+        change: 'example',
+        contextCompression: null,
+      })
+    : {};
+  const designHash = projectRoot
+    ? (
+        await classicDomain.classicDesignEvidenceReceipt(
+          projectRoot,
+          'docs/superpowers/specs/design.md',
+        )
+      ).contentHash
+    : 'b'.repeat(64);
   run = await completeLatestAction(
     runtime,
     run,
-    { proposal: 'Use the documented design' },
+    { proposal: 'Use the documented design', ...handoff },
     `${runId}-handoff`,
   );
   const designDecision = run.waits.at(-1)!;
@@ -283,7 +300,7 @@ async function reachFullBuildConfigurationDecision(
     evidenceId: run.evidenceWaits!.at(-1)!.id,
     kind: 'classic-design-document',
     ref: 'docs/superpowers/specs/design.md',
-    contentHash: 'b'.repeat(64),
+    contentHash: designHash,
     submissionId: `${runId}-design-evidence`,
     expectedRevision: run.revision,
   });
@@ -307,8 +324,15 @@ async function reachFullBuildCheckAction(
   runId: string,
   boundBranch?: string,
   planHash = 'c'.repeat(64),
+  projectRoot?: string,
 ): Promise<WorkflowRun> {
-  let run = await reachFullBuildConfigurationDecision(runtime, application, runId, boundBranch);
+  let run = await reachFullBuildConfigurationDecision(
+    runtime,
+    application,
+    runId,
+    boundBranch,
+    projectRoot,
+  );
   const configuration = run.waits.at(-1)!;
   run = await runtime.resolveWait({
     runId: run.runId,
@@ -418,6 +442,7 @@ async function checkedFullBuildRun(
     runId,
     options.boundBranch,
     planReceipt.contentHash,
+    projectRoot,
   );
   const run = await classicDomain.executeClassicSdkCommandCheck(runtime, {
     runId: ready.runId,
@@ -2096,6 +2121,12 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     );
     await fs.writeFile(path.join(changeDir, '.comet.yaml'), 'invalid: [yaml');
     await fs.writeFile(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+    await fs.writeFile(path.join(changeDir, 'design.md'), '# Design\n');
+    await fs.mkdir(path.join(projectRoot, 'docs/superpowers/specs'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, 'docs/superpowers/specs/design.md'),
+      '# Technical design\n',
+    );
     await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Build <!-- comet-task:build -->\n');
     await fs.writeFile(
       planFile,
@@ -2113,6 +2144,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       'classic-build-check',
       undefined,
       planReceipt.contentHash,
+      projectRoot,
     );
     expect((run.state as ClassicState).phase).toBe('build');
     expect(run.actions.at(-1)).toMatchObject({

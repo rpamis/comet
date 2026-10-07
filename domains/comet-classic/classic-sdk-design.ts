@@ -22,18 +22,34 @@ async function assertDesignProposalSourcesCurrent(options: {
   change: string;
   run: WorkflowRun;
   state: ClassicState;
+  allowDesignDocumentChanges?: boolean;
 }): Promise<void> {
   const { projectRoot, change, run, state } = options;
   const input = run.input as { changeDir: string };
-  const approvedOpen = run.outputs['full.open.evidence']?.value as
-    { ref?: unknown; contentHash?: unknown } | undefined;
-  const currentOpen = await classicOpenEvidenceReceipt(projectRoot, input.changeDir);
+  const proposal = run.outputs['full.design.handoff']?.value as
+    | {
+        sourceEvidence?: { ref: string; contentHash: string };
+        requirementsEvidence?: { ref: string; contentHash: string };
+      }
+    | undefined;
+  const phaseScoped = Boolean(proposal?.sourceEvidence && proposal.requirementsEvidence);
+  const approvedSources = phaseScoped
+    ? options.allowDesignDocumentChanges
+      ? proposal!.requirementsEvidence
+      : proposal!.sourceEvidence
+    : (run.outputs['full.open.evidence']?.value as
+        { ref?: unknown; contentHash?: unknown } | undefined);
+  const currentSources = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
+    designRequirements: phaseScoped && options.allowDesignDocumentChanges === true,
+  });
   if (
-    !approvedOpen ||
-    approvedOpen.ref !== currentOpen.ref ||
-    approvedOpen.contentHash !== currentOpen.contentHash
+    !approvedSources ||
+    approvedSources.ref !== currentSources.ref ||
+    approvedSources.contentHash !== currentSources.contentHash
   ) {
-    throw new Error('Classic Design OpenSpec artifacts changed after the approved proposal');
+    throw new Error(
+      `Classic Design OpenSpec artifacts changed after the approved proposal; run comet state revise-design ${change} --expected-revision ${run.revision}, then propose and approve the revised design`,
+    );
   }
   if (
     !state.handoffContext ||
@@ -45,9 +61,12 @@ async function assertDesignProposalSourcesCurrent(options: {
       contextCompression: state.contextCompression,
       handoffContext: state.handoffContext,
       handoffHash: state.handoffHash,
+      allowDesignDocumentChanges: phaseScoped && options.allowDesignDocumentChanges === true,
     }))
   ) {
-    throw new Error('Classic Design handoff changed after the approved proposal');
+    throw new Error(
+      `Classic Design handoff changed after the approved proposal; run comet state revise-design ${change} --expected-revision ${run.revision}, then propose and approve the revised design`,
+    );
   }
 }
 
@@ -61,7 +80,17 @@ export async function proposeClassicSdkDesign(options: {
   const proposal = options.proposal.trim();
   if (!proposal) throw new Error('Classic Design proposal must not be empty');
   const { run, state, runtime, profile } = await inspectClassicSdkRun(projectRoot, change);
-  if (profile !== 'full' || state.phase !== 'design') {
+  const revisingFromBuild =
+    state.phase === 'build' &&
+    run.actions.some(
+      (action) =>
+        action.stepId === 'full.design.handoff' &&
+        action.status === 'pending' &&
+        run.commands?.some(
+          (command) => command.name === 'revise-design' && command.actionId === action.id,
+        ),
+    );
+  if (profile !== 'full' || (state.phase !== 'design' && !revisingFromBuild)) {
     throw new Error('Classic Design proposal requires a full SDK change in Design');
   }
   const branch = evaluateBranchBinding({
@@ -81,6 +110,10 @@ export async function proposeClassicSdkDesign(options: {
   );
   if (!action) throw new Error('Classic SDK Run has no pending Design proposal Action');
   const input = run.input as { changeDir: string };
+  const sourceEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir);
+  const requirementsEvidence = await classicOpenEvidenceReceipt(projectRoot, input.changeDir, {
+    designRequirements: true,
+  });
   const handoff = await writeClassicSdkDesignContext({
     projectRoot,
     changeDir: path.join(projectRoot, input.changeDir),
@@ -107,7 +140,7 @@ export async function proposeClassicSdkDesign(options: {
       claimToken,
       outcomeId: randomUUID(),
       status: 'succeeded',
-      output: { proposal, ...handoff },
+      output: { proposal, ...handoff, sourceEvidence, requirementsEvidence },
     },
     context: { requestId: randomUUID(), projectRoot },
   });
@@ -196,8 +229,16 @@ export async function inspectClassicSdkDesign(options: {
   if (decision.status === 'resolved' && decision.decision?.choice !== 'approved') {
     throw new Error('Classic Design proposal was not approved');
   }
-  await assertDesignProposalSourcesCurrent({ projectRoot, change, run, state });
   const input = run.input as { changeDir: string };
+  await assertDesignProposalSourcesCurrent({
+    projectRoot,
+    change,
+    run,
+    state,
+    allowDesignDocumentChanges:
+      path.resolve(projectRoot, designDoc) ===
+      path.resolve(projectRoot, input.changeDir, 'design.md'),
+  });
   const readiness = await inspectClassicDesignReadiness(
     projectRoot,
     path.join(projectRoot, input.changeDir),

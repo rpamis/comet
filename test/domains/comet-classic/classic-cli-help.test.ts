@@ -83,6 +83,15 @@ describe('Classic operational help', () => {
     expect(output.stdout).toContain('does not execute');
   });
 
+  it.each(['revise-design', 'revise-plan'])('explains safe %s recovery', (command) => {
+    const help = classicCommandHelp('state', [command, '--help'])!;
+    expect(help).toContain(`comet state ${command}`);
+    expect(help).toContain('--expected-revision <number>');
+    expect(help).toContain('stale revision is rejected');
+    expect(help).toContain('Revision does not');
+    expect(help).toContain('proposal hash');
+  });
+
   it.each([['check', 'run'], ['state', 'record-check'], ['state', 'check'], ['guard']])(
     'keeps public and self-contained %s help aligned without a project',
     (...command) => {

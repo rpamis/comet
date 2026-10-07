@@ -1542,6 +1542,7 @@ children:
     expect(continuation.commandAlternatives.map(({ name }) => name)).toEqual([
       'multi-session',
       'single-session',
+      'revise-requirements',
     ]);
     expect(continuation.commandAlternatives[0]?.commandArgs).toEqual(
       expect.arrayContaining([
@@ -1902,6 +1903,9 @@ Run applicable focused checks.
     expect(next.stdout).toContain('--accept-result');
     expect(next.stdout).toContain('--revise-implementation');
     expect(next.stdout).toContain('--revise-requirements');
+    expect(next.stdout).toContain('renewing a pending Shape proposal');
+    expect(next.stdout).toContain('ordinary Builder explicitly failed');
+    expect(next.stdout).toContain('The new Shape still requires explicit approval');
     expect(next.stdout).not.toContain('--return-to-shape');
     expect(next.stdout).toContain('verifier-unavailable');
     expect(archive.stdout).toContain('does not repeat verification');

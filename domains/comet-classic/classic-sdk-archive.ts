@@ -17,7 +17,7 @@ import {
   classicArchivedRequirementsProblems,
   recordClassicArchiveRequirements,
 } from './classic-artifact-requirements.js';
-import { annotatedMarkdown } from './classic-archive-annotation.js';
+import { annotatedMarkdown, archivedClassicDocumentRef } from './classic-archive-annotation.js';
 import { assertClassicSdkArchiveReady } from './classic-sdk-archive-preflight.js';
 import { classicSdkRemoteIdentity } from './classic-sdk-remote.js';
 import { resolveClassicLayout } from './classic-layout.js';
@@ -196,8 +196,19 @@ export async function runClassicSdkArchive(
   const problems = await classicArchivedRequirementsProblems(projectRoot, archived.target);
   if (problems.length) throw new Error(problems.join('\n'));
   const state = run.state as unknown as ClassicState;
-  await annotateIfPresent(projectRoot, state.designDoc, archiveName, 'status: final');
-  await annotateIfPresent(projectRoot, state.plan, archiveName, '');
+  const archiveRef = path.relative(projectRoot, archived.target).replaceAll('\\', '/');
+  await annotateIfPresent(
+    projectRoot,
+    archivedClassicDocumentRef(state.designDoc, runInput.changeDir, archiveRef),
+    archiveName,
+    'status: final',
+  );
+  await annotateIfPresent(
+    projectRoot,
+    archivedClassicDocumentRef(state.plan, runInput.changeDir, archiveRef),
+    archiveName,
+    '',
+  );
 
   return {
     status: 'succeeded',
@@ -349,8 +360,19 @@ export async function recoverClassicSdkArchive(
   }
   const problems = await classicArchivedRequirementsProblems(projectRoot, archived.target);
   if (problems.length) throw new Error(problems.join('\n'));
-  await annotateIfPresent(projectRoot, state.designDoc, archiveName, 'status: final');
-  await annotateIfPresent(projectRoot, state.plan, archiveName, '');
+  const archiveRef = path.relative(projectRoot, archived.target).replaceAll('\\', '/');
+  await annotateIfPresent(
+    projectRoot,
+    archivedClassicDocumentRef(state.designDoc, identity.changeDir, archiveRef),
+    archiveName,
+    'status: final',
+  );
+  await annotateIfPresent(
+    projectRoot,
+    archivedClassicDocumentRef(state.plan, identity.changeDir, archiveRef),
+    archiveName,
+    '',
+  );
   return runtime.recordOutcome({
     runId: run.runId,
     context: { requestId: `classic-sdk-archive-recovery:${run.runId}:${lost.id}`, projectRoot },

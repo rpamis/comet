@@ -6,6 +6,7 @@ import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
+import { nativeSdkRequirementsRevisionAllowed } from './native-sdk-revise.js';
 import { projectNativeSdkStatus } from './native-sdk-status.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import type { NativeSupervisorCoordinationMode } from './native-portable-types.js';
@@ -40,6 +41,7 @@ export async function advanceNativeSdkChange(
         summary: string;
         expectedStateVersion: number;
         expectedAction: 'revise-requirements';
+        proposalHash?: string;
       }
     | {
         summary: string;
@@ -151,29 +153,58 @@ export async function advanceNativeSdkChange(
     return advanceNativeSdkChange(projectRoot, name);
   }
   if (decision?.expectedAction === 'revise-requirements') {
+    const shapeWait = run.waits.find(
+      (wait) =>
+        wait.status === 'pending' &&
+        ['shape.confirm', 'supervisor.shape.confirm'].includes(wait.stepId),
+    );
+    const inFlight = run.actions.some((action) => ['running', 'unknown'].includes(action.status));
+    const renewShape =
+      state.phase === 'shape' &&
+      state.status === 'await-user' &&
+      state.loop.next_action === 'confirm-shape' &&
+      shapeWait !== undefined &&
+      decision.proposalHash === shapeWait.proposalHash &&
+      !inFlight;
     if (
       state.state_version !== decision.expectedStateVersion ||
-      !(
-        ['verify', 'archive'].includes(state.phase) ||
-        (state.phase === 'build' && state.children_contract_hash)
-      )
+      (!renewShape && !nativeSdkRequirementsRevisionAllowed(run, state, decision.proposalHash))
     ) {
       return {
-        command: 'next',
+        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: {
           code: 'conflict',
-          message: `Native SDK requirements revision for ${name} is stale`,
+          message: inFlight
+            ? `ACTION_IN_FLIGHT: Native SDK ${name} 仍有 running/unknown Action；先核对并回报原任务结果，再按当前 continuation 修订需求。`
+            : `Native SDK requirements revision for ${name} is stale; follow the current continuation and proposal hash`,
         },
       };
     }
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
     const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
+    if (renewShape) {
+      await runtime.resolveWait({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        waitId: shapeWait!.id,
+        proposalHash: shapeWait!.proposalHash,
+        decisionId: hashRuntimeValue({
+          waitId: shapeWait!.id,
+          proposalHash: shapeWait!.proposalHash,
+          summary: decision.summary.trim(),
+          choice: 'rejected',
+        }),
+        choice: 'rejected',
+      });
+      return advanceNativeSdkChange(projectRoot, name);
+    }
     const commandId = hashRuntimeValue({
       runId: run.runId,
       name: 'revise-requirements',
       stateVersion: decision.expectedStateVersion,
       reason: decision.summary.trim(),
+      ...(decision.proposalHash === undefined ? {} : { proposalHash: decision.proposalHash }),
     });
     const dispatched = await runtime.dispatchCommand({
       runId: run.runId,
@@ -183,6 +214,7 @@ export async function advanceNativeSdkChange(
       input: {
         reason: decision.summary.trim(),
         expectedStateVersion: decision.expectedStateVersion,
+        ...(decision.proposalHash === undefined ? {} : { proposalHash: decision.proposalHash }),
       },
       context: { requestId: randomUUID(), projectRoot },
     });
@@ -286,11 +318,11 @@ export async function advanceNativeSdkChange(
       current.shapeConfirmationHash !== state.shape_confirmation_hash
     ) {
       return {
-        command: 'next',
+        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: {
           code: 'conflict',
-          message: `Native SDK Shape documents changed after the approval proposal for ${name}`,
+          message: `Native SDK Shape documents changed after the approval proposal for ${name}; use revise-requirements from the current continuation, then confirm the new complete Shape`,
         },
       };
     }

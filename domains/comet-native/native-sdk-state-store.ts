@@ -213,7 +213,11 @@ export function createNativeSdkStateStore(
     return value;
   }
 
-  async function recoverFromPortableFile(runId: string): Promise<WorkflowRun | null> {
+  async function recoverFromPortableFile(
+    runId: string,
+    marker: ProjectionMarker | null,
+    interrupted?: WorkflowRun,
+  ): Promise<WorkflowRun | null> {
     const config = await readProjectConfig(projectRoot);
     if (!config) return null;
     const paths = await nativeProjectPaths(projectRoot, config.native.artifact_root);
@@ -234,7 +238,9 @@ export function createNativeSdkStateStore(
     if (document.errors.length > 0)
       throw new Error(`Invalid Native state file: ${document.errors[0].message}`);
     const data = document.toJS() as Record<string, unknown>;
-    const saved = readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], runId);
+    const saved = readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], runId, {
+      preserveSourceRevision: true,
+    });
     if (!saved) return null;
     if (
       hashRuntimeValue((data.application_checkpoint ?? null) as never) !==
@@ -259,6 +265,37 @@ export function createNativeSdkStateStore(
       targetBranch: state.workspace.target_branch,
     });
     assertSupervisorWorkspacesAvailable(saved, state, projectRoot);
+    const hasSourceRevision =
+      (data[PORTABLE_RUN_CHECKPOINT_KEY] as { sourceRevision?: unknown }).sourceRevision !==
+      undefined;
+    if (
+      marker &&
+      ((hasSourceRevision && marker.revision > saved.revision) ||
+        ((!hasSourceRevision || marker.revision === saved.revision) &&
+          !sameState(
+            parseNativePortableState(marker.state),
+            parseNativePortableState(saved.state),
+          )))
+    ) {
+      throw new Error(
+        `Native SDK checkpoint and projection disagree for ${runId}; restore matching Run history and state from the same backup before continuing`,
+      );
+    }
+    const revision = hasSourceRevision ? saved.revision : (marker?.revision ?? saved.revision);
+    const restored: WorkflowRun = { ...saved, revision };
+    if (
+      interrupted &&
+      hashRuntimeValue(interrupted) !== hashRuntimeValue({ ...restored, revision: 1 })
+    ) {
+      throw new Error(
+        `Native SDK Run ${runId} differs from the interrupted checkpoint import; preserve the local records and restore matching Run history before continuing`,
+      );
+    }
+    if ((revision > 1 || interrupted) && !store.restoreCheckpoint) {
+      throw new Error(
+        `Native RuntimeStore cannot restore checkpoint revision ${revision}; use a store with restoreCheckpoint support or restore the original Run history`,
+      );
+    }
     await registerSdkChangeOwner(projectRoot, {
       schema: COMET_CHANGE_OWNER_SCHEMA,
       workflow: 'native',
@@ -267,7 +304,8 @@ export function createNativeSdkStateStore(
       application: options.identity?.id ?? 'native',
       runId,
     });
-    await store.compareAndSwap(runId, null, { ...saved, revision: 1 });
+    if (revision === 1 && !interrupted) await store.compareAndSwap(runId, null, restored);
+    else await store.restoreCheckpoint!(runId, interrupted ? 1 : null, restored);
     return store.read(runId);
   }
 
@@ -279,7 +317,43 @@ export function createNativeSdkStateStore(
     return withRecoverableFileLock(
       lockFile,
       async () => {
-        const run = (await store.read(runId)) ?? (await recoverFromPortableFile(runId));
+        const markerFile = path.join(projectRoot, projectionDir, `${runId}.json`);
+        let marker: ProjectionMarker | null = null;
+        let markerSource: string | null = null;
+        try {
+          markerSource = (
+            await readProtectedProjectFile(
+              projectRoot,
+              `${projectionDir}/${runId}.json`,
+              Number.MAX_SAFE_INTEGER,
+              { label: 'Native SDK state projection marker' },
+            )
+          ).bytes.toString('utf8');
+          marker = JSON.parse(markerSource) as ProjectionMarker;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+        if (
+          markerSource !== null &&
+          (!marker ||
+            marker.schema !== 'comet.native.sdk-state-projection.v1' ||
+            marker.runId !== runId ||
+            !Number.isSafeInteger(marker.revision) ||
+            marker.revision < 1 ||
+            parseNativePortableState(marker.state).name !== runId)
+        ) {
+          throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
+        }
+        let run = await store.read(runId);
+        if (!run || (run.revision === 1 && marker && marker.revision > 1)) {
+          const recovered = await recoverFromPortableFile(runId, marker, run ?? undefined);
+          if (run && !recovered) {
+            throw new Error(
+              `Native SDK Run ${runId} requires its matching portable checkpoint or original Run history before completing recovery`,
+            );
+          }
+          run = recovered;
+        }
         if (!run) return null;
         const state = parseNativePortableState(run.state);
         const input = run.input as { name?: unknown; artifactRootRef?: unknown } | null;
@@ -317,30 +391,7 @@ export function createNativeSdkStateStore(
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         }
-        const markerFile = path.join(projectRoot, projectionDir, `${runId}.json`);
-        let marker: ProjectionMarker | null = null;
-        let markerSource: string | null = null;
-        try {
-          markerSource = (
-            await readProtectedProjectFile(
-              projectRoot,
-              `${projectionDir}/${runId}.json`,
-              Number.MAX_SAFE_INTEGER,
-              { label: 'Native SDK state projection marker' },
-            )
-          ).bytes.toString('utf8');
-          marker = JSON.parse(markerSource) as ProjectionMarker;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        }
-        if (
-          marker &&
-          (marker.schema !== 'comet.native.sdk-state-projection.v1' ||
-            marker.runId !== runId ||
-            !Number.isSafeInteger(marker.revision) ||
-            marker.revision > run.revision ||
-            parseNativePortableState(marker.state).name !== runId)
-        ) {
+        if (marker && marker.revision > run.revision) {
           throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
         }
         if (current && !sameState(current, state)) {

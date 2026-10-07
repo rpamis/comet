@@ -1,3 +1,5 @@
+import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
+import { reviseClassicSdkWork } from './classic-sdk-revision.js';
 import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
 import { spawnSync } from 'child_process';
 import path from 'path';
@@ -1538,6 +1540,9 @@ async function checkSdkEntry(
   } else if (state.isolation !== null) {
     pass('bound_branch matches current branch');
   }
+  for (const problem of await inspectClassicSdkRevisionReadiness(projectRoot, run)) {
+    reject(`${problem.message}; ${problem.remediation}`);
+  }
   const blocked = issues.length > 0;
   output.data = {
     change: name,
@@ -2775,6 +2780,25 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           nextAction: classicSdkNextAction(run),
         };
         output.stdout.push(`Archive delivery recorded for ${rest[0]}.`);
+      } else if (subcommand === 'revise-design' || subcommand === 'revise-plan') {
+        if (
+          rest.length !== 3 ||
+          rest[1] !== '--expected-revision' ||
+          !/^[1-9]\d*$/u.test(rest[2]) ||
+          !Number.isSafeInteger(Number(rest[2]))
+        ) {
+          fail(`Usage: comet state ${subcommand} <change-name> --expected-revision <revision>`);
+        }
+        validateChangeName(rest[0]);
+        const workspace = await findClassicSdkWorkspace(classicCommandProjectRoot(), rest[0]);
+        if (!workspace) fail(`ERROR: Classic change '${rest[0]}' is not owned by an SDK Run`);
+        const run = await reviseClassicSdkWork({
+          projectRoot: workspace.projectRoot,
+          change: rest[0],
+          name: subcommand,
+          expectedRevision: Number(rest[2]),
+        });
+        nextSdk(output, rest[0], run);
       } else if (subcommand === 'submit-plan' || subcommand === 'continue-plan') {
         const submitting = subcommand === 'submit-plan';
         if (
@@ -2866,6 +2890,22 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
               fail(`ERROR: Classic SDK change '${rest[0]}' is in ${state.phase}, not ${rest[1]}`);
             }
             nextSdk(output, rest[0], sdkWorkspace.run);
+            const issues = await inspectClassicSdkRevisionReadiness(
+              sdkWorkspace.projectRoot,
+              sdkWorkspace.run,
+            );
+            if (issues.length) {
+              output.data = {
+                ...(output.data as object),
+                issues,
+                checks: { blocked: true },
+                recoveryActions: issues.map((issue) => ({ commandArgs: issue.commandArgs })),
+              };
+              output.stderr.push(
+                ...issues.map((issue) => `${issue.message}; ${issue.remediation}`),
+              );
+              throw new CommandFailure('', 1);
+            }
           } else {
             await recover(output, rest[0], rest.includes('--details'), options.json);
           }

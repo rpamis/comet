@@ -16,7 +16,10 @@ import {
   readCometCurrentSelection,
   writeCometCurrentSelection,
 } from '../workflow-contract/current-selection.js';
-import { SDK_APPLICATIONS } from '../workflow-contract/change-runtime-owner.js';
+import {
+  SDK_APPLICATIONS,
+  readChangeRuntimeOwner,
+} from '../workflow-contract/change-runtime-owner.js';
 import {
   adaptApplicationSkill,
   applicationError,
@@ -55,6 +58,7 @@ function safeId(id: string): string {
 function rawStore(projectRoot: string, id: string) {
   return createFileRuntimeStore<ApplicationRunRecord>({
     rootDir: path.join(projectRoot, '.comet/runtime/applications', safeId(id)),
+    mirroredRevisionPaths: ['run.revision'],
   });
 }
 
@@ -396,6 +400,40 @@ export async function loadWorkflowApplication(options: {
       if (!record) return null;
       assertIdentity(record);
       return record.run;
+    },
+    async restoreCheckpoint(runId, expectedRevision, run) {
+      await assertCurrentMaterial();
+      const record = await persistent.read(runId);
+      if (record) assertIdentity(record);
+      if (run.runId !== runId || run.actions.some((action) => action.status === 'running')) {
+        throw new RuntimeProtocolError(
+          'INVALID_RUN',
+          '应用恢复必须使用同一 Run 的 portable checkpoint，活跃领取须先转为 unknown',
+        );
+      }
+      const workflow =
+        manifest.base === 'native'
+          ? 'native'
+          : manifest.base.startsWith('classic-')
+            ? 'classic'
+            : null;
+      if (workflow) {
+        const owner = await readChangeRuntimeOwner(projectRoot, workflow, runId);
+        if (
+          !owner ||
+          owner.format !== 'sdk' ||
+          owner.application !== identity.id ||
+          owner.runId !== runId
+        ) {
+          throw new RuntimeProtocolError(
+            'INVALID_RUN',
+            '恢复 Run 前须验证相同的固定应用和 change 归属',
+          );
+        }
+      }
+      const restored = { runId, revision: run.revision, application: identity, run };
+      assertIdentity(restored);
+      return persistent.restoreCheckpoint!(runId, expectedRevision, restored);
     },
     async compareAndSwap(runId, expectedRevision, run) {
       await assertCurrentMaterial();

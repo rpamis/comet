@@ -1,10 +1,16 @@
+import { classicTaskRevision } from './classic-tasks.js';
 import { randomUUID } from 'node:crypto';
 
 import type { WorkflowRun } from '../engine/runtime.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { classicConfigurationReadiness } from './classic-build-configuration.js';
 import { readClassicProjectFile } from './classic-protected-path.js';
-import { assertClassicBuildReady, classicPlanEvidenceReceipt } from './classic-sdk-application.js';
+import {
+  assertClassicBuildReady,
+  assertClassicSdkDesignRequirementsCurrent,
+  classicPlanEvidenceReceipt,
+  classicAcceptedDesignEvidence,
+} from './classic-sdk-application.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import type { ClassicState } from './classic-state.js';
 
@@ -204,12 +210,11 @@ export async function submitClassicSdkBuildPlan(options: {
     (wait) => wait.stepId === 'full.build.plan.evidence' && wait.status === 'pending',
   );
   if (!action && !pendingEvidence) {
-    throw new Error('Classic SDK Run has no pending Build plan Action or evidence');
+    throw new Error(
+      `Classic SDK Run has no pending Build plan Action or evidence; run comet state revise-plan ${change} --expected-revision ${inspected.revision}, then submit-plan again`,
+    );
   }
-  if (
-    pendingEvidence &&
-    (state.plan !== planRef || (state.buildPause === 'plan-ready') !== pause)
-  ) {
+  if (pendingEvidence && (state.plan !== planRef || (pause && state.buildPause !== 'plan-ready'))) {
     throw new Error('Classic Build plan submission does not match the recorded Action');
   }
   const changeDirRef =
@@ -220,8 +225,16 @@ export async function submitClassicSdkBuildPlan(options: {
       ? inspected.input.changeDir
       : null;
   if (!changeDirRef) throw new Error('Classic SDK Run has no change directory');
+  await assertClassicSdkDesignRequirementsCurrent(projectRoot, changeDirRef, inspected);
   const receipt = await classicPlanEvidenceReceipt(projectRoot, planRef, changeDirRef);
+  const designEvidence = await classicAcceptedDesignEvidence(projectRoot, inspected);
 
+  const taskRevision = classicTaskRevision(
+    await readClassicProjectFile(projectRoot, `${changeDirRef}/tasks.md`, {
+      label: 'Classic Build task requirements',
+    }),
+  );
+  const requirePause = pause || state.buildPause === 'plan-ready';
   let run = inspected;
   if (action) {
     const claimToken = randomUUID();
@@ -244,7 +257,13 @@ export async function submitClassicSdkBuildPlan(options: {
         claimToken,
         outcomeId: randomUUID(),
         status: 'succeeded',
-        output: { plan: planRef, ...(pause ? { buildPause: 'plan-ready' } : {}) },
+        output: {
+          plan: planRef,
+          planEvidence: receipt,
+          designEvidence,
+          taskRevision,
+          ...(requirePause ? { buildPause: 'plan-ready' } : {}),
+        },
       },
       context: { requestId: randomUUID(), projectRoot },
     });
@@ -323,7 +342,9 @@ export async function continueClassicSdkBuildPlan(options: {
     acceptedPlan.ref !== receipt.ref ||
     acceptedPlan.contentHash !== receipt.contentHash
   ) {
-    throw new Error('Classic Build plan or tasks changed after the plan-ready pause');
+    throw new Error(
+      `Classic Build plan or tasks changed after the plan-ready pause; run comet state revise-plan ${change} --expected-revision ${inspected.revision}, then submit-plan --pause again`,
+    );
   }
   let run = inspected;
   if (wait.status === 'pending') {

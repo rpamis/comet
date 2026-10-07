@@ -8,7 +8,7 @@ import {
   readSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
-import { defineClassicWorkflowApplication } from './classic-sdk-application.js';
+import { classicSdkApplicationForRun } from './classic-sdk-revision-application.js';
 import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
 import { resolveClassicChangeDirectory } from './classic-paths.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
@@ -78,14 +78,27 @@ export async function inspectClassicSdkRun(
       `Classic change ${name} belongs to application ${owner.application}; use comet runtime dispatch --application ${owner.application} to continue its Run. Built-in commands cannot bypass composition checks.`,
     );
   const profile = owner.application.slice('classic-'.length) as ClassicProfile;
-  const application = defineClassicWorkflowApplication(profile);
+  const store = createClassicSdkStateStore(projectRoot);
+  const saved = await store.read(owner.runId);
+  const application = classicSdkApplicationForRun(profile, saved);
+  let initialRead = true;
   const runtime = createRuntime({
-    store: createClassicSdkStateStore(projectRoot),
+    store: {
+      ...store,
+      async read(runId) {
+        if (initialRead && runId === owner.runId) {
+          initialRead = false;
+          return saved;
+        }
+        return store.read(runId);
+      },
+    },
     workflows: [application.workflow],
     transitionHandlers: [application.transitionHandler],
     evidenceValidators: application.evidenceValidators,
     validators: application.validators,
     executors: application.executors,
+    commandValidators: application.commandValidators,
   });
   const run = await runtime.inspect(owner.runId);
   const directory = (await resolveClassicChangeDirectory(name, projectRoot)).directory;

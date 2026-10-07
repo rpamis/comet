@@ -201,6 +201,7 @@ export interface ExternalWorkflowStepOptions extends WorkflowStepOptions {
 
 // @public (undocumented)
 export interface FileRuntimeStoreOptions {
+    mirroredRevisionPaths?: readonly 'run.revision'[];
     // (undocumented)
     rootDir: string;
 }
@@ -215,7 +216,9 @@ export type InvalidateRuntimeEvidence = RecordRuntimeEvidence;
 export const PORTABLE_RUN_CHECKPOINT_KEY = "run_checkpoint";
 
 // @public (undocumented)
-export function readPortableRunCheckpoint(value: unknown, runId: string): WorkflowRun | null;
+export function readPortableRunCheckpoint(value: unknown, runId: string, options?: {
+    preserveSourceRevision?: boolean;
+}): WorkflowRun | null;
 
 // @public (undocumented)
 export interface RecordRuntimeEvidence extends RunCommand {
@@ -550,6 +553,7 @@ export interface RuntimeStore<T extends RuntimeRecord> {
     compareAndSwap(runId: string, expectedRevision: number | null, next: T): Promise<boolean>;
     // (undocumented)
     read(runId: string): Promise<T | null>;
+    restoreCheckpoint?(runId: string, expectedRevision: null | 1, checkpoint: T): Promise<boolean>;
 }
 
 // @public (undocumented)

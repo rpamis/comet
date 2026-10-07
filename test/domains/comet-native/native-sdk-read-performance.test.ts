@@ -320,11 +320,11 @@ describe('Native SDK read work budgets', () => {
     await fs.rm(path.join(root, '.comet/runtime/sdk-runs/native'), { recursive: true });
     await fs.rm(markerFile);
     const recovered = await createNativeSdkStateStore(root).read(name);
-    expect(recovered?.revision).toBe(1);
+    expect(recovered?.revision).toBe(before.run.revision);
     expect(recovered?.state).toEqual(before.run.state);
     expect(recovered?.waits).toEqual(before.run.waits);
     expect(await fs.readFile(stateFile, 'utf8')).toContain('run_checkpoint:');
-    expect(JSON.parse(await fs.readFile(markerFile, 'utf8')).revision).toBe(1);
+    expect(JSON.parse(await fs.readFile(markerFile, 'utf8')).revision).toBe(before.run.revision);
   });
 
   it.skipIf(process.platform === 'win32')(
