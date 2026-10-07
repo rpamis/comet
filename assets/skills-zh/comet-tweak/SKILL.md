@@ -22,6 +22,8 @@ Tweak 为 Comet 五阶段流程提供一组预设配置。它通过 OpenSpec 完
 
 ## SDK Run 路径
 
+响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 等待原任务，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。下文依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
+
 开始或恢复时，优先复用当前有效结果中的 `agent.continuation` / `data.nextAction` 及已绑定的 change、工作区、phase 和 Run revision，按已知的 `data.runtimeFormat` 路由。只有冷恢复、外部状态变化或缺少这些信息时，才运行 `comet state next <change-name> --json`。`sdk` 只按本节推进；下文的适用条件、OpenSpec apply 方法、升级判定和文件数授权规则仍适用，下文的旧状态写入、旧证据命令及 `.comet.yaml` 判断不执行。若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> <phase> --recover --json` 核对原 Action；结果未明时不重做实现、检查或归档。
 
 1. 新建时先按下文让用户选择工作区隔离方式，运行 `comet classic workspace prepare <name> --isolation <selected-isolation> --json`，进入返回的 `projectRoot`，再运行 `comet state init <name> tweak --isolation <selected-isolation>`、`comet state select <name>`。按下文 Step 1 创建 OpenSpec 产物，包括本次确需的 delta spec；运行 `comet state check <change-name> open --json` 与 `comet guard <change-name> open --json` 预检，保存返回的 `data.approvalHash`。向用户展示本次 Open 产物与范围，获得明确批准后，运行 `comet guard <change-name> open --apply --approval-hash <approvalHash>`。产物变化后必须重新预览并确认，不复用旧哈希。只有 Run 进入 Build，Open 才完成。

@@ -330,6 +330,7 @@ describe('Comet Native CLI dispatcher', () => {
         workspace: { bindingState: 'mismatch', changeBranch: boundBranch },
         continuation: {
           disposition: 'await-user',
+          mode: 'ask',
           requiredInputs: ['return-to-bound-workspace'],
         },
       },
@@ -411,6 +412,7 @@ describe('Comet Native CLI dispatcher', () => {
         },
         continuation: {
           disposition: 'await-user',
+          mode: 'ask',
           action: 'none',
           commandArgs: null,
           requiredInputs: ['return-to-bound-workspace'],

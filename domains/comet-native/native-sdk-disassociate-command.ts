@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { hashRuntimeValue } from '../engine/runtime.js';
-import { nativePortableContinuation } from './native-portable-continuation.js';
+import { projectNativeSdkStatus } from './native-sdk-status.js';
 import { assertNativePortableExpectedContinuationLocked } from './native-portable-requirements.js';
 import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { success, type DispatchResult } from './native-cli-shared.js';
@@ -55,7 +55,7 @@ export async function disassociateNativeSdkCapability(options: {
   if (updated.status === 'failed') throw new Error('Native SDK capability revocation failed');
   return success(
     'spec disassociate',
-    { ...nextState, continuation: nativePortableContinuation(nextState) },
+    { ...(await projectNativeSdkStatus(options, current)), ...nextState },
     `Revoked Native capability association in ${options.name}\n`,
   );
 }

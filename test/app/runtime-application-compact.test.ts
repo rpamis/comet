@@ -61,7 +61,13 @@ describe('custom application compact CLI output', () => {
     expect(view(result).inspection.commandArgs).toContain('--details');
     expect(view(result).continuation.commandArgs).toContain(root);
     const inspected = await dispatch(view(result).inspection.request);
-    expect(inspected.cliResponse).toBeUndefined();
+    expect(inspected.cliResponse).toMatchObject({
+      data: {
+        ...result.response.data,
+        current: { actions: [{ id: 'report:1', input: result.response.data.actions[0].input }] },
+        continuation: { mode: 'execute' },
+      },
+    });
     expect(inspected.response.data).toEqual(result.response.data);
     const detailed = await dispatch({ operation: 'next', runId: 'report' }, true);
     expect(detailed.cliResponse).toBeUndefined();
@@ -79,10 +85,12 @@ describe('custom application compact CLI output', () => {
 
   it('continues through revision, explicit approval and the same claimed outcome using returned templates', async () => {
     const initial = view(await dispatch(start));
+    expect(initial.continuation.mode).toBe('execute');
     const executed = await dispatch(initial.current.actions[0].executeRequests![0]);
     let current = view(executed);
     expect(current.current.actions).toEqual([]);
     expect(current.current.waits).toHaveLength(1);
+    expect(current.continuation.mode).toBe('ask');
     const wait = current.current.waits[0];
     expect(wait.proposal).toEqual(executed.response.data.waits[0].proposal);
     expect(wait).not.toHaveProperty('results');
@@ -101,6 +109,12 @@ describe('custom application compact CLI output', () => {
     expect(stale.response).toMatchObject({
       status: 'failed',
       error: { code: 'STALE_PROPOSAL' },
+    });
+    expect(stale.cliResponse).toMatchObject({
+      continuation: {
+        mode: 'reconcile',
+        request: { operation: 'inspect', runId: 'report' },
+      },
     });
     current = view(
       await dispatch({
@@ -124,6 +138,7 @@ describe('custom application compact CLI output', () => {
       sessionId: 'isolated-test',
     });
     current = view(claimed);
+    expect(current.continuation.mode).toBe('wait');
     expect(current.current.actions[0].claim).toEqual(claimed.response.data.actions.at(-1)!.claim);
     expect(current.current.actions[0].executeRequests).toBeUndefined();
     const outcomeRequest = current.current.actions[0].outcomeRequest!;
@@ -143,6 +158,7 @@ describe('custom application compact CLI output', () => {
     });
     expect(view(completed).outputs).toEqual(completed.response.data.outputs);
     expect(view(completed).continuation.nextRequest).toBeUndefined();
+    expect(view(completed).continuation.mode).toBe('done');
   });
 
   it('retains every parallel action, current input and join dependency after reverse completion', async () => {
@@ -184,6 +200,7 @@ describe('custom application compact CLI output', () => {
       }),
     );
     const unknown = current.current.actions[0];
+    expect(current.continuation.mode).toBe('reconcile');
     expect(unknown.claim).toEqual(claim);
     expect(unknown).toMatchObject({
       attempt: 1,
@@ -223,6 +240,7 @@ describe('custom application compact CLI output', () => {
       status: 'pending',
     });
     expect(current.current.actions[0].claim).toBeUndefined();
+    expect(current.continuation.mode).toBe('execute');
     const completed = view(await dispatch(current.current.actions[0].executeRequests![0]));
     expect(completed.current.waits).toHaveLength(1);
   });

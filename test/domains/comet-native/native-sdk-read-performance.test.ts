@@ -32,6 +32,7 @@ import { nativeStatusCommand } from '../../../domains/comet-native/native-status
 import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
 import { render } from '../../../domains/comet-native/native-cli-shared.js';
+import { runNativeCli } from '../../../domains/comet-native/native-cli.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   registerSdkChangeOwner,
@@ -91,12 +92,78 @@ async function preparedChange(name = 'read-budget', existingRoot?: string) {
     root,
     name,
     runtime,
+    prepared: prepared.data as Awaited<ReturnType<typeof inspectNativeSdkStatus>>,
     stateFile: path.join(changeDir, 'comet-state.yaml'),
     markerFile: path.join(root, '.comet/runtime/state-projections/native', `${name}.json`),
   };
 }
 
 describe('Native SDK read work budgets', () => {
+  it('returns the first executable continuation when creating an SDK change', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-new-contract-'));
+    roots.push(root);
+    await fs.mkdir(path.join(root, '.git'));
+    const result = await runNativeCli([
+      'new',
+      'warm-start',
+      '--runtime',
+      'sdk',
+      '--project-root',
+      root,
+      '--json',
+    ]);
+    expect(result.exitCode, result.stderr).toBe(0);
+    const response = JSON.parse(result.stdout!);
+    expect(response.data).toMatchObject({
+      schema: 'comet.native.v4',
+      runtimeFormat: 'sdk',
+      acceptance: [],
+      blockers: [],
+      workspace: { isolation: 'current', change_branch: null, target_branch: null },
+      run: { id: 'warm-start', revision: expect.any(Number) },
+      continuation: {
+        mode: 'execute',
+        action: 'prepare-shape-confirmation',
+        cwd: root,
+        commandArgs: expect.arrayContaining(['--project-root', root]),
+      },
+      pendingAction: { stepId: 'shape.prepare' },
+      pendingActions: [{ stepId: 'shape.prepare' }],
+    });
+    expect(response.data.pendingAction).not.toHaveProperty('inputRef');
+    expect(response.data.pendingActions[0]).not.toHaveProperty('input');
+    expect(response.agent.continuation).toMatchObject(response.data.continuation);
+  });
+
+  it('returns the current proposal and executable decision templates with a stale mutation response', async () => {
+    const { root, name, prepared } = await preparedChange();
+    const rejected = await advanceNativeSdkChange(root, name, {
+      expectedAction: 'confirm-shape',
+      expectedStateVersion: prepared.stateVersion - 1,
+      summary: 'This approval used a stale response.',
+    });
+    expect(rejected).toMatchObject({ exitCode: 73, error: { code: 'conflict' } });
+    const current = rejected.data as typeof prepared;
+    expect(current.run.revision).toBe(prepared.run.revision);
+    expect(current.continuation).toEqual(prepared.continuation);
+    expect(current.continuation.mode).toBe('ask');
+    expect(current.pendingWaits![0]).toMatchObject({
+      proposal: expect.any(Object),
+      commandArgs: expect.arrayContaining(['--project-root', root]),
+      decisionRequests: [
+        {
+          operation: 'resolve-wait',
+          runId: name,
+          expectedRevision: prepared.run.revision,
+          waitId: prepared.pendingWaits![0].id,
+          proposalHash: prepared.pendingWaits![0].proposalHash,
+          choice: 'approved',
+        },
+        { choice: 'rejected' },
+      ],
+    });
+  });
+
   it('loads one definition and returns the same guarded Shape decision from status, next, and show', async () => {
     const { root, name } = await preparedChange();
     const definitions = vi.spyOn(sdkApplication, 'defineNativeWorkflowApplication');
@@ -127,7 +194,17 @@ describe('Native SDK read work budgets', () => {
     });
     const status = await inspectNativeSdkStatus({ projectRoot: root, name });
     const pending = status.pendingAction!;
-    expect(pending).toMatchObject({ stepId: 'build.builder', type: 'handoff' });
+    expect(pending).toMatchObject({
+      stepId: 'build.builder',
+      type: 'handoff',
+      inputRef: 'pendingActions[0].input',
+    });
+    expect(status.pendingActions![0].input).toEqual(
+      (await inspectNativeSdkRun(root, name)).run.actions.find(
+        (action) => action.id === pending.id,
+      )!.input,
+    );
+    expect(status.continuation).toMatchObject({ mode: 'execute', cwd: root });
     expect(status.continuation.commandArgs).toEqual([
       'comet',
       'runtime',
@@ -136,6 +213,9 @@ describe('Native SDK read work budgets', () => {
       'native',
       '--request',
       '<request-json-file>',
+      '--project-root',
+      root,
+      '--json',
     ]);
     const request = pending.claimRequest!;
     expect(status.continuation.inputOptions[0].template).toEqual(request);
@@ -149,7 +229,10 @@ describe('Native SDK read work budgets', () => {
     });
     expect(claimed.actions.find((action) => action.id === pending.id)?.status).toBe('running');
     const waiting = await inspectNativeSdkStatus({ projectRoot: root, name });
-    expect(waiting.continuation.commandArgs).toEqual(['comet', 'native', 'status', name, '--json']);
+    expect(waiting.continuation).toMatchObject({ mode: 'wait', commandArgs: null, cwd: root });
+    expect(waiting.activeActions![0].input).toEqual(
+      claimed.actions.find((action) => action.id === pending.id)!.input,
+    );
     expect(waiting.pendingAction).toBeUndefined();
     expect(waiting.continuation.userCommunication.agentInstruction).toContain(
       'original claimed task',
@@ -167,10 +250,11 @@ describe('Native SDK read work budgets', () => {
       ],
     });
     expect(await runtime.inspect(name)).toEqual(claimed);
+    const { operation: markOperation, ...markUnknown } =
+      waiting.activeActions![0].markUnknownRequest!;
+    expect(markOperation).toBe('mark-unknown');
     const unknown = await runtime.markUnknown({
-      runId: name,
-      actionId: pending.id,
-      attempt: pending.attempt,
+      ...markUnknown,
       reason: 'Fixture host lost the original execution result.',
     });
     const blocked = await advanceNativeSdkChange(root, name);
@@ -178,7 +262,12 @@ describe('Native SDK read work budgets', () => {
     expect(blocked.data).toMatchObject({
       phase: 'build',
       run: { revision: unknown.revision },
-      continuation: { disposition: 'blocked', requiredInputs: ['original-execution-result'] },
+      continuation: {
+        mode: 'reconcile',
+        commandArgs: null,
+        disposition: 'blocked',
+        requiredInputs: ['original-execution-result'],
+      },
       activeActions: [
         {
           id: pending.id,
@@ -196,6 +285,21 @@ describe('Native SDK read work budgets', () => {
         context: { requestId: 'stale-claim', projectRoot: root },
       }),
     ).rejects.toThrow();
+    const blockedView = blocked.data as typeof waiting;
+    const { operation: retryOperation, ...retry } = blockedView.activeActions![0].retryRequest!;
+    expect(retryOperation).toBe('retry');
+    await expect(runtime.retry(retry)).rejects.toMatchObject({ code: 'RECONCILIATION_REQUIRED' });
+    const retried = await runtime.retry({
+      ...retry,
+      reconciliation: {
+        resolution: 'not-executed',
+        evidence: { host: 'Fixture only claimed; no work was started.' },
+      },
+    });
+    expect(retried.actions.find((action) => action.id === pending.id)).toMatchObject({
+      status: 'pending',
+      attempt: pending.attempt + 1,
+    });
   });
 
   it.each(['healthy', 'marker-mismatch', 'missing-marker', 'invalid-yaml'])(

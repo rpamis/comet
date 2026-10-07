@@ -175,6 +175,13 @@ describe('Classic SDK profile-aware handoffs', () => {
         'process.exit(90)',
       );
       expect(blocked.exitCode).not.toBe(0);
+      expect(blocked.agent.continuation).toMatchObject({
+        mode: 'reconcile',
+        commandArgs: null,
+        actionId: pending.id,
+        blockers: [{ code: 'CLASSIC_GUARD_BLOCKED' }],
+      });
+      expect(blocked.agent.continuation.completion).toBeUndefined();
       expect((await inspectClassicSdkRun(root, 'demo')).run).toEqual(persisted);
       await fs.writeFile(path.join(changeDir, 'tasks.md'), '- [x] Implement the change\n');
       const failed = await cli(
@@ -188,6 +195,9 @@ describe('Classic SDK profile-aware handoffs', () => {
         'process.exit(1)',
       );
       expect(failed.exitCode).not.toBe(0);
+      expect(failed.agent.continuation.mode).toBe('execute');
+      expect(failed.agent.continuation.actionId).not.toBe(pending.id);
+      expect(failed.agent.continuation.blockers).toBeUndefined();
       const retry = await cli('state', 'next', 'demo');
       expect(retry.data.nextAction).toMatchObject({
         kind: 'action',

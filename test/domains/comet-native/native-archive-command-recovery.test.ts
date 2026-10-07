@@ -213,6 +213,7 @@ describe('Native Archive workspace finish recovery command', () => {
       data: {
         archived: true,
         workspaceFinishResult: { status: 'blocked', message: 'workspace is dirty' },
+        continuation: { mode: 'reconcile', disposition: 'blocked' },
       },
       error: { code: 'conflict', message: 'workspace is dirty' },
     });

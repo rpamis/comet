@@ -35,6 +35,7 @@ import { ensureCometProjectGitignore } from '../workflow-contract/project-gitign
 import { assertChangeNotSdkOwned } from '../workflow-contract/change-runtime-owner.js';
 import { createNativeSdkChange } from './native-sdk-create.js';
 import { parseNativePortableState } from './native-portable-state.js';
+import { projectNativeSdkStatus } from './native-sdk-status.js';
 import {
   assertNoArguments,
   languageOption,
@@ -256,22 +257,6 @@ export async function nativeNewCommand(
         ...state,
         artifacts: nativeChangeArtifactPaths(paths, state.name),
         preparation: prepared.preparation,
-        ...(sdkRun
-          ? {
-              run: {
-                id: sdkRun.runId,
-                revision: sdkRun.revision,
-                status: sdkRun.status,
-                actions: sdkRun.actions.map(({ id, stepId, status, attempt, inputHash }) => ({
-                  id,
-                  stepId,
-                  status,
-                  attempt,
-                  inputHash,
-                })),
-              },
-            }
-          : {}),
         ...(capabilityDiscovery === null
           ? {}
           : {
@@ -279,7 +264,15 @@ export async function nativeNewCommand(
               ...(associationPath === undefined ? {} : { associationPath }),
               ...(deltaProposal === undefined ? {} : { deltaProposal }),
             }),
-        ...(sdkRun ? {} : { continuation: nativePortableContinuation(state) }),
+        ...(sdkRun
+          ? {
+              ...(await projectNativeSdkStatus(
+                { projectRoot, name },
+                { run: sdkRun, state, artifactRootRef: paths.artifactRootRef, application: null },
+              )),
+              ...state,
+            }
+          : { continuation: nativePortableContinuation(state) }),
       },
       `Created Native change ${state.name}\n`,
     ),

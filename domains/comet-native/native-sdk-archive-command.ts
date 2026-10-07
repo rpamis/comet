@@ -11,17 +11,13 @@ import { restoreNativeSupervisorChildArchiveMaterials } from './native-sdk-super
 import { parseNativePortableState } from './native-portable-state.js';
 import { randomUUID } from 'node:crypto';
 import type { WorkflowRun } from '../engine/runtime.js';
+import { nativeSdkNextAction, nativeSdkPendingActions } from './native-sdk-continuation.js';
 
 function pendingArchiveAction(run: WorkflowRun) {
-  if (
-    run.waits.some((wait) => wait.status === 'pending') ||
-    run.evidenceWaits?.some((wait) => wait.status === 'pending') ||
-    run.actions.some((action) => ['running', 'unknown'].includes(action.status))
-  )
-    return null;
-  const actions = run.actions.filter((action) => action.status === 'pending');
+  const actions = nativeSdkPendingActions(run);
   if (actions.length !== 1) return null;
-  const action = actions[0];
+  const action = nativeSdkNextAction(run, parseNativePortableState(run.state));
+  if (!action) return null;
   const step = NATIVE_SDK_ARCHIVE_STEPS.findIndex(
     ([stepId, ref]) => action.stepId === stepId && action.ref === ref,
   );
@@ -113,7 +109,6 @@ export async function archiveNativeSdkChange(options: {
     }
     return success('archive', {
       change: options.name,
-      runtimeFormat: 'sdk',
       recoveredAction: { id: action.id, stepId: action.stepId },
       ...(await inspectNativeSdkStatus(options)),
     });
@@ -127,12 +122,11 @@ export async function archiveNativeSdkChange(options: {
         : undefined;
     return success('archive --dry-run', {
       change: options.name,
-      runtimeFormat: 'sdk',
+      ...(await projectNativeSdkStatus(options, inspection)),
       phase: state.phase,
       status: run.status,
       ready,
       ...(delivery ? { delivery } : {}),
-      ...(pending ? { pendingAction: { id: pending.id, stepId: pending.stepId } } : {}),
     });
   }
   if (state.phase !== 'archive') {
@@ -172,7 +166,6 @@ export async function archiveNativeSdkChange(options: {
   }
   const result = success('archive', {
     change: options.name,
-    runtimeFormat: 'sdk',
     completedActions,
     ...(await projectNativeSdkStatus(options, { ...inspection, run, state })),
   });

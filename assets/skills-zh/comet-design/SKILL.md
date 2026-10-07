@@ -9,6 +9,8 @@ description: '完成 Classic 技术设计并请用户确认。在用户调用 /c
 
 ## SDK Run 路径
 
+响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 等待原任务，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。下文依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
+
 优先复用同一 change、工作区和 Run 的最新有效响应中的 `agent.continuation`、`data.nextAction`、phase、revision 和路径摘要。只有冷恢复、工作区或外部状态变化、响应版本已过期或缺少当前步骤必要信息时，才运行 `comet state next <change-name> --json`；不要因加载下一 Skill 再读一次。后续写操作仍由 Runtime 校验当前版本与证据，不能用缓存跳过检查或批准。当 `data.runtimeFormat` 为 `sdk` 时，只执行本节的状态命令；下文 Step 1b 的 brainstorming 方法、Step 1c 的提问格式和 Step 2 的 Design Doc 要求仍适用，下文针对旧状态文件的命令不执行。`data.phase` 必须为 `design`；已进入 Build 时交回当前阶段入口。`data.nextAction.kind` 为 `reconcile` 时，运行 `comet state check <change-name> design --recover --json` 核对已领取 Action 的原结果，在结果明确前停止，不重新提案或重发工作。
 
 1. 待执行 Action 为 `full.design.handoff` 时，复用当前响应的 layout 与产物引用；缺少时才运行 `comet state check <change-name> design --json`，直接读取当前 OpenSpec proposal、tasks、delta specs 和已有 design.md 中本次设计需要的内容。使用下文 Step 1b 的 brainstorming 方法形成候选技术方案；此时还没有 SDK handoff 包，不执行旧 `comet handoff ... --write`，也不把手写摘要当作 SDK handoff。持续保存 `brainstorm-summary.md`，未确认内容标为候选。

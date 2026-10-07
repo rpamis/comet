@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { hashRuntimeValue } from '../engine/runtime.js';
-import { nativePortableContinuation } from './native-portable-continuation.js';
+import { projectNativeSdkStatus } from './native-sdk-status.js';
 import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { success, type DispatchResult } from './native-cli-shared.js';
 
@@ -24,7 +24,8 @@ export async function removeNativeSdkCapability(options: {
   name: string;
   capability: string;
 }): Promise<DispatchResult> {
-  const { run, state } = await inspectNativeSdkRun(options.projectRoot, options.name);
+  const inspection = await inspectNativeSdkRun(options.projectRoot, options.name);
+  const { run, state } = inspection;
   if (
     state.spec_changes.some(
       (change) => change.capability === options.capability && change.operation === 'remove',
@@ -32,7 +33,7 @@ export async function removeNativeSdkCapability(options: {
   ) {
     return success(
       'spec remove',
-      { ...state, continuation: nativePortableContinuation(state) },
+      { ...(await projectNativeSdkStatus(options, inspection)), ...state },
       `Marked Native capability ${options.capability} for removal in ${options.name}\n`,
     );
   }
@@ -74,7 +75,7 @@ export async function removeNativeSdkCapability(options: {
   );
   return success(
     'spec remove',
-    { ...current.state, continuation: nativePortableContinuation(current.state) },
+    { ...(await projectNativeSdkStatus(options, current)), ...current.state },
     `Marked Native capability ${options.capability} for removal in ${options.name}\n`,
   );
 }

@@ -412,6 +412,8 @@ export async function nativeNextCommand(
         phase: 'archive' as const,
         status: 'blocked' as const,
         disposition: 'blocked' as const,
+
+        mode: 'reconcile' as const,
         requiresUserDecision: false,
         action: 'archive' as const,
         commandArgs: finishJournal.result?.recoveryArgs ?? [
@@ -956,6 +958,8 @@ async function nativeWorkspaceMismatchResult(
     continuation: {
       ...continuation,
       disposition: 'blocked',
+
+      mode: 'reconcile',
       requiresUserDecision: false,
       action: 'repair',
       commandArgs: null,

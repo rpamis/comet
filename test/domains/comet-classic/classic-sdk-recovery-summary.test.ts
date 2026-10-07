@@ -44,8 +44,15 @@ async function fixture() {
     ),
   ]);
   const proposed = await cli('guard', 'demo', 'open');
-  await cli('guard', 'demo', 'open', '--apply', '--approval-hash', proposed.data.approvalHash);
-  return { projectRoot, changeDir, cli };
+  const opened = await cli(
+    'guard',
+    'demo',
+    'open',
+    '--apply',
+    '--approval-hash',
+    proposed.data.approvalHash,
+  );
+  return { projectRoot, changeDir, cli, opened };
 }
 
 const readers = [
@@ -56,6 +63,136 @@ const readers = [
 ];
 
 describe('Classic SDK compact entry and recovery summaries', () => {
+  it('returns the same complete continuation after Open, Design proposal, decision and workspace resolve', async () => {
+    const { projectRoot, cli, opened } = await fixture();
+    expect(opened.data).toMatchObject({
+      runtimeFormat: 'sdk',
+      projectRoot,
+      phase: 'design',
+      layout: { schema: 'comet.classic-layout.v1' },
+    });
+    expect(opened.agent.workspace.cwd).toBe(projectRoot);
+    expect(opened.data.continuation).toEqual(
+      (await cli('state', 'next', 'demo')).data.continuation,
+    );
+    const proposed = await cli(
+      'state',
+      'propose-design',
+      'demo',
+      '--proposal',
+      'Preserve the API and use the adapter.',
+    );
+    expect(proposed.data.configuration.handoffContext).toEqual(expect.any(String));
+    expect(proposed.data.continuation.mode).toBe('ask');
+    expect(proposed.data.continuation.current.waits[0].proposal).toBeDefined();
+    expect(proposed.data.continuation).toEqual(
+      (await cli('state', 'next', 'demo')).data.continuation,
+    );
+    const decided = await cli(
+      'state',
+      'decide-design',
+      'demo',
+      '--proposal-hash',
+      proposed.data.wait.proposalHash,
+      '--choice',
+      'approved',
+    );
+    expect(decided.data.continuation).toMatchObject({
+      mode: 'execute',
+      skill: 'comet-design',
+      stepId: 'full.design.document',
+    });
+    expect(decided.next).toEqual({ command: '/comet-design' });
+    expect(decided.data.continuation).toEqual(
+      (await cli('state', 'next', 'demo')).data.continuation,
+    );
+    const resolved = await cli('workspace', 'resolve', 'demo');
+    expect(resolved.data.continuation).toEqual(decided.data.continuation);
+    expect(resolved.agent.workspace.cwd).toBe(projectRoot);
+
+    const current = decided.data.continuation.current.actions[0];
+    expect(current).not.toHaveProperty('input');
+    expect(current.inputSummary).toMatchObject({
+      usage: 'host-context-only',
+      scope: { change: 'demo', changeDir: 'openspec/changes/demo' },
+      configurationRef: 'data.configuration',
+    });
+    expect(
+      decided.data.continuation.current.approvals.some(
+        (approval: { proposalHash: string }) =>
+          approval.proposalHash === proposed.data.wait.proposalHash,
+      ),
+    ).toBe(true);
+    const detailed = await runClassicCli(
+      decided.data.continuation.inspection.commandArgs.slice(1),
+      undefined,
+      { projectRoot, invocationCwd: projectRoot },
+    );
+    const original = JSON.parse(detailed.stdout!).data.run.actions.find(
+      (action: { id: string }) => action.id === current.id,
+    );
+    expect(original.inputHash).toBe(current.inputHash);
+    expect(original.input.input).toEqual(current.inputSummary.scope);
+    const designRef = 'openspec/changes/demo/design.md';
+    await fs.writeFile(
+      path.join(projectRoot, designRef),
+      '---\ncomet_change: demo\nrole: technical-design\ncanonical_spec: openspec\n---\n# Technical design\nUse the adapter and preserve the public API.\n',
+    );
+    const completed = await runClassicCli(
+      decided.data.continuation.completion.commandArgs
+        .slice(1)
+        .map((argument: string) => (argument === '<design-doc-ref>' ? designRef : argument)),
+      undefined,
+      { projectRoot, invocationCwd: projectRoot },
+    );
+    expect(completed.exitCode, completed.stdout).toBe(0);
+    const latest = JSON.parse(completed.stdout!);
+    expect(latest.data.continuation.stepId).toBe('full.build.configure');
+    expect(latest.data.configuration.designDoc).toBe(designRef);
+  });
+
+  it('waits on the original running claim and supplies a legal unknown recovery command', async () => {
+    const { projectRoot, cli } = await fixture();
+    const inspected = await inspectClassicSdkRun(projectRoot, 'demo');
+    const action = inspected.run.actions.find((entry) => entry.status === 'pending')!;
+    const running = await inspected.runtime.claim({
+      runId: inspected.run.runId,
+      expectedRevision: inspected.run.revision,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'original-host',
+      claimToken: 'original-claim',
+    });
+    const waiting = await cli('state', 'next', 'demo');
+    expect(waiting.agent.continuation).toMatchObject({ mode: 'wait', commandArgs: null });
+    expect(waiting.agent.continuation.currentRef).toBe('data.continuation.current');
+    expect(waiting.data.continuation.current.actions[0].claim.token).toBe('original-claim');
+    expect((await inspectClassicSdkRun(projectRoot, 'demo')).run.revision).toBe(running.revision);
+    await inspected.runtime.markUnknown({
+      runId: running.runId,
+      expectedRevision: running.revision,
+      actionId: action.id,
+      attempt: action.attempt,
+      reason: 'Original executor disconnected',
+    });
+    const unknown = await cli('state', 'next', 'demo');
+    expect(unknown.agent.continuation.mode).toBe('reconcile');
+    const recovery = await runClassicCli(
+      unknown.agent.continuation.commandArgs.slice(1),
+      undefined,
+      {
+        projectRoot,
+        invocationCwd: projectRoot,
+      },
+    );
+    const result = JSON.parse(recovery.stdout!);
+    expect(result.exitCode).toBe(1);
+    expect(result.data.recovery.claim.token).toBe('original-claim');
+    expect(result.agent.continuation).toMatchObject({ mode: 'reconcile', actionId: action.id });
+    expect(result.data.recovery.recordOutcomeRequest).toBeUndefined();
+  });
+
   it.each(readers)('returns stable recovery context for state %s', async (...args) => {
     const { projectRoot, changeDir, cli } = await fixture();
     const before = (await inspectClassicSdkRun(projectRoot, 'demo')).run;

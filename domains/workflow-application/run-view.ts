@@ -1,5 +1,6 @@
 import type { RuntimeAction, WorkflowRun } from '../engine/runtime.js';
 import type { LoadedWorkflowApplication } from './types.js';
+import type { CliContinuationMode } from '../workflow-contract/output-envelope.js';
 
 function waitView(wait: WorkflowRun['waits'][number]) {
   return {
@@ -50,6 +51,24 @@ export function projectWorkflowApplicationRun(
   );
   const command = { runId: run.runId, expectedRevision: run.revision };
   const nextRequest = { operation: 'next' as const, ...command };
+
+  // 只选择本次 Run 已允许的工作；保留并行动作，不从阶段名猜测或重建推进规则。
+  const selectedAction =
+    activeActions.find((action) => action.status === 'unknown') ??
+    activeActions.find((action) => action.status === 'running') ??
+    activeActions.find((action) => action.status === 'pending');
+  const mode: CliContinuationMode =
+    run.status === 'completed' || run.status === 'cancelled'
+      ? 'done'
+      : run.status === 'failed' || selectedAction?.status === 'unknown'
+        ? 'reconcile'
+        : selectedAction?.status === 'running' && selectedAction.type !== 'child_workflow'
+          ? 'wait'
+          : selectedAction || run.ready.length > 0
+            ? 'execute'
+            : waits.length > 0
+              ? 'ask'
+              : 'reconcile';
 
   function actionRequests(action: RuntimeAction) {
     if (action.type === 'child_workflow') {
@@ -241,11 +260,29 @@ export function projectWorkflowApplicationRun(
       outputs: Object.keys(run.outputs).length,
     },
     continuation: {
+      mode,
+      cwd: application.identity.projectRoot,
       commandArgs,
+      requiredInputs:
+        mode === 'ask'
+          ? ['current.waits: 当前提案的用户决定']
+          : mode === 'reconcile'
+            ? ['current: 原执行结果或阻塞证据']
+            : [],
+      ...(selectedAction ? { actionId: selectedAction.id } : {}),
       instruction:
-        '模板中的占位值必须替换为真实输入；每次提交后使用新响应中的 revision 和当前身份。',
-      ...(run.status !== 'cancelled' &&
-      run.status !== 'failed' &&
+        mode === 'done'
+          ? '此 Run 已结束，不执行遗留动作。'
+          : mode === 'wait'
+            ? '等待 current.actions 中原宿主的结果，不重新领取或派发；取得结果后使用原 outcomeRequest。'
+            : mode === 'reconcile'
+              ? '按 current 中的 instruction 核对原执行或补齐证据；不能把断连或失败当作未执行后直接重试。'
+              : mode === 'ask'
+                ? '展示 current.waits 的完整 proposal 和 choices；取得对当前 proposalHash 的用户决定后填写 resolveRequest。'
+                : !selectedAction || selectedAction.type === 'child_workflow'
+                  ? '使用 nextRequest 推进已就绪的步骤或原子 Run；不另建相同子 Run。'
+                  : '执行 current.actions 中所选动作的 executeRequest，或由具备能力的宿主使用 claimRequest；模板占位值替换为真实输入，每次提交后使用新响应的 revision 和身份。',
+      ...(!terminal &&
       !children.some(
         (child) =>
           activeActions.find((action) => action.id === child.actionId)?.status === 'unknown',

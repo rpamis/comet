@@ -16,11 +16,32 @@
 
 export type CliOutputLocale = 'en' | 'zh-CN';
 
+/** 由领域根据当前 Run 决定；展示层不得根据命令名重新推断是否可推进。 */
+export type CliContinuationMode = 'execute' | 'wait' | 'ask' | 'reconcile' | 'done';
+
+export interface CliActionContinuation {
+  mode: CliContinuationMode;
+  commandArgs: readonly string[] | null;
+  requiredInputs: readonly string[];
+  instruction?: string;
+}
+
+/** argv 是执行依据；文本按 POSIX shell 引用，避免空格、变量和重定向改变参数。 */
+export function formatCliCommandArgs(args: readonly string[]): string {
+  return args
+    .map((value) =>
+      /^[A-Za-z0-9_./:=+@-]+$/u.test(value) ? value : `'${value.replace(/'/gu, `'"'"'`)}'`,
+    )
+    .join(' ');
+}
+
 export interface CliNextHint {
   /** Exact command the agent should run next, if the next step is a command. */
   command?: string;
   /** What the agent must ask the user instead of running a command. */
   ask_user?: string;
+  /** 等待、核对或结束时的动作说明，不伪装成用户问题或可执行命令。 */
+  instruction?: string;
 }
 
 export interface CliOutputEnvelope {
@@ -49,7 +70,7 @@ export function projectCliAgentObservation(data: unknown, cwd?: string): CliAgen
       : {};
   const root = record(data);
   const entry = record(root.entry);
-  const run = record(root.run ?? entry.run);
+  const run = record(root.run ?? entry.run ?? (typeof root.runId === 'string' ? root : undefined));
   const state = record(root.state ?? entry.state ?? root);
   const workspace = record(root.preparation ?? root.workspace ?? entry.workspace);
   const continuation = record(
@@ -58,19 +79,44 @@ export function projectCliAgentObservation(data: unknown, cwd?: string): CliAgen
   const executionCwd =
     typeof workspace.projectRoot === 'string' && workspace.projectRoot !== '.'
       ? workspace.projectRoot
-      : (cwd ?? (typeof continuation.cwd === 'string' ? continuation.cwd : null));
+      : typeof continuation.cwd === 'string'
+        ? continuation.cwd
+        : typeof root.projectRoot === 'string'
+          ? root.projectRoot
+          : typeof entry.projectRoot === 'string'
+            ? entry.projectRoot
+            : (cwd ?? null);
   const version = state.stateVersion ?? state.state_version;
   const status = state.status ?? run.status;
+  // 轻量头引用同一 JSON 内的当前工作，避免再次复制输入正文和完整提案。
+  const { current, ...continuationHeader } = continuation;
+  const continuationView =
+    current === undefined
+      ? continuation
+      : {
+          ...continuationHeader,
+          currentRef:
+            root.continuation !== undefined
+              ? 'data.continuation.current'
+              : 'data.entry.continuation.current',
+        };
   return {
     phase: typeof state.phase === 'string' ? state.phase : null,
     status: typeof status === 'string' ? status : null,
     stateVersion: typeof version === 'number' ? version : null,
     workspace: { cwd: executionCwd },
-    continuation: Object.keys(continuation).length ? { ...continuation, cwd: executionCwd } : null,
+    continuation: Object.keys(continuation).length
+      ? { ...continuationView, cwd: executionCwd }
+      : null,
     ...(Object.keys(run).length
       ? {
           run: {
-            id: typeof run.id === 'string' ? run.id : null,
+            id:
+              typeof run.id === 'string'
+                ? run.id
+                : typeof run.runId === 'string'
+                  ? run.runId
+                  : null,
             revision: typeof run.revision === 'number' ? run.revision : null,
             status: typeof run.status === 'string' ? run.status : null,
           },
@@ -94,6 +140,7 @@ export function cliNextHintLine(next: CliNextHint | undefined): string | null {
   if (!next) return null;
   if (next.command) return `${CLI_OUTPUT_MARKERS.next} ${next.command}`;
   if (next.ask_user) return `${CLI_OUTPUT_MARKERS.next} ${next.ask_user}`;
+  if (next.instruction) return `${CLI_OUTPUT_MARKERS.next} ${next.instruction}`;
   return null;
 }
 
@@ -160,14 +207,16 @@ export function isCliOutputEnvelope(value: unknown): value is CliOutputEnvelope 
     (typeof candidate.next !== 'object' ||
       candidate.next === null ||
       (candidate.next.command !== undefined && typeof candidate.next.command !== 'string') ||
-      (candidate.next.ask_user !== undefined && typeof candidate.next.ask_user !== 'string'))
+      (candidate.next.ask_user !== undefined && typeof candidate.next.ask_user !== 'string') ||
+      (candidate.next.instruction !== undefined && typeof candidate.next.instruction !== 'string'))
   ) {
     return false;
   }
   if (
     candidate.next !== undefined &&
-    candidate.next.command !== undefined &&
-    candidate.next.ask_user !== undefined
+    [candidate.next.command, candidate.next.ask_user, candidate.next.instruction].filter(
+      (value) => value !== undefined,
+    ).length > 1
   ) {
     return false;
   }

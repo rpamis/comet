@@ -853,6 +853,9 @@ Run focused Native checks.
         'native',
         '--request',
         '<request-json-file>',
+        '--project-root',
+        projectRoot,
+        '--json',
       ]);
 
       const { run } = await inspectNativeSdkRun(projectRoot, 'sdk-confirm');
@@ -1147,6 +1150,9 @@ Run focused Native checks.
         String(verifyStateVersion),
         '--expected-action',
         'accept-result',
+        '--project-root',
+        projectRoot,
+        '--json',
       ]);
       const statusAtDecision = json(
         await runNativeCli(['status', 'sdk-confirm', '--json', ...projectArgs()]),
@@ -1179,17 +1185,15 @@ Run focused Native checks.
         status: 'pending',
       });
       const accepted = json(
-        await runNativeCli([
-          ...reportedAccept.commandArgs
+        await runNativeCli(
+          reportedAccept.commandArgs
             .slice(2)
             .map((argument) =>
               argument === '<summary>'
                 ? 'User accepted the independently verified result.'
                 : argument,
             ),
-          '--json',
-          ...projectArgs(),
-        ]),
+        ),
       );
       expect(accepted, accepted.error?.message).toMatchObject({
         exitCode: 0,
@@ -1198,7 +1202,15 @@ Run focused Native checks.
           continuation: {
             disposition: 'continue',
             requiresUserDecision: false,
-            commandArgs: ['comet', 'native', 'archive', 'sdk-confirm'],
+            commandArgs: [
+              'comet',
+              'native',
+              'archive',
+              'sdk-confirm',
+              '--project-root',
+              projectRoot,
+              '--json',
+            ],
           },
           run: {
             actions: expect.arrayContaining([
@@ -3923,6 +3935,7 @@ Run applicable focused checks.
         recovery: { reason: 'workspace-mismatch' },
         continuation: {
           disposition: 'blocked',
+          mode: 'reconcile',
           action: 'repair',
           commandArgs: null,
           commandAlternatives: [],

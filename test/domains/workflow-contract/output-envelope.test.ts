@@ -7,9 +7,57 @@ import {
   formatCliOutputEnvelope,
   isCliOutputEnvelope,
   projectCliAgentObservation,
+  formatCliCommandArgs,
 } from '../../../domains/workflow-contract/output-envelope.js';
 
 describe('output envelope contract', () => {
+  it('references current work within the same response without duplicating complete inputs', () => {
+    const data = {
+      continuation: { mode: 'execute', current: { actions: [{ input: 'large current input' }] } },
+    };
+    const agent = projectCliAgentObservation(data);
+    expect(agent.continuation).toMatchObject({
+      mode: 'execute',
+      currentRef: 'data.continuation.current',
+    });
+    expect(agent.continuation).not.toHaveProperty('current');
+    expect(data.continuation.current.actions[0].input).toBe('large current input');
+  });
+  it.each(['execute', 'wait', 'ask', 'reconcile', 'done'])(
+    'preserves domain mode %s without deriving another decision',
+    (mode) => {
+      expect(
+        projectCliAgentObservation(
+          {
+            runId: 'bound-run',
+            revision: 12,
+            status: 'running',
+            continuation: { mode, commandArgs: null, requiredInputs: [], cwd: '/bound workspace' },
+          },
+          '/invocation',
+        ),
+      ).toMatchObject({
+        run: { id: 'bound-run', revision: 12 },
+        workspace: { cwd: '/bound workspace' },
+        continuation: { mode, cwd: '/bound workspace' },
+      });
+    },
+  );
+
+  it('quotes command parameters instead of turning placeholders or input into shell syntax', () => {
+    expect(
+      formatCliCommandArgs(['comet', '--summary', "don't run $HOME; now", '<input>', '']),
+    ).toBe(`comet --summary 'don'"'"'t run $HOME; now' '<input>' ''`);
+  });
+
+  it('renders waiting instructions without inventing a user decision', () => {
+    const envelope = { summary: 'Waiting.', next: { instruction: 'Wait for the original task.' } };
+    expect(isCliOutputEnvelope(envelope)).toBe(true);
+    expect(formatCliOutputEnvelope(envelope)).toContain('NEXT: Wait for the original task.');
+    expect(
+      isCliOutputEnvelope({ ...envelope, next: { ...envelope.next, command: 'comet next' } }),
+    ).toBe(false);
+  });
   it('projects current action and prepared cwd without copying evidence payloads', () => {
     const observation = projectCliAgentObservation(
       {

@@ -20,7 +20,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function fixture(options: { metadata?: boolean } = {}) {
+async function fixture(options: { metadata?: boolean; preflight?: boolean } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-archive-preflight-'));
   roots.push(root);
   const projectRoot = path.join(root, 'project');
@@ -140,11 +140,91 @@ async function fixture(options: { metadata?: boolean } = {}) {
     'local',
   );
   const { runtime, run } = await inspectClassicSdkRun(projectRoot, 'example');
-  const ready = await executeClassicSdkArchivePreflight(runtime, { runId: run.runId, projectRoot });
+  const ready =
+    options.preflight === false
+      ? run
+      : await executeClassicSdkArchivePreflight(runtime, { runId: run.runId, projectRoot });
   return { root, projectRoot, runtime, run: ready, executable, count, install, cli, active };
 }
 
 describe('Classic SDK Archive dependency preflight', () => {
+  it.each([false, true])(
+    'blocks the same approved Archive Action after report drift (apply=%s)',
+    async (apply) => {
+      const f = await fixture({ preflight: false });
+      const pending = f.run.actions.find((action) => action.status === 'pending')!;
+      expect(pending.stepId).toBe('tweak.archive.preflight');
+      await fs.appendFile(
+        path.join(f.projectRoot, 'docs/superpowers/reports/verify.md'),
+        'Changed after approval.\n',
+      );
+      const response = await runClassicCli(
+        ['guard', 'example', 'archive', ...(apply ? ['--apply'] : []), '--json'],
+        undefined,
+        { invocationCwd: f.projectRoot },
+      );
+      const result = JSON.parse(response.stdout!);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.agent.continuation).toMatchObject({
+        mode: 'reconcile',
+        commandArgs: null,
+        actionId: pending.id,
+        blockers: [{ code: 'CLASSIC_GUARD_BLOCKED', actionId: pending.id }],
+      });
+      expect(result.agent.continuation.completion).toBeUndefined();
+      expect(result.next.command).toBeUndefined();
+      expect(result.next.instruction).toContain('不要重复原失败命令');
+      expect(await f.runtime.inspect(f.run.runId)).toEqual(f.run);
+      await expect(fs.access(f.count)).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
+
+  it('keeps a different legitimate action when Guard was called for the wrong phase', async () => {
+    const f = await fixture({ preflight: false });
+    const response = await runClassicCli(['guard', 'example', 'build', '--json'], undefined, {
+      invocationCwd: f.projectRoot,
+    });
+    const result = JSON.parse(response.stdout!);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.agent.continuation).toMatchObject({
+      mode: 'execute',
+      stepId: 'tweak.archive.preflight',
+      commandArgs: ['comet', 'guard', 'example', 'archive', '--apply', '--json'],
+    });
+    expect(result.agent.continuation.blockers).toBeUndefined();
+    expect(await f.runtime.inspect(f.run.runId)).toEqual(f.run);
+  });
+
+  it.each([false, true])(
+    'does not repeat Archive apply when the current dependency is missing (preflight=%s)',
+    async (preflight) => {
+      const f = await fixture({ preflight });
+      vi.stubEnv('COMET_OPENSPEC', f.executable);
+      const response = await runClassicCli(
+        ['guard', 'example', 'archive', '--apply', '--json'],
+        undefined,
+        { invocationCwd: f.projectRoot },
+      );
+      const result = JSON.parse(response.stdout!);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.agent.continuation).toMatchObject({
+        mode: 'reconcile',
+        commandArgs: null,
+        stepId: 'tweak.archive.execute',
+        blockers: [{ code: 'CLASSIC_GUARD_BLOCKED' }],
+      });
+      const current = await f.runtime.inspect(f.run.runId);
+      expect(result.data.run.revision).toBe(current.revision);
+      if (preflight) expect(current).toEqual(f.run);
+      else
+        expect(current.actions.at(-1)).toMatchObject({
+          stepId: 'tweak.archive.execute',
+          status: 'pending',
+        });
+      await expect(fs.access(f.count)).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
+
   it('leaves a missing dependency pending and archives exactly once after it is repaired', async () => {
     const f = await fixture();
     vi.stubEnv('COMET_OPENSPEC', f.executable);

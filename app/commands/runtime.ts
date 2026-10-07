@@ -20,6 +20,7 @@ import {
 } from '../../domains/workflow-contract/change-runtime-owner.js';
 import type { CometProjectWorkflow } from '../../domains/workflow-contract/types.js';
 import type { ApplicationIdentity } from '../../domains/workflow-application/index.js';
+import { projectCliAgentObservation } from '../../domains/workflow-contract/output-envelope.js';
 
 export interface RuntimeCommandOptions {
   request?: string;
@@ -317,9 +318,10 @@ async function nativeCliResponse(
   applicationId: string,
   executors?: readonly import('../../domains/engine/runtime.js').RuntimeExecutor[],
 ) {
-  if (!['claim', 'record-outcome', 'cancel'].includes(request.operation)) return response;
+  // inspect 保持完整 SDK Run；所有推进响应均使用同一当前续行投影。
+  if (request.operation === 'inspect') return response;
   try {
-    if (request.operation === 'cancel') {
+    if (!['claim', 'record-outcome'].includes(request.operation)) {
       const { projectNativeSdkContinuation } =
         await import('../../domains/comet-native/native-sdk-continuation.js');
       const { parseNativePortableState } =
@@ -331,8 +333,36 @@ async function nativeCliResponse(
         applicationId,
         skillExecutors: executors,
       });
+      const data = {
+        // 这些操作原来公开完整 Run；新增续行字段，不删除已有 SDK/CLI 字段。
+        ...response.data,
+        schema: 'comet.native.run-view.v1' as const,
+        runId: response.data.runId,
+        revision: response.data.revision,
+        workflow: response.data.workflow,
+        status: response.data.status,
+        state: parseNativePortableState(response.data.state),
+        ...projection,
+        inspection: {
+          commandArgs: [
+            'comet',
+            'runtime',
+            'dispatch',
+            '--application',
+            applicationId,
+            '--project-root',
+            projectRoot,
+            '--request',
+            '<inspect-request-json-file>',
+            '--details',
+          ],
+          request: { operation: 'inspect', runId: response.data.runId },
+        },
+      };
       return {
         ...response,
+        data,
+        agent: projectCliAgentObservation(data, projectRoot),
         cancellation: 'cancellation' in projection ? projection.cancellation : null,
         continuation: projection.continuation,
       };
@@ -345,16 +375,18 @@ async function nativeCliResponse(
       request.operation === 'claim'
         ? (request.actionId as string)
         : (request.outcome as { actionId: string }).actionId;
+    const data = await projectNativeSdkDispatchResult({
+      run: response.data,
+      state: parseNativePortableState(response.data.state),
+      actionId,
+      projectRoot,
+      applicationId,
+      skillExecutors: executors,
+    });
     return {
       ...response,
-      data: await projectNativeSdkDispatchResult({
-        run: response.data,
-        state: parseNativePortableState(response.data.state),
-        actionId,
-        projectRoot,
-        applicationId,
-        skillExecutors: executors,
-      }),
+      data,
+      agent: projectCliAgentObservation(data, projectRoot),
     };
   } catch (error) {
     // 展示失败不能把已经提交的操作误报为失败，也不能丢失原 Run。
@@ -487,6 +519,8 @@ export async function runtimeDispatchCommand(
   host: RuntimeCommandHost = {},
 ): Promise<RuntimeCommandResult> {
   let requestId: string = randomUUID();
+  let recoveryRequest: { operation: 'inspect'; runId: string } | undefined;
+  let recoveryCwd = path.resolve(host.invocationCwd ?? process.cwd(), options.projectRoot ?? '.');
   try {
     const invocationCwd = path.resolve(host.invocationCwd ?? process.cwd());
     let projectRoot = path.resolve(invocationCwd, options.projectRoot ?? '.');
@@ -499,6 +533,10 @@ export async function runtimeDispatchCommand(
     );
     const requestFile = path.resolve(invocationCwd, text(options.request, '--request'));
     const request = parseRequest(await readJson(requestFile, 'REQUEST'));
+    if (typeof request.runId === 'string' && request.operation !== 'inspect') {
+      recoveryRequest = { operation: 'inspect', runId: request.runId };
+      recoveryCwd = projectRoot;
+    }
     requestId = (request.requestId as string | undefined) ?? requestId;
     const application = options.application;
     const builtIn = (SDK_APPLICATIONS as readonly string[]).includes(application ?? '');
@@ -557,7 +595,7 @@ export async function runtimeDispatchCommand(
         waitSkillWork,
       };
       let cliResponse;
-      if (host.output === 'compact' && !options.details && request.operation !== 'inspect') {
+      if (host.output === 'compact' && !options.details) {
         try {
           cliResponse =
             loaded.identity.base === 'native'
@@ -568,7 +606,22 @@ export async function runtimeDispatchCommand(
                   loaded.identity.id,
                   loaded.implementation.executors,
                 )
-              : { ...response, data: projectWorkflowApplicationRun(loaded, data) };
+              : (() => {
+                  const view = projectWorkflowApplicationRun(loaded, data);
+                  return {
+                    ...response,
+                    data:
+                      request.operation === 'inspect'
+                        ? {
+                            ...data,
+                            current: view.current,
+                            continuation: view.continuation,
+                            inspection: view.inspection,
+                          }
+                        : view,
+                    agent: projectCliAgentObservation(view, projectRoot),
+                  };
+                })();
         } catch (error) {
           // 紧凑展示失败不能把已经提交的请求误报为失败。
           cliResponse = {
@@ -607,6 +660,7 @@ export async function runtimeDispatchCommand(
           host,
         );
     }
+    recoveryCwd = projectRoot;
     let transitionHandlers;
     let evidenceValidators;
     let validators;
@@ -789,6 +843,42 @@ export async function runtimeDispatchCommand(
       status: 'succeeded',
       data,
     };
+    if (
+      host.output === 'compact' &&
+      !options.details &&
+      request.operation !== 'inspect' &&
+      application?.startsWith('classic-')
+    ) {
+      try {
+        const { classicSdkEntryData } =
+          await import('../../domains/comet-classic/classic-sdk-output.js');
+        const view = {
+          ...data,
+          ...(await classicSdkEntryData(data.runId, { run: data, projectRoot })),
+        };
+        return {
+          exitCode: 0,
+          response,
+          cliResponse: {
+            ...response,
+            data: view,
+            agent: projectCliAgentObservation(view, projectRoot),
+          },
+        };
+      } catch (error) {
+        return {
+          exitCode: 0,
+          response,
+          cliResponse: {
+            ...response,
+            warning: {
+              code: 'COMPACT_VIEW_UNAVAILABLE',
+              message: error instanceof Error ? error.message : '返回完整 Run。',
+            },
+          },
+        };
+      }
+    }
     return {
       exitCode: 0,
       response,
@@ -797,6 +887,43 @@ export async function runtimeDispatchCommand(
         : {}),
     };
   } catch (error) {
-    return runtimeCommandFailure(error, requestId);
+    const failure = runtimeCommandFailure(error, requestId);
+    if (
+      host.output !== 'compact' ||
+      !recoveryRequest ||
+      (!options.application && !options.applicationFile)
+    )
+      return failure;
+    const commandArgs = [
+      'comet',
+      'runtime',
+      'dispatch',
+      ...(options.applicationFile
+        ? [
+            '--application-file',
+            path.resolve(host.invocationCwd ?? process.cwd(), options.applicationFile),
+          ]
+        : ['--application', options.application!]),
+      '--project-root',
+      recoveryCwd,
+      '--request',
+      '<inspect-request-json-file>',
+      '--details',
+    ];
+    return {
+      ...failure,
+      cliResponse: {
+        ...failure.response,
+        continuation: {
+          mode: 'reconcile',
+          cwd: recoveryCwd,
+          commandArgs,
+          request: recoveryRequest,
+          requiredInputs: ['inspect-request-json-file'],
+          instruction:
+            '请求被拒绝；保留原 Action 与批准记录，读取当前 Run 后按其合法续行处理，不盲目重试原写入。',
+        },
+      },
+    };
   }
 }

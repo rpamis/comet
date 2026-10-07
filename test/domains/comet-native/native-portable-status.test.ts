@@ -27,7 +27,9 @@ import { nativeSelectCommand } from '../../../domains/comet-native/native-select
 import {
   inspectNativePortableStatus,
   listNativePortableStatus,
+  projectNativeArchivedStatus,
 } from '../../../domains/comet-native/native-portable-status.js';
+import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 
 describe('Native portable status', () => {
   const roots: string[] = [];
@@ -35,6 +37,52 @@ describe('Native portable status', () => {
   afterEach(async () => {
     await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
   });
+
+  it.each([false, true])(
+    'keeps the archived status next-step mode consistent with pending workspace finish (%s)',
+    async (pending) => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-finish-mode-'));
+      roots.push(root);
+      const paths = await nativeProjectPaths(root, 'docs');
+      // 只检验已归档读取快照的投影，不伪造或写入一次领域推进。
+      const initial = createNativePortableState({
+        name: 'finish-mode',
+        language: 'en',
+        createdAt: '2026-10-07T00:00:00Z',
+        nextAction: 'prepare-shape-confirmation',
+      });
+      const state = {
+        ...initial,
+        phase: 'archive' as const,
+        status: 'done' as const,
+        archived: true,
+        loop: { ...initial.loop, stage: 'done' as const, next_action: null },
+      };
+      const projection = projectNativeArchivedStatus({
+        paths,
+        state,
+        file: path.join(paths.archiveDir, 'finish-mode/comet-state.yaml'),
+        finishJournal: pending
+          ? {
+              schema: 'comet.native.workspace-finish.v1',
+              name: state.name,
+              transactionId: 'original-archive',
+              archiveDir: paths.archiveDir,
+              status: 'pending',
+              result: null,
+              updatedAt: '2026-10-07T00:00:00Z',
+            }
+          : null,
+      });
+      expect(projection.continuation).toMatchObject({
+        mode: pending ? 'reconcile' : 'done',
+        disposition: pending ? 'blocked' : 'done',
+      });
+      expect(projection.continuation.commandArgs).toEqual(
+        pending ? ['comet', 'native', 'archive', state.name, '--confirmed'] : null,
+      );
+    },
+  );
 
   it('projects the portable loop even when local execution is missing', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-status-v2-'));

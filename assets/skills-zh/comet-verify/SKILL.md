@@ -9,6 +9,8 @@ description: '验证 Classic change 并记录结果。在用户调用 /comet-ver
 
 ## SDK Run 路径
 
+响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 等待原任务，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。下文依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
+
 优先复用同一 change、工作区和 Run 的最新有效响应中的 `agent.continuation`、`data.nextAction`、phase、revision 和路径摘要。只有冷恢复、工作区或外部状态变化、响应版本已过期或缺少当前步骤必要信息时，才运行 `comet state next <change-name> --json`；不要因加载下一 Skill 再读一次。后续写操作仍由 Runtime 校验当前版本与证据，不能用缓存跳过检查或批准。确认 `data.runtimeFormat: sdk`、`data.phase: verify` 和 `nextAction.kind`，在已绑定的 `projectRoot` 执行。路径缺失或绑定发生变化时才运行 `comet classic workspace resolve <change-name> --json`；缺少当前任务、工作区或证据摘要时才运行 `comet state check <change-name> verify --json`。`reconcile` 时改用 `comet state check <change-name> verify --recover --json` 查明原 Action 和检查结果；结果未明时停止，不重复执行外部检查。
 
 1. 按下文的风险评估、最终集成审查和 light/full 验证方法检查当前 change，但以 SDK Run 的状态和证据为准；不调用旧 `state scale`、`state set`、`comet handoff` 或旧 `comet check` 证据路径。实施或任务记录需要修复时，先报告具体失败项；只有当前待执行的是 `<profile>.verify.run`（`<profile>` 为 full、hotfix 或 tweak），才运行 `comet state transition <change-name> verify-fail --reason "<failure-reason>"`。此命令将失败原因作为同一 Run 的 Verify Action 结果并返回 Build；按同次响应的当前 Build Action 继续；缺少续行信息时才读取 `state next --json`。已有检查失败或结果未明时先读取其 Action，不另报一次 Verify 失败。

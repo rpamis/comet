@@ -159,16 +159,20 @@ type ClassicSdkWorkspace = Awaited<ReturnType<typeof inspectClassicSdkRun>> & {
 export async function findClassicSdkWorkspace(
   projectRoot: string,
   name: string,
+  options: { readOnly?: boolean } = {},
 ): Promise<ClassicSdkWorkspace | null> {
   const requestedRoot = path.resolve(projectRoot);
   if (await readSdkChangeOwner(requestedRoot, 'classic', name)) {
-    return { projectRoot: requestedRoot, ...(await inspectClassicSdkRun(requestedRoot, name)) };
+    return {
+      projectRoot: requestedRoot,
+      ...(await inspectClassicSdkRun(requestedRoot, name, options)),
+    };
   }
   const candidates: ClassicSdkWorkspace[] = [];
   for (const worktree of listGitWorktrees(requestedRoot)) {
     if (samePath(worktree.root, requestedRoot)) continue;
     if (!(await readSdkChangeOwner(worktree.root, 'classic', name))) continue;
-    const inspected = await inspectClassicSdkRun(worktree.root, name);
+    const inspected = await inspectClassicSdkRun(worktree.root, name, options);
     if (
       inspected.state.isolation !== 'worktree' ||
       !inspected.state.boundBranch ||

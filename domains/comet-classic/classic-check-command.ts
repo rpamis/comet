@@ -12,8 +12,8 @@ import { resolveClassicChangeDirectory } from './classic-paths.js';
 import { ensureClassicRuntimeRun } from './classic-runtime-run.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
 import { executeClassicSdkCommandCheck } from './classic-sdk-check.js';
-import { classicSdkNextAction, findClassicSdkWorkspace } from './classic-sdk-status.js';
-import type { ClassicState } from './classic-state.js';
+import { findClassicSdkWorkspace } from './classic-sdk-status.js';
+import { classicSdkEntryData } from './classic-sdk-output.js';
 import {
   executeCommandCheck,
   latestCommandCheck,
@@ -151,9 +151,10 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
       exitCode: result.exitCode || (result.inputBefore === result.inputAfter ? 0 : 1),
       data: {
         ...result,
-        phase: (finished.state as unknown as ClassicState).phase,
-        run: { id: finished.runId, revision: finished.revision, status: finished.status },
-        nextAction: classicSdkNextAction(finished),
+        ...(await classicSdkEntryData(name, {
+          run: finished,
+          projectRoot: sdkWorkspace.projectRoot,
+        })),
       },
       stdout: `Check ${scope}: exit=${result.exitCode}; tier=full; log=${result.receiptRef ?? 'unavailable'}\n`,
       ...(result.inputBefore !== result.inputAfter

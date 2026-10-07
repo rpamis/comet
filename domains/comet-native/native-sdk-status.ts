@@ -54,6 +54,7 @@ export async function projectNativeSdkStatus(
   const evidenceWaits = statusRecords(run.evidenceWaits ?? [], options.details);
   return {
     schema: 'comet.native.sdk-status.v1' as const,
+    runtimeFormat: 'sdk' as const,
     ...(application
       ? { application: application.identity, skillWork: applicationSkillWork(application, run) }
       : {}),

@@ -7,6 +7,8 @@ import path from 'path';
 import { Document, parseDocument } from 'yaml';
 import { samePath } from '../../platform/paths/git-worktree.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
+import { formatCliCommandArgs } from '../workflow-contract/output-envelope.js';
+import { classicSdkEntryData as sdkEntryData } from './classic-sdk-output.js';
 import {
   assertChangeNotSdkOwned,
   COMET_CHANGE_OWNER_SCHEMA,
@@ -40,11 +42,7 @@ import {
   decideClassicSdkDesign,
   proposeClassicSdkDesign,
 } from './classic-sdk-design.js';
-import {
-  classicSdkNextAction,
-  findClassicSdkWorkspace,
-  inspectClassicSdkRun,
-} from './classic-sdk-status.js';
+import { findClassicSdkWorkspace, inspectClassicSdkRun } from './classic-sdk-status.js';
 import type { WorkflowRun } from '../engine/runtime.js';
 import { failClassicSdkVerify } from './classic-sdk-verify-failure.js';
 import {
@@ -804,23 +802,7 @@ async function init(
       });
       await atomicWrite(file, CLASSIC_MANAGED_RUN_MARKER + document.toString());
       output.data = {
-        change: name,
-        runtimeFormat: 'sdk',
-        phase: projection.classic.phase,
-        nextAction: classicSdkNextAction(run),
-        configuration: projection.classic,
-        run: {
-          id: run.runId,
-          revision: run.revision,
-          status: run.status,
-          actions: run.actions.map(({ id, stepId, status, attempt, inputHash }) => ({
-            id,
-            stepId,
-            status,
-            attempt,
-            inputHash,
-          })),
-        },
+        ...(await sdkEntryData(name, { run, projectRoot })),
       };
       output.stdout.push(green(`Initialized: ${label} (workflow=${workflow}, runtime=sdk)`));
     } else {
@@ -1092,119 +1074,43 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
   output.stdout.push(output.envelope.summary);
 }
 
-function sdkRunSummary(run: WorkflowRun, details = false) {
-  if (details) return { ...run, id: run.runId };
-  return {
-    id: run.runId,
-    runId: run.runId,
-    revision: run.revision,
-    status: run.status,
-    actions: run.actions
-      .filter((action) => ['pending', 'running', 'unknown'].includes(action.status))
-      .map(({ id, stepId, status, attempt, inputHash }) => ({
-        id,
-        stepId,
-        status,
-        attempt,
-        inputHash,
-      })),
-    evidenceWaits: (run.evidenceWaits ?? [])
-      .filter((wait) => wait.status === 'pending')
-      .map(({ id, stepId, kind, status }) => ({ id, stepId, kind, status })),
-    waits: run.waits
-      .filter((wait) => wait.status === 'pending')
-      .map(({ id, stepId, status, proposal, proposalHash, choices }) => ({
-        id,
-        stepId,
-        status,
-        proposal,
-        proposalHash,
-        choices,
-      })),
-  };
-}
-
-async function sdkEntryData(
-  name: string,
-  inspected: NonNullable<Awaited<ReturnType<typeof findClassicSdkWorkspace>>>,
-  details = false,
-) {
-  const { run, state, projectRoot } = inspected;
-  const { directory } = await resolveClassicChangeDirectory(name, projectRoot);
-  const recovery = await classicRecoveryContext(projectRoot, directory, state, details, null);
-  // SDK Run 保持推进权威；只复用恢复资料，不采用兼容状态机的下一动作。
-  return {
-    change: name,
-    runtimeFormat: 'sdk',
-    phase: state.phase,
-    configuration: state,
-    projectRoot: recovery.projectRoot,
-    workspace: recovery.workspace,
-    changeDir: recovery.changeDir,
-    layout: recovery.layout,
-    artifactRefs: recovery.artifactRefs,
-    configurationReadiness: recovery.configurationReadiness,
-    taskState: recovery.taskState,
-    nextTask: recovery.nextTask,
-    planMapping: recovery.planMapping,
-    coordination: recovery.coordination,
-    delivery: recovery.delivery,
-    requiredFiles: recovery.requiredFiles,
-    run: sdkRunSummary(run, details),
-    nextAction: classicSdkNextAction(run),
-  };
-}
-
 async function nextSdkEntry(
   output: CommandOutput,
   name: string,
-  inspected: NonNullable<Awaited<ReturnType<typeof findClassicSdkWorkspace>>>,
+  inspected: { run: WorkflowRun; projectRoot: string },
   details = false,
 ): Promise<void> {
-  nextSdk(output, name, inspected.run);
-  output.data = await sdkEntryData(name, inspected, details);
+  const data = await sdkEntryData(name, inspected, details);
+  output.data = data;
+  const continuation = data.continuation;
+  if (continuation.mode === 'done') {
+    output.stdout.push('NEXT: done');
+  } else if (continuation.mode === 'ask') {
+    output.stdout.push('NEXT: decision', continuation.instruction ?? '');
+  } else if (continuation.mode === 'reconcile') {
+    output.stdout.push('NEXT: reconcile', continuation.instruction ?? '');
+  } else if (continuation.mode === 'wait') {
+    output.stdout.push(
+      `NEXT: ${continuation.skill ? 'manual' : 'wait'}`,
+      continuation.instruction ?? '',
+    );
+    if (continuation.skill) output.stdout.push(`SKILL: ${continuation.skill}`);
+  } else if (continuation.skill) {
+    output.stdout.push('NEXT: auto', `SKILL: ${continuation.skill}`);
+  } else {
+    output.stdout.push(`NEXT: ${data.nextAction?.kind === 'evidence' ? 'evidence' : 'command'}`);
+  }
+  if (continuation.commandArgs)
+    output.stdout.push(`COMMAND: ${formatCliCommandArgs(continuation.commandArgs)}`);
 }
 
-function nextSdk(output: CommandOutput, name: string, run: WorkflowRun): void {
-  const state = run.state as unknown as ClassicState;
-  const nextAction = classicSdkNextAction(run);
-  const pending = run.actions.find((action) => action.status === 'pending');
-  const unresolved = run.actions.find(
-    (action) => action.status === 'running' || action.status === 'unknown',
-  );
-  const pendingEvidence = run.evidenceWaits?.find((wait) => wait.status === 'pending');
-  const pendingDecision = run.waits.find((wait) => wait.status === 'pending');
-  output.data = {
-    change: name,
-    runtimeFormat: 'sdk',
-    phase: state.phase,
-    configuration: state,
-    run: sdkRunSummary(run),
-    nextAction,
-  };
-  if (run.status === 'completed') {
-    output.stdout.push('NEXT: done');
-    return;
-  }
-  if (unresolved) {
-    output.stdout.push(
-      'NEXT: reconcile',
-      `ACTION: ${unresolved.stepId}`,
-      'Inspect the claimed Action outcome before retrying external work.',
-    );
-    return;
-  }
-  if (!pending && pendingEvidence) {
-    output.stdout.push('NEXT: evidence', `EVIDENCE: ${pendingEvidence.kind}`);
-    return;
-  }
-  if (!pending && pendingDecision) {
-    output.stdout.push('NEXT: decision', `WAIT: ${pendingDecision.stepId}`);
-    return;
-  }
-  const skill = nextAction && 'ref' in nextAction ? nextAction.ref : undefined;
-  if (!skill) fail(`ERROR: Classic SDK Run ${name} has no pending Skill Action`);
-  output.stdout.push('NEXT: auto', `SKILL: ${skill}`);
+async function nextSdk(
+  output: CommandOutput,
+  name: string,
+  run: WorkflowRun,
+  projectRoot: string,
+): Promise<void> {
+  await nextSdkEntry(output, name, { run, projectRoot });
 }
 
 async function next(output: CommandOutput, name: string, details = false): Promise<void> {
@@ -1787,11 +1693,7 @@ async function completeDesign(
       approvalHash,
     });
     output.data = {
-      change: name,
-      phase: 'build',
-      configuration: run.state,
-      run: { id: run.runId, revision: run.revision, status: run.status },
-      nextAction: classicSdkNextAction(run),
+      ...(await sdkEntryData(name, { run, projectRoot: sdkWorkspace.projectRoot })),
     };
     output.stderr.push(green(`[TRANSITION] Classic SDK Design completed for ${name}`));
     return;
@@ -2495,17 +2397,10 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           fail('Usage: comet state restore <change-name> --confirmed');
         }
         const run = await restoreClassicSdkChange(classicCommandProjectRoot(), rest[0]);
-        output.data = {
-          change: rest[0],
-          phase: 'open',
-          configuration: run.state,
-          run: {
-            id: run.runId,
-            revision: run.revision,
-            status: run.status,
-            actions: run.actions.map(({ id, stepId, status }) => ({ id, stepId, status })),
-          },
-        };
+        output.data = await sdkEntryData(rest[0], {
+          run,
+          projectRoot: classicCommandProjectRoot(),
+        });
         output.stdout.push(
           `Restored ${rest[0]} at Open; revalidate the documents and obtain fresh approval.`,
         );
@@ -2566,10 +2461,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         );
         if (!wait) fail('ERROR: Classic SDK Design proposal did not create a pending decision');
         output.data = {
-          change: rest[0],
-          phase: 'design',
-          run: { id: run.runId, revision: run.revision, status: run.status },
-          nextAction: classicSdkNextAction(run),
+          ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot })),
           wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices },
         };
         output.stdout.push(`Design proposal recorded for ${rest[0]}; user approval is pending.`);
@@ -2599,11 +2491,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           choice: rest[4] as 'approved' | 'rejected',
         });
         output.data = {
-          change: rest[0],
-          phase: 'design',
-          configuration: run.state,
-          run: { id: run.runId, revision: run.revision, status: run.status },
-          nextAction: classicSdkNextAction(run),
+          ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot })),
         };
         output.stdout.push(`Design proposal ${rest[4]} for ${rest[0]}.`);
       } else if (subcommand === 'propose-escalation' || subcommand === 'decide-escalation') {
@@ -2651,15 +2539,12 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             fail('Classic SDK escalation proposal did not create a pending decision');
           }
           output.data = {
-            change: rest[0],
-            phase: 'build',
-            run: { id: run.runId, revision: run.revision, status: run.status },
-            nextAction: classicSdkNextAction(run),
+            ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot })),
             wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices },
           };
           output.stdout.push(`Escalation proposed for ${rest[0]}; user decision is pending.`);
         } else {
-          nextSdk(output, rest[0], run);
+          await nextSdk(output, rest[0], run, workspace.projectRoot);
         }
       } else if (subcommand === 'propose-build' || subcommand === 'decide-build') {
         const proposing = subcommand === 'propose-build';
@@ -2702,11 +2587,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           .reverse()
           .find((candidate) => candidate.stepId === 'full.build.confirm');
         output.data = {
-          change: rest[0],
-          phase: 'build',
-          configuration: run.state,
-          run: { id: run.runId, revision: run.revision, status: run.status },
-          nextAction: classicSdkNextAction(run),
+          ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot })),
           ...(proposing && wait
             ? { wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices } }
             : {}),
@@ -2785,15 +2666,12 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             fail('Classic SDK Archive proposal did not create a pending decision');
           }
           output.data = {
-            change: rest[0],
-            phase: 'archive',
-            run: { id: run.runId, revision: run.revision, status: run.status },
-            nextAction: classicSdkNextAction(run),
+            ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot })),
             wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices },
           };
           output.stdout.push(`Archive proposal recorded for ${rest[0]}; user decision is pending.`);
         } else {
-          nextSdk(output, rest[0], run);
+          await nextSdk(output, rest[0], run, workspace.projectRoot);
         }
       } else if (subcommand === 'complete-delivery') {
         if (
@@ -2820,11 +2698,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           ...(rest[4] ? { prUrl: rest[4] } : {}),
         });
         output.data = {
-          change: rest[0],
-          phase: 'archive',
-          configuration: run.state,
-          run: { id: run.runId, revision: run.revision, status: run.status },
-          nextAction: classicSdkNextAction(run),
+          ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot })),
         };
         output.stdout.push(`Archive delivery recorded for ${rest[0]}.`);
       } else if (subcommand === 'revise-design' || subcommand === 'revise-plan') {
@@ -2845,7 +2719,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           name: subcommand,
           expectedRevision: Number(rest[2]),
         });
-        nextSdk(output, rest[0], run);
+        await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'submit-plan' || subcommand === 'continue-plan') {
         const submitting = subcommand === 'submit-plan';
         if (
@@ -2882,7 +2756,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
               change: rest[0],
               proposalHash: rest[2],
             });
-        nextSdk(output, rest[0], run);
+        await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'complete-build') {
         requiredExact(rest, 1, 'Usage: comet state complete-build <change-name>');
         validateChangeName(rest[0]);
@@ -2897,7 +2771,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           projectRoot: workspace.projectRoot,
           change: rest[0],
         });
-        nextSdk(output, rest[0], run);
+        await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'transition') {
         required(rest, 2, 'Usage: comet state transition <change-name> <event>');
         const projectRoot = classicCommandProjectRoot();
@@ -2918,7 +2792,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             change: rest[0],
             reason: rest[3],
           });
-          nextSdk(output, rest[0], run);
+          await nextSdk(output, rest[0], run, workspace.projectRoot);
         } else {
           requiredExact(rest, 2, 'Usage: comet state transition <change-name> <event>');
           await transition(output, rest[0], rest[1]);

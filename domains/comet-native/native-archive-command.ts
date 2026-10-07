@@ -297,6 +297,8 @@ export async function nativeArchiveCommand(
           workspaceFinishResult: blockedResult,
           continuation: {
             disposition: 'blocked',
+
+            mode: 'reconcile',
             reason: message,
             commandArgs: blockedResult.recoveryArgs,
             inputOptions: [],
@@ -353,6 +355,8 @@ export async function nativeArchiveCommand(
             workspaceFinishResult: error.result,
             continuation: {
               disposition: 'blocked',
+
+              mode: 'reconcile',
               reason: error.message,
               commandArgs: error.result.recoveryArgs,
               inputOptions: [],
@@ -450,6 +454,8 @@ export async function nativeArchiveCommand(
             archiveRecovery: true,
             continuation: {
               disposition: 'continue',
+
+              mode: 'execute',
               reason: 'Resume the interrupted Native Archive transaction.',
               commandArgs: ['comet', 'native', 'archive', name, '--confirmed', ...messageOptions],
               inputOptions: [],
@@ -540,6 +546,8 @@ export async function nativeArchiveCommand(
         ? {
             ...previewContinuation,
             disposition: 'await-user' as const,
+
+            mode: 'ask' as const,
             action: 'none' as const,
             commandArgs: null,
             requiredInputs: ['choose-first-archive'],
@@ -771,6 +779,8 @@ export async function nativeArchiveCommand(
           workspaceFinishResult: null,
           continuation: {
             disposition: 'await-user',
+
+            mode: 'ask',
             reason: error.message,
             commandArgs: [...commandArgs, ...messageOptions],
             inputOptions: error.peers.length > 0 ? ['serial-first-change'] : [],
@@ -843,6 +853,8 @@ export async function nativeArchiveCommand(
             workspaceFinishResult,
             continuation: {
               disposition: 'blocked',
+
+              mode: 'reconcile',
               reason: message,
               commandArgs: workspaceFinishResult.recoveryArgs,
               inputOptions: [],
@@ -899,6 +911,8 @@ export async function nativeArchiveCommand(
             workspaceFinishResult: error.result,
             continuation: {
               disposition: 'blocked',
+
+              mode: 'reconcile',
               reason: error.message,
               commandArgs: error.result.recoveryArgs,
               inputOptions: [],

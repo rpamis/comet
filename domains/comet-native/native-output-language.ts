@@ -1,4 +1,6 @@
 import {
+  formatCliCommandArgs,
+  type CliContinuationMode,
   type CliNextHint,
   type CliOutputEnvelope,
   type CliOutputLocale,
@@ -113,6 +115,7 @@ interface NativeContinuationLike {
   phase: unknown;
   status: unknown;
   disposition: 'continue' | 'await-user' | 'blocked' | 'done';
+  mode?: CliContinuationMode;
   commandArgs: string[] | null;
   userCommunication: {
     required: boolean;
@@ -185,11 +188,14 @@ export function envelopeFromNativeContinuation(
   if (prefix) parts.push(prefix);
   const changePart = phrase(locale, `Change ${continuation.change}`, `需求 ${continuation.change}`);
   const phasePart = nativePhasePhrase(continuation.phase, locale);
-  const tail = dispositionPhrase(
-    continuation.disposition,
-    continuation.userCommunication.required,
-    locale,
-  );
+  const tail =
+    continuation.mode === 'wait'
+      ? phrase(locale, 'waiting for the original task', '等待原任务完成')
+      : dispositionPhrase(
+          continuation.disposition,
+          continuation.userCommunication.required,
+          locale,
+        );
   parts.push([changePart, phasePart || null, tail].filter(Boolean).join(' · '));
   if (acceptance && acceptance.total > 0) parts.push(nativeAcceptancePhrase(acceptance, locale));
   const communication = continuation.userCommunication;
@@ -208,6 +214,11 @@ function nextHintFromContinuation(
   locale: CliOutputLocale,
 ): CliNextHint | undefined {
   const communication = continuation.userCommunication;
+  if (continuation.mode && continuation.mode !== 'execute') {
+    return continuation.mode === 'ask'
+      ? { ask_user: communication.agentInstruction }
+      : { instruction: communication.agentInstruction };
+  }
   if (continuation.disposition === 'await-user' && communication.required) {
     return {
       ask_user: phrase(
@@ -218,7 +229,7 @@ function nextHintFromContinuation(
     };
   }
   if (continuation.commandArgs && continuation.commandArgs.length > 0) {
-    return { command: continuation.commandArgs.join(' ') };
+    return { command: formatCliCommandArgs(continuation.commandArgs) };
   }
   if (continuation.disposition === 'done') {
     return {
@@ -241,7 +252,7 @@ function nextHintFromContinuation(
             ),
     };
   }
-  return undefined;
+  return { instruction: communication.agentInstruction };
 }
 
 interface NativeStatusPageLike {

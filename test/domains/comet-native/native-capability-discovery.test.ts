@@ -24,6 +24,31 @@ afterEach(async () => {
 });
 
 describe('Native capability association during change creation', () => {
+  it('preserves the v4 state fields while adding SDK continuation to removal and its idempotent response', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-removal-contract-'));
+    roots.push(root);
+    await fs.mkdir(path.join(root, '.git'));
+    await fs.mkdir(path.join(root, 'docs/comet/specs/authentication'), { recursive: true });
+    await fs.writeFile(
+      path.join(root, 'docs/comet/specs/authentication/spec.md'),
+      '# Authentication\n',
+    );
+    await nativeNewCommand(['remove-auth'], root);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await nativeSpecCommand(['remove', 'remove-auth', 'authentication'], root);
+      const { state, run } = await inspectNativeSdkRun(root, 'remove-auth');
+      expect(result.data).toMatchObject({
+        ...state,
+        schema: 'comet.native.v4',
+        acceptance: state.acceptance,
+        blockers: state.blockers,
+        workspace: state.workspace,
+        run: { id: run.runId, revision: run.revision },
+        continuation: { mode: 'execute', cwd: root },
+      });
+    }
+  });
+
   it('does not accept a failed or unresolved removal Action as successful', () => {
     expect(() => assertNativeSdkRemovalResult('failed', false, 'authentication')).toThrow(
       'Native SDK capability removal failed',
@@ -216,6 +241,9 @@ describe('Native capability association during change creation', () => {
       exitCode: 0,
       command: 'spec disassociate',
       data: {
+        schema: 'comet.native.v4',
+        acceptance: [],
+        blockers: [],
         phase: 'shape',
         loop: { next_action: 'prepare-shape-confirmation' },
       },

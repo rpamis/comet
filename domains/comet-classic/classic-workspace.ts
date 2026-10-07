@@ -29,6 +29,7 @@ import { WORKFLOW_PROJECT_CONFIG_MAX_BYTES } from '../workflow-contract/project-
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { classicLayoutPaths, readClassicArtifactLayout } from './classic-layout.js';
 import { findClassicSdkWorkspace } from './classic-sdk-status.js';
+import { classicSdkEntryData } from './classic-sdk-output.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 
 async function ensureWorkspaceConfig(sourceRoot: string, targetRoot: string): Promise<void> {
@@ -520,12 +521,11 @@ export async function resolveClassicWorkspace(options: {
   const sdkWorkspace = localLegacy
     ? null
     : await findClassicSdkWorkspace(requestedRoot, options.name);
-  const sdkResolution = (): ClassicWorkspaceResolution => {
+  const sdkResolution = async (): Promise<ClassicWorkspaceResolution> => {
     if (!sdkWorkspace) throw new Error(`Classic SDK change '${options.name}' was not found`);
     return {
+      ...(await classicSdkEntryData(options.name, sdkWorkspace)),
       schema: 'comet.classic.workspace-resolution.v1',
-      change: options.name,
-      projectRoot: sdkWorkspace.projectRoot,
       branch:
         sdkWorkspace.state.boundBranch ??
         inspectGitWorktree(sdkWorkspace.projectRoot).currentBranch,

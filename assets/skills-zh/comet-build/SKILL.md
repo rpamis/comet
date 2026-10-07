@@ -9,6 +9,8 @@ description: '制定计划、实施并验收 Classic 任务。在用户调用 /c
 
 ## SDK Run 路径
 
+响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 等待原任务，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。下文依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
+
 优先复用当前有效结果中的 `agent.continuation` / `data.nextAction` 与已绑定状态；只有冷恢复、外部状态变化或缺少必要信息时，才运行 `comet state next <change-name> --json`。`data.runtimeFormat` 为 `sdk` 时，只按本节推进 Run；下文的执行策略选项、计划内容要求、实施与审查方法仍适用，下文的旧状态写入和旧证据命令不执行。`data.phase` 必须为 `build`。已有有效 layout 与当前配置时直接复用；缺少时运行 `comet state check <change-name> build --json`；若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> build --recover --json` 核对原 Action 的结果，在结果明确前不重发外部工作。
 
 先核对有效配置中的 `workflow` 或当前 `nextAction.stepId`。`tweak.build.*` / `workflow: tweak`：**立即执行：** 使用 Skill 工具加载 comet-tweak 技能。禁止跳过此步骤。`hotfix.build.*` / `workflow: hotfix`：**立即执行：** 使用 Skill 工具加载 comet-hotfix 技能。禁止跳过此步骤。技能加载后，传入同一 change、工作区、phase、Run revision 和 continuation，从该预设的 SDK Build 步骤继续，不要求 full Design Doc 或完整计划，也不重跑 Open。旧 Run 的原始 Action 仍可能引用 `comet-build`，同样按此规则路由。已批准升级且当前步骤为 `full.build.*` 时，执行下列 full 路径。

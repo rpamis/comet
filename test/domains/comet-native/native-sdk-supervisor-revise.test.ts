@@ -69,10 +69,14 @@ async function supervisor() {
   const candidateCli = process.env.COMET_NATIVE_CANDIDATE_CLI ?? path.resolve('bin/comet.js');
   const baselineCli = process.env.COMET_NATIVE_BASELINE_CLI ?? candidateCli;
   function cli(argv: string[], file = candidateCli, projectRoot = project) {
-    const result = spawnSync(process.execPath, [file, ...argv, '--project-root', projectRoot], {
-      encoding: 'utf8',
-      timeout: 60000,
-    });
+    const result = spawnSync(
+      process.execPath,
+      [file, ...argv, ...(argv.includes('--project-root') ? [] : ['--project-root', projectRoot])],
+      {
+        encoding: 'utf8',
+        timeout: 60000,
+      },
+    );
     if (result.error) throw result.error;
     return { exitCode: result.status, response: JSON.parse(result.stdout), stderr: result.stderr };
   }
@@ -708,14 +712,14 @@ it('executes the actual returned Shape continuation with summary and guards with
   expect(actionIndex).toBeGreaterThan(0);
   const stale = [...argv];
   stale[versionIndex] = String(Number(argv[versionIndex]) + 1);
-  const staleResult = f.cli([...stale, '--json']);
+  const staleResult = f.cli(stale);
   expect(staleResult.exitCode).not.toBe(0);
   expect(await f.inspect()).toEqual(before);
   const wrongAction = [...argv];
   wrongAction[actionIndex] = 'confirm-shape';
-  expect(f.cli([...wrongAction, '--json']).exitCode).not.toBe(0);
+  expect(f.cli(wrongAction).exitCode).not.toBe(0);
   expect(await f.inspect()).toEqual(before);
-  const prepared = f.cli([...argv, '--json']);
+  const prepared = f.cli(argv);
   expect(prepared.response, JSON.stringify({ prepared, continuation })).not.toHaveProperty('error');
   expect(prepared.exitCode).toBe(0);
   const proposed = await f.inspect();
@@ -735,13 +739,13 @@ it('executes the actual returned Shape continuation with summary and guards with
     status: 'succeeded',
     attempt: 1,
   });
-  expect(f.cli([...argv, '--json']).exitCode).toBe(73);
+  expect(f.cli(argv).exitCode).toBe(73);
   expect(await f.inspect()).toEqual(proposed);
   const stalePhase = [...argv];
   stalePhase[versionIndex] = String((proposed.state as { state_version: number }).state_version);
-  expect(f.cli([...stalePhase, '--json']).exitCode).toBe(73);
+  expect(f.cli(stalePhase).exitCode).toBe(73);
   expect(await f.inspect()).toEqual(proposed);
-  expect(f.cli([...stalePhase, '--confirmed', '--json']).exitCode).not.toBe(0);
+  expect(f.cli([...stalePhase, '--confirmed']).exitCode).not.toBe(0);
   expect(await f.inspect()).toEqual(proposed);
   expect(proposed.definitionHashes).toEqual(f.started.definitionHashes);
   expect(staleResult.exitCode).toBe(73);

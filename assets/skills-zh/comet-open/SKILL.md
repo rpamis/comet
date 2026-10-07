@@ -19,6 +19,8 @@ description: '创建 Classic change，整理需求并请用户确认。在用户
 
 ### 0a. 当前 change 绑定
 
+响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 等待原任务，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。下文依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
+
 恢复已有 change 时，先运行 `comet state next <name> --json` 确认 Runtime 归属，再按 `data.runtimeFormat` 处理：
 
 - `sdk`：复用现有 Run，按 `data.nextAction.kind` 恢复；已领取但结果未明的 Action 先核对原结果，不重新创建 change 或重发外部工作。

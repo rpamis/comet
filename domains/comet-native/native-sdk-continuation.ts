@@ -26,6 +26,76 @@ import {
   type NativePortableState,
 } from './native-portable-types.js';
 
+/** 调度与展示使用同一顺序；终态不再暴露可领取的遗留 Action。 */
+export function nativeSdkPendingActions(run: WorkflowRun): RuntimeAction[] {
+  if (['failed', 'cancelled', 'completed'].includes(run.status)) return [];
+  const pending = run.actions.filter((action) => action.status === 'pending');
+  const archiveIndex = pending.findIndex((action) => action.stepId === 'supervisor.child.archive');
+  if (archiveIndex > 0) pending.unshift(...pending.splice(archiveIndex, 1));
+  return pending;
+}
+
+/** 推进和投影共享审批、未知结果及归档串行边界，不猜测在途任务已经结束。 */
+export function nativeSdkNextAction(
+  run: WorkflowRun,
+  state: NativePortableState,
+): RuntimeAction | undefined {
+  if (
+    run.waits.some((wait) => wait.status === 'pending') ||
+    run.evidenceWaits?.some((wait) => wait.status === 'pending') ||
+    run.actions.some((action) => action.status === 'unknown') ||
+    (state.phase === 'archive' && run.actions.some((action) => action.status === 'running'))
+  )
+    return undefined;
+  return nativeSdkPendingActions(run)[0];
+}
+
+function sdkCommandArgs(commandArgs: string[], projectRoot: string): string[] {
+  return [
+    ...commandArgs,
+    ...(commandArgs.includes('--project-root') ? [] : ['--project-root', projectRoot]),
+    ...(commandArgs.includes('--json') ? [] : ['--json']),
+  ];
+}
+
+function bindSdkContinuation(
+  continuation: NativePortableContinuation,
+  projectRoot: string,
+): NativePortableContinuation {
+  return {
+    ...continuation,
+    cwd: projectRoot,
+    commandArgs: continuation.commandArgs
+      ? sdkCommandArgs(continuation.commandArgs, projectRoot)
+      : null,
+    ...(continuation.commandAlternatives
+      ? {
+          commandAlternatives: continuation.commandAlternatives.map((alternative) => ({
+            ...alternative,
+            commandArgs: alternative.commandArgs
+              ? sdkCommandArgs(alternative.commandArgs, projectRoot)
+              : null,
+          })),
+        }
+      : {}),
+  };
+}
+
+function sdkDispatchCommand(applicationId: string, projectRoot: string): string[] {
+  return sdkCommandArgs(
+    [
+      'comet',
+      'runtime',
+      'dispatch',
+      '--application',
+      applicationId,
+      '--request',
+      '<request-json-file>',
+    ],
+    projectRoot,
+  );
+}
+
 /** 模板只绑定原领取身份；状态和结果必须来自本次真实执行。 */
 function nativeSdkOutcomeRequest(run: WorkflowRun, action: RuntimeAction) {
   if (!action.claim || !['running', 'unknown'].includes(action.status)) return null;
@@ -44,6 +114,41 @@ function nativeSdkOutcomeRequest(run: WorkflowRun, action: RuntimeAction) {
   };
 }
 
+/** 宿主任务的核对模板不适用于已经执行的 Runtime 检查、归档或已拒绝的结果。 */
+function nativeSdkHostRecoveryRequests(run: WorkflowRun, action: RuntimeAction) {
+  if (action.type !== 'handoff' || !action.claim) return {};
+  const identity = {
+    runId: run.runId,
+    expectedRevision: run.revision,
+    actionId: action.id,
+    attempt: action.attempt,
+  };
+  if (action.status === 'running')
+    return {
+      markUnknownRequest: {
+        operation: 'mark-unknown',
+        ...identity,
+        reason: '<why-the-original-outcome-cannot-be-obtained>',
+      },
+    };
+  if (
+    action.status !== 'unknown' ||
+    action.outcome ||
+    action.rejectedOutcomes?.some((rejection) => rejection.outcome.attempt === action.attempt)
+  )
+    return {};
+  return {
+    retryRequest: {
+      operation: 'retry',
+      ...identity,
+      reconciliation: { resolution: 'not-executed', evidence: null },
+    },
+    requiredInputs: [
+      'reconciliation.evidence: authoritative evidence that the original host task never executed',
+    ],
+  };
+}
+
 /** CLI 只省略无关 Run 历史，当前 Action、输入和状态保持完整。 */
 export async function projectNativeSdkDispatchResult(options: {
   run: WorkflowRun;
@@ -58,16 +163,29 @@ export async function projectNativeSdkDispatchResult(options: {
   if (!action) throw new Error(`Native SDK Action ${options.actionId} is missing`);
   const applicationId = options.applicationId ?? 'native';
   const outcomeRequest = nativeSdkOutcomeRequest(run, action);
+  const projection = await projectNativeSdkContinuation(options);
+  // 领取响应已经包含完整 Action；原任务索引复用该正文，避免重复序列化输入。
+  const activeActions =
+    'activeActions' in projection
+      ? projection.activeActions?.map((current) => {
+          if (current.id !== action.id) return current;
+          const { input, ...identity } = current;
+          void input;
+          return { ...identity, inputRef: 'action.input' };
+        })
+      : undefined;
   return {
     schema: 'comet.native.dispatch-result.v1' as const,
     runId: run.runId,
     revision: run.revision,
     workflow: run.workflow,
     status: run.status,
+    workspace: { projectRoot: options.projectRoot },
     state,
     action,
     ...(outcomeRequest ? { outcomeRequest } : {}),
-    ...(await projectNativeSdkContinuation(options)),
+    ...projection,
+    ...(activeActions ? { activeActions } : {}),
     inspection: {
       commandArgs: [
         'comet',
@@ -77,6 +195,9 @@ export async function projectNativeSdkDispatchResult(options: {
         applicationId,
         '--request',
         '<inspect-request-json-file>',
+        '--project-root',
+        options.projectRoot,
+        '--json',
       ],
       request: { operation: 'inspect', runId: run.runId },
     },
@@ -230,6 +351,7 @@ export async function projectNativeSdkContinuation(options: {
   skillExecutors?: readonly RuntimeExecutor[];
 }) {
   const { run, state, projectRoot } = options;
+  const dispatchCommandArgs = sdkDispatchCommand(options.applicationId ?? 'native', projectRoot);
   const localized = (en: string, zh: string) => (state.language === 'zh-CN' ? zh : en);
   const communication = (instruction: string, message: string | null = null) => ({
     required: message !== null,
@@ -245,6 +367,7 @@ export async function projectNativeSdkContinuation(options: {
     status: state.status,
     stateVersion: state.state_version,
     disposition: 'continue',
+    mode: 'execute',
     requiresUserDecision: false,
     action: 'none',
     commandArgs: null,
@@ -266,30 +389,36 @@ export async function projectNativeSdkContinuation(options: {
     state,
     base,
   });
-  if (cancellation) return cancellation;
+  if (cancellation)
+    return {
+      ...cancellation,
+      continuation: bindSdkContinuation(cancellation.continuation, projectRoot),
+    };
   if (run.status === 'failed') {
     const recoverable = nativeSdkRecoverableFailureReason(run.reason);
     return {
-      continuation: {
-        ...base,
-        disposition: 'blocked' as const,
-        commandArgs: recoverable
-          ? ['comet', 'native', 'doctor', state.name, '--repair']
-          : ['comet', 'native', 'doctor', state.name],
-        requiredInputs: [],
-        userCommunication: communication(
-          localized(
-            'The Run stopped. Inspect it with doctor and preserve the original failed receipts; do not claim pending work, retry an executed failure, or report that it never ran.',
-            'Run 已停止。请使用 doctor 核对并保留原失败收据；不能领取遗留待执行工作、重跑已执行失败的旧 Action，或声称它未执行。',
+      continuation: bindSdkContinuation(
+        {
+          ...base,
+          disposition: 'blocked' as const,
+          mode: 'reconcile',
+          commandArgs: recoverable
+            ? ['comet', 'native', 'doctor', state.name, '--repair']
+            : ['comet', 'native', 'doctor', state.name],
+          requiredInputs: [],
+          userCommunication: communication(
+            localized(
+              'The Run stopped. Inspect it with doctor and preserve the original failed receipts; do not claim pending work, retry an executed failure, or report that it never ran.',
+              'Run 已停止。请使用 doctor 核对并保留原失败收据；不能领取遗留待执行工作、重跑已执行失败的旧 Action，或声称它未执行。',
+            ),
           ),
-        ),
-      },
+        },
+        projectRoot,
+      ),
     };
   }
-  const pending = run.actions.filter((action) => action.status === 'pending');
-  // 与 next 的执行顺序一致，先完成已集成 Child 的归档。
-  const archiveIndex = pending.findIndex((action) => action.stepId === 'supervisor.child.archive');
-  if (archiveIndex > 0) pending.unshift(...pending.splice(archiveIndex, 1));
+  const pending = nativeSdkPendingActions(run);
+  const nextAction = nativeSdkNextAction(run, state);
   const pendingActions = pending.map((action) => {
     const skillExecutor =
       action.type === 'invoke_skill'
@@ -302,7 +431,14 @@ export async function projectNativeSdkContinuation(options: {
       ref: action.ref,
       attempt: action.attempt,
       inputHash: action.inputHash,
+      ...(action.type === 'handoff' || action.type === 'invoke_skill'
+        ? { input: action.input }
+        : {}),
       mechanism: 'runtime-dispatch',
+      commandArgs:
+        action.type === 'handoff' || action.type === 'invoke_skill'
+          ? dispatchCommandArgs
+          : sdkCommandArgs(['comet', 'native', 'next', state.name], projectRoot),
       ...(action.type === 'handoff'
         ? {
             claimRequest: {
@@ -343,7 +479,10 @@ export async function projectNativeSdkContinuation(options: {
       waitId: wait.id,
       stepId: wait.stepId,
       proposalHash: wait.proposalHash,
-      commandArgs: sdkDecision(state, 'continue-builder', wait.proposalHash).commandArgs,
+      commandArgs: sdkCommandArgs(
+        sdkDecision(state, 'continue-builder', wait.proposalHash).commandArgs,
+        projectRoot,
+      ),
     }));
   const pendingRequirementDecisions = waits
     .filter((wait) => wait.stepId.startsWith('native.extension.revise.'))
@@ -351,7 +490,10 @@ export async function projectNativeSdkContinuation(options: {
       waitId: wait.id,
       proposalHash: wait.proposalHash,
       proposal: wait.proposal,
-      commandArgs: sdkDecision(state, 'revise-requirements').commandArgs,
+      commandArgs: sdkCommandArgs(
+        sdkDecision(state, 'revise-requirements').commandArgs,
+        projectRoot,
+      ),
       message: localized(
         'The extension found changed requirements. Confirm whether to return to Shape after reconciling running or unknown work.',
         '扩展发现需求变化。先核对 running/unknown 工作，再确认是否返回 Shape 修订需求。',
@@ -382,6 +524,7 @@ export async function projectNativeSdkContinuation(options: {
       ...base,
       action: 'resolve-verifier-blocker',
       disposition: 'await-user',
+      mode: 'ask',
       requiresUserDecision: true,
       commandArgs: decision.commandArgs,
       requiredInputs: decision.requiredInputs,
@@ -401,6 +544,7 @@ export async function projectNativeSdkContinuation(options: {
     continuation = {
       ...base,
       disposition: state.status === 'done' ? 'done' : 'blocked',
+      mode: state.status === 'done' ? 'done' : 'reconcile',
       commandArgs: state.status === 'done' ? null : ['comet', 'native', 'doctor', state.name],
       userCommunication: communication(
         localized(
@@ -413,6 +557,7 @@ export async function projectNativeSdkContinuation(options: {
     continuation = {
       ...base,
       disposition: 'await-user',
+      mode: 'ask',
       requiresUserDecision: true,
       requiredInputs: ['summary', 'user-decision'],
       commandAlternatives: childCheckWaits.map((wait) =>
@@ -434,6 +579,7 @@ export async function projectNativeSdkContinuation(options: {
       ...base,
       action: 'retry-verifier',
       disposition: 'await-user',
+      mode: 'ask',
       requiresUserDecision: true,
       requiredInputs: ['summary', 'user-decision'],
       commandAlternatives: childVerifierWaits.flatMap((wait) => [
@@ -456,6 +602,7 @@ export async function projectNativeSdkContinuation(options: {
     continuation = {
       ...base,
       disposition: 'await-user',
+      mode: 'ask',
       requiresUserDecision: true,
       commandAlternatives: requirements
         ? [sdkDecision(state, 'revise-requirements')]
@@ -503,6 +650,7 @@ export async function projectNativeSdkContinuation(options: {
     continuation = {
       ...base,
       disposition: 'await-user',
+      mode: 'ask',
       requiresUserDecision: true,
       action: retry ? 'retry-verifier' : 'confirm-skill-coordinated-pass',
       requiredInputs: ['summary', 'user-decision'],
@@ -603,6 +751,7 @@ export async function projectNativeSdkContinuation(options: {
     continuation = {
       ...base,
       disposition: 'blocked',
+      mode: 'reconcile',
       requiresUserDecision: stopped.length > 0,
       commandArgs: [
         'comet',
@@ -651,12 +800,13 @@ export async function projectNativeSdkContinuation(options: {
     continuation = {
       ...base,
       disposition: 'blocked',
-      commandArgs: ['comet', 'native', 'status', state.name, '--json'],
+      mode: 'reconcile',
+      commandArgs: null,
       requiredInputs: ['original-execution-result'],
       userCommunication: communication(
         localized(
-          'Reconcile the original Action and execution before continuing. An unknown result does not authorize a retry or another handoff.',
-          '先核对原 Action 和执行现场。结果未知不代表可以重试或另行派发。',
+          'Reconcile the original Action and execution before continuing. Submit its actual outcome if it executed. Only authoritative evidence that a host task never executed permits its retryRequest; an unknown result or a timeout is not that evidence.',
+          '先核对原 Action 和执行现场。已执行时提交原领取的真实结果；只有权威证据证明宿主任务确未执行，才可填写其 retryRequest。结果未知或等待超时不是未执行证据。',
         ),
       ),
     };
@@ -664,6 +814,7 @@ export async function projectNativeSdkContinuation(options: {
     continuation = {
       ...base,
       disposition: waits.length > 0 ? 'await-user' : 'blocked',
+      mode: waits.length > 0 ? 'ask' : 'reconcile',
       requiresUserDecision: waits.length > 0,
       requiredInputs: [waits.length > 0 ? 'user-decision' : 'runtime-evidence'],
       userCommunication: communication(
@@ -679,8 +830,8 @@ export async function projectNativeSdkContinuation(options: {
           : null,
       ),
     };
-  } else if (pending.length > 0 && !(state.phase === 'archive' && active.length > 0)) {
-    const action = pending[0];
+  } else if (nextAction) {
+    const action = nextAction;
     const handoff = action.type === 'handoff';
     const skill = action.type === 'invoke_skill';
     const archive =
@@ -701,6 +852,7 @@ export async function projectNativeSdkContinuation(options: {
           ? 'archive'
           : 'none',
       disposition: skill && !executeRequest ? 'blocked' : 'continue',
+      mode: skill && !executeRequest ? 'reconcile' : 'execute',
       commandArgs:
         handoff || (skill && executeRequest)
           ? [
@@ -765,7 +917,9 @@ export async function projectNativeSdkContinuation(options: {
   } else if (active.length > 0) {
     continuation = {
       ...base,
-      commandArgs: ['comet', 'native', 'status', state.name, '--json'],
+      mode: 'wait',
+      commandArgs: null,
+      requiredInputs: ['original-execution-result'],
       userCommunication: communication(
         localized(
           'Continue or wait on the original claimed task. Do not create a second task because a wait timed out; submit its actual outcome with the original claim.',
@@ -774,13 +928,14 @@ export async function projectNativeSdkContinuation(options: {
       ),
     };
   } else if (state.status === 'done') {
-    continuation = { ...base, disposition: 'done' };
+    continuation = { ...base, disposition: 'done', mode: 'done' };
   } else if (run.ready.length > 0) {
     continuation = { ...base, commandArgs: ['comet', 'native', 'next', state.name] };
   } else {
     continuation = {
       ...base,
       disposition: 'blocked',
+      mode: 'reconcile',
       requiredInputs: ['runtime-evidence-or-decision'],
       userCommunication: communication(
         localized(
@@ -791,7 +946,7 @@ export async function projectNativeSdkContinuation(options: {
     };
   }
   return {
-    continuation,
+    continuation: bindSdkContinuation(continuation, projectRoot),
     ...(checkExecutions.length > 0 ? { checkExecutions } : {}),
     ...(active.length > 0
       ? {
@@ -801,16 +956,64 @@ export async function projectNativeSdkContinuation(options: {
             status: action.status,
             attempt: action.attempt,
             inputHash: action.inputHash,
+            input: action.input,
+            type: action.type,
+            ref: action.ref,
             claim: action.claim,
+            commandArgs: dispatchCommandArgs,
             outcomeRequest: nativeSdkOutcomeRequest(run, action),
+            ...nativeSdkHostRecoveryRequests(run, action),
           })),
         }
       : {}),
     ...(run.status !== 'completed' && pendingActions.length > 0
-      ? { pendingAction: pendingActions[0], pendingActions }
+      ? {
+          pendingAction: (() => {
+            const { input: _input, ...action } = pendingActions[0];
+            void _input;
+            return {
+              ...action,
+              ...(_input === undefined ? {} : { inputRef: 'pendingActions[0].input' }),
+            };
+          })(),
+          pendingActions,
+        }
       : {}),
-    ...(waits.length > 0 ? { pendingWaits: waits } : {}),
-    ...(evidenceWaits.length > 0 ? { pendingEvidenceWaits: evidenceWaits } : {}),
+    ...(waits.length > 0
+      ? {
+          pendingWaits: waits.map((wait) => ({
+            ...wait,
+            commandArgs: dispatchCommandArgs,
+            decisionRequests: wait.choices.map((choice) => ({
+              operation: 'resolve-wait',
+              runId: run.runId,
+              expectedRevision: run.revision,
+              waitId: wait.id,
+              proposalHash: wait.proposalHash,
+              decisionId: '<decision-id>',
+              choice,
+            })),
+          })),
+        }
+      : {}),
+    ...(evidenceWaits.length > 0
+      ? {
+          pendingEvidenceWaits: evidenceWaits.map((wait) => ({
+            ...wait,
+            commandArgs: dispatchCommandArgs,
+            evidenceRequest: {
+              operation: 'record-evidence',
+              runId: run.runId,
+              expectedRevision: run.revision,
+              evidenceId: wait.id,
+              kind: wait.kind,
+              ref: '<evidence-relative-path>',
+              contentHash: '<actual-evidence-sha256>',
+              submissionId: '<submission-id>',
+            },
+          })),
+        }
+      : {}),
     ...(pendingBuilderDecisions.length > 0 ? { pendingBuilderDecisions } : {}),
     ...(childVerifierWaits.length > 0
       ? {

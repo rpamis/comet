@@ -311,6 +311,8 @@ export function projectNativeArchivedStatus(options: {
         ...nativePortableContinuation(state),
         status: 'blocked' as const,
         disposition: 'blocked' as const,
+
+        mode: 'reconcile' as const,
         action: 'archive' as const,
         requiresUserDecision: false,
         commandArgs: finishJournal?.result?.recoveryArgs ?? [
@@ -503,6 +505,8 @@ export async function inspectNativePortableStatus(options: {
       ? {
           ...continuation,
           disposition: 'await-user' as const,
+
+          mode: 'ask' as const,
           action: 'none' as const,
           commandArgs: null,
           requiredInputs: ['return-to-bound-workspace'],

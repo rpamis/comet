@@ -1,3 +1,4 @@
+import { classicSdkEntryData } from './classic-sdk-output.js';
 import { createHash } from 'crypto';
 import { annotatedMarkdown } from './classic-archive-annotation.js';
 export { annotatedMarkdown } from './classic-archive-annotation.js';
@@ -319,9 +320,10 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
         return {
           exitCode: 0,
           data: {
-            change,
-            phase: 'archive',
-            projectRoot: sdkWorkspace.projectRoot,
+            ...(await classicSdkEntryData(change, {
+              run: continued,
+              projectRoot: sdkWorkspace.projectRoot,
+            })),
             recoveredAction: inspected.run.actions.find((action) => action.status === 'unknown')
               ?.id,
             pendingAction: continued.actions.find((action) => action.status === 'pending')?.id,

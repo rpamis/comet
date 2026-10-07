@@ -29,9 +29,9 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 
 ## SDK Run 路径
 
-`native status <change> --json` 返回 `data.schema: comet.native.sdk-status.v1` 时，立即执行[SDK Run 命令与恢复](reference/commands.md#sdk-run)。Run 是唯一权威；Builder、Verifier 按参考领取并提交 Action，`native next` 执行 Runtime Action 和用户决定。
+当前响应的 `data.runtimeFormat` 为 `sdk`，或 `data.schema` 为 `comet.native.sdk-status.v1`、`comet.native.dispatch-result.v1` 或 `comet.native.run-view.v1` 时，立即执行[SDK Run 命令与恢复](reference/commands.md#sdk-run)，不为识别格式再次运行 status。Run 是唯一权威；Builder、Verifier 按参考领取并提交 Action，`native next` 执行 Runtime Action 和用户决定。
 
-以下 `continuation`、`--runner-input`、Supervisor 和旧 Archive 仅用于旧 Runtime；SDK 路径仍遵守用户确认、独立验收和工作区授权。旧 change 不自动迁移。
+两种 Runtime 均使用最新 `continuation`；`--runner-input` 和旧 Archive 输入仅用于旧 Runtime。SDK 路径仍遵守用户确认、独立验收和工作区授权。旧 change 不自动迁移。
 
 ## 按需读取
 
@@ -96,6 +96,10 @@ Build、Verify 和 Archive 会复查正式文件绑定。新确认的 Shape 按 
 完成标准：状态为 `done`，用户授权的工作区收尾为 `completed` 或 `kept`，并按记忆接入协议记录任务完成；其他结果继续处理。
 
 ## 后续指令
+
+响应带有 `continuation.mode` 时，以它决定当前动作：`execute` 使用返回的完整参数、输入模板和任务包；`wait` 等待原任务；`ask` 展示当前提案并等待用户决定；`reconcile` 按返回证据核对原执行或处理阻塞；`done` 核对本次完成或取消的条件后结束。`commandArgs` 中的占位值必须按 `requiredInputs` 和输入模板填写，不能把模板当成已经完成的输入或用户批准。`inputRef` 指向同一响应内的完整输入，直接读取，不另查状态。每次写入后只使用新响应的身份、版本和工作目录；需要详情时执行同一响应给出的读取命令，不为寻找下一步再查询。
+
+旧响应没有 `mode` 时，按原 `disposition` 继续：
 
 - `continue`：在返回的工作目录执行完整 `commandArgs`，按 `inputOptions` 模板填写输入。
 - `await-user`：先转述 `userCommunication.message` 和 `suggestedReply`，等待列出的决定；按用户选择执行 `commandAlternatives`，保留 `--expected-state-version` 和 `--expected-action`。过期时读取最新状态，不自行拼接无保护命令。

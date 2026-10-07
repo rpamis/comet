@@ -1,7 +1,11 @@
 import { pathToFileURL } from 'url';
 import { classicCommandHelp } from './classic-cli-help.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
-import { projectCliAgentObservation } from '../workflow-contract/output-envelope.js';
+import {
+  projectCliAgentObservation,
+  formatCliCommandArgs,
+  type CliActionContinuation,
+} from '../workflow-contract/output-envelope.js';
 import { classicIssue } from './classic-issues.js';
 
 export interface ClassicCommandResult {
@@ -115,14 +119,90 @@ async function dispatch(
   }
 
   try {
-    return await handler(args, options);
+    return await withSdkErrorContext(command, args, options, await handler(args, options));
   } catch (error) {
-    return {
+    return withSdkErrorContext(command, args, options, {
       exitCode: 70,
       stderr: error instanceof Error ? error.message : String(error),
       data: { issues: [classicIssue(error)] },
-    };
+    });
   }
+}
+
+async function withSdkErrorContext(
+  command: ClassicCommandName,
+  args: string[],
+  options: ClassicCommandOptions,
+  result: ClassicCommandResult,
+): Promise<ClassicCommandResult> {
+  const data =
+    result.data && typeof result.data === 'object' ? (result.data as Record<string, unknown>) : {};
+  if (result.exitCode === 0 || data.continuation) return result;
+  const change = ['state', 'check', 'workspace'].includes(command)
+    ? args[1]
+    : ['guard', 'archive'].includes(command)
+      ? args[0]
+      : undefined;
+  if (!change) return result;
+  try {
+    const { classicSdkErrorData, classicSdkGuardAttempt, classicSdkBlockedContinuation } =
+      await import('./classic-sdk-output.js');
+    const { discoverClassicProject } = await import('./classic-layout.js');
+    const root =
+      options.projectRoot ?? (await discoverClassicProject(options.invocationCwd ?? process.cwd()));
+    const current = await classicSdkErrorData(root, change);
+    if (!current) return result;
+    const guardPhase =
+      command === 'guard' ? args[1] : command === 'archive' ? 'archive' : undefined;
+    return {
+      ...result,
+      data: {
+        ...data,
+        ...current,
+        ...(guardPhase
+          ? {
+              continuation: classicSdkBlockedContinuation(
+                current.continuation,
+                classicSdkGuardAttempt(current.run, guardPhase),
+                result.stderr?.trim() || 'Guard did not complete',
+              ),
+            }
+          : {}),
+      },
+    };
+  } catch {
+    return result;
+  }
+}
+
+/** 所有命令用同一续行事实生成文本提示；不根据 command 或 phase 另猜路由。 */
+function withSdkContinuation(result: ClassicCommandResult): ClassicCommandResult {
+  const data = result.data as
+    { continuation?: CliActionContinuation & { skill?: string } } | undefined;
+  const continuation = data?.continuation;
+  if (!continuation?.mode) return result;
+  const next =
+    continuation.mode === 'ask'
+      ? { ask_user: continuation.instruction ?? 'Obtain the current user decision.' }
+      : continuation.mode === 'execute' && continuation.skill
+        ? { command: `/${continuation.skill}` }
+        : continuation.commandArgs
+          ? { command: formatCliCommandArgs(continuation.commandArgs) }
+          : { instruction: continuation.instruction ?? continuation.mode };
+  const summary =
+    result.envelope?.summary ??
+    result.stdout?.trim().split('\n')[0] ??
+    result.stderr?.trim().split('\n')[0] ??
+    'Classic Run updated.';
+  const hint =
+    'command' in next ? next.command : 'ask_user' in next ? next.ask_user : next.instruction;
+  return {
+    ...result,
+    envelope: { ...result.envelope, summary, next },
+    ...(!result.stdout?.includes('NEXT:')
+      ? { stdout: `${result.stdout ?? ''}NEXT: ${hint}\n` }
+      : {}),
+  };
 }
 
 function jsonResult(
@@ -173,7 +253,8 @@ export async function runClassicCli(
     },
     handlers,
   );
-  return json ? jsonResult(command, result) : result;
+  const projected = withSdkContinuation(result);
+  return json ? jsonResult(command, projected) : projected;
 }
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {

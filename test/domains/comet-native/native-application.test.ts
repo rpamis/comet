@@ -204,6 +204,9 @@ it('runs a real disk Skill, repairs a failed candidate, restores cold and retain
     'native-candidate-review',
     '--request',
     '<request-json-file>',
+    '--project-root',
+    f.projectRoot,
+    '--json',
   ]);
   expect(builderWork.skillWork).toEqual(
     expect.arrayContaining([
@@ -406,14 +409,32 @@ it('rejects fake loaded/pass evidence and stale artifacts while preserving the c
 
 it('binds reverse Child reviews, repairs integration in its worktree, and reviews the parent candidate', async () => {
   const f = await fixture(true);
+  // Runtime 的合并命令也需要此临时仓库的提交身份，不能依赖测试机的全局配置。
+  f.git(f.projectRoot, ['config', '--local', 'user.name', 'Comet Test']);
+  f.git(f.projectRoot, ['config', '--local', 'user.email', 'comet-test@example.com']);
   let run = f.run;
-  const execute = async (action: RuntimeAction, executorId: string) =>
-    f.dispatch({
-      operation: 'execute',
-      runId: f.name,
-      actionId: action.id,
-      executorId,
-    });
+  const execute = async (action: RuntimeAction, executorId: string) => {
+    try {
+      return await f.dispatch({
+        operation: 'execute',
+        runId: f.name,
+        actionId: action.id,
+        executorId,
+      });
+    } catch (error) {
+      const observed = await f.dispatch({ operation: 'inspect', runId: f.name });
+      const original = observed.actions.find((entry) => entry.id === action.id);
+      throw new Error(
+        JSON.stringify({
+          error: String(error),
+          action: original?.stepId,
+          status: original?.status,
+          reason: original?.reason,
+        }),
+        { cause: error },
+      );
+    }
+  };
   run = await execute(f.pending(run, 'supervisor.prepare'), 'native-supervisor-prepare');
   for (const child of ['left', 'right']) {
     const action = run.actions.find(

@@ -1,3 +1,4 @@
+import type { CliContinuationMode } from '../workflow-contract/output-envelope.js';
 import type { NativeChildrenInspection } from './native-children.js';
 import type { NativePortableExpectedContinuationAction } from './native-portable-runtime.js';
 import {
@@ -55,6 +56,8 @@ export interface NativePortableContinuation {
   status: NativePortableState['status'] | 'cancelling' | 'cancelled';
   stateVersion: number;
   disposition: 'continue' | 'await-user' | 'blocked' | 'done';
+  mode: CliContinuationMode;
+  cwd?: string;
   requiresUserDecision: boolean;
   action:
     | 'prepare-shape-confirmation'
@@ -718,6 +721,7 @@ export function nativePortableContinuation(
     phase: state.phase,
     status: state.status,
     stateVersion: state.state_version,
+    mode: 'execute' as const,
     inputOptions: [] as NativePortableContinuation['inputOptions'],
     requiresUserDecision: userCommunication.required,
     userCommunication,
@@ -732,6 +736,7 @@ export function nativePortableContinuation(
     return {
       ...base,
       disposition: 'done',
+      mode: 'done',
       action: 'none',
       commandArgs: null,
       requiredInputs: [],
@@ -743,6 +748,7 @@ export function nativePortableContinuation(
       return {
         ...base,
         disposition: 'await-user',
+        mode: 'ask',
         action: 'confirm-shape',
         commandArgs: null,
         requiredInputs: [
@@ -792,6 +798,7 @@ export function nativePortableContinuation(
       return {
         ...base,
         disposition: 'await-user',
+        mode: 'ask',
         action: 'confirm-skill-coordinated-pass',
         commandArgs: null,
         requiredInputs: ['summary', 'user-decision'],
@@ -837,6 +844,7 @@ export function nativePortableContinuation(
       return {
         ...base,
         disposition: 'await-user',
+        mode: 'ask',
         action: 'confirm-verifier-unavailable',
         commandArgs: null,
         requiredInputs: ['summary', 'user-decision'],
@@ -866,6 +874,7 @@ export function nativePortableContinuation(
       return {
         ...base,
         disposition: 'await-user',
+        mode: 'ask',
         action: 'resolve-verifier-blocker',
         commandArgs: null,
         requiredInputs: ['summary', 'user-decision'],
@@ -891,6 +900,7 @@ export function nativePortableContinuation(
       return {
         ...base,
         disposition: 'await-user',
+        mode: 'ask',
         action: 'resolve-loop-stop',
         commandArgs: null,
         requiredInputs: ['summary', 'user-decision'],
@@ -905,6 +915,7 @@ export function nativePortableContinuation(
     return {
       ...base,
       disposition: 'await-user',
+      mode: 'ask',
       action: 'none',
       commandArgs: null,
       // Fallback for uncovered await-user states: surface the blocker message
@@ -937,6 +948,7 @@ export function nativePortableContinuation(
     return {
       ...base,
       disposition: 'blocked',
+      mode: 'reconcile',
       action: retry ? 'retry-verifier' : 'none',
       commandArgs: retry
         ? boundNativeNextCommandArgs({
@@ -1150,6 +1162,7 @@ export function nativePortableContinuation(
       return {
         ...base,
         disposition: blockedWithoutBuilderRetry ? 'blocked' : 'continue',
+        mode: blockedWithoutBuilderRetry ? 'reconcile' : 'execute',
         action: 'advance-children',
         commandArgs: blockedWithoutBuilderRetry
           ? null
@@ -1279,6 +1292,7 @@ export function nativePortableContinuation(
             }
           : base.userCommunication,
       disposition: 'continue',
+      mode: awaiting ? 'wait' : 'execute',
       action: awaiting ? 'await-verifier' : 'dispatch-verifier',
       commandArgs: [
         'comet',
@@ -1378,6 +1392,7 @@ export function nativePortableContinuation(
       return {
         ...base,
         disposition: 'blocked',
+        mode: 'reconcile',
         action: 'archive',
         commandArgs: null,
         requiredInputs: ['archive-blocker-resolution'],
@@ -1408,6 +1423,7 @@ export function nativePortableContinuation(
         return {
           ...base,
           disposition: 'blocked',
+          mode: 'reconcile',
           action: 'archive',
           commandArgs: null,
           requiredInputs: ['archive-blocker-resolution'],
@@ -1432,6 +1448,7 @@ export function nativePortableContinuation(
       return {
         ...base,
         disposition: 'await-user',
+        mode: 'ask',
         action: 'archive',
         commandArgs: null,
         requiredInputs: ['workspace-finish'],

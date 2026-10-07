@@ -10,6 +10,8 @@ guard `--apply` 检查通过后，会更新 `.comet.yaml` 的 `phase` 字段，�
 
 ## 执行方式
 
+SDK 响应带有 `agent.continuation.mode` 时，先按该字段处理：`execute` 执行返回的命令或加载明确指定的 Skill；`wait` 等待原任务，不重新领取；`ask` 展示当前提案并等待用户决定；`reconcile` 核对原执行结果或处理列出的阻塞；`done` 结束。`mode` 优先于兼容字段 `nextAction.kind`；例如旧 `kind: reconcile` 对应的新 `mode: wait` 仍应等待原任务。只有 `invoke_skill` 才加载 Skill，不能把工具的 `ref` 当成 Skill 名称；先完成 Skill 要求的真实工作，再按 `completion` 填写并执行提交命令。`currentRef` 指向同一响应中的当前工作，直接读取该字段，不额外调用命令。`inputSummary` 只保留当前工作的上下文，不替代原 Action 输入或 Runtime 证据；只有确需摘要未包含的内容时，才使用返回的详情命令。直接复用当前动作的输入、请求模板、Run 身份、revision 和工作目录；占位值填写真实输入，不能作为批准。写入后使用新响应，不因阶段切换重新查询。响应没有 `mode` 时沿用下方规则。
+
 退出条件满足且阶段守卫更新 phase 后，优先按本次成功 JSON 结果中的 `agent.continuation` 继续：`automatic: true` 时调用 `skill` 指定的 Skill；false 时提示用户手动运行该 Skill，并结束本次调用。下一阶段可直接使用这里返回的状态信息，不重复 next、select 或 check。只有恢复会话、外部状态或工作区发生变化，或者旧结果没有这些信息时，才运行：
 
 ```bash

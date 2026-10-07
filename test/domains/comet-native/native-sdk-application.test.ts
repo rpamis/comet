@@ -4773,16 +4773,9 @@ children:
     });
     expect(stale.exitCode).toBe(73);
     const command = repair!.commandArgs
-      .slice(4)
+      .slice(2)
       .map((arg) => (arg === '<summary>' ? 'Try a different repair.' : arg));
-    const resumed = await nativeDomain.runNativeCliDetailed([
-      'next',
-      'sdk-shape',
-      ...command,
-      '--json',
-      '--project-root',
-      root,
-    ]);
+    const resumed = await nativeDomain.runNativeCliDetailed(command);
     expect(resumed.dispatch.exitCode, JSON.stringify(resumed.dispatch.error)).toBe(0);
     expect(resumed.dispatch.data).toMatchObject({ phase: 'build', run: { status: 'running' } });
   });

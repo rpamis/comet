@@ -55,6 +55,44 @@ function continuation(
 }
 
 describe('native output envelope derivation', () => {
+  it.each(['wait', 'ask', 'reconcile', 'done'] as const)(
+    'renders the domain %s decision without advertising a conditional command as executable',
+    (mode) => {
+      const current = {
+        ...continuation({ commandArgs: ['comet', 'native', 'next', 'session-timeout'] }),
+        mode,
+      };
+      const envelope = deriveNativeOutputEnvelope({ continuation: current });
+      expect(envelope!.next).toEqual(
+        mode === 'ask' ? { ask_user: EN_INSTRUCTION } : { instruction: EN_INSTRUCTION },
+      );
+      expect(envelope!.next).not.toHaveProperty('command');
+    },
+  );
+
+  it('quotes argv without changing spaces, shell operators, or apostrophes', () => {
+    const envelope = deriveNativeOutputEnvelope({
+      continuation: {
+        ...continuation({
+          commandArgs: [
+            'comet',
+            'native',
+            'next',
+            'session-timeout',
+            '--summary',
+            "It's safe; keep $HOME literal",
+            '--project-root',
+            '/tmp/root with spaces',
+          ],
+        }),
+        mode: 'execute',
+      },
+    });
+    expect(envelope!.next!.command).toBe(
+      "comet native next session-timeout --summary 'It'\"'\"'s safe; keep $HOME literal' --project-root '/tmp/root with spaces'",
+    );
+  });
+
   it('derives a continue envelope with the exact next command', () => {
     const envelope = deriveNativeOutputEnvelope({
       continuation: continuation({
@@ -68,7 +106,7 @@ describe('native output envelope derivation', () => {
     expect(envelope!.summary).toContain('acceptance 3/4 passed (1 failed)');
     expect(envelope!.summary).toContain('ready to continue');
     expect(envelope!.next).toEqual({
-      command: 'comet native next session-timeout --runner-input <file>',
+      command: "comet native next session-timeout --runner-input '<file>'",
     });
     expect(envelope!.user_message).toBeUndefined();
   });
@@ -303,7 +341,7 @@ describe('native render audience split', () => {
     expect((parsed.data as { unchanged: boolean }).unchanged).toBe(true);
     expect(typeof parsed.summary).toBe('string');
     expect(parsed.next).toEqual({
-      command: 'comet native next session-timeout --runner-input <file>',
+      command: "comet native next session-timeout --runner-input '<file>'",
     });
   });
 

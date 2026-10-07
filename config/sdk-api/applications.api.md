@@ -237,8 +237,12 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                 expectedRevision: number;
                 operation: "next";
             } | undefined;
-            commandArgs: string[];
             instruction: string;
+            actionId?: string | undefined;
+            mode: CliContinuationMode;
+            cwd: string;
+            commandArgs: string[];
+            requiredInputs: string[];
         };
         inspection: {
             commandArgs: string[];
@@ -710,8 +714,12 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
             expectedRevision: number;
             operation: "next";
         } | undefined;
-        commandArgs: string[];
         instruction: string;
+        actionId?: string | undefined;
+        mode: CliContinuationMode;
+        cwd: string;
+        commandArgs: string[];
+        requiredInputs: string[];
     };
     inspection: {
         commandArgs: string[];

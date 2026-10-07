@@ -14,6 +14,7 @@ import {
 } from './native-sdk-supervisor-verifier-recovery.js';
 import { nativeSdkRequirementsRevisionAllowed } from './native-sdk-revise.js';
 import { projectNativeSdkStatus } from './native-sdk-status.js';
+import { nativeSdkNextAction } from './native-sdk-continuation.js';
 import { parseNativePortableState } from './native-portable-state.js';
 import type { NativeSupervisorCoordinationMode } from './native-portable-types.js';
 
@@ -101,7 +102,7 @@ export async function advanceNativeSdkChange(
           prepare?.stepId !== 'shape.prepare'))
     )
       return {
-        command: 'next',
+        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: {
           code: 'conflict',
@@ -124,7 +125,7 @@ export async function advanceNativeSdkChange(
         ['failed', 'cancelled', 'completed'].includes(run.status)
       )
         return {
-          command: 'next',
+          ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
           exitCode: 73,
           error: { code: 'conflict', message: 'Native Child Verifier recovery decision is stale' },
         };
@@ -169,7 +170,7 @@ export async function advanceNativeSdkChange(
         ['failed', 'completed', 'cancelled'].includes(run.status)
       )
         return {
-          command: 'next',
+          ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
           exitCode: 73,
           error: { code: 'conflict', message: 'Native Child check repair decision is stale' },
         };
@@ -200,7 +201,7 @@ export async function advanceNativeSdkChange(
       recovery.proposalHash !== decision.proposalHash
     ) {
       return {
-        command: 'next',
+        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: {
           code: 'conflict',
@@ -230,7 +231,7 @@ export async function advanceNativeSdkChange(
     );
     if (!wait || state.state_version !== decision.expectedStateVersion) {
       return {
-        command: 'next',
+        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: { code: 'conflict', message: `Native SDK Builder decision for ${name} is stale` },
       };
@@ -363,7 +364,7 @@ export async function advanceNativeSdkChange(
       wait.proposalHash !== decision.proposalHash
     ) {
       return {
-        command: 'next',
+        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: { code: 'conflict', message: `Native SDK Verify decision for ${name} is stale` },
       };
@@ -405,7 +406,7 @@ export async function advanceNativeSdkChange(
       state.loop.next_action !== decision.expectedAction
     ) {
       return {
-        command: 'next',
+        ...(await sdkNextResult(projectRoot, name, run, artifactRootRef, application)),
         exitCode: 73,
         error: { code: 'conflict', message: `Native SDK Shape confirmation for ${name} is stale` },
       };
@@ -455,10 +456,7 @@ export async function advanceNativeSdkChange(
     await (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime.next({ runId: run.runId });
     ({ run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name));
   }
-  const pending =
-    run.actions.find(
-      (action) => action.status === 'pending' && action.stepId === 'supervisor.child.archive',
-    ) ?? run.actions.find((action) => action.status === 'pending');
+  const pending = nativeSdkNextAction(run, state);
   if (!pending) {
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
   }

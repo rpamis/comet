@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowRun } from '../../../domains/engine/runtime.js';
 import { createRuntimeAction } from '../../../domains/engine/runtime-action.js';
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
-import { projectNativeSdkContinuation } from '../../../domains/comet-native/native-sdk-continuation.js';
+import {
+  nativeSdkNextAction,
+  projectNativeSdkContinuation,
+} from '../../../domains/comet-native/native-sdk-continuation.js';
 import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
 
 const mocked = vi.hoisted(() => ({
@@ -82,6 +85,111 @@ beforeEach(() => {
 });
 
 describe('Native Archive command stop boundaries', () => {
+  it.each(['recorded-host-result', 'runtime-action'] as const)(
+    'never offers not-executed retry for %s',
+    async (kind) => {
+      const current = inspection();
+      const action = {
+        ...archiveAction(
+          'custom.original',
+          'custom-original',
+          kind === 'runtime-action' ? 'call_tool' : 'handoff',
+        ),
+        status: 'unknown' as const,
+        claim: { executorId: 'original-host', token: 'original-token' },
+      };
+      if (kind === 'recorded-host-result')
+        Object.assign(action, {
+          rejectedOutcomes: [
+            {
+              outcome: { attempt: action.attempt },
+              code: 'OUTCOME_REJECTED',
+              reason: 'Recorded result needs correction.',
+            },
+          ],
+        });
+      current.run.actions = [action];
+      const projected = await projectNativeSdkContinuation({
+        ...current,
+        projectRoot: options.projectRoot,
+      });
+      expect(projected.continuation.mode).toBe('reconcile');
+      expect(projected.activeActions![0]).not.toHaveProperty('retryRequest');
+      expect(projected.activeActions![0]).toHaveProperty('outcomeRequest');
+    },
+  );
+
+  it.each([
+    ['pending', 'execute', 'archive.prepare'],
+    ['decision', 'ask', undefined],
+    ['evidence', 'reconcile', undefined],
+    ['running', 'wait', undefined],
+    ['unknown', 'reconcile', undefined],
+    ['completed', 'done', undefined],
+    ['failed', 'reconcile', undefined],
+    ['parallel-builder', 'execute', 'archive.prepare'],
+    ['child-archive', 'execute', 'supervisor.child.archive'],
+  ] as const)(
+    'uses the same next-step decision for projection and scheduling (%s)',
+    async (kind, mode, stepId) => {
+      const current = inspection();
+      if (kind === 'decision')
+        current.run.waits.push({
+          id: 'approval',
+          stepId: 'custom.approval',
+          status: 'pending',
+          proposalHash: 'proposal',
+          proposal: { summary: 'Review this proposal.' },
+          choices: ['approved'],
+        } as never);
+      if (kind === 'evidence')
+        current.run.evidenceWaits!.push({
+          id: 'evidence',
+          stepId: 'custom.evidence',
+          kind: 'external',
+          status: 'pending',
+        } as never);
+      if (['running', 'unknown', 'parallel-builder'].includes(kind))
+        current.run.actions.push({
+          ...archiveAction('custom.work', 'custom-work', 'handoff'),
+          status: kind === 'unknown' ? 'unknown' : 'running',
+          claim: {
+            executorId: 'native-host',
+            sessionId: 'original-session',
+            token: 'original-token',
+          },
+        });
+      if (kind === 'parallel-builder' || kind === 'child-archive') {
+        current.state.phase = 'build';
+        current.state.loop.stage = 'building';
+      }
+      if (kind === 'child-archive')
+        current.run.actions.push(
+          archiveAction('supervisor.child.archive', 'native-supervisor-child-archive'),
+        );
+      if (kind === 'failed') current.run.status = 'failed';
+      if (kind === 'completed') {
+        current.run.status = 'completed';
+        current.state.status = 'done';
+        current.state.loop.stage = 'done';
+        current.state.archived = true;
+      }
+      const before = structuredClone(current);
+      const projected = await projectNativeSdkContinuation({
+        ...current,
+        projectRoot: options.projectRoot,
+      });
+      expect(projected.continuation.mode).toBe(mode);
+      expect(nativeSdkNextAction(current.run, current.state)?.stepId).toBe(stepId);
+      if (stepId) expect(projected).toMatchObject({ pendingAction: { stepId } });
+      if (['running', 'unknown', 'completed'].includes(kind))
+        expect(projected.continuation.commandArgs).toBeNull();
+      if (['failed', 'completed'].includes(kind))
+        expect(projected).not.toHaveProperty('pendingActions');
+      expect(current).toEqual(before);
+    },
+  );
+
   it('waits on the original running Archive task instead of suggesting another Archive attempt', async () => {
     const current = inspection();
     const running = {
@@ -121,7 +229,8 @@ describe('Native Archive command stop boundaries', () => {
         },
       ],
       continuation: {
-        commandArgs: ['comet', 'native', 'status', options.name, '--json'],
+        mode: 'wait',
+        commandArgs: null,
         userCommunication: { agentInstruction: expect.stringContaining('original claimed task') },
       },
     });
@@ -154,6 +263,9 @@ describe('Native Archive command stop boundaries', () => {
         'native',
         '--request',
         '<request-json-file>',
+        '--project-root',
+        options.projectRoot,
+        '--json',
       ],
     });
   });
@@ -171,7 +283,18 @@ describe('Native Archive command stop boundaries', () => {
     expect(result.data).toMatchObject({
       completedActions: [],
       pendingAction: { stepId: 'archive.prepare' },
-      continuation: { commandArgs: ['comet', 'native', 'next', options.name] },
+      continuation: {
+        commandArgs: [
+          'comet',
+          'native',
+          'next',
+          options.name,
+          '--project-root',
+          options.projectRoot,
+
+          '--json',
+        ],
+      },
     });
   });
 
@@ -189,7 +312,17 @@ describe('Native Archive command stop boundaries', () => {
       expect(mocked.execute).not.toHaveBeenCalled();
       if (type === 'call_tool')
         expect(result.data).toMatchObject({
-          continuation: { commandArgs: ['comet', 'native', 'next', options.name] },
+          continuation: {
+            commandArgs: [
+              'comet',
+              'native',
+              'next',
+              options.name,
+              '--project-root',
+              options.projectRoot,
+              '--json',
+            ],
+          },
         });
       else
         expect(result.data).toMatchObject({
@@ -257,8 +390,38 @@ describe('Native Archive command stop boundaries', () => {
           commandArgs: null,
         },
       });
-      if (kind === 'decision') expect(result.data).toMatchObject({ pendingWaits: [wait] });
-      else expect(result.data).toMatchObject({ pendingEvidenceWaits: current.run.evidenceWaits });
+      if (kind === 'decision')
+        expect(result.data).toMatchObject({
+          pendingWaits: [
+            {
+              ...wait,
+              decisionRequests: [
+                {
+                  operation: 'resolve-wait',
+                  expectedRevision: current.run.revision,
+                  waitId: wait.id,
+                  proposalHash: wait.proposalHash,
+                  choice: 'approved',
+                },
+                { choice: 'rejected' },
+              ],
+            },
+          ],
+        });
+      else
+        expect(result.data).toMatchObject({
+          pendingEvidenceWaits: [
+            {
+              ...current.run.evidenceWaits![0],
+              evidenceRequest: {
+                operation: 'record-evidence',
+                expectedRevision: current.run.revision,
+                evidenceId: 'evidence-wait',
+                kind: 'external-evidence',
+              },
+            },
+          ],
+        });
     },
   );
 
@@ -282,7 +445,18 @@ describe('Native Archive command stop boundaries', () => {
     expect(result.data).toMatchObject({
       completedActions: [{ stepId: 'archive.prepare', status: 'succeeded' }],
       run: { revision: 9 },
-      continuation: { commandArgs: ['comet', 'native', 'next', options.name] },
+      continuation: {
+        commandArgs: [
+          'comet',
+          'native',
+          'next',
+          options.name,
+          '--project-root',
+          options.projectRoot,
+
+          '--json',
+        ],
+      },
     });
   });
 });

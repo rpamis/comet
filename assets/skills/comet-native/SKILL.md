@@ -29,7 +29,9 @@ Project experience and personal preferences are stored separately: use `comet kn
 
 ## SDK Run path
 
-For `data.schema: comet.native.sdk-status.v1` in `native status <change> --json`, follow [SDK Run commands and recovery](reference/commands.md#sdk-run). The `continuation`, `--runner-input`, Supervisor, and Archive instructions below are legacy-only. SDK still requires approval, independent verification, and workspace authorization. Do not migrate legacy changes automatically.
+When the current response has `data.runtimeFormat: sdk`, or `data.schema` is `comet.native.sdk-status.v1`, `comet.native.dispatch-result.v1`, or `comet.native.run-view.v1`, follow [SDK Run commands and recovery](reference/commands.md#sdk-run) without querying status again to identify the format. The Run is authoritative: Builders and Verifiers claim and submit Actions through that reference; `native next` executes Runtime Actions and user decisions.
+
+Both runtimes use the latest `continuation`; `--runner-input` and legacy Archive inputs apply only to the legacy Runtime. SDK still requires approval, independent verification, and workspace authorization. Do not migrate legacy changes automatically.
 
 ## Read only what the action needs
 
@@ -94,6 +96,10 @@ Commit only this change's implementation and formal artifacts; preserve unrelate
 Complete when state is `done`, authorized workspace finishing is `completed` or `kept`, and task completion has been recorded through memory integration. Continue handling any other result.
 
 ## Continuation
+
+When the response includes `continuation.mode`, use it to decide the current action: `execute` uses the complete returned arguments, input templates, and task package; `wait` waits for the original task; `ask` presents the current proposal and awaits the user decision; `reconcile` checks the original execution or addresses blockers using the returned evidence; `done` ends after checking the criteria for this completion or cancellation. Fill `commandArgs` placeholders using `requiredInputs` and the input templates; a template is neither completed input nor user approval. `inputRef` points to complete input in the same response; read it without querying state again. After each write, use only the new response’s identity, version, and working directory. When details are essential, use the retrieval command in that response rather than querying to discover the next step.
+
+For older responses without `mode`, use the original `disposition`:
 
 - `continue`: execute the complete `commandArgs` in the returned working directory and fill inputs from `inputOptions` templates.
 - `await-user`: relay `userCommunication.message` and `suggestedReply`, then wait for the listed decisions. Execute the matching `commandAlternatives`, retaining `--expected-state-version` and `--expected-action`. Read the latest state if stale; do not construct an unguarded command.

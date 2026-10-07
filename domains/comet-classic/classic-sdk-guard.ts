@@ -3,6 +3,12 @@ import path from 'node:path';
 
 import type { WorkflowRun } from '../engine/runtime.js';
 import type { ClassicCommandResult } from './classic-cli.js';
+import {
+  classicSdkEntryData,
+  classicSdkGuardAttempt,
+  classicSdkBlockedContinuation,
+  type ClassicSdkGuardAttempt,
+} from './classic-sdk-output.js';
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { classicIssue } from './classic-issues.js';
 import { classicOpenContentProblem } from './classic-open-content.js';
@@ -10,7 +16,7 @@ import { assertClassicBuildReady, classicOpenEvidenceReceipt } from './classic-s
 import { completeClassicSdkBuild } from './classic-sdk-build.js';
 import { classicCheckCommand } from './classic-check-command.js';
 import { inspectAndCompleteClassicSdkDesign } from './classic-sdk-design.js';
-import { classicSdkNextAction, inspectClassicSdkRun } from './classic-sdk-status.js';
+import { inspectClassicSdkRun } from './classic-sdk-status.js';
 import { classicVerificationReportReceipt } from './classic-verification-report.js';
 import { executeClassicSdkArchive } from './classic-sdk-archive.js';
 import {
@@ -26,30 +32,34 @@ interface ClassicSdkOpenGuardOptions {
   approvalHash?: string;
 }
 
-function guardResult(
+async function guardResult(
   change: string,
   phase: string,
   projectRoot: string,
   approvalHash: string | null,
   issue?: string,
   run?: WorkflowRun,
-): ClassicCommandResult {
+  attempted?: ClassicSdkGuardAttempt,
+): Promise<ClassicCommandResult> {
   const blocked = issue !== undefined;
+  const entry = run
+    ? await classicSdkEntryData(
+        change,
+        { run, projectRoot },
+        false,
+        !blocked && phase === 'open' && approvalHash ? { openApprovalHash: approvalHash } : {},
+      )
+    : null;
   return {
     exitCode: blocked ? 1 : 0,
     data: {
-      change,
-      phase,
-      projectRoot,
+      ...(entry ?? { change, phase, projectRoot }),
+      ...(entry && blocked && attempted
+        ? { continuation: classicSdkBlockedContinuation(entry.continuation, attempted, issue) }
+        : {}),
       ...(approvalHash === null ? {} : { approvalHash }),
       checks: { passed: blocked ? 0 : 1, total: 1, blocked },
       issues: blocked ? [classicIssue(issue)] : [],
-      ...(run
-        ? {
-            run: { id: run.runId, revision: run.revision, status: run.status },
-            nextAction: classicSdkNextAction(run),
-          }
-        : {}),
     },
     stderr: blocked
       ? `BLOCKED — ${issue}\n`
@@ -85,6 +95,7 @@ export async function classicSdkOpenGuard(
   const inspected = await inspectClassicSdkRun(projectRoot, change);
   let { run } = inspected;
   const { state, runtime, profile } = inspected;
+  const guardAttempt = classicSdkGuardAttempt(inspected.run, 'open');
   if (state.phase !== 'open') {
     return guardResult(
       change,
@@ -92,6 +103,8 @@ export async function classicSdkOpenGuard(
       projectRoot,
       null,
       `Classic SDK change is in ${state.phase}, not open`,
+      run,
+      guardAttempt,
     );
   }
   const branch = liveGitBranch(projectRoot);
@@ -108,6 +121,8 @@ export async function classicSdkOpenGuard(
       projectRoot,
       null,
       `Classic SDK branch binding is ${binding.status}`,
+      run,
+      guardAttempt,
     );
   }
   if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
@@ -116,14 +131,28 @@ export async function classicSdkOpenGuard(
       'open',
       projectRoot,
       null,
-      'Classic SDK has a claimed Action with an unknown outcome',
+      run.actions.some((action) => action.status === 'unknown')
+        ? 'Classic SDK has an unknown Action outcome; reconcile the original attempt'
+        : 'Classic SDK has a running Action; wait for its original executor',
+      run,
+      guardAttempt,
     );
   }
   const ref = changeDirRef(run);
   const receipt = await classicOpenEvidenceReceipt(projectRoot, ref);
   const contentIssue = await classicOpenContentProblem(projectRoot, ref, state.language);
-  if (contentIssue) return guardResult(change, 'open', projectRoot, null, contentIssue);
-  if (!apply) return guardResult(change, 'open', projectRoot, receipt.contentHash);
+  if (contentIssue)
+    return guardResult(change, 'open', projectRoot, null, contentIssue, run, guardAttempt);
+  if (!apply)
+    return guardResult(
+      change,
+      'open',
+      projectRoot,
+      receipt.contentHash,
+      undefined,
+      run,
+      guardAttempt,
+    );
   if (!approvalHash || !/^[a-f0-9]{64}$/u.test(approvalHash)) {
     return guardResult(
       change,
@@ -131,6 +160,8 @@ export async function classicSdkOpenGuard(
       projectRoot,
       receipt.contentHash,
       'An approved Open artifact hash is required',
+      run,
+      guardAttempt,
     );
   }
   if (approvalHash !== receipt.contentHash) {
@@ -140,6 +171,8 @@ export async function classicSdkOpenGuard(
       projectRoot,
       receipt.contentHash,
       'Classic Open artifacts changed after approval',
+      run,
+      guardAttempt,
     );
   }
 
@@ -217,6 +250,8 @@ export async function classicSdkOpenGuard(
           projectRoot,
           receipt.contentHash,
           'The pending Open decision does not match approved artifacts',
+          run,
+          guardAttempt,
         );
       }
       run = await runtime.resolveWait({
@@ -249,6 +284,8 @@ export async function classicSdkOpenGuard(
       projectRoot,
       receipt.contentHash,
       'Classic Open remains pending in the SDK Run',
+      run,
+      guardAttempt,
     );
   }
   return guardResult(
@@ -258,6 +295,7 @@ export async function classicSdkOpenGuard(
     receipt.contentHash,
     undefined,
     run,
+    guardAttempt,
   );
 }
 
@@ -277,6 +315,7 @@ export async function classicSdkDesignGuard(options: {
     apply,
     approvalHash,
   });
+  const guardAttempt = classicSdkGuardAttempt(inspected.run, 'design');
   if (inspected.state.phase !== 'design') {
     return guardResult(
       change,
@@ -284,9 +323,20 @@ export async function classicSdkDesignGuard(options: {
       projectRoot,
       inspected.decision.proposalHash,
       'Classic SDK Design has already advanced',
+      inspected.run,
+      guardAttempt,
     );
   }
-  if (!apply) return guardResult(change, 'design', projectRoot, inspected.decision.proposalHash);
+  if (!apply)
+    return guardResult(
+      change,
+      'design',
+      projectRoot,
+      inspected.decision.proposalHash,
+      undefined,
+      inspected.run,
+      guardAttempt,
+    );
   if (!approvalHash || approvalHash !== inspected.decision.proposalHash) {
     return guardResult(
       change,
@@ -294,6 +344,8 @@ export async function classicSdkDesignGuard(options: {
       projectRoot,
       inspected.decision.proposalHash,
       'Classic Design approval does not match the pending proposal',
+      inspected.run,
+      guardAttempt,
     );
   }
   const run = completed!;
@@ -304,6 +356,7 @@ export async function classicSdkDesignGuard(options: {
     approvalHash,
     undefined,
     run,
+    guardAttempt,
   );
 }
 
@@ -319,6 +372,7 @@ export async function classicSdkBuildGuard(options: {
   const { projectRoot, invocationCwd, change, apply, argv } = options;
   const inspected = await inspectClassicSdkRun(projectRoot, change);
   const { run, state, profile } = inspected;
+  const guardAttempt = classicSdkGuardAttempt(inspected.run, 'build');
   if (state.phase !== 'build') {
     return guardResult(
       change,
@@ -326,6 +380,8 @@ export async function classicSdkBuildGuard(options: {
       projectRoot,
       null,
       `Classic SDK Build Guard requires Build; current phase is ${state.phase}`,
+      run,
+      guardAttempt,
     );
   }
   if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
@@ -334,7 +390,11 @@ export async function classicSdkBuildGuard(options: {
       'build',
       projectRoot,
       null,
-      'Classic SDK has a claimed Action with an unknown outcome',
+      run.actions.some((action) => action.status === 'unknown')
+        ? 'Classic SDK has an unknown Action outcome; reconcile the original attempt'
+        : 'Classic SDK has a running Action; wait for its original executor',
+      run,
+      guardAttempt,
     );
   }
   const input = run.input as { changeDir?: unknown } | null;
@@ -345,6 +405,8 @@ export async function classicSdkBuildGuard(options: {
       projectRoot,
       null,
       'Classic SDK Run has no change directory',
+      run,
+      guardAttempt,
     );
   }
   try {
@@ -356,6 +418,8 @@ export async function classicSdkBuildGuard(options: {
       projectRoot,
       null,
       error instanceof Error ? error.message : String(error),
+      run,
+      guardAttempt,
     );
   }
   const buildPending = run.actions.some(
@@ -374,9 +438,11 @@ export async function classicSdkBuildGuard(options: {
       projectRoot,
       null,
       'Classic SDK has no pending Build Action',
+      run,
+      guardAttempt,
     );
   }
-  if (!apply) return guardResult(change, 'build', projectRoot, null);
+  if (!apply) return guardResult(change, 'build', projectRoot, null, undefined, run, guardAttempt);
   if (!argv?.length) {
     return guardResult(
       change,
@@ -384,6 +450,8 @@ export async function classicSdkBuildGuard(options: {
       projectRoot,
       null,
       'A literal Build check command is required',
+      run,
+      guardAttempt,
     );
   }
   if (buildPending) await completeClassicSdkBuild({ projectRoot, change });
@@ -395,16 +463,18 @@ export async function classicSdkBuildGuard(options: {
   });
   const finished = await inspectClassicSdkRun(projectRoot, change);
   if (checked.exitCode !== 0) {
-    const failed = guardResult(
+    const failed = await guardResult(
       change,
       finished.state.phase,
       projectRoot,
       null,
       checked.stderr?.trim() || checked.stdout?.trim() || 'Classic Build check failed',
       finished.run,
+      guardAttempt,
     );
     return {
       ...failed,
+      exitCode: checked.exitCode,
       data: {
         ...(checked.data as Record<string, unknown>),
         ...(failed.data as Record<string, unknown>),
@@ -412,8 +482,16 @@ export async function classicSdkBuildGuard(options: {
     };
   }
   return finished.state.phase === 'verify'
-    ? guardResult(change, 'verify', projectRoot, null, undefined, finished.run)
-    : guardResult(change, 'build', projectRoot, null, 'Classic SDK Build check remains pending');
+    ? guardResult(change, 'verify', projectRoot, null, undefined, finished.run, guardAttempt)
+    : guardResult(
+        change,
+        'build',
+        projectRoot,
+        null,
+        'Classic SDK Build check remains pending',
+        finished.run,
+        guardAttempt,
+      );
 }
 
 /** Preview or finish Verify through report evidence and a real SDK check. */
@@ -430,6 +508,7 @@ export async function classicSdkVerifyGuard(options: {
   const inspected = await inspectClassicSdkRun(projectRoot, change);
   let { run } = inspected;
   const { state, runtime, profile } = inspected;
+  const guardAttempt = classicSdkGuardAttempt(inspected.run, 'verify');
   if (state.phase !== 'verify') {
     return guardResult(
       change,
@@ -437,6 +516,8 @@ export async function classicSdkVerifyGuard(options: {
       projectRoot,
       null,
       `Classic SDK Verify Guard requires Verify; current phase is ${state.phase}`,
+      run,
+      guardAttempt,
     );
   }
   if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
@@ -445,7 +526,11 @@ export async function classicSdkVerifyGuard(options: {
       'verify',
       projectRoot,
       null,
-      'Classic SDK has a claimed Action with an unknown outcome',
+      run.actions.some((action) => action.status === 'unknown')
+        ? 'Classic SDK has an unknown Action outcome; reconcile the original attempt'
+        : 'Classic SDK has a running Action; wait for its original executor',
+      run,
+      guardAttempt,
     );
   }
   let receipt: Awaited<ReturnType<typeof classicVerificationReportReceipt>>;
@@ -459,6 +544,8 @@ export async function classicSdkVerifyGuard(options: {
       projectRoot,
       null,
       error instanceof Error ? error.message : String(error),
+      run,
+      guardAttempt,
     );
   }
   const verifyStep = `${profile}.verify.run`;
@@ -476,6 +563,8 @@ export async function classicSdkVerifyGuard(options: {
       projectRoot,
       null,
       'Classic SDK Verify report does not match the current Run',
+      run,
+      guardAttempt,
     );
   }
   const acceptedReport = run.evidenceWaits
@@ -495,6 +584,8 @@ export async function classicSdkVerifyGuard(options: {
       projectRoot,
       null,
       'Classic SDK Verify report changed after accepted evidence',
+      run,
+      guardAttempt,
     );
   }
   const reportWait = run.evidenceWaits?.find(
@@ -513,9 +604,11 @@ export async function classicSdkVerifyGuard(options: {
       projectRoot,
       null,
       'Classic SDK has no pending Verify Action',
+      run,
+      guardAttempt,
     );
   }
-  if (!apply) return guardResult(change, 'verify', projectRoot, null);
+  if (!apply) return guardResult(change, 'verify', projectRoot, null, undefined, run, guardAttempt);
   if (!argv?.length) {
     return guardResult(
       change,
@@ -523,6 +616,8 @@ export async function classicSdkVerifyGuard(options: {
       projectRoot,
       null,
       'A literal Verify check command is required',
+      run,
+      guardAttempt,
     );
   }
   const context = { requestId: randomUUID(), projectRoot };
@@ -578,16 +673,18 @@ export async function classicSdkVerifyGuard(options: {
   );
   const finished = await inspectClassicSdkRun(projectRoot, change);
   if (checked.exitCode !== 0) {
-    const failed = guardResult(
+    const failed = await guardResult(
       change,
       finished.state.phase,
       projectRoot,
       null,
       checked.stderr?.trim() || checked.stdout?.trim() || 'Classic Verify check failed',
       finished.run,
+      guardAttempt,
     );
     return {
       ...failed,
+      exitCode: checked.exitCode,
       data: {
         ...(checked.data as Record<string, unknown>),
         ...(failed.data as Record<string, unknown>),
@@ -595,8 +692,16 @@ export async function classicSdkVerifyGuard(options: {
     };
   }
   return finished.state.phase === 'archive'
-    ? guardResult(change, 'archive', projectRoot, null, undefined, finished.run)
-    : guardResult(change, 'verify', projectRoot, null, 'Classic SDK Verify check remains pending');
+    ? guardResult(change, 'archive', projectRoot, null, undefined, finished.run, guardAttempt)
+    : guardResult(
+        change,
+        'verify',
+        projectRoot,
+        null,
+        'Classic SDK Verify check remains pending',
+        finished.run,
+        guardAttempt,
+      );
 }
 
 /** Preview or execute only an explicitly approved SDK Archive; delivery remains separate. */
@@ -608,6 +713,7 @@ export async function classicSdkArchiveGuard(options: {
   const { projectRoot, change, apply } = options;
   const inspected = await inspectClassicSdkRun(projectRoot, change);
   const { run, state, runtime, profile } = inspected;
+  const guardAttempt = classicSdkGuardAttempt(inspected.run, 'archive');
   if (state.phase !== 'archive') {
     return guardResult(
       change,
@@ -615,6 +721,8 @@ export async function classicSdkArchiveGuard(options: {
       projectRoot,
       null,
       `Classic SDK Archive Guard requires Archive; current phase is ${state.phase}`,
+      run,
+      guardAttempt,
     );
   }
   if (state.archived) {
@@ -624,6 +732,8 @@ export async function classicSdkArchiveGuard(options: {
       projectRoot,
       null,
       'Classic SDK change is already archived; finish its pending delivery Action',
+      run,
+      guardAttempt,
     );
   }
   if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
@@ -632,7 +742,11 @@ export async function classicSdkArchiveGuard(options: {
       'archive',
       projectRoot,
       null,
-      'Classic SDK has a claimed Action with an unknown outcome',
+      run.actions.some((action) => action.status === 'unknown')
+        ? 'Classic SDK has an unknown Action outcome; reconcile the original attempt'
+        : 'Classic SDK has a running Action; wait for its original executor',
+      run,
+      guardAttempt,
     );
   }
   try {
@@ -645,6 +759,8 @@ export async function classicSdkArchiveGuard(options: {
       projectRoot,
       null,
       error instanceof Error ? error.message : String(error),
+      run,
+      guardAttempt,
     );
   }
   const preflightPending = run.actions.some(
@@ -660,21 +776,37 @@ export async function classicSdkArchiveGuard(options: {
       projectRoot,
       null,
       'Classic SDK has no pending Archive Action',
+      run,
+      guardAttempt,
     );
   }
-  if (!apply) return guardResult(change, 'archive', projectRoot, null);
+  if (!apply)
+    return guardResult(change, 'archive', projectRoot, null, undefined, run, guardAttempt);
   let archived: WorkflowRun;
   try {
     if (preflightPending) {
-      await executeClassicSdkArchivePreflight(runtime, { runId: run.runId, projectRoot });
+      const preflighted = await executeClassicSdkArchivePreflight(runtime, {
+        runId: run.runId,
+        projectRoot,
+      });
+      Object.assign(guardAttempt, classicSdkGuardAttempt(preflighted, 'archive', guardAttempt));
     }
     archived = await executeClassicSdkArchive(runtime, { runId: run.runId, projectRoot });
   } catch (error) {
     if (!(error instanceof ClassicSdkArchiveReadinessError)) throw error;
-    return guardResult(change, 'archive', projectRoot, null, error.message);
+    const current = await runtime.inspect(run.runId);
+    return guardResult(change, 'archive', projectRoot, null, error.message, current, guardAttempt);
   }
   const archivedState = archived.state as { archived?: unknown } | null;
   return archivedState?.archived === true
-    ? guardResult(change, 'archive', projectRoot, null, undefined, archived)
-    : guardResult(change, 'archive', projectRoot, null, 'Classic SDK Archive did not complete');
+    ? guardResult(change, 'archive', projectRoot, null, undefined, archived, guardAttempt)
+    : guardResult(
+        change,
+        'archive',
+        projectRoot,
+        null,
+        'Classic SDK Archive did not complete',
+        archived,
+        guardAttempt,
+      );
 }

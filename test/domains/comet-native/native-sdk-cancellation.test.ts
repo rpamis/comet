@@ -97,7 +97,7 @@ describe('Native cancellation lifecycle', () => {
       },
       continuation: {
         disposition: 'blocked',
-        commandArgs: ['comet', 'native', 'doctor', '--json'],
+        commandArgs: ['comet', 'native', 'doctor', '--json', '--project-root', f.root],
       },
     });
     expect(status.data.cancellation.cleanup.rootMoveLock.remainingMs).toBeGreaterThan(850000);
@@ -155,9 +155,12 @@ describe('Native cancellation lifecycle', () => {
         cancellation: { status: string };
         continuation: { disposition: string };
       };
-      expect(cli.data).toEqual(
+      expect(cli.data).toMatchObject(
         result.response.status === 'succeeded' ? result.response.data : null,
       );
+      expect(cli.data).toMatchObject({
+        continuation: { mode: stage === 'unstarted' ? 'done' : 'reconcile' },
+      });
       expect(cli.cancellation.status).toBe(stage === 'unstarted' ? 'cancelled' : 'cancelling');
       expect(cli.continuation.disposition).toBe(stage === 'unstarted' ? 'done' : 'blocked');
     },

@@ -210,6 +210,7 @@ export async function projectNativeSdkCancellationContinuation(options: {
     ...options.base,
     status: cancellation.status,
     disposition: cancellation.status === 'cancelled' ? 'done' : 'blocked',
+    mode: cancellation.status === 'cancelled' ? 'done' : 'reconcile',
     requiresUserDecision: false,
     action: 'none',
     commandArgs:

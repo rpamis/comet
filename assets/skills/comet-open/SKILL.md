@@ -19,6 +19,8 @@ Every question and artifact-generation request passed to OpenSpec must specify t
 
 ### 0a. Bind the current change
 
+When the response already includes `agent.continuation.mode`, follow `comet-classic/reference/auto-transition.md` first. `wait` means wait for the original task, without running recovery queries merely because the compatibility field says `nextAction.kind: reconcile`. Use the current response’s commands and inputs; submit `completion` only after the Skill’s actual work is complete. Recovery rules below based on `nextAction.kind` apply only to older responses without `mode`.
+
 When resuming an existing change, first run `comet state next <name> --json` to identify Runtime ownership:
 
 - `sdk`: reuse the Run and recover according to `data.nextAction.kind`. Investigate a claimed Action with an unknown outcome before recreating or redispatching work.
