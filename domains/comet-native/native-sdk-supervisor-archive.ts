@@ -5,6 +5,7 @@ import { stringify } from 'yaml';
 
 import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
+import { runExternalCommand } from '../../platform/process/external-command.js';
 import type {
   RuntimeAction,
   RuntimeExecutor,
@@ -337,7 +338,7 @@ export async function writeMissingNativeSupervisorArchiveMaterials(
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
     });
-    if (existing && existing.text !== content)
+    if (existing && existing.text.replace(/\r\n/gu, '\n') !== content.replace(/\r\n/gu, '\n'))
       throw new Error(`Native archive material conflict: ${ref}`);
     if (!existing) missing.push(ref);
   }
@@ -591,9 +592,22 @@ async function assertChildArchiveFileSnapshot(
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;
   });
-  const actual = existing
+  let actual = existing
     ? runGitCommand(worktree, ['hash-object', '--no-filters', '--', path.join(directory, ref)])
     : undefined;
+  if (
+    actual !== expected &&
+    expected &&
+    existing &&
+    existing.text.includes('\r\n') &&
+    existing.size === Buffer.byteLength(existing.text, 'utf8')
+  ) {
+    // Git 检出可以改变换行；只核对 LF 形式，不运行用户定义的 clean filter。
+    actual = runExternalCommand('git', ['hash-object', '--no-filters', '--stdin'], {
+      cwd: worktree,
+      input: existing.text.replace(/\r\n/gu, '\n'),
+    }).trim();
+  }
   if (actual !== expected || (!actual && ['comet-state.yaml', 'verification.md'].includes(ref)))
     throw new Error(`Native archive material conflict: ${ref}`);
 }

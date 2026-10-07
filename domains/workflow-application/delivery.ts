@@ -3,8 +3,12 @@ import { promises as fs } from 'node:fs';
 import { hashRuntimeValue } from '../engine/runtime.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
 import { workflowApplicationStorageRoot } from '../../platform/paths/workflow-application-storage.js';
-import { workflowApplicationSkillsRoot } from '../../platform/paths/workflow-application-skills.js';
-import { parse as parseYaml } from 'yaml';
+import {
+  workflowApplicationSkillsRoot,
+  workflowApplicationPlatforms,
+  workflowApplicationPlatformInfo,
+} from '../../platform/paths/workflow-application-skills.js';
+
 import { ensureApplicationRuntimeDependency } from '../../platform/install/application-runtime.js';
 import { loadWorkflowApplication, parseWorkflowApplicationManifest } from './application.js';
 import {
@@ -20,6 +24,7 @@ import {
   ensureStorage,
   type InstalledApplication,
 } from './installed-application.js';
+import { applicationInstallSkills, validateApplicationInstallEntries } from './install-record.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 
 export interface ApplicationDeliveryOptions {
@@ -28,6 +33,8 @@ export interface ApplicationDeliveryOptions {
   /** 隔离安装或非默认用户目录；不改变当前用户配置。 */
   userRoot?: string;
   host?: 'codex' | 'claude-code';
+  /** 使用 Comet 平台身份；all 表示全部已注册平台。 */
+  platforms?: string[];
 }
 
 export interface ApplicationInstallPreview {
@@ -50,7 +57,16 @@ export interface ApplicationInstallPreview {
     contentHash: string;
     kind: 'entry' | 'dependency';
     operation: 'create' | 'replace' | 'unchanged';
+    platforms: string[];
   }>;
+  platforms: Array<{
+    id: string;
+    name: string;
+    skillsRoot: string;
+    rulesSupported: boolean;
+    hooksSupported: boolean;
+  }>;
+  requiredCapabilities: string[];
   confirmationHash: string;
 }
 
@@ -81,55 +97,12 @@ async function completePackage(file: string, projectRoot: string) {
   return { manifest, packageRoot, files, contentHash: applicationFilesHash(files) };
 }
 
-function skillName(markdown: string, fallback: string) {
-  const frontmatter = markdown.match(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u);
-  const metadata = frontmatter ? parseYaml(frontmatter[1]) : null;
-  return safeId(metadata?.name ?? fallback);
-}
-function hostSkillFiles(
-  manifest: Awaited<ReturnType<typeof completePackage>>['manifest'],
-  files: Record<string, string>,
-  packageRoot: string,
-) {
-  const entry = Buffer.from(files[manifest.entrySkill], 'base64').toString('utf8');
-  const entryText =
-    entry.replaceAll('<本目录>', packageRoot).replace(/\]\(([^\s)]+)\)/gu, (match, ref: string) => {
-      if (/^(?:[a-z][a-z\d+.-]*:|#)/iu.test(ref)) return match;
-      return `](${path.resolve(packageRoot, path.dirname(manifest.entrySkill), ref.split('#')[0]).replaceAll('\\', '/')}${ref.includes('#') ? '#' + ref.split('#').slice(1).join('#') : ''})`;
-    }) +
-    `\n固定应用资源目录：${packageRoot}。application.json、installation.json 与包内资源从该目录读取；查询和恢复仍使用当前应用身份与原 Run ID。\n`;
-  const result: Array<{
-    name: string;
-    kind: 'entry' | 'dependency';
-    files: Record<string, string>;
-  }> = [
-    {
-      name: skillName(entry, manifest.id),
-      kind: 'entry',
-      files: {
-        'SKILL.md': Buffer.from(entryText).toString('base64'),
-      },
-    },
-  ];
-  for (const dependency of manifest.skills) {
-    const closure = Object.fromEntries(
-      Object.entries(files)
-        .filter(([ref]) => ref.startsWith(dependency.root + '/'))
-        .map(([ref, bytes]) => [ref.slice(dependency.root.length + 1), bytes]),
-    );
-    const markdown = Buffer.from(closure['SKILL.md'], 'base64').toString('utf8');
-    const name = skillName(markdown, path.basename(dependency.root));
-    if (result.some((skill) => skill.name === name))
-      applicationError(`宿主 Skill 名称冲突：${name}`);
-    result.push({ name, kind: 'dependency', files: closure });
-  }
-  return result;
-}
-
 /** 预览只读取内容，不写目标；同版本内容变化和未选择的同名覆盖均拒绝。 */
 export async function previewWorkflowApplicationInstall(
   options: ApplicationDeliveryOptions & { file: string; upgrade?: boolean },
 ): Promise<ApplicationInstallPreview> {
+  if (options.host && options.platforms?.length)
+    applicationError('host 与 platforms 不能同时使用；请选择 Comet 平台身份');
   const { manifest, packageRoot, files, contentHash } = await completePackage(
     options.file,
     options.projectRoot,
@@ -148,31 +121,45 @@ export async function previewWorkflowApplicationInstall(
     );
   const legacy = await inspectStorage(root, `${manifest.id}/application.json`, 'file');
   if (legacy.exists) applicationError('目标存在非托管应用；选择其他位置并保留用户文件');
-  if (previous?.entry && !options.host)
-    applicationError('升级需保留原宿主入口；指定原 host 后重新预览');
+  const previousEntries = await validateApplicationInstallEntries(root, previous, options.scope);
+  if (previousEntries.length && !options.host && !options.platforms?.length)
+    applicationError('升级需保留原平台入口；指定 platform 后重新预览');
+  const requested =
+    options.platforms ??
+    (options.host ? [options.host === 'claude-code' ? 'claude' : options.host] : []);
+  const ids = workflowApplicationPlatforms([
+    ...requested,
+    ...previousEntries.flatMap((entry) => entry.platforms),
+  ]);
+  const platforms = ids.map((id) => ({
+    ...workflowApplicationPlatformInfo(id),
+    skillsRoot: workflowApplicationSkillsRoot({ ...options, platform: id }),
+  }));
   const hostSkills: ApplicationInstallPreview['hostSkills'] = [];
-  if (options.host) {
-    if (!['codex', 'claude-code'].includes(options.host))
-      applicationError('宿主必须为 codex 或 claude-code');
-    const skillsRoot = workflowApplicationSkillsRoot({ ...options, host: options.host });
-    for (const skill of hostSkillFiles(
+  for (const platform of platforms) {
+    const skillsRoot = platform.skillsRoot;
+    for (const skill of applicationInstallSkills(
       manifest,
       files,
       path.join(root, manifest.id, 'versions', contentHash),
     )) {
       const skillRoot = path.join(skillsRoot, skill.name);
       const expected = applicationFilesHash(skill.files);
+      const shared = hostSkills.find((entry) => entry.root === skillRoot);
+      if (shared) {
+        if (shared.contentHash !== expected)
+          applicationError(`共享平台目录内容冲突：${skill.name}`);
+        shared.platforms.push(platform.id);
+        continue;
+      }
+      const previousEntry = previousEntries.find((entry) => entry.root === skillRoot);
       let operation: 'create' | 'replace' | 'unchanged' = 'create';
       if ((await inspectStorage(skillsRoot, skill.name, 'directory')).exists) {
         const actual = applicationFilesHash(await readApplicationFiles(skillRoot));
-        if (skill.kind === 'entry' && previous?.entry?.root !== skillRoot)
+        if (skill.kind === 'entry' && !previousEntry)
           applicationError(`宿主入口已存在且不属于此安装：${skill.name}；保留用户文件`);
         if (actual === expected) operation = 'unchanged';
-        else if (
-          skill.kind === 'entry' &&
-          previous?.entry?.root === skillRoot &&
-          previous.entry.contentHash === actual
-        )
+        else if (skill.kind === 'entry' && previousEntry?.contentHash === actual)
           operation = 'replace';
         else applicationError(`宿主 Skill 同名内容冲突：${skill.name}；保留原文件和版本`);
       }
@@ -182,14 +169,16 @@ export async function previewWorkflowApplicationInstall(
         root: skillRoot,
         contentHash: expected,
         operation,
+        platforms: [platform.id],
       });
     }
-    if (
-      previous?.entry &&
-      previous.entry.root !== hostSkills.find((entry) => entry.kind === 'entry')?.root
-    )
-      applicationError('升级不能静默变更宿主入口；选择原 host 和作用域');
   }
+  if (
+    previousEntries.some(
+      (old) => !hostSkills.some((entry) => entry.kind === 'entry' && entry.root === old.root),
+    )
+  )
+    applicationError('升级不能变更原平台目录；核对作用域和平台配置');
   const preview = {
     schema: 'comet.workflow.application.preview.v1' as const,
     id: manifest.id,
@@ -209,6 +198,10 @@ export async function previewWorkflowApplicationInstall(
     retainedVersions: true as const,
     noFilesWritten: true as const,
     hostSkills,
+    platforms,
+    requiredCapabilities: [
+      ...new Set(manifest.skills.flatMap(({ adapter }) => adapter.requiredCapabilities)),
+    ].sort(),
   };
   return { ...preview, confirmationHash: hashRuntimeValue(preview) };
 }
@@ -275,12 +268,12 @@ export async function installWorkflowApplication(
       file: path.join(destination, 'application.json'),
       projectRoot: options.projectRoot,
     });
-    if (options.host) {
+    if (preview.platforms.length) {
       const pkg = await completePackage(
         path.join(destination, 'application.json'),
         options.projectRoot,
       );
-      const skills = hostSkillFiles(pkg.manifest, pkg.files, destination);
+      const skills = applicationInstallSkills(pkg.manifest, pkg.files, destination);
       for (const entry of preview.hostSkills) {
         const skill = skills.find((skill) => skill.name === entry.name)!;
         if (entry.operation === 'create') await copyPackage(skill.files, entry.root);
@@ -293,9 +286,8 @@ export async function installWorkflowApplication(
         if (applicationFilesHash(await readApplicationFiles(entry.root)) !== entry.contentHash)
           applicationError('宿主入口或依赖在安装时发生变化；保留现场');
       }
-      await ensureApplicationRuntimeDependency(
-        workflowApplicationSkillsRoot({ ...options, host: options.host }),
-      );
+      for (const skillsRoot of new Set(preview.platforms.map(({ skillsRoot }) => skillsRoot)))
+        await ensureApplicationRuntimeDependency(skillsRoot);
     }
     const record: InstalledApplication = {
       schema: 'comet.workflow.application.install.v1',
@@ -303,14 +295,10 @@ export async function installWorkflowApplication(
       version: preview.version,
       contentHash: preview.contentHash,
       packageRef,
-      ...(preview.hostSkills.find((entry) => entry.kind === 'entry')
-        ? {
-            entry: {
-              root: preview.hostSkills.find((entry) => entry.kind === 'entry')!.root,
-              contentHash: preview.hostSkills.find((entry) => entry.kind === 'entry')!.contentHash,
-            },
-          }
-        : {}),
+      scope: options.scope,
+      entries: preview.hostSkills
+        .filter(({ kind }) => kind === 'entry')
+        .map(({ root, contentHash, platforms }) => ({ root, contentHash, platforms })),
     };
     await atomicWriteContainedText(
       path.join(preview.target, preview.id, 'current.json'),
@@ -351,12 +339,20 @@ export async function uninstallWorkflowApplication(
 ) {
   const root = workflowApplicationStorageRoot(options.projectRoot, options.scope, options.userRoot);
   const previous = await readInstalled(root, options.id);
-  if (
-    previous?.entry &&
-    applicationFilesHash(await readApplicationFiles(previous.entry.root)) !==
-      previous.entry.contentHash
-  )
-    applicationError('宿主入口被修改；保留用户文件，不能取消该入口');
+  const entries = await validateApplicationInstallEntries(root, previous, options.scope);
+  const requested = options.platforms?.length
+    ? workflowApplicationPlatforms(options.platforms)
+    : null;
+  const remaining = entries
+    .map((entry) => ({
+      ...entry,
+      platforms: requested ? entry.platforms.filter((id) => !requested.includes(id)) : [],
+    }))
+    .filter(({ platforms }) => platforms.length);
+  const removed = entries.filter((entry) => !remaining.some((keep) => keep.root === entry.root));
+  for (const entry of entries)
+    if (applicationFilesHash(await readApplicationFiles(entry.root)) !== entry.contentHash)
+      applicationError('宿主入口被修改；保留用户文件，不能取消该入口');
   const preview = {
     id: options.id,
     scope: options.scope,
@@ -365,6 +361,8 @@ export async function uninstallWorkflowApplication(
     retainedVersions: true,
     retainedDependencies: true,
     removesDefaultEntryOnly: true,
+    removedEntries: removed,
+    retainedEntries: remaining,
   };
   const confirmationHash = hashRuntimeValue(preview);
   if (!options.confirmationHash) return { ...preview, confirmationHash, noFilesWritten: true };
@@ -373,16 +371,26 @@ export async function uninstallWorkflowApplication(
   return withInstallLock(root, options.id, async () => {
     if (hashRuntimeValue(await readInstalled(root, options.id)) !== hashRuntimeValue(previous))
       applicationError('卸载预览已变化；重新预览并确认');
-    if (previous?.entry) {
-      if (
-        applicationFilesHash(await readApplicationFiles(previous.entry.root)) !==
-        previous.entry.contentHash
-      )
+    // 删除前重验全部入口，避免后面的冲突导致只卸载一部分平台。
+    for (const entry of entries) {
+      if (applicationFilesHash(await readApplicationFiles(entry.root)) !== entry.contentHash)
         applicationError('宿主入口已变化；保留文件');
-      await fs.unlink(path.join(previous.entry.root, 'SKILL.md'));
-      await fs.rmdir(previous.entry.root);
     }
-    if (previous) await fs.unlink(path.join(root, options.id, 'current.json'));
+    for (const entry of removed) {
+      await fs.unlink(path.join(entry.root, 'SKILL.md'));
+      await fs.rmdir(entry.root);
+    }
+    if (previous && remaining.length)
+      await atomicWriteContainedText(
+        path.join(root, options.id, 'current.json'),
+        JSON.stringify(
+          { ...previous, entry: undefined, scope: options.scope, entries: remaining },
+          null,
+          2,
+        ) + '\n',
+        { containedRoot: root },
+      );
+    else if (previous) await fs.unlink(path.join(root, options.id, 'current.json'));
     return { ...preview, uninstalled: true, noFilesWritten: false };
   });
 }

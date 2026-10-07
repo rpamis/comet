@@ -26,20 +26,27 @@ Creator installs directly into the approved project-relative target. Use these c
 
 ```bash
 comet application export <package>/application.json <empty-export-directory> --project . --json
-comet application install <export>/application.json --project . --scope project --host claude-code --json
-comet application install <export>/application.json --project . --scope user --host codex --json
+comet application distribute <export>/application.json --project . --platform claude --platform cursor --scope project --json
+comet application distribute <export>/application.json --project . --platform codex --platform workbuddy --scope user --json
+comet application distribute <export>/application.json --project . --platform all --scope project --preview --json
 ```
 
-Without `--confirmation-hash`, install returns a preview without writing the target: destination, scope, files, fixed dependencies, host entry, and conflicts. After explicit user approval, pass the current preview hash to the same command. Changed content, destinations, or existing installations require another preview. `--user-root <directory>` chooses an isolated user directory; the default user scope uses the current HOME. Omit `--host` to install the managed package without host Skills.
+`distribute` uses the same Comet platform IDs and Skill directories as `comet init`, including project and user path differences. Repeat `--platform` to select several platforms, or use `all` for every registered platform. Shared Skill directories are written once. `install` also accepts `--platform`; omitting platforms installs only the application package.
 
-Managed versions live in `.comet/applications/<id>/versions/<content-hash>/` under the target. Upgrades require `--upgrade`; different content under the same version is rejected. New Runs use the current default version. Active Runs continue from their saved original `packageRoot`, without definition migration. Conflicting fixed Skills or host names preserve existing files.
+Without `--confirmation-hash`, installation and distribution return a preview: destination, scope, files, fixed dependencies, platform entries, required host capabilities, and conflicts. After explicit user approval, pass the current preview hash to the same command. `--preview` explicitly requests a read-only preview and cannot be combined with confirmation. Changed content, destinations, or existing installations require another preview. `--user-root <directory>` chooses an isolated user directory; the default user scope uses the current HOME.
+
+Distribution installs entries and fixed Skills, scripts, and resources without changing existing platform Rule or Hook configuration. Shared Comet workflow Rules, the Hook Router, and project configuration remain managed by `comet init/update`. Preview Rule/Hook support information comes from the current platform registry; it does not establish that this installation installed or verified real platform Hooks. Missing host capabilities still block execution. Successful file installation does not establish model workflow acceptance.
+
+Managed versions live in `.comet/applications/<id>/versions/<content-hash>/` under the target. Upgrades require `--upgrade`; different content under the same version is rejected. The preview includes previously distributed platforms and newly selected platforms, and approval updates all managed entries. New Runs use the current default version. Active Runs continue from their saved original `packageRoot`, without definition migration. Conflicting fixed Skills or host names preserve existing files; changed dependency content requires resolving name or fixed-version conflicts rather than silently overwriting it.
 
 ```bash
 comet application uninstall <id> --project . --scope user --json
+# Remove only one platform entry:
+comet application uninstall <id> --project . --scope project --platform cursor --json
 # After user approval, add --confirmation-hash <current-hash> to the same command.
 ```
 
-Uninstall cancels the default entry for new Runs and the host entry owned by this installation, while retaining every version and dependency. A user application may have active Runs in other projects, so uninstall does not use a single project's inventory to delete versions and does not provide an implicit purge. Its result explicitly lists retention.
+Uninstall removes only managed entries while retaining every version and dependency. `--platform` selects the platforms to remove; entries in shared directories remain while another platform still uses them. The default application record for new Runs is removed only after all platform entries are canceled. A user application may have active Runs in other projects, so uninstall does not use a single project's inventory to delete versions and does not provide an implicit purge. Its result explicitly lists removals and retention.
 
 ## SDK samples and verification scope
 

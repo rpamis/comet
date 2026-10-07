@@ -209,6 +209,90 @@ async function main() {
       completedReport.runId !== waitingReport.runId
     )
       throw new Error('Compiled report did not resume and publish the same approved Run');
+    const applicationFile = path.join(compilerProject, 'compiled-application/application.json');
+    const distributeArgs = [
+      'application',
+      'distribute',
+      applicationFile,
+      '--project',
+      compilerProject,
+      '--platform',
+      'all',
+      '--json',
+    ];
+    const applicationCli = (args) =>
+      parseJsonPayload(
+        run(process.execPath, [cli, ...args], {
+          cwd: consumerDir,
+          env: environment,
+        }),
+      );
+    const distribution = applicationCli(distributeArgs);
+    if (!distribution.noFilesWritten || distribution.platforms.length !== PLATFORMS.length)
+      throw new Error('Packaged application distribution did not preview every Comet platform');
+    const distributed = applicationCli([
+      ...distributeArgs,
+      '--confirmation-hash',
+      distribution.confirmationHash,
+    ]);
+    for (const platform of distribution.platforms) {
+      const entry = path.join(platform.skillsRoot, 'compiler-report/SKILL.md');
+      await assertFile(entry, `Distributed application entry for ${platform.id}`);
+      if (!(await fs.readFile(entry, 'utf8')).includes(path.dirname(distributed.file)))
+        throw new Error(`Application entry for ${platform.id} lost its fixed package location`);
+    }
+    const distributionRequest = path.join(consumerDir, 'distributed-application-request.json');
+    await fs.writeFile(
+      distributionRequest,
+      JSON.stringify({
+        operation: 'start',
+        runId: 'distributed-from-tarball',
+        workflow: { id: 'report-publishing', version: '1' },
+        input: {
+          title: 'Tarball distribution',
+          body: 'Fixed application package',
+          sources: ['package consumer'],
+        },
+      }),
+    );
+    const applicationRunArgs = [
+      'runtime',
+      'dispatch',
+      '--application',
+      'compiler-report',
+      '--project-root',
+      compilerProject,
+      '--request',
+      distributionRequest,
+      '--details',
+      '--json',
+    ];
+    const startedDistribution = applicationCli(applicationRunArgs);
+    if (
+      startedDistribution.status !== 'succeeded' ||
+      startedDistribution.application?.packageRoot !== path.dirname(distributed.file)
+    )
+      throw new Error('Packaged CLI could not start the distributed immutable application');
+    const uninstallArgs = [
+      'application',
+      'uninstall',
+      'compiler-report',
+      '--project',
+      compilerProject,
+      '--json',
+    ];
+    const removal = applicationCli(uninstallArgs);
+    applicationCli([...uninstallArgs, '--confirmation-hash', removal.confirmationHash]);
+    await fs.writeFile(
+      distributionRequest,
+      JSON.stringify({ operation: 'inspect', runId: 'distributed-from-tarball' }),
+    );
+    const restoredDistribution = applicationCli(applicationRunArgs);
+    if (
+      restoredDistribution.status !== 'succeeded' ||
+      restoredDistribution.application?.packageRoot !== path.dirname(distributed.file)
+    )
+      throw new Error('Uninstall lost an existing distributed application Run');
     const pluginsImport = `${packageName}/plugins`;
     const cometPluginsImport = `${packageName}/plugins/comet`;
     for (const [name, flags, reason] of [

@@ -26,20 +26,27 @@ Creator 直接安装到当前创作已确认的项目相对目标。需要完整
 
 ```bash
 comet application export <package>/application.json <empty-export-directory> --project . --json
-comet application install <export>/application.json --project . --scope project --host claude-code --json
-comet application install <export>/application.json --project . --scope user --host codex --json
+comet application distribute <export>/application.json --project . --platform claude --platform cursor --scope project --json
+comet application distribute <export>/application.json --project . --platform codex --platform workbuddy --scope user --json
+comet application distribute <export>/application.json --project . --platform all --scope project --preview --json
 ```
 
-不带 `--confirmation-hash` 的 install 只返回预览：目标、作用域、文件、固定依赖、宿主入口与冲突。用户明确批准后，将当前预览的 hash 传入同一命令执行安装。内容、目标或已有安装改变后需要重新预览。`--user-root <directory>` 选择隔离用户目录；默认用户作用域使用当前 HOME。只交付包而不安装宿主 Skill 时省略 `--host`。
+`distribute` 使用与 `comet init` 相同的 Comet 平台身份和 Skill 目录，包括项目与用户作用域的路径差异。`--platform` 可以重复，`all` 选择全部已注册平台；多个平台共享同一 Skill 目录时只安装一次。`install` 也接受 `--platform`，省略平台时只安装应用包。
 
-托管版本保存在目标 `.comet/applications/<id>/versions/<content-hash>/`。升级需显式 `--upgrade`，同版本不同内容拒绝。新的 Run 使用当前默认版本；活动 Run 按自己保存的原 `packageRoot` 继续，不迁移到新定义。固定 Skill 与同名宿主依赖冲突时保留现场，不覆盖用户内容。
+不带 `--confirmation-hash` 的安装或分发只返回预览：目标、作用域、文件、固定依赖、各平台入口、所需宿主能力与冲突。用户明确批准后，将当前预览的 hash 传入同一命令执行安装。`--preview` 显式要求只读，不能与确认参数同时使用。内容、目标或已有安装改变后需要重新预览。`--user-root <directory>` 选择隔离用户目录；默认用户作用域使用当前 HOME。
+
+分发安装入口和固定 Skill、脚本及资源，不修改平台已有的 Rule 或 Hook 配置。Comet 的共享工作流 Rule、Hook Router 和项目配置仍由 `comet init/update` 管理。预览中的 Rule/Hook 支持信息来自当前平台注册表；它不表示本次已安装或验证真实平台 Hook。宿主缺少 Skill 所需能力时，执行前仍会阻塞；文件安装成功不代表模型业务流程验收通过。
+
+托管版本保存在目标 `.comet/applications/<id>/versions/<content-hash>/`。升级需显式 `--upgrade`，同版本不同内容拒绝；预览包含原来已分发的平台和本次新增平台，批准后更新全部托管入口。新的 Run 使用当前默认版本；活动 Run 按自己保存的原 `packageRoot` 继续，不迁移到新定义。固定 Skill 与同名宿主依赖冲突时保留现场，不覆盖用户内容；依赖内容改变时需要解决名称或固定版本冲突，不能静默覆盖。
 
 ```bash
 comet application uninstall <id> --project . --scope user --json
+# 只卸载一个平台的入口：
+comet application uninstall <id> --project . --scope project --platform cursor --json
 # 用户批准预览后，使用同一命令加 --confirmation-hash <current-hash>
 ```
 
-卸载只取消新 Run 的默认入口和本次管理的宿主入口，保留全部版本及依赖。用户级应用可能有其他项目的活动 Run，因此不会按当前项目的枚举结果清空版本，也不提供隐式 purge。结果会明确展示保留范围。
+卸载只移除本次管理的入口，保留全部版本及依赖。`--platform` 选择要取消的平台；共享目录仍被其他平台使用时保留入口。全部平台入口取消后才移除新 Run 的默认应用记录。用户级应用可能有其他项目的活动 Run，因此不会按当前项目的枚举结果清空版本，也不提供隐式 purge。结果会明确展示移除与保留范围。
 
 ## SDK 样板与验证范围
 

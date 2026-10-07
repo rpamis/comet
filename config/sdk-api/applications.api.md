@@ -53,6 +53,7 @@ export type ApplicationBase = 'standalone' | 'native' | 'classic-full' | 'classi
 export interface ApplicationDeliveryOptions {
     // (undocumented)
     host?: 'codex' | 'claude-code';
+    platforms?: string[];
     // (undocumented)
     projectRoot: string;
     // (undocumented)
@@ -98,6 +99,7 @@ export interface ApplicationInstallPreview {
         contentHash: string;
         kind: 'entry' | 'dependency';
         operation: 'create' | 'replace' | 'unchanged';
+        platforms: string[];
     }>;
     // (undocumented)
     id: string;
@@ -106,7 +108,17 @@ export interface ApplicationInstallPreview {
     // (undocumented)
     operation: 'install' | 'upgrade' | 'unchanged';
     // (undocumented)
+    platforms: Array<{
+        id: string;
+        name: string;
+        skillsRoot: string;
+        rulesSupported: boolean;
+        hooksSupported: boolean;
+    }>;
+    // (undocumented)
     previous: InstalledApplication | null;
+    // (undocumented)
+    requiredCapabilities: string[];
     // (undocumented)
     retainedVersions: true;
     // (undocumented)
@@ -667,6 +679,12 @@ export function installWorkflowApplication(options: ApplicationDeliveryOptions &
         root: string;
         contentHash: string;
     };
+    scope?: "project" | "user";
+    entries?: Array<{
+        root: string;
+        contentHash: string;
+        platforms: string[];
+    }>;
 }>;
 
 // @public (undocumented)
@@ -1233,6 +1251,16 @@ export function uninstallWorkflowApplication(options: ApplicationDeliveryOptions
     retainedVersions: boolean;
     retainedDependencies: boolean;
     removesDefaultEntryOnly: boolean;
+    removedEntries: {
+        root: string;
+        contentHash: string;
+        platforms: string[];
+    }[];
+    retainedEntries: {
+        platforms: string[];
+        root: string;
+        contentHash: string;
+    }[];
 } | {
     confirmationHash: string;
     noFilesWritten: boolean;
@@ -1243,6 +1271,16 @@ export function uninstallWorkflowApplication(options: ApplicationDeliveryOptions
     retainedVersions: boolean;
     retainedDependencies: boolean;
     removesDefaultEntryOnly: boolean;
+    removedEntries: {
+        root: string;
+        contentHash: string;
+        platforms: string[];
+    }[];
+    retainedEntries: {
+        platforms: string[];
+        root: string;
+        contentHash: string;
+    }[];
 }>;
 
 // @public (undocumented)

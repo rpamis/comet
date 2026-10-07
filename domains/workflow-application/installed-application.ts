@@ -5,6 +5,7 @@ import {
   ensureProtectedProjectDirectory,
 } from '../workflow-contract/protected-project-path.js';
 import { workflowApplicationStorageRoot } from '../../platform/paths/workflow-application-storage.js';
+
 import { applicationError, applicationFilesHash, readApplicationFiles } from './skill-adapter.js';
 import type { ApplicationDeliveryOptions } from './delivery.js';
 export interface InstalledApplication {
@@ -14,6 +15,16 @@ export interface InstalledApplication {
   contentHash: string;
   packageRef: string;
   entry?: { root: string; contentHash: string };
+  scope?: 'project' | 'user';
+  entries?: Array<{ root: string; contentHash: string; platforms: string[] }>;
+}
+
+export function installedApplicationEntries(value: InstalledApplication | null) {
+  if (value?.entries) return value.entries;
+  if (!value?.entry) return [];
+  const platform =
+    path.basename(path.dirname(path.dirname(value.entry.root))) === '.claude' ? 'claude' : 'codex';
+  return [{ ...value.entry, platforms: [platform] }];
 }
 
 export function safeId(id: string): string {

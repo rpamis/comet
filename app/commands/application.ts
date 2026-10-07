@@ -14,6 +14,8 @@ interface ApplicationCommandOptions {
   upgrade?: boolean;
   confirmationHash?: string;
   host?: 'codex' | 'claude-code';
+  platform?: string[];
+  preview?: boolean;
   json?: boolean;
 }
 function deliveryOptions(options: ApplicationCommandOptions): ApplicationDeliveryOptions {
@@ -24,17 +26,30 @@ function deliveryOptions(options: ApplicationCommandOptions): ApplicationDeliver
     scope: options.scope ?? 'project',
     ...(options.userRoot ? { userRoot: path.resolve(options.userRoot) } : {}),
     ...(options.host ? { host: options.host } : {}),
+    ...(options.platform?.length ? { platforms: options.platform } : {}),
   };
 }
 export async function applicationInstallCommand(
   file: string,
   options: ApplicationCommandOptions = {},
 ) {
+  if (options.preview && options.confirmationHash)
+    throw new Error('preview 不能与安装确认同时使用');
+  if (options.host && options.platform?.length)
+    throw new Error('host 与 platform 不能同时使用，请选择 platform');
   const input = { ...deliveryOptions(options), file: path.resolve(file), upgrade: options.upgrade };
   const result = options.confirmationHash
     ? await installWorkflowApplication({ ...input, confirmationHash: options.confirmationHash })
     : await previewWorkflowApplicationInstall(input);
   console.log(JSON.stringify(result, null, 2));
+}
+export async function applicationDistributeCommand(
+  file: string,
+  options: ApplicationCommandOptions = {},
+) {
+  if (!options.platform?.length)
+    throw new Error('分发至少需要一个 --platform；all 表示全部 Comet 平台');
+  await applicationInstallCommand(file, options);
 }
 export async function applicationExportCommand(
   file: string,

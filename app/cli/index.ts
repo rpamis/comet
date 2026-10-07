@@ -708,8 +708,10 @@ const application = program
 if (requestedArgs.includes('application')) {
   application
     .command('install <file>')
-    .description('Preview application installation or apply a confirmed preview hash')
+    .description('预览应用安装；确认当前预览后安装固定版本与所选平台入口')
     .option('--project <dir>', 'Project root', '.')
+    .option('--platform <id>', 'Comet 平台，可重复；all 选择全部平台', collect, [])
+    .option('--preview', '只预览，不写入安装目录')
     .addOption(
       new Option('--host <host>', 'Install host entry and fixed Skills').choices([
         'codex',
@@ -731,6 +733,24 @@ if (requestedArgs.includes('application')) {
     });
 
   application
+    .command('distribute <file>')
+    .description('将 SDK 应用分发到 Comet 平台；默认返回安装预览')
+    .option('--project <dir>', '项目目录', '.')
+    .requiredOption('--platform <id>', 'Comet 平台，可重复；all 选择全部平台', collect, [])
+    .addOption(
+      new Option('--scope <scope>', '安装作用域').choices(['project', 'user']).default('project'),
+    )
+    .option('--user-root <dir>', '隔离用户目录')
+    .option('--upgrade', '升级应用并更新已分发的平台入口，保留活动 Run 使用的旧版本')
+    .option('--preview', '只预览，不写入安装目录')
+    .option('--confirmation-hash <hash>', '用户已确认的当前安装预览摘要')
+    .option('--json', '输出 JSON')
+    .action(async (file, options) => {
+      const { applicationDistributeCommand } = await import('../commands/application.js');
+      await applicationDistributeCommand(file, options);
+    });
+
+  application
     .command('export <file> <destination>')
     .description('Export a complete SDK application and its fixed dependencies')
     .option('--project <dir>', 'Project root', '.')
@@ -744,6 +764,7 @@ if (requestedArgs.includes('application')) {
     .command('uninstall <id>')
     .description('Preview entry removal or apply a confirmed preview hash; retain versions')
     .option('--project <dir>', 'Project root', '.')
+    .option('--platform <id>', '只移除所选平台入口，可重复；省略则卸载全部入口', collect, [])
     .addOption(
       new Option('--scope <scope>', 'Install scope')
         .choices(['project', 'user'])

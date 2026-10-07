@@ -50,6 +50,7 @@ const creatorCandidatesCommand = vi.fn(async () => undefined);
 const applicationInstallCommand = vi.fn(async () => undefined);
 const applicationExportCommand = vi.fn(async () => undefined);
 const applicationUninstallCommand = vi.fn(async () => undefined);
+const applicationDistributeCommand = vi.fn(async () => undefined);
 const publishReviewCommand = vi.fn(async () => undefined);
 const publishApproveCommand = vi.fn(async () => undefined);
 const publishRunCommand = vi.fn(async () => undefined);
@@ -141,6 +142,7 @@ vi.mock('../../app/commands/application.js', () => ({
   applicationInstallCommand,
   applicationExportCommand,
   applicationUninstallCommand,
+  applicationDistributeCommand,
 }));
 const cliPath = path.join(path.resolve('.'), 'bin', 'comet.js');
 
@@ -159,6 +161,60 @@ describe('CLI lazy command actions', () => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
     vi.resetModules();
+  });
+
+  it('dispatches application distribution and selective uninstall for multiple Comet platforms', async () => {
+    await runAction(
+      [
+        'application',
+        'distribute',
+        'application.json',
+        '--platform',
+        'cursor',
+        '--platform',
+        'zcode',
+        '--scope',
+        'user',
+        '--user-root',
+        'isolated-home',
+        '--preview',
+        '--json',
+      ],
+      applicationDistributeCommand,
+    );
+    expect(applicationDistributeCommand).toHaveBeenCalledWith(
+      'application.json',
+      expect.objectContaining({
+        platform: ['cursor', 'zcode'],
+        scope: 'user',
+        userRoot: 'isolated-home',
+        preview: true,
+        json: true,
+      }),
+    );
+    await runAction(
+      [
+        'application',
+        'uninstall',
+        'editorial',
+        '--platform',
+        'cursor',
+        '--platform',
+        'zcode',
+        '--confirmation-hash',
+        'current-preview',
+        '--json',
+      ],
+      applicationUninstallCommand,
+    );
+    expect(applicationUninstallCommand).toHaveBeenCalledWith(
+      'editorial',
+      expect.objectContaining({
+        platform: ['cursor', 'zcode'],
+        confirmationHash: 'current-preview',
+        json: true,
+      }),
+    );
   });
 
   it('dispatches application previews, explicit confirmations, and export with their scopes', async () => {

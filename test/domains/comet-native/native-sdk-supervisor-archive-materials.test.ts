@@ -9,8 +9,85 @@ import {
 } from '../../../domains/comet-native/native-sdk-supervisor-archive.js';
 
 const roots: string[] = [];
+
+it('accepts Git CRLF checkout while rejecting any changed archive text', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-child-archive-checkout-'));
+  roots.push(root);
+  const archiveRelative = 'archive/child';
+  const directory = path.join(root, archiveRelative);
+  await fs.mkdir(directory, { recursive: true });
+  for (const ref of [
+    'brief.md',
+    'spec.md',
+    'archive-source.md',
+    'comet-state.yaml',
+    'verification.md',
+  ])
+    await fs.writeFile(path.join(directory, ref), '# Original\n\nAccepted record.\n');
+  const git = (...args: string[]) =>
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'core.autocrlf=true',
+        '-c',
+        'user.name=Comet Test',
+        '-c',
+        'user.email=comet-test@example.com',
+        ...args,
+      ],
+      { cwd: root, encoding: 'utf8' },
+    ).trim();
+  git('init', '-b', 'main');
+  git('add', '--', archiveRelative);
+  git('commit', '-m', 'accepted archive');
+  const archiveCommit = git('rev-parse', 'HEAD');
+  for (const ref of await fs.readdir(directory)) await fs.unlink(path.join(directory, ref));
+  git('checkout-index', '--force', '--all');
+  const before = await fs.readFile(path.join(directory, 'brief.md'));
+  expect(before.toString()).toContain('\r\n');
+  const inspect = () =>
+    assertNativeSupervisorArchiveSnapshot({
+      worktree: root,
+      directory,
+      archiveRelative,
+      archiveCommit,
+    });
+  await expect(inspect()).resolves.toBeInstanceOf(Map);
+  expect(await fs.readFile(path.join(directory, 'brief.md'))).toEqual(before);
+  await fs.writeFile(
+    path.join(directory, 'brief.md'),
+    Buffer.concat([Buffer.from('\uFEFF'), before]),
+  );
+  await expect(inspect()).rejects.toThrow('material conflict: brief.md');
+  await fs.writeFile(path.join(directory, 'brief.md'), before);
+  await fs.appendFile(path.join(directory, 'brief.md'), 'Changed scope.\r\n');
+  await expect(inspect()).rejects.toThrow('material conflict: brief.md');
+});
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+});
+
+it('reuses CRLF archive text after Git checkout without rewriting it or accepting changed content', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-child-archive-crlf-'));
+  roots.push(directory);
+  const materials = {
+    'brief.md': '# Child\n\nAccepted scope.\n',
+    'spec.md': '# Parent\n\nAccepted requirements.\n',
+  };
+  for (const [ref, content] of Object.entries(materials))
+    await fs.writeFile(path.join(directory, ref), content.replace(/\n/gu, '\r\n'));
+  const before = await fs.readFile(path.join(directory, 'brief.md'));
+  for (const dryRun of [true, false])
+    expect(
+      await writeMissingNativeSupervisorArchiveMaterials(directory, materials, dryRun),
+    ).toEqual([]);
+  expect(await fs.readFile(path.join(directory, 'brief.md'))).toEqual(before);
+  await fs.writeFile(path.join(directory, 'spec.md'), '# Parent\r\n\r\nChanged requirements.\r\n');
+  await expect(
+    writeMissingNativeSupervisorArchiveMaterials(directory, materials, false),
+  ).rejects.toThrow('material conflict: spec.md');
+  expect(await fs.readFile(path.join(directory, 'brief.md'))).toEqual(before);
 });
 
 it('adds missing archive materials without changing accepted records, reuses identical content and rejects a conflict before writing', async () => {

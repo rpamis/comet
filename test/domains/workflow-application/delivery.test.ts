@@ -11,8 +11,10 @@ import {
   resolveInstalledWorkflowApplication,
   resolveWorkflowApplicationFile,
   uninstallWorkflowApplication,
+  inspectApplicationSkill,
 } from '../../../domains/workflow-application/index.js';
 import { createDiskApplication } from '../../helpers/workflow-application.js';
+import { PLATFORMS } from '../../../platform/install/platforms.js';
 
 let root: string;
 let source: Awaited<ReturnType<typeof createDiskApplication>>;
@@ -28,6 +30,168 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
+});
+
+it.each(['project', 'user'] as const)(
+  'distributes one immutable application to every registered platform in %s scope',
+  async (scope) => {
+    const projectRoot = path.join(root, 'consumer');
+    const userRoot = path.join(root, 'isolated-home');
+    await fs.mkdir(projectRoot);
+    const options = { file: source.file, projectRoot, userRoot, scope, platforms: ['all'] };
+    const preview = await previewWorkflowApplicationInstall(options);
+    expect(preview.platforms.map(({ id }) => id)).toEqual(PLATFORMS.map(({ id }) => id));
+    expect(preview.requiredCapabilities).toEqual(['skill-script']);
+    expect(await fs.readdir(projectRoot)).toEqual([]);
+    await expect(fs.stat(userRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    const installed = await installWorkflowApplication({
+      ...options,
+      confirmationHash: preview.confirmationHash,
+    });
+    const base = scope === 'project' ? projectRoot : userRoot;
+    for (const relative of scope === 'project'
+      ? ['.cursor', '.agents', '.claude', '.zcode', '.workbuddy', '.omp']
+      : ['.cursor', '.agents', '.claude', '.config/opencode', '.pi/agent', '.omp/agent']) {
+      expect(
+        await fs.readFile(path.join(base, relative, 'skills/editorial/SKILL.md'), 'utf8'),
+      ).toContain(path.dirname(installed.file));
+      expect(
+        await fs.readFile(path.join(base, relative, 'skills/writer/scripts/run.mjs'), 'utf8'),
+      ).toContain('JSON.stringify');
+    }
+    expect(new Set(preview.hostSkills.map(({ root }) => root)).size).toBe(
+      preview.hostSkills.length,
+    );
+    const loaded = await loadWorkflowApplication({ file: installed.file, projectRoot });
+    const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
+    const run = await runtime.start({
+      runId: 'distributed-run',
+      workflow: { id: 'editorial', version: '1' },
+      input: { topic: 'Distributed topic' },
+    });
+    const progressed = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions[0].id,
+      executorId: 'local-skill',
+    });
+    expect(progressed.waits[0].status).toBe('pending');
+    const uninstall = await uninstallWorkflowApplication({ ...options, id: 'editorial' });
+    await uninstallWorkflowApplication({
+      ...options,
+      id: 'editorial',
+      confirmationHash: uninstall.confirmationHash,
+    });
+    for (const entry of preview.hostSkills.filter(({ kind }) => kind === 'entry'))
+      await expect(fs.stat(entry.root)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(
+      fs.stat(path.join(base, '.cursor/skills/writer/scripts/run.mjs')),
+    ).resolves.toBeDefined();
+    expect(await resolveInstalledWorkflowApplication(options, 'editorial')).toBeNull();
+    expect(await resolveWorkflowApplicationFile(projectRoot, 'editorial', run.runId)).toBe(
+      installed.file,
+    );
+  },
+);
+
+it('keeps all distributed entries current through platform additions, upgrades and selective uninstall', async () => {
+  const options = {
+    file: source.file,
+    projectRoot: root,
+    scope: 'project' as const,
+    platforms: ['codex', 'antigravity', 'cursor'],
+  };
+  const preview = await previewWorkflowApplicationInstall(options);
+  const first = await installWorkflowApplication({
+    ...options,
+    confirmationHash: preview.confirmationHash,
+  });
+  const loaded = await loadWorkflowApplication({ file: first.file, projectRoot: root });
+  const run = await createRuntime({ ...loaded.implementation, store: loaded.store }).start({
+    runId: 'before-upgrade',
+    workflow: { id: 'editorial', version: '1' },
+    input: { topic: 'Original' },
+  });
+  source.manifest.version = '2';
+  await fs.writeFile(source.file, JSON.stringify(source.manifest));
+  const upgradeOptions = { ...options, platforms: ['zcode'], upgrade: true };
+  const upgrade = await previewWorkflowApplicationInstall(upgradeOptions);
+  expect(new Set(upgrade.platforms.map(({ id }) => id))).toEqual(
+    new Set(['codex', 'antigravity', 'cursor', 'zcode']),
+  );
+  const second = await installWorkflowApplication({
+    ...upgradeOptions,
+    confirmationHash: upgrade.confirmationHash,
+  });
+  expect(await fs.readFile(path.join(root, '.cursor/skills/editorial/SKILL.md'), 'utf8')).toContain(
+    path.dirname(second.file),
+  );
+  const removeOptions = { ...options, id: 'editorial', platforms: ['codex', 'cursor'] };
+  const removal = await uninstallWorkflowApplication(removeOptions);
+  await uninstallWorkflowApplication({
+    ...removeOptions,
+    confirmationHash: removal.confirmationHash,
+  });
+  await expect(fs.stat(path.join(root, '.cursor/skills/editorial'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+  await expect(
+    fs.stat(path.join(root, '.agents/skills/editorial/SKILL.md')),
+  ).resolves.toBeDefined();
+  expect(await resolveInstalledWorkflowApplication(options, 'editorial')).toBe(second.file);
+  expect(await resolveWorkflowApplicationFile(root, 'editorial', run.runId)).toBe(first.file);
+});
+
+it('preflights every platform and rejects target drift before writing any install files', async () => {
+  const options = {
+    file: source.file,
+    projectRoot: root,
+    scope: 'project' as const,
+    platforms: ['codex', 'cursor'],
+  };
+  const preview = await previewWorkflowApplicationInstall(options);
+  const personal = path.join(root, '.cursor/skills/editorial');
+  await fs.mkdir(personal, { recursive: true });
+  await fs.writeFile(path.join(personal, 'SKILL.md'), '# Personal workflow\n');
+  await expect(
+    installWorkflowApplication({ ...options, confirmationHash: preview.confirmationHash }),
+  ).rejects.toThrow(/不属于|冲突|预览/u);
+  await expect(fs.stat(path.join(root, '.agents'))).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(fs.stat(preview.target)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await fs.readFile(path.join(personal, 'SKILL.md'), 'utf8')).toBe('# Personal workflow\n');
+  await expect(
+    previewWorkflowApplicationInstall({ ...options, platforms: ['not-a-platform'] }),
+  ).rejects.toThrow(/未知平台/u);
+});
+
+it('rejects platform junctions and forged entry ownership without touching unrelated files', async () => {
+  const options = {
+    file: source.file,
+    projectRoot: root,
+    scope: 'project' as const,
+    platforms: ['cursor'],
+  };
+  const outside = path.join(root, 'outside');
+  await fs.mkdir(outside);
+  await fs.symlink(outside, path.join(root, '.cursor'), 'junction');
+  await expect(previewWorkflowApplicationInstall(options)).rejects.toThrow(
+    /symbolic link|junction/u,
+  );
+  expect(await fs.readdir(outside)).toEqual([]);
+  await fs.unlink(path.join(root, '.cursor'));
+  const preview = await previewWorkflowApplicationInstall(options);
+  await installWorkflowApplication({ ...options, confirmationHash: preview.confirmationHash });
+  const personal = path.join(root, '.cursor/skills/personal');
+  await fs.mkdir(personal);
+  await fs.writeFile(path.join(personal, 'SKILL.md'), '# Personal workflow\n');
+  const recordFile = path.join(preview.target, 'editorial/current.json');
+  const record = JSON.parse(await fs.readFile(recordFile, 'utf8'));
+  record.entries[0].root = personal;
+  record.entries[0].contentHash = (await inspectApplicationSkill(personal)).contentHash;
+  await fs.writeFile(recordFile, JSON.stringify(record));
+  await expect(uninstallWorkflowApplication({ ...options, id: 'editorial' })).rejects.toThrow(
+    /安装记录|固定包/u,
+  );
+  expect(await fs.readFile(path.join(personal, 'SKILL.md'), 'utf8')).toBe('# Personal workflow\n');
 });
 
 it.each(['project', 'user'] as const)(

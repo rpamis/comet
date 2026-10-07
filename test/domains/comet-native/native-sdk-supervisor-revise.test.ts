@@ -335,7 +335,16 @@ async function supervisor() {
         ),
       ),
     );
-    return { archive, receipt, integration, relative, directory, files };
+    const committedFiles = Object.fromEntries(
+      Object.keys(files).map((ref) => [
+        ref,
+        execFileSync('git', ['show', receipt.archiveCommit + ':' + relative + '/' + ref], {
+          cwd: integration,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }),
+      ]),
+    );
+    return { archive, receipt, integration, relative, directory, files, committedFiles };
   }
   const restoreArchiveMaterials = (value: WorkflowRun, targetProjectRoot: string, dryRun = true) =>
     backfillNativeSdkSupervisorChildArchiveMaterials({
@@ -346,7 +355,7 @@ async function supervisor() {
       dryRun,
     });
   function expectArchiveHistory(snapshot: Awaited<ReturnType<typeof archiveSnapshot>>) {
-    for (const [ref, bytes] of Object.entries(snapshot.files))
+    for (const [ref, bytes] of Object.entries(snapshot.committedFiles))
       expect(
         execFileSync(
           'git',
@@ -903,13 +912,22 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
   });
   await f.restoreArchiveMaterials(run, repeatedArchive.integration, false);
   for (const [ref, bytes] of Object.entries(repeatedArchive.files))
-    expect(await fs.readFile(path.join(repeatedArchive.directory, ref))).toEqual(bytes);
+    expect(await fs.readFile(path.join(repeatedArchive.directory, ref))).toEqual(
+      ref === 'brief.md' ? repeatedArchive.committedFiles[ref] : bytes,
+    );
+  // 已按原 Git blob 恢复的文件重新登记到索引；不引入新的归档内容。
+  f.git(repeatedArchive.integration, ['add', '--', repeatedArchive.relative + '/brief.md']);
+  expect(f.git(repeatedArchive.integration, ['diff', '--cached', '--name-only'])).toBe('');
   expect(await f.inspect()).toEqual(run);
   f.expectArchiveHistory(originalArchive);
   await f.submitChild(run, undefined, true);
   run = await f.next();
   run = await f.verifyChild(run);
   const pendingIntegration = f.pending(run, 'supervisor.child.integrate');
+  const integrationStatus = f.git(firstOutput.integrationWorktree, ['status', '--porcelain=v1']);
+  expect(integrationStatus, 'Integration must be clean before the deliberate branch drift').toBe(
+    '',
+  );
   await fs.writeFile(
     path.join(firstOutput.integrationWorktree, 'integration-note.txt'),
     'Actual unbound integration change\n',
