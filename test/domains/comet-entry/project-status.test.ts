@@ -41,6 +41,14 @@ Run focused checks.
 
 const classicStateScript = path.resolve('assets', 'skills', 'comet', 'scripts', 'comet-state.mjs');
 
+function initializeGitProject(projectRoot: string): void {
+  const initialized = spawnSync('git', ['init', '-b', 'main'], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+  });
+  expect(initialized.status, initialized.stderr).toBe(0);
+}
+
 function bothProjectConfig(nativeRoot: string) {
   const config = defaultProjectConfig(nativeRoot);
   config.workflows = ['native', 'classic'];
@@ -195,6 +203,7 @@ describe('Comet project status', () => {
   });
 
   it('partitions configured Native changes under a versioned status contract', async () => {
+    initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
     const state = await createNativeChange({ paths, name: 'native-only', language: 'en' });
@@ -514,6 +523,7 @@ describe('Comet project status', () => {
   });
 
   it('keeps same-name Native and Classic changes separate under a custom artifact root', async () => {
+    initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, bothProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const native = await createNativeChange({ paths, name: 'shared-name', language: 'en' });
@@ -530,6 +540,7 @@ describe('Comet project status', () => {
   });
 
   it('reports an incomplete Native artifact-root move instead of projecting stale changes', async () => {
+    initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
     const native = await createNativeChange({ paths, name: 'stale-change', language: 'en' });
@@ -553,6 +564,7 @@ describe('Comet project status', () => {
   });
 
   it('discovers the configured project from a nested working directory', async () => {
+    initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, bothProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const native = await createNativeChange({ paths, name: 'nested-native', language: 'en' });
@@ -571,6 +583,7 @@ describe('Comet project status', () => {
   });
 
   it('does not let corrupt changes on either workflow hide healthy changes', async () => {
+    initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, bothProjectConfig('.'));
     const paths = await nativeProjectPaths(projectRoot, '.');
     const healthyNative = await createNativeChange({
@@ -634,6 +647,7 @@ describe('Comet project status', () => {
   });
 
   it('reads mixed Native, Classic, and OpenSpec status without changing project files', async () => {
+    initializeGitProject(projectRoot);
     await writeProjectConfig(projectRoot, bothProjectConfig('docs'));
     const paths = await nativeProjectPaths(projectRoot, 'docs');
     const native = await createNativeChange({ paths, name: 'native-readonly', language: 'en' });

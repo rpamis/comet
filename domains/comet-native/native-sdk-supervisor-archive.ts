@@ -30,6 +30,7 @@ import {
 } from './native-verification-report-v2.js';
 import { supervisorAcceptanceScope } from './native-supervisor-model.js';
 import { currentNativeSdkSupervisorPlan } from './native-sdk-supervisor-prepare.js';
+import { currentNativeSdkSupervisorActions } from './native-sdk-supervisor-plan.js';
 import { nativeSupervisorChildWorktree } from './native-supervisor-workspace.js';
 import { nativeWorkspaceIsClean } from './native-workspace-config.js';
 import { samePath } from '../../platform/paths/git-worktree.js';
@@ -39,6 +40,13 @@ import { NATIVE_SKILL_COORDINATION } from './native-runner-protocol.js';
 
 const COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const ACCEPTANCE_ID_PATTERN = /^A[1-9][0-9]*$/u;
+const CHILD_ARCHIVE_FILES = [
+  'brief.md',
+  'spec.md',
+  'archive-source.md',
+  'comet-state.yaml',
+  'verification.md',
+] as const;
 
 export interface NativeSupervisorChildArchiveActivation {
   child: string;
@@ -100,7 +108,7 @@ function succeededChildAction(
   child: string,
   predicate: (output: Record<string, unknown>) => boolean,
 ): { action: RuntimeAction; output: Record<string, unknown> } | null {
-  for (const action of [...run.actions].reverse()) {
+  for (const action of [...currentNativeSdkSupervisorActions(run)].reverse()) {
     if (action.stepId !== stepId || action.status !== 'succeeded' || !action.outcome) continue;
     const activationChild = (action.input as { activation?: { child?: unknown } } | null)
       ?.activation?.child;
@@ -364,7 +372,7 @@ export async function restoreNativeSupervisorChildArchiveMaterials(
     throw new Error('Native archive material recovery requires the recorded integration worktree');
   const paths = await nativeProjectPaths(options.targetProjectRoot, artifactRootRef);
   const recovered = [];
-  for (const action of run.actions.filter(
+  for (const action of currentNativeSdkSupervisorActions(run).filter(
     (action) =>
       action.stepId === 'supervisor.child.archive' &&
       action.status === 'succeeded' &&
@@ -573,6 +581,113 @@ function assertArchiveOnlyCommit(worktree: string, commit: string, archiveRelati
   }
 }
 
+async function assertChildArchiveFileSnapshot(
+  worktree: string,
+  directory: string,
+  ref: string,
+  expected: string | undefined,
+): Promise<void> {
+  const existing = await readNativeBoundedTextFile({ root: directory, ref }).catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  });
+  const actual = existing
+    ? runGitCommand(worktree, ['hash-object', '--no-filters', '--', path.join(directory, ref)])
+    : undefined;
+  if (actual !== expected || (!actual && ['comet-state.yaml', 'verification.md'].includes(ref)))
+    throw new Error(`Native archive material conflict: ${ref}`);
+}
+
+/** 新一轮只可替换仍与原归档提交逐字一致的文件，保留旧材料的 Git 历史。 */
+export async function assertNativeSupervisorArchiveSnapshot(options: {
+  worktree: string;
+  directory: string;
+  archiveRelative: string;
+  archiveCommit: string;
+}): Promise<ReadonlyMap<string, string>> {
+  const { worktree, directory, archiveRelative, archiveCommit } = options;
+  if (!COMMIT_PATTERN.test(archiveCommit))
+    throw new Error('Native Supervisor child archive has an invalid predecessor commit');
+  const unexpected = (await fs.readdir(directory)).filter(
+    (ref) => !(CHILD_ARCHIVE_FILES as readonly string[]).includes(ref),
+  );
+  if (unexpected.length > 0)
+    throw new Error(`Native archive material conflict: ${unexpected.join(', ')}`);
+  const entries = runGitCommand(worktree, [
+    'ls-tree',
+    '-z',
+    archiveCommit,
+    '--',
+    ...CHILD_ARCHIVE_FILES.map((ref) => `${archiveRelative}/${ref}`),
+  ])
+    .split('\0')
+    .filter(Boolean);
+  const original = new Map<string, string>();
+  for (const entry of entries) {
+    const match = /^(?:100644|100755) blob ([a-f0-9]+)\t(.+)$/u.exec(entry);
+    if (!match) throw new Error('Native Supervisor child archive has a non-file predecessor');
+    original.set(match[2], match[1]);
+  }
+  for (const ref of CHILD_ARCHIVE_FILES)
+    await assertChildArchiveFileSnapshot(
+      worktree,
+      directory,
+      ref,
+      original.get(`${archiveRelative}/${ref}`),
+    );
+  return original;
+}
+
+async function assertChildArchivePredecessor(
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  binding: NativeSupervisorChildArchiveBinding,
+  location: { relative: string },
+): Promise<ReadonlyMap<string, string>> {
+  const index = run.actions.findIndex((candidate) => candidate.id === action.id);
+  const previous =
+    index < 0
+      ? undefined
+      : run.actions
+          .slice(0, index)
+          .reverse()
+          .find((candidate) => {
+            return (
+              candidate.stepId === 'supervisor.child.archive' &&
+              candidate.status === 'succeeded' &&
+              (candidate.input as { activation?: { child?: unknown } } | null)?.activation
+                ?.child === binding.child
+            );
+          });
+  const receipt = previous?.outcome?.output as Record<string, unknown> | undefined;
+  if (
+    !previous ||
+    previous.claim?.executorId !== nativeSdkSupervisorChildArchiveExecutor.id ||
+    receipt?.child !== binding.child ||
+    receipt.archiveRef !== archiveRefFor(binding) ||
+    receipt.candidateCommit !== activation(previous.input).candidateCommit ||
+    receipt?.baseCommit !== activation(previous.input).integrationCommit ||
+    typeof receipt.archiveCommit !== 'string' ||
+    !COMMIT_PATTERN.test(receipt.archiveCommit)
+  )
+    throw new Error('Native Supervisor child archive lacks its accepted predecessor receipt');
+  assertArchiveOnlyCommit(binding.worktree, receipt.archiveCommit, location.relative);
+  let snapshot: ReadonlyMap<string, string> = new Map();
+  for (const [worktree, commit] of [
+    [binding.worktree, binding.candidateCommit],
+    [binding.integrationWorktree, binding.integrationCommit],
+  ]) {
+    runGitCommand(worktree, ['merge-base', '--is-ancestor', receipt.archiveCommit, commit]);
+    snapshot = await assertNativeSupervisorArchiveSnapshot({
+      worktree,
+      directory: path.join(worktree, location.relative),
+      archiveRelative: location.relative,
+      archiveCommit: receipt.archiveCommit,
+    });
+  }
+  return snapshot;
+}
+
 async function pathExists(file: string): Promise<boolean> {
   try {
     await fs.access(file);
@@ -640,19 +755,38 @@ export const nativeSdkSupervisorChildArchiveExecutor: RuntimeExecutor = {
         );
       }
       const state = buildChildArchiveState(binding);
+      const materials = await childArchiveMaterials(run, action, context.projectRoot, binding);
+      const predecessor = recovered
+        ? await assertChildArchivePredecessor(run, action, binding, location)
+        : null;
       await fs.mkdir(location.target, { recursive: true });
-      await writeMissingNativeSupervisorArchiveMaterials(
-        location.target,
-        await childArchiveMaterials(run, action, context.projectRoot, binding),
-        false,
-      );
-      await atomicWriteText(path.join(location.target, 'comet-state.yaml'), stringify(state), {
-        containedRoot: location.nativeRoot,
-      });
-      await writeNativeVerificationReport({
-        file: path.join(location.target, 'verification.md'),
-        state,
-      });
+      if (predecessor) {
+        const records = {
+          ...materials,
+          'comet-state.yaml': stringify(state),
+          'verification.md': renderNativeVerificationReport(state),
+        };
+        for (const [ref, content] of Object.entries(records))
+          await atomicWriteText(path.join(location.target, ref), content, {
+            containedRoot: location.nativeRoot,
+            beforeCommit: () =>
+              assertChildArchiveFileSnapshot(
+                binding.worktree,
+                location.target,
+                ref,
+                predecessor.get(`${location.relative}/${ref}`),
+              ),
+          });
+      } else {
+        await writeMissingNativeSupervisorArchiveMaterials(location.target, materials, false);
+        await atomicWriteText(path.join(location.target, 'comet-state.yaml'), stringify(state), {
+          containedRoot: location.nativeRoot,
+        });
+        await writeNativeVerificationReport({
+          file: path.join(location.target, 'verification.md'),
+          state,
+        });
+      }
       const alignment = await inspectNativeVerificationReportAlignment({
         file: path.join(location.target, 'verification.md'),
         stateVersion: state.state_version,

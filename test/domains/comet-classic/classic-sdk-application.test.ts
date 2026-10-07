@@ -2728,6 +2728,16 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'classic'),
       });
       const beforeDrift = await persisted.read(run.runId);
+      expect(beforeDrift).not.toBeNull();
+      const verifiedCheck = beforeDrift!.actions
+        .filter((action) => action.stepId === 'full.verify.check')
+        .at(-1)!;
+      expect(verifiedCheck.status).toBe('succeeded');
+      const verifiedOutput = verifiedCheck.outcome!.output as {
+        inputAfter: string;
+        argv: string[];
+        cwd: string;
+      };
       await fs.appendFile(sourcePath, '\nchanged after delivery approval\n');
       for (const flags of [[], ['--apply']]) {
         const stale = await classicGuardCommand(['example', 'archive', ...flags], options);
@@ -2745,16 +2755,19 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       expect((await classicStateCommand(['next', 'example'], options)).data).toMatchObject({
         nextAction: { stepId: 'full.archive.preflight' },
       });
+      expect(await persisted.read(run.runId)).toEqual(beforeDrift);
 
       const fakeRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-archive-guard-'));
       temporaryRoots.push(fakeRoot);
       const executable = path.join(fakeRoot, 'openspec-fake.mjs');
+      const invocations = path.join(fakeRoot, 'archive-invocations.jsonl');
       await fs.writeFile(
         executable,
         [
           '#!/usr/bin/env node',
           "import { promises as fs } from 'node:fs';",
           "import path from 'node:path';",
+          `await fs.appendFile(${JSON.stringify(invocations)}, JSON.stringify(process.argv.slice(2)) + '\\n');`,
           "const active = path.join(process.cwd(), 'openspec', 'changes', 'example');",
           "const archived = path.join(process.cwd(), 'openspec', 'changes', 'archive', '2026-09-26-example');",
           'await fs.mkdir(path.dirname(archived), { recursive: true });',
@@ -2762,9 +2775,18 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         ].join('\n'),
       );
       await fs.chmod(executable, 0o755);
+      const archiveInvocation = JSON.stringify(['archive', 'example', '--yes']) + '\n';
       const previousCommand = process.env.COMET_OPENSPEC;
       process.env.COMET_OPENSPEC = executable;
-      const snapshots = vi.spyOn(checkSnapshots, 'collectCheckSnapshot');
+      const collectCheckSnapshot = checkSnapshots.collectCheckSnapshot;
+      const snapshotActions: WorkflowRun['actions'] = [];
+      const snapshots = vi
+        .spyOn(checkSnapshots, 'collectCheckSnapshot')
+        .mockImplementation(async (...args) => {
+          const current = await persisted.read(run.runId);
+          snapshotActions.push(current!.actions.at(-1)!);
+          return collectCheckSnapshot(...args);
+        });
       try {
         const applied =
           command === 'guard'
@@ -2776,8 +2798,62 @@ describe('Classic workflow application through the public Runtime SDK', () => {
           phase: 'archive',
           nextAction: { kind: 'action', stepId: 'full.archive.deliver' },
         });
-        // 保留 preflight 与 archive.execute 两个独立的新鲜性边界。
-        expect(snapshots).toHaveBeenCalledTimes(2);
+        // 分别在 preflight、Archive claim 前和 claim 后复查当前 Verify 输入。
+        expect(snapshotActions.map(({ stepId, status }) => ({ stepId, status }))).toEqual([
+          { stepId: 'full.archive.preflight', status: 'pending' },
+          { stepId: 'full.archive.execute', status: 'pending' },
+          { stepId: 'full.archive.execute', status: 'running' },
+        ]);
+        expect(snapshotActions[0]).toEqual(beforeDrift!.actions.at(-1));
+        expect(snapshotActions[1].claim).toBeUndefined();
+        expect(snapshotActions[2]).toMatchObject({
+          id: snapshotActions[1].id,
+          attempt: snapshotActions[1].attempt,
+          inputHash: snapshotActions[1].inputHash,
+          claim: { executorId: 'comet-classic-archive' },
+        });
+        for (const [index, result] of snapshots.mock.results.entries()) {
+          expect(snapshots).toHaveBeenNthCalledWith(
+            index + 1,
+            projectRoot,
+            path.join(projectRoot, 'docs/openspec/changes/example'),
+            { argv: verifiedOutput.argv, cwd: verifiedOutput.cwd },
+            { verificationReport: (beforeDrift!.state as ClassicState).verificationReport },
+          );
+          expect((await result.value).digest).toBe(verifiedOutput.inputAfter);
+        }
+        const archivedRun = await persisted.read(run.runId);
+        expect(
+          archivedRun!.actions.filter((action) => action.stepId.startsWith('full.verify.')),
+        ).toEqual(
+          beforeDrift!.actions.filter((action) => action.stepId.startsWith('full.verify.')),
+        );
+        expect(
+          archivedRun!.actions.filter((action) => action.stepId === 'full.archive.execute'),
+        ).toMatchObject([
+          {
+            id: snapshotActions[2].id,
+            attempt: snapshotActions[2].attempt,
+            inputHash: snapshotActions[2].inputHash,
+            claim: snapshotActions[2].claim,
+            status: 'succeeded',
+            outcome: {
+              status: 'succeeded',
+              claimToken: snapshotActions[2].claim!.token,
+            },
+          },
+        ]);
+        expect(await fs.readFile(invocations, 'utf8')).toBe(archiveInvocation);
+        snapshots.mockClear();
+        const repeated =
+          command === 'guard'
+            ? await classicGuardCommand(['example', 'archive', '--apply'], options)
+            : await classicArchiveCommand(['example'], options);
+        expect(repeated.exitCode).not.toBe(0);
+        expect(repeated.stderr).toContain('already archived');
+        expect(await persisted.read(run.runId)).toEqual(archivedRun);
+        expect(await fs.readFile(invocations, 'utf8')).toBe(archiveInvocation);
+        expect(snapshots).not.toHaveBeenCalled();
       } finally {
         snapshots.mockRestore();
         if (previousCommand === undefined) delete process.env.COMET_OPENSPEC;
@@ -2794,14 +2870,6 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         phase: 'archive',
         nextAction: { kind: 'action', stepId: 'full.archive.deliver' },
       });
-      const repeated =
-        command === 'guard'
-          ? await classicGuardCommand(['example', 'archive', '--apply'], options)
-          : await classicArchiveCommand(['example'], options);
-      expect(repeated.exitCode).not.toBe(0);
-      await expect(
-        fs.access(path.join(projectRoot, 'docs/openspec/changes/archive/2026-09-26-example')),
-      ).resolves.toBeUndefined();
       execFileSync(
         'git',
         [

@@ -7,6 +7,7 @@ import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
+import { backfillNativeSdkSupervisorChildArchiveMaterials } from '../../../domains/comet-native/native-sdk-archive-command.js';
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import type { RuntimeAction, WorkflowRun } from '../../../domains/engine/runtime.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
@@ -305,6 +306,46 @@ async function supervisor() {
     if (confirmed.exitCode !== 0) throw new Error(JSON.stringify(confirmed));
     return inspect();
   }
+  async function archiveSnapshot(value: WorkflowRun, child: string) {
+    const archive = value.actions.findLast(
+      (action) =>
+        action.stepId === 'supervisor.child.archive' &&
+        action.status === 'succeeded' &&
+        (action.outcome?.output as { child?: string } | null)?.child === child,
+    )!;
+    const receipt = archive.outcome!.output as { archiveRef: string; archiveCommit: string };
+    const integration = path.join(project, '.worktrees', name + '-integration');
+    const relative = 'docs/comet/archive/' + receipt.archiveRef;
+    const directory = path.join(integration, relative);
+    const files = Object.fromEntries(
+      await Promise.all(
+        ['brief.md', 'spec.md', 'archive-source.md', 'comet-state.yaml', 'verification.md'].map(
+          async (ref) => [ref, await fs.readFile(path.join(directory, ref))] as const,
+        ),
+      ),
+    );
+    return { archive, receipt, integration, relative, directory, files };
+  }
+  const restoreArchiveMaterials = (value: WorkflowRun, targetProjectRoot: string, dryRun = true) =>
+    backfillNativeSdkSupervisorChildArchiveMaterials({
+      projectRoot: project,
+      targetProjectRoot,
+      parent: name,
+      expectedRevision: value.revision,
+      dryRun,
+    });
+  function expectArchiveHistory(snapshot: Awaited<ReturnType<typeof archiveSnapshot>>) {
+    for (const [ref, bytes] of Object.entries(snapshot.files))
+      expect(
+        execFileSync(
+          'git',
+          ['show', snapshot.receipt.archiveCommit + ':' + snapshot.relative + '/' + ref],
+          {
+            cwd: project,
+          },
+        ),
+      ).toEqual(bytes);
+  }
   console.info(
     JSON.stringify({ baselineCli, candidateCli, definitionHashes: started.definitionHashes }),
   );
@@ -331,6 +372,9 @@ async function supervisor() {
     confirmAgain,
     baselineCli,
     targetCommit,
+    archiveSnapshot,
+    restoreArchiveMaterials,
+    expectArchiveHistory,
   };
 }
 
@@ -738,9 +782,22 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
     status: 'succeeded',
     outcome: { output: { integrationCommit: archivedIntegrationCommit } },
   });
+  const originalArchive = await f.archiveSnapshot(run, 'left');
+  expect(await f.restoreArchiveMaterials(run, originalArchive.integration)).toMatchObject({
+    archives: [{ archiveActionId: originalArchive.archive.id, missing: [] }],
+  });
   const retainedFacts = run.actions.filter((a) => a.status === 'succeeded');
   expect(f.revise(run).exitCode).toBe(0);
-  await f.confirmAgain();
+  const reconfirmed = await f.confirmAgain();
+  const oldBrief = path.join(originalArchive.directory, 'brief.md');
+  await fs.unlink(oldBrief);
+  expect(
+    await f.restoreArchiveMaterials(reconfirmed, originalArchive.integration, false),
+  ).toMatchObject({
+    archives: [],
+  });
+  await expect(fs.access(oldBrief)).rejects.toMatchObject({ code: 'ENOENT' });
+  await fs.writeFile(oldBrief, originalArchive.files['brief.md']);
   await f.next();
   run = await f.next();
   const builder = f.pending(run, 'supervisor.child.builder');
@@ -808,6 +865,36 @@ it('reintegrates an already included Child after public Shape reconfirmation (sa
       .activation.child,
   ).toBe('right');
   expect(run.definitionHashes).toEqual(f.started.definitionHashes);
+  const repeatedArchive = await f.archiveSnapshot(run, 'left');
+  expect(repeatedArchive.archive.id).not.toBe(originalArchive.archive.id);
+  expect(repeatedArchive.receipt.archiveRef).toBe(originalArchive.receipt.archiveRef);
+  expect(repeatedArchive.files['archive-source.md']).not.toEqual(
+    originalArchive.files['archive-source.md'],
+  );
+  f.expectArchiveHistory(originalArchive);
+  for (const dryRun of [true, false])
+    expect(await f.restoreArchiveMaterials(run, repeatedArchive.integration, dryRun)).toMatchObject(
+      {
+        archives: [{ archiveActionId: repeatedArchive.archive.id, missing: [] }],
+      },
+    );
+  const briefFile = path.join(repeatedArchive.directory, 'brief.md');
+  const sourceFile = path.join(repeatedArchive.directory, 'archive-source.md');
+  await fs.unlink(briefFile);
+  await fs.appendFile(sourceFile, 'unbound material edit\n');
+  await expect(f.restoreArchiveMaterials(run, repeatedArchive.integration, false)).rejects.toThrow(
+    'material conflict: archive-source.md',
+  );
+  await expect(fs.access(briefFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  await fs.writeFile(sourceFile, repeatedArchive.files['archive-source.md']);
+  expect(await f.restoreArchiveMaterials(run, repeatedArchive.integration)).toMatchObject({
+    archives: [{ archiveActionId: repeatedArchive.archive.id, missing: ['brief.md'] }],
+  });
+  await f.restoreArchiveMaterials(run, repeatedArchive.integration, false);
+  for (const [ref, bytes] of Object.entries(repeatedArchive.files))
+    expect(await fs.readFile(path.join(repeatedArchive.directory, ref))).toEqual(bytes);
+  expect(await f.inspect()).toEqual(run);
+  f.expectArchiveHistory(originalArchive);
   await f.submitChild(run, undefined, true);
   run = await f.next();
   run = await f.verifyChild(run);
@@ -871,6 +958,7 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   const oldShapeHash = (run.state as { shape_confirmation_hash: string }).shape_confirmation_hash;
   const oldContractHash = (run.state as { children_contract_hash: string }).children_contract_hash;
   const oldFacts = run.actions.filter((a) => a.status === 'succeeded');
+  const originalArchive = await f.archiveSnapshot(run, 'left');
   const result = f.revise(run);
   expect(result.response, JSON.stringify(result)).not.toHaveProperty('error');
   expect(result.exitCode).toBe(0);
@@ -942,6 +1030,16 @@ it('preserves integrated and uncommitted Child work, then rechecks every Child i
   expect(await fs.readFile(path.join(rightRoot, 'draft.txt'), 'utf8')).toBe(
     'unfinished right work\n',
   );
+  const revisedArchive = await f.archiveSnapshot(revised, 'left');
+  expect(revisedArchive.files['archive-source.md'].toString('utf8')).toContain(
+    'Claude Code only; product Codex support remains.',
+  );
+  f.expectArchiveHistory(originalArchive);
+  expect(await f.restoreArchiveMaterials(revised, integration)).toMatchObject({
+    archives: [{ archiveActionId: revisedArchive.archive.id, missing: [] }],
+  });
+  for (const fact of oldFacts)
+    expect(revised.actions.find((action) => action.id === fact.id)).toEqual(fact);
   revised = await f.submitChild(revised, undefined, true);
   revised = await f.next();
   revised = await f.verifyChild(revised);

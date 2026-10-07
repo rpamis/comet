@@ -592,6 +592,11 @@ describe('status command', () => {
   });
 
   it('renders the default entry and workflow partitions in text output', async () => {
+    const initialized = spawnSync('git', ['init', '-b', 'main'], {
+      cwd: tmpDir,
+      encoding: 'utf8',
+    });
+    expect(initialized.status, initialized.stderr).toBe(0);
     await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
     const paths = await nativeProjectPaths(tmpDir, 'docs');
     await createNativeChange({ paths, name: 'native-text', language: 'en' });
