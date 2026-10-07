@@ -36,6 +36,49 @@ describe('external command provider', () => {
     ).rejects.toMatchObject({ name: 'ExternalCommandError', timedOut: true });
   });
 
+  it('enforces the synchronous deadline even when SIGTERM is ignored', () => {
+    const started = Date.now();
+    expect(() =>
+      runExternalCommand(
+        process.execPath,
+        ['-e', "process.on('SIGTERM', () => {}); setTimeout(() => process.exit(0), 1800)"],
+        { timeoutMs: 150 },
+      ),
+    ).toThrow(ExternalCommandError);
+    expect(Date.now() - started).toBeLessThan(900);
+  });
+
+  it('terminates the asynchronous command process group before late descendant effects', async () => {
+    tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-external-tree-'));
+    const marker = path.join(tempRoot, 'late');
+    const grandchild = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'late'), 600)`;
+    await expect(
+      runExternalCommandAsync(
+        process.execPath,
+        [
+          '-e',
+          `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' }); setInterval(() => {}, 1000)`,
+        ],
+        { timeoutMs: 200 },
+      ),
+    ).rejects.toMatchObject({ timedOut: true });
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await expect(fs.access(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('does not start a side effect for an already aborted asynchronous command', async () => {
+    tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-external-abort-'));
+    const marker = path.join(tempRoot, 'started');
+    await expect(
+      runExternalCommandAsync(
+        process.execPath,
+        ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'bad')`],
+        { signal: AbortSignal.abort() },
+      ),
+    ).rejects.toBeInstanceOf(ExternalCommandError);
+    await expect(fs.access(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   afterEach(async () => {
     if (tempRoot) await fs.rm(tempRoot, { recursive: true, force: true });
     tempRoot = undefined;

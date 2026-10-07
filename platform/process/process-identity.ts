@@ -1,3 +1,5 @@
+import type { ChildProcess } from 'node:child_process';
+import { terminateProcessTree } from './terminate-process-tree.js';
 import { promises as fs } from 'node:fs';
 
 import { runExternalCommandAsync } from './external-command.js';
@@ -122,4 +124,69 @@ export async function inspectProcessLiveness(
 
 export async function processInstanceMayBeAlive(pid: number, identity?: string): Promise<boolean> {
   return (await inspectProcessLiveness(pid, identity)) !== 'dead';
+}
+
+/** 检查整个受管进程组；组长已退出不能证明后代已停止。 */
+export async function inspectProcessTreeLiveness(
+  pid: number,
+  identity?: string,
+): Promise<ProcessLiveness> {
+  const leader = await inspectProcessLiveness(pid, identity);
+  if (process.platform === 'win32') return leader;
+  // PID 已被其他创建实例复用时，该实例的进程组不属于原任务。
+  const currentIdentity = await readProcessIdentity(pid);
+  if (identity && currentIdentity && currentIdentity !== identity) return 'dead';
+  try {
+    process.kill(-pid, 0);
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ESRCH' ? 'dead' : 'unknown';
+  }
+  if (process.platform === 'linux') {
+    try {
+      const entries = await fs.readdir('/proc');
+      for (const entry of entries) {
+        if (!/^\d+$/u.test(entry)) continue;
+        try {
+          const stat = await fs.readFile(`/proc/${entry}/stat`, 'utf8');
+          const fields = stat
+            .slice(stat.lastIndexOf(')') + 2)
+            .trim()
+            .split(/\s+/u);
+          if (Number(fields[2]) === pid && fields[0] !== 'Z' && fields[0] !== 'X')
+            return leader === 'alive' ? 'alive' : 'unknown';
+        } catch (error) {
+          if (
+            (error as NodeJS.ErrnoException).code !== 'ENOENT' &&
+            (error as NodeJS.ErrnoException).code !== 'ESRCH'
+          )
+            return 'unknown';
+        }
+      }
+      return 'dead';
+    } catch {
+      return 'unknown';
+    }
+  }
+  return leader === 'alive' ? 'alive' : 'unknown';
+}
+
+/** PID 复用或身份无法确认时，绝不向该 PID 发送终止信号。 */
+export async function terminateRegisteredProcessTree(instance: {
+  pid: number;
+  identity?: string;
+}): Promise<boolean> {
+  if ((await inspectProcessLiveness(instance.pid, instance.identity)) !== 'alive') return false;
+  const child = {
+    pid: instance.pid,
+    kill: (signal: NodeJS.Signals) => {
+      try {
+        return process.kill(instance.pid, signal);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+        throw error;
+      }
+    },
+  } as ChildProcess;
+  await terminateProcessTree(child);
+  return true;
 }

@@ -84,18 +84,24 @@ export function assertSafeWindowsBatchArguments(args: readonly string[]): void {
   }
 }
 
-function spawnWindowsShim(
+export function commandInvocation(
   command: string,
   args: readonly string[],
-  options: { cwd: string; env: NodeJS.ProcessEnv },
-): SpawnedCommand {
-  const payload = Buffer.from(JSON.stringify({ command, arguments: [...args] }), 'utf8').toString(
-    'base64',
-  );
-  const encodedScript = Buffer.from(WINDOWS_POWERSHELL_SCRIPT, 'utf16le').toString('base64');
-  return spawn(
-    powershellExecutable(options.env),
-    [
+  options: { cwd: string; env?: NodeJS.ProcessEnv },
+): { command: string; args: string[]; env: NodeJS.ProcessEnv } {
+  const env = options.env ?? process.env;
+  if (process.platform !== 'win32') return { command, args: [...args], env };
+  const resolved = resolveWindowsCommand(command, env, options.cwd);
+  const extension = path.win32.extname(resolved).toLowerCase();
+  if (WINDOWS_BATCH_EXTENSIONS.has(extension)) assertSafeWindowsBatchArguments(args);
+  if (!WINDOWS_SHIM_EXTENSIONS.has(extension)) return { command: resolved, args: [...args], env };
+  const payload = Buffer.from(
+    JSON.stringify({ command: resolved, arguments: [...args] }),
+    'utf8',
+  ).toString('base64');
+  return {
+    command: powershellExecutable(env),
+    args: [
       '-NoLogo',
       '-NoProfile',
       '-NonInteractive',
@@ -106,17 +112,10 @@ function spawnWindowsShim(
       '-ExecutionPolicy',
       'Bypass',
       '-EncodedCommand',
-      encodedScript,
+      Buffer.from(WINDOWS_POWERSHELL_SCRIPT, 'utf16le').toString('base64'),
     ],
-    {
-      cwd: options.cwd,
-      env: { ...options.env, COMET_COMMAND_PAYLOAD: payload },
-      shell: false,
-      windowsHide: true,
-      detached: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
-  );
+    env: { ...env, COMET_COMMAND_PAYLOAD: payload },
+  };
 }
 
 export function spawnCommand(
@@ -124,29 +123,13 @@ export function spawnCommand(
   args: readonly string[],
   options: { cwd: string; env?: NodeJS.ProcessEnv },
 ): SpawnedCommand {
-  const env = options.env ?? process.env;
-  if (process.platform !== 'win32') {
-    return spawn(command, [...args], {
-      cwd: options.cwd,
-      env,
-      shell: false,
-      windowsHide: true,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  }
-  const resolved = resolveWindowsCommand(command, env, options.cwd);
-  const extension = path.win32.extname(resolved).toLowerCase();
-  if (WINDOWS_BATCH_EXTENSIONS.has(extension)) assertSafeWindowsBatchArguments(args);
-  if (WINDOWS_SHIM_EXTENSIONS.has(extension)) {
-    return spawnWindowsShim(resolved, args, { cwd: options.cwd, env });
-  }
-  return spawn(resolved, [...args], {
+  const invocation = commandInvocation(command, args, options);
+  return spawn(invocation.command, invocation.args, {
     cwd: options.cwd,
-    env,
+    env: invocation.env,
     shell: false,
     windowsHide: true,
-    detached: false,
+    detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 }

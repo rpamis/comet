@@ -52,7 +52,7 @@ export interface NativePortableContinuation {
   skill: 'comet-native';
   change: string;
   phase: NativePortableState['phase'];
-  status: NativePortableState['status'];
+  status: NativePortableState['status'] | 'cancelling' | 'cancelled';
   stateVersion: number;
   disposition: 'continue' | 'await-user' | 'blocked' | 'done';
   requiresUserDecision: boolean;

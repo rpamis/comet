@@ -243,10 +243,12 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'Readiness, every blocker, actual prepared commitMessages (mergeMessage is null when no merge is planned), and the exact next continuation, or the completed Archive transaction and workspace finish result. Messages are retained for retries. After a Git hook rejects a message, provide a corrected message with --confirmed for the unfinished step; completed commits are never rewritten. Execute the returned confirmed command only after ready is true; Archive does not repeat verification.',
   },
   doctor: {
-    usage: 'comet native doctor [<change-name>] [--repair] [--confirmed]',
+    usage:
+      'comet native doctor [<change-name>] [--repair] [--confirmed] [--stopped-actions <json-file>]',
     purpose:
       'Inspect portable state, migrate a compat Runtime active change, or rebuild its local execution overlay.',
     options: [
+      '--stopped-actions <json-file>  With --repair --confirmed, submit original Action/attempt/inputHash/claimToken and actual evidence that its execution and all descendants, including detached processes, stopped; retained results remain unknown and require a fresh repair candidate.',
       '--repair  Apply deterministic migration or rebuild from the portable stable boundary.',
       '--confirmed  With --repair and a named managed change whose local Run history is missing, recover its saved Run checkpoint after confirming the original process stopped. Older states without a checkpoint restart at Shape and require fresh approvals and checks.',
     ],

@@ -1,5 +1,6 @@
 export {
   loadWorkflowApplication,
+  readWorkflowApplicationRun,
   resolveWorkflowApplicationFile,
   selectWorkflowApplication,
   readSelectedWorkflowApplication,

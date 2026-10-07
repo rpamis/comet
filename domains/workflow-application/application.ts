@@ -125,6 +125,8 @@ export async function loadWorkflowApplication(options: {
   runId?: string;
   /** 领域从 portable checkpoint 恢复时，在执行模块加载前核对原固定身份。 */
   expectedIdentity?: ApplicationIdentity;
+  /** 显式迁移只请求当前定义；仍先核对同一 Run 的固定身份，不修改保存记录。 */
+  useLatestDefinition?: boolean;
   /** 诊断不恢复 Run，也不写回领域投影。 */
   readOnly?: boolean;
 }): Promise<LoadedWorkflowApplication> {
@@ -193,10 +195,14 @@ export async function loadWorkflowApplication(options: {
     if (record.revision !== record.run.revision || record.runId !== record.run.runId)
       throw new RuntimeProtocolError('INVALID_RUN', '应用归属与 SDK Run 不一致');
   };
+  let existingRun: WorkflowRun | undefined;
   // 先核对固定身份再 import，漂移的代码不会在恢复请求中执行。
   if (options.runId) {
     const existing = await persistent.read(options.runId);
-    if (existing) assertIdentity(existing);
+    if (existing) {
+      assertIdentity(existing);
+      existingRun = structuredClone(existing.run);
+    }
   }
   await init;
   for (const [ref, encoded] of Object.entries(files)) {
@@ -234,6 +240,7 @@ export async function loadWorkflowApplication(options: {
   if (typeof module.createApplication !== 'function')
     applicationError('应用模块必须导出 createApplication');
   const implementation: WorkflowApplicationImplementation = await module.createApplication({
+    ...(existingRun && !options.useLatestDefinition ? { existingRun } : {}),
     manifest,
     skills,
     projectRoot,
@@ -497,6 +504,15 @@ export async function loadWorkflowApplication(options: {
   const store = implementation.wrapStore
     ? implementation.wrapStore(pinnedStore, identity, { readOnly: options.readOnly })
     : pinnedStore;
+  if (options.runId && !existingRun && !options.readOnly && implementation.wrapStore) {
+    // portable 恢复写回原记录后重新选择固定定义，避免第一次恢复误用新版图。
+    const recovered = await store.read(options.runId);
+    const persisted = recovered ? await persistent.read(options.runId) : null;
+    if (persisted) {
+      assertIdentity(persisted);
+      return loadWorkflowApplication(options);
+    }
+  }
   const checkedImplementation: WorkflowApplicationImplementation = {
     ...implementation,
     async validateOutcome(input) {

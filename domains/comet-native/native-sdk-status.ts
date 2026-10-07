@@ -1,3 +1,4 @@
+import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 import { inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { applicationSkillWork } from '../workflow-application/index.js';
 import { nativeProjectPaths } from './native-paths.js';
@@ -32,7 +33,7 @@ export async function inspectNativeSdkStatus(options: {
   readOnly?: boolean;
 }) {
   const inspection = await inspectNativeSdkRun(options.projectRoot, options.name, {
-    readOnly: options.readOnly,
+    readOnly: options.readOnly ?? true,
   });
   return projectNativeSdkStatus(options, inspection);
 }
@@ -44,6 +45,10 @@ export async function projectNativeSdkStatus(
 ) {
   const paths = await nativeProjectPaths(options.projectRoot, artifactRootRef);
   const summary = nativePortableStateSummary(state, paths);
+  const cancellation = await inspectNativeSdkCancellation({
+    projectRoot: options.projectRoot,
+    run,
+  });
   const actions = statusRecords(run.actions, options.details);
   const waits = statusRecords(run.waits, options.details);
   const evidenceWaits = statusRecords(run.evidenceWaits ?? [], options.details);
@@ -55,7 +60,7 @@ export async function projectNativeSdkStatus(
     name: options.name,
     language: state.language,
     phase: state.phase,
-    status: state.status,
+    status: cancellation?.status ?? state.status,
     stateVersion: state.state_version,
     acceptance: summary.acceptance,
     unresolvedAcceptanceIds: summary.unresolved_acceptance_ids,

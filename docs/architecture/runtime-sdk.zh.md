@@ -210,6 +210,32 @@ comet runtime dispatch --request ./start.json --workflow ./report.workflow.json 
 
 每条命令只处理一个结构化请求，并返回包含 `protocolVersion`、`requestId` 和 Run 或机器可读错误的 JSON。`inspect` 可不提供工作流文件，在新进程只读查看 Run；要核对定义或推进状态，需提供已固定的工作流定义。领取后的外部执行失联时可用 `mark-unknown` 保留不确定事实；`retry` 只有收到 `reconciliation: { "resolution": "not-executed", "evidence": ... }` 才会创建新 attempt。相对 request/workflow/root 路径以 CLI 的调用目录解析；`--project-root` 作为显式宿主上下文传给执行器相关接口。
 
+取消请求 `{"operation":"cancel","runId":"<run-id>","expectedRevision":<revision>,"reason":"<取消原因>"}` 停止调度，并取消待处理 Action、决定和证据等待；不会撤销已经产生的代码或外部副作用。重复取消不增加 revision，也不会恢复推进。普通迟到 Outcome 仍被拒绝。 Native CLI 的取消响应保留完整 `data` Run，并在旁边返回 `cancellation` 与 `continuation`，直接区分已取消和仍待停止确认。
+
+Native 会分别展示 `cancelling`（原执行尚未确认停止，或当前选择尚未释放）和 `cancelled`（执行已停止且选择清理完成）。没有已领取工作且清理未受阻时立即释放当前选择和工作区，无需完成 Shape、验收或 Archive。Runtime 登记的检查由取消请求或 `comet native doctor <change> --repair` 按原进程创建身份停止；未知或不匹配的进程不会被当作已停止。进程组终止不能证明主动脱组的后台进程已经停止；所有已领取的任务（包括 Runtime 检查）仍须按原领取身份确认任务及子任务已全部停止，才释放工作区。 SDK 选择清理也会经过 Native 的 root-move 变更锁；未知持有者原有的 15 分钟显式接管保护仍保留。受阻时状态继续为 `cancelling`，返回持有者、锁龄、剩余保护时间和诊断/修复命令；只读 status/inspect 不等待该锁。
+
+外部 Builder、Verifier 和定制 Skill 的原宿主须先停止原任务及其子任务，再通过 `status` 的 `cancellation.outstandingActions[].acknowledgementRequest` 回报真实停止证据：
+
+```json
+{
+  "operation": "cancel",
+  "runId": "<原 Run ID>",
+  "expectedRevision": 12,
+  "reason": "原任务已取消，宿主现已停止执行",
+  "stoppedActions": [
+    {
+      "actionId": "<原 Action ID>",
+      "attempt": 1,
+      "inputHash": "<原输入哈希>",
+      "claimToken": "<原领取令牌>",
+      "evidence": "<如何确认原执行和全部子任务已停止；保留了哪些现场>"
+    }
+  ]
+}
+```
+
+`stoppedActions` 仅记录“执行已停止”，不声明副作用不存在、结果通过或文件已清理。Runtime 严格核对原 claim、attempt、inputHash 和 CAS revision；同一证据重交幂等，不同证据或重复 Action 被拒绝。尚存活、身份不明或记录损坏的已登记检查进程不能用此声明绕过。取消会保留原状态、代码、历史和收据；Run 的 `cancelled` 与 Native 的取消投影是终态依据，保留的领域 `state` 仍描述取消前最后一次已提交的阶段。
+
 Native 应用的 CLI `claim` 和 `record-outcome` 默认返回 `data.schema: "comet.native.dispatch-result.v1"`：保留 Run 身份、revision、完整 `state`、当前完整 `action`（含输入、领取信息和结果收据）及 `continuation`，不重复输出其它 Action 历史。领取结果还提供 `outcomeRequest`，宿主必须填入真实执行状态、结果和唯一 outcome ID，再按原身份提交；模板不代表执行已成功。需要旧版完整 Run 的 CLI 调用方应加 `--details`；`inspect` 始终返回完整 Run，紧凑结果的 `inspection.request` 可直接用于查看。JavaScript SDK 与程序化 `runtimeDispatchCommand` 的 `response.data` 仍是完整 Run。
 
 Native 和 Classic 的内置 Workflow Application 可以使用 `--application native|classic-full|classic-hotfix|classic-tweak` 注册。Run 固定写入项目的 `.comet/runtime/sdk-runs/native` 或 `.comet/runtime/sdk-runs/classic`；两个 workflow 可以使用相同的 change 名称，但不能指定另一处 `--root-dir`，也不能与 `--workflow` 混用。每次推进同一 Run 时都传入对应的 `--application`；除了上面的通用操作，还可用 `execute` 领取并执行应用已注册的 Executor，用 `record-evidence` 提交已声明的证据等待，用 `invalidate-evidence` 恢复经验证失效且声明了恢复转移的证据。宿主仍须提供真实的初始状态、工件和外部 Agent 执行结果。Native `new` 与 Classic `state init` 已默认创建 SDK Run，并在 change 原路径保留 `comet-state.yaml` 或 `.comet.yaml`；已有原 Runtime change 继续按 `compat` 路径恢复。

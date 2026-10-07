@@ -11,6 +11,7 @@ import { resolvePortablePath } from '../../platform/paths/portable-path.js';
 import { runGitCommand } from '../../platform/process/git.js';
 import {
   processInstanceMayBeAlive,
+  inspectProcessTreeLiveness,
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
 import { atomicWriteJson } from './native-atomic-file.js';
@@ -280,10 +281,10 @@ export async function integrateNativeSupervisorChildWorkspace(options: {
         }
         if (
           previous.activeProcess &&
-          (await processInstanceMayBeAlive(
+          (await inspectProcessTreeLiveness(
             previous.activeProcess.pid,
             previous.activeProcess.identity,
-          ))
+          )) !== 'dead'
         ) {
           throw new Error(
             'Native Supervisor integration check process is still running after its owner stopped; wait for that process before retrying',

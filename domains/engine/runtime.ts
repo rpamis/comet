@@ -56,6 +56,7 @@ export type { RuntimeValue } from './runtime-json.js';
 export type {
   RuntimeAction,
   RuntimeActionStatus,
+  RuntimeStoppedAction,
   RuntimeArtifactRef,
   RuntimeClaim,
   RuntimeOutcome,

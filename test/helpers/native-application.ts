@@ -1,23 +1,40 @@
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   defaultProjectConfig,
   writeProjectConfig,
 } from '../../domains/comet-native/native-config.js';
 import { createNativePortableState } from '../../domains/comet-native/native-portable-state.js';
 import { prepareNativeCandidateReviewExample } from '../../domains/comet-native/native-candidate-review-example.js';
-import { runtimeDispatchCommand } from '../../app/commands/runtime.js';
-import { runNativeCli } from '../../domains/comet-native/native-cli.js';
+import { runtimeDispatchCommand as sourceRuntimeDispatchCommand } from '../../app/commands/runtime.js';
+import { runNativeCli as sourceRunNativeCli } from '../../domains/comet-native/native-cli.js';
 import type { RuntimeAction, RuntimeValue, WorkflowRun } from '../../domains/engine/runtime.js';
 import { fixtureAcceptanceReview } from './native-builder-acceptance-review.js';
 
-export async function prepareNativeApplication(root: string, supervisor = false) {
+export async function prepareNativeApplication(
+  root: string,
+  supervisor = false,
+  kind: 'custom' | 'native' = 'custom',
+  runtimePackageRoot = process.env.COMET_NATIVE_TEST_PACKAGE_ROOT ?? path.resolve('.'),
+) {
+  const packaged = runtimePackageRoot !== path.resolve('.');
+  const { runtimeDispatchCommand } = packaged
+    ? ((await import(
+        pathToFileURL(path.join(runtimePackageRoot, 'dist/app/commands/runtime.js')).href
+      )) as typeof import('../../app/commands/runtime.js'))
+    : { runtimeDispatchCommand: sourceRuntimeDispatchCommand };
+  const { runNativeCli } = packaged
+    ? ((await import(
+        pathToFileURL(path.join(runtimePackageRoot, 'dist/domains/comet-native/native-cli.js')).href
+      )) as typeof import('../../domains/comet-native/native-cli.js'))
+    : { runNativeCli: sourceRunNativeCli };
   const projectRoot = path.join(root, 'project');
   await fs.mkdir(projectRoot);
   await fs.mkdir(path.join(root, 'node_modules', '@rpamis'), { recursive: true });
   await fs.symlink(
-    path.resolve('.'),
+    runtimePackageRoot,
     path.join(root, 'node_modules', '@rpamis', 'comet'),
     'junction',
   );
@@ -62,7 +79,11 @@ export async function prepareNativeApplication(root: string, supervisor = false)
     const result = await runtimeDispatchCommand({
       projectRoot,
       request: requestFile,
-      ...(applicationFile ? { applicationFile: file } : { application: 'native-candidate-review' }),
+      ...(kind === 'native'
+        ? { application: 'native' }
+        : applicationFile
+          ? { applicationFile: file }
+          : { application: 'native-candidate-review' }),
     });
     if (result.response.status !== 'succeeded')
       throw new Error(JSON.stringify(result.response.error));

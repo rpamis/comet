@@ -13,6 +13,8 @@ import {
   readSdkChangeOwner,
 } from '../workflow-contract/change-runtime-owner.js';
 
+import { readWorkflowApplicationRun } from '../workflow-application/index.js';
+import { inspectNativeSdkCancellation } from './native-sdk-cancellation.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 import { atomicWriteText } from './native-atomic-file.js';
 import { nativeBriefTemplate } from './native-artifact-language.js';
@@ -566,9 +568,16 @@ export async function listActiveNativeChangesOwnedByWorkspace(
     const sdkOwner = await readSdkChangeOwner(paths.projectRoot, 'native', name);
     if (sdkOwner) {
       const runtime = createRuntime({
-        store: createFileRuntimeStore<WorkflowRun>({
-          rootDir: path.join(paths.projectRoot, '.comet', 'runtime', 'sdk-runs', 'native'),
-        }),
+        store:
+          sdkOwner.application === 'native'
+            ? createFileRuntimeStore<WorkflowRun>({
+                rootDir: path.join(paths.projectRoot, '.comet', 'runtime', 'sdk-runs', 'native'),
+              })
+            : {
+                read: (runId) =>
+                  readWorkflowApplicationRun(paths.projectRoot, sdkOwner.application, runId),
+                compareAndSwap: async () => false,
+              },
         workflows: [],
       });
       const run = await runtime.inspect(sdkOwner.runId);
@@ -579,7 +588,11 @@ export async function listActiveNativeChangesOwnedByWorkspace(
       if (state.name !== name) {
         throw new Error(`Native SDK Run ${name} has a different state name`);
       }
-      if (state.archived) continue;
+      if (
+        state.archived ||
+        (await inspectNativeSdkCancellation({ projectRoot: paths.projectRoot, run }))?.quiescent
+      )
+        continue;
       const workspace = inspectGitWorktree(paths.projectRoot);
       if (
         (state.workspace.change_branch !== null &&

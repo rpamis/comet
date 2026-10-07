@@ -184,7 +184,7 @@ describe('Native v4 public CLI surface', () => {
     );
   });
 
-  it('recovers an untouched SDK change from its portable state in a fresh checkout', async () => {
+  it('diagnoses an untouched copied SDK change read-only and restores it explicitly', async () => {
     const created = json(await runNativeCli(['new', 'portable-sdk', '--json', ...projectArgs()]));
     expect(created.exitCode, created.error?.message).toBe(0);
 
@@ -199,6 +199,25 @@ describe('Native v4 public CLI surface', () => {
     });
     execFileSync('git', ['init'], { cwd: restoredRoot, stdio: 'ignore' });
 
+    const readOnlyStatus = json(
+      await runNativeCli(['status', 'portable-sdk', '--json', '--project-root', restoredRoot]),
+    );
+    expect(readOnlyStatus.exitCode).not.toBe(0);
+    expect(readOnlyStatus.error?.message).toContain('checkpoint recovery');
+    expect(await readChangeRuntimeOwner(restoredRoot, 'native', 'portable-sdk')).toBeNull();
+    const repaired = json(
+      await runNativeCli([
+        'doctor',
+        'portable-sdk',
+        '--repair',
+        '--confirmed',
+        '--json',
+        '--project-root',
+        restoredRoot,
+      ]),
+    );
+    expect(repaired.exitCode, repaired.error?.message).toBe(0);
+    expect(repaired.data?.repaired).toBe(true);
     const namedStatus = json(
       await runNativeCli(['status', 'portable-sdk', '--json', '--project-root', restoredRoot]),
     );
@@ -364,6 +383,25 @@ Run the focused checks.
       repaired: false,
       findings: [{ code: 'sdk-run-recoverable' }],
     });
+    const readOnlyStatus = json(
+      await runNativeCli(['status', 'progressed-sdk', '--json', '--project-root', restoredRoot]),
+    );
+    expect(readOnlyStatus.exitCode).not.toBe(0);
+    expect(readOnlyStatus.error?.message).toContain('checkpoint recovery');
+    expect(await readChangeRuntimeOwner(restoredRoot, 'native', 'progressed-sdk')).toBeNull();
+    const repaired = json(
+      await runNativeCli([
+        'doctor',
+        'progressed-sdk',
+        '--repair',
+        '--confirmed',
+        '--json',
+        '--project-root',
+        restoredRoot,
+      ]),
+    );
+    expect(repaired.exitCode, repaired.error?.message).toBe(0);
+    expect(repaired.data?.repaired).toBe(true);
     const status = json(
       await runNativeCli(['status', 'progressed-sdk', '--json', '--project-root', restoredRoot]),
     );
@@ -494,6 +532,25 @@ Run the focused checks.
     });
     expect(await readChangeRuntimeOwner(restoredRoot, 'native', 'portable-build')).toBeNull();
 
+    const readOnlyStatus = json(
+      await runNativeCli(['status', 'portable-build', '--json', '--project-root', restoredRoot]),
+    );
+    expect(readOnlyStatus.exitCode).not.toBe(0);
+    expect(readOnlyStatus.error?.message).toContain('checkpoint recovery');
+    expect(await readChangeRuntimeOwner(restoredRoot, 'native', 'portable-build')).toBeNull();
+    const repaired = json(
+      await runNativeCli([
+        'doctor',
+        'portable-build',
+        '--repair',
+        '--confirmed',
+        '--json',
+        '--project-root',
+        restoredRoot,
+      ]),
+    );
+    expect(repaired.exitCode, repaired.error?.message).toBe(0);
+    expect(repaired.data?.repaired).toBe(true);
     const resumed = json(
       await runNativeCli(['status', 'portable-build', '--json', '--project-root', restoredRoot]),
     );

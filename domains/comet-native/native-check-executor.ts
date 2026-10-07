@@ -12,8 +12,12 @@ import { createHash } from 'node:crypto';
 import {
   assertSafeWindowsBatchArguments,
   resolveWindowsCommand,
-  spawnCommand,
 } from '../../platform/process/spawn-command.js';
+import {
+  inspectProcessTreeLiveness,
+  readProcessIdentity,
+} from '../../platform/process/process-identity.js';
+import { spawnOwnedCommand } from '../../platform/process/owned-command.js';
 import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
 import { redactNativeCredentialText } from './native-redaction.js';
 
@@ -194,7 +198,7 @@ export async function executeNativeCheck(options: {
   operationId: string;
   plan: NativeCheckPlan;
   now?: () => Date;
-  onSpawn?: (child: { pid: number }) => Promise<void>;
+  onSpawn?: (child: { pid: number; signal: AbortSignal }) => Promise<void>;
 }): Promise<NativeExecutedCheck & { logSha256: string }> {
   const { plan } = options;
   safeSegment(options.operationId, 'Native check operation ID');
@@ -211,11 +215,13 @@ export async function executeNativeCheck(options: {
 
   return new Promise<NativeExecutedCheck & { logSha256: string }>((resolve, reject) => {
     let child;
+    let start: () => void;
     try {
-      child = spawnCommand(plan.executable, plan.argv, {
+      ({ child, start } = spawnOwnedCommand(plan.executable, plan.argv, {
         cwd,
         env: process.env,
-      });
+        timeoutMs: plan.timeoutMs,
+      }));
     } catch (error) {
       stream.destroy();
       reject(error);
@@ -223,16 +229,52 @@ export async function executeNativeCheck(options: {
     }
 
     let timedOut = false;
+    let supervisorInterrupted = false;
+    let supervisorResult: { exitCode: number | null; signal: NodeJS.Signals | null } | null = null;
+    let childIdentity: string | undefined;
     let spawnError: Error | null = null;
     let registrationError: unknown = null;
     let registration = Promise.resolve();
+    let registrationSettled = false;
+    const registrationController = new AbortController();
+    let cancelRegistration: ((error: Error) => void) | undefined;
+    const registrationDeadline = new Promise<never>((_resolve, rejectDeadline) => {
+      cancelRegistration = rejectDeadline;
+    });
+    void registrationDeadline.catch(() => {});
     let closed = false;
     const timer = setTimeout(() => {
       timedOut = true;
+      if (!registrationSettled) registrationController.abort();
+      if (!registrationSettled)
+        cancelRegistration?.(new Error('检查进程登记超过执行时限；未放行的命令不会启动'));
       void terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
     }, plan.timeoutMs);
     timer.unref?.();
 
+    child.on(
+      'message',
+      (message: {
+        type?: string;
+        reason?: string;
+        message?: string;
+        exitCode?: number | null;
+        signal?: NodeJS.Signals | null;
+      }) => {
+        if (message.type === 'completed')
+          supervisorResult = { exitCode: message.exitCode ?? null, signal: message.signal ?? null };
+        if (message.type === 'interrupted') {
+          supervisorInterrupted = true;
+          if (message.reason === 'timeout') timedOut = true;
+        }
+        if (message.type === 'spawn-error') {
+          spawnError = new Error(message.message ?? '检查启动失败');
+          const text = `\n[comet] failed to start check: ${redactNativeCredentialText(spawnError.message)}\n`;
+          stream.write(text);
+          logHash.update(text);
+        }
+      },
+    );
     child.stdout.pipe(stream, { end: false });
     child.stderr.pipe(stream, { end: false });
     // These listeners observe the same event order as the log stream writes.
@@ -247,38 +289,57 @@ export async function executeNativeCheck(options: {
     });
     child.once('close', (exitCode, signal) => {
       closed = true;
-      clearTimeout(timer);
+      if (registrationSettled) clearTimeout(timer);
       const completed = (options.now ?? (() => new Date()))();
-      void registration.then(() => {
-        if (registrationError !== null) {
-          stream.destroy();
-          reject(registrationError);
-          return;
-        }
-        stream.end(() => {
-          const interrupted = timedOut || spawnError !== null || signal !== null;
-          resolve({
-            id: plan.id,
-            name: plan.name,
-            argvDisplay: nativePortableArgvDisplay(plan.argv),
-            cwdRef: plan.cwdRef,
-            status: interrupted ? 'interrupted' : exitCode === 0 ? 'passed' : 'failed',
-            exitCode,
-            signal,
-            timedOut,
-            durationMs: Math.max(0, completed.getTime() - started.getTime()),
-            startedAt: started.toISOString(),
-            completedAt: completed.toISOString(),
-            repeatable: plan.repeatable,
-            logRef: path.relative(options.runtimeDir, logFile).split(path.sep).join('/'),
-            logSha256: logHash.digest('hex'),
+      void registration
+        .then(async () => {
+          clearTimeout(timer);
+          if (supervisorResult) {
+            exitCode = supervisorResult.exitCode;
+            signal = supervisorResult.signal;
+          }
+          if (
+            child.pid &&
+            (await inspectProcessTreeLiveness(child.pid, childIdentity)) !== 'dead'
+          ) {
+            registrationError ??= new Error(
+              '检查监管进程已退出，但无法确认原进程组停止；保留 unknown，不能重新执行',
+            );
+          }
+          if (registrationError !== null) {
+            stream.destroy();
+            reject(registrationError);
+            return;
+          }
+          stream.end(() => {
+            const interrupted =
+              supervisorInterrupted || timedOut || spawnError !== null || signal !== null;
+            resolve({
+              id: plan.id,
+              name: plan.name,
+              argvDisplay: nativePortableArgvDisplay(plan.argv),
+              cwdRef: plan.cwdRef,
+              status: interrupted ? 'interrupted' : exitCode === 0 ? 'passed' : 'failed',
+              exitCode,
+              signal,
+              timedOut,
+              durationMs: Math.max(0, completed.getTime() - started.getTime()),
+              startedAt: started.toISOString(),
+              completedAt: completed.toISOString(),
+              repeatable: plan.repeatable,
+              logRef: path.relative(options.runtimeDir, logFile).split(path.sep).join('/'),
+              logSha256: logHash.digest('hex'),
+            });
           });
-        });
-      });
+        })
+        .catch(reject);
     });
     stream.once('error', (error) => {
-      clearTimeout(timer);
       registrationError ??= error;
+      if (!registrationSettled) {
+        registrationController.abort();
+        cancelRegistration?.(error);
+      }
       if (closed) void registration.then(() => reject(registrationError));
       else void terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
       // The close listener rejects only once the process is gone and any pending
@@ -286,14 +347,26 @@ export async function executeNativeCheck(options: {
     });
     // Register after all lifecycle listeners are installed. A fast child can close
     // while its identity is being persisted; a failed registration must not orphan it.
-    if (child.pid !== undefined && options.onSpawn) {
+    if (child.pid !== undefined) {
       const pid = child.pid;
-      registration = Promise.resolve()
-        .then(() => options.onSpawn!({ pid }))
+      registration = Promise.race([
+        Promise.resolve().then(async () => {
+          childIdentity = (await readProcessIdentity(pid)) ?? undefined;
+          await options.onSpawn?.({ pid, signal: registrationController.signal });
+        }),
+        registrationDeadline,
+      ])
+        .then(() => {
+          if (!closed && registrationError === null) start();
+        })
         .catch(async (error) => {
           registrationError = error;
           if (child.exitCode === null && child.signalCode === null)
             await terminateProcessTree(child).catch(() => child.kill('SIGKILL'));
+        })
+        .finally(() => {
+          registrationSettled = true;
+          if (closed) clearTimeout(timer);
         });
     }
   });

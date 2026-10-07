@@ -4,7 +4,8 @@ import {
   parseNativeBuilderAcceptanceReview,
 } from './native-builder-acceptance-review.js';
 
-import { parseDocument, stringify } from 'yaml';
+import { stringify } from 'yaml';
+import { parseNativeStateDocument } from './native-state-document.js';
 import { parseRuntimeAction } from '../engine/runtime-action.js';
 import {
   nativeVerifierActionInput,
@@ -968,17 +969,9 @@ export function appendNativePortableHistory(
   return parseNativePortableState({ ...parsedState, history, history_overflow: overflow });
 }
 
-function parseYaml(source: string, label: string): unknown {
-  const document = parseDocument(source, { uniqueKeys: true });
-  if (document.errors.length > 0) {
-    throw new Error(`${label} is invalid YAML: ${document.errors[0].message}`);
-  }
-  return document.toJS({ mapAsMap: false });
-}
-
 export async function readNativePortableState(file: string): Promise<NativePortableState> {
   const source = await fs.readFile(file, 'utf8');
-  return parseNativePortableState(parseYaml(source, 'Native portable state'));
+  return parseNativePortableState(parseNativeStateDocument(source, 'Native portable state'));
 }
 
 export async function writeNativePortableState(

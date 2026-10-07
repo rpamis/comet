@@ -22,32 +22,45 @@ export interface PortableRunCheckpoint {
 
 /** A copied checkout must never inherit a live executor claim as executable work. */
 export function createPortableRunCheckpoint(run: WorkflowRun): PortableRunCheckpoint {
-  const portable = structuredClone(run);
-  // Local CAS revisions and rejected submissions do not advance resumable workflow progress.
-  portable.revision = 1;
-  for (const action of portable.actions) {
-    const rejectedIds = new Set(
-      (action.rejectedOutcomes ?? []).map((item) => item.outcome.outcomeId),
-    );
-    action.receipts = action.receipts.filter((item) => !rejectedIds.has(item.outcomeId));
-    delete action.rejectedOutcomes;
-    if (action.claim) {
-      const originalToken = action.claim.token;
-      const token = portableToken(originalToken);
-      action.claim.token = token;
-      if (action.outcome) {
-        const oldOutcomeId = action.outcome.outcomeId;
-        action.outcome.claimToken = token;
-        const receipt = action.receipts.find((item) => item.outcomeId === oldOutcomeId);
-        if (receipt) receipt.hash = hashRuntimeValue(action.outcome);
-      }
-    }
-    if (action.status === 'running') {
-      action.status = 'unknown';
-      action.reason = 'Portable recovery requires reconciliation of external execution';
-    }
-  }
-  parseWorkflowRun(portable, run.runId);
+  // 在一次完整校验中生成隔离副本，避免先复制整个 Run 再丢弃校验器的副本。
+  const portable = parseWorkflowRun(
+    {
+      ...run,
+      revision: 1,
+      actions: run.actions.map((action) => {
+        const rejectedIds = new Set(
+          (action.rejectedOutcomes ?? []).map((item) => item.outcome.outcomeId),
+        );
+        const next = {
+          ...action,
+          receipts: action.receipts
+            .filter((item) => !rejectedIds.has(item.outcomeId))
+            .map((item) => ({ ...item })),
+        };
+        delete next.rejectedOutcomes;
+        if (action.claim) {
+          const token = portableToken(action.claim.token);
+          next.claim = { ...action.claim, token };
+          if (action.cancellation) {
+            next.cancellation = { ...action.cancellation, claimToken: token };
+          }
+          if (action.outcome) {
+            next.outcome = { ...action.outcome, claimToken: token };
+            const receipt = next.receipts.find(
+              (item) => item.outcomeId === action.outcome!.outcomeId,
+            );
+            if (receipt) receipt.hash = hashRuntimeValue(next.outcome);
+          }
+        }
+        if (action.status === 'running') {
+          next.status = 'unknown';
+          next.reason = 'Portable recovery requires reconciliation of external execution';
+        }
+        return next;
+      }),
+    },
+    run.runId,
+  );
   const hash = hashRuntimeValue(portable);
   return {
     schema: SCHEMA,

@@ -10,6 +10,10 @@ import {
   type NativePortableContinuation,
 } from './native-portable-continuation.js';
 import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
+import { nativeSdkChildVerifierRetryWaits } from './native-sdk-supervisor-verifier-recovery.js';
+import { nativeSdkRecoverableFailureReason } from './native-sdk-definition.js';
+import { projectNativeSdkCancellationContinuation } from './native-sdk-cancellation.js';
+import { inspectNativeSdkCheckExecutions } from './native-sdk-check-execution.js';
 import { NATIVE_SDK_ARCHIVE_STEPS } from './native-sdk-archive.js';
 import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import { nativeProjectPaths } from './native-paths.js';
@@ -256,6 +260,32 @@ export async function projectNativeSdkContinuation(options: {
       localized('Continue from the current SDK Run.', '按当前 SDK Run 继续。'),
     ),
   };
+  const cancellation = await projectNativeSdkCancellationContinuation({
+    projectRoot,
+    run,
+    state,
+    base,
+  });
+  if (cancellation) return cancellation;
+  if (run.status === 'failed') {
+    const recoverable = nativeSdkRecoverableFailureReason(run.reason);
+    return {
+      continuation: {
+        ...base,
+        disposition: 'blocked' as const,
+        commandArgs: recoverable
+          ? ['comet', 'native', 'doctor', state.name, '--repair']
+          : ['comet', 'native', 'doctor', state.name],
+        requiredInputs: [],
+        userCommunication: communication(
+          localized(
+            'The Run stopped. Inspect it with doctor and preserve the original failed receipts; do not claim pending work, retry an executed failure, or report that it never ran.',
+            'Run 已停止。请使用 doctor 核对并保留原失败收据；不能领取遗留待执行工作、重跑已执行失败的旧 Action，或声称它未执行。',
+          ),
+        ),
+      },
+    };
+  }
   const pending = run.actions.filter((action) => action.status === 'pending');
   // 与 next 的执行顺序一致，先完成已集成 Child 的归档。
   const archiveIndex = pending.findIndex((action) => action.stepId === 'supervisor.child.archive');
@@ -335,6 +365,13 @@ export async function projectNativeSdkContinuation(options: {
   const active = run.actions.filter(
     (action) => action.status === 'running' || action.status === 'unknown',
   );
+  const checkExecutions = await inspectNativeSdkCheckExecutions({ projectRoot, run });
+  const childCheckWaits = waits.filter((wait) =>
+    ['supervisor.child.checks-stop', 'supervisor.child.integration-checks-stop'].includes(
+      wait.stepId,
+    ),
+  );
+  const childVerifierWaits = nativeSdkChildVerifierRetryWaits(run);
   const stoppedBuilder = nativeSdkStoppedBuilderWait(run);
   const canReviseStoppedBuilder =
     stoppedBuilder !== undefined &&
@@ -357,6 +394,60 @@ export async function projectNativeSdkContinuation(options: {
         localized(
           'Child verification is blocked. Recover the original work with a new Builder?',
           'Child 独立验收受阻。是否让新的 Builder 在原工作区继续处理？',
+        ),
+      ),
+    };
+  } else if (run.status === 'completed') {
+    continuation = {
+      ...base,
+      disposition: state.status === 'done' ? 'done' : 'blocked',
+      commandArgs: state.status === 'done' ? null : ['comet', 'native', 'doctor', state.name],
+      userCommunication: communication(
+        localized(
+          'This Run has completed. Inspect its preserved results before starting any further work.',
+          '此 Run 已结束。继续开展工作前请核对保留的结果。',
+        ),
+      ),
+    };
+  } else if (childCheckWaits.length > 0) {
+    continuation = {
+      ...base,
+      disposition: 'await-user',
+      requiresUserDecision: true,
+      requiredInputs: ['summary', 'user-decision'],
+      commandAlternatives: childCheckWaits.map((wait) =>
+        sdkDecision(state, 'revise-implementation', wait.proposalHash),
+      ),
+      userCommunication: communication(
+        localized(
+          'Preserve the interrupted check receipts and partial logs. After the user chooses repair, create a new Builder candidate before running fresh checks. Do not replay the original Action or report unknown check results as passed.',
+          '保留中断检查收据与部分日志。用户选择修复后，由新 Builder 提交新候选并重新检查。不能重跑原 Action，或把未知检查结果报告为通过。',
+        ),
+        localized(
+          'Child Runtime checks were interrupted. Repair this Child before continuing?',
+          'Child Runtime 检查中断。是否先修复这个 Child 再继续？',
+        ),
+      ),
+    };
+  } else if (childVerifierWaits.length > 0) {
+    continuation = {
+      ...base,
+      action: 'retry-verifier',
+      disposition: 'await-user',
+      requiresUserDecision: true,
+      requiredInputs: ['summary', 'user-decision'],
+      commandAlternatives: childVerifierWaits.flatMap((wait) => [
+        sdkDecision(state, 'retry-verifier', wait.proposalHash),
+        sdkDecision(state, 'revise-implementation', wait.proposalHash),
+      ]),
+      userCommunication: communication(
+        localized(
+          'Preserve the failed execution receipt and independent Child progress. After an explicit decision, retry only the failed Child with its current candidate and checks, or return it to a new Builder. Never report an executed failure as not executed.',
+          '保留失败执行收据与其他 Child 的进度。明确决定后，仅为失败 Child 复用当前候选和检查派发新 Verifier，或交给新 Builder 修复。不能将已执行失败报告为未执行。',
+        ),
+        localized(
+          'A Child Verifier execution failed. Retry its independent review, or repair this Child first?',
+          'Child Verifier 执行失败。是否重新尝试独立验收，或先修复这个 Child？',
         ),
       ),
     };
@@ -490,6 +581,72 @@ export async function projectNativeSdkContinuation(options: {
         },
       };
     }
+  } else if (checkExecutions.some((execution) => execution.recoveryRequired)) {
+    const stopped = checkExecutions
+      .filter(
+        (execution) =>
+          execution.recoveryRequired &&
+          (execution.phase === 'missing' ||
+            (execution.quiescent && execution.execution && !execution.execution.outcome)),
+      )
+      .map((execution) => {
+        const action = active.find((candidate) => candidate.id === execution.actionId)!;
+        return {
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          claimToken: action.claim!.token,
+          evidence:
+            '<actual evidence that the original execution and all descendants, including detached processes, have stopped>',
+        };
+      });
+    continuation = {
+      ...base,
+      disposition: 'blocked',
+      requiresUserDecision: stopped.length > 0,
+      commandArgs: [
+        'comet',
+        'native',
+        'doctor',
+        state.name,
+        '--repair',
+        ...(stopped.length > 0
+          ? ['--confirmed', '--stopped-actions', '<stopped-actions-json-file>']
+          : []),
+      ],
+      requiredInputs:
+        stopped.length > 0
+          ? ['stopped-actions-json-file', 'original-execution-stop-evidence']
+          : ['original-check-execution-evidence'],
+      inputOptions:
+        stopped.length > 0
+          ? [
+              {
+                name: 'stopped-actions-json-file',
+                flag: '--stopped-actions',
+                valueKind: 'json-file',
+                required: true,
+                template: stopped,
+              },
+            ]
+          : [],
+      userCommunication: communication(
+        localized(
+          stopped.length > 0
+            ? 'The check outcome or its older process registration is missing. Ask the original host or user to verify that the original execution and all descendants, including detached processes, have stopped. Submit actual evidence with the original claim using the shown doctor command. Until then, do not create a new candidate or run another check.'
+            : 'The original Runtime check needs recovery. Run doctor to inspect the registered owner, process, and receipts; do not start another check or assume it never executed.',
+          stopped.length > 0
+            ? '检查结果不完整，或旧执行缺少进程登记。请原宿主或用户核对原执行及全部后代（含脱组进程）确已停止，再按显示的 doctor 命令，用原领取信息提交实际停止证据。此前不要创建新候选或另开检查。'
+            : '原 Runtime 检查需要恢复。请执行 doctor 核对登记的执行者、进程及收据；不要另开检查或假设它未执行。',
+        ),
+        stopped.length > 0
+          ? localized(
+              'Can the original host confirm that this execution and all its descendant processes have stopped?',
+              '能否由原宿主确认此执行及全部后代进程已经停止？',
+            )
+          : null,
+      ),
+    };
   } else if (active.some((action) => action.status === 'unknown')) {
     continuation = {
       ...base,
@@ -620,19 +777,6 @@ export async function projectNativeSdkContinuation(options: {
     continuation = { ...base, disposition: 'done' };
   } else if (run.ready.length > 0) {
     continuation = { ...base, commandArgs: ['comet', 'native', 'next', state.name] };
-  } else if (run.status === 'failed' && run.reason === 'ACTION_FAILED: verify.checks') {
-    continuation = {
-      ...base,
-      disposition: 'blocked',
-      commandArgs: ['comet', 'native', 'doctor', state.name, '--repair'],
-      requiredInputs: [],
-      userCommunication: communication(
-        localized(
-          'The previous Runtime definition stopped after this check actually failed. Run the named doctor repair to validate and preserve its receipts, then follow the repair continuation. Do not retry the old check or claim it never ran.',
-          '旧 Runtime 定义在检查实际失败后停止。执行此需求的 doctor 修复，校验并保留原收据，再按返回续行修复；不要重跑旧检查或声明它未执行。',
-        ),
-      ),
-    };
   } else {
     continuation = {
       ...base,
@@ -648,6 +792,7 @@ export async function projectNativeSdkContinuation(options: {
   }
   return {
     continuation,
+    ...(checkExecutions.length > 0 ? { checkExecutions } : {}),
     ...(active.length > 0
       ? {
           activeActions: active.map((action) => ({
@@ -661,10 +806,21 @@ export async function projectNativeSdkContinuation(options: {
           })),
         }
       : {}),
-    ...(pendingActions.length > 0 ? { pendingAction: pendingActions[0], pendingActions } : {}),
+    ...(run.status !== 'completed' && pendingActions.length > 0
+      ? { pendingAction: pendingActions[0], pendingActions }
+      : {}),
     ...(waits.length > 0 ? { pendingWaits: waits } : {}),
     ...(evidenceWaits.length > 0 ? { pendingEvidenceWaits: evidenceWaits } : {}),
     ...(pendingBuilderDecisions.length > 0 ? { pendingBuilderDecisions } : {}),
+    ...(childVerifierWaits.length > 0
+      ? {
+          pendingVerifierDecisions: childVerifierWaits.map((wait) => ({
+            waitId: wait.id,
+            proposalHash: wait.proposalHash,
+            proposal: wait.proposal,
+          })),
+        }
+      : {}),
     ...(pendingRequirementDecisions.length > 0 ? { pendingRequirementDecisions } : {}),
   };
 }

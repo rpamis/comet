@@ -12,7 +12,7 @@ export type RuntimeValue =
     };
 
 /** 只接受无损、无执行行为的 JSON 数据；字段排序使输入绑定不依赖属性插入顺序。 */
-function normalizeRuntimeValue(value: unknown): RuntimeValue {
+function normalizeRuntimeValue(value: unknown, copy = true): RuntimeValue {
   const ancestors = new Set<object>();
   function normalize(current: unknown, depth: number): RuntimeValue {
     if (depth > 64) throw new RuntimeProtocolError('INVALID_JSON', '数据嵌套超过 64 层');
@@ -31,29 +31,33 @@ function normalizeRuntimeValue(value: unknown): RuntimeValue {
         if (Reflect.ownKeys(current).length !== current.length + 1) {
           throw new RuntimeProtocolError('INVALID_JSON', '数组不能包含空洞或额外属性');
         }
-        return Array.from({ length: current.length }, (_, index) => {
+        const values: RuntimeValue[] = [];
+        for (let index = 0; index < current.length; index += 1) {
           const property = Object.getOwnPropertyDescriptor(current, String(index));
           if (!property || !('value' in property)) {
             throw new RuntimeProtocolError('INVALID_JSON', '数组元素必须是普通数据');
           }
-          return normalize(property.value, depth + 1);
-        });
+          const normalized = normalize(property.value, depth + 1);
+          if (copy) values.push(normalized);
+        }
+        return copy ? values : (current as RuntimeValue[]);
       }
       const prototype = Object.getPrototypeOf(current);
       if (prototype !== Object.prototype && prototype !== null) {
         throw new RuntimeProtocolError('INVALID_JSON', '仅接受普通 JSON 对象');
       }
       const entries: [string, RuntimeValue][] = [];
-      for (const key of Reflect.ownKeys(current).sort((a, b) =>
-        String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0,
-      )) {
+      const keys = Reflect.ownKeys(current);
+      if (copy) keys.sort((a, b) => (String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0));
+      for (const key of keys) {
         const property = Object.getOwnPropertyDescriptor(current, key)!;
         if (typeof key !== 'string' || !property.enumerable || !('value' in property)) {
           throw new RuntimeProtocolError('INVALID_JSON', '对象属性必须是可枚举的字符串数据属性');
         }
-        entries.push([key, normalize(property.value, depth + 1)]);
+        const normalized = normalize(property.value, depth + 1);
+        if (copy) entries.push([key, normalized]);
       }
-      return Object.fromEntries(entries);
+      return copy ? Object.fromEntries(entries) : (current as RuntimeValue);
     } finally {
       ancestors.delete(current);
     }
@@ -67,6 +71,11 @@ export function canonicalRuntimeJson(value: unknown): string {
 
 export function cloneRuntimeValue(value: unknown): RuntimeValue {
   return normalizeRuntimeValue(value);
+}
+
+/** 校验已解析的记录，不创建随后会被丢弃的完整副本或 JSON 字符串。 */
+export function validateRuntimeValue(value: unknown): void {
+  normalizeRuntimeValue(value, false);
 }
 
 export function hashRuntimeValue(value: unknown): string {

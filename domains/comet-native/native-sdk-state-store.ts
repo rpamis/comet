@@ -1,10 +1,13 @@
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
-import { parseDocument, stringify } from 'yaml';
+import { stringify } from 'yaml';
+import { NATIVE_MANAGED_RUN_MARKER, parseNativeStateDocument } from './native-state-document.js';
 
+import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 import { readNativeTextFilePrefix } from './native-bounded-file.js';
-import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
+import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import {
   inspectGitWorktree,
   listGitWorktreeRoots,
@@ -41,6 +44,34 @@ import {
 import type { NativePortableState } from './native-portable-types.js';
 import type { ApplicationIdentity } from '../workflow-application/index.js';
 import { hashRuntimeValue } from '../engine/runtime.js';
+
+type PortableRunCheckpoint = ReturnType<typeof createPortableRunCheckpoint>;
+
+/** A validated portable checkpoint still requires an explicit mutating recovery. */
+export class NativeSdkRunRecoveryRequiredError extends Error {
+  readonly code = 'NATIVE_SDK_RUN_RECOVERY_REQUIRED';
+  constructor(
+    readonly projectRoot: string,
+    readonly change: string,
+    readonly interrupted = false,
+  ) {
+    super(
+      `Native SDK Run ${change} needs checkpoint recovery; run comet native doctor ${change} --repair${interrupted ? '' : ' --confirmed'} before continuing`,
+    );
+  }
+}
+
+export function isNativeSdkRunRecoveryRequiredError(
+  error: unknown,
+): error is NativeSdkRunRecoveryRequiredError {
+  return (
+    error instanceof Error &&
+    (error as Partial<NativeSdkRunRecoveryRequiredError>).code ===
+      'NATIVE_SDK_RUN_RECOVERY_REQUIRED' &&
+    typeof (error as Partial<NativeSdkRunRecoveryRequiredError>).projectRoot === 'string' &&
+    typeof (error as Partial<NativeSdkRunRecoveryRequiredError>).change === 'string'
+  );
+}
 
 interface ProjectionMarker {
   schema: 'comet.native.sdk-state-projection.v1';
@@ -102,8 +133,6 @@ function assertSupervisorWorkspacesAvailable(
   }
 }
 
-const NATIVE_MANAGED_RUN_MARKER = '# comet-execution: managed-run\n';
-
 /** Resolve only one exact archived change; a reused name must not select an arbitrary Run. */
 export async function findNativeSdkArchivedStateFile(
   paths: Awaited<ReturnType<typeof nativeProjectPaths>>,
@@ -156,10 +185,7 @@ export async function hasNativePortableRunCheckpoint(
 ): Promise<boolean> {
   const source = await fs.readFile(file, 'utf8');
   if (!source.startsWith(NATIVE_MANAGED_RUN_MARKER)) return false;
-  const document = parseDocument(source, { uniqueKeys: true });
-  if (document.errors.length > 0)
-    throw new Error(`Invalid Native state file: ${document.errors[0].message}`);
-  const data = document.toJS() as Record<string, unknown>;
+  const data = parseNativeStateDocument(source, 'Native state file') as Record<string, unknown>;
   return readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], runId) !== null;
 }
 
@@ -171,15 +197,33 @@ export async function writeNativeManagedRunState(
   archiveReceipt?: unknown,
   applicationIdentity?: ApplicationIdentity,
 ): Promise<void> {
+  return writeNativeManagedRunProjection(
+    file,
+    state,
+    containedRoot,
+    run ? createPortableRunCheckpoint(run) : undefined,
+    archiveReceipt,
+    applicationIdentity,
+  );
+}
+
+async function writeNativeManagedRunProjection(
+  file: string,
+  state: NativePortableState,
+  containedRoot: string,
+  checkpoint?: PortableRunCheckpoint,
+  archiveReceipt?: unknown,
+  applicationIdentity?: ApplicationIdentity,
+): Promise<void> {
   await atomicWriteText(
     file,
     NATIVE_MANAGED_RUN_MARKER +
       stringify({
         ...parseNativePortableState(state),
-        ...(run ? { [PORTABLE_RUN_CHECKPOINT_KEY]: createPortableRunCheckpoint(run) } : {}),
         ...(archiveReceipt === undefined ? {} : { archive_receipt: archiveReceipt }),
         ...(applicationIdentity ? { application_checkpoint: applicationIdentity } : {}),
-      }),
+      }) +
+      (checkpoint ? `${PORTABLE_RUN_CHECKPOINT_KEY}: ${JSON.stringify(checkpoint)}\n` : ''),
     {
       containedRoot,
     },
@@ -210,11 +254,10 @@ export function createNativeSdkStateStore(
     if (parsedProjection?.file === file && parsedProjection.source === source) {
       return parsedProjection.document;
     }
-    const document = parseDocument(source, { uniqueKeys: true });
-    if (document.errors.length > 0) {
-      throw new Error(`Native portable state is invalid YAML: ${document.errors[0].message}`);
-    }
-    const value = document.toJS({ mapAsMap: false }) as Record<string, unknown>;
+    const value = parseNativeStateDocument(source, 'Native portable state') as Record<
+      string,
+      unknown
+    >;
     parsedProjection = { file, source, document: value };
     return value;
   }
@@ -240,10 +283,7 @@ export function createNativeSdkStateStore(
       source = await fs.readFile(file, 'utf8');
     }
     if (!source.startsWith(NATIVE_MANAGED_RUN_MARKER)) return null;
-    const document = parseDocument(source, { uniqueKeys: true });
-    if (document.errors.length > 0)
-      throw new Error(`Invalid Native state file: ${document.errors[0].message}`);
-    const data = document.toJS() as Record<string, unknown>;
+    const data = parseNativeStateDocument(source, 'Native state file') as Record<string, unknown>;
     const saved = readPortableRunCheckpoint(data[PORTABLE_RUN_CHECKPOINT_KEY], runId, {
       preserveSourceRevision: true,
     });
@@ -297,6 +337,7 @@ export function createNativeSdkStateStore(
         `Native SDK Run ${runId} differs from the interrupted checkpoint import; preserve the local records and restore matching Run history before continuing`,
       );
     }
+    if (options.readOnly) return restored;
     if ((revision > 1 || interrupted) && !store.restoreCheckpoint) {
       throw new Error(
         `Native RuntimeStore cannot restore checkpoint revision ${revision}; use a store with restoreCheckpoint support or restore the original Run history`,
@@ -346,11 +387,10 @@ export function createNativeSdkStateStore(
       }
       let run = await store.read(runId);
       if (!run || (run.revision === 1 && marker && marker.revision > 1)) {
-        if (options.readOnly)
-          throw new Error(
-            `Native SDK Run ${runId} needs checkpoint recovery; inspect comet native doctor ${runId} before continuing`,
-          );
         const recovered = await recoverFromPortableFile(runId, marker, run ?? undefined);
+        if (options.readOnly && recovered) {
+          throw new NativeSdkRunRecoveryRequiredError(projectRoot, runId, run !== null);
+        }
         if (run && !recovered) {
           throw new Error(
             `Native SDK Run ${runId} requires its matching portable checkpoint or original Run history before completing recovery`,
@@ -379,11 +419,16 @@ export function createNativeSdkStateStore(
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         if (!state.archived) {
-          if (options.readOnly)
-            throw new Error(`Native SDK state projection is missing for ${runId}`, {
-              cause: error,
-            });
-          return run; // Start can commit before artifacts are created.
+          // A raw SDK start can commit before creating Native documents. The Run
+          // is sufficient for read-only status when no projection was published.
+          if (options.readOnly && marker)
+            throw new Error(
+              `Native SDK state projection is missing for ${runId}; run comet native doctor ${runId} --repair`,
+              {
+                cause: error,
+              },
+            );
+          return run;
         }
         const archivedFile = await findNativeSdkArchivedStateFile(paths, runId);
         if (!archivedFile) {
@@ -432,17 +477,17 @@ export function createNativeSdkStateStore(
         !current ||
         !sameState(current, state) ||
         !currentSource?.startsWith(NATIVE_MANAGED_RUN_MARKER) ||
-        JSON.stringify(currentCheckpoint) !== JSON.stringify(expectedCheckpoint)
+        !isDeepStrictEqual(currentCheckpoint, expectedCheckpoint)
       ) {
         if (options.readOnly)
           throw new Error(
-            `Native SDK state projection needs recovery for ${runId}; use its named recovery command`,
+            `Native SDK state projection needs recovery for ${runId}; run comet native doctor ${runId} --repair`,
           );
-        await writeNativeManagedRunState(
+        await writeNativeManagedRunProjection(
           file,
           state,
           paths.nativeRoot,
-          run,
+          expectedCheckpoint,
           unresolvedFinalization ? archiveReceipt : undefined,
           options.identity,
         );
@@ -457,7 +502,7 @@ export function createNativeSdkStateStore(
       if (markerSource !== projectionSource) {
         if (options.readOnly)
           throw new Error(
-            `Native SDK state projection marker needs recovery for ${runId}; use its named recovery command`,
+            `Native SDK state projection marker needs recovery for ${runId}; run comet native doctor ${runId} --repair`,
           );
         await atomicWriteContainedText(markerFile, projectionSource, {
           containedRoot: projectRoot,
@@ -478,7 +523,12 @@ export function createNativeSdkStateStore(
     async compareAndSwap(runId, expectedRevision, next) {
       if (options.readOnly) throw new Error('Native SDK diagnostic store is read-only');
       const committed = await store.compareAndSwap(runId, expectedRevision, next);
-      if (committed) await syncStateFile(runId);
+      if (committed) {
+        await syncStateFile(runId);
+        if (next.status === 'cancelled') {
+          await settleNativeSdkCancellation({ projectRoot, run: next });
+        }
+      }
       return committed;
     },
   };

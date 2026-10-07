@@ -503,7 +503,11 @@ children:
         .access(path.join(paths.locksDir, 'root-move.lock'))
         .then(() => false)
         .catch(() => true);
-      return reserved && mutationLockReleased;
+      const commandStarted = await fs
+        .access(marker)
+        .then(() => true)
+        .catch(() => false);
+      return reserved && mutationLockReleased && commandStarted;
     }, 'Runtime owner did not start the Doctor test check');
 
     const repaired = await nativeDoctorCommand([name, '--repair'], projectRoot);

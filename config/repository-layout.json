@@ -518,6 +518,7 @@
           "domains/comet-native/native-schema-migration.ts",
           "domains/comet-native/native-sdk-application.ts",
           "domains/comet-native/native-sdk-create.ts",
+          "domains/comet-native/native-sdk-cancellation-cleanup.ts",
           "domains/comet-native/native-sdk-disassociate.ts",
           "domains/comet-native/native-selection.ts",
           "domains/comet-native/native-specs.ts",

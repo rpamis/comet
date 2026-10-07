@@ -51,6 +51,20 @@ describe('portable Run revision identity', () => {
     expect(createPortableRunCheckpoint(restored)).toEqual(saved);
   });
 
+  it('keeps nested input and action evidence isolated from the original Run', async () => {
+    const { claimed } = await checkpoint();
+    const source = { ...claimed, input: { nested: { values: ['original'] } } };
+    const before = structuredClone(source);
+    const saved = createPortableRunCheckpoint(source);
+    (saved.run.input as { nested: { values: string[] } }).nested.values[0] = 'changed';
+    saved.run.actions[0].claim!.executorId = 'another executor';
+    expect(source).toEqual(before);
+    source.input.nested.values.push('later');
+    expect((saved.run.input as { nested: { values: string[] } }).nested.values).toEqual([
+      'changed',
+    ]);
+  });
+
   it.each(['revision', 'hash', 'missing-revision', 'missing-hash', 'fraction', 'zero'])(
     'rejects %s damage even when the caller requests normalized progress',
     async (damage) => {

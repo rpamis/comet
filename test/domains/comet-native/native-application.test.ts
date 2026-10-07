@@ -331,6 +331,9 @@ it('runs a real disk Skill, repairs a failed candidate, restores cold and retain
   await expect(f.native(['status', f.name])).rejects.toThrow('固定');
   await expect(fs.access(marker)).rejects.toThrow();
   await fs.writeFile(module, originalModule);
+  await expect(f.native(['status', f.name])).rejects.toThrow('checkpoint recovery');
+  expect(await readChangeRuntimeOwner(f.projectRoot, 'native', f.name)).toBeNull();
+  await f.native(['doctor', f.name, '--repair', '--confirmed']);
   expect((await f.native(['status', f.name])).application.id).toBe('native-candidate-review');
   run = await f.dispatch({ operation: 'inspect', runId: f.name });
   const acceptance = run.waits.find(
@@ -360,6 +363,9 @@ it('runs a real disk Skill, repairs a failed candidate, restores cold and retain
   }
   expect(run.state).toMatchObject({ phase: 'archive', archived: true });
   await removeLocalStores(f.projectRoot);
+  await expect(f.native(['status', f.name])).rejects.toThrow('checkpoint recovery');
+  expect(await readChangeRuntimeOwner(f.projectRoot, 'native', f.name)).toBeNull();
+  await f.native(['doctor', f.name, '--repair', '--confirmed']);
   expect((await f.native(['status', f.name])).application.id).toBe('native-candidate-review');
   expect((await f.dispatch({ operation: 'inspect', runId: f.name })).actions).toEqual(
     createPortableRunCheckpoint(run).run.actions,

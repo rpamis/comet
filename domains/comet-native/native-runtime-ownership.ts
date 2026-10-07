@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { parseDocument } from 'yaml';
+import { parseNativeStateDocument } from './native-state-document.js';
 
 import { listGitWorktrees, samePath } from '../../platform/paths/git-worktree.js';
 import {
@@ -10,6 +10,9 @@ import {
   type WorkflowRun,
   type WorkflowRuntime,
   type RuntimeExecutor,
+  type DefineWorkflowOptions,
+  type RuntimeStore,
+  type CreateRuntimeOptions,
 } from '../engine/runtime.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
@@ -25,6 +28,15 @@ import {
   nativeSdkApplicationForRun,
 } from './native-sdk-application.js';
 import { nativeSdkCheckValidator } from './native-sdk-checks.js';
+import {
+  nativeSdkBeforeVerifierRecovery,
+  nativeSdkLegacyDefinitions,
+  nativeSdkMatchesRun,
+  NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
+  NATIVE_SDK_RECOVERABLE_FAILURE_STEPS,
+  nativeSdkRecoverableFailureReason,
+} from './native-sdk-definition.js';
+import { validateNativeSdkFailedChildVerifier } from './native-sdk-supervisor-verifier-recovery.js';
 import { readProjectConfig } from './native-config.js';
 import { withNativeMutationLock } from './native-mutation-lock.js';
 import { nativeProjectPaths } from './native-paths.js';
@@ -149,50 +161,65 @@ export function createNativeSdkRuntime(projectRoot: string): WorkflowRuntime {
   });
 }
 
-/** 仅显式升级已知内置定义，保留历史执行身份，不接纳任意同版本漂移。 */
+/** 只显式迁移已知旧定义；固定应用包和历史执行身份不变，不接受其他定义漂移。 */
 export async function inspectNativeSdkDefinitionUpgrade(
   projectRoot: string,
   name: string,
   repair: boolean,
 ) {
   const owner = await readSdkChangeOwner(projectRoot, 'native', name);
-  if (owner?.application !== 'native' || owner.runId !== name) return null;
-  const application = defineNativeWorkflowApplication();
-  const definition = defineWorkflow(application.workflow);
-  const beforeCheckRecovery = structuredClone(definition);
-  delete beforeCheckRecovery.steps['verify.checks-stop'];
-  beforeCheckRecovery.transitions = beforeCheckRecovery.transitions.filter(
-    ({ from, to, on }) =>
-      from !== 'verify.checks-stop' &&
-      to !== 'verify.checks-stop' &&
-      !(from === 'verify.checks' && on === 'failed'),
-  );
-  const beforeChildArchive = structuredClone(beforeCheckRecovery);
-  delete beforeChildArchive.steps['supervisor.child.archive'];
-  beforeChildArchive.transitions = beforeChildArchive.transitions.filter(
-    ({ from, to }) => from !== 'supervisor.child.archive' && to !== 'supervisor.child.archive',
-  );
-  // 固定已知旧定义；不能靠删除任意新增步骤来接受同版本漂移。
-  if (
-    hashRuntimeValue(beforeChildArchive) !==
-      '241450a81ad7237162f72c834e8e7712f1becd90c0a78fa3a1714c86efa4ca06' ||
-    hashRuntimeValue(beforeCheckRecovery) !==
-      '500dc5be719eb5493dbdadf35c372de49f0232439eef849bb521f6b3db346aff'
-  )
-    return null;
-  const store = createNativeSdkStateStore(projectRoot, { readOnly: !repair });
+  if (!owner || owner.runId !== name) return null;
+  let workflow: DefineWorkflowOptions;
+  let implementation: Omit<CreateRuntimeOptions, 'store'>;
+  let store: RuntimeStore<WorkflowRun>;
+  let previousDefinitions: DefineWorkflowOptions[];
+  if (owner.application === 'native') {
+    const application = defineNativeWorkflowApplication();
+    workflow = application.workflow;
+    implementation = {
+      ...application,
+      workflows: [workflow],
+      transitionHandlers: [application.transitionHandler],
+    };
+    store = createNativeSdkStateStore(projectRoot, { readOnly: !repair });
+    previousDefinitions = nativeSdkLegacyDefinitions(workflow);
+  } else {
+    // 仍先核对原 Run 身份，再请求当前定义；迁移前不替换固定包、Skill 或权威记录。
+    const checkpoint = await readNativeApplicationCheckpoint(projectRoot, name);
+    const file = checkpoint?.packageRoot
+      ? path.join(checkpoint.packageRoot, 'application.json')
+      : await resolveWorkflowApplicationFile(projectRoot, owner.application, name);
+    const application = await loadWorkflowApplication({
+      file,
+      projectRoot,
+      runId: name,
+      useLatestDefinition: true,
+      readOnly: !repair,
+      ...(checkpoint ? { expectedIdentity: checkpoint } : {}),
+    });
+    if (application.identity.id !== owner.application || application.identity.base !== 'native')
+      throw new Error('Native definition upgrade requires the original fixed Application');
+    implementation = application.implementation;
+    workflow = implementation.workflows.find(
+      (candidate) => candidate.id === 'comet-native' && candidate.version === '1',
+    )!;
+    if (!workflow) return null;
+    store = application.store;
+    previousDefinitions = [nativeSdkBeforeVerifierRecovery(workflow)];
+  }
+  const definition = defineWorkflow(workflow);
   const saved = await store.read(name);
-  const previous = [beforeCheckRecovery, beforeChildArchive].find(
-    (candidate) => hashRuntimeValue(candidate) === saved?.workflow.hash,
-  );
-  if (!saved || !previous) return null;
+  const previous = previousDefinitions.find((candidate) => nativeSdkMatchesRun(candidate, saved));
+  if (!saved || !previous || nativeSdkMatchesRun(workflow, saved)) return null;
   const previousHash = saved.workflow.hash;
-  const oldRuntime = createRuntime({
-    ...application,
-    store,
-    workflows: [previous],
-    transitionHandlers: [application.transitionHandler],
-  });
+  const transitionHandler = implementation.transitionHandlers?.find(
+    (handler) =>
+      handler.id === definition.transitionHandler?.id &&
+      handler.version === definition.transitionHandler?.version,
+  );
+  if (!transitionHandler)
+    throw new Error('Native definition upgrade lacks its fixed transition handler');
+  const oldRuntime = createRuntime({ ...implementation, store, workflows: [previous] });
   const run = await oldRuntime.inspect(name);
   const state = parseNativePortableState(run.state);
   if (state.name !== name || (run.input as { name?: unknown })?.name !== name)
@@ -202,8 +229,8 @@ export async function inspectNativeSdkDefinitionUpgrade(
   const result = {
     ready,
     required:
-      previous === beforeChildArchive ||
-      (run.status === 'failed' && run.reason === 'ACTION_FAILED: verify.checks'),
+      previousHash === NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH ||
+      (run.status === 'failed' && nativeSdkRecoverableFailureReason(run.reason)),
     repaired: false,
     fromHash: previousHash,
     toHash: hashRuntimeValue(definition),
@@ -216,48 +243,90 @@ export async function inspectNativeSdkDefinitionUpgrade(
   const next = structuredClone(run);
   next.workflow.hash = result.toHash;
   next.definitionHashes[JSON.stringify([definition.id, definition.version])] = result.toHash;
-  const failedCheck = run.actions.at(-1);
+  const recoverableFailureSteps = NATIVE_SDK_RECOVERABLE_FAILURE_STEPS;
   if (
     run.status === 'failed' &&
-    run.reason === 'ACTION_FAILED: verify.checks' &&
-    failedCheck?.stepId === 'verify.checks' &&
-    failedCheck.status === 'failed' &&
-    failedCheck.outcome &&
-    run.ready.length === 0 &&
-    !run.waits.some((wait) => wait.status === 'pending') &&
-    !(run.evidenceWaits ?? []).some((wait) => wait.status === 'pending')
+    recoverableFailureSteps.some((step) => run.reason === `ACTION_FAILED: ${step}`)
   ) {
-    const validation = await nativeSdkCheckValidator.validate({
-      run,
-      action: failedCheck,
-      outcome: failedCheck.outcome,
-      context: { requestId: `upgrade-check-recovery-${name}`, projectRoot },
-    });
-    if (!validation.accepted)
-      throw new Error(validation.reason ?? 'Native failed check receipt is invalid');
-    const recovered = application.transitionHandler.apply({
-      run,
-      event: { kind: 'action-outcome', stepId: failedCheck.stepId, outcome: failedCheck.outcome },
-    });
-    const context = run.actionContexts[failedCheck.id];
-    next.state = recovered.state;
-    for (const target of recovered.next) {
-      next.ready.push({
-        from: failedCheck.stepId,
-        to: typeof target === 'string' ? target : target.stepId,
-        results: {
-          ...context.results,
-          [failedCheck.stepId]: { sequence: context.sequence, value: failedCheck.outcome.output },
-        },
-        ...(typeof target === 'string' ? {} : { activation: target.input }),
+    const currentChildren = new Set(
+      currentNativeSdkSupervisorActions(run).map((action) => action.id),
+    );
+    const advanced = (action: WorkflowRun['actions'][number]) => {
+      const sequence = run.actionContexts[action.id].sequence;
+      return [
+        ...run.ready.map((token) => token.results),
+        ...Object.values(run.actionContexts).map((context) => context.results),
+        ...run.waits.map((wait) => wait.results),
+        ...(run.evidenceWaits ?? []).map((wait) => wait.results),
+      ].some((results) => results[action.stepId]?.sequence === sequence);
+    };
+    const failures = run.actions.filter(
+      (action) =>
+        action.status === 'failed' &&
+        recoverableFailureSteps.includes(action.stepId) &&
+        (!action.stepId.startsWith('supervisor.') || currentChildren.has(action.id)) &&
+        !advanced(action) &&
+        (action.stepId === 'supervisor.child.verifier' ||
+          action.stepId === 'verify.checks' ||
+          Boolean(
+            (action.outcome?.output as { interruption?: unknown } | undefined)?.interruption,
+          )),
+    );
+    if (failures.length === 0)
+      throw new Error('Native failed Run migration lacks an unadvanced original execution receipt');
+    for (const failure of failures) {
+      if (!failure.outcome) throw new Error('Native failed execution receipt is missing');
+      if (failure.stepId === 'supervisor.child.verifier') {
+        await validateNativeSdkFailedChildVerifier(run, failure, projectRoot);
+      } else {
+        const validation = await nativeSdkCheckValidator.validate({
+          run,
+          action: failure,
+          outcome: failure.outcome,
+          context: { requestId: `upgrade-check-recovery-${name}`, projectRoot },
+        });
+        if (!validation.accepted)
+          throw new Error(validation.reason ?? 'Native failed check receipt is invalid');
+      }
+      const recovered = transitionHandler.apply({
+        run,
+        event: { kind: 'action-outcome', stepId: failure.stepId, outcome: failure.outcome },
       });
+      const targetSteps = recovered.next.map((target) =>
+        typeof target === 'string' ? target : target.stepId,
+      );
+      const allowed =
+        failure.stepId === 'supervisor.child.verifier'
+          ? ['supervisor.child.verifier-retry']
+          : failure.stepId === 'supervisor.child.checks'
+            ? ['supervisor.child.checks-stop']
+            : failure.stepId === 'supervisor.child.integration-checks'
+              ? ['supervisor.child.integration-checks-stop']
+              : ['verify.checks-stop', 'build.builder', 'supervisor.parent.builder'];
+      if (targetSteps.length !== 1 || !allowed.includes(targetSteps[0]))
+        throw new Error(
+          'Native fixed Application did not declare the expected failed execution recovery',
+        );
+      const context = run.actionContexts[failure.id];
+      next.state = recovered.state;
+      for (const target of recovered.next) {
+        next.ready.push({
+          from: failure.stepId,
+          to: typeof target === 'string' ? target : target.stepId,
+          results: {
+            ...context.results,
+            [failure.stepId]: { sequence: context.sequence, value: failure.outcome.output },
+          },
+          ...(typeof target === 'string' ? {} : { activation: target.input }),
+        });
+      }
     }
     next.status = 'running';
     delete next.reason;
   }
   const current = currentNativeSdkSupervisorActions(run);
   const unarchived =
-    previous === beforeChildArchive
+    previousHash === NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH
       ? current.filter(
           (action) =>
             action.stepId === 'supervisor.child.integration-checks' &&
@@ -305,9 +374,8 @@ export async function inspectNativeSdkDefinitionUpgrade(
   }
   // 提交前用新定义重新校验，保留所有既有 Action、attempt、确认和检查结果。
   await createRuntime({
-    ...application,
-    workflows: [application.workflow],
-    transitionHandlers: [application.transitionHandler],
+    ...implementation,
+    workflows: [workflow],
     store: { read: async () => next, compareAndSwap: async () => false },
   }).inspect(name);
   next.revision = run.revision + 1;
@@ -332,11 +400,11 @@ async function readNativeApplicationCheckpoint(
     if (!archived) return null;
     file = archived;
   }
-  const data = parseDocument(await fs.readFile(file, 'utf8'), { uniqueKeys: true });
-  if (data.errors.length) throw new Error('Native application checkpoint is invalid');
-  return (
-    (data.toJS() as { application_checkpoint?: ApplicationIdentity }).application_checkpoint ?? null
+  const data = parseNativeStateDocument(
+    await fs.readFile(file, 'utf8'),
+    'Native application checkpoint',
   );
+  return (data as { application_checkpoint?: ApplicationIdentity }).application_checkpoint ?? null;
 }
 
 /** 每个公开 Native 入口都恢复 owner 绑定的同一固定应用。 */

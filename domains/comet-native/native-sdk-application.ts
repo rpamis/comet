@@ -15,7 +15,6 @@ import {
   type WorkflowTransitionHandler,
   type WorkflowRun,
   hashRuntimeValue,
-  defineWorkflow,
 } from '../engine/runtime.js';
 import {
   hashNativeParentContract,
@@ -147,38 +146,26 @@ import type {
 import { emptyNativePortableHistoryOverflow } from './native-portable-types.js';
 import { validateNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import type { NativeProjectPaths } from './native-types.js';
+import {
+  nativeSdkLegacyDefinitions,
+  nativeSdkLegacyTransitionHandler,
+  nativeSdkMatchesRun,
+} from './native-sdk-definition.js';
+import { nativeSdkFailedChildVerifierActivation } from './native-sdk-supervisor-verifier-recovery.js';
 
-/** 已有 Run 沿用固定定义；只有已知的检查恢复前版本可选兼容实现。 */
+/** 已有 Run 只加载完全匹配的已知定义；升级由显式 doctor 修复完成。 */
 export function nativeSdkApplicationForRun(
   run: Pick<WorkflowRun, 'workflow'> | null,
   application = defineNativeWorkflowApplication(),
 ) {
-  const previousHash = '500dc5be719eb5493dbdadf35c372de49f0232439eef849bb521f6b3db346aff';
-  if (run?.workflow.hash !== previousHash) return application;
-  const workflow = structuredClone(application.workflow);
-  delete workflow.steps['verify.checks-stop'];
-  workflow.transitions = (workflow.transitions ?? []).filter(
-    ({ from, to, on }) =>
-      from !== 'verify.checks-stop' &&
-      to !== 'verify.checks-stop' &&
-      !(from === 'verify.checks' && on === 'failed'),
+  const workflow = nativeSdkLegacyDefinitions(application.workflow).find((candidate) =>
+    nativeSdkMatchesRun(candidate, run),
   );
-  if (hashRuntimeValue(defineWorkflow(workflow)) !== previousHash) return application;
+  if (!workflow) return application;
   return {
     ...application,
     workflow,
-    transitionHandler: {
-      ...application.transitionHandler,
-      apply({ run, event }: Parameters<WorkflowTransitionHandler['apply']>[0]) {
-        if (
-          event.kind === 'action-outcome' &&
-          event.stepId === 'verify.checks' &&
-          event.outcome.status === 'failed'
-        )
-          return { state: run.state!, next: [] };
-        return application.transitionHandler.apply({ run, event });
-      },
-    },
+    transitionHandler: nativeSdkLegacyTransitionHandler(workflow, application.transitionHandler),
   };
 }
 
@@ -1076,6 +1063,21 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             version: nativeSdkSupervisorVerifierValidator.version,
           },
         },
+        'supervisor.child.checks-stop': {
+          type: 'ask_user',
+          proposalFrom: 'supervisor.child.checks',
+          choices: ['repair'],
+        },
+        'supervisor.child.integration-checks-stop': {
+          type: 'ask_user',
+          proposalFrom: 'supervisor.child.integration-checks',
+          choices: ['repair'],
+        },
+        'supervisor.child.verifier-retry': {
+          type: 'ask_user',
+          proposalFrom: 'supervisor.child.verifier',
+          choices: ['retry', 'repair'],
+        },
         'supervisor.child.integrate': {
           type: 'call_tool',
           ref: 'native-supervisor-integrate',
@@ -1227,6 +1229,21 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'supervisor.child.resume', to: 'supervisor.child.builder', on: 'continue' },
         { from: 'supervisor.child.checks', to: 'supervisor.child.verifier' },
         { from: 'supervisor.child.checks', to: 'supervisor.child.builder', on: 'failed' },
+        { from: 'supervisor.child.checks', to: 'supervisor.child.checks-stop', on: 'failed' },
+        { from: 'supervisor.child.checks-stop', to: 'supervisor.child.builder', on: 'repair' },
+        {
+          from: 'supervisor.child.integration-checks',
+          to: 'supervisor.child.integration-checks-stop',
+          on: 'failed',
+        },
+        {
+          from: 'supervisor.child.integration-checks-stop',
+          to: 'supervisor.child.integration-repair',
+          on: 'repair',
+        },
+        { from: 'supervisor.child.verifier', to: 'supervisor.child.verifier-retry', on: 'failed' },
+        { from: 'supervisor.child.verifier-retry', to: 'supervisor.child.verifier', on: 'retry' },
+        { from: 'supervisor.child.verifier-retry', to: 'supervisor.child.builder', on: 'repair' },
         { from: 'supervisor.child.verifier', to: 'supervisor.child.integrate' },
         { from: 'supervisor.child.verifier', to: 'supervisor.child.builder' },
         { from: 'supervisor.child.integrate', to: 'supervisor.child.integration-checks' },
@@ -1268,6 +1285,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'verify.stop', to: 'supervisor.parent.builder', on: 'repair' },
         { from: 'verify.requested-checks', to: 'verify.verifier' },
         { from: 'verify.requested-checks', to: 'verify.verifier', on: 'failed' },
+        { from: 'verify.requested-checks', to: 'verify.checks-stop', on: 'failed' },
         { from: 'verify.report', to: 'verify.confirm' },
         { from: 'verify.confirm', to: 'verify.revalidate', on: 'approved' },
         { from: 'verify.confirm', to: 'build.builder', on: 'rejected' },
@@ -1509,6 +1527,58 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             next: [{ stepId: 'supervisor.child.builder', input: activation }],
           };
         }
+        if (
+          event.kind === 'wait-resolved' &&
+          ['supervisor.child.checks-stop', 'supervisor.child.integration-checks-stop'].includes(
+            event.stepId,
+          )
+        ) {
+          const wait = run.waits.find(
+            (candidate) =>
+              candidate.stepId === event.stepId &&
+              candidate.decision?.id === event.decisionId &&
+              candidate.proposalHash === event.proposalHash,
+          );
+          const activation = (wait?.proposal as { activation?: Record<string, RuntimeValue> })
+            ?.activation;
+          const integration = event.stepId === 'supervisor.child.integration-checks-stop';
+          const failed = run.actions.find(
+            (action) => action.id === activation?.failedCheckActionId,
+          );
+          if (
+            !activation ||
+            event.choice !== 'repair' ||
+            state.phase !== 'build' ||
+            !failed ||
+            failed.status !== 'failed' ||
+            failed.stepId !==
+              (integration ? 'supervisor.child.integration-checks' : 'supervisor.child.checks')
+          )
+            throw new Error(
+              'Native Child interrupted check repair lacks its failed Action and decision',
+            );
+          const expected = integration
+            ? {
+                ...(failed.input as { activation: Record<string, RuntimeValue> }).activation,
+                failedCheckActionId: failed.id,
+              }
+            : supervisorChildRepairActivation(run, failed, 'failedCheckActionId');
+          if (hashRuntimeValue(expected) !== hashRuntimeValue(activation))
+            throw new Error(
+              'Native Child interrupted check repair has changed its original activation',
+            );
+          return {
+            state: state as unknown as RuntimeValue,
+            next: [
+              {
+                stepId: integration
+                  ? 'supervisor.child.integration-repair'
+                  : 'supervisor.child.builder',
+                input: activation,
+              },
+            ],
+          };
+        }
         if (event.kind === 'action-outcome' && event.stepId === 'supervisor.child.checks') {
           if (event.outcome.status !== 'succeeded') {
             const action = run.actions.find((candidate) => candidate.id === event.outcome.actionId);
@@ -1517,7 +1587,9 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
               state: state as unknown as RuntimeValue,
               next: [
                 {
-                  stepId: 'supervisor.child.builder',
+                  stepId: (event.outcome.output as { interruption?: unknown }).interruption
+                    ? 'supervisor.child.checks-stop'
+                    : 'supervisor.child.builder',
                   input: supervisorChildRepairActivation(run, action, 'failedCheckActionId'),
                 },
               ],
@@ -1537,9 +1609,54 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             ],
           };
         }
+        if (event.kind === 'wait-resolved' && event.stepId === 'supervisor.child.verifier-retry') {
+          const wait = run.waits.find(
+            (candidate) =>
+              candidate.stepId === event.stepId &&
+              candidate.decision?.id === event.decisionId &&
+              candidate.proposalHash === event.proposalHash,
+          );
+          const activation = (wait?.proposal as { activation?: Record<string, RuntimeValue> })
+            ?.activation;
+          const action = run.actions.find(
+            (candidate) => candidate.id === activation?.failedVerifierActionId,
+          );
+          if (
+            !action ||
+            !activation ||
+            hashRuntimeValue(nativeSdkFailedChildVerifierActivation(run, action)) !==
+              hashRuntimeValue(activation)
+          )
+            throw new Error('Native Child Verifier recovery lacks its original failed Action');
+          return {
+            state: state as unknown as RuntimeValue,
+            next: [
+              {
+                stepId:
+                  event.choice === 'retry'
+                    ? 'supervisor.child.verifier'
+                    : 'supervisor.child.builder',
+                input:
+                  event.choice === 'retry'
+                    ? activation
+                    : supervisorChildRepairActivation(run, action, 'failedVerifierActionId'),
+              },
+            ],
+          };
+        }
         if (event.kind === 'action-outcome' && event.stepId === 'supervisor.child.verifier') {
           if (event.outcome.status !== 'succeeded') {
-            return { state: state as unknown as RuntimeValue, next: [] };
+            const action = run.actions.find((candidate) => candidate.id === event.outcome.actionId);
+            if (!action) throw new Error('Native SDK Supervisor Verifier Action is missing');
+            return {
+              state: state as unknown as RuntimeValue,
+              next: [
+                {
+                  stepId: 'supervisor.child.verifier-retry',
+                  input: nativeSdkFailedChildVerifierActivation(run, action),
+                },
+              ],
+            };
           }
           const output = event.outcome.output as { verdict: string; candidateCommit: string };
           if (output.verdict === 'fail' || output.verdict === 'blocked') {
@@ -1567,6 +1684,11 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                   'supervisor.child.integration-repair',
                 ].includes(candidate.stepId) &&
                 ['pending', 'running', 'unknown'].includes(candidate.status),
+            ) ||
+            run.waits.some(
+              (wait) =>
+                wait.status === 'pending' &&
+                wait.stepId === 'supervisor.child.integration-checks-stop',
             )
           ) {
             return { state: state as unknown as RuntimeValue, next: [] };
@@ -1628,7 +1750,9 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
               state: state as unknown as RuntimeValue,
               next: [
                 {
-                  stepId: 'supervisor.child.integration-repair',
+                  stepId: (event.outcome.output as { interruption?: unknown }).interruption
+                    ? 'supervisor.child.integration-checks-stop'
+                    : 'supervisor.child.integration-repair',
                   input: { ...input, failedCheckActionId: event.outcome.actionId },
                 },
               ],
@@ -1883,18 +2007,28 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             next: [{ stepId: 'supervisor.parent.builder', input: activation }],
           };
         }
-        if (event.kind === 'action-outcome' && event.stepId === 'verify.checks') {
+        if (
+          event.kind === 'action-outcome' &&
+          (event.stepId === 'verify.checks' ||
+            (event.stepId === 'verify.requested-checks' &&
+              event.outcome.status === 'failed' &&
+              (event.outcome.output as { interruption?: unknown }).interruption))
+        ) {
           if (event.outcome.status === 'failed') {
             const output = event.outcome.output as {
               checks: Array<{ id: string; status: string }>;
+              interruption?: { unknownCheckIds: string[] };
             };
-            const interrupted = output.checks.some((check) => check.status === 'interrupted');
-            const reason = `Runtime checks ${interrupted ? 'were interrupted' : 'failed'}: ${output.checks
-              .filter((check) => check.status !== 'passed')
-              .map((check) => check.id)
-              .join(
-                ', ',
-              )}. Preserve their receipts and submit a new Builder candidate after repair.`;
+            const interrupted =
+              Boolean(output.interruption) ||
+              output.checks.some((check) => check.status === 'interrupted');
+            const affected = [
+              ...output.checks
+                .filter((check) => check.status !== 'passed')
+                .map((check) => check.id),
+              ...(output.interruption?.unknownCheckIds ?? []),
+            ];
+            const reason = `Runtime checks ${interrupted ? 'were interrupted' : 'failed'}: ${affected.join(', ')}. Preserve their receipts and submit a new Builder candidate after repair.`;
             const maxVerifyFailures =
               (run.input as { maxVerifyFailures?: number }).maxVerifyFailures ??
               DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES;
@@ -2006,7 +2140,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
             !run.actions.some(
               (action) =>
                 action.id === failedCheckActionId &&
-                action.stepId === 'verify.checks' &&
+                ['verify.checks', 'verify.requested-checks'].includes(action.stepId) &&
                 action.status === 'failed',
             )
           ) {

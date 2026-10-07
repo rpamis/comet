@@ -30,6 +30,15 @@ export interface RuntimeOutcome {
   event?: string;
 }
 
+/** 原领取方确认执行及其子任务已经停止；不声明外部副作用已撤销。 */
+export interface RuntimeStoppedAction {
+  actionId: string;
+  attempt: number;
+  inputHash: string;
+  claimToken: string;
+  evidence: string;
+}
+
 export interface RuntimeAction {
   protocolVersion: 1;
   id: string;
@@ -53,6 +62,7 @@ export interface RuntimeAction {
   }[];
   reconciliations: { attempt: number; resolution: 'not-executed'; evidence: RuntimeValue }[];
   reason?: string;
+  cancellation?: RuntimeStoppedAction;
 }
 
 export interface CreateRuntimeActionOptions {
@@ -256,6 +266,25 @@ export function cancelRuntimeAction(action: RuntimeAction, reason: string): Runt
   return { ...structuredClone(action), status: 'cancelled', reason };
 }
 
+export function acknowledgeRuntimeActionCancellation(
+  action: RuntimeAction,
+  stopped: RuntimeStoppedAction,
+): RuntimeAction {
+  keysOnly(stopped, ['actionId', 'attempt', 'inputHash', 'claimToken', 'evidence']);
+  for (const field of ['actionId', 'inputHash', 'claimToken', 'evidence'] as const)
+    nonEmpty(stopped[field], field);
+  if (!Number.isSafeInteger(stopped.attempt) || stopped.attempt < 1)
+    throw new RuntimeProtocolError('INVALID_ACTION', '停止确认需要原执行尝试');
+  assertBinding(action, stopped.attempt, stopped.inputHash);
+  if (stopped.actionId !== action.id || !action.claim || stopped.claimToken !== action.claim.token)
+    throw new RuntimeProtocolError('STALE_ACTION', '停止确认必须绑定原 Action 和领取身份');
+  if (action.status !== 'cancelled')
+    throw new RuntimeProtocolError('ACTION_TERMINAL', '只能确认已取消 Action 的执行停止');
+  if (action.cancellation && hashRuntimeValue(action.cancellation) !== hashRuntimeValue(stopped))
+    throw new RuntimeProtocolError('OUTCOME_CONFLICT', '当前执行已有不同的停止确认');
+  return { ...structuredClone(action), cancellation: structuredClone(stopped) };
+}
+
 function keysOnly(
   value: unknown,
   keys: readonly string[],
@@ -346,6 +375,7 @@ export function parseRuntimeAction(value: unknown): RuntimeAction {
     'rejectedOutcomes',
     'reconciliations',
     'reason',
+    'cancellation',
   ]);
   if (data.protocolVersion !== 1) {
     throw new RuntimeProtocolError('UNSUPPORTED_PROTOCOL', '当前 Runtime 不支持此 Action 协议版本');
@@ -384,6 +414,8 @@ export function parseRuntimeAction(value: unknown): RuntimeAction {
   ) {
     throw new RuntimeProtocolError('INVALID_ACTION', 'Action 状态与执行归属不一致');
   }
+  if (action.cancellation !== undefined)
+    acknowledgeRuntimeActionCancellation(action, action.cancellation);
   const receiptIds = new Set<string>();
   for (const receipt of action.receipts) {
     keysOnly(receipt, ['outcomeId', 'hash']);

@@ -1,11 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
 
 import { hashRuntimeValue, type RuntimeValue, type WorkflowRun } from '../engine/runtime.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
 import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
+import { recoverNativeSdkChecks } from './native-sdk-checks.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
+import {
+  nativeSdkChildVerifierRetryWaits,
+  validateNativeSdkFailedChildVerifier,
+} from './native-sdk-supervisor-verifier-recovery.js';
 import { nativeSdkRequirementsRevisionAllowed } from './native-sdk-revise.js';
 import { projectNativeSdkStatus } from './native-sdk-status.js';
 import { parseNativePortableState } from './native-portable-state.js';
@@ -63,6 +69,18 @@ export async function advanceNativeSdkChange(
       },
 ): Promise<DispatchResult> {
   let { run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name);
+  if (run.actions.some((action) => ['running', 'unknown'].includes(action.status))) {
+    run = await recoverNativeSdkChecks(
+      projectRoot,
+      run,
+      (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime,
+    );
+    state = parseNativePortableState(run.state);
+  }
+  if (run.status === 'cancelled') {
+    await settleNativeSdkCancellation({ projectRoot, run });
+    return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+  }
   if (
     decision &&
     (decision.expectedAction === undefined ||
@@ -90,6 +108,88 @@ export async function advanceNativeSdkChange(
           message: 'Native SDK 推进动作已失效，请读取当前阶段、状态版本和待执行 Action。',
         },
       };
+  }
+  if (!decision && ['failed', 'cancelled'].includes(run.status))
+    return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+  if (
+    decision?.expectedAction === 'retry-verifier' ||
+    decision?.expectedAction === 'revise-implementation'
+  ) {
+    const wait = nativeSdkChildVerifierRetryWaits(run).find(
+      (candidate) => candidate.proposalHash === decision.proposalHash,
+    );
+    if (wait) {
+      if (
+        state.state_version !== decision.expectedStateVersion ||
+        ['failed', 'cancelled', 'completed'].includes(run.status)
+      )
+        return {
+          command: 'next',
+          exitCode: 73,
+          error: { code: 'conflict', message: 'Native Child Verifier recovery decision is stale' },
+        };
+      if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
+      const actionId = (wait.proposal as { activation: { failedVerifierActionId: string } })
+        .activation.failedVerifierActionId;
+      const action = run.actions.find((candidate) => candidate.id === actionId)!;
+      if (decision.expectedAction === 'retry-verifier')
+        await validateNativeSdkFailedChildVerifier(run, action, projectRoot);
+      const choice = decision.expectedAction === 'retry-verifier' ? 'retry' : 'repair';
+      const completed = await (
+        await loadOwnedNativeSdkRuntime(projectRoot, name)
+      ).runtime.resolveWait({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        waitId: wait.id,
+        proposalHash: wait.proposalHash,
+        decisionId: hashRuntimeValue({
+          waitId: wait.id,
+          proposalHash: wait.proposalHash,
+          summary: decision.summary.trim(),
+          choice,
+        }),
+        choice,
+      });
+      return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+    }
+  }
+  if (decision?.expectedAction === 'revise-implementation') {
+    const wait = run.waits.find(
+      (candidate) =>
+        candidate.status === 'pending' &&
+        ['supervisor.child.checks-stop', 'supervisor.child.integration-checks-stop'].includes(
+          candidate.stepId,
+        ) &&
+        candidate.proposalHash === decision.proposalHash,
+    );
+    if (wait) {
+      if (
+        state.state_version !== decision.expectedStateVersion ||
+        !decision.summary.trim() ||
+        ['failed', 'completed', 'cancelled'].includes(run.status)
+      )
+        return {
+          command: 'next',
+          exitCode: 73,
+          error: { code: 'conflict', message: 'Native Child check repair decision is stale' },
+        };
+      const completed = await (
+        await loadOwnedNativeSdkRuntime(projectRoot, name)
+      ).runtime.resolveWait({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        waitId: wait.id,
+        proposalHash: wait.proposalHash,
+        decisionId: hashRuntimeValue({
+          waitId: wait.id,
+          proposalHash: wait.proposalHash,
+          summary: decision.summary.trim(),
+          choice: 'repair',
+        }),
+        choice: 'repair',
+      });
+      return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
+    }
   }
   if (decision?.expectedAction === 'resolve-verifier-blocker') {
     const recovery = await inspectNativeSdkSupervisorRecovery(run, projectRoot);

@@ -99,7 +99,14 @@ async function supervisor() {
   ): Promise<WorkflowRun> {
     const result = await dispatchResult(request, file);
     if (result.exitCode !== 0) throw new Error(JSON.stringify(result));
-    return result.response.data;
+    if (Array.isArray(result.response.data?.actions)) return result.response.data;
+    if (file === candidateCli || request.operation === 'inspect')
+      throw new Error(`CLI did not return the requested complete Run: ${JSON.stringify(result)}`);
+    // 旧 CLI 可能返回 compact Action；不假定它支持 --details，另用 inspect 读取权威 Run。
+    const inspected = await dispatchResult({ operation: 'inspect', runId: name }, file);
+    if (inspected.exitCode !== 0 || !Array.isArray(inspected.response.data?.actions))
+      throw new Error(JSON.stringify(inspected));
+    return inspected.response.data;
   }
   const started = await dispatch(
     {

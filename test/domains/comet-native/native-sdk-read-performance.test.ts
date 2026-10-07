@@ -360,14 +360,30 @@ describe('Native SDK read work budgets', () => {
     await expect(store.read(name)).rejects.toThrow(/invalid YAML/u);
   });
 
+  it('reads legacy full-YAML checkpoints without rewriting or requiring recovery', async () => {
+    const { root, name, stateFile } = await preparedChange();
+    const expected = await createNativeSdkStateStore(root).read(name);
+    const document = yaml.parse(await fs.readFile(stateFile, 'utf8'));
+    const legacy = '# comet-execution: managed-run\n' + yaml.stringify(document);
+    await fs.writeFile(stateFile, legacy);
+    const timestamp = new Date('2020-01-01T00:00:00.000Z');
+    await fs.utimes(stateFile, timestamp, timestamp);
+    expect(await createNativeSdkStateStore(root, { readOnly: true }).read(name)).toEqual(expected);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(legacy);
+    expect((await fs.stat(stateFile)).mtimeMs).toBe(timestamp.getTime());
+  });
+
   it('reuses only byte-identical parsed state inside one store while rereading every file', async () => {
     const { root, name, stateFile } = await preparedChange();
     const store = createNativeSdkStateStore(root);
     const parse = vi.mocked(yaml.parseDocument);
     const reads = vi.spyOn(fs, 'readFile');
+    parse.mockClear();
     const first = await store.read(name);
     const source = await fs.readFile(stateFile, 'utf8');
-    const projectionParses = () => parse.mock.calls.filter(([text]) => text === source).length;
+    const yamlPrefix = source.slice(0, source.lastIndexOf('\nrun_checkpoint: ') + 1);
+    const projectionParses = () => parse.mock.calls.filter(([text]) => text === yamlPrefix).length;
+    expect(parse.mock.calls.some(([text]) => text === source)).toBe(false);
     expect(projectionParses()).toBe(1);
     const original = structuredClone(first!);
     (first!.state as { language: string }).language = 'zh-CN';

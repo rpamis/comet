@@ -115,6 +115,8 @@ export interface LoadedWorkflowApplication {
 }
 
 export interface WorkflowApplicationFactoryContext {
+  /** 已核对固定应用身份的防御性快照，只用于选择兼容定义；不会改变权威 Run。 */
+  existingRun?: Readonly<WorkflowRun>;
   manifest: WorkflowApplicationManifest;
   identity: ApplicationIdentity;
   skills: ReadonlyMap<string, AdaptedSkill>;

@@ -13,6 +13,7 @@ import path from 'node:path';
 import { gitStatusPaths, runGitCommand } from '../../platform/process/git.js';
 import {
   inspectProcessLiveness,
+  inspectProcessTreeLiveness,
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
 import { canonicalHash } from './native-canonical-hash.js';
@@ -179,7 +180,7 @@ export async function inspectNativePortableCheckExecution(
       unknown = true;
       continue;
     }
-    const liveness = await inspectProcessLiveness(active.pid, active.identity);
+    const liveness = await inspectProcessTreeLiveness(active.pid, active.identity);
     if (liveness === 'alive') return 'running';
     if (liveness === 'unknown') unknown = true;
   }

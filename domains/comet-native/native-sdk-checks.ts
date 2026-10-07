@@ -9,11 +9,13 @@ import {
 } from '../workflow-contract/protected-project-path.js';
 import {
   type RuntimeAction,
+  type RuntimeStoppedAction,
   type RuntimeExecutor,
   type RuntimeOutcome,
   type RuntimeValidator,
   type RuntimeValue,
   type WorkflowRun,
+  type WorkflowRuntime,
   hashRuntimeValue,
 } from '../engine/runtime.js';
 import {
@@ -23,6 +25,13 @@ import {
   preflightNativeCheckPlans,
   type NativeCheckPlan,
 } from './native-check-executor.js';
+import {
+  createNativeSdkCheckExecution,
+  inspectNativeSdkCheckExecutions,
+  nativeSdkCheckRuntimeRef,
+  requestNativeSdkCheckStop,
+  hasNativeSdkCheckStopRequest,
+} from './native-sdk-check-execution.js';
 import { readProjectConfig } from './native-config.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
@@ -49,7 +58,20 @@ interface NativeSdkCheckResult {
   logSha256: string;
 }
 
+interface NativeSdkCheckInterruption {
+  kind: 'execution-unknown';
+  stoppedAction: Omit<RuntimeStoppedAction, 'claimToken'>;
+  processBoundary: 'process-group' | 'supervisor-process' | 'unknown';
+  candidateId: string;
+  plansHash: string;
+  executionHash: string | null;
+  unknownCheckIds: string[];
+  partialLogs: { logRef: string; logSha256: string }[];
+  observedAt: string;
+}
+
 interface NativeSdkCheckOutcome {
+  interruption?: NativeSdkCheckInterruption;
   candidateId: string;
   checks: NativeSdkCheckResult[];
   completedAt: string;
@@ -405,7 +427,7 @@ async function assertSupervisorParentCheckWorkspace(options: {
 }
 
 function checkRuntimeRef(run: Readonly<WorkflowRun>): string {
-  return `.comet/runtime/native/sdk-checks/${hashRuntimeValue(run.runId)}`;
+  return nativeSdkCheckRuntimeRef(run);
 }
 
 function checkOperationId(action: Readonly<RuntimeAction>): string {
@@ -495,40 +517,63 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
     });
     const runtimeDir = path.join(context.projectRoot, ...runtimeRef.split('/'));
     const operationId = checkOperationId(action);
+    const registration = await createNativeSdkCheckExecution({
+      projectRoot: context.projectRoot,
+      run,
+      action,
+      candidateId,
+      plansHash: hashRuntimeValue(plans as unknown as RuntimeValue),
+    });
     const checks: NativeSdkCheckResult[] = [];
-    for (const plan of plans) {
-      const executed = await executeNativeCheck({
-        projectRoot: checkRoot,
-        runtimeDir,
-        operationId,
-        plan,
-      });
-      const logRef = `${runtimeRef}/${executed.logRef}`;
-      const log = await inspectProtectedProjectPath(context.projectRoot, logRef, {
-        label: 'Native SDK check log',
-        expected: 'file',
-      });
-      if (!log.exists) throw new Error('Native SDK check log does not exist');
-      checks.push({
-        id: executed.id,
-        name: executed.name,
-        argvDisplay: executed.argvDisplay,
-        cwdRef: executed.cwdRef,
-        status: executed.status,
-        exitCode: executed.exitCode,
-        durationMs: executed.durationMs,
-        logRef,
-        logSha256: executed.logSha256,
-      });
+    try {
+      for (const plan of plans) {
+        await registration.assertNotStopped();
+        const executed = await executeNativeCheck({
+          projectRoot: checkRoot,
+          runtimeDir,
+          operationId,
+          plan,
+          onSpawn: ({ pid, signal }) => registration.register(plan.id, pid, signal),
+        });
+        const logRef = `${runtimeRef}/${executed.logRef}`;
+        const log = await inspectProtectedProjectPath(context.projectRoot, logRef, {
+          label: 'Native SDK check log',
+          expected: 'file',
+        });
+        if (!log.exists) throw new Error('Native SDK check log does not exist');
+        checks.push({
+          id: executed.id,
+          name: executed.name,
+          argvDisplay: executed.argvDisplay,
+          cwdRef: executed.cwdRef,
+          status: executed.status,
+          exitCode: executed.exitCode,
+          durationMs: executed.durationMs,
+          logRef,
+          logSha256: executed.logSha256,
+        });
+        registration.execution.checks = checks as unknown as RuntimeValue[];
+        await registration.save();
+      }
+      const result = {
+        status: checks.every((check) => check.status === 'passed')
+          ? ('succeeded' as const)
+          : ('failed' as const),
+        output: {
+          candidateId,
+          checks,
+          completedAt: new Date().toISOString(),
+        } as unknown as RuntimeValue,
+      };
+      registration.execution.phase = 'completed';
+      registration.execution.outcome = result;
+      await registration.save();
+      return result;
+    } catch (error) {
+      registration.execution.phase = 'interrupted';
+      await registration.save();
+      throw error;
     }
-    return {
-      status: checks.every((check) => check.status === 'passed') ? 'succeeded' : 'failed',
-      output: {
-        candidateId,
-        checks,
-        completedAt: new Date().toISOString(),
-      } as unknown as RuntimeValue,
-    };
   },
 };
 
@@ -545,7 +590,9 @@ async function validatedCheckResults(options: {
   if (
     output.candidateId !== candidateId ||
     !Array.isArray(output.checks) ||
-    output.checks.length !== plans.length ||
+    (output.interruption
+      ? output.checks.length > plans.length
+      : output.checks.length !== plans.length) ||
     typeof output.completedAt !== 'string' ||
     Number.isNaN(Date.parse(output.completedAt)) ||
     new Date(output.completedAt).toISOString() !== output.completedAt
@@ -554,7 +601,8 @@ async function validatedCheckResults(options: {
   }
   const runtimeRef = checkRuntimeRef(run);
   const operationId = checkOperationId(action);
-  for (const [index, plan] of plans.entries()) {
+  if (output.interruption) await validateInterruptedCheckOutcome(options, output);
+  for (const [index, plan] of plans.slice(0, output.checks.length).entries()) {
     const check = record(
       output.checks[index],
       `Native check ${index}`,
@@ -582,11 +630,130 @@ async function validatedCheckResults(options: {
       throw new Error('Native check log changed after execution');
     }
   }
-  const allPassed = output.checks.every((check) => check.status === 'passed');
+  const allPassed =
+    !output.interruption && output.checks.every((check) => check.status === 'passed');
   if ((outcome.status === 'succeeded') !== allPassed) {
     throw new Error('Native check status disagrees with its results');
   }
   return output.checks;
+}
+
+async function partialCheckLogs(
+  projectRoot: string,
+  run: Readonly<WorkflowRun>,
+  action: Readonly<RuntimeAction>,
+  plans: NativeCheckPlan[],
+  completed: number,
+) {
+  const logs: { logRef: string; logSha256: string }[] = [];
+  for (const plan of plans.slice(completed)) {
+    const logRef = `${checkRuntimeRef(run)}/logs/checks/${checkOperationId(action)}-${plan.id}.log`;
+    if (
+      !(
+        await inspectProtectedProjectPath(projectRoot, logRef, {
+          label: 'Native 中断检查日志',
+          expected: 'file',
+        })
+      ).exists
+    )
+      continue;
+    const log = await hashProtectedProjectFile(projectRoot, logRef, {
+      label: 'Native 中断检查日志',
+    });
+    logs.push({ logRef, logSha256: log.digest });
+  }
+  return logs;
+}
+
+function assertStoppedAction(
+  action: Readonly<RuntimeAction>,
+  stopped: RuntimeStoppedAction | undefined,
+): asserts stopped is RuntimeStoppedAction {
+  if (
+    !stopped ||
+    Object.keys(stopped).some(
+      (key) => !['actionId', 'attempt', 'inputHash', 'claimToken', 'evidence'].includes(key),
+    ) ||
+    stopped.actionId !== action.id ||
+    stopped.attempt !== action.attempt ||
+    stopped.inputHash !== action.inputHash ||
+    stopped.claimToken !== action.claim?.token ||
+    typeof stopped.evidence !== 'string' ||
+    !stopped.evidence.trim() ||
+    stopped.evidence.length > 4096 ||
+    /^<.*>$/su.test(stopped.evidence.trim())
+  ) {
+    throw new Error(
+      '中断核对需要原领取方或用户明确确认原执行及全部后代（含脱组进程）已停止，并提交绑定原 Action 的实际证据',
+    );
+  }
+}
+
+async function validateInterruptedCheckOutcome(
+  options: {
+    run: Readonly<WorkflowRun>;
+    action: Readonly<RuntimeAction>;
+    outcome: Readonly<RuntimeOutcome>;
+    candidateId: string;
+    plans: NativeCheckPlan[];
+    projectRoot: string;
+  },
+  output: NativeSdkCheckOutcome,
+) {
+  const { run, action, outcome, candidateId, plans, projectRoot } = options;
+  const interruption = output.interruption!;
+  if (
+    !interruption.stoppedAction ||
+    Object.keys(interruption.stoppedAction).some(
+      (key) => !['actionId', 'attempt', 'inputHash', 'evidence'].includes(key),
+    )
+  )
+    throw new Error('中断停止事实不能携带额外领取令牌');
+  assertStoppedAction(action, { ...interruption.stoppedAction, claimToken: outcome.claimToken });
+  const item = (
+    await inspectNativeSdkCheckExecutions({ projectRoot, run, includeSettled: true })
+  ).find((entry) => entry.actionId === action.id);
+  const legacyMissing =
+    item?.phase === 'missing' &&
+    interruption.executionHash === null &&
+    output.checks.length === 0 &&
+    (await hasNativeSdkCheckStopRequest({ projectRoot, run, action }));
+  const registeredStopped =
+    item?.quiescent &&
+    item.execution &&
+    !item.execution.outcome &&
+    (item.owner === 'dead' || item.phase === 'interrupted') &&
+    item.execution.candidateId === candidateId &&
+    item.execution.plansHash === interruption.plansHash &&
+    interruption.executionHash === hashRuntimeValue(item.execution as unknown as RuntimeValue) &&
+    hashRuntimeValue(output.checks as unknown as RuntimeValue) ===
+      hashRuntimeValue(item.execution.checks);
+  if (
+    !item ||
+    (!legacyMissing && !registeredStopped) ||
+    outcome.status !== 'failed' ||
+    interruption.kind !== 'execution-unknown' ||
+    interruption.candidateId !== candidateId ||
+    interruption.processBoundary !== item.processBoundary ||
+    interruption.observedAt !== output.completedAt ||
+    interruption.plansHash !== hashRuntimeValue(plans as unknown as RuntimeValue) ||
+    hashRuntimeValue(interruption.unknownCheckIds) !==
+      hashRuntimeValue(plans.slice(output.checks.length).map((plan) => plan.id)) ||
+    hashRuntimeValue(interruption.partialLogs as unknown as RuntimeValue) !==
+      hashRuntimeValue(
+        (await partialCheckLogs(
+          projectRoot,
+          run,
+          action,
+          plans,
+          output.checks.length,
+        )) as unknown as RuntimeValue,
+      )
+  ) {
+    throw new Error(
+      'Native 中断核对必须绑定已停止的原执行、候选、计划及实际保留日志；不能虚报未执行或重跑原检查',
+    );
+  }
 }
 
 export async function nativeSdkCurrentCheckSummaries(options: {
@@ -795,3 +962,133 @@ export const nativeSdkCheckValidator: RuntimeValidator = {
     }
   },
 };
+
+/** 完整结果按原领取补交；显式修复可登记已停止的未知结果，始终禁止重放原检查。 */
+export async function recoverNativeSdkChecks(
+  projectRoot: string,
+  initial: WorkflowRun,
+  runtime: WorkflowRuntime,
+  options: {
+    reconcileInterrupted?: boolean;
+    stoppedActions?: readonly RuntimeStoppedAction[];
+  } = {},
+): Promise<WorkflowRun> {
+  let run = initial;
+  if (options.reconcileInterrupted) {
+    if (!Array.isArray(options.stoppedActions) || options.stoppedActions.length === 0)
+      throw new Error('确认中断核对时必须提供原执行及全部后代已停止的证据');
+    const seen = new Set<string>();
+    for (const stopped of options.stoppedActions) {
+      const action = run.actions.find((entry) => entry.id === stopped?.actionId);
+      if (!action || !nativeSdkCheckExecutor.supports(action) || seen.has(action.id))
+        throw new Error('停止证据必须唯一绑定原 Native 检查 Action');
+      assertStoppedAction(action, stopped);
+      seen.add(action.id);
+    }
+  }
+  if (run.status === 'cancelled' || run.status === 'completed') return run;
+  for (const item of await inspectNativeSdkCheckExecutions({ projectRoot, run })) {
+    if (!item.recoveryRequired) continue;
+    const action = run.actions.find((entry) => entry.id === item.actionId)!;
+    if (!['running', 'unknown'].includes(action.status)) continue;
+    if (item.quiescent && item.execution?.phase === 'completed' && item.execution.outcome) {
+      const outcome: RuntimeOutcome = {
+        ...item.execution.outcome,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: action.claim!.token,
+        outcomeId: `${action.id}:${action.attempt}:executor-result`,
+      };
+      const validation = await nativeSdkCheckValidator.validate({
+        run,
+        action,
+        outcome,
+        context: { projectRoot, requestId: 'native-check-recovery' },
+      });
+      if (validation.accepted) {
+        run = await runtime.recordOutcome({
+          runId: run.runId,
+          expectedRevision: run.revision,
+          outcome,
+          context: { projectRoot, requestId: 'native-check-recovery' },
+        });
+        continue;
+      }
+    }
+    const stoppedActions =
+      options.stoppedActions?.filter((entry) => entry.actionId === action.id) ?? [];
+    if (stoppedActions.length > 1) throw new Error('不能重复提交同一 Action 的停止证据');
+    if (
+      options.reconcileInterrupted &&
+      stoppedActions.length === 1 &&
+      (item.phase === 'missing' ||
+        (item.quiescent &&
+          item.execution &&
+          !item.execution.outcome &&
+          (item.owner === 'dead' || item.phase === 'interrupted')))
+    ) {
+      assertStoppedAction(action, stoppedActions[0]);
+      await requestNativeSdkCheckStop({ projectRoot, run, action });
+      const checks = item.execution?.checks ?? [];
+      const { actionId, attempt, inputHash, evidence } = stoppedActions[0];
+      const { candidateId, plans } = checkInput(run, action);
+      const observedAt = new Date().toISOString();
+      const interruption: NativeSdkCheckInterruption = {
+        kind: 'execution-unknown',
+        stoppedAction: { actionId, attempt, inputHash, evidence },
+        processBoundary: item.processBoundary,
+        candidateId,
+        plansHash: hashRuntimeValue(plans as unknown as RuntimeValue),
+        executionHash: item.execution
+          ? hashRuntimeValue(item.execution as unknown as RuntimeValue)
+          : null,
+        unknownCheckIds: plans.slice(checks.length).map((plan) => plan.id),
+        partialLogs: await partialCheckLogs(projectRoot, run, action, plans, checks.length),
+        observedAt,
+      };
+      const outcome: RuntimeOutcome = {
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: action.claim!.token,
+        outcomeId: `${action.id}:${action.attempt}:interrupted-reconciliation`,
+        status: 'failed',
+        output: {
+          candidateId,
+          checks,
+          interruption,
+          completedAt: observedAt,
+        } as unknown as RuntimeValue,
+        summary:
+          '原检查执行结果未知；已记录原领取方或用户提供的全部执行停止证据，保留实际部分结果与日志，等待批准新的修复候选。',
+      };
+      const validation = await nativeSdkCheckValidator.validate({
+        run,
+        action,
+        outcome,
+        context: { projectRoot, requestId: 'native-check-interruption-recovery' },
+      });
+      if (!validation.accepted) throw new Error(validation.reason ?? 'Native 中断证据核对失败');
+      run = await runtime.recordOutcome({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        outcome,
+        context: { projectRoot, requestId: 'native-check-interruption-recovery' },
+      });
+      continue;
+    }
+    if (action.status === 'running' && item.owner !== 'alive') {
+      run = await runtime.markUnknown({
+        runId: run.runId,
+        expectedRevision: run.revision,
+        actionId: action.id,
+        attempt: action.attempt,
+        reason:
+          item.reason ??
+          '检查执行归属已丢失或无法确认；保留原进程及逐项证据，核对副作用后提交原领取结果。不能声明未执行或自动重跑。',
+      });
+    }
+  }
+  return run;
+}

@@ -210,6 +210,32 @@ Example `start.json`:
 
 Each command processes one structured request and returns JSON containing `protocolVersion`, `requestId`, and either the Run or a machine-readable error. `inspect` can read a Run from a new process without a workflow file; provide the pinned definitions to verify their content or change state. If an external execution disconnects after claim, use `mark-unknown` to preserve the indeterminate fact. `retry` creates a new attempt only when given `reconciliation: { "resolution": "not-executed", "evidence": ... }`. Relative request, workflow, and root paths use the CLI invocation directory; `--project-root` is passed as explicit host context to executor-related interfaces.
 
+A cancel request `{"operation":"cancel","runId":"<run-id>","expectedRevision":<revision>,"reason":"<reason>"}` stops scheduling and cancels pending Actions, decisions and evidence waits. Existing code and external effects remain. Repeating cancellation does not increment the revision or resume progress; ordinary late Outcomes are still rejected. Native CLI cancellation responses retain the complete Run in `data` and add sibling `cancellation` and `continuation` fields, distinguishing completed cancellation from outstanding stop confirmation.
+
+Native reports `cancelling` while original execution stop or current selection release remains unconfirmed, and `cancelled` once both are complete. With no claimed work and no cleanup blocker, cancellation immediately releases the current selection and workspace, without requiring Shape, verification or Archive. The cancellation request or `comet native doctor <change> --repair` stops registered Runtime checks only when their original process creation identity can be verified. Unknown or mismatched processes are never assumed stopped. Terminating a process group does not establish that detached background processes stopped. Every claimed task, including Runtime checks, still requires acknowledgement under its original claim that the task and all child tasks stopped before its workspace is released. SDK selection cleanup also uses the Native root-move mutation lock, retaining its existing fifteen-minute protection before explicit takeover of an unknown owner. Blocked cleanup stays `cancelling` and reports the owner, age, remaining protected time, and diagnosis/repair commands; read-only status/inspect does not wait on that lock.
+
+The original host for an external Builder, Verifier or custom Skill must stop the execution and all its child tasks, then submit actual stop evidence using the template at `status.cancellation.outstandingActions[].acknowledgementRequest`:
+
+```json
+{
+  "operation": "cancel",
+  "runId": "<original Run ID>",
+  "expectedRevision": 12,
+  "reason": "The task was cancelled and the original host has now stopped execution",
+  "stoppedActions": [
+    {
+      "actionId": "<original Action ID>",
+      "attempt": 1,
+      "inputHash": "<original input hash>",
+      "claimToken": "<original claim token>",
+      "evidence": "<how the execution and every child task were confirmed stopped; what work was retained>"
+    }
+  ]
+}
+```
+
+`stoppedActions` acknowledges that execution stopped; it does not claim that effects never happened, results passed or files were cleaned up. The Runtime verifies the original claim, attempt, inputHash and CAS revision. Repeating the same evidence is idempotent; conflicting evidence and duplicate Actions are rejected. This statement cannot bypass a registered check whose process is live, unknown or whose record is invalid. Cancellation retains the original domain state, code, history and receipts: the Run's `cancelled` status and Native cancellation projection identify termination, while retained domain `state` describes the last committed phase before cancellation.
+
 Native application CLI `claim` and `record-outcome` requests return `data.schema: "comet.native.dispatch-result.v1"` by default. This keeps the Run identity, revision, complete `state`, current complete `action` (including input, claim, and outcome receipts), and `continuation`, without repeating other Action history. Claim results also include `outcomeRequest`; fill in the actual execution status, output, and unique outcome ID before submitting with the original identity. The template does not imply success. CLI consumers that require the previous complete Run should add `--details`. `inspect` always returns the complete Run, and the compact result's `inspection.request` can be submitted directly. The JavaScript SDK and programmatic `runtimeDispatchCommand` still return the complete Run in `response.data`.
 
 The built-in Native and Classic Workflow Applications can be registered with `--application native|classic-full|classic-hotfix|classic-tweak`. Their Runs use fixed project paths, `.comet/runtime/sdk-runs/native` and `.comet/runtime/sdk-runs/classic`. Both workflows may use the same change name, but callers cannot select another `--root-dir` or combine `--application` with `--workflow`. Pass the matching `--application` whenever advancing that Run. In addition to the generic operations above, `execute` claims and runs an application-registered Executor, `record-evidence` submits declared evidence waits, and `invalidate-evidence` resumes evidence that has been verified invalid and has a declared recovery transition. The host still supplies real initial state, artifacts, and external Agent results. Native `new` and Classic `state init` now create SDK Runs by default; existing compat changes continue under their original Runtime.

@@ -40,6 +40,10 @@ Application requests:
 Portable workflow requests:
   comet runtime dispatch --workflow workflow.json --root-dir .comet/runs --request request.json
 
+Cancel stops scheduling and preserves work. A claimed host must stop its execution and child tasks,
+then acknowledge using cancel.stoppedActions with the original actionId, attempt, inputHash,
+claimToken and nonempty evidence. Native status shows cancelling until executions are stopped and current selection cleanup completes.
+
 The request file is a JSON object, for example {"operation":"inspect","runId":"change-name"}.
 Built-in applications: native, classic-full, classic-hotfix, classic-tweak.
 Use --application <id> to resume an application already selected in this project.

@@ -21,6 +21,7 @@ function runGit(projectRoot: string, args: readonly string[]): Buffer | null {
         maxBuffer: 2 * 1024 * 1024,
         stdio: ['ignore', 'pipe', 'ignore'],
         timeout: 10_000,
+        killSignal: 'SIGKILL',
         windowsHide: true,
       }),
     );

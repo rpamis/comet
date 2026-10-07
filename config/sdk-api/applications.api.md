@@ -284,6 +284,7 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     evidence: RuntimeValue;
                 }[];
                 reason?: string;
+                cancellation?: RuntimeStoppedAction;
             } | {
                 instruction: string;
                 executeRequests: {
@@ -335,6 +336,7 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     evidence: RuntimeValue;
                 }[];
                 reason?: string;
+                cancellation?: RuntimeStoppedAction;
             } | {
                 markUnknownRequest: {
                     actionId: string;
@@ -392,6 +394,7 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     evidence: RuntimeValue;
                 }[];
                 reason?: string;
+                cancellation?: RuntimeStoppedAction;
             } | {
                 instruction: string;
                 outcomeRequest: {
@@ -441,6 +444,7 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     evidence: RuntimeValue;
                 }[];
                 reason?: string;
+                cancellation?: RuntimeStoppedAction;
             } | {
                 retryRequest: {
                     actionId: string;
@@ -502,6 +506,7 @@ export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): P
                     evidence: RuntimeValue;
                 }[];
                 reason?: string;
+                cancellation?: RuntimeStoppedAction;
             })[];
             waits: {
                 resolveRequest: {
@@ -680,6 +685,7 @@ export function loadWorkflowApplication(options: {
     projectRoot: string;
     runId?: string;
     expectedIdentity?: ApplicationIdentity;
+    useLatestDefinition?: boolean;
     readOnly?: boolean;
 }): Promise<LoadedWorkflowApplication>;
 
@@ -751,6 +757,7 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 evidence: RuntimeValue;
             }[];
             reason?: string;
+            cancellation?: RuntimeStoppedAction;
         } | {
             instruction: string;
             executeRequests: {
@@ -802,6 +809,7 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 evidence: RuntimeValue;
             }[];
             reason?: string;
+            cancellation?: RuntimeStoppedAction;
         } | {
             markUnknownRequest: {
                 actionId: string;
@@ -859,6 +867,7 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 evidence: RuntimeValue;
             }[];
             reason?: string;
+            cancellation?: RuntimeStoppedAction;
         } | {
             instruction: string;
             outcomeRequest: {
@@ -908,6 +917,7 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 evidence: RuntimeValue;
             }[];
             reason?: string;
+            cancellation?: RuntimeStoppedAction;
         } | {
             retryRequest: {
                 actionId: string;
@@ -969,6 +979,7 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
                 evidence: RuntimeValue;
             }[];
             reason?: string;
+            cancellation?: RuntimeStoppedAction;
         })[];
         waits: {
             resolveRequest: {
@@ -1078,6 +1089,9 @@ export function readSelectedWorkflowApplication(projectRoot: string): Promise<{
     application: LoadedWorkflowApplication;
     run: WorkflowRun;
 } | null>;
+
+// @public
+export function readWorkflowApplicationRun(projectRoot: string, applicationId: string, runId: string): Promise<WorkflowRun | null>;
 
 // @public
 export function reconcileApplicationSkill(application: LoadedWorkflowApplication, host: SkillExecutionHost, run: Readonly<WorkflowRun>, actionId: string, context?: RuntimeInvocationContext): Promise<{
@@ -1227,6 +1241,7 @@ export function uninstallWorkflowApplication(options: ApplicationDeliveryOptions
 export interface WorkflowApplicationFactoryContext {
     // (undocumented)
     createSkillExecutor(host: SkillExecutionHost): RuntimeExecutor;
+    existingRun?: Readonly<WorkflowRun>;
     // (undocumented)
     identity: ApplicationIdentity;
     // (undocumented)

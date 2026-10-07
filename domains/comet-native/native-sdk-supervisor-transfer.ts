@@ -44,7 +44,15 @@ import {
   loadWorkflowApplication,
   type ApplicationIdentity,
 } from '../workflow-application/index.js';
-import { defineNativeWorkflowApplication } from './native-sdk-application.js';
+import {
+  defineNativeWorkflowApplication,
+  nativeSdkApplicationForRun,
+} from './native-sdk-application.js';
+import {
+  nativeSdkBeforeVerifierRecovery,
+  nativeSdkMatchesRun,
+  nativeSdkLegacyTransitionHandler,
+} from './native-sdk-definition.js';
 import {
   nativeSupervisorChildWorktree,
   nativeSupervisorIntegrationWorktree,
@@ -87,6 +95,8 @@ interface TransferManifest {
 function git(cwd: string, args: string[]): Buffer {
   return execFileSync('git', args, {
     cwd,
+    timeout: 30_000,
+    killSignal: 'SIGKILL',
     maxBuffer: MAX_BUFFER,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -586,16 +596,37 @@ export async function importNativeSupervisorTransfer(options: {
     throw new Error('Native 转移需要原固定应用包');
   const modelStore = createMemoryRuntimeStore<WorkflowRun>();
   await modelStore.compareAndSwap(saved.runId, null, saved);
-  const base = defineNativeWorkflowApplication();
-  await createRuntime({
-    ...application?.implementation,
-    store: modelStore,
-    workflows: application?.implementation.workflows ?? [base.workflow],
-    transitionHandlers: application?.implementation.transitionHandlers ?? [base.transitionHandler],
-    validators: application?.implementation.validators ?? base.validators,
-    commandValidators: application?.implementation.commandValidators ?? base.commandValidators,
-    stateValidators: application?.implementation.stateValidators ?? base.stateValidators,
-  }).inspect(saved.runId);
+  const base = nativeSdkApplicationForRun(saved, defineNativeWorkflowApplication());
+  let implementation = application?.implementation ?? {
+    ...base,
+    workflows: [base.workflow],
+    transitionHandlers: [base.transitionHandler],
+  };
+  if (application) {
+    // 目标尚无 Run；用已验证固定包重建的精确旧定义校验转移，不隐式升级保存的 hash。
+    const workflow = implementation.workflows.find(
+      (candidate) =>
+        candidate.id === saved.workflow.id && candidate.version === saved.workflow.version,
+    );
+    if (workflow) {
+      const previous = nativeSdkBeforeVerifierRecovery(workflow);
+      if (nativeSdkMatchesRun(previous, saved)) {
+        implementation = {
+          ...implementation,
+          workflows: implementation.workflows.map((candidate) =>
+            candidate === workflow ? previous : candidate,
+          ),
+          transitionHandlers: implementation.transitionHandlers?.map((handler) =>
+            handler.id === previous.transitionHandler?.id &&
+            handler.version === previous.transitionHandler?.version
+              ? nativeSdkLegacyTransitionHandler(previous, handler)
+              : handler,
+          ),
+        };
+      }
+    }
+  }
+  await createRuntime({ ...implementation, store: modelStore }).inspect(saved.runId);
   if (manifest.runtimeFiles !== undefined) {
     if (!Array.isArray(manifest.runtimeFiles)) throw new Error('Native 转移检查工件无效');
     if (manifest.runtimeFiles.length)

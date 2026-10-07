@@ -10,7 +10,12 @@ import {
   inspectProtectedProjectPath,
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
-import { canonicalRuntimeJson, cloneRuntimeValue, hashRuntimeValue } from './runtime-json.js';
+import {
+  canonicalRuntimeJson,
+  cloneRuntimeValue,
+  hashRuntimeValue,
+  validateRuntimeValue,
+} from './runtime-json.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
 
 export interface RuntimeRecord {
@@ -267,7 +272,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
         const value: unknown = JSON.parse(
           new TextDecoder('utf-8', { fatal: true }).decode(result.bytes),
         );
-        canonicalRuntimeJson(value);
+        validateRuntimeValue(value);
         records.set(revision, value);
         return value;
       } catch {

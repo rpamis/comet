@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import {
   cancelRuntimeAction,
+  acknowledgeRuntimeActionCancellation,
   claimRuntimeAction,
   markRuntimeActionUnknown,
   recordRuntimeOutcome,
   retryRuntimeAction,
   type RuntimeAction,
   type RuntimeOutcome,
+  type RuntimeStoppedAction,
 } from './runtime-action.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
 import { cloneRuntimeValue, hashRuntimeValue, type RuntimeValue } from './runtime-json.js';
@@ -1207,10 +1209,34 @@ export function createRuntime(options: CreateRuntimeOptions) {
     });
   }
 
-  async function cancel(command: RunCommand & { reason: string }): Promise<WorkflowRun> {
+  async function cancel(
+    command: RunCommand & { reason: string; stoppedActions?: readonly RuntimeStoppedAction[] },
+  ): Promise<WorkflowRun> {
     const cancelled = await mutate(command, (run) => {
-      if (run.status === 'cancelled' || run.status === 'completed') return;
-      run.actions = run.actions.map((action) => cancelRuntimeAction(action, command.reason));
+      if (run.status === 'completed') {
+        if (command.stoppedActions?.length)
+          throw new RuntimeProtocolError('ACTION_TERMINAL', '已完成 Run 不接受取消停止确认');
+        return;
+      }
+      const alreadyCancelled = run.status === 'cancelled';
+      if (!alreadyCancelled)
+        run.actions = run.actions.map((action) => cancelRuntimeAction(action, command.reason));
+      if (command.stoppedActions !== undefined) {
+        if (!Array.isArray(command.stoppedActions))
+          throw new RuntimeProtocolError('INVALID_ACTION', 'stoppedActions 必须是停止确认数组');
+        const seen = new Set<string>();
+        for (const stopped of command.stoppedActions) {
+          if (!stopped || typeof stopped !== 'object' || seen.has(stopped.actionId))
+            throw new RuntimeProtocolError('INVALID_ACTION', '停止确认重复或无效');
+          seen.add(stopped.actionId);
+          const action = requiredAction(run, stopped.actionId);
+          run.actions[run.actions.indexOf(action)] = acknowledgeRuntimeActionCancellation(
+            action,
+            stopped,
+          );
+        }
+      }
+      if (alreadyCancelled) return;
       for (const wait of run.waits) if (wait.status === 'pending') wait.status = 'cancelled';
       for (const wait of run.evidenceWaits ?? [])
         if (wait.status === 'pending') wait.status = 'cancelled';

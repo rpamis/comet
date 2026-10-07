@@ -3,9 +3,25 @@ import {
   canonicalRuntimeJson,
   cloneRuntimeValue,
   hashRuntimeValue,
+  validateRuntimeValue,
 } from '../../../domains/engine/runtime-json.js';
 
 describe('Runtime JSON snapshots', () => {
+  it('validates snapshots without serialization, mutation or executable hooks', () => {
+    const value = Object.freeze({ values: Object.freeze([-0, 1, 'text']) });
+    const stringify = vi.spyOn(JSON, 'stringify');
+    const parse = vi.spyOn(JSON, 'parse');
+    try {
+      expect(validateRuntimeValue(value)).toBeUndefined();
+      expect(stringify).not.toHaveBeenCalled();
+      expect(parse).not.toHaveBeenCalled();
+      expect(Object.is(value.values[0], -0)).toBe(true);
+    } finally {
+      stringify.mockRestore();
+      parse.mockRestore();
+    }
+  });
+
   it('preserves canonical JSON round-trip values and key order without serializing a clone', () => {
     const shared = { nested: ['\ud800', -0, Number.MAX_VALUE, Number.MIN_VALUE] };
     const value = Object.assign(Object.create(null), {
@@ -69,6 +85,7 @@ describe('Runtime JSON snapshots', () => {
       for (const input of [value, { value }, [value]]) {
         expect(() => cloneRuntimeValue(input)).toThrow(/INVALID_JSON/);
         expect(() => canonicalRuntimeJson(input)).toThrow(/INVALID_JSON/);
+        expect(() => validateRuntimeValue(input)).toThrow(/INVALID_JSON/);
       }
     },
   );
@@ -83,6 +100,7 @@ describe('Runtime JSON snapshots', () => {
     for (const value of [getter, arrayGetter, hidden, symbol, extraArray, { toJSON: hook }]) {
       expect(() => cloneRuntimeValue(value)).toThrow(/INVALID_JSON/);
       expect(() => canonicalRuntimeJson(value)).toThrow(/INVALID_JSON/);
+      expect(() => validateRuntimeValue(value)).toThrow(/INVALID_JSON/);
     }
     expect(hook).not.toHaveBeenCalled();
   });
@@ -96,6 +114,7 @@ describe('Runtime JSON snapshots', () => {
     for (const value of [cyclic, new Array(2), { nested }]) {
       expect(() => cloneRuntimeValue(value)).toThrow(/INVALID_JSON/);
       expect(() => canonicalRuntimeJson(value)).toThrow(/INVALID_JSON/);
+      expect(() => validateRuntimeValue(value)).toThrow(/INVALID_JSON/);
     }
   });
 });

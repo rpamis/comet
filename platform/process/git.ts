@@ -23,6 +23,7 @@ function executeGitCommand(cwd: string, args: readonly string[]): string {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: GIT_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
         maxBuffer: GIT_MAX_BUFFER,
         windowsHide: true,
       }),

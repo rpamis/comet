@@ -17,6 +17,11 @@ import {
 } from '../workflow-contract/protected-project-path.js';
 import { inspectGitWorktree, resolveGitRef } from '../../platform/paths/git-worktree.js';
 import { defineNativeWorkflowApplication } from './native-sdk-application.js';
+import {
+  nativeSdkBeforeVerifierRecovery,
+  nativeSdkMatchesRun,
+  nativeSdkLegacyTransitionHandler,
+} from './native-sdk-definition.js';
 import { createNativeSdkStateStore } from './native-sdk-state-store.js';
 import { createNativePortableState, parseNativePortableState } from './native-portable-state.js';
 import { returnNativeCandidateToBuild } from './native-loop-runtime.js';
@@ -174,7 +179,7 @@ export function createNativeWorkflowApplication(
 ): WorkflowApplicationImplementation {
   if (context.manifest.base !== 'native') throw new Error('Native 应用必须声明 base: native');
   const base = defineNativeWorkflowApplication();
-  const workflow = structuredClone(base.workflow);
+  let workflow = structuredClone(base.workflow);
   const transitions = workflow.transitions ?? [];
   workflow.transitions = transitions;
   const extensions = new Map<
@@ -359,7 +364,7 @@ export function createNativeWorkflowApplication(
     transitionKeys.add(key);
     return true;
   });
-  const transitionHandler: WorkflowTransitionHandler = {
+  let transitionHandler: WorkflowTransitionHandler = {
     ...base.transitionHandler,
     apply(input: Parameters<typeof base.transitionHandler.apply>[0]) {
       const { run, event } = input;
@@ -497,6 +502,12 @@ export function createNativeWorkflowApplication(
       return base.transitionHandler.apply(input);
     },
   };
+  // 固定包身份已由 loader 验证；仅回退本次新增的恢复定义，其他差异仍拒绝。
+  const previous = nativeSdkBeforeVerifierRecovery(workflow);
+  if (nativeSdkMatchesRun(previous, context.existingRun)) {
+    workflow = previous;
+    transitionHandler = nativeSdkLegacyTransitionHandler(workflow, transitionHandler);
+  }
   const implementation: WorkflowApplicationImplementation = {
     workflows: [workflow],
     transitionHandlers: [transitionHandler],

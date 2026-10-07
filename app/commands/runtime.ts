@@ -101,7 +101,7 @@ const operationFields = {
   'revise-wait': ['runId', 'expectedRevision', 'waitId', 'proposalHash', 'proposal'],
   'mark-unknown': ['runId', 'expectedRevision', 'actionId', 'attempt', 'reason'],
   retry: ['runId', 'expectedRevision', 'actionId', 'attempt', 'proposalHash', 'reconciliation'],
-  cancel: ['runId', 'expectedRevision', 'reason'],
+  cancel: ['runId', 'expectedRevision', 'reason', 'stoppedActions'],
 } as const;
 
 function invalid(message: string): never {
@@ -185,6 +185,24 @@ function parseRequest(value: unknown): JsonObject & { operation: keyof typeof op
     text(request.commandId, 'commandId');
     text(request.name, 'name');
     if (!Object.hasOwn(request, 'input')) invalid('input 必须显式提供，可使用 null');
+  }
+  if (name === 'cancel' && request.stoppedActions !== undefined) {
+    if (!Array.isArray(request.stoppedActions)) invalid('stoppedActions 必须是停止确认数组');
+    const seen = new Set<string>();
+    for (const value of request.stoppedActions) {
+      const stopped = object(value, 'stoppedActions');
+      onlyFields(
+        stopped,
+        ['actionId', 'attempt', 'inputHash', 'claimToken', 'evidence'],
+        '停止确认',
+      );
+      for (const field of ['actionId', 'inputHash', 'claimToken', 'evidence'])
+        text(stopped[field], field);
+      positiveInteger(stopped.attempt, 'attempt');
+      const id = stopped.actionId as string;
+      if (seen.has(id)) invalid('stoppedActions 不得重复同一 Action');
+      seen.add(id);
+    }
   }
   if (name === 'record-outcome') validateOutcome(request.outcome);
   if (name === 'record-evidence' || name === 'invalidate-evidence') {
@@ -299,8 +317,26 @@ async function nativeCliResponse(
   applicationId: string,
   executors?: readonly import('../../domains/engine/runtime.js').RuntimeExecutor[],
 ) {
-  if (request.operation !== 'claim' && request.operation !== 'record-outcome') return response;
+  if (!['claim', 'record-outcome', 'cancel'].includes(request.operation)) return response;
   try {
+    if (request.operation === 'cancel') {
+      const { projectNativeSdkContinuation } =
+        await import('../../domains/comet-native/native-sdk-continuation.js');
+      const { parseNativePortableState } =
+        await import('../../domains/comet-native/native-portable-state.js');
+      const projection = await projectNativeSdkContinuation({
+        run: response.data,
+        state: parseNativePortableState(response.data.state),
+        projectRoot,
+        applicationId,
+        skillExecutors: executors,
+      });
+      return {
+        ...response,
+        cancellation: 'cancellation' in projection ? projection.cancellation : null,
+        continuation: projection.continuation,
+      };
+    }
     const { projectNativeSdkDispatchResult } =
       await import('../../domains/comet-native/native-sdk-continuation.js');
     const { parseNativePortableState } =
@@ -490,11 +526,21 @@ export async function runtimeDispatchCommand(
             application!,
             text(request.runId, 'runId'),
           );
-      const loaded = await loadWorkflowApplication({
+      let loaded = await loadWorkflowApplication({
         file,
         projectRoot,
         runId: request.runId as string | undefined,
+        readOnly: request.operation === 'inspect',
       });
+      if (request.operation === 'inspect' && loaded.identity.base !== 'native') {
+        // Native diagnostics are read-only; other application bases keep their
+        // established inspection/recovery contract.
+        loaded = await loadWorkflowApplication({
+          file,
+          projectRoot,
+          runId: request.runId as string | undefined,
+        });
+      }
       const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
       const context = { requestId, projectRoot, invocationCwd, environment };
       const data = await dispatch(runtime, request, context);
@@ -551,7 +597,9 @@ export async function runtimeDispatchCommand(
     if (application === 'native' && request.operation !== 'start') {
       const { resolveNativeSdkCommandRoot } =
         await import('../../domains/comet-native/native-runtime-ownership.js');
-      projectRoot = await resolveNativeSdkCommandRoot(projectRoot, text(request.runId, 'runId'));
+      projectRoot = await resolveNativeSdkCommandRoot(projectRoot, text(request.runId, 'runId'), {
+        readOnly: request.operation === 'inspect',
+      });
       const owner = await readSdkChangeOwner(projectRoot, 'native', text(request.runId, 'runId'));
       if (owner && owner.application !== 'native')
         return runtimeDispatchCommand(
@@ -626,7 +674,7 @@ export async function runtimeDispatchCommand(
       application === 'native'
         ? (
             await import('../../domains/comet-native/native-sdk-state-store.js')
-          ).createNativeSdkStateStore(projectRoot)
+          ).createNativeSdkStateStore(projectRoot, { readOnly: request.operation === 'inspect' })
         : application !== undefined
           ? (
               await import('../../domains/comet-classic/classic-sdk-state-store.js')

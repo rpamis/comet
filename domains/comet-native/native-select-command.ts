@@ -1,3 +1,4 @@
+import { isNativeSdkRunRecoveryRequiredError } from './native-sdk-state-store.js';
 import { resolveNativeChangeRuntimeOwner } from './native-runtime-ownership.js';
 import {
   inspectDiscoveredNativeStatus,
@@ -36,7 +37,11 @@ export async function nativeSelectCommand(
   try {
     status = await inspect();
   } catch (error) {
-    if (!(error instanceof NativePristineSdkRunRecoverableError)) throw error;
+    if (
+      !(error instanceof NativePristineSdkRunRecoverableError) &&
+      !isNativeSdkRunRecoveryRequiredError(error)
+    )
+      throw error;
     const owner = await resolveNativeChangeRuntimeOwner(
       (await configuredPaths(error.projectRoot)).paths,
       name,

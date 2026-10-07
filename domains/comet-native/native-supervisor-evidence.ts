@@ -6,6 +6,7 @@ import path from 'node:path';
 import { runGitCommand } from '../../platform/process/git.js';
 import {
   processInstanceMayBeAlive,
+  inspectProcessTreeLiveness,
   readProcessIdentity,
 } from '../../platform/process/process-identity.js';
 import { canonicalHash } from './native-canonical-hash.js';
@@ -292,7 +293,7 @@ export async function executeNativeSupervisorChecks(options: {
             `Native Supervisor check process registration is incomplete. Check logs in ${path.join(nativePreferredChangeRuntimeDir(options.paths, options.parent), 'logs', 'checks')} for operation ${previous.operationId}; stop any remaining check process in ${task.projectRoot}, then submit supervisor-cancel for child ${options.child} and runId ${task.runId}, and dispatch a new Verifier for the preserved candidate.`,
           );
         }
-        if (active && (await processInstanceMayBeAlive(active.pid, active.identity))) {
+        if (active && (await inspectProcessTreeLiveness(active.pid, active.identity)) !== 'dead') {
           if (!(Date.now() < expiresAt)) {
             throw new Error(
               `Native Supervisor check ${active.checkId} is still running as PID ${active.pid} after its owner exited and lease expired; stop that original check process, then retry supervisor-checks for ${options.child}.`,

@@ -75,6 +75,7 @@ export function createRuntime(options: CreateRuntimeOptions): {
     }) => Promise<WorkflowRun>;
     cancel: (command: RunCommand & {
         reason: string;
+        stoppedActions?: readonly RuntimeStoppedAction[];
     }) => Promise<WorkflowRun>;
     markUnknown: (command: RunCommand & {
         actionId: string;
@@ -263,6 +264,8 @@ export interface RunRuntimeUntilBlocked {
 export interface RuntimeAction {
     // (undocumented)
     attempt: number;
+    // (undocumented)
+    cancellation?: RuntimeStoppedAction;
     // (undocumented)
     claim?: RuntimeClaim;
     // (undocumented)
@@ -542,6 +545,20 @@ export interface RuntimeStepInput {
     input: RuntimeValue;
     // (undocumented)
     outputs: Readonly<Record<string, RuntimeValue>>;
+}
+
+// @public
+export interface RuntimeStoppedAction {
+    // (undocumented)
+    actionId: string;
+    // (undocumented)
+    attempt: number;
+    // (undocumented)
+    claimToken: string;
+    // (undocumented)
+    evidence: string;
+    // (undocumented)
+    inputHash: string;
 }
 
 // @public (undocumented)

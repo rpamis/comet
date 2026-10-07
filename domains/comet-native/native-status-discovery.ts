@@ -19,14 +19,12 @@ import {
   NATIVE_STATUS_PAGE_LIMITS,
 } from './native-diagnostics.js';
 import { nativeProjectPaths } from './native-paths.js';
-import {
-  listNativeSdkChangeNames,
-  resolveNativeChangeRuntimeOwner,
-} from './native-runtime-ownership.js';
+import { listNativeSdkChangeNames, loadOwnedNativeSdkRuntime } from './native-runtime-ownership.js';
 import { inspectPristineNativeSdkChange } from './native-sdk-create.js';
 import { inspectNativeSdkStatus, type NativeSdkStatusProjection } from './native-sdk-status.js';
 import {
   hasNativeManagedRunMarker,
+  NativeSdkRunRecoveryRequiredError,
   hasNativePortableRunCheckpoint,
   findNativeSdkArchivedStateFile,
 } from './native-sdk-state-store.js';
@@ -816,13 +814,12 @@ export async function inspectDiscoveredNativeStatus(options: {
       (await hasNativeManagedRunMarker(archivedFile)) &&
       (await hasNativePortableRunCheckpoint(archivedFile, options.name))
     ) {
-      await resolveNativeChangeRuntimeOwner(source.paths, options.name);
-      options.onSelectedRoot?.(source.projectRoot);
-      return inspectNativeSdkStatus({
-        projectRoot: source.projectRoot,
-        name: options.name,
-        details: options.details,
-      });
+      // Validate the original fixed application and checkpoint without restoring
+      // either. Corrupt packages or missing Supervisor worktrees remain visible.
+      await (
+        await loadOwnedNativeSdkRuntime(source.projectRoot, options.name, { readOnly: true })
+      ).runtime.inspect(options.name);
+      throw new NativeSdkRunRecoveryRequiredError(source.projectRoot, options.name);
     }
     const marked = await hasNativeManagedRunMarker(
       nativePortableStateFile(source.paths, options.name),
@@ -837,13 +834,10 @@ export async function inspectDiscoveredNativeStatus(options: {
           options.name,
         )
       ) {
-        await resolveNativeChangeRuntimeOwner(source.paths, options.name);
-        options.onSelectedRoot?.(source.projectRoot);
-        return inspectNativeSdkStatus({
-          projectRoot: source.projectRoot,
-          name: options.name,
-          details: options.details,
-        });
+        await (
+          await loadOwnedNativeSdkRuntime(source.projectRoot, options.name, { readOnly: true })
+        ).runtime.inspect(options.name);
+        throw new NativeSdkRunRecoveryRequiredError(source.projectRoot, options.name);
       }
       if (await inspectPristineNativeSdkChange(source.paths, options.name)) {
         throw new NativePristineSdkRunRecoverableError(source.projectRoot, options.name);
