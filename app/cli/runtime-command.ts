@@ -1,5 +1,7 @@
 import { Command } from 'commander';
+import { randomUUID } from 'node:crypto';
 import { getCurrentVersion } from '../../platform/version/version.js';
+import { commandUsageForError, configureCommandUsageErrors } from './command-usage.js';
 
 /** 公共 CLI 与轻量入口共用参数和错误协议，执行逻辑仍由 Runtime command 承担。 */
 export function registerRuntimeCommand(program: Command, quietErrors = false): Command {
@@ -25,6 +27,21 @@ export function registerRuntimeCommand(program: Command, quietErrors = false): C
     )
     .option('--project-root <dir>', 'Project context passed to this request', '.')
     .option('--json', 'Output as JSON (default)')
+    .addHelpText(
+      'after',
+      `
+Application requests:
+  comet runtime dispatch --application native --request request.json --project-root .
+  comet runtime dispatch --application-file ./application.json --request request.json --project-root .
+Portable workflow requests:
+  comet runtime dispatch --workflow workflow.json --root-dir .comet/runs --request request.json
+
+The request file is a JSON object, for example {"operation":"inspect","runId":"change-name"}.
+Built-in applications: native, classic-full, classic-hotfix, classic-tweak.
+Use --application <id> to resume an application already selected in this project.
+Choose one application selector, or use --workflow with --root-dir for a portable workflow.
+Mutations must use the current Run revision, Action or Wait identity required by the operation.`,
+    )
     .action(async (options) => {
       const { runtimeDispatchCommand } = await import('../commands/runtime.js');
       const result = await runtimeDispatchCommand(options);
@@ -33,18 +50,28 @@ export function registerRuntimeCommand(program: Command, quietErrors = false): C
     });
 
   if (quietErrors) runtime.configureOutput({ writeErr: () => undefined });
+  configureCommandUsageErrors(runtime);
   return runtime;
 }
 
 export async function reportRuntimeCliFailure(error: unknown): Promise<void> {
-  const { runtimeCommandFailure } = await import('../commands/runtime.js');
-  const { RuntimeProtocolError } = await import('../../domains/engine/runtime.js');
   const message = error instanceof Error ? error.message : String(error);
-  const result = runtimeCommandFailure(
-    new RuntimeProtocolError('INVALID_REQUEST', `Runtime 命令参数无效：${message}`),
+  const usage = commandUsageForError(error);
+  // 参数解析尚未执行请求，不加载 Runtime、应用、依赖审查或存储模块。
+  console.log(
+    JSON.stringify(
+      {
+        protocolVersion: 1,
+        requestId: randomUUID(),
+        status: 'failed',
+        error: { code: 'INVALID_REQUEST', message: `Runtime 命令参数无效：${message}` },
+        ...(usage ? { usage } : {}),
+      },
+      null,
+      2,
+    ),
   );
-  console.log(JSON.stringify(result.response, null, 2));
-  process.exitCode = result.exitCode;
+  process.exitCode = 64;
 }
 
 export async function runRuntimeCli(argv: readonly string[]): Promise<void> {
@@ -55,6 +82,7 @@ export async function runRuntimeCli(argv: readonly string[]): Promise<void> {
     .addHelpCommand('help [command]', 'Display help for a command')
     .exitOverride();
   registerRuntimeCommand(program, true);
+  configureCommandUsageErrors(program);
   try {
     await program.parseAsync([...argv], { from: 'user' });
   } catch (error) {

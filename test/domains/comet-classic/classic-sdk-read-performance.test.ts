@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
 import { createClassicSdkStateStore } from '../../../domains/comet-classic/classic-sdk-state-store.js';
+import { classicSdkNextAction } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
 import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
 
@@ -43,6 +44,80 @@ async function preparedChange(
 }
 
 describe('Classic SDK read work budgets', () => {
+  it('reads multiple fields in one projection while preserving single-field output', async () => {
+    const { root, stateFile } = await preparedChange();
+    const cli = (fields: string[]) =>
+      runClassicCli(['state', 'get', 'demo', ...fields, '--json'], undefined, {
+        projectRoot: root,
+        invocationCwd: root,
+      });
+    const reads = vi.spyOn(fs, 'open');
+    const fields = ['phase', 'workflow', 'build_mode', 'tdd_mode', 'review_mode', 'plan'];
+    const result = await cli(fields);
+    expect(result.exitCode, result.stdout).toBe(0);
+    const output = JSON.parse(result.stdout!);
+    expect(output.data).toEqual({
+      change: 'demo',
+      fields: {
+        phase: 'open',
+        workflow: 'tweak',
+        build_mode: 'direct',
+        tdd_mode: 'direct',
+        review_mode: 'off',
+        plan: 'null',
+      },
+    });
+    expect(output.stdout).toBe(
+      'phase=open\nworkflow=tweak\nbuild_mode=direct\ntdd_mode=direct\nreview_mode=off\nplan=null\n',
+    );
+    expect(reads.mock.calls.filter(([file]) => String(file) === stateFile)).toHaveLength(1);
+    expect(JSON.parse((await cli(['phase'])).stdout!).stdout).toBe('open\n');
+    expect((await cli(['phase', 'phase'])).exitCode).toBe(1);
+    expect((await cli(['phase', '--unknown'])).exitCode).toBe(1);
+  });
+
+  it('returns SDK entry and recovery continuation from the same inspected Run', async () => {
+    const { root, stateFile, store } = await preparedChange();
+    const before = (await store.read('demo'))!;
+    const expected = {
+      kind: 'action',
+      stepId: 'tweak.open',
+      actionId: before.actions[0].id,
+      attempt: before.actions[0].attempt,
+      inputHash: before.actions[0].inputHash,
+      ref: before.actions[0].ref,
+    };
+    const reads = vi.spyOn(fs, 'open');
+    for (const suffix of [[], ['--recover']]) {
+      reads.mockClear();
+      const result = await runClassicCli(
+        ['state', 'check', 'demo', 'open', ...suffix, '--json'],
+        undefined,
+        { projectRoot: root, invocationCwd: root },
+      );
+      expect(result.exitCode, result.stdout).toBe(0);
+      expect(JSON.parse(result.stdout!).data).toMatchObject({
+        run: { id: before.runId, revision: before.revision },
+        nextAction: expected,
+      });
+      expect(reads.mock.calls.filter(([file]) => String(file) === stateFile)).toHaveLength(1);
+    }
+  });
+
+  it('prioritizes reconciliation over another pending Action without mutating the Run', async () => {
+    const { store } = await preparedChange();
+    const run = (await store.read('demo'))!;
+    const pending = run.actions[0];
+    const unresolved = { ...pending, id: 'interrupted', status: 'unknown' as const };
+    const observed = { ...run, actions: [pending, unresolved] };
+    expect(classicSdkNextAction(observed)).toMatchObject({
+      kind: 'reconcile',
+      actionId: 'interrupted',
+    });
+    expect(observed.actions).toEqual([pending, unresolved]);
+    expect(classicSdkNextAction({ ...observed, status: 'completed' })).toEqual({ kind: 'done' });
+  });
+
   it('reads stable state once without rewriting either projection', async () => {
     const { store, stateFile, markerFile } = await preparedChange();
     const before = await store.read('demo');

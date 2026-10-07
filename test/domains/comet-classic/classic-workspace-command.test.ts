@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { classicWorkspaceCommand } from '../../../domains/comet-classic/classic-workspace-command.js';
+import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -112,6 +113,23 @@ describe('classicWorkspaceCommand', () => {
       routed: false,
     });
     expect(result.data).toEqual(parsed);
+  });
+
+  it('emits one structured workspace result without embedding a second JSON copy', async () => {
+    await seedChange(root, 'resolve-target', 'main');
+    const result = await runClassicCli(
+      ['workspace', 'resolve', 'resolve-target', '--json'],
+      undefined,
+      { invocationCwd: root, projectRoot: root },
+    );
+    const output = JSON.parse(result.stdout!);
+    expect(output.exitCode).toBe(0);
+    expect(output.data).toMatchObject({
+      action: 'resolve',
+      projectRoot: root,
+      change: 'resolve-target',
+    });
+    expect(output).not.toHaveProperty('stdout');
   });
 
   it('surfaces the underlying business error instead of a context error for an unknown change', async () => {

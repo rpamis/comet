@@ -19,14 +19,7 @@ import {
   type SdkApplication,
 } from '../../domains/workflow-contract/change-runtime-owner.js';
 import type { CometProjectWorkflow } from '../../domains/workflow-contract/types.js';
-import {
-  loadWorkflowApplication,
-  resolveWorkflowApplicationFile,
-  selectWorkflowApplication,
-  applicationSkillWork,
-  applicationWaitSkillWork,
-  type ApplicationIdentity,
-} from '../../domains/workflow-application/index.js';
+import type { ApplicationIdentity } from '../../domains/workflow-application/index.js';
 
 export interface RuntimeCommandOptions {
   request?: string;
@@ -438,6 +431,13 @@ export async function runtimeDispatchCommand(
         invalid(
           '定制应用使用 --application 或 --application-file，不能同时指定工作流、状态目录或另一应用',
         );
+      const {
+        loadWorkflowApplication,
+        resolveWorkflowApplicationFile,
+        selectWorkflowApplication,
+        applicationSkillWork,
+        applicationWaitSkillWork,
+      } = await import('../../domains/workflow-application/index.js');
       const file = options.applicationFile
         ? path.resolve(invocationCwd, options.applicationFile)
         : await resolveWorkflowApplicationFile(

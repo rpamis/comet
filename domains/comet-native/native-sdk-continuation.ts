@@ -1,0 +1,472 @@
+import type { WorkflowRun, RuntimeExecutor } from '../engine/runtime.js';
+import {
+  nativePortableContinuation,
+  type NativePortableContinuation,
+} from './native-portable-continuation.js';
+import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
+import {
+  NATIVE_SUPERVISOR_COORDINATION_MODES,
+  type NativePortableState,
+} from './native-portable-types.js';
+
+function sdkShapeContinuation(
+  state: NativePortableState,
+  supervisorConfirmation: boolean,
+): ReturnType<typeof nativePortableContinuation> {
+  const continuation = nativePortableContinuation(state);
+  if (!supervisorConfirmation) return continuation;
+  const chinese = state.language === 'zh-CN';
+  return {
+    ...continuation,
+    requiredInputs: ['summary', 'shared-understanding-confirmation', 'coordination-mode'],
+    commandAlternatives: NATIVE_SUPERVISOR_COORDINATION_MODES.map((mode) => ({
+      name: mode,
+      stateVersion: state.state_version,
+      expectedAction: 'confirm-shape' as const,
+      commandArgs: [
+        'comet',
+        'native',
+        'next',
+        state.name,
+        '--summary',
+        '<summary>',
+        '--confirmed',
+        '--coordination-mode',
+        mode,
+        '--expected-state-version',
+        String(state.state_version),
+        '--expected-action',
+        'confirm-shape',
+      ],
+      requiredInputs: ['summary', 'shared-understanding-confirmation', 'coordination-mode'],
+      inputOptions: [
+        {
+          name: 'summary',
+          flag: '--summary',
+          valueKind: 'text' as const,
+          required: true,
+          template: null,
+        },
+        {
+          name: 'shared-understanding-confirmation',
+          flag: '--confirmed',
+          valueKind: 'confirmation' as const,
+          required: true,
+          template: null,
+        },
+        {
+          name: 'coordination-mode',
+          flag: '--coordination-mode',
+          valueKind: 'choice' as const,
+          required: true,
+          template: mode,
+          choices: [...NATIVE_SUPERVISOR_COORDINATION_MODES],
+        },
+      ],
+    })),
+    userCommunication: {
+      required: true,
+      message: chinese
+        ? '请确认完整 Shape，并选择推进方式：多会话协作（推荐）或单会话推进。'
+        : 'Confirm the complete Shape and choose multi-session coordination (recommended) or single-session progression.',
+      suggestedReply: chinese
+        ? '确认 Shape，选择多会话协作'
+        : 'Confirm Shape with multi-session coordination',
+      agentInstruction: chinese
+        ? '先简要展示目标、范围、关键决定、验收标准、非目标及 Child 计划，再转述 message。只有用户明确确认当前完整 Shape 并选定推进方式后，才执行对应的 commandAlternatives；补充或修改要求不算确认。'
+        : 'Summarize the target, scope, key decisions, acceptance criteria, non-goals, and child plan before relaying message. Execute the matching commandAlternative only after the user explicitly confirms the complete current Shape and chooses a coordination mode; additions or corrections are not confirmation.',
+    },
+  };
+}
+
+function sdkLoopStopContinuation(state: NativePortableState, proposalHash: string) {
+  const continuation = nativePortableContinuation(state);
+  if (!continuation.commandAlternatives) {
+    throw new Error('Native SDK Verify stop has no recovery choices');
+  }
+  return {
+    ...continuation,
+    commandAlternatives: continuation.commandAlternatives.map((alternative) => {
+      if (alternative.name !== 'revise-implementation' || !alternative.commandArgs) {
+        return alternative;
+      }
+      const position = alternative.commandArgs.indexOf('--expected-state-version');
+      if (position < 0) throw new Error('Native SDK repair command lacks its state version');
+      return {
+        ...alternative,
+        commandArgs: [
+          ...alternative.commandArgs.slice(0, position),
+          '--proposal-hash',
+          proposalHash,
+          ...alternative.commandArgs.slice(position),
+        ],
+      };
+    }),
+  };
+}
+
+function sdkDecision(
+  state: NativePortableState,
+  action:
+    | 'accept-result'
+    | 'revise-implementation'
+    | 'revise-requirements'
+    | 'retry-verifier'
+    | 'continue-builder'
+    | 'resolve-verifier-blocker',
+  proposalHash?: string,
+) {
+  return {
+    name: action,
+    stateVersion: state.state_version,
+    expectedAction: action,
+    commandArgs: [
+      'comet',
+      'native',
+      'next',
+      state.name,
+      `--${action}`,
+      '--summary',
+      '<summary>',
+      ...(proposalHash === undefined ? [] : ['--proposal-hash', proposalHash]),
+      '--expected-state-version',
+      String(state.state_version),
+      '--expected-action',
+      action,
+    ],
+    requiredInputs: ['summary', 'user-decision'],
+    inputOptions: [
+      {
+        name: 'summary',
+        flag: '--summary',
+        valueKind: 'text' as const,
+        required: true,
+        template: null,
+      },
+    ],
+  };
+}
+
+/** 从同一 Run 投影下一步；SDK 不使用 compat Runner 输入或 workspace finish 决定。 */
+export async function projectNativeSdkContinuation(options: {
+  run: WorkflowRun;
+  state: NativePortableState;
+  projectRoot: string;
+  applicationId?: string;
+  skillExecutors?: readonly RuntimeExecutor[];
+}) {
+  const { run, state, projectRoot } = options;
+  const localized = (en: string, zh: string) => (state.language === 'zh-CN' ? zh : en);
+  const communication = (instruction: string, message: string | null = null) => ({
+    required: message !== null,
+    message,
+    suggestedReply: null,
+    agentInstruction: instruction,
+  });
+  const base: NativePortableContinuation = {
+    schema: 'comet.native.continuation.v2',
+    skill: 'comet-native',
+    change: state.name,
+    phase: state.phase,
+    status: state.status,
+    stateVersion: state.state_version,
+    disposition: 'continue',
+    requiresUserDecision: false,
+    action: 'none',
+    commandArgs: null,
+    requiredInputs: [],
+    inputOptions: [],
+    runnerAction: {
+      kind: 'none',
+      candidateId: state.builder_handoff?.candidate_id ?? null,
+      iteration: state.loop.iteration,
+      attempt: state.loop.attempt,
+    },
+    userCommunication: communication(
+      localized('Continue from the current SDK Run.', '按当前 SDK Run 继续。'),
+    ),
+  };
+  const pending = run.actions.filter((action) => action.status === 'pending');
+  // 与 next 的执行顺序一致，先完成已集成 Child 的归档。
+  const archiveIndex = pending.findIndex((action) => action.stepId === 'supervisor.child.archive');
+  if (archiveIndex > 0) pending.unshift(...pending.splice(archiveIndex, 1));
+  const pendingActions = pending.map((action) => {
+    const skillExecutor =
+      action.type === 'invoke_skill'
+        ? options.skillExecutors?.find((executor) => executor.supports(action))
+        : undefined;
+    return {
+      id: action.id,
+      stepId: action.stepId,
+      type: action.type,
+      ref: action.ref,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      mechanism: 'runtime-dispatch',
+      ...(action.type === 'handoff'
+        ? {
+            claimRequest: {
+              operation: 'claim',
+              runId: run.runId,
+              expectedRevision: run.revision,
+              actionId: action.id,
+              attempt: action.attempt,
+              inputHash: action.inputHash,
+              executorId: 'native-host',
+              sessionId: '<session-id>',
+              claimToken: '<claim-token>',
+            },
+          }
+        : {}),
+      ...(action.type === 'invoke_skill'
+        ? {
+            executeRequest: skillExecutor
+              ? {
+                  operation: 'execute',
+                  runId: run.runId,
+                  expectedRevision: run.revision,
+                  actionId: action.id,
+                  executorId: skillExecutor.id,
+                }
+              : null,
+          }
+        : {}),
+    };
+  });
+  const waits = run.waits.filter((wait) => wait.status === 'pending');
+  const pendingBuilderDecisions = waits
+    .filter((wait) =>
+      ['build.resume', 'supervisor.child.resume', 'supervisor.parent.resume'].includes(wait.stepId),
+    )
+    .map((wait) => ({
+      waitId: wait.id,
+      stepId: wait.stepId,
+      proposalHash: wait.proposalHash,
+      commandArgs: sdkDecision(state, 'continue-builder', wait.proposalHash).commandArgs,
+    }));
+  const pendingRequirementDecisions = waits
+    .filter((wait) => wait.stepId.startsWith('native.extension.revise.'))
+    .map((wait) => ({
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      proposal: wait.proposal,
+      commandArgs: sdkDecision(state, 'revise-requirements').commandArgs,
+      message: localized(
+        'The extension found changed requirements. Confirm whether to return to Shape after reconciling running or unknown work.',
+        '扩展发现需求变化。先核对 running/unknown 工作，再确认是否返回 Shape 修订需求。',
+      ),
+    }));
+  let continuation: NativePortableContinuation;
+  const recovery = await inspectNativeSdkSupervisorRecovery(run, projectRoot);
+  const verifyWait = waits.find((wait) =>
+    ['verify.confirm', 'verify.retry', 'verify.stop'].includes(wait.stepId),
+  );
+  const active = run.actions.filter(
+    (action) => action.status === 'running' || action.status === 'unknown',
+  );
+  if (recovery) {
+    const decision = sdkDecision(state, 'resolve-verifier-blocker', recovery.proposalHash);
+    continuation = {
+      ...base,
+      action: 'resolve-verifier-blocker',
+      disposition: 'await-user',
+      requiresUserDecision: true,
+      commandArgs: decision.commandArgs,
+      requiredInputs: decision.requiredInputs,
+      inputOptions: decision.inputOptions,
+      userCommunication: communication(
+        localized(
+          'Execute only after explicit approval to recover this Child; preserve the original result and recheck the successor candidate.',
+          '只有明确选择恢复当前 Child 后才执行；保留原结果，后继候选必须重新检查和独立验收。',
+        ),
+        localized(
+          'Child verification is blocked. Recover the original work with a new Builder?',
+          'Child 独立验收受阻。是否让新的 Builder 在原工作区继续处理？',
+        ),
+      ),
+    };
+  } else if (pendingRequirementDecisions.length > 0 || pendingBuilderDecisions.length > 0) {
+    const requirements = pendingRequirementDecisions.length > 0;
+    continuation = {
+      ...base,
+      disposition: 'await-user',
+      requiresUserDecision: true,
+      commandAlternatives: requirements
+        ? [sdkDecision(state, 'revise-requirements')]
+        : pendingBuilderDecisions.map((wait) =>
+            sdkDecision(state, 'continue-builder', wait.proposalHash),
+          ),
+      requiredInputs: ['summary', 'user-decision'],
+      userCommunication: communication(
+        localized(
+          'Preserve completed work, reconcile running or unknown Actions, and execute the matching option only after the user decides.',
+          '保留已完成工作，先核对 running/unknown Action，用户明确决定后执行对应选项。',
+        ),
+        requirements
+          ? pendingRequirementDecisions[0].message
+          : localized(
+              'The Builder stopped before completing this work. Continue from its preserved workspace?',
+              'Builder 尚未完成本轮工作。是否从保留的工作区继续？',
+            ),
+      ),
+    };
+  } else if (verifyWait?.stepId === 'verify.stop') {
+    continuation = sdkLoopStopContinuation(state, verifyWait.proposalHash);
+  } else if (verifyWait) {
+    const retry = verifyWait.stepId === 'verify.retry';
+    continuation = {
+      ...base,
+      disposition: 'await-user',
+      requiresUserDecision: true,
+      action: retry ? 'retry-verifier' : 'confirm-skill-coordinated-pass',
+      requiredInputs: ['summary', 'user-decision'],
+      commandAlternatives: retry
+        ? [sdkDecision(state, 'retry-verifier', verifyWait.proposalHash)]
+        : [
+            sdkDecision(state, 'accept-result', verifyWait.proposalHash),
+            sdkDecision(state, 'revise-implementation', verifyWait.proposalHash),
+            sdkDecision(state, 'revise-requirements'),
+          ],
+      userCommunication: communication(
+        localized(
+          'Summarize the result and evidence, then wait for an explicit decision before executing the matching option.',
+          '简要说明结果和证据，等待用户明确决定后执行对应选项。',
+        ),
+        retry
+          ? localized(
+              'Verification stopped without a usable result. Retry the independent Verifier with the preserved candidate and checks?',
+              '验收未正常返回可用结果。是否保留当前候选和检查，重新尝试独立验收？',
+            )
+          : localized(
+              'Verification passed. Accept the result for Archive, revise the implementation, or revise the requirements?',
+              '验收已通过。请选择接受结果进入归档、修改实现，或调整需求。',
+            ),
+      ),
+    };
+  } else if (state.phase === 'shape' && active.length === 0) {
+    continuation = sdkShapeContinuation(
+      state,
+      waits.some((wait) => wait.stepId === 'supervisor.shape.confirm'),
+    );
+  } else if (active.some((action) => action.status === 'unknown')) {
+    continuation = {
+      ...base,
+      disposition: 'blocked',
+      requiredInputs: ['original-execution-result'],
+      userCommunication: communication(
+        localized(
+          'Reconcile the original Action and execution before continuing. An unknown result does not authorize a retry or another handoff.',
+          '先核对原 Action 和执行现场。结果未知不代表可以重试或另行派发。',
+        ),
+      ),
+    };
+  } else if (pending.length > 0) {
+    const action = pending[0];
+    const handoff = action.type === 'handoff';
+    const skill = action.type === 'invoke_skill';
+    const executeRequest = pendingActions[0].executeRequest;
+    continuation = {
+      ...base,
+      action: handoff
+        ? action.ref?.includes('verifier')
+          ? 'dispatch-verifier'
+          : 'builder-handoff'
+        : state.phase === 'archive'
+          ? 'archive'
+          : 'none',
+      disposition: skill && !executeRequest ? 'blocked' : 'continue',
+      commandArgs:
+        handoff || (skill && executeRequest)
+          ? [
+              'comet',
+              'runtime',
+              'dispatch',
+              '--application',
+              options.applicationId ?? 'native',
+              '--request',
+              '<request-json-file>',
+            ]
+          : skill
+            ? null
+            : ['comet', 'native', state.phase === 'archive' ? 'archive' : 'next', state.name],
+      ...(handoff
+        ? {
+            requiredInputs: ['request-json-file', 'session-id', 'claim-token'],
+            inputOptions: [
+              {
+                name: 'request-json-file',
+                flag: '--request',
+                valueKind: 'json-file' as const,
+                required: true,
+                template: pendingActions[0].claimRequest,
+              },
+            ],
+          }
+        : {}),
+      ...(skill
+        ? {
+            requiredInputs: executeRequest ? ['request-json-file'] : ['skill-executor'],
+            inputOptions: executeRequest
+              ? [
+                  {
+                    name: 'request-json-file',
+                    flag: '--request',
+                    valueKind: 'json-file' as const,
+                    required: true,
+                    template: executeRequest,
+                  },
+                ]
+              : [],
+          }
+        : {}),
+      userCommunication: communication(
+        skill
+          ? localized(
+              'Execute the pending Skill with its fixed Application executor and skillWork contract. If no compatible executor is configured, resolve that host requirement; repeating native next cannot execute this Skill.',
+              '按 skillWork 契约使用固定 Application 的执行器运行待处理 Skill。缺少适配执行器时先补全宿主要求；重复 native next 不能执行此 Skill。',
+            )
+          : handoff
+            ? localized(
+                'Use the pending Action claimRequest with a real stable session ID and unique claim token. Work only after the claim succeeds, using the returned Action input; Verifiers need a separate read-only session. Submit the original Action outcome, then follow the returned Run.',
+                '在待执行 Action 的 claimRequest 中填入真实稳定的会话标识和唯一领取令牌。领取成功后按返回的 Action 输入开展工作；Verifier 必须使用独立只读会话。提交原 Action 的结果后按返回的 Run 继续。',
+              )
+            : localized(
+                'Execute the next Runtime-owned Action and follow its returned state. It revalidates current evidence before committing.',
+                '执行下一项 Runtime 自有 Action，并按返回状态继续；Runtime 会在提交前重新校验当前证据。',
+              ),
+      ),
+    };
+  } else if (active.length > 0) {
+    continuation = {
+      ...base,
+      userCommunication: communication(
+        localized(
+          'Continue or wait on the original claimed task. Do not create a second task because a wait timed out; submit its actual outcome with the original claim.',
+          '继续或等待原已领取任务。等待超时不能另建任务；用原领取信息提交真实结果。',
+        ),
+      ),
+    };
+  } else if (state.status === 'done') {
+    continuation = { ...base, disposition: 'done' };
+  } else if (run.ready.length > 0) {
+    continuation = { ...base, commandArgs: ['comet', 'native', 'next', state.name] };
+  } else {
+    continuation = {
+      ...base,
+      disposition: 'blocked',
+      requiredInputs: ['runtime-evidence-or-decision'],
+      userCommunication: communication(
+        localized(
+          'Inspect the pending SDK Wait or evidence requirement before continuing; do not submit a compat Runner input.',
+          '先核对待处理的 SDK Wait 或证据要求；不要提交 compat Runner 输入。',
+        ),
+      ),
+    };
+  }
+  return {
+    continuation,
+    ...(pendingActions.length > 0 ? { pendingAction: pendingActions[0], pendingActions } : {}),
+    ...(pendingBuilderDecisions.length > 0 ? { pendingBuilderDecisions } : {}),
+    ...(pendingRequirementDecisions.length > 0 ? { pendingRequirementDecisions } : {}),
+  };
+}

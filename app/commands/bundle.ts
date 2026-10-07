@@ -1,20 +1,13 @@
 import path from 'path';
 import os from 'os';
-import { discoverBundleCandidates } from '../../domains/bundle/candidates.js';
-import { readSkillPreferences } from '../../domains/bundle/preferences.js';
-import { createBundleDraft, optimizeBundleDraft } from '../../domains/bundle/draft.js';
 import { loadBundle } from '../../domains/bundle/load.js';
 import {
   listBundleAuthoringStates,
   reconcileBundleAuthoringState,
 } from '../../domains/bundle/state.js';
-import { compileBundleIr } from '../../domains/bundle/compiler.js';
-import { compileBundleForPlatform } from '../../domains/bundle/platform.js';
-import { buildBundleReviewSummary } from '../../domains/bundle/review-summary.js';
-import { listBundlePlatformTargets } from '../../domains/bundle/bundle-platform.js';
-import { planBundleEval, recordBundleEval } from '../../domains/bundle/eval.js';
-import { publishBundle, reviewBundle } from '../../domains/bundle/publish.js';
-import { distributeBundle } from '../../domains/bundle/distribute.js';
+import type { compileBundleIr } from '../../domains/bundle/compiler.js';
+import type { buildBundleReviewSummary } from '../../domains/bundle/review-summary.js';
+import type { distributeBundle } from '../../domains/bundle/distribute.js';
 import {
   buildBundleResumeSummary,
   determineBundleNextAction,
@@ -214,6 +207,7 @@ async function compileDraft(
   state: Awaited<ReturnType<typeof reconcileBundleAuthoringState>>;
   ir: Awaited<ReturnType<typeof compileBundleIr>>;
 }> {
+  const { compileBundleIr } = await import('../../domains/bundle/compiler.js');
   const state = await reconcileBundleAuthoringState(projectRoot(options), name);
   const bundle = await loadBundle(state.draftPath);
   return {
@@ -223,6 +217,10 @@ async function compileDraft(
 }
 
 export async function bundleCandidatesCommand(options: BundleCommandOptions = {}): Promise<void> {
+  const [{ discoverBundleCandidates }, { readSkillPreferences }] = await Promise.all([
+    import('../../domains/bundle/candidates.js'),
+    import('../../domains/bundle/preferences.js'),
+  ]);
   const root = projectRoot(options);
   const preferences = await readSkillPreferences(root);
   const candidates = await discoverBundleCandidates({ projectRoot: root, preferences });
@@ -237,6 +235,7 @@ export async function bundleDraftCreateCommand(
   name: string,
   options: BundleCommandOptions = {},
 ): Promise<void> {
+  const { createBundleDraft } = await import('../../domains/bundle/draft.js');
   const state = await createBundleDraft({
     projectRoot: projectRoot(options),
     name,
@@ -252,6 +251,7 @@ export async function bundleDraftOptimizeCommand(
   source: string,
   options: BundleCommandOptions = {},
 ): Promise<void> {
+  const { optimizeBundleDraft } = await import('../../domains/bundle/draft.js');
   const sourceRoot = path.resolve(source);
   const bundle = await loadBundle(sourceRoot);
   const state = await optimizeBundleDraft({
@@ -303,6 +303,10 @@ export async function bundleCompileCommand(
 ): Promise<void> {
   const ids = platformIds(options.platform);
   if (ids.length !== 1) throw new Error('--platform is required exactly once');
+  const [{ compileBundleForPlatform }, { listBundlePlatformTargets }] = await Promise.all([
+    import('../../domains/bundle/platform.js'),
+    import('../../domains/bundle/bundle-platform.js'),
+  ]);
   const { state, ir } = await compileDraft(name, options);
   const target = listBundlePlatformTargets({
     projectRoot: projectRoot(options),
@@ -326,6 +330,7 @@ export async function bundleEvalPlanCommand(
   name: string,
   options: BundleCommandOptions = {},
 ): Promise<void> {
+  const { planBundleEval } = await import('../../domains/bundle/eval.js');
   const { ir } = await compileDraft(name, options);
   const plan = planBundleEval(ir, options.level ?? 'quick');
   emit(
@@ -345,6 +350,7 @@ export async function bundleEvalRecordCommand(
   options: BundleCommandOptions = {},
 ): Promise<void> {
   if (!options.result) throw new Error('--result is required');
+  const { recordBundleEval } = await import('../../domains/bundle/eval.js');
   const state = await recordBundleEval(projectRoot(options), name, path.resolve(options.result));
   emit(state, options.json, `Recorded Eval for ${state.name}: ${state.status}`);
 }
@@ -357,6 +363,7 @@ export async function bundleReviewCommand(
     throw new Error('Pass exactly one of --approve or --reject');
   }
   if (!options.reviewer) throw new Error('--reviewer is required');
+  const { reviewBundle } = await import('../../domains/bundle/publish.js');
   const state = await reviewBundle({
     projectRoot: projectRoot(options),
     name,
@@ -372,6 +379,7 @@ export async function bundleReviewSummaryCommand(
 ): Promise<void> {
   const ids = platformIds(options.platform);
   if (ids.length !== 1) throw new Error('--platform is required exactly once');
+  const { buildBundleReviewSummary } = await import('../../domains/bundle/review-summary.js');
   const summary = await buildBundleReviewSummary({
     projectRoot: projectRoot(options),
     name,
@@ -388,6 +396,7 @@ export async function bundlePublishCommand(
 ): Promise<void> {
   const ids = platformIds(options.platform);
   if (ids.length !== 1) throw new Error('--platform is required exactly once');
+  const { publishBundle } = await import('../../domains/bundle/publish.js');
   const state = await publishBundle({
     projectRoot: projectRoot(options),
     name,
@@ -403,6 +412,7 @@ export async function bundleDistributeCommand(
 ): Promise<void> {
   const ids = platformIds(options.platform);
   if (ids.length === 0) throw new Error('At least one --platform is required');
+  const { distributeBundle } = await import('../../domains/bundle/distribute.js');
   const result = await distributeBundle({
     projectRoot: projectRoot(options),
     name,

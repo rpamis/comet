@@ -613,7 +613,8 @@ export async function resolveClassicWorkspace(options: {
 export async function classicWorkspaceCommandResult(
   action: 'prepare' | 'resolve',
   value: ClassicWorkspacePreparation | ClassicWorkspaceResolution,
-): Promise<{ exitCode: number; stdout: string; data: unknown }> {
+  json = false,
+): Promise<{ exitCode: number; stdout?: string; data: unknown }> {
   const data = { action, ...value };
-  return { exitCode: 0, stdout: `${JSON.stringify(data)}\n`, data };
+  return { exitCode: 0, ...(json ? {} : { stdout: `${JSON.stringify(data)}\n` }), data };
 }

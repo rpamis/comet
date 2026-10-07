@@ -12,14 +12,15 @@ export type RuntimeValue =
     };
 
 /** 只接受无损、无执行行为的 JSON 数据；字段排序使输入绑定不依赖属性插入顺序。 */
-export function canonicalRuntimeJson(value: unknown): string {
+function normalizeRuntimeValue(value: unknown): RuntimeValue {
   const ancestors = new Set<object>();
   function normalize(current: unknown, depth: number): RuntimeValue {
     if (depth > 64) throw new RuntimeProtocolError('INVALID_JSON', '数据嵌套超过 64 层');
     if (current === null || typeof current === 'string' || typeof current === 'boolean') {
       return current;
     }
-    if (typeof current === 'number' && Number.isFinite(current)) return current;
+    // 保持 JSON 往返的数值语义，避免直接返回规范化副本时保留 -0。
+    if (typeof current === 'number' && Number.isFinite(current)) return current === 0 ? 0 : current;
     if (typeof current !== 'object' || current === null) {
       throw new RuntimeProtocolError('INVALID_JSON', '数据必须能无损保存为 JSON');
     }
@@ -57,11 +58,15 @@ export function canonicalRuntimeJson(value: unknown): string {
       ancestors.delete(current);
     }
   }
-  return JSON.stringify(normalize(value, 0));
+  return normalize(value, 0);
+}
+
+export function canonicalRuntimeJson(value: unknown): string {
+  return JSON.stringify(normalizeRuntimeValue(value));
 }
 
 export function cloneRuntimeValue(value: unknown): RuntimeValue {
-  return JSON.parse(canonicalRuntimeJson(value)) as RuntimeValue;
+  return normalizeRuntimeValue(value);
 }
 
 export function hashRuntimeValue(value: unknown): string {

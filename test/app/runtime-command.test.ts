@@ -475,8 +475,9 @@ describe('Runtime JSON command', () => {
 
     const status = await runNativeCli(['status', 'native-change', '--project-root', projectRoot]);
     expect(status.exitCode, status.stdout).toBe(0);
-    expect(status.stdout).toContain('native-change：');
+    expect(status.stdout).toContain('native-change');
     expect(status.stdout).toContain('Shape（需求共识）');
+    expect(status.stdout).toContain('NEXT: comet native next native-change');
     expect(status.stdout).not.toContain('Use the Native SDK Run');
   });
 

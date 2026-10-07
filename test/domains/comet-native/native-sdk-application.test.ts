@@ -1,5 +1,6 @@
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,6 +16,7 @@ import {
   nativeProjectPaths,
 } from '../../../domains/comet-native/native-paths.js';
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
+import { inspectNativeSdkArchiveFinalization } from '../../../domains/comet-native/native-portable-archive.js';
 import { removeNativeWorkspaceConfig } from '../../../domains/comet-native/native-workspace-config.js';
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
 import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
@@ -408,6 +410,70 @@ async function awaitingArchiveFinalization(storeKind: 'memory' | 'file' = 'memor
 }
 
 describe('Native SDK Workflow Application', () => {
+  it('reads the finalized Archive report once and rejects later report changes', async () => {
+    const { root, paths, runtime, run: pending } = await awaitingArchiveFinalization();
+    const run = await runtime.execute({
+      runId: pending.runId,
+      actionId: pending.actions.at(-1)!.id,
+      executorId: 'comet-native-archive-finalize',
+      context: { requestId: 'archive-report-read-budget', projectRoot: root },
+    });
+    const state = run.state as NativePortableState;
+    const receipt = run.outputs['archive.finalize'].value as {
+      archiveRef: string;
+      reportSha256: string;
+    };
+    const reportFile = path.join(paths.archiveDir, receipt.archiveRef, 'verification.md');
+    const original = await fs.readFile(reportFile, 'utf8');
+    expect(receipt.reportSha256).toBe(createHash('sha256').update(original).digest('hex'));
+    const inspect = () => inspectNativeSdkArchiveFinalization({ paths, state, runId: run.runId });
+    const opens = vi.spyOn(fs, 'open');
+    const reads = vi.spyOn(fs, 'readFile');
+    try {
+      await expect(inspect()).resolves.toMatchObject(receipt);
+      expect(opens.mock.calls.filter(([file]) => String(file) === reportFile)).toHaveLength(1);
+      expect(reads.mock.calls.filter(([file]) => String(file) === reportFile)).toHaveLength(0);
+    } finally {
+      opens.mockRestore();
+      reads.mockRestore();
+    }
+
+    for (const changed of [`${original}\nUnexpected edit.\n`, `\uFEFF${original}`]) {
+      await fs.writeFile(reportFile, changed);
+      await expect(inspect()).rejects.toThrow(
+        'Native SDK Archive report changed after finalization',
+      );
+    }
+    const receiptsDir = path.join(paths.runtimeDir, 'sdk-archive-receipts');
+    const receipts = await fs.readdir(receiptsDir);
+    expect(receipts).toHaveLength(1);
+    const receiptFile = path.join(receiptsDir, receipts[0]);
+    const persistedReceipt = JSON.parse(await fs.readFile(receiptFile, 'utf8'));
+    for (const changed of [
+      original.replace('generated_from_state_version:', 'invalid_state_version:'),
+      original.replace(
+        `generated_from_state_version: ${state.state_version}`,
+        `generated_from_state_version: ${state.state_version + 1}`,
+      ),
+    ]) {
+      await fs.writeFile(reportFile, changed);
+      await fs.writeFile(
+        receiptFile,
+        JSON.stringify({
+          ...persistedReceipt,
+          reportSha256: createHash('sha256').update(changed).digest('hex'),
+        }),
+      );
+      await expect(inspect()).rejects.toThrow(
+        'Native SDK Archive report changed after finalization',
+      );
+    }
+    await fs.writeFile(reportFile, Buffer.from([0xff]));
+    await expect(inspect()).rejects.toThrow('Native artifact is not valid UTF-8');
+    await fs.rm(reportFile);
+    await expect(inspect()).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it.each(['pending', 'claimed', 'definition-drift'] as const)(
     'repairs only the known pre-Child-archive definition and preserves Run facts (%s)',
     async (scenario) => {

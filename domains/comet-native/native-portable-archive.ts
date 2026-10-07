@@ -45,6 +45,7 @@ import {
 import type { NativePortableSpecChange, NativePortableState } from './native-portable-types.js';
 import {
   inspectNativeVerificationReportAlignment,
+  nativeVerificationReportStateVersion,
   writeNativeVerificationReport,
 } from './native-verification-report-v2.js';
 import {
@@ -985,6 +986,7 @@ export async function finalizeNativeSdkArchive(options: {
         root: target,
         ref: 'verification.md',
         maxBytes: null,
+        includeHash: false,
       });
       const receipt: NativeSdkArchiveReceipt = {
         runId,
@@ -1058,13 +1060,13 @@ export async function inspectNativeSdkArchiveFinalization(options: {
     root: target,
     ref: 'verification.md',
     maxBytes: null,
+    includeHash: false,
   });
   if (
     createHash('sha256').update(report.text).digest('hex') !== receipt.reportSha256 ||
-    (await inspectNativeVerificationReportAlignment({
-      file: path.join(target, 'verification.md'),
-      stateVersion: state.state_version,
-    })) !== 'aligned'
+    // TextDecoder removes a leading UTF-8 BOM; report alignment still rejects it.
+    Buffer.byteLength(report.text, 'utf8') !== report.size ||
+    nativeVerificationReportStateVersion(report.text) !== state.state_version
   ) {
     throw new Error('Native SDK Archive report changed after finalization');
   }

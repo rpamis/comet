@@ -195,6 +195,15 @@ it('transfers a custom Supervisor through public CLI with fixed identity and an 
 it('runs a real disk Skill, repairs a failed candidate, restores cold and retains original Verify/approval', async () => {
   const f = await fixture();
   const builderWork = await f.native(['status', f.name]);
+  expect(builderWork.continuation.commandArgs).toEqual([
+    'comet',
+    'runtime',
+    'dispatch',
+    '--application',
+    'native-candidate-review',
+    '--request',
+    '<request-json-file>',
+  ]);
   expect(builderWork.skillWork).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
@@ -209,12 +218,19 @@ it('runs a real disk Skill, repairs a failed candidate, restores cold and retain
   const firstReview = f.pending(run, 'native.extension.candidate.candidate-review');
   expect(firstReview).toBeTruthy();
   expect(f.pending(run, 'verify.verifier')).toBeUndefined();
-  run = await f.dispatch({
+  const reviewStatus = await f.native(['status', f.name]);
+  expect(reviewStatus.continuation.commandArgs).toEqual(builderWork.continuation.commandArgs);
+  expect(reviewStatus.pendingAction.executeRequest).toEqual({
     operation: 'execute',
     runId: f.name,
+    expectedRevision: run.revision,
     actionId: firstReview.id,
     executorId: 'native-review-script',
   });
+  expect(reviewStatus.continuation.inputOptions[0].template).toEqual(
+    reviewStatus.pendingAction.executeRequest,
+  );
+  run = await f.dispatch(reviewStatus.pendingAction.executeRequest);
   expect((run.state as { phase: string }).phase).toBe('build');
   run = await f.submitBuilder(f.pending(run, 'build.builder'), 'approved\n', 'repair-builder');
   await f.native(['next', f.name]);

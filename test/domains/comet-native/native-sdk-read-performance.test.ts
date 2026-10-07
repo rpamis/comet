@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as yaml from 'yaml';
 
 import {
   defaultProjectConfig,
@@ -21,10 +22,24 @@ import { createNativeSdkStateStore } from '../../../domains/comet-native/native-
 import { nativeSdkCurrentCheckSummaries } from '../../../domains/comet-native/native-sdk-checks.js';
 import { listDiscoveredNativeStatusPage } from '../../../domains/comet-native/native-status-discovery.js';
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import * as sdkApplication from '../../../domains/comet-native/native-sdk-application.js';
+import {
+  inspectNativeSdkStatus,
+  projectNativeSdkStatus,
+} from '../../../domains/comet-native/native-sdk-status.js';
+import { nativeShowCommand } from '../../../domains/comet-native/native-show-command.js';
+import { nativeStatusCommand } from '../../../domains/comet-native/native-status-command.js';
+import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
+import { render } from '../../../domains/comet-native/native-cli-shared.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
   registerSdkChangeOwner,
 } from '../../../domains/workflow-contract/change-runtime-owner.js';
+
+vi.mock('yaml', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('yaml')>();
+  return { ...actual, parseDocument: vi.fn(actual.parseDocument) };
+});
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -82,6 +97,128 @@ async function preparedChange() {
 }
 
 describe('Native SDK read work budgets', () => {
+  it('loads one definition and returns the same guarded Shape decision from status, next, and show', async () => {
+    const { root, name } = await preparedChange();
+    const definitions = vi.spyOn(sdkApplication, 'defineNativeWorkflowApplication');
+    const status = await inspectNativeSdkStatus({ projectRoot: root, name });
+    expect(definitions).toHaveBeenCalledTimes(1);
+    definitions.mockClear();
+    const next = await advanceNativeSdkChange(root, name);
+    expect(definitions).toHaveBeenCalledTimes(1);
+    const show = await nativeShowCommand([name], root);
+    expect((next.data as typeof status).continuation).toEqual(status.continuation);
+    expect((show.data as typeof status).continuation).toEqual(status.continuation);
+    expect(status.continuation.commandAlternatives?.[0]).toMatchObject({
+      expectedAction: 'confirm-shape',
+      stateVersion: status.stateVersion,
+    });
+    const output = render(await nativeStatusCommand([name], root), false);
+    expect(output.stdout).toContain('NEXT:');
+    expect(output.stdout).toContain('RELAY TO USER:');
+  });
+
+  it('provides a directly claimable Builder template without another inspect or compat runner input', async () => {
+    const { root, name, runtime } = await preparedChange();
+    const before = await inspectNativeSdkRun(root, name);
+    await advanceNativeSdkChange(root, name, {
+      expectedAction: 'confirm-shape',
+      expectedStateVersion: before.state.state_version,
+      summary: 'Confirm this fixture Shape.',
+    });
+    const status = await inspectNativeSdkStatus({ projectRoot: root, name });
+    const pending = status.pendingAction!;
+    expect(pending).toMatchObject({ stepId: 'build.builder', type: 'handoff' });
+    expect(status.continuation.commandArgs).toEqual([
+      'comet',
+      'runtime',
+      'dispatch',
+      '--application',
+      'native',
+      '--request',
+      '<request-json-file>',
+    ]);
+    const request = pending.claimRequest!;
+    expect(status.continuation.inputOptions[0].template).toEqual(request);
+    const { operation, ...claim } = request;
+    expect(operation).toBe('claim');
+    const claimed = await runtime.claim({
+      ...claim,
+      sessionId: 'budget-builder-session',
+      claimToken: 'budget-builder-token',
+      context: { requestId: 'budget-builder-claim', projectRoot: root },
+    });
+    expect(claimed.actions.find((action) => action.id === pending.id)?.status).toBe('running');
+    const waiting = await inspectNativeSdkStatus({ projectRoot: root, name });
+    expect(waiting.continuation.commandArgs).toBeNull();
+    expect(waiting.pendingAction).toBeUndefined();
+    expect(waiting.continuation.userCommunication.agentInstruction).toContain(
+      'original claimed task',
+    );
+    await expect(
+      runtime.claim({
+        ...claim,
+        sessionId: 'second-session',
+        claimToken: 'second-token',
+        context: { requestId: 'stale-claim', projectRoot: root },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('bounds settled history without hiding older unfinished work and exposes complete details', async () => {
+    const { root, name } = await preparedChange();
+    const inspection = await inspectNativeSdkRun(root, name);
+    const action = inspection.run.actions[0];
+    const wait = inspection.run.waits[0];
+    // 只测试投影，不把构造的历史写入 Runtime 或伪造状态推进。
+    const run = {
+      ...inspection.run,
+      actions: [
+        { ...action, id: 'older-running', status: 'running' as const },
+        ...Array.from({ length: 1000 }, (_, index) => ({ ...action, id: `settled-${index}` })),
+      ],
+      waits: [
+        wait,
+        ...Array.from({ length: 1000 }, (_, index) => ({
+          ...wait,
+          id: `resolved-${index}`,
+          status: 'resolved' as const,
+        })),
+      ],
+    };
+    const compact = await projectNativeSdkStatus(
+      { projectRoot: root, name },
+      { ...inspection, run },
+    );
+    const details = await projectNativeSdkStatus(
+      { projectRoot: root, name, details: true },
+      { ...inspection, run },
+    );
+    expect(compact.run.actions).toHaveLength(13);
+    expect(compact.run.waits).toHaveLength(13);
+    expect(compact.run.actions[0].id).toBe('older-running');
+    expect(compact.run.waits[0].id).toBe(wait.id);
+    expect(compact.run.history).toMatchObject({
+      actions: { total: 1001, omitted: 988 },
+      waits: { total: 1001, omitted: 988 },
+    });
+    expect(details.run.actions).toHaveLength(1001);
+    expect(details.run.waits).toHaveLength(1001);
+    expect(details.run.history.actions.omitted).toBe(0);
+    expect(details.details?.state).toEqual(inspection.state);
+    expect(Buffer.byteLength(JSON.stringify(compact))).toBeLessThan(
+      Buffer.byteLength(JSON.stringify(details)) / 10,
+    );
+  });
+
+  it('rejects unsupported Archive arguments before inspecting or advancing an SDK Run', async () => {
+    const { root, name } = await preparedChange();
+    const before = await inspectNativeSdkRun(root, name);
+    await expect(nativeArchiveCommand([name, '--unknown-option'], root)).rejects.toThrow(
+      'Unexpected argument',
+    );
+    expect((await inspectNativeSdkRun(root, name)).run.revision).toBe(before.run.revision);
+  });
+
   it('reads a stable next state once and leaves its projection files untouched', async () => {
     const { root, name, stateFile, markerFile } = await preparedChange();
     const before = await inspectNativeSdkRun(root, name);
@@ -134,13 +271,32 @@ describe('Native SDK read work budgets', () => {
 
   it('still detects external state edits and duplicate YAML keys on every read', async () => {
     const { root, name, stateFile } = await preparedChange();
+    const store = createNativeSdkStateStore(root);
+    await store.read(name);
     const source = await fs.readFile(stateFile, 'utf8');
     await fs.writeFile(stateFile, source.replace(/^language: en$/mu, 'language: zh-CN'));
-    await expect(createNativeSdkStateStore(root).read(name)).rejects.toThrow(
-      /differs from SDK Run/u,
-    );
+    await expect(store.read(name)).rejects.toThrow(/differs from SDK Run/u);
     await fs.writeFile(stateFile, `${source}\nlanguage: en\n`);
-    await expect(createNativeSdkStateStore(root).read(name)).rejects.toThrow(/invalid YAML/u);
+    await expect(store.read(name)).rejects.toThrow(/invalid YAML/u);
+  });
+
+  it('reuses only byte-identical parsed state inside one store while rereading every file', async () => {
+    const { root, name, stateFile } = await preparedChange();
+    const store = createNativeSdkStateStore(root);
+    const parse = vi.mocked(yaml.parseDocument);
+    const reads = vi.spyOn(fs, 'readFile');
+    const first = await store.read(name);
+    const source = await fs.readFile(stateFile, 'utf8');
+    const projectionParses = () => parse.mock.calls.filter(([text]) => text === source).length;
+    expect(projectionParses()).toBe(1);
+    const original = structuredClone(first!);
+    (first!.state as { language: string }).language = 'zh-CN';
+    reads.mockClear();
+    expect(await store.read(name)).toEqual(original);
+    expect(projectionParses()).toBe(1);
+    expect(reads.mock.calls.filter(([file]) => String(file) === stateFile)).toHaveLength(1);
+    await createNativeSdkStateStore(root).read(name);
+    expect(projectionParses()).toBe(2);
   });
 
   it('enumerates SDK owners once when discovering an otherwise unconfigured workspace', async () => {

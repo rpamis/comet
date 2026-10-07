@@ -2,6 +2,7 @@ import { Command, Option } from 'commander';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { COMET_TAGLINE } from './comet-banner.js';
 import { registerRuntimeCommand, reportRuntimeCliFailure } from './runtime-command.js';
+import { commandUsageForError, configureCommandUsageErrors } from './command-usage.js';
 
 // Command handlers are imported lazily inside each `.action()` so that running
 // `comet status` does not load the dashboard/eval/creator/bundle modules (and
@@ -800,7 +801,7 @@ if (requestedArgs.includes('creator')) {
 
   creator
     .command('status <name>')
-    .description('Show validation readiness and next action for one Skill Creator candidate')
+    .description('Read the current Creator Run, pending Actions, Waits, and evidence')
     .option('--project <dir>', 'Project root', '.')
     .option('--json', 'Output as JSON')
     .action(async (name, options) => {
@@ -810,7 +811,7 @@ if (requestedArgs.includes('creator')) {
 
   creator
     .command('next <name>')
-    .description('Print the single recommended next user step')
+    .description('Advance local Creator steps until blocked by a host Action or user decision')
     .option('--project <dir>', 'Project root', '.')
     .option('--json', 'Output as JSON')
     .action(async (name, options) => {
@@ -1060,6 +1061,8 @@ function classicGroupArgs(argv: readonly string[]): string[] | null {
 }
 
 async function runCli(): Promise<void> {
+  if (process.argv.includes('--json') || runtimeCommandRequested)
+    configureCommandUsageErrors(program);
   try {
     // Check owns every argument after --, including flags Commander would consume.
     const raw = process.argv.slice(process.argv[2] === '--' ? 3 : 2);
@@ -1103,11 +1106,13 @@ async function runCli(): Promise<void> {
     const cancelled = error instanceof Error && error.name === 'ExitPromptError';
     const message = cancelled ? 'Command cancelled by user' : errorMessage(error);
     if (process.argv.includes('--json')) {
+      const usage = commandUsageForError(error);
       console.log(
         JSON.stringify(
           {
             status: cancelled ? 'cancelled' : 'failed',
             error: message,
+            ...(usage ? { usage } : {}),
           },
           null,
           2,

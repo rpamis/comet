@@ -1,13 +1,6 @@
 import path from 'path';
 import { promises as fs } from 'node:fs';
-import {
-  createCreatorRuntime,
-  creatorSummary,
-  listCreatorRuns,
-} from '../../domains/workflow-creation/index.js';
 import type { WorkflowRuntime } from '../../domains/engine/runtime.js';
-import { discoverBundleCandidates } from '../../domains/bundle/candidates.js';
-import { readSkillPreferences } from '../../domains/bundle/preferences.js';
 
 export interface CreatorCommandOptions {
   project?: string;
@@ -19,6 +12,7 @@ function projectRoot(options: CreatorCommandOptions): string {
 }
 
 export async function creatorListCommand(options: CreatorCommandOptions = {}): Promise<void> {
+  const { listCreatorRuns } = await import('../../domains/workflow-creation/index.js');
   console.log(JSON.stringify(await listCreatorRuns(projectRoot(options)), null, 2));
 }
 
@@ -26,6 +20,8 @@ export async function creatorStatusCommand(
   name: string,
   options: CreatorCommandOptions = {},
 ): Promise<void> {
+  const { createCreatorRuntime, creatorSummary } =
+    await import('../../domains/workflow-creation/index.js');
   const run = await createCreatorRuntime(projectRoot(options)).inspect(name);
   console.log(JSON.stringify(creatorSummary(run), null, 2));
 }
@@ -34,6 +30,8 @@ export async function creatorNextCommand(
   name: string,
   options: CreatorCommandOptions = {},
 ): Promise<void> {
+  const { createCreatorRuntime, creatorSummary } =
+    await import('../../domains/workflow-creation/index.js');
   const runtime = createCreatorRuntime(projectRoot(options));
   const progress = await runtime.runUntilBlocked({ runId: name, executorId: 'creator-local' });
   console.log(
@@ -49,7 +47,11 @@ export async function creatorGuideCommand(_options: CreatorCommandOptions = {}):
           '描述目标后启动创作；原Run ID用于继续。先读取真实Skill并提出具体方案，用户确认后编译，安装预览单独确认。',
         start:
           'comet creator start <name> --goal <自然语言目标> --install-target <项目内相对目录> --host codex|claude-code --json',
+        inspect: 'comet creator status <name> --json',
         resume: 'comet creator next <name> --json',
+        dispatch: 'comet creator dispatch <name> --request <json-file> --json',
+        continuation:
+          'status只读当前Run；next执行本地步骤直到需要宿主Action或用户决定。dispatch使用当前Run的revision和Action或Wait身份，不能复用旧请求。',
         supported: ['Native新增步骤', 'Classic full/hotfix/tweak编排', '独立SDK流程与报告审批样板'],
         limits: ['不静默迁移旧格式', '真实宿主和模型验收另行记录', '活动Run与依赖漂移保留原现场'],
       },
@@ -63,6 +65,8 @@ export async function creatorStartCommand(
   name: string,
   options: CreatorCommandOptions & { goal: string; installTarget: string; host: string },
 ): Promise<void> {
+  const { createCreatorRuntime, creatorSummary } =
+    await import('../../domains/workflow-creation/index.js');
   const runtime = createCreatorRuntime(projectRoot(options));
   const run = await runtime.start({
     runId: name,
@@ -80,6 +84,8 @@ export async function creatorDispatchCommand(
   const request = JSON.parse(await fs.readFile(path.resolve(options.request), 'utf8'));
   if (!request || typeof request !== 'object' || Array.isArray(request) || request.runId !== name)
     throw new Error('请求必须属于当前Creator Run');
+  const { createCreatorRuntime, creatorSummary } =
+    await import('../../domains/workflow-creation/index.js');
   const runtime = createCreatorRuntime(projectRoot(options));
   const operations = {
     claim: runtime.claim,
@@ -123,6 +129,10 @@ export async function creatorDispatchCommand(
 }
 
 export async function creatorCandidatesCommand(options: CreatorCommandOptions = {}): Promise<void> {
+  const [{ discoverBundleCandidates }, { readSkillPreferences }] = await Promise.all([
+    import('../../domains/bundle/candidates.js'),
+    import('../../domains/bundle/preferences.js'),
+  ]);
   const root = projectRoot(options);
   const preferences = await readSkillPreferences(root);
   const candidates = await discoverBundleCandidates({ projectRoot: root, preferences });

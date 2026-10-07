@@ -15,6 +15,10 @@ import {
 } from '../../../domains/comet-native/native-config.js';
 import { nativeProjectPaths } from '../../../domains/comet-native/native-paths.js';
 import { createNativePortableChange } from '../../../domains/comet-native/native-portable-runtime.js';
+import * as nativeDiagnostics from '../../../domains/comet-native/native-diagnostics.js';
+import * as portableRuntime from '../../../domains/comet-native/native-portable-runtime.js';
+import * as protectedClassic from '../../../domains/comet-classic/classic-protected-path.js';
+import * as projectConfigReader from '../../../domains/workflow-contract/project-config-reader.js';
 import * as classicStore from '../../../domains/comet-classic/classic-store.js';
 
 const VALID_BRIEF = `# Outcome
@@ -101,6 +105,93 @@ describe('Comet project status', () => {
 
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('reuses the inspected config for entry resolution and observes later config edits', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    await fs.mkdir(path.join(projectRoot, 'openspec', 'changes'), { recursive: true });
+    const read = vi.spyOn(projectConfigReader, 'readWorkflowProjectConfig');
+    try {
+      expect((await inspectCometProjectStatus(projectRoot)).defaultEntry).toMatchObject({
+        workflow: 'native',
+      });
+      expect(read).toHaveBeenCalledTimes(1);
+      await writeClassicOnlyConfig(projectRoot);
+      expect((await inspectCometProjectStatus(projectRoot)).defaultEntry).toMatchObject({
+        workflow: 'classic',
+      });
+      expect(read.mock.calls.length).toBeGreaterThan(1);
+    } finally {
+      read.mockRestore();
+    }
+  });
+
+  it('bounds Native inspections and preserves discovery order', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
+    const names = Array.from(
+      { length: 24 },
+      (_, index) => `change-${String(index).padStart(2, '0')}`,
+    );
+    const listed = vi.spyOn(nativeDiagnostics, 'listNativeChangeNames').mockResolvedValue(names);
+    const portable = vi.spyOn(portableRuntime, 'isNativePortableChange').mockResolvedValue(false);
+    let active = 0;
+    let maximum = 0;
+    const inspected = vi
+      .spyOn(nativeDiagnostics, 'inspectNativeStatus')
+      .mockImplementation(async (_paths, name) => {
+        active++;
+        maximum = Math.max(maximum, active);
+        await new Promise((resolve) => setTimeout(resolve, name.endsWith('0') ? 10 : 1));
+        active--;
+        return { name } as Awaited<ReturnType<typeof nativeDiagnostics.inspectNativeStatus>>;
+      });
+    try {
+      const status = await inspectCometProjectStatus(projectRoot);
+      expect(status.workflows.native.changes.map((change) => change.name)).toEqual(names);
+      expect(maximum).toBeGreaterThan(1);
+      expect(maximum).toBeLessThanOrEqual(8);
+    } finally {
+      listed.mockRestore();
+      portable.mockRestore();
+      inspected.mockRestore();
+    }
+  });
+
+  it('inspects Classic changes concurrently while retaining stable sorted output', async () => {
+    await writeClassicOnlyConfig(projectRoot);
+    const names = Array.from(
+      { length: 20 },
+      (_, index) => `change-${String(index).padStart(2, '0')}`,
+    );
+    for (const name of names) {
+      const directory = path.join(projectRoot, 'openspec', 'changes', name);
+      await fs.mkdir(directory, { recursive: true });
+      await fs.writeFile(path.join(directory, 'tasks.md'), '- [ ] task\n');
+    }
+    const original = protectedClassic.readClassicProjectFile;
+    let active = 0;
+    let maximum = 0;
+    const read = vi
+      .spyOn(protectedClassic, 'readClassicProjectFile')
+      .mockImplementation(async (...args) => {
+        if (!String(args[1]).endsWith('tasks.md')) return original(...args);
+        active++;
+        maximum = Math.max(maximum, active);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          return await original(...args);
+        } finally {
+          active--;
+        }
+      });
+    try {
+      const status = await inspectCometProjectStatus(projectRoot);
+      expect(status.unmanagedOpenSpec.map((change) => change.name)).toEqual(names);
+      expect(maximum).toBeGreaterThan(1);
+      expect(maximum).toBeLessThanOrEqual(8);
+    } finally {
+      read.mockRestore();
+    }
   });
 
   it('partitions configured Native changes under a versioned status contract', async () => {

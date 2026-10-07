@@ -34,6 +34,67 @@ describe('output envelope contract', () => {
     expect(formatCliOutputEnvelope({ summary: 'Done.' })).toBe('Done.\n');
   });
 
+  it('projects Classic SDK nextAction and current Run identity without copying the Run payload', () => {
+    const nextAction = {
+      kind: 'action',
+      actionId: 'current-action',
+      attempt: 2,
+      inputHash: 'current-input',
+      stepId: 'full.build.execute',
+    };
+    expect(
+      projectCliAgentObservation({
+        phase: 'build',
+        run: {
+          id: 'change',
+          revision: 17,
+          status: 'running',
+          actions: [{ id: 'large-action-payload' }],
+          evidenceWaits: [{ artifact: 'large-evidence-payload' }],
+        },
+        nextAction,
+      }),
+    ).toEqual({
+      phase: 'build',
+      status: 'running',
+      stateVersion: null,
+      workspace: { cwd: null },
+      continuation: { ...nextAction, cwd: null },
+      run: { id: 'change', revision: 17, status: 'running' },
+    });
+  });
+
+  it('preserves explicit continuation, workflow state version, and prepared workspace precedence', () => {
+    const result = projectCliAgentObservation(
+      {
+        state: { phase: 'verify', status: 'active', stateVersion: 3 },
+        run: { id: 'change', revision: 19, status: 'waiting' },
+        continuation: { commandArgs: ['comet', 'native', 'next', 'change'], cwd: '/hint' },
+        nextAction: { kind: 'must-not-replace-continuation' },
+        preparation: { projectRoot: '/prepared' },
+      },
+      '/invocation',
+    );
+    expect(result).toMatchObject({
+      phase: 'verify',
+      status: 'active',
+      stateVersion: 3,
+      run: { revision: 19, status: 'waiting' },
+      workspace: { cwd: '/prepared' },
+      continuation: { commandArgs: ['comet', 'native', 'next', 'change'], cwd: '/prepared' },
+    });
+    expect(result.continuation).not.toHaveProperty('kind');
+  });
+
+  it('uses the supplied continuation cwd when there is no prepared or invocation cwd', () => {
+    expect(
+      projectCliAgentObservation({ entry: { nextAction: { kind: 'decision', cwd: '/selected' } } }),
+    ).toMatchObject({
+      workspace: { cwd: '/selected' },
+      continuation: { kind: 'decision', cwd: '/selected' },
+    });
+  });
+
   it('renders the NEXT marker before the relay block', () => {
     const text = formatCliOutputEnvelope({
       summary: 'Verification paused.',

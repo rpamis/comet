@@ -37,6 +37,8 @@ export interface CliAgentObservation {
   stateVersion: number | null;
   workspace: { cwd: string | null };
   continuation: Record<string, unknown> | null;
+  /** SDK identity and revision stay separate from a workflow's state version. */
+  run?: { id: string | null; revision: number | null; status: string | null };
 }
 
 /** A bounded view of existing runtime facts, never a second state machine. */
@@ -47,20 +49,33 @@ export function projectCliAgentObservation(data: unknown, cwd?: string): CliAgen
       : {};
   const root = record(data);
   const entry = record(root.entry);
+  const run = record(root.run ?? entry.run);
   const state = record(root.state ?? entry.state ?? root);
   const workspace = record(root.preparation ?? root.workspace ?? entry.workspace);
-  const continuation = record(root.continuation ?? entry.continuation);
+  const continuation = record(
+    root.continuation ?? entry.continuation ?? root.nextAction ?? entry.nextAction,
+  );
   const executionCwd =
     typeof workspace.projectRoot === 'string' && workspace.projectRoot !== '.'
       ? workspace.projectRoot
-      : (cwd ?? null);
+      : (cwd ?? (typeof continuation.cwd === 'string' ? continuation.cwd : null));
   const version = state.stateVersion ?? state.state_version;
+  const status = state.status ?? run.status;
   return {
     phase: typeof state.phase === 'string' ? state.phase : null,
-    status: typeof state.status === 'string' ? state.status : null,
+    status: typeof status === 'string' ? status : null,
     stateVersion: typeof version === 'number' ? version : null,
     workspace: { cwd: executionCwd },
     continuation: Object.keys(continuation).length ? { ...continuation, cwd: executionCwd } : null,
+    ...(Object.keys(run).length
+      ? {
+          run: {
+            id: typeof run.id === 'string' ? run.id : null,
+            revision: typeof run.revision === 'number' ? run.revision : null,
+            status: typeof run.status === 'string' ? run.status : null,
+          },
+        }
+      : {}),
   };
 }
 

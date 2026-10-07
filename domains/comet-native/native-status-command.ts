@@ -1,5 +1,5 @@
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
-import { nativeStatusSummaryLine } from './native-output-language.js';
+import { deriveNativeOutputEnvelope, nativeStatusSummaryLine } from './native-output-language.js';
 import { inspectNativeSdkStatus, type NativeSdkStatusProjection } from './native-sdk-status.js';
 import {
   inspectDiscoveredNativeStatus,
@@ -18,7 +18,7 @@ function sdkStatusResult(data: NativeSdkStatusProjection, executionCwd: string):
   return {
     ...success('status', data),
     executionCwd,
-    envelope: {
+    envelope: deriveNativeOutputEnvelope(data) ?? {
       summary: nativeStatusSummaryLine({
         name: data.name,
         phase: data.phase,

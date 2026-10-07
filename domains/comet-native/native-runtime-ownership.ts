@@ -296,7 +296,12 @@ export async function loadOwnedNativeSdkRuntime(
   if (id === 'native') {
     const defined = defineNativeWorkflowApplication();
     return {
-      runtime: createNativeSdkRuntime(projectRoot),
+      runtime: createRuntime({
+        ...defined,
+        store: createNativeSdkStateStore(projectRoot),
+        workflows: [defined.workflow],
+        transitionHandlers: [defined.transitionHandler],
+      }),
       executors: defined.executors,
       application: null,
     };
@@ -322,10 +327,15 @@ export async function loadOwnedNativeSdkRuntime(
 export async function inspectNativeSdkRun(
   projectRoot: string,
   name: string,
-): Promise<{ run: WorkflowRun; state: NativePortableState; artifactRootRef: string }> {
+): Promise<{
+  run: WorkflowRun;
+  state: NativePortableState;
+  artifactRootRef: string;
+  application: LoadedWorkflowApplication | null;
+}> {
   const owner = await readSdkChangeOwner(projectRoot, 'native', name);
   if (!owner) throw new Error(`Native change ${name} is not owned by an SDK Run`);
-  const { runtime } = await loadOwnedNativeSdkRuntime(projectRoot, name);
+  const { runtime, application } = await loadOwnedNativeSdkRuntime(projectRoot, name);
   const run = await runtime.inspect(owner.runId);
   if (
     run.workflow.id !== 'comet-native' ||
@@ -339,7 +349,7 @@ export async function inspectNativeSdkRun(
   }
   const state = parseNativePortableState(run.state);
   if (state.name !== name) throw new Error(`Native SDK Run ${name} has a different state name`);
-  return { run, state, artifactRootRef: run.input.artifactRootRef };
+  return { run, state, artifactRootRef: run.input.artifactRootRef, application };
 }
 
 export async function findNativeSdkWorkspace(

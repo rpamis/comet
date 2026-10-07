@@ -12,7 +12,8 @@ import { resolveClassicChangeDirectory } from './classic-paths.js';
 import { ensureClassicRuntimeRun } from './classic-runtime-run.js';
 import { resolveClassicChangeRuntimeOwner } from './classic-runtime-ownership.js';
 import { executeClassicSdkCommandCheck } from './classic-sdk-check.js';
-import { findClassicSdkWorkspace } from './classic-sdk-status.js';
+import { classicSdkNextAction, findClassicSdkWorkspace } from './classic-sdk-status.js';
+import type { ClassicState } from './classic-state.js';
 import {
   executeCommandCheck,
   latestCommandCheck,
@@ -112,6 +113,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
     ) {
       throw new Error('Classic SDK check recovery does not match the recorded command');
     }
+    let finished = checked;
     if (action?.status === 'succeeded') {
       const evidence = checked.evidenceWaits?.find(
         (candidate) =>
@@ -132,7 +134,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
         context: { requestId: randomUUID(), projectRoot: sdkWorkspace.projectRoot },
       };
       try {
-        await inspected.runtime.recordEvidence(submission);
+        finished = await inspected.runtime.recordEvidence(submission);
       } catch (error) {
         if (
           error instanceof RuntimeProtocolError &&
@@ -147,7 +149,12 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
     }
     return {
       exitCode: result.exitCode || (result.inputBefore === result.inputAfter ? 0 : 1),
-      data: result,
+      data: {
+        ...result,
+        phase: (finished.state as unknown as ClassicState).phase,
+        run: { id: finished.runId, revision: finished.revision, status: finished.status },
+        nextAction: classicSdkNextAction(finished),
+      },
       stdout: `Check ${scope}: exit=${result.exitCode}; tier=full; log=${result.receiptRef ?? 'unavailable'}\n`,
       ...(result.inputBefore !== result.inputAfter
         ? { stderr: 'Inputs changed during check; rerun after the workspace is stable.' }

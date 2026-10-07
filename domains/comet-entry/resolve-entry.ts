@@ -1,7 +1,7 @@
 import { discoverCachedNativeProject, readCachedProjectConfig } from './entry-reads.js';
 import type { CometEntryResolution, CometWorkflow } from './types.js';
 
-function configuredResolution(workflow: CometWorkflow): CometEntryResolution {
+export function configuredResolution(workflow: CometWorkflow): CometEntryResolution {
   return {
     workflow,
     skill: workflow === 'native' ? 'comet-native' : 'comet-classic',

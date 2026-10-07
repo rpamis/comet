@@ -131,6 +131,7 @@ export async function nativeArchiveCommand(
   ) {
     throw new NativeUsageError('--finish must be merge, push, pull-request, or keep');
   }
+  assertNoArguments(args);
   const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
   if (await readSdkChangeOwner(commandRoot, 'native', name)) {
     return archiveNativeSdkChange({

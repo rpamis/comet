@@ -2739,7 +2739,11 @@ describe('Classic workflow application through the public Runtime SDK', () => {
             ? await classicGuardCommand(['example', 'archive', '--apply'], options)
             : await classicArchiveCommand(['example'], options);
         expect(applied.exitCode, applied.stderr).toBe(0);
-        expect(applied.data).toMatchObject({ change: 'example', phase: 'archive' });
+        expect(applied.data).toMatchObject({
+          change: 'example',
+          phase: 'archive',
+          nextAction: { kind: 'action', stepId: 'full.archive.deliver' },
+        });
         // 保留 preflight 与 archive.execute 两个独立的新鲜性边界。
         expect(snapshots).toHaveBeenCalledTimes(2);
       } finally {

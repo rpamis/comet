@@ -261,6 +261,40 @@ describe('CLI help text', () => {
     expect(dispatchHelp.stdout).toContain('--request <path>');
   });
 
+  it('distinguishes read-only Creator inspection from advancing local steps', () => {
+    const statusHelp = runCli('creator', 'status', '--help');
+    const nextHelp = runCli('creator', 'next', '--help');
+    expect(statusHelp.status, statusHelp.stderr).toBe(0);
+    expect(nextHelp.status, nextHelp.stderr).toBe(0);
+    expect(statusHelp.stdout).toContain('Read the current Creator Run');
+    expect(nextHelp.stdout).toContain('Advance local Creator steps');
+    expect(nextHelp.stdout).not.toContain('Print the single recommended');
+  });
+
+  it('documents Runtime request shape and complete application or portable workflow calls', () => {
+    const help = runCli('runtime', 'dispatch', '--help');
+    expect(help.status, help.stderr).toBe(0);
+    expect(help.stdout).toContain('--application native --request request.json --project-root .');
+    expect(help.stdout).toContain('--application-file ./application.json --request request.json');
+    expect(help.stdout).toContain('--workflow workflow.json --root-dir .comet/runs');
+    expect(help.stdout).toContain('{"operation":"inspect","runId":"change-name"}');
+    expect(help.stdout).toContain('classic-full, classic-hotfix, classic-tweak');
+  });
+
+  it('returns all missing Creator inputs in one machine-readable response', () => {
+    const result = runCli('creator', 'start', '--json');
+    expect(result.status).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'failed',
+      usage: {
+        command: 'comet creator start [options] <name>',
+        requiredArguments: ['<name>'],
+        missingOptions: ['--goal <text>', '--install-target <directory>'],
+        helpCommand: 'comet creator start --help',
+      },
+    });
+  });
+
   it.each([
     ['propose', ['--file', 'plan.json']],
     ['init', ['--file', 'plan.json']],

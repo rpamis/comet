@@ -10,7 +10,7 @@ import {
   inspectProtectedProjectPath,
   readProtectedProjectFile,
 } from '../workflow-contract/protected-project-path.js';
-import { canonicalRuntimeJson } from './runtime-json.js';
+import { canonicalRuntimeJson, cloneRuntimeValue } from './runtime-json.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
 
 export interface RuntimeRecord {
@@ -42,34 +42,39 @@ function serializeNext<T extends RuntimeRecord>(
 ): string {
   assertRunId(runId);
   if (expectedRevision !== null) assertRevision(expectedRevision);
-  const serialized = canonicalRuntimeJson(next);
-  if (!next || typeof next !== 'object' || Array.isArray(next) || next.runId !== runId) {
+  const snapshot = cloneRuntimeValue(next) as unknown as T;
+  if (
+    !snapshot ||
+    typeof snapshot !== 'object' ||
+    Array.isArray(snapshot) ||
+    snapshot.runId !== runId
+  ) {
     throw new RuntimeProtocolError('STORE_INVALID_RUN_ID', 'next.runId 必须与目标 runId 一致');
   }
-  assertRevision(next.revision);
-  if (next.revision !== (expectedRevision ?? 0) + 1) {
+  assertRevision(snapshot.revision);
+  if (snapshot.revision !== (expectedRevision ?? 0) + 1) {
     throw new RuntimeProtocolError(
       'STORE_INVALID_REVISION',
       'next.revision 必须比预期 revision 增加 1',
     );
   }
-  return serialized;
+  return JSON.stringify(snapshot);
 }
 
 export function createMemoryRuntimeStore<T extends RuntimeRecord>(): RuntimeStore<T> {
-  const records = new Map<string, string>();
+  const records = new Map<string, { revision: number; serialized: string }>();
   return {
     async read(runId) {
       assertRunId(runId);
       const current = records.get(runId);
-      return current === undefined ? null : (JSON.parse(current) as T);
+      return current === undefined ? null : (JSON.parse(current.serialized) as T);
     },
     async compareAndSwap(runId, expectedRevision, next) {
       const serialized = serializeNext(runId, expectedRevision, next);
       const current = records.get(runId);
-      const revision = current === undefined ? null : (JSON.parse(current) as T).revision;
+      const revision = current?.revision ?? null;
       if (revision !== expectedRevision) return false;
-      records.set(runId, serialized);
+      records.set(runId, { revision: (expectedRevision ?? 0) + 1, serialized });
       return true;
     },
   };
@@ -184,7 +189,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
     read,
     async compareAndSwap(runId, expectedRevision, next) {
       const serialized = serializeNext(runId, expectedRevision, next);
-      const nextRevision = next.revision;
+      const nextRevision = (expectedRevision ?? 0) + 1;
       const current = await read(runId);
       if ((current?.revision ?? null) !== expectedRevision) return false;
       await ensureProtectedProjectDirectory(volumeRoot, rootRelative, rootOptions);

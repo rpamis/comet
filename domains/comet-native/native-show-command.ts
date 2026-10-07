@@ -25,6 +25,7 @@ import {
 import { nativeChangeArtifactPaths } from './native-paths.js';
 import { discoverNativeChangeProjectRoot } from './native-status-discovery.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { projectNativeSdkContinuation } from './native-sdk-continuation.js';
 import { inspectNativeSdkRun } from './native-runtime-ownership.js';
 import type { NativeProjectPaths } from './native-types.js';
 import type { NativePortableState } from './native-portable-types.js';
@@ -34,6 +35,7 @@ async function portableShowResult(
   state: NativePortableState,
   local: Awaited<ReturnType<typeof readNativePortableRuntime>>['local'],
   executionCwd: string,
+  sdk?: Awaited<ReturnType<typeof projectNativeSdkContinuation>>,
 ): Promise<DispatchResult> {
   const changeDir = nativePortableChangeDir(paths, state.name);
   const brief = await readNativeBoundedTextFile({
@@ -63,16 +65,22 @@ async function portableShowResult(
     artifacts: nativeChangeArtifactPaths(paths, state.name),
     brief: brief.text,
     proposedSpecs,
-    continuation: nativePortableContinuation(state, await inspectNativeChildren({ paths, state }), {
-      verifierExecutionRef: nativeVerifierExecutionRefForState(state, local),
-      ...(local
-        ? {
-            verificationCheckPlans: nativePortableCheckPlansFromLocal(
-              local,
-              local.workspace.projectRoot,
-            ),
-          }
-        : {}),
+    ...(sdk ?? {
+      continuation: nativePortableContinuation(
+        state,
+        await inspectNativeChildren({ paths, state }),
+        {
+          verifierExecutionRef: nativeVerifierExecutionRefForState(state, local),
+          ...(local
+            ? {
+                verificationCheckPlans: nativePortableCheckPlansFromLocal(
+                  local,
+                  local.workspace.projectRoot,
+                ),
+              }
+            : {}),
+        },
+      ),
     }),
   };
   return { ...success('show', payload), executionCwd };
@@ -87,8 +95,20 @@ export async function nativeShowCommand(
   const executionCwd = await discoverNativeChangeProjectRoot({ projectRoot, name });
   const { paths } = await configuredPaths(executionCwd);
   if (await readSdkChangeOwner(executionCwd, 'native', name)) {
-    const { state } = await inspectNativeSdkRun(executionCwd, name);
-    return portableShowResult(paths, state, null, executionCwd);
+    const { run, state, application } = await inspectNativeSdkRun(executionCwd, name);
+    return portableShowResult(
+      paths,
+      state,
+      null,
+      executionCwd,
+      await projectNativeSdkContinuation({
+        run,
+        state,
+        projectRoot: executionCwd,
+        applicationId: application?.identity.id,
+        skillExecutors: application?.implementation.executors,
+      }),
+    );
   }
   if (await isNativePortableChange(paths, name)) {
     const runtime = await readNativePortableRuntime({ paths, name });

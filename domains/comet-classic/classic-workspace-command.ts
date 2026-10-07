@@ -22,34 +22,38 @@ function option(args: string[], name: string): string | undefined {
   return value;
 }
 
-export const classicWorkspaceCommand: ClassicCommandHandler = withProjectContext(async (args) => {
-  const [action, name, ...rest] = args;
-  if (!action || !name) usage();
-  if (action === 'resolve') {
+export const classicWorkspaceCommand: ClassicCommandHandler = withProjectContext(
+  async (args, options) => {
+    const [action, name, ...rest] = args;
+    if (!action || !name) usage();
+    if (action === 'resolve') {
+      if (rest.length > 0) usage();
+      return classicWorkspaceCommandResult(
+        'resolve',
+        await resolveClassicWorkspace({ projectRoot: classicCommandProjectRoot(), name }),
+        options.json,
+      );
+    }
+    if (action !== 'prepare') usage();
+    const isolation = option(rest, '--isolation') as ClassicWorkspaceIsolation | undefined;
+    if (!isolation || !['current', 'branch', 'worktree'].includes(isolation)) {
+      throw new Error('--isolation must be current, branch, or worktree');
+    }
+    const changeBranch = option(rest, '--change-branch');
+    const targetBranch = option(rest, '--target-branch');
+    const worktreePath = option(rest, '--worktree-path');
     if (rest.length > 0) usage();
     return classicWorkspaceCommandResult(
-      'resolve',
-      await resolveClassicWorkspace({ projectRoot: classicCommandProjectRoot(), name }),
+      'prepare',
+      await prepareClassicWorkspace({
+        projectRoot: classicCommandProjectRoot(),
+        name,
+        isolation,
+        ...(changeBranch ? { changeBranch } : {}),
+        ...(targetBranch ? { targetBranch } : {}),
+        ...(worktreePath ? { worktreePath } : {}),
+      }),
+      options.json,
     );
-  }
-  if (action !== 'prepare') usage();
-  const isolation = option(rest, '--isolation') as ClassicWorkspaceIsolation | undefined;
-  if (!isolation || !['current', 'branch', 'worktree'].includes(isolation)) {
-    throw new Error('--isolation must be current, branch, or worktree');
-  }
-  const changeBranch = option(rest, '--change-branch');
-  const targetBranch = option(rest, '--target-branch');
-  const worktreePath = option(rest, '--worktree-path');
-  if (rest.length > 0) usage();
-  return classicWorkspaceCommandResult(
-    'prepare',
-    await prepareClassicWorkspace({
-      projectRoot: classicCommandProjectRoot(),
-      name,
-      isolation,
-      ...(changeBranch ? { changeBranch } : {}),
-      ...(targetBranch ? { targetBranch } : {}),
-      ...(worktreePath ? { worktreePath } : {}),
-    }),
-  );
-});
+  },
+);

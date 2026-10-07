@@ -69,6 +69,27 @@ describe('memory RuntimeStore', () => {
     expect((await store.read('run-1'))!.revision).toBe(1);
   });
 
+  it('checks CAS revisions without reparsing a previously serialized large snapshot', async () => {
+    const store = createMemoryRuntimeStore<RecordValue>();
+    const first = { runId: 'large-run', revision: 1, state: { message: 'x'.repeat(1024 * 1024) } };
+    await store.compareAndSwap(first.runId, null, first);
+    const parse = vi.spyOn(JSON, 'parse');
+    let committed: boolean;
+    let stale: boolean;
+    let parses: number;
+    try {
+      committed = await store.compareAndSwap(first.runId, 1, { ...first, revision: 2 });
+      stale = await store.compareAndSwap(first.runId, 1, { ...first, revision: 2 });
+      parses = parse.mock.calls.length;
+    } finally {
+      parse.mockRestore();
+    }
+    expect(committed!).toBe(true);
+    expect(stale!).toBe(false);
+    expect(parses!).toBe(0);
+    expect(await store.read(first.runId)).toEqual({ ...first, revision: 2 });
+  });
+
   it('uses canonical JSON without invoking inherited serialization hooks', async () => {
     const store = createMemoryRuntimeStore<RecordValue & { values: number[] }>();
     class CustomArray extends Array<number> {
@@ -98,6 +119,25 @@ describe('memory RuntimeStore', () => {
     }
     await expect(store.compareAndSwap('run-1', 0, first)).rejects.toThrow(/revision/i);
     expect(await store.read('run-1')).toBeNull();
+  });
+
+  it('validates the serialized identity and revision instead of later proxy property reads', async () => {
+    const store = createMemoryRuntimeStore<RecordValue>();
+    for (const field of ['runId', 'revision'] as const) {
+      const first = { runId: 'run-1', revision: 1, state: { message: 'ready' } };
+      const next = new Proxy(
+        { ...first, [field]: field === 'runId' ? 'other-run' : 99 },
+        {
+          get(target, key, receiver) {
+            return key === field ? first[field] : Reflect.get(target, key, receiver);
+          },
+        },
+      );
+      await expect(store.compareAndSwap('run-1', null, next)).rejects.toThrow(
+        /STORE_INVALID_RUN_ID|STORE_INVALID_REVISION/,
+      );
+      expect(await store.read('run-1')).toBeNull();
+    }
   });
 });
 

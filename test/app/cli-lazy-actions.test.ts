@@ -459,4 +459,53 @@ describe('CLI lazy command actions', () => {
     await runAction(['bundle', 'publish', 'example', '--platform', 'codex'], bundlePublishCommand);
     await runAction(['bundle', 'distribute', 'example'], bundleDistributeCommand);
   });
+
+  it.each([
+    {
+      args: ['creator', 'start', '--json'],
+      command: 'comet creator start [options] <name>',
+      requiredArguments: ['<name>'],
+      missingOptions: ['--goal <text>', '--install-target <directory>'],
+    },
+    {
+      args: ['creator', 'start', 'weekly', '--goal', 'weekly report', '--json'],
+      command: 'comet creator start [options] <name>',
+      requiredArguments: ['<name>'],
+      missingOptions: ['--install-target <directory>'],
+    },
+    {
+      args: ['application', 'export', '--json'],
+      command: 'comet application export [options] <file> <destination>',
+      requiredArguments: ['<file>', '<destination>'],
+      missingOptions: [],
+    },
+    {
+      args: ['bundle', 'compile', '--json'],
+      command: 'comet bundle compile [options] <name>',
+      requiredArguments: ['<name>'],
+      missingOptions: ['--platform <id>'],
+    },
+  ])('returns all required inputs on the first failure for $args', async (expected) => {
+    const output: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((value) => output.push(String(value)));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    process.argv = [process.execPath, cliPath, ...expected.args];
+    vi.resetModules();
+    await import('../../app/cli/index.js');
+    expect(process.exitCode).toBe(1);
+    expect(output).toHaveLength(1);
+    expect(JSON.parse(output[0])).toMatchObject({
+      status: 'failed',
+      usage: {
+        command: expected.command,
+        requiredArguments: expected.requiredArguments,
+        missingOptions: expected.missingOptions,
+        helpCommand: `${expected.args.slice(0, 2).join(' ')} --help`.replace(/^/, 'comet '),
+      },
+    });
+    expect(creatorStartCommand).not.toHaveBeenCalled();
+    expect(applicationExportCommand).not.toHaveBeenCalled();
+    expect(bundleCompileCommand).not.toHaveBeenCalled();
+  });
 });

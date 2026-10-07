@@ -11,7 +11,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime;
 export function creatorSummary(run: WorkflowRun): {
     runId: string;
     revision: number;
-    status: "running" | "waiting" | "completed" | "failed" | "cancelled";
+    status: "running" | "failed" | "cancelled" | "waiting" | "completed";
     goal: unknown;
     actions: RuntimeAction[];
     waits: RuntimeWait[];
@@ -34,7 +34,7 @@ export function creatorSummary(run: WorkflowRun): {
 export function listCreatorRuns(projectRoot: string): Promise<{
     runId: string;
     revision: number;
-    status: "running" | "waiting" | "completed" | "failed" | "cancelled";
+    status: "running" | "failed" | "cancelled" | "waiting" | "completed";
     goal: unknown;
     actions: RuntimeAction[];
     waits: RuntimeWait[];

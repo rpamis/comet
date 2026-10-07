@@ -195,6 +195,23 @@ export function createNativeSdkStateStore(
       rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'native'),
     });
   const projectionDir = '.comet/runtime/state-projections/native';
+  // 仅复用本 store 实例中已经校验过的相同文本；每次仍重新读取完整文件。
+  // 不信任 mtime 或磁盘 marker，外部编辑及重复 YAML key 仍走完整解析。
+  let parsedProjection: { file: string; source: string; document: Record<string, unknown> } | null =
+    null;
+
+  function parseProjection(file: string, source: string): Record<string, unknown> {
+    if (parsedProjection?.file === file && parsedProjection.source === source) {
+      return parsedProjection.document;
+    }
+    const document = parseDocument(source, { uniqueKeys: true });
+    if (document.errors.length > 0) {
+      throw new Error(`Native portable state is invalid YAML: ${document.errors[0].message}`);
+    }
+    const value = document.toJS({ mapAsMap: false }) as Record<string, unknown>;
+    parsedProjection = { file, source, document: value };
+    return value;
+  }
 
   async function recoverFromPortableFile(runId: string): Promise<WorkflowRun | null> {
     const config = await readProjectConfig(projectRoot);
@@ -295,11 +312,7 @@ export function createNativeSdkStateStore(
         let currentDocument: Record<string, unknown> | null = null;
         try {
           currentSource = await fs.readFile(file, 'utf8');
-          const document = parseDocument(currentSource, { uniqueKeys: true });
-          if (document.errors.length > 0) {
-            throw new Error(`Native portable state is invalid YAML: ${document.errors[0].message}`);
-          }
-          currentDocument = document.toJS({ mapAsMap: false }) as Record<string, unknown>;
+          currentDocument = parseProjection(file, currentSource);
           current = parseNativePortableState(currentDocument);
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;

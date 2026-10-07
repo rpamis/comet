@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { Ajv } from 'ajv';
+import { Ajv, type ValidateFunction } from 'ajv';
 import {
   defineWorkflow,
   hashRuntimeValue,
@@ -258,22 +258,31 @@ const planSchema = {
   },
 };
 
+// 两种私有固定 Schema 按需编译；每次仍验证当前方案，互不共享必填流程的约束。
+const planValidators = new Map<boolean, { ajv: Ajv; validate: ValidateFunction }>();
+
 function parsePlan(value: unknown, requireWorkflows = true): WorkflowApplicationPlan {
   try {
     const parsed =
       typeof value === 'string' ? JSON.parse(value) : JSON.parse(canonicalRuntimeJson(value));
-    const ajv = new Ajv({ strict: true, allErrors: true });
-    const validate = ajv.compile(
-      requireWorkflows
-        ? planSchema
-        : {
-            ...planSchema,
-            properties: {
-              ...planSchema.properties,
-              workflows: { ...planSchema.properties.workflows, minItems: 0 },
+    let compiled = planValidators.get(requireWorkflows);
+    if (!compiled) {
+      const ajv = new Ajv({ strict: true, allErrors: true });
+      const validate = ajv.compile(
+        requireWorkflows
+          ? planSchema
+          : {
+              ...planSchema,
+              properties: {
+                ...planSchema.properties,
+                workflows: { ...planSchema.properties.workflows, minItems: 0 },
+              },
             },
-          },
-    );
+      );
+      compiled = { ajv, validate };
+      planValidators.set(requireWorkflows, compiled);
+    }
+    const { ajv, validate } = compiled;
     if (!validate(parsed)) applicationError(`组合方案结构无效：${ajv.errorsText(validate.errors)}`);
     return parsed as unknown as WorkflowApplicationPlan;
   } catch (error) {

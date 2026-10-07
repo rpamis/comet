@@ -788,7 +788,15 @@ Run focused Native checks.
           },
         },
       });
-      expect(builderNext.data).not.toHaveProperty('continuation');
+      expect(builderNext.data).toHaveProperty('continuation.commandArgs', [
+        'comet',
+        'runtime',
+        'dispatch',
+        '--application',
+        'native',
+        '--request',
+        '<request-json-file>',
+      ]);
 
       const { run } = await inspectNativeSdkRun(projectRoot, 'sdk-confirm');
       let builder = run.actions.at(-1)!;
@@ -1062,6 +1070,35 @@ Run focused Native checks.
       const reportRun = (await inspectNativeSdkRun(projectRoot, 'sdk-confirm')).run;
       const reportWait = reportRun.waits.at(-1)!;
       const verifyStateVersion = (reportRun.state as NativePortableState).state_version;
+      const reportedContinuation = reported.data!.continuation as {
+        commandAlternatives: Array<{ name: string; commandArgs: string[] }>;
+      };
+      const reportedAccept = reportedContinuation.commandAlternatives.find(
+        (alternative) => alternative.name === 'accept-result',
+      )!;
+      expect(reportedAccept.commandArgs).toEqual([
+        'comet',
+        'native',
+        'next',
+        'sdk-confirm',
+        '--accept-result',
+        '--summary',
+        '<summary>',
+        '--proposal-hash',
+        reportWait.proposalHash,
+        '--expected-state-version',
+        String(verifyStateVersion),
+        '--expected-action',
+        'accept-result',
+      ]);
+      const statusAtDecision = json(
+        await runNativeCli(['status', 'sdk-confirm', '--json', ...projectArgs()]),
+      );
+      const showAtDecision = json(
+        await runNativeCli(['show', 'sdk-confirm', '--json', ...projectArgs()]),
+      );
+      expect(statusAtDecision.data!.continuation).toEqual(reportedContinuation);
+      expect(showAtDecision.data!.continuation).toEqual(reportedContinuation);
       const decisionArgs = [
         'next',
         'sdk-confirm',
@@ -1085,12 +1122,27 @@ Run focused Native checks.
         status: 'pending',
       });
       const accepted = json(
-        await runNativeCli([...decisionArgs, reportWait.proposalHash, '--json', ...projectArgs()]),
+        await runNativeCli([
+          ...reportedAccept.commandArgs
+            .slice(2)
+            .map((argument) =>
+              argument === '<summary>'
+                ? 'User accepted the independently verified result.'
+                : argument,
+            ),
+          '--json',
+          ...projectArgs(),
+        ]),
       );
       expect(accepted, accepted.error?.message).toMatchObject({
         exitCode: 0,
         data: {
           phase: 'archive',
+          continuation: {
+            disposition: 'continue',
+            requiresUserDecision: false,
+            commandArgs: ['comet', 'native', 'archive', 'sdk-confirm'],
+          },
           run: {
             actions: expect.arrayContaining([
               expect.objectContaining({ stepId: 'verify.revalidate', status: 'succeeded' }),

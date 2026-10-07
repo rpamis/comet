@@ -297,7 +297,11 @@ describe('Classic public argument safety', () => {
       options(),
     );
     expect(applied.exitCode, applied.stderr).toBe(0);
-    expect(applied.data).toMatchObject({ change: name, phase: 'design' });
+    expect(applied.data).toMatchObject({
+      change: name,
+      phase: 'design',
+      nextAction: { kind: 'action', stepId: 'full.design.handoff' },
+    });
     const phase = await classicStateCommand(['get', name, 'phase'], options());
     expect(phase.stdout).toBe('design\n');
     await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
@@ -333,6 +337,15 @@ describe('Classic public argument safety', () => {
       { ...options(), json: true },
     );
     expect(proposed.exitCode, proposed.stderr).toBe(0);
+    expect(proposed.data).toMatchObject({
+      nextAction: {
+        kind: 'decision',
+        stepId: 'full.design.confirm',
+        waitId: expect.any(String),
+        proposalHash: (proposed.data as { wait: { proposalHash: string } }).wait.proposalHash,
+        choices: expect.any(Array),
+      },
+    });
     const next = await classicStateCommand(['next', name], { ...options(), json: true });
     expect(next.data).toMatchObject({
       phase: 'design',
@@ -466,7 +479,11 @@ describe('Classic public argument safety', () => {
       options(),
     );
     expect(applied.exitCode, applied.stderr).toBe(0);
-    expect(applied.data).toMatchObject({ change: name, phase: 'build' });
+    expect(applied.data).toMatchObject({
+      change: name,
+      phase: 'build',
+      nextAction: { kind: 'action', stepId: 'full.build.configure' },
+    });
     expect((await classicStateCommand(['get', name, 'phase'], options())).stdout).toBe('build\n');
     await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
   });
@@ -628,6 +645,7 @@ describe('Classic public argument safety', () => {
     expect(approved.exitCode, approved.stderr).toBe(0);
     expect(approved.data).toMatchObject({
       phase: 'build',
+      nextAction: { kind: 'action', stepId: 'full.build.plan', actionId: expect.any(String) },
       configuration: {
         buildMode: 'autonomous',
         tddMode: 'tdd',
@@ -807,6 +825,11 @@ describe('Classic public argument safety', () => {
       options(),
     );
     expect(checked.exitCode, checked.stderr).toBe(0);
+    expect(checked.data).toMatchObject({
+      phase: 'verify',
+      run: { id: name, revision: expect.any(Number) },
+      nextAction: { kind: 'action', stepId: 'full.verify.run', actionId: expect.any(String) },
+    });
     expect(
       (await classicStateCommand(['next', name], { ...options(), json: true })).data,
     ).toMatchObject({
@@ -1000,7 +1023,11 @@ describe('Classic public argument safety', () => {
         options(),
       );
       expect(applied.exitCode, applied.stderr).toBe(0);
-      expect(applied.data).toMatchObject({ change: name, phase: 'verify' });
+      expect(applied.data).toMatchObject({
+        change: name,
+        phase: 'verify',
+        nextAction: { kind: 'action', stepId: 'full.verify.run' },
+      });
       expect(
         (await classicStateCommand(['next', name], { ...options(), json: true })).data,
       ).toMatchObject({
@@ -1110,7 +1137,11 @@ describe('Classic public argument safety', () => {
         options(),
       );
       expect(verified.exitCode, verified.stderr).toBe(0);
-      expect(verified.data).toMatchObject({ change: name, phase: 'archive' });
+      expect(verified.data).toMatchObject({
+        change: name,
+        phase: 'archive',
+        nextAction: { kind: 'action', stepId: `${profile}.archive.prepare` },
+      });
       await expect(fs.access(path.join(changeDir, '.comet.yaml'))).resolves.toBeUndefined();
     },
   );

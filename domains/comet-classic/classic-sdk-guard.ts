@@ -10,7 +10,7 @@ import { assertClassicBuildReady, classicOpenEvidenceReceipt } from './classic-s
 import { completeClassicSdkBuild } from './classic-sdk-build.js';
 import { classicCheckCommand } from './classic-check-command.js';
 import { inspectAndCompleteClassicSdkDesign } from './classic-sdk-design.js';
-import { inspectClassicSdkRun } from './classic-sdk-status.js';
+import { classicSdkNextAction, inspectClassicSdkRun } from './classic-sdk-status.js';
 import { classicVerificationReportReceipt } from './classic-verification-report.js';
 import { executeClassicSdkArchive } from './classic-sdk-archive.js';
 import {
@@ -32,6 +32,7 @@ function guardResult(
   projectRoot: string,
   approvalHash: string | null,
   issue?: string,
+  run?: WorkflowRun,
 ): ClassicCommandResult {
   const blocked = issue !== undefined;
   return {
@@ -43,6 +44,12 @@ function guardResult(
       ...(approvalHash === null ? {} : { approvalHash }),
       checks: { passed: blocked ? 0 : 1, total: 1, blocked },
       issues: blocked ? [classicIssue(issue)] : [],
+      ...(run
+        ? {
+            run: { id: run.runId, revision: run.revision, status: run.status },
+            nextAction: classicSdkNextAction(run),
+          }
+        : {}),
     },
     stderr: blocked
       ? `BLOCKED — ${issue}\n`
@@ -244,7 +251,14 @@ export async function classicSdkOpenGuard(
       'Classic Open remains pending in the SDK Run',
     );
   }
-  return guardResult(change, String(current?.phase ?? 'unknown'), projectRoot, receipt.contentHash);
+  return guardResult(
+    change,
+    String(current?.phase ?? 'unknown'),
+    projectRoot,
+    receipt.contentHash,
+    undefined,
+    run,
+  );
 }
 
 /** Preview or commit a full-workflow Design decision using the same SDK preflight. */
@@ -288,6 +302,8 @@ export async function classicSdkDesignGuard(options: {
     String((run.state as { phase?: unknown } | null)?.phase ?? 'unknown'),
     projectRoot,
     approvalHash,
+    undefined,
+    run,
   );
 }
 
@@ -388,7 +404,7 @@ export async function classicSdkBuildGuard(options: {
   }
   const finished = await inspectClassicSdkRun(projectRoot, change);
   return finished.state.phase === 'verify'
-    ? guardResult(change, 'verify', projectRoot, null)
+    ? guardResult(change, 'verify', projectRoot, null, undefined, finished.run)
     : guardResult(change, 'build', projectRoot, null, 'Classic SDK Build check remains pending');
 }
 
@@ -554,7 +570,7 @@ export async function classicSdkVerifyGuard(options: {
   }
   const finished = await inspectClassicSdkRun(projectRoot, change);
   return finished.state.phase === 'archive'
-    ? guardResult(change, 'archive', projectRoot, null)
+    ? guardResult(change, 'archive', projectRoot, null, undefined, finished.run)
     : guardResult(change, 'verify', projectRoot, null, 'Classic SDK Verify check remains pending');
 }
 
@@ -634,6 +650,6 @@ export async function classicSdkArchiveGuard(options: {
   }
   const archivedState = archived.state as { archived?: unknown } | null;
   return archivedState?.archived === true
-    ? guardResult(change, 'archive', projectRoot, null)
+    ? guardResult(change, 'archive', projectRoot, null, undefined, archived)
     : guardResult(change, 'archive', projectRoot, null, 'Classic SDK Archive did not complete');
 }

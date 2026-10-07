@@ -2,260 +2,28 @@ import { randomUUID } from 'node:crypto';
 
 import { hashRuntimeValue, type RuntimeValue, type WorkflowRun } from '../engine/runtime.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
-import { nativePortableContinuation } from './native-portable-continuation.js';
 import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import { nativeProjectPaths } from './native-paths.js';
 import { loadOwnedNativeSdkRuntime, inspectNativeSdkRun } from './native-runtime-ownership.js';
 import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import { projectNativeSdkStatus } from './native-sdk-status.js';
 import { parseNativePortableState } from './native-portable-state.js';
-import {
-  NATIVE_SUPERVISOR_COORDINATION_MODES,
-  type NativePortableState,
-  type NativeSupervisorCoordinationMode,
-} from './native-portable-types.js';
-
-function sdkShapeContinuation(
-  state: NativePortableState,
-  supervisorConfirmation: boolean,
-): ReturnType<typeof nativePortableContinuation> {
-  const continuation = nativePortableContinuation(state);
-  if (!supervisorConfirmation) return continuation;
-  const chinese = state.language === 'zh-CN';
-  return {
-    ...continuation,
-    requiredInputs: ['summary', 'shared-understanding-confirmation', 'coordination-mode'],
-    commandAlternatives: NATIVE_SUPERVISOR_COORDINATION_MODES.map((mode) => ({
-      name: mode,
-      stateVersion: state.state_version,
-      expectedAction: 'confirm-shape' as const,
-      commandArgs: [
-        'comet',
-        'native',
-        'next',
-        state.name,
-        '--summary',
-        '<summary>',
-        '--confirmed',
-        '--coordination-mode',
-        mode,
-        '--expected-state-version',
-        String(state.state_version),
-        '--expected-action',
-        'confirm-shape',
-      ],
-      requiredInputs: ['summary', 'shared-understanding-confirmation', 'coordination-mode'],
-      inputOptions: [
-        {
-          name: 'summary',
-          flag: '--summary',
-          valueKind: 'text' as const,
-          required: true,
-          template: null,
-        },
-        {
-          name: 'shared-understanding-confirmation',
-          flag: '--confirmed',
-          valueKind: 'confirmation' as const,
-          required: true,
-          template: null,
-        },
-        {
-          name: 'coordination-mode',
-          flag: '--coordination-mode',
-          valueKind: 'choice' as const,
-          required: true,
-          template: mode,
-          choices: [...NATIVE_SUPERVISOR_COORDINATION_MODES],
-        },
-      ],
-    })),
-    userCommunication: {
-      required: true,
-      message: chinese
-        ? '请确认完整 Shape，并选择推进方式：多会话协作（推荐）或单会话推进。'
-        : 'Confirm the complete Shape and choose multi-session coordination (recommended) or single-session progression.',
-      suggestedReply: chinese
-        ? '确认 Shape，选择多会话协作'
-        : 'Confirm Shape with multi-session coordination',
-      agentInstruction: chinese
-        ? '先简要展示目标、范围、关键决定、验收标准、非目标及 Child 计划，再转述 message。只有用户明确确认当前完整 Shape 并选定推进方式后，才执行对应的 commandAlternatives；补充或修改要求不算确认。'
-        : 'Summarize the target, scope, key decisions, acceptance criteria, non-goals, and child plan before relaying message. Execute the matching commandAlternative only after the user explicitly confirms the complete current Shape and chooses a coordination mode; additions or corrections are not confirmation.',
-    },
-  };
-}
-
-function sdkLoopStopContinuation(state: NativePortableState, proposalHash: string) {
-  const continuation = nativePortableContinuation(state);
-  if (!continuation.commandAlternatives) {
-    throw new Error('Native SDK Verify stop has no recovery choices');
-  }
-  return {
-    ...continuation,
-    commandAlternatives: continuation.commandAlternatives.map((alternative) => {
-      if (alternative.name !== 'revise-implementation' || !alternative.commandArgs) {
-        return alternative;
-      }
-      const position = alternative.commandArgs.indexOf('--expected-state-version');
-      if (position < 0) throw new Error('Native SDK repair command lacks its state version');
-      return {
-        ...alternative,
-        commandArgs: [
-          ...alternative.commandArgs.slice(0, position),
-          '--proposal-hash',
-          proposalHash,
-          ...alternative.commandArgs.slice(position),
-        ],
-      };
-    }),
-  };
-}
+import type { NativeSupervisorCoordinationMode } from './native-portable-types.js';
 
 async function sdkNextResult(
   projectRoot: string,
   name: string,
   run: WorkflowRun,
   artifactRootRef: string,
+  application: Awaited<ReturnType<typeof inspectNativeSdkRun>>['application'],
 ): Promise<DispatchResult> {
   const state = parseNativePortableState(run.state);
-  const recovery = await inspectNativeSdkSupervisorRecovery(run, projectRoot);
-  const pendingActions = run.actions
-    .filter((action) => action.status === 'pending')
-    .map((action) => ({
-      id: action.id,
-      stepId: action.stepId,
-      mechanism: 'runtime-dispatch',
-    }));
-  const pendingBuilderDecisions = run.waits
-    .filter(
-      (wait) =>
-        wait.status === 'pending' &&
-        ['build.resume', 'supervisor.child.resume', 'supervisor.parent.resume'].includes(
-          wait.stepId,
-        ),
-    )
-    .map((wait) => ({
-      waitId: wait.id,
-      stepId: wait.stepId,
-      proposalHash: wait.proposalHash,
-      commandArgs: [
-        'comet',
-        'native',
-        'next',
-        name,
-        '--continue-builder',
-        '--summary',
-        '<summary>',
-        '--proposal-hash',
-        wait.proposalHash,
-        '--expected-state-version',
-        String(state.state_version),
-        '--expected-action',
-        'continue-builder',
-      ],
-    }));
-  const loopStop = run.waits.find(
-    (wait) => wait.status === 'pending' && wait.stepId === 'verify.stop',
-  );
-  const requirementRevisions = run.waits
-    .filter(
-      (wait) => wait.status === 'pending' && wait.stepId.startsWith('native.extension.revise.'),
-    )
-    .map((wait) => ({
-      waitId: wait.id,
-      proposalHash: wait.proposalHash,
-      proposal: wait.proposal,
-      commandArgs: [
-        'comet',
-        'native',
-        'next',
-        name,
-        '--revise-requirements',
-        '--summary',
-        '<用户确认的修订原因>',
-        '--expected-state-version',
-        String(state.state_version),
-        '--expected-action',
-        'revise-requirements',
-      ],
-      message:
-        '扩展发现需求变化。请确认是否修订需求；确认后回到 Shape，原候选和验收不会复用。先核对 running/unknown 工作。',
-    }));
   return success('next', {
     change: name,
-    ...(await projectNativeSdkStatus({ projectRoot, name }, { run, state, artifactRootRef })),
-    ...(pendingBuilderDecisions.length > 0 ? { pendingBuilderDecisions } : {}),
-    ...(requirementRevisions.length > 0
-      ? { pendingRequirementDecisions: requirementRevisions }
-      : {}),
-    ...(recovery
-      ? {
-          continuation: {
-            ...nativePortableContinuation(state),
-            action: 'resolve-verifier-blocker',
-            disposition: 'await-user',
-            requiresUserDecision: true,
-            commandArgs: [
-              'comet',
-              'native',
-              'next',
-              name,
-              '--resolve-verifier-blocker',
-              '--summary',
-              '<summary>',
-              '--proposal-hash',
-              recovery.proposalHash,
-              '--expected-state-version',
-              String(state.state_version),
-              '--expected-action',
-              'resolve-verifier-blocker',
-            ],
-            requiredInputs: ['summary', 'proposal-hash'],
-            commandAlternatives: [],
-            inputOptions: [
-              {
-                name: 'summary',
-                flag: '--summary',
-                valueKind: 'text',
-                required: true,
-                template: null,
-              },
-              {
-                name: 'proposal-hash',
-                flag: '--proposal-hash',
-                valueKind: 'text',
-                required: true,
-                template: recovery.proposalHash,
-              },
-            ],
-            runnerAction: { ...nativePortableContinuation(state).runnerAction, kind: 'none' },
-            userCommunication: {
-              required: true,
-              message:
-                '独立 Child 验收被阻塞。确认恢复后，原 Run 将派发新的 Builder，保留原候选、检查和失败记录。后继候选需要重新检查和独立验收。',
-              suggestedReply: '恢复原 Child，由新的 Builder 继续处理阻塞',
-              agentInstruction:
-                '只有明确选择恢复当前 Child 后才执行此命令；不得改写原结果或把原检查作为后继候选的通过证据。',
-            },
-          },
-        }
-      : loopStop
-        ? { continuation: sdkLoopStopContinuation(state, loopStop.proposalHash) }
-        : state.phase === 'shape'
-          ? {
-              continuation: sdkShapeContinuation(
-                state,
-                run.waits.some(
-                  (wait) => wait.status === 'pending' && wait.stepId === 'supervisor.shape.confirm',
-                ),
-              ),
-            }
-          : pendingActions.length > 0
-            ? {
-                pendingAction: pendingActions[0],
-                pendingActions,
-              }
-            : {}),
+    ...(await projectNativeSdkStatus(
+      { projectRoot, name },
+      { run, state, artifactRootRef, application },
+    )),
   });
 }
 
@@ -292,7 +60,7 @@ export async function advanceNativeSdkChange(
         expectedAction: 'continue-builder' | 'resolve-verifier-blocker';
       },
 ): Promise<DispatchResult> {
-  let { run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name);
+  let { run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name);
   if (
     decision &&
     (decision.expectedAction === undefined ||
@@ -347,7 +115,7 @@ export async function advanceNativeSdkChange(
       proposalHash: decision.proposalHash,
       context: { requestId: randomUUID(), projectRoot },
     });
-    return sdkNextResult(projectRoot, name, completed, artifactRootRef);
+    return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
   }
   if (decision?.expectedAction === 'continue-builder') {
     const wait = run.waits.find(
@@ -434,7 +202,7 @@ export async function advanceNativeSdkChange(
         context: { requestId: randomUUID(), projectRoot },
       });
     }
-    return sdkNextResult(projectRoot, name, completed, artifactRootRef);
+    return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
   }
   if (
     decision?.expectedAction === 'accept-result' ||
@@ -546,10 +314,10 @@ export async function advanceNativeSdkChange(
       (wait) => wait.status === 'pending' && wait.stepId.startsWith('native.extension.revise.'),
     )
   )
-    return sdkNextResult(projectRoot, name, run, artifactRootRef);
+    return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
   if (run.ready.length > 0) {
     await (await loadOwnedNativeSdkRuntime(projectRoot, name)).runtime.next({ runId: run.runId });
-    ({ run, state, artifactRootRef } = await inspectNativeSdkRun(projectRoot, name));
+    ({ run, state, artifactRootRef, application } = await inspectNativeSdkRun(projectRoot, name));
   }
   const pending =
     run.actions.find(
@@ -559,7 +327,7 @@ export async function advanceNativeSdkChange(
     if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
       throw new Error(`Native SDK change ${name} has a claimed Action with an unknown outcome`);
     }
-    return sdkNextResult(projectRoot, name, run, artifactRootRef);
+    return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
   }
   if (pending.stepId !== 'shape.prepare' && pending.stepId !== 'shape.revalidate') {
     let completed = run;
@@ -574,7 +342,7 @@ export async function advanceNativeSdkChange(
         context: { requestId: randomUUID(), projectRoot },
       });
     }
-    return sdkNextResult(projectRoot, name, completed, artifactRootRef);
+    return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
   }
   const paths = await nativeProjectPaths(projectRoot, artifactRootRef);
   const proposal = await collectNativeSdkShapeProposal({ paths, state });
@@ -606,5 +374,5 @@ export async function advanceNativeSdkChange(
     },
     context,
   });
-  return sdkNextResult(projectRoot, name, completed, artifactRootRef);
+  return sdkNextResult(projectRoot, name, completed, artifactRootRef, application);
 }

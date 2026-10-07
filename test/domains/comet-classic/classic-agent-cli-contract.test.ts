@@ -181,6 +181,44 @@ describe('Classic executable artifact and recovery contract', () => {
     });
   });
 
+  it('reads several compat fields in one response with legacy scalar defaults', async () => {
+    const { cli, change } = await fixture('legacy');
+    const file = path.join(change, '.comet.yaml');
+    await fs.writeFile(
+      file,
+      (await fs.readFile(file, 'utf8'))
+        .replace(/^language:.*\n/mu, '')
+        .replace(/^auto_transition:.*\n/mu, ''),
+    );
+    const result = JSON.parse(
+      (
+        await cli([
+          'state',
+          'get',
+          'demo',
+          'phase',
+          'workflow',
+          'language',
+          'auto_transition',
+          'design_doc',
+          'unknown_field',
+        ])
+      ).stdout!,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.data).toEqual({
+      change: 'demo',
+      fields: {
+        phase: 'design',
+        workflow: 'full',
+        language: 'en',
+        auto_transition: 'true',
+        design_doc: 'null',
+        unknown_field: '',
+      },
+    });
+  });
+
   it('reports an invalid autonomous review configuration without losing valid choices', async () => {
     const { cli } = await fixture('legacy');
     expect(

@@ -19,8 +19,24 @@ import { discoverNativeProject, nativeProjectPaths } from '../comet-native/nativ
 import { inspectNativePortableStatus } from '../comet-native/native-portable-status.js';
 import { isNativePortableChange } from '../comet-native/native-portable-runtime.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
-import { resolveCometEntry } from './resolve-entry.js';
+import { configuredResolution } from './resolve-entry.js';
 import type { ChangeStatus, CometEntryResolution, CometProjectStatus } from './types.js';
+
+/** Bound filesystem pressure while keeping independent change inspections concurrent. */
+async function inspectChanges<T, R>(items: T[], inspect: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(8, items.length) }, async () => {
+      for (;;) {
+        const index = next++;
+        if (index >= items.length) return;
+        results[index] = await inspect(items[index]);
+      }
+    }),
+  );
+  return results;
+}
 
 async function countTasks(
   projectRoot: string,
@@ -99,22 +115,20 @@ async function listConfiguredNativeStatus(
   options: { clarificationMode: 'sequential' | 'batch'; maxVerifyFailures: number },
 ): Promise<CometProjectStatus['workflows']['native']['changes']> {
   const names = await listNativeChangeNames(paths);
-  return Promise.all(
-    names.map(async (name) => {
-      try {
-        return (await isNativePortableChange(paths, name))
-          ? await inspectNativePortableStatus({ paths, name })
-          : await inspectNativeStatus(paths, name, options);
-      } catch (error) {
-        // A single unreadable change (for example a stale worktree copy of a
-        // supervisor parent) must not hide every other change from global status.
-        return {
-          name,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    }),
-  );
+  return inspectChanges(names, async (name) => {
+    try {
+      return (await isNativePortableChange(paths, name))
+        ? await inspectNativePortableStatus({ paths, name })
+        : await inspectNativeStatus(paths, name, options);
+    } catch (error) {
+      // A single unreadable change (for example a stale worktree copy of a
+      // supervisor parent) must not hide every other change from global status.
+      return {
+        name,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
 }
 
 async function inspectOpenSpecChanges(
@@ -142,17 +156,17 @@ async function inspectOpenSpecChanges(
     label: 'Classic changes root',
     expected: 'directory',
   });
-  for (const name of names) {
-    if (name === 'archive') continue;
-    if (openSpecChangeNameError(name)) continue;
+  await inspectChanges(names, async (name) => {
+    if (name === 'archive') return;
+    if (openSpecChangeNameError(name)) return;
     let change;
     try {
       change = await inspectClassicActiveChangeDirectory(name, projectRoot);
     } catch (error) {
       classic.push(invalidClassicChange(name, error));
-      continue;
+      return;
     }
-    if (!change.exists) continue;
+    if (!change.exists) return;
     const changeDir = change.directory;
     let done: number;
     let total: number;
@@ -160,11 +174,11 @@ async function inspectOpenSpecChanges(
       ({ done, total } = await countTasks(projectRoot, path.join(changeDir, 'tasks.md')));
     } catch (error) {
       classic.push(invalidClassicChange(name, error));
-      continue;
+      return;
     }
     if (!change.stateExists) {
       unmanaged.push(unmanagedChange(name, done, total));
-      continue;
+      return;
     }
 
     try {
@@ -198,12 +212,12 @@ async function inspectOpenSpecChanges(
           commandChecks: null,
           error: `Invalid Classic state: unknown field(s): ${unknownKeys.join(', ')}`,
         });
-        continue;
+        return;
       }
 
       const diagnostic = await inspectClassicChangeReadOnly(changeDir, name, { projection });
       if (diagnostic.valid && projection.classic) {
-        if (projection.classic.archived) continue;
+        if (projection.classic.archived) return;
         const run = projection.run;
         classic.push({
           name,
@@ -235,7 +249,7 @@ async function inspectOpenSpecChanges(
               }
             : null,
         });
-        continue;
+        return;
       }
 
       classic.push({
@@ -264,7 +278,9 @@ async function inspectOpenSpecChanges(
     } catch (error) {
       classic.push(invalidClassicChange(name, error, done, total));
     }
-  }
+  });
+  classic.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+  unmanaged.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
   return { classic, unmanaged };
 }
 
@@ -275,7 +291,10 @@ export async function inspectCometProjectStatus(startPath: string): Promise<Come
   let config = null;
   try {
     config = await readWorkflowProjectConfig(projectRoot);
-    defaultEntry = await resolveCometEntry(projectRoot);
+    if (!config) {
+      throw new Error('Comet workflow entry is unavailable because .comet/config.yaml is missing');
+    }
+    defaultEntry = configuredResolution(config.default_workflow);
   } catch (error) {
     configError = error instanceof Error ? error.message : String(error);
     defaultEntry = { error: configError };

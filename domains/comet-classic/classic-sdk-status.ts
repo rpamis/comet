@@ -13,6 +13,45 @@ import { createClassicSdkStateStore } from './classic-sdk-state-store.js';
 import { resolveClassicChangeDirectory } from './classic-paths.js';
 import type { ClassicProfile, ClassicState } from './classic-state.js';
 
+/** 仅投影本次读取或提交的 Run；后续操作仍须重新校验版本与证据。 */
+export function classicSdkNextAction(run: WorkflowRun) {
+  if (run.status === 'completed') return { kind: 'done' } as const;
+  const unresolved = run.actions.find(
+    (action) => action.status === 'running' || action.status === 'unknown',
+  );
+  const pending = run.actions.find((action) => action.status === 'pending');
+  const action = unresolved ?? pending;
+  if (action) {
+    return {
+      kind: unresolved ? 'reconcile' : 'action',
+      stepId: action.stepId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      ...(action.ref ? { ref: action.ref } : {}),
+    };
+  }
+  const evidence = run.evidenceWaits?.find((wait) => wait.status === 'pending');
+  if (evidence) {
+    return {
+      kind: 'evidence',
+      stepId: evidence.stepId,
+      evidenceId: evidence.id,
+      evidenceKind: evidence.kind,
+    };
+  }
+  const decision = run.waits.find((wait) => wait.status === 'pending');
+  return decision
+    ? {
+        kind: 'decision',
+        stepId: decision.stepId,
+        waitId: decision.id,
+        proposalHash: decision.proposalHash,
+        choices: decision.choices,
+      }
+    : null;
+}
+
 export async function inspectClassicSdkRun(
   projectRoot: string,
   name: string,

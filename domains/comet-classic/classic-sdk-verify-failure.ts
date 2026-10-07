@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { WorkflowRun } from '../engine/runtime.js';
 
 import { evaluateBranchBinding, isGitWorkTree, liveGitBranch } from './classic-branch-binding.js';
 import { inspectClassicSdkRun } from './classic-sdk-status.js';
@@ -8,7 +9,7 @@ export async function failClassicSdkVerify(options: {
   projectRoot: string;
   change: string;
   reason: string;
-}): Promise<void> {
+}): Promise<WorkflowRun> {
   const reason = options.reason.trim();
   if (!reason) throw new Error('Classic SDK Verify failure requires a reason');
   const { run, state, runtime, profile } = await inspectClassicSdkRun(
@@ -44,7 +45,7 @@ export async function failClassicSdkVerify(options: {
     executorId: 'comet-classic-state',
     claimToken,
   });
-  await runtime.recordOutcome({
+  return runtime.recordOutcome({
     runId: run.runId,
     expectedRevision: claimed.revision,
     outcome: {

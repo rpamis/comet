@@ -155,7 +155,7 @@ function identityHash(tag: string, value: string): string {
   return createHash('sha256').update(`${tag}\n${value}`).digest('hex');
 }
 
-async function physicalDirectoryIdentity(tag: string, value: string): Promise<string> {
+async function directoryIdentities(value: string, physicalTag: string, pathTag: string) {
   const realPath = await fs.realpath(value);
   const stat = await fs.lstat(realPath);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
@@ -163,18 +163,38 @@ async function physicalDirectoryIdentity(tag: string, value: string): Promise<st
   }
   const normalizedPath =
     HOST_PLATFORM === 'win32' ? path.normalize(realPath).toLowerCase() : realPath;
-  return identityHash(tag, `${normalizedPath}\n${stat.dev}\n${stat.ino}\n${stat.birthtimeMs}`);
+  return {
+    physical: identityHash(
+      physicalTag,
+      `${normalizedPath}\n${stat.dev}\n${stat.ino}\n${stat.birthtimeMs}`,
+    ),
+    path: identityHash(pathTag, normalizedPath),
+  };
 }
 
-async function directoryPathIdentity(tag: string, value: string): Promise<string> {
-  const realPath = await fs.realpath(value);
-  const stat = await fs.lstat(realPath);
-  if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error('Native workspace identity requires a real directory');
-  }
-  const normalizedPath =
-    HOST_PLATFORM === 'win32' ? path.normalize(realPath).toLowerCase() : realPath;
-  return identityHash(tag, normalizedPath);
+async function inspectNativeWorkspaceRoots(paths: NativeProjectPaths) {
+  const nativeRootRef = portableRelative(paths.projectRoot, paths.nativeRoot);
+  if (!nativeRootRef) throw new Error('Native root is outside the project root');
+  normalizedPortableRef(nativeRootRef, 'Native workspace root ref');
+  const [project, native] = await Promise.all([
+    directoryIdentities(
+      paths.projectRoot,
+      'comet.native.workspace-project-root.v2',
+      'comet.native.workspace-project-root-path.v2',
+    ),
+    directoryIdentities(
+      paths.nativeRoot,
+      'comet.native.workspace-native-root.v2',
+      'comet.native.workspace-native-root-path.v2',
+    ),
+  ]);
+  return {
+    nativeRootRef,
+    projectRootId: project.physical,
+    nativeRootId: native.physical,
+    projectRootPathId: project.path,
+    nativeRootPathId: native.path,
+  };
 }
 
 function isoTimestamp(value: unknown): string {
@@ -516,8 +536,7 @@ export async function inspectNativeWorkspaceIdentity(
   if (!Number.isSafeInteger(options.revision) || options.revision < 1) {
     throw new Error('Native workspace revision must be a positive integer');
   }
-  const nativeRootRef = portableRelative(options.paths.projectRoot, options.paths.nativeRoot);
-  if (!nativeRootRef) throw new Error('Native root is outside the project root');
+  const roots = await inspectNativeWorkspaceRoots(options.paths);
   const gitContext = inspectGitWorktree(options.paths.projectRoot);
   const baseCommit = gitContext.isGitWorktree
     ? resolveGitRef(options.paths.projectRoot, 'HEAD')
@@ -539,12 +558,6 @@ export async function inspectNativeWorkspaceIdentity(
           targetCommit,
         }
       : undefined;
-  const [projectRootId, nativeRootId, projectRootPathId, nativeRootPathId] = await Promise.all([
-    physicalDirectoryIdentity('comet.native.workspace-project-root.v2', options.paths.projectRoot),
-    physicalDirectoryIdentity('comet.native.workspace-native-root.v2', options.paths.nativeRoot),
-    directoryPathIdentity('comet.native.workspace-project-root-path.v2', options.paths.projectRoot),
-    directoryPathIdentity('comet.native.workspace-native-root-path.v2', options.paths.nativeRoot),
-  ]);
   const capturedAt = (options.now ?? new Date()).toISOString();
   if (options.finish && !options.binding) {
     throw new Error('Native workspace finish requires a workspace binding');
@@ -553,17 +566,13 @@ export async function inspectNativeWorkspaceIdentity(
   const fields: NativeWorkspaceIdentityFields = {
     capturedAt,
     capturedRevision: options.revision,
-    nativeRootRef,
-    projectRootId,
-    nativeRootId,
-    projectRootPathId,
-    nativeRootPathId,
+    ...roots,
     ...(git ? { git } : {}),
     ...(options.sessionId
       ? {
           sessionHash: identityHash(
             'comet.native.workspace-session.v2',
-            `${projectRootId}\n${nativeRootId}\n${options.sessionId}`,
+            `${roots.projectRootId}\n${roots.nativeRootId}\n${options.sessionId}`,
           ),
         }
       : {}),
@@ -650,11 +659,7 @@ export async function inspectNativeWorkspaceAdvisory(options: {
   identity: NativeWorkspaceIdentity;
 }): Promise<NativeWorkspaceAdvisory> {
   assertIdentity(options.identity);
-  const current = await inspectNativeWorkspaceIdentity({
-    paths: options.paths,
-    name: 'workspace-advisory',
-    revision: options.identity.capturedRevision,
-  });
+  const current = await inspectNativeWorkspaceRoots(options.paths);
   const driftComponents: NativeWorkspaceDriftComponent[] = [];
   const codes: NativeWorkspaceFindingCode[] = [];
   if (current.nativeRootRef !== options.identity.nativeRootRef) {

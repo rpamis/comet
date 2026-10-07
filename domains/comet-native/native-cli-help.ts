@@ -161,10 +161,10 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'Discover portable stable boundaries, parent child readiness, or the exact next Runner action.',
     options: [
       '--cursor <token>  Continue a status-list page, or a named details/history page.',
-      '--details         Include one fixed-size page of acceptance, Spec, handoff, verification, history, workspace, and report details.',
+      '--details         SDK: include complete business state and Action/Wait history. Compat: include one fixed-size detail page.',
     ],
     output:
-      'A compact v2 status page or one compact Loop projection with canonical artifact paths and local execution availability. Use --details and --cursor to read fixed-size detail pages; parent changes expose childSummary and readyChildren.',
+      'SDK status includes the exact continuation, claim request templates, all pending/running/unknown work, and the latest 12 settled records per history collection. run.history reports omitted records; --details returns complete history without --cursor. Compat status reports local execution availability and details use --cursor for fixed-size pages; parent changes expose childSummary and readyChildren.',
     examples: [
       'comet native status --json',
       'comet native status session-timeout --details --json',
@@ -211,7 +211,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       '  supervisor-integrate checks are non-empty Runtime check plans executed after the merge in the integration worktree, not declared statuses.',
     ],
     output:
-      'SDK-owned changes return the current Run Action or Wait; Runtime-owned checks, reports, and Archive advance one Action per call, while Builder and Verifier host handoffs require `comet runtime dispatch --application native`. Compat Runtime changes return the portable state, Runner result, continuation.inputOptions, and userCommunication. The compat JSON bridge is not trusted identity attestation: a passing skill-coordinated result waits for explicit user confirmation before Archive.',
+      'SDK-owned changes return the current Run Action or Wait and the same continuation as status/show, including current decision guards and pending Action claimRequest templates. Fill the template with the host session and claim token; the successful claim returns the current Action input. Runtime-owned checks, reports, and Archive advance one Action per call. Builder and Verifier handoffs use `comet runtime dispatch --application native`; never resubmit running/unknown work. Compat Runtime changes return the portable state, Runner result, continuation.inputOptions, and userCommunication. The compat JSON bridge is not trusted identity attestation: a passing skill-coordinated result waits for explicit user confirmation before Archive.',
     examples: [
       'comet native next session-timeout --summary "Shape confirmed" --confirmed --expected-state-version <n> --expected-action confirm-shape',
       'comet native next session-timeout --summary "Current result accepted" --accept-result',
