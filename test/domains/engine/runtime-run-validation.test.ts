@@ -5,8 +5,9 @@ import { parseWorkflowRun } from '../../../domains/engine/workflow-run-validatio
 import type { WorkflowRun } from '../../../domains/engine/workflow-run.js';
 
 async function fixture() {
+  const store = createMemoryRuntimeStore<WorkflowRun>();
   const runtime = createRuntime({
-    store: createMemoryRuntimeStore<WorkflowRun>(),
+    store,
     workflows: [
       {
         id: 'report',
@@ -16,9 +17,11 @@ async function fixture() {
           collect: { type: 'call_tool', ref: 'collect', retry: 'idempotent' },
           approve: { type: 'ask_user', proposalFrom: 'collect' },
           publish: { type: 'call_tool', ref: 'publish' },
+          never: { type: 'call_tool', ref: 'never' },
         },
         transitions: [
           { from: 'collect', to: 'approve' },
+          { from: 'never', to: 'publish' },
           { from: 'approve', to: 'publish', on: 'approved' },
           { from: 'approve', to: 'collect', on: 'rejected' },
         ],
@@ -51,7 +54,7 @@ async function fixture() {
       output: { report: 'v1' },
     },
   });
-  return { runtime, started, claimed, waiting };
+  return { store, runtime, started, claimed, waiting };
 }
 
 describe('persisted WorkflowRun boundary', () => {
@@ -101,4 +104,78 @@ describe('persisted WorkflowRun boundary', () => {
     expect(() => parseWorkflowRun({ ...started, status: 'completed' })).toThrow(/INVALID_RUN/);
     expect(() => parseWorkflowRun({ ...started, status: 'failed' })).toThrow(/INVALID_RUN/);
   });
+  it('accepts receipt-bound queued work and keeps empty or terminal snapshots closed', async () => {
+    const { store, runtime, waiting } = await fixture();
+    // 检查持久化边界的恢复快照；原执行收据始终来自真实 Runtime。
+    const queued: WorkflowRun = {
+      ...waiting,
+      revision: waiting.revision + 1,
+      sequence: 1,
+      status: 'running',
+      waits: [],
+      ready: [
+        {
+          from: 'collect',
+          to: 'approve',
+          results: waiting.waits[0].results,
+          activation: { repairSource: waiting.actions[0].id },
+        },
+      ],
+    };
+    expect(() => parseWorkflowRun({ ...queued, ready: [] })).toThrow('running Run');
+    await store.compareAndSwap(waiting.runId, waiting.revision, queued);
+    expect(await runtime.inspect(waiting.runId)).toEqual(queued);
+    const scheduled = await runtime.next({ runId: waiting.runId });
+    expect(scheduled.waits.at(-1)).toMatchObject({
+      stepId: 'approve',
+      status: 'pending',
+      proposal: {
+        activation: { repairSource: waiting.actions[0].id },
+        outputs: { collect: { report: 'v1' } },
+      },
+    });
+    expect(scheduled.actions).toEqual(waiting.actions);
+    const terminal: WorkflowRun = {
+      ...queued,
+      revision: scheduled.revision + 1,
+      status: 'failed',
+      reason: 'ACTION_FAILED: collect',
+    };
+    await store.compareAndSwap(waiting.runId, scheduled.revision, terminal);
+    expect(await runtime.next({ runId: waiting.runId })).toEqual(terminal);
+  });
+
+  it.each(['missing-source', 'wrong-output', 'wrong-sequence', 'missing-target', 'entry-replay'])(
+    'rejects a fabricated queued token before scheduling (%s)',
+    async (scenario) => {
+      const { store, runtime, waiting } = await fixture();
+      const queued: WorkflowRun = {
+        ...waiting,
+        revision: waiting.revision + 1,
+        sequence: 1,
+        status: 'running',
+        waits: [],
+        ready: [
+          {
+            from: 'collect',
+            to: 'approve',
+            results: structuredClone(waiting.waits[0].results),
+          },
+        ],
+      };
+      const token = queued.ready[0];
+      if (scenario === 'missing-source')
+        queued.ready[0] = { from: 'never', to: 'publish', results: {} };
+      if (scenario === 'wrong-output') token.results.collect.value = { report: 'forged' };
+      if (scenario === 'wrong-sequence') token.results.collect.sequence += 1;
+      if (scenario === 'missing-target') token.to = 'not-declared';
+      if (scenario === 'entry-replay') queued.ready[0] = { from: null, to: 'collect', results: {} };
+      await store.compareAndSwap(waiting.runId, waiting.revision, queued);
+      await expect(runtime.inspect(waiting.runId)).rejects.toMatchObject({ code: 'INVALID_RUN' });
+      await expect(runtime.next({ runId: waiting.runId })).rejects.toMatchObject({
+        code: 'INVALID_RUN',
+      });
+      expect(await store.read(waiting.runId)).toEqual(queued);
+    },
+  );
 });

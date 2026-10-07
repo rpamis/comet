@@ -3,6 +3,8 @@ export {
   resolveWorkflowApplicationFile,
   selectWorkflowApplication,
   readSelectedWorkflowApplication,
+  inspectWorkflowApplicationRun,
+  inspectSelectedWorkflowApplicationStatus,
 } from './application.js';
 export { inspectApplicationSkill, adaptApplicationSkill } from './skill-adapter.js';
 export { createApplicationSkillExecutor, reconcileApplicationSkill } from './skill-executor.js';
@@ -38,3 +40,6 @@ export type {
 } from './types.js';
 
 export { resolveInstalledWorkflowApplication } from './installed-application.js';
+
+export { projectWorkflowApplicationRun } from './run-view.js';
+export type { SelectedWorkflowApplicationStatus } from './application.js';

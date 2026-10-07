@@ -393,16 +393,24 @@ export async function classicSdkBuildGuard(options: {
     invocationCwd,
     projectRoot,
   });
+  const finished = await inspectClassicSdkRun(projectRoot, change);
   if (checked.exitCode !== 0) {
-    return guardResult(
+    const failed = guardResult(
       change,
-      'build',
+      finished.state.phase,
       projectRoot,
       null,
       checked.stderr?.trim() || checked.stdout?.trim() || 'Classic Build check failed',
+      finished.run,
     );
+    return {
+      ...failed,
+      data: {
+        ...(checked.data as Record<string, unknown>),
+        ...(failed.data as Record<string, unknown>),
+      },
+    };
   }
-  const finished = await inspectClassicSdkRun(projectRoot, change);
   return finished.state.phase === 'verify'
     ? guardResult(change, 'verify', projectRoot, null, undefined, finished.run)
     : guardResult(change, 'build', projectRoot, null, 'Classic SDK Build check remains pending');

@@ -71,6 +71,8 @@ import {
   repairWorkflowProjectConfigTransaction,
 } from '../../domains/workflow-contract/project-config-transaction.js';
 import type { WorkflowProjectConfig } from '../../domains/workflow-contract/types.js';
+import { inspectClassicSdkChangeStatus } from '../../domains/comet-entry/project-status.js';
+import { inspectSelectedWorkflowApplicationStatus } from '../../domains/workflow-application/index.js';
 import { resolveHookWorkflowOwner } from '../../domains/comet-entry/hook-router.js';
 import type { InitWorkflowSelection } from '../../domains/comet-entry/types.js';
 import { inspectGitWorktree } from '../../platform/paths/git-worktree.js';
@@ -1114,6 +1116,15 @@ async function checkCometYamlValidity(projectPath: string): Promise<CheckResult[
         },
       );
       if (!changeInspection.exists) continue;
+      const sdk = await inspectClassicSdkChangeStatus(projectPath, entry);
+      if (sdk) {
+        results.push({
+          check: `.comet.yaml: ${entry}`,
+          status: 'pass',
+          message: `valid (step: ${sdk.currentStep ?? 'completed'}, mode: sdk)`,
+        });
+        continue;
+      }
       const yamlInspection = await inspectProtectedProjectPath(
         projectPath,
         path.relative(projectPath, yamlPath).replaceAll('\\', '/'),
@@ -1455,6 +1466,25 @@ async function collectResultsWithContext(
 }
 
 async function checkCurrentSelection(projectPath: string): Promise<CheckResult> {
+  try {
+    const selected = await inspectSelectedWorkflowApplicationStatus(projectPath);
+    if (selected) {
+      return {
+        check: 'current selection',
+        status: selected.healthy ? 'pass' : 'fail',
+        message:
+          'error' in selected
+            ? `application:${selected.applicationId}/${selected.name}: ${selected.error.code}: ${selected.error.message}`
+            : `application:${selected.applicationId}/${selected.name} (${selected.run.status}, revision ${selected.run.revision})${selected.healthy ? '' : '; inspect the original Run and reconcile unresolved Actions'}`,
+      };
+    }
+  } catch (error) {
+    return {
+      check: 'current selection',
+      status: 'fail',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
   const resolution = await resolveHookWorkflowOwner(projectPath);
   if (resolution.status === 'none') {
     return resolution.staleSelection

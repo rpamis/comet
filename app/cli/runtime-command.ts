@@ -27,7 +27,10 @@ export function registerRuntimeCommand(program: Command, quietErrors = false): C
     )
     .option('--project-root <dir>', 'Project context passed to this request', '.')
     .option('--json', 'Output as JSON (default)')
-    .option('--details', 'Return the complete persisted Run, including Native dispatch history')
+    .option(
+      '--details',
+      'Return the complete persisted Run and history (inspect is complete by default)',
+    )
     .addHelpText(
       'after',
       `

@@ -14,6 +14,7 @@ import {
   hasNativePortableRunCheckpoint,
   readNativeSdkRunRecord,
 } from './native-sdk-state-store.js';
+import { projectNativeSdkStatus } from './native-sdk-status.js';
 
 /**
  * A dispatched Verifier that never confirmed startup is presumed lost after
@@ -556,14 +557,14 @@ export async function nativeDoctorCommand(
   }
   const portableTransactions = await inspectPortableTransactions(paths, name);
   if (name && portableTransactions.findings.length === 0) {
-    const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name);
+    const commandRoot = await resolveNativeSdkCommandRoot(projectRoot, name, { readOnly: !repair });
     if (await readSdkChangeOwner(commandRoot, 'native', name)) {
       if (recoveryStrategy) {
         throw new NativeUsageError('--strategy is only available to the legacy transaction doctor');
       }
       try {
         const upgrade = await inspectNativeSdkDefinitionUpgrade(commandRoot, name, repair);
-        if (upgrade && !upgrade.repaired)
+        if (upgrade?.required && !upgrade.repaired)
           return unhealthyDoctor({
             workflow: 'native-sdk',
             runtimeFormat: 'sdk',
@@ -572,18 +573,17 @@ export async function nativeDoctorCommand(
             repaired: false,
             findings: [{ code: 'sdk-definition-upgrade-required', ...upgrade }],
           });
-        const { run, state } = await inspectNativeSdkRun(commandRoot, name);
-        const unresolved = run.actions.filter(
-          (action) => action.status === 'unknown' || action.status === 'running',
-        );
+        const inspection = await inspectNativeSdkRun(commandRoot, name, { readOnly: !repair });
+        const { run } = inspection;
+        const status = await projectNativeSdkStatus({ projectRoot: commandRoot, name }, inspection);
+        const unresolved = run.actions.filter((action) => action.status === 'unknown');
         const data = {
+          ...status,
           workflow: 'native-sdk',
           runtimeFormat: 'sdk',
           change: name,
           healthy: unresolved.length === 0 && run.status !== 'failed',
           repaired: upgrade?.repaired ?? false,
-          phase: state.phase,
-          run: { id: run.runId, status: run.status, revision: run.revision },
           ...(unresolved.length > 0
             ? {
                 findings: unresolved.map((action) => ({
@@ -594,7 +594,9 @@ export async function nativeDoctorCommand(
                   message: 'Reconcile this SDK Action before continuing; doctor will not replay it',
                 })),
               }
-            : {}),
+            : run.status === 'failed'
+              ? { findings: [{ code: 'sdk-run-failed', message: run.reason ?? 'SDK Run failed' }] }
+              : { findings: [] }),
         };
         return data.healthy ? success('doctor', data) : unhealthyDoctor(data);
       } catch (error) {
@@ -1028,10 +1030,49 @@ export async function nativeDoctorCommand(
       },
     };
   }
-  const portableNames = await listNativePortableChangeNames(paths);
+  const activeNames = await listActiveChangeNames(paths);
+  const sdkNames = new Set<string>();
+  const sdkResults: Array<Record<string, unknown>> = [];
+  for (const change of activeNames) {
+    try {
+      const sdk = await readSdkChangeOwner(projectRoot, 'native', change);
+      const managed =
+        sdk !== null ||
+        (await hasNativeManagedRunMarker(nativePortableStateFile(paths, change)).catch(
+          (error: NodeJS.ErrnoException) => {
+            if (error.code === 'ENOENT') return false;
+            throw error;
+          },
+        ));
+      if (!managed) continue;
+      sdkNames.add(change);
+      const result = await nativeDoctorCommand(
+        [change, ...(repair ? ['--repair'] : [])],
+        projectRoot,
+      );
+      sdkResults.push({ change, ...(result.data as Record<string, unknown>) });
+    } catch (error) {
+      sdkNames.add(change);
+      sdkResults.push({
+        change,
+        healthy: false,
+        repaired: false,
+        findings: [
+          {
+            code: 'sdk-run-invalid',
+            message: error instanceof Error ? error.message : String(error),
+          },
+        ],
+      });
+    }
+  }
+  const portableNames = (await listNativePortableChangeNames(paths)).filter(
+    (change) => !sdkNames.has(change),
+  );
   const projectPortableTransactions = portableTransactions;
   if (
     portableNames.length > 0 ||
+    sdkResults.length > 0 ||
     finishJournals.length > 0 ||
     projectPortableTransactions.findings.length > 0 ||
     workspaceFinishJournalErrors.length > 0
@@ -1112,14 +1153,15 @@ export async function nativeDoctorCommand(
         },
       };
     }
-    const activeNames = await listActiveChangeNames(paths);
     const portableSet = new Set(portableNames);
     const migrationTransactionNames = new Set(
       projectPortableTransactions.transactions
         .filter((transaction) => transaction.kind === 'migration')
         .map(({ change }) => change),
     );
-    const legacyNames = activeNames.filter((change) => !portableSet.has(change));
+    const legacyNames = activeNames.filter(
+      (change) => !portableSet.has(change) && !sdkNames.has(change),
+    );
     const [
       changes,
       conflicts,
@@ -1154,6 +1196,14 @@ export async function nativeDoctorCommand(
       doctorNativeProject({ paths, projectOnly: true }),
     ]);
     const findings = uniqueFindings([
+      ...sdkResults.flatMap((result) =>
+        ((result.findings ?? []) as Array<{ code: string; message?: string }>).map((finding) => ({
+          ...finding,
+          severity: result.healthy ? ('info' as const) : ('error' as const),
+          message: `${result.change}: ${finding.message ?? finding.code}`,
+          path: nativePortableStateFile(paths, String(result.change)),
+        })),
+      ),
       ...(
         await Promise.all(
           finishJournals
@@ -1184,8 +1234,13 @@ export async function nativeDoctorCommand(
     ]);
     const data = {
       healthy: findings.every((finding) => finding.severity === 'info'),
-      workflow: legacyNames.length > 0 ? 'native-mixed' : 'native-portable',
-      changes,
+      workflow:
+        legacyNames.length > 0 || (sdkResults.length > 0 && portableNames.length > 0)
+          ? 'native-mixed'
+          : sdkResults.length > 0
+            ? 'native-sdk'
+            : 'native-portable',
+      changes: [...sdkResults, ...changes],
       legacyChanges: legacyNames,
       findings,
     };

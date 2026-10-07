@@ -18,9 +18,10 @@ Classic 分为 Open → Design → Build → Verify → Archive 五个阶段。O
 ```bash
 comet classic workspace resolve <change-name> --json
 # 进入返回的 projectRoot 后选择 change
-comet state select <change-name>
-comet state next <change-name> --json
+comet state select <change-name> --json
 ```
+
+选择结果已包含当前 Runtime 归属、phase、revision 与 nextAction 时直接继续；只有缺少信息、外部状态变化或旧结果已过期时，才运行 `comet state next <change-name> --json` 补读。
 
 复制到新设备的 SDK change 若在 `.comet.yaml` 中有 `run_checkpoint`，具名 `state select` 或 `state next` 会恢复原阶段、Action 和确认；继续外部工作前先确认原设备的执行进程已停止。结果未明的 Action 先核对，不重发。只有旧状态文件缺少检查点、常规入口明确报告 Run 记录丢失时，才核对正式文档，说明显式恢复会回到 Open、旧确认和检查需要重做，取得用户同意后运行 `comet state restore <change-name> --confirmed`。
 

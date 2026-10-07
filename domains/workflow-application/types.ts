@@ -87,6 +87,7 @@ export interface WorkflowApplicationImplementation extends Omit<CreateRuntimeOpt
   wrapStore?(
     store: RuntimeStore<WorkflowRun>,
     context: ApplicationIdentity,
+    options?: { readOnly?: boolean },
   ): RuntimeStore<WorkflowRun>;
   /** 纯 Guard 读取同一 SDK Run；不拥有另一份流程状态。 */
   inspectHook?(

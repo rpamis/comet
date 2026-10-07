@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { parseDocument, stringify } from 'yaml';
 
+import { readNativeTextFilePrefix } from './native-bounded-file.js';
 import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 import {
   inspectGitWorktree,
@@ -141,8 +142,12 @@ export function readNativeSdkRunRecord(
 }
 
 export async function hasNativeManagedRunMarker(file: string): Promise<boolean> {
-  const source = await fs.readFile(file, 'utf8');
-  return source.startsWith(NATIVE_MANAGED_RUN_MARKER);
+  const { text } = await readNativeTextFilePrefix({
+    root: path.dirname(file),
+    ref: path.basename(file),
+    maxBytes: Buffer.byteLength(NATIVE_MANAGED_RUN_MARKER),
+  });
+  return text === NATIVE_MANAGED_RUN_MARKER;
 }
 
 export async function hasNativePortableRunCheckpoint(
@@ -187,6 +192,7 @@ export function createNativeSdkStateStore(
   options: {
     store?: RuntimeStore<WorkflowRun>;
     identity?: ApplicationIdentity;
+    readOnly?: boolean;
   } = {},
 ): RuntimeStore<WorkflowRun> {
   const store =
@@ -310,150 +316,167 @@ export function createNativeSdkStateStore(
   }
 
   async function syncStateFile(runId: string): Promise<WorkflowRun | null> {
+    const inspect = async () => {
+      const markerFile = path.join(projectRoot, projectionDir, `${runId}.json`);
+      let marker: ProjectionMarker | null = null;
+      let markerSource: string | null = null;
+      try {
+        markerSource = (
+          await readProtectedProjectFile(
+            projectRoot,
+            `${projectionDir}/${runId}.json`,
+            Number.MAX_SAFE_INTEGER,
+            { label: 'Native SDK state projection marker' },
+          )
+        ).bytes.toString('utf8');
+        marker = JSON.parse(markerSource) as ProjectionMarker;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (
+        markerSource !== null &&
+        (!marker ||
+          marker.schema !== 'comet.native.sdk-state-projection.v1' ||
+          marker.runId !== runId ||
+          !Number.isSafeInteger(marker.revision) ||
+          marker.revision < 1 ||
+          parseNativePortableState(marker.state).name !== runId)
+      ) {
+        throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
+      }
+      let run = await store.read(runId);
+      if (!run || (run.revision === 1 && marker && marker.revision > 1)) {
+        if (options.readOnly)
+          throw new Error(
+            `Native SDK Run ${runId} needs checkpoint recovery; inspect comet native doctor ${runId} before continuing`,
+          );
+        const recovered = await recoverFromPortableFile(runId, marker, run ?? undefined);
+        if (run && !recovered) {
+          throw new Error(
+            `Native SDK Run ${runId} requires its matching portable checkpoint or original Run history before completing recovery`,
+          );
+        }
+        run = recovered;
+      }
+      if (!run) return null;
+      const state = parseNativePortableState(run.state);
+      const input = run.input as { name?: unknown; artifactRootRef?: unknown } | null;
+      if (
+        state.name !== runId ||
+        input?.name !== runId ||
+        typeof input.artifactRootRef !== 'string'
+      ) {
+        throw new Error(`Native SDK Run ${runId} does not match its portable state`);
+      }
+      const config = await readProjectConfig(projectRoot);
+      if (config && config.native.artifact_root !== input.artifactRootRef) {
+        throw new Error('Native artifact root changed after Run creation');
+      }
+      const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
+      let file = nativePortableStateFile(paths, runId);
+      try {
+        await fs.access(path.dirname(file));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        if (!state.archived) {
+          if (options.readOnly)
+            throw new Error(`Native SDK state projection is missing for ${runId}`, {
+              cause: error,
+            });
+          return run; // Start can commit before artifacts are created.
+        }
+        const archivedFile = await findNativeSdkArchivedStateFile(paths, runId);
+        if (!archivedFile) {
+          throw new Error(`Native SDK Archive ${runId} is ambiguous`, { cause: error });
+        }
+        file = archivedFile;
+      }
+      let current: NativePortableState | null = null;
+      let currentSource: string | null = null;
+      let currentDocument: Record<string, unknown> | null = null;
+      try {
+        currentSource = await fs.readFile(file, 'utf8');
+        currentDocument = parseProjection(file, currentSource);
+        current = parseNativePortableState(currentDocument);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (marker && marker.revision > run.revision) {
+        throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
+      }
+      if (current && !sameState(current, state)) {
+        const recoveryHash = (run.input as { recoverySourceHash?: unknown } | null)
+          ?.recoverySourceHash;
+        const matchesRecoverySource =
+          marker === null &&
+          run.revision === 1 &&
+          typeof recoveryHash === 'string' &&
+          currentSource !== null &&
+          createHash('sha256').update(currentSource).digest('hex') === recoveryHash;
+        if (
+          !matchesRecoverySource &&
+          (!marker || !sameState(current, parseNativePortableState(marker.state)))
+        ) {
+          throw new Error(`Native state file ${file} differs from SDK Run ${runId}`);
+        }
+      }
+      const expectedCheckpoint = createPortableRunCheckpoint(run);
+      const currentCheckpoint = currentDocument?.[PORTABLE_RUN_CHECKPOINT_KEY];
+      const archiveReceipt = currentDocument?.['archive_receipt'];
+      const unresolvedFinalization = run.actions.some(
+        (action) =>
+          action.stepId === 'archive.finalize' &&
+          (action.status === 'running' || action.status === 'unknown'),
+      );
+      if (
+        !current ||
+        !sameState(current, state) ||
+        !currentSource?.startsWith(NATIVE_MANAGED_RUN_MARKER) ||
+        JSON.stringify(currentCheckpoint) !== JSON.stringify(expectedCheckpoint)
+      ) {
+        if (options.readOnly)
+          throw new Error(
+            `Native SDK state projection needs recovery for ${runId}; use its named recovery command`,
+          );
+        await writeNativeManagedRunState(
+          file,
+          state,
+          paths.nativeRoot,
+          run,
+          unresolvedFinalization ? archiveReceipt : undefined,
+          options.identity,
+        );
+      }
+      const projection: ProjectionMarker = {
+        schema: 'comet.native.sdk-state-projection.v1',
+        runId,
+        revision: run.revision,
+        state,
+      };
+      const projectionSource = JSON.stringify(projection) + '\n';
+      if (markerSource !== projectionSource) {
+        if (options.readOnly)
+          throw new Error(
+            `Native SDK state projection marker needs recovery for ${runId}; use its named recovery command`,
+          );
+        await atomicWriteContainedText(markerFile, projectionSource, {
+          containedRoot: projectRoot,
+        });
+      }
+      return run;
+    };
+    if (options.readOnly) return inspect();
     await ensureProtectedProjectDirectory(projectRoot, projectionDir, {
       label: 'Native SDK state projection directory',
     });
     const lockFile = path.join(projectRoot, projectionDir, `${runId}.lock`);
-    return withRecoverableFileLock(
-      lockFile,
-      async () => {
-        const markerFile = path.join(projectRoot, projectionDir, `${runId}.json`);
-        let marker: ProjectionMarker | null = null;
-        let markerSource: string | null = null;
-        try {
-          markerSource = (
-            await readProtectedProjectFile(
-              projectRoot,
-              `${projectionDir}/${runId}.json`,
-              Number.MAX_SAFE_INTEGER,
-              { label: 'Native SDK state projection marker' },
-            )
-          ).bytes.toString('utf8');
-          marker = JSON.parse(markerSource) as ProjectionMarker;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        }
-        if (
-          markerSource !== null &&
-          (!marker ||
-            marker.schema !== 'comet.native.sdk-state-projection.v1' ||
-            marker.runId !== runId ||
-            !Number.isSafeInteger(marker.revision) ||
-            marker.revision < 1 ||
-            parseNativePortableState(marker.state).name !== runId)
-        ) {
-          throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
-        }
-        let run = await store.read(runId);
-        if (!run || (run.revision === 1 && marker && marker.revision > 1)) {
-          const recovered = await recoverFromPortableFile(runId, marker, run ?? undefined);
-          if (run && !recovered) {
-            throw new Error(
-              `Native SDK Run ${runId} requires its matching portable checkpoint or original Run history before completing recovery`,
-            );
-          }
-          run = recovered;
-        }
-        if (!run) return null;
-        const state = parseNativePortableState(run.state);
-        const input = run.input as { name?: unknown; artifactRootRef?: unknown } | null;
-        if (
-          state.name !== runId ||
-          input?.name !== runId ||
-          typeof input.artifactRootRef !== 'string'
-        ) {
-          throw new Error(`Native SDK Run ${runId} does not match its portable state`);
-        }
-        const config = await readProjectConfig(projectRoot);
-        if (config && config.native.artifact_root !== input.artifactRootRef) {
-          throw new Error('Native artifact root changed after Run creation');
-        }
-        const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef);
-        let file = nativePortableStateFile(paths, runId);
-        try {
-          await fs.access(path.dirname(file));
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-          if (!state.archived) return run; // Start can commit before artifacts are created.
-          const archivedFile = await findNativeSdkArchivedStateFile(paths, runId);
-          if (!archivedFile) {
-            throw new Error(`Native SDK Archive ${runId} is ambiguous`, { cause: error });
-          }
-          file = archivedFile;
-        }
-        let current: NativePortableState | null = null;
-        let currentSource: string | null = null;
-        let currentDocument: Record<string, unknown> | null = null;
-        try {
-          currentSource = await fs.readFile(file, 'utf8');
-          currentDocument = parseProjection(file, currentSource);
-          current = parseNativePortableState(currentDocument);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        }
-        if (marker && marker.revision > run.revision) {
-          throw new Error(`Native SDK state projection marker is invalid for ${runId}`);
-        }
-        if (current && !sameState(current, state)) {
-          const recoveryHash = (run.input as { recoverySourceHash?: unknown } | null)
-            ?.recoverySourceHash;
-          const matchesRecoverySource =
-            marker === null &&
-            run.revision === 1 &&
-            typeof recoveryHash === 'string' &&
-            currentSource !== null &&
-            createHash('sha256').update(currentSource).digest('hex') === recoveryHash;
-          if (
-            !matchesRecoverySource &&
-            (!marker || !sameState(current, parseNativePortableState(marker.state)))
-          ) {
-            throw new Error(`Native state file ${file} differs from SDK Run ${runId}`);
-          }
-        }
-        const expectedCheckpoint = createPortableRunCheckpoint(run);
-        const currentCheckpoint = currentDocument?.[PORTABLE_RUN_CHECKPOINT_KEY];
-        const archiveReceipt = currentDocument?.['archive_receipt'];
-        const unresolvedFinalization = run.actions.some(
-          (action) =>
-            action.stepId === 'archive.finalize' &&
-            (action.status === 'running' || action.status === 'unknown'),
-        );
-        if (
-          !current ||
-          !sameState(current, state) ||
-          !currentSource?.startsWith(NATIVE_MANAGED_RUN_MARKER) ||
-          JSON.stringify(currentCheckpoint) !== JSON.stringify(expectedCheckpoint)
-        ) {
-          await writeNativeManagedRunState(
-            file,
-            state,
-            paths.nativeRoot,
-            run,
-            unresolvedFinalization ? archiveReceipt : undefined,
-            options.identity,
-          );
-        }
-        const projection: ProjectionMarker = {
-          schema: 'comet.native.sdk-state-projection.v1',
-          runId,
-          revision: run.revision,
-          state,
-        };
-        const projectionSource = JSON.stringify(projection) + '\n';
-        if (markerSource !== projectionSource) {
-          await atomicWriteContainedText(markerFile, projectionSource, {
-            containedRoot: projectRoot,
-          });
-        }
-        return run;
-      },
-      { timeoutMs: 5_000 },
-    );
+    return withRecoverableFileLock(lockFile, inspect, { timeoutMs: 5_000 });
   }
 
   return {
     read: syncStateFile,
     async compareAndSwap(runId, expectedRevision, next) {
+      if (options.readOnly) throw new Error('Native SDK diagnostic store is read-only');
       const committed = await store.compareAndSwap(runId, expectedRevision, next);
       if (committed) await syncStateFile(runId);
       return committed;

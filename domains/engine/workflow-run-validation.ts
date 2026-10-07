@@ -496,8 +496,8 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
   const incompleteJoin = Object.values(joins).some((queues) =>
     Object.values(queues).some((queue) => queue.length > 0),
   );
-  if (data.status === 'running' && !activeAction) {
-    invalid('running Run 必须包含待执行或已派发的 Action');
+  if (data.status === 'running' && !activeAction && ready.length === 0) {
+    invalid('running Run 必须包含待调度步骤、待执行或已派发的 Action');
   }
   if (
     data.status === 'waiting' &&

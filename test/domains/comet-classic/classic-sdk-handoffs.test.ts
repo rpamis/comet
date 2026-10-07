@@ -142,7 +142,14 @@ describe('Classic SDK profile-aware handoffs', () => {
         phase: 'build',
         run: { runId: 'demo', revision: persisted.revision, status: persisted.status },
       });
-      expect(selected.data.run).toEqual(persisted);
+      expect(selected.data.run.actions).toHaveLength(1);
+      expect(selected.data.run.actions[0]).toMatchObject({
+        id: pending.id,
+        status: 'pending',
+      });
+      expect(selected.data.run.outputs).toBeUndefined();
+      const detailedSelection = await cli('state', 'select', 'demo', '--details');
+      expect(detailedSelection.data.run).toEqual({ ...persisted, id: persisted.runId });
       expect(selected.agent.continuation).toMatchObject({
         ...next.data.nextAction,
         cwd: root,

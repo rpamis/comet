@@ -398,6 +398,81 @@ export function createRuntime(options: CreateRuntimeOptions) {
             throw new RuntimeProtocolError('INVALID_RUN', '已保存的 Run 缺少启动时的初始状态绑定');
           }
           validateWorkflowState(definition, run.state, 'RUN_STATE_INVALID');
+          for (const token of run.ready) {
+            const invalidToken = () => {
+              throw new RuntimeProtocolError('INVALID_RUN', '待调度步骤与固定工作流定义不一致');
+            };
+            if (!Object.hasOwn(definition.steps, token.to)) invalidToken();
+            if (token.from === null) {
+              if (
+                !definition.entry.includes(token.to) ||
+                Object.keys(token.results).length > 0 ||
+                (run.sequence !== 0 &&
+                  !(run.status === 'failed' && run.reason?.startsWith('TRANSITION_LIMIT:')))
+              )
+                invalidToken();
+              continue;
+            }
+            const source = token.results[token.from];
+            if (!source) invalidToken();
+            const action = run.actions.find(
+              (candidate) =>
+                candidate.stepId === token.from &&
+                run.actionContexts[candidate.id].sequence === source.sequence,
+            );
+            const wait = run.waits.find(
+              (candidate) =>
+                candidate.stepId === token.from && candidate.sequence === source.sequence,
+            );
+            const evidence = run.evidenceWaits?.find(
+              (candidate) =>
+                candidate.stepId === token.from && candidate.sequence === source.sequence,
+            );
+            const event = action?.outcome
+              ? action.outcome.status === 'failed'
+                ? 'failed'
+                : (action.outcome.event ?? 'succeeded')
+              : (wait?.decision?.choice ??
+                (evidence?.invalidation
+                  ? 'invalidated'
+                  : evidence?.receipt
+                    ? 'succeeded'
+                    : undefined));
+            const prior = action
+              ? run.actionContexts[action.id].results
+              : (wait?.results ?? evidence?.results);
+            const value = action?.outcome
+              ? action.outcome.output
+              : wait?.decision
+                ? { choice: wait.decision.choice, proposal: wait.proposal }
+                : evidence?.invalidation
+                  ? {
+                      ref: evidence.invalidation.ref,
+                      contentHash: evidence.invalidation.contentHash,
+                      reason: evidence.invalidation.reason,
+                    }
+                  : evidence?.receipt
+                    ? { ref: evidence.receipt.ref, contentHash: evidence.receipt.contentHash }
+                    : undefined;
+            if (
+              !event ||
+              !prior ||
+              (action && !['succeeded', 'failed'].includes(action.status)) ||
+              (wait && wait.status !== 'resolved') ||
+              (evidence && !['resolved', 'invalidated'].includes(evidence.status)) ||
+              value === undefined ||
+              hashRuntimeValue(token.results) !==
+                hashRuntimeValue({
+                  ...prior,
+                  [token.from]: { sequence: source.sequence, value },
+                }) ||
+              !definition.transitions.some(
+                (edge) => edge.from === token.from && edge.to === token.to && edge.on === event,
+              )
+            ) {
+              invalidToken();
+            }
+          }
           for (const wait of run.evidenceWaits ?? []) {
             const step = definition.steps[wait.stepId];
             if (!step || step.type !== 'await_evidence' || step.kind !== wait.kind) {

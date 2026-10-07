@@ -30,6 +30,7 @@ import {
 import { nativeShowCommand } from '../../../domains/comet-native/native-show-command.js';
 import { nativeStatusCommand } from '../../../domains/comet-native/native-status-command.js';
 import { nativeArchiveCommand } from '../../../domains/comet-native/native-archive-command.js';
+import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
 import { render } from '../../../domains/comet-native/native-cli-shared.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
@@ -47,14 +48,13 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function preparedChange() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-sdk-read-'));
-  roots.push(root);
-  await fs.mkdir(path.join(root, '.git'));
+async function preparedChange(name = 'read-budget', existingRoot?: string) {
+  const root = existingRoot ?? (await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-sdk-read-')));
+  if (!existingRoot) roots.push(root);
+  await fs.mkdir(path.join(root, '.git'), { recursive: true });
   await writeProjectConfig(root, defaultProjectConfig('docs', 'en'));
   const paths = await nativeProjectPaths(root, 'docs');
   await ensureNativeDirectories(paths);
-  const name = 'read-budget';
   const changeDir = path.join(paths.changesDir, name);
   await fs.mkdir(path.join(changeDir, 'specs', 'workflow'), { recursive: true });
   await fs.writeFile(
@@ -149,11 +149,45 @@ describe('Native SDK read work budgets', () => {
     });
     expect(claimed.actions.find((action) => action.id === pending.id)?.status).toBe('running');
     const waiting = await inspectNativeSdkStatus({ projectRoot: root, name });
-    expect(waiting.continuation.commandArgs).toBeNull();
+    expect(waiting.continuation.commandArgs).toEqual(['comet', 'native', 'status', name, '--json']);
     expect(waiting.pendingAction).toBeUndefined();
     expect(waiting.continuation.userCommunication.agentInstruction).toContain(
       'original claimed task',
     );
+    const continued = await advanceNativeSdkChange(root, name);
+    expect(continued.exitCode).toBe(0);
+    expect(continued.data).toMatchObject({
+      phase: 'build',
+      stateVersion: waiting.stateVersion,
+      workspace: waiting.workspace,
+      run: { revision: claimed.revision },
+      continuation: waiting.continuation,
+      activeActions: [
+        { id: pending.id, status: 'running', claim: { token: 'budget-builder-token' } },
+      ],
+    });
+    expect(await runtime.inspect(name)).toEqual(claimed);
+    const unknown = await runtime.markUnknown({
+      runId: name,
+      actionId: pending.id,
+      attempt: pending.attempt,
+      reason: 'Fixture host lost the original execution result.',
+    });
+    const blocked = await advanceNativeSdkChange(root, name);
+    expect(blocked.exitCode).toBe(0);
+    expect(blocked.data).toMatchObject({
+      phase: 'build',
+      run: { revision: unknown.revision },
+      continuation: { disposition: 'blocked', requiredInputs: ['original-execution-result'] },
+      activeActions: [
+        {
+          id: pending.id,
+          status: 'unknown',
+          outcomeRequest: { outcome: { actionId: pending.id, claimToken: 'budget-builder-token' } },
+        },
+      ],
+    });
+    expect(await runtime.inspect(name)).toEqual(unknown);
     await expect(
       runtime.claim({
         ...claim,
@@ -163,6 +197,52 @@ describe('Native SDK read work budgets', () => {
       }),
     ).rejects.toThrow();
   });
+
+  it.each(['healthy', 'marker-mismatch', 'missing-marker', 'invalid-yaml'])(
+    'keeps named and project SDK doctor consistent without writes (%s)',
+    async (scenario) => {
+      const { root, name, markerFile, stateFile } = await preparedChange();
+      await preparedChange('healthy-peer', root);
+      if (scenario === 'marker-mismatch') {
+        const marker = JSON.parse(await fs.readFile(markerFile, 'utf8'));
+        marker.revision += 1;
+        await fs.writeFile(markerFile, JSON.stringify(marker));
+      } else if (scenario === 'missing-marker') {
+        await fs.rm(markerFile);
+      } else if (scenario === 'invalid-yaml') {
+        await fs.appendFile(stateFile, '\nphase: unknown-phase\n');
+      }
+      const snapshot = async () => {
+        const entries = await fs.readdir(root, { recursive: true, withFileTypes: true });
+        return Promise.all(
+          entries
+            .filter((entry) => entry.isFile())
+            .map(async (entry) => {
+              const file = path.join(entry.parentPath, entry.name);
+              const stat = await fs.stat(file);
+              return [file, stat.mtimeMs, (await fs.readFile(file)).toString('base64')];
+            }),
+        );
+      };
+      const before = await snapshot();
+      const named = await nativeDoctorCommand([name], root);
+      const project = await nativeDoctorCommand([], root);
+      expect(named.exitCode).toBe(scenario === 'healthy' ? 0 : 65);
+      const data = project.data as {
+        changes: Array<{ change: string; healthy: boolean }>;
+        findings: Array<{ code: string }>;
+      };
+      expect(data.changes.find((change) => change.change === name)?.healthy).toBe(
+        scenario === 'healthy',
+      );
+      expect(data.changes.find((change) => change.change === 'healthy-peer')?.healthy).toBe(true);
+      if (scenario !== 'healthy') {
+        expect(project.exitCode).toBe(65);
+        expect(data.findings.some((finding) => finding.code === 'sdk-run-invalid')).toBe(true);
+      }
+      expect(await snapshot()).toEqual(before);
+    },
+  );
 
   it('bounds settled history without hiding older unfinished work and exposes complete details', async () => {
     const { root, name } = await preparedChange();

@@ -8,6 +8,7 @@ import {
 } from '../../domains/comet-classic/classic-output-language.js';
 import type { RecordedCommandCheck } from '../../domains/comet-classic/classic-command-checks.js';
 import type { NativePortableStatusProjection } from '../../domains/comet-native/native-portable-status.js';
+import type { NativeSdkStatusProjection } from '../../domains/comet-native/native-sdk-status.js';
 import { nativeStatusSummaryLine } from '../../domains/comet-native/native-output-language.js';
 import { resolveProjectLanguage } from './resume-probe.js';
 import type { CliOutputLocale } from '../../domains/workflow-contract/output-envelope.js';
@@ -179,7 +180,7 @@ function nativeSummaryLocaleText(
 }
 
 function displayPortableNativeChange(
-  change: NativePortableStatusProjection,
+  change: NativePortableStatusProjection | NativeSdkStatusProjection,
   index: number,
   locale: CliOutputLocale,
 ): void {
@@ -221,6 +222,23 @@ function displayDefaultEntry(
 
 function displayStatus(status: CometProjectStatus, locale: CliOutputLocale): void {
   displayDefaultEntry(status.defaultEntry, locale);
+  console.log(
+    `${locale === 'zh-CN' ? '发现范围：当前工作区' : 'Discovery: current worktree'} (${status.discovery.projectRoot})\n`,
+  );
+  if (status.applications.error || status.applications.changes.length > 0) {
+    console.log(locale === 'zh-CN' ? '应用 Run：\n' : 'Application Runs:\n');
+    if (status.applications.error) console.log(`  error: ${status.applications.error}\n`);
+    for (const selected of status.applications.changes) {
+      console.log(
+        `  ${selected.applicationId}:${selected.name} [${'run' in selected ? selected.run.status : 'blocked'}]`,
+      );
+      if ('error' in selected)
+        console.log(`     error: ${selected.error.code}: ${selected.error.message}`);
+      if ('run' in selected) console.log(`     revision: ${selected.run.revision}`);
+      console.log(`     inspect: ${displayCommandArgs(selected.inspection.commandArgs)}`);
+      console.log(`     request: ${JSON.stringify(selected.inspection.request)}\n`);
+    }
+  }
   displayNativeChanges(status.workflows.native, locale);
   displayChangeSection(
     locale === 'zh-CN' ? 'Classic 需求' : 'Classic Changes',

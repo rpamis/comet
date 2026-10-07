@@ -505,8 +505,12 @@ export function createNativeWorkflowApplication(
     commandValidators: base.commandValidators,
     validateRecovery: base.validateRecovery,
     executors: [...base.executors, ...(options.executors ?? [])],
-    wrapStore(store, identity) {
-      const projected = createNativeSdkStateStore(context.projectRoot, { store, identity });
+    wrapStore(store, identity, storeOptions) {
+      const projected = createNativeSdkStateStore(context.projectRoot, {
+        store,
+        identity,
+        readOnly: storeOptions?.readOnly,
+      });
       return {
         read: (id) => projected.read(id),
         async compareAndSwap(id, revision, run) {

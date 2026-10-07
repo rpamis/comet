@@ -1,4 +1,7 @@
 import type { RecordedCommandCheck } from '../comet-classic/classic-command-checks.js';
+import type { classicSdkNextAction } from '../comet-classic/classic-sdk-status.js';
+import type { NativeSdkStatusProjection } from '../comet-native/native-sdk-status.js';
+import type { SelectedWorkflowApplicationStatus } from '../workflow-application/index.js';
 import type { NativePortableStatusProjection } from '../comet-native/native-portable-status.js';
 import type { NativeStatusProjection } from '../comet-native/native-types.js';
 import type { CometProjectWorkflow } from '../workflow-contract/types.js';
@@ -21,6 +24,7 @@ export interface CometEntryResolution {
 export interface ChangeStatus {
   name: string;
   cometManaged: boolean;
+  archived?: boolean;
   archiveReady: boolean;
   recommendedArchiveCommand: string;
   workflow: string | null;
@@ -47,21 +51,30 @@ export interface ChangeStatus {
     build: RecordedCommandCheck | null;
     verify: RecordedCommandCheck | null;
   } | null;
+  run?: { id: string; revision: number; status: string };
+  nextAction?: ReturnType<typeof classicSdkNextAction>;
+  inspection?: { commandArgs: string[]; request: { operation: 'inspect'; runId: string } };
   error?: string;
 }
 
 export interface NativeChangeStatusError {
   name: string;
   error: string;
+  inspection?: { commandArgs: string[] };
 }
 
 export interface CometProjectStatus {
   schema: 'comet.status.v2';
+  discovery: { projectRoot: string; scope: 'current-worktree'; applications: 'current-selection' };
+  applications: { changes: SelectedWorkflowApplicationStatus[]; error?: string };
   defaultEntry: CometEntryResolution | { error: string };
   workflows: {
     native: {
       changes: Array<
-        NativeStatusProjection | NativePortableStatusProjection | NativeChangeStatusError
+        | NativeStatusProjection
+        | NativePortableStatusProjection
+        | NativeSdkStatusProjection
+        | NativeChangeStatusError
       >;
       error?: string;
     };

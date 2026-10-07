@@ -15,7 +15,7 @@ description: '创建 Classic change，整理需求并请用户确认。在用户
 
 ### 0. 设置输出语言
 
-向 OpenSpec 传递提问和文档生成要求时，都必须明确指定 Comet 配置的产物语言，使用 `en`、`zh-CN` 这类规范化 ID。change 尚未初始化时，依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；初始化后，无论由 SDK Run 还是旧状态管理，都使用 `comet state get <name> language` 读取。没有配置语言时，才采用当前用户请求的语言。生成的 `proposal.md`、`design.md`、`tasks.md` 必须以该语言为主。
+向 OpenSpec 传递提问和文档生成要求时，都必须明确指定 Comet 配置的产物语言，使用 `en`、`zh-CN` 这类规范化 ID。change 尚未初始化时，依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；初始化后，复用当前有效响应中的 `configuration.language`；缺少时才使用 `comet state get <name> language` 读取。没有配置语言时，才采用当前用户请求的语言。生成的 `proposal.md`、`design.md`、`tasks.md` 必须以该语言为主。
 
 ### 0a. 当前 change 绑定
 
@@ -175,11 +175,10 @@ change 的基础目录和文件创建后，立即初始化 SDK Run，以便中�
 
 ```bash
 comet state init <name> full --isolation <selected-isolation>
-comet state select <name>
-comet state next <name> --json
+comet state select <name> --json
 ```
 
-任一命令失败都停止。`state next` 必须返回 `runtimeFormat: sdk`、`phase: open` 和当前 Run 的待执行 Action。随后运行一次 `comet classic openspec --agent-json -- status --change "<name>" --json` 并执行兼容性预检：
+任一命令失败都停止。选择结果必须返回 `runtimeFormat: sdk`、`phase: open` 和当前 Run 的待执行 Action；缺少这些字段时才运行 `comet state next <name> --json` 补读。随后运行一次 `comet classic openspec --agent-json -- status --change "<name>" --json` 并执行兼容性预检：
 
 - `changeRoot` 解析后必须等于路径解析器绑定的 `<classic-change-dir>`，`planningHome`（如存在）也必须位于当前仓库；不支持仓库外的产物路径
 - `artifacts` 必须包含 Classic 必需 ID `proposal`、`tasks`，其他要求沿 `requires` 递归展开
@@ -255,7 +254,7 @@ comet state check <name> open
 
 ### 5. 请用户确认产物
 
-全部 OpenSpec 产物完成且内容完整性检查通过后，先运行 `comet state next <name> --json` 确认当前 `runtimeFormat`。SDK change 再运行 `comet guard <change-name> open --json` 取得预检结果、内容摘要和 `data.approvalHash`；预检未通过时先修复问题。随后**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户确认**。不得在用户确认前应用阶段守卫或自动进入下一阶段。
+全部 OpenSpec 产物完成且内容完整性检查通过后，使用当前有效响应的 `runtimeFormat`；归属信息缺失或发生外部变化时才运行 `comet state next <name> --json`。SDK change 再运行 `comet guard <change-name> open --json` 取得预检结果、内容摘要和 `data.approvalHash`；预检未通过时先修复问题。随后**必须按 `comet-classic/reference/decision-point.md` 的协议暂停并等待用户确认**。不得在用户确认前应用阶段守卫或自动进入下一阶段。
 
 最终审视同时确认 change 名称、范围和产物内容；不得因 Step 1b 已完成解析而省略，也不得在此之前再增加一次常规摘要/命名确认。
 
@@ -293,7 +292,7 @@ comet guard <change-name> open --apply                           # legacy
 
 ## 自动衔接下一阶段
 
-SDK change 应运行 `comet state next <change-name> --json`，根据同一 Run 返回的 `nextAction.kind` 和 phase 继续：`action` 才加载返回的 Skill；`decision`、`evidence`、`reconcile` 先进入对应恢复步骤，不自动重放。旧 change 按 `comet-classic/reference/auto-transition.md` 和成功结果中的 `agent.continuation` 继续。已有仍然有效的旧状态信息时，不重复 next、select 或 check。只有丢失上下文后恢复任务、外部状态变化，或旧结果未提供这些信息时，才运行：
+SDK change 优先使用成功结果中同一 Run 的 `nextAction.kind`、phase 和 `agent.continuation` 继续；缺少时才运行 `comet state next <change-name> --json`：`action` 才加载返回的 Skill；`decision`、`evidence`、`reconcile` 先进入对应恢复步骤，不自动重放。旧 change 按 `comet-classic/reference/auto-transition.md` 和成功结果中的 `agent.continuation` 继续。已有仍然有效的状态信息时，不重复 next、select 或 check。只有丢失上下文后恢复任务、外部状态变化，或旧结果未提供这些信息时，才运行：
 
 ```bash
 comet state next <change-name>

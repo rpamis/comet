@@ -18,9 +18,10 @@ Before starting or recovering, use `comet-classic/reference/classic-layout.md` t
 ```bash
 comet classic workspace resolve <change-name> --json
 # Enter the returned projectRoot before selecting the change
-comet state select <change-name>
-comet state next <change-name> --json
+comet state select <change-name> --json
 ```
+
+Continue directly when the selection response contains current Runtime ownership, phase, revision, and nextAction. Run `comet state next <change-name> --json` only for missing information, external state changes, or an expired response.
 
 For a copied SDK change whose `.comet.yaml` contains `run_checkpoint`, named `state select` or `state next` restores the saved phase, Actions, and approvals. Confirm the original device's execution process has stopped before continuing external work. Reconcile an Action with an unknown outcome before retrying it. Only when an older state file has no checkpoint and the normal entry explicitly reports missing Run history, inspect the formal documents, explain that explicit restoration returns to Open and requires fresh approvals and checks, and obtain the user's consent before running `comet state restore <change-name> --confirmed`.
 

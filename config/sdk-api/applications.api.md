@@ -220,6 +220,428 @@ export interface InspectedSkill {
 }
 
 // @public
+export function inspectSelectedWorkflowApplicationStatus(projectRoot: string): Promise<{
+    healthy: boolean;
+    application: ApplicationIdentity;
+    run: {
+        history: {
+            actions: number;
+            waits: number;
+            evidenceWaits: number;
+            children: number;
+            outputs: number;
+        };
+        continuation: {
+            nextRequest?: {
+                runId: string;
+                expectedRevision: number;
+                operation: "next";
+            } | undefined;
+            commandArgs: string[];
+            instruction: string;
+        };
+        inspection: {
+            commandArgs: string[];
+            request: {
+                operation: "inspect";
+                runId: string;
+            };
+        };
+        outputs?: Record<string, WorkflowResult> | undefined;
+        current: {
+            actions: ({
+                instruction: string;
+                executeRequests?: undefined;
+                claimRequest?: undefined;
+                validator?: WorkflowReference | undefined;
+                outputSchema?: RuntimeValue | undefined;
+                protocolVersion: 1;
+                id: string;
+                runId: string;
+                stepId: string;
+                type: string;
+                ref?: string;
+                attempt: number;
+                input: RuntimeValue;
+                inputHash: string;
+                status: RuntimeActionStatus;
+                retry: RuntimeRetryPolicy;
+                requiredCapabilities: string[];
+                claim?: RuntimeClaim;
+                outcome?: RuntimeOutcome;
+                receipts: {
+                    outcomeId: string;
+                    hash: string;
+                }[];
+                rejectedOutcomes?: {
+                    outcome: RuntimeOutcome;
+                    code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                    reason: string;
+                }[];
+                reconciliations: {
+                    attempt: number;
+                    resolution: "not-executed";
+                    evidence: RuntimeValue;
+                }[];
+                reason?: string;
+            } | {
+                instruction: string;
+                executeRequests: {
+                    actionId: string;
+                    executorId: string;
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "execute";
+                }[];
+                claimRequest: {
+                    actionId: string;
+                    attempt: number;
+                    inputHash: string;
+                    executorId: string;
+                    sessionId: string;
+                    capabilities: string[];
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "claim";
+                };
+                validator?: WorkflowReference | undefined;
+                outputSchema?: RuntimeValue | undefined;
+                protocolVersion: 1;
+                id: string;
+                runId: string;
+                stepId: string;
+                type: string;
+                ref?: string;
+                attempt: number;
+                input: RuntimeValue;
+                inputHash: string;
+                status: RuntimeActionStatus;
+                retry: RuntimeRetryPolicy;
+                requiredCapabilities: string[];
+                claim?: RuntimeClaim;
+                outcome?: RuntimeOutcome;
+                receipts: {
+                    outcomeId: string;
+                    hash: string;
+                }[];
+                rejectedOutcomes?: {
+                    outcome: RuntimeOutcome;
+                    code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                    reason: string;
+                }[];
+                reconciliations: {
+                    attempt: number;
+                    resolution: "not-executed";
+                    evidence: RuntimeValue;
+                }[];
+                reason?: string;
+            } | {
+                markUnknownRequest: {
+                    actionId: string;
+                    attempt: number;
+                    reason: string;
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "mark-unknown";
+                };
+                instruction: string;
+                outcomeRequest: {
+                    outcome: {
+                        actionId: string;
+                        attempt: number;
+                        inputHash: string;
+                        claimToken: string;
+                        outcomeId: string;
+                        status: string;
+                        output: string;
+                    };
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "record-outcome";
+                };
+                executeRequests?: undefined;
+                claimRequest?: undefined;
+                validator?: WorkflowReference | undefined;
+                outputSchema?: RuntimeValue | undefined;
+                protocolVersion: 1;
+                id: string;
+                runId: string;
+                stepId: string;
+                type: string;
+                ref?: string;
+                attempt: number;
+                input: RuntimeValue;
+                inputHash: string;
+                status: RuntimeActionStatus;
+                retry: RuntimeRetryPolicy;
+                requiredCapabilities: string[];
+                claim?: RuntimeClaim;
+                outcome?: RuntimeOutcome;
+                receipts: {
+                    outcomeId: string;
+                    hash: string;
+                }[];
+                rejectedOutcomes?: {
+                    outcome: RuntimeOutcome;
+                    code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                    reason: string;
+                }[];
+                reconciliations: {
+                    attempt: number;
+                    resolution: "not-executed";
+                    evidence: RuntimeValue;
+                }[];
+                reason?: string;
+            } | {
+                instruction: string;
+                outcomeRequest: {
+                    outcome: {
+                        actionId: string;
+                        attempt: number;
+                        inputHash: string;
+                        claimToken: string;
+                        outcomeId: string;
+                        status: string;
+                        output: string;
+                    };
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "record-outcome";
+                };
+                executeRequests?: undefined;
+                claimRequest?: undefined;
+                validator?: WorkflowReference | undefined;
+                outputSchema?: RuntimeValue | undefined;
+                protocolVersion: 1;
+                id: string;
+                runId: string;
+                stepId: string;
+                type: string;
+                ref?: string;
+                attempt: number;
+                input: RuntimeValue;
+                inputHash: string;
+                status: RuntimeActionStatus;
+                retry: RuntimeRetryPolicy;
+                requiredCapabilities: string[];
+                claim?: RuntimeClaim;
+                outcome?: RuntimeOutcome;
+                receipts: {
+                    outcomeId: string;
+                    hash: string;
+                }[];
+                rejectedOutcomes?: {
+                    outcome: RuntimeOutcome;
+                    code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                    reason: string;
+                }[];
+                reconciliations: {
+                    attempt: number;
+                    resolution: "not-executed";
+                    evidence: RuntimeValue;
+                }[];
+                reason?: string;
+            } | {
+                retryRequest: {
+                    actionId: string;
+                    attempt: number;
+                    reconciliation: {
+                        resolution: "not-executed";
+                        evidence: null;
+                    };
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "retry";
+                };
+                requiredInputs: string[];
+                instruction: string;
+                outcomeRequest: {
+                    outcome: {
+                        actionId: string;
+                        attempt: number;
+                        inputHash: string;
+                        claimToken: string;
+                        outcomeId: string;
+                        status: string;
+                        output: string;
+                    };
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "record-outcome";
+                };
+                executeRequests?: undefined;
+                claimRequest?: undefined;
+                validator?: WorkflowReference | undefined;
+                outputSchema?: RuntimeValue | undefined;
+                protocolVersion: 1;
+                id: string;
+                runId: string;
+                stepId: string;
+                type: string;
+                ref?: string;
+                attempt: number;
+                input: RuntimeValue;
+                inputHash: string;
+                status: RuntimeActionStatus;
+                retry: RuntimeRetryPolicy;
+                requiredCapabilities: string[];
+                claim?: RuntimeClaim;
+                outcome?: RuntimeOutcome;
+                receipts: {
+                    outcomeId: string;
+                    hash: string;
+                }[];
+                rejectedOutcomes?: {
+                    outcome: RuntimeOutcome;
+                    code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                    reason: string;
+                }[];
+                reconciliations: {
+                    attempt: number;
+                    resolution: "not-executed";
+                    evidence: RuntimeValue;
+                }[];
+                reason?: string;
+            })[];
+            waits: {
+                resolveRequest: {
+                    waitId: string;
+                    proposalHash: string;
+                    decisionId: string;
+                    choice: string;
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "resolve-wait";
+                };
+                reviseRequest: {
+                    waitId: string;
+                    proposalHash: string;
+                    proposal: string;
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "revise-wait";
+                };
+                instruction: string;
+                decision?: {
+                    id: string;
+                    choice: string;
+                    proposalHash: string;
+                } | undefined;
+                id: string;
+                stepId: string;
+                sequence: number;
+                status: "pending" | "cancelled" | "resolved";
+                proposal: RuntimeValue;
+                proposalHash: string;
+                choices: string[];
+            }[];
+            evidenceWaits: {
+                recordRequest: {
+                    evidenceId: string;
+                    kind: string;
+                    ref: string;
+                    contentHash: string;
+                    submissionId: string;
+                    runId: string;
+                    expectedRevision: number;
+                    operation: "record-evidence";
+                };
+                id: string;
+                stepId: string;
+                sequence: number;
+                kind: string;
+                status: "pending" | "resolved" | "invalidated" | "cancelled";
+                receipt?: {
+                    ref: string;
+                    contentHash: string;
+                    submissionId: string;
+                };
+                invalidation?: {
+                    ref: string;
+                    contentHash: string;
+                    submissionId: string;
+                    reason: string;
+                };
+            }[];
+            approvals: {
+                decision?: {
+                    id: string;
+                    choice: string;
+                    proposalHash: string;
+                } | undefined;
+                id: string;
+                stepId: string;
+                sequence: number;
+                status: "pending" | "cancelled" | "resolved";
+                proposal: RuntimeValue;
+                proposalHash: string;
+                choices: string[];
+            }[];
+            children: {
+                inspection: {
+                    operation: "inspect";
+                    runId: string;
+                };
+                actionId: string;
+                runId: string;
+                workflow: WorkflowRef;
+            }[];
+            joins: {
+                [k: string]: {
+                    [k: string]: number;
+                };
+            };
+        };
+        reason?: string | undefined;
+        schema: "comet.application.run-view.v1";
+        applicationId: string;
+        projectRoot: string;
+        runId: string;
+        revision: number;
+        workflow: WorkflowRef & {
+            hash: string;
+        };
+        definitionHashes: Record<string, string>;
+        status: "running" | "failed" | "cancelled" | "waiting" | "completed";
+        sequence: number;
+    };
+    name: string;
+    applicationId: string;
+    selected: true;
+    inspection: {
+        commandArgs: string[];
+        request: {
+            operation: "inspect";
+            runId: string;
+        };
+    };
+} | {
+    healthy: boolean;
+    error: {
+        code: string | (string & Record<never, never>);
+        message: string;
+    };
+    name: string;
+    applicationId: string;
+    selected: true;
+    inspection: {
+        commandArgs: string[];
+        request: {
+            operation: "inspect";
+            runId: string;
+        };
+    };
+} | null>;
+
+// @public (undocumented)
+export function inspectWorkflowApplicationRun(projectRoot: string, applicationId: string, runId: string, options?: {
+    readOnly?: boolean;
+}): Promise<{
+    application: LoadedWorkflowApplication;
+    run: WorkflowRun;
+}>;
+
+// @public
 export function installWorkflowApplication(options: ApplicationDeliveryOptions & {
     file: string;
     upgrade?: boolean;
@@ -258,6 +680,7 @@ export function loadWorkflowApplication(options: {
     projectRoot: string;
     runId?: string;
     expectedIdentity?: ApplicationIdentity;
+    readOnly?: boolean;
 }): Promise<LoadedWorkflowApplication>;
 
 // @public
@@ -265,6 +688,390 @@ export function previewWorkflowApplicationInstall(options: ApplicationDeliveryOp
     file: string;
     upgrade?: boolean;
 }): Promise<ApplicationInstallPreview>;
+
+// @public
+export function projectWorkflowApplicationRun(application: LoadedWorkflowApplication, run: WorkflowRun): {
+    history: {
+        actions: number;
+        waits: number;
+        evidenceWaits: number;
+        children: number;
+        outputs: number;
+    };
+    continuation: {
+        nextRequest?: {
+            runId: string;
+            expectedRevision: number;
+            operation: "next";
+        } | undefined;
+        commandArgs: string[];
+        instruction: string;
+    };
+    inspection: {
+        commandArgs: string[];
+        request: {
+            operation: "inspect";
+            runId: string;
+        };
+    };
+    outputs?: Record<string, WorkflowResult> | undefined;
+    current: {
+        actions: ({
+            instruction: string;
+            executeRequests?: undefined;
+            claimRequest?: undefined;
+            validator?: WorkflowReference | undefined;
+            outputSchema?: RuntimeValue | undefined;
+            protocolVersion: 1;
+            id: string;
+            runId: string;
+            stepId: string;
+            type: string;
+            ref?: string;
+            attempt: number;
+            input: RuntimeValue;
+            inputHash: string;
+            status: RuntimeActionStatus;
+            retry: RuntimeRetryPolicy;
+            requiredCapabilities: string[];
+            claim?: RuntimeClaim;
+            outcome?: RuntimeOutcome;
+            receipts: {
+                outcomeId: string;
+                hash: string;
+            }[];
+            rejectedOutcomes?: {
+                outcome: RuntimeOutcome;
+                code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                reason: string;
+            }[];
+            reconciliations: {
+                attempt: number;
+                resolution: "not-executed";
+                evidence: RuntimeValue;
+            }[];
+            reason?: string;
+        } | {
+            instruction: string;
+            executeRequests: {
+                actionId: string;
+                executorId: string;
+                runId: string;
+                expectedRevision: number;
+                operation: "execute";
+            }[];
+            claimRequest: {
+                actionId: string;
+                attempt: number;
+                inputHash: string;
+                executorId: string;
+                sessionId: string;
+                capabilities: string[];
+                runId: string;
+                expectedRevision: number;
+                operation: "claim";
+            };
+            validator?: WorkflowReference | undefined;
+            outputSchema?: RuntimeValue | undefined;
+            protocolVersion: 1;
+            id: string;
+            runId: string;
+            stepId: string;
+            type: string;
+            ref?: string;
+            attempt: number;
+            input: RuntimeValue;
+            inputHash: string;
+            status: RuntimeActionStatus;
+            retry: RuntimeRetryPolicy;
+            requiredCapabilities: string[];
+            claim?: RuntimeClaim;
+            outcome?: RuntimeOutcome;
+            receipts: {
+                outcomeId: string;
+                hash: string;
+            }[];
+            rejectedOutcomes?: {
+                outcome: RuntimeOutcome;
+                code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                reason: string;
+            }[];
+            reconciliations: {
+                attempt: number;
+                resolution: "not-executed";
+                evidence: RuntimeValue;
+            }[];
+            reason?: string;
+        } | {
+            markUnknownRequest: {
+                actionId: string;
+                attempt: number;
+                reason: string;
+                runId: string;
+                expectedRevision: number;
+                operation: "mark-unknown";
+            };
+            instruction: string;
+            outcomeRequest: {
+                outcome: {
+                    actionId: string;
+                    attempt: number;
+                    inputHash: string;
+                    claimToken: string;
+                    outcomeId: string;
+                    status: string;
+                    output: string;
+                };
+                runId: string;
+                expectedRevision: number;
+                operation: "record-outcome";
+            };
+            executeRequests?: undefined;
+            claimRequest?: undefined;
+            validator?: WorkflowReference | undefined;
+            outputSchema?: RuntimeValue | undefined;
+            protocolVersion: 1;
+            id: string;
+            runId: string;
+            stepId: string;
+            type: string;
+            ref?: string;
+            attempt: number;
+            input: RuntimeValue;
+            inputHash: string;
+            status: RuntimeActionStatus;
+            retry: RuntimeRetryPolicy;
+            requiredCapabilities: string[];
+            claim?: RuntimeClaim;
+            outcome?: RuntimeOutcome;
+            receipts: {
+                outcomeId: string;
+                hash: string;
+            }[];
+            rejectedOutcomes?: {
+                outcome: RuntimeOutcome;
+                code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                reason: string;
+            }[];
+            reconciliations: {
+                attempt: number;
+                resolution: "not-executed";
+                evidence: RuntimeValue;
+            }[];
+            reason?: string;
+        } | {
+            instruction: string;
+            outcomeRequest: {
+                outcome: {
+                    actionId: string;
+                    attempt: number;
+                    inputHash: string;
+                    claimToken: string;
+                    outcomeId: string;
+                    status: string;
+                    output: string;
+                };
+                runId: string;
+                expectedRevision: number;
+                operation: "record-outcome";
+            };
+            executeRequests?: undefined;
+            claimRequest?: undefined;
+            validator?: WorkflowReference | undefined;
+            outputSchema?: RuntimeValue | undefined;
+            protocolVersion: 1;
+            id: string;
+            runId: string;
+            stepId: string;
+            type: string;
+            ref?: string;
+            attempt: number;
+            input: RuntimeValue;
+            inputHash: string;
+            status: RuntimeActionStatus;
+            retry: RuntimeRetryPolicy;
+            requiredCapabilities: string[];
+            claim?: RuntimeClaim;
+            outcome?: RuntimeOutcome;
+            receipts: {
+                outcomeId: string;
+                hash: string;
+            }[];
+            rejectedOutcomes?: {
+                outcome: RuntimeOutcome;
+                code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                reason: string;
+            }[];
+            reconciliations: {
+                attempt: number;
+                resolution: "not-executed";
+                evidence: RuntimeValue;
+            }[];
+            reason?: string;
+        } | {
+            retryRequest: {
+                actionId: string;
+                attempt: number;
+                reconciliation: {
+                    resolution: "not-executed";
+                    evidence: null;
+                };
+                runId: string;
+                expectedRevision: number;
+                operation: "retry";
+            };
+            requiredInputs: string[];
+            instruction: string;
+            outcomeRequest: {
+                outcome: {
+                    actionId: string;
+                    attempt: number;
+                    inputHash: string;
+                    claimToken: string;
+                    outcomeId: string;
+                    status: string;
+                    output: string;
+                };
+                runId: string;
+                expectedRevision: number;
+                operation: "record-outcome";
+            };
+            executeRequests?: undefined;
+            claimRequest?: undefined;
+            validator?: WorkflowReference | undefined;
+            outputSchema?: RuntimeValue | undefined;
+            protocolVersion: 1;
+            id: string;
+            runId: string;
+            stepId: string;
+            type: string;
+            ref?: string;
+            attempt: number;
+            input: RuntimeValue;
+            inputHash: string;
+            status: RuntimeActionStatus;
+            retry: RuntimeRetryPolicy;
+            requiredCapabilities: string[];
+            claim?: RuntimeClaim;
+            outcome?: RuntimeOutcome;
+            receipts: {
+                outcomeId: string;
+                hash: string;
+            }[];
+            rejectedOutcomes?: {
+                outcome: RuntimeOutcome;
+                code: "OUTPUT_INVALID" | "OUTCOME_REJECTED" | "OUTCOME_PROCESSING_ERROR";
+                reason: string;
+            }[];
+            reconciliations: {
+                attempt: number;
+                resolution: "not-executed";
+                evidence: RuntimeValue;
+            }[];
+            reason?: string;
+        })[];
+        waits: {
+            resolveRequest: {
+                waitId: string;
+                proposalHash: string;
+                decisionId: string;
+                choice: string;
+                runId: string;
+                expectedRevision: number;
+                operation: "resolve-wait";
+            };
+            reviseRequest: {
+                waitId: string;
+                proposalHash: string;
+                proposal: string;
+                runId: string;
+                expectedRevision: number;
+                operation: "revise-wait";
+            };
+            instruction: string;
+            decision?: {
+                id: string;
+                choice: string;
+                proposalHash: string;
+            } | undefined;
+            id: string;
+            stepId: string;
+            sequence: number;
+            status: "pending" | "cancelled" | "resolved";
+            proposal: RuntimeValue;
+            proposalHash: string;
+            choices: string[];
+        }[];
+        evidenceWaits: {
+            recordRequest: {
+                evidenceId: string;
+                kind: string;
+                ref: string;
+                contentHash: string;
+                submissionId: string;
+                runId: string;
+                expectedRevision: number;
+                operation: "record-evidence";
+            };
+            id: string;
+            stepId: string;
+            sequence: number;
+            kind: string;
+            status: "pending" | "resolved" | "invalidated" | "cancelled";
+            receipt?: {
+                ref: string;
+                contentHash: string;
+                submissionId: string;
+            };
+            invalidation?: {
+                ref: string;
+                contentHash: string;
+                submissionId: string;
+                reason: string;
+            };
+        }[];
+        approvals: {
+            decision?: {
+                id: string;
+                choice: string;
+                proposalHash: string;
+            } | undefined;
+            id: string;
+            stepId: string;
+            sequence: number;
+            status: "pending" | "cancelled" | "resolved";
+            proposal: RuntimeValue;
+            proposalHash: string;
+            choices: string[];
+        }[];
+        children: {
+            inspection: {
+                operation: "inspect";
+                runId: string;
+            };
+            actionId: string;
+            runId: string;
+            workflow: WorkflowRef;
+        }[];
+        joins: {
+            [k: string]: {
+                [k: string]: number;
+            };
+        };
+    };
+    reason?: string | undefined;
+    schema: "comet.application.run-view.v1";
+    applicationId: string;
+    projectRoot: string;
+    runId: string;
+    revision: number;
+    workflow: WorkflowRef & {
+        hash: string;
+    };
+    definitionHashes: Record<string, string>;
+    status: "running" | "failed" | "cancelled" | "waiting" | "completed";
+    sequence: number;
+};
 
 // @public (undocumented)
 export function readSelectedWorkflowApplication(projectRoot: string): Promise<{
@@ -286,6 +1093,9 @@ export function resolveInstalledWorkflowApplication(options: ApplicationDelivery
 
 // @public
 export function resolveWorkflowApplicationFile(projectRoot: string, id: string, runId: string): Promise<string>;
+
+// @public (undocumented)
+export type SelectedWorkflowApplicationStatus = NonNullable<Awaited<ReturnType<typeof inspectSelectedWorkflowApplicationStatus>>>;
 
 // @public (undocumented)
 export function selectWorkflowApplication(application: LoadedWorkflowApplication, runId: string): Promise<void>;
@@ -432,7 +1242,9 @@ export interface WorkflowApplicationFactoryContext {
 // @public (undocumented)
 export interface WorkflowApplicationImplementation extends Omit<CreateRuntimeOptions, 'store'> {
     inspectHook?(run: Readonly<WorkflowRun>, request: CometHookRequest): CometHookDecision | Promise<CometHookDecision>;
-    wrapStore?(store: RuntimeStore<WorkflowRun>, context: ApplicationIdentity): RuntimeStore<WorkflowRun>;
+    wrapStore?(store: RuntimeStore<WorkflowRun>, context: ApplicationIdentity, options?: {
+        readOnly?: boolean;
+    }): RuntimeStore<WorkflowRun>;
 }
 
 // @public (undocumented)

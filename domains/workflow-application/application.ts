@@ -39,6 +39,7 @@ import {
   createApplicationSkillExecutor,
 } from './skill-executor.js';
 import { resolveInstalledWorkflowApplication } from './installed-application.js';
+import { projectWorkflowApplicationRun } from './run-view.js';
 
 interface ApplicationRunRecord {
   runId: string;
@@ -124,6 +125,8 @@ export async function loadWorkflowApplication(options: {
   runId?: string;
   /** 领域从 portable checkpoint 恢复时，在执行模块加载前核对原固定身份。 */
   expectedIdentity?: ApplicationIdentity;
+  /** 诊断不恢复 Run，也不写回领域投影。 */
+  readOnly?: boolean;
 }): Promise<LoadedWorkflowApplication> {
   const projectRoot = await fs.realpath(options.projectRoot);
   const file = path.resolve(options.file);
@@ -393,6 +396,10 @@ export async function loadWorkflowApplication(options: {
           );
       }
   }
+  const assertWritable = () => {
+    if (options.readOnly)
+      throw new RuntimeProtocolError('READ_ONLY_OPERATION', '应用诊断不能恢复或推进 Run');
+  };
   const pinnedStore: RuntimeStore<WorkflowRun> = {
     async read(runId) {
       await assertCurrentMaterial();
@@ -402,6 +409,7 @@ export async function loadWorkflowApplication(options: {
       return record.run;
     },
     async restoreCheckpoint(runId, expectedRevision, run) {
+      assertWritable();
       await assertCurrentMaterial();
       const record = await persistent.read(runId);
       if (record) assertIdentity(record);
@@ -436,6 +444,7 @@ export async function loadWorkflowApplication(options: {
       return persistent.restoreCheckpoint!(runId, expectedRevision, restored);
     },
     async compareAndSwap(runId, expectedRevision, run) {
+      assertWritable();
       await assertCurrentMaterial();
       const record = await persistent.read(runId);
       if (record) assertIdentity(record);
@@ -486,7 +495,7 @@ export async function loadWorkflowApplication(options: {
     },
   };
   const store = implementation.wrapStore
-    ? implementation.wrapStore(pinnedStore, identity)
+    ? implementation.wrapStore(pinnedStore, identity, { readOnly: options.readOnly })
     : pinnedStore;
   const checkedImplementation: WorkflowApplicationImplementation = {
     ...implementation,
@@ -522,24 +531,86 @@ export async function selectWorkflowApplication(
   });
 }
 
+export async function inspectWorkflowApplicationRun(
+  projectRoot: string,
+  applicationId: string,
+  runId: string,
+  options: { readOnly?: boolean } = {},
+): Promise<{ application: LoadedWorkflowApplication; run: WorkflowRun }> {
+  const application = await loadWorkflowApplication({
+    projectRoot,
+    file: await resolveWorkflowApplicationFile(projectRoot, applicationId, runId),
+    runId,
+    readOnly: options.readOnly,
+  });
+  if (application.identity.id !== applicationId)
+    throw new RuntimeProtocolError('INVALID_RUN', '应用选择与固定 Run 归属不一致');
+  const run = await createRuntime({
+    ...application.implementation,
+    store: application.store,
+  }).inspect(runId);
+  return { application, run };
+}
+
 export async function readSelectedWorkflowApplication(
   projectRoot: string,
 ): Promise<{ application: LoadedWorkflowApplication; run: WorkflowRun } | null> {
   const current = await readCometCurrentSelection(projectRoot);
   if (current.status !== 'selected' || current.selection.workflow !== 'application') return null;
-  const selected = current.selection;
-  const application = await loadWorkflowApplication({
+  return inspectWorkflowApplicationRun(
     projectRoot,
-    file: await resolveWorkflowApplicationFile(
-      projectRoot,
-      selected.applicationId!,
-      selected.change,
-    ),
-    runId: selected.change,
-  });
-  const run = await createRuntime({
-    ...application.implementation,
-    store: application.store,
-  }).inspect(selected.change);
-  return { application, run };
+    current.selection.applicationId!,
+    current.selection.change,
+  );
 }
+
+/** 保留当前选择的身份，即使固定包或 Run 损坏也不把它显示为没有任务。 */
+export async function inspectSelectedWorkflowApplicationStatus(projectRoot: string) {
+  const current = await readCometCurrentSelection(projectRoot);
+  if (current.status !== 'selected' || current.selection.workflow !== 'application') return null;
+  const { applicationId, change: name } = current.selection;
+  const inspection = {
+    commandArgs: [
+      'comet',
+      'runtime',
+      'dispatch',
+      '--application',
+      applicationId!,
+      '--project-root',
+      projectRoot,
+      '--request',
+      '<request-file>',
+      '--json',
+    ],
+    request: { operation: 'inspect' as const, runId: name },
+  };
+  const common = { name, applicationId: applicationId!, selected: true as const, inspection };
+  try {
+    const { application, run } = await inspectWorkflowApplicationRun(
+      projectRoot,
+      applicationId!,
+      name,
+      { readOnly: true },
+    );
+    return {
+      ...common,
+      healthy:
+        run.status !== 'failed' && !run.actions.some((action) => action.status === 'unknown'),
+      application: application.identity,
+      run: projectWorkflowApplicationRun(application, run),
+    };
+  } catch (error) {
+    return {
+      ...common,
+      healthy: false,
+      error: {
+        code: error instanceof RuntimeProtocolError ? error.code : 'APPLICATION_UNAVAILABLE',
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+export type SelectedWorkflowApplicationStatus = NonNullable<
+  Awaited<ReturnType<typeof inspectSelectedWorkflowApplicationStatus>>
+>;

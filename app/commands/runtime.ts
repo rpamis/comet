@@ -481,6 +481,7 @@ export async function runtimeDispatchCommand(
         selectWorkflowApplication,
         applicationSkillWork,
         applicationWaitSkillWork,
+        projectWorkflowApplicationRun,
       } = await import('../../domains/workflow-application/index.js');
       const file = options.applicationFile
         ? path.resolve(invocationCwd, options.applicationFile)
@@ -509,20 +510,34 @@ export async function runtimeDispatchCommand(
         skillWork,
         waitSkillWork,
       };
+      let cliResponse;
+      if (host.output === 'compact' && !options.details && request.operation !== 'inspect') {
+        try {
+          cliResponse =
+            loaded.identity.base === 'native'
+              ? await nativeCliResponse(
+                  response,
+                  request,
+                  projectRoot,
+                  loaded.identity.id,
+                  loaded.implementation.executors,
+                )
+              : { ...response, data: projectWorkflowApplicationRun(loaded, data) };
+        } catch (error) {
+          // 紧凑展示失败不能把已经提交的请求误报为失败。
+          cliResponse = {
+            ...response,
+            warning: {
+              code: 'COMPACT_VIEW_UNAVAILABLE',
+              message: error instanceof Error ? error.message : '返回完整 Run。',
+            },
+          };
+        }
+      }
       return {
         exitCode: 0,
         response,
-        ...(host.output === 'compact' && !options.details && loaded.identity.base === 'native'
-          ? {
-              cliResponse: await nativeCliResponse(
-                response,
-                request,
-                projectRoot,
-                loaded.identity.id,
-                loaded.implementation.executors,
-              ),
-            }
-          : {}),
+        ...(cliResponse === undefined ? {} : { cliResponse }),
       };
     }
     if (application !== undefined && (options.workflow?.length ?? 0) > 0) {
@@ -617,20 +632,33 @@ export async function runtimeDispatchCommand(
               await import('../../domains/comet-classic/classic-sdk-state-store.js')
             ).createClassicSdkStateStore(projectRoot)
           : createFileRuntimeStore<WorkflowRun>({ rootDir });
-    let selectedClassicRun: WorkflowRun | null | undefined;
+    let selectedBuiltInRun: WorkflowRun | null | undefined;
     if (application?.startsWith('classic-') && request.operation !== 'start') {
-      selectedClassicRun = await persistentStore.read(text(request.runId, 'runId'));
+      selectedBuiltInRun = await persistentStore.read(text(request.runId, 'runId'));
       const { classicSdkApplicationForRun } =
         await import('../../domains/comet-classic/classic-sdk-revision-application.js');
       const defined = classicSdkApplicationForRun(
         application.slice('classic-'.length) as 'full' | 'hotfix' | 'tweak',
-        selectedClassicRun,
+        selectedBuiltInRun,
       );
       builtInWorkflow = defined.workflow;
       transitionHandlers = [defined.transitionHandler];
       evidenceValidators = defined.evidenceValidators;
       validators = defined.validators;
       commandValidators = defined.commandValidators;
+      executors = defined.executors;
+    }
+    if (application === 'native' && request.operation !== 'start') {
+      selectedBuiltInRun = await persistentStore.read(text(request.runId, 'runId'));
+      const { nativeSdkApplicationForRun } =
+        await import('../../domains/comet-native/native-sdk-application.js');
+      const defined = nativeSdkApplicationForRun(selectedBuiltInRun);
+      builtInWorkflow = defined.workflow;
+      transitionHandlers = [defined.transitionHandler];
+      validators = defined.validators;
+      stateValidators = defined.stateValidators;
+      commandValidators = defined.commandValidators;
+      validateRecovery = defined.validateRecovery;
       executors = defined.executors;
     }
     const store: RuntimeStore<WorkflowRun> =
@@ -667,13 +695,13 @@ export async function runtimeDispatchCommand(
               return persistentStore.compareAndSwap(runId, expectedRevision, next);
             },
           }
-        : selectedClassicRun !== undefined
+        : selectedBuiltInRun !== undefined
           ? {
               async read(runId) {
                 // 仅复用选择定义的首个快照；后续写操作仍读取当前 CAS revision。
-                if (selectedClassicRun !== undefined && runId === request.runId) {
-                  const current = selectedClassicRun;
-                  selectedClassicRun = undefined;
+                if (selectedBuiltInRun !== undefined && runId === request.runId) {
+                  const current = selectedBuiltInRun;
+                  selectedBuiltInRun = undefined;
                   return current;
                 }
                 return persistentStore.read(runId);

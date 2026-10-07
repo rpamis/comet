@@ -363,13 +363,39 @@ describe('Classic candidate revisions', () => {
     expect(blocked.exitCode).not.toBe(0);
     expect(blocked.stderr).toContain('revise-design');
     const current = (await f.inspect()).run;
-    await f.ok(
+    const revised = await f.ok(
       'state',
       'revise-design',
       'example',
       '--expected-revision',
       String(current.revision),
     );
+    expect(revised).toMatchObject({
+      phase: 'design',
+      nextAction: { stepId: 'full.design.handoff', ref: 'comet-design' },
+    });
+    for (const args of [
+      ['next', 'example'],
+      ['select', 'example'],
+      ['check', 'example', 'design'],
+      ['check', 'example', 'design', '--recover'],
+    ]) {
+      const entry = await f.ok('state', ...args);
+      expect(entry.phase).toBe('design');
+      expect(entry.nextAction).toEqual(revised.nextAction);
+    }
+    expect((await f.cli('state', 'check', 'example', 'build')).exitCode).not.toBe(0);
+    const projection = await fs.readFile(path.join(f.projectRoot, f.change, '.comet.yaml'), 'utf8');
+    expect(projection).toContain('phase: design');
+    await fs.rename(
+      path.join(f.projectRoot, '.comet/runtime'),
+      path.join(f.projectRoot, '.comet/runtime-before-recovery'),
+    );
+    const recovered = await f.ok('state', 'next', 'example');
+    expect(recovered.phase).toBe('design');
+    expect(recovered.run.revision).toBe(revised.run.revision);
+    expect(recovered.nextAction).toEqual(revised.nextAction);
+    await f.ok('state', 'check', 'example', 'design');
     const hash = await f.design('Preserve the implemented adapter and approve the new capability.');
     const completed = await f.finishDesign(hash);
     expect(completed.nextAction.stepId).toBe('full.build.plan');

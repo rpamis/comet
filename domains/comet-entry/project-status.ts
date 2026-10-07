@@ -13,12 +13,20 @@ import {
   readClassicProjectFile,
 } from '../comet-classic/classic-protected-path.js';
 import { readClassicState } from '../comet-classic/classic-store.js';
+import { classicSdkNextAction, inspectClassicSdkRun } from '../comet-classic/classic-sdk-status.js';
 import { assertNoPendingNativeRootMove } from '../comet-native/native-config.js';
 import { inspectNativeStatus, listNativeChangeNames } from '../comet-native/native-diagnostics.js';
 import { discoverNativeProject, nativeProjectPaths } from '../comet-native/native-paths.js';
 import { inspectNativePortableStatus } from '../comet-native/native-portable-status.js';
 import { isNativePortableChange } from '../comet-native/native-portable-runtime.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
+import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
+import { inspectNativeSdkStatus } from '../comet-native/native-sdk-status.js';
+import { hasNativeManagedRunMarker } from '../comet-native/native-sdk-state-store.js';
+import {
+  inspectSelectedWorkflowApplicationStatus,
+  inspectWorkflowApplicationRun,
+} from '../workflow-application/index.js';
 import { configuredResolution } from './resolve-entry.js';
 import type { ChangeStatus, CometEntryResolution, CometProjectStatus } from './types.js';
 
@@ -117,6 +125,22 @@ async function listConfiguredNativeStatus(
   const names = await listNativeChangeNames(paths);
   return inspectChanges(names, async (name) => {
     try {
+      if (await readSdkChangeOwner(paths.projectRoot, 'native', name))
+        return await inspectNativeSdkStatus({
+          projectRoot: paths.projectRoot,
+          name,
+          readOnly: true,
+        });
+      const managed = await hasNativeManagedRunMarker(
+        path.join(paths.changesDir, name, 'comet-state.yaml'),
+      ).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return false;
+        throw error;
+      });
+      if (managed)
+        throw new Error(
+          `Native SDK Run ${name} needs recovery; run comet native doctor ${name} --json`,
+        );
       return (await isNativePortableChange(paths, name))
         ? await inspectNativePortableStatus({ paths, name })
         : await inspectNativeStatus(paths, name, options);
@@ -126,9 +150,85 @@ async function listConfiguredNativeStatus(
       return {
         name,
         error: error instanceof Error ? error.message : String(error),
+        inspection: {
+          commandArgs: [
+            'comet',
+            'native',
+            'doctor',
+            name,
+            '--project-root',
+            paths.projectRoot,
+            '--json',
+          ],
+        },
       };
     }
   });
+}
+
+/** 读取同一权威 SDK Run，供项目总览和 Doctor 复用；不恢复或写回投影。 */
+export async function inspectClassicSdkChangeStatus(
+  projectRoot: string,
+  name: string,
+  done = 0,
+  total = 0,
+): Promise<ChangeStatus | null> {
+  const owner = await readSdkChangeOwner(projectRoot, 'classic', name);
+  if (!owner) return null;
+  const builtIn = ['classic-full', 'classic-hotfix', 'classic-tweak'].includes(owner.application);
+  const inspected = builtIn
+    ? await inspectClassicSdkRun(projectRoot, name, { readOnly: true })
+    : await inspectWorkflowApplicationRun(projectRoot, owner.application, name, {
+        readOnly: true,
+      });
+  if ('application' in inspected && !inspected.application.identity.base.startsWith('classic-'))
+    throw new Error(`Classic change ${name} belongs to a non-Classic Application`);
+  const { run } = inspected;
+  const state = ('state' in inspected ? inspected.state : run.state) as Awaited<
+    ReturnType<typeof inspectClassicSdkRun>
+  >['state'];
+  const nextAction = classicSdkNextAction(run);
+  const inspection = {
+    commandArgs: [
+      'comet',
+      'runtime',
+      'dispatch',
+      '--application',
+      owner.application,
+      '--project-root',
+      projectRoot,
+      '--request',
+      '<request-file>',
+      '--json',
+    ],
+    request: { operation: 'inspect' as const, runId: run.runId },
+  };
+  return {
+    name,
+    cometManaged: true,
+    archived: state.archived,
+    archiveReady: state.phase === 'archive' && state.verifyResult === 'pass' && !state.archived,
+    recommendedArchiveCommand: `comet archive ${name}`,
+    workflow: state.workflow,
+    phase: state.phase,
+    buildMode: state.buildMode,
+    isolation: state.isolation,
+    boundBranch: state.boundBranch,
+    verifyMode: state.verifyMode,
+    verifyResult: state.verifyResult,
+    designDoc: state.designDoc,
+    plan: state.plan,
+    tasksCompleted: done,
+    tasksTotal: total,
+    nextCommand: builtIn && run.status !== 'completed' ? `comet state next ${name} --json` : null,
+    currentStep: nextAction && 'stepId' in nextAction ? (nextAction.stepId ?? null) : null,
+    runtimeMode: 'sdk',
+    runtimeEval: null,
+    commandChecks: null,
+    run: { id: run.runId, revision: run.revision, status: run.status },
+    nextAction,
+    inspection,
+  };
 }
 
 async function inspectOpenSpecChanges(
@@ -176,12 +276,16 @@ async function inspectOpenSpecChanges(
       classic.push(invalidClassicChange(name, error));
       return;
     }
-    if (!change.stateExists) {
-      unmanaged.push(unmanagedChange(name, done, total));
-      return;
-    }
-
     try {
+      const sdk = await inspectClassicSdkChangeStatus(projectRoot, name, done, total);
+      if (sdk) {
+        if (!sdk.archived) classic.push(sdk);
+        return;
+      }
+      if (!change.stateExists) {
+        unmanaged.push(unmanagedChange(name, done, total));
+        return;
+      }
       await inspectClassicProjectTarget(projectRoot, path.join(changeDir, '.comet'), {
         label: `Classic runtime directory for ${name}`,
         expected: 'directory',
@@ -329,8 +433,17 @@ export async function inspectCometProjectStatus(startPath: string): Promise<Come
     native = { changes: [] };
   }
 
+  let applications: CometProjectStatus['applications'];
+  try {
+    const selected = await inspectSelectedWorkflowApplicationStatus(projectRoot);
+    applications = { changes: selected ? [selected] : [] };
+  } catch (error) {
+    applications = { changes: [], error: error instanceof Error ? error.message : String(error) };
+  }
   return {
     schema: 'comet.status.v2',
+    discovery: { projectRoot, scope: 'current-worktree', applications: 'current-selection' },
+    applications,
     defaultEntry,
     workflows: {
       native,

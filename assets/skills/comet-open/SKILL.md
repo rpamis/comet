@@ -15,7 +15,7 @@ Before starting or resuming, read and follow `comet-classic/reference/classic-la
 
 ### 0. Set the output language
 
-Every question and artifact-generation request passed to OpenSpec must specify the resolved Comet artifact language using a normalized ID such as `en` or `zh-CN`. Before a change is initialized, read `classic.language` from project `.comet/config.yaml`, then global `~/.comet/config.yaml`. After initialization, use `comet state get <name> language` for either runtime format. Fall back to the current request's language only when no language is configured. `proposal.md`, `design.md`, and `tasks.md` must primarily use that language.
+Every question and artifact-generation request passed to OpenSpec must specify the resolved Comet artifact language using a normalized ID such as `en` or `zh-CN`. Before a change is initialized, read `classic.language` from project `.comet/config.yaml`, then global `~/.comet/config.yaml`. After initialization, reuse `configuration.language` from the current valid response; use `comet state get <name> language` only when it is missing. Fall back to the current request's language only when no language is configured. `proposal.md`, `design.md`, and `tasks.md` must primarily use that language.
 
 ### 0a. Bind the current change
 
@@ -173,11 +173,10 @@ Initialize a recoverable SDK Run immediately after creating the initial structur
 
 ```bash
 comet state init <name> full --isolation <selected-isolation>
-comet state select <name>
-comet state next <name> --json
+comet state select <name> --json
 ```
 
-Stop if any command fails. `state next` must return `runtimeFormat: sdk`, `phase: open`, and the current Run Action. Then run `comet classic openspec --agent-json -- status --change "<name>" --json` once and check compatibility:
+Stop if any command fails. The selection response must include `runtimeFormat: sdk`, `phase: open`, and the current Run Action; run `comet state next <name> --json` only if these fields are missing. Then run `comet classic openspec --agent-json -- status --change "<name>" --json` once and check compatibility:
 
 - Resolved `changeRoot` must equal the bound `<classic-change-dir>`. `planningHome`, when present, must also be inside the repository. External artifact paths are unsupported.
 - `artifacts` must include Classic's required IDs `proposal` and `tasks`; recursively follow their `requires`.
@@ -253,7 +252,7 @@ Then inspect content: proposal must cover the problem, goals, scope, and non-goa
 
 ### 5. Ask the user to confirm the artifacts
 
-After all OpenSpec artifacts and content checks are complete, run `comet state next <name> --json` to confirm the runtime format. For SDK, run `comet guard <change-name> open --json` to obtain the preview, content summary, and `data.approvalHash`; repair any failed checks. Then **pause under `comet-classic/reference/decision-point.md` and wait for explicit user confirmation**. Do not apply the phase guard or advance automatically before confirmation.
+After all OpenSpec artifacts and content checks are complete, use `runtimeFormat` from the current valid response; run `comet state next <name> --json` only if ownership information is missing or external state has changed. For SDK, run `comet guard <change-name> open --json` to obtain the preview, content summary, and `data.approvalHash`; repair any failed checks. Then **pause under `comet-classic/reference/decision-point.md` and wait for explicit user confirmation**. Do not apply the phase guard or advance automatically before confirmation.
 
 This final review confirms the change name, scope, and artifact content together. Step 1b does not replace it; do not add a separate routine summary/name approval before it either.
 
@@ -291,7 +290,7 @@ The full workflow moves to `phase: design`; hotfix/tweak presets move to `phase:
 
 ## Continue to the next phase
 
-For SDK, run `comet state next <change-name> --json` and follow the new phase and `nextAction.kind`: load the next Skill only for `action`; resolve `decision`, `evidence`, and `reconcile` in the current Run without replay. For compat, follow `comet-classic/reference/auto-transition.md` and `agent.continuation` from the successful result. Do not repeat next, select, or check when valid compat state is already available. Run the following only after context loss, external state changes, or when an older result lacks that information:
+For SDK, use the successful response’s phase, `nextAction.kind`, and `agent.continuation` for the same Run; query `comet state next <change-name> --json` only if they are missing: load the next Skill only for `action`; resolve `decision`, `evidence`, and `reconcile` in the current Run without replay. For compat, follow `comet-classic/reference/auto-transition.md` and `agent.continuation` from the successful result. Do not repeat next, select, or check when valid state is already available. Run the following only after context loss, external state changes, or when an older result lacks that information:
 
 ```bash
 comet state next <change-name>

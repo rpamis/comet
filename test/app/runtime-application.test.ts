@@ -50,6 +50,7 @@ describe('complete disk application public entry', () => {
           'bin/comet.js',
           'runtime',
           'dispatch',
+          '--details',
           '--application-file',
           app.file,
           '--project-root',

@@ -1471,11 +1471,13 @@ describe('Classic public argument safety', () => {
       ...options(),
       json: true,
     });
-    expect(recovered.exitCode, recovered.stderr).toBe(0);
+    expect(recovered.exitCode, recovered.stderr).toBe(1);
     expect(recovered.data).toMatchObject({
       change: name,
       phase: 'open',
       nextAction: { kind: 'reconcile', stepId: 'full.open' },
+      checks: { blocked: true },
+      recovery: { claim: { executorId: 'classic-host', token: 'recover-claimed' } },
     });
     await expect(
       fs.access(path.join(root, 'openspec/changes', name, '.comet.yaml')),

@@ -38,7 +38,8 @@ const readCachedCurrentSelection = memoizedHookRead(
 // Guard 的 SDK 状态与 selection 分支校验必须基于同一个请求内快照。
 const inspectHookSdkRun = memoizedHookRead(
   'classicHookSdkRun',
-  (projectRoot: string, name: string) => inspectClassicSdkRun(projectRoot, name),
+  (projectRoot: string, name: string) =>
+    inspectClassicSdkRun(projectRoot, name, { readOnly: true }),
 );
 
 export type CurrentChangeSelection = CometCurrentSelection;

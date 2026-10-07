@@ -5,7 +5,13 @@ import { createNativePortableState } from '../../../domains/comet-native/native-
 import { projectNativeSdkContinuation } from '../../../domains/comet-native/native-sdk-continuation.js';
 import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
 
-const mocked = vi.hoisted(() => ({ inspect: vi.fn(), execute: vi.fn(), load: vi.fn() }));
+const mocked = vi.hoisted(() => ({
+  inspect: vi.fn(),
+  execute: vi.fn(),
+  claim: vi.fn(),
+  retry: vi.fn(),
+  load: vi.fn(),
+}));
 vi.mock('../../../domains/comet-native/native-runtime-ownership.js', () => ({
   inspectNativeSdkRun: mocked.inspect,
   loadOwnedNativeSdkRuntime: mocked.load,
@@ -70,7 +76,7 @@ function inspection() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocked.load.mockResolvedValue({
-    runtime: { execute: mocked.execute },
+    runtime: { execute: mocked.execute, claim: mocked.claim, retry: mocked.retry },
     executors: [{ id: 'archive-executor', supports: () => true }],
   });
 });
@@ -91,14 +97,35 @@ describe('Native Archive command stop boundaries', () => {
     const result = await archiveNativeSdkChange(options);
     expect(result.exitCode).toBe(73);
     expect(mocked.execute).not.toHaveBeenCalled();
+    expect(mocked.claim).not.toHaveBeenCalled();
+    expect(mocked.retry).not.toHaveBeenCalled();
     expect(result.data).toMatchObject({
       completedActions: [],
-      activeActions: [{ id: running.id, claim: running.claim }],
+      activeActions: [
+        {
+          id: running.id,
+          status: 'running',
+          attempt: running.attempt,
+          inputHash: running.inputHash,
+          claim: running.claim,
+          outcomeRequest: {
+            operation: 'record-outcome',
+            runId: current.run.runId,
+            outcome: {
+              actionId: running.id,
+              attempt: running.attempt,
+              inputHash: running.inputHash,
+              claimToken: running.claim.token,
+            },
+          },
+        },
+      ],
       continuation: {
-        commandArgs: null,
+        commandArgs: ['comet', 'native', 'status', options.name, '--json'],
         userCommunication: { agentInstruction: expect.stringContaining('original claimed task') },
       },
     });
+    expect(current.run.actions.at(-1)).toEqual(running);
   });
 
   it('still exposes parallel pending Builder work outside Archive while another Action runs', async () => {

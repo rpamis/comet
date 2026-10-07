@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import type { ApplicationIdentity } from '../workflow-application/index.js';
 import { hashRuntimeValue } from '../engine/runtime.js';
+import { assertClassicSdkCheckReceipt } from './classic-sdk-check-record.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -107,7 +108,11 @@ async function stateFileCandidates(projectRoot: string, runId: string): Promise<
 /** Keep Classic's user-editable YAML at its established path while the SDK owns transitions. */
 export function createClassicSdkStateStore(
   projectRoot: string,
-  options: { store?: RuntimeStore<WorkflowRun>; identity?: ApplicationIdentity } = {},
+  options: {
+    store?: RuntimeStore<WorkflowRun>;
+    identity?: ApplicationIdentity;
+    readOnly?: boolean;
+  } = {},
 ): RuntimeStore<WorkflowRun> {
   const store =
     options.store ??
@@ -115,6 +120,15 @@ export function createClassicSdkStateStore(
       rootDir: path.join(projectRoot, '.comet', 'runtime', 'sdk-runs', 'classic'),
     });
   const projectionDir = '.comet/runtime/state-projections/classic';
+
+  function recoveryRequired(runId: string, reason: string): never {
+    const recovery = options.identity
+      ? `Run comet runtime dispatch --application ${options.identity.id} --request <inspect-request.json> with ${JSON.stringify({ operation: 'inspect', runId })}`
+      : `Run comet state next ${runId} --json`;
+    throw new Error(
+      `Classic SDK Run ${runId} requires recovery: ${reason}. ${recovery} in ${projectRoot} to restore or synchronize its recorded state.`,
+    );
+  }
 
   async function recoverFromPortableFile(
     runId: string,
@@ -265,184 +279,234 @@ export function createClassicSdkStateStore(
     runId: string,
     importUserEdits: boolean,
   ): Promise<WorkflowRun | null> {
+    const synchronize = async () => {
+      const markerFile = path.join(projectRoot, projectionDir, `${runId}.json`);
+      let marker: ProjectionMarker | null = null;
+      let markerSource: string | null = null;
+      try {
+        markerSource = (
+          await readProtectedProjectFile(
+            projectRoot,
+            `${projectionDir}/${runId}.json`,
+            Number.MAX_SAFE_INTEGER,
+            { label: 'Classic SDK state projection marker' },
+          )
+        ).bytes.toString('utf8');
+        marker = JSON.parse(markerSource) as ProjectionMarker;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      if (
+        markerSource !== null &&
+        (!marker ||
+          marker.schema !== 'comet.classic.sdk-state-projection.v1' ||
+          marker.runId !== runId ||
+          !Number.isSafeInteger(marker.revision) ||
+          marker.revision < 1 ||
+          !parseClassicStateDocument(classicStateToDocument(marker.state)).classic)
+      ) {
+        throw new Error(`Classic SDK state projection marker is invalid for ${runId}`);
+      }
+      let loaded = await store.read(runId);
+      if (!loaded || (loaded.revision === 1 && marker && marker.revision > 1)) {
+        if (options.readOnly) recoveryRequired(runId, 'the recorded Run is missing or incomplete');
+        const recovered = await recoverFromPortableFile(runId, marker, loaded ?? undefined);
+        if (loaded && !recovered) {
+          throw new Error(
+            `Classic SDK Run ${runId} requires its matching portable checkpoint or original Run history before completing recovery`,
+          );
+        }
+        loaded = recovered;
+      }
+      if (!loaded) return null;
+      let run: WorkflowRun = loaded;
+      let state = run.state as unknown as ClassicState;
+      const file = await stateFile(run);
+      if (!file) {
+        if (options.readOnly) recoveryRequired(runId, 'the change directory is missing');
+        return run; // Creation can commit before the change directory exists.
+      }
+      let source: string | null;
+      try {
+        source = await readClassicProjectFile(projectRoot, file, { label: 'Classic state file' });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        source = null;
+      }
+      const document =
+        source === null ? new Document() : parseDocument(source, { uniqueKeys: true });
+      if (document.errors.length > 0)
+        throw new Error(`Invalid Classic state file: ${document.errors[0].message}`);
+      const documentData = document.toJS() as Record<string, unknown>;
+      const fileState = source === null ? null : parseClassicStateDocument(documentData).classic;
+      if (
+        marker &&
+        (marker.revision > run.revision ||
+          (options.readOnly && marker.revision === run.revision && !equal(marker.state, state)))
+      ) {
+        throw new Error(`Classic SDK state projection marker is invalid for ${runId}`);
+      }
+      if (fileState) {
+        const base = marker?.state ?? state;
+        const edits = changedFields(base, fileState);
+        if (edits.some((field) => !USER_CONFIG_FIELDS.has(field))) {
+          const recoveryHash = (run.input as { recoverySourceHash?: unknown } | null)
+            ?.recoverySourceHash;
+          const matchesRecoverySource =
+            marker === null &&
+            run.revision === 1 &&
+            typeof recoveryHash === 'string' &&
+            source !== null &&
+            createHash('sha256').update(source).digest('hex') === recoveryHash;
+          if (!equal(fileState, state) && !matchesRecoverySource) {
+            throw new Error(`Classic state file ${file} changed a Runtime-owned field`);
+          }
+        } else if (edits.some((field) => !equal(state[field], fileState[field]))) {
+          if (!importUserEdits) {
+            throw new Error(`Classic state file ${file} changed during an SDK transition`);
+          }
+          for (const field of edits) {
+            if (!equal(state[field], base[field]) && !equal(state[field], fileState[field])) {
+              throw new Error(`Classic state file ${file} conflicts with SDK field ${field}`);
+            }
+          }
+          if (options.readOnly)
+            recoveryRequired(runId, 'state file settings have not been imported');
+          state = { ...state };
+          for (const field of edits) {
+            (state as unknown as Record<string, unknown>)[field] = fileState[field];
+          }
+          const next: WorkflowRun = {
+            ...run,
+            revision: run.revision + 1,
+            state: state as unknown as WorkflowRun['state'],
+          };
+          if (!(await store.compareAndSwap(runId, run.revision, next))) {
+            throw new Error(`Classic SDK Run ${runId} changed while importing state file settings`);
+          }
+          run = next;
+        }
+      }
+      // A change created outside Git can acquire a branch later. Bind the
+      // SDK Run itself before projecting YAML; healing only .comet.yaml would
+      // leave the portable checkpoint and all SDK guards out of agreement.
+      // This block only heals missing bindings. Guards still probe the live
+      // branch separately when rejecting drift; projection reads do not.
+      if (
+        fileState &&
+        state.boundBranch === null &&
+        requiresBranchBinding(state.isolation) &&
+        !state.archived &&
+        ['running', 'waiting'].includes(run.status) &&
+        !run.actions.some((action) => ['running', 'unknown'].includes(action.status))
+      ) {
+        const binding = evaluateBranchBinding({
+          isolation: state.isolation,
+          boundBranch: state.boundBranch,
+          currentBranch: liveGitBranch(projectRoot),
+        });
+        if (binding.status === 'needs-heal') {
+          if (options.readOnly)
+            recoveryRequired(runId, 'the Git branch binding has not been recorded');
+          state = { ...state, boundBranch: binding.branch };
+          const next: WorkflowRun = {
+            ...run,
+            revision: run.revision + 1,
+            state: state as unknown as WorkflowRun['state'],
+          };
+          if (!(await store.compareAndSwap(runId, run.revision, next))) {
+            throw new Error(`Classic SDK Run ${runId} changed while binding its Git branch`);
+          }
+          run = next;
+        }
+      }
+      if (options.readOnly) {
+        // 初次创建尚未写入辅助 checkpoint 时，直接核对权威 Run 与状态文件。
+        // 已存在的 checkpoint 仍需一致；诊断读取不补写缺失内容。
+        if (
+          source === null ||
+          !hasClassicManagedRunMarker(source) ||
+          !fileState ||
+          !equal(fileState, state) ||
+          (documentData[PORTABLE_RUN_CHECKPOINT_KEY] !== undefined &&
+            !equal(documentData[PORTABLE_RUN_CHECKPOINT_KEY], createPortableRunCheckpoint(run))) ||
+          (options.identity &&
+            documentData.application_checkpoint !== undefined &&
+            !equal(documentData.application_checkpoint, options.identity))
+        ) {
+          recoveryRequired(
+            runId,
+            'the state projection or portable checkpoint is missing or stale',
+          );
+        }
+        return run;
+      }
+      const target = classicStateToDocument(state);
+      const current = documentData ?? {};
+      for (const [key, value] of Object.entries(target)) {
+        if (equal(current[key], value)) continue;
+        if (value === undefined) document.delete(key);
+        else document.set(key, value);
+      }
+      const checkpoint = createPortableRunCheckpoint(run);
+      if (!equal(current[PORTABLE_RUN_CHECKPOINT_KEY], checkpoint)) {
+        document.set(PORTABLE_RUN_CHECKPOINT_KEY, checkpoint);
+      }
+      if (options.identity && !equal(current.application_checkpoint, options.identity))
+        document.set('application_checkpoint', options.identity);
+      const raw = document.toString();
+      const rendered = hasClassicManagedRunMarker(raw) ? raw : CLASSIC_MANAGED_RUN_MARKER + raw;
+      if (source !== rendered) {
+        await writeClassicProjectText(projectRoot, file, rendered, {
+          label: 'Classic state file',
+        });
+      }
+      const projection: ProjectionMarker = {
+        schema: 'comet.classic.sdk-state-projection.v1',
+        runId,
+        revision: run.revision,
+        state,
+      };
+      const projectionSource = JSON.stringify(projection) + '\n';
+      if (markerSource !== projectionSource) {
+        await atomicWriteContainedText(markerFile, projectionSource, {
+          containedRoot: projectRoot,
+        });
+      }
+      return run;
+    };
+    if (options.readOnly) return synchronize();
     await ensureProtectedProjectDirectory(projectRoot, projectionDir, {
       label: 'Classic SDK state projection directory',
     });
     const lockFile = path.join(projectRoot, projectionDir, `${runId}.lock`);
-    return withRecoverableFileLock(
-      lockFile,
-      async () => {
-        const markerFile = path.join(projectRoot, projectionDir, `${runId}.json`);
-        let marker: ProjectionMarker | null = null;
-        let markerSource: string | null = null;
-        try {
-          markerSource = (
-            await readProtectedProjectFile(
-              projectRoot,
-              `${projectionDir}/${runId}.json`,
-              Number.MAX_SAFE_INTEGER,
-              { label: 'Classic SDK state projection marker' },
-            )
-          ).bytes.toString('utf8');
-          marker = JSON.parse(markerSource) as ProjectionMarker;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        }
-        if (
-          markerSource !== null &&
-          (!marker ||
-            marker.schema !== 'comet.classic.sdk-state-projection.v1' ||
-            marker.runId !== runId ||
-            !Number.isSafeInteger(marker.revision) ||
-            marker.revision < 1 ||
-            !parseClassicStateDocument(classicStateToDocument(marker.state)).classic)
-        ) {
-          throw new Error(`Classic SDK state projection marker is invalid for ${runId}`);
-        }
-        let loaded = await store.read(runId);
-        if (!loaded || (loaded.revision === 1 && marker && marker.revision > 1)) {
-          const recovered = await recoverFromPortableFile(runId, marker, loaded ?? undefined);
-          if (loaded && !recovered) {
-            throw new Error(
-              `Classic SDK Run ${runId} requires its matching portable checkpoint or original Run history before completing recovery`,
-            );
-          }
-          loaded = recovered;
-        }
-        if (!loaded) return null;
-        let run: WorkflowRun = loaded;
-        let state = run.state as unknown as ClassicState;
-        const file = await stateFile(run);
-        if (!file) return run; // Creation can commit before the change directory exists.
-        let source: string | null;
-        try {
-          source = await readClassicProjectFile(projectRoot, file, { label: 'Classic state file' });
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-          source = null;
-        }
-        const document =
-          source === null ? new Document() : parseDocument(source, { uniqueKeys: true });
-        if (document.errors.length > 0)
-          throw new Error(`Invalid Classic state file: ${document.errors[0].message}`);
-        const documentData = document.toJS() as Record<string, unknown>;
-        const fileState = source === null ? null : parseClassicStateDocument(documentData).classic;
-        if (marker && marker.revision > run.revision) {
-          throw new Error(`Classic SDK state projection marker is invalid for ${runId}`);
-        }
-        if (fileState) {
-          const base = marker?.state ?? state;
-          const edits = changedFields(base, fileState);
-          if (edits.some((field) => !USER_CONFIG_FIELDS.has(field))) {
-            const recoveryHash = (run.input as { recoverySourceHash?: unknown } | null)
-              ?.recoverySourceHash;
-            const matchesRecoverySource =
-              marker === null &&
-              run.revision === 1 &&
-              typeof recoveryHash === 'string' &&
-              source !== null &&
-              createHash('sha256').update(source).digest('hex') === recoveryHash;
-            if (!equal(fileState, state) && !matchesRecoverySource) {
-              throw new Error(`Classic state file ${file} changed a Runtime-owned field`);
-            }
-          } else if (edits.some((field) => !equal(state[field], fileState[field]))) {
-            if (!importUserEdits) {
-              throw new Error(`Classic state file ${file} changed during an SDK transition`);
-            }
-            for (const field of edits) {
-              if (!equal(state[field], base[field]) && !equal(state[field], fileState[field])) {
-                throw new Error(`Classic state file ${file} conflicts with SDK field ${field}`);
-              }
-            }
-            state = { ...state };
-            for (const field of edits) {
-              (state as unknown as Record<string, unknown>)[field] = fileState[field];
-            }
-            const next: WorkflowRun = {
-              ...run,
-              revision: run.revision + 1,
-              state: state as unknown as WorkflowRun['state'],
-            };
-            if (!(await store.compareAndSwap(runId, run.revision, next))) {
-              throw new Error(
-                `Classic SDK Run ${runId} changed while importing state file settings`,
-              );
-            }
-            run = next;
-          }
-        }
-        // A change created outside Git can acquire a branch later. Bind the
-        // SDK Run itself before projecting YAML; healing only .comet.yaml would
-        // leave the portable checkpoint and all SDK guards out of agreement.
-        // This block only heals missing bindings. Guards still probe the live
-        // branch separately when rejecting drift; projection reads do not.
-        if (
-          fileState &&
-          state.boundBranch === null &&
-          requiresBranchBinding(state.isolation) &&
-          !state.archived &&
-          ['running', 'waiting'].includes(run.status) &&
-          !run.actions.some((action) => ['running', 'unknown'].includes(action.status))
-        ) {
-          const binding = evaluateBranchBinding({
-            isolation: state.isolation,
-            boundBranch: state.boundBranch,
-            currentBranch: liveGitBranch(projectRoot),
-          });
-          if (binding.status === 'needs-heal') {
-            state = { ...state, boundBranch: binding.branch };
-            const next: WorkflowRun = {
-              ...run,
-              revision: run.revision + 1,
-              state: state as unknown as WorkflowRun['state'],
-            };
-            if (!(await store.compareAndSwap(runId, run.revision, next))) {
-              throw new Error(`Classic SDK Run ${runId} changed while binding its Git branch`);
-            }
-            run = next;
-          }
-        }
-        const target = classicStateToDocument(state);
-        const current = documentData ?? {};
-        for (const [key, value] of Object.entries(target)) {
-          if (equal(current[key], value)) continue;
-          if (value === undefined) document.delete(key);
-          else document.set(key, value);
-        }
-        const checkpoint = createPortableRunCheckpoint(run);
-        if (!equal(current[PORTABLE_RUN_CHECKPOINT_KEY], checkpoint)) {
-          document.set(PORTABLE_RUN_CHECKPOINT_KEY, checkpoint);
-        }
-        if (options.identity && !equal(current.application_checkpoint, options.identity))
-          document.set('application_checkpoint', options.identity);
-        const raw = document.toString();
-        const rendered = hasClassicManagedRunMarker(raw) ? raw : CLASSIC_MANAGED_RUN_MARKER + raw;
-        if (source !== rendered) {
-          await writeClassicProjectText(projectRoot, file, rendered, {
-            label: 'Classic state file',
-          });
-        }
-        const projection: ProjectionMarker = {
-          schema: 'comet.classic.sdk-state-projection.v1',
-          runId,
-          revision: run.revision,
-          state,
-        };
-        const projectionSource = JSON.stringify(projection) + '\n';
-        if (markerSource !== projectionSource) {
-          await atomicWriteContainedText(markerFile, projectionSource, {
-            containedRoot: projectRoot,
-          });
-        }
-        return run;
-      },
-      { timeoutMs: 5_000 },
-    );
+    return withRecoverableFileLock(lockFile, synchronize, { timeoutMs: 5_000 });
   }
 
   return {
     read: (runId) => syncStateFile(runId, true),
     async compareAndSwap(runId, expectedRevision, next) {
+      if (options.readOnly) throw new Error('Classic SDK read-only store cannot change a Run');
+      const outcomes = next.actions.filter(
+        (action) =>
+          action.type === 'call_tool' &&
+          action.ref === 'classic-check' &&
+          ['succeeded', 'failed'].includes(action.status) &&
+          action.outcome,
+      );
+      if (outcomes.length) {
+        const previous = await store.read(runId);
+        if ((previous?.revision ?? null) !== expectedRevision) return false;
+        for (const action of outcomes) {
+          const recorded = previous?.actions.find((entry) => entry.id === action.id);
+          // 历史已提交结果本身属于权威 Run；只有新增或改写结果必须有原执行收据。
+          if (recorded && equal(recorded, action)) continue;
+          await assertClassicSdkCheckReceipt(projectRoot, next, action, {
+            status: action.outcome!.status,
+            output: action.outcome!.output,
+          });
+        }
+      }
       const committed = await store.compareAndSwap(runId, expectedRevision, next);
       if (committed && expectedRevision !== null) await syncStateFile(runId, false);
       return committed;

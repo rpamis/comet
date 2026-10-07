@@ -60,6 +60,16 @@ export async function reviseClassicSdkWork(options: {
     name,
     input: { expectedRevision, fromPhase: state.phase },
   });
+  if (name === 'revise-design') {
+    // 同一修订提交必须同时切换业务阶段，正式 Design 入口才能核对新 Action。
+    revised.state = {
+      ...(revised.state as object),
+      phase: 'design',
+      verifyResult: 'pending',
+      verifiedAt: null,
+      archiveConfirmation: null,
+    };
+  }
   const store = createClassicSdkStateStore(projectRoot);
   if (!(await store.compareAndSwap(run.runId, expectedRevision, revised))) {
     throw new RuntimeProtocolError(

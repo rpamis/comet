@@ -248,7 +248,11 @@ export async function advanceNativeSdkChange(
     const wait = run.waits.find(
       (candidate) =>
         candidate.status === 'pending' &&
-        candidate.stepId === (retry ? 'verify.retry' : loopStop ? 'verify.stop' : 'verify.confirm'),
+        (retry
+          ? candidate.stepId === 'verify.retry'
+          : loopStop
+            ? ['verify.stop', 'verify.checks-stop'].includes(candidate.stepId)
+            : candidate.stepId === 'verify.confirm'),
     );
     if (
       !wait ||
@@ -356,9 +360,6 @@ export async function advanceNativeSdkChange(
       (action) => action.status === 'pending' && action.stepId === 'supervisor.child.archive',
     ) ?? run.actions.find((action) => action.status === 'pending');
   if (!pending) {
-    if (run.actions.some((action) => action.status === 'running' || action.status === 'unknown')) {
-      throw new Error(`Native SDK change ${name} has a claimed Action with an unknown outcome`);
-    }
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
   }
   if (pending.stepId !== 'shape.prepare' && pending.stepId !== 'shape.revalidate') {

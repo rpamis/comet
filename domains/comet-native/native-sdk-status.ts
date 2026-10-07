@@ -29,8 +29,11 @@ export async function inspectNativeSdkStatus(options: {
   projectRoot: string;
   name: string;
   details?: boolean;
+  readOnly?: boolean;
 }) {
-  const inspection = await inspectNativeSdkRun(options.projectRoot, options.name);
+  const inspection = await inspectNativeSdkRun(options.projectRoot, options.name, {
+    readOnly: options.readOnly,
+  });
   return projectNativeSdkStatus(options, inspection);
 }
 

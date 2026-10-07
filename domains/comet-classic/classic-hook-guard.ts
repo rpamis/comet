@@ -37,7 +37,8 @@ import { isClassicNeutralDocumentWrite } from './classic-neutral-documents.js';
 // Share the SDK read with current-selection branch checks within this Hook request only.
 const inspectHookSdkRun = memoizedHookRead(
   'classicHookSdkRun',
-  (projectRoot: string, name: string) => inspectClassicSdkRun(projectRoot, name),
+  (projectRoot: string, name: string) =>
+    inspectClassicSdkRun(projectRoot, name, { readOnly: true }),
 );
 const hookWritableLayout = memoizedHookRead('classicHookWritableLayout', (projectRoot: string) =>
   assertClassicLayoutWritable(projectRoot),

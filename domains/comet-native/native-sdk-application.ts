@@ -15,6 +15,7 @@ import {
   type WorkflowTransitionHandler,
   type WorkflowRun,
   hashRuntimeValue,
+  defineWorkflow,
 } from '../engine/runtime.js';
 import {
   hashNativeParentContract,
@@ -146,6 +147,40 @@ import type {
 import { emptyNativePortableHistoryOverflow } from './native-portable-types.js';
 import { validateNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
 import type { NativeProjectPaths } from './native-types.js';
+
+/** 已有 Run 沿用固定定义；只有已知的检查恢复前版本可选兼容实现。 */
+export function nativeSdkApplicationForRun(
+  run: Pick<WorkflowRun, 'workflow'> | null,
+  application = defineNativeWorkflowApplication(),
+) {
+  const previousHash = '500dc5be719eb5493dbdadf35c372de49f0232439eef849bb521f6b3db346aff';
+  if (run?.workflow.hash !== previousHash) return application;
+  const workflow = structuredClone(application.workflow);
+  delete workflow.steps['verify.checks-stop'];
+  workflow.transitions = (workflow.transitions ?? []).filter(
+    ({ from, to, on }) =>
+      from !== 'verify.checks-stop' &&
+      to !== 'verify.checks-stop' &&
+      !(from === 'verify.checks' && on === 'failed'),
+  );
+  if (hashRuntimeValue(defineWorkflow(workflow)) !== previousHash) return application;
+  return {
+    ...application,
+    workflow,
+    transitionHandler: {
+      ...application.transitionHandler,
+      apply({ run, event }: Parameters<WorkflowTransitionHandler['apply']>[0]) {
+        if (
+          event.kind === 'action-outcome' &&
+          event.stepId === 'verify.checks' &&
+          event.outcome.status === 'failed'
+        )
+          return { state: run.state!, next: [] };
+        return application.transitionHandler.apply({ run, event });
+      },
+    },
+  };
+}
 
 interface NativeShapeProposal {
   specChanges: NativePortableSpecChange[];
@@ -401,7 +436,10 @@ function supervisorChildRepairActivation(
 
 function supervisorParentRepairActivation(
   run: Readonly<WorkflowRun>,
-  failure: { failedVerifierActionId: string } | { rejectedDecisionId: string },
+  failure:
+    | { failedVerifierActionId: string }
+    | { failedCheckActionId: string }
+    | { rejectedDecisionId: string },
 ): Record<string, RuntimeValue> {
   const builder = [...currentNativeSdkSupervisorActions(run)]
     .reverse()
@@ -1116,6 +1154,11 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           proposalFrom: 'verify.verifier',
           choices: ['repair'],
         },
+        'verify.checks-stop': {
+          type: 'ask_user',
+          proposalFrom: 'verify.checks',
+          choices: ['repair'],
+        },
         'verify.requested-checks': {
           type: 'call_tool',
           ref: 'native-verifier-requested-checks',
@@ -1208,6 +1251,11 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'build.builder', to: 'build.resume', on: 'failed' },
         { from: 'build.resume', to: 'build.builder', on: 'continue' },
         { from: 'verify.checks', to: 'verify.verifier' },
+        { from: 'verify.checks', to: 'build.builder', on: 'failed' },
+        { from: 'verify.checks', to: 'supervisor.parent.builder', on: 'failed' },
+        { from: 'verify.checks', to: 'verify.checks-stop', on: 'failed' },
+        { from: 'verify.checks-stop', to: 'build.builder', on: 'repair' },
+        { from: 'verify.checks-stop', to: 'supervisor.parent.builder', on: 'repair' },
         { from: 'verify.verifier', to: 'verify.report' },
         { from: 'verify.verifier', to: 'build.builder' },
         { from: 'verify.verifier', to: 'supervisor.parent.builder' },
@@ -1837,7 +1885,71 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         }
         if (event.kind === 'action-outcome' && event.stepId === 'verify.checks') {
           if (event.outcome.status === 'failed') {
-            return { state: state as unknown as RuntimeValue, next: [] };
+            const output = event.outcome.output as {
+              checks: Array<{ id: string; status: string }>;
+            };
+            const interrupted = output.checks.some((check) => check.status === 'interrupted');
+            const reason = `Runtime checks ${interrupted ? 'were interrupted' : 'failed'}: ${output.checks
+              .filter((check) => check.status !== 'passed')
+              .map((check) => check.id)
+              .join(
+                ', ',
+              )}. Preserve their receipts and submit a new Builder candidate after repair.`;
+            const maxVerifyFailures =
+              (run.input as { maxVerifyFailures?: number }).maxVerifyFailures ??
+              DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES;
+            let returned = returnNativeCandidateToBuild({
+              state,
+              reason,
+              failureBudget: { maxVerifyFailures },
+            });
+            if (interrupted || returned.status === 'await-user') {
+              returned = parseNativePortableState({
+                ...returned,
+                phase: 'verify',
+                status: 'await-user',
+                verification_result: 'fail',
+                loop: {
+                  ...returned.loop,
+                  iteration: state.loop.iteration,
+                  attempt: state.loop.attempt,
+                  stage: 'await-user',
+                  next_action: 'await-user',
+                },
+                blockers: [
+                  {
+                    owner: 'user',
+                    reason: toNativePortableText(reason),
+                    acceptance_ids: [],
+                    resolution_action: 'await-user',
+                  },
+                ],
+              });
+              return {
+                state: returned as unknown as RuntimeValue,
+                next: [
+                  {
+                    stepId: 'verify.checks-stop',
+                    input: { failedCheckActionId: event.outcome.actionId },
+                  },
+                ],
+              };
+            }
+            return {
+              state: returned as unknown as RuntimeValue,
+              next: [
+                {
+                  stepId: state.children_contract_hash
+                    ? 'supervisor.parent.builder'
+                    : 'build.builder',
+                  input: state.children_contract_hash
+                    ? supervisorParentRepairActivation(run, {
+                        failedCheckActionId: event.outcome.actionId,
+                      })
+                    : { failedCheckActionId: event.outcome.actionId },
+                },
+              ],
+            };
           }
           const reserved = reserveNativeVerifierAttempt(state);
           return { state: reserved as unknown as RuntimeValue, next: ['verify.verifier'] };
@@ -1872,6 +1984,54 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
                       ]
                     : ['build.builder']
                   : ['verify.stop'],
+          };
+        }
+        if (event.kind === 'wait-resolved' && event.stepId === 'verify.checks-stop') {
+          const wait = run.waits.find(
+            (candidate) =>
+              candidate.stepId === event.stepId &&
+              candidate.decision?.id === event.decisionId &&
+              candidate.proposalHash === event.proposalHash,
+          );
+          const failedCheckActionId = (
+            wait?.proposal as {
+              activation?: { failedCheckActionId?: string };
+            }
+          )?.activation?.failedCheckActionId;
+          if (
+            event.choice !== 'repair' ||
+            state.phase !== 'verify' ||
+            state.status !== 'await-user' ||
+            state.loop.next_action !== 'await-user' ||
+            !run.actions.some(
+              (action) =>
+                action.id === failedCheckActionId &&
+                action.stepId === 'verify.checks' &&
+                action.status === 'failed',
+            )
+          ) {
+            throw new Error(
+              'Native Runtime check repair lacks its failed Action and current decision',
+            );
+          }
+          const returned = returnNativeCandidateToBuild({
+            state,
+            reason: 'The user chose to repair the implementation after Runtime checks stopped.',
+          });
+          return {
+            state: returned as unknown as RuntimeValue,
+            next: [
+              {
+                stepId: state.children_contract_hash
+                  ? 'supervisor.parent.builder'
+                  : 'build.builder',
+                input: state.children_contract_hash
+                  ? supervisorParentRepairActivation(run, {
+                      failedCheckActionId: failedCheckActionId!,
+                    })
+                  : { failedCheckActionId: failedCheckActionId! },
+              },
+            ],
           };
         }
         if (event.kind === 'wait-resolved' && event.stepId === 'verify.stop') {

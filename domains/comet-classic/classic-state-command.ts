@@ -1,4 +1,5 @@
 import { inspectClassicSdkRevisionReadiness } from './classic-sdk-revision-readiness.js';
+import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
 import { reviseClassicSdkWork } from './classic-sdk-revision.js';
 import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
 import { spawnSync } from 'child_process';
@@ -1091,6 +1092,79 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
   output.stdout.push(output.envelope.summary);
 }
 
+function sdkRunSummary(run: WorkflowRun, details = false) {
+  if (details) return { ...run, id: run.runId };
+  return {
+    id: run.runId,
+    runId: run.runId,
+    revision: run.revision,
+    status: run.status,
+    actions: run.actions
+      .filter((action) => ['pending', 'running', 'unknown'].includes(action.status))
+      .map(({ id, stepId, status, attempt, inputHash }) => ({
+        id,
+        stepId,
+        status,
+        attempt,
+        inputHash,
+      })),
+    evidenceWaits: (run.evidenceWaits ?? [])
+      .filter((wait) => wait.status === 'pending')
+      .map(({ id, stepId, kind, status }) => ({ id, stepId, kind, status })),
+    waits: run.waits
+      .filter((wait) => wait.status === 'pending')
+      .map(({ id, stepId, status, proposal, proposalHash, choices }) => ({
+        id,
+        stepId,
+        status,
+        proposal,
+        proposalHash,
+        choices,
+      })),
+  };
+}
+
+async function sdkEntryData(
+  name: string,
+  inspected: NonNullable<Awaited<ReturnType<typeof findClassicSdkWorkspace>>>,
+  details = false,
+) {
+  const { run, state, projectRoot } = inspected;
+  const { directory } = await resolveClassicChangeDirectory(name, projectRoot);
+  const recovery = await classicRecoveryContext(projectRoot, directory, state, details, null);
+  // SDK Run 保持推进权威；只复用恢复资料，不采用兼容状态机的下一动作。
+  return {
+    change: name,
+    runtimeFormat: 'sdk',
+    phase: state.phase,
+    configuration: state,
+    projectRoot: recovery.projectRoot,
+    workspace: recovery.workspace,
+    changeDir: recovery.changeDir,
+    layout: recovery.layout,
+    artifactRefs: recovery.artifactRefs,
+    configurationReadiness: recovery.configurationReadiness,
+    taskState: recovery.taskState,
+    nextTask: recovery.nextTask,
+    planMapping: recovery.planMapping,
+    coordination: recovery.coordination,
+    delivery: recovery.delivery,
+    requiredFiles: recovery.requiredFiles,
+    run: sdkRunSummary(run, details),
+    nextAction: classicSdkNextAction(run),
+  };
+}
+
+async function nextSdkEntry(
+  output: CommandOutput,
+  name: string,
+  inspected: NonNullable<Awaited<ReturnType<typeof findClassicSdkWorkspace>>>,
+  details = false,
+): Promise<void> {
+  nextSdk(output, name, inspected.run);
+  output.data = await sdkEntryData(name, inspected, details);
+}
+
 function nextSdk(output: CommandOutput, name: string, run: WorkflowRun): void {
   const state = run.state as unknown as ClassicState;
   const nextAction = classicSdkNextAction(run);
@@ -1105,32 +1179,7 @@ function nextSdk(output: CommandOutput, name: string, run: WorkflowRun): void {
     runtimeFormat: 'sdk',
     phase: state.phase,
     configuration: state,
-    run: {
-      id: run.runId,
-      revision: run.revision,
-      status: run.status,
-      actions: run.actions.map(({ id, stepId, status, attempt, inputHash }) => ({
-        id,
-        stepId,
-        status,
-        attempt,
-        inputHash,
-      })),
-      evidenceWaits: (run.evidenceWaits ?? []).map(({ id, stepId, kind, status }) => ({
-        id,
-        stepId,
-        kind,
-        status,
-      })),
-      waits: run.waits.map(({ id, stepId, status, proposal, proposalHash, choices }) => ({
-        id,
-        stepId,
-        status,
-        proposal,
-        proposalHash,
-        choices,
-      })),
-    },
+    run: sdkRunSummary(run),
     nextAction,
   };
   if (run.status === 'completed') {
@@ -1158,7 +1207,7 @@ function nextSdk(output: CommandOutput, name: string, run: WorkflowRun): void {
   output.stdout.push('NEXT: auto', `SKILL: ${skill}`);
 }
 
-async function next(output: CommandOutput, name: string): Promise<void> {
+async function next(output: CommandOutput, name: string, details = false): Promise<void> {
   validateChangeName(name);
   const owner = await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
   const sdkWorkspace =
@@ -1166,7 +1215,7 @@ async function next(output: CommandOutput, name: string): Promise<void> {
       ? null
       : await findClassicSdkWorkspace(classicCommandProjectRoot(), name);
   if (sdkWorkspace) {
-    nextSdk(output, name, sdkWorkspace.run);
+    await nextSdkEntry(output, name, sdkWorkspace, details);
     return;
   }
   const { file, label, directory } = await stateFile(name);
@@ -1181,6 +1230,7 @@ async function next(output: CommandOutput, name: string): Promise<void> {
       classicCommandProjectRoot(),
       directory,
       sparseClassicState(record),
+      details,
     )),
     change: name,
     runtimeFormat: 'compat',
@@ -1462,6 +1512,7 @@ async function checkSdkEntry(
   name: string,
   phase: string,
   inspected: NonNullable<Awaited<ReturnType<typeof findClassicSdkWorkspace>>>,
+  details = false,
 ): Promise<void> {
   const { run, state, projectRoot } = inspected;
   output.stdout.push(`=== Entry Check: comet-${phase} ===`);
@@ -1545,12 +1596,8 @@ async function checkSdkEntry(
   }
   const blocked = issues.length > 0;
   output.data = {
-    change: name,
-    phase: state.phase,
+    ...(await sdkEntryData(name, inspected, details)),
     requestedPhase: phase,
-    configuration: state,
-    run: { id: run.runId, revision: run.revision, status: run.status },
-    nextAction: classicSdkNextAction(run),
     checks: { passed, total, blocked },
     issues,
   };
@@ -1582,7 +1629,7 @@ async function check(
   const sdkWorkspace =
     localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, name);
   if (sdkWorkspace) {
-    await checkSdkEntry(output, name, phase, sdkWorkspace);
+    await checkSdkEntry(output, name, phase, sdkWorkspace, details);
     return;
   }
   const { file, directory, label } = await stateFile(name);
@@ -2266,7 +2313,11 @@ async function assertStateCommandWritable(subcommand: string | undefined): Promi
   }
 }
 
-async function selectChange(output: CommandOutput, name: string): Promise<boolean> {
+async function selectChange(
+  output: CommandOutput,
+  name: string,
+  details = false,
+): Promise<boolean> {
   validateChangeName(name);
   try {
     const requestedRoot = classicCommandProjectRoot();
@@ -2274,22 +2325,14 @@ async function selectChange(output: CommandOutput, name: string): Promise<boolea
     const sdkWorkspace =
       localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(requestedRoot, name);
     if (sdkWorkspace) {
-      const { run, state } = sdkWorkspace;
+      const { state } = sdkWorkspace;
       const selection = await selectCurrentChange(sdkWorkspace.projectRoot, name);
       output.stderr.push(
         green(
           `[SELECTED] current change: ${selection.change}${state.boundBranch ? ` (branch: ${state.boundBranch})` : ''}${samePath(sdkWorkspace.projectRoot, requestedRoot) ? '' : ` (workspace: ${sdkWorkspace.projectRoot})`}`,
         ),
       );
-      output.data = {
-        change: name,
-        runtimeFormat: 'sdk',
-        phase: state.phase,
-        workspace: { projectRoot: sdkWorkspace.projectRoot },
-        run,
-        configuration: state,
-        nextAction: classicSdkNextAction(run),
-      };
+      output.data = await sdkEntryData(name, sdkWorkspace, details);
       return true;
     }
     // Fast path: when the recorded selection already routes this change to this
@@ -2382,10 +2425,8 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         scale: 1,
         'task-checkoff': 2,
         rebind: 1,
-        select: 1,
         current: 0,
         'clear-selection': 0,
-        next: 1,
         artifacts: 1,
       };
       if (subcommand && Object.hasOwn(arity, subcommand)) {
@@ -2394,6 +2435,12 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           arity[subcommand],
           `Invalid arguments for comet state ${subcommand}; run comet state --help`,
         );
+      }
+      if (
+        (subcommand === 'next' || subcommand === 'select') &&
+        !(rest.length === 1 || (rest.length === 2 && rest[1] === '--details'))
+      ) {
+        fail(`Usage: comet state ${subcommand} <change-name> [--details]`);
       }
       if (
         subcommand === 'check' &&
@@ -2889,7 +2936,28 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             if (state.phase !== rest[1]) {
               fail(`ERROR: Classic SDK change '${rest[0]}' is in ${state.phase}, not ${rest[1]}`);
             }
-            nextSdk(output, rest[0], sdkWorkspace.run);
+            await nextSdkEntry(output, rest[0], sdkWorkspace, rest.includes('--details'));
+            const recovery = await inspectClassicSdkActionRecovery(
+              sdkWorkspace.projectRoot,
+              sdkWorkspace.run,
+            );
+            if (recovery) {
+              output.data = {
+                ...(output.data as object),
+                recovery,
+                checks: { blocked: true },
+                issues: [
+                  {
+                    code: 'CLASSIC_ACTION_OUTCOME_UNKNOWN',
+                    message: 'Classic SDK Action 结果尚不明确；先核对原执行结果，不能重新执行',
+                  },
+                ],
+              };
+              output.stderr.push(
+                'BLOCKED — Classic SDK Action 结果尚不明确；按 recovery 核对原 claim、命令和检查记录',
+              );
+              throw new CommandFailure('', 1);
+            }
             const issues = await inspectClassicSdkRevisionReadiness(
               sdkWorkspace.projectRoot,
               sdkWorkspace.run,
@@ -2975,8 +3043,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         requiredExact(rest, 1, 'Usage: comet state rebind <change-name>');
         await rebind(output, rest[0]);
       } else if (subcommand === 'select') {
-        requiredExact(rest, 1, 'Usage: comet state select <change-name>');
-        selectedSdk = await selectChange(output, rest[0]);
+        selectedSdk = await selectChange(output, rest[0], rest.includes('--details'));
       } else if (subcommand === 'current') {
         requiredExact(rest, 0, 'Usage: comet state current');
         await currentChange(output);
@@ -2984,8 +3051,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         requiredExact(rest, 0, 'Usage: comet state clear-selection');
         await clearSelection(output);
       } else if (subcommand === 'next') {
-        required(rest, 1, 'Usage: comet state next <change-name>');
-        await next(output, rest[0]);
+        await next(output, rest[0], rest.includes('--details'));
       } else {
         fail(`Unknown subcommand: ${subcommand ?? ''}`);
       }

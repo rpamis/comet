@@ -22,6 +22,10 @@ import {
   writeClassicProjectText,
 } from './classic-protected-path.js';
 import type { ClassicState } from './classic-state.js';
+import {
+  classicSdkCheckRecordRef,
+  recordClassicSdkCheckReceipt,
+} from './classic-sdk-check-record.js';
 
 interface ClassicSdkCheckInput {
   runId: string;
@@ -208,6 +212,30 @@ export async function runClassicSdkCommandCheck(
     cwd.absolute,
     await readCheckPolicy(root, identity),
   );
+  const logPath = path.join(checksDir, `${randomUUID()}.log`);
+  const manifestPath = path.join(checksDir, `${randomUUID()}.manifest`);
+  const receiptRef = path.relative(root, logPath).replaceAll('\\', '/');
+  const manifestRef = path.relative(root, manifestPath).replaceAll('\\', '/');
+  const recordRef = classicSdkCheckRecordRef(run, action);
+  const executionRecord = {
+    schema: 'comet.classic-sdk-check.v1',
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    claim: action.claim,
+    command: { ...identity, timeoutMs },
+    receiptRef,
+    manifestRef,
+  };
+  await writeClassicProjectText(
+    root,
+    recordRef,
+    JSON.stringify({ ...executionRecord, status: 'started' }),
+    {
+      label: 'Classic SDK check recovery record',
+    },
+  );
   const result = await runCommand(identity.argv, cwd.absolute, timeoutMs);
   const after = await collectCheckSnapshot(root, change.target, identity, snapshotOptions).catch(
     () => null,
@@ -222,11 +250,8 @@ export async function runClassicSdkCommandCheck(
     ))
   )
     inputAfter = 'environment-changed';
-  const logPath = path.join(checksDir, `${randomUUID()}.log`);
   await writeClassicProjectText(root, logPath, result.output, { label: 'Classic SDK check log' });
-  const receiptRef = path.relative(root, logPath).replaceAll('\\', '/');
   const contentHash = createHash('sha256').update(result.output).digest('hex');
-  const manifestPath = path.join(checksDir, `${randomUUID()}.manifest`);
   if (after)
     await writeClassicProjectText(root, manifestPath, after.manifest, {
       label: 'Classic SDK check manifest',
@@ -237,7 +262,7 @@ export async function runClassicSdkCommandCheck(
         return [...diff.added, ...diff.removed, ...diff.changed].slice(0, 100);
       })()
     : [];
-  return {
+  const outcome: Pick<RuntimeOutcome, 'status' | 'output'> = {
     status: result.exitCode === 0 && before.digest === inputAfter ? 'succeeded' : 'failed',
     output: {
       scope,
@@ -251,12 +276,22 @@ export async function runClassicSdkCommandCheck(
       changedDuringExecution,
       receiptRef,
       contentHash,
-      manifestRef: after ? path.relative(root, manifestPath).replaceAll('\\', '/') : null,
+      manifestRef: after ? manifestRef : null,
       manifestHash: after ? checkManifestHash(after.manifest) : null,
       tier: 'full',
       checkEpoch: state.checkEpoch ?? 0,
     },
   };
+  await recordClassicSdkCheckReceipt(root, run, action, outcome);
+  await writeClassicProjectText(
+    root,
+    recordRef,
+    JSON.stringify({ ...executionRecord, status: 'completed', result: outcome }),
+    {
+      label: 'Classic SDK check recovery record',
+    },
+  );
+  return outcome;
 }
 
 export function createClassicSdkCheckExecutor(projectRoot: string): RuntimeExecutor {

@@ -330,7 +330,7 @@ export async function projectNativeSdkContinuation(options: {
   let continuation: NativePortableContinuation;
   const recovery = await inspectNativeSdkSupervisorRecovery(run, projectRoot);
   const verifyWait = waits.find((wait) =>
-    ['verify.confirm', 'verify.retry', 'verify.stop'].includes(wait.stepId),
+    ['verify.confirm', 'verify.retry', 'verify.stop', 'verify.checks-stop'].includes(wait.stepId),
   );
   const active = run.actions.filter(
     (action) => action.status === 'running' || action.status === 'unknown',
@@ -392,6 +392,17 @@ export async function projectNativeSdkContinuation(options: {
                 'The Builder stopped before completing this work. Continue from its preserved workspace?',
                 'Builder 尚未完成本轮工作。是否从保留的工作区继续？',
               ),
+      ),
+    };
+  } else if (verifyWait?.stepId === 'verify.checks-stop') {
+    continuation = {
+      ...sdkLoopStopContinuation(state, verifyWait.proposalHash),
+      userCommunication: communication(
+        localized(
+          'Preserve the failed or interrupted check receipts. Ask for a repair or requirements decision before creating a new candidate; do not retry the original check or report that it never ran.',
+          '保留失败或中断检查的收据。请用户决定修复实现或调整需求，再创建新候选；不要重跑原检查或声明它从未执行。',
+        ),
+        state.blockers.map((blocker) => blocker.reason.text).join('; '),
       ),
     };
   } else if (verifyWait?.stepId === 'verify.stop') {
@@ -483,6 +494,7 @@ export async function projectNativeSdkContinuation(options: {
     continuation = {
       ...base,
       disposition: 'blocked',
+      commandArgs: ['comet', 'native', 'status', state.name, '--json'],
       requiredInputs: ['original-execution-result'],
       userCommunication: communication(
         localized(
@@ -596,6 +608,7 @@ export async function projectNativeSdkContinuation(options: {
   } else if (active.length > 0) {
     continuation = {
       ...base,
+      commandArgs: ['comet', 'native', 'status', state.name, '--json'],
       userCommunication: communication(
         localized(
           'Continue or wait on the original claimed task. Do not create a second task because a wait timed out; submit its actual outcome with the original claim.',
@@ -607,6 +620,19 @@ export async function projectNativeSdkContinuation(options: {
     continuation = { ...base, disposition: 'done' };
   } else if (run.ready.length > 0) {
     continuation = { ...base, commandArgs: ['comet', 'native', 'next', state.name] };
+  } else if (run.status === 'failed' && run.reason === 'ACTION_FAILED: verify.checks') {
+    continuation = {
+      ...base,
+      disposition: 'blocked',
+      commandArgs: ['comet', 'native', 'doctor', state.name, '--repair'],
+      requiredInputs: [],
+      userCommunication: communication(
+        localized(
+          'The previous Runtime definition stopped after this check actually failed. Run the named doctor repair to validate and preserve its receipts, then follow the repair continuation. Do not retry the old check or claim it never ran.',
+          '旧 Runtime 定义在检查实际失败后停止。执行此需求的 doctor 修复，校验并保留原收据，再按返回续行修复；不要重跑旧检查或声明它未执行。',
+        ),
+      ),
+    };
   } else {
     continuation = {
       ...base,

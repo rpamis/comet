@@ -37,7 +37,7 @@ const readHookProjectConfig = memoizedHookRead('nativeHookProjectConfig', readPr
 
 const inspectHookSdkRun = memoizedHookRead(
   'nativeHookSdkRun',
-  (projectRoot: string, name: string) => inspectNativeSdkRun(projectRoot, name),
+  (projectRoot: string, name: string) => inspectNativeSdkRun(projectRoot, name, { readOnly: true }),
 );
 
 async function runNativeHookMutation<T>(operation: () => Promise<T>): Promise<T> {

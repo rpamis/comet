@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import * as classic from '../../../domains/comet-classic/index.js';
 import { writeClassicSdkDesignContext } from '../../../domains/comet-classic/classic-handoff.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
@@ -27,6 +27,7 @@ import type { ClassicProfile } from '../../../domains/comet-classic/classic-stat
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
 const digest = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -476,6 +477,24 @@ it('executes the real check through the public composed factory', async () => {
   expect(f.run.actions.at(-1)).toMatchObject({ stepId: 'classic.extension.review' });
 });
 
+it('keeps a composed read-only store free of projection and ownership writes', async () => {
+  const f = await fixture('tweak');
+  await f.refresh();
+  const readonly = f.implementation.wrapStore!(f.store, f.context.identity, { readOnly: true });
+  const mkdir = vi.spyOn(fs, 'mkdir');
+  const rename = vi.spyOn(fs, 'rename');
+  const cas = vi.spyOn(f.store, 'compareAndSwap');
+  const opened = vi.spyOn(fs, 'open');
+  expect(await readonly.read('example')).toEqual(f.run);
+  await expect(
+    readonly.compareAndSwap('example', f.run.revision, { ...f.run, revision: f.run.revision + 1 }),
+  ).rejects.toThrow(/read-only store/u);
+  expect(mkdir).not.toHaveBeenCalled();
+  expect(rename).not.toHaveBeenCalled();
+  expect(cas).not.toHaveBeenCalled();
+  expect(opened.mock.calls.some(([file]) => String(file).endsWith('.lock'))).toBe(false);
+});
+
 it.each([
   ['missing', false],
   ['empty argv', { build: { argv: [] } }],
@@ -865,6 +884,8 @@ it('recovers the fixed Classic Application through public CLI across processes a
         clone,
         '--request',
         file,
+        // 兼容测试逐项核对完整 Run 历史；普通宿主使用默认紧凑续行响应。
+        '--details',
         '--json',
       ],
       { encoding: 'utf8' },

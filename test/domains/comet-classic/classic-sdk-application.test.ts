@@ -4237,7 +4237,8 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         stepId: `${profile}.archive.deliver`,
         status: 'pending',
       });
-      execFileSync('git', ['add', '-A'], { cwd: projectRoot });
+      // 归档提交只暂存 OpenSpec 产物；独立 Runtime 收据不属于交付变更。
+      execFileSync('git', ['add', '-A', '--', 'docs/openspec'], { cwd: projectRoot });
       execFileSync(
         'git',
         [
@@ -4255,6 +4256,12 @@ describe('Classic workflow application through the public Runtime SDK', () => {
         cwd: projectRoot,
         encoding: 'utf8',
       }).trim();
+      expect(
+        execFileSync('git', ['ls-files', '--', '.comet/runtime'], {
+          cwd: projectRoot,
+          encoding: 'utf8',
+        }).trim(),
+      ).toBe('');
       run = await completeLatestAction(
         runtime,
         run,

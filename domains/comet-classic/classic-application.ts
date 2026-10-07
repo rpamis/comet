@@ -697,8 +697,13 @@ export function createClassicApplication(
       }
       return { accepted: true };
     },
-    wrapStore(store, identity) {
-      const projected = createClassicSdkStateStore(context.projectRoot, { store, identity });
+    wrapStore(store, identity, storeOptions) {
+      const projected = createClassicSdkStateStore(context.projectRoot, {
+        store,
+        identity,
+        readOnly: storeOptions?.readOnly,
+      });
+      if (storeOptions?.readOnly) return projected;
       return {
         read: (id) => projected.read(id),
         async compareAndSwap(id, revision, run) {
