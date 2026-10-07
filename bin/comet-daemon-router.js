@@ -1,11 +1,17 @@
 import { resolveCometDaemonRoute, shouldAutoStartCometDaemon } from './comet-daemon-route.js';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   closeSync,
+  constants,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
+  renameSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -15,6 +21,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export { resolveCometDaemonRoute, shouldAutoStartCometDaemon } from './comet-daemon-route.js';
+
+const AUTO_DAEMON_PROBE_TIMEOUT_MS = 100;
+const AUTO_DAEMON_RETRY_DELAY_MS = 15_000;
 
 function packageVersion() {
   try {
@@ -75,18 +84,90 @@ function launchLockPath(endpoint) {
   return path.join(os.tmpdir(), 'comet-daemon-launch', `${key}.lock`);
 }
 
+function launchRetryPath(endpoint) {
+  return `${launchLockPath(endpoint)}.retry`;
+}
+
+function checkLaunchDirectory(file) {
+  const directory = lstatSync(path.dirname(file));
+  if (
+    !directory.isDirectory() ||
+    (typeof process.getuid === 'function' && directory.uid !== process.getuid()) ||
+    (process.platform !== 'win32' && (directory.mode & 0o022) !== 0)
+  ) {
+    throw new Error('Unsafe Comet daemon launch directory');
+  }
+}
+
+function removeLaunchFile(file) {
+  if (!file) return;
+  try {
+    checkLaunchDirectory(file);
+    unlinkSync(file);
+  } catch {
+    // 启动记录清理失败不能阻止本地 Runtime 回退；后续启动仍可按期限重试。
+  }
+}
+
+function launchRetryAge(file) {
+  let fd;
+  try {
+    checkLaunchDirectory(file);
+    if (!lstatSync(file).isFile()) return Infinity;
+    fd = openSync(
+      file,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+    );
+    const stats = fstatSync(fd);
+    if (!stats.isFile() || stats.size > 64) return Infinity;
+    const buffer = Buffer.alloc(65);
+    const bytes = readSync(fd, buffer, 0, buffer.length, 0);
+    if (bytes > 64) return Infinity;
+    return Date.now() - Number(buffer.toString('utf8', 0, bytes));
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ELOOP') return Infinity;
+    throw error;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+function writeLaunchRetry(file) {
+  checkLaunchDirectory(file);
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  const fd = openSync(temporary, 'wx', 0o600);
+  try {
+    try {
+      writeFileSync(fd, String(Date.now()), 'utf8');
+    } finally {
+      closeSync(fd);
+    }
+    // 替换路径本身，不跟随已有符号链接写入其他文件。
+    renameSync(temporary, file);
+  } finally {
+    removeLaunchFile(temporary);
+  }
+}
+
 function takeLaunchLock(endpoint) {
   const lockPath = launchLockPath(endpoint);
   mkdirSync(path.dirname(lockPath), { recursive: true, mode: 0o700 });
+  checkLaunchDirectory(lockPath);
+  let created = false;
   try {
     const fd = openSync(lockPath, 'wx');
-    writeFileSync(fd, `${process.pid}\n`, 'utf8');
-    closeSync(fd);
+    created = true;
+    try {
+      writeFileSync(fd, `${process.pid}\n`, 'utf8');
+    } finally {
+      closeSync(fd);
+    }
     return lockPath;
   } catch (error) {
+    if (created) removeLaunchFile(lockPath);
     if (error?.code !== 'EEXIST') return null;
     try {
-      if (Date.now() - statSync(lockPath).mtimeMs > 15_000) unlinkSync(lockPath);
+      if (Date.now() - lstatSync(lockPath).mtimeMs > 15_000) unlinkSync(lockPath);
     } catch {
       // Another launcher may be holding or removing the lock.
     }
@@ -94,12 +175,23 @@ function takeLaunchLock(endpoint) {
   }
 }
 
-function startServer(module, endpoint, buildId, projectRoot) {
+function startServer(module, endpoint, buildId, projectRoot, automatic = false) {
   const entry = serverPath();
   if (!existsSync(entry)) return false;
-  const lockPath = takeLaunchLock(endpoint);
-  if (!lockPath) return false;
+  let lockPath;
   try {
+    lockPath = takeLaunchLock(endpoint);
+    if (!lockPath) return false;
+    if (automatic) {
+      const retryPath = launchRetryPath(endpoint);
+      const age = launchRetryAge(retryPath);
+      if (age >= 0 && age < AUTO_DAEMON_RETRY_DELAY_MS) {
+        removeLaunchFile(lockPath);
+        return false;
+      }
+      // 独立 CLI 进程也共享冷却时间；即使子进程启动失败并移除锁，也不会反复拉起。
+      writeLaunchRetry(retryPath);
+    }
     const cwd = fileURLToPath(new URL('../', import.meta.url));
     const env = {
       ...process.env,
@@ -117,6 +209,7 @@ function startServer(module, endpoint, buildId, projectRoot) {
       if (!launched.started) throw new Error(launched.error ?? 'Windows daemon launch failed');
       return true;
     }
+    const lockIdentity = lstatSync(lockPath);
     const child = spawn(process.execPath, [entry, endpoint.endpoint, buildId, projectRoot], {
       // Keep the detached server out of the project workspace. A daemon must
       // not keep a temporary project root as its process cwd after the client
@@ -127,15 +220,24 @@ function startServer(module, endpoint, buildId, projectRoot) {
       windowsHide: true,
       env,
     });
+    child.once('error', () => {
+      try {
+        const current = lstatSync(lockPath);
+        if (
+          current.dev === lockIdentity.dev &&
+          current.ino === lockIdentity.ino &&
+          current.ctimeMs === lockIdentity.ctimeMs
+        ) {
+          removeLaunchFile(lockPath);
+        }
+      } catch {
+        // 只清理本次启动的锁；其他进程已替换或删除的锁不再归本调用所有。
+      }
+    });
     child.unref();
     return true;
   } catch {
-    try {
-      unlinkSync(lockPath);
-    } catch {
-      // The launcher no longer owns a usable child; a later attempt can age
-      // out this lock if the filesystem refused immediate cleanup.
-    }
+    removeLaunchFile(lockPath);
     return false;
   }
 }
@@ -172,7 +274,7 @@ async function requestWithLaunch(
   if (!waitForLaunch) return null;
   const delays = [20, 40, 80, 160, 320, 640, 1_000];
   // 所有平台的 IPC 和启动重试共用总期限，超时后仍由调用方回退到本地 Runtime。
-  // Windows 自动读取不等待后台启动；显式 start 可等候已有启动锁。
+  // 自动读取不等待后台启动；Windows 显式 start 可等候已有启动锁。
   for (let attempt = 0; waitForPendingLaunch || attempt < delays.length; attempt += 1) {
     const remaining = deadline - performance.now();
     if (remaining <= 0) return null;
@@ -193,7 +295,6 @@ function writeCommandResponse(response) {
 }
 
 export async function tryRunCometDaemon(argv = process.argv.slice(2)) {
-  const deadline = performance.now() + (process.platform === 'win32' ? 5_000 : 10_000);
   if (!shouldAutoStartCometDaemon() || process.env.COMET_DAEMON_SERVER === '1') return false;
   const selected = resolveCometDaemonRoute(argv);
   if (!selected) return false;
@@ -203,22 +304,32 @@ export async function tryRunCometDaemon(argv = process.argv.slice(2)) {
   const entry = serverPath();
   const buildId = process.env.COMET_DAEMON_BUILD_ID ?? daemonBuildId(entry);
   const endpoint = module.resolveCometDaemonEndpoint(root, buildId);
+  const options = {
+    endpoint,
+    buildId,
+    projectRoot: root,
+    cwd: process.cwd(),
+  };
+  // 短期限只约束探活：不可用时立即回退，已就绪服务的读取仍保留原有响应时间。
+  const ready = await requestWithLaunch(
+    module,
+    { ...options, control: 'ping', timeoutMs: AUTO_DAEMON_PROBE_TIMEOUT_MS },
+    false,
+    false,
+  );
+  if (!ready) startServer(module, endpoint, buildId, root, true);
+  if (!ready?.ok) return false;
+  removeLaunchFile(launchRetryPath(endpoint));
   const response = await requestWithLaunch(
     module,
     {
-      endpoint,
-      buildId,
-      projectRoot: root,
-      cwd: process.cwd(),
+      ...options,
       runtime: selected.runtime,
       argv: selected.commandArgs,
       timeoutMs: 5_000,
     },
-    true,
-    // Let the first Windows request run in the caller while the broker warms
-    // the daemon. Later requests reuse the server once it is listening.
-    process.platform !== 'win32',
-    deadline,
+    false,
+    false,
   );
   if (!response?.ok) return false;
   writeCommandResponse(response);

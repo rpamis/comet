@@ -4,6 +4,8 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
+import { resolveNodeCliCommand } from '../../../platform/process/node-cli-command.js';
+import { executeClassicOpenSpec } from '../../../domains/comet-classic/classic-openspec-command.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import {
   COMET_CHANGE_OWNER_SCHEMA,
@@ -14,7 +16,7 @@ vi.mock('child_process', () => ({
   spawnSync: vi.fn(),
 }));
 vi.mock('../../../platform/process/node-cli-command.js', () => ({
-  resolveNodeCliCommand: (command: string, args: string[]) => ({ command, args }),
+  resolveNodeCliCommand: vi.fn((command: string, args: string[]) => ({ command, args })),
 }));
 
 const mockedSpawnSync = vi.mocked(spawnSync);
@@ -362,4 +364,46 @@ describe('Classic OpenSpec adapter', () => {
       fs.access(path.join(projectRoot, 'docs', 'openspec', 'changes', 'demo', '.comet.yaml')),
     ).resolves.toBeUndefined();
   });
+
+  it.each([
+    { code: 'ENOENT', pid: 0, notStarted: true },
+    { code: 'EACCES', pid: 0, notStarted: true },
+    { code: 'ENOEXEC', pid: 0, notStarted: true },
+    { code: 'ETIMEDOUT', pid: 42, notStarted: false },
+    { code: 'ENOBUFS', pid: 42, notStarted: false },
+    { code: 'ENOENT', pid: 42, notStarted: false },
+    { code: 'EIO', pid: 0, notStarted: false },
+  ])(
+    'classifies spawn $code with pid $pid without guessing from output',
+    async ({ code, pid, notStarted }) => {
+      mockedSpawnSync.mockReturnValue({
+        pid,
+        output: [null, '', 'OpenSpec CLI not found: misleading stderr'],
+        stdout: '',
+        stderr: 'OpenSpec CLI not found: misleading stderr',
+        status: null,
+        signal: null,
+        error: Object.assign(new Error(`spawn openspec ${code}`), { code }),
+      });
+      const result = await executeClassicOpenSpec(['archive', 'demo', '--yes'], projectRoot);
+      expect(result.executionStarted).toBe(notStarted ? false : undefined);
+      expect(result.exitCode).not.toBe(0);
+    },
+  );
+
+  it.each([
+    { message: 'ENOENT: missing openspec.cmd', code: 'ENOENT', exitCode: 127 },
+    { message: 'Node CLI entry is missing: openspec.js', code: undefined, exitCode: 70 },
+    { message: 'Unsupported Node CLI shim: openspec.cmd', code: undefined, exitCode: 70 },
+  ])(
+    'reports resolver failure before any process starts: $message',
+    async ({ message, code, exitCode }) => {
+      vi.mocked(resolveNodeCliCommand).mockImplementationOnce(() => {
+        throw Object.assign(new Error(message), { code });
+      });
+      const result = await executeClassicOpenSpec(['archive', 'demo', '--yes'], projectRoot);
+      expect(result).toEqual({ exitCode, executionStarted: false, stderr: message });
+      expect(mockedSpawnSync).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -22,7 +22,11 @@ import { createNativeSdkStateStore } from '../../../domains/comet-native/native-
 import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
 import { inspectNativeSdkDefinitionUpgrade } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
-import { nativeSdkArchivePreflightExecutor } from '../../../domains/comet-native/native-sdk-archive.js';
+import {
+  nativeSdkArchivePreflightExecutor,
+  nativeSdkArchiveFinalizeExecutor,
+} from '../../../domains/comet-native/native-sdk-archive.js';
+import { archiveNativeSdkChange } from '../../../domains/comet-native/native-sdk-archive-command.js';
 import * as nativeRequirements from '../../../domains/comet-native/native-portable-requirements.js';
 import { nativeSupervisorStateFile } from '../../../domains/comet-native/native-supervisor-state.js';
 import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
@@ -344,8 +348,9 @@ async function stalledVerifier(storeKind: 'memory' | 'sdk' = 'memory') {
 }
 
 async function awaitingArchiveApplication(
-  storeKind: 'memory' | 'file' = 'memory',
+  storeKind: 'memory' | 'file' | 'sdk' = 'memory',
   beforePreflight?: (options: { root: string; run: WorkflowRun }) => void | Promise<void>,
+  stopBeforePreflight = false,
 ) {
   const prepared = await dispatchedVerifier([], storeKind);
   const { root, runtime } = prepared;
@@ -387,7 +392,10 @@ async function awaitingArchiveApplication(
         choice: 'approved',
       });
     }
-    if (executorId === 'comet-native-archive-preflight') await beforePreflight?.({ root, run });
+    if (executorId === 'comet-native-archive-preflight') {
+      if (stopBeforePreflight) break;
+      await beforePreflight?.({ root, run });
+    }
     run = await runtime.execute({
       runId: run.runId,
       actionId: run.actions.at(-1)!.id,
@@ -410,6 +418,130 @@ async function awaitingArchiveFinalization(storeKind: 'memory' | 'file' = 'memor
 }
 
 describe('Native SDK Workflow Application', () => {
+  it('preserves interrupted finalization and recovers its original receipt without replaying Archive', async () => {
+    const { root, paths, runtime, run } = await awaitingArchiveApplication('sdk', undefined, true);
+    const options = {
+      projectRoot: root,
+      name: run.runId,
+      dryRun: false,
+      recover: false,
+      confirmed: false,
+    };
+    const finalize = nativeSdkArchiveFinalizeExecutor.execute;
+    vi.spyOn(nativeSdkArchiveFinalizeExecutor, 'execute').mockImplementationOnce(
+      async (...args) => {
+        await finalize(...args);
+        throw new Error('Host lost after persisting the actual Archive receipt');
+      },
+    );
+    await expect(archiveNativeSdkChange(options)).rejects.toThrow('EXECUTION_UNKNOWN');
+    const interrupted = await runtime.inspect(run.runId);
+    expect(interrupted.actions.at(-1)).toMatchObject({
+      stepId: 'archive.finalize',
+      status: 'unknown',
+    });
+    expect(interrupted.outputs['archive.execute'].value).toMatchObject({
+      transactionId: expect.any(String),
+    });
+    expect((await archiveNativeSdkChange({ ...options, dryRun: true })).data).toMatchObject({
+      ready: false,
+    });
+    expect(await archiveNativeSdkChange(options)).toMatchObject({
+      exitCode: 73,
+      error: { code: 'blocked' },
+    });
+    expect(await runtime.inspect(run.runId)).toEqual(interrupted);
+    expect((await archiveNativeSdkChange({ ...options, recover: true })).data).toMatchObject({
+      recoveredAction: { id: interrupted.actions.at(-1)!.id, stepId: 'archive.finalize' },
+      run: { status: 'completed' },
+    });
+    const recovered = await runtime.inspect(run.runId);
+    expect(recovered.actions.filter((action) => action.stepId.startsWith('archive.'))).toHaveLength(
+      3,
+    );
+    expect(recovered.actions.at(-1)!.claim).toEqual(interrupted.actions.at(-1)!.claim);
+    expect(await fs.readdir(path.join(paths.runtimeDir, 'sdk-archive-receipts'))).toHaveLength(1);
+    await archiveNativeSdkChange(options);
+    expect(await runtime.inspect(run.runId)).toEqual(recovered);
+  });
+
+  it.each([0, 1, 2])(
+    'completes Archive from persisted checkpoint %i without replaying completed Actions',
+    async (checkpoint) => {
+      const {
+        root,
+        runtime,
+        run: prepared,
+      } = await awaitingArchiveApplication('sdk', undefined, true);
+      let run = prepared;
+      const executors = ['comet-native-archive-preflight', 'comet-native-archive-apply'];
+      for (let index = 0; index < checkpoint; index += 1) {
+        run = await runtime.execute({
+          runId: run.runId,
+          actionId: run.actions.at(-1)!.id,
+          executorId: executors[index],
+          context: { requestId: `archive-checkpoint-${index}`, projectRoot: root },
+        });
+      }
+      const existing = run.actions.filter((action) => action.status === 'succeeded');
+      const options = {
+        projectRoot: root,
+        name: run.runId,
+        dryRun: false,
+        recover: false,
+        confirmed: false,
+      };
+      const files = async (
+        dir: string,
+      ): Promise<Record<string, { content: string; mtimeMs: number }>> => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const result: Record<string, { content: string; mtimeMs: number }> = {};
+        for (const entry of entries) {
+          const file = path.join(dir, entry.name);
+          if (entry.isDirectory()) Object.assign(result, await files(file));
+          else
+            result[file] = {
+              content: (await fs.readFile(file)).toString('base64'),
+              mtimeMs: (await fs.stat(file)).mtimeMs,
+            };
+        }
+        return result;
+      };
+      const before = await files(root);
+      const preview = await archiveNativeSdkChange({ ...options, dryRun: true });
+      expect(preview.data).toMatchObject({ ready: true });
+      expect(await runtime.inspect(run.runId)).toEqual(run);
+      expect(await files(root)).toEqual(before);
+      const result = await archiveNativeSdkChange(options);
+      expect(result.exitCode).toBe(0);
+      expect(result.data).toMatchObject({
+        status: 'done',
+        run: { status: 'completed' },
+        continuation: { disposition: 'done' },
+        completedActions: ['archive.prepare', 'archive.execute', 'archive.finalize']
+          .slice(checkpoint)
+          .map((stepId) => ({ stepId, status: 'succeeded' })),
+      });
+      const completed = await runtime.inspect(run.runId);
+      expect(
+        completed.actions.filter((action) => existing.some(({ id }) => action.id === id)),
+      ).toEqual(existing);
+      expect(
+        completed.actions.filter((action) => action.stepId.startsWith('archive.')),
+      ).toHaveLength(3);
+      expect(completed.outputs['archive.finalize'].value).toMatchObject({
+        transactionId: expect.any(String),
+        archiveRef: expect.any(String),
+      });
+      const repeated = await archiveNativeSdkChange(options);
+      expect(repeated.data).toMatchObject({
+        completedActions: [],
+        run: { revision: completed.revision, status: 'completed' },
+      });
+      expect(await runtime.inspect(run.runId)).toEqual(completed);
+    },
+  );
+
   it('reads the finalized Archive report once and rejects later report changes', async () => {
     const { root, paths, runtime, run: pending } = await awaitingArchiveFinalization();
     const run = await runtime.execute({

@@ -135,3 +135,49 @@ describe('Classic Chinese Skill SDK routing', () => {
     },
   );
 });
+
+describe('Classic SDK continuation handoffs in both languages', () => {
+  it.each([
+    ['Chinese', chineseSkill],
+    ['English', englishSkill],
+  ] as const)(
+    'keeps %s preset routing and the required approval boundary',
+    async (_language, readSkill) => {
+      const build = await readSkill('comet-build');
+      const sdk = build.slice(
+        build.indexOf('## SDK Run'),
+        build.indexOf('`runtimeFormat: compat`'),
+      );
+      for (const profile of ['tweak', 'hotfix']) {
+        expect(sdk).toContain(`\`${profile}.build.*\``);
+        expect(sdk).toContain(`comet-${profile}`);
+        const skill = await readSkill(`comet-${profile}`);
+        const preset = skill.slice(
+          skill.indexOf('## SDK Run'),
+          skill.indexOf('`runtimeFormat: compat`'),
+        );
+        expect(preset).toContain('`data.approvalHash`');
+        expect(preset).toContain('`comet guard <change-name> open --json`');
+        expect(preset).toContain(
+          '`comet guard <change-name> open --apply --approval-hash <approvalHash>`',
+        );
+        expect(preset).not.toContain('`comet guard <change-name> open --apply`');
+        expect(preset).toContain('`agent.continuation` / `data.nextAction`');
+        expect(preset).toContain('Run revision');
+      }
+      expect(sdk).toContain('Run revision');
+      expect(sdk).toContain('`comet-build`');
+      expect(sdk).toContain('`full.build.*`');
+      expect(sdk).toContain('`agent.continuation` / `data.nextAction`');
+      if (_language === 'Chinese') {
+        expect(sdk).toContain('不要求 full Design Doc 或完整计划');
+        expect(sdk).toContain('仅在需要诊断时运行');
+        expect(sdk).not.toContain('每次推进后以 `comet state next');
+      } else {
+        expect(sdk).toContain('Do not require a full Design Doc or implementation plan');
+        expect(sdk).toContain('preview only when diagnosis is needed');
+        expect(sdk).not.toContain('After every advance, read');
+      }
+    },
+  );
+});

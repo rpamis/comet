@@ -22,13 +22,23 @@ export function classicSdkNextAction(run: WorkflowRun) {
   const pending = run.actions.find((action) => action.status === 'pending');
   const action = unresolved ?? pending;
   if (action) {
+    const profile = (run.state as ClassicState | undefined)?.workflow;
+    // 只调整宿主收到的 Skill 路由；保留旧 Run 固定的定义、Action 和输入哈希。
+    const ref =
+      (profile === 'hotfix' || profile === 'tweak') &&
+      run.workflow.id === `comet-classic-${profile}` &&
+      action.type === 'invoke_skill' &&
+      action.stepId === `${profile}.build.execute` &&
+      action.ref === 'comet-build'
+        ? `comet-${profile}`
+        : action.ref;
     return {
       kind: unresolved ? 'reconcile' : 'action',
       stepId: action.stepId,
       actionId: action.id,
       attempt: action.attempt,
       inputHash: action.inputHash,
-      ...(action.ref ? { ref: action.ref } : {}),
+      ...(ref ? { ref } : {}),
     };
   }
   const evidence = run.evidenceWaits?.find((wait) => wait.status === 'pending');

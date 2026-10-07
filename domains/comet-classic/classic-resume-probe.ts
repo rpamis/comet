@@ -151,14 +151,14 @@ async function changeSearchText(
   return parts.join('\n').toLowerCase();
 }
 
-function nextCommandForPhase(phase: string): string | null {
+function nextCommandForPhase(phase: string, workflow: string): string | null {
   switch (phase) {
     case 'open':
       return '/comet-open';
     case 'design':
       return '/comet-design';
     case 'build':
-      return '/comet-build';
+      return workflow === 'hotfix' || workflow === 'tweak' ? `/comet-${workflow}` : '/comet-build';
     case 'verify':
       return '/comet-verify';
     case 'archive':
@@ -209,7 +209,7 @@ function diagnosticFromProjection(
     workflow: classic.workflow,
     phase: classic.phase,
     currentStep: null,
-    nextCommand: nextCommandForPhase(classic.phase),
+    nextCommand: nextCommandForPhase(classic.phase, classic.workflow),
     runtimeMode: 'engine-projection',
     runtimeEval: null,
     evidence: [],

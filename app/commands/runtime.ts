@@ -29,11 +29,14 @@ export interface RuntimeCommandOptions {
   rootDir?: string;
   projectRoot?: string;
   json?: boolean;
+  details?: boolean;
 }
 
 export interface RuntimeCommandHost {
   invocationCwd?: string;
   environment?: Readonly<Record<string, string | undefined>>;
+  /** 仅 CLI 使用紧凑展示；response.data 始终保留完整 SDK Run。 */
+  output?: 'full' | 'compact';
 }
 
 export type RuntimeCommandResponse = {
@@ -53,6 +56,7 @@ export type RuntimeCommandResponse = {
 export interface RuntimeCommandResult {
   exitCode: number;
   response: RuntimeCommandResponse;
+  cliResponse?: unknown;
 }
 
 type JsonObject = { [key: string]: RuntimeValue };
@@ -288,6 +292,46 @@ function dispatch(
   }
 }
 
+async function nativeCliResponse(
+  response: Extract<RuntimeCommandResponse, { status: 'succeeded' }>,
+  request: ReturnType<typeof parseRequest>,
+  projectRoot: string,
+  applicationId: string,
+  executors?: readonly import('../../domains/engine/runtime.js').RuntimeExecutor[],
+) {
+  if (request.operation !== 'claim' && request.operation !== 'record-outcome') return response;
+  try {
+    const { projectNativeSdkDispatchResult } =
+      await import('../../domains/comet-native/native-sdk-continuation.js');
+    const { parseNativePortableState } =
+      await import('../../domains/comet-native/native-portable-state.js');
+    const actionId =
+      request.operation === 'claim'
+        ? (request.actionId as string)
+        : (request.outcome as { actionId: string }).actionId;
+    return {
+      ...response,
+      data: await projectNativeSdkDispatchResult({
+        run: response.data,
+        state: parseNativePortableState(response.data.state),
+        actionId,
+        projectRoot,
+        applicationId,
+        skillExecutors: executors,
+      }),
+    };
+  } catch (error) {
+    // 展示失败不能把已经提交的操作误报为失败，也不能丢失原 Run。
+    return {
+      ...response,
+      warning: {
+        code: 'COMPACT_VIEW_UNAVAILABLE',
+        message: error instanceof Error ? error.message : '返回完整 Run。',
+      },
+    };
+  }
+}
+
 async function assertBuiltInChangeInput(
   projectRoot: string,
   application: SdkApplication,
@@ -456,17 +500,29 @@ export async function runtimeDispatchCommand(
       if (request.operation === 'start') await selectWorkflowApplication(loaded, data.runId);
       const skillWork = applicationSkillWork(loaded, data);
       const waitSkillWork = applicationWaitSkillWork(loaded, data);
+      const response: Extract<RuntimeCommandResponse, { status: 'succeeded' }> = {
+        protocolVersion: 1,
+        requestId,
+        status: 'succeeded',
+        data,
+        application: loaded.identity,
+        skillWork,
+        waitSkillWork,
+      };
       return {
         exitCode: 0,
-        response: {
-          protocolVersion: 1,
-          requestId,
-          status: 'succeeded',
-          data,
-          application: loaded.identity,
-          skillWork,
-          waitSkillWork,
-        },
+        response,
+        ...(host.output === 'compact' && !options.details && loaded.identity.base === 'native'
+          ? {
+              cliResponse: await nativeCliResponse(
+                response,
+                request,
+                projectRoot,
+                loaded.identity.id,
+                loaded.implementation.executors,
+              ),
+            }
+          : {}),
       };
     }
     if (application !== undefined && (options.workflow?.length ?? 0) > 0) {
@@ -622,7 +678,19 @@ export async function runtimeDispatchCommand(
       request.operation === 'inspect' && boundRun
         ? boundRun
         : await dispatch(runtime, request, context);
-    return { exitCode: 0, response: { protocolVersion: 1, requestId, status: 'succeeded', data } };
+    const response: Extract<RuntimeCommandResponse, { status: 'succeeded' }> = {
+      protocolVersion: 1,
+      requestId,
+      status: 'succeeded',
+      data,
+    };
+    return {
+      exitCode: 0,
+      response,
+      ...(host.output === 'compact' && !options.details && application === 'native'
+        ? { cliResponse: await nativeCliResponse(response, request, projectRoot, application) }
+        : {}),
+    };
   } catch (error) {
     return runtimeCommandFailure(error, requestId);
   }

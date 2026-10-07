@@ -28,6 +28,14 @@ import {
   writeNativeVerificationReport,
 } from './native-verification-report-v2.js';
 
+export const NATIVE_SDK_ARCHIVE_STEPS = [
+  ['supervisor.parent.deliver', 'native-supervisor-parent-deliver'],
+  ['archive.prepare', 'native-archive-preflight'],
+  ['archive.execute', 'native-archive'],
+  ['archive.finalize', 'native-archive-finalize'],
+  ['supervisor.cleanup', 'native-supervisor-cleanup'],
+] as const;
+
 async function archivePreflightBinding(
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,

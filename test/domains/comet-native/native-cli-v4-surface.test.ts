@@ -1183,41 +1183,35 @@ Run focused Native checks.
         stepId: 'archive.prepare',
         status: 'pending',
       });
-      const preparedArchive = json(
-        await runNativeCli(['archive', 'sdk-confirm', '--json', ...projectArgs()]),
-      );
-      expect(preparedArchive, preparedArchive.error?.message).toMatchObject({
-        exitCode: 0,
-        data: {
-          run: {
-            actions: expect.arrayContaining([
-              expect.objectContaining({ stepId: 'archive.prepare', status: 'succeeded' }),
-              expect.objectContaining({ stepId: 'archive.execute', status: 'pending' }),
-            ]),
-          },
-        },
-      });
-      const appliedArchive = json(
-        await runNativeCli(['archive', 'sdk-confirm', '--json', ...projectArgs()]),
-      );
-      expect(appliedArchive, appliedArchive.error?.message).toMatchObject({
-        exitCode: 0,
-        data: {
-          run: {
-            actions: expect.arrayContaining([
-              expect.objectContaining({ stepId: 'archive.execute', status: 'succeeded' }),
-              expect.objectContaining({ stepId: 'archive.finalize', status: 'pending' }),
-            ]),
-          },
-        },
-      });
       let finalized: JsonEnvelope;
       let finalRoot = projectRoot;
       if (archiveMode === 'normal') {
         finalized = json(
           await runNativeCli(['archive', 'sdk-confirm', '--json', ...projectArgs()]),
         );
+        expect(finalized, finalized.error?.message).toMatchObject({
+          exitCode: 0,
+          data: {
+            completedActions: [
+              { stepId: 'archive.prepare', status: 'succeeded' },
+              { stepId: 'archive.execute', status: 'succeeded' },
+              { stepId: 'archive.finalize', status: 'succeeded' },
+            ],
+            run: { status: 'completed' },
+          },
+        });
       } else {
+        // 恢复场景通过原 Runtime 契约停在收尾前，保留真实的独立检查点。
+        for (const executorId of ['comet-native-archive-preflight', 'comet-native-archive-apply']) {
+          const checkpoint = (await inspectNativeSdkRun(projectRoot, 'sdk-confirm')).run;
+          await runtime.execute({
+            runId: checkpoint.runId,
+            expectedRevision: checkpoint.revision,
+            actionId: checkpoint.actions.at(-1)!.id,
+            executorId,
+            context: { requestId: `prepare-recovery-${executorId}`, projectRoot },
+          });
+        }
         const pending = (await inspectNativeSdkRun(projectRoot, 'sdk-confirm')).run;
         const action = pending.actions.at(-1)!;
         const context = { requestId: 'archive-finalize-crash', projectRoot };

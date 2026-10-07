@@ -79,7 +79,18 @@ async function supervisor() {
   async function dispatchResult(request: Record<string, unknown>, file = candidateCli) {
     const requestFile = path.join(root, `request-${++sequence}.json`);
     await fs.writeFile(requestFile, JSON.stringify(request));
-    return cli(['runtime', 'dispatch', '--application', 'native', '--request', requestFile], file);
+    return cli(
+      [
+        'runtime',
+        'dispatch',
+        '--application',
+        'native',
+        '--request',
+        requestFile,
+        ...(file === candidateCli ? ['--details'] : []),
+      ],
+      file,
+    );
   }
   async function dispatch(
     request: Record<string, unknown>,

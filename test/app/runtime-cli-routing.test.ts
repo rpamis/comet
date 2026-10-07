@@ -48,13 +48,16 @@ describe('shared Runtime CLI routing', () => {
       'state',
       '--json',
     ]);
-    expect(runtimeDispatchCommand).toHaveBeenCalledExactlyOnceWith({
-      request: 'request.json',
-      workflow: ['first.json', 'second.json'],
-      projectRoot: 'project',
-      rootDir: 'state',
-      json: true,
-    });
+    expect(runtimeDispatchCommand).toHaveBeenCalledExactlyOnceWith(
+      {
+        request: 'request.json',
+        workflow: ['first.json', 'second.json'],
+        projectRoot: 'project',
+        rootDir: 'state',
+        json: true,
+      },
+      { output: 'compact' },
+    );
     expect(process.exitCode).toBe(0);
   });
 

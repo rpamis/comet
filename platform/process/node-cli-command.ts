@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { resolveWindowsCommand } from './spawn-command.js';
 
@@ -52,4 +52,40 @@ export function resolveNodeCliCommand(
       `Unsupported Node CLI shim: ${resolved}. Use a standard npm/pnpm .cmd launcher or the Node CLI .js/.mjs/.cjs entry; no shell fallback is allowed.`,
     );
   return { command: resolved, args: [...args] };
+}
+
+/** 只检查启动所需的文件，不运行 CLI，也不缓存可在重试前修复的依赖。 */
+export function assertNodeCliCommandAvailable(
+  command: string,
+  args: readonly string[],
+  options: { cwd: string; env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform },
+): void {
+  const launch = resolveNodeCliCommand(command, args, options);
+  const platform = options.platform ?? process.platform;
+  const env = launch.env ?? options.env ?? process.env;
+  const executable = launch.command;
+  const candidates =
+    platform === 'win32'
+      ? [resolveWindowsCommand(executable, env, options.cwd)]
+      : executable.includes('/')
+        ? [path.resolve(options.cwd, executable)]
+        : (env.PATH ?? '/usr/bin:/bin')
+            .split(path.delimiter)
+            .map((directory) => path.resolve(options.cwd, directory, executable));
+  const available = candidates.some((candidate) => {
+    try {
+      const target = path.resolve(options.cwd, candidate);
+      if (!statSync(target).isFile()) return false;
+      accessSync(target, platform === 'win32' ? constants.F_OK : constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (!available) throw new Error(`Executable not found or not executable: ${command}`);
+  if (launch.command !== command && launch.args.length > args.length) {
+    const entry = launch.args[0];
+    if (!statSync(entry).isFile()) throw new Error(`Node CLI entry is not a file: ${entry}`);
+    accessSync(entry, constants.R_OK);
+  }
 }

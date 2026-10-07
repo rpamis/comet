@@ -11,7 +11,7 @@ export function registerRuntimeCommand(program: Command, quietErrors = false): C
 
   runtime
     .command('dispatch')
-    .description('Submit a JSON Runtime request and return its persisted Run as JSON')
+    .description('Submit a JSON Runtime request and return its result as JSON')
     .requiredOption('--request <file>', 'JSON request containing operation and command fields')
     .option(
       '--workflow <file>',
@@ -27,6 +27,7 @@ export function registerRuntimeCommand(program: Command, quietErrors = false): C
     )
     .option('--project-root <dir>', 'Project context passed to this request', '.')
     .option('--json', 'Output as JSON (default)')
+    .option('--details', 'Return the complete persisted Run, including Native dispatch history')
     .addHelpText(
       'after',
       `
@@ -44,8 +45,8 @@ Mutations must use the current Run revision, Action or Wait identity required by
     )
     .action(async (options) => {
       const { runtimeDispatchCommand } = await import('../commands/runtime.js');
-      const result = await runtimeDispatchCommand(options);
-      console.log(JSON.stringify(result.response, null, 2));
+      const result = await runtimeDispatchCommand(options, { output: 'compact' });
+      console.log(JSON.stringify(result.cliResponse ?? result.response, null, 2));
       process.exitCode = result.exitCode;
     });
 

@@ -142,6 +142,7 @@ it('transfers a custom Supervisor through public CLI with fixed identity and an 
           'bin/comet.js',
           'runtime',
           'dispatch',
+          '--details',
           '--application',
           'native-candidate-review',
           '--project-root',

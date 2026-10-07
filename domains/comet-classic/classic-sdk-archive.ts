@@ -21,7 +21,10 @@ import { annotatedMarkdown } from './classic-archive-annotation.js';
 import { assertClassicSdkArchiveReady } from './classic-sdk-archive-preflight.js';
 import { classicSdkRemoteIdentity } from './classic-sdk-remote.js';
 import { resolveClassicLayout } from './classic-layout.js';
-import { executeClassicOpenSpec } from './classic-openspec-command.js';
+import {
+  assertClassicOpenSpecAvailable,
+  executeClassicOpenSpec,
+} from './classic-openspec-command.js';
 import { readClassicProjectFile, writeClassicProjectText } from './classic-protected-path.js';
 import { hasClassicManagedRunMarker, type ClassicState } from './classic-state.js';
 
@@ -127,6 +130,7 @@ async function classicArchiveContext(
     throw new Error('Classic Archive active change differs from the SDK Run');
   }
   const before = await archiveEntries(layout.archiveDir, runInput.change);
+  await assertClassicOpenSpecAvailable(projectRoot);
 
   return {
     active,
@@ -140,14 +144,31 @@ export async function runClassicSdkArchive(
   action: Readonly<RuntimeAction>,
   projectRoot: string,
 ): Promise<Pick<RuntimeOutcome, 'status' | 'output'>> {
-  const { active, runInput, layout, before } = await classicArchiveContext(
-    run,
-    action,
-    projectRoot,
-  );
+  let context: Awaited<ReturnType<typeof classicArchiveContext>>;
+  try {
+    context = await classicArchiveContext(run, action, projectRoot);
+  } catch (error) {
+    // 领取后的只读复查失败也尚未执行归档，保留明确失败结果供显式重试。
+    return {
+      status: 'failed',
+      output: {
+        archiveStarted: false,
+        reason: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+  const { active, runInput, layout, before } = context;
   await recordClassicArchiveRequirements(projectRoot, active.target);
   const result = await executeClassicOpenSpec(['archive', runInput.change, '--yes'], projectRoot);
   if (result.exitCode !== 0) {
+    if (result.executionStarted === false)
+      return {
+        status: 'failed',
+        output: {
+          archiveStarted: false,
+          reason: result.stderr ?? 'OpenSpec Archive did not start',
+        },
+      };
     throw new Error(result.stderr ?? `OpenSpec Archive exited with code ${result.exitCode}`);
   }
   const after = await archiveEntries(layout.archiveDir, runInput.change);

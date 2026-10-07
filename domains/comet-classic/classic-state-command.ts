@@ -802,6 +802,7 @@ async function init(
       await atomicWrite(file, CLASSIC_MANAGED_RUN_MARKER + document.toString());
       output.data = {
         change: name,
+        runtimeFormat: 'sdk',
         phase: projection.classic.phase,
         nextAction: classicSdkNextAction(run),
         configuration: projection.classic,
@@ -1090,6 +1091,7 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
 
 function nextSdk(output: CommandOutput, name: string, run: WorkflowRun): void {
   const state = run.state as unknown as ClassicState;
+  const nextAction = classicSdkNextAction(run);
   const pending = run.actions.find((action) => action.status === 'pending');
   const unresolved = run.actions.find(
     (action) => action.status === 'running' || action.status === 'unknown',
@@ -1127,7 +1129,7 @@ function nextSdk(output: CommandOutput, name: string, run: WorkflowRun): void {
         choices,
       })),
     },
-    nextAction: classicSdkNextAction(run),
+    nextAction,
   };
   if (run.status === 'completed') {
     output.stdout.push('NEXT: done');
@@ -1149,8 +1151,9 @@ function nextSdk(output: CommandOutput, name: string, run: WorkflowRun): void {
     output.stdout.push('NEXT: decision', `WAIT: ${pendingDecision.stepId}`);
     return;
   }
-  if (!pending?.ref) fail(`ERROR: Classic SDK Run ${name} has no pending Skill Action`);
-  output.stdout.push('NEXT: auto', `SKILL: ${pending.ref}`);
+  const skill = nextAction && 'ref' in nextAction ? nextAction.ref : undefined;
+  if (!skill) fail(`ERROR: Classic SDK Run ${name} has no pending Skill Action`);
+  output.stdout.push('NEXT: auto', `SKILL: ${skill}`);
 }
 
 async function next(output: CommandOutput, name: string): Promise<void> {
@@ -2273,7 +2276,15 @@ async function selectChange(output: CommandOutput, name: string): Promise<boolea
           `[SELECTED] current change: ${selection.change}${state.boundBranch ? ` (branch: ${state.boundBranch})` : ''}${samePath(sdkWorkspace.projectRoot, requestedRoot) ? '' : ` (workspace: ${sdkWorkspace.projectRoot})`}`,
         ),
       );
-      output.data = { change: name, phase: state.phase, run, configuration: state };
+      output.data = {
+        change: name,
+        runtimeFormat: 'sdk',
+        phase: state.phase,
+        workspace: { projectRoot: sdkWorkspace.projectRoot },
+        run,
+        configuration: state,
+        nextAction: classicSdkNextAction(run),
+      };
       return true;
     }
     // Fast path: when the recorded selection already routes this change to this

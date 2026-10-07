@@ -1,13 +1,71 @@
-import type { WorkflowRun, RuntimeExecutor } from '../engine/runtime.js';
+import type { WorkflowRun, RuntimeAction, RuntimeExecutor } from '../engine/runtime.js';
 import {
   nativePortableContinuation,
   type NativePortableContinuation,
 } from './native-portable-continuation.js';
 import { inspectNativeSdkSupervisorRecovery } from './native-sdk-supervisor-recovery.js';
+import { NATIVE_SDK_ARCHIVE_STEPS } from './native-sdk-archive.js';
 import {
   NATIVE_SUPERVISOR_COORDINATION_MODES,
   type NativePortableState,
 } from './native-portable-types.js';
+
+/** 模板只绑定原领取身份；状态和结果必须来自本次真实执行。 */
+function nativeSdkOutcomeRequest(run: WorkflowRun, action: RuntimeAction) {
+  if (!action.claim || !['running', 'unknown'].includes(action.status)) return null;
+  return {
+    operation: 'record-outcome',
+    runId: run.runId,
+    outcome: {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: action.claim.token,
+      outcomeId: '<outcome-id>',
+      status: '<succeeded|failed>',
+      output: '<actual-action-output>',
+    },
+  };
+}
+
+/** CLI 只省略无关 Run 历史，当前 Action、输入和状态保持完整。 */
+export async function projectNativeSdkDispatchResult(options: {
+  run: WorkflowRun;
+  state: NativePortableState;
+  actionId: string;
+  projectRoot: string;
+  applicationId?: string;
+  skillExecutors?: readonly RuntimeExecutor[];
+}) {
+  const { run, state } = options;
+  const action = run.actions.find((entry) => entry.id === options.actionId);
+  if (!action) throw new Error(`Native SDK Action ${options.actionId} is missing`);
+  const applicationId = options.applicationId ?? 'native';
+  const outcomeRequest = nativeSdkOutcomeRequest(run, action);
+  return {
+    schema: 'comet.native.dispatch-result.v1' as const,
+    runId: run.runId,
+    revision: run.revision,
+    workflow: run.workflow,
+    status: run.status,
+    state,
+    action,
+    ...(outcomeRequest ? { outcomeRequest } : {}),
+    ...(await projectNativeSdkContinuation(options)),
+    inspection: {
+      commandArgs: [
+        'comet',
+        'runtime',
+        'dispatch',
+        '--application',
+        applicationId,
+        '--request',
+        '<inspect-request-json-file>',
+      ],
+      request: { operation: 'inspect', runId: run.runId },
+    },
+  };
+}
 
 function sdkShapeContinuation(
   state: NativePortableState,
@@ -234,6 +292,7 @@ export async function projectNativeSdkContinuation(options: {
     };
   });
   const waits = run.waits.filter((wait) => wait.status === 'pending');
+  const evidenceWaits = (run.evidenceWaits ?? []).filter((wait) => wait.status === 'pending');
   const pendingBuilderDecisions = waits
     .filter((wait) =>
       ['build.resume', 'supervisor.child.resume', 'supervisor.parent.resume'].includes(wait.stepId),
@@ -360,10 +419,36 @@ export async function projectNativeSdkContinuation(options: {
         ),
       ),
     };
-  } else if (pending.length > 0) {
+  } else if (waits.length > 0 || evidenceWaits.length > 0) {
+    continuation = {
+      ...base,
+      disposition: waits.length > 0 ? 'await-user' : 'blocked',
+      requiresUserDecision: waits.length > 0,
+      requiredInputs: [waits.length > 0 ? 'user-decision' : 'runtime-evidence'],
+      userCommunication: communication(
+        localized(
+          'Review the pending SDK Wait and its complete proposal before submitting a decision or evidence with the original identity. Do not repeat Archive to skip it.',
+          '先核对待处理 SDK Wait 及其完整提案，再按原身份提交决定或证据。不能重复归档来跳过它。',
+        ),
+        waits.length > 0
+          ? localized(
+              'An application decision is required before continuing.',
+              '应用需要新的决定才能继续。',
+            )
+          : null,
+      ),
+    };
+  } else if (pending.length > 0 && !(state.phase === 'archive' && active.length > 0)) {
     const action = pending[0];
     const handoff = action.type === 'handoff';
     const skill = action.type === 'invoke_skill';
+    const archive =
+      state.phase === 'archive' &&
+      pending.length === 1 &&
+      action.type === 'call_tool' &&
+      NATIVE_SDK_ARCHIVE_STEPS.some(
+        ([stepId, ref]) => action.stepId === stepId && action.ref === ref,
+      );
     const executeRequest = pendingActions[0].executeRequest;
     continuation = {
       ...base,
@@ -371,7 +456,7 @@ export async function projectNativeSdkContinuation(options: {
         ? action.ref?.includes('verifier')
           ? 'dispatch-verifier'
           : 'builder-handoff'
-        : state.phase === 'archive'
+        : archive
           ? 'archive'
           : 'none',
       disposition: skill && !executeRequest ? 'blocked' : 'continue',
@@ -388,7 +473,7 @@ export async function projectNativeSdkContinuation(options: {
             ]
           : skill
             ? null
-            : ['comet', 'native', state.phase === 'archive' ? 'archive' : 'next', state.name],
+            : ['comet', 'native', archive ? 'archive' : 'next', state.name],
       ...(handoff
         ? {
             requiredInputs: ['request-json-file', 'session-id', 'claim-token'],
@@ -465,7 +550,22 @@ export async function projectNativeSdkContinuation(options: {
   }
   return {
     continuation,
+    ...(active.length > 0
+      ? {
+          activeActions: active.map((action) => ({
+            id: action.id,
+            stepId: action.stepId,
+            status: action.status,
+            attempt: action.attempt,
+            inputHash: action.inputHash,
+            claim: action.claim,
+            outcomeRequest: nativeSdkOutcomeRequest(run, action),
+          })),
+        }
+      : {}),
     ...(pendingActions.length > 0 ? { pendingAction: pendingActions[0], pendingActions } : {}),
+    ...(waits.length > 0 ? { pendingWaits: waits } : {}),
+    ...(evidenceWaits.length > 0 ? { pendingEvidenceWaits: evidenceWaits } : {}),
     ...(pendingBuilderDecisions.length > 0 ? { pendingBuilderDecisions } : {}),
     ...(pendingRequirementDecisions.length > 0 ? { pendingRequirementDecisions } : {}),
   };

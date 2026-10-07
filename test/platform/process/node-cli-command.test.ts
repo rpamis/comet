@@ -3,7 +3,10 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveNodeCliCommand } from '../../../platform/process/node-cli-command.js';
+import {
+  assertNodeCliCommandAvailable,
+  resolveNodeCliCommand,
+} from '../../../platform/process/node-cli-command.js';
 
 describe('literal Node CLI launchers', () => {
   const roots: string[] = [];
@@ -67,6 +70,9 @@ describe('literal Node CLI launchers', () => {
         '!value!',
         '& | < > ^ ( )',
       ];
+      expect(() =>
+        assertNodeCliCommandAvailable(shim, args, { cwd: root, platform: 'win32' }),
+      ).not.toThrow();
       const launch = resolveNodeCliCommand(shim, args, { cwd: root, platform: 'win32' });
       const output = execFileSync(launch.command, launch.args, {
         cwd: root,
@@ -136,5 +142,65 @@ describe('literal Node CLI launchers', () => {
     expect(
       resolveNodeCliCommand('openspec', ['', 'a&b'], { cwd: '/tmp', platform: 'linux' }),
     ).toEqual({ command: 'openspec', args: ['', 'a&b'] });
+  });
+
+  it('rechecks missing PATH dependencies after repair without invoking them', async () => {
+    const root = await fixture();
+    const command = process.platform === 'win32' ? 'probe.exe' : 'probe';
+    const options = { cwd: root, env: { PATH: root } };
+    expect(() => assertNodeCliCommandAvailable(command, [], options)).toThrow('not found');
+    const marker = path.join(root, 'should-not-run');
+    await fs.writeFile(
+      path.join(root, command),
+      `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(marker)}, 'ran');`,
+    );
+    await fs.chmod(path.join(root, command), 0o755);
+    expect(() => assertNodeCliCommandAvailable(command, [], options)).not.toThrow();
+    await expect(fs.access(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'continues PATH lookup after a non-executable match and honors relative PATH entries',
+    async () => {
+      const root = await fixture();
+      await fs.mkdir(path.join(root, 'first'));
+      await fs.mkdir(path.join(root, 'second'));
+      await fs.writeFile(path.join(root, 'first', 'probe'), 'unusable');
+      await fs.writeFile(path.join(root, 'second', 'probe'), 'usable');
+      await fs.chmod(path.join(root, 'first', 'probe'), 0o644);
+      await fs.chmod(path.join(root, 'second', 'probe'), 0o755);
+      expect(() =>
+        assertNodeCliCommandAvailable('probe', [], {
+          cwd: root,
+          env: { PATH: `first${path.delimiter}second` },
+        }),
+      ).not.toThrow();
+      expect(() => assertNodeCliCommandAvailable('first/probe', [], { cwd: root })).toThrow(
+        'not executable',
+      );
+    },
+  );
+
+  it('rejects missing Windows Node entries and directories before launch', async () => {
+    const root = await fixture();
+    expect(() =>
+      assertNodeCliCommandAvailable(path.join(root, 'missing.mjs'), [], {
+        cwd: root,
+        platform: 'win32',
+      }),
+    ).toThrow();
+    await fs.mkdir(path.join(root, 'directory.mjs'));
+    expect(() =>
+      assertNodeCliCommandAvailable(path.join(root, 'directory.mjs'), [], {
+        cwd: root,
+        platform: 'win32',
+      }),
+    ).toThrow('not a file');
+    expect(() =>
+      assertNodeCliCommandAvailable(path.join(root, 'cli.cjs'), [], {
+        cwd: root,
+        platform: 'win32',
+      }),
+    ).not.toThrow();
   });
 });
