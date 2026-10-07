@@ -3854,10 +3854,10 @@ children:
           executable: process.execPath,
           argv: [
             '-e',
-            "const fs=require('node:fs'); fs.writeFileSync('owner-started','yes'); process.stdout.write('partial-output'); setTimeout(()=>fs.writeFileSync('late-effect','bad'),1000); setTimeout(()=>process.exit(0),1800)",
+            "const fs=require('node:fs'); fs.writeFileSync('owner-started','yes'); process.stdout.write('partial-output'); setTimeout(()=>fs.writeFileSync('late-effect','bad'),20000); setTimeout(()=>process.exit(0),30000)",
           ],
           cwdRef: '.',
-          timeoutMs: 500,
+          timeoutMs: 10000,
           repeatable: false,
         },
       ],
@@ -3873,7 +3873,7 @@ children:
       process.execPath,
       [
         '--import',
-        path.resolve('test/helpers/native-source-loader.mjs'),
+        pathToFileURL(path.resolve('test/helpers/native-source-loader.mjs')).href,
         '--input-type=module',
         '-e',
         `import {loadOwnedNativeSdkRuntime} from ${JSON.stringify(ownerModule)}; const {runtime}=await loadOwnedNativeSdkRuntime(${JSON.stringify(root)},'sdk-shape'); await runtime.execute({runId:'sdk-shape',actionId:${JSON.stringify(action.id)},executorId:'comet-native-checks',context:{projectRoot:${JSON.stringify(root)},requestId:'real-owner'}});`,
@@ -4226,10 +4226,10 @@ children:
         executable: process.execPath,
         argv: [
           '-e',
-          "require('node:fs').appendFileSync('old-check-count', 'once\\n'); process.kill(process.pid, 'SIGTERM')",
+          "require('node:fs').appendFileSync('old-check-count', 'once\\n'); setTimeout(() => {}, 60000)",
         ],
         cwdRef: '.',
-        timeoutMs: 5000,
+        timeoutMs: 10000,
         repeatable: false,
       };
       const {
@@ -4259,7 +4259,14 @@ children:
         });
       } else {
         expect(() =>
-          execFileSync(plan.executable, plan.argv, { cwd: root, stdio: 'ignore' }),
+          execFileSync(
+            plan.executable,
+            [
+              '-e',
+              "require('node:fs').appendFileSync('old-check-count', 'once\\n'); process.exit(7)",
+            ],
+            { cwd: root, stdio: 'ignore' },
+          ),
         ).toThrow();
         const ordinary = await nativeDoctorCommand(['sdk-shape', '--repair'], root);
         expect(ordinary.exitCode).toBe(65);
@@ -4318,9 +4325,9 @@ children:
           id: 'interrupted',
           name: 'Interrupted check',
           executable: process.execPath,
-          argv: ['-e', 'setTimeout(() => {}, 5000)'],
+          argv: ['-e', 'setTimeout(() => {}, 60000)'],
           cwdRef: '.',
-          timeoutMs: 50,
+          timeoutMs: 10000,
           repeatable: false,
         },
       ],
@@ -4331,9 +4338,16 @@ children:
       stepId: 'verify.checks',
       status: 'failed',
       outcome: {
-        output: { checks: [{ status: 'interrupted', exitCode: null }] },
+        output: { checks: [{ status: 'interrupted' }] },
       },
     });
+    const interruptedExit = (
+      failedCheck.outcome!.output as { checks: Array<{ exitCode: number | null }> }
+    ).checks[0].exitCode;
+    // Windows 的进程树终止返回退出码；POSIX 信号终止通常返回 null。
+    expect(
+      interruptedExit === null || (Number.isInteger(interruptedExit) && interruptedExit !== 0),
+    ).toBe(true);
     const stopped = await advanceNativeSdkChange(root, 'sdk-shape');
     expect(stopped.exitCode).toBe(0);
     expect(stopped.data).toMatchObject({

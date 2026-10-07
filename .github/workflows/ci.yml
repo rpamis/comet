@@ -7,7 +7,9 @@ on:
       - 'beta*'
       - 'release/**'
       - 'hotfix/**'
+      - '0*'
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -40,7 +42,7 @@ jobs:
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: '0.11.29'
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Verify generated runtimes are current
         run: pnpm check:generated
       - run: pnpm format:check
@@ -48,9 +50,10 @@ jobs:
       - run: pnpm build
       - name: Verify build is deterministic
         run: git diff --exit-code -- assets
-      - run: pnpm test:coverage
+      - id: tests
+        run: pnpm test:coverage --reporter=default --reporter=json --outputFile.json=coverage/vitest-results.json
       - name: Upload coverage report
-        if: always()
+        if: always() && steps.tests.outcome != 'skipped'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage
@@ -79,7 +82,7 @@ jobs:
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: '0.11.29'
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
       - run: pnpm test
 
@@ -98,7 +101,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
       - run: pnpm test:native-parallel
       - name: Native check process and recovery regressions
@@ -126,7 +129,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
       - run: pnpm check:sdk-api
       - run: pnpm test:package-e2e
@@ -152,7 +155,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
         working-directory: .
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
@@ -189,6 +192,68 @@ jobs:
           path: coverage/playwright-report/
           if-no-files-found: ignore
 
+  sdk-api:
+    name: SDK API and recovery snapshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Preserve baseline SDK recovery fixtures
+        env:
+          SDK_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm check:sdk-fixtures --base "$SDK_BASE_REF"
+      - name: Verify committed Runtime assets before building
+        run: pnpm check:generated
+      - run: pnpm build
+      - run: pnpm check:sdk-api
+
+  sdk-contracts:
+    name: SDK contracts (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: '22.16.0'
+          - os: ubuntu-latest
+            node: '24'
+          - os: macos-latest
+            node: '24'
+          - os: windows-latest
+            node: '24'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm build
+      - name: Exercise SDK protocol, application lifecycle, Creator and domain adapters
+        id: sdk-tests
+        run: pnpm test:sdk --reporter=default --reporter=json --outputFile.json=coverage/sdk/results.json
+      - name: Upload SDK test results
+        if: always() && steps.sdk-tests.outcome != 'skipped'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sdk-results-${{ matrix.os }}-node-${{ matrix.node }}
+          path: coverage/sdk/
+          if-no-files-found: error
+
   ci-required:
     name: CI required
     if: always()
@@ -200,6 +265,8 @@ jobs:
       - package-e2e
       - eval-static
       - dashboard-e2e
+      - sdk-api
+      - sdk-contracts
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

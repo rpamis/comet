@@ -48,7 +48,7 @@ describe('CI workflows', () => {
       engines?: { node?: string };
     };
 
-    expect(workflow).toMatch(/pull_request:\s*\n\s*permissions:/);
+    expect((parse(workflow) as { on: Record<string, unknown> }).on).toHaveProperty('pull_request');
     expect(workflow).toContain('cancel-in-progress: true');
     expect(workflow).toContain('pnpm check:generated');
     expect(workflow.indexOf('pnpm check:generated')).toBeLessThan(workflow.indexOf('pnpm build'));
@@ -101,6 +101,91 @@ describe('CI workflows', () => {
         expect(reference, `${name}: ${reference}`).toMatch(/@[0-9a-f]{40}$/);
       }
     }
+  });
+
+  it('requires SDK contracts on every supported CI platform and the minimum Node version', async () => {
+    const ci = parse(await readWorkflow('ci.yml')) as {
+      on: { push: { branches: string[] }; workflow_dispatch?: unknown };
+      jobs: Record<
+        string,
+        {
+          needs?: string[];
+          strategy?: {
+            'fail-fast'?: boolean;
+            matrix?: { include?: Array<{ os: string; node: string }> };
+          };
+          steps?: Array<{
+            id?: string;
+            run?: string;
+            if?: string;
+            uses?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
+      >;
+    };
+    const contracts = ci.jobs['sdk-contracts'];
+    expect(contracts?.strategy?.matrix?.include).toEqual([
+      { os: 'ubuntu-latest', node: '22.16.0' },
+      { os: 'ubuntu-latest', node: '24' },
+      { os: 'macos-latest', node: '24' },
+      { os: 'windows-latest', node: '24' },
+    ]);
+    expect(contracts.strategy?.['fail-fast']).toBe(false);
+    const test = contracts.steps?.find((step) => step.id === 'sdk-tests');
+    expect(test?.run).toContain('pnpm test:sdk');
+    expect(test?.run).toContain('--outputFile.json=coverage/sdk/results.json');
+    expect(
+      contracts.steps?.find((step) => step.uses?.startsWith('actions/upload-artifact@'))?.if,
+    ).toContain('always()');
+    expect(ci.jobs['ci-required'].needs).toEqual(
+      expect.arrayContaining(['sdk-contracts', 'sdk-api']),
+    );
+    expect(ci.on.push.branches).toContain('0*');
+    expect(ci.on).toHaveProperty('workflow_dispatch');
+  });
+
+  it('checks frozen SDK recovery evidence before building and prevents install hooks from masking stale assets', async () => {
+    const ci = parse(await readWorkflow('ci.yml')) as {
+      jobs: Record<
+        string,
+        { steps?: Array<{ run?: string; uses?: string; with?: Record<string, unknown> }> }
+      >;
+    };
+    const steps = ci.jobs['sdk-api']?.steps ?? [];
+    expect(
+      steps.find((step) => step.uses?.startsWith('actions/checkout@'))?.with?.['fetch-depth'],
+    ).toBe(0);
+    expect(steps.some((step) => step.run?.includes('pnpm check:sdk-fixtures'))).toBe(true);
+    expect(steps.some((step) => step.run === 'pnpm check:sdk-api')).toBe(true);
+    expect(steps.findIndex((step) => step.run?.includes('pnpm check:generated'))).toBeLessThan(
+      steps.findIndex((step) => step.run === 'pnpm build'),
+    );
+    for (const job of Object.values(ci.jobs))
+      for (const step of job.steps ?? [])
+        if (step.run?.startsWith('pnpm install ')) expect(step.run).toContain('--ignore-scripts');
+  });
+
+  it('keeps the SDK suite connected to protocol, Creator, composition and public CLI regressions', async () => {
+    const scripts = (
+      JSON.parse(await fs.readFile('package.json', 'utf8')) as { scripts: Record<string, string> }
+    ).scripts;
+    for (const target of [
+      'test/domains/engine',
+      'test/domains/workflow-application',
+      'test/domains/workflow-generation',
+      'test/domains/workflow-creation',
+      'test/domains/comet-plugin/plugin-sdk.test.ts',
+      'test/domains/comet-classic/classic-sdk',
+      'test/domains/comet-native/native-sdk',
+      'test/domains/comet-classic/classic-application.test.ts',
+      'test/domains/comet-native/native-application.test.ts',
+      'test/domains/comet-native/native-cli-v4-surface.test.ts',
+      'test/app/application-distribution.test.ts',
+      'test/scripts/sdk-api.test.ts',
+      'test/scripts/sdk-fixtures.test.ts',
+    ])
+      expect(scripts['test:sdk']).toContain(target);
   });
 
   it('keeps paid model regression manual and runs offline Eval tests in CI', async () => {

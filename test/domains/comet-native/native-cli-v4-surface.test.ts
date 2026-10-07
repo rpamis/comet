@@ -3389,9 +3389,10 @@ Run applicable focused checks.
           id: 'runtime-timeout',
           name: 'Runtime timeout',
           executable: process.execPath,
-          argv: ['-e', 'setTimeout(() => {}, 10000)'],
+          argv: ['-e', 'setTimeout(() => {}, 60000)'],
           cwdRef: '.',
-          timeoutMs: 50,
+          // 先给进程登记留出真实预算，验证已启动命令的中断，而非登记失败。
+          timeoutMs: 10000,
           repeatable: true,
         },
       ],
