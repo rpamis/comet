@@ -21,6 +21,17 @@ const SECRET_PATTERNS = [
   { pattern: /AKIA[0-9A-Z]{16}/, name: 'AWS access key' },
 ];
 
+function isClaimPlaceholder(content, match) {
+  // 仅跳过 claimToken 的两个公开协议占位值，不忽略同文件中的其他凭据。
+  const start = match.index - 'claim'.length;
+  if (start < 0 || (start > 0 && !/[\s{,;(.]/u.test(content[start - 1]))) return false;
+  const end = match.index + match[0].length;
+  if (!/^\s*(?:[,;}]|$)/u.test(content.slice(end))) return false;
+  return /^claimToken\s*[:=]\s*(['"])(?:source-reference|<claim-token>)\1$/u.test(
+    content.slice(start, match.index + match[0].length),
+  );
+}
+
 const TEXT_EXTENSIONS = new Set([
   '.cjs',
   '.js',
@@ -253,7 +264,17 @@ for (const filePath of publishedFiles()) {
   }
 
   for (const { pattern, name } of SECRET_PATTERNS) {
-    if (pattern.test(content)) {
+    let hasSecret = pattern.test(content);
+    if (hasSecret && name === 'Secret/token') {
+      hasSecret = false;
+      for (const match of content.matchAll(new RegExp(pattern.source, `${pattern.flags}g`))) {
+        if (!isClaimPlaceholder(content, match)) {
+          hasSecret = true;
+          break;
+        }
+      }
+    }
+    if (hasSecret) {
       console.error(`[SECURITY] Possible ${name} found in ${filePath}`);
       found++;
     }
