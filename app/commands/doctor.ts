@@ -694,7 +694,8 @@ function globalHookCheckResult(
     message: inspection.error
       ? `${inspection.error} — run: comet doctor --repair --scope global`
       : inspection.activationRequired
-        ? 'Hook config and Cordis patch are present; the active dsh profile must load the official bridge'
+        ? (inspection.activationMessage ??
+          'Hook config and Cordis patch are present; the active dsh profile must load the official bridge')
         : globalHookPresent
           ? 'global blocking Hook remains — run: comet doctor --repair --scope global'
           : 'no global blocking Hook present',
@@ -826,18 +827,24 @@ async function checkHookComponents(
         ? 'pass'
         : 'warn',
     message:
-      inspection.present &&
+      inspection.activationRequired &&
       !inspection.error &&
       !inspection.legacyPresent &&
       !inspection.duplicatePresent
-        ? 'exactly one managed Router Hook present'
-        : inspection.present && inspection.duplicatePresent
-          ? `duplicate managed Router Hooks remain — run: comet doctor --repair --scope ${scope}`
-          : inspection.present && inspection.legacyPresent
-            ? `Router Hook and legacy managed Hook coexist — run: comet doctor --repair --scope ${scope}`
-            : inspection.present && inspection.activationRequired
-              ? 'Hook config and Cordis patch are present; load the official bridge and run dsh with the project patch'
-              : `${inspection.error ?? 'managed Hook missing'} — run: comet update --scope ${scope}`,
+        ? (inspection.activationMessage ??
+          'Load the DSH bridge and restart the host to activate the Hook')
+        : inspection.present &&
+            !inspection.error &&
+            !inspection.legacyPresent &&
+            !inspection.duplicatePresent
+          ? 'exactly one managed Router Hook present'
+          : inspection.present && inspection.duplicatePresent
+            ? `duplicate managed Router Hooks remain — run: comet doctor --repair --scope ${scope}`
+            : inspection.present && inspection.legacyPresent
+              ? `Router Hook and legacy managed Hook coexist — run: comet doctor --repair --scope ${scope}`
+              : inspection.present && inspection.activationRequired
+                ? 'Hook config and Cordis patch are present; load the official bridge and run dsh with the project patch'
+                : `${inspection.error ?? 'managed Hook missing'} — run: comet update --scope ${scope}`,
   });
   return results;
 }

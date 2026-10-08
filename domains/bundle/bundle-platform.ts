@@ -329,7 +329,6 @@ async function applyHookInstallFile(file: PlatformInstallFile): Promise<void> {
 
   switch (operation.format) {
     case 'claude-code':
-    case 'dsh':
     case 'qwen':
     case 'qoder':
     case 'codebuddy': {
@@ -351,6 +350,17 @@ async function applyHookInstallFile(file: PlatformInstallFile): Promise<void> {
         operation.command,
       );
       settings.version = settings.version ?? 1;
+      settings.hooks = hooks;
+      await writeFile(file.destination, JSON.stringify(settings, null, 2) + '\n');
+      return;
+    }
+    case 'dsh': {
+      hooks.PreToolUse = mergeCommandHookGroup(
+        asHookGroups(hooks.PreToolUse),
+        matcher === 'Write|Edit' ? 'write|edit' : matcher,
+        commandHook,
+        operation.command,
+      );
       settings.hooks = hooks;
       await writeFile(file.destination, JSON.stringify(settings, null, 2) + '\n');
       return;

@@ -195,6 +195,35 @@ describe('Bundle platform compiler', () => {
     }
   });
 
+  it('installs DSH Bundle Hooks with the native lower-case matcher', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dsh-bundle-hook-'));
+    try {
+      const target = listBundlePlatformTargets({
+        projectRoot: root,
+        homeDir: path.join(root, 'home'),
+        scope: 'project',
+      }).find((target) => target.id === 'dsh')!;
+      const sourceIr = ir();
+      const hookSource = path.join(root, 'protect-write.yaml');
+      await fs.writeFile(hookSource, 'event: before_write\n');
+      sourceIr.hooks[0].source = hookSource;
+      const report = await compileBundleForPlatform(sourceIr, target, {
+        projectRoot: root,
+        scope: 'project',
+        locale: 'zh',
+      });
+      await applyPlatformInstallPlan({
+        target,
+        files: report.files.filter((file) => file.kind === 'hook'),
+        overwrite: true,
+      });
+      const hooks = JSON.parse(await fs.readFile(path.join(root, '.dsh/hooks.json'), 'utf8'));
+      expect(hooks.hooks.PreToolUse[0].matcher).toBe('write|edit');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('plans Codex hooks in .codex/hooks.json while scripts remain under .agents', async () => {
     const codex = targets.find((target) => target.id === 'codex')!;
 

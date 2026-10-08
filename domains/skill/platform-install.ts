@@ -1454,7 +1454,7 @@ async function installCometHooksForPlatform(
             hooksConfig,
             platform.hookConfigFile ?? 'hooks.json',
             platform.name,
-            { platformId: platform.id, scope },
+            { platformId: platform.id, scope, hookMatcher: platform.hookMatcher },
           );
           if (result.status !== 'installed') {
             await removeDshCordisPatch(baseDir, platform, scope);
@@ -1464,8 +1464,8 @@ async function installCometHooksForPlatform(
             status: 'installed',
             reason:
               scope === 'project'
-                ? 'dsh Hook config installed; load the official bridge in a profile and run `dsh ... --patch .dsh/cordis.patch.yml` to activate it'
-                : 'dsh Hook config installed; load the official bridge in the active profile to activate it',
+                ? 'dsh Hook config installed; restart dsh with `--patch .dsh/cordis.patch.yml` to activate it'
+                : 'dsh Hook config installed in existing profiles (or the home patch before profiles exist); restart DSH to activate it and update again after adding a profile',
           };
         } catch (error) {
           await removeDshCordisPatch(baseDir, platform, scope);

@@ -41,6 +41,15 @@ function classifyIssue(
 }
 
 describe('CI workflows', () => {
+  it('executes DSH installation and PowerShell protocol regressions on the OS matrix', async () => {
+    const workflow = parse(await readWorkflow('ci.yml'));
+    const runtime = workflow.jobs['runtime-smoke'];
+    expect(runtime.strategy.matrix.os).toContain('windows-latest');
+    const commands = runtime.steps.map((step: { run?: string }) => step.run ?? '').join('\n');
+    expect(commands).toContain('test/domains/skill/dsh-hooks.test.ts');
+    expect(commands).toContain('test/platform/dsh-profiles.test.ts');
+  });
+
   it('runs the required CI contract for every pull request', async () => {
     const workflow = await readWorkflow('ci.yml');
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as {

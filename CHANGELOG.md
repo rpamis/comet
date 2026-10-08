@@ -2,6 +2,12 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.5] - 2026-10-08
+
+### Fixed
+
+- **DSH workflow protection**: Install loadable Hook bridge patches in existing DSH profiles, match native write and edit tools, and preserve denial decisions through PowerShell. Updates migrate managed legacy patches without duplicating bridges or replacing unrelated configuration; Doctor identifies invalid bridge configuration and explains activation requirements (#466).
+
 ## What's Changed [0.4.4] - 2026-10-03
 
 ### Added

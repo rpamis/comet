@@ -459,6 +459,7 @@ export const PLATFORMS: Platform[] = [
     supportsGlobalHooks: true,
     hookFormat: 'dsh',
     hookConfigFile: 'hooks.json',
+    hookMatcher: 'write|edit',
   },
 ];
 

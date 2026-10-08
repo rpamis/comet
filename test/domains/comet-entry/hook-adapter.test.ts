@@ -369,7 +369,20 @@ describe('Comet Hook platform adapter', () => {
     ).toEqual({ exitCode: 0, stdout: '', stderr: 'bounded diagnostic\n' });
   });
 
-  it.each(PLATFORM_FIXTURES.filter(({ id }) => id !== 'github-copilot'))(
+  it('renders DSH denial as structured JSON so PowerShell preserves its decision', () => {
+    const output = renderCometHookDecision('dsh', { allowed: false, reason: 'blocked' });
+    expect(output.exitCode).toBe(0);
+    expect(JSON.parse(output.stdout)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: 'blocked',
+      },
+    });
+    expect(output.stderr).toBe('');
+  });
+
+  it.each(PLATFORM_FIXTURES.filter(({ id }) => id !== 'github-copilot' && id !== 'dsh'))(
     'renders $id allow and deny through its exit-code protocol',
     ({ id }) => {
       expect(renderCometHookDecision(id, { allowed: true, reason: 'allowed' })).toEqual({
