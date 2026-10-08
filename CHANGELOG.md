@@ -17,13 +17,13 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Changed
 
-- **New workflow Runtime**: New Native and Classic changes use the resumable SDK Runtime by default while retaining their familiar state files. Existing changes continue on their original Runtime; use `--runtime compat` when creating a change to select the previous Runtime explicitly.
+- **New workflow Runtime**: New Native and Classic changes use the resumable SDK Runtime by default while retaining their familiar state files. Classic archives preserve valid references to documents moved with the change. Existing changes continue on their original Runtime; use `--runtime compat` when creating a change to select the previous Runtime explicitly.
 - **Workflow recovery**: Recover copied Native and Classic SDK changes from their saved checkpoints, preserving progress and approvals. Resume failed work or revise requirements in the same workflow while retaining partial code; changed requirements need fresh approval, and uncertain executions must be reconciled before retrying.
 - **Native Supervisor archives**: Completed child tasks retain accessible archive records with their requirements, source references, and verification results. Archive delivery incorporates checked target-branch updates, cleans up verified temporary branches and worktrees, and can resume interrupted delivery or cleanup while preserving dirty or unintegrated work.
 - **Dashboard workflow progress**: Show current Native and child-task progress for SDK workflows, refresh status as work advances, and report unreadable workflow records. Project status and Doctor also identify selected standalone applications.
 - **CLI guidance**: Native and Classic responses include the current next command, required inputs, and recovery guidance. Compact execution responses focus on the current task, with full history available through inspection; invalid calls identify missing inputs and the relevant help command.
 - **Workflow responsiveness**: Reduce CLI startup and repeated status, check, and archive work, including large-repository checks. Commands fall back promptly when the optional daemon is unavailable while retaining input freshness and evidence validation.
-- **Workflow Eval**: Evaluate the SDK-backed Native and Classic lifecycles and preserve streamed Agent logs when a multi-turn evaluation times out, so interrupted runs retain inspectable evidence.
+- **Workflow Eval**: Evaluate the SDK-backed Native and Classic lifecycles and preserve streamed Agent logs when a multi-turn evaluation times out, so interrupted runs retain inspectable evidence. Execute the fixed candidate CLI from a read-only installation without copying its package on every command, and keep SDK imports available between application steps.
 
 ### Fixed
 

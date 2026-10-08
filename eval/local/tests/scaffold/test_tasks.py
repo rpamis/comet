@@ -138,8 +138,7 @@ def test_classic_layout_lifecycle_uses_current_cli_and_compatible_openspec():
     assert "COPY current-comet-package.json /opt/comet-cli/package.json" in dockerfile
     assert "ln -s /opt/comet-cli/node_modules/.bin/openspec /usr/local/bin/openspec" in dockerfile
     assert "mkdir -p openspec/changes" not in dockerfile
-    assert "/workspace/_eval_current_comet" in wrapper
-    assert 'runtime="$(mktemp -d)"' in wrapper
+    assert "/opt/comet-current" in wrapper
     assert dependency_snapshot["dependencies"] == package["dependencies"]
     assert task.default_treatments == [
         "COMET_CLASSIC_DOCS_LAYOUT",

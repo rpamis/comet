@@ -146,6 +146,7 @@ export async function executeClassicOpenSpec(
   const command = process.env.COMET_OPENSPEC || 'openspec';
   let launch: ReturnType<typeof resolveNodeCliCommand>;
   try {
+    assertNodeCliCommandAvailable(command, openSpecArgs, { cwd: layout.openSpecBase });
     launch = resolveNodeCliCommand(command, openSpecArgs, { cwd: layout.openSpecBase });
   } catch (error) {
     // 启动器或其 Node 入口在领取后消失时，尚未调用 spawnSync。

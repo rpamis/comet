@@ -14,6 +14,8 @@ RUN pip install --break-system-packages --no-cache-dir pyyaml
 # without depending on a published Comet package.
 COPY current-comet-package.json /opt/comet-cli/package.json
 RUN npm install --prefix /opt/comet-cli --omit=dev --ignore-scripts
+RUN mkdir -p /opt/comet-current && \
+    ln -s /opt/comet-cli/node_modules /opt/comet-current/node_modules
 RUN ln -s /opt/comet-cli/node_modules/.bin/openspec /usr/local/bin/openspec
 
 # Claude Code CLI (the agent runtime; version overridable via BENCH_CC_VERSION).

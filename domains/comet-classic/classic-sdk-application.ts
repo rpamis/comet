@@ -2370,8 +2370,30 @@ export function defineClassicWorkflowApplication(
             return { state: run.state!, next: [] };
           }
           const archived = applyClassicTransition(run.state as unknown as ClassicState, 'archived');
+          const activeRef = (run.input as { changeDir: string }).changeDir.replaceAll('\\', '/');
+          const archiveRef = (
+            event.outcome.output as { archiveDirectory: string }
+          ).archiveDirectory.replaceAll('\\', '/');
           return {
-            state: archived.classic as unknown as RuntimeValue,
+            state: {
+              ...archived.classic,
+              designDoc: archivedClassicDocumentRef(
+                archived.classic.designDoc,
+                activeRef,
+                archiveRef,
+              ),
+              plan: archivedClassicDocumentRef(archived.classic.plan, activeRef, archiveRef),
+              verificationReport: archivedClassicDocumentRef(
+                archived.classic.verificationReport,
+                activeRef,
+                archiveRef,
+              ),
+              handoffContext: archivedClassicDocumentRef(
+                archived.classic.handoffContext,
+                activeRef,
+                archiveRef,
+              ),
+            } as unknown as RuntimeValue,
             next: [`${profile}.archive.deliver`],
           };
         }

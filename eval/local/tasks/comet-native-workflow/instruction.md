@@ -18,6 +18,12 @@ Begin by invoking the `/comet-native` Skill. Use the current-checkout Comet CLI 
 - submit the Builder handoff, let Runtime run required checks, and use a new read-only Verifier to cover every acceptance item before archiving;
 - implement, verify, and archive the change.
 
+Before requesting Shape confirmation, run the supplied CLI on every concrete input proposed in your
+acceptance examples, using its existing word and line options. Record the observed word and line counts
+so preservation requirements match the baseline; derive the new sentence counts from the stated splitting
+rules. Resolve contradictory examples before confirmation. Keep the required failed Verify and repair
+exercise; checking the baseline does not replace implementation checks or independent verification.
+
 Request the required final shared-understanding confirmation, then continue automatically while the
 remaining requirements are unambiguous. Do not create `openspec/`, Classic artifacts, or change-local
 machine files. `.comet/config.yaml`, `.comet/current-change.json`, and `.comet/runtime/` are managed by

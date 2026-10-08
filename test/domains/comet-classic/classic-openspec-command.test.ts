@@ -16,6 +16,7 @@ vi.mock('child_process', () => ({
   spawnSync: vi.fn(),
 }));
 vi.mock('../../../platform/process/node-cli-command.js', () => ({
+  assertNodeCliCommandAvailable: vi.fn(),
   resolveNodeCliCommand: vi.fn((command: string, args: string[]) => ({ command, args })),
 }));
 

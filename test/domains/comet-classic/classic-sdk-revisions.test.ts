@@ -5,6 +5,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parse as parseYaml } from 'yaml';
+import { readPortableRunCheckpoint } from '../../../domains/engine/runtime.js';
 import { runtimeDispatchCommand } from '../../../app/commands/runtime.js';
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
@@ -462,7 +464,7 @@ describe('Classic candidate revisions', () => {
     expect(blocked.exitCode).not.toBe(0);
     expect((await f.inspect()).run).toEqual(claimed);
   });
-  it('delivers a revised plan with the approved in-change Design document after real OpenSpec Archive', async () => {
+  it('preserves archive references after revised-plan delivery', async () => {
     const f = await fixture();
     vi.stubEnv('COMET_OPENSPEC', path.resolve('node_modules/.bin/openspec'));
     vi.stubEnv('OPENSPEC_TELEMETRY', '0');
@@ -546,6 +548,25 @@ describe('Classic candidate revisions', () => {
     const archiveRef = (
       archived.outputs['full.archive.execute'].value as { archiveDirectory: string }
     ).archiveDirectory;
+    expect(archived.state).toMatchObject({
+      designDoc: `${archiveRef}/design.md`,
+      handoffContext: `${archiveRef}/.comet/handoff/design-context.json`,
+      plan: f.plan,
+      verificationReport: report,
+    });
+    const projected = parseYaml(
+      await fs.readFile(path.join(f.projectRoot, archiveRef, '.comet.yaml'), 'utf8'),
+    );
+    expect(projected.design_doc).toBe(`${archiveRef}/design.md`);
+    expect(projected.handoff_context).toBe(`${archiveRef}/.comet/handoff/design-context.json`);
+    expect(projected.plan).toBe(f.plan);
+    expect(projected.verification_report).toBe(report);
+    expect(readPortableRunCheckpoint(projected.run_checkpoint, 'example')?.state).toMatchObject({
+      designDoc: `${archiveRef}/design.md`,
+    });
+    expect(archived.outputs['full.design.document'].value).toMatchObject({
+      designDoc: `${f.change}/design.md`,
+    });
     const source = await fs.readFile(path.join(f.projectRoot, archiveRef, 'design.md'), 'utf8');
     expect(source).toContain('status: final');
     expect(source).toContain(`archived-with: ${path.posix.basename(archiveRef)}`);

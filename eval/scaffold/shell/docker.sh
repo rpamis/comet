@@ -360,6 +360,48 @@ process.stdin.on("end", () => process.stdout.write(JSON.stringify(value.trim()))
 # DOCKER BUILD
 # =============================================================================
 
+# 固定候选 CLI 到镜像层，模型只使用非 root 身份读取，不在每次命令中复制。
+docker_current_comet_image() {
+    local dir="$1" base_image="$2" force="${3:-}"
+    local snapshot="$dir/_eval_current_comet"
+    if [[ ! -f "$snapshot/bin/comet.js" || ! -d "$snapshot/dist" || \
+          ! -f "$snapshot/assets/manifest.json" || ! -f "$snapshot/package.json" ]]; then
+        printf '%s' "$base_image"
+        return 0
+    fi
+    local snapshot_hash base_id image_name context_path overlay_file
+    overlay_file="$SCRIPT_DIR/../docker/current-comet.Dockerfile"
+    snapshot_hash=$(node - "$snapshot" "$overlay_file" <<'NODE'
+const fs = require('fs'), path = require('path'), crypto = require('crypto');
+const root = process.argv[2], hash = crypto.createHash('sha256');
+function visit(dir) {
+    for (const name of fs.readdirSync(dir).sort()) {
+        const file = path.join(dir, name), stat = fs.lstatSync(file);
+        if (stat.isSymbolicLink()) throw new Error('CLI 候选快照不能包含符号链接');
+        if (stat.isDirectory()) visit(file);
+        else if (stat.isFile()) {
+            hash.update(path.relative(root, file).replaceAll('\\', '/'));
+            hash.update('\0'); hash.update(fs.readFileSync(file)); hash.update('\0');
+        }
+    }
+}
+visit(root); hash.update(fs.readFileSync(process.argv[3])); process.stdout.write(hash.digest('hex'));
+NODE
+    ) || return 1
+    base_id=$(docker image inspect --format '{{.Id}}' "$base_image") || return 1
+    image_name="$IMAGE_PREFIX:cli-$(sha256_text "$base_id:$snapshot_hash")"
+    if [[ "$force" != "--force" ]] && image_exists "$image_name"; then
+        printf '%s' "$image_name"
+        return 0
+    fi
+    context_path=$(_winpath "$snapshot")
+    overlay_file=$(_winpath "$overlay_file")
+    docker build -t "$image_name" --build-arg BASE_IMAGE="$base_image" \
+        --build-context "current_cli=$context_path" -f "$overlay_file" \
+        "$(_winpath "$SCRIPT_DIR/../docker")" >&2 || return 1
+    printf '%s' "$image_name"
+}
+
 # Build Docker image with caching
 # Usage: docker_build <directory> [--force]
 # Output: image name on stdout
@@ -390,7 +432,7 @@ docker_build() {
 
     # Check cache unless forced
     if [[ "$force" != "--force" ]] && image_exists "$image_name"; then
-        echo "$image_name"
+        docker_current_comet_image "$dir" "$image_name" "$force" || return 1
         return 0
     fi
 
@@ -402,7 +444,7 @@ docker_build() {
         if docker build -t "$image_name" \
             --build-arg CLAUDE_CODE_VERSION="$CLAUDE_CODE_VERSION" \
             -f "$windockerfile" "$windir" >&2; then
-            echo "$image_name"
+            docker_current_comet_image "$dir" "$image_name" "$force" || return 1
             return 0
         else
             echo "ERROR: Build failed" >&2
@@ -435,7 +477,7 @@ docker_build() {
         --build-arg CUSTOM_INSTALL_VERSION="${COMET_EVAL_CUSTOM_INSTALL_VERSION:-latest}" \
         --build-arg LANGFUSE_ENABLED="${TRACE_TO_LANGFUSE:-false}" \
         -f "$(_winpath "$overlay_file")" "$overlay_context" >&2; then
-        echo "$image_name"
+        docker_current_comet_image "$dir" "$image_name" "$force" || return 1
         return 0
     else
         echo "ERROR: Agent overlay build failed" >&2

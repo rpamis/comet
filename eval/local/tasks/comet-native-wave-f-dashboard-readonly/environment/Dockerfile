@@ -10,6 +10,8 @@ RUN npm install -g @anthropic-ai/claude-code@latest
 
 COPY current-comet-package.json /opt/comet-cli/package.json
 RUN npm install --prefix /opt/comet-cli --omit=dev --ignore-scripts
+RUN mkdir -p /opt/comet-current && \
+    ln -s /opt/comet-cli/node_modules /opt/comet-current/node_modules
 
 RUN pip install --break-system-packages --no-cache-dir pyyaml pytest
 

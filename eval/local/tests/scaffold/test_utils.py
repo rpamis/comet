@@ -1,8 +1,10 @@
 """Unit tests for eval scaffold utilities."""
 
 import importlib
+import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -1406,6 +1408,93 @@ def test_image_cache_changes_when_copied_package_manifest_changes(tmp_path: Path
     )
 
     assert _get_image_name(tmp_path) != first
+
+
+@pytest.mark.parametrize(
+    "environment_ref",
+    [
+        "local/tasks/comet-native-workflow/environment",
+        "local/tasks/comet-classic-layout-lifecycle/environment",
+        "scaffold/environments/workflow-application",
+    ],
+)
+def test_current_cli_queries_use_immutable_installation_without_copying(
+    tmp_path: Path,
+    environment_ref: str,
+):
+    environment = Path(__file__).resolve().parents[3] / environment_ref
+    image = _get_image_name(environment).removeprefix("image=")
+    try:
+        available = subprocess.run(
+            ["docker", "image", "inspect", image], capture_output=True, check=False, timeout=10
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pytest.skip("Docker is unavailable")
+    if available.returncode:
+        pytest.skip("cached Native Eval image is unavailable")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    for name in (
+        "Dockerfile",
+        "current-comet.sh",
+        "current-comet-package.json",
+        "wordcount.py",
+        "test_wordcount.py",
+    ):
+        if (environment / name).is_file():
+            shutil.copy2(environment / name, workspace / name)
+    snapshot = workspace / "_eval_current_comet"
+    for name in ("bin", "dist", "assets"):
+        (snapshot / name).mkdir(parents=True)
+    (snapshot / "package.json").write_text(
+        '{"name":"@rpamis/comet","type":"module","exports":{"./runtime":"./dist/runtime.mjs"}}\n',
+        encoding="utf-8",
+    )
+    (snapshot / "dist/runtime.mjs").write_text(
+        "export const version = 'fixed';\n", encoding="utf-8"
+    )
+    (snapshot / "assets/manifest.json").write_text("{}\n", encoding="utf-8")
+    (snapshot / "bin/comet.js").write_text(
+        "import { parse } from 'yaml';\n"
+        "console.log(JSON.stringify({value:parse('value: fixed').value,args:process.argv.slice(2),pid:process.pid}));\n",
+        encoding="utf-8",
+    )
+    fake_bin = workspace / "fake-bin"
+    fake_bin.mkdir()
+    (fake_bin / "cp").write_text(
+        '#!/bin/sh\necho "unexpected per-query package copy" >&2\nexit 99\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    (fake_bin / "cp").chmod(0o755)
+    sdk_check = (
+        "node --input-type=module -e \"import {version} from '@rpamis/comet/runtime'; "
+        "if(version!=='fixed')process.exit(57)\"; "
+        if environment_ref.startswith("scaffold/")
+        else ""
+    )
+    result = utils.run_shell(
+        "docker.sh",
+        "run",
+        utils._to_bash_path(workspace),
+        "sh",
+        "-ec",
+        "export PATH=/workspace/fake-bin:/usr/local/bin:/usr/bin:/bin; "
+        'comet status "name with space"; comet status "name with space"; '
+        + sdk_check
+        + "if printf tampered 2>/tmp/install-error > /opt/comet-current/bin/comet.js; then exit 55; fi; "
+        'grep -Eq "Read-only file system|Permission denied" /tmp/install-error; '
+        "if printf tampered 2>/tmp/source-error > /workspace/_eval_current_comet/bin/comet.js; then exit 56; fi; "
+        'grep -q "Read-only file system" /tmp/source-error',
+        timeout=90,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
+    assert len(records) == 2
+    assert [row["args"] for row in records] == [["status", "name with space"]] * 2
+    assert [row["value"] for row in records] == ["fixed", "fixed"]
+    assert records[0]["pid"] != records[1]["pid"]
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows bind-mount ownership regression")
