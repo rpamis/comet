@@ -91,6 +91,24 @@ def test_current_cli_snapshot_uses_explicit_source_root(tmp_path, monkeypatch):
     assert identity["sourceHash"]
 
 
+def test_published_cli_snapshot_does_not_require_typescript_or_repository_sources(tmp_path, monkeypatch):
+    source = tmp_path / "published"
+    files = {"package.json": '{}', "bin/comet.js": '// published entry', "assets/manifest.json": '{}', "assets/skills/comet/SKILL.md": '# Published', "dist/app/cli/index.js": '// published cli', "dist/domains/dashboard/native-adapter.js": '// published adapter'}
+    for relative, content in files.items():
+        target = source / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    environment = tmp_path / "environment"
+    environment.mkdir()
+    (environment / conftest.CURRENT_COMET_CLI_MARKER).touch()
+    monkeypatch.setenv("BENCH_COMET_SOURCE_ROOT", str(source))
+    monkeypatch.setattr(conftest, "_build_current_comet_dist", lambda *_: pytest.fail("Published consumers must not compile repository sources"))
+    workspace = tmp_path / "workspace"
+    conftest._copy_current_comet_cli_snapshot(environment, workspace)
+    assert (workspace / "_eval_current_comet/dist/app/cli/index.js").read_text() == '// published cli'
+    assert json.loads((workspace / "_eval_current_comet/build-identity.json").read_text())["compilerVersion"] == "published-dist"
+
+
 @pytest.mark.skipif(msvcrt is None, reason="Windows locking API only")
 def test_file_lock_waits_when_windows_lock_is_temporarily_busy(tmp_path: Path, monkeypatch):
     lock_file = tmp_path / "coordination.lock"

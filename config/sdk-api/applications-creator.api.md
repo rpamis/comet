@@ -24,6 +24,10 @@ export function creatorSummary(run: WorkflowRun): {
     verification: string | number | boolean | RuntimeValue[] | {
         [key: string]: RuntimeValue;
     } | null;
+    evaluationPreview: string | number | boolean | RuntimeValue[] | {
+        [key: string]: RuntimeValue;
+    } | null;
+    evaluation: unknown;
     delivered: string | number | boolean | RuntimeValue[] | {
         [key: string]: RuntimeValue;
     } | null;
@@ -47,6 +51,10 @@ export function listCreatorRuns(projectRoot: string): Promise<{
     verification: string | number | boolean | RuntimeValue[] | {
         [key: string]: RuntimeValue;
     } | null;
+    evaluationPreview: string | number | boolean | RuntimeValue[] | {
+        [key: string]: RuntimeValue;
+    } | null;
+    evaluation: unknown;
     delivered: string | number | boolean | RuntimeValue[] | {
         [key: string]: RuntimeValue;
     } | null;

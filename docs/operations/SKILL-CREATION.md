@@ -48,6 +48,23 @@ comet application uninstall <id> --project . --scope project --platform cursor -
 
 Uninstall removes only managed entries while retaining every version and dependency. `--platform` selects the platforms to remove; entries in shared directories remain while another platform still uses them. The default application record for new Runs is removed only after all platform entries are canceled. A user application may have active Runs in other projects, so uninstall does not use a single project's inventory to delete versions and does not provide an implicit purge. Its result explicitly lists removals and retention.
 
+## Optional Eval
+
+After compilation and loading validation, `/comet-any` offers optional Eval. Choosing evaluation generates and freezes 2–4 cases, runs the selected Agent and model in an isolated workspace, checks business artifacts and actual SDK Runs, and returns a report. Skip continues to installation preview with unevaluated status. Failed or incomplete evaluation can be retried, repaired and reevaluated, or explicitly skipped; failure is retained. Retry and revisions prefer the original cases, while changed applications or settings require confirmation again.
+
+Use optional `--eval-config <JSON-file>` to set agent, model, judgeAgent, judgeModel, maxTurns, and timeoutSeconds. Defaults allow 8 interaction turns and a 1200-second total timeout. These bound execution; reports record available cost evidence. Credentials enter only through the environment and never through plans, application packages, or reports.
+
+Evaluate the same SDK application independently:
+
+```bash
+comet eval <package>/application.json --project . --collect
+comet eval <package>/application.json --project . --agent codex --model <model>
+```
+
+`--collect` previews without generating cases or calling models. Application Eval reads the complete package, fixed dependencies, and workflows; `--quick` generic smoke cannot replace it. Installation and distribution previews show the current content's evaluation status, report, and limitations. Missing or invalidated evidence is explicit and does not prevent the user from choosing installation.
+
+Skills with external side effects need fixed test replacements. Without an isolated implementation, evaluation remains incomplete and does not start models to perform real external operations. Retry after timeout checks the original experiment containers first; uncertain termination preserves the current work without spending model budget again.
+
 ## SDK samples and verification scope
 
 `prepareWorkflowApplicationExample` from `@rpamis/comet/applications/compiler` generates complete local samples for `native`, `classic-full`, `classic-hotfix`, `classic-tweak`, or `standalone`. Pass an existing isolated `projectRoot`, an empty `packageRoot`, and `base`; it returns `application.json`. It does not start a Run, submit user decisions, or perform external operations.

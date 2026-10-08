@@ -1,4 +1,8 @@
 import path from 'node:path';
+import {
+  readApplicationEvaluationEvidence,
+  type ApplicationEvaluationEvidence,
+} from './evaluation-evidence.js';
 import { promises as fs } from 'node:fs';
 import { hashRuntimeValue } from '../engine/runtime.js';
 import { atomicWriteContainedText } from '../workflow-contract/contained-atomic-write.js';
@@ -38,6 +42,7 @@ export interface ApplicationDeliveryOptions {
 }
 
 export interface ApplicationInstallPreview {
+  evaluation: ApplicationEvaluationEvidence;
   schema: 'comet.workflow.application.preview.v1';
   id: string;
   version: string;
@@ -202,6 +207,11 @@ export async function previewWorkflowApplicationInstall(
     requiredCapabilities: [
       ...new Set(manifest.skills.flatMap(({ adapter }) => adapter.requiredCapabilities)),
     ].sort(),
+    evaluation: await readApplicationEvaluationEvidence(
+      options.projectRoot,
+      manifest.id,
+      contentHash,
+    ),
   };
   return { ...preview, confirmationHash: hashRuntimeValue(preview) };
 }

@@ -26,6 +26,20 @@ export {
 } from './standalone-static-collect.js';
 export { loadUserEvalEnvironment } from './user-environment.js';
 export {
+  previewWorkflowApplicationEval,
+  prepareWorkflowApplicationEval,
+  readWorkflowApplicationEvalResult,
+  runWorkflowApplicationEval,
+  normalizeApplicationEvalSettings,
+} from './application-eval.js';
+export type {
+  ApplicationEvalTaskSet,
+  ApplicationEvalSettings,
+  ApplicationEvalPreview,
+  PreparedApplicationEval,
+  ApplicationEvalResult,
+} from './application-eval.js';
+export {
   runSemanticMemoryEval,
   SEMANTIC_MEMORY_EVAL_SCHEMA,
   SEMANTIC_MEMORY_FAILURE_CATEGORIES,

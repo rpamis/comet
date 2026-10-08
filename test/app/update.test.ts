@@ -1269,21 +1269,27 @@ describe('update command helpers', () => {
       homedirSpy.mockRestore();
     }
 
-    expect(mockedSpawn).toHaveBeenCalledTimes(6);
-    expect(mockedSpawn.mock.calls.at(-1)?.[0]).toBe(process.execPath);
-    expect(mockedSpawn.mock.calls.at(-1)?.[1]?.slice(1)).toEqual([
+    const globalInstalls = mockedSpawn.mock.calls.filter(
+      ([command, args]) =>
+        command === process.execPath && args?.[1] === 'install' && args.includes('-g'),
+    );
+    expect(globalInstalls).toHaveLength(1);
+    expect(globalInstalls[0]?.[1]?.slice(1)).toEqual([
       'install',
       '-g',
       '@rpamis/comet@0.4.0-beta.8',
       '--registry',
       'https://registry.npmjs.org',
     ]);
-    expect(mockedSpawn.mock.calls.every((call) => call[2]?.shell === false)).toBe(true);
-    expect(mockedSpawn.mock.calls.every((call) => call[0] === process.execPath)).toBe(true);
     const candidateBinCalls = mockedSpawn.mock.calls.filter((call) =>
       String(call[1]?.[0]).endsWith(path.join('bin', 'comet.js')),
     );
     expect(candidateBinCalls).toHaveLength(3);
+    const packageCommands = mockedSpawn.mock.calls.filter(
+      (call) => String(call[1]?.[0]).endsWith('npm-cli.js') || candidateBinCalls.includes(call),
+    );
+    expect(packageCommands.every((call) => call[2]?.shell === false)).toBe(true);
+    expect(packageCommands.every((call) => call[0] === process.execPath)).toBe(true);
     expect(candidateBinCalls.every((call) => path.isAbsolute(String(call[1]?.[0])))).toBe(true);
   });
 

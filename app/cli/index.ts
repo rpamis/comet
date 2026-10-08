@@ -547,8 +547,8 @@ program
 
 program
   .command('eval')
-  .description('Evaluate a Skill or eval manifest and generate results')
-  .argument('[target]', 'Local Skill directory, SKILL.md, or comet/eval.yaml')
+  .description('Evaluate a Skill, SDK application or eval manifest and generate results')
+  .argument('[target]', 'Local Skill directory, SKILL.md, comet/eval.yaml, or SDK application.json')
   .option('--project <dir>', 'Repository root that contains eval/')
   .option('--manifest <path>', 'Path to comet/eval.yaml')
   .option('--skill-path <path>', 'Local Skill directory or SKILL.md')
@@ -790,6 +790,7 @@ if (requestedArgs.includes('creator')) {
     .option('--project <dir>', 'Project root', '.')
     .requiredOption('--goal <text>', '自然语言工作流目标')
     .requiredOption('--install-target <directory>', '项目内相对安装目录')
+    .option('--eval-config <file>', '可选Eval配置JSON；模型凭据只从执行环境注入')
     .addOption(
       new Option('--host <host>', '执行宿主').choices(['codex', 'claude-code']).default('codex'),
     )

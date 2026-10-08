@@ -374,6 +374,10 @@ async function buildEvalArgs(
   if (options.judgeModel) args.push(`--judge-model=${options.judgeModel}`);
   if (options.judgeBaseUrl) args.push(`--judge-base-url=${options.judgeBaseUrl}`);
   if (options.quick) args.push('--quick');
+  if (process.env.COMET_APPLICATION_EVAL_CONTEXT) {
+    const evaluation = JSON.parse(process.env.COMET_APPLICATION_EVAL_CONTEXT);
+    args.push('--count=1', `--agent-timeout=${evaluation.preview.settings.timeoutSeconds}`);
+  }
   args.push(`--project-root=${context.artifactOwnerRoot}`);
 
   const reportConfig =
@@ -393,7 +397,10 @@ async function buildLaunchDetails(
 ): Promise<EvalLaunchDetails> {
   const suite = resolveSuite(options);
   const reportConfig = collectOnly ? null : await resolveReportConfig(options, context);
-  const experimentId = `comet-eval-${randomUUID()}`;
+  const experimentId = process.env.COMET_APPLICATION_EVAL_CONTEXT
+    ? process.env.COMET_EVAL_EXPERIMENT_ID!
+    : `comet-eval-${randomUUID()}`;
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,127}$/u.test(experimentId)) throw new Error('评估实验身份无效');
   const execution = await resolveLaunchExecution(options, context);
   const taskLines = await collectStandaloneTasks(
     {
@@ -599,6 +606,48 @@ export async function evalCommand(
   target?: string,
   options: EvalCommandOptions = {},
 ): Promise<void> {
+  if (target && path.basename(target) === 'application.json') {
+    if (
+      options.manifest ||
+      options.skillPath ||
+      options.quick ||
+      options.task ||
+      options.baseUrl ||
+      options.judgeBaseUrl ||
+      (options.suite && options.suite !== 'local')
+    )
+      throw new Error(
+        'SDK 应用评估使用完整应用和自动用例；不能混入 Skill 目标、quick 或单任务选项',
+      );
+    loadUserEvalEnvironment();
+    const { previewWorkflowApplicationEval, runWorkflowApplicationEval } =
+      await import('../../domains/eval/index.js');
+    const input = {
+      file: path.resolve(target),
+      projectRoot: path.resolve(options.project ?? '.'),
+      settings: {
+        agent: options.agent ?? 'claude-code',
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.judgeAgent ? { judgeAgent: options.judgeAgent } : {}),
+        ...(options.judgeModel ? { judgeModel: options.judgeModel } : {}),
+      },
+    };
+    const preview = await previewWorkflowApplicationEval(input);
+    console.log(
+      JSON.stringify(
+        options.collect
+          ? preview
+          : await runWorkflowApplicationEval({
+              ...input,
+              confirmationHash: preview.confirmationHash,
+              experimentId: `comet-eval-${randomUUID()}`,
+            }),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
   const resolvedOptions = optionsWithTarget(target, options);
   if (resolvedOptions.collect) {
     await evalCollectCommand(resolvedOptions);

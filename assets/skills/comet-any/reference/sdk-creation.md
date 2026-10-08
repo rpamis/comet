@@ -4,7 +4,7 @@ Read this page only when claiming, returning, confirming, or recovering the curr
 
 ## Analysis action
 
-The host claims only `analyze`, investigates actual Skills, and returns the analysis result. compile / verify / preview / install are machine steps executed by the fixed `creator-local` executor through `comet creator next <name> --project <project> --json`; the host must not claim these machine Actions, assign them to `creator-host`, or supply fabricated success results. When `next` stops at a host action or user decision, handle the returned current Action or Wait.
+The host claims only `analyze`, investigates actual Skills, and returns the analysis result. compile / verify / eval-preview / evaluate / preview / install are machine steps executed by the fixed `creator-local` executor through `comet creator next <name> --project <project> --json`; the host must not claim these machine Actions, assign them to `creator-host`, or supply fabricated success results. When `next` stops at a host action or user decision, handle the returned current Action or Wait.
 
 First read `analyze` from the current `actions`, submit `operation: claim`, and preserve `runId`, `actionId`, `attempt`, and `inputHash`. Use `executorId: creator-host`, an actual `sessionId`, a unique stable `claimToken`, and genuinely available `capabilities: [skill-load, handoff]`. Analyze only after a successful claim.
 
@@ -14,6 +14,7 @@ Return `operation: record-outcome`. Preserve the same Action identity and claimT
 - `failurePaths`: at least one concrete failure and recovery path.
 - `limitations`: state capability and evidence limits.
 - `proposal`: a declarative plan accepted by public `@rpamis/comet/applications/compiler`, with `schema: comet.workflow.application.plan.v1`, manifest, composition, and modules. The compiler generates workflows rather than copying a complete hand-written createApplication.
+- `evaluation` (optional): agent, model, judgeAgent, judgeModel, maxTurns, and timeoutSeconds. Defaults use the creation host, 8 interaction turns, and a 1200-second total timeout, with 2–4 cases. These limits bound execution, turns, and time, rather than imposing a dollar cap. Credentials and undeclared fields are rejected.
 
 The manifest fixes the standalone application identity, base workflow, Runtime version, and each real Skill's root, content hash, and adapter contract. Dependency references use absolute directories so the compiler can read actual bytes. Modules provide only fixed execution ports, validators, and declared pure transition handlers; credentials must not enter source. Public types and current commands define the supported plan structure and composition.
 
@@ -21,9 +22,11 @@ After successful analysis, run `next` to obtain the actually assembled plan. Ins
 
 ## User decisions
 
-Only a pending Wait in the current `waits` accepts a decision. After obtaining the user's explicit choice, submit `operation: resolve-wait`, preserving `runId`, `waitId`, and `proposalHash`, with a unique decisionId and choice (approved / revise / rejected). Do not select approved for the user.
+Only a pending Wait in the current `waits` accepts a decision. After obtaining the user's explicit choice, submit `operation: resolve-wait`, preserving `runId`, `waitId`, and `proposalHash`, with a unique decisionId and a choice supported by that Wait. Do not approve or skip for the user.
 
 Plan approval and installation approval are separate decisions, corresponding to confirm-plan and confirm-install. Stale hashes, installation-target drift, or dependency changes reject approval; after revise, analyze, assemble, and show the current plan again. Use preview's files and target for the concrete installation explanation.
+
+New creations use Creator v2; existing v1 Runs resume their original definition. After compilation and validation, v2 reaches confirm-eval (evaluate / skip / revise). The local executor calls independent Eval with a complete application snapshot and fixed experiment identity. Passing evaluation proceeds to installation preview; failed or incomplete evaluation reaches review-eval (retry / revise / skip). Failures cannot be filtered into passes; skip retains failure or unevaluated status. Retry reuses cached cases, and revisions prefer the original fixed cases. Reports bind the current application content, dependencies, settings, and case set without establishing acceptance on other platforms.
 
 ## Interruption and uncertain results
 

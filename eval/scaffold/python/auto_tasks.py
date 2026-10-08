@@ -406,6 +406,7 @@ def _manifest_source(
 
 
 def _generation_prompt(snapshot: SkillSnapshot, *, profile: str, repair: str | None = None) -> str:
+    from scaffold.python.application_eval import application_generation_guidance
     files = "\n\n".join(
         f"FILE: {item.path}\nHASH: {item.content_hash}\n{item.content}" for item in snapshot.files
     )
@@ -417,6 +418,7 @@ from files, contains, json, or commands. Rubric is optional. Do not invent sourc
 Use only paths visible in the bounded Skill snapshot. Return exactly:
 {{"tasks":[{{"name":"...","prompt":"...","expect":{{...}},"rubric":["..."]}}]}}
 {repair_text}
+{application_generation_guidance(snapshot)}
 Bounded Skill snapshot:
 {files}
 """

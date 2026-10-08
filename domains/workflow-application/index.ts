@@ -19,6 +19,11 @@ export {
   uninstallWorkflowApplication,
 } from './delivery.js';
 export type { ApplicationDeliveryOptions, ApplicationInstallPreview } from './delivery.js';
+export {
+  readApplicationEvaluationEvidence,
+  recordApplicationEvaluationEvidence,
+} from './evaluation-evidence.js';
+export type { ApplicationEvaluationEvidence } from './evaluation-evidence.js';
 export type { StandaloneApplicationOptions } from './standalone-application.js';
 export { createApplicationArtifactValidator } from './artifact-validator.js';
 export type {

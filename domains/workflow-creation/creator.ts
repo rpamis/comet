@@ -1,5 +1,6 @@
 import { promises as fs, existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import {
   createRuntime,
   createFileRuntimeStore,
@@ -20,6 +21,16 @@ import {
 } from '../workflow-generation/index.js';
 import { loadWorkflowApplication } from '../workflow-application/index.js';
 import { applicationFilesHash } from '../workflow-application/skill-adapter.js';
+import {
+  normalizeApplicationEvalSettings,
+  previewWorkflowApplicationEval,
+  prepareWorkflowApplicationEval,
+  runWorkflowApplicationEval,
+  readWorkflowApplicationEvalResult,
+  type ApplicationEvalSettings,
+  type ApplicationEvalPreview,
+  type ApplicationEvalResult,
+} from '../eval/index.js';
 
 function reject(message: string): never {
   throw new RuntimeProtocolError(
@@ -81,6 +92,7 @@ type Prepared = {
   failurePaths: string[];
   limitations: string[];
   steps: Array<{ id: string; work: string; skills: string[]; output: unknown }>;
+  evaluation?: ApplicationEvalSettings;
 };
 type Package = { file: string; contentHash: string; compositionHash: string };
 type Preview = {
@@ -89,6 +101,7 @@ type Preview = {
   planHash: string;
   files: string[];
   noFilesWritten: true;
+  evaluation?: unknown;
 };
 
 function assertPlan(run: Readonly<WorkflowRun>): Prepared {
@@ -118,7 +131,84 @@ function assertPreview(root: string, run: Readonly<WorkflowRun>): Preview {
   )
     reject('安装目标或文件变化');
   if (existsSync(contained(root, preview.target))) reject('安装目标出现冲突或变化');
+  if (
+    run.workflow.version === '2' &&
+    hashRuntimeValue(preview.evaluation) !== hashRuntimeValue(evaluationSummary(run))
+  )
+    reject('安装预览绑定的 Eval 结果发生变化');
   return preview;
+}
+
+function evaluationSummary(run: Readonly<WorkflowRun>): unknown {
+  if (run.workflow.version === '1') return null;
+  const selection = run.waits.filter((wait) => wait.stepId === 'confirm-eval').at(-1);
+  if (selection?.decision?.choice === 'skip')
+    return {
+      status: 'skipped',
+      confirmationHash: selection.proposalHash,
+      applicationHash: assertPackage(run).contentHash,
+    };
+  const current = run.outputs['eval-preview']?.value as unknown as
+    ApplicationEvalPreview | undefined;
+  const outcome = run.outputs.evaluate?.value as unknown as ApplicationEvalResult | undefined;
+  if (!current || !outcome || outcome.confirmationHash !== current.confirmationHash) return null;
+  const reportRoot = path.resolve(
+    path.dirname((run.outputs.compile.value as unknown as Package).file),
+    '../../../eval/runs',
+    outcome.experimentId,
+  );
+  if (
+    hashRuntimeValue(
+      JSON.parse(readFileSync(path.join(reportRoot, 'application-result.json'), 'utf8')),
+    ) !== hashRuntimeValue(outcome)
+  )
+    reject('原 Eval 报告发生变化');
+  if (
+    outcome.taskSet &&
+    `sha256:${createHash('sha256').update(readFileSync(outcome.taskSet.manifestPath)).digest('hex')}` !==
+      outcome.taskSet.manifestHash
+  )
+    reject('原固定用例发生变化');
+  if (
+    outcome.taskSet?.sourceRoot &&
+    applicationFilesHash(files(outcome.taskSet.sourceRoot)) !== outcome.taskSet.sourceSnapshotHash
+  )
+    reject('原用例输入快照发生变化');
+  const review = run.waits.filter((wait) => wait.stepId === 'review-eval').at(-1);
+  return { ...outcome, ...(review?.decision?.choice === 'skip' ? { skipped: true } : {}) };
+}
+
+function evaluationOptions(root: string, run: Readonly<WorkflowRun>) {
+  const compiled = assertPackage(run);
+  const settings =
+    assertPlan(run).evaluation ??
+    normalizeApplicationEvalSettings({ agent: String(object(run.input).host) });
+  const previous = run.outputs.evaluate?.value as unknown as ApplicationEvalResult | undefined;
+  return {
+    file: compiled.file,
+    projectRoot: root,
+    goal: String(object(run.input).goal),
+    settings,
+    ...(previous?.taskSet ? { reuseTaskSet: previous.taskSet } : {}),
+  };
+}
+
+function evaluationRequest(root: string, run: Readonly<WorkflowRun>) {
+  const action = run.actions.filter((action) => action.stepId === 'evaluate').at(-1)!;
+  const preview = value<ApplicationEvalPreview>(run, 'eval-preview');
+  return {
+    ...evaluationOptions(root, run),
+    reuseTaskSet: preview.taskSet,
+    ...((run.outputs.evaluate?.value as unknown as ApplicationEvalResult | undefined)?.status ===
+    'incomplete'
+      ? {
+          previousExperimentId: (run.outputs.evaluate.value as unknown as ApplicationEvalResult)
+            .experimentId,
+        }
+      : {}),
+    confirmationHash: preview.confirmationHash,
+    experimentId: `creator-eval-${hashRuntimeValue([run.runId, action.id])}`,
+  };
 }
 
 /** SDK持有创作进度；宿主只负责自然语言分析和真实Skill调查，机器步骤由固定执行器完成。 */
@@ -161,6 +251,16 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
             output: s.outputSchema ?? null,
           })),
         ),
+        ...(run.workflow.version === '2'
+          ? {
+              evaluation: normalizeApplicationEvalSettings(
+                (analysis.evaluation ??
+                  object(run.input).evaluation ?? {
+                    agent: object(run.input).host,
+                  }) as ApplicationEvalSettings,
+              ),
+            }
+          : {}),
       };
     }),
     'creator.compile': work(async (run) => {
@@ -205,6 +305,12 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         notRun: ['本步骤不替代真实宿主、模型和完整业务验收'],
       };
     }),
+    'creator.eval-preview': work(async (run) =>
+      previewWorkflowApplicationEval(evaluationOptions(root, run)),
+    ),
+    'creator.evaluate': work(async (run) =>
+      runWorkflowApplicationEval(evaluationRequest(root, run)),
+    ),
     'creator.preview': work(async (run) => {
       const compiled = assertPackage(run);
       const target = assertPlan(run).installTarget;
@@ -216,6 +322,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         planHash: compiled.compositionHash,
         files: Object.keys(files(path.dirname(compiled.file))),
         noFilesWritten: true,
+        ...(run.workflow.version === '2' ? { evaluation: evaluationSummary(run) } : {}),
       };
     }),
     'creator.install': work(async (run) => {
@@ -246,75 +353,107 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
   };
   const runtime = createRuntime({
     store: createFileRuntimeStore({ rootDir: path.join(root, '.comet/runtime/creator') }),
-    workflows: [
-      {
-        id: 'comet-creator',
-        version: '1',
-        entry: 'analyze',
-        maxTransitions: 64,
-        initialState: {},
-        stateSchema: { type: 'object', additionalProperties: false },
-        transitionHandler: { id: 'creator-decisions', version: '1' },
-        steps: {
-          analyze: {
-            type: 'handoff',
-            ref: 'creator-analysis',
-            requiredCapabilities: ['skill-load', 'handoff'],
-            retry: 'manual',
-            validator: { id: 'creator-analysis', version: '1' },
-            outputSchema: {
-              type: 'object',
-              additionalProperties: false,
-              required: ['proposal', 'summary', 'failurePaths', 'limitations'],
-              properties: {
-                proposal: { type: 'object' },
-                summary: { type: 'string', minLength: 1 },
-                failurePaths: {
-                  type: 'array',
-                  minItems: 1,
-                  items: { type: 'string', minLength: 1 },
-                },
-                limitations: {
-                  type: 'array',
-                  minItems: 1,
-                  items: { type: 'string', minLength: 1 },
-                },
-                installTarget: { type: 'string', minLength: 1 },
+    workflows: [1, 2].map((version) => ({
+      id: 'comet-creator',
+      version: String(version),
+      entry: 'analyze',
+      maxTransitions: 64,
+      initialState: {},
+      stateSchema: { type: 'object', additionalProperties: false },
+      transitionHandler: { id: 'creator-decisions', version: '1' },
+      steps: {
+        analyze: {
+          type: 'handoff',
+          ref: 'creator-analysis',
+          requiredCapabilities: ['skill-load', 'handoff'],
+          retry: 'manual',
+          validator: { id: 'creator-analysis', version: '1' },
+          outputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['proposal', 'summary', 'failurePaths', 'limitations'],
+            properties: {
+              proposal: { type: 'object' },
+              summary: { type: 'string', minLength: 1 },
+              failurePaths: {
+                type: 'array',
+                minItems: 1,
+                items: { type: 'string', minLength: 1 },
               },
+              limitations: {
+                type: 'array',
+                minItems: 1,
+                items: { type: 'string', minLength: 1 },
+              },
+              installTarget: { type: 'string', minLength: 1 },
+              ...(version === 2 ? { evaluation: { type: 'object' } } : {}),
             },
           },
-          prepare: { type: 'call_tool', ref: 'creator.prepare' },
-          'confirm-plan': {
-            type: 'ask_user',
-            proposalFrom: 'prepare',
-            choices: ['approved', 'revise', 'rejected'],
-          },
-          compile: { type: 'call_tool', ref: 'creator.compile', retry: 'reconcile' },
-          verify: { type: 'call_tool', ref: 'creator.verify' },
-          preview: { type: 'call_tool', ref: 'creator.preview' },
-          'confirm-install': {
-            type: 'ask_user',
-            proposalFrom: 'preview',
-            choices: ['approved', 'revise', 'rejected'],
-          },
-          install: { type: 'call_tool', ref: 'creator.install', retry: 'reconcile' },
-          stop: { type: 'call_tool', ref: 'creator.stop' },
         },
-        transitions: [
-          { from: 'analyze', to: 'prepare' },
-          { from: 'prepare', to: 'confirm-plan' },
-          { from: 'confirm-plan', to: 'compile', on: 'approved' },
-          { from: 'confirm-plan', to: 'analyze', on: 'revise' },
-          { from: 'confirm-plan', to: 'stop', on: 'rejected' },
-          { from: 'compile', to: 'verify' },
-          { from: 'verify', to: 'preview' },
-          { from: 'preview', to: 'confirm-install' },
-          { from: 'confirm-install', to: 'install', on: 'approved' },
-          { from: 'confirm-install', to: 'analyze', on: 'revise' },
-          { from: 'confirm-install', to: 'stop', on: 'rejected' },
-        ],
+        prepare: { type: 'call_tool', ref: 'creator.prepare' },
+        'confirm-plan': {
+          type: 'ask_user',
+          proposalFrom: 'prepare',
+          choices: ['approved', 'revise', 'rejected'],
+        },
+        compile: { type: 'call_tool', ref: 'creator.compile', retry: 'reconcile' },
+        verify: { type: 'call_tool', ref: 'creator.verify' },
+        ...(version === 2
+          ? {
+              'eval-preview': { type: 'call_tool' as const, ref: 'creator.eval-preview' },
+              'confirm-eval': {
+                type: 'ask_user' as const,
+                proposalFrom: 'eval-preview',
+                choices: ['evaluate', 'skip', 'revise'],
+              },
+              evaluate: {
+                type: 'call_tool' as const,
+                ref: 'creator.evaluate',
+                retry: 'reconcile' as const,
+              },
+              'review-eval': {
+                type: 'ask_user' as const,
+                proposalFrom: 'evaluate',
+                choices: ['retry', 'revise', 'skip'],
+              },
+            }
+          : {}),
+        preview: { type: 'call_tool', ref: 'creator.preview' },
+        'confirm-install': {
+          type: 'ask_user',
+          proposalFrom: 'preview',
+          choices: ['approved', 'revise', 'rejected'],
+        },
+        install: { type: 'call_tool', ref: 'creator.install', retry: 'reconcile' },
+        stop: { type: 'call_tool', ref: 'creator.stop' },
       },
-    ],
+      transitions: [
+        { from: 'analyze', to: 'prepare' },
+        { from: 'prepare', to: 'confirm-plan' },
+        { from: 'confirm-plan', to: 'compile', on: 'approved' },
+        { from: 'confirm-plan', to: 'analyze', on: 'revise' },
+        { from: 'confirm-plan', to: 'stop', on: 'rejected' },
+        { from: 'compile', to: 'verify' },
+        { from: 'verify', to: version === 2 ? 'eval-preview' : 'preview' },
+        ...(version === 2
+          ? [
+              { from: 'eval-preview', to: 'confirm-eval' },
+              { from: 'confirm-eval', to: 'evaluate', on: 'evaluate' },
+              { from: 'confirm-eval', to: 'preview', on: 'skip' },
+              { from: 'confirm-eval', to: 'analyze', on: 'revise' },
+              { from: 'evaluate', to: 'preview' },
+              { from: 'evaluate', to: 'review-eval' },
+              { from: 'review-eval', to: 'evaluate', on: 'retry' },
+              { from: 'review-eval', to: 'analyze', on: 'revise' },
+              { from: 'review-eval', to: 'preview', on: 'skip' },
+            ]
+          : []),
+        { from: 'preview', to: 'confirm-install' },
+        { from: 'confirm-install', to: 'install', on: 'approved' },
+        { from: 'confirm-install', to: 'analyze', on: 'revise' },
+        { from: 'confirm-install', to: 'stop', on: 'rejected' },
+      ],
+    })),
     executors: [createRuntimeExecutor({ id: 'creator-local', handlers })],
     validators: [
       {
@@ -346,6 +485,33 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         version: '1',
         apply({ run, event }) {
           if (event.kind === 'wait-resolved') {
+            if (event.stepId === 'confirm-eval') {
+              assertPackage(run);
+              assertPlan(run);
+              return {
+                state: {},
+                next: [
+                  event.choice === 'evaluate'
+                    ? 'evaluate'
+                    : event.choice === 'skip'
+                      ? 'preview'
+                      : 'analyze',
+                ],
+              };
+            }
+            if (event.stepId === 'review-eval') {
+              assertPackage(run);
+              return {
+                state: {},
+                next: [
+                  event.choice === 'retry'
+                    ? 'evaluate'
+                    : event.choice === 'skip'
+                      ? 'preview'
+                      : 'analyze',
+                ],
+              };
+            }
             if (event.choice === 'approved') {
               if (event.stepId === 'confirm-plan') assertPlan(run);
               else assertPreview(root, run);
@@ -364,11 +530,20 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
             };
           }
           if (event.kind === 'action-outcome') {
+            if (event.stepId === 'evaluate')
+              return {
+                state: {},
+                next:
+                  event.outcome.status === 'succeeded'
+                    ? [object(event.outcome.output).status === 'passed' ? 'preview' : 'review-eval']
+                    : [],
+              };
             const successor: Record<string, string> = {
               analyze: 'prepare',
               prepare: 'confirm-plan',
               compile: 'verify',
-              verify: 'preview',
+              verify: run.workflow.version === '2' ? 'eval-preview' : 'preview',
+              'eval-preview': 'confirm-eval',
               preview: 'confirm-install',
             };
             return {
@@ -386,11 +561,17 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
     async validateOutcome({ action, outcome, run }) {
       if (outcome.status !== 'succeeded' || action.stepId === 'analyze') return { accepted: true };
       try {
-        if (['prepare', 'verify', 'preview'].includes(action.stepId)) {
+        if (['prepare', 'verify', 'preview', 'eval-preview'].includes(action.stepId)) {
           const handler = handlers[action.ref as keyof typeof handlers];
           const expected = await handler.execute(action, undefined, run);
           if (hashRuntimeValue(expected.output) !== hashRuntimeValue(outcome.output))
             reject('回报不能代替当前实际方案、验证或安装预览');
+        }
+        if (action.stepId === 'evaluate') {
+          const prepared = await prepareWorkflowApplicationEval(evaluationRequest(root, run));
+          const actual = await readWorkflowApplicationEvalResult(prepared);
+          if (!actual || hashRuntimeValue(actual) !== hashRuntimeValue(outcome.output))
+            reject('Eval 回报必须来自当前应用的实际固定实验报告');
         }
         if (action.stepId === 'compile') {
           const output = outcome.output as unknown as Package;
@@ -446,6 +627,11 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
           )
             reject('原编译结果无法核对');
           await loadWorkflowApplication({ file, projectRoot: root });
+        } else if (action.stepId === 'evaluate') {
+          const prepared = await prepareWorkflowApplicationEval(evaluationRequest(root, run));
+          const actual = await readWorkflowApplicationEvalResult(prepared);
+          if (!actual || hashRuntimeValue(actual) !== hashRuntimeValue(outcome.output))
+            reject('原评估没有可核对的完成报告；核对运行进程与原现场');
         } else if (action.stepId === 'install') {
           const preview = value<Preview>(run, 'preview');
           if (applicationFilesHash(files(contained(root, preview.target))) !== preview.packageHash)
@@ -462,6 +648,8 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
     start(command) {
       const input = object(command.input);
       text(input.goal, '自然语言目标');
+      if (input.evaluation !== undefined)
+        normalizeApplicationEvalSettings(input.evaluation as ApplicationEvalSettings);
       contained(root, text(input.installTarget, '安装目标'));
       if (!['codex', 'claude-code'].includes(text(input.host, '宿主')))
         throw new Error(
@@ -483,6 +671,8 @@ export function creatorSummary(run: WorkflowRun) {
     plan: run.outputs.prepare?.value ?? null,
     installationPreview: run.outputs.preview?.value ?? null,
     verification: run.outputs.verify?.value ?? null,
+    evaluationPreview: run.outputs['eval-preview']?.value ?? null,
+    evaluation: evaluationSummary(run),
     delivered: run.outputs.install?.value ?? null,
     hostEvidence: '本地SDK与应用校验不能代替真实宿主和模型验收。',
   };

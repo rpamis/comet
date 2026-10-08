@@ -48,6 +48,23 @@ comet application uninstall <id> --project . --scope project --platform cursor -
 
 卸载只移除本次管理的入口，保留全部版本及依赖。`--platform` 选择要取消的平台；共享目录仍被其他平台使用时保留入口。全部平台入口取消后才移除新 Run 的默认应用记录。用户级应用可能有其他项目的活动 Run，因此不会按当前项目的枚举结果清空版本，也不提供隐式 purge。结果会明确展示移除与保留范围。
 
+## 可选 Eval
+
+编译与加载验证后，`/comet-any` 会提供可选 Eval。选择评估后自动生成并冻结 2–4 个用例，在隔离工作区执行所选 Agent 和模型，检查业务产物与真实 SDK Run，最后返回报告。选择跳过则继续安装预览，并保留未评估状态。失败或未完成时可以重试、修订应用后重测，或明确跳过；原失败不会变成通过。重试和修订优先复用原用例，应用或配置变化后需要重新确认。
+
+可选 `--eval-config <JSON文件>` 设置 agent、model、judgeAgent、judgeModel、maxTurns 和 timeoutSeconds。默认 8 轮交互、1200 秒总时限；这是执行范围限制，报告记录可获得的费用信息，并说明缺失项。凭据只从执行环境注入，不进入方案、应用包或报告。
+
+也可以独立评估同一个 SDK 应用：
+
+```bash
+comet eval <package>/application.json --project . --collect
+comet eval <package>/application.json --project . --agent codex --model <model>
+```
+
+`--collect` 只预览，不生成用例或调用模型。SDK 应用评估读取完整包、固定依赖和流程；不能用 `--quick` 的通用冒烟代替。安装与分发预览显示当前内容的评估状态、报告和限制；没有有效证据时明确显示未评估或证据失效，不阻止用户选择安装。
+
+声明有外部副作用的 Skill 需要固定的测试替身。没有隔离实现时，评估会明确阻塞并保留未完成状态，不启动模型去执行真实外部操作。超时后的重试先核对原实验容器；无法确认停止时保留现场，不重复消费模型预算。
+
 ## SDK 样板与验证范围
 
 `@rpamis/comet/applications/compiler` 的 `prepareWorkflowApplicationExample` 可生成 `native`、`classic-full`、`classic-hotfix`、`classic-tweak` 或 `standalone` 的完整本地样板。传入已有隔离项目的 `projectRoot`、空 `packageRoot` 和 `base`；返回 `application.json`。它不启动 Run、不提交用户决定，也不执行外部操作。

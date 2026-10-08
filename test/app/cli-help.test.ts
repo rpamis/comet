@@ -186,7 +186,10 @@ describe('CLI help text', () => {
 
     expect(evalHelp.status, evalHelp.stderr).toBe(0);
     expect(skillCheckHelp.status, skillCheckHelp.stderr).toBe(0);
-    expect(evalHelp.stdout).toContain('Evaluate a Skill or eval manifest and generate results');
+    expect(evalHelp.stdout).toContain(
+      'Evaluate a Skill, SDK application or eval manifest and generate results',
+    );
+    expect(evalHelp.stdout).toContain('SDK application.json');
     expect(evalHelp.stdout).toContain('Usage: comet eval [options] [target]');
     expect(evalHelp.stdout).toContain('--suite <suite>');
     expect(evalHelp.stdout).toContain('--model <model>');

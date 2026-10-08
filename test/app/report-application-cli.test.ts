@@ -139,6 +139,7 @@ describe('packed standalone report application through public CLI', () => {
         path.join(packageRoot, 'bin/comet.js'),
         'runtime',
         'dispatch',
+        '--details',
         ...(application === 'file'
           ? ['--application-file', applicationFile]
           : ['--application', 'local-report']),

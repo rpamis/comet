@@ -62,6 +62,22 @@ export interface ApplicationDeliveryOptions {
 }
 
 // @public (undocumented)
+export interface ApplicationEvaluationEvidence {
+    // (undocumented)
+    agent?: string;
+    // (undocumented)
+    limitations: string[];
+    // (undocumented)
+    model?: string;
+    // (undocumented)
+    report?: string;
+    // (undocumented)
+    status: 'not-evaluated' | 'passed' | 'failed' | 'incomplete' | 'stale';
+    // (undocumented)
+    taskNames?: string[];
+}
+
+// @public (undocumented)
 export interface ApplicationIdentity {
     // (undocumented)
     base: ApplicationBase;
@@ -90,6 +106,8 @@ export interface ApplicationInstallPreview {
         id: string;
         contentHash: string;
     }>;
+    // (undocumented)
+    evaluation: ApplicationEvaluationEvidence;
     // (undocumented)
     files: string[];
     // (undocumented)
@@ -1110,6 +1128,9 @@ export function projectWorkflowApplicationRun(application: LoadedWorkflowApplica
     sequence: number;
 };
 
+// @public
+export function readApplicationEvaluationEvidence(projectRoot: string, id: string, contentHash: string): Promise<ApplicationEvaluationEvidence>;
+
 // @public (undocumented)
 export function readSelectedWorkflowApplication(projectRoot: string): Promise<{
     application: LoadedWorkflowApplication;
@@ -1127,6 +1148,9 @@ export function reconcileApplicationSkill(application: LoadedWorkflowApplication
     resolution: "executed";
     outcome: RuntimeOutcome;
 }>;
+
+// @public
+export function recordApplicationEvaluationEvidence(projectRoot: string, resultFile: string): Promise<ApplicationEvaluationEvidence>;
 
 // @public
 export function resolveInstalledWorkflowApplication(options: ApplicationDeliveryOptions, id: string): Promise<string | null>;

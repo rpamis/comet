@@ -11,6 +11,11 @@
 
 set -euo pipefail
 
+APPLICATION_EVAL_LABEL_ARGS=()
+if [[ -n "${COMET_APPLICATION_EVAL_CONTEXT:-}" && -n "${COMET_EVAL_EXPERIMENT_ID:-}" ]]; then
+    APPLICATION_EVAL_LABEL_ARGS=(--label "comet.eval.experiment=$COMET_EVAL_EXPERIMENT_ID")
+fi
+
 # Docker on Windows runs as a native binary needing Windows-style host paths,
 # but git-bash (MSYS) rewrites POSIX-looking args. We want:
 #   - host paths (build context, volume source) in Windows form (C:\ or C:/)
@@ -736,6 +741,7 @@ docker_run_claude() {
 
     if [[ -n "$TIMEOUT_CMD" ]]; then
         $TIMEOUT_CMD "$timeout" docker run --rm \
+            ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
             -v "$windir://workspace" \
             "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
             "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
@@ -748,6 +754,7 @@ docker_run_claude() {
             "${cmd[@]}"
     else
         docker run --rm \
+            ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
             -v "$windir://workspace" \
             "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
             "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
@@ -824,6 +831,7 @@ docker_run_agent() {
     windir=$(_winpath "$dir")
     if [[ -n "$TIMEOUT_CMD" ]]; then
         $TIMEOUT_CMD "$timeout" docker run --rm \
+            ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
             -v "$windir://workspace" \
             "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
             "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
@@ -836,6 +844,7 @@ docker_run_agent() {
             "${AGENT_COMMAND[@]}"
     else
         docker run --rm \
+            ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
             -v "$windir://workspace" \
             "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
             "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
@@ -899,6 +908,7 @@ docker_run_claude_loop() {
     # Mount the scaffold shell scripts read-only so the loop driver is available
     # at /opt/scaffold-shell/ inside the container.
     docker run --rm --name "$container_name" \
+        ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
         "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
         "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
@@ -967,6 +977,7 @@ docker_run_agent_loop() {
     docker rm -f "$container_name" &> /dev/null || true
 
     docker run --rm --name "$container_name" \
+        ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
         "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
         "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \

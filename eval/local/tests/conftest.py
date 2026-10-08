@@ -733,6 +733,9 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
         if path.is_file()
     )
     asset_files = _regular_tree_files(assets_dir) if assets_dir.is_dir() else []
+    published = not any(root.is_dir() for root in source_roots)
+    if published:
+        source_files.extend(_regular_tree_files(source_root / "dist"))
     source_files.extend(asset_files)
     if (
         not package_file.is_file()
@@ -743,10 +746,14 @@ def _copy_current_comet_cli_snapshot(environment_dir: Path, test_dir: Path) -> N
     ):
         raise FileNotFoundError("Current Comet source snapshot is incomplete")
     source_hash, source_count = _tree_digest(source_root, sorted(set(source_files)))
-    with tempfile.TemporaryDirectory(prefix="comet-eval-source-build-") as temporary:
-        built_dist = Path(temporary) / "dist"
-        compiler_version = _build_current_comet_dist(source_root, built_dist)
-        shutil.copytree(built_dist, target / "dist")
+    if published:
+        compiler_version = "published-dist"
+        shutil.copytree(source_root / "dist", target / "dist")
+    else:
+        with tempfile.TemporaryDirectory(prefix="comet-eval-source-build-") as temporary:
+            built_dist = Path(temporary) / "dist"
+            compiler_version = _build_current_comet_dist(source_root, built_dist)
+            shutil.copytree(built_dist, target / "dist")
     shutil.copytree(bin_dir, target / "bin")
     shutil.copytree(assets_dir, target / "assets")
     shutil.copy2(package_file, target / "package.json")
@@ -1043,6 +1050,21 @@ class ExperimentPlugin:
             "case_count": len(payload["cases"]),
             "path": EXPECTED_CASE_MATRIX_FILENAME,
         }
+        from scaffold.python.application_eval import application_eval_context
+
+        application = application_eval_context()
+        if application is not None:
+            generated = getattr(self.config, "_comet_generated_manifest", None)
+            if generated is not None:
+                self.logger.metadata["application_task_set"] = {
+                    "manifestPath": str(generated.manifest_path),
+                    "manifestHash": "sha256:" + hashlib.sha256(generated.manifest_path.read_bytes()).hexdigest(),
+                    "generationHash": generated.generation_hash,
+                    "sourceRoot": application["skillRoot"],
+                    "sourceSnapshotHash": application["snapshotHash"],
+                }
+            elif application["preview"].get("taskSet"):
+                self.logger.metadata["application_task_set"] = application["preview"]["taskSet"]
 
     def pytest_sessionfinish(self, session, exitstatus):
         """Generate and save summary at session end."""
@@ -1057,6 +1079,7 @@ class ExperimentPlugin:
 
         self._reload_expected_case_matrix_metadata()
         self._reload_results_from_reports()
+        self.logger.metadata["pytest_exitstatus"] = int(exitstatus)
 
         if self.logger.results:
             self.logger.finalize()
@@ -1694,6 +1717,12 @@ def setup_test_context(test_dir):
         source_dir: Path | None = None,
     ) -> None:
         agent = _resolve_eval_agent(_plugin.config).agent if _plugin else "claude-code"
+        from scaffold.python.application_eval import application_eval_context
+
+        application = application_eval_context()
+        if application is not None and source_dir and source_dir.resolve() == Path(application["skillRoot"]).resolve():
+            # The production installer will publish this entry and the fixed dependency Skills.
+            return
         skill_dir = test_dir / _agent_project_root(agent) / "skills" / skill_name
         skill_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2033,6 +2062,11 @@ def record_result(test_dir, experiment_logger, request):
                     "telemetry_status": events.get("telemetry_status", "N/A"),
                     "role_sessions": events.get("role_sessions", {}),
                     "task": events.get("task"),
+                    "application_coverage": events.get("application_coverage", []),
+                    "application_executed_steps": events.get("application_executed_steps", []),
+                    "application_choices": events.get("application_choices", []),
+                    "application_recovery": events.get("application_recovery", []),
+                    "sample_quality": report["sample_quality"],
                     "treatment": events.get("treatment", treatment_name),
                     "sample": events.get("sample", rep),
                     "prompt": events.get("prompt"),
@@ -2109,6 +2143,11 @@ def _build_report_payload(
             "telemetry_status": events.get("telemetry_status", "N/A"),
             "role_sessions": events.get("role_sessions", {}),
             "task": events.get("task"),
+            "application_coverage": events.get("application_coverage", []),
+            "application_executed_steps": events.get("application_executed_steps", []),
+            "application_choices": events.get("application_choices", []),
+            "application_recovery": events.get("application_recovery", []),
+            "sample_quality": sample_quality,
             "treatment": events.get("treatment", treatment_name),
             "sample": events.get("sample", rep),
             "prompt": events.get("prompt"),

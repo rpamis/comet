@@ -302,6 +302,18 @@
       },
       {
         "from": "eval",
+        "to": "engine"
+      },
+      {
+        "from": "eval",
+        "to": "workflow-application"
+      },
+      {
+        "from": "workflow-creation",
+        "to": "eval"
+      },
+      {
+        "from": "eval",
         "to": "comet-memory"
       },
       {
@@ -402,6 +414,7 @@
       }
     ],
     "crossDomainEntrypoints": [
+      "domains/eval/index.ts",
       "domains/agent-learning/index.ts",
       "domains/comet-classic/classic-command-checks.ts",
       "domains/comet-classic/classic-current-change.ts",

@@ -4,7 +4,7 @@
 
 ## 分析动作
 
-宿主只领取 `analyze`，完成实际 Skill 调查并回传分析结果。compile / verify / preview / install 是机器步骤，由 `comet creator next <name> --project <项目> --json` 使用固定 `creator-local` 执行器完成；宿主不能领取这些机器 Action，不能把它们交给 `creator-host` 或自行填入成功结果。`next` 停在宿主动作或用户决定时，再处理返回的当前 Action 或 Wait。
+宿主只领取 `analyze`，完成实际 Skill 调查并回传分析结果。compile / verify / eval-preview / evaluate / preview / install 是机器步骤，由 `comet creator next <name> --project <项目> --json` 使用固定 `creator-local` 执行器完成；宿主不能领取这些机器 Action，不能把它们交给 `creator-host` 或自行填入成功结果。`next` 停在宿主动作或用户决定时，再处理返回的当前 Action 或 Wait。
 
 先读取当前 `actions` 中的 `analyze`，提交 `operation: claim`，保留 `runId`、`actionId`、`attempt`、`inputHash`；使用 `executorId: creator-host`、实际 `sessionId`、唯一且稳定的 `claimToken`，并提供实际具备的 `capabilities: [skill-load, handoff]`。领取成功后才执行分析。
 
@@ -14,6 +14,7 @@
 - `failurePaths`：至少一个具体失败与恢复路径。
 - `limitations`：说明能力与证据边界。
 - `proposal`：公开 `@rpamis/comet/applications/compiler` 接受的声明式方案，包含 `schema: comet.workflow.application.plan.v1`、manifest、composition、modules；由组合器生成 workflows，不拷贝完整手写 createApplication。
+- `evaluation`（可选）：agent、model、judgeAgent、judgeModel、maxTurns、timeoutSeconds。默认使用创作宿主、8 轮交互和 1200 秒总时限；用例数量为 2–4 个。限制是执行次数、轮数和时限，不是美元费用硬上限。凭据或其他字段会被拒绝。
 
 manifest 固定独立应用身份、基础流程、Runtime 版本和真实 Skill 的根目录、内容摘要及适配契约。依赖引用绝对目录，由组合器读取实际字节。模块只提供固定执行端口、验证器与已声明的纯转移处理器；不得把凭据写入源码。方案结构与组合支持以公开类型和当前命令为准。
 
@@ -21,9 +22,11 @@ manifest 固定独立应用身份、基础流程、Runtime 版本和真实 Skill
 
 ## 用户决定
 
-当前 `waits` 中只有待处理的 Wait 能接受决定。取得用户明确选择后，提交 `operation: resolve-wait`，保留 `runId`、`waitId`、`proposalHash`，附唯一 decisionId 和 choice（approved / revise / rejected）。不要替用户选择 approved。
+当前 `waits` 中只有待处理的 Wait 能接受决定。取得用户明确选择后，提交 `operation: resolve-wait`，保留 `runId`、`waitId`、`proposalHash`，附唯一 decisionId 和当前 Wait 支持的 choice。不要替用户审批或选择跳过。
 
 批准方案与批准安装是两个决定，分别对应 confirm-plan 与 confirm-install。旧摘要、安装目标漂移或依赖变化时审批拒绝；选 revise 后重新分析、装配并展示当前方案。preview 中的 files 与 target 用于具体安装说明。
+
+新创作使用 Creator v2；已有 v1 Run 沿原定义恢复。v2 编译验证后到达 confirm-eval，选择 evaluate / skip / revise。evaluate 由本地执行器调用独立 Eval，固定完整应用快照和实验身份；通过后进入安装预览，失败或未完成进入 review-eval（retry / revise / skip）。报告中的失败不会过滤成通过；skip 保留实际失败或未评估状态。重试复用缓存用例，修订后优先沿用原固定用例。报告只绑定当前应用内容、依赖、配置和用例集，不代表其他平台通过。
 
 ## 中断与结果未知
 

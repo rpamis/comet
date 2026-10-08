@@ -228,6 +228,26 @@ async function main() {
         }),
       );
     const distribution = applicationCli(distributeArgs);
+    const evalPreview = applicationCli([
+      'eval',
+      applicationFile,
+      '--project',
+      compilerProject,
+      '--agent',
+      'codex',
+      '--model',
+      'fixture-model',
+      '--collect',
+    ]);
+    if (
+      !evalPreview.noModelsStarted ||
+      evalPreview.application.id !== distribution.id ||
+      !evalPreview.workflows.length ||
+      evalPreview.taskCount.max !== 4
+    )
+      throw new Error('Packaged SDK application Eval did not preview actual workflows');
+    if (distribution.evaluation.status !== 'not-evaluated')
+      throw new Error('An unevaluated package was shown as evaluated');
     if (!distribution.noFilesWritten || distribution.platforms.length !== PLATFORMS.length)
       throw new Error('Packaged application distribution did not preview every Comet platform');
     const distributed = applicationCli([
@@ -270,7 +290,8 @@ async function main() {
     const startedDistribution = applicationCli(applicationRunArgs);
     if (
       startedDistribution.status !== 'succeeded' ||
-      startedDistribution.application?.packageRoot !== path.dirname(distributed.file)
+      startedDistribution.application?.packageRoot !==
+        (await fs.realpath(path.dirname(distributed.file)))
     )
       throw new Error('Packaged CLI could not start the distributed immutable application');
     const uninstallArgs = [

@@ -137,6 +137,10 @@ def build_skill_snapshot(skill_path: Path | str) -> SkillSnapshot:
             for child in sorted(candidate.rglob("*")):
                 if not child.is_symlink():
                     add(child)
+    if (root / "scripts/application/application.json").is_file() and (root / "references/workflows.json").is_file():
+        required = {"SKILL.md", "scripts/application/application.json", "references/workflows.json"}
+        if not required.issubset(selected):
+            raise ValueError("SDK application task input exceeds the bounded snapshot; reduce the workflow description before generating cases")
     files = tuple(selected[key] for key in sorted(selected))
     manifest = json.dumps(
         [{"path": item.path, "hash": item.content_hash} for item in files],

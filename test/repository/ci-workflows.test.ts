@@ -175,6 +175,7 @@ describe('CI workflows', () => {
       'test/domains/workflow-application',
       'test/domains/workflow-generation',
       'test/domains/workflow-creation',
+      'test/domains/eval/application-eval.test.ts',
       'test/domains/comet-plugin/plugin-sdk.test.ts',
       'test/domains/comet-classic/classic-sdk',
       'test/domains/comet-native/native-sdk',
@@ -182,6 +183,7 @@ describe('CI workflows', () => {
       'test/domains/comet-native/native-application.test.ts',
       'test/domains/comet-native/native-cli-v4-surface.test.ts',
       'test/app/application-distribution.test.ts',
+      'test/app/application-eval.test.ts',
       'test/scripts/sdk-api.test.ts',
       'test/scripts/sdk-fixtures.test.ts',
     ])

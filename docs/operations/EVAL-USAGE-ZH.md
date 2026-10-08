@@ -77,29 +77,22 @@ CLI 优先于 manifest；如果只配置 `judge.model`，Judge Agent 继承主 A
 自定义 Agent 需要先安装用户目录下的显式适配器，再通过同一个 `--agent` / `--judge-agent` 选择；详情见
 后文的高级扩展说明。
 
-## `/comet-any` 是可选的生产方式
+## 评估 `/comet-any` 生成的 SDK 应用
 
-`/comet-any` 仍可以生成兼容的 `comet/eval.yaml`，生成物直接传入 `comet eval` 即可；它不再是独立评估的
-前置依赖。`comet eval` 不负责发布，若你使用 `/comet-any` 的 Bundle 发布链路，评估结果还可以作为 publish
-readiness 的证据。
+`/comet-any` 编译并验证应用后，会让用户选择是否评估。选择评估后由 Eval 自动生成并冻结 2–4 个用例，执行所选 Agent 和模型，检查实际 SDK Run 与业务产物，并保存当前内容的报告。选择跳过则继续安装预览；跳过、失败和未完成都有独立状态，不会写成通过。
 
-## eval 结果如何进入 publish readiness
-
-`/comet-any` 或后端在记录 eval 结果后，会把它并入 publish readiness。用户需要知道的只有两点：
-
-1. `comet eval` 产出的结果会成为 `Publish readiness:` 的证据来源。
-2. 当前 hash 缺少 eval 证据时，`User next steps:` 必须先指向运行 `comet eval`，而不是继续发布。
-
-通常顺序是：
+也可以直接评估已有 SDK 应用：
 
 ```bash
-comet eval ./generated-skill/comet/eval.yaml --collect
-comet eval ./generated-skill/comet/eval.yaml --html
-comet creator next <name> --json
-comet publish review <name> --platform <reference-platform> --json
+comet eval ./application/application.json --project . --collect
+comet eval ./application/application.json --project . --agent codex --model <model>
 ```
 
-`comet creator next` 只输出当前推荐的一步用户命令；`comet publish review` 需要把 `Publish readiness:`、`User next steps:`、`Readiness:`、`Blockers:`、`Warnings:` 和 `Evidence:` 直接展示给用户。
+应用评估读取实际流程定义、固定 Skills 和执行模块，不只读取入口 `SKILL.md`。`--collect` 只预览，不生成用例或调用模型；应用评估不接受 `--quick` 或单任务替代。报告绑定当前应用内容、依赖、配置和用例集，列出失败和未覆盖的 SDK 步骤。重试复用原用例；Creator 修订后优先沿用原用例，而不是重新出题掩盖失败。
+
+Eval 不负责发布。后续使用 `comet application distribute` 分发，预览会显示当前内容的评估状态和报告。未评估或失败仍允许用户明确选择安装；报告改变或缺失时显示证据失效。仅在一个 Agent 上评估通过，不代表其他安装平台、真实 Hook 或外部系统已经验收。
+
+有外部副作用的 Skill 必须先提供固定的测试替身；没有隔离实现时报告保持未完成，不执行真实外部操作。超时或结果未知时，先核对原实验和容器，不能直接重复启动。
 
 ## 为什么先 `collect`
 
@@ -189,17 +182,9 @@ execution:
 
 如果报告显示 `Insufficient clean data` 或 `Inconclusive due to data quality`，优先重跑对应 task/treatment 或检查环境，不要把当前 verdict 当作最终质量结论。
 
-## `/comet-any` 如何使用 eval 结果
+## `/comet-any` 如何使用 Eval 结果
 
-从用户视角，eval 结束后把结果交回 `/comet-any` 继续推进，或运行 `comet creator next <name>` 看唯一推荐下一步即可。`/comet-any` 会把 eval 证据纳入 readiness：
-
-- 没有 eval 证据：不能 publish
-- eval 失败：不能 publish
-- eval 证据对应旧 hash：不能 publish
-- `.comet/skill-preferences.yaml` 已变化且处于 strict 模式：不能 publish，必须重新确认或重新生成组合方案
-- eval 通过且 hash 匹配：可以进入 review / publish 判断
-
-用户不需要手工编辑 Bundle 状态，也不应该手工把报告路径写进内部 JSON。`/comet-any` 会通过 Bundle 后端记录结构化证据。
+Creator 使用同一 SDK Run 继续推进。评估通过后进入安装预览；失败或未完成时提供 retry、revise 或明确 skip，跳过后仍保留实际失败状态。安装确认前重新核对当前包、用例和报告摘要。使用原 Run 运行 `comet creator next <name>`，不手工编辑 Runtime 状态或向内部 JSON 填入报告路径。
 
 ## 只有本地 Skill 目录时怎么评估
 
@@ -228,8 +213,7 @@ comet eval ./my-skill --quick --html
 generic-skill-smoke
 ```
 
-这只是早期冒烟，不等于完整评估。需要可复现的任务定义时，可以在 Skill 中加入可选的
-`comet/eval.yaml`；如果使用 `/comet-any`，它生成的 manifest 也可以直接复用。
+这只是早期冒烟，不等于完整评估。普通 Skill 可以使用可选的 `comet/eval.yaml` 声明可复现任务；`/comet-any` 生成的 SDK 应用则直接使用 `application.json` 作为评估目标。
 
 如果 `eval.yaml` 没有 `evaluation.tasks` 或 `recommendedTasks`，普通运行会对 Skill 做受限快照，自动生成 2–4 个确定性任务，并按快照、Agent、profile 和交互配置 hash 缓存到 `.comet/eval/generated/`。缓存 manifest 会保存生成元数据；`--collect` 只读取已有缓存，不会启动任务生成 Agent。需要跳过自动生成时显式使用 `--quick`。
 
@@ -255,7 +239,7 @@ evaluation:
 - 普通本地 Skill：直接传 Skill 目录，Eval 会自动发现可选 manifest
 - 只有 `SKILL.md`：直接传 `SKILL.md`
 - 有 `comet/eval.yaml`：可以传 Skill 目录自动发现，也可以直接传 manifest
-- `/comet-any` 生成物：目录和 manifest 两种 target 都兼容
+- `/comet-any` 的 SDK 应用：传入包内的 `application.json`
 
 `--quick` 只表示固定 smoke 任务，不会替代完整任务评估。
 
@@ -313,7 +297,7 @@ comet skill check --change ./changes/demo --scope completion
 
 1. 直接把自己的 Skill 交给 `comet eval`
 2. 先 `--collect`，再按需要运行 `--quick` 或 `--html`
-3. `/comet-any` 只是可选的 Skill 生产方式，eval 结果不是发布动作本身
+3. `/comet-any` 是可选的 SDK 应用创作入口；Eval 评估应用，分发仍由用户确认
 
 推荐命令：
 

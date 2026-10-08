@@ -878,6 +878,9 @@ class ExperimentLogger:
 
         metadata_path = self.base_dir / "metadata.json"
         _atomic_write_json(metadata_path, self.metadata)
+        from scaffold.python.application_eval import write_application_result
+
+        write_application_result(self)
 
         print(f"\nExperiment results saved to: {self.base_dir}")
         if written:

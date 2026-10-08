@@ -529,6 +529,11 @@ def test_task_treatment(task_name, treatment_name):
     skill_package_path = conftest._snapshot_dynamic_skill_package(
         fixtures.test_dir, skill_hints
     ) or skill_hints.get("path")
+    from scaffold.python.application_eval import application_eval_context, application_execution_prompt, install_application_for_case
+
+    if application_eval_context() is not None:
+        installed_file = install_application_for_case(fixtures.test_dir, skill_package_path, selected_agent)
+        prompt = application_execution_prompt(prompt, skill_package_path, installed_file)
 
     result = fixtures.run_claude(
         prompt,
@@ -656,6 +661,11 @@ def test_task_treatment(task_name, treatment_name):
     # These fields are local evidence as well; Langfuse applies its own bounded
     # capture policy before sending them remotely.
     events["task"] = task.name
+    if "application_coverage" in outputs:
+        events["application_coverage"] = outputs["application_coverage"]
+        events["application_executed_steps"] = outputs["application_executed_steps"]
+        events["application_choices"] = outputs["application_choices"]
+        events["application_recovery"] = outputs["application_recovery"]
     events["treatment"] = treatment_name
     events["prompt"] = prompt
     events["skill"] = skill_hints.get("name") or skill_hints.get("path")

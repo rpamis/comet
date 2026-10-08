@@ -28,6 +28,7 @@ def _generic_environment_dir() -> Path:
 
 
 def _inline_task(manifest: SkillEvalManifest, spec: ManifestTask) -> Task:
+    from scaffold.python.application_eval import application_environment
     assert spec.prompt is not None
     files = list(spec.expect.get("files", []))
     config = TaskConfig(
@@ -47,7 +48,7 @@ def _inline_task(manifest: SkillEvalManifest, spec: ManifestTask) -> Task:
         path=manifest.path.parent,
         config=config,
         instruction_template=spec.prompt,
-        _environment_dir=_generic_environment_dir(),
+        _environment_dir=application_environment(manifest.skill_path) or _generic_environment_dir(),
         workspace_dir=spec.workspace,
         manifest_expectations=spec.expect,
         manifest_path=manifest.path,
