@@ -180,7 +180,12 @@ export async function previewWorkflowApplicationEval(
   });
   const { id, version, base, runtimeVersion } = loaded.identity;
   const contentHash = applicationFilesHash(await readApplicationFiles(loaded.identity.packageRoot));
-  if (options.reuseTaskSet) await reusableTasks(options.projectRoot, options.reuseTaskSet);
+  const taskSet =
+    options.reuseTaskSet ??
+    (options.previousExperimentId
+      ? await recoverCollectedTaskSet(options.projectRoot, options.previousExperimentId)
+      : undefined);
+  if (taskSet) await reusableTasks(options.projectRoot, taskSet);
   const body = {
     application: { id, version, base, runtimeVersion, contentHash },
     goal: options.goal?.trim() || `运行 ${id} 的已声明流程并检查实际产物、审批和恢复行为`,
@@ -208,9 +213,296 @@ export async function previewWorkflowApplicationEval(
         (skill) =>
           `外部 Skill ${skill.id} 需要固定的测试替身；修订评估应用以使用隔离实现后再运行。`,
       ),
-    ...(options.reuseTaskSet ? { taskSet: options.reuseTaskSet } : {}),
+    ...(taskSet ? { taskSet } : {}),
   };
   return { ...body, confirmationHash: hashRuntimeValue(body) };
+}
+
+type CollectedCase = { task: string; treatment: string; rep: number };
+type CollectionMatrix = { schema: string; cases: unknown; matrix_hash: string };
+type CollectionTaskSetReceipt = {
+  schema: string;
+  experimentId: string;
+  confirmationHash: string;
+  snapshotHash: string;
+  taskSet: ApplicationEvalTaskSet;
+  matrixHash: string;
+  generationMetadataHash?: string | null;
+};
+type GeneratedTaskMetadata = {
+  schema: string;
+  generator_version: string;
+  task_schema_version: string;
+  skill_path: string;
+  skill_snapshot_hash: string;
+  agent: string;
+  model: string;
+  profile: string;
+  interaction: unknown;
+  generation_hash: string;
+  manifest_hash: string;
+};
+function isCollectedCase(value: unknown): value is CollectedCase {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.task === 'string' &&
+    typeof item.treatment === 'string' &&
+    typeof item.rep === 'number' &&
+    Number.isSafeInteger(item.rep) &&
+    item.rep >= 1
+  );
+}
+
+async function readOptionalJson<T>(file: string): Promise<T | null> {
+  const bytes = await fs.readFile(file, 'utf8').catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+    return null;
+  });
+  if (bytes === null) return null;
+  const value: unknown = JSON.parse(bytes);
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('评估记录必须是 JSON 对象');
+  return value as T;
+}
+
+/** 用例在收集时冻结，恢复其身份不依赖结果报告完成。 */
+async function recoverCollectedTaskSet(
+  projectRoot: string,
+  experimentId: string,
+  prepared?: PreparedApplicationEval,
+): Promise<ApplicationEvalTaskSet | undefined> {
+  if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/u.test(experimentId)) throw new Error('原评估身份无效');
+  const runRoot = await artifactPath(projectRoot, 'runs', experimentId);
+  const previous = prepared
+    ? null
+    : await readOptionalJson<ApplicationEvalResult>(path.join(runRoot, 'application-result.json'));
+  if (
+    !prepared &&
+    (!previous ||
+      previous.schema !== 'comet.workflow.application.eval.result.v1' ||
+      previous.experimentId !== experimentId)
+  )
+    throw new Error('原评估没有可核对的结果与身份');
+  const confirmationHash = prepared?.preview.confirmationHash ?? previous?.confirmationHash;
+  const snapshotHash = prepared?.snapshotHash ?? previous?.snapshotHash;
+  if (
+    typeof confirmationHash !== 'string' ||
+    typeof snapshotHash !== 'string' ||
+    !/^[a-f0-9]{64}$/u.test(confirmationHash) ||
+    !/^[a-f0-9]{64}$/u.test(snapshotHash)
+  )
+    throw new Error('原评估快照摘要无效');
+  const sourceRoot = await artifactPath(
+    projectRoot,
+    'cache',
+    `application-${confirmationHash}`,
+    'skill',
+  );
+  const snapshot = await readOptionalJson<{ confirmationHash: string; snapshotHash: string }>(
+    path.join(path.dirname(sourceRoot), 'snapshot.json'),
+  );
+  const preview = await readOptionalJson<ApplicationEvalPreview>(
+    path.join(sourceRoot, 'references/workflows.json'),
+  );
+  if (
+    !snapshot ||
+    !preview ||
+    snapshot.confirmationHash !== confirmationHash ||
+    snapshot.snapshotHash !== snapshotHash ||
+    applicationFilesHash(await readApplicationFiles(sourceRoot)) !== snapshotHash ||
+    preview.confirmationHash !== confirmationHash ||
+    hashRuntimeValue(preview.application) !==
+      hashRuntimeValue(prepared?.preview.application ?? previous?.application) ||
+    hashRuntimeValue(preview.settings) !==
+      hashRuntimeValue(prepared?.preview.settings ?? previous?.settings)
+  )
+    throw new Error('原用例输入快照发生变化；保留现场后修复');
+  if (previous?.taskSet) {
+    await reusableTasks(projectRoot, previous.taskSet);
+    return previous.taskSet;
+  }
+  const matrix = await readOptionalJson<CollectionMatrix>(
+    await artifactPath(projectRoot, 'runs', experimentId, 'expected-case-matrix.json'),
+  );
+  const receipt = await readOptionalJson<CollectionTaskSetReceipt>(
+    await artifactPath(projectRoot, 'runs', experimentId, 'application-task-set.json'),
+  );
+  if (!matrix && !receipt) {
+    if (preview.taskSet) await reusableTasks(projectRoot, preview.taskSet);
+    return preview.taskSet;
+  }
+  const cases = matrix?.cases;
+  if (
+    !matrix ||
+    matrix.schema !== 'comet.eval.expected-case-matrix.v1' ||
+    !Array.isArray(cases) ||
+    !cases.every(isCollectedCase) ||
+    matrix.matrix_hash !== `sha256:${hashRuntimeValue({ schema: matrix.schema, cases })}`
+  )
+    throw new Error('原评估用例矩阵无效或发生变化');
+  const names = [...new Set(cases.map((item) => item.task))].sort();
+  if (names.length < 2 || names.length > 4 || names.some((name) => typeof name !== 'string'))
+    throw new Error('原评估没有完整的固定用例矩阵');
+  const matchesMatrix = (tasks: readonly unknown[]) => {
+    const taskNames = tasks.map((task) => {
+      if (
+        !task ||
+        typeof task !== 'object' ||
+        Array.isArray(task) ||
+        typeof (task as Record<string, unknown>).name !== 'string'
+      )
+        throw new Error('固定用例缺少有效名称');
+      return (task as { name: string }).name;
+    });
+    return hashRuntimeValue(taskNames.sort()) === hashRuntimeValue(names);
+  };
+  if (receipt) {
+    if (
+      receipt.schema !== 'comet.workflow.application.eval.task-set.v1' ||
+      receipt.experimentId !== experimentId ||
+      receipt.confirmationHash !== confirmationHash ||
+      receipt.snapshotHash !== snapshotHash ||
+      receipt.matrixHash !== matrix.matrix_hash
+    )
+      throw new Error('固定用例收据与原评估不匹配');
+    const taskSet = receipt.taskSet as ApplicationEvalTaskSet;
+    if (
+      preview.taskSet
+        ? hashRuntimeValue(taskSet) !== hashRuntimeValue(preview.taskSet)
+        : taskSet.sourceRoot !== sourceRoot || taskSet.sourceSnapshotHash !== snapshotHash
+    )
+      throw new Error('固定用例收据绑定了错误的输入快照');
+    const tasks = await reusableTasks(projectRoot, taskSet);
+    if (!matchesMatrix(tasks)) throw new Error('固定用例与原评估矩阵不匹配');
+    if (receipt.generationMetadataHash) {
+      const manifestRoot = path.dirname(await fs.realpath(taskSet.manifestPath));
+      const metadataFile = path.join(manifestRoot, 'generation.json');
+      if (
+        (await fs.lstat(metadataFile)).isSymbolicLink() ||
+        `sha256:${createHash('sha256')
+          .update(await fs.readFile(metadataFile))
+          .digest('hex')}` !== receipt.generationMetadataHash
+      )
+        throw new Error('固定用例生成记录发生变化');
+      const metadata = await readOptionalJson<GeneratedTaskMetadata>(metadataFile);
+      if (
+        !metadata ||
+        metadata.manifest_hash !== taskSet.manifestHash ||
+        (taskSet.generationHash && metadata.generation_hash !== taskSet.generationHash)
+      )
+        throw new Error('固定用例收据与生成记录的身份不匹配');
+    }
+    return taskSet;
+  }
+  if (preview.taskSet) {
+    const tasks = await reusableTasks(projectRoot, preview.taskSet);
+    if (!matchesMatrix(tasks)) throw new Error('已绑定的固定用例与原评估矩阵不匹配');
+    return preview.taskSet;
+  }
+  // 进程可能在收据落盘前中断；通过完整输入、生成记录与矩阵的唯一联结恢复。
+  // 所有记录仍须符合当前 Schema，不按任务名称或文件时间猜测用例来源。
+  const sourceFiles = await readApplicationFiles(sourceRoot);
+  const skillSnapshotHash = `sha256:${hashRuntimeValue(
+    Object.entries(sourceFiles)
+      .sort(([a], [b]) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
+      .map(([ref, bytes]) => ({
+        path: ref,
+        hash: `sha256:${createHash('sha256').update(Buffer.from(bytes, 'base64')).digest('hex')}`,
+      })),
+  )}`;
+  const original = parse(Buffer.from(sourceFiles['comet/eval.yaml'], 'base64').toString('utf8'));
+  const interaction = original.interaction ?? {};
+  const expectedInteraction = {
+    mode: interaction.mode ?? 'none',
+    max_turns: interaction.maxTurns ?? interaction.max_turns ?? 12,
+    simulator_prompt: interaction.simulatorPrompt ?? interaction.simulator_prompt ?? null,
+    decision_patterns: interaction.decisionPatterns ?? interaction.decision_patterns ?? [],
+    decision_reply: interaction.decisionReply ?? interaction.decision_reply ?? null,
+    decision_replies: interaction.decisionReplies ?? interaction.decision_replies ?? [],
+    continue_prompt:
+      interaction.continuePrompt ??
+      interaction.continue_prompt ??
+      'Please continue with the next phase of the workflow.',
+    fresh_resume_marker: interaction.freshResumeMarker ?? interaction.fresh_resume_marker ?? null,
+  };
+  const generatedRoot = await artifactPath(projectRoot, 'generated');
+  const candidates: ApplicationEvalTaskSet[] = [];
+  for (const skill of await fs.readdir(generatedRoot, { withFileTypes: true })) {
+    if (skill.name.startsWith('.')) continue;
+    if (skill.isSymbolicLink()) throw new Error('用例生成目录不能包含链接');
+    if (!skill.isDirectory()) continue;
+    for (const generation of await fs.readdir(path.join(generatedRoot, skill.name), {
+      withFileTypes: true,
+    })) {
+      if (generation.name.startsWith('.')) continue;
+      if (generation.isSymbolicLink()) throw new Error('用例生成目录不能包含链接');
+      if (!generation.isDirectory()) continue;
+      const metadataFile = await artifactPath(
+        projectRoot,
+        'generated',
+        skill.name,
+        generation.name,
+        'generation.json',
+      );
+      const metadata = await readOptionalJson<GeneratedTaskMetadata>(metadataFile);
+      if (
+        !metadata ||
+        typeof metadata.skill_path !== 'string' ||
+        path.resolve(metadata.skill_path) !== sourceRoot
+      )
+        continue;
+      if (
+        metadata.agent !== preview.settings.agent ||
+        (preview.settings.model && metadata.model !== preview.settings.model) ||
+        metadata.profile !== (original.skill.profile ?? 'generic') ||
+        hashRuntimeValue(metadata.interaction) !== hashRuntimeValue(expectedInteraction)
+      )
+        continue;
+      if (
+        metadata.schema !== 'comet.eval.generation.v1' ||
+        metadata.generator_version !== 'comet-auto-task-generator.v1' ||
+        metadata.task_schema_version !== 'comet.eval/v1alpha1' ||
+        metadata.skill_snapshot_hash !== skillSnapshotHash ||
+        !/^[a-f0-9]{64}$/u.test(metadata.generation_hash) ||
+        metadata.generation_hash !== generation.name
+      )
+        throw new Error('原固定用例生成快照无效或发生漂移');
+      const manifestPath = await artifactPath(
+        projectRoot,
+        'generated',
+        skill.name,
+        generation.name,
+        'eval.yaml',
+      );
+      const manifestBytes = await fs.readFile(manifestPath);
+      const taskSet = {
+        manifestPath,
+        manifestHash: metadata.manifest_hash,
+        generationHash: metadata.generation_hash,
+        sourceRoot,
+        sourceSnapshotHash: snapshotHash,
+      };
+      if (
+        `sha256:${createHash('sha256').update(manifestBytes).digest('hex')}` !==
+        taskSet.manifestHash
+      )
+        throw new Error('原固定用例发生变化；不能恢复漂移的缓存');
+      const manifest = parse(manifestBytes.toString('utf8'));
+      if (
+        manifest.apiVersion !== 'comet.eval/v1alpha1' ||
+        manifest.kind !== 'SkillEvalManifest' ||
+        manifest.metadata.generationHash !== taskSet.generationHash ||
+        path.resolve(manifest.skill.source) !== sourceRoot
+      )
+        throw new Error('原固定用例身份或输入根不匹配');
+      const tasks = await reusableTasks(projectRoot, taskSet);
+      if (matchesMatrix(tasks)) candidates.push(taskSet);
+    }
+  }
+  if (candidates.length !== 1)
+    throw new Error('原固定用例无法唯一恢复；没有匹配或存在歧义，保留现场后核对');
+  return candidates[0];
 }
 
 async function artifactPath(projectRoot: string, ...parts: string[]) {
@@ -296,16 +588,16 @@ export async function prepareWorkflowApplicationEval(
   );
   await fs.mkdir(path.join(skillRoot, 'comet'));
   const settings = preview.settings;
-  const reused = options.reuseTaskSet
-    ? structuredClone(await reusableTasks(options.projectRoot, options.reuseTaskSet))
+  const reused = preview.taskSet
+    ? structuredClone(await reusableTasks(options.projectRoot, preview.taskSet))
     : null;
   if (reused) {
     for (let index = 0; index < reused.length; index++) {
       const task = reused[index];
       if (!task.workspace) continue;
-      if (!options.reuseTaskSet?.sourceRoot || typeof task.workspace !== 'string')
+      if (!preview.taskSet?.sourceRoot || typeof task.workspace !== 'string')
         throw new Error('复用工作区用例需要原固定输入快照');
-      const originalRoot = await fs.realpath(options.reuseTaskSet.sourceRoot);
+      const originalRoot = await fs.realpath(preview.taskSet.sourceRoot);
       const fixture = await fs.realpath(path.resolve(originalRoot, task.workspace));
       if (!isPathWithin(originalRoot, fixture)) throw new Error('原用例工作区越过固定输入快照');
       const resources = await readApplicationFiles(fixture);
@@ -498,6 +790,17 @@ export async function runWorkflowApplicationEval(
         );
       } else if (!reported) {
         const generation = await generationFailure(options.projectRoot, prepared);
+        let taskSet: ApplicationEvalTaskSet | undefined;
+        let recoveryFailure: string | undefined;
+        try {
+          taskSet = await recoverCollectedTaskSet(
+            options.projectRoot,
+            prepared.experimentId,
+            prepared,
+          );
+        } catch (error) {
+          recoveryFailure = safeFailureText(String(error));
+        }
         const incomplete: ApplicationEvalResult = {
           schema: 'comet.workflow.application.eval.result.v1',
           experimentId: prepared.experimentId,
@@ -514,7 +817,9 @@ export async function runWorkflowApplicationEval(
           failures: prepared.preview.blockedReasons.length
             ? prepared.preview.blockedReasons
             : [generation?.reason ?? 'Eval 未完成；检查模型配置、环境和原运行报告后重试。'],
+          ...(taskSet ? { taskSet } : {}),
         };
+        if (recoveryFailure) incomplete.failures.push(`固定用例恢复阻塞：${recoveryFailure}`);
         if (!generation)
           await fs
             .writeFile(

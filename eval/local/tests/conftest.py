@@ -1073,6 +1073,33 @@ class ExperimentPlugin:
                 }
             elif application["preview"].get("taskSet"):
                 self.logger.metadata["application_task_set"] = application["preview"]["taskSet"]
+            task_set = self.logger.metadata.get("application_task_set")
+            if task_set:
+                if self.logger.base_dir.resolve() != Path(application["resultFile"]).resolve().parent:
+                    raise RuntimeError("TaskSet receipt is outside the selected experiment")
+                generation_metadata = Path(task_set["manifestPath"]).parent / "generation.json"
+                receipt = {
+                    "schema": "comet.workflow.application.eval.task-set.v1",
+                    "experimentId": application["experimentId"],
+                    "confirmationHash": application["preview"]["confirmationHash"],
+                    "snapshotHash": application["snapshotHash"],
+                    "taskSet": task_set,
+                    "matrixHash": payload["matrix_hash"],
+                    "generationMetadataHash": (
+                        "sha256:" + hashlib.sha256(generation_metadata.read_bytes()).hexdigest()
+                        if generation_metadata.is_file() else None
+                    ),
+                }
+                from scaffold.python.logging import _atomic_write_json
+                receipt_path = self.logger.base_dir / "application-task-set.json"
+                with file_lock(self.logger.base_dir / ".application-task-set.lock"):
+                    if receipt_path.is_symlink():
+                        raise RuntimeError("TaskSet receipt cannot be a linked file")
+                    if receipt_path.exists():
+                        if json.loads(receipt_path.read_text(encoding="utf-8")) != receipt:
+                            raise RuntimeError("TaskSet receipt changed after collection")
+                    else:
+                        _atomic_write_json(receipt_path, receipt)
 
     def pytest_sessionfinish(self, session, exitstatus):
         """Generate and save summary at session end."""

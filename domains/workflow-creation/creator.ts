@@ -261,6 +261,7 @@ function evaluationOptions(root: string, run: Readonly<WorkflowRun>) {
     goal: String(object(run.input).goal),
     settings,
     ...(previous?.taskSet ? { reuseTaskSet: previous.taskSet } : {}),
+    ...(previous?.status === 'incomplete' ? { previousExperimentId: previous.experimentId } : {}),
   };
 }
 

@@ -49,6 +49,39 @@ def test_application_generation_keeps_one_installed_candidate_and_one_project_ro
         assert contract in guidance
 
 
+def test_collection_task_set_receipt_is_durable_before_results_or_finalize(tmp_path, monkeypatch):
+    import conftest
+    skill, run_root = _context(tmp_path, monkeypatch)
+    generated = tmp_path / "generated"
+    generated.mkdir()
+    manifest = generated / "eval.yaml"
+    manifest.write_text("frozen case bytes", encoding="utf-8")
+    metadata = generated / "generation.json"
+    metadata.write_text('{"manifest_hash":"fixed"}', encoding="utf-8")
+    config = SimpleNamespace(option=SimpleNamespace(numprocesses=0), _comet_generated_manifest=SimpleNamespace(manifest_path=manifest, metadata_path=metadata, generation_hash="a" * 64))
+    plugin = conftest.ExperimentPlugin(config)
+    plugin.logger = SimpleNamespace(base_dir=run_root, metadata={})
+    items = [SimpleNamespace(callspec=SimpleNamespace(params={"task_name": name, "treatment_name": "DYNAMIC_SKILL"}), get_closest_marker=lambda name: SimpleNamespace(kwargs={"repetition": 1}) if name == "eval_case" else None) for name in ("normal", "rejected")]
+    plugin.pytest_collection_finish(SimpleNamespace(items=items))
+    receipt_path = run_root / "application-task-set.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["schema"] == "comet.workflow.application.eval.task-set.v1"
+    assert receipt["experimentId"] == "eval-one"
+    assert receipt["confirmationHash"] == "fixed"
+    assert receipt["snapshotHash"] == "snapshot"
+    assert receipt["taskSet"]["sourceRoot"] == str(skill)
+    assert receipt["taskSet"]["manifestPath"] == str(manifest)
+    assert receipt["matrixHash"] == plugin.logger.metadata["expected_case_matrix"]["matrix_hash"]
+    assert not (run_root / "application-result.json").exists()
+    original = receipt_path.read_bytes()
+    plugin.pytest_collection_finish(SimpleNamespace(items=items))
+    assert receipt_path.read_bytes() == original
+    manifest.write_text("changed frozen cases", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="TaskSet|task set|用例"):
+        plugin.pytest_collection_finish(SimpleNamespace(items=items))
+    assert receipt_path.read_bytes() == original
+
+
 def test_generator_reads_workflow_and_actual_modules_and_reuses_the_same_cases(tmp_path, monkeypatch):
     skill, _ = _context(tmp_path, monkeypatch)
     prompts = []
