@@ -609,6 +609,39 @@ describe('Agent Learning Coordinator', () => {
     expect(reflect).toHaveBeenCalledTimes(2);
   });
 
+  it('rechecks a review submitted before its waiting state was saved', async () => {
+    const store = new MemoryAgentExperienceJournalStore();
+    const journal = new AgentExperienceJournal(store);
+    const review = { kind: 'host-review' as const, id: 'race-review', workspaceId: 'workspace-1' };
+    let submitted = false;
+    let coordinator: AgentLearningCoordinator;
+    const reflect = vi.fn<AgentLearningAdapter['reflect']>(async () => {
+      if (submitted) return [];
+      submitted = true;
+      expect(await coordinator.resumeReview(review)).toBe(0);
+      return { deltas: [], deferred: true, waitFor: [review] };
+    });
+    coordinator = new AgentLearningCoordinator({
+      journal,
+      learners: [
+        {
+          owner: 'comet.project-knowledge',
+          supports: () => true,
+          reflect,
+          consolidate: async () => {},
+        },
+      ],
+      isWaitingResolved: async () => submitted,
+      schedule: async (task) => task(),
+    });
+    await coordinator.capture(event({ eventId: 'submitted-before-wait' }));
+    expect((await store.read()).reflections['submitted-before-wait']).toMatchObject({
+      status: 'processed',
+      attempts: 0,
+    });
+    expect(reflect).toHaveBeenCalledTimes(2);
+  });
+
   it('backs off repeated reflection failures and keeps exhausted work for explicit retry', async () => {
     const store = new MemoryAgentExperienceJournalStore();
     const journal = new AgentExperienceJournal(store);

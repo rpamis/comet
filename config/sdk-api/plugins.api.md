@@ -547,6 +547,8 @@ export interface PluginRuntimeOptions {
     // (undocumented)
     readonly descriptors: readonly PluginDescriptor[];
     // (undocumented)
+    readonly isLearningWaitResolved?: (wait: AgentLearningWait) => Promise<boolean>;
+    // (undocumented)
     readonly journal?: AgentExperienceJournal;
     readonly journals?: {
         readonly user: AgentExperienceJournal;

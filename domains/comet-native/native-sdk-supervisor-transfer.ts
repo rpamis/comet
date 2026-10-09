@@ -64,6 +64,7 @@ const MAX_BUFFER = 100 * 1024 * 1024;
 interface TransferFile {
   path: string;
   sha256: string;
+  executable?: true;
 }
 
 interface TransferWorkspace {
@@ -275,6 +276,9 @@ async function copyTree(source: string, target: string, prefix = ''): Promise<Tr
 }
 
 async function verifyTree(root: string, files: TransferFile[]): Promise<void> {
+  if (files.some((file) => file.executable !== undefined && file.executable !== true)) {
+    throw new Error('Native Supervisor transfer file mode is invalid');
+  }
   const found: TransferFile[] = [];
   async function walk(directory: string, prefix = ''): Promise<void> {
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
@@ -287,7 +291,9 @@ async function verifyTree(root: string, files: TransferFile[]): Promise<void> {
   }
   await walk(root);
   found.sort((left, right) => left.path.localeCompare(right.path));
-  if (JSON.stringify(found) !== JSON.stringify(files)) {
+  if (
+    JSON.stringify(found) !== JSON.stringify(files.map(({ path, sha256 }) => ({ path, sha256 })))
+  ) {
     throw new Error('Native Supervisor transfer files differ from their manifest');
   }
 }
@@ -456,14 +462,19 @@ export async function exportNativeSupervisorTransfer(options: {
       for (const ref of tracked) {
         safeRelative(ref);
         const source = path.join(workspace.sourcePath, ref);
-        if (!(await fs.lstat(source)).isFile()) {
+        const sourceStat = await fs.lstat(source);
+        if (!sourceStat.isFile()) {
           throw new Error(`Native Supervisor transfer cannot copy a tracked symlink: ${ref}`);
         }
         const bytes = await fs.readFile(source);
         const destination = path.join(workspaceDir, 'tracked', ref);
         await fs.mkdir(path.dirname(destination), { recursive: true });
         await fs.writeFile(destination, bytes, { flag: 'wx' });
-        workspace.tracked.push({ path: ref, sha256: sha256(bytes) });
+        workspace.tracked.push({
+          path: ref,
+          sha256: sha256(bytes),
+          ...(sourceStat.mode & 0o111 ? { executable: true as const } : {}),
+        });
       }
       workspace.tracked.sort((left, right) => left.path.localeCompare(right.path));
       const untracked = git(workspace.sourcePath, [
@@ -478,14 +489,19 @@ export async function exportNativeSupervisorTransfer(options: {
       for (const ref of untracked) {
         safeRelative(ref);
         const source = path.join(workspace.sourcePath, ref);
-        if (!(await fs.lstat(source)).isFile()) {
+        const sourceStat = await fs.lstat(source);
+        if (!sourceStat.isFile()) {
           throw new Error(`Native Supervisor transfer cannot copy an untracked symlink: ${ref}`);
         }
         const bytes = await fs.readFile(source);
         const destination = path.join(workspaceDir, 'untracked', ref);
         await fs.mkdir(path.dirname(destination), { recursive: true });
         await fs.writeFile(destination, bytes, { flag: 'wx' });
-        workspace.untracked.push({ path: ref, sha256: sha256(bytes) });
+        workspace.untracked.push({
+          path: ref,
+          sha256: sha256(bytes),
+          ...(sourceStat.mode & 0o111 ? { executable: true as const } : {}),
+        });
       }
       workspace.untracked.sort((left, right) => left.path.localeCompare(right.path));
     }
@@ -823,11 +839,30 @@ export async function importNativeSupervisorTransfer(options: {
     }
     for (const file of workspace.tracked) {
       const destination = path.join(target, safeRelative(file.path));
-      await atomicWriteContainedBytes(
-        destination,
-        await fs.readFile(path.join(workspaceDir, 'tracked', file.path)),
-        { containedRoot: target },
-      );
+      const bytes = await fs.readFile(path.join(workspaceDir, 'tracked', file.path));
+      const existingStat = await fs.lstat(destination).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (existingStat && (!existingStat.isFile() || existingStat.isSymbolicLink())) {
+        throw new Error(`Native Supervisor transfer tracked path is not a file: ${destination}`);
+      }
+      const existing = await fs.readFile(destination).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      const existingMode = existingStat?.mode;
+      if (existing?.equals(bytes)) {
+        if (file.executable && existingMode !== undefined && !(existingMode & 0o111))
+          await fs.chmod(destination, (existingMode & 0o777) | 0o111);
+        continue;
+      }
+      await atomicWriteContainedBytes(destination, bytes, { containedRoot: target });
+      if (existingMode !== undefined || file.executable)
+        await fs.chmod(
+          destination,
+          ((existingMode ?? 0o644) & 0o777) | (file.executable ? 0o111 : 0),
+        );
     }
     for (const file of workspace.untracked) {
       const destination = path.join(target, safeRelative(file.path));
@@ -850,6 +885,7 @@ export async function importNativeSupervisorTransfer(options: {
         await fs.readFile(path.join(workspaceDir, 'untracked', file.path)),
         { containedRoot: target },
       );
+      if (file.executable) await fs.chmod(destination, 0o755);
     }
     worktrees.push(target);
   }

@@ -127,6 +127,7 @@ export interface PluginRuntimeOptions {
     readonly project: AgentExperienceJournal;
   };
   readonly scheduleLearning?: (task: () => Promise<void>) => void | Promise<void>;
+  readonly isLearningWaitResolved?: (wait: AgentLearningWait) => Promise<boolean>;
   /** Skip durable reflection replay while collecting optional Hook context. */
   readonly replayPendingLearningOnContext?: boolean;
   readonly now?: () => Date;
@@ -180,6 +181,7 @@ export class PluginRuntime {
         // Capture is durable before scheduling. Hosts may provide a scheduler, while
         // short-lived CLI processes return immediately and replay unfinished work later.
         schedule: options.scheduleLearning ?? ((task) => void task()),
+        isWaitingResolved: options.isLearningWaitResolved,
         onDiagnostic: (message) => {
           const pluginId = message.split(' reflection', 1)[0] || 'comet.agent-learning';
           this.recordExecutionFailure(pluginId, 'event', new Error(message));

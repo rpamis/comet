@@ -60,6 +60,10 @@ test('durably hands bounded evidence to the host and accepts an idempotent no-le
       { id: pending[0].id, actions: [] },
       { id: second.id, actions: [] },
     ]);
+    expect(await queue.isSubmitted(queue.reviewDependency(pending[0].id))).toBe(true);
+    expect(
+      await queue.isSubmitted({ ...queue.reviewDependency(pending[0].id), workspaceId: 'other' }),
+    ).toBe(false);
     await reopened.submit(pending[0].id, []);
     await expect(queue.review(packet)).resolves.toEqual([]);
     await expect(queue.pending()).resolves.toEqual([]);

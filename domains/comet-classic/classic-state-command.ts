@@ -2361,7 +2361,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         required(rest, 2, 'Usage: comet state init <change-name> <workflow>');
         const initOptions = rest.slice(2);
         let isolation: string | null = null;
-        let runtimeFormat: 'compat' | 'sdk' = 'sdk';
+        let runtimeFormat: 'compat' | 'sdk' | null = null;
         const seen = new Set<string>();
         if (initOptions.length % 2 !== 0) {
           fail(
@@ -2388,6 +2388,12 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             runtimeFormat = value as 'compat' | 'sdk';
           }
         }
+        const gitWorkTree = isGitWorkTree(classicCommandProjectRoot());
+        runtimeFormat ??= gitWorkTree ? 'sdk' : 'compat';
+        if (runtimeFormat === 'sdk' && !gitWorkTree)
+          fail(
+            'ERROR: Classic SDK Archive requires a Git coordination root; use --runtime compat for a non-Git root',
+          );
         await init(output, rest[0], rest[1], isolation, runtimeFormat);
         initializedSdk = runtimeFormat === 'sdk';
       } else if (subcommand === 'restore') {

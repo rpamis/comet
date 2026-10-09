@@ -68,10 +68,10 @@ describe('Classic public argument safety', () => {
     );
   });
 
-  it('explains the SDK default and explicit legacy option in Classic state help', async () => {
+  it('explains the Git and non-Git defaults in Classic state help', async () => {
     const result = await runClassicCli(['state', '--help'], {}, options());
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('defaults to sdk');
+    expect(result.stdout).toContain('defaults to sdk in Git roots and compat in non-Git roots');
     expect(result.stdout).toContain('--runtime <compat|sdk>');
   });
 
@@ -190,6 +190,40 @@ describe('Classic public argument safety', () => {
       ).toMatchObject({ format: 'sdk', application: `classic-${profile}`, runId: name });
     },
   );
+
+  it('defaults a non-Git coordination root to compatible document archiving', async () => {
+    const coordinator = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-nongit-classic-'));
+    try {
+      await fs.mkdir(path.join(coordinator, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(coordinator, '.comet/config.yaml'),
+        'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n',
+      );
+      await fs.mkdir(path.join(coordinator, 'openspec/changes'), { recursive: true });
+      const localOptions = { json: false, invocationCwd: coordinator, projectRoot: coordinator };
+      const initialized = await classicStateCommand(['init', 'documents', 'full'], localOptions);
+      expect(initialized.exitCode, initialized.stderr).toBe(0);
+      expect(
+        JSON.parse(
+          await fs.readFile(
+            path.join(coordinator, '.comet/runtime/change-owners/classic/documents.json'),
+            'utf8',
+          ),
+        ),
+      ).toMatchObject({ format: 'compat' });
+      const explicitSdk = await classicStateCommand(
+        ['init', 'unsupported-sdk', 'full', '--runtime', 'sdk'],
+        localOptions,
+      );
+      expect(explicitSdk.exitCode).not.toBe(0);
+      expect(explicitSdk.stderr).toContain('non-Git');
+      await expect(
+        fs.access(path.join(coordinator, 'openspec/changes/unsupported-sdk/.comet.yaml')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await fs.rm(coordinator, { recursive: true, force: true });
+    }
+  });
 
   it('returns the SDK Run from Classic state init --json', async () => {
     const result = await classicStateCommand(['init', 'sdk-json', 'full', '--runtime', 'sdk'], {

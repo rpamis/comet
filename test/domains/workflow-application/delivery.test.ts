@@ -32,6 +32,43 @@ afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 
+it('completes a partially copied host Skill only with its sealed install intent', async () => {
+  const projectRoot = path.join(root, 'partial-host-consumer');
+  await fs.mkdir(projectRoot);
+  const options = {
+    file: source.file,
+    projectRoot,
+    scope: 'project' as const,
+    platforms: ['codex'],
+  };
+  const preview = await previewWorkflowApplicationInstall(options);
+  const pending = path.join(preview.target, preview.id, 'pending-install.json');
+  await fs.mkdir(path.dirname(pending), { recursive: true });
+  await fs.writeFile(
+    pending,
+    JSON.stringify({ schema: 'comet.workflow.application.install.intent.v1', preview }),
+  );
+  const dependency = preview.hostSkills.find((entry) => entry.name === 'writer')!;
+  await fs.mkdir(dependency.root, { recursive: true });
+  const originalSkill = await fs.readFile(path.join(source.packageRoot, 'skills/writer/SKILL.md'));
+  await fs.writeFile(path.join(dependency.root, 'SKILL.md'), originalSkill);
+  await fs.writeFile(path.join(dependency.root, 'SKILL.md'), '# Different owner\n');
+  await expect(
+    installWorkflowApplication({ ...options, confirmationHash: preview.confirmationHash }),
+  ).rejects.toThrow('同名内容冲突');
+  expect(await fs.readFile(path.join(dependency.root, 'SKILL.md'), 'utf8')).toBe(
+    '# Different owner\n',
+  );
+  await fs.writeFile(path.join(dependency.root, 'SKILL.md'), originalSkill);
+  const resumed = await installWorkflowApplication({
+    ...options,
+    confirmationHash: preview.confirmationHash,
+  });
+  expect(resumed.contentHash).toBe(preview.contentHash);
+  await expect(fs.readFile(path.join(dependency.root, 'scripts/run.mjs'))).resolves.toBeDefined();
+  await expect(fs.stat(pending)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
 it.each(['project', 'user'] as const)(
   'distributes one immutable application to every registered platform in %s scope',
   async (scope) => {

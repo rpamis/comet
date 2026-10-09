@@ -15,7 +15,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native Supervisor transfer**: Export and import an in-progress child task into another checkout, including its temporary branches and uncommitted work, so work can continue without losing partial implementation.
 - **Eval execution budget**: Set a per-case Agent timeout for local benchmark runs without changing the task definition.
 - **Native brief directory structure**: New and reconfirmed Native changes record created, modified, deleted, and deliberately excluded modules and key files under Scope. Existing changes retain their earlier document rules and confirmed progress.
-- **Classic document archive**: Archive specs and change documents from a non-Git coordination root with independent child repositories, using an explicit local document delivery choice and a verified file-digest receipt (#468).
+- **Classic document archive**: New Classic changes in a non-Git coordination root use the compatible Runtime so specs and change documents can be archived with an explicit document-only choice and a verified file-digest receipt; independent child repositories are delivered separately (#468).
 
 ### Changed
 

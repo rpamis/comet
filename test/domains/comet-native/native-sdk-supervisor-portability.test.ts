@@ -191,7 +191,11 @@ it('transfers an uncommitted Child Builder to a new checkout without reporting i
   });
   const childRoot = path.join(root, '.worktrees', 'portable-child-api');
   await fs.writeFile(path.join(childRoot, 'committed.txt'), 'committed API\n');
-  execFileSync('git', ['add', 'committed.txt'], { cwd: childRoot, stdio: 'ignore' });
+  if (process.platform !== 'win32') {
+    await fs.writeFile(path.join(childRoot, 'run.sh'), '#!/bin/sh\necho original\n');
+    await fs.chmod(path.join(childRoot, 'run.sh'), 0o755);
+  }
+  execFileSync('git', ['add', '.'], { cwd: childRoot, stdio: 'ignore' });
   execFileSync(
     'git',
     [
@@ -207,6 +211,11 @@ it('transfers an uncommitted Child Builder to a new checkout without reporting i
   );
   await fs.writeFile(path.join(childRoot, 'committed.txt'), 'committed API with partial edit\n');
   await fs.writeFile(path.join(childRoot, 'api.txt'), 'half-written API\n');
+  if (process.platform !== 'win32') {
+    await fs.writeFile(path.join(childRoot, 'run.sh'), '#!/bin/sh\necho changed\n');
+    await fs.writeFile(path.join(childRoot, 'new-run.sh'), '#!/bin/sh\necho new\n');
+    await fs.chmod(path.join(childRoot, 'new-run.sh'), 0o755);
+  }
 
   const transfer = nativeDomain as Record<string, unknown>;
   expect(transfer.exportNativeSupervisorTransfer).toBeTypeOf('function');
@@ -243,6 +252,10 @@ it('transfers an uncommitted Child Builder to a new checkout without reporting i
   expect(await fs.readFile(path.join(restoredChild, 'committed.txt'), 'utf8')).toBe(
     'committed API with partial edit\n',
   );
+  if (process.platform !== 'win32') {
+    expect((await fs.stat(path.join(restoredChild, 'run.sh'))).mode & 0o111).not.toBe(0);
+    expect((await fs.stat(path.join(restoredChild, 'new-run.sh'))).mode & 0o111).not.toBe(0);
+  }
   expect(
     execFileSync('git', ['log', '-1', '--format=%s'], {
       cwd: restoredChild,

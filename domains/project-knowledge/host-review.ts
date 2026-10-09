@@ -80,6 +80,11 @@ export class ProjectKnowledgeHostReview implements ProjectKnowledgeSemanticRevie
   public reviewDependency(id: string): AgentLearningWait {
     return { kind: 'host-review', id, workspaceId: this.workspaceId };
   }
+
+  public async isSubmitted(wait: AgentLearningWait): Promise<boolean> {
+    if (wait.kind !== 'host-review' || wait.workspaceId !== this.workspaceId) return false;
+    return (await this.read()).some((entry) => entry.id === wait.id && entry.actions !== undefined);
+  }
   public async submit(id: string, value: unknown): Promise<void> {
     await this.submitMany([{ id, actions: value }]);
   }

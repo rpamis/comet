@@ -64,6 +64,7 @@ export interface AgentLearningCoordinatorOptions {
   readonly schedule?: (task: () => Promise<void>) => void | Promise<void>;
   readonly maxEventsPerReflection?: number;
   readonly maxEvidencePerReflection?: number;
+  readonly isWaitingResolved?: (wait: AgentLearningWait) => Promise<boolean>;
   readonly onDiagnostic?: (message: string) => void;
 }
 
@@ -78,6 +79,7 @@ export class AgentLearningCoordinator {
   private readonly schedule: (task: () => Promise<void>) => void | Promise<void>;
   private readonly maxEvents: number;
   private readonly maxEvidence: number;
+  private readonly isWaitingResolved?: (wait: AgentLearningWait) => Promise<boolean>;
   private readonly onDiagnostic?: (message: string) => void;
   private readonly episodeQueues = new Map<string, Promise<readonly AgentLearningDelta[]>>();
   private readonly scheduledEventIds = new Set<string>();
@@ -88,6 +90,7 @@ export class AgentLearningCoordinator {
     this.schedule = options.schedule ?? ((task) => void task());
     this.maxEvents = positive(options.maxEventsPerReflection, 8);
     this.maxEvidence = positive(options.maxEvidencePerReflection, 16);
+    this.isWaitingResolved = options.isWaitingResolved;
     this.onDiagnostic = options.onDiagnostic;
   }
 
@@ -321,6 +324,14 @@ export class AgentLearningCoordinator {
           } catch (error) {
             if (error instanceof AgentReflectionWaiting) {
               await this.journal.waitClaim(claim, error.waitFor);
+              let released = false;
+              for (const wait of error.waitFor) {
+                if (await this.isWaitingResolved?.(wait)) {
+                  const ready = await this.journal.releaseWaiting(wait);
+                  released = released || ready.length > 0;
+                }
+              }
+              if (released) continue;
               return deltas;
             }
             await this.journal.failClaim(claim, errorMessage(error));

@@ -250,13 +250,18 @@ export async function previewWorkflowApplicationInstall(
       const previousEntry = previousEntries.find((entry) => entry.root === skillRoot);
       let operation: 'create' | 'replace' | 'unchanged' = 'create';
       if ((await inspectStorage(skillsRoot, skill.name, 'directory')).exists) {
-        const actual = applicationFilesHash(await readApplicationFiles(skillRoot));
+        const actualFiles = await readApplicationFiles(skillRoot);
+        const actual = applicationFilesHash(actualFiles);
         const intendedEntry = intent?.hostSkills.find(
           (entry) => entry.root === skillRoot && entry.contentHash === expected,
         );
-        if (skill.kind === 'entry' && !previousEntry && !(intendedEntry && actual === expected))
+        const approvedPartial =
+          intendedEntry !== undefined &&
+          Object.entries(actualFiles).every(([ref, bytes]) => skill.files[ref] === bytes);
+        if (skill.kind === 'entry' && !previousEntry && !approvedPartial)
           applicationError(`宿主入口冲突，已存在且不属于此安装：${skill.name}；保留用户文件`);
         if (actual === expected) operation = 'unchanged';
+        else if (approvedPartial) operation = 'create';
         else if (skill.kind === 'entry' && previousEntry?.contentHash === actual)
           operation = 'replace';
         else applicationError(`宿主 Skill 同名内容冲突：${skill.name}；保留原文件和版本`);
@@ -448,8 +453,10 @@ export async function installWorkflowApplication(
       }
       for (const entry of preview.hostSkills) {
         const skill = skills.find((skill) => skill.name === entry.name)!;
-        if (entry.operation === 'create') await copyPackage(skill.files, entry.root);
-        else if (entry.operation === 'replace')
+        if (entry.operation === 'create') {
+          if (intent) await completeOwnedPackage(skill.files, entry.root);
+          else await copyPackage(skill.files, entry.root);
+        } else if (entry.operation === 'replace')
           await atomicWriteContainedText(
             path.join(entry.root, 'SKILL.md'),
             Buffer.from(skill.files['SKILL.md'], 'base64').toString('utf8'),
