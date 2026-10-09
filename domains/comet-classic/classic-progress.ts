@@ -941,10 +941,15 @@ export async function readClassicDelivery(
     ...(authorizedRemoteUrl ? { authorizedRemoteUrl } : {}),
   };
   if (effectiveInput.action === 'archive-only') {
-    const archiveVerified =
-      state.archived === true &&
-      receipt?.archiveFiles !== undefined &&
-      archiveManifestsMatch(receipt.archiveFiles, await archiveFileManifest(root, changeDir));
+    let archiveVerified = false;
+    if (state.archived === true && receipt?.archiveFiles !== undefined) {
+      const files = await archiveFileManifest(root, changeDir).catch((error: unknown) => {
+        const code = (error as NodeJS.ErrnoException | undefined)?.code;
+        if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+        throw error;
+      });
+      archiveVerified = files !== null && archiveManifestsMatch(receipt.archiveFiles, files);
+    }
     return {
       delivery,
       verification: {

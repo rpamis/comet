@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import {
   readClassicCheckpoint,
   writeClassicCheckpoint,
@@ -79,6 +80,30 @@ it('archives documents in a non-Git coordinator without claiming a child reposit
     await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
       verification: { status: 'complete', archiveVerified: true },
     });
+    for (const code of ['ENOENT', 'ENOTDIR']) {
+      const missing = vi
+        .spyOn(fs, 'readdir')
+        .mockRejectedValueOnce(
+          Object.assign(new Error('archive directory disappeared during verification'), { code }),
+        );
+      try {
+        await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
+          verification: { status: 'needsVerification', archiveVerified: false },
+        });
+      } finally {
+        missing.mockRestore();
+      }
+    }
+    const denied = vi
+      .spyOn(fs, 'readdir')
+      .mockRejectedValueOnce(
+        Object.assign(new Error('archive directory is unreadable'), { code: 'EACCES' }),
+      );
+    try {
+      await expect(readClassicDelivery(root, archived)).rejects.toMatchObject({ code: 'EACCES' });
+    } finally {
+      denied.mockRestore();
+    }
     await writeFile(spec, '# Modified feature\n');
     await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
       verification: { status: 'complete', archiveVerified: true },
