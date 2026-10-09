@@ -84,12 +84,12 @@ describe('Native check owner recovery', () => {
       const started = path.join(directory, 'started');
       const marker = path.join(directory, 'late');
       const bundle = path.join(directory, 'owner.cjs');
-      const source = path.resolve('domains/comet-native/native-check-executor.ts');
-      const grandchild = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'late'), 800); setTimeout(() => process.exit(0), 1300)`;
-      const command = `require('node:fs').writeFileSync(${JSON.stringify(started)}, String(process.pid)); require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' }); setTimeout(() => process.exit(0), 1600)`;
+      const grandchild =
+        "setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'late'), 800); setTimeout(() => process.exit(0), 1300)";
+      const command = `require('node:fs').writeFileSync(process.argv[1], String(process.pid)); require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}, process.argv[2]], { stdio: 'ignore' }); setTimeout(() => process.exit(0), 1600)`;
       await build({
         stdin: {
-          contents: `const { executeNativeCheck } = require(${JSON.stringify(source)}); executeNativeCheck({projectRoot:${JSON.stringify(directory)},runtimeDir:${JSON.stringify(path.join(directory, 'runtime'))},operationId:'owner',plan:${JSON.stringify({ id: 'check', name: 'owner', executable: process.execPath, argv: ['-e', command], cwdRef: '.', timeoutMs: 5000, repeatable: false })}}).catch(() => process.exitCode = 1);`,
+          contents: `const { executeNativeCheck } = require('./domains/comet-native/native-check-executor.ts'); executeNativeCheck({projectRoot:process.env.COMET_TEST_ROOT,runtimeDir:require('node:path').join(process.env.COMET_TEST_ROOT,'runtime'),operationId:'owner',plan:{id:'check',name:'owner',executable:process.execPath,argv:['-e',${JSON.stringify(command)},process.env.COMET_TEST_STARTED,process.env.COMET_TEST_MARKER],cwdRef:'.',timeoutMs:5000,repeatable:false}}).catch(() => process.exitCode = 1);`,
           resolveDir: process.cwd(),
         },
         outfile: bundle,
@@ -98,7 +98,15 @@ describe('Native check owner recovery', () => {
         format: 'cjs',
         logLevel: 'silent',
       });
-      const owner = spawn(process.execPath, [bundle], { stdio: 'ignore' });
+      const owner = spawn(process.execPath, [bundle], {
+        stdio: 'ignore',
+        env: {
+          ...process.env,
+          COMET_TEST_ROOT: directory,
+          COMET_TEST_STARTED: started,
+          COMET_TEST_MARKER: marker,
+        },
+      });
       processes.push(owner);
       await waitForCondition(() => exists(started), 'check did not start', 5000);
       owner.kill(signal);
@@ -113,10 +121,11 @@ describe('Native check owner recovery', () => {
     const marker = path.join(directory, 'timer-late');
     const started = path.join(directory, 'timer-started');
     const bundle = path.join(directory, 'blocked-owner.cjs');
-    const command = `require('node:fs').writeFileSync(${JSON.stringify(started)}, 'started'); setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'late'), 5500); setTimeout(() => process.exit(0), 8000)`;
+    const command =
+      "require('node:fs').writeFileSync(process.argv[1], 'started'); setTimeout(() => require('node:fs').writeFileSync(process.argv[2], 'late'), 5500); setTimeout(() => process.exit(0), 8000)";
     await build({
       stdin: {
-        contents: `const { executeNativeCheck } = require(${JSON.stringify(path.resolve('domains/comet-native/native-check-executor.ts'))}); executeNativeCheck({projectRoot:${JSON.stringify(directory)},runtimeDir:${JSON.stringify(path.join(directory, 'runtime'))},operationId:'blocked-owner',plan:${JSON.stringify({ id: 'check', name: 'blocked owner', executable: process.execPath, argv: ['-e', command], cwdRef: '.', timeoutMs: 5000, repeatable: false })}}).catch(() => {}); const poll=setInterval(()=>{if(require('node:fs').existsSync(${JSON.stringify(started)})){clearInterval(poll);Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,6000)}},25);`,
+        contents: `const { executeNativeCheck } = require('./domains/comet-native/native-check-executor.ts'); executeNativeCheck({projectRoot:process.env.COMET_TEST_ROOT,runtimeDir:require('node:path').join(process.env.COMET_TEST_ROOT,'runtime'),operationId:'blocked-owner',plan:{id:'check',name:'blocked owner',executable:process.execPath,argv:['-e',${JSON.stringify(command)},process.env.COMET_TEST_STARTED,process.env.COMET_TEST_MARKER],cwdRef:'.',timeoutMs:5000,repeatable:false}}).catch(() => {}); const poll=setInterval(()=>{if(require('node:fs').existsSync(process.env.COMET_TEST_STARTED)){clearInterval(poll);Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,6000)}},25);`,
         resolveDir: process.cwd(),
       },
       outfile: bundle,
@@ -125,7 +134,15 @@ describe('Native check owner recovery', () => {
       format: 'cjs',
       logLevel: 'silent',
     });
-    const owner = spawn(process.execPath, [bundle], { stdio: 'ignore' });
+    const owner = spawn(process.execPath, [bundle], {
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        COMET_TEST_ROOT: directory,
+        COMET_TEST_STARTED: started,
+        COMET_TEST_MARKER: marker,
+      },
+    });
     processes.push(owner);
     await waitForCondition(() => exists(started), 'check did not start', 5000);
     await sleep(6500);
@@ -146,7 +163,7 @@ describe('Native check owner recovery', () => {
           id: 'check',
           name: 'check',
           executable: process.execPath,
-          argv: ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'bad')`],
+          argv: ['-e', "require('node:fs').writeFileSync(process.argv[1], 'bad')", marker],
           cwdRef: '.',
           timeoutMs: 150,
           repeatable: false,
@@ -161,7 +178,8 @@ describe('Native check owner recovery', () => {
   it('kills background descendants before reporting their parent command complete', async () => {
     const directory = await root();
     const marker = path.join(directory, 'background');
-    const grandchild = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'bad'), 500)`;
+    const grandchild =
+      "setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'bad'), 500)";
     const result = await executeNativeCheck({
       projectRoot: directory,
       runtimeDir: path.join(directory, 'runtime'),
@@ -172,7 +190,8 @@ describe('Native check owner recovery', () => {
         executable: process.execPath,
         argv: [
           '-e',
-          `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' }).unref()`,
+          `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}, process.argv[1]], { stdio: 'ignore' }).unref()`,
+          marker,
         ],
         cwdRef: '.',
         timeoutMs: 2000,

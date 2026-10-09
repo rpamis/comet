@@ -105,8 +105,9 @@ describe('Native check executor', () => {
 
   it('terminates the complete child process tree after timeout', async () => {
     const marker = path.join(root, 'grandchild-heartbeat.txt');
-    const grandchild = `const fs=require('node:fs');const beat=()=>fs.appendFileSync(${JSON.stringify(marker)}, 'x');beat();setInterval(beat,25)`;
-    const parent = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore', windowsHide: true }); setInterval(() => {}, 1000)`;
+    const grandchild =
+      "const fs=require('node:fs');const beat=()=>fs.appendFileSync(process.argv[1], 'x');beat();setInterval(beat,25)";
+    const parent = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}, process.argv[1]], { stdio: 'ignore', windowsHide: true }); setInterval(() => {}, 1000)`;
     const result = await executeNativeCheck({
       projectRoot: root,
       runtimeDir,
@@ -115,7 +116,7 @@ describe('Native check executor', () => {
         id: 'tree-timeout',
         name: 'Tree timeout',
         executable: process.execPath,
-        argv: ['-e', parent],
+        argv: ['-e', parent, marker],
         cwdRef: '.',
         timeoutMs: 5_000,
         repeatable: true,

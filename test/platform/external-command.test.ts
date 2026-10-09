@@ -51,13 +51,15 @@ describe('external command provider', () => {
   it('terminates the asynchronous command process group before late descendant effects', async () => {
     tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-external-tree-'));
     const marker = path.join(tempRoot, 'late');
-    const grandchild = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'late'), 600)`;
+    const grandchild =
+      "setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'late'), 600)";
     await expect(
       runExternalCommandAsync(
         process.execPath,
         [
           '-e',
-          `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' }); setInterval(() => {}, 1000)`,
+          `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}, process.argv[1]], { stdio: 'ignore' }); setInterval(() => {}, 1000)`,
+          marker,
         ],
         { timeoutMs: 200 },
       ),
@@ -72,7 +74,7 @@ describe('external command provider', () => {
     await expect(
       runExternalCommandAsync(
         process.execPath,
-        ['-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'bad')`],
+        ['-e', "require('node:fs').writeFileSync(process.argv[1], 'bad')", marker],
         { signal: AbortSignal.abort() },
       ),
     ).rejects.toBeInstanceOf(ExternalCommandError);

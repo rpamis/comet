@@ -93,4 +93,15 @@ describe('project identity', () => {
       /^my\.comet-[a-f0-9]{8}$/u,
     );
   });
+
+  it('handles long runs of boundary separators in names and paths', () => {
+    const dashes = '-'.repeat(50_000);
+    const slashes = '/'.repeat(50_000);
+    expect(stableProjectId(`https://example.com/team/${dashes}project${dashes}`)).toMatch(
+      /^project-[a-f0-9]{8}$/u,
+    );
+    const runGit = () => `https://example.com/team/project${slashes}`;
+    expect(resolveProjectIdentity('D:/repo', { runGit })).toBe('https://example.com/team/project');
+    expect(resolveProjectName('D:/repo', { runGit })).toBe('project');
+  });
 });

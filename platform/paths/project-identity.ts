@@ -85,7 +85,7 @@ export function resolveProjectIdentity(
 export function stableProjectId(identity: string): string {
   const normalized = normalizeIdentity(identity);
   const leaf = normalized.split(/[/:]/u).filter(Boolean).at(-1) ?? 'project';
-  const slug = leaf.replace(/[^a-z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '') || 'project';
+  const slug = trimBoundaryDashes(leaf.replace(/[^a-z0-9._-]+/gu, '-')) || 'project';
   const digest = createHash('sha256').update(normalized, 'utf8').digest('hex').slice(0, 8);
   return `${slug.slice(0, 40)}-${digest}`;
 }
@@ -105,22 +105,37 @@ export function resolveProjectName(
 }
 
 function readableProjectName(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/\\/gu, '/')
-    .replace(/\.git$/iu, '')
-    .replace(/\/+$/u, '');
+  const normalized = trimTrailingSlashes(
+    value
+      .trim()
+      .replace(/\\/gu, '/')
+      .replace(/\.git$/iu, ''),
+  );
   const leaf = normalized.split(/[/:]/u).filter(Boolean).at(-1) ?? 'project';
-  return leaf.replace(/[^a-zA-Z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '') || 'project';
+  return trimBoundaryDashes(leaf.replace(/[^a-zA-Z0-9._-]+/gu, '-')) || 'project';
 }
 
 function normalizeIdentity(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/\\/gu, '/')
-    .replace(/\.git$/iu, '')
-    .replace(/\/+$/u, '')
-    .toLocaleLowerCase();
+  const normalized = trimTrailingSlashes(
+    value
+      .trim()
+      .replace(/\\/gu, '/')
+      .replace(/\.git$/iu, ''),
+  ).toLocaleLowerCase();
   if (!normalized) return 'project';
   return normalized;
+}
+
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end--;
+  return value.slice(0, end);
+}
+
+function trimBoundaryDashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === '-') start++;
+  while (end > start && value[end - 1] === '-') end--;
+  return value.slice(start, end);
 }
