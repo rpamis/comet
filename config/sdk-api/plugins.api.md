@@ -134,6 +134,8 @@ export class AgentExperienceJournal {
     // (undocumented)
     isPending(eventId: string): Promise<boolean>;
     // (undocumented)
+    legacyReviewCandidates(): Promise<readonly AgentExperienceEvent[]>;
+    // (undocumented)
     list(options?: {
         readonly projectId?: string;
         readonly type?: AgentExperienceEvent['type'];
@@ -149,10 +151,22 @@ export class AgentExperienceJournal {
     // (undocumented)
     pending(limit?: number): Promise<readonly AgentExperienceEvent[]>;
     // (undocumented)
+    releaseLegacyReview(eventIds: readonly string[]): Promise<readonly AgentExperienceEvent[]>;
+    // (undocumented)
+    releaseWaiting(review: AgentLearningWait): Promise<readonly AgentExperienceEvent[]>;
+    // (undocumented)
     renewClaim(claim: AgentExperienceReflectionClaim, options?: {
         readonly now?: string;
         readonly leaseMs?: number;
     }): Promise<void>;
+    // (undocumented)
+    retryFailed(updatedAt?: string): Promise<number>;
+    // (undocumented)
+    retryPendingNow(): Promise<void>;
+    // (undocumented)
+    status(): Promise<AgentLearningStatus>;
+    // (undocumented)
+    waitClaim(claim: AgentExperienceReflectionClaim, waitFor: readonly AgentLearningWait[], updatedAt?: string): Promise<void>;
 }
 
 // @public (undocumented)
@@ -161,13 +175,15 @@ export interface AgentExperienceJournalState {
     readonly events: readonly AgentExperienceEvent[];
     // (undocumented)
     readonly reflections: Readonly<Record<string, {
-        readonly status: 'pending' | 'processing' | 'processed';
+        readonly status: 'pending' | 'processing' | 'waiting' | 'failed' | 'processed';
         readonly attempts: number;
         readonly updatedAt: string;
         readonly lastError?: string;
         readonly claimId?: string;
         readonly leaseExpiresAt?: string;
         readonly completedOwners?: readonly string[];
+        readonly waitFor?: readonly AgentLearningWait[];
+        readonly nextRetryAt?: string;
     }>>;
     // (undocumented)
     readonly version: 2;
@@ -497,12 +513,18 @@ export class PluginRuntime {
         readonly throwOnError?: boolean;
     }): Promise<unknown>;
     // (undocumented)
+    learningStatus(): Promise<AgentLearningStatus>;
+    // (undocumented)
     list(scope?: PluginScope): Promise<PluginView[]>;
     // (undocumented)
     reconcileFirstParty(): Promise<void>;
     replayLearning(): Promise<void>;
     // (undocumented)
     resolveContext(id: string, request: PluginContextRequest, scope: PluginScopeTarget, owner?: string): Promise<AgentContextCandidate[]>;
+    // (undocumented)
+    resumeReview(review: AgentLearningWait, matchesLegacy?: (event: AgentExperienceEvent) => Promise<boolean>): Promise<number>;
+    // (undocumented)
+    retryFailedLearning(): Promise<number>;
     // (undocumented)
     uninstall(id: string): Promise<void>;
     // (undocumented)
