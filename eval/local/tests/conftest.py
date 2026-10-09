@@ -21,6 +21,7 @@ import tempfile
 import time
 from contextlib import contextmanager
 from datetime import datetime
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -562,6 +563,13 @@ def _ensure_auto_generated_manifest(config, task_filter: str | None = None) -> N
     from scaffold.python.task_resolution import ResolvedTask, ResolvedTaskSet
 
     generated_manifest = load_eval_manifest(generated.manifest_path)
+    if manifest is not None:
+        generated_manifest = replace(
+            generated_manifest,
+            interaction=manifest.interaction,
+            execution=manifest.execution,
+            judge=manifest.judge,
+        )
     generated_tasks = tuple(
         ResolvedTask(task.name, "generated", task)
         for task in load_manifest_tasks(generated_manifest)

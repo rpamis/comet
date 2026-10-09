@@ -236,6 +236,57 @@ evaluation:
     assert config._comet_frozen_task_set.source == "generated-cache"
 
 
+def test_generated_case_collection_inherits_authoritative_interaction_without_rewriting_frozen_cases(tmp_path, monkeypatch):
+    from scaffold.python.manifests import load_eval_manifest
+    skill = tmp_path / "skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text("Use the fixed Runtime.", encoding="utf-8")
+    original = tmp_path / "original.yaml"
+    original.write_text("""apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata: {name: original}
+skill: {name: fixed-skill, source: skill, profile: generic}
+interaction:
+  mode: auto_user
+  maxTurns: 16
+  simulatorPrompt: Answer the actual current workflow questions.
+  decisionPatterns: [APPROVAL_REQUIRED]
+  decisionReply: approved
+  continuePrompt: Continue the current Run.
+execution: {agent: codex, model: primary-model}
+judge: {agent: codex, model: judge-model}
+evaluation: {}
+""", encoding="utf-8")
+    generated = tmp_path / "generated.yaml"
+    generated.write_text("""apiVersion: comet.eval/v1alpha1
+kind: SkillEvalManifest
+metadata: {name: generated}
+skill: {name: fixed-skill, source: skill, profile: generic}
+evaluation:
+  tasks:
+    - {name: frozen-one, prompt: Run the actual workflow., expect: {files: [CONTEXT.md]}}
+    - {name: frozen-two, prompt: Refuse approval., expect: {files: [rejected.md]}}
+""", encoding="utf-8")
+    original_bytes = generated.read_bytes()
+    expected = load_eval_manifest(original)
+    assert load_eval_manifest(generated).interaction.mode == "none"
+    options = {"--eval-manifest": str(original), "--skill-path": str(skill), "--project-root": str(tmp_path)}
+    config = SimpleNamespace(option=SimpleNamespace(collectonly=False, eval_manifest=str(original)), getoption=lambda name: options.get(name))
+    monkeypatch.setattr("scaffold.python.utils.load_eval_environment", lambda: None)
+    monkeypatch.setattr(conftest, "ensure_generated_manifest", lambda *args, **kwargs: SimpleNamespace(manifest_path=generated))
+    conftest._ensure_auto_generated_manifest(config)
+    for task in config._comet_resolved_tasks.values():
+        assert task.config.interaction == expected.interaction
+        assert conftest._resolve_interaction_config(task, "generic", config).mode == "auto_user"
+        assert conftest._resolve_interaction_config(task, "generic", config).max_turns == 16
+    assert config._comet_resolution_manifest.execution == expected.execution
+    assert config._comet_resolution_manifest.judge == expected.judge
+    assert conftest._resolve_eval_execution(config).model == "primary-model"
+    assert conftest._resolve_eval_judge(config).model == "judge-model"
+    assert generated.read_bytes() == original_bytes
+    assert config.option.eval_manifest == str(original)
+
+
 def test_taskless_collect_only_marks_generation_pending_without_agent_or_disk_work(
     tmp_path: Path, monkeypatch
 ):
