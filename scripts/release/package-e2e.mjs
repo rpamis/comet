@@ -1109,6 +1109,19 @@ async function main() {
       );
     }
 
+    const classicDocumentChange = parseJsonPayload(
+      run(process.execPath, [cli, 'state', 'init', 'package-classic-documents', 'full', '--json'], {
+        cwd: classicProjectDir,
+        env: environment,
+      }),
+    );
+    if (classicDocumentChange.exitCode !== 0 || classicDocumentChange.data?.run !== undefined) {
+      throw new Error(
+        `Packaged Classic non-Git init did not select compatible document delivery: ${JSON.stringify(classicDocumentChange)}`,
+      );
+    }
+    run('git', ['init', '-b', 'main'], { cwd: classicProjectDir, env: environment });
+
     const classicSdkChange = 'package-classic-sdk';
     const classicSdkCreated = parseJsonPayload(
       run(process.execPath, [cli, 'state', 'init', classicSdkChange, 'full', '--json'], {
