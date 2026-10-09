@@ -2390,10 +2390,6 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         }
         const gitWorkTree = isGitWorkTree(classicCommandProjectRoot());
         runtimeFormat ??= gitWorkTree ? 'sdk' : 'compat';
-        if (runtimeFormat === 'sdk' && !gitWorkTree)
-          fail(
-            'ERROR: Classic SDK Archive requires a Git coordination root; use --runtime compat for a non-Git root',
-          );
         await init(output, rest[0], rest[1], isolation, runtimeFormat);
         initializedSdk = runtimeFormat === 'sdk';
       } else if (subcommand === 'restore') {

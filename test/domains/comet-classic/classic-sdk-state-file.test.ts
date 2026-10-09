@@ -43,12 +43,17 @@ describe('Classic SDK state file contract', () => {
     await prepareClassicLegacyProject(root);
     const cli = (...args: string[]) =>
       withClassicCommandContext({ projectRoot: root, invocationCwd: root }, () =>
-        runClassicCli(['state', ...args, '--json']),
+        runClassicCli([
+          'state',
+          ...args,
+          ...(args[0] === 'init' && !args.includes('--runtime') ? ['--runtime', 'sdk'] : []),
+          '--json',
+        ]),
       );
     return { root, cli, stateFile: path.join(root, 'openspec', 'changes', 'demo', '.comet.yaml') };
   }
 
-  it('creates the familiar state file for a default SDK change', async () => {
+  it('creates the familiar state file for an explicitly selected SDK change', async () => {
     const { cli, stateFile } = await project();
     const created = await cli('init', 'demo', 'full');
     expect(created.exitCode, created.stderr).toBe(0);

@@ -212,14 +212,18 @@ describe('Classic public argument safety', () => {
         ),
       ).toMatchObject({ format: 'compat' });
       const explicitSdk = await classicStateCommand(
-        ['init', 'unsupported-sdk', 'full', '--runtime', 'sdk'],
+        ['init', 'explicit-sdk', 'full', '--runtime', 'sdk'],
         localOptions,
       );
-      expect(explicitSdk.exitCode).not.toBe(0);
-      expect(explicitSdk.stderr).toContain('non-Git');
-      await expect(
-        fs.access(path.join(coordinator, 'openspec/changes/unsupported-sdk/.comet.yaml')),
-      ).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(explicitSdk.exitCode, explicitSdk.stderr).toBe(0);
+      expect(
+        JSON.parse(
+          await fs.readFile(
+            path.join(coordinator, '.comet/runtime/change-owners/classic/explicit-sdk.json'),
+            'utf8',
+          ),
+        ),
+      ).toMatchObject({ format: 'sdk' });
     } finally {
       await fs.rm(coordinator, { recursive: true, force: true });
     }

@@ -232,7 +232,8 @@ describe('Comet entry resume probe v2', () => {
     await prepareClassicLegacyProject(projectRoot);
     const created = await withClassicCommandContext(
       { projectRoot, invocationCwd: projectRoot },
-      () => runClassicCli(['state', 'init', 'working-classic', 'full', '--json']),
+      () =>
+        runClassicCli(['state', 'init', 'working-classic', 'full', '--runtime', 'sdk', '--json']),
     );
     expect(created.exitCode, created.stderr).toBe(0);
 
@@ -250,7 +251,16 @@ describe('Comet entry resume probe v2', () => {
     await prepareClassicLegacyProject(projectRoot);
     const created = await withClassicCommandContext(
       { projectRoot, invocationCwd: projectRoot },
-      () => runClassicCli(['state', 'init', 'copied-classic-sdk', 'full', '--json']),
+      () =>
+        runClassicCli([
+          'state',
+          'init',
+          'copied-classic-sdk',
+          'full',
+          '--runtime',
+          'sdk',
+          '--json',
+        ]),
     );
     expect(created.exitCode, created.stderr).toBe(0);
     const restored = path.join(projectRoot, 'restored-classic');
@@ -278,7 +288,8 @@ describe('Comet entry resume probe v2', () => {
     await prepareClassicLegacyProject(projectRoot);
     const created = await withClassicCommandContext(
       { projectRoot, invocationCwd: projectRoot },
-      () => runClassicCli(['state', 'init', 'lagging-classic', 'full', '--json']),
+      () =>
+        runClassicCli(['state', 'init', 'lagging-classic', 'full', '--runtime', 'sdk', '--json']),
     );
     expect(created.exitCode, created.stderr).toBe(0);
     const store = createFileRuntimeStore<WorkflowRun>({

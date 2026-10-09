@@ -30,6 +30,8 @@ async function preparedChange(
       'init',
       'demo',
       options.profile ?? 'tweak',
+      '--runtime',
+      'sdk',
       ...(options.isolation ? ['--isolation', options.isolation] : []),
       '--json',
     ]),

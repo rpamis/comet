@@ -19,10 +19,14 @@ async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-readonly-'));
   roots.push(root);
   await prepareClassicLegacyProject(root);
-  const result = await runClassicCli(['state', 'init', 'demo', 'full', '--json'], undefined, {
-    projectRoot: root,
-    invocationCwd: root,
-  });
+  const result = await runClassicCli(
+    ['state', 'init', 'demo', 'full', '--runtime', 'sdk', '--json'],
+    undefined,
+    {
+      projectRoot: root,
+      invocationCwd: root,
+    },
+  );
   expect(result.exitCode, result.stdout).toBe(0);
   const runRoot = path.join(root, '.comet/runtime/sdk-runs/classic');
   const backing = createFileRuntimeStore<WorkflowRun>({ rootDir: runRoot });
