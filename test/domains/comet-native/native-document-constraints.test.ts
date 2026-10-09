@@ -154,16 +154,16 @@ describe('Native document constraints', () => {
 ## 目录结构
 ### 新建
 \`\`\`
-src/features/Common/CouponPopup/
-  ├─ index.tsx — 优惠券弹窗组件
-  └─ index.less
+src/
+  ├─ export/ — 组织导出流程
+  └─ reporting/ — 提供导出入口
 \`\`\`
 ### 修改
 无
 ### 删除
 无
 ### 明确不建
-- 不新建弹窗 store slice —— 弹窗状态仅在页面内使用
+- 独立的数据访问层 — 现有接口已满足需求
 # 非目标
 无
 # 验收示例
@@ -234,6 +234,27 @@ Run the focused Native checks.
       valid: true,
       findings: [],
     });
+  });
+
+  it.each(['```', '~~~', '````'])('ignores headings inside %s directory trees', async (marker) => {
+    const tree = [
+      `${marker}text`,
+      '# src/module/',
+      '## Directory structure',
+      '### Deleted',
+      '  helper — supporting behavior',
+      marker === '````' ? '```' : marker === '```' ? '~~~' : '```',
+      '# Scope',
+      '  another helper — supporting behavior',
+      marker,
+    ].join('\n');
+    await fs.writeFile(
+      path.join(root, 'brief.md'),
+      completeBrief.replace('### Created\nNone.', `### Created\n${tree}`),
+    );
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toEqual({ valid: true, findings: [] });
   });
 
   it('applies the directory structure requirement only from constraint version 3', async () => {

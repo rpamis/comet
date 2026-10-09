@@ -5,7 +5,9 @@ import path from 'path';
 
 import {
   NATIVE_ARTIFACT_VALIDATION_LIMITS,
+  nativeBriefHasBlockingQuestion,
   stripMarkdownHtmlComments,
+  validateNativeSpecDocumentText,
   validateNativeBrief,
   validateNativeSpecChanges,
   validateNativeVerification,
@@ -132,6 +134,45 @@ describe('Native artifact validation', () => {
       ),
     );
     expect(await validateNativeBrief(changeDir, 'brief.md')).toEqual({ valid: true, findings: [] });
+  });
+
+  it.each(['````', '~~~~'])('keeps shorter fences inside %s examples', (marker) => {
+    const example = [marker, marker.slice(1), '- [blocking] example only', marker].join('\n');
+    expect(nativeBriefHasBlockingQuestion(example)).toBe(false);
+    expect(nativeBriefHasBlockingQuestion(`${example}\n- [blocking] real question`)).toBe(true);
+    expect(
+      validateNativeSpecDocumentText(
+        [marker, marker.slice(1), '# literal code heading', marker].join('\n'),
+        'specs/sample/spec.md',
+      ),
+    ).toEqual({ valid: true, findings: [] });
+  });
+
+  it.each(['```', '~~~'])('ignores %s headings in verification examples', async (marker) => {
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      verification.replace(
+        'Auth test covers login.',
+        [marker, '# Conclusion', 'Example only.', marker, 'Auth test covers login.'].join('\n'),
+      ),
+    );
+    expect(await validateNativeVerification(changeDir, 'verification.md')).toEqual({
+      valid: true,
+      findings: [],
+    });
+  });
+
+  it('does not use fenced examples to satisfy required verification sections', async () => {
+    await fs.writeFile(
+      path.join(changeDir, 'verification.md'),
+      '# Acceptance evidence\nEvidence example:\n```text\n' + verification + '```\n',
+    );
+    expect(await validateNativeVerification(changeDir, 'verification.md')).toMatchObject({
+      valid: false,
+      findings: expect.arrayContaining([
+        expect.objectContaining({ code: 'verification-section-missing' }),
+      ]),
+    });
   });
 
   it('requires every verification section to be non-empty', async () => {

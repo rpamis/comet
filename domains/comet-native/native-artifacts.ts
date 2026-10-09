@@ -71,11 +71,13 @@ function markdownSections(source: string): Map<string, string> {
   const sections = new Map<string, string>();
   let heading: string | null = null;
   let body: string[] = [];
+  const fence: MarkdownFenceState = { marker: null, length: 0 };
   const flush = () => {
     if (heading !== null) sections.set(heading, body.join('\n').trim());
   };
   for (const line of source.split(/\r?\n/u)) {
-    const match = /^# ([^#].*)$/u.exec(line);
+    const transition = markdownFenceTransition(line, fence);
+    const match = transition === null && fence.marker === null ? /^# ([^#].*)$/u.exec(line) : null;
     if (match) {
       flush();
       heading = match[1].trim();
@@ -134,15 +136,12 @@ function meaningfulMarkdown(source: string): string {
 function markdownBody(source: string): string {
   const lines = meaningfulMarkdown(source).split(/\r?\n/u);
   const body: string[] = [];
-  let inFence = false;
+  const fence: MarkdownFenceState = { marker: null, length: 0 };
   for (const line of lines) {
-    if (/^\s*(?:```|~~~)/u.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (!inFence && /^\s*#{1,6}\s*$/u.test(line)) continue;
-    if (!inFence && /^\s*#{1,6}\s+/u.test(line)) continue;
-    if (!inFence && /^\s*(?:[-*+]\s*|\d+[.)]\s*)$/u.test(line)) continue;
+    if (markdownFenceTransition(line, fence) !== null) continue;
+    if (fence.marker === null && /^\s*#{1,6}\s*$/u.test(line)) continue;
+    if (fence.marker === null && /^\s*#{1,6}\s+/u.test(line)) continue;
+    if (fence.marker === null && /^\s*(?:[-*+]\s*|\d+[.)]\s*)$/u.test(line)) continue;
     body.push(line);
   }
   return body.join('\n').trim();
@@ -226,16 +225,10 @@ export function nativeBriefHasBlockingQuestion(source: string): boolean {
     '需求',
     '阻塞',
   ]);
-  let fence: '`' | '~' | null = null;
+  const fence: MarkdownFenceState = { marker: null, length: 0 };
   for (const line of source.split(/\r?\n/u)) {
-    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/u);
-    if (fenceMatch) {
-      const marker = fenceMatch[1]?.[0] as '`' | '~';
-      if (fence === null) fence = marker;
-      else if (fence === marker) fence = null;
-      continue;
-    }
-    if (fence !== null) continue;
+    if (markdownFenceTransition(line, fence) !== null) continue;
+    if (fence.marker !== null) continue;
 
     const value = line.trim();
     if (/^(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s+)?\[blocking\](?=$|[\s:：—-])/iu.test(value)) {
