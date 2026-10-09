@@ -2,6 +2,7 @@ import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { WorkflowApplicationManifest } from './types.js';
 import { applicationError, applicationFilesHash, readApplicationFiles } from './skill-adapter.js';
+import { rewriteMarkdownResourceLinks } from './markdown-resources.js';
 import {
   safeId,
   installedApplicationEntries,
@@ -79,9 +80,16 @@ export function applicationInstallSkills(
 ) {
   const entry = Buffer.from(files[manifest.entrySkill], 'base64').toString('utf8');
   const entryText =
-    entry.replaceAll('<本目录>', packageRoot).replace(/\]\(([^\s)]+)\)/gu, (match, ref: string) => {
-      if (/^(?:[a-z][a-z\d+.-]*:|#)/iu.test(ref)) return match;
-      return `](${path.resolve(packageRoot, path.dirname(manifest.entrySkill), ref.split('#')[0]).replaceAll('\\', '/')}${ref.includes('#') ? '#' + ref.split('#').slice(1).join('#') : ''})`;
+    rewriteMarkdownResourceLinks(entry.replaceAll('<本目录>', packageRoot), (ref) => {
+      if (/^(?:[a-z][a-z\d+.-]*:|#)/iu.test(ref)) return ref;
+      const separator = ref.search(/[?#]/u);
+      const resource = separator < 0 ? ref : ref.slice(0, separator);
+      const suffix = separator < 0 ? '' : ref.slice(separator);
+      return (
+        path
+          .resolve(packageRoot, path.dirname(manifest.entrySkill), decodeURIComponent(resource))
+          .replaceAll('\\', '/') + suffix
+      );
     }) +
     `\n固定应用资源目录：${packageRoot}。application.json、installation.json 与包内资源从该目录读取；查询和恢复仍使用当前应用身份与原 Run ID。\n`;
   const result: Array<{

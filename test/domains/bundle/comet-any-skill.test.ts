@@ -56,15 +56,18 @@ describe('comet-any SDK creator guidance', () => {
     },
   );
 
-  it('Chinese guidance requires SDK-generated protection and a complete official host installation preview', async () => {
+  it('Chinese guidance requires authored business documents, SDK protection and official host installation', async () => {
     const skill = await fs.readFile('assets/skills-zh/comet-any/SKILL.md', 'utf8');
     const reference = await fs.readFile(
       'assets/skills-zh/comet-any/reference/sdk-creation.md',
       'utf8',
     );
     for (const term of [
-      '同一份流程声明',
-      '默认 Rule 与 Guard',
+      'Agent 编写',
+      '完整入口 Skill',
+      '业务 Rule',
+      '执行协议',
+      'Guard',
       '正式分发',
       '真实 Skill 加载',
       'Rule 配置',
@@ -74,12 +77,37 @@ describe('comet-any SDK creator guidance', () => {
     ])
       expect(skill).toContain(term);
     for (const term of [
-      '当前 Creator 定义',
-      '不迁移旧记录或复用旧批准',
+      'proposal.documents',
+      'SKILL.md',
+      'rules/workflow-guard.md',
+      'plan.documents',
       'distribution',
       '不能只看到导出目录就回报完成',
       '不能允许写入 SDK 控制资源',
     ])
       expect(reference).toContain(term);
+  });
+
+  it('English guidance uses the same authored documents and preserves current approval boundaries', async () => {
+    const skill = await fs.readFile('assets/skills/comet-any/SKILL.md', 'utf8');
+    const reference = await fs.readFile(
+      'assets/skills/comet-any/reference/sdk-creation.md',
+      'utf8',
+    );
+    for (const term of ['The Agent writes', 'entry Skill', 'business Rule', 'execution protocol'])
+      expect(skill).toContain(term);
+    for (const term of [
+      'proposal.documents',
+      'SKILL.md',
+      'rules/workflow-guard.md',
+      'plan.documents',
+    ])
+      expect(reference).toContain(term);
+    for (const removed of [
+      'There is no fixed subagent count',
+      'Keep Codex and Claude Code adapter contracts',
+      'dollar cap',
+    ])
+      expect(skill + reference).not.toContain(removed);
   });
 });

@@ -106,6 +106,8 @@ export interface WorkflowApplicationPlan {
     // (undocumented)
     composition: ApplicationCompositionPlan;
     // (undocumented)
+    documents?: Readonly<Record<string, string>>;
+    // (undocumented)
     manifest: WorkflowApplicationManifest;
     // (undocumented)
     modules: Readonly<Record<string, string>>;

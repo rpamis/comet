@@ -1,8 +1,13 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, expect, it } from 'vitest';
-import { createCreatorRuntime, listCreatorRuns } from '../../../domains/workflow-creation/index.js';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import * as engine from '../../../domains/engine/runtime.js';
+import {
+  createCreatorRuntime,
+  creatorSummary,
+  listCreatorRuns,
+} from '../../../domains/workflow-creation/index.js';
 import {
   compileWorkflowApplication,
   type WorkflowApplicationPlan,
@@ -43,6 +48,12 @@ const analysis = () => ({
     },
     composition: { kind: 'report' },
     modules: {},
+    documents: {
+      'SKILL.md':
+        '---\nname: weekly-report\ndescription: Create a weekly report, review its sources, and publish the approved report.\n---\n\n# Weekly report\n\nUse this application for a weekly source-backed report. Read the supplied title, body and source list, draft the report, and ask the user to approve the current draft. Publish only the approved draft. Rejection keeps the draft; revisions require a new review. Verify report.md and published output before declaring completion.\n',
+      'rules/workflow-guard.md':
+        '# Weekly report rules\n\nUse only the supplied sources. Keep claims traceable to their source and retain a rejected draft. Report generation may write the draft; publication requires approval of that exact draft. Changed content requires another review.\n',
+    },
   },
 });
 async function analyzed(
@@ -87,6 +98,46 @@ async function analyzed(
     ? (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run
     : run;
 }
+
+it.each(['documents', 'SKILL.md', 'rules/workflow-guard.md'])(
+  'rejects analysis without Agent-authored %s',
+  async (missing) => {
+    const runtime = createCreatorRuntime(root);
+    let run = await runtime.start({
+      runId: 'missing-documents',
+      workflow: { id: 'comet-creator', version: '3' },
+      input: { goal: '报告审批', installTarget: 'export', host: 'codex' },
+    });
+    const action = run.actions[0];
+    run = await runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'creator-host',
+      claimToken: 'author',
+      capabilities: ['skill-load', 'handoff'],
+    });
+    const output = analysis();
+    if (missing === 'documents') Reflect.deleteProperty(output.proposal, 'documents');
+    else Reflect.deleteProperty(output.proposal.documents, missing);
+    await expect(
+      runtime.recordOutcome({
+        runId: run.runId,
+        outcome: {
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          claimToken: 'author',
+          outcomeId: 'missing',
+          status: 'succeeded',
+          output,
+        },
+      }),
+    ).rejects.toThrow(/SKILL\.md|rules\/workflow-guard\.md|业务 Rule|documents/);
+    expect((await runtime.inspect(run.runId)).outputs.prepare).toBeUndefined();
+  },
+);
 
 async function choose(run: Awaited<ReturnType<typeof analyzed>>, choice: string) {
   const runtime = createCreatorRuntime(root);
@@ -140,6 +191,103 @@ it('v3 previews and installs both the full export and the managed project applic
     },
   });
   expect((await createCreatorRuntime(root).inspect(run.runId)).status).toBe('completed');
+});
+
+it('shows the complete authored documents and binds their contents in the actual plan confirmation', async () => {
+  const run = await analyzed();
+  const proposed = analysis().proposal.documents;
+  expect(
+    (run.outputs.prepare.value as unknown as { plan: { documents: unknown } }).plan.documents,
+  ).toEqual(proposed);
+  expect(run.waits.at(-1)?.proposal).toMatchObject({
+    outputs: { prepare: { plan: { documents: proposed } } },
+  });
+  expect(creatorSummary(run).documents).toMatchObject({
+    'SKILL.md': {
+      content: proposed['SKILL.md'],
+      contentHash: hashRuntimeValue(proposed['SKILL.md']),
+    },
+    'rules/workflow-guard.md': {
+      content: proposed['rules/workflow-guard.md'],
+      contentHash: hashRuntimeValue(proposed['rules/workflow-guard.md']),
+    },
+  });
+});
+
+it('requires a new plan approval after the authored business Rule changes', async () => {
+  const runtime = createCreatorRuntime(root);
+  let run = await analyzed();
+  const old = run.waits.at(-1)!;
+  run = await choose(run, 'revise');
+  const action = run.actions.at(-1)!;
+  await runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'creator-host',
+    claimToken: 'revised-docs',
+    capabilities: ['skill-load', 'handoff'],
+  });
+  const output = analysis();
+  output.proposal.documents['rules/workflow-guard.md'] +=
+    'Every report must include a reviewed date.\n';
+  await runtime.recordOutcome({
+    runId: run.runId,
+    outcome: {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: 'revised-docs',
+      outcomeId: 'revised-docs',
+      status: 'succeeded',
+      output,
+    },
+  });
+  run = (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run;
+  const current = run.waits.at(-1)!;
+  expect(current.proposalHash).not.toBe(old.proposalHash);
+  await expect(
+    runtime.resolveWait({
+      runId: run.runId,
+      waitId: current.id,
+      proposalHash: old.proposalHash,
+      decisionId: 'stale-document-approval',
+      choice: 'approved',
+    }),
+  ).rejects.toThrow(/STALE/);
+  expect(creatorSummary(run).documents).toMatchObject({
+    'rules/workflow-guard.md': { content: output.proposal.documents['rules/workflow-guard.md'] },
+  });
+});
+
+it('allows revise and rejection of a current plan missing authored documents while refusing approval', async () => {
+  const capture = vi.spyOn(engine, 'createRuntime');
+  createCreatorRuntime(root);
+  const handler = capture.mock.calls
+    .at(-1)![0]
+    .transitionHandlers!.find((item) => item.id === 'creator-decisions')!;
+  capture.mockRestore();
+  const run = structuredClone(await analyzed());
+  const prepared = run.outputs.prepare.value as unknown as { plan: Record<string, unknown> };
+  Reflect.deleteProperty(prepared.plan, 'documents');
+  const event = {
+    kind: 'wait-resolved' as const,
+    stepId: 'confirm-plan',
+    proposalHash: run.waits.at(-1)!.proposalHash,
+    decisionId: 'current-user',
+  };
+  expect(handler.apply({ run, event: { ...event, choice: 'revise' } })).toEqual({
+    state: {},
+    next: ['analyze'],
+  });
+  expect(handler.apply({ run, event: { ...event, choice: 'rejected' } })).toEqual({
+    state: {},
+    next: ['stop'],
+  });
+  expect(() => handler.apply({ run, event: { ...event, choice: 'approved' } })).toThrow(
+    /documents|SKILL\.md/,
+  );
 });
 
 it('v3 rejects platform drift before accepting approval and before writing the export', async () => {

@@ -111,8 +111,21 @@ type Preview = {
   distribution: ApplicationInstallPreview;
 };
 
+function requireAuthoredDocuments(proposal: unknown): void {
+  const supplied = object(proposal).documents;
+  if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied))
+    reject(
+      '创作方案需要 documents 中的完整 SKILL.md 与业务 Rule；在 analyze 补齐正文，已有方案请选择 revise',
+    );
+  const documents = supplied as Record<string, unknown>;
+  for (const ref of ['SKILL.md', 'rules/workflow-guard.md'])
+    if (typeof documents[ref] !== 'string' || !documents[ref].trim())
+      reject(`创作方案缺少 Agent 编写的 ${ref} 正文；在 analyze 补齐，已有方案请选择 revise`);
+}
+
 function assertPlan(run: Readonly<WorkflowRun>): Prepared {
   const prepared = value<Prepared>(run, 'prepare');
+  requireAuthoredDocuments(prepared.plan);
   if (hashRuntimeValue(prepared.plan) !== prepared.planHash) reject('方案发生变化');
   for (const skill of prepared.plan.manifest.skills) {
     if (applicationFilesHash(files(skill.root)) !== skill.contentHash)
@@ -310,11 +323,13 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
   const handlers = {
     'creator.prepare': work(async (run) => {
       const analysis = object(value(run, 'analyze'));
+      requireAuthoredDocuments(analysis.proposal);
       const plan = await prepareWorkflowApplicationPlan({
         proposal: analysis.proposal as WorkflowApplicationProposal,
         projectRoot: root,
         packageRoot: staging,
       });
+      requireAuthoredDocuments(plan);
       for (const skill of plan.manifest.skills)
         if (!path.isAbsolute(skill.root)) throw new Error('创作方案的Skill目录需要绝对路径');
       return {
@@ -549,6 +564,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
             if (!['codex', 'claude-code'].includes(text(input.host, '宿主')))
               throw new Error('仅支持Codex和Claude Code适配');
             const analysis = object(outcome.output);
+            requireAuthoredDocuments(analysis.proposal);
             await prepareWorkflowApplicationPlan({
               proposal: analysis.proposal as WorkflowApplicationProposal,
               packageRoot: staging,
@@ -767,6 +783,8 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
 }
 
 export function creatorSummary(run: WorkflowRun) {
+  const prepared = run.outputs.prepare?.value as unknown as Prepared | undefined;
+  const documents = prepared ? object(prepared.plan).documents : undefined;
   return {
     runId: run.runId,
     revision: run.revision,
@@ -775,6 +793,15 @@ export function creatorSummary(run: WorkflowRun) {
     actions: run.actions.filter((a) => ['pending', 'running', 'unknown'].includes(a.status)),
     waits: run.waits.filter((w) => w.status === 'pending'),
     plan: run.outputs.prepare?.value ?? null,
+    documents:
+      documents && typeof documents === 'object' && !Array.isArray(documents)
+        ? Object.fromEntries(
+            Object.entries(documents).map(([ref, content]) => [
+              ref,
+              { content, contentHash: hashRuntimeValue(content) },
+            ]),
+          )
+        : null,
     installationPreview: run.outputs.preview?.value ?? null,
     verification: run.outputs.verify?.value ?? null,
     evaluationPreview: run.outputs['eval-preview']?.value ?? null,

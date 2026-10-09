@@ -18,6 +18,12 @@ export function creatorSummary(run: WorkflowRun): {
     plan: string | number | boolean | RuntimeValue[] | {
         [key: string]: RuntimeValue;
     } | null;
+    documents: {
+        [k: string]: {
+            content: any;
+            contentHash: string;
+        };
+    } | null;
     installationPreview: string | number | boolean | RuntimeValue[] | {
         [key: string]: RuntimeValue;
     } | null;
@@ -44,6 +50,12 @@ export function listCreatorRuns(projectRoot: string): Promise<{
     waits: RuntimeWait[];
     plan: string | number | boolean | RuntimeValue[] | {
         [key: string]: RuntimeValue;
+    } | null;
+    documents: {
+        [k: string]: {
+            content: any;
+            contentHash: string;
+        };
     } | null;
     installationPreview: string | number | boolean | RuntimeValue[] | {
         [key: string]: RuntimeValue;

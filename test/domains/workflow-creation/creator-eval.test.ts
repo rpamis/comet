@@ -311,6 +311,12 @@ async function compile() {
           },
           composition: { kind: 'report' },
           modules: {},
+          documents: {
+            'SKILL.md':
+              '---\nname: reports\ndescription: Prepare a source-backed report, ask for approval, and publish the approved draft.\n---\n\n# Report workflow\n\nUse this application when a report needs review before publication. Draft from the supplied sources, show the current report and ask for approval, then publish only the approved content. A rejection retains the draft. Revise and ask again when the content changes. Check actual report and publication artifacts before completing.\n',
+            'rules/workflow-guard.md':
+              '# Report business rules\n\nAll claims must identify their supplied source. Keep rejected drafts and their review history. Do not publish until the current report is approved; changed content requires a new review.\n',
+          },
         },
       },
     },

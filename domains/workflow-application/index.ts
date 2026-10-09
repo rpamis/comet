@@ -8,6 +8,7 @@ export {
   inspectSelectedWorkflowApplicationStatus,
 } from './application.js';
 export { inspectApplicationSkill, adaptApplicationSkill } from './skill-adapter.js';
+export { rewriteMarkdownResourceLinks } from './markdown-resources.js';
 export { createApplicationSkillExecutor, reconcileApplicationSkill } from './skill-executor.js';
 export { applicationSkillWork, applicationWaitSkillWork } from './skill-work.js';
 export { createReportApplication } from './report-application.js';

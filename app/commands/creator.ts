@@ -52,6 +52,8 @@ export async function creatorGuideCommand(_options: CreatorCommandOptions = {}):
         dispatch: 'comet creator dispatch <name> --request <json-file> --json',
         continuation:
           'status只读当前Run；next执行本地步骤直到需要宿主Action或用户决定。dispatch使用当前Run的revision和Action或Wait身份，不能复用旧请求。',
+        authoring:
+          'analyze 由 Agent 创作完整组合 Skill 与业务 Rule，写入 proposal.documents 的 SKILL.md 和 rules/workflow-guard.md；与流程、执行绑定和验收器一起确认。SDK 保留正文并附加通用执行协议，不以入口模板替代业务创作。',
         supported: ['Native新增步骤', 'Classic full/hotfix/tweak编排', '独立SDK流程与报告审批样板'],
         delivery:
           '新创作使用 Creator v3：SDK Skill 应用包含 Skill、Runtime 和对应 Rule/Hook；安装预览同时展示项目内完整包导出、固定依赖及当前宿主的正式安装计划。install-target 是独立导出目录，例如 .comet/creator/exports/<应用名>，不能与平台入口重叠。',

@@ -183,6 +183,26 @@ describe('CI workflows', () => {
     }
   });
 
+  it('runs the Windows Classic lifecycle separately from other process-heavy SDK fixtures', async () => {
+    const ci = parse(await readWorkflow('ci.yml')) as {
+      jobs: Record<
+        string,
+        { steps: Array<{ name?: string; id?: string; run?: string; if?: string }> }
+      >;
+    };
+    const steps = ci.jobs['sdk-contracts'].steps;
+    const sdk = steps.find((step) => step.id === 'sdk-tests')!;
+    const classic = steps.find((step) => step.id === 'classic-sdk-tests')!;
+    expect(sdk.run).toContain("matrix.os == 'windows-latest'");
+    expect(sdk.run).toContain('--exclude test/domains/comet-classic/classic-application.test.ts');
+    expect(classic.if).toBe("matrix.os == 'windows-latest'");
+    expect(classic.run).toContain(
+      'vitest run test/domains/comet-classic/classic-application.test.ts',
+    );
+    expect(classic.run).toContain('--maxWorkers=1');
+    expect(steps.indexOf(classic)).toBeGreaterThan(steps.indexOf(sdk));
+  });
+
   it('requires SDK contracts on every supported CI platform and the minimum Node version', async () => {
     const ci = parse(await readWorkflow('ci.yml')) as {
       on: { push: { branches: string[] }; workflow_dispatch?: unknown };

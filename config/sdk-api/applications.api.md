@@ -1209,6 +1209,9 @@ export function resolveInstalledWorkflowApplication(options: ApplicationDelivery
 // @public
 export function resolveWorkflowApplicationFile(projectRoot: string, id: string, runId: string): Promise<string>;
 
+// @public
+export function rewriteMarkdownResourceLinks(content: string, rewriteTarget: (target: string) => string): string;
+
 // @public (undocumented)
 export type SelectedWorkflowApplicationStatus = NonNullable<Awaited<ReturnType<typeof inspectSelectedWorkflowApplicationStatus>>>;
 
