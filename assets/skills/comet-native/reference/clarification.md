@@ -79,7 +79,7 @@ In either mode, if no questions are ready, continue investigating unresolved fac
 
 Before final confirmation of a large request, assess [Supervisor decomposition and confirmation](#supervisor-decomposition-and-confirmation). Length and item count alone do not require decomposition. When requirements sources exist, check every source item within the current coverage boundary under [source-document full coverage](artifacts.md#source-document-full-coverage), including additions, replacements, Spec locations, and acceptance IDs.
 
-Completion requires every outcome-affecting decision to be confirmed, relevant facts and implicit assumptions to be checked, no `[blocking]` in the brief, and specific, verifiable, nonduplicative acceptance items. Then:
+Completion requires every outcome-affecting decision to be confirmed, relevant facts and implicit assumptions to be checked, no `[blocking]` in the brief, a complete directory structure under `# Scope` (see [formal artifacts](artifacts.md#formal-artifacts)), and specific, verifiable, nonduplicative acceptance items. Then:
 
 1. Execute `prepare-shape-confirmation` from the current continuation. Submit outcome, scope, key decisions, acceptance criteria, and non-goals through `--summary`; do not create another confirmation blocker.
 2. After Runtime saves the summary and returns `await-user`, show the complete summary and `userCommunication`, and wait for explicit confirmation.

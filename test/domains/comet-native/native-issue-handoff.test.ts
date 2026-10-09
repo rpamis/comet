@@ -110,7 +110,7 @@ describe('Native issue handoff regressions', () => {
     expect((await cli(['new', name, '--runtime', 'compat'])).exitCode).toBe(0);
     await fs.writeFile(
       path.join(root, 'docs/comet/changes', name, 'brief.md'),
-      '# Outcome\nShip fixture behaviors.\n# Scope\nFirst and second behaviors.\n# Non-goals\nNo unrelated work.\n# Acceptance examples\n- First behavior works.\n- Second behavior works.\n# Constraints and invariants\nKeep scope fixed.\n# Decisions\nUse fixture implementation.\n# Open questions\nNone.\n# Verification expectations\nRun applicable checks.\n',
+      '# Outcome\nShip fixture behaviors.\n# Scope\nFirst and second behaviors.\n## Directory structure\n### Created\nNone.\n### Modified\nNone.\n### Deleted\nNone.\n### Not created\nNone.\n# Non-goals\nNo unrelated work.\n# Acceptance examples\n- First behavior works.\n- Second behavior works.\n# Constraints and invariants\nKeep scope fixed.\n# Decisions\nUse fixture implementation.\n# Open questions\nNone.\n# Verification expectations\nRun applicable checks.\n',
     );
     await fs.mkdir(path.join(root, 'docs/comet/changes', name, 'specs/fixture'), {
       recursive: true,

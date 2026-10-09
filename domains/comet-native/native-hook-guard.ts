@@ -361,7 +361,7 @@ async function inspectPortableWriteTargets(options: {
   }
   if (formalTargets.length > 0) {
     if (
-      state.document_constraints_version === 2 &&
+      (state.document_constraints_version === 2 || state.document_constraints_version === 3) &&
       formalTargets.every(
         (target) => target === 'brief.md' || /^specs\/[^/]+\/spec\.md$/u.test(target),
       )
@@ -409,7 +409,10 @@ async function inspectPortableWriteTargets(options: {
     };
   }
   if (implementationTargets.length > 0) {
-    if (state.document_constraints_version === 2 && state.phase !== 'shape') {
+    if (
+      (state.document_constraints_version === 2 || state.document_constraints_version === 3) &&
+      state.phase !== 'shape'
+    ) {
       const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
       if (drift.drifted) {
         const returned = await runNativeHookMutation(() =>

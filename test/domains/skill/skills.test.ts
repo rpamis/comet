@@ -1222,7 +1222,7 @@ describe('skills', () => {
 
       const patch = await fs.readFile(path.join(tmpDir, '.dsh', 'cordis.patch.yml'), 'utf8');
       expect(patch).toContain('dsh-hooks-claude-code');
-      expect(patch).toContain('./.dsh/hooks.json');
+      expect(patch).toContain(path.join(tmpDir, '.dsh', 'hooks.json').replaceAll('\\', '/'));
     });
 
     it('installs the Native Copilot Hook with a write matcher and structured denial output', async () => {

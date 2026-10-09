@@ -12,6 +12,15 @@ const brief = `# Outcome
 Correct the greeting.
 # Scope
 Change the greeting only.
+## Directory structure
+### Created
+None.
+### Modified
+- README.md — correct the greeting sentence.
+### Deleted
+None.
+### Not created
+None.
 # Non-goals
 None.
 # Acceptance examples
@@ -102,6 +111,15 @@ describe('Native workflow friction regressions', () => {
 Correct documentation spelling.
 # Scope
 README only. No product behavior change: correct a spelling mistake.
+## Directory structure
+### Created
+None.
+### Modified
+- README.md — correct the spelling mistake.
+### Deleted
+None.
+### Not created
+None.
 # Non-goals
 None.
 # Acceptance examples

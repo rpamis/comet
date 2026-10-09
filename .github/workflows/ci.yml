@@ -104,6 +104,13 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
       - run: pnpm test:native-parallel
+      - name: DSH Hook installation and denial regressions
+        run: >-
+          pnpm exec vitest run
+          test/domains/skill/dsh-hooks.test.ts
+          test/platform/dsh-profiles.test.ts
+          test/domains/comet-entry/hook-adapter.test.ts
+          test/domains/comet-entry/hook-router-runtime.test.ts
       - name: Native check process and recovery regressions
         run: >-
           pnpm exec vitest run

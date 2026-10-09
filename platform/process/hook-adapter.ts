@@ -336,6 +336,19 @@ export function renderCometHookDecision(
       stderr: decision.diagnostic ? `${decision.diagnostic}\n` : '',
     };
   }
+  if (platformId === 'dsh' && !decision.allowed) {
+    return {
+      exitCode: 0,
+      stdout: `${JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: decision.reason,
+        },
+      })}\n`,
+      stderr: decision.diagnostic ? `${decision.diagnostic}\n` : '',
+    };
+  }
   if (decision.allowed && decision.context) {
     return {
       exitCode: 0,

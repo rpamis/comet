@@ -50,6 +50,50 @@ Runtime's `artifacts` object is the sole location authority for the current work
 
 Add `Constraints and invariants`, `Decisions`, `Open questions`, or `Verification expectations` only for actual constraints, key decisions, unresolved questions, or special check requirements. Fill any existing section with meaningful content; simple tasks need no placeholder "none" sections. Record user decisions in relevant core sections, using Decisions when several decisions need tracking.
 
+Under `# Scope`, include a "## Directory structure" subsection that states where the change will land and what each part is responsible for. It has four fixed level-three subsections; keep every heading and write "None" when a subsection has no content:
+
+- `### Created`, `### Modified`, `### Deleted`: list the modules and key files to create, modify, or delete; a tree (`├─`, `└─`, `│`) or a plain list both work, annotating each path with " — " followed by its purpose or change point, with approximate line numbers where useful. Use a tree when files share a directory relationship; list unrelated files or multiple change points inside one file line by line; both forms can mix within a subsection.
+- `### Not created`: when there is a deliberate trade-off, name the module, configuration, or directory that is unnecessary and explain why; otherwise write "None".
+
+At Shape, naming the modules and key files is enough; adding ordinary helper files inside a confirmed module during implementation needs no renewed confirmation. When the scope grows or responsibilities shift, update the directory structure and the corresponding Decision before continuing. The structure is confirmed with the final Shape; Runtime checks that the section and all four subsections exist and contain nonempty, non-placeholder content. It does not compare actual file changes. Implementation review and verification determine whether the changes match the confirmed scope.
+
+Choose locations by the project's own directory and naming rules; without project rules, follow repository conventions and state the basis in the annotation. These paths illustrate the format without prescribing a programming language, framework, or project layering:
+
+```text
+## Directory structure
+
+### Created
+
+- src/export/ — coordinate export behavior, reusing existing data queries.
+- tests/export/ — cover exported results and error handling.
+
+### Modified
+
+- src/reporting/ — add the export entry point.
+
+### Deleted
+
+None
+
+### Not created
+
+- A separate data access layer — existing interfaces already meet the requirements.
+```
+
+For a single-file task, list the actual path and one change description, then write "None" in the remaining subsections. No directory tree or extra explanation of "None" is needed:
+
+```text
+## Directory structure
+### Created
+None
+### Modified
+- config/defaults.yaml — adjust the default timeout, keeping the existing configuration loader.
+### Deleted
+None
+### Not created
+None
+```
+
 Use these markers in Open questions only for genuinely unresolved user questions:
 
 ```text

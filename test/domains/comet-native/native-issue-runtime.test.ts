@@ -64,7 +64,7 @@ describe('packaged Runtime issue regressions', () => {
     const change = path.join(root, 'docs/comet/changes', name);
     await fs.writeFile(
       path.join(change, 'brief.md'),
-      '# Outcome\nShip both fixture behaviors.\n# Scope\nBoth fixture behaviors.\n# Non-goals\nNo unrelated work.\n# Acceptance examples\n- First behavior works.\n- Second behavior works.\n# Constraints and invariants\nKeep scope fixed.\n# Decisions\nUse fixture implementation.\n# Open questions\nNone.\n# Verification expectations\nRun applicable checks.\n',
+      '# Outcome\nShip both fixture behaviors.\n# Scope\nBoth fixture behaviors.\n## Directory structure\n### Created\nNone.\n### Modified\nNone.\n### Deleted\nNone.\n### Not created\nNone.\n# Non-goals\nNo unrelated work.\n# Acceptance examples\n- First behavior works.\n- Second behavior works.\n# Constraints and invariants\nKeep scope fixed.\n# Decisions\nUse fixture implementation.\n# Open questions\nNone.\n# Verification expectations\nRun applicable checks.\n',
     );
     await fs.mkdir(path.join(change, 'specs/fixture'), { recursive: true });
     await fs.writeFile(

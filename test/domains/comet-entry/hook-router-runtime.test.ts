@@ -279,10 +279,22 @@ describe('packaged Hook Router worktree isolation', () => {
         { cwd: primary, input: payload, encoding: 'utf8', timeout: 20_000 },
       );
 
-      expect(result.status, result.stderr).toBe(2);
-      expect(result.stdout).toBe('');
-      expect(result.stderr).toContain(`${platform}-shape`);
-      expect(result.stderr).toContain('only allowed in Build');
+      if (platform === 'dsh') {
+        expect(result.status, result.stderr).toBe(0);
+        expect(JSON.parse(result.stdout).hookSpecificOutput).toMatchObject({
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: expect.stringContaining('only allowed in Build'),
+        });
+        expect(JSON.parse(result.stdout).hookSpecificOutput.permissionDecisionReason).toContain(
+          `${platform}-shape`,
+        );
+      } else {
+        expect(result.status, result.stderr).toBe(2);
+        expect(result.stdout).toBe('');
+        expect(result.stderr).toContain(`${platform}-shape`);
+        expect(result.stderr).toContain('only allowed in Build');
+      }
     },
   );
 

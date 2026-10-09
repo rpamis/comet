@@ -41,7 +41,7 @@ async function shape(supervisor = true) {
   const dir = path.join(root, 'docs/comet/changes/joint-shape');
   await fs.writeFile(
     path.join(dir, 'brief.md'),
-    '# Outcome\nDeliver both outputs.\n\n# Scope\nImplement Alpha and Beta. No product behavior change: this fixture exercises the confirmation protocol.\n\n# Non-goals\nDo not change unrelated outputs.\n\n# Acceptance examples\n- Alpha works.\n- Beta works.\n',
+    '# Outcome\nDeliver both outputs.\n\n# Scope\nImplement Alpha and Beta. No product behavior change: this fixture exercises the confirmation protocol.\n\n## Directory structure\n### Created\nNone.\n### Modified\nNone.\n### Deleted\nNone.\n### Not created\nNone.\n\n# Non-goals\nDo not change unrelated outputs.\n\n# Acceptance examples\n- Alpha works.\n- Beta works.\n',
   );
   if (supervisor) {
     await fs.writeFile(
