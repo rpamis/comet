@@ -2,6 +2,16 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
+## What's Changed [0.4.5] - 2026-10-09
+
+### Changed
+
+- **Dashboard workspace**: Browse changes in a responsive master-detail layout with project switching, search, plugin pages, settings, refresh, and theme controls using consistent outline icons in the top bar. Classic and Native share compact folder-style Explorer rows with task or child-change counts, keyboard-accessible name and workspace hints, separate Native expansion controls, and single-row selection while preserving their stage counts and Native child changes. Place row hints beside desktop lists and above stacked layouts. Keep project metrics and Git context separate from the selected change, while showing guidance, blockers, artifacts, acceptance, recovery, and history together.
+- **Dashboard phase progress**: Show distinct animated stage icons across Classic's five stages and Native's four stages while retaining names, connecting lines, and status labels. Animate only explicitly reported execution, keep waiting and blocked states stationary, and show verification checks only with passed results. Preserve animation across updates to the same change, isolate it when switching changes, and play a single completion response without animating initially completed stages. Retain verification failures during repair and stop motion immediately when reduced motion is enabled. Classic remains stationary without live execution evidence; Demo previews provide explicit execution and waiting states.
+- **Dashboard overview metrics**: Show project metrics in compact responsive cards with titles, existing status badges, and explanations beside prominent values in both themes, allowing narrow-screen text to wrap without clipping.
+- **Dashboard page alignment**: Fill the available width across the top bar, headings, workflow tabs, and all workflow and plugin page bodies, with shared 32px desktop and 16px narrow-screen gutters. Keep loading and empty states aligned while preserving dialog and local text width limits.
+- **Dashboard counters**: Add brief numeric transitions for updates to overview metrics, change completion counts, scope totals, and acceptance counts. Count up from zero when switching workflows with stable metric widths, and show new projects, changes, and filtered views immediately. Preserve Explorer Badge scrolling when counts change, display exact totals above 99, and stop these counters and progress transitions as soon as reduced motion is enabled.
+
 ## What's Changed [0.4.4] - 2026-10-03
 
 ### Added

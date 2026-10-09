@@ -1,24 +1,32 @@
+import { ReferenceIcon } from './reference-icon.jsx';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ApartmentOutlined,
   BulbOutlined,
   CheckCircleOutlined,
   CheckOutlined,
-  CopyOutlined,
   DownOutlined,
   FlagOutlined,
   RightOutlined,
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Badge, Button, Skeleton, Tooltip } from 'antd';
+import { Button, Card, Skeleton, Statistic, Tabs, Tooltip } from 'antd';
 import {
   isNativePhaseRunning,
   nativeChangeStatusPresentation,
+  nativePhaseIconStatuses,
+  nativePhaseStatuses,
 } from './native-status-presentation.js';
-import { useAnimatedNumber } from './use-animated-number.js';
 import { WorkflowPhaseTrack } from './phase-progress-indicator.jsx';
-import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
+import {
+  DashboardChangeDetail,
+  DashboardExplorerRowContent,
+  DashboardExplorerRowTooltip,
+  DashboardExplorerTitle,
+  DashboardWorkspaceRegion,
+} from './workspace-layout.jsx';
+import { AnimatedNumber, useNumberTransition } from './number-transition.jsx';
 
 const PHASES = [
   ['shape', 'Shape'],
@@ -138,17 +146,6 @@ const CHILD_STATUS_TONES = {
   'needs-reverify': 'warn',
   blocked: 'danger',
 };
-const CHILD_STATUS_DESCRIPTIONS = {
-  pending: '等待前置子任务完成',
-  ready: '等待开始执行',
-  active: '正在执行',
-  done: '执行完成',
-  verified: '验收通过',
-  integrated: '已合入集成分支',
-  archived: '归档完成',
-  'needs-reverify': '等待重新验收',
-  blocked: '等待解除阻塞',
-};
 const NATIVE_CHANGE_PAGE_SIZE = 5;
 
 function portableText(value, fallback = '—') {
@@ -187,7 +184,9 @@ function acceptanceProgress(change) {
 
 export function NativeWorkflowPanel({
   native,
-  git,
+  numberIdentity,
+  numberEntryKey = null,
+  onNumberEntryComplete,
   query,
   tab = 'active',
   onTab,
@@ -209,6 +208,8 @@ export function NativeWorkflowPanel({
   const loadMoreRef = useRef(null);
   const [visibleChangeCount, setVisibleChangeCount] = useState(NATIVE_CHANGE_PAGE_SIZE);
   const normalizedQuery = query.trim().toLowerCase();
+  const paginationIdentity = JSON.stringify([normalizedQuery, serverPaged, tab]);
+  const [resetPaginationIdentity, setResetPaginationIdentity] = useState(paginationIdentity);
   const sourceChanges = useMemo(() => {
     const source = serverPaged ? pagedChanges : (native?.changes ?? []);
     if (serverPaged) return source;
@@ -236,10 +237,10 @@ export function NativeWorkflowPanel({
   }, [native, normalizedQuery, pagedChanges, serverPaged, tab]);
   const [selectedKey, setSelectedKey] = useState(null);
 
-  useEffect(
-    () => setVisibleChangeCount(NATIVE_CHANGE_PAGE_SIZE),
-    [normalizedQuery, serverPaged, tab],
-  );
+  useEffect(() => {
+    setVisibleChangeCount(NATIVE_CHANGE_PAGE_SIZE);
+    setResetPaginationIdentity(paginationIdentity);
+  }, [paginationIdentity]);
 
   const loadMoreChanges = useCallback(() => {
     if (serverPaged) {
@@ -344,37 +345,70 @@ export function NativeWorkflowPanel({
   useEffect(() => {
     if (selectedSummary) onSelect?.(selectedSummary);
   }, [onSelect, selectedSummary]);
-  const selected = serverPaged ? selectedDetail : selectedSummary;
+  const selected = serverPaged
+    ? selectedDetail && selectedSummary && changeKey(selectedDetail) === changeKey(selectedSummary)
+      ? selectedDetail
+      : null
+    : selectedSummary;
   const detailPending = Boolean(selectedSummary && !selected && (detailLoading || !detailError));
   const hasNativeChanges = Boolean(native && native.totalChangeCount > 0);
   const isEmptyView = !pageLoading && visibleChanges.length === 0;
   const isLoadingView = pageLoading && visibleChanges.length === 0;
+  const summaryNumberIdentity = serverPaged
+    ? numberIdentity
+    : JSON.stringify([numberIdentity, resetPaginationIdentity === paginationIdentity]);
+  const numberPageReady = !pageLoading || visibleChanges.length > 0;
+  const numberEntryRef = useRef(null);
+  if (numberEntryKey !== null && numberEntryRef.current?.key !== numberEntryKey) {
+    numberEntryRef.current = { key: numberEntryKey, rowKeys: null, selectedKey: null };
+  }
+  if (numberEntryKey !== null && numberPageReady && numberEntryRef.current.rowKeys === null) {
+    numberEntryRef.current.rowKeys = new Set(visibleChanges.map(changeKey));
+    numberEntryRef.current.selectedKey = selectedSummary ? changeKey(selectedSummary) : null;
+  }
+  const numberEntrySelection = numberEntryRef.current?.selectedKey;
+  const detailNumberEntryKey =
+    numberEntryKey !== null && selected && changeKey(selected) === numberEntrySelection
+      ? numberEntryKey
+      : null;
+  const numberEntryDetailReady =
+    !numberEntrySelection ||
+    Boolean(selected && changeKey(selected) === numberEntrySelection) ||
+    Boolean(detailError?.change && changeKey(detailError.change) === numberEntrySelection) ||
+    !selectableChanges.some((change) => changeKey(change) === numberEntrySelection);
+  useEffect(() => {
+    if (numberEntryKey !== null && (!native || (numberPageReady && numberEntryDetailReady))) {
+      onNumberEntryComplete?.(numberEntryKey);
+    }
+  }, [native, numberEntryKey, numberEntryDetailReady, numberPageReady, onNumberEntryComplete]);
 
   return (
-    <div className="mx-auto min-w-0 max-w-dashboard">
-      <SectionHead
-        title="项目概览"
-        hint={
-          native
-            ? `Native 状态生成于 ${formatTimestamp(native.generatedAt)}`
-            : '当前项目尚无 Native 状态'
-        }
+    <div className="mx-auto min-w-0">
+      <NativeSummaryCards
+        native={native}
+        loadedChanges={visibleChanges}
+        numberIdentity={summaryNumberIdentity}
+        numberEntryKey={numberEntryKey}
+        numberPageReady={numberPageReady}
       />
-      <NativeWorkflowSuggestion change={selected ?? selectedSummary} />
-      <NativeSummaryCards native={native} loadedChanges={visibleChanges} />
-      <SectionHead title="Native 变更工作区" hint="查看循环、验收、阻塞与恢复状态" />
       <DashboardWorkspaceRegion
         stableFrame
         leftClassName="native-workspace-left"
         left={
           <NativeChangesExplorer
             changes={visibleChanges}
+            numberIdentity={numberIdentity}
+            numberEntryKey={numberEntryKey}
+            numberEntryRows={numberEntryRef.current?.rowKeys}
             total={serverPaged ? (total ?? sourceChanges.length) : sourceChanges.length}
             selectedKey={selectedSummary ? changeKey(selectedSummary) : null}
             query={query}
             tab={tab}
             onTab={onTab}
-            onSelect={(change) => setSelectedKey(changeKey(change))}
+            onSelect={(change) => {
+              if (numberEntryKey !== null) onNumberEntryComplete?.(numberEntryKey);
+              setSelectedKey(changeKey(change));
+            }}
             listRef={listRef}
             loadMoreRef={loadMoreRef}
             hasMore={hasMoreChanges}
@@ -396,28 +430,26 @@ export function NativeWorkflowPanel({
           ) : selected ? (
             <NativeChangeDetail
               change={selected}
+              numberIdentity={JSON.stringify([numberIdentity, changeKey(selected)])}
+              numberEntryKey={detailNumberEntryKey}
               onPreview={onPreview}
               onCopyChangeName={onCopyChangeName}
             />
           ) : detailError ? (
-            <div className="native-change-detail dashboard-change-detail-loading min-w-0 rounded-lg border border-border bg-bg p-10 text-center text-sm text-danger shadow-raised">
-              <p role="alert">Native 变更详情加载失败：{detailError.reason}</p>
-              <Button className="mt-4" onClick={onRetryDetail}>
-                重新加载
-              </Button>
-            </div>
+            <DashboardChangeDetail
+              className="native-change-detail dashboard-change-detail-loading"
+              title="Native 变更详情"
+            >
+              <div className="text-center text-sm text-danger">
+                <p role="alert">Native 变更详情加载失败：{detailError.reason}</p>
+                <Button className="mt-4" onClick={onRetryDetail}>
+                  重新加载
+                </Button>
+              </div>
+            </DashboardChangeDetail>
           ) : (
             <NativeEmptyChangeDetail native={native} tab={tab} query={query} onTab={onTab} />
           )
-        }
-        right={
-          isEmptyView ? (
-            <NativeEmptySidePanel />
-          ) : isLoadingView || detailPending ? (
-            <NativeSidePanelSkeleton />
-          ) : selected ? (
-            <NativeSidePanel change={selected} git={git} />
-          ) : null
         }
       />
     </div>
@@ -444,13 +476,15 @@ function NativeEmptyChangeDetail({ native, tab, query = '', onTab, emptyProject 
         ? '当前还没有归档记录，你可以返回查看正在进行的变更。'
         : '调整顶部搜索条件，或切换变更范围后再试。';
   return (
-    <section className="native-change-detail native-change-detail-empty min-w-0 rounded-lg border border-border bg-bg shadow-raised">
+    <DashboardChangeDetail
+      className="native-change-detail native-change-detail-empty dashboard-change-detail-empty"
+      title={<h3 className="m-0 text-sm font-semibold">{title}</h3>}
+    >
       <div className="dashboard-workspace-empty-detail text-center">
         <span className="native-workspace-empty-icon" aria-hidden="true">
           <FlagOutlined />
         </span>
-        <h3 className="mt-5 text-lg font-semibold tracking-tight">{title}</h3>
-        <p className="mt-2 max-w-md text-sm leading-relaxed text-muted">{description}</p>
+        <p>{description}</p>
         {showArchiveShortcut ? (
           <Button className="mt-5" type="primary" onClick={() => onTab?.('archived')}>
             查看已归档变更
@@ -461,21 +495,7 @@ function NativeEmptyChangeDetail({ native, tab, query = '', onTab, emptyProject 
           </Button>
         ) : null}
       </div>
-    </section>
-  );
-}
-
-function NativeEmptySidePanel() {
-  return (
-    <aside className="dashboard-workspace-side-empty" aria-label="Native 变更状态">
-      <div>
-        <span className="native-workspace-empty-icon" aria-hidden="true">
-          <FlagOutlined />
-        </span>
-        <h3>暂无变更数据</h3>
-        <p>选择或创建 Native change 后，这里会显示恢复状态、阻塞信息和 Git 摘要。</p>
-      </div>
-    </aside>
+    </DashboardChangeDetail>
   );
 }
 
@@ -495,10 +515,10 @@ function suggestion(change) {
 function NativeWorkflowSuggestion({ change }) {
   return (
     <section className="dashboard-priority-banner" role="status" aria-label="工作流建议">
-      <div className="dashboard-priority-title">
+      <h4 className="dashboard-priority-title dashboard-detail-section-title">
         <BulbOutlined aria-hidden="true" />
-        <span>下一步建议</span>
-      </div>
+        下一步建议
+      </h4>
       <p>{suggestion(change)}</p>
     </section>
   );
@@ -515,7 +535,13 @@ function SectionHead({ title, hint }) {
   );
 }
 
-function NativeSummaryCards({ native, loadedChanges = [] }) {
+function NativeSummaryCards({
+  native,
+  loadedChanges = [],
+  numberIdentity,
+  numberEntryKey,
+  numberPageReady,
+}) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const active =
     native?.activeChangeCount ??
@@ -559,6 +585,8 @@ function NativeSummaryCards({ native, loadedChanges = [] }) {
           key={label}
           label={label}
           value={value}
+          numberIdentity={numberIdentity}
+          numberEntryKey={index === 0 || numberPageReady ? numberEntryKey : null}
           note={note}
           tag={tag}
           icon={Icon}
@@ -571,34 +599,63 @@ function NativeSummaryCards({ native, loadedChanges = [] }) {
   );
 }
 
-function NativeSummaryCard({ label, value, note, tag, icon: Icon, tone, selected, onClick }) {
-  const animatedValue = useAnimatedNumber(value, 850, value);
+function NativeSummaryCard({
+  label,
+  value,
+  numberIdentity,
+  numberEntryKey,
+  note,
+  tag,
+  icon: Icon,
+  tone,
+  selected,
+  onClick,
+}) {
+  const displayedValue = useNumberTransition(value, numberIdentity, numberEntryKey);
   return (
-    <button
-      type="button"
+    <Card
+      size="small"
+      role="button"
+      tabIndex={0}
       aria-pressed={selected}
+      aria-label={`${label} ${value} ${note} ${tag}`}
       className={`dashboard-overview-summary-card dashboard-summary-card dashboard-summary-metric-cell ${tone} ${selected ? 'dashboard-summary-primary' : ''}`}
       onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
     >
       <div className="dashboard-summary-card-top">
-        <div className="min-w-0">
-          <div className="text-[13px] font-medium text-muted">{label}</div>
-          <div className="dashboard-summary-metric mt-1 text-[28px] font-semibold leading-none tabular-nums">
-            {Math.round(animatedValue)}
-          </div>
-        </div>
-        <span className="dashboard-summary-icon" aria-hidden="true">
-          <Icon />
-        </span>
+        <Statistic
+          title={
+            <>
+              <div className="dashboard-summary-title">
+                <span className="dashboard-summary-icon" aria-hidden="true">
+                  <Icon />
+                </span>
+                <span>{label}</span>
+                <span className="dashboard-summary-status">{tag}</span>
+              </div>
+              <div className="dashboard-summary-note">{note}</div>
+            </>
+          }
+          value={displayedValue}
+          classNames={{ content: 'dashboard-summary-metric' }}
+          styles={{ content: { minWidth: `${value.toLocaleString('en-US').length}ch` } }}
+        />
       </div>
-      <span className="dashboard-summary-status">{tag}</span>
-      <div className="mt-2 truncate text-[11px] text-meta">{note}</div>
-    </button>
+    </Card>
   );
 }
 
 function NativeChangesExplorer({
   changes,
+  numberIdentity,
+  numberEntryKey,
+  numberEntryRows,
   total,
   selectedKey,
   query,
@@ -661,34 +718,25 @@ function NativeChangesExplorer({
   }, []);
 
   return (
-    <aside className="native-changes-explorer flex min-h-0 flex-col rounded-lg border border-border bg-bg shadow-raised">
+    <aside className="dashboard-changes-explorer native-changes-explorer flex min-h-0 flex-col rounded-lg border border-border bg-bg shadow-raised">
       <div className="native-changes-explorer-header flex flex-none items-center border-b border-border-soft">
-        <h3 className="font-semibold">
-          Changes Explorer <Badge count={total} showZero className="native-changes-count ml-2" />
-        </h3>
+        <DashboardExplorerTitle count={total} badgeClassName="native-changes-count" />
       </div>
       <div className="native-changes-explorer-body flex min-h-0 flex-1 flex-col">
-        <div className="native-changes-explorer-tabs mb-4 flex flex-none items-end gap-8 border-b border-border-soft">
-          {[
-            ['active', '活跃'],
-            ['archived', '已归档'],
-            ['all', '全部'],
-          ].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={tab === value}
-              className={`native-change-tab ${tab === value ? 'active' : ''}`}
-              onClick={() => onTab(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          className="native-changes-explorer-tabs"
+          activeKey={tab}
+          onChange={onTab}
+          tabBarGutter={24}
+          items={[
+            { key: 'active', label: '活跃' },
+            { key: 'archived', label: '已归档' },
+            { key: 'all', label: '全部' },
+          ]}
+        />
         <div
           ref={listRef}
-          className="native-change-list min-h-0 flex-1 space-y-2 overflow-y-auto"
+          className="native-change-list min-h-0 flex-1 overflow-y-auto"
           onScroll={onScroll}
         >
           {changes.length === 0 ? (
@@ -708,16 +756,14 @@ function NativeChangesExplorer({
               const children = change.children ?? [];
               const hasChildren = children.length > 0;
               const key = changeKey(change);
+              const changeNumberIdentity = JSON.stringify([numberIdentity, key]);
+              const changeNumberEntryKey = numberEntryRows?.has(key) ? numberEntryKey : null;
               const expanded = hasChildren && expandedParents.has(key);
-              const progress = childrenProgress(change) ?? acceptanceProgress(change);
+              const progress = childrenProgress(change);
               const statusPresentation = nativeChangeStatusPresentation(change);
               const childrenId = `native-children-${change.workspace?.id ?? 'local'}-${change.name.replace(/[^a-z0-9_-]/giu, '-')}`;
-              const selectedChild = children.some((child) => child.locator === selectedKey);
               return (
-                <div
-                  key={key}
-                  className={`native-change-list-item ${key === selectedKey ? 'selected' : ''} ${selectedChild ? 'has-selected-child' : ''}`}
-                >
+                <div key={key} className="native-change-list-item">
                   <div className="native-change-row-shell">
                     {hasChildren ? (
                       <button
@@ -733,74 +779,80 @@ function NativeChangesExplorer({
                     ) : (
                       <span className="native-change-disclosure-spacer" aria-hidden="true" />
                     )}
-                    <button
-                      type="button"
-                      className="native-change-row"
-                      onClick={() => onSelect(change)}
+                    <DashboardExplorerRowTooltip
+                      name={change.name}
+                      status={statusPresentation.label}
+                      workspace={
+                        change.workspace && !change.workspace.current ? change.workspace : null
+                      }
                     >
-                      <div className="flex w-full items-center gap-2.5 text-left">
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate font-semibold">{change.name}</div>
-                          <div className="mt-1 truncate whitespace-nowrap text-xs text-meta">
-                            {PHASE_LABELS[change.phase] ?? '状态异常'}
-                            {hasChildren
-                              ? ` · ${progress.resolved}/${progress.total} 子变更`
-                              : change.loop
-                                ? ` · ${LOOP_STAGE_LABELS[change.loop.stage]} · 第${change.loop.iteration}轮/第${change.loop.attempt}次`
-                                : ''}
-                          </div>
-                          {change.workspace && !change.workspace.current ? (
-                            <span className="dashboard-workspace-label mt-1 inline-flex max-w-full truncate">
-                              {change.workspace.label}
-                            </span>
-                          ) : null}
-                          {progress && (
-                            <div
-                              className={`native-change-progress mt-1 ${progress.complete ? 'complete' : ''}`}
-                              role="progressbar"
-                              aria-valuenow={progress.percent}
-                              aria-valuemin="0"
-                              aria-valuemax="100"
-                            >
-                              <span style={{ width: `${progress.percent}%` }} />
-                            </div>
-                          )}
-                        </div>
-                        <Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>
-                      </div>
-                    </button>
+                      <button
+                        type="button"
+                        className={`native-change-row dashboard-explorer-row ${key === selectedKey ? 'selected' : ''}`}
+                        aria-pressed={key === selectedKey}
+                        onClick={() => onSelect(change)}
+                      >
+                        <DashboardExplorerRowContent
+                          name={change.name}
+                          count={
+                            progress ? (
+                              <>
+                                子变更{' '}
+                                <AnimatedNumber
+                                  value={progress.resolved}
+                                  identity={changeNumberIdentity}
+                                  numberEntryKey={changeNumberEntryKey}
+                                />
+                                /
+                                <AnimatedNumber
+                                  value={progress.total}
+                                  identity={changeNumberIdentity}
+                                  numberEntryKey={changeNumberEntryKey}
+                                />
+                              </>
+                            ) : null
+                          }
+                          status={
+                            <Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>
+                          }
+                        />
+                      </button>
+                    </DashboardExplorerRowTooltip>
                   </div>
                   {expanded ? (
                     <div id={childrenId} className="native-child-change-list" role="group">
                       {children.map((child) => {
                         const reference = childChangeReference(child);
                         const childSelected = child.locator === selectedKey;
+                        const childStatus = CHILD_STATUS_LABELS[child.status] ?? child.status;
                         return (
-                          <button
+                          <DashboardExplorerRowTooltip
                             key={child.name}
-                            type="button"
-                            className={`native-child-change-row ${childSelected ? 'selected' : ''}`}
-                            disabled={!reference}
-                            title={child.message ?? undefined}
-                            onClick={() => reference && onSelect(reference)}
+                            name={child.name}
+                            status={childStatus}
+                            workspace={child.workspace}
+                            message={
+                              child.message ??
+                              (!reference ? '无法定位子变更，详情暂不可用' : undefined)
+                            }
                           >
-                            <span
-                              className={`native-child-status-dot native-child-status-${child.status}`}
-                              aria-hidden="true"
-                            />
-                            <span className="min-w-0 flex-1 text-left">
-                              <strong className="block truncate font-medium">{child.name}</strong>
-                              <span className="mt-0.5 block truncate text-[11px] text-meta">
-                                {child.phase
-                                  ? (PHASE_LABELS[child.phase] ?? child.phase)
-                                  : (CHILD_STATUS_DESCRIPTIONS[child.status] ?? '阶段信息不可用')}
-                                {child.workspace?.label ? ` · ${child.workspace.label}` : ''}
-                              </span>
-                            </span>
-                            <Pill tone={CHILD_STATUS_TONES[child.status] ?? 'neutral'}>
-                              {CHILD_STATUS_LABELS[child.status] ?? child.status}
-                            </Pill>
-                          </button>
+                            <button
+                              type="button"
+                              className={`native-child-change-row dashboard-explorer-row ${childSelected ? 'selected' : ''}`}
+                              aria-pressed={childSelected}
+                              aria-disabled={!reference}
+                              onClick={() => reference && onSelect(reference)}
+                            >
+                              <DashboardExplorerRowContent
+                                name={child.name}
+                                status={
+                                  <Pill tone={CHILD_STATUS_TONES[child.status] ?? 'neutral'}>
+                                    {childStatus}
+                                  </Pill>
+                                }
+                              />
+                            </button>
+                          </DashboardExplorerRowTooltip>
                         );
                       })}
                     </div>
@@ -843,78 +895,94 @@ function NativeChangeListSkeleton({ compact = false }) {
   );
 }
 
-function NativeChangeDetail({ change, onPreview, onCopyChangeName }) {
+function NativeChangeDetail({
+  change,
+  numberIdentity,
+  numberEntryKey,
+  onPreview,
+  onCopyChangeName,
+}) {
   const [copied, setCopied] = useState(false);
   useEffect(() => setCopied(false), [change.name]);
   return (
-    <section className="native-change-detail min-w-0 rounded-lg border border-border bg-bg shadow-raised">
-      <div className="flex items-start gap-4 border-b border-border-soft px-5 py-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <h3 className="truncate text-base font-semibold">{change.name}</h3>
-            <Tooltip title="复制 Change 名称">
-              <Button
-                type="text"
-                size="small"
-                icon={copied ? <CheckOutlined /> : <CopyOutlined />}
-                aria-label={copied ? '已复制 Change 名称' : '复制 Change 名称'}
-                onClick={() =>
-                  onCopyChangeName?.(change.name)?.then(() => {
-                    setCopied(true);
-                    window.setTimeout(() => setCopied(false), 1600);
-                  })
-                }
-              />
-            </Tooltip>
-          </div>
-          <div className="mt-1 flex flex-wrap gap-3 text-xs text-meta">
-            <span>native</span>
-            <span>
-              {change.status === 'archived'
-                ? `归档于 ${change.archivedAt ?? '未知时间'}`
-                : `state v${change.stateVersion ?? '—'}`}
-            </span>
-            <span>{MIGRATION_LABELS[change.migration?.status] ?? '状态未知'}</span>
-            {change.loop?.actor && <span>当前执行者 {ACTOR_LABELS[change.loop.actor]}</span>}
-          </div>
-        </div>
-        <Pill tone={phaseTone(change.phase)}>{PHASE_LABELS[change.phase] ?? '状态异常'}</Pill>
-      </div>
-      <div className="space-y-5 p-5">
-        <NativePhaseStepper change={change} />
-        <NativeArtifactList artifacts={change.artifacts} onPreview={onPreview} />
-        <div className="grid gap-4 lg:grid-cols-2">
-          <NativeLoopRecoveryCard change={change} />
-          <NativeScopeCard change={change} />
-        </div>
-        <NativeAcceptanceCard change={change} />
-        <NativeVerificationCard change={change} />
+    <DashboardChangeDetail
+      className="native-change-detail"
+      title={
+        <>
+          <h3 className="text-base font-semibold">当前变更 · {change.name}</h3>
+          <Tooltip title="复制 Change 名称">
+            <Button
+              type="text"
+              size="small"
+              icon={copied ? <CheckOutlined /> : <ReferenceIcon name="copy" />}
+              aria-label={copied ? '已复制 Change 名称' : '复制 Change 名称'}
+              onClick={() =>
+                onCopyChangeName?.(change.name)?.then(() => {
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 1600);
+                })
+              }
+            />
+          </Tooltip>
+        </>
+      }
+      meta={
+        <>
+          <span>native</span>
+          <span>
+            {change.status === 'archived'
+              ? `归档于 ${change.archivedAt ?? '未知时间'}`
+              : `state v${change.stateVersion ?? '—'}`}
+          </span>
+          <span>{MIGRATION_LABELS[change.migration?.status] ?? '状态未知'}</span>
+          {change.loop?.actor && <span>当前执行者 {ACTOR_LABELS[change.loop.actor]}</span>}
+        </>
+      }
+      extra={<Pill tone={phaseTone(change.phase)}>{PHASE_LABELS[change.phase] ?? '状态异常'}</Pill>}
+    >
+      <NativePhaseStepper change={change} />
+      <div className="change-guidance">
+        <NativeWorkflowSuggestion change={change} />
         <NativeBlockersCard blockers={change.blockers ?? []} />
-        <NativeHistoryCard history={change.history ?? []} overflow={change.historyOverflow} />
       </div>
-    </section>
+      <div className="native-detail-facts">
+        <div>
+          <NativeArtifactList artifacts={change.artifacts} onPreview={onPreview} />
+          <NativeScopeCard
+            change={change}
+            numberIdentity={numberIdentity}
+            numberEntryKey={numberEntryKey}
+          />
+        </div>
+        <NativeLoopRecoveryCard change={change} />
+        <NativeRecoveryStatus change={change} />
+      </div>
+      <NativeAcceptanceCard
+        change={change}
+        numberIdentity={numberIdentity}
+        numberEntryKey={numberEntryKey}
+      />
+      <NativeVerificationCard change={change} />
+      <NativeHistoryCard history={change.history ?? []} overflow={change.historyOverflow} />
+    </DashboardChangeDetail>
   );
 }
 
 function NativeChangeDetailSkeleton() {
   return (
-    <section
-      className="native-change-detail native-change-detail-skeleton min-w-0 rounded-lg border border-border bg-bg shadow-raised"
+    <DashboardChangeDetail
+      className="native-change-detail native-change-detail-skeleton"
       aria-label="正在加载 Native 变更详情"
       aria-busy="true"
+      title={<Skeleton active title={{ width: '38%' }} paragraph={{ rows: 1, width: '58%' }} />}
     >
-      <div className="border-b border-border-soft px-5 py-5">
-        <Skeleton active title={{ width: '38%' }} paragraph={{ rows: 1, width: '58%' }} />
+      <Skeleton active title={{ width: '24%' }} paragraph={{ rows: 3 }} />
+      <div className="dashboard-detail-skeleton-panels">
+        <Skeleton active title={{ width: '42%' }} paragraph={{ rows: 4 }} />
+        <Skeleton active title={{ width: '42%' }} paragraph={{ rows: 4 }} />
       </div>
-      <div className="space-y-6 p-5">
-        <Skeleton active title={{ width: '24%' }} paragraph={{ rows: 3 }} />
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Skeleton active title={{ width: '42%' }} paragraph={{ rows: 4 }} />
-          <Skeleton active title={{ width: '42%' }} paragraph={{ rows: 4 }} />
-        </div>
-        <Skeleton active title={{ width: '28%' }} paragraph={{ rows: 4 }} />
-      </div>
-    </section>
+      <Skeleton active title={{ width: '28%' }} paragraph={{ rows: 4 }} />
+    </DashboardChangeDetail>
   );
 }
 
@@ -924,7 +992,7 @@ function NativeLoopRecoveryCard({ change }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">循环与恢复</h4>
+        <h4 className="dashboard-detail-section-title">循环与恢复</h4>
         <Pill
           tone={
             local?.status === 'running'
@@ -980,21 +1048,44 @@ function NativeLoopRecoveryCard({ change }) {
   );
 }
 
-function NativeScopeCard({ change }) {
+function NativeScopeCard({ change, numberIdentity, numberEntryKey }) {
   const specs = change.specs;
   const capabilities = specs?.capabilities ?? [];
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">变更范围</h4>
+        <h4 className="dashboard-detail-section-title">变更范围</h4>
         <span className="rounded-full bg-surface px-3 py-1 font-mono text-xs text-fg-2">
-          {specs?.total ?? 0} 个 capability
+          <AnimatedNumber
+            value={specs?.total ?? 0}
+            identity={numberIdentity}
+            numberEntryKey={numberEntryKey}
+          />{' '}
+          个 capability
         </span>
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
-        <ScopeMetric label="新增" value={specs?.create ?? 0} tone="info" />
-        <ScopeMetric label="修改" value={specs?.modify ?? 0} tone="warn" />
-        <ScopeMetric label="删除" value={specs?.remove ?? 0} tone="danger" />
+        <ScopeMetric
+          label="新增"
+          value={specs?.create ?? 0}
+          tone="info"
+          numberIdentity={numberIdentity}
+          numberEntryKey={numberEntryKey}
+        />
+        <ScopeMetric
+          label="修改"
+          value={specs?.modify ?? 0}
+          tone="warn"
+          numberIdentity={numberIdentity}
+          numberEntryKey={numberEntryKey}
+        />
+        <ScopeMetric
+          label="删除"
+          value={specs?.remove ?? 0}
+          tone="danger"
+          numberIdentity={numberIdentity}
+          numberEntryKey={numberEntryKey}
+        />
       </div>
       <div className="mt-4 space-y-2">
         {capabilities.length === 0 ? (
@@ -1019,7 +1110,7 @@ function NativeScopeCard({ change }) {
   );
 }
 
-function ScopeMetric({ label, value, tone }) {
+function ScopeMetric({ label, value, tone, numberIdentity, numberEntryKey }) {
   const toneClass = {
     info: 'bg-info-soft text-info',
     warn: 'bg-warn-soft text-warn',
@@ -1028,37 +1119,69 @@ function ScopeMetric({ label, value, tone }) {
   return (
     <div className="rounded-lg bg-surface-warm px-2 py-3">
       <div className={`text-lg font-bold tabular-nums ${value ? toneClass : 'text-fg-2'}`}>
-        {value}
+        <AnimatedNumber value={value} identity={numberIdentity} numberEntryKey={numberEntryKey} />
       </div>
       <div className="mt-1 text-[11px] text-meta">{label}</div>
     </div>
   );
 }
 
-function NativeAcceptanceCard({ change }) {
+function NativeAcceptanceCard({ change, numberIdentity, numberEntryKey }) {
   const acceptance = change.acceptance;
   const progress = acceptanceProgress(change);
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">验收状态</h4>
+        <h4 className="dashboard-detail-section-title">验收状态</h4>
         <Pill tone={acceptanceTone(acceptance)}>
-          {progress ? `${progress.percent}% 已处理` : '无可移植验收数据'}
+          {progress ? (
+            <>
+              <AnimatedNumber
+                value={progress.percent}
+                identity={numberIdentity}
+                numberEntryKey={numberEntryKey}
+              />
+              % 已处理
+            </>
+          ) : (
+            '无可移植验收数据'
+          )}
         </Pill>
       </div>
       {progress && (
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface">
+        <div className="native-acceptance-progress mt-4 h-2 overflow-hidden rounded-full bg-surface">
           <span
+            key={numberIdentity}
             className={`block h-full rounded-full transition-[width] ${progress.complete ? 'bg-success' : 'bg-accent'}`}
             style={{ width: `${progress.percent}%` }}
           />
         </div>
       )}
       <div className="mt-4 grid grid-cols-4 gap-3 text-center">
-        <AcceptanceMetric label="通过" value={acceptance?.passed ?? 0} />
-        <AcceptanceMetric label="失败" value={acceptance?.failed ?? 0} />
-        <AcceptanceMetric label="阻塞" value={acceptance?.blocked ?? 0} />
-        <AcceptanceMetric label="待验证" value={acceptance?.pending ?? 0} />
+        <AcceptanceMetric
+          label="通过"
+          value={acceptance?.passed ?? 0}
+          numberIdentity={numberIdentity}
+          numberEntryKey={numberEntryKey}
+        />
+        <AcceptanceMetric
+          label="失败"
+          value={acceptance?.failed ?? 0}
+          numberIdentity={numberIdentity}
+          numberEntryKey={numberEntryKey}
+        />
+        <AcceptanceMetric
+          label="阻塞"
+          value={acceptance?.blocked ?? 0}
+          numberIdentity={numberIdentity}
+          numberEntryKey={numberEntryKey}
+        />
+        <AcceptanceMetric
+          label="待验证"
+          value={acceptance?.pending ?? 0}
+          numberIdentity={numberIdentity}
+          numberEntryKey={numberEntryKey}
+        />
       </div>
       {(change.acceptanceItems ?? []).length > 0 && (
         <ul className="mt-4 space-y-2 border-t border-border-soft pt-4">
@@ -1080,10 +1203,12 @@ function NativeAcceptanceCard({ change }) {
   );
 }
 
-function AcceptanceMetric({ label, value }) {
+function AcceptanceMetric({ label, value, numberIdentity, numberEntryKey }) {
   return (
     <div>
-      <div className="text-xl font-bold tabular-nums">{value}</div>
+      <div className="text-xl font-bold tabular-nums">
+        <AnimatedNumber value={value} identity={numberIdentity} numberEntryKey={numberEntryKey} />
+      </div>
       <div className="mt-1 text-[11px] text-meta">{label}</div>
     </div>
   );
@@ -1095,7 +1220,7 @@ function NativeVerificationCard({ change }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">检查结果</h4>
+        <h4 className="dashboard-detail-section-title">检查结果</h4>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {assurance && (
             <Tooltip title={assurance.description}>
@@ -1152,9 +1277,11 @@ function NativeVerificationCard({ change }) {
 
 function NativeBlockersCard({ blockers }) {
   return (
-    <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
+    <article
+      className={`native-blockers-card rounded-xl border border-border-soft bg-bg px-5 py-4${blockers.length ? ' has-blockers' : ''}`}
+    >
       <div className="flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">阻塞项</h4>
+        <h4 className="dashboard-detail-section-title">当前阻塞</h4>
         <Pill tone={blockers.length ? 'danger' : 'ok'}>
           {blockers.length ? `${blockers.length} 项` : '无阻塞'}
         </Pill>
@@ -1187,7 +1314,7 @@ function NativeHistoryCard({ history, overflow }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">执行历史</h4>
+        <h4 className="dashboard-detail-section-title">执行历史</h4>
         <span className="font-mono text-xs text-meta">保留 {history.length} 条</span>
       </div>
       {overflow?.droppedEntries > 0 && (
@@ -1229,7 +1356,7 @@ function NativeArtifactList({ artifacts, onPreview }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-baseline justify-between">
-        <h4 className="text-sm font-semibold tracking-tight">关键产物</h4>
+        <h4 className="dashboard-detail-section-title">关键产物</h4>
         <span className="font-mono text-[12px] text-meta">
           {ready}/{source.length}
         </span>
@@ -1252,9 +1379,7 @@ function NativeArtifactList({ artifacts, onPreview }) {
               }
             >
               <span className="flex h-4 w-4 items-center justify-center">
-                <span
-                  className={`h-2 w-2 rounded-full ${artifact.exists ? 'bg-accent' : 'border border-border'}`}
-                />
+                <ReferenceIcon name="artifact" />
               </span>
               <span className="min-w-0 truncate text-[13px] text-fg">{artifact.key}</span>
               <span className="whitespace-nowrap pl-4 text-right text-[12px] text-muted">
@@ -1272,44 +1397,35 @@ function NativeArtifactList({ artifacts, onPreview }) {
 }
 
 function NativePhaseStepper({ change }) {
-  const currentIndex = Math.max(
-    0,
-    PHASES.findIndex(([key]) => key === change.phase),
-  );
-  const archived = change.status === 'archived';
   return (
-    <article>
-      <div className="mb-4 flex items-center gap-2">
-        <h4 className="text-sm font-semibold">生命周期阶段</h4>
-        <span className="ml-auto rounded-full bg-surface px-3 py-1 font-mono text-xs text-fg-2">
-          {archived ? '已归档' : `当前 ${PHASE_LABELS[change.phase] ?? '状态异常'}`}
-        </span>
-      </div>
-      <WorkflowPhaseTrack
-        phases={PHASES}
-        currentIndex={currentIndex}
-        archived={archived}
-        currentPhaseRunning={isNativePhaseRunning(change)}
-        ariaLabel="Native 生命周期阶段"
-      />
+    <WorkflowPhaseTrack
+      key={change.locator ?? change.name}
+      phases={PHASES}
+      phaseStatuses={nativePhaseStatuses(change)}
+      phaseIconStatuses={nativePhaseIconStatuses(change)}
+      currentPhase={change.phase}
+      errorLabels={{ verify: change.verificationResult === 'blocked' ? '验证阻塞' : '验证失败' }}
+      currentPhaseRunning={isNativePhaseRunning(change)}
+      currentPhaseLabel={nativeChangeStatusPresentation(change).label}
+      ariaLabel="Native 生命周期阶段"
+    >
       {change.loop && (
-        <p className="mt-4 text-center text-xs text-meta">
+        <p className="dashboard-phase-note">
           Build ↔ Verify Loop · {LOOP_STAGE_LABELS[change.loop.stage]} · 第 {change.loop.iteration}{' '}
           轮 / 第 {change.loop.attempt} 次
         </p>
       )}
-    </article>
+    </WorkflowPhaseTrack>
   );
 }
 
-function NativeSidePanel({ change, git }) {
+function NativeRecoveryStatus({ change }) {
   const local = change.localExecution;
-  const blockers = change.blockers ?? [];
   return (
-    <aside className="space-y-5">
+    <aside className="native-recovery-status">
       <section className="rounded-lg bg-bg p-5 shadow-raised">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">恢复状态</h3>
+          <h4 className="dashboard-detail-section-title">恢复状态</h4>
           <Pill tone={local?.status === 'running' ? 'info' : 'neutral'}>
             {local?.status === 'running' ? '执行中' : 'YAML 稳定边界'}
           </Pill>
@@ -1331,43 +1447,6 @@ function NativeSidePanel({ change, git }) {
           />
         </dl>
       </section>
-      <section className="rounded-lg bg-bg p-5 shadow-raised">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">当前阻塞</h3>
-          <Pill tone={blockers.length ? 'danger' : 'ok'}>
-            {blockers.length ? `${blockers.length} 项` : '无'}
-          </Pill>
-        </div>
-        <p className="mt-3 text-xs leading-relaxed text-muted">
-          {blockers.length ? portableText(blockers[0].reason) : '当前没有阻止 Loop 前进的事项。'}
-        </p>
-      </section>
-      {git && (
-        <section className="rounded-lg bg-bg p-5 shadow-raised">
-          <h3 className="text-sm font-semibold">Git 摘要</h3>
-          <dl className="mt-4 space-y-3 text-sm">
-            <SideFact label="分支" value={git.branch ?? '—'} />
-            <SideFact label="HEAD" value={git.head ?? '—'} />
-            <SideFact label="未提交文件" value={`${git.dirtyFiles ?? 0} 个`} />
-          </dl>
-        </section>
-      )}
-    </aside>
-  );
-}
-
-function NativeSidePanelSkeleton() {
-  return (
-    <aside
-      className="native-side-panel-skeleton space-y-5"
-      aria-label="正在加载 Native 变更侧栏"
-      aria-busy="true"
-    >
-      {[3, 2, 3].map((rows, index) => (
-        <section key={index} className="rounded-lg bg-bg p-5 shadow-raised">
-          <Skeleton active title={{ width: '42%' }} paragraph={{ rows }} />
-        </section>
-      ))}
     </aside>
   );
 }
@@ -1392,7 +1471,7 @@ function Pill({ tone = 'neutral', children }) {
     }[tone] ?? 'bg-surface text-fg-2';
   return (
     <span
-      className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold leading-tight ${className}`}
+      className={`dashboard-status-pill inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold ${className}`}
     >
       <span className="break-words">{children}</span>
     </span>
@@ -1467,7 +1546,5 @@ function childrenProgress(change) {
   return {
     resolved,
     total: children.length,
-    percent: Math.round((resolved / children.length) * 100),
-    complete: resolved === children.length,
   };
 }

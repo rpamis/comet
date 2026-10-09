@@ -75,24 +75,33 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('JSON.stringify({ css:');
   });
 
-  it('cycles the phase wave through complete multi-color palettes', async () => {
-    const styles = await readDashboardStyles();
+  it('uses explicit AntD Steps states with shared stage illustrations', async () => {
+    const [styles, source] = await Promise.all([
+      readDashboardStyles(),
+      fs.readFile(
+        path.resolve('domains', 'dashboard', 'web', 'src', 'phase-progress-indicator.jsx'),
+        'utf8',
+      ),
+    ]);
 
-    expect(styles).toContain('comet-phase-origin-wave-spectrum-start 8.4s');
-    expect(styles).toContain('animation-duration: 1.2s, 8.4s;');
-    expect(styles).toContain('@keyframes comet-phase-origin-wave-spectrum-middle');
-    expect(styles).toContain('@keyframes comet-phase-origin-wave-spectrum-end');
-    expect(styles).toContain('#1f73ed');
-    expect(styles).toContain('#f97316');
-    expect(styles).toContain('#ffd166');
-    expect(styles).toContain('#d946ef');
+    expect(source).toContain("import { Steps } from 'antd'");
+    expect(source).toContain('phaseStatuses[key]');
+    expect(source).toContain('phaseIconStatuses');
+    expect(source).toContain('<StageIcon');
+    expect(source).toContain('status,');
+    expect(source).not.toContain('onChange=');
+    expect(source).not.toContain('CheckOutlined');
+    expect(source).not.toContain('CloseOutlined');
+    expect(styles).not.toContain('comet-phase-spin');
+    expect(styles).not.toContain('comet-phase-origin-wave');
+    expect(source).not.toContain('dashboard-phase-origin-wave');
   });
 
   it('waits for the project directory before selecting a workflow', async () => {
     const source = await readDashboardSource();
 
     expect(source).toContain("useState(() => (useDemo ? 'classic' : null))");
-    expect(source).toContain('pluginSelection || !workflow ? [] : [workflow]');
+    expect(source).toContain("activeKey={pluginSelection || !workflow ? '' : workflow}");
     expect(source).toContain("workflow === 'classic' ? (");
     expect(source).toContain('setWorkflow(initialWorkflow.workflow)');
   });
@@ -115,7 +124,7 @@ describe('dashboard web source contracts', () => {
     expect(source).not.toContain('pluginPageCacheRef.current.delete(cacheKey)');
   });
 
-  it('keeps the change workspace grid responsive inside the left navigation rail', async () => {
+  it('keeps a responsive master-detail change workspace', async () => {
     const [source, layout, styles] = await Promise.all([
       readDashboardSource(),
       readWorkspaceLayoutSource(),
@@ -125,10 +134,9 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain("from './workspace-layout.jsx'");
     expect(source).toContain('classic-changes-explorer');
     expect(styles).toContain('.classic-changes-explorer');
-    expect(layout).toContain(
-      'xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]',
-    );
-    expect(layout).toContain('xl:col-start-2 2xl:col-start-auto');
+    expect(layout).toContain('dashboard-master-detail');
+    expect(layout).not.toContain('dashboard-workspace-right');
+    expect(styles).toContain('grid-template-columns: 260px minmax(0, 1fr)');
     expect(layout).toContain('leftClassName');
     expect(source).not.toContain('xl:grid-cols-[320px_minmax(620px,940px)_320px]');
   });
@@ -327,7 +335,7 @@ describe('dashboard web source contracts', () => {
     expect(inspector?.[0]).toContain('同时参与文档检索');
   });
 
-  it('opens centralized plugin settings from the bottom of the sidebar', async () => {
+  it('opens centralized plugin settings from the top bar', async () => {
     const [source, modal, styles] = await Promise.all([
       readDashboardSource(),
       readDashboardModalSource(),
@@ -348,8 +356,8 @@ describe('dashboard web source contracts', () => {
       /pluginPages\.find\(\(page\) => !page\.pending\)\?\.pluginId\s*\?\?\s*'comet\.config'/u,
     );
     expect(source).toContain('pages.filter((item) => !item.pending)');
-    expect(source).toContain('className={`dashboard-sidebar-settings${settingsOpen');
-    expect(source).toContain('className="dashboard-sidebar-settings-label"');
+    expect(source).toContain('onSettings={openSettings}');
+    expect(source).toContain('aria-pressed={settingsOpen}');
     expect(source).toContain('function DashboardSettingsOverlay');
     expect(source).toContain("from './dashboard-modal.jsx'");
     expect(source).toContain('DashboardModal,');
@@ -401,45 +409,19 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('DashboardLineSkeleton');
     expect(source).toContain('dashboard-change-list-skeleton');
     expect(source).toContain('classic-change-detail-skeleton');
-    expect(source).toContain('classic-side-panel-skeleton');
     expect(source).toContain('dashboard-artifact-loading');
     expect(source).toContain('dashboard-project-knowledge-detail-loading');
     expect(source).not.toContain('<Spin');
     expect(source).not.toContain('正在加载...');
   });
 
-  it('keeps the sidebar navigation compact and free of read-only helper rows', async () => {
-    const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
-
-    expect(source).not.toContain('<span>变更工作区</span>');
-    expect(source).not.toContain('只读连接 · 自动同步');
-    expect(source).toContain('const [sidebarCollapsed, setSidebarCollapsed] = useState(false)');
-    expect(source).toContain('collapsedWidth={64}');
-    expect(source).toContain('inlineCollapsed={collapsed}');
-    expect(source).not.toContain('aria-hidden={collapsed}\n        inert={collapsed}');
-    expect(source).toContain("aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}");
-    expect(source).toContain('className="dashboard-sidebar-group"');
-    expect(source).toContain('inlineIndent={12}');
-    expect(styles).toContain('.dashboard-sidebar-group + .dashboard-sidebar-group');
-    expect(styles).toContain('.dashboard-workbench.is-sidebar-collapsed');
-    expect(styles).toContain('--rail-w: 64px');
-    expect(styles).toContain('.ant-menu-inline-collapsed');
-    expect(styles).toMatch(
-      /\.dashboard-sidebar \.ant-menu-item\s*\{[\s\S]*?width: 100%;[\s\S]*?height: 38px;[\s\S]*?padding-inline: 11px !important;/,
-    );
-    expect(styles).toMatch(
-      /\.dashboard-sidebar-settings\s*\{[\s\S]*?width: 100%;[\s\S]*?min-height: 38px;[\s\S]*?padding-inline: 11px;/,
-    );
-    expect(styles).toMatch(
-      /\.dashboard-sidebar\s*\{[\s\S]*?width: 100% !important;[\s\S]*?min-width: 0 !important;[\s\S]*?transition: none !important;/,
-    );
-    expect(styles).toMatch(
-      /\.dashboard-sidebar-navigation\s*\{[\s\S]*?flex: 1 1 auto;[\s\S]*?overflow-y: auto;/,
-    );
-    expect(styles).toMatch(/\.dashboard-sidebar-footer\s*\{[\s\S]*?flex: 0 0 auto;/);
-    expect(styles).toMatch(
-      /\.dashboard-workbench\.is-sidebar-collapsed \.dashboard-sidebar-content\s*\{[^}]*?width: 100%;[^}]*?transition: none;/,
-    );
+  it('keeps global controls in the top bar without a left navigation rail', async () => {
+    const source = await readDashboardSource();
+    expect(source).not.toContain('<AntSidebar');
+    expect(source).not.toContain('setSidebarCollapsed');
+    expect(source).toContain('dashboard-workflow-tabs');
+    expect(source).toContain('onPluginSelect={openPlugin}');
+    expect(source).toContain('comet-header-utility');
   });
 
   it('lets plugin navigation carry the page title while the canvas starts with state and actions', async () => {
@@ -551,7 +533,7 @@ describe('dashboard web source contracts', () => {
       /useEffect\(\(\) => \{\s*if \(!useDemo\) return undefined;[\s\S]*?\}, \[demoPluginPages, pluginSelection, useDemo\]\);/,
     );
     const pluginSelectHandler = source.match(
-      /onPluginSelect=\{\(pluginId\) => \{[\s\S]*?\}\}\s*onCollapse=/,
+      /const openPlugin = \(pluginId\) => \{[\s\S]*?\n  \};/,
     );
 
     expect(pluginSelectHandler?.[0]).toMatch(
@@ -600,8 +582,9 @@ describe('dashboard web source contracts', () => {
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 
-    expect(source).toContain('className="change-detail min-w-0"');
-    expect(source).toContain('className="change-detail-panels grid min-w-0 gap-4"');
+    expect(source).toContain('className="change-detail"');
+    expect(source).toContain('className="change-detail-panels grid min-w-0"');
+    expect(source).not.toContain('className="change-detail-panels grid min-w-0 gap-4"');
     expect(source).not.toContain('md:grid-cols-[minmax(0,1fr)_minmax(0,340px)]');
     expect(source).toMatch(
       /function TaskProgress\(\{ change \}\) \{[\s\S]*?<article className="min-w-0 rounded-xl border border-border-soft bg-bg px-5 py-4">/,
@@ -609,6 +592,10 @@ describe('dashboard web source contracts', () => {
     expect(styles).toContain('container-type: inline-size;');
     expect(styles).toContain('@container (min-width: 700px)');
     expect(styles).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 340px);');
+    expect(styles).toContain('.dashboard-workbench .dashboard-change-detail > .ant-card-body');
+    expect(styles).toMatch(
+      /\.dashboard-workbench \.dashboard-change-detail > \.ant-card-body\s*\{[^}]*gap: 24px;/,
+    );
   });
 
   it('preserves page scroll position while the artifact preview drawer is open', async () => {
@@ -741,15 +728,13 @@ describe('dashboard web source contracts', () => {
     expect(source).not.toContain('当前无 Comet 迭代。');
   });
 
-  it('keeps Classic detail and inspector frames visible when the selected view is empty', async () => {
+  it('keeps Classic detail visible when the selected view is empty', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 
     expect(source).toContain('const isEmptyView = !pageLoading && visible.length === 0');
     expect(source).toContain('const isLoadingView = pageLoading && visible.length === 0');
     expect(source).toContain('<ClassicWorkspaceEmptyDetail');
-    expect(source).toContain('<ClassicWorkspaceEmptySidePanel />');
     expect(source).toContain('<ClassicWorkspaceLoadingDetail />');
-    expect(source).toContain('<ClassicWorkspaceLoadingSidePanel />');
     expect(source).toContain('当前没有活跃的 Classic change');
     expect(styles).toContain('.classic-change-detail-empty');
     expect(styles).toContain('.dashboard-workspace-side-empty');

@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { DEMO_SNAPSHOT } from '../../../domains/dashboard/web/demo.js';
 
 test.describe('Dashboard project selection', () => {
   const projects = Array.from({ length: 45 }, (_, index) => ({
@@ -153,6 +154,37 @@ test.describe('Dashboard project selection', () => {
     await expect(page.getByRole('button', { name: /^Git 未提交 0 / })).toBeVisible();
   });
 
+  test('fills the shared frame while the Dashboard overview is loading', async ({ page }) => {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/projects/path-0/overview*', async (route) => {
+      await held;
+      await route.fulfill({ json: overview(0) });
+    });
+    await page.goto('/');
+    const loading = page.locator('.dashboard-loading-state');
+    await expect(loading).toBeVisible();
+    for (const width of [1440, 2048, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const gutter = width <= 760 ? 16 : 32;
+      for (const selector of [
+        '.comet-workbench-header',
+        '.dashboard-content-inner',
+        '.dashboard-loading-state',
+      ]) {
+        const box = await page.locator(selector).boundingBox();
+        expect(box).not.toBeNull();
+        expect(Math.abs(box!.x - gutter)).toBeLessThanOrEqual(1);
+        expect(Math.abs(box!.width - (width - 2 * gutter))).toBeLessThanOrEqual(1);
+      }
+    }
+    release();
+    await expect(loading).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '当前没有 Classic change' })).toBeVisible();
+  });
+
   for (const noAvailable of [false, true]) {
     test(`handles unavailable launch projects with ${noAvailable ? 'an empty state' : 'an available fallback'}`, async ({
       page,
@@ -259,16 +291,16 @@ test('uses each project default workflow during startup and project switching', 
   });
 
   await page.goto('/');
-  await expect(page.locator('.dashboard-workflow-menu .ant-menu-item-selected')).toContainText(
-    'Native 工作流',
-  );
+  await expect(
+    page.locator('.dashboard-workflow-tabs [role=tab][aria-selected=true]'),
+  ).toContainText('Native 工作流');
   await expect(page.locator('[aria-label="项目默认工作流来源：configured"]')).toBeVisible();
 
   await page.locator('.comet-project-select').click();
   await page.getByText('/worktrees/classic-project', { exact: true }).click();
-  await expect(page.locator('.dashboard-workflow-menu .ant-menu-item-selected')).toContainText(
-    'Classic 工作流',
-  );
+  await expect(
+    page.locator('.dashboard-workflow-tabs [role=tab][aria-selected=true]'),
+  ).toContainText('Classic 工作流');
 });
 
 test('revalidates a cached plugin page when it is first entered', async ({ page }) => {
@@ -374,8 +406,8 @@ test('revalidates a cached plugin page when it is first entered', async ({ page 
   });
 
   await page.goto('/');
-  await expect(page.getByRole('menuitem', { name: '测试插件' })).toBeVisible();
-  await page.getByRole('menuitem', { name: '测试插件' }).click();
+  await expect(page.getByRole('button', { name: '测试插件' })).toBeVisible();
+  await page.getByRole('button', { name: '测试插件' }).click();
   await expect(page.getByText('该插件暂未提供可视化中心页。')).toBeVisible();
   await expect.poll(() => pluginPageLoads).toBe(1);
   const cachedContent = page.getByText('该插件暂未提供可视化中心页。');
@@ -475,9 +507,9 @@ test('keeps cached settings visible when fresh revalidation fails', async ({ pag
   });
 
   await page.goto('/');
-  await expect(page.locator('.dashboard-workflow-menu .ant-menu-item-selected')).toContainText(
-    'Native 工作流',
-  );
+  await expect(
+    page.locator('.dashboard-workflow-tabs [role=tab][aria-selected=true]'),
+  ).toContainText('Native 工作流');
   await expect.poll(() => configLoads).toBe(1);
   const settingsDialog = page.getByRole('dialog', { name: /Comet 设置/u });
   await page.getByRole('button', { name: '设置' }).click();
@@ -944,7 +976,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   });
 
   await page.goto('/');
-  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('button', { name: '项目知识' }).click();
   const projectManifest = page.getByRole('region', { name: '最近一次任务使用的项目知识' });
   await expect(projectManifest).toContainText('最近使用');
   await expect(projectManifest).toContainText('任务：复核项目测试策略');
@@ -1396,9 +1428,9 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
 
   await page.getByRole('switch', { name: '切换当前项目知识检索' }).click();
   await expect(settingsDialog.getByText('当前项目已暂停项目知识', { exact: true })).toBeVisible();
-  await expect(
-    page.locator('.dashboard-plugin-menu-item').filter({ hasText: '项目知识' }),
-  ).toHaveText('项目知识暂停');
+  await expect(page.locator('.comet-header-utility').filter({ hasText: '项目知识' })).toHaveText(
+    '项目知识暂停',
+  );
   const projectSettings = settingsDialog.getByRole('region', { name: '当前项目' });
   await expect(projectSettings).toContainText('当前项目已暂停向 Agent 提供知识');
   await expect(
@@ -1416,7 +1448,7 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     .click();
   await expect(page.getByRole('heading', { name: '项目概览' })).toBeVisible();
   await expect(page.getByLabel('项目规则设置')).toHaveCount(0);
-  await expect(page.getByRole('menuitem', { name: '项目知识' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '项目知识' })).toHaveCount(0);
 });
 
 test('adds global or project memory, explains application, and permanently deletes records', async ({
@@ -1645,7 +1677,7 @@ test('adds global or project memory, explains application, and permanently delet
   });
 
   await page.goto('/');
-  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.getByRole('button', { name: '个人记忆' }).click();
   const learningStatus = page.locator('.dashboard-memory-learning-diagnostic');
   await expect(learningStatus).toContainText('已形成候选，等待独立证据');
   await expect(learningStatus).toContainText('时间：2026-08-23T00:00:00.000Z');
@@ -1985,7 +2017,7 @@ test('collapses long personal memory records until the user expands them', async
   });
 
   await page.goto('/');
-  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.getByRole('button', { name: '个人记忆' }).click();
 
   await expect(page.getByLabel('个人记忆状态与操作')).toBeVisible();
   await expect(
@@ -2156,7 +2188,7 @@ test('shows a corrected personal memory immediately after persistence succeeds',
   });
 
   await page.goto('/');
-  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.getByRole('button', { name: '个人记忆' }).click();
   const projectMemory = page.getByRole('region', { name: '个人记忆列表' });
   const projectMemoryRow = projectMemory.locator('.dashboard-memory-table-row').first();
   await expect(projectMemoryRow.getByText(originalRecord.text, { exact: true })).toBeVisible();
@@ -2174,258 +2206,58 @@ test('shows a corrected personal memory immediately after persistence succeeds',
 });
 
 test('loads the demo dashboard and previews an artifact', async ({ page }) => {
-  const consoleErrors: string[] = [];
-  page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
-  });
-
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/?demo');
-
   await expect(page).toHaveTitle('Comet Dashboard');
-  const sidebarBrandTitle = page.locator('.dashboard-sidebar-brand-copy > strong');
-  await expect(sidebarBrandTitle).toHaveText('Comet Dashboard');
-  await expect(page.locator('.dashboard-sidebar')).toHaveCSS('width', '228px');
-  await expect
-    .poll(() =>
-      sidebarBrandTitle.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
-    )
-    .toBe(true);
-  await expect(page.getByText('Comet', { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeHidden();
-
-  const nativeWorkflow = page.getByRole('menuitem', { name: 'Native 工作流' });
-  await nativeWorkflow.click();
-  await expect(nativeWorkflow).toHaveClass(/ant-menu-item-selected/);
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '循环与恢复' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '变更范围' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '验收状态' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '检查结果' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '阻塞项' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '执行历史' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '恢复状态' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Git 摘要' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: '活跃', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: '已归档', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: '全部', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'ship-native-dashboard' })).toBeVisible();
-  const nativeSelectedRow = page
-    .locator('.native-change-row')
-    .filter({ hasText: 'ship-native-dashboard' });
-  await expect(nativeSelectedRow).toContainText('构建中');
-  await expect(nativeSelectedRow).not.toContainText('待验证');
-  const nativePhaseTrack = page.getByRole('list', { name: 'Native 生命周期阶段' });
-  await expect(nativePhaseTrack.locator('.dashboard-phase-item')).toHaveCount(4);
-  const nativeCurrentPhase = nativePhaseTrack.locator('.dashboard-phase-item.is-current');
-  await expect(nativeCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS('width', '32px');
-  await expect(nativeCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS('height', '32px');
-  await expect(nativeCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS(
-    'border-width',
-    '0px',
-  );
-  await expect(nativeCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS(
-    'background-color',
-    'rgb(255, 255, 255)',
-  );
-  const nativeOriginWave = nativeCurrentPhase.getByRole('status', { name: 'Build 正在进行' });
-  const nativeOriginWaveDots = nativeOriginWave.locator('.dashboard-phase-origin-wave-dot');
-  await expect(nativeOriginWave).toHaveClass(/dashboard-phase-origin-wave/);
-  await expect(nativeOriginWaveDots).toHaveCount(25);
-  await expect(nativeOriginWave).toHaveCSS('width', '28px');
-  await expect(nativeOriginWaveDots.first()).toHaveCSS(
-    'animation-name',
-    'comet-phase-origin-wave, comet-phase-origin-wave-spectrum-start',
-  );
-  await expect(nativeOriginWaveDots.first()).toHaveCSS('animation-duration', '1.2s, 8.4s');
-  const samplePhasePalette = (currentTime) =>
-    nativeOriginWaveDots.first().evaluate((element, time) => {
-      for (const animation of element.getAnimations({ subtree: true })) {
-        if (!animation.animationName.includes('spectrum')) continue;
-        animation.currentTime = time;
-        animation.pause();
-      }
-      return {
-        start: getComputedStyle(element).backgroundColor,
-        middle: getComputedStyle(element, '::before').backgroundColor,
-        end: getComputedStyle(element, '::after').backgroundColor,
-      };
-    }, currentTime);
-  await expect
-    .poll(() => samplePhasePalette(2_900))
-    .toEqual({
-      start: 'rgb(198, 93, 14)',
-      middle: 'rgb(249, 115, 22)',
-      end: 'rgb(245, 185, 66)',
-    });
-  await expect
-    .poll(() => samplePhasePalette(6_500))
-    .toEqual({
-      start: 'rgb(255, 77, 109)',
-      middle: 'rgb(255, 209, 102)',
-      end: 'rgb(6, 214, 160)',
-    });
-  await expect
-    .poll(() =>
-      nativeOriginWaveDots
-        .first()
-        .evaluate((element) => getComputedStyle(element, '::before').animationName),
-    )
-    .toBe('comet-phase-origin-wave-middle, comet-phase-origin-wave-spectrum-middle');
-  await expect
-    .poll(() =>
-      nativeOriginWaveDots
-        .first()
-        .evaluate((element) => getComputedStyle(element, '::after').animationName),
-    )
-    .toBe('comet-phase-origin-wave-end, comet-phase-origin-wave-spectrum-end');
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await expect(nativeOriginWaveDots.first()).toHaveCSS('animation-name', 'none');
-  await expect
-    .poll(() =>
-      nativeOriginWaveDots
-        .first()
-        .evaluate((element) => getComputedStyle(element, '::before').animationName),
-    )
-    .toBe('none');
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  const nativeCopyChangeName = page.getByRole('button', { name: '复制 Change 名称' });
-  await expect(nativeCopyChangeName).toHaveCount(1);
-  await nativeCopyChangeName.click();
-  await expect(page.getByRole('button', { name: '已复制 Change 名称' })).toBeVisible();
-
-  await page.getByRole('button', { name: '需求简报' }).click();
-  await expect(page.getByRole('heading', { name: '需求简报' })).toBeVisible();
-  const nativeArtifactPreview = page.locator('.dashboard-artifact-preview-panel');
-  await expect(
-    nativeArtifactPreview.getByRole('heading', {
-      name: 'Brief: 交付可恢复的 Native Dashboard',
-    }),
-  ).toBeVisible();
-  await expect(nativeArtifactPreview).toContainText('验收标准');
-  await expect(
-    page.locator('.dashboard-artifact-preview-panel > header > .dashboard-artifact-preview-expand'),
-  ).toBeVisible();
-  await expect(page.getByRole('button', { name: '关闭产物预览' })).toHaveCount(0);
-  await page.getByRole('button', { name: '全屏展示' }).click();
-  await expect(page.getByRole('button', { name: '退出全屏' })).toBeVisible();
+  await expect(page.locator('.comet-header-brand')).toHaveText('comet');
+  await expect(page.getByRole('list', { name: 'Classic 生命周期阶段' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
+  for (const name of [
+    '循环与恢复',
+    '变更范围',
+    '验收状态',
+    '检查结果',
+    '当前阻塞',
+    '执行历史',
+    '恢复状态',
+    '仓库 Git',
+  ]) {
+    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  }
+  const track = page.getByRole('list', { name: 'Native 生命周期阶段' });
+  await expect(track).toBeVisible();
+  await expect(track.locator('.dashboard-phase-item')).toHaveCount(4);
+  await expect(track).toHaveClass(/ant-steps/);
+  await expect(track.locator('.is-done')).toHaveCount(1);
+  await expect(track.locator('.is-current')).toContainText('Build');
+  await expect(track.locator('.is-pending')).toHaveCount(2);
+  await expect(track.locator('svg[data-stage]')).toHaveCount(4);
+  await expect(track.locator('[data-status-badge="success"]')).toHaveCount(1);
+  await expect(track.locator('.dashboard-phase-origin-wave-dot')).toHaveCount(0);
+  await expect(track.getByRole('button')).toHaveCount(0);
+  await page.getByRole('button', { name: 'comet-state.yaml 工作流状态' }).click();
+  await expect(page.locator('.dashboard-artifact-preview-panel')).toBeVisible();
+  await page.getByRole('button', { name: '全屏展示', exact: true }).click();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await expect(page.locator('.dashboard-artifact-preview-panel')).not.toHaveClass(/is-fullscreen/);
   await page.locator('.dashboard-artifact-preview-backdrop').click();
-  await expect(page.getByRole('heading', { name: '需求简报' })).toBeHidden();
-
-  await page.getByRole('tab', { name: '已归档', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'document-native-resume' })).toBeVisible();
-  await expect(page.getByLabel('Archive 已完成')).toHaveText('✓');
-  await expect(
-    page.getByRole('list', { name: 'Native 生命周期阶段' }).locator('.dashboard-phase-origin-wave'),
-  ).toHaveCount(0);
-  await expect(page.getByText(/Build ↔ Verify Loop · 已完成/u)).toBeVisible();
-  await expect(page.getByText('你已确认接受不完整验证结果', { exact: true })).toBeVisible();
-  await expect(page.getByText('归档只读', { exact: true }).first()).toBeVisible();
-
-  const classicWorkflow = page.getByRole('menuitem', { name: 'Classic 工作流' });
-  await classicWorkflow.click();
-  await expect(classicWorkflow).toHaveClass(/ant-menu-item-selected/);
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeHidden();
-  const classicSelectedRow = page
-    .locator('.dashboard-change-row')
-    .filter({ hasText: 'add-auth-rate-limiting' });
-  await expect(classicSelectedRow).toContainText('构建中');
-  await expect(classicSelectedRow).not.toContainText('待验证');
-  const classicPhaseTrack = page.getByRole('list', { name: 'Classic 生命周期阶段' });
-  await expect(classicPhaseTrack.locator('.dashboard-phase-item')).toHaveCount(5);
-  const classicCurrentPhase = classicPhaseTrack.locator('.dashboard-phase-item.is-current');
-  await expect(classicCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS('width', '32px');
-  await expect(classicCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS('height', '32px');
-  await expect(classicCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS(
-    'border-width',
-    '0px',
-  );
-  await expect(classicCurrentPhase.locator('.dashboard-phase-node')).toHaveCSS(
-    'background-color',
-    'rgb(255, 255, 255)',
-  );
-  await expect(classicCurrentPhase.locator('.dashboard-phase-origin-wave-dot')).toHaveCount(25);
-
-  const proposal = page.getByRole('button').filter({ hasText: 'proposal' }).first();
-  await expect(proposal).toBeVisible();
-  await proposal.click();
-
-  await expect(page.getByRole('heading', { name: '提案', level: 2 })).toBeVisible();
-  const classicArtifactPreview = page.locator('.dashboard-artifact-preview-panel');
-  await expect(
-    classicArtifactPreview.getByRole('heading', {
-      name: 'Proposal: 为认证接口增加分布式限流',
-    }),
-  ).toBeVisible();
-  await expect(classicArtifactPreview).toContainText('登录和令牌刷新接口在活动流量峰值期间');
-  await page.getByRole('button', { name: '全屏展示' }).click();
-  await expect(page.getByRole('button', { name: '退出全屏' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: '全屏展示' })).toBeVisible();
-  await page.locator('.dashboard-artifact-preview-backdrop').click();
-  await expect(page.getByRole('heading', { name: '提案', level: 2 })).toBeHidden();
-
-  const personalMemory = page.getByRole('menuitem', { name: '个人记忆' });
-  await expect(personalMemory).not.toHaveClass(/ant-menu-item-disabled/);
-  await personalMemory.click();
-  const personalMemoryList = page.getByRole('region', { name: '个人记忆列表' });
-  await expect(personalMemoryList).toBeVisible();
-  await expect(
-    personalMemoryList.getByText(/默认使用中文沟通。代码任务的最终回复先给结论/u),
-  ).toBeVisible();
-  const demoMemoryManifest = page.getByRole('region', { name: '最近一次任务使用的记忆' });
-  await expect(demoMemoryManifest).toContainText('任务：调整官网 Dashboard 数据');
-  await expect(demoMemoryManifest).toContainText('2 条记忆');
-  await expect(demoMemoryManifest).not.toContainText('默认使用中文沟通');
-  await demoMemoryManifest.getByRole('button', { name: '查看使用明细' }).click();
-  const demoMemoryDialog = page.getByRole('dialog', {
-    name: /交付语言与结构/u,
-  });
-  await expect(demoMemoryDialog).toBeVisible();
-  const demoMemoryNavigation = demoMemoryDialog.getByRole('navigation', {
-    name: '本次使用的个人记忆',
-  });
-  await expect(demoMemoryNavigation).toContainText('交付语言与结构');
-  await expect(demoMemoryNavigation).toContainText('个人偏好');
-  await expect(demoMemoryNavigation).toContainText('Dashboard 验收基线');
-  await expect(demoMemoryNavigation).toContainText('协作约定');
-  await demoMemoryNavigation
-    .getByRole('button', { name: '查看个人记忆详情：Dashboard 验收基线' })
-    .click();
-  await expect(page.getByRole('dialog', { name: /Dashboard 验收基线/u })).toContainText(
-    '移动端按 390 × 844 检查',
-  );
-  await page
-    .locator('.dashboard-knowledge-preview-modal-root .ant-modal-wrap')
-    .click({ position: { x: 5, y: 5 } });
-  await expect(demoMemoryDialog).toBeHidden();
-
-  const projectKnowledge = page.getByRole('menuitem', { name: '项目知识' });
-  await expect(projectKnowledge).not.toHaveClass(/ant-menu-item-disabled/);
-  await projectKnowledge.click();
-  await expect(page.getByRole('tablist', { name: '项目知识视图' })).toBeVisible();
-  await expect(
-    page.locator('[aria-label="项目知识记录列表"]').getByText('Dashboard 数据采集与详情读取链路'),
-  ).toBeVisible();
-
-  expect(consoleErrors).toEqual([]);
+  await expect(page.locator('.dashboard-artifact-preview-panel')).toHaveCount(0);
+  expect(errors).toEqual([]);
 });
 
-test('keeps change summaries single-line and explains Native workflow state', async ({ page }) => {
+test('keeps compact shared explorer rows free of left-side progress summaries', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto('/?demo');
 
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
-  const nativeSummaries = page.locator('.native-change-row .text-meta').filter({ hasText: '·' });
-  await expect(nativeSummaries.first()).toBeVisible();
-  await expect
-    .poll(() =>
-      nativeSummaries.evaluateAll((elements) =>
-        elements.every((element) => getComputedStyle(element).whiteSpace === 'nowrap'),
-      ),
-    )
-    .toBe(true);
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
+  const nativeRow = page.locator('.native-change-row').first();
+  await expect(nativeRow.locator('.dashboard-explorer-row-name')).toBeVisible();
+  await expect(nativeRow.locator('.dashboard-explorer-row-count')).toContainText('子变更');
+  await expect(nativeRow.locator('.dashboard-explorer-row-status')).toBeVisible();
+  await expect(nativeRow.locator('[role="progressbar"]')).toHaveCount(0);
 
   await page.getByRole('button', { name: '工作流状态' }).click();
   const preview = page.locator('.dashboard-artifact-preview-panel');
@@ -2439,18 +2271,12 @@ test('keeps change summaries single-line and explains Native workflow state', as
   ).toBeVisible();
 
   await page.locator('.dashboard-artifact-preview-backdrop').click();
-  await page.getByRole('menuitem', { name: 'Classic 工作流' }).click();
-  const classicSummaries = page
-    .locator('.dashboard-change-row .text-meta')
-    .filter({ hasText: '·' });
-  await expect(classicSummaries.first()).toBeVisible();
-  await expect
-    .poll(() =>
-      classicSummaries.evaluateAll((elements) =>
-        elements.every((element) => getComputedStyle(element).whiteSpace === 'nowrap'),
-      ),
-    )
-    .toBe(true);
+  await page.getByRole('tab', { name: 'Classic 工作流' }).click();
+  const classicRow = page.locator('.dashboard-change-row').first();
+  await expect(classicRow.locator('.dashboard-explorer-row-name')).toBeVisible();
+  await expect(classicRow.locator('.dashboard-explorer-row-count')).toContainText('任务');
+  await expect(classicRow.locator('.dashboard-explorer-row-status')).toBeVisible();
+  await expect(classicRow.locator('[role="progressbar"]')).toHaveCount(0);
 });
 
 test('keeps personal memory and project knowledge text readable at desktop density', async ({
@@ -2462,7 +2288,7 @@ test('keeps personal memory and project knowledge text readable at desktop densi
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/?demo');
 
-  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.getByRole('button', { name: '个人记忆' }).click();
   const memoryManifest = page.getByRole('region', { name: '最近一次任务使用的记忆' });
   const memoryInspector = page.getByLabel('记忆应用详情');
   await expect(memoryManifest.locator('.dashboard-context-manifest-summary-copy span')).toHaveCSS(
@@ -2481,7 +2307,7 @@ test('keeps personal memory and project knowledge text readable at desktop densi
     memoryInspector.locator('.dashboard-memory-inspector-list strong').first(),
   ).toHaveCSS('font-size', bodyText);
 
-  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('button', { name: '项目知识' }).click();
   const projectManifest = page.getByRole('region', { name: '最近一次任务使用的项目知识' });
   const projectInspector = page.getByRole('complementary', { name: '记录详情' });
   await expect(projectManifest.locator('.dashboard-context-manifest-summary-copy span')).toHaveCSS(
@@ -2536,7 +2362,7 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/?demo');
 
-  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.getByRole('button', { name: '个人记忆' }).click();
   await page
     .getByRole('region', { name: '最近一次任务使用的记忆' })
     .getByRole('button', { name: '查看使用明细' })
@@ -2562,7 +2388,7 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
     .click({ position: { x: 5, y: 5 } });
   await expect(memoryDialog).toBeHidden();
 
-  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('button', { name: '项目知识' }).click();
   await page.getByRole('tab', { name: '检索语料' }).click();
   await page
     .getByLabel('项目知识检索语料列表')
@@ -2598,177 +2424,87 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
   await expect(sourceMarkdown.locator('p').first()).toHaveCSS('font-size', '14px');
 });
 
-test('keeps personal memory and project knowledge three-pane widths aligned on desktop', async ({
-  page,
-}) => {
-  const expectWorkflowHeaderToShareShellGutter = async () => {
-    const [shellBox, headerContextBox, headerActionsBox] = await Promise.all([
-      page.locator('.dashboard-content-shell').boundingBox(),
-      page.locator('.comet-header-context').boundingBox(),
-      page.locator('.comet-header-actions').boundingBox(),
-    ]);
-    expect(shellBox).not.toBeNull();
-    expect(headerContextBox).not.toBeNull();
-    expect(headerActionsBox).not.toBeNull();
-    expect(Math.abs((headerContextBox?.x ?? 0) - (shellBox?.x ?? 0) - 34)).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(
-        (shellBox?.x ?? 0) +
-          (shellBox?.width ?? 0) -
-          ((headerActionsBox?.x ?? 0) + (headerActionsBox?.width ?? 0)) -
-          34,
-      ),
-    ).toBeLessThanOrEqual(1);
-  };
-
-  const expectPluginContentToStartAtShellEdge = async () => {
-    const [shellBox, innerBox] = await Promise.all([
-      page.locator('.dashboard-content-shell-plugin-center').boundingBox(),
-      page.locator('.dashboard-content-inner-plugin-center').boundingBox(),
-    ]);
-    const [headerContextBox, headerActionsBox] = await Promise.all([
-      page.locator('.comet-header-context').boundingBox(),
-      page.locator('.comet-header-actions').boundingBox(),
-    ]);
-    expect(shellBox).not.toBeNull();
-    expect(innerBox).not.toBeNull();
-    expect(headerContextBox).not.toBeNull();
-    expect(headerActionsBox).not.toBeNull();
-    expect(Math.abs((innerBox?.x ?? 0) - (shellBox?.x ?? 0) - 16)).toBeLessThanOrEqual(1);
-    expect(Math.abs((headerContextBox?.x ?? 0) - (shellBox?.x ?? 0) - 34)).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(
-        (shellBox?.x ?? 0) +
-          (shellBox?.width ?? 0) -
-          (innerBox?.x ?? 0) -
-          (innerBox?.width ?? 0) -
-          16,
-      ),
-    ).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(
-        (shellBox?.x ?? 0) +
-          (shellBox?.width ?? 0) -
-          ((headerActionsBox?.x ?? 0) + (headerActionsBox?.width ?? 0)) -
-          34,
-      ),
-    ).toBeLessThanOrEqual(1);
-  };
-
-  const paneWidths = async (selectors) =>
-    Promise.all(
-      selectors.map(async (selector) => {
-        const bounds = await page.locator(selector).boundingBox();
-        expect(bounds).not.toBeNull();
-        return Math.round(bounds?.width ?? 0);
-      }),
-    );
-
-  const expectRailSeparatorToStopBeforeDivider = async (selector, pseudo, borderColorProperty) => {
-    const separator = await page.locator(selector).evaluate(
-      (element, { pseudo, borderColorProperty }) => {
-        const styles = getComputedStyle(element);
-        const line = getComputedStyle(element, pseudo);
-        return {
-          content: line.content,
-          left: line.left,
-          right: line.right,
-          borderColor: styles[borderColorProperty],
-        };
-      },
-      { pseudo, borderColorProperty },
-    );
-    expect(separator.content).not.toBe('none');
-    expect(separator.left).toBe('16px');
-    expect(separator.right).toBe('16px');
-    expect(separator.borderColor).toMatch(/rgba\(0, 0, 0, 0\)|transparent/u);
-  };
-
-  const expectRailElementsToShareSeparatorInset = async (
-    railSelector,
-    elementSelectors,
-    footerSelector,
-  ) => {
-    const railBox = await page.locator(railSelector).boundingBox();
-    expect(railBox).not.toBeNull();
-    for (const selector of elementSelectors) {
-      const elementBox = await page.locator(selector).boundingBox();
-      expect(elementBox).not.toBeNull();
-      expect(Math.abs((elementBox?.x ?? 0) - (railBox?.x ?? 0) - 16)).toBeLessThanOrEqual(1);
-      expect(
-        Math.abs(
-          (railBox?.x ?? 0) +
-            (railBox?.width ?? 0) -
-            ((elementBox?.x ?? 0) + (elementBox?.width ?? 0)) -
-            16,
-        ),
-      ).toBeLessThanOrEqual(1);
+for (const theme of ['light', 'dark'] as const) {
+  test(`aligns the shared page container in ${theme} theme across workflows and plugins`, async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.goto('/?demo');
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme) {
+      await page
+        .getByRole('button', {
+          name: theme === 'dark' ? '切换到暗色模式' : '切换到亮色模式',
+        })
+        .click();
     }
-    const footerInsets = await page.locator(footerSelector).evaluate((element) => {
-      const styles = getComputedStyle(element);
-      return { left: styles.paddingLeft, right: styles.paddingRight };
-    });
-    expect(footerInsets).toEqual({ left: '16px', right: '16px' });
-  };
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 
-  await page.setViewportSize({ width: 2200, height: 1100 });
+    for (const width of [2048, 1600, 1440, 1280, 1024, 768, 761, 760, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const expectedWidth = width - (width <= 760 ? 32 : 64);
+      for (const view of [
+        { role: 'tab', name: 'Native 工作流', body: '.dashboard-master-detail' },
+        { role: 'tab', name: 'Classic 工作流', body: '.dashboard-master-detail' },
+        { role: 'button', name: '个人记忆', body: '.dashboard-tool-page-memory' },
+        { role: 'button', name: '项目知识', body: '.dashboard-tool-page-knowledge' },
+      ] as const) {
+        await page.getByRole(view.role, { name: view.name, exact: true }).click();
+        await expect(page.locator(view.body)).toBeVisible();
+        for (const selector of [
+          '.comet-workbench-header',
+          '.dashboard-content-inner',
+          '.dashboard-page-heading',
+          '.dashboard-workflow-tabs',
+          view.body,
+        ]) {
+          const box = await page.locator(selector).boundingBox();
+          expect(box, `${view.name}: ${selector} at ${width}px`).not.toBeNull();
+          expect(Math.abs(box!.width - expectedWidth)).toBeLessThanOrEqual(1);
+          expect(Math.abs(box!.x - (width - expectedWidth) / 2)).toBeLessThanOrEqual(1);
+        }
+        await expect
+          .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+          .toBe(true);
+        if (view.name === 'Native 工作流' && [1440, 2048, 390].includes(width)) {
+          await page.screenshot({
+            path: test.info().outputPath(`dashboard-native-${theme}-${width}.png`),
+          });
+        }
+      }
+      await page.getByRole('button', { name: '设置', exact: true }).click();
+      const settings = page.getByRole('dialog', { name: /Comet 设置/u });
+      await expect(settings).toBeVisible();
+      const box = await settings.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.width).toBeLessThanOrEqual(920);
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+      const content = await page.locator('.dashboard-content-inner').boundingBox();
+      expect(Math.abs(content!.width - expectedWidth)).toBeLessThanOrEqual(1);
+      await page.keyboard.press('Escape');
+      await expect(settings).toHaveCount(0);
+    }
+    expect(errors).toEqual([]);
+  });
+}
+
+test('keeps project context fixed while switching between plugin workspaces', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/?demo');
-
-  await expectWorkflowHeaderToShareShellGutter();
-  await page.getByRole('menuitem', { name: '个人记忆' }).click();
-  await expectPluginContentToStartAtShellEdge();
-  await expectRailSeparatorToStopBeforeDivider(
-    '.dashboard-memory-filter-search',
-    '::after',
-    'borderBottomColor',
-  );
-  await expectRailSeparatorToStopBeforeDivider(
-    '.dashboard-memory-filter-summary',
-    '::before',
-    'borderTopColor',
-  );
-  await expectRailElementsToShareSeparatorInset(
-    '.dashboard-memory-filter-rail',
-    [
-      '.dashboard-memory-filter-search .ant-input-affix-wrapper',
-      '.dashboard-memory-filter-rail nav button.is-active',
-    ],
-    '.dashboard-memory-filter-summary',
-  );
-  const memoryWidths = await paneWidths([
-    '.dashboard-memory-filter-rail',
-    '.dashboard-memory-registry',
-    '.dashboard-memory-inspector',
-  ]);
-
-  await page.getByRole('menuitem', { name: '项目知识' }).click();
-  await expectPluginContentToStartAtShellEdge();
-  await expectRailSeparatorToStopBeforeDivider(
-    '.dashboard-knowledge-explorer-search',
-    '::after',
-    'borderBottomColor',
-  );
-  await expectRailSeparatorToStopBeforeDivider(
-    '.dashboard-knowledge-explorer-foot',
-    '::before',
-    'borderTopColor',
-  );
-  await expectRailElementsToShareSeparatorInset(
-    '.dashboard-knowledge-explorer',
-    [
-      '.dashboard-knowledge-explorer-search .ant-input-affix-wrapper',
-      '.dashboard-knowledge-explorer > .dashboard-knowledge-category.is-active',
-      '.dashboard-knowledge-category-groups section:first-child .dashboard-knowledge-category:first-of-type',
-    ],
-    '.dashboard-knowledge-explorer-foot',
-  );
-  const projectKnowledgeWidths = await paneWidths([
-    '.dashboard-knowledge-explorer',
-    '.dashboard-knowledge-ledger',
-    '.dashboard-knowledge-inspector',
-  ]);
-
-  expect(memoryWidths).toEqual(projectKnowledgeWidths);
+  const selector = page.locator('.comet-project-select');
+  const before = await selector.boundingBox();
+  for (const name of ['个人记忆', '项目知识']) {
+    await page.getByRole('button', { name, exact: true }).click();
+    await expect(
+      page.locator(
+        name === '个人记忆' ? '.dashboard-tool-page-memory' : '.dashboard-tool-page-knowledge',
+      ),
+    ).toBeVisible();
+    const after = await selector.boundingBox();
+    expect(Math.abs(after!.x - before!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(after!.width - before!.width)).toBeLessThanOrEqual(1);
+  }
 });
 
 test('keeps memory columns aligned and project knowledge timestamps visible', async ({ page }) => {
@@ -2782,7 +2518,7 @@ test('keeps memory columns aligned and project knowledge timestamps visible', as
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/?demo');
 
-  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.getByRole('button', { name: '个人记忆' }).click();
   const memoryHead = page.locator('.dashboard-memory-table-head');
   const memoryRow = page.locator('.dashboard-memory-table-row').first();
   await compareColumnStart(
@@ -2807,7 +2543,7 @@ test('keeps memory columns aligned and project knowledge timestamps visible', as
     )
     .toBe(true);
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('button', { name: '项目知识' }).click();
   const knowledgeHead = page.locator('.dashboard-knowledge-ledger-head');
   const knowledgeRow = page.locator('.dashboard-knowledge-ledger-row').first();
   const knowledgeTime = knowledgeRow.locator('time');
@@ -2821,7 +2557,7 @@ test('keeps memory columns aligned and project knowledge timestamps visible', as
 test('keeps personal memory context and application history easy to scan', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/?demo');
-  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.getByRole('button', { name: '个人记忆' }).click();
 
   const contextBar = page.getByLabel('个人记忆状态与操作');
   const contextItems = contextBar.locator('.dashboard-plugin-context-item');
@@ -2855,7 +2591,7 @@ test('keeps personal memory context and application history easy to scan', async
   await expect(memoryInspector.getByText('这条记忆为什么被应用', { exact: true })).toHaveCount(0);
   await expect(memoryInspector.getByRole('heading', { name: '适用条件' })).toBeVisible();
 
-  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('button', { name: '项目知识' }).click();
   const knowledgeInspector = page.getByRole('complementary', { name: '记录详情' });
   await expect(knowledgeInspector.locator('h3').first()).toHaveText('Dashboard 前端验证入口');
   await expect(knowledgeInspector.getByRole('heading', { name: '应用条件' })).toBeVisible();
@@ -2868,7 +2604,7 @@ test('keeps the demo Native detail visible after selecting a child change', asyn
   });
 
   await page.goto('/?demo');
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
 
   const childRow = page
     .locator('.native-child-change-row')
@@ -2876,11 +2612,13 @@ test('keeps the demo Native detail visible after selecting a child change', asyn
   await expect(childRow).toBeVisible();
   await childRow.click();
 
-  await expect(page.locator('.native-change-detail h3')).toHaveText('prepare-parent-workspace');
+  await expect(page.locator('.native-change-detail h3.text-base')).toContainText(
+    'prepare-parent-workspace',
+  );
   await expect(page.getByRole('button', { name: 'brief 需求简报' })).toBeVisible();
   await expect(page.getByText('100% 已处理', { exact: true })).toBeVisible();
   await expect(page.getByText('准备工作区已完成并归档。', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Native 变更工作区' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '项目概览', exact: true })).toBeVisible();
   expect(consoleErrors).toEqual([]);
 });
 
@@ -2905,69 +2643,37 @@ test('keeps Classic task progress inside the change detail column', async ({ pag
   );
 });
 
-test('gives the workbench restrained surface depth and interactive card feedback', async ({
-  page,
-}) => {
+test('keeps project metrics above the selected change and Git outside it', async ({ page }) => {
   await page.goto('/?demo');
-
-  const summaryCard = page.locator('.dashboard-summary-card').first();
-  await expect(summaryCard).toBeVisible();
-  await expect(summaryCard).toHaveCSS('border-radius', '15px');
-  await expect(summaryCard).toHaveCSS('cursor', 'pointer');
-
-  const workbench = page.locator('.dashboard-workbench');
-  await expect(workbench).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-  await expect(workbench).toHaveCSS('border-radius', '24px');
-
-  await page.getByRole('button', { name: '切换到暗色模式' }).click();
-  await expect(page.locator('.ant-alert-info')).toHaveCSS('background-color', 'rgb(20, 36, 58)');
-  await expect(page.locator('.ant-alert-title')).toHaveCSS('color', 'rgb(228, 232, 239)');
+  const summary = page.locator('.dashboard-summary-strip');
+  const detail = page.locator('.change-detail');
+  const git = page.getByLabel('仓库 Git');
+  await expect(summary.getByRole('button')).toHaveCount(5);
+  await expect(detail.locator('.change-guidance')).toContainText('下一步建议');
+  await expect(git).toBeVisible();
+  await expect(detail.getByLabel('仓库 Git')).toHaveCount(0);
+  const [summaryBox, detailBox, gitBox] = await Promise.all([
+    summary.boundingBox(),
+    detail.boundingBox(),
+    git.boundingBox(),
+  ]);
+  expect(summaryBox!.y + summaryBox!.height).toBeLessThan(detailBox!.y);
+  expect(gitBox!.y).toBeGreaterThanOrEqual(detailBox!.y + detailBox!.height);
 });
 
-test('keeps the redesigned header focused on controls rather than helper copy', async ({
+test('keeps project, search, plugins, settings, refresh and theme in the top bar', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/?demo');
-
   const header = page.locator('.comet-workbench-header');
-  await expect(header.getByText('当前项目', { exact: true })).toHaveCount(0);
-  await expect(header.getByText('工作流', { exact: true })).toHaveCount(0);
-  await expect(header.locator('.comet-header-sync')).toHaveCount(0);
-  await expect(header).toHaveCSS('min-height', '68px');
-  await expect(header.locator('.ant-segmented')).toHaveCount(0);
-  const search = header.locator('.comet-header-search');
-  const mainWorkspace = page.locator('.dashboard-workbench > section');
-  await expect(search).toHaveCSS('position', 'static');
-  await expect(search).toHaveCSS('max-width', '420px');
-  await expect(page.locator('.comet-header-search .ant-input-affix-wrapper')).toHaveCSS(
-    'min-height',
-    '40px',
-  );
-  await expect(page.getByRole('button', { name: '立即刷新' })).toHaveText('');
-
-  const expectSearchCenteredInMainWorkspace = async () => {
-    const [searchBox, mainWorkspaceBox] = await Promise.all([
-      search.boundingBox(),
-      mainWorkspace.boundingBox(),
-    ]);
-    if (!searchBox || !mainWorkspaceBox) {
-      throw new Error('Expected the search field and main workspace to have measurable bounds');
-    }
-    expect(Math.abs(searchBox.width - 420)).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(
-        searchBox.x + searchBox.width / 2 - (mainWorkspaceBox.x + mainWorkspaceBox.width / 2),
-      ),
-    ).toBeLessThanOrEqual(1);
-  };
-
-  await expectSearchCenteredInMainWorkspace();
-
-  await page.getByRole('button', { name: '收起侧边栏' }).click();
-  await page.waitForTimeout(260);
-  await expect(page.getByRole('button', { name: '展开侧边栏' })).toBeVisible();
-  await expectSearchCenteredInMainWorkspace();
+  await expect(header.getByRole('combobox', { name: '选择项目' })).toBeVisible();
+  await expect(header.getByPlaceholder('搜索变更、产物或文件…')).toBeVisible();
+  for (const name of ['个人记忆', '项目知识', '设置', '立即刷新', '切换到暗色模式']) {
+    await expect(header.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+  await expect(page.locator('.dashboard-sidebar')).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Native 工作流' })).toBeVisible();
 });
 
 test('uses restrained corners for the two Header search controls', async ({ page }) => {
@@ -2980,238 +2686,174 @@ test('uses restrained corners for the two Header search controls', async ({ page
   );
 });
 
-test('fully applies dark surfaces without page-wide color-transition jank', async ({ page }) => {
+test('applies the approved dark palette to the canvas, selection and phase graph', async ({
+  page,
+}) => {
   await page.goto('/?demo');
   await page.getByRole('button', { name: '切换到暗色模式' }).click();
-
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.locator('.dashboard-overview-summary-card').nth(1)).toHaveCSS(
-    'background-color',
-    'rgb(23, 30, 41)',
-  );
-  await expect(page.locator('.dashboard-priority-banner')).toHaveCSS(
-    'background-color',
-    'rgb(23, 30, 41)',
-  );
-  await expect(page.locator('.comet-header-search .ant-input-affix-wrapper')).toHaveCSS(
-    'background-color',
-    'rgb(21, 25, 35)',
-  );
-  await expect(page.locator('.comet-project-select')).toHaveCSS(
-    'background-color',
-    'rgb(26, 35, 49)',
-  );
-  await expect(page.locator('.comet-project-select')).toHaveCSS(
-    'border-top-color',
-    'rgb(57, 75, 102)',
-  );
-  await expect(page.getByRole('combobox')).toHaveCSS('color', 'rgb(213, 224, 240)');
-  await expect(page.locator('.comet-project-select .ant-select-placeholder')).toHaveCSS(
-    'color',
-    'rgb(213, 224, 240)',
-  );
-
-  await expect(page.locator('.ant-card').first()).toHaveCSS('background-color', 'rgb(21, 25, 35)');
-  await expect(
-    page.locator('.dashboard-phase-item.is-pending .dashboard-phase-label').first(),
-  ).toHaveCSS('color', 'rgb(165, 180, 200)');
-  await expect(page.locator('.dashboard-priority-title svg')).toHaveCSS(
-    'background-color',
-    'rgb(29, 59, 101)',
-  );
-  await expect(page.locator('.dashboard-sidebar')).toHaveCSS(
-    'border-right-color',
-    'rgb(37, 44, 55)',
-  );
-  await expect(page.locator('.dashboard-sidebar')).toHaveCSS('box-shadow', 'none');
-  await expect(page.locator('.dashboard-content-shell')).toHaveCSS('transition-duration', '0s');
-
   await expect(page.locator('.comet-workbench-header')).toHaveCSS(
-    'border-bottom-color',
-    'rgb(32, 42, 58)',
-  );
-  await expect(page.locator('.comet-workbench-header')).toHaveCSS('box-shadow', 'none');
-  await expect(
-    page.locator('.dashboard-phase-item.is-pending .dashboard-phase-rail').first(),
-  ).toHaveCSS('background-color', 'rgb(58, 70, 88)');
-
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
-  const nativeSelectedItem = page.locator('.native-change-list-item.selected');
-  await expect(nativeSelectedItem).toHaveCSS('background-color', 'rgb(27, 45, 72)');
-  await expect(nativeSelectedItem).toHaveCSS('color', 'rgb(237, 242, 251)');
-  const nativeSummaryStatuses = page.locator(
-    '.dashboard-overview-summary-card .dashboard-summary-status',
-  );
-  await expect(nativeSummaryStatuses.nth(0)).toHaveCSS('color', 'rgb(23, 78, 166)');
-  await expect(nativeSummaryStatuses.nth(0)).toHaveCSS('background-color', 'rgb(219, 234, 254)');
-  await expect(nativeSummaryStatuses.nth(1)).toHaveCSS('color', 'rgb(183, 192, 206)');
-  await expect(nativeSummaryStatuses.nth(2)).toHaveCSS('color', 'rgb(255, 154, 174)');
-  await expect(nativeSummaryStatuses.nth(3)).toHaveCSS('color', 'rgb(121, 217, 155)');
-  await expect(nativeSummaryStatuses.nth(4)).toHaveCSS('color', 'rgb(243, 200, 102)');
-  await page.locator('.dashboard-overview-summary-card').nth(2).click();
-  await expect(nativeSummaryStatuses.nth(2)).toHaveCSS('color', 'rgb(255, 154, 174)');
-  await expect(nativeSummaryStatuses.nth(2)).toHaveCSS(
     'background-color',
-    'rgba(240, 113, 142, 0.14)',
+    'rgb(12, 13, 18)',
   );
-
-  await page.locator('.comet-project-select').click();
-  await expect(page.locator('.comet-project-select-dropdown')).toHaveCSS(
-    'background-color',
-    'rgb(21, 25, 35)',
-  );
-  await expect(page.locator('.comet-project-select-dropdown')).toHaveCSS(
-    'border-top-color',
-    'rgb(41, 51, 69)',
-  );
-  await expect(page.locator('.comet-project-select-dropdown .ant-empty-description')).toHaveCSS(
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
+  const selectedNativeRow = page.locator('.native-change-row[aria-pressed="true"]');
+  await expect(selectedNativeRow).toBeVisible();
+  await expect(selectedNativeRow).toHaveCSS('background-color', 'rgb(39, 32, 57)');
+  await expect(selectedNativeRow).toHaveCSS('border-radius', '0px');
+  const track = page.getByRole('list', { name: 'Native 生命周期阶段' });
+  await expect(track.locator('.is-done .dashboard-phase-label')).toHaveCSS(
     'color',
-    'rgb(165, 180, 200)',
+    'rgb(137, 221, 179)',
   );
-
-  await page.keyboard.press('Escape');
-  await page.getByRole('menuitem', { name: '项目知识' }).click();
-  await page.getByRole('button', { name: '新增项目知识' }).click();
-  const createDialog = page.getByRole('dialog');
-  const titleInput = createDialog.getByLabel('项目知识标题');
-  await expect(titleInput).toHaveCSS('color', 'rgb(237, 242, 251)');
+  await expect(track.locator('.is-current .dashboard-phase-label')).toHaveCSS(
+    'color',
+    'rgb(185, 164, 255)',
+  );
   await expect
-    .poll(() => titleInput.evaluate((element) => getComputedStyle(element, '::placeholder').color))
-    .toBe('rgb(135, 145, 162)');
-  const disabledSave = createDialog.getByRole('button', { name: /保\s*存/u });
-  await expect(disabledSave).toBeDisabled();
-  await expect(disabledSave).toHaveCSS('color', 'rgb(135, 145, 162)');
-  await expect(disabledSave).not.toHaveCSS('background-color', 'rgb(47, 131, 232)');
+    .poll(() =>
+      track
+        .locator('.is-pending .dashboard-phase-rail')
+        .first()
+        .evaluate((element) => {
+          const probe = document.createElement('span');
+          probe.style.backgroundColor = 'var(--color-border)';
+          element.append(probe);
+          const expected = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return getComputedStyle(element).borderTopColor === expected;
+        }),
+    )
+    .toBe(true);
+  const images = page.locator('.comet-reference-icon');
+  await expect
+    .poll(() =>
+      images.evaluateAll((elements) =>
+        elements.every(
+          (element) =>
+            (element as HTMLImageElement).complete &&
+            (element as HTMLImageElement).naturalWidth > 0,
+        ),
+      ),
+    )
+    .toBe(true);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect
+    .poll(() =>
+      track
+        .locator('svg[data-stage]')
+        .evaluateAll((elements) =>
+          elements.every(
+            (element) =>
+              element.getAttribute('data-motion') === 'static' &&
+              element.getAttribute('data-reduced-motion') === 'true',
+          ),
+        ),
+    )
+    .toBe(true);
 });
 
-test('uses the reference surface hierarchy across the workbench shell', async ({ page }) => {
+test('keeps plugin pages and settings usable after moving their entry points', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/?demo');
-
-  await expect(page.locator('.dashboard-content-shell')).toHaveCSS(
-    'background-color',
-    'rgb(255, 255, 255)',
-  );
-  await expect(page.locator('.dashboard-sidebar')).toHaveCSS(
-    'border-right-color',
-    'rgb(237, 240, 244)',
-  );
-  await expect(page.locator('.dashboard-sidebar .ant-menu-item-selected')).toHaveCSS(
-    'background-color',
-    'rgb(231, 242, 255)',
-  );
-  await expect(page.locator('.ant-card').first()).toHaveCSS('box-shadow', /rgba\(31, 43, 64/);
-
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
-  const summaryStatuses = page.locator(
-    '.dashboard-overview-summary-card .dashboard-summary-status',
-  );
-  await expect(summaryStatuses.nth(0)).toHaveCSS('color', 'rgb(23, 78, 166)');
-  await expect(summaryStatuses.nth(0)).toHaveCSS('background-color', 'rgb(219, 234, 254)');
-  await expect(summaryStatuses.nth(1)).toHaveCSS('color', 'rgb(102, 112, 133)');
-  await expect(summaryStatuses.nth(2)).toHaveCSS('color', 'rgb(201, 68, 98)');
-  await expect(summaryStatuses.nth(3)).toHaveCSS('color', 'rgb(35, 131, 75)');
-  await expect(summaryStatuses.nth(4)).toHaveCSS('color', 'rgb(154, 101, 14)');
-  await page.locator('.dashboard-overview-summary-card').nth(2).click();
-  await expect(summaryStatuses.nth(2)).toHaveCSS('color', 'rgb(201, 68, 98)');
-  await expect(summaryStatuses.nth(2)).toHaveCSS('background-color', 'rgb(253, 236, 239)');
-  const archivedIcon = page.locator(
-    '.dashboard-overview-summary-card.dashboard-summary-tone-2 .dashboard-summary-icon',
-  );
-  await expect(archivedIcon).toHaveCSS('color', 'rgb(111, 122, 138)');
-  await expect(archivedIcon).toHaveCSS('background-color', 'rgb(238, 241, 245)');
+  await page.getByRole('button', { name: '个人记忆', exact: true }).click();
+  await expect(page.locator('.dashboard-tool-page-memory')).toBeVisible();
+  await page.getByRole('button', { name: '项目知识', exact: true }).click();
+  await expect(page.locator('.dashboard-tool-page-knowledge')).toBeVisible();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
+  await expect(page.locator('.native-change-detail')).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
-test('keeps the desktop sidebar transition unified and settings reachable when collapsed', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 600 });
+test('supports keyboard navigation between workflows and change filters', async ({ page }) => {
   await page.goto('/?demo');
-
-  const workbench = page.locator('.dashboard-workbench');
-  const sidebar = page.locator('.dashboard-sidebar');
-  const sidebarContent = sidebar.locator('.dashboard-sidebar-content');
-  const footer = sidebar.locator('.dashboard-sidebar-footer');
-  const settings = sidebar.locator('.dashboard-sidebar-settings');
-
-  await expect(workbench).toHaveCSS('transition-duration', '0.22s');
-  await expect(sidebar).toHaveCSS('transition-property', 'none');
-  await expect(footer).toHaveCSS('flex-shrink', '0');
-  await expect(settings).toBeInViewport();
-
-  await page.getByRole('button', { name: '收起侧边栏' }).click();
-  await page.waitForTimeout(60);
-
-  const [sidebarWidth, sidebarContentWidth] = await Promise.all([
-    sidebar.evaluate((element) => element.getBoundingClientRect().width),
-    sidebarContent.evaluate((element) => element.getBoundingClientRect().width),
-  ]);
-  expect(Math.abs(sidebarWidth - sidebarContentWidth)).toBeLessThanOrEqual(1);
-
-  await expect(page.getByRole('button', { name: '展开侧边栏' })).toBeVisible();
-  await expect(settings).toHaveCSS('width', '40px');
-  await expect(settings).toBeInViewport();
-  await expect(settings).toBeEnabled();
-  await expect(sidebar.locator('.dashboard-sidebar-footer-label')).toHaveCSS('display', 'none');
-  await expect(settings.locator('.anticon-setting')).toBeVisible();
-  await expect(settings.locator('.dashboard-sidebar-settings-label')).toBeHidden();
-  await settings.click();
-  await expect(page.getByRole('dialog', { name: /Comet 设置/u })).toBeVisible();
-});
-
-test('removes horizontal overflow from the collapsed sidebar on narrow desktop screens', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1024, height: 600 });
-  await page.goto('/?demo');
-
-  await page.getByRole('button', { name: '收起侧边栏' }).click();
-  await page.waitForTimeout(260);
-
-  const navigation = page.locator('.dashboard-sidebar-navigation');
-  await expect(navigation).toHaveCSS('overflow-x', 'hidden');
-  const { clientWidth, scrollWidth } = await navigation.evaluate((element) => ({
-    clientWidth: element.clientWidth,
-    scrollWidth: element.scrollWidth,
-  }));
-  expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 1);
-});
-
-test('keeps collapsed sidebar menu icons aligned with their expanded positions', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 600 });
-  await page.goto('/?demo');
-
-  const workflowIconItem = page.locator('.dashboard-workflow-menu .ant-menu-item').first();
-  const expandedTop = await workflowIconItem.evaluate(
-    (element) => element.getBoundingClientRect().top,
+  const classic = page.getByRole('tab', { name: 'Classic 工作流' });
+  await classic.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  const native = page.getByRole('tab', { name: 'Native 工作流' });
+  await expect(native).toHaveAttribute('aria-selected', 'true');
+  const nativeRow = page.locator('.native-change-row').first();
+  await nativeRow.focus();
+  await expect(nativeRow).toBeFocused();
+  await expect(page.getByRole('tooltip')).toContainText(
+    await nativeRow.locator('.dashboard-explorer-row-name').innerText(),
   );
-
-  await page.getByRole('button', { name: '收起侧边栏' }).click();
-  await page.waitForTimeout(260);
-
-  const collapsedTop = await workflowIconItem.evaluate(
-    (element) => element.getBoundingClientRect().top,
+  await page.getByRole('tab', { name: '已归档', exact: true }).click();
+  await expect(
+    page.locator('.native-changes-explorer-tabs [role=tab][aria-selected=true]'),
+  ).toContainText('已归档');
+  await page.getByRole('tab', { name: '活跃', exact: true }).click();
+  const active = page.getByRole('tab', { name: '活跃', exact: true });
+  await active.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await expect(
+    page.locator('.native-changes-explorer-tabs [role=tab][aria-selected=true]'),
+  ).toContainText('已归档');
+  await page.getByRole('tab', { name: 'Classic 工作流' }).click();
+  const classicRow = page.locator('.dashboard-change-row').first();
+  await classicRow.focus();
+  await expect(classicRow).toBeFocused();
+  await expect(page.getByRole('tooltip')).toContainText(
+    await classicRow.locator('.dashboard-explorer-row-name').innerText(),
   );
-  expect(Math.abs(collapsedTop - expandedTop)).toBeLessThanOrEqual(1);
 });
 
-test('uses the reference dashboard rhythm for suggestions and grouped metrics', async ({
+test('keeps the master-detail workspace within desktop, tablet and mobile viewports', async ({
   page,
 }) => {
   await page.goto('/?demo');
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
+  for (const width of [1600, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+  }
+});
 
-  const suggestion = page.getByRole('status', { name: '工作流建议' });
-  await expect(suggestion).toBeVisible();
-  await expect(suggestion).toContainText('下一步建议');
-
-  const summary = page.locator('.dashboard-summary-strip');
-  await expect(summary).toBeVisible();
-  await expect(summary.locator('.dashboard-overview-summary-card').first()).toHaveCSS(
-    'border-radius',
-    '15px',
+test('keeps a single filtered change selected and clears details for no results', async ({
+  page,
+}) => {
+  await page.goto('/?demo');
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
+  const search = page.getByPlaceholder('搜索变更、产物或文件…');
+  await search.fill('prepare-parent-workspace');
+  const matchingChild = page
+    .locator('.native-child-change-row')
+    .filter({ hasText: 'prepare-parent-workspace' });
+  await expect(matchingChild).toBeVisible();
+  await expect(matchingChild).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.native-change-disclosure[aria-expanded="true"]')).toHaveCount(1);
+  await search.fill('align-dashboard-copy');
+  await expect(page.locator('.native-change-row')).toHaveCount(1);
+  await expect(page.locator('.native-change-detail h3.text-base')).toContainText(
+    'align-dashboard-copy',
   );
-  await expect(summary.locator('.dashboard-summary-metric-cell')).toHaveCount(5);
+  await expect(page.locator('.native-change-row')).toHaveAttribute('aria-pressed', 'true');
+  await search.fill('no-such-isolated-change');
+  await expect(page.getByRole('heading', { name: '没有匹配的 Native change' })).toBeVisible();
+  await expect(page.locator('.native-change-detail h3.text-base')).toHaveCount(0);
+  await search.fill('');
+  await expect(page.locator('.native-change-row').first()).toBeVisible();
+});
+
+test('keeps suggestions and blockers within the selected change', async ({ page }) => {
+  await page.goto('/?demo');
+  const detail = page.locator('.change-detail');
+  await expect(detail.locator('.change-guidance')).toContainText('下一步建议');
+  await expect(detail.locator('.change-guidance')).toContainText('风险提示');
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
+  const native = page.locator('.native-change-detail');
+  await expect(native.getByRole('status', { name: '工作流建议' })).toBeVisible();
+  await expect(native.getByRole('heading', { name: '当前阻塞' })).toBeVisible();
 });
 
 test('keeps Classic and Native overview metrics visually aligned and selectable', async ({
@@ -3222,39 +2864,321 @@ test('keeps Classic and Native overview metrics visually aligned and selectable'
   const classicSummary = page.locator('.dashboard-overview-summary-strip');
   const classicCards = classicSummary.getByRole('button');
   await expect(classicCards).toHaveCount(5);
+  await expect(classicSummary.locator('.ant-card')).toHaveCount(5);
+  await expect(classicSummary.locator('.ant-statistic-content-value')).toHaveText(
+    [
+      DEMO_SNAPSHOT.summary.activeChanges,
+      DEMO_SNAPSHOT.summary.archivedChanges,
+      DEMO_SNAPSHOT.summary.verifyFailed,
+      DEMO_SNAPSHOT.summary.tasksIncomplete,
+      DEMO_SNAPSHOT.summary.dirtyFiles,
+    ].map(String),
+  );
   await expect(classicSummary.locator('.dashboard-summary-icon')).toHaveCount(5);
   await expect(classicCards.first()).toHaveClass(/dashboard-summary-primary/);
   await classicCards.nth(3).click();
   await expect(classicCards.nth(3)).toHaveClass(/dashboard-summary-primary/);
   await expect(classicCards.first()).not.toHaveClass(/dashboard-summary-primary/);
+  await classicCards.nth(2).focus();
+  await page.keyboard.press('Enter');
+  await expect(classicCards.nth(2)).toHaveAttribute('aria-pressed', 'true');
 
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
 
   const summary = page.locator('.dashboard-overview-summary-strip');
   const cards = summary.getByRole('button');
   await expect(cards).toHaveCount(5);
+  await expect(summary.locator('.ant-card')).toHaveCount(5);
+  await expect(summary.locator('.ant-statistic-content-value').first()).toHaveText(
+    String(DEMO_SNAPSHOT.native.activeChangeCount),
+  );
   await expect(cards.first()).toHaveClass(/dashboard-summary-primary/);
   await expect(summary.locator('.dashboard-summary-icon')).toHaveCount(5);
-  await expect(cards.first()).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(cards.first()).toHaveAttribute('aria-pressed', 'true');
   await cards.nth(1).click();
   await expect(cards.nth(1)).toHaveClass(/dashboard-summary-primary/);
   await expect(cards.first()).not.toHaveClass(/dashboard-summary-primary/);
+  await cards.nth(4).focus();
+  await page.keyboard.press('Space');
+  await expect(cards.nth(4)).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('balances heading scale and change-row density for dashboard scanning', async ({ page }) => {
+test('keeps five independent statistic cards equal-width and wraps without narrowing the canvas', async ({
+  page,
+}) => {
+  await page.goto('/?demo');
+  for (const workflow of ['Classic 工作流', 'Native 工作流']) {
+    await page.getByRole('tab', { name: workflow }).click();
+    const summary = page.locator('.dashboard-overview-summary-strip');
+    const cards = summary.locator('.dashboard-summary-card.ant-card');
+    await expect(cards).toHaveCount(5);
+    await expect(summary.locator('.ant-statistic')).toHaveCount(5);
+    for (const theme of ['light', 'dark']) {
+      if ((await page.locator('html').getAttribute('data-theme')) !== theme) {
+        await page
+          .getByRole('button', { name: theme === 'dark' ? '切换到暗色模式' : '切换到亮色模式' })
+          .click();
+      }
+      for (const width of [2048, 1600, 1440, 1100, 701, 700, 390]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const boxes = await cards.evaluateAll((elements) =>
+          elements.map((element) => {
+            const box = element.getBoundingClientRect();
+            return { x: box.x, y: box.y, width: box.width, height: box.height };
+          }),
+        );
+        const columns = width > 1100 ? 5 : width > 700 ? 3 : 2;
+        const gutter = width <= 760 ? 16 : 32;
+        expect(Math.abs(boxes[0].x - gutter)).toBeLessThanOrEqual(1);
+        expect(
+          Math.max(...boxes.map((box) => box.width)) - Math.min(...boxes.map((box) => box.width)),
+        ).toBeLessThanOrEqual(1);
+        expect(new Set(boxes.map((box) => Math.round(box.y))).size).toBe(Math.ceil(5 / columns));
+        expect(
+          Math.abs(boxes[columns - 1].x + boxes[columns - 1].width - (width - gutter)),
+        ).toBeLessThanOrEqual(1);
+        if (width >= 1440) {
+          expect(Math.min(...boxes.map((box) => box.height))).toBeGreaterThanOrEqual(88);
+          expect(Math.max(...boxes.map((box) => box.height))).toBeLessThanOrEqual(96);
+          expect(
+            Math.max(...boxes.map((box) => box.height)) -
+              Math.min(...boxes.map((box) => box.height)),
+          ).toBeLessThanOrEqual(1);
+        }
+        for (let index = 0; index < 5; index += 1) {
+          const card = cards.nth(index);
+          await expect(card).toHaveCSS('border-top-width', '1px');
+          await expect(card).toHaveCSS('border-top-style', 'solid');
+          await expect(card.locator('.ant-statistic-title')).toBeVisible();
+          await expect(card.locator('.dashboard-summary-note')).toBeVisible();
+          await expect(
+            card.locator('.dashboard-summary-title .dashboard-summary-status'),
+          ).toBeVisible();
+          await expect(card.locator('.ant-statistic-content-value')).toHaveText(/^\d+$/);
+          await expect(card.locator('.dashboard-summary-metric')).toHaveCSS('font-size', '32px');
+          await expect(card.locator('.ant-card-body')).toHaveCSS('padding', '12px 16px');
+          const layout = await card.evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            const title = element.querySelector('.ant-statistic-title')!;
+            const note = element.querySelector('.dashboard-summary-note')!;
+            const metric = element.querySelector('.dashboard-summary-metric')!;
+            const status = element.querySelector('.dashboard-summary-status')!;
+            const titleBox = title.getBoundingClientRect();
+            const noteBox = note.getBoundingClientRect();
+            const metricBox = metric.getBoundingClientRect();
+            const statusBox = status.getBoundingClientRect();
+            return {
+              textBeforeNumber: Math.max(titleBox.right, noteBox.right) <= metricBox.left,
+              numberCentered: Math.abs(
+                metricBox.top + metricBox.height / 2 - (box.top + box.height / 2),
+              ),
+              contained: [titleBox, noteBox, metricBox, statusBox].every(
+                (child) =>
+                  child.left >= box.left &&
+                  child.right <= box.right &&
+                  child.top >= box.top &&
+                  child.bottom <= box.bottom,
+              ),
+              noteComplete:
+                note.scrollWidth <= note.clientWidth && note.scrollHeight <= note.clientHeight,
+              statusComplete:
+                status.scrollWidth <= status.clientWidth &&
+                status.scrollHeight <= status.clientHeight,
+              overflow: element.scrollWidth > element.clientWidth,
+              noteHeight: noteBox.height,
+            };
+          });
+          expect(layout.textBeforeNumber).toBe(true);
+          expect(layout.numberCentered).toBeLessThanOrEqual(1);
+          expect(layout.contained).toBe(true);
+          expect(layout.noteComplete).toBe(true);
+          expect(layout.statusComplete).toBe(true);
+          expect(layout.overflow).toBe(false);
+          if (width >= 1440) expect(layout.noteHeight).toBeLessThanOrEqual(19);
+        }
+        expect(
+          await summary
+            .locator('.ant-statistic')
+            .evaluateAll((elements) =>
+              elements.every((element) => element.getAnimations({ subtree: true }).length === 0),
+            ),
+        ).toBe(true);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        if (workflow === 'Native 工作流' && [2048, 1600, 1440, 390].includes(width)) {
+          await page.screenshot({
+            path: test.info().outputPath(`dashboard-${theme}-${width}.png`),
+          });
+        }
+        if (workflow === 'Native 工作流' && theme === 'light' && width === 390) {
+          await page.screenshot({ path: test.info().outputPath('dashboard-light-narrow.png') });
+          await page
+            .getByRole('list', { name: 'Native 生命周期阶段' })
+            .locator('xpath=..')
+            .screenshot({
+              path: test.info().outputPath('dashboard-light-narrow-steps.png'),
+            });
+        }
+      }
+    }
+  }
+});
+
+for (const populated of [false, true]) {
+  test(`restores statistic status labels for ${populated ? 'nonzero' : 'zero'} data in both themes`, async ({
+    page,
+  }) => {
+    const count = populated ? 1 : 0;
+    const nativeChange = {
+      ...DEMO_SNAPSHOT.native.changes[0],
+      children: [],
+      loop: { ...DEMO_SNAPSHOT.native.changes[0].loop, stage: 'archive-ready' },
+      localExecution: { status: 'running' },
+      verificationResult: 'fail',
+      acceptance: { total: 3, passed: 0, failed: 1, blocked: 0, pending: 2 },
+    };
+    const nativeItems = populated ? [nativeChange] : [];
+    await page.route('**/api/dashboard/**', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/api/dashboard/projects') {
+        await route.fulfill({
+          json: {
+            currentProjectId: 'status-fixture',
+            projects: [
+              {
+                id: 'status-fixture',
+                name: 'Status fixture',
+                path: '/fixture',
+                availability: 'available',
+                isCurrent: true,
+              },
+            ],
+          },
+        });
+      } else if (url.pathname.endsWith('/overview')) {
+        await route.fulfill({
+          json: {
+            ...DEMO_SNAPSHOT,
+            summary: {
+              activeChanges: count,
+              archivedChanges: count,
+              verifyFailed: count,
+              tasksIncomplete: count,
+              dirtyFiles: count,
+            },
+            initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+            native: {
+              ...DEMO_SNAPSHOT.native,
+              activeChangeCount: count,
+              archivedChangeCount: 0,
+              totalChangeCount: count,
+              changes: nativeItems,
+            },
+          },
+        });
+      } else if (url.pathname.endsWith('/native-changes')) {
+        await route.fulfill({
+          json: { status: 'active', items: nativeItems, total: count, nextCursor: null },
+        });
+      } else if (url.pathname.endsWith('/native-change')) {
+        await route.fulfill({ json: nativeChange });
+      } else if (url.pathname.endsWith('/plugins')) {
+        await route.fulfill({ json: { pages: [] } });
+      } else {
+        await route.fulfill({ json: {} });
+      }
+    });
+    await page.goto('/');
+    for (const workflow of ['Classic 工作流', 'Native 工作流']) {
+      await page.getByRole('tab', { name: workflow, exact: true }).click();
+      const statuses = page.locator('.dashboard-summary-card .dashboard-summary-status');
+      const expected =
+        workflow === 'Classic 工作流'
+          ? [
+              '进行中',
+              '已完成',
+              populated ? '阻塞' : '健康',
+              populated ? '待办' : '清零',
+              populated ? '未提交' : '干净',
+            ]
+          : populated
+            ? ['进行中', '就绪', '运行中', '需处理', '待验证']
+            : ['清零', '暂无', '空闲', '健康', '已处理'];
+      await expect(statuses).toHaveText(expected);
+      for (const theme of ['light', 'dark']) {
+        if ((await page.locator('html').getAttribute('data-theme')) !== theme) {
+          await page
+            .getByRole('button', { name: theme === 'dark' ? '切换到暗色模式' : '切换到亮色模式' })
+            .click();
+        }
+        const colors =
+          theme === 'light'
+            ? [
+                'rgb(23, 78, 166)',
+                'rgb(102, 112, 133)',
+                'rgb(201, 68, 98)',
+                'rgb(35, 131, 75)',
+                'rgb(154, 101, 14)',
+              ]
+            : [
+                'rgb(23, 78, 166)',
+                'rgb(183, 192, 206)',
+                'rgb(255, 154, 174)',
+                'rgb(121, 217, 155)',
+                'rgb(243, 200, 102)',
+              ];
+        await page.mouse.move(0, 0);
+        for (const width of [1440, 2048, 390]) {
+          await page.setViewportSize({ width, height: 1000 });
+          await expect(statuses).toHaveText(expected);
+          for (let index = 0; index < 5; index += 1) {
+            const status = statuses.nth(index);
+            await expect(status).toBeVisible();
+            await expect(status).toHaveCSS('color', colors[index]);
+            expect(
+              await status.evaluate((element) => {
+                const box = element.getBoundingClientRect();
+                const title = element.closest('.ant-statistic-title')!.getBoundingClientRect();
+                return (
+                  element.scrollWidth <= element.clientWidth &&
+                  element.scrollHeight <= element.clientHeight &&
+                  box.left >= title.left &&
+                  box.right <= title.right &&
+                  box.top >= title.top &&
+                  box.bottom <= title.bottom
+                );
+              }),
+            ).toBe(true);
+          }
+          await expect
+            .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+            .toBe(true);
+        }
+      }
+    }
+  });
+}
+
+test('balances heading scale with compact 44px change rows', async ({ page }) => {
   await page.goto('/?demo');
 
-  await expect(page.getByRole('heading', { name: '项目概览' })).toHaveCSS('font-size', '18px');
-  await expect(page.locator('.dashboard-section-hint').first()).toHaveCSS('font-size', '13px');
+  await expect(page.getByRole('heading', { name: '项目概览' })).toHaveCSS('font-size', '28px');
+  await expect(page.locator('.dashboard-page-heading > span').first()).toHaveCSS(
+    'font-size',
+    '13px',
+  );
   await expect(page.locator('.dashboard-summary-card .dashboard-summary-metric').first()).toHaveCSS(
     'font-size',
-    '30px',
+    '32px',
   );
 
   const firstChange = page.getByRole('button', { name: /add-auth-rate-limiting/ });
   const firstChangeBox = await firstChange.boundingBox();
   if (!firstChangeBox) throw new Error('Expected the first Change row to have measurable bounds');
-  expect(firstChangeBox.height).toBeGreaterThanOrEqual(64);
+  expect(firstChangeBox.height).toBeGreaterThanOrEqual(40);
+  expect(firstChangeBox.height).toBeLessThanOrEqual(44);
 });
 
 test('keeps workbench detail text comfortably readable without enlarging the overview', async ({
@@ -3272,20 +3196,15 @@ test('keeps workbench detail text comfortably readable without enlarging the ove
   );
 });
 
-test('keeps the next-step alert clear of its neighboring detail sections', async ({ page }) => {
+test('keeps phase progress, guidance and artifacts in reading order', async ({ page }) => {
   await page.goto('/?demo');
-
-  const [stepsBox, alertBox, panelsBox] = await Promise.all([
+  const [track, guidance, artifacts] = await Promise.all([
     page.locator('.dashboard-phase-track').boundingBox(),
-    page.getByRole('alert').boundingBox(),
+    page.locator('.change-guidance').boundingBox(),
     page.locator('.change-detail-panels').boundingBox(),
   ]);
-  if (!stepsBox || !alertBox || !panelsBox) {
-    throw new Error('Expected the next-step alert and adjacent sections to have measurable bounds');
-  }
-
-  expect(alertBox.y - (stepsBox.y + stepsBox.height)).toBeGreaterThanOrEqual(28);
-  expect(panelsBox.y - (alertBox.y + alertBox.height)).toBeGreaterThanOrEqual(28);
+  expect(guidance!.y).toBeGreaterThanOrEqual(track!.y + track!.height);
+  expect(artifacts!.y).toBeGreaterThanOrEqual(guidance!.y + guidance!.height);
 });
 
 test('keeps a useful center-panel empty state when the Native change filter has no results', async ({
@@ -3293,7 +3212,7 @@ test('keeps a useful center-panel empty state when the Native change filter has 
 }) => {
   await page.setViewportSize({ width: 1728, height: 1000 });
   await page.goto('/?demo');
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
   await page.getByPlaceholder('搜索变更、产物或文件…').fill('does-not-match-any-native-change');
 
   const emptyState = page
@@ -3306,9 +3225,19 @@ test('keeps a useful center-panel empty state when the Native change filter has 
   expect(emptyBox.width).toBeGreaterThan(700);
 });
 
-test('keeps Classic and Native three-pane workspaces during empty and loading views', async ({
+test('keeps Classic and Native master-detail workspaces during empty and loading views', async ({
   page,
 }) => {
+  const expectFullWidthWorkspace = async () => {
+    for (const width of [1440, 2048, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const gutter = width <= 760 ? 16 : 32;
+      const box = await page.locator('.dashboard-workspace-region').boundingBox();
+      expect(box).not.toBeNull();
+      expect(Math.abs(box!.x - gutter)).toBeLessThanOrEqual(1);
+      expect(Math.abs(box!.width - (width - 2 * gutter))).toBeLessThanOrEqual(1);
+    }
+  };
   const nativePageRequests: string[] = [];
   const classicPageRequests: string[] = [];
   let releaseClassicArchive = () => {};
@@ -3398,70 +3327,36 @@ test('keeps Classic and Native three-pane workspaces during empty and loading vi
   await expect(page.getByRole('heading', { name: '当前没有活跃的 Classic change' })).toBeVisible();
   await expect(page.locator('.dashboard-workspace-region')).toHaveCount(1);
   await expect(page.locator('.classic-changes-explorer')).toHaveCount(1);
-  await expect(page.getByLabel('Classic 变更状态')).toBeVisible();
+  await expectFullWidthWorkspace();
   await page.getByRole('tab', { name: '已归档' }).click();
   await expect
     .poll(() => classicPageRequests.filter((request) => request.includes('status=archived')).length)
     .toBeGreaterThanOrEqual(1);
   await expect(page.locator('.classic-change-detail-skeleton')).toBeVisible();
-  await expect(
-    page.getByRole('complementary', { name: '正在加载 Classic 变更状态', exact: true }),
-  ).toBeVisible();
-  const classicSideSkeletons = page.locator('.classic-side-panel-skeleton .ant-skeleton');
-  await expect(classicSideSkeletons).toHaveCount(3);
-  for (const skeleton of await classicSideSkeletons.all()) {
-    await expect(skeleton).toBeVisible();
-  }
+  await expectFullWidthWorkspace();
   await expect(page.locator('.classic-changes-explorer .ant-spin')).toHaveCount(0);
   await expect(page.locator('.dashboard-workspace-region')).toHaveCount(1);
   releaseClassicArchive();
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
 
   await expect(page.getByRole('tab', { name: '活跃' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: '当前没有活跃的 Native change' })).toBeVisible();
   await expect(page.locator('.native-changes-explorer')).toHaveCount(1);
-  await expect(page.getByLabel('Native 变更状态')).toBeVisible();
   await expect(page.locator('.dashboard-workspace-region')).toHaveCount(1);
+  await expectFullWidthWorkspace();
   expect(nativePageRequests).toEqual([]);
 });
 
-test('pins the desktop workbench frame while rich content scrolls in the center pane', async ({
+test('allows the full selected change to scroll without an independent inspector', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto('/?demo');
-  await expect
-    .poll(
-      () =>
-        page.evaluate(() => {
-          const shell = document.querySelector('.dashboard-content-shell');
-          if (!(shell instanceof HTMLElement)) return 0;
-          return shell.scrollHeight - shell.clientHeight;
-        }),
-      { message: 'Expected the workbench shell to render scrollable content' },
-    )
-    .toBeGreaterThan(0);
-
-  const metrics = await page.evaluate(() => {
-    const workbench = document.querySelector('.dashboard-workbench');
-    const shell = document.querySelector('.dashboard-content-shell');
-    if (!(workbench instanceof HTMLElement) || !(shell instanceof HTMLElement)) {
-      throw new Error('Expected workbench and content shell elements');
-    }
-    return {
-      pageScrollHeight: document.documentElement.scrollHeight,
-      viewportHeight: window.innerHeight,
-      workbenchHeight: workbench.getBoundingClientRect().height,
-      shellClientHeight: shell.clientHeight,
-      shellScrollHeight: shell.scrollHeight,
-      shellOverflowY: getComputedStyle(shell).overflowY,
-    };
-  });
-
-  expect(metrics.pageScrollHeight).toBeLessThanOrEqual(metrics.viewportHeight + 1);
-  expect(metrics.workbenchHeight).toBeLessThanOrEqual(metrics.viewportHeight - 31);
-  expect(metrics.shellOverflowY).toBe('auto');
-  expect(metrics.shellScrollHeight).toBeGreaterThan(metrics.shellClientHeight);
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
+  await expect(page.locator('.dashboard-workspace-right')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '执行历史' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '仓库 Git' })).toBeVisible();
+  await expect(page.locator('.dashboard-workspace-center')).toHaveCSS('overflow-y', 'visible');
 });
 
 test('acknowledges a copied Change name and keeps the workbench within a narrow viewport', async ({
@@ -3621,8 +3516,7 @@ test('fills the change explorer from five-row pages and continues on scroll', as
 test('keeps the Native change list scrollable on a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/?demo');
-  await page.getByRole('button', { name: '打开导航' }).click();
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
 
   const list = page.locator('.native-change-list');
   await expect(list.locator('.native-change-row')).toHaveCount(5);
@@ -3633,13 +3527,15 @@ test('keeps the Native change list scrollable on a narrow viewport', async ({ pa
     scrollHeight: element.scrollHeight,
     overflowY: getComputedStyle(element).overflowY,
   }));
-  expect(metrics.overflowY).toBe('visible');
-  expect(metrics.scrollHeight).toBe(metrics.clientHeight);
+  expect(metrics.overflowY).toBe('auto');
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
 
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight))
     .toBe(true);
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await list.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
   await expect.poll(() => list.locator('.native-change-row').count()).toBeGreaterThan(initialCount);
 });
 
@@ -3798,11 +3694,10 @@ test('fills a server-paged Native list when its footer is already visible', asyn
 
   await page.setViewportSize({ width: 896, height: 2000 });
   await page.goto('/');
-  await page.getByRole('button', { name: '打开导航' }).click();
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
   await expect(page.getByRole('heading', { name: '当前没有活跃的 Native change' })).toBeVisible();
   await expect(page.locator('.native-changes-explorer')).toHaveCount(1);
-  await expect(page.locator('.dashboard-workspace-right')).toHaveCount(1);
+  await expect(page.locator('.dashboard-workspace-right')).toHaveCount(0);
   await page.getByRole('tab', { name: '已归档' }).click();
 
   await expect
@@ -3812,7 +3707,15 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   await expect(page.locator('.native-change-list-skeleton')).toBeVisible();
   await expect(page.locator('.native-change-list .ant-spin')).toHaveCount(0);
   await expect(page.locator('.native-change-detail-skeleton')).toBeVisible();
-  await expect(page.locator('.native-side-panel-skeleton')).toBeVisible();
+  for (const width of [1440, 2048, 390]) {
+    await page.setViewportSize({ width, height: 2000 });
+    const gutter = width <= 760 ? 16 : 32;
+    const box = await page.locator('.dashboard-workspace-region').boundingBox();
+    expect(box).not.toBeNull();
+    expect(Math.abs(box!.x - gutter)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box!.width - (width - 2 * gutter))).toBeLessThanOrEqual(1);
+  }
+  await page.setViewportSize({ width: 896, height: 2000 });
   releaseFirstPage();
   await expect.poll(() => pageRequests.length).toBeGreaterThanOrEqual(2);
   const list = page.locator('.native-change-list');
@@ -3820,30 +3723,25 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   await expect(list.locator('.native-change-row')).toHaveCount(8);
   await expect.poll(() => detailRequests).toContain('native-1');
   await expect(page.locator('.native-change-detail-skeleton')).toBeVisible();
-  await expect(page.locator('.native-side-panel-skeleton')).toBeVisible();
   await expect(page.getByText('正在加载 Native 变更详情…')).toHaveCount(0);
-  const [loadingCenter, loadingRight] = await Promise.all([
+  const [loadingCenter] = await Promise.all([
     page.locator('.dashboard-workspace-center').boundingBox(),
-    page.locator('.dashboard-workspace-right').boundingBox(),
   ]);
   releaseFirstDetail();
   await list.locator('.native-change-row').nth(0).click();
-  await expect(page.locator('.native-change-detail h3')).toHaveText('native-1');
+  await expect(page.locator('.native-change-detail h3.text-base')).toContainText('native-1');
   await expect(page.getByText('已完成检查，验证结果已确认', { exact: true })).toBeVisible();
-  const [loadedCenter, loadedRight] = await Promise.all([
+  const [loadedCenter] = await Promise.all([
     page.locator('.dashboard-workspace-center').boundingBox(),
-    page.locator('.dashboard-workspace-right').boundingBox(),
   ]);
-  if (!loadingCenter || !loadingRight || !loadedCenter || !loadedRight) {
+  if (!loadingCenter || !loadedCenter) {
     throw new Error('Expected Native loading and loaded workspace bounds');
   }
   expect(Math.abs(loadedCenter.x - loadingCenter.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(loadedCenter.width - loadingCenter.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(loadedRight.x - loadingRight.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(loadedRight.width - loadingRight.width)).toBeLessThanOrEqual(1);
   await list.locator('.native-change-row').nth(1).click();
   await expect.poll(() => detailRequests).toContain('native-2');
-  await expect(page.locator('.native-change-detail h3')).toHaveText('native-2');
+  await expect(page.locator('.native-change-detail h3.text-base')).toContainText('native-2');
 });
 
 test('expands a Native parent and keeps child selection in the existing detail center', async ({
@@ -3943,10 +3841,11 @@ test('expands a Native parent and keeps child selection in the existing detail c
   ];
   const parent = nativeDetail('parent-change', 'parent-locator', parentWorkspace, [
     childSummary,
-    ...supervisorStates.map(([status]) => ({
+    ...supervisorStates.map(([status, , description]) => ({
       ...childSummary,
       name: `supervisor-${status}`,
       status,
+      message: description,
       phase: null,
       locator: null,
       changeStatus: null,
@@ -4027,25 +3926,31 @@ test('expands a Native parent and keeps child selection in the existing detail c
   });
 
   await page.goto('/');
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
 
   const disclosure = page.locator('.native-change-disclosure');
   await expect(disclosure).toHaveAccessibleName('收起 parent-change 的子变更');
   await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
-  await expect(
-    page.locator('.native-change-row-shell').filter({ hasText: 'parent-change' }),
-  ).toContainText('3/9 子变更');
+  const parentRow = page.locator('.native-change-row').filter({ hasText: 'parent-change' });
+  await expect(parentRow.locator('.dashboard-explorer-row-count')).toContainText('子变更 3/9');
+  await expect(parentRow).not.toContainText(/Build|第\d+轮/);
   const childRow = page.locator('.native-child-change-row').filter({ hasText: 'child-a' });
   await expect(childRow).toBeVisible();
-  await expect(childRow).toContainText('native/child-a');
-  await expect(childRow).toContainText('Build');
+  await expect(childRow).not.toContainText('native/child-a');
+  await childRow.focus();
+  await expect(childRow).toBeFocused();
+  await expect(page.getByRole('tooltip')).toContainText('native/child-a');
+  await expect(childRow).toHaveAttribute('aria-disabled', 'false');
   for (const [status, label, description, tone] of supervisorStates) {
     const row = page
       .locator('.native-child-change-row')
       .filter({ hasText: `supervisor-${status}` });
     await expect(row).toContainText(label);
-    await expect(row).toContainText(description);
-    await expect(row).not.toContainText('尚未创建');
+    await expect(row).not.toContainText(description);
+    await expect(row).toHaveAttribute('aria-disabled', 'true');
+    await row.focus();
+    await expect(row).toBeFocused();
+    await expect(page.getByRole('tooltip').filter({ hasText: description }).last()).toBeVisible();
     const toneClass = {
       ok: 'text-success',
       neutral: 'text-fg-2',
@@ -4054,33 +3959,34 @@ test('expands a Native parent and keeps child selection in the existing detail c
       danger: 'text-danger',
     }[tone]!;
     await expect(row.locator(`.${toneClass}`)).toHaveText(label);
-    const dot = row.locator('.native-child-status-dot');
-    const token = {
-      ok: 'success',
-      neutral: 'meta',
-      warn: 'warn',
-      info: 'accent',
-      danger: 'danger',
-    }[tone]!;
-    const colors = await dot.evaluate((element, token) => {
-      const probe = document.createElement('span');
-      probe.style.backgroundColor = `var(--color-${token})`;
-      element.append(probe);
-      const expected = getComputedStyle(probe).backgroundColor;
-      probe.remove();
-      return [getComputedStyle(element).backgroundColor, expected];
-    }, token);
-    expect(colors[0]).toBe(colors[1]);
   }
+  const unlocatable = page
+    .locator('.native-child-change-row')
+    .filter({ hasText: 'supervisor-pending' });
+  const requestsBeforeUnlocatableClick = detailRequests.length;
+  await unlocatable.evaluate((element) => (element as HTMLButtonElement).click());
+  await expect(unlocatable).toHaveAttribute('aria-disabled', 'true');
+  await expect(unlocatable).toHaveAttribute('aria-pressed', 'false');
+  expect(detailRequests).toHaveLength(requestsBeforeUnlocatableClick);
+
   await childRow.click();
   await expect.poll(() => detailRequests).toContain('child-locator');
-  await expect(page.locator('.native-change-detail h3')).toHaveText('child-a');
+  await expect(childRow).toHaveAttribute('aria-pressed', 'true');
+  await expect(parentRow).toHaveAttribute('aria-pressed', 'false');
+  await expect(
+    page.locator(
+      '.native-change-row[aria-pressed="true"], .native-child-change-row[aria-pressed="true"]',
+    ),
+  ).toHaveCount(1);
+  await expect(page.locator('.native-change-detail h3.text-base')).toContainText('child-a');
   await expect(page.locator('.dashboard-workspace-center .native-change-detail')).toBeVisible();
 
   await disclosure.click();
   await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
   await expect(disclosure).toHaveAccessibleName('展开 parent-change 的子变更');
   await expect(childRow).toBeHidden();
+  await expect(page.locator('.native-change-detail h3.text-base')).toContainText('child-a');
+  await expect(parentRow).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('keeps the current Classic detail visible while another change loads', async ({ page }) => {
@@ -4216,7 +4122,7 @@ test('keeps the current Classic detail visible while another change loads', asyn
   expect(loadingCenter.height).toBeGreaterThanOrEqual(480);
 
   const detailTitle = page.locator('.change-detail > .ant-card-head .ant-card-head-title');
-  await expect(detailTitle).toHaveText('classic-one');
+  await expect(detailTitle).toContainText('classic-one');
   await expect(page.getByText('classic/two', { exact: true })).toBeVisible();
   const loadedExplorer = await page.locator('.classic-changes-explorer').boundingBox();
   if (!loadingExplorer || !loadedExplorer) throw new Error('Expected Classic explorer bounds');
@@ -4225,12 +4131,12 @@ test('keeps the current Classic detail visible while another change loads', asyn
 
   await page.locator('.dashboard-change-row').filter({ hasText: 'classic-two' }).click();
   await expect.poll(() => secondDetailStarted).toBe(true);
-  await expect(detailTitle).toHaveText('classic-one');
+  await expect(detailTitle).toContainText('classic-one');
   const during = await page.locator('.dashboard-workspace-center').boundingBox();
   if (!before || !during) throw new Error('Expected detail layout bounds');
   expect(Math.abs(during.height - before.height)).toBeLessThanOrEqual(1);
 
-  await expect(detailTitle).toHaveText('classic-two');
+  await expect(detailTitle).toContainText('classic-two');
 });
 
 test('uses one selection surface for the Classic change row', async ({ page }) => {
@@ -4238,7 +4144,7 @@ test('uses one selection surface for the Classic change row', async ({ page }) =
 
   const row = page.locator('.dashboard-change-row').nth(1);
   await row.click();
-  await expect(row).toHaveCSS('background-color', 'rgb(237, 244, 255)');
+  await expect(row).toHaveAttribute('aria-pressed', 'true');
 
   const layers = await row.evaluate((element) => {
     const wrapper = element.parentElement;
@@ -4251,8 +4157,12 @@ test('uses one selection surface for the Classic change row', async ({ page }) =
   });
 
   expect(layers.wrapperBackground).toBe('rgba(0, 0, 0, 0)');
-  expect(layers.rowClassName).toContain('dashboard-change-row-selected');
-  expect(layers.rowBackground).toBe('rgb(237, 244, 255)');
+  expect(layers.rowClassName).toContain('selected');
+  expect(layers.rowBackground).not.toBe('rgba(0, 0, 0, 0)');
+  expect(await row.evaluate((element) => getComputedStyle(element).boxShadow)).toContain('inset');
+  await expect(
+    page.locator('.classic-changes-explorer .dashboard-change-row[aria-pressed="true"]'),
+  ).toHaveCount(1);
 });
 
 test('keeps the Classic change explorer frame stable when selecting a change', async ({ page }) => {
@@ -4267,177 +4177,27 @@ test('keeps the Classic change explorer frame stable when selecting a change', a
   expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
 });
 
-test('keeps Classic and Native side panels within the center panel height', async ({ page }) => {
-  await page.setViewportSize({ width: 1680, height: 1005 });
+test('uses two columns on desktop and stacks the explorer above detail on mobile', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto('/?demo');
-
-  const expectWorkspacePanels = async ({ native = false } = {}) => {
-    const workspace = page.locator('.dashboard-workspace-region');
-    const center = workspace.locator('.dashboard-workspace-center');
-    const sides = workspace.locator('.dashboard-workspace-side');
-    const changeList = page.locator('.dashboard-change-list');
-    const contentShell = page.locator('.dashboard-content-shell');
-    await expect(center).toBeVisible();
-    await expect(sides).toHaveCount(2);
-    if (await changeList.count()) {
-      await expect(changeList).toHaveCSS('scrollbar-width', 'none');
-    }
-    await expect(contentShell).toHaveCSS('scrollbar-width', 'none');
-    const rightPanel = workspace.locator('.dashboard-workspace-right');
-    await expect(rightPanel).toHaveCSS('border-top-width', '1px');
-    if (!native) {
-      await expect
-        .poll(() => rightPanel.evaluate((element) => element.scrollHeight > element.clientHeight))
-        .toBe(true);
-    }
-    const workspaceFrame = workspace.locator(
-      native ? '.native-changes-explorer' : '.classic-changes-explorer',
-    );
-    await expect(workspaceFrame).toHaveCSS('border-top-width', '1px');
-    await expect(workspaceFrame).toHaveCSS('border-bottom-width', '1px');
-    await expect(workspaceFrame).toHaveCSS('overflow-y', 'hidden');
-    const [centerBox, frameBox] = await Promise.all([
-      center.boundingBox(),
-      workspaceFrame.boundingBox(),
+  for (const name of ['Classic 工作流', 'Native 工作流']) {
+    await page.getByRole('tab', { name }).click();
+    const [left, detail] = await Promise.all([
+      page.locator('.dashboard-workspace-left').boundingBox(),
+      page.locator('.dashboard-workspace-center').boundingBox(),
     ]);
-    if (!centerBox || !frameBox) throw new Error('Expected workspace frame bounds');
-    expect(frameBox.height).toBeLessThanOrEqual(centerBox.height + 1);
-    expect(frameBox.height).toBeGreaterThanOrEqual(centerBox.height - 1);
-    if (!native) {
-      const classicDetail = workspace.locator('.change-detail');
-      const detailBox = await classicDetail.boundingBox();
-      if (!detailBox) throw new Error('Expected Classic detail bounds');
-      expect(Math.abs(detailBox.height - centerBox.height)).toBeLessThanOrEqual(1);
-      expect(
-        Math.abs(detailBox.y + detailBox.height - (centerBox.y + centerBox.height)),
-      ).toBeLessThanOrEqual(1);
-      await expect(classicDetail).toHaveCSS('overflow-y', 'auto');
-    }
-    if (native) {
-      await expect(workspace.locator('.dashboard-workspace-left')).toHaveCSS('overflow-y', 'auto');
-      const nativeExplorer = workspace.locator('.native-changes-explorer');
-      const nativeList = workspace.locator('.native-change-list');
-      const nativeDetail = workspace.locator('.native-change-detail');
-      const rightPanel = workspace.locator('.dashboard-workspace-right');
-      const nativeCount = nativeExplorer.locator('.native-changes-count .ant-badge-count');
-      await expect(nativeCount).toHaveText(/^\d+$/);
-      await expect(nativeCount).toHaveClass(/ant-scroll-number/u);
-      await expect
-        .poll(() => nativeCount.locator('.ant-scroll-number-only').count())
-        .toBeGreaterThan(0);
-      await expect(nativeCount).toHaveCSS('background-color', 'rgb(11, 24, 51)');
-      await expect(nativeCount).toHaveCSS('color', 'rgb(255, 255, 255)');
-      await expect(nativeCount).toHaveCSS('min-width', '20px');
-      await expect(nativeCount).toHaveCSS('padding', '0px 8px');
-      await expect(nativeCount).toHaveCSS('font-weight', '400');
-      await expect(nativeCount).toHaveCSS('white-space', 'nowrap');
-      await expect(nativeExplorer).toHaveCSS('font-size', '14px');
-      const nativeHeader = nativeExplorer.locator('.native-changes-explorer-header');
-      await expect(nativeHeader).toHaveCSS('min-height', '57px');
-      await expect(nativeHeader).toHaveCSS('padding-left', '20px');
-      const nativeBody = nativeExplorer.locator('.native-changes-explorer-body');
-      await expect(nativeBody).toHaveCSS('padding', '20px');
-      const nativeTabs = nativeExplorer.locator('.native-changes-explorer-tabs');
-      await expect(nativeTabs).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-      await expect(nativeTabs).toHaveCSS('border-bottom-width', '1px');
-      await expect(nativeTabs).toHaveCSS('height', '44px');
-      await expect(nativeTabs).toHaveCSS('margin-bottom', '16px');
-      await expect(nativeTabs.getByRole('tab')).toHaveCount(3);
-      const activeNativeTab = nativeTabs.locator('[role="tab"][aria-selected="true"]');
-      await expect(activeNativeTab).toHaveCSS('border-bottom-width', '2px');
-      await expect(activeNativeTab).toHaveCSS('border-bottom-color', 'rgb(37, 94, 216)');
-      await expect(rightPanel).toHaveCSS('border-radius', '15px');
-      await expect(nativeExplorer).toHaveCSS('border-radius', '15px');
-      await expect(nativeDetail).toHaveCSS('border-radius', '15px');
-      const [nativeCenterBox, nativeDetailBox] = await Promise.all([
-        center.boundingBox(),
-        nativeDetail.boundingBox(),
-      ]);
-      if (!nativeCenterBox || !nativeDetailBox) throw new Error('Expected Native detail bounds');
-      expect(Math.abs(nativeDetailBox.height - nativeCenterBox.height)).toBeLessThanOrEqual(1);
-      expect(
-        Math.abs(
-          nativeDetailBox.y + nativeDetailBox.height - (nativeCenterBox.y + nativeCenterBox.height),
-        ),
-      ).toBeLessThanOrEqual(1);
-      await expect(nativeDetail).toHaveCSS('overflow-y', 'auto');
-      await expect(nativeExplorer).toHaveCSS('border-top-width', '1px');
-      await expect(nativeExplorer).toHaveCSS('border-bottom-width', '1px');
-      await expect(nativeExplorer).toHaveCSS('overflow-y', 'hidden');
-      await expect(nativeList).toHaveCSS('overflow-y', 'auto');
-      await expect(nativeList).toHaveCSS('scrollbar-width', 'none');
-      await expect(nativeList).toHaveCSS('font-size', '14px');
-      const selectedNativeItem = nativeList.locator('.native-change-list-item.selected');
-      await expect(selectedNativeItem).toHaveCount(1);
-      await expect(selectedNativeItem).toHaveCSS('background-color', 'rgb(237, 244, 255)');
-      await expect(selectedNativeItem).toHaveCSS('border-radius', '11px');
-      const selectedNativeRow = selectedNativeItem.locator('.native-change-row');
-      await expect(selectedNativeRow).toHaveCSS('min-height', '72px');
-      await expect(selectedNativeRow).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
-      await expect(selectedNativeRow).toHaveCSS('border-radius', '10px');
-      await expect(selectedNativeRow.locator('.truncate').first()).toHaveCSS('font-size', '14px');
-      await expect(selectedNativeRow.getByText('◇', { exact: true })).toHaveCount(0);
-      await expect(selectedNativeRow).toContainText('Build · 1/3 子变更构建中');
-      const nativeProgress = selectedNativeRow.getByRole('progressbar');
-      await expect(nativeProgress).toHaveCount(1);
-      await expect(nativeProgress).toHaveAttribute('aria-valuenow', '33');
-      const recoverySection = rightPanel
-        .getByRole('heading', { name: '恢复状态' })
-        .locator('..')
-        .locator('..');
-      await expect(recoverySection).toContainText('与当前 YAML 一致');
-      await expect(recoverySection).toContainText('Builder');
-    }
-
-    const metrics = await workspace.evaluate((element) => {
-      const centerElement = element.querySelector('.dashboard-workspace-center');
-      if (!(centerElement instanceof HTMLElement)) throw new Error('Missing center panel');
-      const centerBox = centerElement.getBoundingClientRect();
-      return [...element.querySelectorAll('.dashboard-workspace-side')].map((side) => {
-        if (!(side instanceof HTMLElement)) throw new Error('Invalid side panel');
-        const box = side.getBoundingClientRect();
-        return {
-          centerHeight: centerBox.height,
-          sideHeight: box.height,
-          contentHeight: side.scrollHeight,
-          visibleHeight: side.clientHeight,
-          overflowY: getComputedStyle(side).overflowY,
-          maxHeight: getComputedStyle(side).maxHeight,
-          scrollbarWidth: getComputedStyle(side).scrollbarWidth,
-        };
-      });
-    });
-
-    for (const metric of metrics) {
-      expect(metric.sideHeight).toBeLessThanOrEqual(metric.centerHeight + 1);
-      expect(['auto', 'visible']).toContain(metric.overflowY);
-      expect(metric.maxHeight).not.toBe('none');
-      expect(metric.scrollbarWidth).toBe('none');
-    }
-
-    const scrollTarget = native
-      ? workspace.locator('.native-change-list')
-      : workspace.locator('.dashboard-change-list');
-    await expect
-      .poll(() => scrollTarget.evaluate((element) => element.scrollHeight > element.clientHeight))
-      .toBe(true);
-  };
-
-  await expectWorkspacePanels();
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
-  await expectWorkspacePanels({ native: true });
-
-  const nativeList = page.locator('.native-change-list');
-  const initiallyRendered = await nativeList.locator('.native-change-row').count();
-  expect(initiallyRendered).toBeGreaterThanOrEqual(5);
-  expect(initiallyRendered).toBeLessThan(27);
-  await nativeList.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  await expect.poll(() => nativeList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-  await expect
-    .poll(() => nativeList.locator('.native-change-row').count())
-    .toBeGreaterThan(initiallyRendered);
+    expect(Math.round(left!.width)).toBe(260);
+    expect(detail!.x).toBeGreaterThan(left!.x + left!.width);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  const [left, detail] = await Promise.all([
+    page.locator('.dashboard-workspace-left').boundingBox(),
+    page.locator('.dashboard-workspace-center').boundingBox(),
+  ]);
+  expect(Math.abs(left!.x - detail!.x)).toBeLessThanOrEqual(1);
+  expect(detail!.y).toBeGreaterThanOrEqual(left!.y + left!.height);
 });
 
 test('keeps the project selector inset when switching from a workflow to plugin center', async ({
@@ -4448,19 +4208,19 @@ test('keeps the project selector inset when switching from a workflow to plugin 
 
   const projectSelector = page.locator('.comet-project-select');
   await expect(projectSelector).toBeVisible();
-  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
   await expect(page.locator('.native-changes-explorer')).toBeVisible();
 
   const workflowLeft = (await projectSelector.boundingBox())?.x;
   if (workflowLeft === undefined) throw new Error('Expected workflow project selector bounds');
 
-  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.getByRole('button', { name: '个人记忆' }).click();
   await expect(page.locator('.dashboard-tool-page-memory')).toBeVisible();
   const memoryLeft = (await projectSelector.boundingBox())?.x;
   if (memoryLeft === undefined) throw new Error('Expected personal memory project selector bounds');
   expect(Math.abs(memoryLeft - workflowLeft)).toBeLessThanOrEqual(1);
 
-  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('button', { name: '项目知识' }).click();
   await expect(page.locator('.dashboard-tool-page-knowledge')).toBeVisible();
   const knowledgeLeft = (await projectSelector.boundingBox())?.x;
   if (knowledgeLeft === undefined)
@@ -4526,7 +4286,7 @@ test('keeps long project names discoverable without widening the selector', asyn
   await expect(selectedProject).toHaveText(longProjectName);
   await expect(selectedProject).toHaveCSS('text-overflow', 'ellipsis');
   await expect(selectedProject).toHaveCSS('white-space', 'nowrap');
-  await expect(projectSelector).toHaveCSS('width', '180px');
+  await expect(projectSelector).toHaveCSS('width', '220px');
 
   await projectSelector.click();
   const projectOption = page
@@ -4542,7 +4302,7 @@ test('shows the project memory tab on the demo knowledge page', async ({ page })
   });
 
   await page.goto('/?demo');
-  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('button', { name: '项目知识' }).click();
 
   const projectManifest = page.getByRole('region', { name: '最近一次任务使用的项目知识' });
   await expect(projectManifest).toContainText('3 条项目知识');
@@ -4690,7 +4450,7 @@ test('scrolls a long project memory list inside the knowledge page', async ({ pa
   });
 
   await page.goto('/');
-  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await page.getByRole('button', { name: '项目知识' }).click();
   await page.getByRole('tab', { name: '项目记忆' }).click();
 
   const memoryList = page.getByRole('region', { name: '项目记忆列表' });
@@ -4737,4 +4497,1311 @@ test('scrolls a long project memory list inside the knowledge page', async ({ pa
       .poll(() => memoryFoot.evaluate((element) => element.scrollHeight <= element.clientHeight))
       .toBe(true);
   }
+});
+
+type NumberAuditNativeOptions = {
+  specs?: Partial<{ total: number; create: number; modify: number; remove: number }>;
+  acceptance?: Partial<{
+    total: number;
+    passed: number;
+    failed: number;
+    blocked: number;
+    pending: number;
+  }>;
+  stage?: string;
+  localStatus?: string;
+  childCompleted?: number;
+  childTotal?: number;
+};
+
+function numberAuditNativeChange(name: string, options: NumberAuditNativeOptions = {}) {
+  const source = structuredClone(DEMO_SNAPSHOT.native.changes[0]);
+  return {
+    ...source,
+    name,
+    locator: `numeric-audit/${name}`,
+    status: 'active',
+    children: Array.from({ length: options.childTotal ?? 0 }, (_, index) => ({
+      name: `${name}-child-${index + 1}`,
+      status: index < (options.childCompleted ?? 0) ? 'done' : 'pending',
+      dependsOn: [],
+    })),
+    specs: {
+      ...source.specs,
+      total: 1,
+      create: 0,
+      modify: 1,
+      remove: 0,
+      capabilities: [],
+      ...options.specs,
+    },
+    acceptance: { total: 4, passed: 1, failed: 0, blocked: 0, pending: 3, ...options.acceptance },
+    acceptanceItems: [],
+    loop: { ...source.loop, stage: options.stage ?? 'building' },
+    localExecution: { ...source.localExecution, status: options.localStatus ?? 'queued' },
+  };
+}
+
+function numberAuditState(
+  projectId: string,
+  summaryValues: number[],
+  options: {
+    classicTotal?: number;
+    classicCompleted?: number;
+    classicTaskTotal?: number;
+    nativeTotal?: number;
+    nativeActiveCount?: number;
+    nativeChanges?: ReturnType<typeof numberAuditNativeChange>[];
+  } = {},
+) {
+  const snapshot = structuredClone(DEMO_SNAPSHOT);
+  const [activeChanges, archivedChanges, verifyFailed, tasksIncomplete, dirtyFiles] = summaryValues;
+  snapshot.project = { ...snapshot.project, name: projectId, path: `/${projectId}` };
+  snapshot.summary = { activeChanges, archivedChanges, verifyFailed, tasksIncomplete, dirtyFiles };
+  const classic = {
+    ...snapshot.changes.active[0],
+    id: 'numeric-classic-change',
+    name: 'numeric-classic-change',
+    displayName: 'numeric-classic-change',
+    path: 'docs/openspec/changes/numeric-classic-change',
+    tasks: {
+      ...snapshot.changes.active[0].tasks,
+      completed: options.classicCompleted ?? 1,
+      total: options.classicTaskTotal ?? 4,
+      incomplete: [],
+    },
+  };
+  const nativeChanges = options.nativeChanges ?? [numberAuditNativeChange('ship-native-dashboard')];
+  snapshot.changes.active = [classic];
+  snapshot.native = {
+    ...snapshot.native,
+    activeChangeCount: options.nativeActiveCount ?? nativeChanges.length,
+    archivedChangeCount: 0,
+    totalChangeCount: options.nativeTotal ?? nativeChanges.length,
+    visibleChangeCount: nativeChanges.length,
+    changes: nativeChanges,
+  };
+  return {
+    projectId,
+    snapshot,
+    classic,
+    classicTotal: options.classicTotal ?? 1,
+    nativeChanges,
+    nativeTotal: options.nativeTotal ?? nativeChanges.length,
+  };
+}
+
+function numberAuditFixture(states: ReturnType<typeof numberAuditState>[]) {
+  const projects = states.map(({ projectId }) => ({
+    id: projectId,
+    name: projectId === 'numeric-a' ? 'Numeric A' : 'Numeric B',
+    path: `/${projectId}`,
+    lastSeenAt: null,
+    availability: 'available',
+    isCurrent: projectId === 'numeric-a',
+  }));
+  return {
+    projects,
+    states: new Map(states.map((state) => [state.projectId, state])),
+    queryGate: null as null | { query: string; held: Promise<void>; start: () => void },
+    classicPageGate: null as null | {
+      status: string;
+      held: Promise<void>;
+      start: () => void;
+      responseStatus: number;
+    },
+    detailGate: null as null | {
+      name: string;
+      held: Promise<void>;
+      start: () => void;
+      responseStatus?: number;
+    },
+  };
+}
+
+async function installNumberAuditRoutes(
+  page: Page,
+  fixture: ReturnType<typeof numberAuditFixture>,
+) {
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({ json: { currentProjectId: 'numeric-a', projects: fixture.projects } });
+      return;
+    }
+    const projectId = url.pathname.split('/')[4];
+    const state = fixture.states.get(projectId) ?? fixture.states.get('numeric-a')!;
+    if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          ...state.snapshot,
+          initialChanges: {
+            status: 'active',
+            items: state.classicTotal ? [state.classic] : [],
+            total: state.classicTotal,
+            nextCursor: null,
+          },
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/native-changes')) {
+      const query = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+      const gate = fixture.queryGate;
+      if (gate && query === gate.query.toLowerCase()) {
+        gate.start();
+        await gate.held;
+      }
+      const items = state.nativeChanges.filter(
+        (change) => !query || change.name.toLowerCase().includes(query),
+      );
+      await route.fulfill({
+        json: {
+          status: url.searchParams.get('status') ?? 'active',
+          items,
+          total: query ? items.length : state.nativeTotal,
+          nextCursor: null,
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/native-change')) {
+      const name = url.searchParams.get('changeName');
+      const gate = fixture.detailGate;
+      if (gate && name === gate.name) {
+        gate.start();
+        await gate.held;
+        if (gate.responseStatus && gate.responseStatus !== 200) {
+          await route.fulfill({
+            status: gate.responseStatus,
+            json: { error: 'Numeric audit detail failed' },
+          });
+          return;
+        }
+      }
+      await route.fulfill({
+        json: state.nativeChanges.find((change) => change.name === name) ?? state.nativeChanges[0],
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/changes')) {
+      const gate = fixture.classicPageGate;
+      if (gate && url.searchParams.get('status') === gate.status) {
+        gate.start();
+        await gate.held;
+        await route.fulfill({
+          status: gate.responseStatus,
+          json: { error: 'Numeric audit old page failed' },
+        });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          status: url.searchParams.get('status') ?? 'active',
+          items: state.classicTotal ? [state.classic] : [],
+          total: state.classicTotal,
+          nextCursor: null,
+        },
+      });
+      return;
+    }
+    if (url.pathname.endsWith('/change')) {
+      await route.fulfill({ json: state.classic });
+      return;
+    }
+    if (url.pathname.endsWith('/plugins')) {
+      await route.fulfill({ json: { pages: [] } });
+      return;
+    }
+    await route.fulfill({ json: {} });
+  });
+}
+
+async function numberAuditSummaryValues(page: Page) {
+  return page
+    .locator('.dashboard-overview-summary-strip .ant-statistic-content-value')
+    .evaluateAll((values) => values.map((value) => Number(value.innerText.trim())));
+}
+
+async function numberAuditBadgeValue(page: Page, selector: string) {
+  return page.locator(selector).evaluate((badge) => {
+    const counter = badge.querySelector('.ant-scroll-number');
+    const title = counter?.getAttribute('title');
+    if (title !== null && title !== undefined) return Number(title);
+    const digits = Array.from(
+      counter?.querySelectorAll('.ant-scroll-number-only-unit.current') ?? [],
+    ).map((digit) => digit.textContent?.trim() ?? '');
+    return Number(digits.join(''));
+  });
+}
+
+async function numberAuditNativeValues(page: Page) {
+  return page.evaluate(() => {
+    const articles = Array.from(document.querySelectorAll('.native-change-detail article'));
+    const scope = articles.find((article) => article.querySelector('h4')?.innerText === '变更范围');
+    const acceptance = articles.find(
+      (article) => article.querySelector('h4')?.innerText === '验收状态',
+    );
+    const scopeTotal = scope?.querySelector('span.rounded-full')?.innerText ?? '';
+    const scopeCounts = Array.from(
+      scope?.querySelectorAll('.grid > div > div:first-child') ?? [],
+    ).map((node) => Number(node.innerText.trim()));
+    const acceptanceHeader =
+      acceptance?.querySelector('div.flex.flex-wrap.items-center.gap-3')?.innerText ?? '';
+    const acceptanceCounts = Array.from(
+      acceptance?.querySelectorAll('.grid > div > div:first-child') ?? [],
+    ).map((node) => Number(node.innerText.trim()));
+    return {
+      scope: [Number(scopeTotal.match(/^\s*(\d+)/)?.[1]), ...scopeCounts],
+      acceptance: [Number(acceptanceHeader.match(/(\d+)% 已处理/)?.[1]), ...acceptanceCounts],
+    };
+  });
+}
+
+async function enableNumberAuditReducedMotion(page: Page) {
+  await page.evaluate(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const auditWindow = window as Window & { __numberAuditMotionChange?: Promise<void> };
+    auditWindow.__numberAuditMotionChange = query.matches
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => {
+          query.addEventListener('change', () => resolve(), { once: true });
+        });
+  });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(async () => {
+    const auditWindow = window as Window & { __numberAuditMotionChange?: Promise<void> };
+    await auditWindow.__numberAuditMotionChange;
+  });
+}
+
+async function numberAuditAcceptanceProgress(page: Page) {
+  const progress = page.locator('.native-acceptance-progress > span');
+  return progress.evaluate((element) => {
+    const parentWidth = element.parentElement?.getBoundingClientRect().width ?? 0;
+    return parentWidth ? element.getBoundingClientRect().width / parentWidth : 0;
+  });
+}
+
+async function numberAuditClassicTasks(page: Page) {
+  return page
+    .locator('.classic-changes-explorer .dashboard-explorer-row-count')
+    .first()
+    .evaluate((element) => {
+      const values = element.textContent?.match(/(\d+)\s*\/\s*(\d+)/);
+      return values ? [Number(values[1]), Number(values[2])] : null;
+    });
+}
+
+async function captureNumberAuditDetailFrames(page: Page, changeName: string) {
+  await page.evaluate((name) => {
+    const auditWindow = window as Window & {
+      __numberAuditDetailFrames?: number[][];
+      __numberAuditDetailFrame?: number;
+    };
+    window.cancelAnimationFrame(auditWindow.__numberAuditDetailFrame ?? 0);
+    const frames: number[][] = [];
+    auditWindow.__numberAuditDetailFrames = frames;
+    let remaining = 8;
+    const capture = () => {
+      if (auditWindow.__numberAuditDetailFrames !== frames) return;
+      const detail = Array.from(document.querySelectorAll('.native-change-detail')).find((entry) =>
+        entry.querySelector('h3.text-base')?.innerText.includes(name),
+      );
+      if (detail) {
+        const articles = Array.from(detail.querySelectorAll('article'));
+        const scope = articles.find(
+          (article) => article.querySelector('h4')?.innerText === '变更范围',
+        );
+        const acceptance = articles.find(
+          (article) => article.querySelector('h4')?.innerText === '验收状态',
+        );
+        const scopeTotal = Number(
+          scope?.querySelector('span.rounded-full')?.innerText.match(/^\s*(\d+)/)?.[1],
+        );
+        const scopeCounts = Array.from(
+          scope?.querySelectorAll('.grid > div > div:first-child') ?? [],
+        ).map((node) => Number(node.innerText.trim()));
+        const acceptanceHeader =
+          acceptance?.querySelector('div.flex.flex-wrap.items-center.gap-3')?.innerText ?? '';
+        const acceptancePercent = Number(acceptanceHeader.match(/(\d+)% 已处理/)?.[1]);
+        const acceptanceCounts = Array.from(
+          acceptance?.querySelectorAll('.grid > div > div:first-child') ?? [],
+        ).map((node) => Number(node.innerText.trim()));
+        frames.push([scopeTotal, ...scopeCounts, acceptancePercent, ...acceptanceCounts]);
+        remaining -= 1;
+      }
+      if (remaining > 0)
+        auditWindow.__numberAuditDetailFrame = window.requestAnimationFrame(capture);
+    };
+    auditWindow.__numberAuditDetailFrame = window.requestAnimationFrame(capture);
+  }, changeName);
+}
+
+async function captureNumberAuditClassicFrames(page: Page, summary: number[]) {
+  await page.evaluate((expectedSummary) => {
+    const auditWindow = window as Window & { __numberAuditClassicFrames?: number[][] };
+    auditWindow.__numberAuditClassicFrames = [];
+    let remaining = 8;
+    const capture = () => {
+      const cards = Array.from(document.querySelectorAll('.dashboard-overview-summary-card'));
+      const targetsMatch =
+        cards.length === expectedSummary.length &&
+        cards.every((card, index) =>
+          card.getAttribute('aria-label')?.includes(` ${expectedSummary[index]} `),
+        );
+      if (targetsMatch) {
+        const displayedSummary = cards.map((card) =>
+          Number(card.querySelector('.ant-statistic-content-value')?.textContent?.trim()),
+        );
+        const badge = document.querySelector(
+          '.classic-changes-explorer .dashboard-change-count-badge .ant-scroll-number',
+        );
+        const badgeValue = Number(badge?.getAttribute('title'));
+        const taskText =
+          document.querySelector('.dashboard-change-row .dashboard-explorer-row-count')
+            ?.textContent ?? '';
+        const tasks = taskText.match(/(\d+)\s*\/\s*(\d+)/);
+        if (tasks) {
+          auditWindow.__numberAuditClassicFrames?.push([
+            ...displayedSummary,
+            badgeValue,
+            Number(tasks[1]),
+            Number(tasks[2]),
+          ]);
+          remaining -= 1;
+        }
+      }
+      if (remaining > 0) window.requestAnimationFrame(capture);
+    };
+    window.requestAnimationFrame(capture);
+  }, summary);
+}
+
+async function captureNumberAuditClassicTaskFrames(page: Page) {
+  await page.evaluate(() => {
+    const auditWindow = window as Window & { __numberAuditClassicTaskFrames?: number[][] };
+    const frames: number[][] = [];
+    auditWindow.__numberAuditClassicTaskFrames = frames;
+    let remaining = 40;
+    const capture = () => {
+      const text =
+        document.querySelector('.dashboard-change-row .dashboard-explorer-row-count')
+          ?.textContent ?? '';
+      const counts = text.match(/(\d+)\s*\/\s*(\d+)/);
+      if (counts) frames.push([Number(counts[1]), Number(counts[2])]);
+      if (remaining > 0) {
+        remaining -= 1;
+        window.requestAnimationFrame(capture);
+      }
+    };
+    window.requestAnimationFrame(capture);
+  });
+}
+
+async function captureNumberAuditSummaryFrames(page: Page, workflow: 'classic' | 'native') {
+  await page.evaluate((selectedWorkflow) => {
+    const auditWindow = window as Window & { __numberAuditSummaryFrames?: number[][] };
+    const frames: number[][] = [];
+    auditWindow.__numberAuditSummaryFrames = frames;
+    const capture = () => {
+      if (auditWindow.__numberAuditSummaryFrames !== frames) return;
+      const values = Array.from(
+        document.querySelectorAll('.dashboard-overview-summary-strip .ant-statistic-content-value'),
+      );
+      if (document.querySelector(`.${selectedWorkflow}-changes-explorer`) && values.length === 5) {
+        frames.push(values.map((value) => Number(value.textContent?.trim())));
+      }
+      if (frames.length < 8) window.requestAnimationFrame(capture);
+    };
+    window.requestAnimationFrame(capture);
+  }, workflow);
+}
+
+async function captureNumberAuditNativeExplorerFrames(page: Page) {
+  await page.evaluate(() => {
+    const auditWindow = window as Window & { __numberAuditNativeExplorerFrames?: number[][] };
+    const frames: number[][] = [];
+    auditWindow.__numberAuditNativeExplorerFrames = frames;
+    let remaining = 40;
+    const capture = () => {
+      if (auditWindow.__numberAuditNativeExplorerFrames !== frames) return;
+      const row = document.querySelector('.native-change-row');
+      const countText = row?.querySelector('.dashboard-explorer-row-count')?.textContent ?? '';
+      const counts = countText.match(/(\d+)\s*\/\s*(\d+)/);
+      if (counts) frames.push([Number(counts[1]), Number(counts[2])]);
+      if (remaining > 0) {
+        remaining -= 1;
+        window.requestAnimationFrame(capture);
+      }
+    };
+    window.requestAnimationFrame(capture);
+  });
+}
+
+test.describe('Dashboard numeric transitions', () => {
+  test('preserves the Explorer Badge digit scroll for dataset changes and immediately settles reduced motion', async ({
+    page,
+  }) => {
+    const fixture = numberAuditFixture([
+      numberAuditState('numeric-a', [1, 1, 1, 1, 1]),
+      numberAuditState('numeric-b', [1, 1, 1, 1, 1]),
+    ]);
+    const setCount = (projectId: string, count: number) => {
+      fixture.states.set(
+        projectId,
+        numberAuditState(projectId, [1, 1, 1, 1, 1], {
+          classicTotal: count,
+          nativeTotal: count,
+          nativeActiveCount: count,
+          nativeChanges: count ? [numberAuditNativeChange('numeric-classic-change')] : [],
+        }),
+      );
+    };
+    await installNumberAuditRoutes(page, fixture);
+    for (const workflow of ['classic', 'native'] as const) {
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      fixture.projects.forEach((project) =>
+        Object.assign(project, {
+          defaultWorkflow: workflow,
+          workflowSource: 'configured',
+        }),
+      );
+      setCount('numeric-a', 16);
+      setCount('numeric-b', 7);
+      const badge = (selectedWorkflow = workflow) =>
+        page.locator(
+          `.${selectedWorkflow}-changes-explorer .dashboard-change-count-badge .ant-scroll-number`,
+        );
+      const snapshot = () =>
+        badge().evaluate((counter) => {
+          const bounds = counter.getBoundingClientRect();
+          const center = bounds.top + bounds.height / 2;
+          const digits = Array.from(counter.querySelectorAll('.ant-scroll-number-only'));
+          const visible = digits.length
+            ? digits
+                .map((digit) => {
+                  const units = Array.from(digit.querySelectorAll('.ant-scroll-number-only-unit'));
+                  const nearest = units.reduce((best, unit) => {
+                    const box = unit.getBoundingClientRect();
+                    const previous = best.getBoundingClientRect();
+                    return Math.abs(box.top + box.height / 2 - center) <
+                      Math.abs(previous.top + previous.height / 2 - center)
+                      ? unit
+                      : best;
+                  });
+                  return nearest.textContent?.trim() ?? '';
+                })
+                .join('')
+            : counter.textContent?.trim();
+          return {
+            target: Number(counter.getAttribute('title')),
+            visible: Number(visible),
+            animations: counter
+              .getAnimations({ subtree: true })
+              .filter((animation) => animation.playState === 'running').length,
+            digitTransitions: digits
+              .flatMap((digit) => digit.getAnimations())
+              .filter(
+                (animation) =>
+                  animation.playState === 'running' &&
+                  animation instanceof CSSTransition &&
+                  animation.transitionProperty === 'transform',
+              ).length,
+          };
+        });
+      const settled = async (count: number) =>
+        expect
+          .poll(async () => {
+            const state = await snapshot();
+            return state.target === count && state.visible === count && state.animations === 0;
+          })
+          .toBe(true);
+      const rolling = async (count: number, action: () => Promise<unknown>) => {
+        await action();
+        await expect
+          .poll(
+            async () => {
+              const state = await snapshot();
+              return (
+                state.target === count && state.digitTransitions > 0 && state.visible !== count
+              );
+            },
+            { intervals: [10, 20, 30] },
+          )
+          .toBe(true);
+      };
+
+      await page.goto('/');
+      await expect(badge()).toHaveAttribute('title', '16');
+      expect(await snapshot()).toMatchObject({ visible: 16, animations: 0 });
+      await page.locator('.comet-project-select').click();
+      await page
+        .locator('.comet-project-select-dropdown .comet-project-option')
+        .filter({ hasText: '/numeric-b' })
+        .click();
+      await expect(badge()).toHaveAttribute('title', '7');
+      expect(await snapshot()).toMatchObject({ visible: 7, animations: 0 });
+      const otherWorkflow = workflow === 'classic' ? 'native' : 'classic';
+      await page
+        .getByRole('tab', {
+          name: otherWorkflow === 'classic' ? 'Classic 工作流' : 'Native 工作流',
+          exact: true,
+        })
+        .click();
+      await expect(badge(otherWorkflow)).toHaveAttribute('title', '7');
+      expect(
+        await badge(otherWorkflow).evaluate(
+          (counter) => counter.getAnimations({ subtree: true }).length,
+        ),
+      ).toBe(0);
+      await page.goto('/?demo');
+      if (workflow === 'native')
+        await page.getByRole('tab', { name: 'Native 工作流', exact: true }).click();
+      await settled(workflow === 'classic' ? 16 : 18);
+      await rolling(9, () => page.getByRole('tab', { name: '已归档', exact: true }).click());
+      await settled(9);
+      const archivedName =
+        workflow === 'classic'
+          ? DEMO_SNAPSHOT.changes.archived[0].name
+          : DEMO_SNAPSHOT.native.changes.find((change) => change.status === 'archived')!.name;
+      await rolling(1, () => page.getByPlaceholder('搜索变更、产物或文件…').fill(archivedName));
+      await settled(1);
+
+      await page.goto('/');
+      await expect(badge()).toHaveAttribute('title', '16');
+      await settled(16);
+      for (const count of [120, 106]) {
+        setCount('numeric-a', count);
+        await rolling(count, () => page.getByRole('button', { name: '立即刷新' }).click());
+        await settled(count);
+      }
+      setCount('numeric-a', 129);
+      await rolling(129, () => page.getByRole('button', { name: '立即刷新' }).click());
+      setCount('numeric-a', 71);
+      await rolling(71, () => page.getByRole('button', { name: '立即刷新' }).click());
+      await enableNumberAuditReducedMotion(page);
+      expect(await snapshot()).toMatchObject({
+        target: 71,
+        visible: 71,
+        animations: 0,
+        digitTransitions: 0,
+      });
+      setCount('numeric-a', 0);
+      await page.getByRole('button', { name: '立即刷新' }).click();
+      await expect(badge()).toHaveAttribute('title', '0');
+      expect(await snapshot()).toMatchObject({ target: 0, visible: 0, animations: 0 });
+    }
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.goto('/?demo');
+    await page.getByRole('tab', { name: 'Native 工作流', exact: true }).click();
+    const explorer = page.locator('.native-changes-explorer');
+    const children = DEMO_SNAPSHOT.native.changes[0].children;
+    if (children.length) {
+      const completed = children.filter(({ status }) =>
+        ['done', 'verified', 'integrated', 'archived'].includes(status),
+      ).length;
+      await expect(page.locator('.native-change-row').first()).toContainText(
+        `${completed}/${children.length} 子变更`,
+      );
+    }
+    const clip = await explorer.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const tabs = element.querySelector('.native-changes-explorer-tabs')!.getBoundingClientRect();
+      return {
+        x: bounds.left - 8,
+        y: bounds.top - 8,
+        width: bounds.width + 16,
+        height: tabs.bottom - bounds.top + 104,
+      };
+    });
+    await page.screenshot({
+      path: test.info().outputPath('changes-explorer-count-scroll-final.png'),
+      clip,
+    });
+  });
+
+  test('starts a real workflow switch at zero across delayed Native data and cached returns', async ({
+    page,
+  }) => {
+    const entryChange = numberAuditNativeChange('ship-native-dashboard', {
+      specs: { total: 64, create: 20, modify: 30, remove: 14 },
+      acceptance: { total: 100, passed: 50, failed: 10, blocked: 10, pending: 30 },
+    });
+    const fixture = numberAuditFixture([
+      numberAuditState('numeric-a', [16, 9, 4, 36, 3], {
+        classicCompleted: 4,
+        classicTaskTotal: 8,
+        nativeActiveCount: 16,
+        nativeChanges: [entryChange],
+      }),
+    ]);
+    await installNumberAuditRoutes(page, fixture);
+    await page.goto('/');
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([16, 9, 4, 36, 3]);
+
+    let releaseOldPage!: () => void;
+    let startOldPage!: () => void;
+    const oldPageStarted = new Promise<void>((resolve) => {
+      startOldPage = resolve;
+    });
+    fixture.classicPageGate = {
+      status: 'archived',
+      held: new Promise<void>((resolve) => {
+        releaseOldPage = resolve;
+      }),
+      start: startOldPage,
+      responseStatus: 500,
+    };
+    await page.getByRole('tab', { name: '已归档', exact: true }).click();
+    await oldPageStarted;
+
+    let releaseList!: () => void;
+    let releaseDetail!: () => void;
+    let startList!: () => void;
+    let startDetail!: () => void;
+    const listStarted = new Promise<void>((resolve) => {
+      startList = resolve;
+    });
+    const detailStarted = new Promise<void>((resolve) => {
+      startDetail = resolve;
+    });
+    fixture.queryGate = {
+      query: '',
+      held: new Promise<void>((resolve) => {
+        releaseList = resolve;
+      }),
+      start: startList,
+    };
+    fixture.detailGate = {
+      name: entryChange.name,
+      held: new Promise<void>((resolve) => {
+        releaseDetail = resolve;
+      }),
+      start: startDetail,
+    };
+    await captureNumberAuditSummaryFrames(page, 'native');
+    await captureNumberAuditDetailFrames(page, entryChange.name);
+    await page.getByRole('tab', { name: 'Native 工作流', exact: true }).click();
+    await listStarted;
+    await expect(page.locator('.native-change-list-skeleton')).toBeVisible();
+    releaseOldPage();
+    await expect(page.getByText(/^变更列表加载失败：/)).toBeVisible();
+    releaseList();
+    await detailStarted;
+    await expect(page.locator('.native-change-detail-skeleton')).toBeVisible();
+    releaseDetail();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
+          return auditWindow.__numberAuditDetailFrames?.length ?? 0;
+        }),
+      )
+      .toBeGreaterThanOrEqual(4);
+    const delayedDetailFrames = await page.evaluate(() => {
+      const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
+      return auditWindow.__numberAuditDetailFrames ?? [];
+    });
+    expect(delayedDetailFrames[0][0]).toBeLessThan(64);
+    expect(delayedDetailFrames.some(([total]) => total > 0 && total < 64)).toBe(true);
+    const summaryFrames = await page.evaluate(() => {
+      const auditWindow = window as Window & { __numberAuditSummaryFrames?: number[][] };
+      return auditWindow.__numberAuditSummaryFrames ?? [];
+    });
+    expect(summaryFrames[0][0]).toBeLessThan(16);
+    await expect
+      .poll(() => numberAuditNativeValues(page))
+      .toEqual({
+        scope: [64, 20, 30, 14],
+        acceptance: [70, 50, 10, 10, 30],
+      });
+
+    await captureNumberAuditClassicFrames(page, [16, 9, 4, 36, 3]);
+    await page.getByRole('tab', { name: 'Classic 工作流', exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const auditWindow = window as Window & { __numberAuditClassicFrames?: number[][] };
+          return auditWindow.__numberAuditClassicFrames?.length ?? 0;
+        }),
+      )
+      .toBeGreaterThanOrEqual(4);
+    const classicFrames = await page.evaluate(() => {
+      const auditWindow = window as Window & { __numberAuditClassicFrames?: number[][] };
+      return auditWindow.__numberAuditClassicFrames ?? [];
+    });
+    expect(classicFrames[0][0]).toBeLessThan(16);
+    expect(classicFrames[0][6]).toBeLessThan(4);
+    expect(classicFrames[0][7]).toBeLessThan(8);
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([16, 9, 4, 36, 3]);
+    await expect(page.locator('.dashboard-change-row').first()).toContainText('任务 4/8');
+
+    await captureNumberAuditDetailFrames(page, entryChange.name);
+    await page.getByRole('tab', { name: 'Native 工作流', exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
+          return auditWindow.__numberAuditDetailFrames?.length ?? 0;
+        }),
+      )
+      .toBeGreaterThanOrEqual(4);
+    const cachedDetailFrames = await page.evaluate(() => {
+      const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
+      return auditWindow.__numberAuditDetailFrames ?? [];
+    });
+    expect(cachedDetailFrames[0][0]).toBeLessThan(64);
+    await enableNumberAuditReducedMotion(page);
+    expect(await numberAuditNativeValues(page)).toEqual({
+      scope: [64, 20, 30, 14],
+      acceptance: [70, 50, 10, 10, 30],
+    });
+    expect(await numberAuditSummaryValues(page)).toEqual([16, 0, 0, 1, 30]);
+    expect(await numberAuditAcceptanceProgress(page)).toBeCloseTo(0.7, 2);
+  });
+
+  test('starts a delayed Native detail retry at zero after a failed visit and workflow return', async ({
+    page,
+  }) => {
+    const entryChange = numberAuditNativeChange('ship-native-dashboard', {
+      specs: { total: 64, create: 20, modify: 30, remove: 14 },
+      acceptance: { total: 100, passed: 50, failed: 10, blocked: 10, pending: 30 },
+    });
+    const fixture = numberAuditFixture([
+      numberAuditState('numeric-a', [16, 9, 4, 36, 3], { nativeChanges: [entryChange] }),
+    ]);
+    fixture.detailGate = {
+      name: entryChange.name,
+      held: Promise.resolve(),
+      start: () => {},
+      responseStatus: 500,
+    };
+    await installNumberAuditRoutes(page, fixture);
+    await page.goto('/');
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([16, 9, 4, 36, 3]);
+    await page.getByRole('tab', { name: 'Native 工作流', exact: true }).click();
+    await expect(page.locator('.native-change-detail [role="alert"]')).toContainText(
+      'Native 变更详情加载失败',
+    );
+    await page.getByRole('tab', { name: 'Classic 工作流', exact: true }).click();
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([16, 9, 4, 36, 3]);
+
+    let releaseDetail!: () => void;
+    let startDetail!: () => void;
+    const detailStarted = new Promise<void>((resolve) => {
+      startDetail = resolve;
+    });
+    fixture.detailGate = {
+      name: entryChange.name,
+      held: new Promise<void>((resolve) => {
+        releaseDetail = resolve;
+      }),
+      start: startDetail,
+    };
+    await captureNumberAuditDetailFrames(page, entryChange.name);
+    await page.getByRole('tab', { name: 'Native 工作流', exact: true }).click();
+    await detailStarted;
+    await expect(page.locator('.native-change-detail-skeleton')).toBeVisible();
+    releaseDetail();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
+          return auditWindow.__numberAuditDetailFrames?.length ?? 0;
+        }),
+      )
+      .toBeGreaterThanOrEqual(4);
+    const retryFrames = await page.evaluate(() => {
+      const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
+      return auditWindow.__numberAuditDetailFrames ?? [];
+    });
+    expect(retryFrames[0][0]).toBeLessThan(64);
+    expect(retryFrames.some(([total]) => total > 0 && total < 64)).toBe(true);
+    await expect
+      .poll(() => numberAuditNativeValues(page))
+      .toEqual({
+        scope: [64, 20, 30, 14],
+        acceptance: [70, 50, 10, 10, 30],
+      });
+  });
+
+  test('animates Classic counters to the latest value and preserves zero and 100 badge counts', async ({
+    page,
+  }) => {
+    const initial = numberAuditState('numeric-a', [1, 1, 1, 1, 1], {
+      classicTotal: 1,
+      classicCompleted: 0,
+      classicTaskTotal: 0,
+      nativeChanges: [numberAuditNativeChange('ship-native-dashboard')],
+    });
+    const fixture = numberAuditFixture([initial]);
+    await installNumberAuditRoutes(page, fixture);
+    await page.goto('/');
+    await page.getByRole('tab', { name: 'Classic 工作流', exact: true }).click();
+    await expect(
+      page.locator('.dashboard-overview-summary-strip .dashboard-summary-card'),
+    ).toHaveCount(5);
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([1, 1, 1, 1, 1]);
+    await expect(
+      page.locator('.classic-changes-explorer .dashboard-explorer-row-count').first(),
+    ).toHaveText('任务 0/0');
+    await expect
+      .poll(() =>
+        numberAuditBadgeValue(page, '.classic-changes-explorer .dashboard-change-count-badge'),
+      )
+      .toBe(1);
+
+    fixture.states.set(
+      'numeric-a',
+      numberAuditState('numeric-a', [6, 5, 4, 7, 8], {
+        classicTotal: 100,
+        classicCompleted: 1,
+        classicTaskTotal: 4,
+        nativeChanges: [numberAuditNativeChange('ship-native-dashboard')],
+      }),
+    );
+    const firstRefresh = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/overview'),
+    );
+    await page.getByRole('button', { name: '立即刷新' }).click();
+    await firstRefresh;
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([6, 5, 4, 7, 8]);
+    await expect
+      .poll(() =>
+        numberAuditBadgeValue(page, '.classic-changes-explorer .dashboard-change-count-badge'),
+      )
+      .toBe(100);
+    await expect(page.locator('.dashboard-change-row').first()).toContainText('任务 1/4');
+
+    fixture.states.set(
+      'numeric-a',
+      numberAuditState('numeric-a', [2, 3, 4, 5, 6], {
+        classicTotal: 100,
+        classicCompleted: 3,
+        classicTaskTotal: 4,
+        nativeChanges: [numberAuditNativeChange('ship-native-dashboard')],
+      }),
+    );
+    const secondRefresh = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/overview'),
+    );
+    await captureNumberAuditClassicTaskFrames(page);
+    await page.getByRole('button', { name: '立即刷新' }).click();
+    await secondRefresh;
+    await expect
+      .poll(async () => {
+        const value = (await numberAuditSummaryValues(page))[0];
+        return value > 2 && value < 6;
+      })
+      .toBe(true);
+    await expect.poll(() => numberAuditClassicTasks(page)).toEqual([3, 4]);
+    const classicTaskFrames = await page.evaluate(() => {
+      const auditWindow = window as Window & { __numberAuditClassicTaskFrames?: number[][] };
+      return auditWindow.__numberAuditClassicTaskFrames ?? [];
+    });
+    expect(classicTaskFrames.some(([completed, total]) => completed === 2 && total === 4)).toBe(
+      true,
+    );
+
+    fixture.states.set(
+      'numeric-a',
+      numberAuditState('numeric-a', [8, 7, 6, 5, 4], {
+        classicTotal: 100,
+        classicCompleted: 2,
+        classicTaskTotal: 5,
+        nativeChanges: [numberAuditNativeChange('ship-native-dashboard')],
+      }),
+    );
+    const thirdRefresh = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/overview'),
+    );
+    await page.getByRole('button', { name: '立即刷新' }).click();
+    await thirdRefresh;
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([8, 7, 6, 5, 4]);
+    await expect(page.locator('.dashboard-change-row').first()).toContainText('任务 2/5');
+    await expect
+      .poll(() =>
+        numberAuditBadgeValue(page, '.classic-changes-explorer .dashboard-change-count-badge'),
+      )
+      .toBe(100);
+
+    fixture.states.set(
+      'numeric-a',
+      numberAuditState('numeric-a', [5, 4, 3, 2, 1], {
+        classicTotal: 100,
+        classicCompleted: 1,
+        classicTaskTotal: 4,
+        nativeChanges: [numberAuditNativeChange('ship-native-dashboard')],
+      }),
+    );
+    const countRefresh = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/overview'),
+    );
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.getByRole('button', { name: '立即刷新' }).click();
+    await countRefresh;
+    await expect.poll(() => numberAuditClassicTasks(page)).toEqual([1, 4]);
+    await enableNumberAuditReducedMotion(page);
+    expect(await numberAuditClassicTasks(page)).toEqual([1, 4]);
+    expect(await numberAuditSummaryValues(page)).toEqual([5, 4, 3, 2, 1]);
+
+    fixture.states.set(
+      'numeric-a',
+      numberAuditState('numeric-a', [0, 0, 0, 0, 0], {
+        classicTotal: 0,
+        nativeChanges: [numberAuditNativeChange('ship-native-dashboard')],
+      }),
+    );
+    const zeroRefresh = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/overview'),
+    );
+    await page.getByRole('button', { name: '立即刷新' }).click();
+    await zeroRefresh;
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([0, 0, 0, 0, 0]);
+    await expect
+      .poll(() =>
+        numberAuditBadgeValue(page, '.classic-changes-explorer .dashboard-change-count-badge'),
+      )
+      .toBe(0);
+  });
+
+  test('animates Native scope and acceptance counts, settles progress with reduced motion, and captures the final state', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1800, height: 1500 });
+    const initialNative = numberAuditNativeChange('ship-native-dashboard', {
+      specs: { total: 1, create: 0, modify: 1, remove: 0 },
+      acceptance: { total: 4, passed: 1, failed: 0, blocked: 0, pending: 3 },
+      stage: 'building',
+      localStatus: 'queued',
+      childCompleted: 1,
+      childTotal: 4,
+    });
+    const initial = numberAuditState('numeric-a', [1, 1, 1, 1, 1], {
+      nativeTotal: 2,
+      nativeActiveCount: 1,
+      nativeChanges: [initialNative],
+    });
+    const fixture = numberAuditFixture([initial]);
+    await installNumberAuditRoutes(page, fixture);
+    await page.goto('/');
+    await page.getByRole('tab', { name: 'Native 工作流', exact: true }).click();
+    await expect(page.locator('.native-change-detail h3.text-base')).toContainText(
+      'ship-native-dashboard',
+    );
+    await expect
+      .poll(() => numberAuditNativeValues(page))
+      .toEqual({
+        scope: [1, 0, 1, 0],
+        acceptance: [25, 1, 0, 0, 3],
+      });
+    await expect
+      .poll(() =>
+        numberAuditBadgeValue(page, '.native-changes-explorer .dashboard-change-count-badge'),
+      )
+      .toBe(2);
+    await expect(page.locator('.native-change-row').first()).toContainText('子变更 1/4');
+
+    const updatedNative = numberAuditNativeChange('ship-native-dashboard', {
+      specs: { total: 6, create: 2, modify: 3, remove: 1 },
+      acceptance: { total: 8, passed: 3, failed: 2, blocked: 1, pending: 2 },
+      stage: 'archive-ready',
+      localStatus: 'running',
+      childCompleted: 3,
+      childTotal: 8,
+    });
+    fixture.states.set(
+      'numeric-a',
+      numberAuditState('numeric-a', [4, 2, 1, 3, 5], {
+        nativeTotal: 6,
+        nativeActiveCount: 4,
+        nativeChanges: [updatedNative],
+      }),
+    );
+    const updatedOverview = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/overview'),
+    );
+    await captureNumberAuditNativeExplorerFrames(page);
+    await page.getByRole('button', { name: '立即刷新' }).click();
+    await updatedOverview;
+    await expect
+      .poll(async () => {
+        const numbers = await numberAuditNativeValues(page);
+        return numbers.scope[0] > 1 && numbers.scope[0] < 6;
+      })
+      .toBe(true);
+    await expect
+      .poll(() =>
+        numberAuditBadgeValue(page, '.native-changes-explorer .dashboard-change-count-badge'),
+      )
+      .toBe(6);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const auditWindow = window as Window & { __numberAuditNativeExplorerFrames?: number[][] };
+          return auditWindow.__numberAuditNativeExplorerFrames?.length ?? 0;
+        }),
+      )
+      .toBeGreaterThanOrEqual(4);
+    const explorerFrames = await page.evaluate(() => {
+      const auditWindow = window as Window & { __numberAuditNativeExplorerFrames?: number[][] };
+      return auditWindow.__numberAuditNativeExplorerFrames ?? [];
+    });
+    expect(
+      explorerFrames.some(
+        ([resolved, total]) => resolved > 1 && resolved < 3 && total > 4 && total < 8,
+      ),
+    ).toBe(true);
+    await expect(page.locator('.native-change-row').first()).toContainText('子变更 3/8');
+    await expect
+      .poll(() => numberAuditNativeValues(page))
+      .toEqual({
+        scope: [6, 2, 3, 1],
+        acceptance: [75, 3, 2, 1, 2],
+      });
+    await expect.poll(() => numberAuditAcceptanceProgress(page)).toBeCloseTo(0.75, 1);
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([4, 1, 1, 1, 2]);
+
+    const reducedNative = numberAuditNativeChange('ship-native-dashboard', {
+      specs: { total: 80, create: 40, modify: 20, remove: 20 },
+      acceptance: { total: 10, passed: 2, failed: 0, blocked: 2, pending: 6 },
+      stage: 'building',
+      localStatus: 'queued',
+      childCompleted: 2,
+      childTotal: 5,
+    });
+    fixture.states.set(
+      'numeric-a',
+      numberAuditState('numeric-a', [3, 1, 1, 4, 2], {
+        nativeTotal: 7,
+        nativeActiveCount: 3,
+        nativeChanges: [reducedNative],
+      }),
+    );
+    const reducedOverview = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/overview'),
+    );
+    await page.getByRole('button', { name: '立即刷新' }).click();
+    await reducedOverview;
+    await expect
+      .poll(async () => {
+        const numbers = await numberAuditNativeValues(page);
+        return numbers.scope[0] > 6 && numbers.scope[0] < 80;
+      })
+      .toBe(true);
+    await enableNumberAuditReducedMotion(page);
+    expect(await numberAuditNativeValues(page)).toEqual({
+      scope: [80, 40, 20, 20],
+      acceptance: [40, 2, 0, 2, 6],
+    });
+    expect(await numberAuditAcceptanceProgress(page)).toBeCloseTo(0.4, 2);
+    await expect(page.locator('.native-change-row').first()).toContainText('子变更 2/5');
+    expect(
+      await page
+        .locator('.native-acceptance-progress > span')
+        .evaluate((element) => element.getAnimations().length),
+    ).toBe(0);
+    await page.goto('/?demo');
+    await page.getByRole('tab', { name: 'Native 工作流', exact: true }).click();
+    await expect(page.locator('.native-change-detail h3.text-base')).toContainText(
+      'ship-native-dashboard',
+    );
+    const clip = await page.evaluate(() => {
+      const regions = [
+        document.querySelector('.dashboard-overview-summary-strip'),
+        document.querySelector('.native-changes-explorer'),
+        ...Array.from(document.querySelectorAll('.native-change-detail article')).filter(
+          (article) =>
+            ['变更范围', '验收状态'].includes(article.querySelector('h4')?.innerText ?? ''),
+        ),
+      ];
+      const bounds = regions.map((region) => {
+        if (!region) throw new Error('Numeric audit capture region is missing');
+        return region.getBoundingClientRect();
+      });
+      const x = Math.min(...bounds.map((bound) => bound.left));
+      const y = Math.min(...bounds.map((bound) => bound.top));
+      return {
+        x,
+        y,
+        width: Math.max(...bounds.map((bound) => bound.right)) - x,
+        height: Math.max(...bounds.map((bound) => bound.bottom)) - y,
+      };
+    });
+    await page.screenshot({ path: test.info().outputPath('numeric-native-final.png'), clip });
+  });
+
+  test('resets numbers on project, change and delayed filter result identity changes', async ({
+    page,
+  }) => {
+    const projectA = numberAuditState('numeric-a', [16, 9, 4, 36, 3], {
+      nativeChanges: [numberAuditNativeChange('ship-native-dashboard')],
+    });
+    const projectB = numberAuditState('numeric-b', [20, 12, 2, 24, 0], {
+      classicTotal: 3,
+      classicCompleted: 3,
+      classicTaskTotal: 5,
+      nativeTotal: 2,
+      nativeActiveCount: 2,
+      nativeChanges: [
+        numberAuditNativeChange('ship-native-dashboard', {
+          specs: { total: 2, create: 1, modify: 1, remove: 0 },
+          acceptance: { total: 4, passed: 1, failed: 0, blocked: 0, pending: 3 },
+        }),
+        numberAuditNativeChange('align-dashboard-copy', {
+          specs: { total: 7, create: 2, modify: 3, remove: 2 },
+          acceptance: { total: 8, passed: 3, failed: 2, blocked: 1, pending: 2 },
+        }),
+      ],
+    });
+    const fixture = numberAuditFixture([projectA, projectB]);
+    await installNumberAuditRoutes(page, fixture);
+    await page.goto('/');
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([16, 9, 4, 36, 3]);
+    const projectOverview = page.waitForResponse((response) =>
+      new URL(response.url()).pathname.endsWith('/numeric-b/overview'),
+    );
+    await page.locator('.comet-project-select').click();
+    await page
+      .locator('.comet-project-select-dropdown .comet-project-option')
+      .filter({ hasText: '/numeric-b' })
+      .click();
+    await projectOverview;
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([20, 12, 2, 24, 0]);
+
+    await page.getByRole('tab', { name: 'Native 工作流', exact: true }).click();
+    await expect(
+      page.locator('.native-change-detail h3:not(.ant-skeleton-title)').first(),
+    ).toContainText('ship-native-dashboard');
+    await captureNumberAuditDetailFrames(page, 'align-dashboard-copy');
+    await page.locator('.native-change-row').filter({ hasText: 'align-dashboard-copy' }).click();
+    await expect(
+      page.locator('.native-change-detail h3:not(.ant-skeleton-title)').first(),
+    ).toContainText('align-dashboard-copy');
+    await expect
+      .poll(() => numberAuditNativeValues(page))
+      .toEqual({
+        scope: [7, 2, 3, 2],
+        acceptance: [75, 3, 2, 1, 2],
+      });
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
+          return auditWindow.__numberAuditDetailFrames?.length ?? 0;
+        }),
+      )
+      .toBeGreaterThanOrEqual(4);
+    const changeFrames = await page.evaluate(() => {
+      const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
+      return auditWindow.__numberAuditDetailFrames ?? [];
+    });
+    expect(changeFrames.slice(0, 4)).toEqual(
+      Array.from({ length: 4 }, () => [7, 2, 3, 2, 75, 3, 2, 1, 2]),
+    );
+
+    let releaseFilter!: () => void;
+    let startFilter!: () => void;
+    const filterHeld = new Promise<void>((resolve) => {
+      releaseFilter = resolve;
+    });
+    const filterStarted = new Promise<void>((resolve) => {
+      startFilter = resolve;
+    });
+    fixture.queryGate = {
+      query: 'ship-native-dashboard',
+      held: filterHeld,
+      start: startFilter,
+    };
+    await captureNumberAuditDetailFrames(page, 'ship-native-dashboard');
+    await page.getByPlaceholder('搜索变更、产物或文件…').fill('ship-native-dashboard');
+    await filterStarted;
+    await expect(page.locator('.native-change-row')).toHaveCount(0);
+    releaseFilter();
+    await expect(
+      page.locator('.native-change-detail h3:not(.ant-skeleton-title)').first(),
+    ).toContainText('ship-native-dashboard');
+    await expect
+      .poll(() => numberAuditNativeValues(page))
+      .toEqual({
+        scope: [2, 1, 1, 0],
+        acceptance: [25, 1, 0, 0, 3],
+      });
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
+          return auditWindow.__numberAuditDetailFrames?.length ?? 0;
+        }),
+      )
+      .toBeGreaterThanOrEqual(4);
+    const filterFrames = await page.evaluate(() => {
+      const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
+      return auditWindow.__numberAuditDetailFrames ?? [];
+    });
+    expect(filterFrames.slice(0, 4)).toEqual(
+      Array.from({ length: 4 }, () => [2, 1, 1, 0, 25, 1, 0, 0, 3]),
+    );
+  });
+
+  test('keeps a filtered Classic refresh immediate when it completes before the query debounce', async ({
+    page,
+  }) => {
+    const initial = numberAuditState('numeric-a', [1, 1, 1, 1, 1], {
+      classicTotal: 1,
+      classicCompleted: 1,
+      classicTaskTotal: 4,
+      nativeChanges: [numberAuditNativeChange('ship-native-dashboard')],
+    });
+    const fixture = numberAuditFixture([initial]);
+    await installNumberAuditRoutes(page, fixture);
+    await page.goto('/');
+    await page.getByRole('tab', { name: 'Classic 工作流', exact: true }).click();
+    await expect.poll(() => numberAuditSummaryValues(page)).toEqual([1, 1, 1, 1, 1]);
+    await expect(page.locator('.dashboard-change-row').first()).toContainText('任务 1/4');
+
+    const filtered = numberAuditState('numeric-a', [9, 8, 7, 6, 5], {
+      classicTotal: 4,
+      classicCompleted: 3,
+      classicTaskTotal: 5,
+      nativeChanges: [numberAuditNativeChange('ship-native-dashboard')],
+    });
+    fixture.states.set('numeric-a', filtered);
+    await captureNumberAuditClassicFrames(page, [9, 8, 7, 6, 5]);
+    const filteredOverview = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname.endsWith('/overview') && url.searchParams.get('q') === 'numeric-classic-change'
+      );
+    });
+    const elapsed = await page.evaluate(async () => {
+      const input = document.querySelector<HTMLInputElement>('.comet-header-search input');
+      const button = document.querySelector<HTMLButtonElement>('.comet-refresh-button');
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (!input || !button || !setValue) throw new Error('Numeric audit controls are missing');
+      const startedAt = performance.now();
+      setValue.call(input, 'numeric-classic-change');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      button.click();
+      return performance.now() - startedAt;
+    });
+    const response = await filteredOverview;
+    expect(elapsed).toBeLessThan(250);
+    expect(new URL(response.url()).searchParams.get('q')).toBe('numeric-classic-change');
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const auditWindow = window as Window & { __numberAuditClassicFrames?: number[][] };
+          return auditWindow.__numberAuditClassicFrames?.length ?? 0;
+        }),
+      )
+      .toBeGreaterThanOrEqual(4);
+    const frames = await page.evaluate(() => {
+      const auditWindow = window as Window & { __numberAuditClassicFrames?: number[][] };
+      return auditWindow.__numberAuditClassicFrames ?? [];
+    });
+    expect(frames.slice(0, 4)).toEqual(Array.from({ length: 4 }, () => [9, 8, 7, 6, 5, 4, 3, 5]));
+  });
 });

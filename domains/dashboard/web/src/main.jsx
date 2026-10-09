@@ -9,46 +9,31 @@ import {
   Popover,
   Select,
   Skeleton,
+  Statistic,
   Switch,
   Tag,
   theme as antdTheme,
   Tooltip,
 } from 'antd';
-import {
-  Alert,
-  Badge,
-  Card as AntCard,
-  Drawer,
-  Empty,
-  Layout,
-  Menu,
-  Modal,
-  Progress,
-  Tabs,
-} from 'antd';
+import { Alert, Card as AntCard, Drawer, Empty, Modal, Menu, Progress, Tabs } from 'antd';
 import {
   BranchesOutlined,
   BulbOutlined,
   CheckCircleOutlined,
   CheckOutlined,
   CloseOutlined,
-  CopyOutlined,
   DatabaseOutlined,
   DeleteOutlined,
   EditOutlined,
   FileTextOutlined,
   FlagOutlined,
   InfoCircleOutlined,
-  MenuFoldOutlined,
-  MenuOutlined,
-  MenuUnfoldOutlined,
   MoonOutlined,
   PlusOutlined,
+  SearchOutlined,
   ReloadOutlined,
   SafetyCertificateOutlined,
-  SearchOutlined,
   SettingOutlined,
-  SunOutlined,
   SyncOutlined,
   UndoOutlined,
   UserOutlined,
@@ -67,7 +52,8 @@ import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
 import { WorkflowPhaseTrack } from './phase-progress-indicator.jsx';
 import {
   classicChangeStatusPresentation,
-  isClassicPhaseRunning,
+  classicPhaseIconStatuses,
+  classicPhaseStatuses,
 } from './classic-status-presentation.js';
 import {
   DashboardModal,
@@ -75,7 +61,15 @@ import {
   useDashboardModalState,
 } from './dashboard-modal.jsx';
 import { useAnimatedNumber } from './use-animated-number.js';
-import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
+import { AnimatedNumber, useNumberTransition } from './number-transition.jsx';
+import {
+  DashboardChangeDetail,
+  DashboardExplorerRowContent,
+  DashboardExplorerRowTooltip,
+  DashboardExplorerTitle,
+  DashboardWorkspaceRegion,
+} from './workspace-layout.jsx';
+import { ReferenceIcon } from './reference-icon.jsx';
 import {
   dashboardChangeKey,
   dashboardResponseError,
@@ -95,7 +89,7 @@ import './styles.css';
 const AUTO_REFRESH_MS = 30_000;
 const MEMORY_COLLAPSE_THRESHOLD = 240;
 const DASHBOARD_FONT_FAMILY =
-  "'Segoe UI Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif";
+  "'Noto Sans SC', 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 const DASHBOARD_MONO_FONT_FAMILY = "Bahnschrift, 'Cascadia Mono', Consolas, monospace";
 const DASHBOARD_PLUGIN_NAV_PLACEHOLDERS = Object.freeze([
   {
@@ -418,19 +412,19 @@ export function App({
       theme={{
         algorithm: theme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         token: {
-          colorPrimary: theme === 'dark' ? '#7fa8ff' : '#255ed8',
-          colorBgContainer: theme === 'dark' ? '#151923' : '#ffffff',
-          colorBgElevated: theme === 'dark' ? '#1a202b' : '#ffffff',
-          colorBgLayout: theme === 'dark' ? '#0e1420' : '#eef1f5',
-          colorText: theme === 'dark' ? '#edf2fb' : '#101827',
-          colorTextSecondary: theme === 'dark' ? '#aab5c8' : '#5f6979',
-          colorTextPlaceholder: theme === 'dark' ? '#8791a2' : '#6f7a8a',
-          colorTextDisabled: theme === 'dark' ? '#8791a2' : '#929baa',
-          colorBorder: theme === 'dark' ? '#293345' : '#e3e8ef',
-          colorSplit: theme === 'dark' ? '#293345' : '#edf0f4',
-          colorFillAlter: theme === 'dark' ? '#182131' : '#f6f8fb',
-          colorInfoBg: theme === 'dark' ? '#1a202b' : '#e6f4ff',
-          colorInfoBorder: theme === 'dark' ? '#34597f' : '#91caff',
+          colorPrimary: theme === 'dark' ? '#b9a4ff' : '#255ed8',
+          colorBgContainer: theme === 'dark' ? '#14151c' : '#ffffff',
+          colorBgElevated: theme === 'dark' ? '#1a1b24' : '#ffffff',
+          colorBgLayout: theme === 'dark' ? '#0c0d12' : '#eef1f5',
+          colorText: theme === 'dark' ? '#f2f0f7' : '#101827',
+          colorTextSecondary: theme === 'dark' ? '#a7a6b2' : '#5f6979',
+          colorTextPlaceholder: theme === 'dark' ? '#a7a6b2' : '#6f7a8a',
+          colorTextDisabled: theme === 'dark' ? '#a7a6b2' : '#929baa',
+          colorBorder: theme === 'dark' ? '#35353f' : '#e3e8ef',
+          colorSplit: theme === 'dark' ? '#35353f' : '#edf0f4',
+          colorFillAlter: theme === 'dark' ? '#1a1b24' : '#f6f8fb',
+          colorInfoBg: theme === 'dark' ? '#1a1b24' : '#e6f4ff',
+          colorInfoBorder: theme === 'dark' ? '#35353f' : '#91caff',
           borderRadius: 12,
           fontFamily: DASHBOARD_FONT_FAMILY,
           fontFamilyCode: DASHBOARD_MONO_FONT_FAMILY,
@@ -469,6 +463,12 @@ function DashboardApp({
   const [snapshot, setSnapshot] = useState(null);
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [workflow, setWorkflow] = useState(() => (useDemo ? 'classic' : null));
+  const [numberEntry, setNumberEntry] = useState(null);
+  const numberEntryRef = useRef(null);
+  const nextNumberEntryKey = useRef(0);
+  const completeNumberEntry = useCallback((key) => {
+    setNumberEntry((current) => (current?.key === key ? null : current));
+  }, []);
   const [workflowSource, setWorkflowSource] = useState(null);
   const [pluginSelection, setPluginSelection] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -514,8 +514,6 @@ function DashboardApp({
   const [tab, setTab] = useState('active');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [railOpen, setRailOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [artifact, setArtifact] = useState(null);
   const snapshotRequestRef = useRef(null);
   const pageRequestRef = useRef(null);
@@ -526,6 +524,7 @@ function DashboardApp({
   const pagesRef = useRef({ active: null, archived: null, all: null });
   const nativePagesRef = useRef({ active: null, archived: null, all: null });
   const nativeSelectedDetailRef = useRef(null);
+  const selectedDetailRef = useRef(null);
   const lastLoadedQueryRef = useRef('');
   const { message: messageApi } = AntApp.useApp();
   const toast = useCallback((content, type = 'success') => messageApi[type](content), [messageApi]);
@@ -537,7 +536,9 @@ function DashboardApp({
   queryRef.current = query;
   tabRef.current = tab;
   workflowRef.current = workflow;
+  numberEntryRef.current = numberEntry;
   nativeSelectedDetailRef.current = nativeSelectedDetail;
+  selectedDetailRef.current = selectedDetail;
   pluginSelectionRef.current = pluginSelection;
   settingsSectionRef.current = settingsSection;
   settingsOpenRef.current = settingsOpen;
@@ -568,7 +569,8 @@ function DashboardApp({
           setSnapshot(next);
           const nextId = pickSelected(next, selectedIdRef.current);
           setSelectedId(nextId);
-          setSelectedDetail(findChange(next, nextId));
+          selectedDetailRef.current = findChange(next, nextId);
+          setSelectedDetail(selectedDetailRef.current);
           lastLoadedQueryRef.current = query;
         } else {
           const initialPage = next.initialChanges;
@@ -648,9 +650,36 @@ function DashboardApp({
           setSelectedId(nextId);
           selectedIdRef.current = nextId;
           if (nextId !== previousSelectedId) {
+            selectedDetailRef.current = null;
             setSelectedDetail(null);
             setDetailError(null);
             setDetailLoading(false);
+          } else if (
+            workflowRef.current === 'classic' &&
+            nextId &&
+            selectedDetailRef.current &&
+            dashboardChangeKey(selectedDetailRef.current) === nextId &&
+            !detailRequestRef.current &&
+            snapshotRequestRef.current === controller &&
+            !controller.signal.aborted
+          ) {
+            const previousDetail = selectedDetailRef.current;
+            const freshDetail = await fetchDashboardChangeDetail(
+              activeProjectId,
+              nextId,
+              controller.signal,
+            );
+            if (
+              snapshotRequestRef.current === controller &&
+              !controller.signal.aborted &&
+              workflowRef.current === 'classic' &&
+              selectedIdRef.current === nextId &&
+              !detailRequestRef.current &&
+              selectedDetailRef.current === previousDetail
+            ) {
+              selectedDetailRef.current = freshDetail;
+              setSelectedDetail(freshDetail);
+            }
           }
           lastLoadedQueryRef.current = currentQuery;
         }
@@ -1178,6 +1207,14 @@ function DashboardApp({
       if (append && pageRequestRef.current) return;
       const existing = pagesRef.current[nextTab];
       if (append && !existing?.nextCursor) return;
+      const entry = numberEntryRef.current;
+      const requestNumberEntryKey =
+        entry?.workflow === 'classic' &&
+        entry.project === activeProjectId &&
+        entry.tab === nextTab &&
+        entry.query === query.trim().toLowerCase()
+          ? entry.key
+          : null;
       pageRequestRef.current?.abort();
       const controller = new AbortController();
       pageRequestRef.current = controller;
@@ -1198,6 +1235,7 @@ function DashboardApp({
         lastLoadedQueryRef.current = query;
       } catch (error) {
         if (controller.signal.aborted) return;
+        if (!append) completeNumberEntry(requestNumberEntryKey);
         toast(`变更列表加载失败：${error.message}`, 'error');
       } finally {
         if (pageRequestRef.current === controller) {
@@ -1206,7 +1244,7 @@ function DashboardApp({
         }
       }
     },
-    [activeProjectId, query, toast, useDemo],
+    [activeProjectId, completeNumberEntry, query, toast, useDemo],
   );
 
   useEffect(() => {
@@ -1239,6 +1277,14 @@ function DashboardApp({
       if (append && nativePageRequestRef.current) return;
       const existing = nativePagesRef.current[nextTab];
       if (append && !existing?.nextCursor) return;
+      const entry = numberEntryRef.current;
+      const requestNumberEntryKey =
+        entry?.workflow === 'native' &&
+        entry.project === activeProjectId &&
+        entry.tab === nextTab &&
+        entry.query === query.trim().toLowerCase()
+          ? entry.key
+          : null;
       nativePageRequestRef.current?.abort();
       const controller = new AbortController();
       nativePageRequestRef.current = controller;
@@ -1264,6 +1310,7 @@ function DashboardApp({
           toast('Native 变更列表已更新，正在重新加载第一页。', 'info');
           return;
         }
+        if (!append) completeNumberEntry(requestNumberEntryKey);
         toast(`Native 变更列表加载失败：${error.message}`, 'error');
       } finally {
         if (nativePageRequestRef.current === controller) {
@@ -1272,7 +1319,7 @@ function DashboardApp({
         }
       }
     },
-    [activeProjectId, query, snapshot, toast, useDemo, workflow],
+    [activeProjectId, completeNumberEntry, query, snapshot, toast, useDemo, workflow],
   );
 
   const selectNativeChange = useCallback(
@@ -1334,6 +1381,23 @@ function DashboardApp({
     ? (snapshot?.native?.changes?.length ?? 0)
     : (nativePage?.total ?? nativeOverviewTotal);
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
+  const numberProjectIdentity = useDemo ? snapshot?.project?.path : activeProjectId;
+  const numberEntryKey =
+    numberEntry &&
+    numberEntry.project === numberProjectIdentity &&
+    numberEntry.workflow === workflow &&
+    numberEntry.tab === tab &&
+    numberEntry.query === query.trim().toLowerCase()
+      ? numberEntry.key
+      : null;
+  const numberIdentity = JSON.stringify([
+    numberProjectIdentity,
+    workflow,
+    tab,
+    query.trim().toLowerCase(),
+    useDemo ? true : Boolean(workflow === 'native' ? nativePage : activePage),
+    useDemo ? null : lastLoadedQueryRef.current.trim().toLowerCase(),
+  ]);
   const activeWorkflowSource = useDemo
     ? null
     : (activeProject?.workflowSource ?? workflowSource ?? 'fallback');
@@ -1356,7 +1420,8 @@ function DashboardApp({
       setSelectedId(id);
       setDetailError(null);
       if (useDemo) {
-        setSelectedDetail(findChange(snapshot, id));
+        selectedDetailRef.current = findChange(snapshot, id);
+        setSelectedDetail(selectedDetailRef.current);
         return;
       }
       if (!activeProjectId) return;
@@ -1367,6 +1432,7 @@ function DashboardApp({
       try {
         const detail = await fetchDashboardChangeDetail(activeProjectId, id, controller.signal);
         if (detailRequestRef.current !== controller || controller.signal.aborted) return;
+        selectedDetailRef.current = detail;
         setSelectedDetail(detail);
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -1400,6 +1466,7 @@ function DashboardApp({
     if (!nextId) {
       selectedIdRef.current = null;
       setSelectedId(null);
+      selectedDetailRef.current = null;
       setSelectedDetail(null);
       setDetailLoading(false);
       return;
@@ -1417,75 +1484,72 @@ function DashboardApp({
     visible,
   ]);
 
-  const selectTab = useCallback((nextTab) => setTab(nextTab), []);
+  const openSettings = () => {
+    const preferredSection =
+      pluginSelection ??
+      pluginPages.find((page) => page.pluginId === 'comet.personal-memory' && !page.pending)
+        ?.pluginId ??
+      pluginPages.find((page) => !page.pending)?.pluginId ??
+      'comet.config';
+    const cachedPage = useDemo
+      ? (pluginPages.find((page) => page.pluginId === preferredSection) ?? null)
+      : activeProjectId && preferredSection && preferredSection !== 'comet.config'
+        ? readCachedPluginPage(activeProjectId, preferredSection)
+        : null;
+    setSettingsSection(preferredSection);
+    setSettingsOpen(true);
+    setSettingsPage(cachedPage);
+    setSettingsConfig(
+      useDemo
+        ? settingsConfig
+        : activeProjectId
+          ? (readCachedProjectConfig(activeProjectId) ?? null)
+          : null,
+    );
+    setSettingsError(null);
+  };
+  const openPlugin = (pluginId) => {
+    setNumberEntry(null);
+    setSettingsOpen(false);
+    setPluginSelection(pluginId);
+    setPluginPage(
+      useDemo
+        ? (pluginPages.find((page) => page.pluginId === pluginId) ?? null)
+        : activeProjectId && pluginId
+          ? readCachedPluginPage(activeProjectId, pluginId)
+          : null,
+    );
+    setPluginError(null);
+  };
+  const selectWorkflow = (nextWorkflow) => {
+    openPlugin(null);
+    if (nextWorkflow !== workflow) {
+      setTab('active');
+      if (nextWorkflow === 'native') setNativeDetailError(null);
+      if (
+        ['classic', 'native'].includes(workflow) &&
+        ['classic', 'native'].includes(nextWorkflow)
+      ) {
+        setNumberEntry({
+          key: ++nextNumberEntryKey.current,
+          project: numberProjectIdentity,
+          workflow: nextWorkflow,
+          tab: 'active',
+          query: query.trim().toLowerCase(),
+        });
+      }
+    }
+    setWorkflow(nextWorkflow);
+  };
+  const selectTab = useCallback((nextTab) => {
+    setNumberEntry(null);
+    setTab(nextTab);
+  }, []);
 
   return (
     <main
-      className={`dashboard-workbench min-h-screen bg-surface text-fg antialiased lg:grid lg:grid-cols-[var(--rail-w)_1fr]${
-        sidebarCollapsed ? ' is-sidebar-collapsed' : ''
-      }${embedded ? ' is-embedded' : ''}`}
+      className={`dashboard-workbench min-h-screen bg-surface text-fg antialiased${embedded ? ' is-embedded' : ''}`}
     >
-      <AntSidebar
-        embedded={embedded}
-        open={railOpen}
-        collapsed={sidebarCollapsed}
-        workflow={workflow}
-        onWorkflow={(nextWorkflow) => {
-          setSettingsOpen(false);
-          if (nextWorkflow !== workflow) setTab('active');
-          setWorkflow(nextWorkflow);
-        }}
-        workflowSource={activeWorkflowSource}
-        pluginPages={pluginPages}
-        pluginSelection={pluginSelection}
-        settingsOpen={settingsOpen}
-        onSettings={() => {
-          const preferredSection =
-            pluginSelection ??
-            pluginPages.find((page) => page.pluginId === 'comet.personal-memory' && !page.pending)
-              ?.pluginId ??
-            pluginPages.find((page) => !page.pending)?.pluginId ??
-            'comet.config';
-          const cachedPage = useDemo
-            ? (pluginPages.find((page) => page.pluginId === preferredSection) ?? null)
-            : activeProjectId && preferredSection && preferredSection !== 'comet.config'
-              ? readCachedPluginPage(activeProjectId, preferredSection)
-              : null;
-          setSettingsSection(preferredSection);
-          setSettingsOpen(true);
-          setSettingsPage(cachedPage);
-          setSettingsConfig(
-            useDemo
-              ? settingsConfig
-              : activeProjectId
-                ? (readCachedProjectConfig(activeProjectId) ?? null)
-                : null,
-          );
-          setSettingsError(null);
-        }}
-        onPluginSelect={(pluginId) => {
-          setSettingsOpen(false);
-          setPluginSelection(pluginId);
-          setPluginPage(
-            useDemo
-              ? (pluginPages.find((page) => page.pluginId === pluginId) ?? null)
-              : activeProjectId && pluginId
-                ? readCachedPluginPage(activeProjectId, pluginId)
-                : null,
-          );
-          setPluginError(null);
-        }}
-        onCollapse={() => setSidebarCollapsed(true)}
-        onExpand={() => setSidebarCollapsed(false)}
-        onClose={() => setRailOpen(false)}
-      />
-      {railOpen && (
-        <button
-          className="fixed inset-0 z-40 bg-black/30 lg:hidden"
-          aria-label="关闭导航"
-          onClick={() => setRailOpen(false)}
-        />
-      )}
       <section
         className={`min-w-0${pluginSelection ? ' dashboard-main-section-plugin-center' : ''}`}
       >
@@ -1494,6 +1558,7 @@ function DashboardApp({
           projects={projects}
           activeProjectId={activeProjectId}
           onProjectSelect={(nextProjectId) => {
+            setNumberEntry(null);
             snapshotRequestRef.current?.abort();
             pageRequestRef.current?.abort();
             nativePageRequestRef.current?.abort();
@@ -1510,6 +1575,7 @@ function DashboardApp({
             setNativeDetailError(null);
             setSelectedId(null);
             selectedIdRef.current = null;
+            selectedDetailRef.current = null;
             setSelectedDetail(null);
             setDetailError(null);
             setQuery('');
@@ -1519,7 +1585,6 @@ function DashboardApp({
             setPluginPage(null);
             setPluginError(null);
             setSettingsConfig(null);
-            setRailOpen(false);
             const nextProject = projects.find((project) => project.id === nextProjectId) ?? null;
             const nextWorkflow = resolveDashboardProjectWorkflow(nextProject);
             setWorkflow(nextWorkflow.workflow);
@@ -1527,8 +1592,16 @@ function DashboardApp({
           }}
           loading={loading}
           query={query}
-          onQuery={setQuery}
-          onMenu={() => setRailOpen(true)}
+          onQuery={(nextQuery) => {
+            setNumberEntry(null);
+            setQuery(nextQuery);
+          }}
+          workflowSource={activeWorkflowSource}
+          pluginPages={pluginPages}
+          pluginSelection={pluginSelection}
+          settingsOpen={settingsOpen}
+          onSettings={openSettings}
+          onPluginSelect={openPlugin}
           onRefresh={async () => {
             await refresh(true);
             await reloadPluginPages();
@@ -1552,6 +1625,51 @@ function DashboardApp({
                 : ''
             }`}
           >
+            <div className="dashboard-page-heading">
+              <h1>
+                {pluginSelection
+                  ? pluginPages.find((page) => page.pluginId === pluginSelection)?.label
+                  : '项目概览'}
+              </h1>
+              {!pluginSelection && (
+                <span className="text-muted">
+                  Agent 工作台 · {workflow === 'native' ? 'Native' : 'Classic'} 变更工作区
+                </span>
+              )}
+              {snapshot && (
+                <span className="dashboard-generated-at">
+                  生成于{' '}
+                  {formatTimestamp(
+                    workflow === 'native'
+                      ? snapshot.native?.generatedAt
+                      : snapshot.project.generatedAt,
+                  )}
+                </span>
+              )}
+            </div>
+            <Tabs
+              className="dashboard-workflow-tabs"
+              activeKey={pluginSelection || !workflow ? '' : workflow}
+              onChange={selectWorkflow}
+              items={[
+                {
+                  key: 'classic',
+                  label: (
+                    <span>
+                      <ReferenceIcon name="branch" /> Classic 工作流
+                    </span>
+                  ),
+                },
+                {
+                  key: 'native',
+                  label: (
+                    <span>
+                      <ReferenceIcon name="native" /> Native 工作流
+                    </span>
+                  ),
+                },
+              ]}
+            />
             {!useDemo && projectsReady && !activeProjectId ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可用项目" />
             ) : !snapshot ? (
@@ -1573,7 +1691,9 @@ function DashboardApp({
             ) : workflow === 'native' ? (
               <NativeWorkflowPanel
                 native={snapshot.native}
-                git={snapshot.git}
+                numberIdentity={numberIdentity}
+                numberEntryKey={numberEntryKey}
+                onNumberEntryComplete={completeNumberEntry}
                 query={query}
                 tab={tab}
                 onTab={selectTab}
@@ -1601,15 +1721,22 @@ function DashboardApp({
             ) : workflow === 'classic' ? (
               <Dashboard
                 snapshot={snapshot}
+                useDemo={useDemo}
+                numberIdentity={numberIdentity}
+                numberEntryKey={numberEntryKey}
+                onNumberEntryComplete={completeNumberEntry}
                 visible={visible}
                 visibleTotal={visibleTotal}
                 selected={selected}
                 selectedId={selectedId}
                 tab={tab}
                 onTab={selectTab}
-                onSelect={selectChange}
+                onSelect={(id) => {
+                  setNumberEntry(null);
+                  void selectChange(id);
+                }}
                 hasMore={Boolean(activePage?.nextCursor)}
-                pageLoading={pageLoading === tab}
+                pageLoading={pageLoading === tab || (!useDemo && !activePage)}
                 onLoadMore={() => loadPage(tab, true)}
                 detailLoading={detailLoading}
                 detailError={detailError}
@@ -1619,6 +1746,7 @@ function DashboardApp({
             ) : (
               <LoadingState />
             )}
+            {!pluginSelection && snapshot?.git && <GitSnapshot git={snapshot.git} />}
           </div>
         </div>
         <DashboardSettingsOverlay
@@ -1691,6 +1819,7 @@ function DashboardApp({
                 defaultWorkflow: next.defaultWorkflow,
                 workflowSource: 'configured',
               });
+              setNumberEntry(null);
               setWorkflow(nextWorkflow.workflow);
               setWorkflowSource(nextWorkflow.source);
               setProjects((current) =>
@@ -1751,7 +1880,12 @@ function Topbar({
   projects,
   activeProjectId,
   onProjectSelect,
-  onMenu,
+  workflowSource,
+  pluginPages,
+  pluginSelection,
+  settingsOpen,
+  onSettings,
+  onPluginSelect,
   onRefresh,
   theme,
   onToggleTheme,
@@ -1759,13 +1893,7 @@ function Topbar({
 }) {
   return (
     <header className="comet-workbench-header sticky top-0 z-30 border-b border-border-soft bg-surface/90 backdrop-blur-xl">
-      <Button
-        className="comet-header-menu lg:hidden"
-        type="text"
-        icon={<MenuOutlined />}
-        onClick={onMenu}
-        aria-label="打开导航"
-      />
+      <strong className="comet-header-brand">comet</strong>
       <div className="comet-header-context">
         <Select
           className="comet-project-select"
@@ -1779,6 +1907,8 @@ function Topbar({
               '选择项目'
             )
           }
+          aria-label="选择项目"
+          suffixIcon={<ReferenceIcon name="chevron" />}
           showSearch
           optionFilterProp="searchText"
           optionLabelProp="selectedLabel"
@@ -1806,20 +1936,73 @@ function Topbar({
           }))}
         />
       </div>
+      {workflowSource && (
+        <Tag
+          className="comet-workflow-source"
+          aria-label={`项目默认工作流来源：${workflowSource}`}
+          color={workflowSource === 'configured' ? 'success' : 'warning'}
+        >
+          {workflowSource}
+        </Tag>
+      )}
       <div className="comet-header-search">
         <Input
           value={query}
           onChange={(event) => onQuery(event.target.value)}
-          prefix={<SearchOutlined className="text-meta" />}
+          prefix={<ReferenceIcon name="search" />}
           placeholder="搜索变更、产物或文件…"
           allowClear
         />
       </div>
       <div className="comet-header-actions">
+        {pluginPages.map((page) => (
+          <Tooltip
+            key={page.pluginId}
+            title={
+              page.globallyDisabled
+                ? `${page.label} · 停用`
+                : page.projectPaused
+                  ? `${page.label} · 暂停`
+                  : page.status === 'disabled'
+                    ? `${page.label} · 停用`
+                    : page.label
+            }
+          >
+            <Button
+              type="text"
+              className="comet-header-utility"
+              disabled={Boolean(page.pending)}
+              aria-pressed={pluginSelection === page.pluginId}
+              icon={
+                <ReferenceIcon name={page.pluginId === 'comet.personal-memory' ? 'book' : 'file'} />
+              }
+              onClick={() =>
+                onPluginSelect(pluginSelection === page.pluginId ? null : page.pluginId)
+              }
+            >
+              {page.label}
+              {(page.globallyDisabled || page.status === 'disabled' || page.projectPaused) && (
+                <span className="comet-header-utility-state">
+                  {page.globallyDisabled ? '停用' : page.projectPaused ? '暂停' : '停用'}
+                </span>
+              )}
+            </Button>
+          </Tooltip>
+        ))}
+        <Button
+          type="text"
+          className="comet-header-utility"
+          icon={<ReferenceIcon name="settings" />}
+          aria-pressed={settingsOpen}
+          onClick={onSettings}
+        >
+          设置
+        </Button>
+
         <Tooltip title="立即刷新">
           <Button
             className="comet-refresh-button"
-            icon={<ReloadOutlined />}
+            icon={<ReferenceIcon name="refresh" />}
             loading={loading}
             onClick={onRefresh}
             aria-label="立即刷新"
@@ -1835,9 +2018,9 @@ function Topbar({
           }
         >
           <Button
-            className="hidden sm:inline-flex"
+            className="comet-theme-toggle"
             type="text"
-            icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+            icon={theme === 'dark' ? <ReferenceIcon name="sun" /> : <MoonOutlined />}
             disabled={themeToggleDisabled}
             onClick={onToggleTheme}
             aria-label={theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'}
@@ -1850,6 +2033,10 @@ function Topbar({
 
 function Dashboard({
   snapshot,
+  useDemo,
+  numberIdentity,
+  numberEntryKey = null,
+  onNumberEntryComplete,
   visible,
   visibleTotal,
   selected,
@@ -1875,18 +2062,17 @@ function Dashboard({
   });
   const isEmptyView = !pageLoading && visible.length === 0;
   const isLoadingView = pageLoading && visible.length === 0;
+  const numberPageReady = !pageLoading || visible.length > 0;
+  useEffect(() => {
+    if (numberEntryKey !== null && numberPageReady) onNumberEntryComplete?.(numberEntryKey);
+  }, [numberEntryKey, numberPageReady, onNumberEntryComplete]);
   return (
-    <div className="mx-auto min-w-0 max-w-dashboard">
-      <SectionHead
-        title="项目概览"
-        hint={`生成于 ${formatTimestamp(snapshot.project.generatedAt)}`}
+    <div className="mx-auto min-w-0">
+      <AntSummaryCards
+        snapshot={snapshot}
+        numberIdentity={numberIdentity}
+        numberEntryKey={numberEntryKey}
       />
-      <WorkflowSuggestion
-        command={selected?.next?.command}
-        description={selected?.next?.description}
-      />
-      <AntSummaryCards snapshot={snapshot} />
-      <SectionHead title="变更工作区" hint="查看文件产物与项目进度" />
       {snapshot.classicError && !hasClassicChanges ? (
         <ClassicErrorState error={snapshot.classicError} />
       ) : (
@@ -1898,6 +2084,9 @@ function Dashboard({
             left={
               <AntChangesExplorer
                 visible={visible}
+                useDemo={useDemo}
+                numberIdentity={numberIdentity}
+                numberEntryKey={numberPageReady ? numberEntryKey : null}
                 total={visibleTotal}
                 selectedId={selectedId}
                 tab={tab}
@@ -1914,52 +2103,29 @@ function Dashboard({
               ) : isLoadingView ? (
                 <ClassicWorkspaceLoadingDetail />
               ) : selected ? (
-                <AntChangeDetail change={selected} onPreview={onPreview} />
+                <AntChangeDetail
+                  change={selected}
+                  selectedId={selectedId}
+                  useDemo={useDemo}
+                  onPreview={onPreview}
+                />
               ) : detailPending ? (
                 <ClassicWorkspaceLoadingDetail />
               ) : detailError ? (
-                <div className="change-detail min-w-0 rounded-lg bg-bg p-10 text-center text-sm text-danger shadow-raised">
-                  <p role="alert">变更详情加载失败：{detailError.message}</p>
-                  <Button className="mt-4" onClick={onRetryDetail}>
-                    重试
-                  </Button>
-                </div>
-              ) : null
-            }
-            right={
-              isEmptyView ? (
-                <ClassicWorkspaceEmptySidePanel />
-              ) : isLoadingView ? (
-                <ClassicWorkspaceLoadingSidePanel />
-              ) : selected ? (
-                <SidePanel change={selected} git={snapshot.git} onPreview={onPreview} />
+                <DashboardChangeDetail className="change-detail" title="Classic 变更详情">
+                  <div className="text-center text-sm text-danger">
+                    <p role="alert">变更详情加载失败：{detailError.message}</p>
+                    <Button className="mt-4" onClick={onRetryDetail}>
+                      重试
+                    </Button>
+                  </div>
+                </DashboardChangeDetail>
               ) : null
             }
           />
         </>
       )}
     </div>
-  );
-}
-
-function WorkflowSuggestion({ command, description }) {
-  return (
-    <section className="dashboard-priority-banner" role="status" aria-label="工作流建议">
-      <div className="dashboard-priority-title">
-        <BulbOutlined aria-hidden="true" />
-        <span>下一步建议</span>
-      </div>
-      <p>
-        {command ? (
-          <>
-            优先执行 <code>{command}</code>
-            {description ? `，${description}` : '，完成当前工作流阶段。'}
-          </>
-        ) : (
-          '当前变更没有待执行动作，可以继续检查产物与验证结果。'
-        )}
-      </p>
-    </section>
   );
 }
 
@@ -2026,34 +2192,6 @@ function PluginCenterHeader({ meta = [], actions = null, help = null }) {
   );
 }
 
-function PhaseStepper({ phase, archived, next }) {
-  const current = archived ? 'archive' : phase;
-  const currentIndex = Math.max(
-    0,
-    PHASES.findIndex(([key]) => key === current),
-  );
-  return (
-    <article>
-      <div className="mb-4 flex items-center gap-2">
-        <h4 className="text-sm font-semibold">生命周期阶段</h4>
-        <span className="ml-auto rounded-full bg-surface px-3 py-1 font-mono text-xs text-fg-2">
-          {archived ? `归档 ${phase}` : `下一步 ${next?.command ?? '—'}`}
-        </span>
-      </div>
-      <WorkflowPhaseTrack
-        phases={PHASES}
-        currentIndex={currentIndex}
-        archived={archived}
-        currentPhaseRunning={isClassicPhaseRunning({
-          status: archived ? 'archived' : 'active',
-          phase,
-        })}
-        ariaLabel="Classic 生命周期阶段"
-      />
-    </article>
-  );
-}
-
 function ArtifactList({ change, onPreview }) {
   const previewByKey = new Map(
     (change.artifactPreviews ?? []).map((preview) => [preview.key, preview]),
@@ -2068,7 +2206,7 @@ function ArtifactList({ change, onPreview }) {
   return (
     <article className="min-w-0 rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-baseline justify-between">
-        <h4 className="text-sm font-semibold tracking-tight">关键产物</h4>
+        <h4 className="dashboard-detail-section-title">关键产物</h4>
         <span className="font-mono text-[12px] text-meta">
           {ready}/{total}
         </span>
@@ -2185,7 +2323,7 @@ function TaskProgress({ change }) {
   return (
     <article className="min-w-0 rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-baseline justify-between">
-        <h4 className="text-sm font-semibold tracking-tight">任务进度</h4>
+        <h4 className="dashboard-detail-section-title">任务进度</h4>
         <span
           className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${isComplete ? 'bg-ok-soft text-success' : 'bg-accent-soft text-accent'}`}
         >
@@ -2290,20 +2428,6 @@ function TaskProgress({ change }) {
   );
 }
 
-function SidePanel({ change, git, onPreview }) {
-  return (
-    <aside className="min-h-[480px] space-y-4">
-      {change.status === 'archived' ? (
-        <ArchiveSummary change={change} />
-      ) : (
-        <NextAction change={change} />
-      )}
-      <RiskCard change={change} />
-      <GitSnapshot git={git} />
-    </aside>
-  );
-}
-
 function NextAction({ change }) {
   return (
     <Card title="下一步建议" tag={phaseLabel(change.phase)}>
@@ -2375,26 +2499,35 @@ function RiskCard({ change }) {
 
 function GitSnapshot({ git }) {
   return (
-    <Card title="Git 快照" tag={`${git.dirtyFiles} 个未提交`}>
-      <KeyValue k="分支" v={git.branch ?? '—'} />
-      <KeyValue k="HEAD" v={git.head ?? '—'} />
-      <div className="pt-2 text-[11px] font-semibold uppercase text-meta">最近提交</div>
-      <ul className="space-y-1">
-        {git.recentCommits.map((commit) => (
-          <li key={commit} className="truncate text-sm text-fg-2">
-            {commit}
-          </li>
-        ))}
-      </ul>
-      <div className="pt-2 text-[11px] font-semibold uppercase text-meta">未提交文件</div>
-      <ul className="space-y-1">
-        {git.dirtyFileList.slice(0, 5).map((file) => (
-          <li key={file} className="break-all font-mono text-xs text-warn">
-            {file}
-          </li>
-        ))}
-      </ul>
-    </Card>
+    <section className="dashboard-project-git" aria-label="仓库 Git">
+      <Card
+        title={
+          <>
+            <ReferenceIcon name="git" /> 仓库 Git
+          </>
+        }
+        tag={`${git.dirtyFiles ?? '—'} 个未提交`}
+      >
+        <KeyValue k="分支" v={git.branch ?? '—'} />
+        <KeyValue k="HEAD" v={git.head ?? '—'} />
+        <div className="pt-2 text-[11px] font-semibold uppercase text-meta">最近提交</div>
+        <ul className="space-y-1">
+          {(git.recentCommits ?? []).map((commit) => (
+            <li key={commit} className="truncate text-sm text-fg-2">
+              {commit}
+            </li>
+          ))}
+        </ul>
+        <div className="pt-2 text-[11px] font-semibold uppercase text-meta">未提交文件</div>
+        <ul className="space-y-1">
+          {(git.dirtyFileList ?? []).slice(0, 5).map((file) => (
+            <li key={file} className="break-all font-mono text-xs text-warn">
+              {file}
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </section>
   );
 }
 
@@ -2402,7 +2535,7 @@ function Card({ title, tag, children }) {
   return (
     <article className="rounded-lg bg-bg p-5 shadow-card">
       <div className="mb-4 flex items-center gap-2">
-        <h4 className="font-semibold">{title}</h4>
+        <h4 className="dashboard-detail-section-title font-semibold">{title}</h4>
         {tag && (
           <span className="ml-auto rounded-full bg-surface px-3 py-1 text-xs text-fg-2">{tag}</span>
         )}
@@ -3297,7 +3430,7 @@ function Pill({ tone = 'neutral', children }) {
     }[tone] ?? 'bg-surface text-fg-2';
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${cls}`}
+      className={`dashboard-status-pill inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${cls}`}
     >
       {children}
     </span>
@@ -3351,8 +3484,8 @@ function ClassicWorkspaceEmptyDetail({ snapshot, tab, onTab }) {
         ? '当前还没有归档记录，你可以返回查看正在进行的变更。'
         : '调整顶部搜索条件，或切换变更范围后再试。';
   return (
-    <AntCard
-      className="change-detail classic-change-detail-empty min-w-0"
+    <DashboardChangeDetail
+      className="change-detail classic-change-detail-empty dashboard-change-detail-empty"
       title={<h3 className="m-0 text-sm font-semibold">{title}</h3>}
     >
       <div className="dashboard-workspace-empty-detail text-center">
@@ -3370,58 +3503,20 @@ function ClassicWorkspaceEmptyDetail({ snapshot, tab, onTab }) {
           </Button>
         ) : null}
       </div>
-    </AntCard>
-  );
-}
-
-function ClassicWorkspaceEmptySidePanel() {
-  return (
-    <aside className="dashboard-workspace-side-empty" aria-label="Classic 变更状态">
-      <div>
-        <span className="native-workspace-empty-icon" aria-hidden="true">
-          <FlagOutlined />
-        </span>
-        <h3>暂无变更数据</h3>
-        <p>选择或创建 Classic change 后，这里会显示执行状态、验证结果和 Git 摘要。</p>
-      </div>
-    </aside>
+    </DashboardChangeDetail>
   );
 }
 
 function ClassicWorkspaceLoadingDetail() {
   return (
-    <section
-      className="change-detail classic-change-detail-skeleton min-w-0 rounded-lg border border-border bg-bg shadow-raised"
+    <DashboardChangeDetail
+      className="change-detail classic-change-detail-skeleton"
       aria-label="正在加载 Classic 变更详情"
       aria-busy="true"
+      title={<DashboardLineSkeleton label="正在加载 Classic 变更标题" rows={2} titleWidth="38%" />}
     >
-      <div className="border-b border-border-soft px-5 py-5">
-        <DashboardLineSkeleton label="正在加载 Classic 变更标题" rows={2} titleWidth="38%" />
-      </div>
-      <div className="space-y-6 p-5">
-        <DashboardLineSkeleton label="正在加载 Classic 变更内容" rows={7} titleWidth="24%" />
-      </div>
-    </section>
-  );
-}
-
-function ClassicWorkspaceLoadingSidePanel() {
-  return (
-    <aside
-      className="classic-side-panel-skeleton space-y-5"
-      aria-label="正在加载 Classic 变更状态"
-      aria-busy="true"
-    >
-      {[3, 2, 3].map((rows, index) => (
-        <section key={index} className="rounded-lg bg-bg p-5 shadow-raised">
-          <DashboardLineSkeleton
-            label={`正在加载 Classic 侧栏第 ${index + 1} 组`}
-            rows={rows}
-            titleWidth="42%"
-          />
-        </section>
-      ))}
-    </aside>
+      <DashboardLineSkeleton label="正在加载 Classic 变更内容" rows={7} titleWidth="24%" />
+    </DashboardChangeDetail>
   );
 }
 
@@ -3444,7 +3539,7 @@ function DashboardLineSkeleton({ className = '', label, rows = 4, titleWidth = n
 
 function LoadingState() {
   return (
-    <div className="dashboard-loading-state mx-auto max-w-dashboard rounded-lg bg-bg p-8 shadow-raised">
+    <div className="dashboard-loading-state mx-auto rounded-lg bg-bg p-8 shadow-raised">
       <DashboardLineSkeleton label="正在加载 Dashboard" rows={6} titleWidth="28%" />
     </div>
   );
@@ -3757,7 +3852,7 @@ async function fetchDashboardChangeDetail(projectId, changeId, signal) {
 
 async function loadDemoSnapshot() {
   const module = await import('../demo.js');
-  return withDemoArtifactPreviews(module.DEMO_SNAPSHOT);
+  return withDemoArtifactPreviews(module.DEMO_SNAPSHOT, module.DEMO_CLASSIC_PHASE_PROGRESS);
 }
 
 async function loadDemoPluginPages() {
@@ -3770,7 +3865,7 @@ async function loadDemoProjectConfig() {
   return structuredClone(module.DEMO_PROJECT_CONFIG);
 }
 
-function withDemoArtifactPreviews(snapshot) {
+function withDemoArtifactPreviews(snapshot, phaseProgress) {
   const hydrateChange = (change) => {
     const grouped = change.artifacts?.grouped ?? [];
     const previews = grouped.map((artifact) => {
@@ -3788,7 +3883,14 @@ function withDemoArtifactPreviews(snapshot) {
         content,
       };
     });
-    return { ...change, artifactPreviews: previews };
+    return {
+      ...change,
+      artifactPreviews: previews,
+      demoPhaseProgress:
+        phaseProgress[
+          change.status === 'archived' ? 'archived' : (change.demoScenario ?? change.name)
+        ],
+    };
   };
 
   return {
@@ -4018,174 +4120,11 @@ async function copyText(text) {
 const dashboardRoot = document.getElementById('root');
 const embeddedDashboardBuild = globalThis.__COMET_DASHBOARD_EMBED__ === true;
 if (dashboardRoot && !embeddedDashboardBuild) createRoot(dashboardRoot).render(<App />);
-function AntSidebar({
-  embedded = false,
-  open,
-  collapsed,
-  workflow,
-  workflowSource,
-  onWorkflow,
-  pluginPages,
-  pluginSelection,
-  settingsOpen,
-  onSettings,
-  onPluginSelect,
-  onCollapse,
-  onExpand,
-  onClose,
-}) {
-  const navigation = (
-    <>
-      <div className="dashboard-sidebar-group">
-        <div
-          className="dashboard-sidebar-label"
-          aria-label={workflowSource ? `项目默认工作流来源：${workflowSource}` : undefined}
-        >
-          <span>工作流</span>
-          {workflowSource ? (
-            <Tag color={workflowSource === 'configured' ? 'success' : 'warning'}>
-              {workflowSource}
-            </Tag>
-          ) : null}
-        </div>
-        <Menu
-          className="dashboard-sidebar-menu dashboard-workflow-menu"
-          mode="inline"
-          inlineCollapsed={collapsed}
-          inlineIndent={12}
-          selectedKeys={pluginSelection || !workflow ? [] : [workflow]}
-          items={[
-            { key: 'classic', icon: <BranchesOutlined />, label: 'Classic 工作流' },
-            { key: 'native', icon: <FileTextOutlined />, label: 'Native 工作流' },
-          ]}
-          onClick={({ key }) => {
-            onPluginSelect(null);
-            onWorkflow(key);
-            onClose();
-          }}
-        />
-      </div>
-      <div className="dashboard-sidebar-group">
-        <div className="dashboard-sidebar-label">插件中心</div>
-        <Menu
-          className="dashboard-sidebar-menu dashboard-plugin-menu"
-          mode="inline"
-          inlineCollapsed={collapsed}
-          inlineIndent={12}
-          selectedKeys={pluginSelection ? [pluginSelection] : []}
-          items={pluginPages.map((page) => {
-            const statusLabel = page.globallyDisabled
-              ? '停用'
-              : page.projectPaused
-                ? '暂停'
-                : page.status === 'disabled'
-                  ? '停用'
-                  : null;
-            return {
-              key: page.pluginId,
-              disabled: Boolean(page.pending),
-              icon:
-                page.pluginId === 'comet.personal-memory' ? (
-                  <BulbOutlined />
-                ) : page.pluginId === 'comet.project-knowledge' ? (
-                  <DatabaseOutlined />
-                ) : (
-                  <SafetyCertificateOutlined />
-                ),
-              label: (
-                <span className={`dashboard-plugin-menu-item${page.pending ? ' is-loading' : ''}`}>
-                  <span>{page.label}</span>
-                  {statusLabel ? <Badge status="default" text={statusLabel} /> : null}
-                </span>
-              ),
-            };
-          })}
-          onClick={({ key }) => {
-            onPluginSelect(key);
-            onClose();
-          }}
-        />
-      </div>
-    </>
-  );
-  const settingsButton = (
-    <button
-      type="button"
-      className={`dashboard-sidebar-settings${settingsOpen ? ' is-active' : ''}`}
-      aria-pressed={settingsOpen}
-      aria-label="设置"
-      title="设置"
-      onClick={() => {
-        onSettings();
-        onClose();
-      }}
-    >
-      <SettingOutlined aria-hidden="true" />
-      <span className="dashboard-sidebar-settings-label">设置</span>
-    </button>
-  );
-  return (
-    <>
-      <Layout.Sider
-        className="dashboard-sidebar !hidden !bg-bg lg:!block"
-        width={228}
-        collapsed={collapsed}
-        collapsedWidth={64}
-        collapsible
-        trigger={null}
-        theme="light"
-      >
-        <div className="dashboard-sidebar-content flex h-full flex-col">
-          <div className="dashboard-sidebar-brand flex items-center gap-2">
-            <img
-              src={embedded ? '/assets/dashboard-website-demo/favicon.png' : '/favicon.png'}
-              alt="Comet"
-              className="size-7 rounded-[7px]"
-            />
-            <div className="dashboard-sidebar-brand-copy" aria-hidden={collapsed}>
-              <strong>Comet Dashboard</strong>
-              <div className="text-xs text-meta">Agent 工作台</div>
-            </div>
-            <Tooltip title={collapsed ? '展开侧边栏' : '收起侧边栏'} placement="right">
-              <Button
-                className="dashboard-sidebar-collapse"
-                type="text"
-                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={collapsed ? onExpand : onCollapse}
-                aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
-              />
-            </Tooltip>
-          </div>
-          <div className="dashboard-sidebar-navigation">{navigation}</div>
-          <div className="dashboard-sidebar-footer">
-            <div
-              className="dashboard-sidebar-label dashboard-sidebar-footer-label"
-              aria-hidden={collapsed}
-            >
-              系统
-            </div>
-            {settingsButton}
-          </div>
-        </div>
-      </Layout.Sider>
-      <Drawer title="Comet 工作台" placement="left" open={open} onClose={onClose} size={280}>
-        <div className="dashboard-mobile-navigation">
-          {navigation}
-          <div className="dashboard-mobile-settings">
-            <div className="dashboard-sidebar-label">系统</div>
-            {settingsButton}
-          </div>
-        </div>
-      </Drawer>
-    </>
-  );
-}
-
 function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onInvoke }) {
   if (loading && !page) return <LoadingState />;
   if (error && !page) {
     return (
-      <div className="mx-auto max-w-dashboard">
+      <div className="mx-auto">
         <SectionHead title="插件中心" hint="页面暂时不可用" />
         <Alert
           type="error"
@@ -4223,7 +4162,7 @@ function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onI
   }
   if (page.status === 'disabled') {
     return (
-      <div className="mx-auto max-w-dashboard">
+      <div className="mx-auto">
         <SectionHead title={page.label} hint="插件中心" />
         <Alert
           type="info"
@@ -4248,7 +4187,7 @@ function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onI
   return (
     <>
       {syncError}
-      <div className="mx-auto max-w-dashboard">
+      <div className="mx-auto">
         <SectionHead title={page.label} hint="插件中心" />
         <AntCard size="small">该插件暂未提供可视化中心页。</AntCard>
       </div>
@@ -5757,7 +5696,7 @@ function ProjectKnowledgeRegistry({
             <Tooltip title="刷新项目知识">
               <Button
                 type="text"
-                icon={<ReloadOutlined />}
+                icon={<ReferenceIcon name="refresh" />}
                 aria-label="刷新项目知识"
                 onClick={() => onInvoke('refresh', {})}
               />
@@ -6135,7 +6074,7 @@ function ProjectKnowledgeInspector({
           </Button>
           {record.state === 'trial' && (
             <Button
-              icon={<ReloadOutlined />}
+              icon={<ReferenceIcon name="refresh" />}
               disabled={readOnly}
               onClick={() => onInvoke('refresh', { id: record.id })}
             >
@@ -8226,7 +8165,7 @@ function personalMemoryLearningDetails(learning = {}, status = {}) {
   return details.join(' · ');
 }
 
-function AntSummaryCards({ snapshot }) {
+function AntSummaryCards({ snapshot, numberIdentity, numberEntryKey }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const cards = [
     ['活跃变更', snapshot.summary.activeChanges, '当前 Classic workflow', '进行中', FlagOutlined],
@@ -8242,6 +8181,8 @@ function AntSummaryCards({ snapshot }) {
       snapshot.summary.verifyFailed,
       '验证结果',
       snapshot.summary.verifyFailed ? '阻塞' : '健康',
+      SearchOutlined,
+      ReloadOutlined,
       SafetyCertificateOutlined,
     ],
     [
@@ -8266,6 +8207,8 @@ function AntSummaryCards({ snapshot }) {
           key={title}
           title={title}
           value={value}
+          numberIdentity={numberIdentity}
+          numberEntryKey={numberEntryKey}
           note={note}
           status={status}
           icon={Icon}
@@ -8278,35 +8221,63 @@ function AntSummaryCards({ snapshot }) {
   );
 }
 
-function AntSummaryCard({ title, value, note, status, icon: Icon, tone, selected, onClick }) {
-  // 进入页面或数值变化时，从 0 滚动到目标值；数值不变则保持，避免每次自动刷新都重滚。
-  const animatedValue = useAnimatedNumber(value, 850, value);
+function AntSummaryCard({
+  title,
+  value,
+  numberIdentity,
+  numberEntryKey,
+  note,
+  status,
+  icon: Icon,
+  tone,
+  selected,
+  onClick,
+}) {
+  const displayedValue = useNumberTransition(value, numberIdentity, numberEntryKey);
   return (
-    <button
-      type="button"
+    <AntCard
+      size="small"
+      role="button"
+      tabIndex={0}
       aria-pressed={selected}
+      aria-label={`${title} ${value} ${note} ${status}`}
       className={`dashboard-overview-summary-card dashboard-summary-card dashboard-summary-metric-cell ${tone} ${selected ? 'dashboard-summary-primary' : ''}`}
       onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
     >
       <div className="dashboard-summary-card-top">
-        <div className="min-w-0">
-          <div className="text-[13px] font-medium text-muted">{title}</div>
-          <div className="dashboard-summary-metric mt-1 text-[28px] font-semibold leading-none tabular-nums">
-            {Math.round(animatedValue)}
-          </div>
-        </div>
-        <span className="dashboard-summary-icon" aria-hidden="true">
-          <Icon />
-        </span>
+        <Statistic
+          title={
+            <>
+              <div className="dashboard-summary-title">
+                <span className="dashboard-summary-icon" aria-hidden="true">
+                  <Icon />
+                </span>
+                <span>{title}</span>
+                <span className="dashboard-summary-status">{status}</span>
+              </div>
+              <div className="dashboard-summary-note">{note}</div>
+            </>
+          }
+          value={displayedValue}
+          classNames={{ content: 'dashboard-summary-metric' }}
+          styles={{ content: { minWidth: `${value.toLocaleString('en-US').length}ch` } }}
+        />
       </div>
-      <span className="dashboard-summary-status">{status}</span>
-      <div className="mt-2 truncate text-[11px] text-meta">{note}</div>
-    </button>
+    </AntCard>
   );
 }
 
 function AntChangesExplorer({
   visible,
+  useDemo,
+  numberIdentity,
+  numberEntryKey,
   total,
   selectedId,
   tab,
@@ -8323,21 +8294,21 @@ function AntChangesExplorer({
   ].map(([key, label]) => ({ key, label }));
   return (
     <AntCard
-      className="classic-changes-explorer min-w-0"
-      title={
-        <span>
-          Changes Explorer <Badge count={total} showZero className="ml-2" />
-        </span>
-      }
+      className="dashboard-changes-explorer classic-changes-explorer min-w-0"
+      title={<DashboardExplorerTitle count={total} />}
     >
       <Tabs
         activeKey={tab}
         onChange={onTab}
+        tabBarGutter={24}
         items={items.map((item) => ({
           ...item,
           children: (
             <DashboardChangeList
               visible={visible}
+              useDemo={useDemo}
+              numberIdentity={numberIdentity}
+              numberEntryKey={numberEntryKey}
               selectedId={selectedId}
               onSelect={onSelect}
               hasMore={hasMore}
@@ -8383,7 +8354,17 @@ function updateSnapshotChangeRows(snapshot, status, items) {
   };
 }
 
-function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoading, onLoadMore }) {
+function DashboardChangeList({
+  visible,
+  useDemo,
+  numberIdentity,
+  numberEntryKey,
+  selectedId,
+  onSelect,
+  hasMore,
+  pageLoading,
+  onLoadMore,
+}) {
   const listRef = useRef(null);
   const sentinelRef = useRef(null);
 
@@ -8425,43 +8406,55 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
         )
       ) : (
         visible.map((change) => {
-          const statusPresentation = classicChangeStatusPresentation(change);
+          const statusPresentation = classicChangeStatusPresentation(
+            change,
+            useDemo ? change.demoPhaseProgress : undefined,
+          );
+          const changeNumberIdentity = JSON.stringify([numberIdentity, dashboardChangeKey(change)]);
+          const showTaskCount =
+            Number.isInteger(change.tasks?.completed) &&
+            Number.isInteger(change.tasks?.total) &&
+            change.tasks.completed >= 0 &&
+            change.tasks.total >= change.tasks.completed &&
+            (change.tasks.total > 0 || change.artifacts?.tasks === true);
           return (
-            <div
-              key={dashboardChangeKey(change)}
-              className={`dashboard-change-list-item ${dashboardChangeKey(change) === selectedId ? 'selected' : ''} px-2`}
-            >
-              <Button
-                className={`dashboard-change-row ${dashboardChangeKey(change) === selectedId ? 'dashboard-change-row-selected' : ''}`}
-                type="text"
-                block
-                onClick={() => onSelect(dashboardChangeKey(change))}
+            <div key={dashboardChangeKey(change)} className="dashboard-change-list-item">
+              <DashboardExplorerRowTooltip
+                name={change.displayName}
+                status={statusPresentation.label}
+                workspace={change.workspace && !change.workspace.current ? change.workspace : null}
               >
-                <div className="flex w-full items-center gap-2.5 text-left">
-                  <div className="min-w-0 flex-1">
-                    <strong className="block truncate">{change.displayName}</strong>
-                    <span className="mt-0.5 block truncate whitespace-nowrap text-xs text-meta">
-                      {phaseLabel(change.phase)} · {change.tasks.completed}/{change.tasks.total}
-                    </span>
-                    {change.workspace && !change.workspace.current ? (
-                      <span className="dashboard-workspace-label mt-1 inline-flex max-w-full truncate">
-                        {change.workspace.label}
-                      </span>
-                    ) : null}
-                    <Progress
-                      percent={
-                        change.tasks.total
-                          ? Math.round((change.tasks.completed / change.tasks.total) * 100)
-                          : 0
-                      }
-                      className="mt-1"
-                      size="small"
-                      showInfo={false}
-                    />
-                  </div>
-                  <Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>
-                </div>
-              </Button>
+                <Button
+                  className={`dashboard-change-row dashboard-explorer-row ${dashboardChangeKey(change) === selectedId ? 'dashboard-change-row-selected selected' : ''}`}
+                  type="text"
+                  block
+                  aria-pressed={dashboardChangeKey(change) === selectedId}
+                  onClick={() => onSelect(dashboardChangeKey(change))}
+                >
+                  <DashboardExplorerRowContent
+                    name={change.displayName}
+                    count={
+                      showTaskCount ? (
+                        <>
+                          任务{' '}
+                          <AnimatedNumber
+                            value={change.tasks.completed}
+                            identity={changeNumberIdentity}
+                            numberEntryKey={numberEntryKey}
+                          />
+                          /
+                          <AnimatedNumber
+                            value={change.tasks.total}
+                            identity={changeNumberIdentity}
+                            numberEntryKey={numberEntryKey}
+                          />
+                        </>
+                      ) : null
+                    }
+                    status={<Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>}
+                  />
+                </Button>
+              </DashboardExplorerRowTooltip>
             </div>
           );
         })
@@ -8481,25 +8474,21 @@ function DashboardChangeList({ visible, selectedId, onSelect, hasMore, pageLoadi
   );
 }
 
-function AntChangeDetail({ change, onPreview }) {
+function AntChangeDetail({ change, selectedId, useDemo, onPreview }) {
   const [copied, setCopied] = useState(false);
-  const statusPresentation = classicChangeStatusPresentation(change);
-  const current = change.status === 'archived' ? 'archive' : change.phase;
-  const currentIndex = Math.max(
-    0,
-    PHASES.findIndex(([key]) => key === current),
-  );
+  const phaseProgress = useDemo ? change.demoPhaseProgress : undefined;
+  const statusPresentation = classicChangeStatusPresentation(change, phaseProgress);
   return (
-    <AntCard
-      className="change-detail min-w-0"
+    <DashboardChangeDetail
+      className="change-detail"
       title={
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate">{change.displayName}</span>
+        <>
+          <span className="classic-change-title">当前变更 · {change.displayName}</span>
           <Tooltip title="复制 Change 名称">
             <Button
               type="text"
               size="small"
-              icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+              icon={copied ? <CheckOutlined /> : <ReferenceIcon name="copy" />}
               aria-label={copied ? '已复制 Change 名称' : '复制 Change 名称'}
               onClick={() =>
                 copyText(change.name)
@@ -8512,34 +8501,42 @@ function AntChangeDetail({ change, onPreview }) {
               }
             />
           </Tooltip>
-        </div>
+        </>
       }
       extra={<Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>}
+      meta={
+        <>
+          <span>{change.workflow ?? '—'}</span>
+          <span>更新于 {formatTimestamp(change.updatedAt)}</span>
+          <span>{relativeChangePath(change)}</span>
+        </>
+      }
     >
-      <div className="mb-4 text-xs text-meta">
-        {change.workflow ?? '—'} · 更新于 {formatTimestamp(change.updatedAt)} ·{' '}
-        {relativeChangePath(change)}
-      </div>
       <WorkflowPhaseTrack
+        key={JSON.stringify([selectedId, dashboardChangeKey(change)])}
         phases={PHASES}
-        currentIndex={currentIndex}
-        archived={change.status === 'archived'}
-        currentPhaseRunning={isClassicPhaseRunning(change)}
+        phaseStatuses={classicPhaseStatuses(change, phaseProgress)}
+        phaseIconStatuses={classicPhaseIconStatuses(change, phaseProgress)}
+        currentPhase={change.status === 'archived' ? 'archive' : change.phase}
+        currentPhaseRunning={
+          selectedId === dashboardChangeKey(change) && statusPresentation.running
+        }
+        errorLabels={{ verify: '验证失败' }}
+        currentPhaseLabel={statusPresentation.label}
         ariaLabel="Classic 生命周期阶段"
       />
-      <Alert
-        className="dashboard-next-step-alert"
-        type="info"
-        showIcon
-        title={change.next?.command ? `下一步：${change.next.command}` : '该变更没有待执行的下一步'}
-        description={change.next?.description}
-      />
-      <div className="change-detail-panels grid min-w-0 gap-4">
-        <AntCard size="small" title="关键产物">
-          <ArtifactList change={change} onPreview={onPreview} />
-        </AntCard>
+      <div className="change-guidance">
+        {change.status === 'archived' ? (
+          <ArchiveSummary change={change} />
+        ) : (
+          <NextAction change={change} />
+        )}
+        <RiskCard change={change} />
+      </div>
+      <div className="change-detail-panels grid min-w-0">
+        <ArtifactList change={change} onPreview={onPreview} />
         <TaskProgress change={change} />
       </div>
-    </AntCard>
+    </DashboardChangeDetail>
   );
 }

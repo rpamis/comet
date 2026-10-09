@@ -31,6 +31,7 @@ const buildEntryRuntime = () => {
 };
 
 const buildDashboardFrontend = () => {
+  runTsc(['--project', 'domains/dashboard/web/tsconfig.json', '--noEmit']);
   const vitePath = path.join(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js');
   execFileSync(
     process.execPath,

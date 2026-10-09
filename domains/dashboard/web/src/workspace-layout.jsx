@@ -1,56 +1,89 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Card, Tooltip } from 'antd';
+import { FolderOutlined } from '@ant-design/icons';
+import { ChangeCountBadge } from './number-transition.jsx';
 
-const WORKSPACE_GRID_CLASS =
-  'dashboard-workspace-region grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]';
-
-export function DashboardWorkspaceRegion({
-  left,
-  center,
-  right,
-  leftClassName = '',
-  stableFrame = false,
-}) {
-  const centerRef = useRef(null);
-  const [centerHeight, setCenterHeight] = useState(0);
-
-  useLayoutEffect(() => {
-    if (stableFrame) {
-      setCenterHeight(0);
-      return undefined;
-    }
-
-    const element = centerRef.current;
-    if (!element) return undefined;
-
-    const measure = () => {
-      const nextHeight = Math.ceil(element.getBoundingClientRect().height);
-      setCenterHeight((current) => (current === nextHeight ? current : nextHeight));
-    };
-
-    measure();
-    if (typeof ResizeObserver === 'undefined') return undefined;
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [stableFrame]);
-
-  const style = centerHeight > 0 ? { '--dashboard-center-height': `${centerHeight}px` } : undefined;
+export function DashboardExplorerRowTooltip({ name, status, workspace, message, children }) {
+  const [stacked, setStacked] = useState(
+    () => window.matchMedia?.('(max-width: 760px)').matches ?? false,
+  );
+  useEffect(() => {
+    const query = window.matchMedia?.('(max-width: 760px)');
+    const update = () => setStacked(query?.matches ?? false);
+    update();
+    query?.addEventListener('change', update);
+    return () => query?.removeEventListener('change', update);
+  }, []);
 
   return (
-    <div
-      className={`${WORKSPACE_GRID_CLASS} ${stableFrame ? 'dashboard-workspace-region-stable' : ''}`.trim()}
-      style={style}
+    <Tooltip
+      placement={stacked ? 'top' : 'right'}
+      trigger={['hover', 'focus']}
+      styles={{ root: { pointerEvents: 'none' } }}
+      title={
+        <>
+          <div>{name}</div>
+          <div>{status}</div>
+          {workspace && (
+            <div>{[workspace.label, workspace.branch].filter(Boolean).join(' · ')}</div>
+          )}
+          {message && <div>{message}</div>}
+        </>
+      }
     >
-      <div className={`dashboard-workspace-side dashboard-workspace-left ${leftClassName}`.trim()}>
-        {left}
-      </div>
-      <div ref={centerRef} className="dashboard-workspace-center min-w-0">
-        {center}
-      </div>
-      <div className="dashboard-workspace-side dashboard-workspace-right xl:col-start-2 2xl:col-start-auto">
-        {right}
-      </div>
+      {children}
+    </Tooltip>
+  );
+}
+
+export function DashboardExplorerRowContent({ name, count, status }) {
+  return (
+    <>
+      <FolderOutlined className="dashboard-explorer-row-icon" aria-hidden="true" />
+      <span className="dashboard-explorer-row-body">
+        <span className="dashboard-explorer-row-name">{name}</span>
+        {count && <span className="dashboard-explorer-row-count">{count}</span>}
+      </span>
+      <span className="dashboard-explorer-row-status">{status}</span>
+    </>
+  );
+}
+
+export function DashboardExplorerTitle({ count, badgeClassName = '' }) {
+  return (
+    <h3 className="dashboard-explorer-title">
+      Changes Explorer
+      <ChangeCountBadge
+        count={count}
+        className={`dashboard-explorer-count ${badgeClassName}`.trim()}
+      />
+    </h3>
+  );
+}
+
+export function DashboardChangeDetail({ title, meta, extra, className = '', children, ...props }) {
+  return (
+    <Card
+      {...props}
+      className={`dashboard-change-detail min-w-0 ${className}`.trim()}
+      title={
+        <div className="dashboard-change-detail-heading">
+          <div className="dashboard-change-detail-title">{title}</div>
+          {meta && <div className="dashboard-change-detail-meta">{meta}</div>}
+        </div>
+      }
+      extra={extra}
+    >
+      {children}
+    </Card>
+  );
+}
+
+export function DashboardWorkspaceRegion({ left, center, leftClassName = '' }) {
+  return (
+    <div className="dashboard-workspace-region dashboard-master-detail">
+      <div className={`dashboard-workspace-left ${leftClassName}`.trim()}>{left}</div>
+      <div className="dashboard-workspace-center min-w-0">{center}</div>
     </div>
   );
 }

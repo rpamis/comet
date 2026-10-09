@@ -3,6 +3,36 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 describe('dashboard demo data', () => {
+  it('declares Classic execution and completion separately from the API snapshot', async () => {
+    const { DEMO_SNAPSHOT, DEMO_CLASSIC_PHASE_PROGRESS } =
+      await import('../../../domains/dashboard/web/demo.js');
+    const { classicChangeStatusPresentation, classicPhaseStatuses } =
+      await import('../../../domains/dashboard/web/src/classic-status-presentation.js');
+    const changes = [...DEMO_SNAPSHOT.changes.active, ...DEMO_SNAPSHOT.changes.archived];
+    for (const change of changes) {
+      expect(change).not.toHaveProperty('demoPhaseProgress');
+      const progress =
+        DEMO_CLASSIC_PHASE_PROGRESS[
+          change.status === 'archived' ? 'archived' : (change.demoScenario ?? change.name)
+        ];
+      expect(progress.currentPhase).toBe(change.phase);
+      expect(classicPhaseStatuses(change, progress)).toEqual(progress.phaseStatuses);
+      expect(classicChangeStatusPresentation(change, progress)).toEqual({
+        label: progress.currentPhaseLabel,
+        tone: progress.tone,
+        running: progress.currentPhaseRunning,
+      });
+    }
+    expect(DEMO_CLASSIC_PHASE_PROGRESS['add-auth-rate-limiting'].phaseStatuses).toEqual({
+      open: 'finish',
+      design: 'finish',
+      build: 'process',
+      verify: 'wait',
+      archive: 'wait',
+    });
+    expect(DEMO_CLASSIC_PHASE_PROGRESS['add-auth-rate-limiting'].currentPhaseRunning).toBe(true);
+  });
+
   it('uses eval readiness wording in the user-visible Skill Creator demo', async () => {
     const source = await fs.readFile(path.resolve('domains/dashboard/web/demo.js'), 'utf8');
 
