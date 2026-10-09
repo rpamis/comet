@@ -269,7 +269,7 @@ describe('Supervisor integration check execution', () => {
         state,
         name: 'core',
         checks: [],
-        checkPlans: [{ ...plan('interrupted', 'setInterval(() => {}, 25)', []), timeoutMs: 50 }],
+        checkPlans: [{ ...plan('interrupted', 'setInterval(() => {}, 25)', []), timeoutMs: 5000 }],
       }),
     ).rejects.toThrow('was interrupted');
 

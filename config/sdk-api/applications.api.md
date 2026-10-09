@@ -78,6 +78,54 @@ export interface ApplicationEvaluationEvidence {
 }
 
 // @public (undocumented)
+export interface ApplicationHostIntegrationFile {
+    // (undocumented)
+    beforeHash: string | null;
+    // (undocumented)
+    contentHash: string;
+    // (undocumented)
+    operation: 'create' | 'update' | 'unchanged' | 'conflict';
+    // (undocumented)
+    path: string;
+    // (undocumented)
+    role: 'rule' | 'router' | 'hook-config';
+}
+
+// @public (undocumented)
+export interface ApplicationHostIntegrationPreview {
+    // (undocumented)
+    conflicts: string[];
+    // (undocumented)
+    digest: string;
+    // (undocumented)
+    files: ApplicationHostIntegrationFile[];
+    // (undocumented)
+    hook: ApplicationHostIntegrationState;
+    // (undocumented)
+    noFilesWritten: true;
+    // (undocumented)
+    platformId: string;
+    // (undocumented)
+    rule: ApplicationHostIntegrationState;
+    // (undocumented)
+    scope: 'project' | 'user';
+}
+
+// @public (undocumented)
+export interface ApplicationHostIntegrationState {
+    // (undocumented)
+    activationRequired?: string[];
+    // (undocumented)
+    executionVerified?: false;
+    // (undocumented)
+    path?: string;
+    // (undocumented)
+    reason?: string;
+    // (undocumented)
+    status: 'available' | 'unsupported' | 'conflict';
+}
+
+// @public (undocumented)
 export interface ApplicationIdentity {
     // (undocumented)
     base: ApplicationBase;
@@ -110,6 +158,8 @@ export interface ApplicationInstallPreview {
     evaluation: ApplicationEvaluationEvidence;
     // (undocumented)
     files: string[];
+    // (undocumented)
+    hostIntegration?: ApplicationHostIntegrationPreview[];
     // (undocumented)
     hostSkills: Array<{
         name: string;
@@ -686,6 +736,7 @@ export function installWorkflowApplication(options: ApplicationDeliveryOptions &
     upgrade?: boolean;
     confirmationHash: string;
 }): Promise<{
+    hostIntegration?: ApplicationHostIntegrationPreview[] | undefined;
     file: string;
     retainedVersions: boolean;
     schema: "comet.workflow.application.install.v1";
@@ -1274,6 +1325,7 @@ export function uninstallWorkflowApplication(options: ApplicationDeliveryOptions
     previous: InstalledApplication | null;
     retainedVersions: boolean;
     retainedDependencies: boolean;
+    retainedHostIntegration: boolean;
     removesDefaultEntryOnly: boolean;
     removedEntries: {
         root: string;
@@ -1294,6 +1346,7 @@ export function uninstallWorkflowApplication(options: ApplicationDeliveryOptions
     previous: InstalledApplication | null;
     retainedVersions: boolean;
     retainedDependencies: boolean;
+    retainedHostIntegration: boolean;
     removesDefaultEntryOnly: boolean;
     removedEntries: {
         root: string;
@@ -1343,6 +1396,7 @@ export interface WorkflowApplicationManifest {
     // (undocumented)
     id: string;
     module: string;
+    rule?: string;
     // (undocumented)
     runtimeVersion: string;
     // (undocumented)

@@ -89,7 +89,7 @@ describe('Native check owner recovery', () => {
       const command = `require('node:fs').writeFileSync(${JSON.stringify(started)}, String(process.pid)); require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' }); setTimeout(() => process.exit(0), 1600)`;
       await build({
         stdin: {
-          contents: `const { executeNativeCheck } = require(${JSON.stringify(source)}); executeNativeCheck({projectRoot:${JSON.stringify(directory)},runtimeDir:${JSON.stringify(path.join(directory, 'runtime'))},operationId:'owner',plan:${JSON.stringify({ id: 'check', name: 'owner', executable: process.execPath, argv: ['-e', command], cwdRef: '.', timeoutMs: 500, repeatable: false })}}).catch(() => process.exitCode = 1);`,
+          contents: `const { executeNativeCheck } = require(${JSON.stringify(source)}); executeNativeCheck({projectRoot:${JSON.stringify(directory)},runtimeDir:${JSON.stringify(path.join(directory, 'runtime'))},operationId:'owner',plan:${JSON.stringify({ id: 'check', name: 'owner', executable: process.execPath, argv: ['-e', command], cwdRef: '.', timeoutMs: 5000, repeatable: false })}}).catch(() => process.exitCode = 1);`,
           resolveDir: process.cwd(),
         },
         outfile: bundle,
@@ -113,10 +113,10 @@ describe('Native check owner recovery', () => {
     const marker = path.join(directory, 'timer-late');
     const started = path.join(directory, 'timer-started');
     const bundle = path.join(directory, 'blocked-owner.cjs');
-    const command = `require('node:fs').writeFileSync(${JSON.stringify(started)}, 'started'); setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'late'), 800); setTimeout(() => process.exit(0), 1600)`;
+    const command = `require('node:fs').writeFileSync(${JSON.stringify(started)}, 'started'); setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'late'), 5500); setTimeout(() => process.exit(0), 8000)`;
     await build({
       stdin: {
-        contents: `const { executeNativeCheck } = require(${JSON.stringify(path.resolve('domains/comet-native/native-check-executor.ts'))}); executeNativeCheck({projectRoot:${JSON.stringify(directory)},runtimeDir:${JSON.stringify(path.join(directory, 'runtime'))},operationId:'blocked-owner',plan:${JSON.stringify({ id: 'check', name: 'blocked owner', executable: process.execPath, argv: ['-e', command], cwdRef: '.', timeoutMs: 500, repeatable: false })}}).catch(() => {}); setTimeout(() => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,1200),150);`,
+        contents: `const { executeNativeCheck } = require(${JSON.stringify(path.resolve('domains/comet-native/native-check-executor.ts'))}); executeNativeCheck({projectRoot:${JSON.stringify(directory)},runtimeDir:${JSON.stringify(path.join(directory, 'runtime'))},operationId:'blocked-owner',plan:${JSON.stringify({ id: 'check', name: 'blocked owner', executable: process.execPath, argv: ['-e', command], cwdRef: '.', timeoutMs: 5000, repeatable: false })}}).catch(() => {}); const poll=setInterval(()=>{if(require('node:fs').existsSync(${JSON.stringify(started)})){clearInterval(poll);Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,6000)}},25);`,
         resolveDir: process.cwd(),
       },
       outfile: bundle,
@@ -128,7 +128,7 @@ describe('Native check owner recovery', () => {
     const owner = spawn(process.execPath, [bundle], { stdio: 'ignore' });
     processes.push(owner);
     await waitForCondition(() => exists(started), 'check did not start', 5000);
-    await sleep(1000);
+    await sleep(6500);
     expect(await exists(marker)).toBe(false);
     await waitForProcessExit(owner);
   });
@@ -184,7 +184,7 @@ describe('Native check owner recovery', () => {
     expect(await exists(marker)).toBe(false);
   });
 
-  it('keeps a surviving group unknown after its supervisor is killed and does not replay it', async () => {
+  it('does not replay a check after its supervisor is killed before completion', async () => {
     const directory = await root();
     const { runtime, run, action } = await claimedRun();
     const registration = await createNativeSdkCheckExecution({
@@ -199,9 +199,9 @@ describe('Native check owner recovery', () => {
       process.execPath,
       [
         '-e',
-        `require('node:fs').writeFileSync(${JSON.stringify(started)}, 'yes'); setTimeout(() => process.exit(0), 1500)`,
+        `require('node:fs').writeFileSync(${JSON.stringify(started)}, String(process.pid)); setTimeout(() => process.exit(0), 25000)`,
       ],
-      { cwd: directory, timeoutMs: 3000 },
+      { cwd: directory, timeoutMs: 10000 },
     );
     processes.push(supervisor.child);
     await registration.register('check', supervisor.child.pid!);
@@ -209,24 +209,37 @@ describe('Native check owner recovery', () => {
     await waitForCondition(() => exists(started), 'check did not start');
     supervisor.child.kill('SIGKILL');
     await waitForProcessExit(supervisor.child);
-    const status = (await inspectNativeSdkCheckExecutions({ projectRoot: directory, run }))[0];
-    expect(status.process).toBe('unknown');
-    expect(status.quiescent).toBe(false);
-    await expect(
-      createNativeSdkCheckExecution({
-        projectRoot: directory,
-        run,
-        action,
-        candidateId: 'candidate',
-        plansHash: 'plans',
-      }),
-    ).rejects.toMatchObject({ code: 'EEXIST' });
-    // 进程仍活着时不得依赖原监管器 PID 消失释放工作区。
-    expect((await runtime.inspect(run.runId)).actions[0].attempt).toBe(1);
+    const checkPid = Number(await fs.readFile(started, 'utf8'));
+    const checkIdentity = await readProcessIdentity(checkPid);
     try {
-      process.kill(-supervisor.child.pid!, 'SIGKILL');
-    } catch {
-      /* 已退出 */
+      if (process.platform !== 'win32') expect(checkIdentity).not.toBeNull();
+      const status = (await inspectNativeSdkCheckExecutions({ projectRoot: directory, run }))[0];
+      expect(status.processBoundary).toBe(
+        process.platform === 'win32' ? 'supervisor-process' : 'process-group',
+      );
+      expect(status.process).toBe(process.platform === 'win32' ? 'dead' : 'unknown');
+      if (process.platform !== 'win32')
+        expect(await readProcessIdentity(checkPid)).toBe(checkIdentity);
+      expect(status.quiescent).toBe(false);
+      await expect(
+        createNativeSdkCheckExecution({
+          projectRoot: directory,
+          run,
+          action,
+          candidateId: 'candidate',
+          plansHash: 'plans',
+        }),
+      ).rejects.toMatchObject({ code: 'EEXIST' });
+      // 进程仍活着时不得依赖原监管器 PID 消失释放工作区。
+      expect((await runtime.inspect(run.runId)).actions[0].attempt).toBe(1);
+    } finally {
+      if (checkIdentity && (await readProcessIdentity(checkPid)) === checkIdentity) {
+        try {
+          process.kill(checkPid, 'SIGKILL');
+        } catch {
+          /* 原检查进程已退出 */
+        }
+      }
     }
     await waitForCondition(
       async () =>

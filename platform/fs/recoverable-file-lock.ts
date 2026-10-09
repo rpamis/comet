@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 
-import { readFileRaceSafe } from './race-safe-read.js';
+import { readFileRaceSafe, RaceSafeReadError } from './race-safe-read.js';
+import { linkWithRetry, unlinkWithRetry } from './transient-retry.js';
 import { inspectProcessLiveness, readProcessIdentity } from '../process/process-identity.js';
 
 export interface RecoverableFileLockOwner {
@@ -202,10 +203,10 @@ async function publish(
       await handle.close();
     }
     await verifyParent(parent);
-    await fs.link(temporary, file);
+    await linkWithRetry(temporary, file);
   } finally {
     await verifyParent(parent);
-    await fs.unlink(temporary).catch((error: NodeJS.ErrnoException) => {
+    await unlinkWithRetry(temporary).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error;
     });
   }
@@ -217,6 +218,25 @@ async function publish(
  * local tickets are ignored, never deleted by a competing process. Unknown remote
  * contenders remain blockers; a timeout never establishes that their owner exited.
  */
+async function coordinatorSnapshot(
+  file: string,
+  deadline: number,
+  retryMs: number,
+): Promise<LockSnapshot | null> {
+  for (;;) {
+    try {
+      return await snapshot(file);
+    } catch (error) {
+      const retryable =
+        (error instanceof RaceSafeReadError && error.reason === 'changed') ||
+        (process.platform === 'win32' &&
+          ['EPERM', 'EACCES', 'EBUSY'].includes((error as NodeJS.ErrnoException).code ?? ''));
+      if (!retryable || performance.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, retryMs));
+    }
+  }
+}
+
 async function withCoordinator<T>(
   file: string,
   owner: RecoverableFileLockOwner,
@@ -224,6 +244,7 @@ async function withCoordinator<T>(
   retryMs: number,
   operation: () => Promise<T>,
 ): Promise<T> {
+  const coordinatorOwner = { ...owner, nonce: randomUUID(), createdAt: Date.now() };
   const parent = await captureParent(file);
   const directory = `${file}.contenders`;
   await verifyParent(parent);
@@ -231,14 +252,14 @@ async function withCoordinator<T>(
   const directoryStat = await fs.lstat(directory);
   if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink())
     throw new Error(`File lock coordinator must be a directory: ${directory}`);
-  const choosing = path.join(directory, `${owner.nonce}.choosing`);
-  const ticketFile = path.join(directory, `${owner.nonce}.ticket`);
-  await publish(choosing, owner);
+  const choosing = path.join(directory, `${coordinatorOwner.nonce}.choosing`);
+  const ticketFile = path.join(directory, `${coordinatorOwner.nonce}.ticket`);
   try {
+    await publish(choosing, coordinatorOwner);
     let highest = 0;
     for (const entry of await fs.readdir(directory)) {
       if (!entry.endsWith('.ticket')) continue;
-      const current = await snapshot(path.join(directory, entry));
+      const current = await coordinatorSnapshot(path.join(directory, entry), deadline, retryMs);
       if (!current) continue;
       const number = current.owner
         ? (JSON.parse(current.content) as { ticket?: number }).ticket
@@ -250,8 +271,8 @@ async function withCoordinator<T>(
     if (!Number.isSafeInteger(highest + 1))
       throw new Error(`File lock coordinator ticket overflow: ${directory}`);
     const ticket = highest + 1;
-    await publish(ticketFile, owner, ticket);
-    await fs.unlink(choosing);
+    await publish(ticketFile, coordinatorOwner, ticket);
+    await unlinkWithRetry(choosing);
     for (;;) {
       let blocked = false;
       for (const entry of await fs.readdir(directory)) {
@@ -260,7 +281,7 @@ async function withCoordinator<T>(
           entry === path.basename(ticketFile)
         )
           continue;
-        const current = await snapshot(path.join(directory, entry));
+        const current = await coordinatorSnapshot(path.join(directory, entry), deadline, retryMs);
         if (!current) {
           blocked = true;
           continue;
@@ -277,7 +298,7 @@ async function withCoordinator<T>(
         const other = (JSON.parse(current.content) as { ticket?: number }).ticket;
         if (!Number.isSafeInteger(other) || other! < 1)
           throw new Error(`Invalid file lock coordinator ticket: ${path.join(directory, entry)}`);
-        if (other! < ticket || (other === ticket && current.owner.nonce < owner.nonce))
+        if (other! < ticket || (other === ticket && current.owner.nonce < coordinatorOwner.nonce))
           blocked = true;
       }
       if (!blocked) {
@@ -292,9 +313,13 @@ async function withCoordinator<T>(
     }
   } finally {
     for (const ownFile of [choosing, ticketFile]) {
-      const current = await snapshot(ownFile);
-      if (current?.owner?.nonce === owner.nonce)
-        await fs.unlink(ownFile).catch((error: NodeJS.ErrnoException) => {
+      const current = await coordinatorSnapshot(
+        ownFile,
+        Math.max(deadline, performance.now() + 1000),
+        retryMs,
+      );
+      if (current?.owner?.nonce === coordinatorOwner.nonce)
+        await unlinkWithRetry(ownFile).catch((error: NodeJS.ErrnoException) => {
           if (error.code !== 'ENOENT') throw error;
         });
     }

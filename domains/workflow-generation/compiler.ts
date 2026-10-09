@@ -18,6 +18,7 @@ import {
   applicationFilesHash,
   readApplicationFiles,
 } from '../workflow-application/skill-adapter.js';
+import { renderApplicationRule } from './application-rule.js';
 
 export interface ApplicationExtensionPlan {
   id: string;
@@ -117,6 +118,7 @@ const planSchema = {
         runtimeVersion: { type: 'string', minLength: 1 },
         entrySkill: { const: 'SKILL.md' },
         module: { type: 'string', minLength: 1 },
+        rule: { const: 'rules/workflow-guard.md' },
         skills: {
           type: 'array',
           items: {
@@ -398,6 +400,7 @@ async function assemblyFiles(
     files[ref] = Buffer.from(text).toString('base64');
   };
   textFile('application.json', canonicalRuntimeJson(manifest) + '\n');
+  if (manifest.rule) textFile(manifest.rule, renderApplicationRule(manifest, plan.workflows));
   textFile(
     'installation.json',
     canonicalRuntimeJson({
@@ -418,6 +421,13 @@ async function assemblyFiles(
     'SKILL.md',
     `---\nname: ${manifest.id}\ndescription: 启动或恢复已确认的 ${manifest.id} 工作流应用。\n---\n\n# ${manifest.id}\n\n固定组合：${compositionHash}\nRuntime：${manifest.runtimeVersion}；基础流程：${manifest.base}。\n\n用 comet runtime dispatch --application-file <本目录>/application.json --project-root <项目> --request <临时JSON> 启动下列流程：\n${plan.workflows.map(({ id, version }) => `- ${id}@${version}`).join('\n')}\n\n查询和恢复使用 --application ${manifest.id} 与原 Run ID，先 inspect 原 Action；保留 attempt、inputHash 和 claimToken。未知执行先核对结果。审批只沿 Runtime 当前 Wait 提交。\n${skillLoading}\n流程与绑定见 application.json，安装与恢复身份见 installation.json。不能以完成字符串代替实际 Schema、候选或工件检查；检查拒绝后保留现场，修正实际产物后继续原动作。\n本包通过组合结构和实际注册实现检查；真实宿主、模型执行与完整业务验收须另行记录。\n`,
   );
+  if (manifest.rule) {
+    const entry = Buffer.from(files['SKILL.md'], 'base64').toString('utf8');
+    files['SKILL.md'] = Buffer.from(
+      entry +
+        `\n执行前读取[应用规则](${manifest.rule})。Rule 与流程和写入声明一起生成；宿主集成通过正式安装预览部署。\n`,
+    ).toString('base64');
+  }
   return files;
 }
 
@@ -489,6 +499,7 @@ export async function prepareWorkflowApplicationPlan(options: {
   dependencyRoot?: string;
 }): Promise<WorkflowApplicationPlan> {
   const plan = parsePlan({ ...options.proposal, workflows: [] }, false);
+  plan.manifest.rule = 'rules/workflow-guard.md';
   const files = await assemblyFiles(plan, options.dependencyRoot);
   plan.workflows = await inspectAssembly(files, options);
   return plan;

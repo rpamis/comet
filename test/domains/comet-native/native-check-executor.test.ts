@@ -72,7 +72,7 @@ describe('Native check executor', () => {
         executable: process.execPath,
         argv: ['-e', 'setInterval(() => {}, 1000)'],
         cwdRef: '.',
-        timeoutMs: 50,
+        timeoutMs: 5_000,
         repeatable: true,
       },
     });
@@ -104,8 +104,8 @@ describe('Native check executor', () => {
   );
 
   it('terminates the complete child process tree after timeout', async () => {
-    const marker = path.join(root, 'late-grandchild.txt');
-    const grandchild = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'late'), 600)`;
+    const marker = path.join(root, 'grandchild-heartbeat.txt');
+    const grandchild = `const fs=require('node:fs');const beat=()=>fs.appendFileSync(${JSON.stringify(marker)}, 'x');beat();setInterval(beat,25)`;
     const parent = `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore', windowsHide: true }); setInterval(() => {}, 1000)`;
     const result = await executeNativeCheck({
       projectRoot: root,
@@ -117,14 +117,16 @@ describe('Native check executor', () => {
         executable: process.execPath,
         argv: ['-e', parent],
         cwdRef: '.',
-        timeoutMs: 100,
+        timeoutMs: 5_000,
         repeatable: true,
       },
     });
-    await new Promise((resolve) => setTimeout(resolve, 900));
-
     expect(result).toMatchObject({ status: 'interrupted', timedOut: true });
-    await expect(fs.stat(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+    // 先证明孙进程实际运行，再核对监管进程返回后已停止写入。
+    const heartbeat = await fs.readFile(marker, 'utf8');
+    expect(heartbeat.length).toBeGreaterThan(0);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(await fs.readFile(marker, 'utf8')).toBe(heartbeat);
   });
 
   it('keeps cwd inside the project and redacts portable argv displays', () => {

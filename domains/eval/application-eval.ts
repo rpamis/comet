@@ -140,9 +140,14 @@ export function normalizeApplicationEvalSettings(value: ApplicationEvalSettings)
   )
     throw new Error('评估配置含未声明字段；凭据只能从当前执行环境注入');
   for (const key of ['agent', 'model', 'judgeAgent', 'judgeModel'] as const) {
+    const identifier = value[key];
+    const pattern =
+      key === 'model' || key === 'judgeModel'
+        ? /^[A-Za-z0-9._:@/+%-]+(?:\[[A-Za-z0-9._+-]+\])?$/u
+        : /^[A-Za-z0-9._:@/+%-]+$/u;
     if (
-      value[key] !== undefined &&
-      (typeof value[key] !== 'string' || !/^[A-Za-z0-9._:@/+%-]{1,160}$/u.test(value[key]!))
+      identifier !== undefined &&
+      (typeof identifier !== 'string' || identifier.length > 160 || !pattern.test(identifier))
     )
       throw new Error(`评估 ${key} 无效`);
   }

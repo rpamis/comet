@@ -8,6 +8,11 @@ import {
   type WorkflowApplicationPlan,
 } from '../../../domains/workflow-generation/index.js';
 import { hashRuntimeValue } from '../../../domains/engine/runtime.js';
+import {
+  exportWorkflowApplication,
+  installWorkflowApplication,
+  type ApplicationInstallPreview,
+} from '../../../domains/workflow-application/index.js';
 
 let root: string;
 beforeEach(async () => {
@@ -40,15 +45,19 @@ const analysis = () => ({
     modules: {},
   },
 });
-async function analyzed(prepare = true) {
+async function analyzed(
+  prepare = true,
+  installTarget = '.comet/creator/exports/weekly-report',
+  host = 'codex',
+) {
   const runtime = createCreatorRuntime(root);
   let run = await runtime.start({
     runId: 'creation-one',
-    workflow: { id: 'comet-creator', version: '1' },
+    workflow: { id: 'comet-creator', version: '3' },
     input: {
       goal: '每周报告先审后发布',
-      installTarget: '.agents/skills/weekly-report',
-      host: 'codex',
+      installTarget,
+      host,
     },
   });
   const action = run.actions[0];
@@ -78,8 +87,247 @@ async function analyzed(prepare = true) {
     ? (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run
     : run;
 }
+
+async function choose(run: Awaited<ReturnType<typeof analyzed>>, choice: string) {
+  const runtime = createCreatorRuntime(root);
+  const wait = run.waits.at(-1)!;
+  await runtime.resolveWait({
+    runId: run.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: `${wait.id}-${choice}`,
+    choice,
+  });
+  return (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run;
+}
+
+it('v3 previews and installs both the full export and the managed project application from one approval', async () => {
+  let run = await analyzed(true, '.comet/creator/exports/report');
+  expect(run.outputs.prepare.value).toMatchObject({
+    plan: { manifest: { rule: 'rules/workflow-guard.md' } },
+  });
+  run = await choose(run, 'approved');
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-eval');
+  run = await choose(run, 'skip');
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-install');
+  expect(run.outputs.preview.value).toMatchObject({
+    target: '.comet/creator/exports/report',
+    distribution: {
+      id: 'weekly-report',
+      scope: 'project',
+      noFilesWritten: true,
+      hostSkills: [{ kind: 'entry', operation: 'create', platforms: ['codex'] }],
+    },
+  });
+  expect(
+    await fs.stat(path.join(root, '.comet/creator/exports/report')).catch(() => null),
+  ).toBeNull();
+  expect(
+    await fs.stat(path.join(root, '.agents/skills/weekly-report')).catch(() => null),
+  ).toBeNull();
+  run = await choose(run, 'approved');
+  expect(run.status).toBe('completed');
+  expect(
+    await fs.readFile(path.join(root, '.comet/creator/exports/report/application.json'), 'utf8'),
+  ).toContain('weekly-report');
+  expect(
+    await fs.readFile(path.join(root, '.agents/skills/weekly-report/SKILL.md'), 'utf8'),
+  ).toContain('weekly-report');
+  expect(run.outputs.install.value).toMatchObject({
+    installation: {
+      id: 'weekly-report',
+      contentHash: (run.outputs.preview.value as { packageHash: string }).packageHash,
+    },
+  });
+  expect((await createCreatorRuntime(root).inspect(run.runId)).status).toBe('completed');
+});
+
+it('v3 rejects platform drift before accepting approval and before writing the export', async () => {
+  let run = await choose(await analyzed(true, '.comet/creator/exports/report'), 'approved');
+  run = await choose(run, 'skip');
+  const runtime = createCreatorRuntime(root);
+  const wait = run.waits.at(-1)!;
+  await fs.mkdir(path.join(root, '.agents/skills/weekly-report'), { recursive: true });
+  await fs.writeFile(path.join(root, '.agents/skills/weekly-report/keep.txt'), 'user content');
+  await expect(
+    runtime.resolveWait({
+      runId: run.runId,
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      decisionId: 'current-user',
+      choice: 'approved',
+    }),
+  ).rejects.toThrow(/冲突|存在|变化/);
+  expect((await runtime.inspect(run.runId)).waits.at(-1)?.status).toBe('pending');
+  expect(
+    await fs.stat(path.join(root, '.comet/creator/exports/report')).catch(() => null),
+  ).toBeNull();
+  expect(await fs.readFile(path.join(root, '.agents/skills/weekly-report/keep.txt'), 'utf8')).toBe(
+    'user content',
+  );
+});
+
+it.each(['revise', 'rejected'])(
+  'v3 rejects an overlapping export and honors %s without writing files',
+  async (choice) => {
+    let run = await choose(await analyzed(true, '.agents/skills/weekly-report'), 'approved');
+    run = await choose(run, 'skip');
+    expect(run.waits.at(-1)?.stepId).toBe('review-install');
+    expect(run.actions.at(-1)).toMatchObject({ stepId: 'preview', status: 'failed' });
+    expect(run.outputs.preview.value).toMatchObject({
+      noFilesWritten: true,
+      reason: expect.stringContaining('重叠'),
+    });
+    expect(
+      await fs.stat(path.join(root, '.agents/skills/weekly-report')).catch(() => null),
+    ).toBeNull();
+    run = await choose(run, choice);
+    if (choice === 'revise')
+      expect(run.actions.at(-1)).toMatchObject({ stepId: 'analyze', status: 'pending' });
+    else {
+      expect(run.status).toBe('completed');
+      expect(run.outputs.stop.value).toMatchObject({ stopped: true });
+    }
+  },
+);
+
+it('v3 preserves a user-owned Rule conflict and can retry a corrected read-only preview', async () => {
+  let run = await choose(
+    await analyzed(true, '.comet/creator/exports/report', 'claude-code'),
+    'approved',
+  );
+  const rule = path.join(root, '.claude/rules/comet-workflow-guard.md');
+  await fs.mkdir(path.dirname(rule), { recursive: true });
+  await fs.writeFile(rule, 'User rule');
+  run = await choose(run, 'skip');
+  expect(run.waits.at(-1)?.stepId).toBe('review-install');
+  expect(run.outputs.preview.value).toMatchObject({
+    noFilesWritten: true,
+    reason: expect.stringMatching(/conflict|冲突/),
+  });
+  expect(await fs.readFile(rule, 'utf8')).toBe('User rule');
+  expect(
+    await fs.stat(path.join(root, '.comet/creator/exports/report')).catch(() => null),
+  ).toBeNull();
+  await fs.unlink(rule);
+  run = await choose(run, 'retry');
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-install');
+  expect(run.outputs.preview.value).toMatchObject({
+    distribution: {
+      hostIntegration: [{ rule: { status: 'available' }, hook: { status: 'available' } }],
+    },
+  });
+  expect(await fs.stat(rule).catch(() => null)).toBeNull();
+  expect(
+    await fs.stat(path.join(root, '.comet/creator/exports/report')).catch(() => null),
+  ).toBeNull();
+});
+
+it('v3 rechecks the platform preview after approval before exporting any files', async () => {
+  let run = await choose(await analyzed(true, '.comet/creator/exports/report'), 'approved');
+  run = await choose(run, 'skip');
+  const runtime = createCreatorRuntime(root);
+  const wait = run.waits.at(-1)!;
+  await runtime.resolveWait({
+    runId: run.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: 'current-user',
+    choice: 'approved',
+  });
+  await fs.mkdir(path.join(root, '.agents/skills/weekly-report'), { recursive: true });
+  await fs.writeFile(path.join(root, '.agents/skills/weekly-report/keep.txt'), 'user content');
+  run = (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run;
+  expect(run.actions.at(-1)).toMatchObject({ stepId: 'install', status: 'unknown' });
+  expect(
+    await fs.stat(path.join(root, '.comet/creator/exports/report')).catch(() => null),
+  ).toBeNull();
+});
+
+it('v3 reconciles a lost install result only when both the export and actual managed installation match', async () => {
+  let run = await choose(await analyzed(true, '.comet/creator/exports/report'), 'approved');
+  run = await choose(run, 'skip');
+  const runtime = createCreatorRuntime(root);
+  const wait = run.waits.at(-1)!;
+  await runtime.resolveWait({
+    runId: run.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: 'approved-install',
+    choice: 'approved',
+  });
+  run = await runtime.next({ runId: run.runId });
+  const action = run.actions.at(-1)!;
+  expect(action.stepId).toBe('install');
+  await runtime.claim({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    executorId: 'creator-local',
+    claimToken: 'actual-install',
+  });
+  const preview = run.outputs.preview.value as unknown as {
+    target: string;
+    packageHash: string;
+    distribution: ApplicationInstallPreview;
+  };
+  const file = (run.outputs.compile.value as { file: string }).file;
+  await exportWorkflowApplication({
+    file,
+    projectRoot: root,
+    destination: path.join(root, preview.target),
+  });
+  await runtime.markUnknown({
+    runId: run.runId,
+    actionId: action.id,
+    attempt: action.attempt,
+    reason: 'lost after export',
+  });
+  const outcome = {
+    actionId: action.id,
+    attempt: action.attempt,
+    inputHash: action.inputHash,
+    claimToken: 'actual-install',
+    outcomeId: 'actual-result',
+    status: 'succeeded' as const,
+    output: {
+      target: preview.target,
+      contentHash: preview.packageHash,
+      installation: { id: 'weekly-report' },
+      recovered: true,
+    },
+  };
+  await expect(
+    createCreatorRuntime(root).recordOutcome({ runId: run.runId, outcome }),
+  ).rejects.toThrow(/恢复|RECOVERY|结果|回报/);
+  expect((await runtime.inspect(run.runId)).actions.at(-1)?.status).toBe('unknown');
+  const installation = await installWorkflowApplication({
+    file,
+    projectRoot: root,
+    scope: 'project',
+    host: 'codex',
+    confirmationHash: preview.distribution.confirmationHash,
+  });
+  await createCreatorRuntime(root).recordOutcome({
+    runId: run.runId,
+    outcome: {
+      ...outcome,
+      outcomeId: 'actual-complete-result',
+      output: { ...outcome.output, installation },
+    },
+  });
+  run = (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run;
+  expect(run.status).toBe('completed');
+  expect(run.actions.filter((entry) => entry.stepId === 'install')).toHaveLength(1);
+  expect(run.actions.at(-1)?.attempt).toBe(1);
+});
 it('cold-resumes the same plan wait, compiles only after a current decision and previews without installing', async () => {
   let run = await analyzed();
+  expect(
+    (run.outputs.prepare.value as unknown as { plan: { manifest: { rule?: string } } }).plan
+      .manifest.rule,
+  ).toBe('rules/workflow-guard.md');
   expect(run.waits.at(-1)?.stepId).toBe('confirm-plan');
   expect(
     await fs.stat(path.join(root, '.agents/skills/weekly-report')).catch(() => null),
@@ -94,12 +342,14 @@ it('cold-resumes the same plan wait, compiles only after a current decision and 
     choice: 'approved',
   });
   run = (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run;
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-eval');
+  run = await choose(run, 'skip');
   expect(run.waits.at(-1)?.stepId).toBe('confirm-install');
   expect(
     await fs.stat(path.join(root, '.agents/skills/weekly-report')).catch(() => null),
   ).toBeNull();
   expect(run.outputs.preview.value).toMatchObject({
-    target: '.agents/skills/weekly-report',
+    target: '.comet/creator/exports/weekly-report',
     noFilesWritten: true,
   });
   const install = run.waits.at(-1)!;
@@ -118,7 +368,10 @@ it('cold-resumes the same plan wait, compiles only after a current decision and 
   ).run;
   expect(run.status).toBe('completed');
   expect(
-    await fs.readFile(path.join(root, '.agents/skills/weekly-report/application.json'), 'utf8'),
+    await fs.readFile(
+      path.join(root, '.comet/creator/exports/weekly-report/application.json'),
+      'utf8',
+    ),
   ).toContain('weekly-report');
 });
 it('refuses installation after target drift and keeps the original approval wait', async () => {
@@ -133,6 +386,7 @@ it('refuses installation after target drift and keeps the original approval wait
     choice: 'approved',
   });
   run = (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run;
+  run = await choose(run, 'skip');
   await fs.mkdir(path.join(root, '.agents/skills/weekly-report'), { recursive: true });
   await fs.writeFile(path.join(root, '.agents/skills/weekly-report/keep.txt'), 'unrelated');
   const install = run.waits.at(-1)!;
@@ -179,7 +433,7 @@ it('revise creates a new plan and installation decision and old approval cannot 
       claimToken: 'new-claim',
       outcomeId: 'new-analysis',
       status: 'succeeded',
-      output: { ...analysis(), installTarget: '.agents/skills/new-target' },
+      output: { ...analysis(), installTarget: '.comet/creator/exports/new-target' },
     },
   });
   run = (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run;
@@ -193,14 +447,16 @@ it('revise creates a new plan and installation decision and old approval cannot 
       choice: 'approved',
     }),
   ).rejects.toThrow(/STALE/);
-  expect(run.outputs.prepare.value).toMatchObject({ installTarget: '.agents/skills/new-target' });
+  expect(run.outputs.prepare.value).toMatchObject({
+    installTarget: '.comet/creator/exports/new-target',
+  });
 });
 
 it('blocks hosts without required capabilities before analysis and rejects forged preparation', async () => {
   const runtime = createCreatorRuntime(root);
   let run = await runtime.start({
     runId: 'missing-host',
-    workflow: { id: 'comet-creator', version: '1' },
+    workflow: { id: 'comet-creator', version: '3' },
     input: { goal: '报告审批', installTarget: '.agents/skills/report', host: 'claude-code' },
   });
   const action = run.actions[0];
@@ -300,6 +556,8 @@ it('reconciles a compiled package whose result was lost using the original Actio
     },
   });
   run = (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run;
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-eval');
+  run = await choose(run, 'skip');
   expect(run.waits.at(-1)?.stepId).toBe('confirm-install');
   expect(run.actions.filter((a) => a.stepId === 'compile')).toHaveLength(1);
   expect(run.actions.find((a) => a.id === action.id)?.attempt).toBe(1);
@@ -315,15 +573,30 @@ it('discovers resumable Runs through SDK validation and rejects unsupported host
   expect(() =>
     runtime.start({
       runId: 'bad-host',
-      workflow: { id: 'comet-creator', version: '1' },
+      workflow: { id: 'comet-creator', version: '3' },
       input: { goal: '报告', host: 'other-agent', installTarget: '.agents/skills/report' },
     }),
   ).toThrow(/仅支持/);
   expect(() =>
     runtime.start({
       runId: 'bad-target',
-      workflow: { id: 'comet-creator', version: '1' },
+      workflow: { id: 'comet-creator', version: '3' },
       input: { goal: '报告', host: 'codex', installTarget: '../outside' },
     }),
   ).toThrow(/相对目录/);
 });
+
+it.each(['1', '2'])(
+  'rejects unsupported Creator definition %s before creating a Run',
+  async (version) => {
+    const runtime = createCreatorRuntime(root);
+    expect(() =>
+      runtime.start({
+        runId: 'unsupported',
+        workflow: { id: 'comet-creator', version },
+        input: { goal: '报告', host: 'codex', installTarget: 'export' },
+      }),
+    ).toThrow(/只支持新创作定义/);
+    expect(await fs.stat(path.join(root, '.comet/runtime/creator')).catch(() => null)).toBeNull();
+  },
+);

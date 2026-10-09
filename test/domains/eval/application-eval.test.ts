@@ -12,11 +12,31 @@ import { createHash } from 'node:crypto';
 import { parse, stringify } from 'yaml';
 import { createDiskApplication } from '../../helpers/workflow-application.js';
 import {
+  normalizeApplicationEvalSettings,
   previewWorkflowApplicationEval,
   prepareWorkflowApplicationEval,
   readWorkflowApplicationEvalResult,
   runWorkflowApplicationEval,
 } from '../../../domains/eval/application-eval.js';
+
+it('preserves provider model aliases with context-window suffixes for the Agent and Judge', () => {
+  expect(
+    normalizeApplicationEvalSettings({
+      agent: 'claude-code',
+      model: 'glm-5.3[1M]',
+      judgeAgent: 'claude-code',
+      judgeModel: 'claude-sonnet-4-6[1m]',
+    }),
+  ).toMatchObject({ model: 'glm-5.3[1M]', judgeModel: 'claude-sonnet-4-6[1m]' });
+  for (const model of ['glm;echo', 'glm\nsecret', 'glm[1M', 'glm[]', 'x'.repeat(161)]) {
+    expect(() => normalizeApplicationEvalSettings({ agent: 'claude-code', model })).toThrow(
+      'model 无效',
+    );
+  }
+  expect(() => normalizeApplicationEvalSettings({ agent: 'claude-code[1M]' })).toThrow(
+    'agent 无效',
+  );
+});
 
 let root: string;
 let file: string;

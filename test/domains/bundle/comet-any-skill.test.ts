@@ -9,14 +9,14 @@ describe('comet-any SDK creator guidance', () => {
       'assets/skills-zh/comet-any',
       '用户明确确认当前方案后',
       '用户明确批准当前预览后',
-      '真实宿主或模型证据',
+      '真实 Skill 加载',
     ],
     [
       'English',
       'assets/skills/comet-any',
       'After the user explicitly approves the current plan',
       'After the user explicitly approves the current preview',
-      'real host or model evidence',
+      'Hook execution',
     ],
   ])(
     '%s keeps the SDK Run, actual plan, current decisions and evidence boundary',
@@ -55,4 +55,31 @@ describe('comet-any SDK creator guidance', () => {
         expect(skill + reference).not.toContain(obsolete);
     },
   );
+
+  it('Chinese guidance requires SDK-generated protection and a complete official host installation preview', async () => {
+    const skill = await fs.readFile('assets/skills-zh/comet-any/SKILL.md', 'utf8');
+    const reference = await fs.readFile(
+      'assets/skills-zh/comet-any/reference/sdk-creation.md',
+      'utf8',
+    );
+    for (const term of [
+      '同一份流程声明',
+      '默认 Rule 与 Guard',
+      '正式分发',
+      '真实 Skill 加载',
+      'Rule 配置',
+      'Hook 执行',
+      'SDK Run',
+      '业务断言',
+    ])
+      expect(skill).toContain(term);
+    for (const term of [
+      '当前 Creator 定义',
+      '不迁移旧记录或复用旧批准',
+      'distribution',
+      '不能只看到导出目录就回报完成',
+      '不能允许写入 SDK 控制资源',
+    ])
+      expect(reference).toContain(term);
+  });
 });

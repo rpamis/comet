@@ -311,7 +311,7 @@ async function oldCustomFixture(
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-old-child-verifier-'));
   roots.push(root);
   const script = `
-    import { prepareNativeApplication } from ${JSON.stringify(path.resolve('test/helpers/native-application.ts'))};
+    import { prepareNativeApplication } from ${JSON.stringify(pathToFileURL(path.resolve('test/helpers/native-application.ts')).href)};
     const f = await prepareNativeApplication(${JSON.stringify(root)}, true, 'custom', process.env.COMET_NATIVE_BASELINE_PACKAGE);
     let run = await f.dispatch({operation:'execute',runId:f.name,actionId:f.pending(f.run,'supervisor.prepare').id,executorId:'native-supervisor-prepare'});
     for(let i=0;i<2;i++) run=await f.dispatch({operation:'execute',runId:f.name,actionId:f.pending(run,'supervisor.child.prepare').id,executorId:'native-supervisor-child-prepare'});
@@ -340,7 +340,7 @@ async function oldCustomFixture(
     process.execPath,
     [
       '--import',
-      path.resolve('test/helpers/native-source-loader.mjs'),
+      pathToFileURL(path.resolve('test/helpers/native-source-loader.mjs')).href,
       '--input-type=module',
       '-e',
       script,

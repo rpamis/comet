@@ -4,6 +4,8 @@
 
 ## 先确定当前需求
 
+当前 selection 的 `workflow` 为 `application` 时，使用它的 `applicationId` 与原 Run ID，恢复对应 SDK Skill 应用。读取平台 Skill 入口指向的固定包和应用 Rule；进度、批准、写入范围与恢复以同一 SDK Run 为准，不套用下方 Native/Classic 阶段表。先确认当前提案并领取 Action，再执行声明范围内的工作；SDK 状态、固定包和宿主配置由正式 Runtime/安装入口维护。平台 Rule、Hook 配置、实际 Hook 事件与业务验收分别核对；平台需要启用或信任 Hook 时按其要求处理。
+
 每轮开始、恢复工作或怀疑上下文被压缩后，每轮只执行以下轻量所有权读取：
 
 1. 读取 `.comet/config.yaml`：`workflows` 表示项目启用的能力，`default_workflow` 只决定 `/comet` 的默认入口。
@@ -16,10 +18,10 @@ Classic 旧项目没有新版配置时只按 Classic legacy fallback 处理，�
 
 ## 只应用选中的阶段规则
 
-| Workflow | 禁止普通实现写入 | 允许普通实现写入 |
-| --- | --- | --- |
-| Native | Shape、Verify、Archive | Build |
-| Classic | Open、Design、Verify、Archive | Build |
+| Workflow | 禁止普通实现写入              | 允许普通实现写入 |
+| -------- | ----------------------------- | ---------------- |
+| Native   | Shape、Verify、Archive        | Build            |
+| Classic  | Open、Design、Verify、Archive | Build            |
 
 - Native 的 Verify 保持只读：Runtime 执行必要检查，新的 Verifier execution 独立验收全部条目；发现实现问题时，先记录失败并通过 Native Runtime 回到 Build，再修改实现。点号开头的普通项目文件不因名称而自动成为跨阶段白名单。
 - Classic 的 Verify 只写验证报告和状态等阶段产物，不修改 tasks 或普通项目实现；需要更新任务状态或修复实现时，先执行 `verify-fail` 回到 Build。

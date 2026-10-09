@@ -53,10 +53,12 @@ export async function creatorGuideCommand(_options: CreatorCommandOptions = {}):
         continuation:
           'status只读当前Run；next执行本地步骤直到需要宿主Action或用户决定。dispatch使用当前Run的revision和Action或Wait身份，不能复用旧请求。',
         supported: ['Native新增步骤', 'Classic full/hotfix/tweak编排', '独立SDK流程与报告审批样板'],
+        delivery:
+          '新创作使用 Creator v3：SDK Skill 应用包含 Skill、Runtime 和对应 Rule/Hook；安装预览同时展示项目内完整包导出、固定依赖及当前宿主的正式安装计划。install-target 是独立导出目录，例如 .comet/creator/exports/<应用名>，不能与平台入口重叠。',
         evaluation:
           '可用 --eval-config <JSON文件> 设置 agent、model、judgeAgent、judgeModel、maxTurns、timeoutSeconds。选择评估后自动生成2–4个用例并执行；失败可重试、修复方案或明确跳过，安装预览保留实际结果。凭据只来自执行环境。',
         limits: [
-          '不静默迁移旧格式',
+          '仅提供当前 Creator 定义；旧创作保留现场并重新创建',
           'Eval只证明当前用例和所选宿主，不代表全部平台验收',
           '活动Run与依赖漂移保留原现场',
         ],
@@ -81,7 +83,7 @@ export async function creatorStartCommand(
   const runtime = createCreatorRuntime(projectRoot(options));
   const run = await runtime.start({
     runId: name,
-    workflow: { id: 'comet-creator', version: '2' },
+    workflow: { id: 'comet-creator', version: '3' },
     input: {
       goal: options.goal,
       installTarget: options.installTarget,

@@ -2,8 +2,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promises as fs } from 'node:fs';
 
-/** 为用户目录中的应用提供当前已安装的 Runtime；链接位于版本包之外。 */
-export async function ensureApplicationRuntimeDependency(storageRoot: string): Promise<void> {
+/** 定位当前 Runtime 的发布资源；安装与宿主预览复用同一来源。 */
+export async function applicationRuntimeRoot(): Promise<string> {
   let cursor = path.dirname(fileURLToPath(import.meta.url));
   let runtimeRoot: string | undefined;
   while (cursor !== path.dirname(cursor)) {
@@ -19,6 +19,12 @@ export async function ensureApplicationRuntimeDependency(storageRoot: string): P
     cursor = path.dirname(cursor);
   }
   if (!runtimeRoot) throw new Error('找不到已安装的 Comet Runtime；保留应用并修复 Runtime 安装');
+  return runtimeRoot;
+}
+
+/** 为用户目录中的应用提供当前已安装的 Runtime；链接位于版本包之外。 */
+export async function ensureApplicationRuntimeDependency(storageRoot: string): Promise<void> {
+  const runtimeRoot = await applicationRuntimeRoot();
   const namespace = path.join(storageRoot, 'node_modules/@rpamis');
   for (const directory of [path.dirname(namespace), namespace]) {
     try {

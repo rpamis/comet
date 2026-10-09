@@ -53,7 +53,7 @@ describe('comet-any skill contract', () => {
     async (root, analysis, ownership) => {
       const reference = await readText(`${root}/reference/sdk-creation.md`);
       expect(reference).toContain(analysis);
-      expect(reference).toContain('compile / verify / preview / install');
+      expect(reference).toContain('compile / verify / eval-preview / evaluate / preview / install');
       expect(reference).toContain('comet creator next');
       expect(reference).toContain('creator-local');
       expect(reference).toContain(ownership);

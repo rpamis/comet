@@ -19,7 +19,13 @@ import {
   type WorkflowApplicationPlan,
   type WorkflowApplicationProposal,
 } from '../workflow-generation/index.js';
-import { loadWorkflowApplication } from '../workflow-application/index.js';
+import {
+  loadWorkflowApplication,
+  previewWorkflowApplicationInstall,
+  installWorkflowApplication,
+  exportWorkflowApplication,
+  type ApplicationInstallPreview,
+} from '../workflow-application/index.js';
 import { applicationFilesHash } from '../workflow-application/skill-adapter.js';
 import {
   normalizeApplicationEvalSettings,
@@ -92,7 +98,7 @@ type Prepared = {
   failurePaths: string[];
   limitations: string[];
   steps: Array<{ id: string; work: string; skills: string[]; output: unknown }>;
-  evaluation?: ApplicationEvalSettings;
+  evaluation: ApplicationEvalSettings;
 };
 type Package = { file: string; contentHash: string; compositionHash: string };
 type Preview = {
@@ -101,7 +107,8 @@ type Preview = {
   planHash: string;
   files: string[];
   noFilesWritten: true;
-  evaluation?: unknown;
+  evaluation: unknown;
+  distribution: ApplicationInstallPreview;
 };
 
 function assertPlan(run: Readonly<WorkflowRun>): Prepared {
@@ -131,16 +138,82 @@ function assertPreview(root: string, run: Readonly<WorkflowRun>): Preview {
   )
     reject('安装目标或文件变化');
   if (existsSync(contained(root, preview.target))) reject('安装目标出现冲突或变化');
-  if (
-    run.workflow.version === '2' &&
-    hashRuntimeValue(preview.evaluation) !== hashRuntimeValue(evaluationSummary(run))
-  )
+  if (hashRuntimeValue(preview.evaluation) !== hashRuntimeValue(evaluationSummary(run)))
     reject('安装预览绑定的 Eval 结果发生变化');
   return preview;
 }
 
+function distributionOptions(root: string, run: Readonly<WorkflowRun>) {
+  return {
+    file: assertPackage(run).file,
+    projectRoot: root,
+    scope: 'project' as const,
+    host: text(object(run.input).host, '宿主') as 'codex' | 'claude-code',
+  };
+}
+
+async function assertDistributionPreview(root: string, run: Readonly<WorkflowRun>) {
+  const preview = assertPreview(root, run);
+  const current = await previewWorkflowApplicationInstall(distributionOptions(root, run));
+  if (!preview.distribution || hashRuntimeValue(current) !== hashRuntimeValue(preview.distribution))
+    reject('平台入口、Rule、Hook 或安装配置发生变化');
+  return preview;
+}
+
+async function assertInstalledDistribution(
+  root: string,
+  run: Readonly<WorkflowRun>,
+  output: unknown,
+) {
+  const preview = value<Preview>(run, 'preview');
+  const current = await previewWorkflowApplicationInstall(distributionOptions(root, run));
+  const integration = object(current).hostIntegration;
+  if (
+    current.operation !== 'unchanged' ||
+    current.contentHash !== preview.packageHash ||
+    current.hostSkills.some((entry) => entry.operation !== 'unchanged') ||
+    (Array.isArray(integration) &&
+      integration.some((entry) => {
+        const plan = object(entry);
+        return (
+          (Array.isArray(plan.conflicts) && plan.conflicts.length > 0) ||
+          !Array.isArray(plan.files) ||
+          plan.files.some((file) => object(file).operation !== 'unchanged')
+        );
+      }))
+  )
+    reject('正式平台安装结果无法核对；保留原安装现场');
+  const delivered = object(object(output).installation);
+  for (const key of ['id', 'version', 'contentHash', 'packageRef'] as const)
+    if (!current.previous || delivered[key] !== current.previous[key])
+      reject('安装回报与实际固定版本不匹配');
+}
+
+function assertSeparateExport(
+  root: string,
+  target: string,
+  distribution: ApplicationInstallPreview,
+) {
+  const destination = contained(root, target);
+  for (const managed of [
+    distribution.target,
+    ...distribution.hostSkills.map((entry) => entry.root),
+  ]) {
+    const overlaps = (outer: string, inner: string) => {
+      const relative = path.relative(outer, inner);
+      return (
+        relative === '' ||
+        (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))
+      );
+    };
+    if (overlaps(destination, managed) || overlaps(managed, destination))
+      throw new Error(
+        '导出目标与正式应用安装目录重叠；选择独立的项目内导出目录，例如 exports/<应用名>',
+      );
+  }
+}
+
 function evaluationSummary(run: Readonly<WorkflowRun>): unknown {
-  if (run.workflow.version === '1') return null;
   const selection = run.waits.filter((wait) => wait.stepId === 'confirm-eval').at(-1);
   if (selection?.decision?.choice === 'skip')
     return {
@@ -180,9 +253,7 @@ function evaluationSummary(run: Readonly<WorkflowRun>): unknown {
 
 function evaluationOptions(root: string, run: Readonly<WorkflowRun>) {
   const compiled = assertPackage(run);
-  const settings =
-    assertPlan(run).evaluation ??
-    normalizeApplicationEvalSettings({ agent: String(object(run.input).host) });
+  const settings = assertPlan(run).evaluation;
   const previous = run.outputs.evaluate?.value as unknown as ApplicationEvalResult | undefined;
   return {
     file: compiled.file,
@@ -219,10 +290,21 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
     defineRuntimeHandler({
       type: 'call_tool',
       parseInput: (v) => v,
-      execute: async (_, { run }) => ({
-        status: 'succeeded',
-        output: (await execute(run!)) as RuntimeValue,
-      }),
+      execute: async (_, { run, action }) => {
+        try {
+          return { status: 'succeeded', output: (await execute(run!)) as RuntimeValue };
+        } catch (error) {
+          if (action.stepId !== 'preview') throw error;
+          return {
+            status: 'failed',
+            summary: '安装预览未通过，未写入导出或平台安装目标。',
+            output: {
+              reason: error instanceof Error ? error.message : String(error),
+              noFilesWritten: true,
+            },
+          };
+        }
+      },
     });
   const handlers = {
     'creator.prepare': work(async (run) => {
@@ -251,16 +333,12 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
             output: s.outputSchema ?? null,
           })),
         ),
-        ...(run.workflow.version === '2'
-          ? {
-              evaluation: normalizeApplicationEvalSettings(
-                (analysis.evaluation ??
-                  object(run.input).evaluation ?? {
-                    agent: object(run.input).host,
-                  }) as ApplicationEvalSettings,
-              ),
-            }
-          : {}),
+        evaluation: normalizeApplicationEvalSettings(
+          (analysis.evaluation ??
+            object(run.input).evaluation ?? {
+              agent: object(run.input).host,
+            }) as ApplicationEvalSettings,
+        ),
       };
     }),
     'creator.compile': work(async (run) => {
@@ -316,35 +394,35 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
       const target = assertPlan(run).installTarget;
       const destination = contained(root, target);
       if (existsSync(destination)) reject('安装目标存在冲突');
+      const distribution = await previewWorkflowApplicationInstall(distributionOptions(root, run));
+      assertSeparateExport(root, target, distribution);
       return {
         target,
         packageHash: compiled.contentHash,
         planHash: compiled.compositionHash,
         files: Object.keys(files(path.dirname(compiled.file))),
         noFilesWritten: true,
-        ...(run.workflow.version === '2' ? { evaluation: evaluationSummary(run) } : {}),
+        evaluation: evaluationSummary(run),
+        distribution,
       };
     }),
     'creator.install': work(async (run) => {
       const preview = value<Preview>(run, 'preview');
       const compiled = assertPackage(run);
       const destination = contained(root, preview.target);
-      if (existsSync(destination)) {
-        if (applicationFilesHash(files(destination)) !== preview.packageHash)
-          reject('安装现场与已批准文件不匹配');
-        return { target: preview.target, contentHash: preview.packageHash, recovered: true };
-      }
-      assertPreview(root, run);
-      await fs.mkdir(path.dirname(destination), { recursive: true });
-      await fs.mkdir(destination);
-      for (const [ref, bytes] of Object.entries(files(path.dirname(compiled.file)))) {
-        const file = path.join(destination, ref);
-        await fs.mkdir(path.dirname(file), { recursive: true });
-        await fs.writeFile(file, Buffer.from(bytes, 'base64'), { flag: 'wx' });
-      }
-      if (applicationFilesHash(files(destination)) !== preview.packageHash)
-        reject('安装文件校验未通过');
-      return { target: preview.target, contentHash: preview.packageHash, recovered: false };
+      // 导出与平台安装共享一次当前预览批准；结果未知时保留两处现场，由恢复核对。
+      await assertDistributionPreview(root, run);
+      await exportWorkflowApplication({ file: compiled.file, projectRoot: root, destination });
+      const installation = await installWorkflowApplication({
+        ...distributionOptions(root, run),
+        confirmationHash: preview.distribution.confirmationHash,
+      });
+      return {
+        target: preview.target,
+        contentHash: preview.packageHash,
+        installation,
+        recovered: false,
+      };
     }),
     'creator.stop': work(async () => ({
       stopped: true,
@@ -353,107 +431,110 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
   };
   const runtime = createRuntime({
     store: createFileRuntimeStore({ rootDir: path.join(root, '.comet/runtime/creator') }),
-    workflows: [1, 2].map((version) => ({
-      id: 'comet-creator',
-      version: String(version),
-      entry: 'analyze',
-      maxTransitions: 64,
-      initialState: {},
-      stateSchema: { type: 'object', additionalProperties: false },
-      transitionHandler: { id: 'creator-decisions', version: '1' },
-      steps: {
-        analyze: {
-          type: 'handoff',
-          ref: 'creator-analysis',
-          requiredCapabilities: ['skill-load', 'handoff'],
-          retry: 'manual',
-          validator: { id: 'creator-analysis', version: '1' },
-          outputSchema: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['proposal', 'summary', 'failurePaths', 'limitations'],
-            properties: {
-              proposal: { type: 'object' },
-              summary: { type: 'string', minLength: 1 },
-              failurePaths: {
-                type: 'array',
-                minItems: 1,
-                items: { type: 'string', minLength: 1 },
+    workflows: [
+      {
+        id: 'comet-creator',
+        version: '3',
+        entry: 'analyze',
+        maxTransitions: 64,
+        initialState: {},
+        stateSchema: { type: 'object', additionalProperties: false },
+        transitionHandler: { id: 'creator-decisions', version: '1' },
+        steps: {
+          analyze: {
+            type: 'handoff',
+            ref: 'creator-analysis',
+            requiredCapabilities: ['skill-load', 'handoff'],
+            retry: 'manual',
+            validator: { id: 'creator-analysis', version: '1' },
+            outputSchema: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['proposal', 'summary', 'failurePaths', 'limitations'],
+              properties: {
+                proposal: { type: 'object' },
+                summary: { type: 'string', minLength: 1 },
+                failurePaths: {
+                  type: 'array',
+                  minItems: 1,
+                  items: { type: 'string', minLength: 1 },
+                },
+                limitations: {
+                  type: 'array',
+                  minItems: 1,
+                  items: { type: 'string', minLength: 1 },
+                },
+                installTarget: { type: 'string', minLength: 1 },
+                evaluation: { type: 'object' },
               },
-              limitations: {
-                type: 'array',
-                minItems: 1,
-                items: { type: 'string', minLength: 1 },
-              },
-              installTarget: { type: 'string', minLength: 1 },
-              ...(version === 2 ? { evaluation: { type: 'object' } } : {}),
             },
           },
+          prepare: { type: 'call_tool', ref: 'creator.prepare' },
+          'confirm-plan': {
+            type: 'ask_user',
+            proposalFrom: 'prepare',
+            choices: ['approved', 'revise', 'rejected'],
+          },
+          compile: { type: 'call_tool', ref: 'creator.compile', retry: 'reconcile' },
+          verify: { type: 'call_tool', ref: 'creator.verify' },
+          'eval-preview': { type: 'call_tool' as const, ref: 'creator.eval-preview' },
+          'confirm-eval': {
+            type: 'ask_user' as const,
+            proposalFrom: 'eval-preview',
+            choices: ['evaluate', 'skip', 'revise'],
+          },
+          evaluate: {
+            type: 'call_tool' as const,
+            ref: 'creator.evaluate',
+            retry: 'reconcile' as const,
+          },
+          'review-eval': {
+            type: 'ask_user' as const,
+            proposalFrom: 'evaluate',
+            choices: ['retry', 'revise', 'skip'],
+          },
+          preview: { type: 'call_tool', ref: 'creator.preview' },
+          'review-install': {
+            type: 'ask_user' as const,
+            proposalFrom: 'preview',
+            choices: ['retry', 'revise', 'rejected'],
+          },
+          'confirm-install': {
+            type: 'ask_user',
+            proposalFrom: 'preview',
+            choices: ['approved', 'revise', 'rejected'],
+          },
+          install: { type: 'call_tool', ref: 'creator.install', retry: 'reconcile' },
+          stop: { type: 'call_tool', ref: 'creator.stop' },
         },
-        prepare: { type: 'call_tool', ref: 'creator.prepare' },
-        'confirm-plan': {
-          type: 'ask_user',
-          proposalFrom: 'prepare',
-          choices: ['approved', 'revise', 'rejected'],
-        },
-        compile: { type: 'call_tool', ref: 'creator.compile', retry: 'reconcile' },
-        verify: { type: 'call_tool', ref: 'creator.verify' },
-        ...(version === 2
-          ? {
-              'eval-preview': { type: 'call_tool' as const, ref: 'creator.eval-preview' },
-              'confirm-eval': {
-                type: 'ask_user' as const,
-                proposalFrom: 'eval-preview',
-                choices: ['evaluate', 'skip', 'revise'],
-              },
-              evaluate: {
-                type: 'call_tool' as const,
-                ref: 'creator.evaluate',
-                retry: 'reconcile' as const,
-              },
-              'review-eval': {
-                type: 'ask_user' as const,
-                proposalFrom: 'evaluate',
-                choices: ['retry', 'revise', 'skip'],
-              },
-            }
-          : {}),
-        preview: { type: 'call_tool', ref: 'creator.preview' },
-        'confirm-install': {
-          type: 'ask_user',
-          proposalFrom: 'preview',
-          choices: ['approved', 'revise', 'rejected'],
-        },
-        install: { type: 'call_tool', ref: 'creator.install', retry: 'reconcile' },
-        stop: { type: 'call_tool', ref: 'creator.stop' },
+        transitions: [
+          { from: 'analyze', to: 'prepare' },
+          { from: 'prepare', to: 'confirm-plan' },
+          { from: 'confirm-plan', to: 'compile', on: 'approved' },
+          { from: 'confirm-plan', to: 'analyze', on: 'revise' },
+          { from: 'confirm-plan', to: 'stop', on: 'rejected' },
+          { from: 'compile', to: 'verify' },
+          { from: 'verify', to: 'eval-preview' },
+          { from: 'eval-preview', to: 'confirm-eval' },
+          { from: 'confirm-eval', to: 'evaluate', on: 'evaluate' },
+          { from: 'confirm-eval', to: 'preview', on: 'skip' },
+          { from: 'confirm-eval', to: 'analyze', on: 'revise' },
+          { from: 'evaluate', to: 'preview' },
+          { from: 'evaluate', to: 'review-eval' },
+          { from: 'review-eval', to: 'evaluate', on: 'retry' },
+          { from: 'review-eval', to: 'analyze', on: 'revise' },
+          { from: 'review-eval', to: 'preview', on: 'skip' },
+          { from: 'preview', to: 'confirm-install' },
+          { from: 'preview', to: 'review-install', on: 'failed' },
+          { from: 'review-install', to: 'preview', on: 'retry' },
+          { from: 'review-install', to: 'analyze', on: 'revise' },
+          { from: 'review-install', to: 'stop', on: 'rejected' },
+          { from: 'confirm-install', to: 'install', on: 'approved' },
+          { from: 'confirm-install', to: 'analyze', on: 'revise' },
+          { from: 'confirm-install', to: 'stop', on: 'rejected' },
+        ],
       },
-      transitions: [
-        { from: 'analyze', to: 'prepare' },
-        { from: 'prepare', to: 'confirm-plan' },
-        { from: 'confirm-plan', to: 'compile', on: 'approved' },
-        { from: 'confirm-plan', to: 'analyze', on: 'revise' },
-        { from: 'confirm-plan', to: 'stop', on: 'rejected' },
-        { from: 'compile', to: 'verify' },
-        { from: 'verify', to: version === 2 ? 'eval-preview' : 'preview' },
-        ...(version === 2
-          ? [
-              { from: 'eval-preview', to: 'confirm-eval' },
-              { from: 'confirm-eval', to: 'evaluate', on: 'evaluate' },
-              { from: 'confirm-eval', to: 'preview', on: 'skip' },
-              { from: 'confirm-eval', to: 'analyze', on: 'revise' },
-              { from: 'evaluate', to: 'preview' },
-              { from: 'evaluate', to: 'review-eval' },
-              { from: 'review-eval', to: 'evaluate', on: 'retry' },
-              { from: 'review-eval', to: 'analyze', on: 'revise' },
-              { from: 'review-eval', to: 'preview', on: 'skip' },
-            ]
-          : []),
-        { from: 'preview', to: 'confirm-install' },
-        { from: 'confirm-install', to: 'install', on: 'approved' },
-        { from: 'confirm-install', to: 'analyze', on: 'revise' },
-        { from: 'confirm-install', to: 'stop', on: 'rejected' },
-      ],
-    })),
+    ],
     executors: [createRuntimeExecutor({ id: 'creator-local', handlers })],
     validators: [
       {
@@ -485,6 +566,17 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         version: '1',
         apply({ run, event }) {
           if (event.kind === 'wait-resolved') {
+            if (event.stepId === 'review-install')
+              return {
+                state: {},
+                next: [
+                  event.choice === 'retry'
+                    ? 'preview'
+                    : event.choice === 'revise'
+                      ? 'analyze'
+                      : 'stop',
+                ],
+              };
             if (event.stepId === 'confirm-eval') {
               assertPackage(run);
               assertPlan(run);
@@ -530,6 +622,8 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
             };
           }
           if (event.kind === 'action-outcome') {
+            if (event.stepId === 'preview' && event.outcome.status === 'failed')
+              return { state: {}, next: ['review-install'] };
             if (event.stepId === 'evaluate')
               return {
                 state: {},
@@ -542,7 +636,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
               analyze: 'prepare',
               prepare: 'confirm-plan',
               compile: 'verify',
-              verify: run.workflow.version === '2' ? 'eval-preview' : 'preview',
+              verify: 'eval-preview',
               'eval-preview': 'confirm-eval',
               preview: 'confirm-install',
             };
@@ -609,6 +703,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
             object(outcome.output).contentHash !== preview.packageHash
           )
             reject('安装结果不匹配实际文件');
+          await assertInstalledDistribution(root, run, outcome.output);
         }
         return { accepted: true };
       } catch (error) {
@@ -636,6 +731,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
           const preview = value<Preview>(run, 'preview');
           if (applicationFilesHash(files(contained(root, preview.target))) !== preview.packageHash)
             reject('原安装结果无法核对');
+          await assertInstalledDistribution(root, run, outcome.output);
         } else reject('此动作没有外部结果核对能力');
         return { accepted: true };
       } catch (error) {
@@ -645,7 +741,16 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
   });
   return {
     ...runtime,
+    async resolveWait(command) {
+      const run = await runtime.inspect(command.runId);
+      const wait = run.waits.find((entry) => entry.id === command.waitId);
+      if (wait?.stepId === 'confirm-install' && command.choice === 'approved')
+        await assertDistributionPreview(root, run);
+      return runtime.resolveWait(command);
+    },
     start(command) {
+      if (command.workflow.version !== '3')
+        throw new Error('当前 Creator 只支持新创作定义；保留旧 Run 与工件，重新创建创作');
       const input = object(command.input);
       text(input.goal, '自然语言目标');
       if (input.evaluation !== undefined)

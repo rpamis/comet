@@ -40,6 +40,7 @@ import {
 } from './skill-executor.js';
 import { resolveInstalledWorkflowApplication } from './installed-application.js';
 import { projectWorkflowApplicationRun } from './run-view.js';
+import { createApplicationHook } from './application-hook.js';
 
 interface ApplicationRunRecord {
   runId: string;
@@ -86,6 +87,16 @@ export function parseWorkflowApplicationManifest(value: unknown): WorkflowApplic
   const manifest = value as WorkflowApplicationManifest;
   if (manifest.schema !== 'comet.workflow.application.v1')
     applicationError('应用格式不受支持，请重新生成 SDK 应用；原文件会保留');
+  if (
+    manifest.rule !== undefined &&
+    (typeof manifest.rule !== 'string' ||
+      !manifest.rule.endsWith('.md') ||
+      path.isAbsolute(manifest.rule) ||
+      manifest.rule.includes('\\') ||
+      manifest.rule.includes(':') ||
+      manifest.rule.split('/').some((part) => !part || part === '.' || part === '..'))
+  )
+    applicationError('应用规则 Rule 必须声明固定包内的 Markdown 相对路径');
   safeId(manifest.id);
   if ((SDK_APPLICATIONS as readonly string[]).includes(manifest.id))
     applicationError(`应用身份 ${manifest.id} 与内置应用冲突，请使用独立名称`);
@@ -140,6 +151,13 @@ export async function loadWorkflowApplication(options: {
   const manifest = parseWorkflowApplicationManifest(
     JSON.parse(Buffer.from(files['application.json'] ?? '', 'base64').toString('utf8')),
   );
+  if (
+    manifest.rule &&
+    (!manifest.rule.endsWith('.md') ||
+      !files[manifest.rule] ||
+      !Buffer.from(files[manifest.rule], 'base64').toString('utf8').trim())
+  )
+    applicationError('应用规则 Rule 必须是固定包内的非空 Markdown 文件');
   const version = getCurrentVersion();
   if (manifest.runtimeVersion !== version)
     applicationError(`应用要求 Runtime ${manifest.runtimeVersion}，当前是 ${version}`);
@@ -515,6 +533,26 @@ export async function loadWorkflowApplication(options: {
   }
   const checkedImplementation: WorkflowApplicationImplementation = {
     ...implementation,
+    ...(manifest.base === 'standalone'
+      ? {
+          inspectHook: createApplicationHook({
+            projectRoot,
+            packageRoot,
+            manifest,
+            skills,
+            custom: implementation.inspectHook,
+            readChild: async (runId) => {
+              const child = await loadWorkflowApplication({
+                ...options,
+                runId,
+                expectedIdentity: identity,
+                readOnly: true,
+              });
+              return createRuntime({ ...child.implementation, store: child.store }).inspect(runId);
+            },
+          }),
+        }
+      : {}),
     async validateOutcome(input) {
       if (input.action.type === 'invoke_skill') {
         try {

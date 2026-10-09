@@ -13,7 +13,16 @@ import {
   workflowApplicationPlatformInfo,
 } from '../../platform/paths/workflow-application-skills.js';
 
-import { ensureApplicationRuntimeDependency } from '../../platform/install/application-runtime.js';
+import {
+  ensureApplicationRuntimeDependency,
+  applicationRuntimeRoot,
+} from '../../platform/install/application-runtime.js';
+import {
+  previewApplicationHostIntegration,
+  installApplicationHostIntegration,
+  type ApplicationHostIntegrationPreview,
+  type ApplicationHostIntegrationOptions,
+} from '../../platform/install/application-host.js';
 import { loadWorkflowApplication, parseWorkflowApplicationManifest } from './application.js';
 import {
   adaptApplicationSkill,
@@ -30,6 +39,8 @@ import {
 } from './installed-application.js';
 import { applicationInstallSkills, validateApplicationInstallEntries } from './install-record.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 
 export interface ApplicationDeliveryOptions {
   projectRoot: string;
@@ -64,6 +75,7 @@ export interface ApplicationInstallPreview {
     operation: 'create' | 'replace' | 'unchanged';
     platforms: string[];
   }>;
+  hostIntegration?: ApplicationHostIntegrationPreview[];
   platforms: Array<{
     id: string;
     name: string;
@@ -73,6 +85,76 @@ export interface ApplicationInstallPreview {
   }>;
   requiredCapabilities: string[];
   confirmationHash: string;
+}
+
+async function readInstallIntent(
+  root: string,
+  id: string,
+): Promise<ApplicationInstallPreview | null> {
+  const ref = `${safeId(id)}/pending-install.json`;
+  if (!(await inspectStorage(root, ref, 'file')).exists) return null;
+  const data = JSON.parse(
+    (
+      await readProtectedProjectFile(root, ref, 4 * 1024 * 1024, { label: '应用安装意图' })
+    ).bytes.toString('utf8'),
+  );
+  if (
+    data.schema !== 'comet.workflow.application.install.intent.v1' ||
+    !data.preview ||
+    typeof data.preview !== 'object'
+  )
+    applicationError('原安装意图格式无效；保留现场');
+  const { confirmationHash, ...body } = data.preview;
+  if (
+    data.preview.id !== id ||
+    data.preview.target !== root ||
+    hashRuntimeValue(body) !== confirmationHash
+  )
+    applicationError('原安装意图身份或摘要不匹配；保留现场');
+  return data.preview as ApplicationInstallPreview;
+}
+function desiredInstall(preview: ApplicationInstallPreview) {
+  return {
+    id: preview.id,
+    version: preview.version,
+    scope: preview.scope,
+    target: preview.target,
+    source: preview.source,
+    contentHash: preview.contentHash,
+    skills: preview.hostSkills.map(({ root, contentHash, kind, platforms }) => ({
+      root,
+      contentHash,
+      kind,
+      platforms,
+    })),
+    integration:
+      preview.hostIntegration?.map(({ platformId, scope, files }) => ({
+        platformId,
+        scope,
+        files: files.map(({ role, path, contentHash }) => ({ role, path, contentHash })),
+      })) ?? [],
+  };
+}
+function resumableInstall(
+  original: ApplicationInstallPreview,
+  current: ApplicationInstallPreview,
+): boolean {
+  if (hashRuntimeValue(desiredInstall(original)) !== hashRuntimeValue(desiredInstall(current)))
+    return false;
+  const before = new Map(
+    original.hostIntegration?.flatMap((integration) =>
+      integration.files.map((file) => [file.path, file] as const),
+    ) ?? [],
+  );
+  return (current.hostIntegration ?? []).every((integration) =>
+    integration.files.every((file) => {
+      const planned = before.get(file.path);
+      return (
+        planned &&
+        (file.beforeHash === planned.beforeHash || file.beforeHash === planned.contentHash)
+      );
+    }),
+  );
 }
 
 async function completePackage(file: string, projectRoot: string) {
@@ -113,6 +195,14 @@ export async function previewWorkflowApplicationInstall(
     options.projectRoot,
   );
   const root = workflowApplicationStorageRoot(options.projectRoot, options.scope, options.userRoot);
+  const intent = await readInstallIntent(root, manifest.id);
+  if (
+    intent &&
+    (intent.contentHash !== contentHash ||
+      intent.scope !== options.scope ||
+      intent.source !== packageRoot)
+  )
+    applicationError('同名应用存在另一未完成安装；核对原意图与现场后继续');
   const previous = await readInstalled(root, manifest.id);
   if (
     previous &&
@@ -161,8 +251,11 @@ export async function previewWorkflowApplicationInstall(
       let operation: 'create' | 'replace' | 'unchanged' = 'create';
       if ((await inspectStorage(skillsRoot, skill.name, 'directory')).exists) {
         const actual = applicationFilesHash(await readApplicationFiles(skillRoot));
-        if (skill.kind === 'entry' && !previousEntry)
-          applicationError(`宿主入口已存在且不属于此安装：${skill.name}；保留用户文件`);
+        const intendedEntry = intent?.hostSkills.find(
+          (entry) => entry.root === skillRoot && entry.contentHash === expected,
+        );
+        if (skill.kind === 'entry' && !previousEntry && !(intendedEntry && actual === expected))
+          applicationError(`宿主入口冲突，已存在且不属于此安装：${skill.name}；保留用户文件`);
         if (actual === expected) operation = 'unchanged';
         else if (skill.kind === 'entry' && previousEntry?.contentHash === actual)
           operation = 'replace';
@@ -184,6 +277,15 @@ export async function previewWorkflowApplicationInstall(
     )
   )
     applicationError('升级不能变更原平台目录；核对作用域和平台配置');
+  const hostIntegration = await Promise.all(
+    platforms.map(async (platform) =>
+      previewApplicationHostIntegration(
+        await hostOptions(options, platform.id, platform.skillsRoot),
+      ),
+    ),
+  );
+  if (hostIntegration?.some((integration) => integration.conflicts.length))
+    applicationError(hostIntegration.flatMap((integration) => integration.conflicts).join('\n'));
   const preview = {
     schema: 'comet.workflow.application.preview.v1' as const,
     id: manifest.id,
@@ -203,6 +305,7 @@ export async function previewWorkflowApplicationInstall(
     retainedVersions: true as const,
     noFilesWritten: true as const,
     hostSkills,
+    ...(hostIntegration ? { hostIntegration } : {}),
     platforms,
     requiredCapabilities: [
       ...new Set(manifest.skills.flatMap(({ adapter }) => adapter.requiredCapabilities)),
@@ -216,9 +319,46 @@ export async function previewWorkflowApplicationInstall(
   return { ...preview, confirmationHash: hashRuntimeValue(preview) };
 }
 
+async function hostOptions(
+  options: ApplicationDeliveryOptions,
+  platformId: string,
+  skillsRoot: string,
+): Promise<ApplicationHostIntegrationOptions> {
+  const runtimeRoot = await applicationRuntimeRoot();
+  return {
+    ...options,
+    platformId,
+    skillsRoot,
+    userRoot:
+      options.scope === 'user'
+        ? path.dirname(
+            path.dirname(
+              workflowApplicationStorageRoot(options.projectRoot, options.scope, options.userRoot),
+            ),
+          )
+        : undefined,
+    ruleSource: path.join(runtimeRoot, 'assets/skills/comet/rules/comet-workflow-guard.md'),
+    routerSource: path.join(runtimeRoot, 'assets/skills/comet/scripts/comet-hook-router.mjs'),
+  };
+}
+
 async function copyPackage(files: Record<string, string>, destination: string) {
   await ensureStorage(destination, '.');
   for (const [ref, bytes] of Object.entries(files)) {
+    if (path.posix.dirname(ref) !== '.') await ensureStorage(destination, path.posix.dirname(ref));
+    await fs.writeFile(path.join(destination, ref), Buffer.from(bytes, 'base64'), { flag: 'wx' });
+  }
+}
+
+async function completeOwnedPackage(files: Record<string, string>, destination: string) {
+  await ensureStorage(destination, '.');
+  const actual = (await fs.readdir(destination)).length
+    ? await readApplicationFiles(destination)
+    : {};
+  if (Object.entries(actual).some(([ref, bytes]) => files[ref] !== bytes))
+    applicationError('部分安装包含非原批准字节；保留现场，不覆盖已有文件');
+  for (const [ref, bytes] of Object.entries(files)) {
+    if (Object.hasOwn(actual, ref)) continue;
     if (path.posix.dirname(ref) !== '.') await ensureStorage(destination, path.posix.dirname(ref));
     await fs.writeFile(path.join(destination, ref), Buffer.from(bytes, 'base64'), { flag: 'wx' });
   }
@@ -231,20 +371,7 @@ async function withInstallLock<T>(
 ): Promise<T> {
   await ensureStorage(root, safeId(id));
   const file = path.join(root, id, 'operation.lock');
-  let handle;
-  try {
-    handle = await fs.open(file, 'wx');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST')
-      applicationError('安装或卸载正在执行，或上次操作中断；核对原现场后继续');
-    throw error;
-  }
-  try {
-    return await operation();
-  } finally {
-    await handle.close();
-    await fs.unlink(file);
-  }
+  return withRecoverableFileLock(file, operation, { timeoutMs: 5000, retryMs: 100 });
 }
 
 /** 只接受当前预览。发布默认入口前固定完整版本；升级不写任何 Run。 */
@@ -256,7 +383,10 @@ export async function installWorkflowApplication(
   },
 ) {
   const preview = await previewWorkflowApplicationInstall(options);
-  if (options.confirmationHash !== preview.confirmationHash)
+  const intent = await readInstallIntent(preview.target, preview.id);
+  const recovery =
+    intent?.confirmationHash === options.confirmationHash && resumableInstall(intent, preview);
+  if (options.confirmationHash !== preview.confirmationHash && !recovery)
     applicationError('安装预览已变化；重新预览并确认');
   return withInstallLock(preview.target, preview.id, async () => {
     const latest = await previewWorkflowApplicationInstall(options);
@@ -264,9 +394,32 @@ export async function installWorkflowApplication(
       applicationError('安装预览已变化；重新预览并确认');
     const packageRef = `${preview.id}/versions/${preview.contentHash}`;
     const destination = path.join(preview.target, packageRef);
+    const cached = await inspectStorage(preview.target, packageRef, 'directory');
+    if (
+      cached.exists &&
+      !intent &&
+      applicationFilesHash(await readApplicationFiles(destination)) !== preview.contentHash
+    )
+      applicationError('已有版本包不是完整批准内容；保留现场，不接管');
+    await atomicWriteContainedText(
+      path.join(preview.target, preview.id, 'pending-install.json'),
+      JSON.stringify(
+        {
+          schema: 'comet.workflow.application.install.intent.v1',
+          preview: recovery ? intent : preview,
+        },
+        null,
+        2,
+      ) + '\n',
+      { containedRoot: preview.target },
+    );
     await ensureStorage(preview.target, `${preview.id}/versions`);
     if ((await inspectStorage(preview.target, packageRef, 'directory')).exists) {
-      if (applicationFilesHash(await readApplicationFiles(destination)) !== preview.contentHash)
+      if (intent)
+        await completeOwnedPackage(await readApplicationFiles(preview.source), destination);
+      else if (
+        applicationFilesHash(await readApplicationFiles(destination)) !== preview.contentHash
+      )
         applicationError('原安装现场不完整或发生变化；保留现场后修复，不覆盖');
     } else {
       await copyPackage(await readApplicationFiles(preview.source), destination);
@@ -284,6 +437,15 @@ export async function installWorkflowApplication(
         options.projectRoot,
       );
       const skills = applicationInstallSkills(pkg.manifest, pkg.files, destination);
+      for (const integration of preview.hostIntegration ?? []) {
+        const platform = preview.platforms.find(
+          (platform) => platform.id === integration.platformId,
+        )!;
+        await installApplicationHostIntegration({
+          ...(await hostOptions(options, platform.id, platform.skillsRoot)),
+          preview: integration,
+        });
+      }
       for (const entry of preview.hostSkills) {
         const skill = skills.find((skill) => skill.name === entry.name)!;
         if (entry.operation === 'create') await copyPackage(skill.files, entry.root);
@@ -310,12 +472,35 @@ export async function installWorkflowApplication(
         .filter(({ kind }) => kind === 'entry')
         .map(({ root, contentHash, platforms }) => ({ root, contentHash, platforms })),
     };
+    const actualIntegration = preview.hostIntegration
+      ? await Promise.all(
+          preview.platforms.map(async (platform) =>
+            previewApplicationHostIntegration(
+              await hostOptions(options, platform.id, platform.skillsRoot),
+            ),
+          ),
+        )
+      : undefined;
+    if (
+      actualIntegration?.some(
+        (integration) =>
+          integration.conflicts.length ||
+          integration.files.some((file) => file.operation !== 'unchanged'),
+      )
+    )
+      applicationError('实际 Rule/Hook 安装不完整；保留原现场后修复');
     await atomicWriteContainedText(
       path.join(preview.target, preview.id, 'current.json'),
       JSON.stringify(record, null, 2) + '\n',
       { containedRoot: preview.target },
     );
-    return { ...record, file: path.join(destination, 'application.json'), retainedVersions: true };
+    await fs.unlink(path.join(preview.target, preview.id, 'pending-install.json'));
+    return {
+      ...record,
+      file: path.join(destination, 'application.json'),
+      retainedVersions: true,
+      ...(actualIntegration ? { hostIntegration: actualIntegration } : {}),
+    };
   });
 }
 
@@ -370,6 +555,7 @@ export async function uninstallWorkflowApplication(
     previous,
     retainedVersions: true,
     retainedDependencies: true,
+    retainedHostIntegration: true,
     removesDefaultEntryOnly: true,
     removedEntries: removed,
     retainedEntries: remaining,

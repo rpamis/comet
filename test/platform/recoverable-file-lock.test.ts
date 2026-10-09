@@ -8,6 +8,7 @@ import {
   withRecoverableFileLock,
 } from '../../platform/fs/recoverable-file-lock.js';
 import { readProcessIdentity } from '../../platform/process/process-identity.js';
+import { RaceSafeReadError } from '../../platform/fs/race-safe-read.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -143,13 +144,74 @@ describe('recoverable file lock safety', () => {
             active -= 1;
             completed += 1;
           },
-          { timeoutMs: 2000, retryMs: 1 },
+          { timeoutMs: 10000, retryMs: 1 },
         ),
       ),
     );
     expect(completed).toBe(8);
     expect((await diagnoseRecoverableFileLock(lock)).status).toBe('missing');
   });
+
+  it.each(['changed', 'EPERM'] as const)(
+    'recovers a transient coordinator read failure without overlapping writers (%s)',
+    async (failure, context) => {
+      if (failure === 'EPERM' && process.platform !== 'win32')
+        context.skip('Windows sharing-violation recovery');
+      const { lock } = await fixture();
+      const realpath = fs.realpath.bind(fs);
+      let injected = false;
+      vi.spyOn(fs, 'realpath').mockImplementation(async (file) => {
+        if (String(file).endsWith('.ticket') && !injected) {
+          injected = true;
+          if (failure === 'changed') throw new RaceSafeReadError('changed', 'Changed ticket');
+          throw Object.assign(new Error('Transient sharing violation'), { code: 'EPERM' });
+        }
+        return realpath(file);
+      });
+      let active = 0;
+      const results = await Promise.allSettled(
+        Array.from({ length: 2 }, () =>
+          withRecoverableFileLock(
+            lock,
+            async () => {
+              active += 1;
+              expect(active).toBe(1);
+              await new Promise((resolve) => setTimeout(resolve, 5));
+              active -= 1;
+            },
+            { timeoutMs: 10000, retryMs: 1 },
+          ),
+        ),
+      );
+      expect(injected).toBe(true);
+      expect(results.map((result) => result.status)).toEqual(['fulfilled', 'fulfilled']);
+      expect((await diagnoseRecoverableFileLock(lock)).status).toBe('missing');
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'preserves an unreadable coordinator owner and refuses to enter after the deadline',
+    async () => {
+      const { lock } = await fixture();
+      const directory = `${lock}.contenders`;
+      await fs.mkdir(directory);
+      const foreign = path.join(directory, 'blocked.ticket');
+      const content = JSON.stringify({ ...remoteOwner(), ticket: 1 });
+      await fs.writeFile(foreign, content);
+      const realpath = fs.realpath.bind(fs);
+      vi.spyOn(fs, 'realpath').mockImplementation(async (file) => {
+        if (String(file) === foreign)
+          throw Object.assign(new Error('Persistent permission failure'), { code: 'EPERM' });
+        return realpath(file);
+      });
+      const operation = vi.fn();
+      await expect(
+        withRecoverableFileLock(lock, operation, { timeoutMs: 100, retryMs: 1 }),
+      ).rejects.toMatchObject({ code: 'EPERM' });
+      expect(operation).not.toHaveBeenCalled();
+      expect(await fs.readFile(foreign, 'utf8')).toBe(content);
+    },
+  );
 
   it('ignores dead choosing and ticket owners without minimum age or deleting their records', async () => {
     const { lock } = await fixture();

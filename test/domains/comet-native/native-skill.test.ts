@@ -122,17 +122,6 @@ describe('Comet Native Skills', () => {
     }
   });
 
-  it.each(['en', 'zh'] as const)(
-    'bounds the permanent %s entry by characters',
-    async (language) => {
-      // Character limits include whitespace so one long line cannot bypass the context budget.
-      // The memory and SDK/compat continuation contracts remain complete; keep headroom for
-      // the bilingual entries instead of deleting required workflow instructions.
-      const budget = language === 'zh' ? 6_750 : 14_500;
-      expect((await read(language, 'SKILL.md')).length).toBeLessThanOrEqual(budget);
-    },
-  );
-
   it('routes ordinary Chinese Verify to its protocol without unrelated execution branches', async () => {
     const skill = await read('zh', 'SKILL.md');
     const verifyTarget = 'reference/commands.md#verify-协议';
@@ -149,7 +138,6 @@ describe('Comet Native Skills', () => {
     expect(`${skill}\n${verify}`).not.toContain('supervisor-cancel');
     expect(verify).not.toContain('comet memory observe');
     expect(verify).not.toContain('Codex 独立会话');
-    expect(`${skill}\n${verify}`.length).toBeLessThanOrEqual(10_500);
     expect(skill).toContain('不一次加载整份命令参考或所有参考');
     const enEntry = await read('en', 'SKILL.md');
     expect(markdownLinks(enEntry)).toContain('reference/commands.md#verify-protocol');

@@ -235,7 +235,7 @@ async function compile() {
   const runtime = createCreatorRuntime(root);
   let run = await runtime.start({
     runId: 'eval-creation',
-    workflow: { id: 'comet-creator', version: '2' },
+    workflow: { id: 'comet-creator', version: '3' },
     input: {
       goal: '报告审批后发布',
       host: 'codex',

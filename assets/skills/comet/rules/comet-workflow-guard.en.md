@@ -4,6 +4,8 @@ This Rule is the persistent soft safeguard shared by Native and Classic. A proje
 
 ## Resolve the current request first
 
+When the current selection's `workflow` is `application`, use its `applicationId` and original Run ID to resume the corresponding SDK Skill application. Read the fixed package selected by the platform Skill entry and its application Rule. The same SDK Run owns progress, approval, write scope, and recovery; do not apply the Native/Classic phase table below. Confirm the current proposal and claim the Action before performing work within its declared scope. Formal Runtime and installation entry points maintain SDK state, fixed packages, and host configuration. Check the platform Rule, Hook configuration, actual Hook events, and business acceptance separately; follow the platform's activation or trust requirements.
+
 At the start of every turn, when resuming work, or after possible context compression, perform only these lightweight ownership reads:
 
 1. Read `.comet/config.yaml`: `workflows` lists enabled capabilities, while `default_workflow` only selects the default `/comet` entry.
@@ -17,9 +19,9 @@ A legacy Classic project without the current project schema uses only the Classi
 ## Apply only the selected phase model
 
 | Workflow | Ordinary implementation writes blocked | Ordinary implementation writes allowed |
-| --- | --- | --- |
-| Native | Shape, Verify, Archive | Build |
-| Classic | Open, Design, Verify, Archive | Build |
+| -------- | -------------------------------------- | -------------------------------------- |
+| Native   | Shape, Verify, Archive                 | Build                                  |
+| Classic  | Open, Design, Verify, Archive          | Build                                  |
 
 - Native Verify remains read-only: Runtime executes required checks and a new Verifier execution independently covers every acceptance item. When it exposes an implementation problem, record the failed result and use the Native Runtime to return to Build before modifying the implementation. Ordinary dot-prefixed project files do not become cross-phase allowlisted paths merely because of their names.
 - Classic Verify writes only the verification report and state. It does not modify tasks or ordinary project implementation; run `verify-fail` to return to Build before updating task state or repairing implementation.

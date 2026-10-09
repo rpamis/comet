@@ -55,6 +55,32 @@ function textFiles(files: Record<string, string>): Record<string, string> {
   );
 }
 
+/** 代码块中的路径属于示例；完整原文仍参与依赖摘要。 */
+function markdownOutsideCodeBlocks(content: string): string {
+  let fence: { marker: string; length: number } | undefined;
+  return content
+    .split(/\r?\n/u)
+    .map((line) => {
+      const match = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line);
+      if (fence) {
+        if (
+          match &&
+          match[1][0] === fence.marker &&
+          match[1].length >= fence.length &&
+          !match[2].trim()
+        )
+          fence = undefined;
+        return '';
+      }
+      if (match && (match[1][0] !== '`' || !match[2].includes('`'))) {
+        fence = { marker: match[1][0], length: match[1].length };
+        return '';
+      }
+      return line;
+    })
+    .join('\n');
+}
+
 /** 能力判定交给有内容证据的审查；文件发现不根据 Skill 名称猜能力。 */
 export async function inspectApplicationSkill(root: string): Promise<InspectedSkill> {
   const realRoot = await fs.realpath(root);
@@ -64,7 +90,9 @@ export async function inspectApplicationSkill(root: string): Promise<InspectedSk
   for (const [ref, content] of Object.entries(files)) {
     if (!ref.endsWith('.md')) continue;
     // 本地 Markdown 引用必须可读取；完整目录摘要同时固定未直接链接的脚本和资源。
-    const links = [...content.matchAll(/\]\(([^\s)]+)(?:\s+[^)]*)?\)/gu)].map((match) => match[1]);
+    const links = [
+      ...markdownOutsideCodeBlocks(content).matchAll(/\]\(([^\s)]+)(?:\s+[^)]*)?\)/gu),
+    ].map((match) => match[1]);
     for (const link of links) {
       if (/^(?:[a-z][a-z\d+.-]*:|#)/iu.test(link)) continue;
       const target = path.posix.normalize(

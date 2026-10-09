@@ -19,6 +19,11 @@ export {
   uninstallWorkflowApplication,
 } from './delivery.js';
 export type { ApplicationDeliveryOptions, ApplicationInstallPreview } from './delivery.js';
+export type {
+  ApplicationHostIntegrationPreview,
+  ApplicationHostIntegrationFile,
+  ApplicationHostIntegrationState,
+} from '../../platform/install/application-host.js';
 export {
   readApplicationEvaluationEvidence,
   recordApplicationEvaluationEvidence,

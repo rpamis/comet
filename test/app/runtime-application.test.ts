@@ -501,28 +501,48 @@ describe('complete disk application public entry', () => {
     },
   );
   it('the generated public Hook restores the same custom application without built-in project configuration', async () => {
-    run(await dispatch(start));
-    const result = spawnSync(
-      process.execPath,
-      [
-        'assets/skills/comet/scripts/comet-hook-router.mjs',
-        '--platform',
-        'claude',
-        '--project-root',
-        root,
-      ],
-      {
-        cwd: path.resolve('.'),
-        input: JSON.stringify({
-          tool_name: 'Write',
-          cwd: root,
-          tool_input: { file_path: path.join(root, 'report.md') },
-        }),
-        encoding: 'utf8',
-        timeout: 30000,
-      },
+    const initial = run(await dispatch(start));
+    const invokeHook = (target: string) =>
+      spawnSync(
+        process.execPath,
+        [
+          'assets/skills/comet/scripts/comet-hook-router.mjs',
+          '--platform',
+          'claude',
+          '--project-root',
+          root,
+        ],
+        {
+          cwd: path.resolve('.'),
+          input: JSON.stringify({
+            tool_name: 'Write',
+            cwd: root,
+            tool_input: { file_path: target },
+          }),
+          encoding: 'utf8',
+          timeout: 30000,
+        },
+      );
+    const blocked = invokeHook(path.join(root, 'report.md'));
+    expect(blocked.error).toBeUndefined();
+    expect(blocked.status).toBe(2);
+    expect(blocked.stderr + blocked.stdout).toContain('当前 SDK Action 没有此写入权限');
+    const action = initial.actions[0];
+    run(
+      await dispatch({
+        operation: 'claim',
+        runId: initial.runId,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        executorId: 'local-skill',
+        claimToken: 'hook-probe',
+        capabilities: ['skill-script'],
+      }),
     );
+    const result = invokeHook(path.join(root, '.comet/evidence/editorial/probe.json'));
     expect(result.error).toBeUndefined();
+    expect(result.status).toBe(2);
     expect(result.stderr + result.stdout).toContain('Editorial guard report running');
   });
 });

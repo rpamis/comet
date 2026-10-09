@@ -854,7 +854,7 @@ describe('Comet workflow optimization contracts', () => {
       '用户明确确认当前方案后',
       '用户明确批准当前预览后',
       '摘要只是方案标识',
-      '不要替用户选择 approved',
+      '不要替用户审批或选择跳过',
     ],
     [
       'English',
@@ -862,7 +862,7 @@ describe('Comet workflow optimization contracts', () => {
       'After the user explicitly approves the current plan',
       'After the user explicitly approves the current preview',
       'A hash only identifies the plan',
-      'Do not select approved for the user',
+      'Do not approve or skip for the user',
     ],
   ])(
     '%s creator preserves current user decisions and action identity',

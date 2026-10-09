@@ -65,6 +65,8 @@ export interface WorkflowApplicationManifest {
   entrySkill: string;
   /** 自包含 ESM；相对引用必须留在包内，第三方依赖须先 bundle。 */
   module: string;
+  /** 应用规则引用；组合器从同一份流程声明生成并纳入固定包摘要。 */
+  rule?: string;
   skills: ApplicationSkillDependency[];
   bindings: ApplicationSkillBinding[];
 }

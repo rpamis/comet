@@ -765,9 +765,10 @@ children:
       id: 'timeout-check',
       name: 'Timeout check',
       executable: process.execPath,
-      argv: ['-e', 'setTimeout(() => {}, 250)'],
+      argv: ['-e', 'setInterval(() => {}, 1000)'],
       cwdRef: '.',
-      timeoutMs: 20,
+      // 给监管进程登记留出时间，再验证实际命令的超时与重试。
+      timeoutMs: 5_000,
       repeatable: true,
     } as const;
 
@@ -868,7 +869,11 @@ children:
         .access(path.join(paths.locksDir, 'root-move.lock'))
         .then(() => false)
         .catch(() => true);
-      return reserved && mutationLockReleased;
+      const commandStarted = await fs
+        .access(marker)
+        .then(() => true)
+        .catch(() => false);
+      return reserved && mutationLockReleased && commandStarted;
     }, 'Runtime owner did not reserve and start its check');
     const running = await readNativeLocalExecution(file);
     const activePid =
@@ -942,7 +947,7 @@ children:
       executable: process.execPath,
       argv: ['-e', 'setInterval(() => {}, 1000)'],
       cwdRef: '.',
-      timeoutMs: 20,
+      timeoutMs: 5_000,
       repeatable: false,
     } as const;
     await expect(

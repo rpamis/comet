@@ -789,7 +789,7 @@ if (requestedArgs.includes('creator')) {
     .description('从自然语言目标启动可恢复创作')
     .option('--project <dir>', 'Project root', '.')
     .requiredOption('--goal <text>', '自然语言工作流目标')
-    .requiredOption('--install-target <directory>', '项目内相对安装目录')
+    .requiredOption('--install-target <directory>', '项目内完整应用包导出目录')
     .option('--eval-config <file>', '可选Eval配置JSON；模型凭据只从执行环境注入')
     .addOption(
       new Option('--host <host>', '执行宿主').choices(['codex', 'claude-code']).default('codex'),

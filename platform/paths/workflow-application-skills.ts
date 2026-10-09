@@ -25,7 +25,7 @@ export function workflowApplicationPlatformInfo(id: string) {
     id: platform.id,
     name: platform.name,
     rulesSupported: Boolean(platform.rulesFormat),
-    hooksSupported: Boolean(platform.supportsHooks),
+    hooksSupported: platform.id === 'codex' || Boolean(platform.supportsHooks),
   };
 }
 

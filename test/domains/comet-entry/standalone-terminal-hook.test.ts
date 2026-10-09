@@ -17,7 +17,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
-async function terminal(base: ApplicationBase, cancelled: boolean) {
+async function terminal(base: ApplicationBase, cancelled: boolean, business = false) {
   const folder = path.join(root, 'fixed-application');
   await fs.mkdir(folder);
   await fs.mkdir(path.join(root, 'node_modules/@rpamis'), { recursive: true });
@@ -71,15 +71,25 @@ export function createApplication(){return {workflows:[{id:'terminal-contract',v
   await selectWorkflowApplication(loaded, run.runId);
   return inspectCometHook(root, {
     intent: 'write',
-    targets: [path.join(folder, 'SKILL.md')],
+    targets: [business ? path.join(root, 'report.md') : path.join(folder, 'SKILL.md')],
     toolName: 'Edit',
   });
 }
 
 it.each([false, true])(
-  'retains a standalone fixed Guard after terminal cancellation=%s',
+  'protects the standalone fixed package after terminal cancellation=%s',
   async (cancelled) => {
     expect(await terminal('standalone', cancelled)).toMatchObject({
+      allowed: false,
+      reason: '固定应用、SDK 状态与宿主配置只能由正式 Runtime 或安装入口维护',
+    });
+  },
+);
+
+it.each([false, true])(
+  'retains the standalone custom business Guard after terminal cancellation=%s',
+  async (cancelled) => {
+    expect(await terminal('standalone', cancelled, true)).toMatchObject({
       allowed: false,
       reason: '固定包不得写入',
     });
