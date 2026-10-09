@@ -154,7 +154,10 @@ function runScript(
   };
   const scriptPath = path.join(scripts, name);
   if (executor === 'node') {
-    return spawnSync(process.execPath, [scriptPath, ...args], {
+    // Compare the supported compatibility runtime with the frozen shell contract.
+    // New SDK initialization has its own lifecycle and authorization tests.
+    const commandArgs = args[0] === 'init' ? [...args, '--runtime', 'compat'] : args;
+    return spawnSync(process.execPath, [scriptPath, ...commandArgs], {
       cwd,
       encoding: 'utf8',
       input,

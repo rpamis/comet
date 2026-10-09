@@ -732,91 +732,12 @@ docker_run_node() {
 # Run Claude CLI in Docker
 # Usage: docker_run_claude <directory> <prompt> [--model MODEL] [--timeout SECONDS]
 docker_run_claude() {
-    if [[ "${2:-}" == "--prompt-file" ]]; then
-        docker_run_agent "$@" --agent claude-code
-        return $?
-    fi
-    local dir="$1"
-    local prompt="$2"
-    shift 2
-
-    local model=""
-    local timeout="300"
-    local expected_image_id=""
-
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --model)
-                model="$2"
-                shift 2
-                ;;
-            --timeout)
-                timeout="$2"
-                shift 2
-                ;;
-            --image-id)
-                expected_image_id="$2"
-                shift 2
-                ;;
-            *)
-                shift
-                ;;
-        esac
-    done
-
-    local image_id
-    image_id=$(resolve_runtime_image "$dir" "$expected_image_id") || return 1
-    prepare_agent_workspace_owner "$dir" "$image_id" || return 1
-
-    build_env_args
-    build_agent_runtime_mount_args
-    build_plugin_args
-    build_langfuse_plugin_args "claude-code"
-    build_trusted_oracle_mount_args "$dir"
-
-    local cmd=(bash //opt/scaffold-shell/run-agent-runtime.sh claude-code "$model" "$prompt" --)
-    if [[ ${#PLUGIN_CLI_ARGS[@]} -gt 0 ]]; then
-        cmd+=("${PLUGIN_CLI_ARGS[@]}")
-    fi
-    if [[ ${#LANGFUSE_PLUGIN_CLI_ARGS[@]} -gt 0 ]]; then
-        cmd+=("${LANGFUSE_PLUGIN_CLI_ARGS[@]}")
-    fi
-
-    local windir
-    windir=$(_winpath "$dir")
-
-    if [[ -n "$TIMEOUT_CMD" ]]; then
-        $TIMEOUT_CMD "$timeout" docker run --rm \
-            ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
-            -v "$windir://workspace" \
-            "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
-            "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
-            ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
-            ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
-            ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
-            -w //workspace \
-            "${ENV_ARGS[@]}" \
-            "$image_id" \
-            "${cmd[@]}"
-    else
-        docker run --rm \
-            ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
-            -v "$windir://workspace" \
-            "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
-            "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
-            ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
-            ${PLUGIN_MOUNT_ARGS[@]+"${PLUGIN_MOUNT_ARGS[@]}"} \
-            ${LANGFUSE_PLUGIN_MOUNT_ARGS[@]+"${LANGFUSE_PLUGIN_MOUNT_ARGS[@]}"} \
-            -w //workspace \
-            "${ENV_ARGS[@]}" \
-            "$image_id" \
-            "${cmd[@]}"
-    fi
+    docker_run_agent "$@" --agent claude-code
 }
 
 # Run a selected evaluation agent CLI in Docker.
 # Usage: docker_run_agent <directory> {<prompt>|--prompt-file <file>} --agent AGENT [--model MODEL] [--timeout SECONDS]
-docker_run_agent() {
+docker_run_agent() (
     local dir="$1"
     local prompt="$2"
     shift 2
@@ -831,6 +752,7 @@ docker_run_agent() {
     local model=""
     local timeout="300"
     local expected_image_id=""
+    local container_name=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -850,12 +772,20 @@ docker_run_agent() {
                 expected_image_id="$2"
                 shift 2
                 ;;
+            --container-name)
+                container_name="$2"
+                shift 2
+                ;;
             *)
                 shift
                 ;;
         esac
     done
     validate_agent "$agent" || return 1
+    if [[ -z "$container_name" ]]; then
+        container_name="comet-eval-turn-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+    fi
+    [[ "$container_name" =~ ^comet-eval-turn-[a-f0-9]{32}$ ]] || { die 'Invalid single-turn container identity'; return 1; }
     if [[ -n "$prompt_file" && "$agent" != claude-code && "$agent" != codex ]]; then
         die 'This adapter has no verified prompt stdin contract'
         return 1
@@ -896,8 +826,11 @@ docker_run_agent() {
 
     local windir
     windir=$(_winpath "$dir")
+    trap 'turn_status=$?; trap - EXIT; if ! cleanup_agent_turn "$container_name"; then echo "Agent container cleanup is incomplete for $container_name" >&2; exit 125; fi; exit "$turn_status"' EXIT
+    trap 'exit 143' TERM
+    trap 'exit 130' INT
     if [[ -n "$TIMEOUT_CMD" ]]; then
-        $TIMEOUT_CMD "$timeout" docker run --rm \
+        $TIMEOUT_CMD --kill-after=5 "$timeout" docker run --rm --name "$container_name" --label "comet.eval.turn=$container_name" \
             ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
             "${prompt_docker_args[@]}" \
             -v "$windir://workspace" \
@@ -912,7 +845,7 @@ docker_run_agent() {
             "$image_id" \
             "${AGENT_COMMAND[@]}" < "$prompt_input"
     else
-        docker run --rm \
+        docker run --rm --name "$container_name" --label "comet.eval.turn=$container_name" \
             ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
             "${prompt_docker_args[@]}" \
             -v "$windir://workspace" \
@@ -926,6 +859,43 @@ docker_run_agent() {
             "${ENV_ARGS[@]}" \
             "$image_id" \
             "${AGENT_COMMAND[@]}" < "$prompt_input"
+    fi
+)
+
+# Bound every cleanup query/removal even when the Docker daemon is unresponsive.
+_agent_turn_docker_call() {
+    if [[ -n "$TIMEOUT_CMD" ]]; then
+        "$TIMEOUT_CMD" --kill-after=1 5 docker "$@"
+        return $?
+    fi
+    docker "$@" &
+    local client=$! status=0 watchdog
+    (sleep 5; kill -KILL "$client" 2>/dev/null || true) >/dev/null 2>&1 &
+    watchdog=$!
+    wait "$client" || status=$?
+    kill "$watchdog" 2>/dev/null || true
+    wait "$watchdog" 2>/dev/null || true
+    return "$status"
+}
+
+cleanup_agent_turn() {
+    local name="${1:-}" observed owner
+    [[ "$name" =~ ^comet-eval-turn-[a-f0-9]{32}$ ]] || { echo 'Invalid single-turn cleanup identity' >&2; return 1; }
+    observed=$(_agent_turn_docker_call container ls -a --filter "name=$name" --format '{{.Names}}') || return 1
+    [[ -n "$observed" ]] || return 0
+    [[ "$observed" == "$name" ]] || { echo 'Single-turn container ownership could not be established' >&2; return 1; }
+    if ! owner=$(_agent_turn_docker_call container inspect --format '{{ index .Config.Labels "comet.eval.turn" }}' "$name"); then
+        observed=$(_agent_turn_docker_call container ls -a --filter "name=$name" --format '{{.Names}}') || return 1
+        [[ -z "$observed" ]] && return 0
+        return 1
+    fi
+    [[ "$owner" == "$name" ]] || { echo "Single-turn container ownership mismatch: $name" >&2; return 1; }
+    local removal_status=0
+    _agent_turn_docker_call rm -f "$name" >/dev/null || removal_status=$?
+    observed=$(_agent_turn_docker_call container ls -a --filter "name=$name" --format '{{.Names}}') || return 1
+    if [[ -n "$observed" ]]; then
+        echo "Single-turn container remains after cleanup: $name (remove exit $removal_status)" >&2
+        return 1
     fi
 }
 
@@ -1210,6 +1180,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             die "Usage: $0 cleanup-agent-loop <directory>"
         fi
         cleanup_agent_loop "$(realpath "$dir")"
+        ;;
+    cleanup-agent-turn)
+        cleanup_agent_turn "${1:-}"
         ;;
     help|*)
         cat <<EOF

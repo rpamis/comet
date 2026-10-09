@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from uuid import uuid4
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -21,6 +22,17 @@ TEST_CONTEXT_FILE = os.environ.get("BENCH_TEST_CONTEXT", "_test_context.json")
 TEST_RESULTS_FILE = os.environ.get("BENCH_TEST_RESULTS", "_test_results.json")
 SHELL_DIR = Path(__file__).parent.parent / "shell"
 SCAFFOLD_PYTHON_DIR = Path(__file__).parent
+
+
+class AgentContainerCleanupError(RuntimeError):
+    """The owned container could not be proven stopped; callers must not retry a model turn."""
+
+    def __init__(self, message, *, container_name, stdout="", stderr="", returncode=None):
+        super().__init__(message)
+        self.container_name = container_name
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
 
 
 def load_eval_environment() -> None:
@@ -336,6 +348,9 @@ def run_agent_in_docker(
     if not check_docker_available():
         raise RuntimeError("Docker not available")
     cmd = ["run-agent", str(test_dir)]
+    container_name = "comet-eval-turn-" + uuid4().hex
+    original_error = None
+    result = None
     prompt_file = None
     child_env = environment
     if child_env is None and (model or base_url):
@@ -363,12 +378,67 @@ def run_agent_in_docker(
         cmd.extend(["--timeout", str(timeout)])
         if image_id:
             cmd.extend(["--image-id", image_id])
-        return run_shell("docker.sh", *cmd, timeout=timeout + 30, check=False, env=child_env)
-    except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(cmd, 124, "", f"Timeout after {timeout}s")
+        cmd.extend(["--container-name", container_name])
+        result = run_shell(
+            "docker.sh",
+            *cmd,
+            timeout=timeout + 30,
+            check=False,
+            env=child_env,
+            capture_to_file=True,
+        )
+        return result
+    except subprocess.TimeoutExpired as error:
+        original_error = error
+        stdout = (
+            error.stdout.decode("utf-8", errors="replace")
+            if isinstance(error.stdout, bytes)
+            else (error.stdout or "")
+        )
+        stderr = (
+            error.stderr.decode("utf-8", errors="replace")
+            if isinstance(error.stderr, bytes)
+            else (error.stderr or "")
+        )
+        result = subprocess.CompletedProcess(
+            cmd, 124, stdout, "\n".join(filter(None, (stderr, f"Timeout after {timeout}s")))
+        )
+        return result
+    except BaseException as error:
+        original_error = error
+        raise
     finally:
+        cleanup_error = None
+        try:
+            cleanup = run_shell(
+                "docker.sh", "cleanup-agent-turn", container_name, timeout=30, check=False
+            )
+            if cleanup.returncode != 0:
+                cleanup_error = (
+                    cleanup.stderr or cleanup.stdout or f"cleanup exited {cleanup.returncode}"
+                )
+        except Exception as error:
+            cleanup_error = str(error)
         if prompt_file is not None:
-            prompt_file.unlink(missing_ok=True)
+            try:
+                prompt_file.unlink(missing_ok=True)
+            except OSError as error:
+                cleanup_error = "; ".join(
+                    filter(None, (cleanup_error, f"prompt cleanup failed: {error}"))
+                )
+        if cleanup_error:
+            original = (
+                str(original_error)
+                if original_error
+                else (result.stderr if result else "Agent turn did not complete")
+            )
+            raise AgentContainerCleanupError(
+                f"Agent container cleanup is incomplete for {container_name}: {cleanup_error}; original result: {original}",
+                container_name=container_name,
+                stdout=result.stdout if result else "",
+                stderr=result.stderr if result else str(original_error or ""),
+                returncode=result.returncode if result else None,
+            ) from original_error
 
 
 def run_claude_loop_in_docker(test_dir, loop_args, timeout=600, environment=None):

@@ -103,6 +103,84 @@ describe('CI workflows', () => {
     }
   });
 
+  it('canonicalizes only the existing macOS host temporary directory before package and SDK tests', async () => {
+    const ci = parse(await readWorkflow('ci.yml')) as {
+      jobs: Record<string, { steps?: Array<{ name?: string; run?: string; if?: string }> }>;
+    };
+    const prepared = Object.entries(ci.jobs).flatMap(([job, config]) =>
+      (config.steps ?? [])
+        .filter((step) => step.run?.includes('TMPDIR='))
+        .map((step) => ({ job, step })),
+    );
+    expect(prepared.map(({ job }) => job).sort()).toEqual(['package-e2e', 'sdk-contracts']);
+    for (const { job, step } of prepared) {
+      expect(step.if).toBe("matrix.os == 'macos-latest'");
+      const steps = ci.jobs[job].steps ?? [];
+      expect(steps.indexOf(step)).toBeLessThan(
+        steps.findIndex((item) => item.run === 'pnpm build'),
+      );
+      const source = step.run?.match(/^node -e "([\s\S]+)"$/)?.[1];
+      expect(source).toBeDefined();
+      const writes: Array<[string, string]> = [];
+      runInNewContext(source!, {
+        process: { env: { GITHUB_ENV: '/job/environment' } },
+        require: (name: string) => {
+          if (name === 'node:os') return { tmpdir: () => '/var/host-temp' };
+          if (name === 'node:fs')
+            return {
+              realpathSync: (target: string) => {
+                expect(target).toBe('/var/host-temp');
+                return '/private/var/host-temp';
+              },
+              appendFileSync: (target: string, content: string) => writes.push([target, content]),
+            };
+          throw new Error(`Unexpected preparation dependency: ${name}`);
+        },
+      });
+      expect(writes).toEqual([['/job/environment', 'TMPDIR=/private/var/host-temp\n']]);
+    }
+  });
+
+  it('uses the real existing Windows temporary directory for both TEMP and TMP before package and SDK tests', async () => {
+    const ci = parse(await readWorkflow('ci.yml')) as {
+      jobs: Record<string, { steps?: Array<{ name?: string; run?: string; if?: string }> }>;
+    };
+    const prepared = Object.entries(ci.jobs).flatMap(([job, config]) =>
+      (config.steps ?? [])
+        .filter((step) => step.run?.includes('TEMP='))
+        .map((step) => ({ job, step })),
+    );
+    expect(prepared.map(({ job }) => job).sort()).toEqual(['package-e2e', 'sdk-contracts']);
+    for (const { job, step } of prepared) {
+      expect(step.if).toBe("matrix.os == 'windows-latest'");
+      const steps = ci.jobs[job].steps ?? [];
+      expect(steps.indexOf(step)).toBeLessThan(
+        steps.findIndex((item) => item.run === 'pnpm build'),
+      );
+      const source = step.run?.match(/^node -e "([\s\S]+)"$/)?.[1];
+      expect(source).toBeDefined();
+      const writes: Array<[string, string]> = [];
+      const shortRoot = 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp';
+      const realRoot = 'C:\\Users\\runneradmin\\AppData\\Local\\Temp';
+      runInNewContext(source!, {
+        process: { env: { GITHUB_ENV: 'D:\\job\\environment' } },
+        require: (name: string) => {
+          if (name === 'node:os') return { tmpdir: () => shortRoot };
+          if (name === 'node:fs')
+            return {
+              realpathSync: (target: string) => {
+                expect(target).toBe(shortRoot);
+                return realRoot;
+              },
+              appendFileSync: (target: string, content: string) => writes.push([target, content]),
+            };
+          throw new Error(`Unexpected preparation dependency: ${name}`);
+        },
+      });
+      expect(writes).toEqual([['D:\\job\\environment', `TEMP=${realRoot}\nTMP=${realRoot}\n`]]);
+    }
+  });
+
   it('requires SDK contracts on every supported CI platform and the minimum Node version', async () => {
     const ci = parse(await readWorkflow('ci.yml')) as {
       on: { push: { branches: string[] }; workflow_dispatch?: unknown };

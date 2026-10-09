@@ -311,7 +311,8 @@ async function main() {
     const restoredDistribution = applicationCli(applicationRunArgs);
     if (
       restoredDistribution.status !== 'succeeded' ||
-      restoredDistribution.application?.packageRoot !== path.dirname(distributed.file)
+      restoredDistribution.application?.packageRoot !==
+        (await fs.realpath(path.dirname(distributed.file)))
     )
       throw new Error('Uninstall lost an existing distributed application Run');
     const pluginsImport = `${packageName}/plugins`;

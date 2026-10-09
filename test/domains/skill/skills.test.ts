@@ -4109,7 +4109,7 @@ describe('skills', () => {
       expect(zhGuard).toContain('--expand-context');
       expect(zhGuard).toContain('--application');
       expect(zhGuard).toContain('--outcome');
-      expect(zhGuard).toContain('| Classic | Open、Design、Verify、Archive | Build |');
+      expect(zhGuard).toMatch(/\| Classic\s*\| Open、Design、Verify、Archive\s*\| Build\s*\|/u);
       expect(zhGuard).toContain('Classic 的 Verify 只写验证报告和状态等阶段产物');
       expect(zhGuard).toContain('不修改 tasks 或普通项目实现');
       expect(zhGuard).toContain('状态包含 `children` 时');
@@ -4121,7 +4121,7 @@ describe('skills', () => {
       expect(enGuard).toContain('--expand-context');
       expect(enGuard).toContain('--application');
       expect(enGuard).toContain('--outcome');
-      expect(enGuard).toContain('| Classic | Open, Design, Verify, Archive | Build |');
+      expect(enGuard).toMatch(/\| Classic\s*\| Open, Design, Verify, Archive\s*\| Build\s*\|/u);
       expect(enGuard).toContain('Classic Verify writes only the verification report and state');
       expect(enGuard).toContain('It does not modify tasks or ordinary project implementation');
       expect(enGuard).toContain('When Native state contains `children`');

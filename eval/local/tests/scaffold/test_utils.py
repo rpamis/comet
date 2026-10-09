@@ -3,6 +3,7 @@
 import importlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -342,6 +343,8 @@ def test_run_agent_in_docker_builds_the_selected_adapter_command(monkeypatch, tm
     calls = []
 
     def fake_run_shell(script, *args, **kwargs):
+        if args[0] == "cleanup-agent-turn":
+            return subprocess.CompletedProcess([script, *args], 0, "", "")
         calls.append((script, args, kwargs))
         assert Path(args[3]).read_text(encoding="utf-8") == "inspect the task"
         return subprocess.CompletedProcess([script, *args], 0, "", "")
@@ -358,7 +361,7 @@ def test_run_agent_in_docker_builds_the_selected_adapter_command(monkeypatch, tm
     )
 
     assert result.returncode == 0
-    assert calls[0][1] == (
+    assert calls[0][1][:-2] == (
         "run-agent",
         str(tmp_path),
         "--prompt-file",
@@ -370,6 +373,8 @@ def test_run_agent_in_docker_builds_the_selected_adapter_command(monkeypatch, tm
         "--timeout",
         "42",
     )
+    assert calls[0][1][-2] == "--container-name"
+    assert re.fullmatch(r"comet-eval-turn-[a-f0-9]{32}", calls[0][1][-1])
     assert not Path(calls[0][1][3]).exists()
 
 
@@ -379,6 +384,8 @@ def test_single_turn_large_prompt_avoids_host_argv_and_cleans_up(monkeypatch, tm
     files = []
 
     def fake_run_shell(script, *args, **kwargs):
+        if args[0] == "cleanup-agent-turn":
+            return subprocess.CompletedProcess([script, *args], 0, "", "")
         # Reproduce Windows CreateProcess's command-line limit without calling a model.
         if sum(len(str(arg)) for arg in args) > 32767:
             raise OSError(206, "The filename or extension is too long")
@@ -403,6 +410,8 @@ def test_single_turn_prompt_file_is_removed_on_failure(monkeypatch, tmp_path, fa
     files = []
 
     def fake_run_shell(script, *args, **kwargs):
+        if args[0] == "cleanup-agent-turn":
+            return subprocess.CompletedProcess([script, *args], 0, "", "")
         files.append(Path(args[3]))
         assert files[-1].read_text(encoding="utf-8") == "prompt body"
         if failure == "timeout":
@@ -504,7 +513,7 @@ build_plugin_args() { PLUGIN_MOUNT_ARGS=(); PLUGIN_CLI_ARGS=(); }
 build_langfuse_plugin_args() { LANGFUSE_PLUGIN_MOUNT_ARGS=(); LANGFUSE_PLUGIN_CLI_ARGS=(); }
 build_trusted_oracle_mount_args() { TRUSTED_ORACLE_MOUNT_ARGS=(); }
 TIMEOUT_CMD=""
-docker() { printf '%s\\0' "$@" > "$FIXTURE_ARGS"; cat > "$FIXTURE_STDIN"; }
+docker() { if [[ "$1" == run ]]; then printf '%s\\0' "$@" > "$FIXTURE_ARGS"; cat > "$FIXTURE_STDIN"; fi; }
 docker_run_agent "$2" --prompt-file "$3" --agent "$4" --model fixture-model
 """
     result = subprocess.run(
@@ -639,7 +648,8 @@ def test_docker_subject_run_uses_controller_verified_immutable_image_identity():
     assert "docker_execution_identity" in docker_sh
     assert "claude --version" in docker_sh
     assert "runtime_image_id" in docker_sh
-    assert 'image_id=$(resolve_runtime_image "$dir" "$expected_image_id")' in docker_sh
+    assert 'image_id=$(resolve_runtime_image "$dir" "$expected_image_id" "$agent")' in docker_sh
+    assert 'docker_run_agent "$@" --agent claude-code' in docker_sh
     assert '"$image_id"' in docker_sh
 
 
@@ -1827,3 +1837,150 @@ def test_copied_scaffold_is_importable_by_validator_script(tmp_path: Path):
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == "ok\n"
+
+
+@pytest.mark.parametrize("failure", ["timeout", "exception", "success"])
+def test_single_turn_always_cleans_its_unique_container(monkeypatch, tmp_path, failure):
+    calls = []
+    names = []
+
+    def run(script, *args, **kwargs):
+        calls.append((args, kwargs))
+        if args[0] == "run-agent":
+            name = args[args.index("--container-name") + 1]
+            assert re.fullmatch(r"comet-eval-turn-[a-f0-9]{32}", name)
+            names.append(name)
+            assert kwargs["capture_to_file"] is True
+            if failure == "timeout":
+                raise subprocess.TimeoutExpired([script, *args], 1)
+            if failure == "exception":
+                raise RuntimeError("original launch error")
+            return subprocess.CompletedProcess([script, *args], 0, "ok", "")
+        assert args == ("cleanup-agent-turn", names[-1])
+        assert kwargs["timeout"] <= 30
+        return subprocess.CompletedProcess([script, *args], 0, "", "")
+
+    monkeypatch.setattr(utils, "run_shell", run)
+    monkeypatch.setattr(utils, "check_docker_available", lambda: True)
+    if failure == "exception":
+        with pytest.raises(RuntimeError, match="original launch error"):
+            utils.run_agent_in_docker(tmp_path, "body")
+    else:
+        assert utils.run_agent_in_docker(tmp_path, "body").returncode == (
+            124 if failure == "timeout" else 0
+        )
+    assert len(calls) == 2
+
+
+def test_cleanup_failure_is_not_reported_as_success_or_retriable_timeout(monkeypatch, tmp_path):
+    def run(script, *args, **kwargs):
+        if args[0] == "run-agent":
+            raise subprocess.TimeoutExpired([script, *args], 1)
+        return subprocess.CompletedProcess([script, *args], 1, "", "permission denied")
+
+    monkeypatch.setattr(utils, "run_shell", run)
+    monkeypatch.setattr(utils, "check_docker_available", lambda: True)
+    with pytest.raises(RuntimeError, match="cleanup.*incomplete.*permission denied") as error:
+        utils.run_agent_in_docker(tmp_path, "body")
+    assert type(error.value).__name__ == "AgentContainerCleanupError"
+
+
+def test_two_turns_same_workspace_have_independent_names(monkeypatch, tmp_path):
+    names = []
+
+    def run(script, *args, **kwargs):
+        if args[0] == "run-agent":
+            names.append(args[args.index("--container-name") + 1])
+        return subprocess.CompletedProcess([script, *args], 0, "", "")
+
+    monkeypatch.setattr(utils, "run_shell", run)
+    monkeypatch.setattr(utils, "check_docker_available", lambda: True)
+    utils.run_agent_in_docker(tmp_path, "first")
+    utils.run_agent_in_docker(tmp_path, "second")
+    assert len(set(names)) == 2
+
+
+def test_shell_timeout_cleans_only_its_registered_turn(tmp_path):
+    name = "comet-eval-turn-" + "a" * 32
+    calls = tmp_path / "calls"
+    state = tmp_path / "state"
+    script = """
+source "$1"
+resolve_runtime_image() { printf '%s' fake-image; }
+prepare_agent_workspace_owner() { return 0; }
+build_env_args() { ENV_ARGS=(); }
+build_agent_runtime_mount_args() { RUNTIME_CONFIG_MOUNT_ARGS=(); RUNTIME_CONFIG_TMPFS_ARGS=(); }
+build_plugin_args() { PLUGIN_MOUNT_ARGS=(); PLUGIN_CLI_ARGS=(); }
+build_langfuse_plugin_args() { LANGFUSE_PLUGIN_MOUNT_ARGS=(); LANGFUSE_PLUGIN_CLI_ARGS=(); }
+build_trusted_oracle_mount_args() { TRUSTED_ORACLE_MOUNT_ARGS=(); }
+TIMEOUT_CMD=""
+docker() {
+  printf '%s\\n' "$*" >> "$FAKE_CALLS"
+  case "$1 $2" in
+    "run --rm") printf '%s' "$TURN_NAME" > "$FAKE_STATE"; printf 'partial subject output\\n'; return 124;;
+    "container ls") [[ ! -f "$FAKE_STATE" ]] || cat "$FAKE_STATE";;
+    "container inspect") printf '%s' "$TURN_NAME";;
+    "rm -f") [[ "$3" == "$TURN_NAME" ]] || return 40; rm -f "$FAKE_STATE";;
+    *) return 41;;
+  esac
+}
+docker_run_agent "$2" body --agent codex --container-name "$TURN_NAME"
+"""
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            script,
+            "_",
+            utils._to_bash_path(utils.SHELL_DIR / "docker.sh"),
+            utils._to_bash_path(tmp_path),
+        ],
+        env={
+            **os.environ,
+            "FAKE_CALLS": utils._to_bash_path(calls),
+            "FAKE_STATE": utils._to_bash_path(state),
+            "TURN_NAME": name,
+        },
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 124, result.stderr
+    assert "partial subject output" in result.stdout
+    assert f"--name {name}" in calls.read_text()
+    assert f"--label comet.eval.turn={name}" in calls.read_text()
+    assert f"rm -f {name}" in calls.read_text()
+    assert not state.exists()
+
+
+@pytest.mark.parametrize("mode", ["mismatch", "daemon"])
+def test_shell_cleanup_refuses_unowned_or_uninspectable_container(tmp_path, mode):
+    name = "comet-eval-turn-" + "b" * 32
+    marker = tmp_path / "removed"
+    script = """
+source "$1"
+TIMEOUT_CMD=""
+docker() {
+ case "$1 $2" in
+  "container ls") if [[ "$FAKE_MODE" == daemon ]]; then echo 'daemon unavailable' >&2; return 125; fi; printf '%s' "$TURN_NAME";;
+  "container inspect") printf '%s' another-turn;;
+  "rm -f") touch "$FAKE_REMOVED";;
+ esac
+}
+cleanup_agent_turn "$TURN_NAME"
+"""
+    result = subprocess.run(
+        [utils.BASH_EXEC, "-c", script, "_", utils._to_bash_path(utils.SHELL_DIR / "docker.sh")],
+        env={
+            **os.environ,
+            "TURN_NAME": name,
+            "FAKE_MODE": mode,
+            "FAKE_REMOVED": utils._to_bash_path(marker),
+        },
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode != 0
+    assert not marker.exists()
+    assert ("ownership" if mode == "mismatch" else "daemon unavailable") in result.stderr

@@ -31,11 +31,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Classic checks with missing inputs**: Prevent a deleted or unreadable input from causing severe check slowdowns in large repositories.
 - **Classic initialization**: Recognize the Git branch before its first commit, allowing branch-bound changes to proceed without a misleading detached-HEAD error.
-- **Windows Eval timeouts**: Stop the Docker Agent loop when its execution budget expires, even when a child process keeps output handles open, preventing continued model calls after timeout.
-
-### Removed
-
-- **Previous Creator format**: Replace the earlier Creator generator and `workflow-protocol.json` execution format with SDK workflow applications. Existing creation documents must be regenerated; their original files are retained.
+- **Eval timeouts**: Stop Docker Agent loops and single-turn calls when their execution budgets expire, even when a child process keeps output handles open. Confirm container cleanup before retrying so timed-out calls do not continue alongside a new attempt.
 
 ### Security
 

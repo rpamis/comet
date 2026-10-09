@@ -152,7 +152,7 @@ describe('recoverable file lock safety', () => {
     expect((await diagnoseRecoverableFileLock(lock)).status).toBe('missing');
   });
 
-  it.each(['changed', 'EPERM'] as const)(
+  it.for(['changed', 'EPERM'] as const)(
     'recovers a transient coordinator read failure without overlapping writers (%s)',
     async (failure, context) => {
       if (failure === 'EPERM' && process.platform !== 'win32')

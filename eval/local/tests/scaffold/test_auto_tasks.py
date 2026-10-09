@@ -198,6 +198,102 @@ def test_generic_snapshot_keeps_its_existing_resource_budget(tmp_path):
     assert {item.path for item in snapshot.files}.issuperset({"SKILL.md", "references/format.md"})
 
 
+@pytest.mark.parametrize("budget,expected", [(3600, 900), (1200, 300), (40, 10), (30, 7), (None, 300)])
+def test_default_generator_passes_the_approved_per_attempt_timeout(tmp_path, monkeypatch, budget, expected):
+    import subprocess
+    from scaffold.python.auto_tasks import _default_generate
+    if budget is not None:
+        skill = _write_sdk_snapshot(tmp_path)
+        preview = {"settings": {"timeoutSeconds": budget}}
+        (skill / "references/workflows.json").write_text(json.dumps(preview), encoding="utf-8")
+        monkeypatch.setenv("COMET_APPLICATION_EVAL_CONTEXT", json.dumps({"skillRoot": str(skill), "preview": preview}))
+    else:
+        monkeypatch.delenv("COMET_APPLICATION_EVAL_CONTEXT", raising=False)
+    calls = []
+    def run(*args, **kwargs):
+        calls.append(kwargs)
+        return subprocess.CompletedProcess([], 0, json.dumps(_generated_payload()), "")
+    monkeypatch.setattr("scaffold.python.auto_tasks.run_agent_in_docker", run)
+    _default_generate("Complete unchanged input", agent="claude-code", model="selected-model")
+    assert len(calls) == 1
+    assert calls[0]["timeout"] == expected
+    assert calls[0]["model"] == "selected-model"
+
+
+@pytest.mark.parametrize("context", ["not-json", {"preview": {"settings": {"timeoutSeconds": True}}}, {"preview": {"settings": {"timeoutSeconds": 9000}}}])
+def test_generator_rejects_invalid_sdk_budget_context_before_model_execution(tmp_path, monkeypatch, context):
+    from scaffold.python.auto_tasks import _default_generate
+    skill = _write_sdk_snapshot(tmp_path)
+    if isinstance(context, dict):
+        context = {**context, "skillRoot": str(skill)}
+        (skill / "references/workflows.json").write_text(json.dumps(context["preview"]), encoding="utf-8")
+        context = json.dumps(context)
+    monkeypatch.setenv("COMET_APPLICATION_EVAL_CONTEXT", context)
+    calls = []
+    monkeypatch.setattr("scaffold.python.auto_tasks.run_agent_in_docker", lambda *args, **kwargs: calls.append(True))
+    with pytest.raises(ValueError):
+        _default_generate("Input", agent="claude-code", model=None)
+    assert not calls
+
+
+def test_timeout_exceptions_are_counted_without_inventing_usage(tmp_path):
+    skill = _write_skill(tmp_path)
+    calls = []
+    def generate(prompt):
+        calls.append(prompt)
+        raise TimeoutError("Generation timed out")
+    with pytest.raises(AutoTaskError) as failure:
+        ensure_generated_manifest(skill, tmp_path, agent="claude-code", model="selected", profile="generic", interaction={"mode": "none"}, generate=generate)
+    report = Path(str(failure.value).split("Partial report: ", 1)[1])
+    metadata = json.loads((report.parent / "metadata.json").read_text())
+    assert len(calls) == metadata["attempt_count"] == 2
+    assert metadata["generation_overhead"]["total_tokens"] is None
+    assert metadata["generation_overhead"]["total_cost_usd"] is None
+    assert all(item["status"] == "failed" and "timed out" in item["reason"] for item in metadata["generation_overhead"]["attempts"])
+
+
+def test_unknown_container_cleanup_stops_generation_after_one_attempt_and_reports_real_partial_usage(tmp_path, monkeypatch):
+    from scaffold.python.utils import AgentContainerCleanupError
+    skill = _write_skill(tmp_path)
+    monkeypatch.delenv("COMET_APPLICATION_EVAL_CONTEXT", raising=False)
+    calls = []
+    partial = json.dumps({"type": "result", "usage": {"input_tokens": 11, "output_tokens": 7}, "total_cost_usd": 0.02})
+    def run(*args, **kwargs):
+        calls.append(True)
+        raise AgentContainerCleanupError("Cleanup not confirmed", container_name="owned-test", stdout=partial, returncode=124)
+    monkeypatch.setattr("scaffold.python.auto_tasks.run_agent_in_docker", run)
+    with pytest.raises(AutoTaskError) as failure:
+        ensure_generated_manifest(skill, tmp_path, agent="claude-code", model="selected", profile="generic", interaction={"mode": "none"})
+    report = Path(str(failure.value).split("Partial report: ", 1)[1])
+    metadata = json.loads((report.parent / "metadata.json").read_text())
+    assert len(calls) == metadata["attempt_count"] == 1
+    overhead = metadata["generation_overhead"]
+    assert overhead["input_tokens"] == 11
+    assert overhead["output_tokens"] == 7
+    assert overhead["total_cost_usd"] == 0.02
+    assert overhead["attempts"][0]["status"] == "failed"
+    assert "Cleanup not confirmed" in metadata["error"]
+
+
+def test_nonzero_generator_result_keeps_actual_partial_telemetry_in_each_failed_attempt(tmp_path, monkeypatch):
+    import subprocess
+    skill = _write_skill(tmp_path)
+    monkeypatch.delenv("COMET_APPLICATION_EVAL_CONTEXT", raising=False)
+    stdout = json.dumps({"type": "result", "usage": {"input_tokens": 10, "output_tokens": 4}})
+    monkeypatch.setattr("scaffold.python.auto_tasks.run_agent_in_docker", lambda *args, **kwargs: subprocess.CompletedProcess([], 124, stdout, "Timeout after 300s"))
+    with pytest.raises(AutoTaskError) as failure:
+        ensure_generated_manifest(skill, tmp_path, agent="claude-code", model="selected", profile="generic", interaction={"mode": "none"})
+    report = Path(str(failure.value).split("Partial report: ", 1)[1])
+    metadata = json.loads((report.parent / "metadata.json").read_text())
+    assert metadata["attempt_count"] == 2
+    for attempt in metadata["generation_overhead"]["attempts"]:
+        assert attempt["returncode"] == 124
+        assert attempt["input_tokens"] == 10
+        assert attempt["output_tokens"] == 4
+        assert attempt["status"] == "failed"
+    assert metadata["generation_overhead"]["total_cost_usd"] is None
+
+
 def test_generated_manifest_is_cached_and_reused(tmp_path: Path):
     skill = _write_skill(tmp_path)
     calls = []

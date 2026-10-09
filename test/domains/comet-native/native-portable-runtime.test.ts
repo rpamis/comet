@@ -47,7 +47,10 @@ import {
 } from '../../helpers/native-portable-process.js';
 import { createNativeRunnerChannel } from '../../../domains/comet-native/native-runner-protocol.js';
 import { recoverNativePortableChange } from '../../../domains/comet-native/native-portable-recovery.js';
-import { inspectProcessLiveness } from '../../../platform/process/process-identity.js';
+import {
+  inspectProcessLiveness,
+  inspectProcessTreeLiveness,
+} from '../../../platform/process/process-identity.js';
 import type { NativeProjectPaths } from '../../../domains/comet-native/native-types.js';
 import { withCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
 
@@ -884,10 +887,14 @@ children:
 
     owner.kill('SIGKILL');
     await waitForProcessExit(owner);
-    if (activePid !== undefined && processIsAlive(activePid)) process.kill(activePid, 'SIGKILL');
+    const activeProcess = running?.checks[0]?.activeProcess;
+    // Let the registered supervisor receive owner disconnect and stop its complete tree.
+    // Killing only the supervisor can leave the command alive and cannot prove an orphan.
     await waitForCondition(
-      () => activePid !== undefined && !processIsAlive(activePid),
-      'Check process remained alive after its Runtime owner was terminated',
+      async () =>
+        activeProcess?.status === 'running' &&
+        (await inspectProcessTreeLiveness(activeProcess.pid, activeProcess.identity)) === 'dead',
+      'Check process tree did not stop after its Runtime owner was terminated',
     );
     expect((await fs.readFile(marker, 'utf8')).trim().split(/\r?\n/)).toHaveLength(1);
 
@@ -895,10 +902,9 @@ children:
       owner.pid!,
       running?.execution?.ownerIdentity,
     );
-    const activeProcess = running?.checks[0]?.activeProcess;
     const checkLiveness =
       activeProcess?.status === 'running'
-        ? await inspectProcessLiveness(activeProcess.pid, activeProcess.identity)
+        ? await inspectProcessTreeLiveness(activeProcess.pid, activeProcess.identity)
         : 'unknown';
     if (ownerLiveness !== 'dead' || checkLiveness !== 'dead') {
       await expect(
