@@ -44,7 +44,7 @@ Before asking, show a short summary:
 - The irreversible archive actions: merge delta changes into main spec, annotate the Design Doc/plan, and move the change to the archive directory.
 - How the archive commit will be handled: keep it local, push the bound branch, or push and create a PR.
 
-Present a single-choice question containing every option below. Use this table in text fallback mode. With structured questions, use “Method” as the short label and “Effect” as its description; do not shorten options until their meaning is unclear.
+For a Git coordination root, present a single-choice question containing every option below. Use this table in text fallback mode. With structured questions, use “Method” as the short label and “Effect” as its description; do not shorten options until their meaning is unclear.
 
 | Option | Method                                 | Effect                                                                                                                                                                                                                     |
 | ------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -54,14 +54,16 @@ Present a single-choice question containing every option below. Use this table i
 | D      | Adjust or verify again                 | Do not archive. Run `comet state transition <change-name> archive-reopen` to return to `phase: verify`, then invoke `/comet-verify`. If repairs are needed, return to `/comet-build` under the verification-failure rules. |
 | E      | Do not archive yet                     | Do not run archive-confirm or archive, commit, or push. Keep the unarchived change, `phase: archive`, and `branch_status: pending` for a later `/comet-archive` invocation.                                                |
 
-Only after the user chooses A, B, or C, save the choice as JSON through Runtime, then confirm archive:
+If the coordination root is outside Git and product code lives in independent child repositories, ask the user to choose document-only archive or D/E instead. Explain that this merges the main spec, moves and saves the archive documents, and records file digests under `.comet/classic-deliveries/` in the coordination root. Verify each child repository's commits and pushes separately; they are not evidence of a coordination-document archive commit. After confirmation, write `{ "action": "archive-only" }` without `targetBranch`, `remote`, `commit`, or `prUrl`. This option applies only to a non-Git coordination root; Git projects keep A/B/C.
+
+Only after the user chooses A, B, C, or explicitly confirms document-only archive, save the choice as JSON through Runtime, then confirm archive:
 
 ```bash
 comet state delivery <change-name> --file <json-path>
 comet state transition <change-name> archive-confirm
 ```
 
-JSON contains action (A=local, B=push, C=pr), targetBranch, and optional remote, commit, and prUrl. Initially record only confirmed actions and targets. Do not fabricate unknown commit/prUrl values; add them after the operations actually complete.
+Git delivery JSON contains action (A=local, B=push, C=pr), targetBranch, and optional remote, commit, and prUrl. Document-only JSON contains only `action: archive-only`. Initially record only confirmed actions and targets. Do not fabricate unknown commit/prUrl values; add them after the operations actually complete.
 
 targetBranch is the bound branch receiving the archive commit, not the PR base branch. Use an explicit existing PR-base configuration; clarify ambiguity first. With multiple remotes, establish the destination rather than guessing. For example, after the user confirms push:
 
@@ -121,6 +123,8 @@ brainstorming → delta spec → implementation → verification → main spec m
 
 ### 4. Commit only the archive changes
 
+When delivery has action `archive-only`, the archive command sets `branch_status` to `handled` and records SHA-256 digests of every file in the archive directory after final integrity checks. Run `comet guard <change-name> archive` and `comet state delivery <change-name> --verify`. Clear current selection only when `verification.status` is `complete` and the archive directory, main spec, and receipt remain available. This path skips the Git commit, push, and PR steps below; each child repository supplies its own delivery evidence. Added, removed, or modified archive files change verification to `needsVerification`; restore or repair the documents instead of overwriting the sealed receipt.
+
 Archive moves files and merges specs; it does not commit. Afterwards, expect these uncommitted changes:
 
 - The change moves from `<classic-change-dir>/` to `<classic-archive-root>/YYYY-MM-DD-<name>/`.
@@ -168,9 +172,9 @@ Do not invoke Superpowers `finishing-a-development-branch` in Archive. Do not of
 - The archive script succeeded with exit code 0.
 - `<classic-archive-root>/YYYY-MM-DD-<change-name>/` exists.
 - Archived `.comet.yaml` records `archived: true`.
-- The single archive commit includes `branch_status: handled` in archived state.
+- The single archive commit includes `branch_status: handled` in archived state; `archive-only` includes it in the file-digest receipt.
 - `comet guard <change-name> archive` passes.
-- The archive commit was handled as confirmed: A stays local, B was pushed successfully, or C was pushed and has a PR.
+- The archive commit was handled as confirmed: A stays local, B was pushed successfully, or C was pushed and has a PR; for `archive-only`, Runtime verifies the local document receipt.
 - Current selection was cleared after the selected handling completed.
 
 The script moves `<classic-change-dir>/` to `<classic-archive-root>/YYYY-MM-DD-<name>/`.

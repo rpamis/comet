@@ -779,6 +779,10 @@ describe('Comet plugin integration bridge', () => {
         await failingBridge.collectContext({ task: '准备提交当前改动' });
         expect(
           (await failingBridge.retrieve({ projectKey: 'skill-failure-project' })).records,
+        ).toHaveLength(0);
+        await failingBridge.pluginRuntime.replayLearning();
+        expect(
+          (await failingBridge.retrieve({ projectKey: 'skill-failure-project' })).records,
         ).toEqual([expect.objectContaining({ text: '提交前只暂存本次改动文件' })]);
       } finally {
         await fs.rm(root, { recursive: true, force: true });

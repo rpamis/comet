@@ -560,6 +560,158 @@ describe('Agent Learning Coordinator', () => {
     expect(consolidate.mock.calls[1]?.[0].deltas[0]?.idempotencyKey).toBe(firstKey);
   });
 
+  it('waits for the submitted host review without retrying unrelated reflection work', async () => {
+    const store = new MemoryAgentExperienceJournalStore();
+    const journal = new AgentExperienceJournal(store);
+    const reflect = vi.fn<AgentLearningAdapter['reflect']>();
+    let submitted = false;
+    reflect.mockImplementation(async () =>
+      submitted
+        ? []
+        : {
+            deltas: [],
+            deferred: true,
+            waitFor: [{ kind: 'host-review', id: 'review-1', workspaceId: 'workspace-1' }],
+          },
+    );
+    const coordinator = () =>
+      new AgentLearningCoordinator({
+        journal,
+        learners: [
+          {
+            owner: 'comet.project-knowledge',
+            supports: () => true,
+            reflect,
+            consolidate: async () => {},
+          },
+        ],
+        schedule: async (task) => task(),
+      });
+
+    await coordinator().capture(event({ eventId: 'review-event' }));
+    expect((await store.read()).reflections['review-event']).toMatchObject({
+      status: 'waiting',
+      attempts: 0,
+    });
+    await coordinator().replayPending();
+    expect(reflect).toHaveBeenCalledTimes(1);
+
+    submitted = true;
+    await coordinator().resumeReview({
+      kind: 'host-review',
+      id: 'review-1',
+      workspaceId: 'workspace-1',
+    });
+    expect((await store.read()).reflections['review-event']).toMatchObject({
+      status: 'processed',
+      attempts: 0,
+    });
+    expect(reflect).toHaveBeenCalledTimes(2);
+  });
+
+  it('rechecks a review submitted before its waiting state was saved', async () => {
+    const store = new MemoryAgentExperienceJournalStore();
+    const journal = new AgentExperienceJournal(store);
+    const review = { kind: 'host-review' as const, id: 'race-review', workspaceId: 'workspace-1' };
+    let submitted = false;
+    let coordinator: AgentLearningCoordinator;
+    const reflect = vi.fn<AgentLearningAdapter['reflect']>(async () => {
+      if (submitted) return [];
+      submitted = true;
+      expect(await coordinator.resumeReview(review)).toBe(0);
+      return { deltas: [], deferred: true, waitFor: [review] };
+    });
+    coordinator = new AgentLearningCoordinator({
+      journal,
+      learners: [
+        {
+          owner: 'comet.project-knowledge',
+          supports: () => true,
+          reflect,
+          consolidate: async () => {},
+        },
+      ],
+      isWaitingResolved: async () => submitted,
+      schedule: async (task) => task(),
+    });
+    await coordinator.capture(event({ eventId: 'submitted-before-wait' }));
+    expect((await store.read()).reflections['submitted-before-wait']).toMatchObject({
+      status: 'processed',
+      attempts: 0,
+    });
+    expect(reflect).toHaveBeenCalledTimes(2);
+  });
+
+  it('backs off repeated reflection failures and keeps exhausted work for explicit retry', async () => {
+    const store = new MemoryAgentExperienceJournalStore();
+    const journal = new AgentExperienceJournal(store);
+    await journal.capture(event({ eventId: 'failing-event' }));
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      const now = new Date(Date.UTC(2026, 9, 9, 0, attempt * 15)).toISOString();
+      const claim = await journal.claimEpisode('episode-1', { now });
+      expect(claim).not.toBeNull();
+      await journal.failClaim(claim!, 'provider unavailable', now);
+      const reflection = (await store.read()).reflections['failing-event'];
+      expect(reflection.attempts).toBe(attempt);
+      expect(reflection.status).toBe(attempt === 8 ? 'failed' : 'pending');
+      if (attempt >= 2 && attempt < 8) expect(reflection.nextRetryAt).toBeTruthy();
+    }
+    await expect(journal.pending()).resolves.toEqual([]);
+    await journal.retryFailed();
+    expect((await store.read()).reflections['failing-event']).toMatchObject({
+      status: 'pending',
+      attempts: 0,
+    });
+  });
+
+  it('resumes only the matching legacy review after the old deferred error exhausted retries', async () => {
+    const store = new MemoryAgentExperienceJournalStore();
+    const journal = new AgentExperienceJournal(store);
+    await journal.capture(event({ eventId: 'legacy-review' }));
+    await journal.capture(event({ eventId: 'other-review', episodeId: 'other-episode' }));
+    for (const id of ['legacy-review', 'other-review']) {
+      await journal.markFailed(id, 'comet.project-knowledge semantic Reflection deferred');
+    }
+    const state = await store.read();
+    await store.write({
+      ...state,
+      reflections: {
+        ...state.reflections,
+        'legacy-review': {
+          ...state.reflections['legacy-review'],
+          status: 'failed',
+          attempts: 1561,
+        },
+      },
+    });
+    const reflect = vi.fn<AgentLearningAdapter['reflect']>(async () => []);
+    const coordinator = new AgentLearningCoordinator({
+      journal,
+      learners: [
+        {
+          owner: 'comet.project-knowledge',
+          supports: () => true,
+          reflect,
+          consolidate: async () => {},
+        },
+      ],
+      schedule: async (task) => task(),
+    });
+    await coordinator.resumeReview(
+      { kind: 'host-review', id: 'selected', workspaceId: 'workspace-1' },
+      async (entry) => entry.eventId === 'legacy-review',
+    );
+    expect((await store.read()).reflections['legacy-review']).toMatchObject({
+      status: 'processed',
+      attempts: 0,
+    });
+    expect((await store.read()).reflections['other-review']).toMatchObject({
+      status: 'pending',
+      attempts: 1,
+    });
+    expect(reflect).toHaveBeenCalledTimes(1);
+  });
+
   it('reflects the merged episode and isolates a failing learner from healthy learners', async () => {
     const failing = vi.fn<AgentLearningAdapter['reflect']>(async () => {
       throw new Error('learner unavailable');
@@ -595,12 +747,9 @@ describe('Agent Learning Coordinator', () => {
       'episode-event-2',
     ]);
     expect(failing).toHaveBeenCalledTimes(2);
-    await expect(journal.pending()).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ eventId: 'episode-event-1' }),
-        expect.objectContaining({ eventId: 'episode-event-2' }),
-      ]),
-    );
+    const reflectionState = await journal.status();
+    expect(reflectionState.pending + reflectionState.retryScheduled).toBe(2);
+    expect(reflectionState.retryScheduled).toBe(1);
   });
 
   it('does not repeat a completed Learner consolidation when another Learner retries', async () => {

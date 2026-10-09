@@ -349,6 +349,42 @@ describe('Classic archive command', () => {
     );
   });
 
+  it('completes document-only delivery from a non-Git coordinator with a child repository', async () => {
+    const dir = await makeProject();
+    await seedArchiveChange(dir);
+    expect(run(dir, ['state', 'set', 'demo', 'branch_status', 'pending']).status).toBe(0);
+    await fs.mkdir(path.join(dir, 'frontend'));
+    const { execFileSync } = await import('node:child_process');
+    execFileSync('git', ['-C', path.join(dir, 'frontend'), 'init'], { windowsHide: true });
+    const input = path.join(dir, 'delivery-input.json');
+    await fs.writeFile(input, '{"action":"archive-only"}\n');
+    const authorized = run(dir, ['state', 'delivery', 'demo', '--file', input]);
+    expect(authorized.status, authorized.stderr).toBe(0);
+    confirmArchiveChange(dir);
+    const fake = await fakeOpenSpec(dir, 'success');
+    const archived = run(dir, ['archive', 'demo'], { COMET_OPENSPEC: fake.command });
+    expect(archived.status, archived.stderr).toBe(0);
+    const archivePath = path.join(
+      dir,
+      'openspec',
+      'changes',
+      'archive',
+      `${new Date().toISOString().slice(0, 10)}-demo`,
+    );
+    expect(parse(await fs.readFile(path.join(archivePath, '.comet.yaml'), 'utf8'))).toMatchObject({
+      branch_status: 'handled',
+      archived: true,
+    });
+    const verified = run(dir, ['state', 'delivery', 'demo', '--verify', '--json']);
+    expect(verified.status, verified.stderr).toBe(0);
+    expect(JSON.parse(verified.stdout).data.verification).toMatchObject({
+      status: 'complete',
+      archiveVerified: true,
+    });
+    const guarded = run(dir, ['guard', 'demo', 'archive']);
+    expect(guarded.status, guarded.stderr).toBe(0);
+  });
+
   it('rewrites active change handoff pointers and passes the final archive guard', async () => {
     const dir = await makeProject();
     const changeDir = await seedArchiveChange(dir);

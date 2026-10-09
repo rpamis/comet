@@ -239,7 +239,9 @@ describe('PluginRuntime', () => {
       journals: { user: userJournal, project: projectBJournal },
     });
     await runtimeB.reconcileFirstParty();
-    await runtimeB.collectContext({ task: 'resume user learning' }, 'user');
+    await runtimeB.collectContext({ task: 'read user context' }, 'user');
+    expect(received).toEqual([]);
+    await runtimeB.replayLearning();
 
     await vi.waitFor(() => expect(received).toEqual([event.eventId]));
     await vi.waitFor(async () => expect(await userJournal.pending()).toEqual([]));

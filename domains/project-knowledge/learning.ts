@@ -2,7 +2,12 @@ import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
-import type { AgentExperienceEvent, AgentLearningDelta } from '../agent-learning/index.js';
+import type {
+  AgentExperienceEvent,
+  AgentLearningDelta,
+  AgentLearningWait,
+} from '../agent-learning/index.js';
+import { ProjectKnowledgeReviewPending } from './host-review.js';
 import type { MemoryLanguage } from '../comet-memory/types.js';
 import {
   hashProtectedProjectFile,
@@ -100,6 +105,7 @@ export interface ProjectKnowledgeLearningResult {
 export interface ProjectKnowledgeReflectionResult {
   readonly skipped: boolean;
   readonly deferred: boolean;
+  readonly waitFor?: readonly AgentLearningWait[];
   readonly deltas: readonly AgentLearningDelta[];
   readonly changedHint?: ProjectKnowledgeChangedHint;
   readonly diagnostics: readonly ProjectKnowledgeLearningDiagnostic[];
@@ -584,12 +590,14 @@ export class ProjectKnowledgeLearningService {
     }
     let reviewActions: readonly ProjectKnowledgeReviewAction[] = [];
     let deferred = this.reviewer === undefined;
+    let waitFor: readonly AgentLearningWait[] | undefined;
     if (this.reviewer !== undefined) {
       try {
         const reviewed = await this.reviewer.review(packet);
         reviewActions = Array.isArray(reviewed) ? reviewed.slice(0, MAX_REVIEW_ACTIONS) : [];
       } catch (error) {
         deferred = true;
+        if (error instanceof ProjectKnowledgeReviewPending) waitFor = [error.waitFor];
         report({
           code: 'reviewer-unavailable',
           message:
@@ -609,6 +617,7 @@ export class ProjectKnowledgeLearningService {
       return {
         skipped: true,
         deferred,
+        ...(waitFor === undefined ? {} : { waitFor }),
         deltas: [],
         changedHint: packet.changedHint,
         diagnostics,
@@ -727,6 +736,7 @@ export class ProjectKnowledgeLearningService {
     return {
       skipped: false,
       deferred,
+      ...(waitFor === undefined ? {} : { waitFor }),
       deltas,
       changedHint: packet.changedHint,
       diagnostics,

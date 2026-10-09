@@ -2,13 +2,17 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.5] - 2026-10-09
+## What's Changed [0.4.5] - 2026-10-10
 
 ### Added
 
 - **Native brief directory structure**: New and reconfirmed Native changes record a "Directory structure" section under Scope listing Created/Modified/Deleted modules and key files plus a deliberate "Not created" list, as a tree or a plain list with per-path annotations, in both artifact languages. Runtime enforces the section at Shape confirmation boundaries created with this release (document constraints v3); changes confirmed by earlier releases keep their original rules and progress. Adding ordinary helper files inside a confirmed module needs no renewed confirmation; scope growth or responsibility shifts update the structure and the related Decision first.
 
+- **Classic document archive**: Archive specs and change documents from a non-Git coordination root with independent child repositories, using an explicit local document delivery choice and a verified file-digest receipt (#468).
+
 ### Fixed
+
+- **Project Knowledge review responsiveness**: Keep pending host reviews out of repeated context replay, resume only submitted reviews, bound retries for real failures, and accept batches of review decisions across paths in one Git worktree (#467).
 
 - **Native fenced examples**: Ignore headings and blocking markers inside fenced code so valid brief and verification examples do not trigger document errors or clarification blockers. Match fence characters and lengths consistently when checking document contents.
 - **DSH workflow protection**: Install loadable Hook bridge patches in existing DSH profiles, match native write and edit tools, and preserve denial decisions through PowerShell. Updates migrate managed legacy patches without duplicating bridges or replacing unrelated configuration; Doctor identifies invalid bridge configuration and explains activation requirements (#466).

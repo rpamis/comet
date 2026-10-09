@@ -510,6 +510,7 @@ async function createProjectKnowledgeModule(
     reflect: async (request) => {
       const deltas: AgentLearningDelta[] = [];
       let deferred = false;
+      const waitFor: import('../agent-learning/experience-journal.js').AgentLearningWait[] = [];
       for (const event of reflectionEvents(request)) {
         if (event.type === 'context.outcome' && event.outcome !== undefined) {
           for (const id of contextOutcomeTargetIds(
@@ -550,9 +551,10 @@ async function createProjectKnowledgeModule(
         if (changedHint !== null) await persistChangedHint(changedHint);
         const result = await reflectProjectKnowledge(event);
         deferred ||= result.deferred;
+        waitFor.push(...(result.waitFor ?? []));
         deltas.push(...result.deltas);
       }
-      return { deltas, deferred };
+      return { deltas, deferred, ...(waitFor.length > 0 ? { waitFor } : {}) };
     },
     consolidate: async ({ deltas }) => {
       let consolidationProvider: ProjectKnowledgeProvider | null = null;
