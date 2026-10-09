@@ -45,6 +45,14 @@ and isolated fixtures. Mock external services; never send real messages, publish
 The controller installs the application and its fixed dependency Skills before execution. Use the
 installed application Skill or comet runtime dispatch --application <application id>. Read the
 actual immutable package selected by that installed entry; do not invent another workflow.
+Each case already has its own isolated /workspace. This is the application project root, not a nested project directory.
+Always use --project-root /workspace for Runtime commands, and keep the current fixed application id.
+Do not create /workspace/eval-grill-normal or another per-case project root; do not cd into a new project
+and run the SDK there. Business source subdirectories may exist inside /workspace, but they do not change
+the application project root. Do not generate or install another application or copy a replacement workflow.
+Use workspace-relative expectation paths such as CONTEXT.md and src/calculator.py, not /workspace/CONTEXT.md
+or /workspace/eval-grill-normal/CONTEXT.md. Do not create fake Run, Action, Wait or approval state to satisfy
+an expectation. The controller checks actual Runtime execution separately from business artifact assertions.
 """
 
 

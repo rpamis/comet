@@ -308,22 +308,16 @@ def run_claude_in_docker(
     base_url=None,
     environment=None,
 ):
-    if not check_docker_available():
-        raise RuntimeError("Docker not available")
-    cmd = ["run-claude", str(test_dir), prompt, "--timeout", str(timeout)]
-    if model:
-        cmd.extend(["--model", model])
-    if image_id:
-        cmd.extend(["--image-id", image_id])
-    child_env = environment
-    if child_env is None and (model or base_url):
-        child_env = build_agent_environment(
-            ResolvedExecution("claude-code", model, base_url, {}),
-        )
-    try:
-        return run_shell("docker.sh", *cmd, timeout=timeout + 30, check=False, env=child_env)
-    except subprocess.TimeoutExpired:
-        return subprocess.CompletedProcess(cmd, 124, "", f"Timeout after {timeout}s")
+    return run_agent_in_docker(
+        test_dir,
+        prompt,
+        agent="claude-code",
+        timeout=timeout,
+        model=model,
+        image_id=image_id,
+        base_url=base_url,
+        environment=environment,
+    )
 
 
 def run_agent_in_docker(
@@ -341,21 +335,40 @@ def run_agent_in_docker(
     agent_id = validate_agent_id(agent)
     if not check_docker_available():
         raise RuntimeError("Docker not available")
-    cmd = ["run-agent", str(test_dir), prompt, "--agent", agent_id]
-    if model:
-        cmd.extend(["--model", model])
-    cmd.extend(["--timeout", str(timeout)])
-    if image_id:
-        cmd.extend(["--image-id", image_id])
+    cmd = ["run-agent", str(test_dir)]
+    prompt_file = None
     child_env = environment
     if child_env is None and (model or base_url):
         child_env = build_agent_environment(
             ResolvedExecution(agent_id, model, base_url, {}),
         )
     try:
+        if agent_id in {"claude-code", "codex"}:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                newline="",
+                prefix="comet-eval-prompt-",
+                suffix=".txt",
+                delete=False,
+            ) as handle:
+                prompt_file = Path(handle.name)
+                handle.write(prompt)
+            cmd.extend(["--prompt-file", str(prompt_file)])
+        else:
+            cmd.append(prompt)
+        cmd.extend(["--agent", agent_id])
+        if model:
+            cmd.extend(["--model", model])
+        cmd.extend(["--timeout", str(timeout)])
+        if image_id:
+            cmd.extend(["--image-id", image_id])
         return run_shell("docker.sh", *cmd, timeout=timeout + 30, check=False, env=child_env)
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, 124, "", f"Timeout after {timeout}s")
+    finally:
+        if prompt_file is not None:
+            prompt_file.unlink(missing_ok=True)
 
 
 def run_claude_loop_in_docker(test_dir, loop_args, timeout=600, environment=None):

@@ -14,6 +14,7 @@ from scaffold.python.application_eval import (
     application_environment,
     application_runs_validator,
     write_application_result,
+    application_generation_guidance,
 )
 from scaffold.python.auto_tasks import ensure_generated_manifest
 from scaffold.python.logging import TreatmentResult
@@ -33,6 +34,19 @@ def _context(tmp_path, monkeypatch):
     context = {"preview": preview, "skillRoot": str(skill), "experimentId": "eval-one", "snapshotHash": "snapshot", "resultFile": str(result_root / "application-result.json")}
     monkeypatch.setenv("COMET_APPLICATION_EVAL_CONTEXT", json.dumps(context))
     return skill, result_root
+
+
+def test_application_generation_keeps_one_installed_candidate_and_one_project_root(tmp_path, monkeypatch):
+    from scaffold.python.auto_tasks import build_skill_snapshot
+    skill, _ = _context(tmp_path, monkeypatch)
+    guidance = application_generation_guidance(build_skill_snapshot(skill))
+    for contract in (
+        "Each case already has its own isolated /workspace", "--project-root /workspace",
+        "Do not create /workspace/eval-grill-normal", "Do not generate or install another application",
+        "CONTEXT.md", "src/calculator.py", "not /workspace/CONTEXT.md",
+        "not a nested project directory", "Do not substitute a hand-written state file",
+    ):
+        assert contract in guidance
 
 
 def test_generator_reads_workflow_and_actual_modules_and_reuses_the_same_cases(tmp_path, monkeypatch):

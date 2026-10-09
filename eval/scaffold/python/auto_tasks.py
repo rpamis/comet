@@ -110,7 +110,7 @@ def _add_snapshot_file(root: Path, files: dict[str, SnapshotFile], path: Path) -
 
 
 def build_skill_snapshot(skill_path: Path | str) -> SkillSnapshot:
-    """Capture only the Skill and its bounded, relevant package context."""
+    """Capture complete SDK application inputs or bounded generic Skill context."""
     snapshot = _shared_build_skill_snapshot(skill_path)
     return SkillSnapshot(
         tuple(SnapshotFile(item.path, item.content, item.content_hash) for item in snapshot.files),
@@ -413,13 +413,36 @@ def _generation_prompt(snapshot: SkillSnapshot, *, profile: str, repair: str | N
     repair_text = f"\nRepair the previous output because: {repair}\n" if repair else ""
     return f"""You are Comet's task-generator session. Generate only JSON and no Markdown.
 Produce {MIN_GENERATED_TASKS}-{MAX_GENERATED_TASKS} adaptive Skill evaluation tasks for profile {profile!r}.
-Each task must have a unique name, a concrete prompt, and at least one deterministic #250 expect
-from files, contains, json, or commands. Rubric is optional. Do not invent source task packages.
-Use only paths visible in the bounded Skill snapshot. Return exactly:
-{{"tasks":[{{"name":"...","prompt":"...","expect":{{...}},"rubric":["..."]}}]}}
+Return one JSON object with a tasks array and no other top-level fields.
+Each task may contain only name, prompt, expect, rubric and workspace. Use a unique name matching
+[A-Za-z0-9][A-Za-z0-9._-]{{0,99}} and a non-empty concrete prompt. Rubric is an optional array of
+non-empty strings. An optional workspace must refer to an existing fixture directory in the snapshot;
+do not invent source task packages or fixture directories.
+
+The expect object supports only files, contains, json and commands. Include at least one actual,
+non-empty deterministic assertion. Rubric alone does not satisfy the deterministic expect requirement.
+Supported expect shapes (choose the checks that match actual business outputs):
+{{
+  "files": ["CONTEXT.md", "src/calculator.py"],
+  "contains": {{"CONTEXT.md": ["confirmed requirement"]}},
+  "json": [{{"file": "result.json", "path": "$.status", "equals": "completed"}}],
+  "commands": [{{"run": "python -m pytest", "timeout": 120}}]
+}}
+files is an array of paths; contains maps each file path to an array of literal text strings.
+json is an array of checks: file, path and equals are all required. path is a JSON selector such as
+$.status or $.items.0.name (use $ to compare the entire document); equals is the expected JSON value.
+commands is an array of objects with required non-empty run and optional integer timeout in 1..3600
+seconds (default 120); a command passes only when its exit code is zero.
+Every files entry, contains key and json.file must be workspace-relative paths with no leading slash
+or '..' component, for example CONTEXT.md or src/calculator.py. Do not prefix artifact paths with /workspace
+or a host path. Command run strings are shell commands, not file-path entries.
+Derive the actual scenarios and output artifacts from the complete snapshot below. Do not infer new workflow files
+or replacement Runtime definitions; do not copy the illustrative outputs when they do not match this Skill.
+Binary resources are recorded by path, byte size and content hash rather than decoded as text. Their bytes remain
+in the fixed package; do not claim to have inspected their contents from this metadata alone.
 {repair_text}
 {application_generation_guidance(snapshot)}
-Bounded Skill snapshot:
+Complete provided Skill snapshot (all supplied file contents follow):
 {files}
 """
 
@@ -577,7 +600,7 @@ def ensure_generated_manifest(
     """Return a valid frozen generated manifest, or generate it once and cache it."""
     selected_agent = validate_agent_id(agent, field="task-generator agent")
     skill_root = _safe_skill_root(Path(skill_path))
-    snapshot = build_skill_snapshot(skill_root)
+    snapshot = build_skill_snapshot(skill_path)
     canonical_interaction = normalize_interaction(interaction)
     generation_hash = _generation_hash(
         snapshot,

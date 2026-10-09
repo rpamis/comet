@@ -133,6 +133,35 @@ it('rejects an altered report before approving installation', async () => {
   await expect(choose(run, 'approved')).rejects.toThrow(/报告|变化/);
 });
 
+it('retains the generation failure cause and original HTML report without exposing credentials', async () => {
+  vi.stubEnv('BENCH_API_KEY', 'private-fixture-key');
+  runExternalCommandAsync.mockImplementation(async (_command, _args, options) => {
+    const prepared = JSON.parse(options.env.COMET_APPLICATION_EVAL_CONTEXT);
+    const directory = path.dirname(prepared.resultFile);
+    await fs.writeFile(
+      path.join(directory, 'metadata.json'),
+      JSON.stringify({
+        schema: 'comet.eval.generation.failure.v1',
+        error: '[WinError 206] 参数过长 private-fixture-key',
+        report_output: 'summary.html',
+      }),
+    );
+    await fs.writeFile(path.join(directory, 'summary.html'), '<h1>Generation stopped</h1>');
+    throw new Error('harness stopped');
+  });
+  const run = await choose(await compile(), 'evaluate');
+  const result = creatorSummary(run).evaluation as {
+    status: string;
+    total: number;
+    report: string;
+    failures: string[];
+  };
+  expect(result).toMatchObject({ status: 'incomplete', total: 0, report: 'summary.html' });
+  expect(result.failures[0]).toContain('WinError 206');
+  expect(result.failures[0]).not.toContain('private-fixture-key');
+  expect(run.waits.at(-1)?.stepId).toBe('review-eval');
+});
+
 it('keeps an abnormal harness exit incomplete even when its case report says passed', async () => {
   fakeEval('passed');
   const launch = runExternalCommandAsync.getMockImplementation()!;
@@ -229,6 +258,7 @@ it('reuses the original generated cases after revising and recompiling the appli
   ).toEqual(['normal', 'rejected']);
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await fs.rm(root, { recursive: true, force: true });
 });
 async function compile() {

@@ -343,6 +343,7 @@ def test_run_agent_in_docker_builds_the_selected_adapter_command(monkeypatch, tm
 
     def fake_run_shell(script, *args, **kwargs):
         calls.append((script, args, kwargs))
+        assert Path(args[3]).read_text(encoding="utf-8") == "inspect the task"
         return subprocess.CompletedProcess([script, *args], 0, "", "")
 
     monkeypatch.setattr(utils, "run_shell", fake_run_shell)
@@ -360,7 +361,8 @@ def test_run_agent_in_docker_builds_the_selected_adapter_command(monkeypatch, tm
     assert calls[0][1] == (
         "run-agent",
         str(tmp_path),
-        "inspect the task",
+        "--prompt-file",
+        calls[0][1][3],
         "--agent",
         "codex",
         "--model",
@@ -368,6 +370,170 @@ def test_run_agent_in_docker_builds_the_selected_adapter_command(monkeypatch, tm
         "--timeout",
         "42",
     )
+    assert not Path(calls[0][1][3]).exists()
+
+
+@pytest.mark.parametrize("agent", ["claude-code", "codex"])
+def test_single_turn_large_prompt_avoids_host_argv_and_cleans_up(monkeypatch, tmp_path, agent):
+    prompt = ("中文\r\nline\\path $() `echo no` 'quoted'\n" * 8000) + "no final newline"
+    files = []
+
+    def fake_run_shell(script, *args, **kwargs):
+        # Reproduce Windows CreateProcess's command-line limit without calling a model.
+        if sum(len(str(arg)) for arg in args) > 32767:
+            raise OSError(206, "The filename or extension is too long")
+        assert prompt not in args
+        assert args[2] == "--prompt-file"
+        file = Path(args[3])
+        files.append(file)
+        assert file.read_bytes() == prompt.encode("utf-8")
+        if os.name != "nt":
+            assert file.stat().st_mode & 0o077 == 0
+        return subprocess.CompletedProcess([script, *args], 0, "ok", "")
+
+    monkeypatch.setattr(utils, "run_shell", fake_run_shell)
+    monkeypatch.setattr(utils, "check_docker_available", lambda: True)
+    assert utils.run_agent_in_docker(tmp_path, prompt, agent=agent).returncode == 0
+    assert len(files) == 1
+    assert not files[0].exists()
+
+
+@pytest.mark.parametrize("failure", ["timeout", "exception"])
+def test_single_turn_prompt_file_is_removed_on_failure(monkeypatch, tmp_path, failure):
+    files = []
+
+    def fake_run_shell(script, *args, **kwargs):
+        files.append(Path(args[3]))
+        assert files[-1].read_text(encoding="utf-8") == "prompt body"
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired([script, *args], 1)
+        raise RuntimeError("fixture failure")
+
+    monkeypatch.setattr(utils, "run_shell", fake_run_shell)
+    monkeypatch.setattr(utils, "check_docker_available", lambda: True)
+    if failure == "timeout":
+        assert utils.run_agent_in_docker(tmp_path, "prompt body").returncode == 124
+    else:
+        with pytest.raises(RuntimeError, match="fixture failure"):
+            utils.run_agent_in_docker(tmp_path, "prompt body")
+    assert not files[0].exists()
+
+
+@pytest.mark.parametrize("agent", ["claude-code", "codex"])
+@pytest.mark.parametrize("input_mode", ["file", "stdin"])
+def test_single_turn_runtime_preserves_prompt_stdin_without_body_in_argv(
+    tmp_path, agent, input_mode
+):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / agent.replace("-code", "")).write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\0" "$@" > "$FIXTURE_ARGS"\n'
+        'cat > "$FIXTURE_STDIN"\n'
+        'printf \'%s\\n\' \'{"type":"result","result":"fixture ok"}\'\n',
+        encoding="utf-8",
+    )
+    (fake_bin / agent.replace("-code", "")).chmod(0o755)
+    prompt = ("正文\r\nback\\slash $() `no` 'x'\n" * 3000) + "exact ending"
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_bytes(prompt.encode("utf-8"))
+    args_file, stdin_file = tmp_path / "argv.bin", tmp_path / "stdin.bin"
+    env = _isolated_fake_agent_env(fake_bin, agent.replace("-code", ""))
+    env.update(
+        FIXTURE_ARGS=utils._to_bash_path(args_file), FIXTURE_STDIN=utils._to_bash_path(stdin_file)
+    )
+    command = [
+        utils.BASH_EXEC,
+        utils._to_bash_path(utils.SHELL_DIR / "run-agent-runtime.sh"),
+        agent,
+        "fixture-model",
+    ]
+    if input_mode == "file":
+        command.extend(["--prompt-file", utils._to_bash_path(prompt_file)])
+    else:
+        command.append("--prompt-stdin")
+    command.extend(["--", "--fixture-extra"])
+    result = subprocess.run(
+        command,
+        env=env,
+        input=prompt.encode("utf-8") if input_mode == "stdin" else None,
+        capture_output=True,
+        timeout=AGENT_FIXTURE_TIMEOUT,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+    assert stdin_file.read_bytes() == prompt.encode("utf-8")
+    actual_args = args_file.read_bytes().split(b"\0")[:-1]
+    assert prompt.encode("utf-8") not in actual_args
+    assert b"--fixture-extra" in actual_args
+    if agent == "claude-code":
+        assert actual_args[0] == b"-p"
+        assert actual_args[1] == b"--dangerously-skip-permissions"
+    else:
+        assert actual_args[0] == b"exec"
+        assert b"-" in actual_args
+
+
+@pytest.mark.parametrize("agent", ["qoder", "codebuddy"])
+def test_single_turn_other_adapters_keep_existing_prompt_argument(monkeypatch, tmp_path, agent):
+    calls = []
+    monkeypatch.setattr(utils, "check_docker_available", lambda: True)
+
+    def fake_run_shell(script, *args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess([script, *args], 0, "ok", "")
+
+    monkeypatch.setattr(utils, "run_shell", fake_run_shell)
+    assert utils.run_agent_in_docker(tmp_path, "existing body", agent=agent).returncode == 0
+    assert calls[0][:5] == ("run-agent", str(tmp_path), "existing body", "--agent", agent)
+
+
+@pytest.mark.parametrize("agent", ["claude-code", "codex"])
+def test_docker_single_turn_transports_prompt_file_readonly_and_streams_stdin(tmp_path, agent):
+    prompt = ("大快照\r\npath\\literal $() `not-run`\n" * 8000) + "no trailing newline"
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_bytes(prompt.encode("utf-8"))
+    args_file, stdin_file = tmp_path / "docker-argv.bin", tmp_path / "docker-stdin.bin"
+    script = """
+source "$1"
+resolve_runtime_image() { printf '%s' fake-image; }
+prepare_agent_workspace_owner() { return 0; }
+build_env_args() { ENV_ARGS=(); }
+build_agent_runtime_mount_args() { RUNTIME_CONFIG_MOUNT_ARGS=(); RUNTIME_CONFIG_TMPFS_ARGS=(); }
+build_plugin_args() { PLUGIN_MOUNT_ARGS=(); PLUGIN_CLI_ARGS=(); }
+build_langfuse_plugin_args() { LANGFUSE_PLUGIN_MOUNT_ARGS=(); LANGFUSE_PLUGIN_CLI_ARGS=(); }
+build_trusted_oracle_mount_args() { TRUSTED_ORACLE_MOUNT_ARGS=(); }
+TIMEOUT_CMD=""
+docker() { printf '%s\\0' "$@" > "$FIXTURE_ARGS"; cat > "$FIXTURE_STDIN"; }
+docker_run_agent "$2" --prompt-file "$3" --agent "$4" --model fixture-model
+"""
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            script,
+            "_",
+            utils._to_bash_path(utils.SHELL_DIR / "docker.sh"),
+            utils._to_bash_path(tmp_path),
+            utils._to_bash_path(prompt_file),
+            agent,
+        ],
+        env={
+            **os.environ,
+            "FIXTURE_ARGS": utils._to_bash_path(args_file),
+            "FIXTURE_STDIN": utils._to_bash_path(stdin_file),
+        },
+        capture_output=True,
+        timeout=AGENT_FIXTURE_TIMEOUT,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+    actual_args = args_file.read_bytes().split(b"\0")[:-1]
+    assert b"-i" in actual_args
+    assert any(arg.endswith(b"://opt/comet-eval-prompt.txt:ro") for arg in actual_args)
+    assert b"--prompt-stdin" in actual_args
+    assert prompt.encode("utf-8") not in actual_args
+    assert stdin_file.read_bytes() == prompt.encode("utf-8")
 
 
 def test_bash_env_bridges_langsmith_hook_log_to_wsl(monkeypatch):

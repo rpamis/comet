@@ -72,8 +72,10 @@ async function assertPreviousEvaluationStopped(projectRoot: string, experimentId
     'docker',
     ['ps', '--quiet', '--filter', `label=comet.eval.experiment=${experimentId}`],
     { cwd: projectRoot, timeoutMs: 5000 },
-  ).catch(() => {
-    throw new Error('无法核对原实验容器；恢复 Docker 后继续，不重复启动评估');
+  ).catch((error) => {
+    throw new Error(
+      `无法核对原实验容器；恢复 Docker 后继续，不重复启动评估：${safeFailureText(String(error))}`,
+    );
   });
   if (containers.trim()) throw new Error('原评估容器仍在运行；先核对并停止原实验，不重复启动');
 }
@@ -394,6 +396,45 @@ export async function readWorkflowApplicationEvalResult(
   return result;
 }
 
+function safeFailureText(message: string): string {
+  const names = new Set([
+    ...Object.keys(process.env).filter((name) =>
+      /api.?key|token|password|secret|credential|auth/iu.test(name),
+    ),
+    ...(process.env.COMET_EVAL_CUSTOM_CREDENTIALS ?? '').split(','),
+    ...(process.env.COMET_EVAL_MAIN_CREDENTIALS ?? '').split(','),
+  ]);
+  const values = [...names]
+    .map((name) => process.env[name.trim()])
+    .filter((value): value is string => Boolean(value));
+  for (const value of [...new Set(values)].sort((a, b) => b.length - a.length))
+    for (const secret of new Set([value, encodeURIComponent(value)]))
+      message = message.replaceAll(secret, '[REDACTED]');
+  return message.slice(0, 4096);
+}
+
+async function generationFailure(projectRoot: string, prepared: PreparedApplicationEval) {
+  const metadataFile = await artifactPath(
+    projectRoot,
+    'runs',
+    prepared.experimentId,
+    'metadata.json',
+  );
+  const metadata = await fs
+    .readFile(metadataFile, 'utf8')
+    .then((text) => JSON.parse(text))
+    .catch(() => null);
+  if (metadata?.schema !== 'comet.eval.generation.failure.v1' || typeof metadata.error !== 'string')
+    return null;
+  const report = metadata.report_output === 'summary.html' ? 'summary.html' : 'summary.md';
+  const reportFile = await artifactPath(projectRoot, 'runs', prepared.experimentId, report);
+  if (!(await fs.lstat(reportFile).catch(() => null))?.isFile()) return null;
+  return {
+    reason: `用例生成未完成：${safeFailureText(metadata.error)}`,
+    report: report as 'summary.md' | 'summary.html',
+  };
+}
+
 /** 固定实验身份用于冷恢复；有完成报告时读取，不重复消费模型预算。 */
 export async function runWorkflowApplicationEval(
   options: ApplicationEvalOptions & { confirmationHash: string; experimentId: string },
@@ -456,6 +497,7 @@ export async function runWorkflowApplicationEval(
           }),
         );
       } else if (!reported) {
+        const generation = await generationFailure(options.projectRoot, prepared);
         const incomplete: ApplicationEvalResult = {
           schema: 'comet.workflow.application.eval.result.v1',
           experimentId: prepared.experimentId,
@@ -467,21 +509,22 @@ export async function runWorkflowApplicationEval(
           taskNames: [],
           passed: 0,
           total: 0,
-          report: 'summary.md',
+          report: generation?.report ?? 'summary.md',
           limitations: prepared.preview.limitations,
           failures: prepared.preview.blockedReasons.length
             ? prepared.preview.blockedReasons
-            : ['Eval 未完成；检查模型配置、环境和原运行报告后重试。'],
+            : [generation?.reason ?? 'Eval 未完成；检查模型配置、环境和原运行报告后重试。'],
         };
-        await fs
-          .writeFile(
-            path.join(runRoot, 'summary.md'),
-            '# Eval 未完成\n\n检查模型配置、环境和原运行日志；没有完整验收结果。\n',
-            { flag: 'wx' },
-          )
-          .catch((error) => {
-            if (error.code !== 'EEXIST') throw error;
-          });
+        if (!generation)
+          await fs
+            .writeFile(
+              path.join(runRoot, 'summary.md'),
+              '# Eval 未完成\n\n检查模型配置、环境和原运行日志；没有完整验收结果。\n',
+              { flag: 'wx' },
+            )
+            .catch((error) => {
+              if (error.code !== 'EEXIST') throw error;
+            });
         await fs.writeFile(prepared.resultFile, JSON.stringify(incomplete), { flag: 'wx' });
       }
     });

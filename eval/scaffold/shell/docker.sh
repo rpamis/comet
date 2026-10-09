@@ -7,7 +7,7 @@
 #   ./docker.sh build <directory> [--force]
 #   ./docker.sh run <directory> <command...>
 #   ./docker.sh run-python <directory> <script.py> [args...]
-#   ./docker.sh run-agent <directory> <prompt> --agent AGENT [--model MODEL] [--timeout SECONDS]
+#   ./docker.sh run-agent <directory> {<prompt>|--prompt-file <file>} --agent AGENT [--model MODEL] [--timeout SECONDS]
 
 set -euo pipefail
 
@@ -732,6 +732,10 @@ docker_run_node() {
 # Run Claude CLI in Docker
 # Usage: docker_run_claude <directory> <prompt> [--model MODEL] [--timeout SECONDS]
 docker_run_claude() {
+    if [[ "${2:-}" == "--prompt-file" ]]; then
+        docker_run_agent "$@" --agent claude-code
+        return $?
+    fi
     local dir="$1"
     local prompt="$2"
     shift 2
@@ -811,11 +815,17 @@ docker_run_claude() {
 }
 
 # Run a selected evaluation agent CLI in Docker.
-# Usage: docker_run_agent <directory> <prompt> --agent AGENT [--model MODEL] [--timeout SECONDS]
+# Usage: docker_run_agent <directory> {<prompt>|--prompt-file <file>} --agent AGENT [--model MODEL] [--timeout SECONDS]
 docker_run_agent() {
     local dir="$1"
     local prompt="$2"
     shift 2
+    local prompt_file=""
+    if [[ "$prompt" == "--prompt-file" ]]; then
+        prompt_file="${1:?prompt file is required}"
+        shift
+        [[ -f "$prompt_file" && -r "$prompt_file" ]] || { die 'Prompt file is not readable'; return 1; }
+    fi
 
     local agent="$DEFAULT_AGENT"
     local model=""
@@ -846,6 +856,10 @@ docker_run_agent() {
         esac
     done
     validate_agent "$agent" || return 1
+    if [[ -n "$prompt_file" && "$agent" != claude-code && "$agent" != codex ]]; then
+        die 'This adapter has no verified prompt stdin contract'
+        return 1
+    fi
 
     local image_id
     image_id=$(resolve_runtime_image "$dir" "$expected_image_id" "$agent") || return 1
@@ -861,7 +875,18 @@ docker_run_agent() {
     fi
     build_langfuse_plugin_args "$agent"
     build_trusted_oracle_mount_args "$dir"
-    AGENT_COMMAND=(bash //opt/scaffold-shell/run-agent-runtime.sh "$agent" "$model" "$prompt" --)
+    local -a prompt_mount_args=() prompt_docker_args=()
+    local prompt_input=/dev/null
+    if [[ -n "$prompt_file" ]]; then
+        prompt_mount_args=(-v "$(_winpath "$prompt_file")://opt/comet-eval-prompt.txt:ro")
+        prompt_docker_args=(-i)
+        prompt_input="$prompt_file"
+        # Host owner reads the private file; the non-root Agent receives its exact
+        # bytes on stdin even when its container uid differs from the host uid.
+        AGENT_COMMAND=(bash //opt/scaffold-shell/run-agent-runtime.sh "$agent" "$model" --prompt-stdin --)
+    else
+        AGENT_COMMAND=(bash //opt/scaffold-shell/run-agent-runtime.sh "$agent" "$model" "$prompt" --)
+    fi
     if [[ "$agent" == "claude-code" && ${#PLUGIN_CLI_ARGS[@]} -gt 0 ]]; then
         AGENT_COMMAND+=("${PLUGIN_CLI_ARGS[@]}")
     fi
@@ -874,7 +899,9 @@ docker_run_agent() {
     if [[ -n "$TIMEOUT_CMD" ]]; then
         $TIMEOUT_CMD "$timeout" docker run --rm \
             ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
+            "${prompt_docker_args[@]}" \
             -v "$windir://workspace" \
+            "${prompt_mount_args[@]}" \
             "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
             "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
             ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
@@ -883,11 +910,13 @@ docker_run_agent() {
             -w //workspace \
             "${ENV_ARGS[@]}" \
             "$image_id" \
-            "${AGENT_COMMAND[@]}"
+            "${AGENT_COMMAND[@]}" < "$prompt_input"
     else
         docker run --rm \
             ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
+            "${prompt_docker_args[@]}" \
             -v "$windir://workspace" \
+            "${prompt_mount_args[@]}" \
             "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
             "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
             ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
@@ -896,7 +925,7 @@ docker_run_agent() {
             -w //workspace \
             "${ENV_ARGS[@]}" \
             "$image_id" \
-            "${AGENT_COMMAND[@]}"
+            "${AGENT_COMMAND[@]}" < "$prompt_input"
     fi
 }
 

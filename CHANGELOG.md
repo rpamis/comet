@@ -27,6 +27,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Windows Eval inputs**: Pass Claude Code and Codex evaluation prompts through temporary files and stdin so complete Skill and SDK application inputs are preserved without exceeding command-line limits or altering backslashes and newlines.
+
 - **Classic checks with missing inputs**: Prevent a deleted or unreadable input from causing severe check slowdowns in large repositories.
 - **Classic initialization**: Recognize the Git branch before its first commit, allowing branch-bound changes to proceed without a misleading detached-HEAD error.
 - **Windows Eval timeouts**: Stop the Docker Agent loop when its execution budget expires, even when a child process keeps output handles open, preventing continued model calls after timeout.

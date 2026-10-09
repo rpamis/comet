@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -109,6 +110,14 @@ def _inside(root: Path, path: Path) -> bool:
 
 def build_skill_snapshot(skill_path: Path | str) -> SkillSnapshot:
     root = skill_root(skill_path)
+    application = root / "scripts/application/application.json"
+    workflows = root / "references/workflows.json"
+    if (application.exists() or application.is_symlink()) and (workflows.exists() or workflows.is_symlink()):
+        source = Path(skill_path).expanduser().absolute()
+        for parent in (source, *source.parents):
+            if parent.is_symlink() or parent.is_junction():
+                raise ValueError("SDK application snapshot refuses a linked package path")
+        return _build_application_snapshot(root)
     selected: dict[str, SnapshotFile] = {}
     total = 0
 
@@ -137,16 +146,49 @@ def build_skill_snapshot(skill_path: Path | str) -> SkillSnapshot:
             for child in sorted(candidate.rglob("*")):
                 if not child.is_symlink():
                     add(child)
-    if (root / "scripts/application/application.json").is_file() and (root / "references/workflows.json").is_file():
-        required = {"SKILL.md", "scripts/application/application.json", "references/workflows.json"}
-        if not required.issubset(selected):
-            raise ValueError("SDK application task input exceeds the bounded snapshot; reduce the workflow description before generating cases")
     files = tuple(selected[key] for key in sorted(selected))
     manifest = json.dumps(
         [{"path": item.path, "hash": item.content_hash} for item in files],
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
+    )
+    return SkillSnapshot(files, sha256(manifest))
+
+
+def _build_application_snapshot(root: Path) -> SkillSnapshot:
+    """Read the complete fixed application closure; limits belong to the model, not its input."""
+    selected: dict[str, SnapshotFile] = {}
+
+    def visit(directory: Path) -> None:
+        for child in sorted(directory.iterdir()):
+            relative = child.relative_to(root).as_posix()
+            if child.is_symlink() or child.is_junction():
+                raise ValueError(f"SDK application snapshot refuses a linked resource: {relative}")
+            mode = child.stat(follow_symlinks=False).st_mode
+            if stat.S_ISDIR(mode):
+                visit(child)
+            elif stat.S_ISREG(mode):
+                payload = child.read_bytes()
+                digest = sha256(payload)
+                try:
+                    content = payload.decode("utf-8")
+                    if any(byte < 32 and byte not in (9, 10, 13) for byte in payload):
+                        raise UnicodeError("Binary control character")
+                except UnicodeError:
+                    content = json.dumps({"type": "binary", "path": relative, "size_bytes": len(payload), "sha256": digest}, ensure_ascii=False, sort_keys=True)
+                selected[relative] = SnapshotFile(relative, content, digest)
+            else:
+                raise ValueError(f"SDK application snapshot requires regular files: {relative}")
+
+    visit(root)
+    required = {"SKILL.md", "scripts/application/application.json", "references/workflows.json"}
+    if not required.issubset(selected):
+        raise ValueError("SDK application snapshot is missing its fixed entry or workflow contracts")
+    files = tuple(selected[key] for key in sorted(selected))
+    manifest = json.dumps(
+        [{"path": item.path, "hash": item.content_hash} for item in files],
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
     )
     return SkillSnapshot(files, sha256(manifest))
 
