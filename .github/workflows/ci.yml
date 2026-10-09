@@ -134,7 +134,7 @@ jobs:
         run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'TMPDIR=' + require('node:fs').realpathSync(require('node:os').tmpdir()) + '\n')"
       - name: Use the real host temporary directory on Windows
         if: matrix.os == 'windows-latest'
-        run: node -e "const dir=require('node:fs').realpathSync(require('node:os').tmpdir()); require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'TEMP=' + dir + '\nTMP=' + dir + '\n')"
+        run: node -e "const dir=require('node:fs').realpathSync.native(require('node:os').tmpdir()); require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'TEMP=' + dir + '\nTMP=' + dir + '\n')"
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
       - run: pnpm check:sdk-api
@@ -252,7 +252,7 @@ jobs:
         run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'TMPDIR=' + require('node:fs').realpathSync(require('node:os').tmpdir()) + '\n')"
       - name: Use the real host temporary directory on Windows
         if: matrix.os == 'windows-latest'
-        run: node -e "const dir=require('node:fs').realpathSync(require('node:os').tmpdir()); require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'TEMP=' + dir + '\nTMP=' + dir + '\n')"
+        run: node -e "const dir=require('node:fs').realpathSync.native(require('node:os').tmpdir()); require('node:fs').appendFileSync(process.env.GITHUB_ENV, 'TEMP=' + dir + '\nTMP=' + dir + '\n')"
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
       - name: Exercise SDK protocol, application lifecycle, Creator and domain adapters

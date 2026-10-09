@@ -168,10 +168,12 @@ describe('CI workflows', () => {
           if (name === 'node:os') return { tmpdir: () => shortRoot };
           if (name === 'node:fs')
             return {
-              realpathSync: (target: string) => {
-                expect(target).toBe(shortRoot);
-                return realRoot;
-              },
+              realpathSync: Object.assign(() => shortRoot, {
+                native: (target: string) => {
+                  expect(target).toBe(shortRoot);
+                  return realRoot;
+                },
+              }),
               appendFileSync: (target: string, content: string) => writes.push([target, content]),
             };
           throw new Error(`Unexpected preparation dependency: ${name}`);

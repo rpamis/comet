@@ -210,9 +210,18 @@ simulate_user() {
         sim_prompt=$(cat <<EOF
 ${SIMULATOR_PROMPT}
 
+Reply as the user at the current decision point; do not execute the task or write files.
+Follow the task scenario's explicit approval, rejection and recovery requirements.
+Do not replace a required rejection with default approval.
+
+Task scenario:
+"""
+${PROMPT}
+"""
+
 Assistant's message:
 """
-${subject_text:0:3000}
+${subject_text}
 """
 EOF
 )

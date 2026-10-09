@@ -28,6 +28,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **Windows Eval inputs**: Pass Claude Code and Codex evaluation prompts through temporary files and stdin so complete Skill and SDK application inputs are preserved without exceeding command-line limits or altering backslashes and newlines.
+- **Eval user simulation**: Give custom user simulators the complete task scenario and current question so approval, rejection, and recovery decisions follow the requested case.
 
 - **Classic checks with missing inputs**: Prevent a deleted or unreadable input from causing severe check slowdowns in large repositories.
 - **Classic initialization**: Recognize the Git branch before its first commit, allowing branch-bound changes to proceed without a misleading detached-HEAD error.

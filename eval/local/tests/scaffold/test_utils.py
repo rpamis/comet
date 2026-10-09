@@ -1381,6 +1381,48 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"session-1","re
     assert not simulator_prompt.exists()
 
 
+def test_claude_loop_custom_simulator_receives_full_task_scenario_and_current_wait(tmp_path: Path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_claude = fake_bin / "claude"
+    fake_claude.write_text('''#!/usr/bin/env bash
+prompt=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "-p" ]]; then prompt="$2"; break; fi
+  shift
+done
+if [[ -e "$PRIVATE_SIMULATOR_FILE" ]]; then exit 45; fi
+printf '%s\n' '{"type":"system","session_id":"isolated-session"}'
+if [[ "$COMET_EVAL_AGENT_ROLE" == "simulator" ]]; then
+  printf '%s' "$prompt" > "$SIMULATOR_CAPTURE"
+  if [[ "$prompt" == *"CASE_REJECT_IMPLEMENTATION"* && "$prompt" == *"CURRENT_WAIT_END"* ]]; then
+    printf '%s\n' '{"type":"result","result":"rejected"}'
+  else
+    printf '%s\n' '{"type":"result","result":"approved"}'
+  fi
+elif [[ "$prompt" == "rejected" || "$prompt" == "approved" ]]; then
+  python3 -c 'import json,sys;print(json.dumps({"type":"result","result":"Workflow completed through all phases and archived. Choice="+sys.argv[1]}))' "$prompt"
+else
+  python3 -c 'import json;print(json.dumps({"type":"result","result":"Please confirm the current Wait? "+"x"*3500+" CURRENT_WAIT_END authorize-implementation"}))'
+fi
+''', encoding="utf-8", newline="\n")
+    fake_claude.chmod(0o755)
+    private = tmp_path / "simulator-instructions.txt"
+    private.write_text("Choose approval or rejection according to the task scenario.", encoding="utf-8")
+    captured = tmp_path / "simulator-input.txt"
+    env = _isolated_fake_agent_env(fake_bin, "claude")
+    env["PRIVATE_SIMULATOR_FILE"] = utils._to_bash_path(private)
+    env["SIMULATOR_CAPTURE"] = utils._to_bash_path(captured)
+    task = "Original case context\n" + "y" * 3500 + "\nCASE_REJECT_IMPLEMENTATION: reject authorize-implementation."
+    result = subprocess.run([utils.BASH_EXEC, utils._to_bash_path(utils.SHELL_DIR / "run-claude-loop.sh"), task, "--max-turns", "2", "--simulator-prompt-file", utils._to_bash_path(private)], env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=AGENT_FIXTURE_TIMEOUT, check=False)
+    assert result.returncode == 0, result.stderr
+    actual = captured.read_text(encoding="utf-8")
+    assert task in actual
+    assert "CURRENT_WAIT_END" in actual
+    assert "Choice=rejected" in result.stdout
+    assert not private.exists()
+
+
 def test_decision_point_detector_rejects_completion_statements():
     statement = "Implementation is complete and the artifacts provide the requested evidence."
     punctuation_summary = "Done. The counter recognizes ., !, and ? terminators."
