@@ -123,7 +123,7 @@ brainstorming → delta spec → implementation → verification → main spec m
 
 ### 4. Commit only the archive changes
 
-When delivery has action `archive-only`, the archive command sets `branch_status` to `handled` and records SHA-256 digests of every file in the archive directory after final integrity checks. Run `comet guard <change-name> archive` and `comet state delivery <change-name> --verify`. Clear current selection only when `verification.status` is `complete` and the archive directory, main spec, and receipt remain available. This path skips the Git commit, push, and PR steps below; each child repository supplies its own delivery evidence. Added, removed, or modified archive files change verification to `needsVerification`; restore or repair the documents instead of overwriting the sealed receipt.
+When delivery has action `archive-only`, the archive command sets `branch_status` to `handled` and records SHA-256 digests of every file in the archive directory, including a snapshot of the main specs at archive time after final integrity checks. Run `comet guard <change-name> archive` and `comet state delivery <change-name> --verify`. Clear current selection only when `verification.status` is `complete` and the archive directory, main spec snapshot, and receipt remain available. This path skips the Git commit, push, and PR steps below; each child repository supplies its own delivery evidence. Added, removed, or modified archive files change verification to `needsVerification`; restore or repair the documents instead of overwriting the sealed receipt.
 
 Archive moves files and merges specs; it does not commit. Afterwards, expect these uncommitted changes:
 

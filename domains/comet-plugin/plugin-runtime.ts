@@ -383,8 +383,11 @@ export class PluginRuntime {
   }
 
   /** Replay durable learning observations captured by an earlier process. */
-  public async replayLearning(): Promise<void> {
-    for (const coordinator of this.learningCoordinators) await coordinator.replayNow();
+  public async replayLearning(options: { readonly retryNow?: boolean } = {}): Promise<void> {
+    for (const coordinator of this.learningCoordinators) {
+      if (options.retryNow) await coordinator.replayNow();
+      else await coordinator.replayPending();
+    }
   }
 
   private async learningAdapters(event: AgentExperienceEvent) {

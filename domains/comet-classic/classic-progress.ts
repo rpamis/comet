@@ -2,7 +2,10 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { parseDocument } from 'yaml';
-import { hashProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import {
+  hashProtectedProjectFile,
+  readProtectedProjectFile,
+} from '../workflow-contract/protected-project-path.js';
 import {
   ExternalCommandError,
   runExternalCommand,
@@ -558,7 +561,7 @@ async function archiveFileManifest(
       expected: 'directory',
     });
     const entries = (await fs.readdir(directory, { withFileTypes: true })).sort((left, right) =>
-      left.name.localeCompare(right.name),
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
     );
     for (const entry of entries) {
       if (['.comet-state.lock', '.comet-state-transaction.json'].includes(entry.name)) continue;
@@ -579,7 +582,54 @@ async function archiveFileManifest(
     }
   };
   await visit(changeDir);
+  return files;
+}
+
+function archiveManifestsMatch(
+  left: Record<string, string>,
+  right: Record<string, string>,
+): boolean {
+  const names = Object.keys(left);
+  return (
+    names.length === Object.keys(right).length && names.every((name) => left[name] === right[name])
+  );
+}
+
+async function preserveMainSpecSnapshot(root: string, changeDir: string): Promise<void> {
+  const snapshot = path.join(changeDir, '.comet', 'main-specs.json');
+  if (
+    await classicProjectTargetExists(root, snapshot, {
+      label: 'Classic main spec snapshot',
+      expected: 'file',
+    })
+  )
+    return;
   const specsDir = path.join(path.dirname(path.dirname(path.dirname(changeDir))), 'specs');
+  const files: Record<string, string> = {};
+  let totalBytes = 0;
+  const visit = async (directory: string): Promise<void> => {
+    await inspectClassicProjectTarget(root, directory, {
+      label: 'Classic main specs',
+      expected: 'directory',
+    });
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) await visit(target);
+      else if (entry.isFile()) {
+        const file = await readProtectedProjectFile(
+          root,
+          path.relative(root, target).replaceAll('\\', '/'),
+          64 * 1024 * 1024,
+          { label: 'Classic main spec snapshot input' },
+        );
+        totalBytes += file.bytes.length;
+        if (totalBytes > 64 * 1024 * 1024 || Object.keys(files).length >= 10_000)
+          throw new Error('Classic main spec snapshot exceeds its size limit');
+        files[path.relative(specsDir, target).replaceAll('\\', '/')] =
+          file.bytes.toString('base64');
+      } else throw new Error(`Classic main specs contain unsupported entry: ${target}`);
+    }
+  };
   if (
     await classicProjectTargetExists(root, specsDir, {
       label: 'Classic main specs',
@@ -587,7 +637,17 @@ async function archiveFileManifest(
     })
   )
     await visit(specsDir);
-  return files;
+  await ensureClassicProjectDirectory(
+    root,
+    path.dirname(snapshot),
+    'Classic main spec snapshot directory',
+  );
+  await writeClassicProjectText(
+    root,
+    snapshot,
+    JSON.stringify({ schemaVersion: 1, files }) + '\n',
+    { label: 'Classic main spec snapshot', exclusive: true },
+  );
 }
 
 export async function recordClassicDocumentArchive(root: string, changeDir: string): Promise<void> {
@@ -596,10 +656,11 @@ export async function recordClassicDocumentArchive(root: string, changeDir: stri
   if (delivery?.action !== 'archive-only') return;
   const actual = await currentState(root, changeDir);
   if (actual.archived !== true) throw new Error('Classic document archive must be completed first');
+  await preserveMainSpecSnapshot(root, changeDir);
   const archiveFiles = await archiveFileManifest(root, changeDir);
   const previous = await readReceipt(root, delivery.changeIdentity);
   if (previous?.archiveFiles !== undefined) {
-    if (JSON.stringify(previous.archiveFiles) !== JSON.stringify(archiveFiles))
+    if (!archiveManifestsMatch(previous.archiveFiles, archiveFiles))
       throw new Error('Classic document archive differs from its sealed receipt');
     return;
   }
@@ -883,8 +944,7 @@ export async function readClassicDelivery(
     const archiveVerified =
       state.archived === true &&
       receipt?.archiveFiles !== undefined &&
-      JSON.stringify(receipt.archiveFiles) ===
-        JSON.stringify(await archiveFileManifest(root, changeDir));
+      archiveManifestsMatch(receipt.archiveFiles, await archiveFileManifest(root, changeDir));
     return {
       delivery,
       verification: {

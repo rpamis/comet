@@ -13,11 +13,20 @@
     "ajv": "^8.17.1",
     "antd": "^6.6.2",
     "commander": "^15.0.0",
-    "dompurify": "^3.4.14",
+    "dompurify": "^3.4.16",
     "highlight.js": "^11.12.0",
     "marked": "^18.0.11",
     "mermaid": "11.17.2",
-    "smol-toml": "^1.8.0",
+    "smol-toml": "^1.9.0",
     "yaml": "^2.9.0"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.12",
+    "fast-uri": "3.1.8",
+    "katex": "0.18.2",
+    "source-map-js": "1.2.2",
+    "esbuild": "0.28.2",
+    "postcss": "8.5.26",
+    "undici": "7.29.1"
   }
 }

@@ -780,7 +780,7 @@ describe('Comet plugin integration bridge', () => {
         expect(
           (await failingBridge.retrieve({ projectKey: 'skill-failure-project' })).records,
         ).toHaveLength(0);
-        await failingBridge.pluginRuntime.replayLearning();
+        await failingBridge.pluginRuntime.replayLearning({ retryNow: true });
         expect(
           (await failingBridge.retrieve({ projectKey: 'skill-failure-project' })).records,
         ).toEqual([expect.objectContaining({ text: '提交前只暂存本次改动文件' })]);

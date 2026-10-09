@@ -17,6 +17,9 @@ it('discovers existing DSH profiles without following directory links or creatin
       JSON.stringify({ dsh: { profile: { bundles: [] } } }),
     );
     await fs.writeFile(path.join(unrelated, 'package.json'), '{}');
+    const broken = path.join(root, 'profiles/broken');
+    await fs.mkdir(broken);
+    await fs.writeFile(path.join(broken, 'package.json'), '{invalid');
     await fs.symlink(
       desktop,
       path.join(root, 'profiles/linked'),

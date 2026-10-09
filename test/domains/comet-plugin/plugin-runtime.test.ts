@@ -80,6 +80,41 @@ function descriptor(
 }
 
 describe('PluginRuntime', () => {
+  it('keeps retry backoff during ordinary replay and clears it only on explicit retry', async () => {
+    const store = new MemoryAgentExperienceJournalStore();
+    const journal = new AgentExperienceJournal(store);
+    const reflect = vi.fn(() => {
+      throw new Error('temporary reflection failure');
+    });
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [
+        descriptor('memory', 'first-party', {
+          create: () => ({ events: ['episode.completed'], onEvent: reflect }),
+        }),
+      ],
+      journal,
+      scheduleLearning: async (task) => task(),
+    });
+    await runtime.reconcileFirstParty();
+    const event = experience('episode.completed');
+    await runtime.dispatch(event);
+    await runtime.replayLearning();
+    const before = (await store.read()).reflections[event.eventId];
+    expect(before).toMatchObject({
+      status: 'pending',
+      attempts: 2,
+      nextRetryAt: expect.any(String),
+    });
+    await runtime.replayLearning();
+    await runtime.replayLearning();
+    expect((await store.read()).reflections[event.eventId]).toEqual(before);
+    expect(reflect).toHaveBeenCalledTimes(2);
+    await runtime.replayLearning({ retryNow: true });
+    expect(reflect).toHaveBeenCalledTimes(3);
+  });
+
   it.each(['enable', 'disable'] as const)(
     'does not undo an uninstall committed before %s acquires its lock',
     async (action) => {

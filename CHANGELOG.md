@@ -8,7 +8,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Native brief directory structure**: New and reconfirmed Native changes record a "Directory structure" section under Scope listing Created/Modified/Deleted modules and key files plus a deliberate "Not created" list, as a tree or a plain list with per-path annotations, in both artifact languages. Runtime enforces the section at Shape confirmation boundaries created with this release (document constraints v3); changes confirmed by earlier releases keep their original rules and progress. Adding ordinary helper files inside a confirmed module needs no renewed confirmation; scope growth or responsibility shifts update the structure and the related Decision first.
 
-- **Classic document archive**: Archive specs and change documents from a non-Git coordination root with independent child repositories, using an explicit local document delivery choice and a verified file-digest receipt (#468).
+- **Classic document archive**: Archive specs and change documents from a non-Git coordination root with independent child repositories, using an explicit local document delivery choice, preserved main spec snapshots, and a verified file-digest receipt (#468).
 
 ### Fixed
 
@@ -16,6 +16,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 - **Native fenced examples**: Ignore headings and blocking markers inside fenced code so valid brief and verification examples do not trigger document errors or clarification blockers. Match fence characters and lengths consistently when checking document contents.
 - **DSH workflow protection**: Install loadable Hook bridge patches in existing DSH profiles, match native write and edit tools, and preserve denial decisions through PowerShell. Updates migrate managed legacy patches without duplicating bridges or replacing unrelated configuration; Doctor identifies invalid bridge configuration and explains activation requirements (#466).
+
+### Security
+
+- **Dependency fixes**: Upgrade vulnerable Node.js and Eval dependencies to patched versions, covering HTML sanitization, TOML and URI parsing, math rendering, source maps, network clients, and virtual environments.
 
 ## What's Changed [0.4.4] - 2026-10-03
 
