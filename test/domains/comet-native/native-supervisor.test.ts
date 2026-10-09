@@ -74,6 +74,16 @@ Exercise one integrated Supervisor result.
 # Scope
 Coordinate the child changes and the parent verification boundary.
 
+## Directory structure
+### Created
+None.
+### Modified
+None.
+### Deleted
+None.
+### Not created
+None.
+
 # Non-goals
 Do not introduce behavior outside the coordinated change.
 

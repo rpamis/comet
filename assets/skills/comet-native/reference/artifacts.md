@@ -50,6 +50,37 @@ Runtime's `artifacts` object is the sole location authority for the current work
 
 Add `Constraints and invariants`, `Decisions`, `Open questions`, or `Verification expectations` only for actual constraints, key decisions, unresolved questions, or special check requirements. Fill any existing section with meaningful content; simple tasks need no placeholder "none" sections. Record user decisions in relevant core sections, using Decisions when several decisions need tracking.
 
+Under `# Scope`, include a "## Directory structure" subsection that states where the change will land and what each part is responsible for. It has four fixed level-three subsections; keep every heading and write "None" when a subsection has no content:
+
+- `### Created`, `### Modified`, `### Deleted`: list the modules and key files to create, modify, or delete; a tree (`├─`, `└─`, `│`) or a plain list both work, annotating each path with " — " followed by its purpose or change point, with approximate line numbers where useful. Use a tree when files share a directory relationship; list unrelated files or multiple change points inside one file line by line; both forms can mix within a subsection.
+- `### Not created`: items deliberately not created and why, such as skipping a store slice, hook, or subdirectory.
+
+At Shape, naming the modules and key files is enough; adding ordinary helper files inside a confirmed module during implementation needs no renewed confirmation. When the scope grows or responsibilities shift, update the directory structure and the corresponding Decision before continuing. The structure is confirmed with the final confirmation; Runtime checks at the Shape boundary that the section exists and all four subsections are present. Choose locations by the project's own directory and naming rules; without project rules, follow repository conventions and state the basis in the annotation. Example:
+
+```text
+## Directory structure
+
+### Created
+
+src/pages/index/features/Common/CouponPopup/
+  ├─ index.tsx — coupon popup component, props: { visible, data, onClose }
+  └─ index.less
+
+### Modified
+
+src/pages/index/index.tsx
+  — trigger the popup data request from the main API success callback (around L1085)
+  — render <CouponPopup> (around L170, beside existing popups)
+
+### Deleted
+
+None
+
+### Not created
+
+- No separate popup store slice — popup state is page-local; local state is enough
+```
+
 Use these markers in Open questions only for genuinely unresolved user questions:
 
 ```text

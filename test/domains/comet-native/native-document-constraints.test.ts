@@ -27,6 +27,15 @@ const completeBrief = `# Outcome
 Ship the documented behavior.
 # Scope
 The requested behavior only.
+## Directory structure
+### Created
+None.
+### Modified
+- The behavior module.
+### Deleted
+None.
+### Not created
+None.
 # Non-goals
 None.
 # Acceptance examples
@@ -58,7 +67,9 @@ describe('Native document constraints', () => {
       completeBrief.replace('# Decisions\nNone.', '# Decisions\n'),
     );
 
-    await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toMatchObject({
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toMatchObject({
       valid: false,
       findings: [expect.objectContaining({ code: 'brief-section-empty', path: 'brief.md' })],
     });
@@ -73,7 +84,9 @@ describe('Native document constraints', () => {
       ),
     );
 
-    await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toMatchObject({
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toMatchObject({
       valid: false,
       findings: [expect.objectContaining({ code: 'brief-section-placeholder' })],
     });
@@ -82,15 +95,190 @@ describe('Native document constraints', () => {
       path.join(root, 'brief.md'),
       completeBrief.replace('# Outcome\nShip the documented behavior.', '# Outcome\n- None.'),
     );
-    await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toMatchObject({
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toMatchObject({
       valid: false,
       findings: [expect.objectContaining({ code: 'brief-section-empty' })],
     });
 
     await fs.writeFile(path.join(root, 'brief.md'), completeBrief);
-    await expect(validateNativeBrief(root, 'brief.md', { strict: true })).resolves.toEqual({
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toEqual({
       valid: true,
       findings: [],
+    });
+  });
+
+  it('requires the directory structure section under Scope at the strict boundary', async () => {
+    await fs.writeFile(
+      path.join(root, 'brief.md'),
+      completeBrief.replace(
+        '## Directory structure\n### Created\nNone.\n### Modified\n- The behavior module.\n### Deleted\nNone.\n### Not created\nNone.\n',
+        '',
+      ),
+    );
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ code: 'brief-structure-missing' })],
+    });
+
+    await fs.writeFile(
+      path.join(root, 'brief.md'),
+      completeBrief.replace('### Not created\nNone.\n', ''),
+    );
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ code: 'brief-structure-subsection-missing' })],
+    });
+
+    await fs.writeFile(path.join(root, 'brief.md'), completeBrief);
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toEqual({
+      valid: true,
+      findings: [],
+    });
+  });
+
+  it('accepts Chinese directory structure headings and fenced tree content', async () => {
+    const zhBrief = `# 目标
+交付文档描述的行为。
+# 范围
+仅请求的行为。
+## 目录结构
+### 新建
+\`\`\`
+src/features/Common/CouponPopup/
+  ├─ index.tsx — 优惠券弹窗组件
+  └─ index.less
+\`\`\`
+### 修改
+无
+### 删除
+无
+### 明确不建
+- 不新建弹窗 store slice —— 弹窗状态仅在页面内使用
+# 非目标
+无
+# 验收示例
+- 行为可用。
+# 约束与不变量
+保持既有兼容性。
+# 决策
+无
+# 待解决问题
+无
+# 验证预期
+运行相关检查。
+`;
+    await fs.writeFile(path.join(root, 'brief.md'), zhBrief);
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toEqual({
+      valid: true,
+      findings: [],
+    });
+  });
+
+  it('ignores fenced examples even when fence markers mix backticks and tildes', async () => {
+    const mixedFenceBrief = `# Outcome
+Ship the documented behavior.
+# Scope
+The requested behavior only.
+
+Example of the expected format:
+
+\`\`\`
+## Directory structure
+### Not created
+- example row only
+~~~
+\`\`\`
+
+## Directory structure
+### Created
+None.
+### Modified
+\`\`\`
+src/module/
+  ├─ index.ts — example listing with a tilde line below
+~~~
+\`\`\`
+### Deleted
+None.
+### Not created
+None.
+# Non-goals
+None.
+# Acceptance examples
+- The behavior works.
+# Constraints and invariants
+Preserve existing compatibility.
+# Decisions
+No product behavior change: documentation-only wording.
+# Open questions
+None.
+# Verification expectations
+Run the focused Native checks.
+`;
+    await fs.writeFile(path.join(root, 'brief.md'), mixedFenceBrief);
+    await expect(
+      validateNativeBrief(root, 'brief.md', { strict: true, structure: true }),
+    ).resolves.toEqual({
+      valid: true,
+      findings: [],
+    });
+  });
+
+  it('applies the directory structure requirement only from constraint version 3', async () => {
+    const projectRoot = path.join(root, 'legacy-version-project');
+    await fs.mkdir(path.join(projectRoot, '.git'), { recursive: true });
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs', 'en'));
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await ensureNativeDirectories(paths);
+    const state = await createNativePortableChange({
+      paths,
+      name: 'legacy-version-change',
+      language: 'en',
+    });
+    const changeDir = nativePortableChangeDir(paths, state.name);
+    await fs.writeFile(
+      path.join(changeDir, 'brief.md'),
+      completeBrief
+        .replace(
+          '## Directory structure\n### Created\nNone.\n### Modified\n- The behavior module.\n### Deleted\nNone.\n### Not created\nNone.\n',
+          '',
+        )
+        .replace(
+          '# Decisions\nNone.',
+          '# Decisions\nNo product behavior change: documentation-only wording.',
+        ),
+    );
+
+    for (const version of [1, 2] as const) {
+      await expect(
+        validateNativePortableDocuments({
+          paths,
+          state: { ...state, document_constraints_version: version },
+          specChanges: [],
+        }),
+      ).resolves.toMatchObject({ valid: true, findings: [] });
+    }
+    await expect(
+      validateNativePortableDocuments({
+        paths,
+        state: { ...state, document_constraints_version: 3 },
+        specChanges: [],
+      }),
+    ).resolves.toMatchObject({
+      valid: false,
+      findings: [expect.objectContaining({ code: 'brief-structure-missing' })],
     });
   });
 
@@ -208,7 +396,7 @@ describe('Native document constraints', () => {
       state: { status: 'await-user' },
     });
     await expect(readNativePortableChange(paths, 'doc-change')).resolves.toMatchObject({
-      document_constraints_version: 2,
+      document_constraints_version: 3,
     });
   });
 

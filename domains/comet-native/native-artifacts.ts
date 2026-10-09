@@ -1,7 +1,15 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-import { nativeHeadingKey, nativeVerificationHeadingKey } from './native-artifact-language.js';
+import {
+  NATIVE_BRIEF_STRUCTURE_SUBSECTIONS,
+  type NativeBriefStructureSubsection,
+  isNativeBriefStructureHeading,
+  nativeBriefStructureSubsectionKey,
+  nativeBriefStructureSubsectionLabel,
+  nativeHeadingKey,
+  nativeVerificationHeadingKey,
+} from './native-artifact-language.js';
 import { nativeChangeDir } from './native-change.js';
 import {
   DEFAULT_NATIVE_ARTIFACT_MAX_BYTES,
@@ -40,6 +48,8 @@ export interface NativeBriefValidationOptions {
   strict?: boolean;
   /** Require the four core sections; validate optional sections when present. */
   compact?: boolean;
+  /** Require the directory structure section under Scope (document constraints v3). */
+  structure?: boolean;
 }
 
 export class NativeDocumentConstraintError extends Error {
@@ -246,6 +256,114 @@ export function nativeBriefHasBlockingQuestion(source: string): boolean {
   return false;
 }
 
+interface MarkdownFenceState {
+  marker: '`' | '~' | null;
+  length: number;
+}
+
+/**
+ * CommonMark fence pairing: a fence closes only when it repeats the opening
+ * marker character with at least the opening length and nothing else on the line,
+ * so a stray tilde line cannot close a backtick block and vice versa.
+ */
+function markdownFenceTransition(
+  line: string,
+  state: MarkdownFenceState,
+): 'opened' | 'closed' | null {
+  const match = /^ {0,3}(`{3,}|~{3,})/u.exec(line);
+  if (match === null) return null;
+  const fence = match[1] ?? '';
+  const marker = fence[0] as '`' | '~';
+  if (state.marker === null) {
+    state.marker = marker;
+    state.length = fence.length;
+    return 'opened';
+  }
+  if (marker === state.marker && fence.length >= state.length && line.trim() === fence) {
+    state.marker = null;
+    state.length = 0;
+    return 'closed';
+  }
+  return null;
+}
+
+function briefStructureSectionBody(scopeBody: string): string | null {
+  const lines = meaningfulMarkdown(scopeBody).split(/\r?\n/u);
+  const fence: MarkdownFenceState = { marker: null, length: 0 };
+  let start = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (markdownFenceTransition(line, fence) !== null) continue;
+    if (fence.marker !== null) continue;
+    const heading = /^##\s+(.+)$/u.exec(line);
+    if (heading === null) continue;
+    if (start === -1) {
+      if (isNativeBriefStructureHeading(heading[1] ?? '')) start = index + 1;
+      continue;
+    }
+    return lines.slice(start, index).join('\n');
+  }
+  return start === -1 ? null : lines.slice(start).join('\n');
+}
+
+function briefStructureSubsectionBodies(body: string): Map<NativeBriefStructureSubsection, string> {
+  const subsections = new Map<NativeBriefStructureSubsection, string>();
+  let currentKey: NativeBriefStructureSubsection | null = null;
+  let currentLines: string[] = [];
+  const fence: MarkdownFenceState = { marker: null, length: 0 };
+  const flush = () => {
+    if (currentKey !== null) subsections.set(currentKey, currentLines.join('\n').trim());
+  };
+  for (const line of meaningfulMarkdown(body).split(/\r?\n/u)) {
+    if (markdownFenceTransition(line, fence) !== null) {
+      if (currentKey !== null) currentLines.push(line);
+      continue;
+    }
+    const heading = fence.marker === null ? /^###\s+(.+)$/u.exec(line) : null;
+    if (heading !== null) {
+      flush();
+      currentKey = nativeBriefStructureSubsectionKey(heading[1] ?? '');
+      currentLines = [];
+    } else if (currentKey !== null) {
+      currentLines.push(line);
+    }
+  }
+  flush();
+  return subsections;
+}
+
+function validateBriefStructureSection(scopeBody: string, briefRef: string): NativeFinding[] {
+  const findings: NativeFinding[] = [];
+  const body = briefStructureSectionBody(scopeBody);
+  if (body === null) {
+    findings.push({
+      code: 'brief-structure-missing',
+      message:
+        'Brief scope must include a "## Directory structure"/「## 目录结构」 section with the subsections Created/新建, Modified/修改, Deleted/删除, and Not created/明确不建',
+      path: briefRef,
+    });
+    return findings;
+  }
+  const subsections = briefStructureSubsectionBodies(body);
+  const incomplete: string[] = [];
+  for (const subsection of NATIVE_BRIEF_STRUCTURE_SUBSECTIONS) {
+    const content = subsections.get(subsection);
+    if (content === undefined || markdownBody(content).length === 0 || isTemplateOnly(content)) {
+      incomplete.push(nativeBriefStructureSubsectionLabel(subsection));
+    }
+  }
+  if (incomplete.length > 0) {
+    findings.push({
+      code: 'brief-structure-subsection-missing',
+      message: `Brief directory structure subsections are missing or empty: ${incomplete.join(
+        ', ',
+      )}. Keep every heading and write "None"/「无」 when there is no content`,
+      path: briefRef,
+    });
+  }
+  return findings;
+}
+
 export async function validateNativeBrief(
   changeDir: string,
   briefRef: string,
@@ -301,6 +419,9 @@ export async function validateNativeBrief(
         path: briefRef,
       });
     }
+  }
+  if (options.strict && options.structure) {
+    findings.push(...validateBriefStructureSection(sections.get('scope') ?? '', briefRef));
   }
   if (nativeBriefHasBlockingQuestion(source)) {
     findings.push({

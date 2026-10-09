@@ -5,6 +5,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  isNativeBriefStructureHeading,
+  nativeBriefStructureSubsectionKey,
   nativeBriefTemplate,
   nativeHeadingKey,
 } from '../../../domains/comet-native/native-artifact-language.js';
@@ -41,6 +43,39 @@ describe('Native artifact language', () => {
     expect(nativeBriefTemplate('en')).toContain('# Outcome\n');
     expect(nativeHeadingKey('验收示例')).toBe('acceptanceExamples');
     expect(nativeHeadingKey('Acceptance examples')).toBe('acceptanceExamples');
+  });
+
+  it('renders the directory structure skeleton under Scope in both languages', () => {
+    const zhTemplate = nativeBriefTemplate('zh-CN');
+    expect(zhTemplate).toContain('## 目录结构\n');
+    expect(zhTemplate).toContain('### 新建\n');
+    expect(zhTemplate).toContain('### 修改\n');
+    expect(zhTemplate).toContain('### 删除\n');
+    expect(zhTemplate).toContain('### 明确不建\n');
+    expect(zhTemplate).not.toContain('## Directory structure\n');
+    const enTemplate = nativeBriefTemplate('en');
+    expect(enTemplate).toContain('## Directory structure\n');
+    expect(enTemplate).toContain('### Created\n');
+    expect(enTemplate).toContain('### Modified\n');
+    expect(enTemplate).toContain('### Deleted\n');
+    expect(enTemplate).toContain('### Not created\n');
+    const scopeStart = enTemplate.indexOf('# Scope\n');
+    const nextHeading = enTemplate.indexOf('# Non-goals\n');
+    expect(enTemplate.slice(scopeStart, nextHeading)).toContain('## Directory structure\n');
+  });
+
+  it('matches bilingual directory structure headings', () => {
+    expect(isNativeBriefStructureHeading('目录结构')).toBe(true);
+    expect(isNativeBriefStructureHeading('Directory structure')).toBe(true);
+    expect(isNativeBriefStructureHeading('Directory Structure')).toBe(true);
+    expect(isNativeBriefStructureHeading('其他章节')).toBe(false);
+    expect(nativeBriefStructureSubsectionKey('新建')).toBe('created');
+    expect(nativeBriefStructureSubsectionKey('Created')).toBe('created');
+    expect(nativeBriefStructureSubsectionKey('修改')).toBe('modified');
+    expect(nativeBriefStructureSubsectionKey('删除')).toBe('deleted');
+    expect(nativeBriefStructureSubsectionKey('明确不建')).toBe('notCreated');
+    expect(nativeBriefStructureSubsectionKey('Not created')).toBe('notCreated');
+    expect(nativeBriefStructureSubsectionKey('其他')).toBeNull();
   });
 
   it('validates and derives acceptance criteria from Chinese brief headings', async () => {
