@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.5] - 2026-10-09
+## What's Changed [0.4.6] - 2026-10-10
 
 ### Added
 
@@ -14,12 +14,10 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Plugin SDK**: Use `@rpamis/comet/plugins` to add host-provided capabilities, storage, and context to applications, alongside Comet's built-in memory and knowledge plugins.
 - **Native Supervisor transfer**: Export and import an in-progress child task into another checkout, including its temporary branches and uncommitted work, so work can continue without losing partial implementation.
 - **Eval execution budget**: Set a per-case Agent timeout for local benchmark runs without changing the task definition.
-- **Native brief directory structure**: New and reconfirmed Native changes record created, modified, deleted, and deliberately excluded modules and key files under Scope. Existing changes retain their earlier document rules and confirmed progress.
-- **Classic document archive**: New Classic changes in a non-Git coordination root use the compatible Runtime so specs and change documents can be archived with an explicit document-only choice and a verified file-digest receipt; independent child repositories are delivered separately (#468).
 
 ### Changed
 
-- **New workflow Runtime**: New Native and Classic changes use the resumable SDK Runtime by default while retaining their familiar state files. Classic archives preserve valid references to documents moved with the change. Existing changes continue on their original Runtime; use `--runtime compat` when creating a change to select the previous Runtime explicitly.
+- **New workflow Runtime**: New Native and Classic changes use the resumable SDK Runtime by default while retaining their familiar state files; non-Git Classic coordination roots retain the compatible Runtime for document-only archives. Classic archives preserve valid references to documents moved with the change. Existing changes continue on their original Runtime; use `--runtime compat` when creating a change to select the previous Runtime explicitly.
 - **Workflow recovery**: Recover copied Native and Classic SDK changes from their saved checkpoints, preserving progress and approvals. Resume failed work or revise requirements in the same workflow while retaining partial code; changed requirements need fresh approval, and uncertain executions must be reconciled before retrying.
 - **Native Supervisor archives**: Completed child tasks retain accessible archive records with their requirements, source references, and verification results. Archive delivery incorporates checked target-branch updates, cleans up verified temporary branches and worktrees, and can resume interrupted delivery or cleanup while preserving dirty or unintegrated work.
 - **Dashboard workflow progress**: Show current Native and child-task progress for SDK workflows, refresh status as work advances, and report unreadable workflow records. Project status and Doctor also identify selected standalone applications.
@@ -29,8 +27,6 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
-- **DSH workflow protection**: Restore loadable Hook bridges and write-denial decisions for DSH profiles, including Windows PowerShell, and migrate managed legacy patches without replacing unrelated configuration (#466).
-- **Project Knowledge review responsiveness**: Keep pending host reviews out of repeated context replay, resume only submitted reviews, bound retries for real failures, and accept batches of review decisions across paths in one Git worktree (#467).
 - **Windows Eval inputs**: Pass Claude Code and Codex evaluation prompts through temporary files and stdin so complete Skill and SDK application inputs are preserved without exceeding command-line limits or altering backslashes and newlines.
 - **Eval user simulation**: Give custom user simulators the complete task scenario and current question so approval, rejection, and recovery decisions follow the requested case.
 
@@ -41,6 +37,21 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Security
 
 - **Dependency updates**: Update sanitization, URI parsing, and HTTP client dependencies to address known vulnerabilities.
+
+## What's Changed [0.4.5] - 2026-10-10
+
+### Added
+
+- **Native brief directory structure**: New and reconfirmed Native changes record a "Directory structure" section under Scope listing Created/Modified/Deleted modules and key files plus a deliberate "Not created" list, as a tree or a plain list with per-path annotations, in both artifact languages. Runtime enforces the section at Shape confirmation boundaries created with this release (document constraints v3); changes confirmed by earlier releases keep their original rules and progress. Adding ordinary helper files inside a confirmed module needs no renewed confirmation; scope growth or responsibility shifts update the structure and the related Decision first.
+
+- **Classic document archive**: Archive specs and change documents from a non-Git coordination root with independent child repositories, using an explicit local document delivery choice and a verified file-digest receipt (#468).
+
+### Fixed
+
+- **Project Knowledge review responsiveness**: Keep pending host reviews out of repeated context replay, resume only submitted reviews, bound retries for real failures, and accept batches of review decisions across paths in one Git worktree (#467).
+
+- **Native fenced examples**: Ignore headings and blocking markers inside fenced code so valid brief and verification examples do not trigger document errors or clarification blockers. Match fence characters and lengths consistently when checking document contents.
+- **DSH workflow protection**: Install loadable Hook bridge patches in existing DSH profiles, match native write and edit tools, and preserve denial decisions through PowerShell. Updates migrate managed legacy patches without duplicating bridges or replacing unrelated configuration; Doctor identifies invalid bridge configuration and explains activation requirements (#466).
 
 ## What's Changed [0.4.4] - 2026-10-03
 
