@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { createDefaultCometPluginBridge } from '../../../domains/comet-plugin/integration.js';
 import { LocalProjectKnowledgeProvider } from '../../../domains/project-knowledge/local-provider.js';
 import { ProjectKnowledgeLearningService } from '../../../domains/project-knowledge/learning.js';
@@ -44,13 +45,40 @@ test('durably hands bounded evidence to the host and accepts an idempotent no-le
     await expect(
       reopened.submit(pending[0].id, [{ action: 'execute', command: 'arbitrary' }]),
     ).rejects.toThrow('Invalid review action');
-    await reopened.submit(pending[0].id, []);
+    await expect(queue.review({ ...packet, changeId: 'other' })).rejects.toThrow(
+      'Host Agent review pending',
+    );
+    const second = (await reopened.pending()).find((entry) => entry.id !== pending[0].id)!;
+    await expect(
+      reopened.submitMany([
+        { id: pending[0].id, actions: [] },
+        { id: 'unknown', actions: [] },
+      ]),
+    ).rejects.toThrow('Unknown review request');
+    expect(await reopened.pending()).toHaveLength(2);
+    await reopened.submitMany([
+      { id: pending[0].id, actions: [] },
+      { id: second.id, actions: [] },
+    ]);
     await reopened.submit(pending[0].id, []);
     await expect(queue.review(packet)).resolves.toEqual([]);
     await expect(queue.pending()).resolves.toEqual([]);
     await expect(
       new ProjectKnowledgeHostReview(path.join(root, 'other-workspace'), root).pending(),
     ).resolves.toEqual([]);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('shares one review queue across paths in a Git worktree', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-review-worktree-'));
+  try {
+    execFileSync('git', ['-C', root, 'init'], { windowsHide: true });
+    await fs.mkdir(path.join(root, 'frontend'));
+    const rootReview = new ProjectKnowledgeHostReview(root, root);
+    const nestedReview = new ProjectKnowledgeHostReview(path.join(root, 'frontend'), root);
+    expect(nestedReview.reviewDependency('id')).toEqual(rootReview.reviewDependency('id'));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

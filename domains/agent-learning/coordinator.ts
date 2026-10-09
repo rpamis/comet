@@ -6,7 +6,11 @@ import type {
   AgentLearningDelta,
 } from './types.js';
 import { AGENT_EXPERIENCE_SCHEMA } from './types.js';
-import type { AgentExperienceCaptureResult } from './experience-journal.js';
+import type {
+  AgentExperienceCaptureResult,
+  AgentLearningStatus,
+  AgentLearningWait,
+} from './experience-journal.js';
 import { AgentExperienceJournal } from './experience-journal.js';
 
 export interface AgentReflectionRequest {
@@ -28,6 +32,13 @@ export interface AgentReflectionResult {
   readonly deltas: readonly AgentLearningDelta[];
   /** Deterministic deltas may be consolidated while semantic work remains replayable. */
   readonly deferred: boolean;
+  readonly waitFor?: readonly AgentLearningWait[];
+}
+
+class AgentReflectionWaiting extends Error {
+  public constructor(readonly waitFor: readonly AgentLearningWait[]) {
+    super('Agent Reflection awaits host review');
+  }
 }
 
 export type AgentReflectionOutput = readonly AgentLearningDelta[] | AgentReflectionResult;
@@ -137,6 +148,39 @@ export class AgentLearningCoordinator {
     }
   }
 
+  public status(): Promise<AgentLearningStatus> {
+    return this.journal.status();
+  }
+
+  public async retryFailed(): Promise<number> {
+    const count = await this.journal.retryFailed();
+    await this.replayPending();
+    return count;
+  }
+
+  public async replayNow(): Promise<void> {
+    await this.journal.retryPendingNow();
+    await this.replayPending();
+  }
+
+  public async resumeReview(
+    review: AgentLearningWait,
+    matchesLegacy?: (event: AgentExperienceEvent) => Promise<boolean>,
+  ): Promise<number> {
+    const ready = [...(await this.journal.releaseWaiting(review))];
+    if (matchesLegacy) {
+      const legacyIds: string[] = [];
+      for (const event of await this.journal.legacyReviewCandidates()) {
+        if (await matchesLegacy(event)) legacyIds.push(event.eventId);
+      }
+      ready.push(...(await this.journal.releaseLegacyReview(legacyIds)));
+    }
+    for (const event of ready) {
+      await this.processAndRecord(event);
+    }
+    return ready.length;
+  }
+
   public async feedback(options: {
     readonly episodeId: string;
     readonly projectId?: string;
@@ -200,6 +244,7 @@ export class AgentLearningCoordinator {
     }
 
     const failures: string[] = [];
+    const waiting: AgentLearningWait[] = [];
     const deltas: AgentLearningDelta[] = [];
     for (const { learner, events: learnerEvents } of byOwner.values()) {
       try {
@@ -211,10 +256,12 @@ export class AgentLearningCoordinator {
         );
         const reflectedDeltas: AgentLearningDelta[] = [];
         let reflectionDeferred = false;
+        const ownerWaiting: AgentLearningWait[] = [];
         for (const request of requests) {
           await this.journal.renewClaim(claim);
           const reflected = normalizeReflectionResult(await learner.reflect(request));
           reflectionDeferred ||= reflected.deferred;
+          ownerWaiting.push(...(reflected.waitFor ?? []));
           for (const delta of reflected.deltas) {
             if (delta.owner !== learner.owner) {
               throw new Error(`${learner.owner} returned a Learning Delta owned by ${delta.owner}`);
@@ -235,6 +282,10 @@ export class AgentLearningCoordinator {
           deltas.push(...consolidationDeltas.map((entry) => entry.delta));
         }
         if (reflectionDeferred) {
+          if (ownerWaiting.length > 0) {
+            waiting.push(...ownerWaiting);
+            continue;
+          }
           throw new Error(`${learner.owner} semantic Reflection deferred`);
         }
         await this.journal.markLearnerCompleted(
@@ -249,6 +300,7 @@ export class AgentLearningCoordinator {
       }
     }
     if (failures.length > 0) throw new Error(failures.join('; '));
+    if (waiting.length > 0) throw new AgentReflectionWaiting(waiting);
     return deltas;
   }
 
@@ -267,6 +319,10 @@ export class AgentLearningCoordinator {
             deltas.push(...(await this.processEpisode(claim)));
             await this.journal.completeClaim(claim);
           } catch (error) {
+            if (error instanceof AgentReflectionWaiting) {
+              await this.journal.waitClaim(claim, error.waitFor);
+              return deltas;
+            }
             await this.journal.failClaim(claim, errorMessage(error));
             throw error;
           }

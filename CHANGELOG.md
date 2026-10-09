@@ -15,6 +15,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Native Supervisor transfer**: Export and import an in-progress child task into another checkout, including its temporary branches and uncommitted work, so work can continue without losing partial implementation.
 - **Eval execution budget**: Set a per-case Agent timeout for local benchmark runs without changing the task definition.
 - **Native brief directory structure**: New and reconfirmed Native changes record created, modified, deleted, and deliberately excluded modules and key files under Scope. Existing changes retain their earlier document rules and confirmed progress.
+- **Classic document archive**: Archive specs and change documents from a non-Git coordination root with independent child repositories, using an explicit local document delivery choice and a verified file-digest receipt (#468).
 
 ### Changed
 
@@ -29,6 +30,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 ### Fixed
 
 - **DSH workflow protection**: Restore loadable Hook bridges and write-denial decisions for DSH profiles, including Windows PowerShell, and migrate managed legacy patches without replacing unrelated configuration (#466).
+- **Project Knowledge review responsiveness**: Keep pending host reviews out of repeated context replay, resume only submitted reviews, bound retries for real failures, and accept batches of review decisions across paths in one Git worktree (#467).
 - **Windows Eval inputs**: Pass Claude Code and Codex evaluation prompts through temporary files and stdin so complete Skill and SDK application inputs are preserved without exceeding command-line limits or altering backslashes and newlines.
 - **Eval user simulation**: Give custom user simulators the complete task scenario and current question so approval, rejection, and recovery decisions follow the requested case.
 

@@ -293,6 +293,7 @@ if (requestedArgs.includes('knowledge')) {
     .description('读取宿主 Agent 待评审经验或提交评审结果')
     .option('--id <id>', '待评审经验 ID')
     .option('--file <file>', '评审动作 JSON 文件')
+    .option('--retry-failed', '重新尝试已达到重试上限的经验学习')
     .option('--json', 'Output as JSON')
     .action(async (targetPath = '.', options) => {
       const { projectKnowledgeReviewCommand } = await import('../commands/project-knowledge.js');

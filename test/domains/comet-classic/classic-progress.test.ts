@@ -11,6 +11,7 @@ import {
   writeClassicDelivery,
   reauthorizeClassicDelivery,
   invalidateClassicDelivery,
+  recordClassicDocumentArchive,
 } from '../../../domains/comet-classic/classic-progress.js';
 import { classicTaskRevision } from '../../../domains/comet-classic/classic-tasks.js';
 import { independentGitEnvironment } from '../../../platform/process/git-environment.js';
@@ -19,6 +20,96 @@ import { withClassicStateLock } from '../../../domains/comet-classic/classic-sto
 vi.mock('node:child_process', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:child_process')>();
   return { ...original, execFileSync: vi.fn(original.execFileSync) };
+});
+
+it('archives documents in a non-Git coordinator without claiming a child repository commit', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'classic-document-delivery-'));
+  const change = path.join(root, 'docs', 'openspec', 'changes', 'demo');
+  const child = path.join(root, 'frontend');
+  try {
+    await mkdir(change, { recursive: true });
+    await mkdir(child);
+    execFileSync('git', ['-C', child, 'init', '-b', 'feature'], { windowsHide: true });
+    await writeFile(
+      path.join(change, '.comet.yaml'),
+      'phase: archive\nverify_result: pass\narchived: false\nrun_id: document-run\n',
+    );
+    await writeFile(path.join(change, 'proposal.md'), '# Proposal\n');
+    const spec = path.join(root, 'docs', 'openspec', 'specs', 'feature', 'spec.md');
+    await mkdir(path.dirname(spec), { recursive: true });
+    await writeFile(spec, '# Feature\n');
+    const state = { phase: 'archive' as const, verifyResult: 'pass' as const, archived: false };
+    await expect(
+      writeClassicDelivery(root, change, { action: 'local', targetBranch: 'feature' }, state),
+    ).rejects.toThrow('requires a Git coordination root');
+    await expect(
+      writeClassicDelivery(root, change, { action: 'archive-only', commit: 'a'.repeat(40) }, state),
+    ).rejects.toThrow('cannot claim');
+    await writeClassicDelivery(root, change, { action: 'archive-only' }, state);
+    const archived = path.join(root, 'docs', 'openspec', 'changes', 'archive', '2026-10-09-demo');
+    await mkdir(path.dirname(archived), { recursive: true });
+    await rename(change, archived);
+    await writeFile(
+      path.join(archived, '.comet.yaml'),
+      'phase: archive\nverify_result: pass\narchived: true\nrun_id: document-run\n',
+    );
+    await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
+      verification: { status: 'needsVerification' },
+    });
+    await recordClassicDocumentArchive(root, archived);
+    await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
+      delivery: { action: 'archive-only' },
+      verification: { status: 'complete', archiveVerified: true },
+    });
+    await writeFile(spec, '# Modified feature\n');
+    await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
+      verification: { status: 'needsVerification', archiveVerified: false },
+    });
+    await writeFile(spec, '# Feature\n');
+    await writeFile(path.join(archived, 'proposal.md'), '# Changed\n');
+    await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
+      verification: { status: 'needsVerification', archiveVerified: false },
+    });
+    await expect(recordClassicDocumentArchive(root, archived)).rejects.toThrow('sealed receipt');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('keeps a sealed document authorization when archive assigns a run ID', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'classic-legacy-document-delivery-'));
+  const change = path.join(root, 'changes', 'demo');
+  try {
+    await mkdir(change, { recursive: true });
+    await writeFile(
+      path.join(change, '.comet.yaml'),
+      'phase: archive\nverify_result: pass\narchived: false\ncreated_at: 2026-10-09T00:00:00Z\nbase_ref: null\n',
+    );
+    await writeClassicDelivery(
+      root,
+      change,
+      { action: 'archive-only' },
+      {
+        phase: 'archive',
+        verifyResult: 'pass',
+        archived: false,
+      },
+    );
+    const sealed = (await readClassicDelivery(root, change)).delivery?.changeIdentity;
+    expect(sealed).toMatch(/^legacy:/u);
+    await writeFile(
+      path.join(change, '.comet.yaml'),
+      'phase: archive\nverify_result: pass\narchived: false\ncreated_at: 2026-10-09T00:00:00Z\nbase_ref: null\nrun_id: assigned-run\n',
+    );
+    expect((await readClassicDelivery(root, change)).delivery?.changeIdentity).toBe(sealed);
+    await writeFile(
+      path.join(change, '.comet.yaml'),
+      'phase: archive\nverify_result: pass\narchived: false\ncreated_at: 2026-10-10T00:00:00Z\nbase_ref: null\nrun_id: assigned-run\n',
+    );
+    await expect(readClassicDelivery(root, change)).rejects.toThrow('identity mismatch');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 const actualChildProcess =
   await vi.importActual<typeof import('node:child_process')>('node:child_process');

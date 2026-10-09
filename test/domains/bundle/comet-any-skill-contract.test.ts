@@ -42,19 +42,21 @@ function referencedCommands(doc: string): string[] {
 
 describe('comet-any skill contract', () => {
   it.each([
-    ['assets/skills-zh/comet-any', '宿主只领取 `analyze`', '不能领取这些机器 Action'],
+    ['assets/skills-zh/comet-any', '宿主只领取 `analyze`', '不领取或代回报这些机器 Action'],
     [
       'assets/skills/comet-any',
       'The host claims only `analyze`',
-      'must not claim these machine Actions',
+      'do not claim or return results for these machine Actions',
     ],
   ])(
     'creator %s delegates machine steps to the fixed executor through next',
     async (root, analysis, ownership) => {
       const reference = await readText(`${root}/reference/sdk-creation.md`);
+      const skill = await readText(`${root}/SKILL.md`);
       expect(reference).toContain(analysis);
       expect(reference).toContain('compile / verify / eval-preview / evaluate / preview / install');
-      expect(reference).toContain('comet creator next');
+      expect(reference).toContain('`next`');
+      expect(skill).toContain('comet creator next');
       expect(reference).toContain('creator-local');
       expect(reference).toContain(ownership);
     },

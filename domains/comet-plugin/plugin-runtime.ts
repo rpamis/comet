@@ -6,6 +6,8 @@ import {
   validateAgentExperienceEvent,
   type AgentContextCandidate,
   type AgentExperienceEvent,
+  type AgentLearningStatus,
+  type AgentLearningWait,
 } from '../agent-learning/index.js';
 import type {
   PluginContextRequest,
@@ -166,7 +168,7 @@ export class PluginRuntime {
     );
     this.descriptors = descriptors;
     this.now = options.now ?? (() => new Date());
-    this.replayPendingLearningOnContext = options.replayPendingLearningOnContext ?? true;
+    this.replayPendingLearningOnContext = options.replayPendingLearningOnContext ?? false;
     const fallbackJournal =
       options.journal ?? new AgentExperienceJournal(new MemoryAgentExperienceJournalStore());
     const userJournal = options.journals?.user ?? fallbackJournal;
@@ -360,13 +362,27 @@ export class PluginRuntime {
       });
       throw error;
     }
-    await this.replayPendingLearning();
     await this.learningByScope[event.scope].capture(event);
+  }
+
+  public async resumeReview(
+    review: AgentLearningWait,
+    matchesLegacy?: (event: AgentExperienceEvent) => Promise<boolean>,
+  ): Promise<number> {
+    return this.learningByScope.project.resumeReview(review, matchesLegacy);
+  }
+
+  public learningStatus(): Promise<AgentLearningStatus> {
+    return this.learningByScope.project.status();
+  }
+
+  public retryFailedLearning(): Promise<number> {
+    return this.learningByScope.project.retryFailed();
   }
 
   /** Replay durable learning observations captured by an earlier process. */
   public async replayLearning(): Promise<void> {
-    await this.replayPendingLearning();
+    for (const coordinator of this.learningCoordinators) await coordinator.replayNow();
   }
 
   private async learningAdapters(event: AgentExperienceEvent) {

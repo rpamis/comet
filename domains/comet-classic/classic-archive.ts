@@ -27,7 +27,7 @@ import { appendClassicStateEvent } from './classic-state-events.js';
 import { readClassicState, withClassicStateLock, writeClassicState } from './classic-store.js';
 import { applyClassicTransition } from './classic-transitions.js';
 import { clearCurrentChangeIf } from './classic-current-change.js';
-import { readClassicDelivery } from './classic-progress.js';
+import { readClassicDelivery, recordClassicDocumentArchive } from './classic-progress.js';
 import {
   appendTrajectory,
   clearPendingAction,
@@ -558,8 +558,12 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
             : archivedProjection.classic,
           'archived',
         );
+        const documentDelivery =
+          (await readClassicDelivery(layout.projectRoot, archiveDir)).delivery?.action ===
+          'archive-only';
         const archivedClassic = {
           ...archiveTransition.classic,
+          ...(documentDelivery ? { branchStatus: 'handled' as const } : {}),
           designDoc: archivedPointer(
             layout.projectRoot,
             activeDir,
@@ -680,6 +684,7 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
       output.stepsTotal += 1;
     } else {
       await verifyFinalArchiveIntegrity(layout.projectRoot, archiveDir);
+      await recordClassicDocumentArchive(layout.projectRoot, archiveDir);
       output.stderr.push(green('  [OK] Final archive integrity verified'));
       output.stepsOk += 1;
       output.stepsTotal += 1;

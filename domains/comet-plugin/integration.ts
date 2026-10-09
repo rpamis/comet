@@ -27,6 +27,7 @@ import {
 } from '../comet-memory/index.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { resolveProjectName } from '../../platform/paths/project-identity.js';
+import { resolveProjectWorktreeRoot } from '../../platform/paths/project-worktree-root.js';
 import { defaultProjectKnowledgeStorageRoot } from '../../platform/paths/project-knowledge-storage.js';
 import {
   JsonFilePluginStorageStore,
@@ -441,7 +442,7 @@ export async function createDefaultCometPluginBridge(
   const stateRoot = path.resolve(
     options.stateRoot ?? path.join(homeDirectory, '.comet', 'plugins'),
   );
-  const projectRoot = path.resolve(options.projectRoot);
+  const projectRoot = resolveProjectWorktreeRoot(options.projectRoot);
   const bestEffortContext = options.bestEffortContext === true;
   const contextLockTimeoutMs = bestEffortContext
     ? Math.max(100, Math.min(options.lockTimeoutMs ?? 750, 750))
@@ -501,7 +502,7 @@ export async function createDefaultCometPluginBridge(
     ),
     storage,
     journals: { user: userJournal, project: projectJournal },
-    replayPendingLearningOnContext: !bestEffortContext,
+    replayPendingLearningOnContext: false,
     ...(options.scheduleLearning === undefined
       ? {}
       : { scheduleLearning: options.scheduleLearning }),
@@ -592,6 +593,20 @@ export async function createDefaultCometPluginBridge(
   );
   if (!bestEffortContext) await bridge.flushContextApplicationOutbox();
   return bridge;
+}
+
+export async function readDefaultProjectLearningStatus(
+  projectId: string,
+  homeDirectory = os.homedir(),
+): Promise<import('../agent-learning/index.js').AgentLearningStatus> {
+  const stateRoot = path.join(path.resolve(homeDirectory), '.comet', 'plugins');
+  const storage = new JsonFilePluginStorageStore(path.join(stateRoot, 'storage'));
+  const journal = new AgentExperienceJournal(
+    new StorageAgentExperienceJournalStore(
+      await storage.open('comet.agent-learning', 'project', projectId),
+    ),
+  );
+  return journal.status();
 }
 
 function contextAppliedEvent(

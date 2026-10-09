@@ -323,7 +323,8 @@ describe('Chinese Classic efficiency contracts', () => {
     expect(authorize.indexOf('comet state delivery <change-name> --file')).toBeLessThan(
       authorize.indexOf('comet state transition <change-name> archive-confirm'),
     );
-    expect(authorize).toContain('只有用户选择 A、B 或 C 后');
+    expect(authorize).toContain('只有用户选择 A、B、C 或明确确认上述“仅归档协调文档”后');
+    expect(authorize).toContain('`action: archive-only`');
     expect(authorize).toContain('尚不知道的 commit/prUrl 不得伪造');
     expect(authorize).toContain(
       '普通 `comet state delivery <change-name>` 只读取已保存的记录，入口摘要也不访问网络',
@@ -1020,7 +1021,8 @@ describe('Approved English Classic efficiency contracts', () => {
       remote: '<confirmed-remote>',
     });
     for (const term of [
-      'Only after the user chooses A, B, or C',
+      'Only after the user chooses A, B, C, or explicitly confirms document-only archive',
+      '`action: archive-only`',
       'Do not fabricate unknown commit/prUrl',
       'entry summary does not access the network',
       'comet state delivery <change-name> --verify',
