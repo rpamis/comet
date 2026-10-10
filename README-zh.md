@@ -36,7 +36,7 @@
   <tr>
     <td width="25%" align="center" valign="middle">
       <a href="https://www.packyapi.com/register?aff=AIClient2API">
-        <img src="https://github.com/rpamis/comet/blob/master/img/PackyCode.png" alt="PackyCode Sponsor" width="180">
+        <img src="https://raw.githubusercontent.com/rpamis/comet/91378aef2976954761dc67487f54ba79de6106dd/img/PackyCode.png" alt="PackyCode Sponsor" width="180">
       </a>
     </td>
     <td width="75%" align="left" valign="middle">
