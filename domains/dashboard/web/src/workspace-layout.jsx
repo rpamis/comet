@@ -1,9 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Tooltip } from 'antd';
-import { FolderOutlined } from '@ant-design/icons';
+import { FolderOpenOutlined, FolderOutlined } from '@ant-design/icons';
 import { ChangeCountBadge } from './number-transition.jsx';
 
-export function DashboardExplorerRowTooltip({ name, status, workspace, message, children }) {
+export function DashboardExplorerRowTooltip({
+  name,
+  status,
+  description,
+  workspace,
+  message,
+  children,
+}) {
   const [stacked, setStacked] = useState(
     () => window.matchMedia?.('(max-width: 760px)').matches ?? false,
   );
@@ -19,11 +26,12 @@ export function DashboardExplorerRowTooltip({ name, status, workspace, message, 
     <Tooltip
       placement={stacked ? 'top' : 'right'}
       trigger={['hover', 'focus']}
-      styles={{ root: { pointerEvents: 'none' } }}
+      styles={{ root: { pointerEvents: 'none', transition: 'none' } }}
       title={
         <>
           <div>{name}</div>
           <div>{status}</div>
+          {description && <div>{description}</div>}
           {workspace && (
             <div>{[workspace.label, workspace.branch].filter(Boolean).join(' · ')}</div>
           )}
@@ -36,13 +44,33 @@ export function DashboardExplorerRowTooltip({ name, status, workspace, message, 
   );
 }
 
-export function DashboardExplorerRowContent({ name, count, status }) {
+export function DashboardExplorerFolderIcon({ expanded }) {
+  const FolderIcon = expanded ? FolderOpenOutlined : FolderOutlined;
+  return (
+    <span
+      className="dashboard-explorer-folder-stack"
+      data-folder-state={expanded ? 'expanded' : 'collapsed'}
+      aria-hidden="true"
+    >
+      <FolderOutlined className="dashboard-explorer-folder-back" />
+      <FolderIcon className="dashboard-explorer-folder-front" />
+    </span>
+  );
+}
+
+export function DashboardExplorerRowContent({ name, description, count, status, showIcon = true }) {
   return (
     <>
-      <FolderOutlined className="dashboard-explorer-row-icon" aria-hidden="true" />
+      {showIcon && <FolderOutlined className="dashboard-explorer-row-icon" aria-hidden="true" />}
       <span className="dashboard-explorer-row-body">
         <span className="dashboard-explorer-row-name">{name}</span>
-        {count && <span className="dashboard-explorer-row-count">{count}</span>}
+        {(description || count) && (
+          <span className="dashboard-explorer-row-count">
+            {description}
+            {description && count ? ' · ' : null}
+            {count}
+          </span>
+        )}
       </span>
       <span className="dashboard-explorer-row-status">{status}</span>
     </>
@@ -61,15 +89,26 @@ export function DashboardExplorerTitle({ count, badgeClassName = '' }) {
   );
 }
 
-export function DashboardChangeDetail({ title, meta, extra, className = '', children, ...props }) {
+export function DashboardChangeDetail({
+  title,
+  meta,
+  suggestion,
+  extra,
+  className = '',
+  children,
+  ...props
+}) {
   return (
     <Card
       {...props}
       className={`dashboard-change-detail min-w-0 ${className}`.trim()}
       title={
-        <div className="dashboard-change-detail-heading">
-          <div className="dashboard-change-detail-title">{title}</div>
-          {meta && <div className="dashboard-change-detail-meta">{meta}</div>}
+        <div className={`dashboard-change-detail-header${suggestion ? ' has-suggestion' : ''}`}>
+          <div className="dashboard-change-detail-heading">
+            <div className="dashboard-change-detail-title">{title}</div>
+            {meta && <div className="dashboard-change-detail-meta">{meta}</div>}
+          </div>
+          {suggestion}
         </div>
       }
       extra={extra}
@@ -79,9 +118,9 @@ export function DashboardChangeDetail({ title, meta, extra, className = '', chil
   );
 }
 
-export function DashboardWorkspaceRegion({ left, center, leftClassName = '' }) {
+export function DashboardWorkspaceRegion({ left, center, leftClassName = '', className = '' }) {
   return (
-    <div className="dashboard-workspace-region dashboard-master-detail">
+    <div className={`dashboard-workspace-region dashboard-master-detail ${className}`.trim()}>
       <div className={`dashboard-workspace-left ${leftClassName}`.trim()}>{left}</div>
       <div className="dashboard-workspace-center min-w-0">{center}</div>
     </div>

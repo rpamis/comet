@@ -1,5 +1,173 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { DEMO_SNAPSHOT } from '../../../domains/dashboard/web/demo.js';
+
+async function expectClassicSharedFrame(page: Page) {
+  const shell = page.locator(
+    '.classic-change-workspace > .classic-change-overview > .classic-change-shell',
+  );
+  await expect(shell).toHaveCount(1);
+  await expect(
+    shell.locator(':scope > .dashboard-workspace-left > .classic-changes-explorer'),
+  ).toHaveCount(1);
+  await expect(shell.locator(':scope > .dashboard-workspace-center > .change-detail')).toHaveCount(
+    1,
+  );
+  await expect(
+    shell.locator('.classic-project-context, .classic-change-risks, .dashboard-project-git'),
+  ).toHaveCount(0);
+  const measure = () =>
+    shell.evaluate((element) => {
+      const required = (root: ParentNode, selector: string) => {
+        const node = root.querySelector<HTMLElement>(selector);
+        if (!node) throw new Error(`Missing Classic shared-frame element: ${selector}`);
+        return node;
+      };
+      const bounds = (node: Element) => {
+        const box = node.getBoundingClientRect();
+        return {
+          x: box.x,
+          y: box.y,
+          right: box.right,
+          bottom: box.bottom,
+          width: box.width,
+          height: box.height,
+        };
+      };
+      const skin = (node: Element) => {
+        const style = getComputedStyle(node);
+        return {
+          border: [
+            style.borderTopWidth,
+            style.borderRightWidth,
+            style.borderBottomWidth,
+            style.borderLeftWidth,
+          ],
+          padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft],
+          radius: style.borderRadius,
+          background: style.backgroundColor,
+          shadow: style.boxShadow,
+        };
+      };
+      const left = required(element, ':scope > .dashboard-workspace-left');
+      const center = required(element, ':scope > .dashboard-workspace-center');
+      const explorer = required(left, '.classic-changes-explorer');
+      const detail = required(center, '.change-detail');
+      const head = required(detail, ':scope > .ant-card-head');
+      const body = required(detail, ':scope > .ant-card-body');
+      const phase = detail.querySelector('.dashboard-phase-progress');
+      const panels = detail.querySelector('.change-detail-panels');
+      const style = getComputedStyle(element);
+      const bodyStyle = getComputedStyle(body);
+      return {
+        shell: bounds(element),
+        left: bounds(left),
+        center: bounds(center),
+        explorer: bounds(explorer),
+        detail: bounds(detail),
+        head: bounds(head),
+        phase: phase ? bounds(phase) : null,
+        panels: panels ? bounds(panels) : null,
+        columns: style.gridTemplateColumns.split(' ').length,
+        gap: [style.rowGap, style.columnGap],
+        shellSkin: skin(element),
+        leftSkin: skin(left),
+        explorerSkin: skin(explorer),
+        detailSkin: skin(detail),
+        phaseSkin: phase ? skin(phase) : null,
+        panelsSkin: panels ? skin(panels) : null,
+        panelSections: panels
+          ? Array.from(panels.children, (node) => ({ ...skin(node), ...bounds(node) }))
+          : [],
+        panelColumns: panels
+          ? getComputedStyle(panels).gridTemplateColumns.split(' ').length
+          : null,
+        bodyContentWidth:
+          body.clientWidth - parseFloat(bodyStyle.paddingLeft) - parseFloat(bodyStyle.paddingRight),
+        bodyPadding: parseFloat(bodyStyle.paddingLeft),
+        pageOverflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+  let layout = await measure();
+  let previous: string | undefined;
+  await expect
+    .poll(async () => {
+      layout = await measure();
+      const current = JSON.stringify(layout);
+      const stable = current === previous;
+      previous = current;
+      const expectedHeight = Math.max(
+        Math.min(720, page.viewportSize()!.height * 0.75),
+        Math.ceil(layout.detail.height + 2),
+      );
+      return (
+        stable &&
+        !layout.pageOverflow &&
+        (page.viewportSize()!.width <= 760 || Math.abs(layout.shell.height - expectedHeight) <= 1)
+      );
+    })
+    .toBe(true);
+  const aligned = (first: number, second: number) =>
+    expect(Math.abs(first - second)).toBeLessThanOrEqual(1);
+  expect(layout.shellSkin.border).toEqual(Array(4).fill('1px'));
+  expect(layout.shellSkin.radius).toBe('12px');
+  expect(layout.gap).toEqual(['0px', '0px']);
+  for (const skin of [
+    layout.explorerSkin,
+    layout.detailSkin,
+    ...(layout.phaseSkin ? [layout.phaseSkin] : []),
+  ]) {
+    expect(skin.border).toEqual(Array(4).fill('0px'));
+    expect(skin.radius).toBe('0px');
+    expect(skin.background).toBe('rgba(0, 0, 0, 0)');
+    expect(skin.shadow).toBe('none');
+  }
+  aligned(layout.left.x, layout.shell.x + 1);
+  aligned(layout.left.y, layout.shell.y + 1);
+  aligned(layout.detail.x, layout.center.x);
+  aligned(layout.detail.right, layout.shell.right - 1);
+  aligned(layout.explorer.x, layout.left.x);
+  if (page.viewportSize()!.width > 760) {
+    expect(layout.columns).toBe(2);
+    expect(layout.leftSkin.border).toEqual(['0px', '1px', '0px', '0px']);
+    aligned(layout.center.x, layout.left.right);
+    aligned(layout.center.y, layout.left.y);
+    aligned(layout.explorer.right, layout.left.right - 1);
+    aligned(layout.explorer.height, layout.shell.height - 2);
+  } else {
+    expect(layout.columns).toBe(1);
+    expect(layout.leftSkin.border).toEqual(['0px', '0px', '1px', '0px']);
+    expect(layout.left.height).toBe(281);
+    aligned(layout.explorer.height, 280);
+    aligned(layout.center.x, layout.left.x);
+    aligned(layout.center.y, layout.left.bottom);
+    aligned(layout.shell.height, layout.left.height + layout.detail.height + 2);
+  }
+  if (layout.panels && layout.phase && layout.panelsSkin) {
+    aligned(layout.panels.x, layout.phase.x);
+    aligned(layout.panels.width, layout.phase.width);
+    aligned(layout.panels.y - layout.phase.bottom, 24);
+    expect(layout.panelsSkin.border).toEqual(['1px', '0px', '0px', '0px']);
+    expect(layout.panelsSkin.padding).toEqual(['24px', '0px', '0px', '0px']);
+    expect(layout.panelSections).toHaveLength(2);
+    const [artifacts, tasks] = layout.panelSections;
+    expect(artifacts.border).toEqual(Array(4).fill('0px'));
+    expect(artifacts.padding).toEqual(Array(4).fill('0px'));
+    const split = layout.bodyContentWidth >= 700;
+    expect(layout.panelColumns).toBe(split ? 2 : 1);
+    expect(tasks.border).toEqual(
+      split ? ['0px', '0px', '0px', '1px'] : ['1px', '0px', '0px', '0px'],
+    );
+    expect(tasks.padding).toEqual(
+      split ? ['0px', '0px', '0px', '24px'] : ['24px', '0px', '0px', '0px'],
+    );
+    for (const section of layout.panelSections) {
+      expect(section.radius).toBe('0px');
+      expect(section.background).toBe('rgba(0, 0, 0, 0)');
+      expect(section.shadow).toBe('none');
+    }
+  }
+  return layout;
+}
 
 test.describe('Dashboard project selection', () => {
   const projects = Array.from({ length: 45 }, (_, index) => ({
@@ -60,6 +228,9 @@ test.describe('Dashboard project selection', () => {
   }) => {
     await page.goto('/');
     await expect(page.getByRole('button', { name: /^Git 未提交 0 / })).toBeVisible();
+    await expect(page.getByRole('region', { name: '仓库 Git', exact: true })).toContainText(
+      'branch-0',
+    );
     await page.locator('.comet-project-select').click();
     const response = page.waitForResponse('**/projects/path-1/overview*');
     await page
@@ -69,12 +240,18 @@ test.describe('Dashboard project selection', () => {
       .click();
     expect((await (await response).json()).project.path).toBe('/worktrees/project-1');
     await expect(page.getByRole('button', { name: /^Git 未提交 1 / })).toBeVisible();
+    await expect(page.getByRole('region', { name: '仓库 Git', exact: true })).toContainText(
+      'branch-1',
+    );
     const changes = page.waitForRequest('**/projects/path-1/changes*');
     await page.getByRole('tab', { name: '已归档', exact: true }).click();
     await changes;
     await page.reload();
     await expect(page.getByRole('button', { name: /^Git 未提交 0 / })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Git 未提交 1 / })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: '仓库 Git', exact: true })).toContainText(
+      'branch-0',
+    );
   });
 
   test('keeps option names and paths paired through scrolling and searching', async ({ page }) => {
@@ -2213,17 +2390,22 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(page.locator('.comet-header-brand')).toHaveText('comet');
   await expect(page.getByRole('list', { name: 'Classic 生命周期阶段' })).toBeVisible();
   await page.getByRole('tab', { name: 'Native 工作流' }).click();
-  for (const name of [
-    '循环与恢复',
-    '变更范围',
-    '验收状态',
-    '检查结果',
-    '当前阻塞',
-    '执行历史',
-    '恢复状态',
-    '仓库 Git',
-  ]) {
-    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  const nativeDetail = page.locator('.native-change-detail');
+  for (const [tab, headings] of [
+    ['变更详情', ['关键产物', '变更范围', '仓库 Git']],
+    ['验收状态', ['验收状态', '检查结果']],
+    ['当前阻塞', ['当前阻塞']],
+    ['执行历史', ['执行历史']],
+  ] as const) {
+    await nativeDetail.getByRole('tab', { name: tab, exact: true }).click();
+    for (const name of headings) {
+      await expect(nativeDetail.getByRole('heading', { name, exact: true })).toBeVisible();
+    }
+  }
+  for (const name of ['执行与恢复', '循环进度', '恢复与交接']) {
+    await expect(
+      page.locator('.native-project-context').getByRole('heading', { name, exact: true }),
+    ).toBeVisible();
   }
   const track = page.getByRole('list', { name: 'Native 生命周期阶段' });
   await expect(track).toBeVisible();
@@ -2236,6 +2418,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   await expect(track.locator('[data-status-badge="success"]')).toHaveCount(1);
   await expect(track.locator('.dashboard-phase-origin-wave-dot')).toHaveCount(0);
   await expect(track.getByRole('button')).toHaveCount(0);
+  await nativeDetail.getByRole('tab', { name: '变更详情', exact: true }).click();
   await page.getByRole('button', { name: 'comet-state.yaml 工作流状态' }).click();
   await expect(page.locator('.dashboard-artifact-preview-panel')).toBeVisible();
   await page.getByRole('button', { name: '全屏展示', exact: true }).click();
@@ -2274,7 +2457,7 @@ test('keeps compact shared explorer rows free of left-side progress summaries', 
   await page.getByRole('tab', { name: 'Classic 工作流' }).click();
   const classicRow = page.locator('.dashboard-change-row').first();
   await expect(classicRow.locator('.dashboard-explorer-row-name')).toBeVisible();
-  await expect(classicRow.locator('.dashboard-explorer-row-count')).toContainText('任务');
+  await expect(classicRow.locator('.dashboard-explorer-row-count')).toHaveText('构建 · 8/12');
   await expect(classicRow.locator('.dashboard-explorer-row-status')).toBeVisible();
   await expect(classicRow.locator('[role="progressbar"]')).toHaveCount(0);
 });
@@ -2444,8 +2627,8 @@ for (const theme of ['light', 'dark'] as const) {
       await page.setViewportSize({ width, height: 900 });
       const expectedWidth = width - (width <= 760 ? 32 : 64);
       for (const view of [
-        { role: 'tab', name: 'Native 工作流', body: '.dashboard-master-detail' },
-        { role: 'tab', name: 'Classic 工作流', body: '.dashboard-master-detail' },
+        { role: 'tab', name: 'Native 工作流', body: '.native-change-workspace' },
+        { role: 'tab', name: 'Classic 工作流', body: '.classic-change-overview' },
         { role: 'button', name: '个人记忆', body: '.dashboard-tool-page-memory' },
         { role: 'button', name: '项目知识', body: '.dashboard-tool-page-knowledge' },
       ] as const) {
@@ -2455,7 +2638,6 @@ for (const theme of ['light', 'dark'] as const) {
           '.comet-workbench-header',
           '.dashboard-content-inner',
           '.dashboard-page-heading',
-          '.dashboard-workflow-tabs',
           view.body,
         ]) {
           const box = await page.locator(selector).boundingBox();
@@ -2463,6 +2645,16 @@ for (const theme of ['light', 'dark'] as const) {
           expect(Math.abs(box!.width - expectedWidth)).toBeLessThanOrEqual(1);
           expect(Math.abs(box!.x - (width - expectedWidth) / 2)).toBeLessThanOrEqual(1);
         }
+        const headerBox = await page.locator('.comet-workbench-header').boundingBox();
+        const workflowBox = await page.locator('.dashboard-workflow-tabs').boundingBox();
+        expect(workflowBox).not.toBeNull();
+        expect(workflowBox!.x).toBeGreaterThanOrEqual(headerBox!.x);
+        expect(workflowBox!.x + workflowBox!.width).toBeLessThanOrEqual(
+          headerBox!.x + headerBox!.width,
+        );
+        expect(workflowBox!.y + workflowBox!.height).toBeLessThanOrEqual(
+          headerBox!.y + headerBox!.height,
+        );
         await expect
           .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
           .toBe(true);
@@ -2615,9 +2807,14 @@ test('keeps the demo Native detail visible after selecting a child change', asyn
   await expect(page.locator('.native-change-detail h3.text-base')).toContainText(
     'prepare-parent-workspace',
   );
-  await expect(page.getByRole('button', { name: 'brief 需求简报' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: '验收状态', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await expect(page.getByText('100% 已处理', { exact: true })).toBeVisible();
   await expect(page.getByText('准备工作区已完成并归档。', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: '变更详情', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'brief 需求简报' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '项目概览', exact: true })).toBeVisible();
   expect(consoleErrors).toEqual([]);
 });
@@ -2626,39 +2823,109 @@ test('keeps Classic task progress inside the change detail column', async ({ pag
   await page.setViewportSize({ width: 1580, height: 900 });
   await page.goto('/?demo');
 
-  const taskProgress = page
+  const workspace = page.locator('.classic-change-workspace');
+  const detail = workspace.locator('.change-detail');
+  const panels = detail.locator(':scope > .ant-card-body > .change-detail-panels');
+  const phase = detail.locator('.dashboard-phase-progress');
+  const taskProgress = panels
     .getByRole('heading', { name: '任务进度' })
     .locator('xpath=ancestor::article[1]');
-  const changeDetail = taskProgress.locator('xpath=ancestor::section[1]');
 
   await expect(taskProgress).toBeVisible();
-  const taskProgressBox = await taskProgress.boundingBox();
-  const changeDetailBox = await changeDetail.boundingBox();
-  if (!taskProgressBox || !changeDetailBox) {
-    throw new Error('Expected task progress and change detail to have measurable bounds');
+  const [taskProgressBox, panelsBox, detailBox, phaseBox] = await Promise.all([
+    taskProgress.boundingBox(),
+    panels.boundingBox(),
+    detail.boundingBox(),
+    phase.boundingBox(),
+  ]);
+  if (!taskProgressBox || !panelsBox || !detailBox || !phaseBox) {
+    throw new Error('任务进度、阶段进度、产物面板和 Classic 详情列没有可测量的位置');
   }
 
+  expect(Math.abs(panelsBox.x - phaseBox.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(panelsBox.width - phaseBox.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(panelsBox.y - phaseBox.y - phaseBox.height - 24)).toBeLessThanOrEqual(1);
+  expect(panelsBox.x).toBeGreaterThanOrEqual(detailBox.x);
+  expect(panelsBox.x + panelsBox.width).toBeLessThanOrEqual(detailBox.x + detailBox.width);
+  expect(panelsBox.y + panelsBox.height).toBeLessThanOrEqual(detailBox.y + detailBox.height);
+  expect(taskProgressBox.x).toBeGreaterThanOrEqual(panelsBox.x);
   expect(taskProgressBox.x + taskProgressBox.width).toBeLessThanOrEqual(
-    changeDetailBox.x + changeDetailBox.width,
+    panelsBox.x + panelsBox.width,
+  );
+  expect(taskProgressBox.y).toBeGreaterThanOrEqual(panelsBox.y);
+  expect(taskProgressBox.y + taskProgressBox.height).toBeLessThanOrEqual(
+    panelsBox.y + panelsBox.height,
   );
 });
 
-test('keeps project metrics above the selected change and Git outside it', async ({ page }) => {
+test('keeps project metrics above detail and Git in each workflow context', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto('/?demo');
   const summary = page.locator('.dashboard-summary-strip');
-  const detail = page.locator('.change-detail');
-  const git = page.getByLabel('仓库 Git');
+  const workspace = page.locator('.classic-change-workspace');
+  const detail = workspace.locator('.change-detail');
+  const context = workspace.locator('.classic-project-context');
+  const git = page.getByRole('region', { name: '仓库 Git', exact: true });
+  const expectProjectGitPreview = async () => {
+    await expect(git).toContainText(DEMO_SNAPSHOT.git.branch);
+    await expect(git).toContainText(DEMO_SNAPSHOT.git.head);
+    await expect(git.locator('.dashboard-git-list.is-commits li')).toHaveText(
+      DEMO_SNAPSHOT.git.recentCommits.slice(0, 5),
+    );
+    await expect(git.locator('.dashboard-git-list.is-files li')).toHaveText(
+      DEMO_SNAPSHOT.git.dirtyFileList.slice(0, 5),
+    );
+  };
   await expect(summary.getByRole('button')).toHaveCount(5);
-  await expect(detail.locator('.change-guidance')).toContainText('下一步建议');
+  await expect(detail.locator('.ant-card-head .dashboard-change-suggestion')).toContainText(
+    '下一步建议',
+  );
+  await expect(git).toHaveCount(1);
   await expect(git).toBeVisible();
-  await expect(detail.getByLabel('仓库 Git')).toHaveCount(0);
-  const [summaryBox, detailBox, gitBox] = await Promise.all([
-    summary.boundingBox(),
-    detail.boundingBox(),
-    git.boundingBox(),
-  ]);
+  await expect(context.getByRole('region', { name: '仓库 Git', exact: true })).toHaveCount(1);
+  await expect(git).toHaveClass(/\bclassic-project-git\b/);
+  await expectProjectGitPreview();
+  await expect(git.getByRole('region', { name: '仓库 Git内容', exact: true })).toBeVisible();
+  await expect(detail.getByRole('region', { name: '仓库 Git', exact: true })).toHaveCount(0);
+  const [summaryBox, detailBox] = await Promise.all([summary.boundingBox(), detail.boundingBox()]);
   expect(summaryBox!.y + summaryBox!.height).toBeLessThan(detailBox!.y);
-  expect(gitBox!.y).toBeGreaterThanOrEqual(detailBox!.y + detailBox!.height);
+  const projectGit = await git.textContent();
+  expect(projectGit).not.toBeNull();
+  const otherChange = page.locator('.dashboard-change-row').nth(1);
+  const otherName = await otherChange.locator('.dashboard-explorer-row-name').innerText();
+  await otherChange.click();
+  await expect(otherChange).toHaveAttribute('aria-pressed', 'true');
+  await expect(detail.locator('.dashboard-change-detail-title')).toContainText(otherName);
+  await expect(git).toHaveCount(1);
+  await expect(git).toHaveText(projectGit!);
+  await expectProjectGitPreview();
+  await page.getByRole('tab', { name: 'Native 工作流' }).click();
+  await expect(page.locator('.classic-project-context')).toHaveCount(0);
+  await expect(git).toHaveCount(1);
+  await expect(git).toHaveText(projectGit!);
+  await expectProjectGitPreview();
+  await expect(
+    page.locator('.native-project-context').locator('.dashboard-project-git'),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .locator('.dashboard-workspace-center')
+      .getByRole('region', { name: '仓库 Git', exact: true }),
+  ).toHaveCount(1);
+  const nativeLayout = await git.evaluate((element) => {
+    const center = document.querySelector('.dashboard-workspace-center');
+    if (!center) throw new Error('Native 详情工作区不存在');
+    const centerBox = center.getBoundingClientRect();
+    const gitBox = element.getBoundingClientRect();
+    return {
+      detailLeft: centerBox.left,
+      detailRight: centerBox.right,
+      gitLeft: gitBox.left,
+      gitRight: gitBox.right,
+    };
+  });
+  expect(nativeLayout.gitLeft).toBeGreaterThanOrEqual(nativeLayout.detailLeft);
+  expect(nativeLayout.gitRight).toBeLessThanOrEqual(nativeLayout.detailRight);
 });
 
 test('keeps project, search, plugins, settings, refresh and theme in the top bar', async ({
@@ -2694,13 +2961,13 @@ test('applies the approved dark palette to the canvas, selection and phase graph
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(page.locator('.comet-workbench-header')).toHaveCSS(
     'background-color',
-    'rgb(12, 13, 18)',
+    'rgb(17, 24, 36)',
   );
   await page.getByRole('tab', { name: 'Native 工作流' }).click();
   const selectedNativeRow = page.locator('.native-change-row[aria-pressed="true"]');
   await expect(selectedNativeRow).toBeVisible();
-  await expect(selectedNativeRow).toHaveCSS('background-color', 'rgb(39, 32, 57)');
-  await expect(selectedNativeRow).toHaveCSS('border-radius', '0px');
+  await expect(selectedNativeRow).toHaveCSS('background-color', 'rgb(27, 45, 72)');
+  await expect(selectedNativeRow).toHaveCSS('border-radius', '6px');
   const track = page.getByRole('list', { name: 'Native 生命周期阶段' });
   await expect(track.locator('.is-done .dashboard-phase-label')).toHaveCSS(
     'color',
@@ -2708,7 +2975,7 @@ test('applies the approved dark palette to the canvas, selection and phase graph
   );
   await expect(track.locator('.is-current .dashboard-phase-label')).toHaveCSS(
     'color',
-    'rgb(185, 164, 255)',
+    'rgb(139, 180, 255)',
   );
   await expect
     .poll(() =>
@@ -2847,18 +3114,40 @@ test('keeps a single filtered change selected and clears details for no results'
 
 test('keeps suggestions and blockers within the selected change', async ({ page }) => {
   await page.goto('/?demo');
-  const detail = page.locator('.change-detail');
-  await expect(detail.locator('.change-guidance')).toContainText('下一步建议');
-  await expect(detail.locator('.change-guidance')).toContainText('风险提示');
+  const workspace = page.locator('.classic-change-workspace');
+  const detail = workspace.locator('.change-detail');
+  const risks = workspace.locator('.classic-change-risks');
+  const riskContent = risks.getByRole('region', { name: '风险提示内容', exact: true });
+  await expect(detail.locator('.ant-card-head .dashboard-change-suggestion')).toContainText(
+    '下一步建议',
+  );
+  await expect(risks.getByRole('heading', { name: '风险提示', exact: true })).toBeVisible();
+  await expect(riskContent).toBeVisible();
+  const selectedName = await page
+    .locator('.dashboard-change-row[aria-pressed=true] .dashboard-explorer-row-name')
+    .innerText();
+  await expect(detail.locator('.dashboard-change-detail-title')).toContainText(selectedName);
+  const selected = DEMO_SNAPSHOT.changes.active.find(
+    (change: { name: string }) => change.name === selectedName,
+  );
+  expect(selected).toBeDefined();
+  await expect(riskContent.locator('.dashboard-guidance-item')).toHaveCount(selected!.risks.length);
+  for (const risk of selected!.risks) {
+    await expect(riskContent).toContainText(risk.message);
+    await expect(riskContent).toContainText(risk.code);
+  }
   await page.getByRole('tab', { name: 'Native 工作流' }).click();
   const native = page.locator('.native-change-detail');
   await expect(native.getByRole('status', { name: '工作流建议' })).toBeVisible();
-  await expect(native.getByRole('heading', { name: '当前阻塞' })).toBeVisible();
+  await expect(page.locator('.native-project-context .native-blockers-card')).toHaveCount(0);
+  await native.getByRole('tab', { name: '当前阻塞', exact: true }).click();
+  await expect(native.getByRole('heading', { name: '当前阻塞', exact: true })).toBeVisible();
 });
 
 test('keeps Classic and Native overview metrics visually aligned and selectable', async ({
   page,
 }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/?demo');
 
   const classicSummary = page.locator('.dashboard-overview-summary-strip');
@@ -2901,9 +3190,127 @@ test('keeps Classic and Native overview metrics visually aligned and selectable'
   await cards.nth(4).focus();
   await page.keyboard.press('Space');
   await expect(cards.nth(4)).toHaveAttribute('aria-pressed', 'true');
+
+  for (const theme of ['light', 'dark']) {
+    if ((await page.locator('html').getAttribute('data-theme')) !== theme) {
+      await page
+        .getByRole('button', { name: theme === 'dark' ? '切换到暗色模式' : '切换到亮色模式' })
+        .click();
+    }
+    const accent = theme === 'light' ? 'rgb(37, 94, 216)' : 'rgb(110, 159, 255)';
+    const selectedBorder = theme === 'light' ? 'rgb(47, 123, 234)' : 'rgb(61, 139, 255)';
+    const selectedGradient =
+      theme === 'light'
+        ? 'linear-gradient(135deg, rgb(31, 115, 237) 0%, rgb(60, 146, 250) 100%)'
+        : 'linear-gradient(135deg, rgb(31, 111, 229) 0%, rgb(54, 127, 233) 100%)';
+    const neutralBackground = theme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(23, 30, 41)';
+    const businessColors =
+      theme === 'light'
+        ? [
+            'rgb(31, 99, 216)',
+            'rgb(102, 112, 133)',
+            'rgb(201, 68, 98)',
+            'rgb(35, 131, 75)',
+            'rgb(154, 101, 14)',
+          ]
+        : [
+            'rgb(159, 193, 255)',
+            'rgb(183, 192, 206)',
+            'rgb(255, 154, 174)',
+            'rgb(121, 217, 155)',
+            'rgb(243, 200, 102)',
+          ];
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      for (const workflow of ['Classic', 'Native']) {
+        await page.getByRole('tab', { name: `${workflow} 工作流` }).click();
+        const name =
+          workflow === 'Classic'
+            ? DEMO_SNAPSHOT.changes.active[0].name
+            : DEMO_SNAPSHOT.native.changes[0].name;
+        await page.getByPlaceholder('搜索变更、产物或文件…').fill(name);
+        const rows = page.locator(
+          workflow === 'Classic' ? '.dashboard-change-row' : '.native-change-row',
+        );
+        await expect(rows).toHaveCount(1);
+        await expect(rows.locator('.dashboard-explorer-row-name')).toHaveText(name);
+        const statuses = summary.locator('.dashboard-summary-status');
+        const statusTexts = await statuses.allTextContents();
+        const numbers = await summary.locator('.ant-statistic-content-value').allTextContents();
+        const labels = await cards.evaluateAll((elements) =>
+          elements.map((element) => element.getAttribute('aria-label')),
+        );
+        const measure = () =>
+          cards.evaluateAll((elements) =>
+            elements.map((element) => {
+              const { x, y, width, height } = element.getBoundingClientRect();
+              return { x, y, width, height };
+            }),
+          );
+        const bounds = await measure();
+        await cards.first().click();
+        await page.mouse.move(0, 0);
+        await expect(cards.first()).toHaveCSS('border-color', selectedBorder);
+        const appearance = (card: Locator) =>
+          card.evaluate((element) => {
+            const style = getComputedStyle(element);
+            const childStyle = (selector: string) => {
+              const child = getComputedStyle(element.querySelector(selector)!);
+              return { color: child.color, background: child.backgroundColor };
+            };
+            return {
+              background: style.backgroundColor,
+              gradient: style.backgroundImage,
+              border: style.borderColor,
+              shadow: style.boxShadow,
+              transform: style.transform,
+              title: childStyle('.dashboard-summary-title'),
+              note: childStyle('.dashboard-summary-note'),
+              metric: childStyle('.dashboard-summary-metric'),
+              icon: childStyle('.dashboard-summary-icon'),
+              status: childStyle('.dashboard-summary-status'),
+            };
+          });
+        const activeAppearance = await appearance(cards.first());
+        for (let index = 0; index < 5; index += 1) {
+          const card = cards.nth(index);
+          await card.focus();
+          await page.keyboard.press(index % 2 ? 'Space' : 'Enter');
+          await expect(summary.locator('.dashboard-summary-card[aria-pressed="true"]')).toHaveCount(
+            1,
+          );
+          await expect(card).toHaveAttribute('aria-pressed', 'true');
+          await expect(statuses).toHaveText(statusTexts);
+          await expect(summary.locator('.ant-statistic-content-value')).toHaveText(numbers);
+          expect(
+            await cards.evaluateAll((elements) =>
+              elements.map((element) => element.getAttribute('aria-label')),
+            ),
+          ).toEqual(labels);
+          await expect(card).toHaveCSS('background-image', selectedGradient);
+          await expect(card).toHaveCSS('border-color', selectedBorder);
+          await expect(card).toHaveCSS('outline-color', accent);
+          await expect(statuses.nth(index)).toHaveCSS('background-color', 'rgb(219, 234, 254)');
+          await expect(statuses.nth(index)).toHaveCSS('color', 'rgb(23, 78, 166)');
+          await expect.poll(() => appearance(card)).toEqual(activeAppearance);
+          await card.hover();
+          await expect.poll(() => appearance(card)).toEqual(activeAppearance);
+          const nextIndex = (index + 1) % 5;
+          await expect(cards.nth(nextIndex)).toHaveCSS('background-color', neutralBackground);
+          await expect(statuses.nth(nextIndex)).toHaveCSS('color', businessColors[nextIndex]);
+          await cards.nth(nextIndex).hover();
+          await expect(cards.nth(nextIndex)).toHaveCSS('border-color', accent);
+          await expect(cards.nth(nextIndex)).toHaveCSS('background-color', neutralBackground);
+          await expect(statuses.nth(nextIndex)).toHaveCSS('color', businessColors[nextIndex]);
+          await page.mouse.move(0, 0);
+          expect(await measure()).toEqual(bounds);
+        }
+      }
+    }
+  }
 });
 
-test('keeps five independent statistic cards equal-width and wraps without narrowing the canvas', async ({
+test('aligns the active statistic card with Explorer and wraps without narrowing the canvas', async ({
   page,
 }) => {
   await page.goto('/?demo');
@@ -2932,8 +3339,31 @@ test('keeps five independent statistic cards equal-width and wraps without narro
         const gutter = width <= 760 ? 16 : 32;
         expect(Math.abs(boxes[0].x - gutter)).toBeLessThanOrEqual(1);
         expect(
-          Math.max(...boxes.map((box) => box.width)) - Math.min(...boxes.map((box) => box.width)),
+          Math.max(
+            ...boxes
+              .filter((_, index) => width <= 760 || index % columns !== 0)
+              .map((box) => box.width),
+          ) -
+            Math.min(
+              ...boxes
+                .filter((_, index) => width <= 760 || index % columns !== 0)
+                .map((box) => box.width),
+            ),
         ).toBeLessThanOrEqual(1);
+        if (width > 760) {
+          const explorer = await page.locator('.dashboard-changes-explorer').boundingBox();
+          expect(boxes[0].width).toBeGreaterThanOrEqual(260);
+          const region = await page.locator('.dashboard-workspace-left').boundingBox();
+          expect(region).not.toBeNull();
+          expect(Math.abs(region!.width - (boxes[0].width - 1))).toBeLessThanOrEqual(1);
+          expect(
+            Math.abs(region!.x + region!.width - boxes[0].x - boxes[0].width),
+          ).toBeLessThanOrEqual(1);
+          expect(Math.abs(explorer!.x - boxes[0].x - 1)).toBeLessThanOrEqual(1);
+          expect(Math.abs(explorer!.width - (boxes[0].width - 2))).toBeLessThanOrEqual(1);
+          for (let index = columns; index < boxes.length; index += columns)
+            expect(Math.abs(boxes[index].width - boxes[0].width)).toBeLessThanOrEqual(1);
+        }
         expect(new Set(boxes.map((box) => Math.round(box.y))).size).toBe(Math.ceil(5 / columns));
         expect(
           Math.abs(boxes[columns - 1].x + boxes[columns - 1].width - (width - gutter)),
@@ -3196,15 +3626,501 @@ test('keeps workbench detail text comfortably readable without enlarging the ove
   );
 });
 
-test('keeps phase progress, guidance and artifacts in reading order', async ({ page }) => {
+test('aligns Classic detail with summary cards and keeps panels directly below phase progress', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/?demo');
-  const [track, guidance, artifacts] = await Promise.all([
-    page.locator('.dashboard-phase-track').boundingBox(),
-    page.locator('.change-guidance').boundingBox(),
-    page.locator('.change-detail-panels').boundingBox(),
+  const workspace = page.locator('.classic-change-workspace');
+  const overview = workspace.locator('.classic-change-overview');
+  const detail = overview.locator('.change-detail');
+  const context = overview.locator('.classic-project-context');
+  const risks = context.locator('.classic-change-risks');
+  const git = context.getByRole('region', { name: '仓库 Git', exact: true });
+  const panels = detail.locator(':scope > .ant-card-body > .change-detail-panels');
+  const cards = page.locator('.dashboard-summary-strip .dashboard-summary-card');
+  await expect(cards).toHaveCount(5);
+  await expect(detail.locator('.classic-change-risks')).toHaveCount(0);
+  await expect(detail.getByRole('region', { name: '仓库 Git', exact: true })).toHaveCount(0);
+  await expect(detail.locator('.change-detail-panels')).toHaveCount(1);
+  await expect(git).toHaveCount(1);
+  await expect(git).toBeVisible();
+  await expect(risks.getByRole('heading', { name: '风险提示', exact: true })).toBeVisible();
+  await expect(panels.getByRole('heading', { name: '关键产物', exact: true })).toBeVisible();
+  await expect(panels.getByRole('heading', { name: '任务进度', exact: true })).toBeVisible();
+  const measure = () =>
+    workspace.evaluate((element) => {
+      const bounds = (node: Element | null) => {
+        if (!node) return null;
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      const detail = element.querySelector('.classic-change-overview .change-detail');
+      const cards = document.querySelectorAll('.dashboard-summary-strip .dashboard-summary-card');
+      return {
+        centerBox: bounds(element.querySelector('.dashboard-workspace-center')),
+        shellBox: bounds(element.querySelector('.classic-change-shell')),
+        workspaceBox: bounds(element),
+        detailBox: bounds(detail),
+        headBox: bounds(detail?.querySelector(':scope > .ant-card-head') ?? null),
+        phaseBox: bounds(detail?.querySelector('.dashboard-phase-progress') ?? null),
+        contextBox: bounds(element.querySelector('.classic-project-context')),
+        riskBox: bounds(element.querySelector('.classic-change-overview .classic-change-risks')),
+        gitBox: bounds(element.querySelector('.classic-project-context .classic-project-git')),
+        explorerBox: bounds(document.querySelector('.classic-changes-explorer')),
+        panelsBox: bounds(
+          detail?.querySelector(':scope > .ant-card-body > .change-detail-panels') ?? null,
+        ),
+        fourth: bounds(cards.item(3)),
+        fifth: bounds(cards.item(4)),
+      };
+    });
+
+  for (const width of [1600, 1280, 1279, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(() =>
+        overview.evaluate(
+          (element) => getComputedStyle(element).gridTemplateColumns.split(' ').length,
+        ),
+      )
+      .toBe(width >= 1280 ? 2 : 1);
+    const frame = await expectClassicSharedFrame(page);
+    let layout = await measure();
+    let previousBounds: string | undefined;
+    await expect
+      .poll(async () => {
+        layout = await measure();
+        const currentBounds = JSON.stringify(layout);
+        const stable = currentBounds === previousBounds;
+        previousBounds = currentBounds;
+        return (
+          stable &&
+          layout.phaseBox !== null &&
+          layout.panelsBox !== null &&
+          Math.abs(layout.panelsBox.y - layout.phaseBox.y - layout.phaseBox.height - 24) <= 1
+        );
+      })
+      .toBe(true);
+    const {
+      centerBox,
+      workspaceBox,
+      shellBox,
+      detailBox,
+      headBox,
+      phaseBox,
+      contextBox,
+      riskBox,
+      gitBox,
+      explorerBox,
+      panelsBox,
+      fourth,
+      fifth,
+    } = layout;
+    if (
+      !centerBox ||
+      !workspaceBox ||
+      !shellBox ||
+      !detailBox ||
+      !headBox ||
+      !phaseBox ||
+      !contextBox ||
+      !riskBox ||
+      !gitBox ||
+      !explorerBox ||
+      !panelsBox ||
+      !fourth ||
+      !fifth
+    ) {
+      throw new Error(`Classic 在 ${width}px 下没有完整的可测量布局`);
+    }
+    expect(Math.abs(workspaceBox.x - (width <= 760 ? 16 : 32))).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(workspaceBox.width - (width - 2 * (width <= 760 ? 16 : 32))),
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(detailBox.width - centerBox.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(headBox.x - detailBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(headBox.width - detailBox.width)).toBeLessThanOrEqual(1);
+    const detailPadding = width <= 760 ? 16 : 24;
+    expect(Math.abs(phaseBox.y - headBox.y - headBox.height - detailPadding)).toBeLessThanOrEqual(
+      1,
+    );
+    expect(phaseBox.x).toBeGreaterThanOrEqual(detailBox.x);
+    expect(phaseBox.x + phaseBox.width).toBeLessThanOrEqual(detailBox.x + detailBox.width);
+    expect(phaseBox.y + phaseBox.height).toBeLessThanOrEqual(detailBox.y + detailBox.height);
+    expect(Math.abs(panelsBox.x - phaseBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(panelsBox.width - phaseBox.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(panelsBox.y - phaseBox.y - phaseBox.height - 24)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(detailBox.y + detailBox.height - panelsBox.y - panelsBox.height - detailPadding),
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(riskBox.x - contextBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(riskBox.width - contextBox.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(riskBox.y - contextBox.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(gitBox.x - contextBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(gitBox.width - contextBox.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(gitBox.y - riskBox.y - riskBox.height - 16)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(gitBox.y + gitBox.height - contextBox.y - contextBox.height),
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(riskBox.height + gitBox.height + 16 - contextBox.height)).toBeLessThanOrEqual(
+      1,
+    );
+    if (width >= 1280) {
+      expect(Math.abs(contextBox.height - shellBox.height)).toBeLessThanOrEqual(1);
+      const baselineHeight = Math.min(720, page.viewportSize()!.height * 0.75);
+      expect(contextBox.height).toBeGreaterThanOrEqual(baselineHeight - 1);
+      expect(contextBox.height).toBeGreaterThanOrEqual(detailBox.height - 1);
+      expect(
+        Math.abs(contextBox.height - Math.max(baselineHeight, Math.ceil(detailBox.height + 2))),
+      ).toBeLessThanOrEqual(1);
+      const cardHeightBudget = contextBox.height - 16;
+      expect(Math.abs(riskBox.height - cardHeightBudget * 0.55)).toBeLessThanOrEqual(1);
+      expect(Math.abs(gitBox.height - cardHeightBudget * 0.45)).toBeLessThanOrEqual(1);
+      expect(Math.abs(shellBox.x + shellBox.width - fourth.x - fourth.width)).toBeLessThanOrEqual(
+        1,
+      );
+      expect(Math.abs(contextBox.x - fifth.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(contextBox.width - fifth.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(contextBox.y - shellBox.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(contextBox.x - shellBox.x - shellBox.width - 16)).toBeLessThanOrEqual(1);
+    } else {
+      expect(Math.abs(shellBox.width - workspaceBox.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(contextBox.x - workspaceBox.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(contextBox.width - workspaceBox.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(contextBox.y - shellBox.y - shellBox.height - 24)).toBeLessThanOrEqual(1);
+      expect(Math.abs(riskBox.height - 360)).toBeLessThanOrEqual(1);
+      expect(Math.abs(gitBox.height - 440)).toBeLessThanOrEqual(1);
+    }
+    await expect
+      .poll(() =>
+        panels.evaluate(
+          (element) => getComputedStyle(element).gridTemplateColumns.split(' ').length,
+        ),
+      )
+      .toBe(frame.bodyContentWidth >= 700 ? 2 : 1);
+    const riskItems = await risks
+      .locator('.dashboard-guidance-items')
+      .evaluateAll((elements) =>
+        elements.map((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length),
+      );
+    expect(riskItems).toEqual([1]);
+    const rails = await detail
+      .locator('.dashboard-phase-item:not(:last-child) .dashboard-phase-rail')
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().width));
+    expect(rails).toHaveLength(4);
+    expect(rails.every((rail) => rail > 0)).toBe(true);
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+  }
+});
+
+test('keeps twelve Classic artifact slots readable and shares their full detail height after change switches', async ({
+  page,
+}) => {
+  const slots = [
+    ['proposal', '提案', 'openspec', 'proposal.md'],
+    ['design', '设计文档', 'openspec', 'design.md'],
+    ['tasks', '任务清单', 'openspec', 'tasks.md'],
+    ['deltaSpec', 'Delta Spec', 'openspec', 'specs/auth/spec.md'],
+    ['designDoc', '技术设计', 'superpowers', 'docs/superpowers/specs/design.md'],
+    ['plan', '实施计划', 'superpowers', 'docs/superpowers/plans/plan.md'],
+    ['verifyReport', '验证报告', 'superpowers', '.comet/verify-result.md'],
+    ['cometYaml', '.comet.yaml', 'comet', '.comet.yaml'],
+    ['handoff', 'Handoff 上下文', 'comet', '.comet/handoff/design-context.json'],
+    ['checkpoint', 'Checkpoint', 'comet', '.comet/checkpoint.json'],
+    ['brainstorm', 'Brainstorm 摘要', 'comet', '.comet/handoff/brainstorm-summary.md'],
+    ['subagentProgress', 'Subagent 进度', 'comet', '.comet/subagent-progress.md'],
+  ] as const;
+  const readyKeys = new Set<string>([
+    'proposal',
+    'design',
+    'tasks',
+    'designDoc',
+    'cometYaml',
+    'brainstorm',
   ]);
-  expect(guidance!.y).toBeGreaterThanOrEqual(track!.y + track!.height);
-  expect(artifacts!.y).toBeGreaterThanOrEqual(guidance!.y + guidance!.height);
+  const longLabel = `技术设计：${'需要逐项核对的技术设计产物'.repeat(8)}${'LongUnbrokenArtifactLabel'.repeat(4)}`;
+  const details = [false, true].map((long) => {
+    const name = long ? 'classic-artifacts-long' : 'classic-artifacts-short';
+    const relativePath = `openspec/changes/${name}`;
+    const grouped = slots
+      .filter(([key]) => !long || (key !== 'deltaSpec' && key !== 'checkpoint'))
+      .map(([key, label, source, file]) => ({
+        key,
+        label: long && key === 'designDoc' ? longLabel : label,
+        source,
+        exists: readyKeys.has(key),
+        path:
+          key === 'designDoc' && long
+            ? `/fixture/docs/superpowers/specs/${'LongArtifactFilename'.repeat(8)}.md`
+            : file.startsWith('docs/')
+              ? `/fixture/${file}`
+              : `/fixture/${relativePath}/${file}`,
+        ...(key === 'subagentProgress' ? { notApplicable: true } : {}),
+      }));
+    return {
+      id: name,
+      locator: name,
+      name,
+      displayName: name,
+      status: 'active' as const,
+      path: `/fixture/${relativePath}`,
+      relativePath,
+      workflow: 'feature',
+      phase: 'build' as const,
+      updatedAt: '2026-10-10T00:00:00.000Z',
+      workspace: { id: 'main', label: 'main', branch: 'main', current: true },
+      tasks: { completed: 1, total: 2, incomplete: ['完成验证'], sections: [] },
+      artifacts: {
+        proposal: true,
+        design: true,
+        tasks: true,
+        plan: false,
+        verifyReport: false,
+        cometYaml: true,
+        grouped,
+      },
+      artifactPreviews: [
+        {
+          key: 'proposal',
+          label: '提案',
+          path: `/fixture/${relativePath}/proposal.md`,
+          exists: true,
+          content: '# Classic fixture artifact\n\n完整提案预览。',
+        },
+      ],
+      verify: { result: 'pending', reportExists: false },
+      next: { command: null, reason: '', description: '' },
+      risks: [{ level: 'warning', code: 'tasks-incomplete', message: '尚有 1 个任务未完成' }],
+    };
+  });
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects') {
+      await route.fulfill({
+        json: {
+          currentProjectId: 'fixture-project',
+          projects: [
+            {
+              id: 'fixture-project',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              lastSeenAt: null,
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    } else if (url.pathname.endsWith('/overview')) {
+      await route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture', generatedAt: '2026-10-10T00:00:00.000Z' },
+          summary: {
+            activeChanges: 2,
+            archivedChanges: 0,
+            verifyFailed: 0,
+            tasksIncomplete: 2,
+            dirtyFiles: 0,
+          },
+          initialChanges: { status: 'active', items: details, total: 2, nextCursor: null },
+          git: {
+            branch: 'main',
+            head: 'abc1234',
+            dirtyFiles: 0,
+            dirtyFileList: [],
+            recentCommits: [],
+          },
+          risks: [],
+        },
+      });
+    } else if (url.pathname.endsWith('/changes')) {
+      await route.fulfill({
+        json: { status: 'active', items: details, total: 2, nextCursor: null },
+      });
+    } else if (url.pathname.endsWith('/change')) {
+      const locator = url.searchParams.get('changeLocator') ?? url.searchParams.get('changeId');
+      await route.fulfill({ json: details.find((item) => item.locator === locator) ?? details[0] });
+    } else {
+      await route.continue();
+    }
+  });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto('/');
+  const workspace = page.locator('.classic-change-workspace');
+  const detail = workspace.locator('.change-detail');
+  const artifacts = detail
+    .getByRole('heading', { name: '关键产物', exact: true })
+    .locator('xpath=ancestor::article[1]');
+  const rows = artifacts.locator('.classic-artifact-row');
+  const measure = () =>
+    workspace.evaluate((element) => {
+      const bounds = (selector: string, root: ParentNode = element) => {
+        const node = root.querySelector(selector);
+        if (!node) throw new Error(`缺少 Classic 高度测量节点：${selector}`);
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { x, y, width, height };
+      };
+      return {
+        detail: bounds('.change-detail'),
+        shell: bounds('.classic-change-shell'),
+        left: bounds('.dashboard-workspace-left'),
+        context: bounds('.classic-project-context'),
+        explorer: bounds('.classic-changes-explorer', document),
+        risk: bounds('.classic-change-risks'),
+        git: bounds('.classic-project-git'),
+        phase: bounds('.dashboard-phase-progress'),
+        panels: bounds('.change-detail-panels'),
+        baseline: Math.min(720, innerHeight * 0.75),
+      };
+    });
+  const expectArtifactSlots = async (name: string) => {
+    await expect(detail.locator('.dashboard-change-detail-title')).toContainText(name);
+    await expect(rows).toHaveCount(12);
+    await expect(artifacts.getByText('6/12', { exact: true })).toBeVisible();
+    expect(
+      await rows.evaluateAll((elements) =>
+        elements.map((row) => row.querySelector(':scope > span:nth-child(2)')?.textContent),
+      ),
+    ).toEqual(slots.map(([key]) => key));
+    for (const [group, count] of [
+      ['OpenSpec', 4],
+      ['Superpowers', 3],
+      ['Comet', 5],
+    ] as const) {
+      const section = artifacts.getByText(group, { exact: true }).locator('xpath=ancestor::div[2]');
+      await expect(section.locator('.classic-artifact-row')).toHaveCount(count);
+    }
+    for (const [key] of slots) {
+      const row = rows.filter({ has: page.getByText(key, { exact: true }) });
+      if (readyKeys.has(key)) await expect(row).toBeEnabled();
+      else {
+        await expect(row).toBeDisabled();
+        await expect(row).toContainText(key === 'subagentProgress' ? '无需生成' : '未生成');
+      }
+    }
+  };
+  const waitForSharedHeight = async () => {
+    let layout = await measure();
+    let previous: string | undefined;
+    await expect
+      .poll(async () => {
+        layout = await measure();
+        const current = JSON.stringify(layout);
+        const stable = previous === current;
+        previous = current;
+        return (
+          stable &&
+          Math.abs(layout.context.height - layout.shell.height) <= 1 &&
+          Math.abs(layout.explorer.height - layout.shell.height + 2) <= 1 &&
+          Math.abs(
+            layout.context.height - Math.max(layout.baseline, Math.ceil(layout.detail.height + 2)),
+          ) <= 1
+        );
+      })
+      .toBe(true);
+    expect(layout.explorer.height).toBeGreaterThanOrEqual(layout.detail.height - 1);
+    expect(layout.context.height).toBeGreaterThanOrEqual(layout.baseline - 1);
+    expect(
+      Math.abs(layout.panels.y - layout.phase.y - layout.phase.height - 24),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(layout.risk.height + layout.git.height + 16 - layout.context.height),
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.risk.height - (layout.context.height - 16) * 0.55)).toBeLessThanOrEqual(
+      1,
+    );
+    expect(Math.abs(layout.git.height - (layout.context.height - 16) * 0.45)).toBeLessThanOrEqual(
+      1,
+    );
+    await expectClassicSharedFrame(page);
+    return layout;
+  };
+  await expectArtifactSlots(details[0].name);
+  const short = await waitForSharedHeight();
+  const longChange = page.locator('.dashboard-change-row').filter({ hasText: details[1].name });
+  await longChange.click();
+  await expectArtifactSlots(details[1].name);
+  await expect(artifacts.getByText(longLabel, { exact: true })).toBeVisible();
+  const long = await waitForSharedHeight();
+  expect(long.detail.height).toBeGreaterThan(short.detail.height);
+  expect(long.explorer.height).toBeGreaterThan(short.explorer.height);
+  await page.locator('.dashboard-change-row').filter({ hasText: details[0].name }).click();
+  await expectArtifactSlots(details[0].name);
+  const restored = await waitForSharedHeight();
+  expect(Math.abs(restored.detail.height - short.detail.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(restored.explorer.height - short.explorer.height)).toBeLessThanOrEqual(1);
+  for (const [key] of slots) {
+    const row = rows.filter({ has: page.getByText(key, { exact: true }) });
+    await row.scrollIntoViewIfNeeded();
+    await expect(row).toBeInViewport();
+  }
+  const proposal = rows.filter({ has: page.getByText('proposal', { exact: true }) });
+  await proposal.scrollIntoViewIfNeeded();
+  const scrollBeforePreview = await page.evaluate(() => ({
+    page: scrollY,
+    list: document.querySelector('.dashboard-change-list')!.scrollTop,
+  }));
+  await proposal.click();
+  const preview = page.locator('.dashboard-artifact-preview-panel');
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText('Classic fixture artifact');
+  await expect(preview).toContainText('完整提案预览。');
+  await page.getByRole('button', { name: '全屏展示', exact: true }).click();
+  await expect(page.locator('.dashboard-artifact-preview-overlay')).toHaveClass(/is-fullscreen/);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.dashboard-artifact-preview-overlay')).not.toHaveClass(
+    /is-fullscreen/,
+  );
+  await expect(preview).toBeVisible();
+  await page
+    .getByRole('button', { name: '产物预览背景', exact: true })
+    .click({ position: { x: 10, y: 10 } });
+  await expect(preview).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        page: scrollY,
+        list: document.querySelector('.dashboard-change-list')!.scrollTop,
+      })),
+    )
+    .toEqual(scrollBeforePreview);
+  await expectArtifactSlots(details[0].name);
+  await expectClassicSharedFrame(page);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await longChange.click();
+  await expectArtifactSlots(details[1].name);
+  const label = artifacts.getByText(longLabel, { exact: true });
+  await expect(label).toBeVisible();
+  await expect(label).not.toHaveCSS('white-space', 'nowrap');
+  await expect(label).not.toHaveCSS('overflow', 'hidden');
+  await expect.poll(async () => (await measure()).left.height).toBe(281);
+  await expectClassicSharedFrame(page);
+  const readable = await rows.evaluateAll((elements) =>
+    elements.every((row) => {
+      const box = row.getBoundingClientRect();
+      return Array.from(row.querySelectorAll(':scope > span')).every((span) => {
+        const spanBox = span.getBoundingClientRect();
+        return (
+          span.scrollWidth <= span.clientWidth + 1 &&
+          span.scrollHeight <= span.clientHeight + 1 &&
+          spanBox.left >= box.left - 1 &&
+          spanBox.right <= box.right + 1 &&
+          spanBox.bottom <= box.bottom + 1
+        );
+      });
+    }),
+  );
+  expect(readable).toBe(true);
+  expect(await label.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(
+    18,
+  );
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
 });
 
 test('keeps a useful center-panel empty state when the Native change filter has no results', async ({
@@ -3232,11 +4148,40 @@ test('keeps Classic and Native master-detail workspaces during empty and loading
     for (const width of [1440, 2048, 390]) {
       await page.setViewportSize({ width, height: 900 });
       const gutter = width <= 760 ? 16 : 32;
-      const box = await page.locator('.dashboard-workspace-region').boundingBox();
+      const classic = await page.locator('.classic-change-workspace').count();
+      const box = await page
+        .locator(classic ? '.classic-change-overview' : '.native-change-workspace')
+        .boundingBox();
       expect(box).not.toBeNull();
       expect(Math.abs(box!.x - gutter)).toBeLessThanOrEqual(1);
       expect(Math.abs(box!.width - (width - 2 * gutter))).toBeLessThanOrEqual(1);
+      if (classic) {
+        const frame = await expectClassicSharedFrame(page);
+        const cards = await page.locator('.dashboard-summary-card').evaluateAll((nodes) =>
+          nodes.map((node) => ({
+            left: node.getBoundingClientRect().left,
+            right: node.getBoundingClientRect().right,
+          })),
+        );
+        expect(Math.abs(frame.shell.x - cards[0].left)).toBeLessThanOrEqual(1);
+        expect(
+          Math.abs(frame.shell.right - (width >= 1280 ? cards[3].right : width - gutter)),
+        ).toBeLessThanOrEqual(1);
+        await expect(page.locator('.classic-project-context')).toHaveCount(1);
+      }
     }
+  };
+  const expectClassicProjectGit = async () => {
+    const context = page.locator('.classic-project-context');
+    const git = page.getByRole('region', { name: '仓库 Git', exact: true });
+    await expect(context).toHaveClass(/\bis-git-only\b/);
+    await expect(git).toHaveCount(1);
+    await expect(context.getByRole('region', { name: '仓库 Git', exact: true })).toHaveCount(1);
+    await expect(context.getByRole('heading', { name: '风险提示', exact: true })).toHaveCount(0);
+    await expect(git).toBeVisible();
+    const content = git.getByRole('region', { name: '仓库 Git内容', exact: true });
+    await expect(content).toContainText('main');
+    await expect(content).toContainText('abc1234');
   };
   const nativePageRequests: string[] = [];
   const classicPageRequests: string[] = [];
@@ -3327,12 +4272,14 @@ test('keeps Classic and Native master-detail workspaces during empty and loading
   await expect(page.getByRole('heading', { name: '当前没有活跃的 Classic change' })).toBeVisible();
   await expect(page.locator('.dashboard-workspace-region')).toHaveCount(1);
   await expect(page.locator('.classic-changes-explorer')).toHaveCount(1);
+  await expectClassicProjectGit();
   await expectFullWidthWorkspace();
   await page.getByRole('tab', { name: '已归档' }).click();
   await expect
     .poll(() => classicPageRequests.filter((request) => request.includes('status=archived')).length)
     .toBeGreaterThanOrEqual(1);
   await expect(page.locator('.classic-change-detail-skeleton')).toBeVisible();
+  await expectClassicProjectGit();
   await expectFullWidthWorkspace();
   await expect(page.locator('.classic-changes-explorer .ant-spin')).toHaveCount(0);
   await expect(page.locator('.dashboard-workspace-region')).toHaveCount(1);
@@ -3343,6 +4290,17 @@ test('keeps Classic and Native master-detail workspaces during empty and loading
   await expect(page.getByRole('heading', { name: '当前没有活跃的 Native change' })).toBeVisible();
   await expect(page.locator('.native-changes-explorer')).toHaveCount(1);
   await expect(page.locator('.dashboard-workspace-region')).toHaveCount(1);
+  const nativeGit = page.getByRole('region', { name: '仓库 Git', exact: true });
+  await expect(nativeGit).toHaveCount(1);
+  await expect(nativeGit).toBeVisible();
+  await expect(nativeGit).toContainText('main');
+  await expect(nativeGit).toContainText('abc1234');
+  await expect(page.locator('.classic-project-context')).toHaveCount(0);
+  await expect(
+    page
+      .locator('.dashboard-workspace-center')
+      .getByRole('region', { name: '仓库 Git', exact: true }),
+  ).toHaveCount(1);
   await expectFullWidthWorkspace();
   expect(nativePageRequests).toEqual([]);
 });
@@ -3354,9 +4312,17 @@ test('allows the full selected change to scroll without an independent inspector
   await page.goto('/?demo');
   await page.getByRole('tab', { name: 'Native 工作流' }).click();
   await expect(page.locator('.dashboard-workspace-right')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: '执行历史' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '仓库 Git' })).toBeVisible();
+  const detail = page.locator('.native-change-detail');
+  await detail.getByRole('tab', { name: '执行历史', exact: true }).click();
+  await expect(
+    detail.getByRole('region', { name: '保留执行历史', exact: true }).locator('li'),
+  ).toHaveCount(18);
+  await expect(detail.getByRole('tabpanel')).toContainText('Goal cycle 2 · #18.1');
   await expect(page.locator('.dashboard-workspace-center')).toHaveCSS('overflow-y', 'visible');
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await detail.getByRole('tab', { name: '变更详情', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '仓库 Git' })).toBeVisible();
 });
 
 test('acknowledges a copied Change name and keeps the workbench within a narrow viewport', async ({
@@ -3388,7 +4354,7 @@ test('acknowledges a copied Change name and keeps the workbench within a narrow 
 });
 
 test('fills the change explorer from five-row pages and continues on scroll', async ({ page }) => {
-  const items = Array.from({ length: 13 }, (_, index) => ({
+  const items = Array.from({ length: 40 }, (_, index) => ({
     id: `change-${index + 1}`,
     name: `change-${index + 1}`,
     displayName: `change-${index + 1}`,
@@ -3498,19 +4464,21 @@ test('fills the change explorer from five-row pages and continues on scroll', as
   await expect(page.locator('.dashboard-workspace-center')).toBeVisible();
   await page.getByRole('tab', { name: '全部' }).click();
 
-  const list = page.getByRole('tabpanel', { name: '全部' }).locator('.dashboard-change-list');
-  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(10);
+  const list = page.locator('.classic-changes-explorer .dashboard-change-list');
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(15);
   await expect
     .poll(() => pageRequests.filter((request) => request.includes('status=all')).length)
-    .toBeGreaterThanOrEqual(2);
-
+    .toBe(3);
+  expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await page.waitForTimeout(350);
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(15);
   await list.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
   await expect
     .poll(() => pageRequests.filter((request) => request.includes('status=all')).length)
-    .toBeGreaterThanOrEqual(3);
-  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(13);
+    .toBe(4);
+  await expect(list.locator('.dashboard-change-list-item')).toHaveCount(20);
 });
 
 test('keeps the Native change list scrollable on a narrow viewport', async ({ page }) => {
@@ -3710,7 +4678,7 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   for (const width of [1440, 2048, 390]) {
     await page.setViewportSize({ width, height: 2000 });
     const gutter = width <= 760 ? 16 : 32;
-    const box = await page.locator('.dashboard-workspace-region').boundingBox();
+    const box = await page.locator('.native-change-workspace').boundingBox();
     expect(box).not.toBeNull();
     expect(Math.abs(box!.x - gutter)).toBeLessThanOrEqual(1);
     expect(Math.abs(box!.width - (width - 2 * gutter))).toBeLessThanOrEqual(1);
@@ -3932,11 +4900,13 @@ test('expands a Native parent and keeps child selection in the existing detail c
   await expect(disclosure).toHaveAccessibleName('收起 parent-change 的子变更');
   await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
   const parentRow = page.locator('.native-change-row').filter({ hasText: 'parent-change' });
-  await expect(parentRow.locator('.dashboard-explorer-row-count')).toContainText('子变更 3/9');
-  await expect(parentRow).not.toContainText(/Build|第\d+轮/);
+  await expect(parentRow.locator('.dashboard-explorer-row-count')).toContainText('3/9 子变更');
+  await expect(parentRow.locator('.dashboard-explorer-row-count')).toHaveText('Build · 3/9 子变更');
   const childRow = page.locator('.native-child-change-row').filter({ hasText: 'child-a' });
   await expect(childRow).toBeVisible();
-  await expect(childRow).not.toContainText('native/child-a');
+  await expect(childRow.locator('.dashboard-explorer-row-count')).toHaveText(
+    'Build · native/child-a',
+  );
   await childRow.focus();
   await expect(childRow).toBeFocused();
   await expect(page.getByRole('tooltip')).toContainText('native/child-a');
@@ -3946,7 +4916,7 @@ test('expands a Native parent and keeps child selection in the existing detail c
       .locator('.native-child-change-row')
       .filter({ hasText: `supervisor-${status}` });
     await expect(row).toContainText(label);
-    await expect(row).not.toContainText(description);
+    await expect(row.locator('.dashboard-explorer-row-count')).toHaveText(description);
     await expect(row).toHaveAttribute('aria-disabled', 'true');
     await row.focus();
     await expect(row).toBeFocused();
@@ -3985,8 +4955,13 @@ test('expands a Native parent and keeps child selection in the existing detail c
   await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
   await expect(disclosure).toHaveAccessibleName('展开 parent-change 的子变更');
   await expect(childRow).toBeHidden();
-  await expect(page.locator('.native-change-detail h3.text-base')).toContainText('child-a');
-  await expect(parentRow).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.native-change-detail h3.text-base')).toContainText('parent-change');
+  await expect(parentRow).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.locator(
+      '.native-change-row[aria-pressed="true"], .native-child-change-row[aria-pressed="true"]',
+    ),
+  ).toHaveCount(1);
 });
 
 test('keeps the current Classic detail visible while another change loads', async ({ page }) => {
@@ -4123,10 +5098,19 @@ test('keeps the current Classic detail visible while another change loads', asyn
 
   const detailTitle = page.locator('.change-detail > .ant-card-head .ant-card-head-title');
   await expect(detailTitle).toContainText('classic-one');
-  await expect(page.getByText('classic/two', { exact: true })).toBeVisible();
+  const otherRow = page.locator('.dashboard-change-row').filter({ hasText: 'classic-two' });
+  await expect(otherRow).not.toContainText('classic/two');
+  await otherRow.focus();
+  const workspaceHint = page.getByRole('tooltip');
+  await expect(workspaceHint).toBeVisible();
+  await expect(workspaceHint).toHaveText('classic-two构建阶段构建 · 2/2classic/two · classic/two');
+  await page.getByRole('button', { name: '立即刷新' }).focus();
+  await expect(workspaceHint).toBeHidden();
   const loadedExplorer = await page.locator('.classic-changes-explorer').boundingBox();
   if (!loadingExplorer || !loadedExplorer) throw new Error('Expected Classic explorer bounds');
-  expect(Math.abs(loadedExplorer.height - loadingExplorer.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(loadedExplorer.x - loadingExplorer.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(loadedExplorer.width - loadingExplorer.width)).toBeLessThanOrEqual(1);
+  await expectClassicSharedFrame(page);
   const before = await page.locator('.dashboard-workspace-center').boundingBox();
 
   await page.locator('.dashboard-change-row').filter({ hasText: 'classic-two' }).click();
@@ -4158,8 +5142,8 @@ test('uses one selection surface for the Classic change row', async ({ page }) =
 
   expect(layers.wrapperBackground).toBe('rgba(0, 0, 0, 0)');
   expect(layers.rowClassName).toContain('selected');
-  expect(layers.rowBackground).not.toBe('rgba(0, 0, 0, 0)');
-  expect(await row.evaluate((element) => getComputedStyle(element).boxShadow)).toContain('inset');
+  await expect(row).toHaveCSS('background-color', 'rgb(237, 244, 255)');
+  await expect(row).toHaveCSS('box-shadow', 'none');
   await expect(
     page.locator('.classic-changes-explorer .dashboard-change-row[aria-pressed="true"]'),
   ).toHaveCount(1);
@@ -4180,24 +5164,37 @@ test('keeps the Classic change explorer frame stable when selecting a change', a
 test('uses two columns on desktop and stacks the explorer above detail on mobile', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1600, height: 900 });
   await page.goto('/?demo');
-  for (const name of ['Classic 工作流', 'Native 工作流']) {
-    await page.getByRole('tab', { name }).click();
-    const [left, detail] = await Promise.all([
-      page.locator('.dashboard-workspace-left').boundingBox(),
-      page.locator('.dashboard-workspace-center').boundingBox(),
-    ]);
-    expect(Math.round(left!.width)).toBe(260);
-    expect(detail!.x).toBeGreaterThan(left!.x + left!.width);
+  for (const width of [1600, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const name of ['Classic 工作流', 'Native 工作流']) {
+      await page.getByRole('tab', { name }).click();
+      if (name === 'Classic 工作流') {
+        const frame = await expectClassicSharedFrame(page);
+        if (width > 760) {
+          const activeCard = await page.locator('.dashboard-summary-card').first().boundingBox();
+          expect(Math.abs(frame.left.width - activeCard!.width + 1)).toBeLessThanOrEqual(1);
+          expect(
+            Math.abs(frame.left.right - activeCard!.x - activeCard!.width),
+          ).toBeLessThanOrEqual(1);
+        }
+      } else {
+        const [left, detail] = await Promise.all([
+          page.locator('.dashboard-workspace-left').boundingBox(),
+          page.locator('.dashboard-workspace-center').boundingBox(),
+        ]);
+        if (width > 760) {
+          const activeCard = await page.locator('.dashboard-summary-card').first().boundingBox();
+          expect(left!.width).toBeGreaterThanOrEqual(260);
+          expect(Math.abs(left!.width - activeCard!.width + 1)).toBeLessThanOrEqual(1);
+          expect(Math.abs(detail!.x - left!.x - left!.width)).toBeLessThanOrEqual(1);
+        } else {
+          expect(Math.abs(left!.x - detail!.x)).toBeLessThanOrEqual(1);
+          expect(Math.abs(detail!.y - left!.y - left!.height)).toBeLessThanOrEqual(1);
+        }
+      }
+    }
   }
-  await page.setViewportSize({ width: 390, height: 844 });
-  const [left, detail] = await Promise.all([
-    page.locator('.dashboard-workspace-left').boundingBox(),
-    page.locator('.dashboard-workspace-center').boundingBox(),
-  ]);
-  expect(Math.abs(left!.x - detail!.x)).toBeLessThanOrEqual(1);
-  expect(detail!.y).toBeGreaterThanOrEqual(left!.y + left!.height);
 });
 
 test('keeps the project selector inset when switching from a workflow to plugin center', async ({
@@ -4742,20 +5739,36 @@ async function numberAuditNativeValues(page: Page) {
     const acceptance = articles.find(
       (article) => article.querySelector('h4')?.innerText === '验收状态',
     );
-    const scopeTotal = scope?.querySelector('span.rounded-full')?.innerText ?? '';
     const scopeCounts = Array.from(
-      scope?.querySelectorAll('.grid > div > div:first-child') ?? [],
+      scope?.querySelectorAll('.native-scope-metrics .ant-statistic-content-value') ?? [],
     ).map((node) => Number(node.innerText.trim()));
     const acceptanceHeader =
-      acceptance?.querySelector('div.flex.flex-wrap.items-center.gap-3')?.innerText ?? '';
+      acceptance?.querySelector('.native-acceptance-header')?.innerText ?? '';
     const acceptanceCounts = Array.from(
-      acceptance?.querySelectorAll('.grid > div > div:first-child') ?? [],
+      acceptance?.querySelectorAll('.native-acceptance-metrics .ant-statistic-content-value') ?? [],
     ).map((node) => Number(node.innerText.trim()));
     return {
-      scope: [Number(scopeTotal.match(/^\s*(\d+)/)?.[1]), ...scopeCounts],
-      acceptance: [Number(acceptanceHeader.match(/(\d+)% 已处理/)?.[1]), ...acceptanceCounts],
+      scope: scopeCounts,
+      acceptance: acceptance
+        ? [Number(acceptanceHeader.match(/(\d+)% 已处理/)?.[1]), ...acceptanceCounts]
+        : [],
     };
   });
+}
+
+async function expectNumberAuditNativeValues(
+  page: Page,
+  expected: { scope: number[]; acceptance: number[] },
+) {
+  const detail = page.locator('.native-change-detail');
+  await detail.getByRole('tab', { name: '变更详情', exact: true }).click();
+  await expect
+    .poll(async () => (await numberAuditNativeValues(page)).scope)
+    .toEqual(expected.scope);
+  await detail.getByRole('tab', { name: '验收状态', exact: true }).click();
+  await expect
+    .poll(async () => (await numberAuditNativeValues(page)).acceptance)
+    .toEqual(expected.acceptance);
 }
 
 async function enableNumberAuditReducedMotion(page: Page) {
@@ -4809,27 +5822,13 @@ async function captureNumberAuditDetailFrames(page: Page, changeName: string) {
         entry.querySelector('h3.text-base')?.innerText.includes(name),
       );
       if (detail) {
-        const articles = Array.from(detail.querySelectorAll('article'));
-        const scope = articles.find(
-          (article) => article.querySelector('h4')?.innerText === '变更范围',
-        );
-        const acceptance = articles.find(
-          (article) => article.querySelector('h4')?.innerText === '验收状态',
-        );
-        const scopeTotal = Number(
-          scope?.querySelector('span.rounded-full')?.innerText.match(/^\s*(\d+)/)?.[1],
-        );
         const scopeCounts = Array.from(
-          scope?.querySelectorAll('.grid > div > div:first-child') ?? [],
+          detail.querySelectorAll('.native-scope-metrics .ant-statistic-content-value'),
         ).map((node) => Number(node.innerText.trim()));
-        const acceptanceHeader =
-          acceptance?.querySelector('div.flex.flex-wrap.items-center.gap-3')?.innerText ?? '';
-        const acceptancePercent = Number(acceptanceHeader.match(/(\d+)% 已处理/)?.[1]);
-        const acceptanceCounts = Array.from(
-          acceptance?.querySelectorAll('.grid > div > div:first-child') ?? [],
-        ).map((node) => Number(node.innerText.trim()));
-        frames.push([scopeTotal, ...scopeCounts, acceptancePercent, ...acceptanceCounts]);
-        remaining -= 1;
+        if (scopeCounts.length === 4) {
+          frames.push(scopeCounts);
+          remaining -= 1;
+        }
       }
       if (remaining > 0)
         auditWindow.__numberAuditDetailFrame = window.requestAnimationFrame(capture);
@@ -5101,9 +6100,9 @@ test.describe('Dashboard numeric transitions', () => {
       const completed = children.filter(({ status }) =>
         ['done', 'verified', 'integrated', 'archived'].includes(status),
       ).length;
-      await expect(page.locator('.native-change-row').first()).toContainText(
-        `${completed}/${children.length} 子变更`,
-      );
+      await expect(
+        page.locator('.native-change-row').first().locator('.dashboard-explorer-row-count'),
+      ).toContainText(`${completed}/${children.length} 子变更`);
     }
     const clip = await explorer.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
@@ -5126,7 +6125,7 @@ test.describe('Dashboard numeric transitions', () => {
   }) => {
     const entryChange = numberAuditNativeChange('ship-native-dashboard', {
       specs: { total: 64, create: 20, modify: 30, remove: 14 },
-      acceptance: { total: 100, passed: 50, failed: 10, blocked: 10, pending: 30 },
+      acceptance: { total: 100, passed: 70, failed: 0, blocked: 0, pending: 30 },
     });
     const fixture = numberAuditFixture([
       numberAuditState('numeric-a', [16, 9, 4, 36, 3], {
@@ -5210,12 +6209,10 @@ test.describe('Dashboard numeric transitions', () => {
       return auditWindow.__numberAuditSummaryFrames ?? [];
     });
     expect(summaryFrames[0][0]).toBeLessThan(16);
-    await expect
-      .poll(() => numberAuditNativeValues(page))
-      .toEqual({
-        scope: [64, 20, 30, 14],
-        acceptance: [70, 50, 10, 10, 30],
-      });
+    await expectNumberAuditNativeValues(page, {
+      scope: [64, 20, 30, 14],
+      acceptance: [70, 70, 0, 0, 30],
+    });
 
     await captureNumberAuditClassicFrames(page, [16, 9, 4, 36, 3]);
     await page.getByRole('tab', { name: 'Classic 工作流', exact: true }).click();
@@ -5235,7 +6232,7 @@ test.describe('Dashboard numeric transitions', () => {
     expect(classicFrames[0][6]).toBeLessThan(4);
     expect(classicFrames[0][7]).toBeLessThan(8);
     await expect.poll(() => numberAuditSummaryValues(page)).toEqual([16, 9, 4, 36, 3]);
-    await expect(page.locator('.dashboard-change-row').first()).toContainText('任务 4/8');
+    await expect(page.locator('.dashboard-change-row').first()).toContainText('4/8');
 
     await captureNumberAuditDetailFrames(page, entryChange.name);
     await page.getByRole('tab', { name: 'Native 工作流', exact: true }).click();
@@ -5253,11 +6250,11 @@ test.describe('Dashboard numeric transitions', () => {
     });
     expect(cachedDetailFrames[0][0]).toBeLessThan(64);
     await enableNumberAuditReducedMotion(page);
-    expect(await numberAuditNativeValues(page)).toEqual({
+    await expectNumberAuditNativeValues(page, {
       scope: [64, 20, 30, 14],
-      acceptance: [70, 50, 10, 10, 30],
+      acceptance: [70, 70, 0, 0, 30],
     });
-    expect(await numberAuditSummaryValues(page)).toEqual([16, 0, 0, 1, 30]);
+    expect(await numberAuditSummaryValues(page)).toEqual([16, 0, 0, 0, 30]);
     expect(await numberAuditAcceptanceProgress(page)).toBeCloseTo(0.7, 2);
   });
 
@@ -5266,7 +6263,7 @@ test.describe('Dashboard numeric transitions', () => {
   }) => {
     const entryChange = numberAuditNativeChange('ship-native-dashboard', {
       specs: { total: 64, create: 20, modify: 30, remove: 14 },
-      acceptance: { total: 100, passed: 50, failed: 10, blocked: 10, pending: 30 },
+      acceptance: { total: 100, passed: 70, failed: 0, blocked: 0, pending: 30 },
     });
     const fixture = numberAuditFixture([
       numberAuditState('numeric-a', [16, 9, 4, 36, 3], { nativeChanges: [entryChange] }),
@@ -5318,12 +6315,10 @@ test.describe('Dashboard numeric transitions', () => {
     });
     expect(retryFrames[0][0]).toBeLessThan(64);
     expect(retryFrames.some(([total]) => total > 0 && total < 64)).toBe(true);
-    await expect
-      .poll(() => numberAuditNativeValues(page))
-      .toEqual({
-        scope: [64, 20, 30, 14],
-        acceptance: [70, 50, 10, 10, 30],
-      });
+    await expectNumberAuditNativeValues(page, {
+      scope: [64, 20, 30, 14],
+      acceptance: [70, 70, 0, 0, 30],
+    });
   });
 
   test('animates Classic counters to the latest value and preserves zero and 100 badge counts', async ({
@@ -5345,7 +6340,7 @@ test.describe('Dashboard numeric transitions', () => {
     await expect.poll(() => numberAuditSummaryValues(page)).toEqual([1, 1, 1, 1, 1]);
     await expect(
       page.locator('.classic-changes-explorer .dashboard-explorer-row-count').first(),
-    ).toHaveText('任务 0/0');
+    ).toContainText('0/0');
     await expect
       .poll(() =>
         numberAuditBadgeValue(page, '.classic-changes-explorer .dashboard-change-count-badge'),
@@ -5372,7 +6367,7 @@ test.describe('Dashboard numeric transitions', () => {
         numberAuditBadgeValue(page, '.classic-changes-explorer .dashboard-change-count-badge'),
       )
       .toBe(100);
-    await expect(page.locator('.dashboard-change-row').first()).toContainText('任务 1/4');
+    await expect(page.locator('.dashboard-change-row').first()).toContainText('1/4');
 
     fixture.states.set(
       'numeric-a',
@@ -5419,7 +6414,7 @@ test.describe('Dashboard numeric transitions', () => {
     await page.getByRole('button', { name: '立即刷新' }).click();
     await thirdRefresh;
     await expect.poll(() => numberAuditSummaryValues(page)).toEqual([8, 7, 6, 5, 4]);
-    await expect(page.locator('.dashboard-change-row').first()).toContainText('任务 2/5');
+    await expect(page.locator('.dashboard-change-row').first()).toContainText('2/5');
     await expect
       .poll(() =>
         numberAuditBadgeValue(page, '.classic-changes-explorer .dashboard-change-count-badge'),
@@ -5472,7 +6467,7 @@ test.describe('Dashboard numeric transitions', () => {
     await page.setViewportSize({ width: 1800, height: 1500 });
     const initialNative = numberAuditNativeChange('ship-native-dashboard', {
       specs: { total: 1, create: 0, modify: 1, remove: 0 },
-      acceptance: { total: 4, passed: 1, failed: 0, blocked: 0, pending: 3 },
+      acceptance: { total: 4, passed: 1, failed: 1, blocked: 0, pending: 2 },
       stage: 'building',
       localStatus: 'queued',
       childCompleted: 1,
@@ -5490,18 +6485,17 @@ test.describe('Dashboard numeric transitions', () => {
     await expect(page.locator('.native-change-detail h3.text-base')).toContainText(
       'ship-native-dashboard',
     );
-    await expect
-      .poll(() => numberAuditNativeValues(page))
-      .toEqual({
-        scope: [1, 0, 1, 0],
-        acceptance: [25, 1, 0, 0, 3],
-      });
+    await expectNumberAuditNativeValues(page, {
+      scope: [1, 0, 1, 0],
+      acceptance: [50, 1, 1, 0, 2],
+    });
+    await page.getByRole('tab', { name: '变更详情', exact: true }).click();
     await expect
       .poll(() =>
         numberAuditBadgeValue(page, '.native-changes-explorer .dashboard-change-count-badge'),
       )
       .toBe(2);
-    await expect(page.locator('.native-change-row').first()).toContainText('子变更 1/4');
+    await expect(page.locator('.native-change-row').first()).toContainText('1/4 子变更');
 
     const updatedNative = numberAuditNativeChange('ship-native-dashboard', {
       specs: { total: 6, create: 2, modify: 3, remove: 1 },
@@ -5553,13 +6547,11 @@ test.describe('Dashboard numeric transitions', () => {
         ([resolved, total]) => resolved > 1 && resolved < 3 && total > 4 && total < 8,
       ),
     ).toBe(true);
-    await expect(page.locator('.native-change-row').first()).toContainText('子变更 3/8');
-    await expect
-      .poll(() => numberAuditNativeValues(page))
-      .toEqual({
-        scope: [6, 2, 3, 1],
-        acceptance: [75, 3, 2, 1, 2],
-      });
+    await expect(page.locator('.native-change-row').first()).toContainText('3/8 子变更');
+    await expectNumberAuditNativeValues(page, {
+      scope: [6, 2, 3, 1],
+      acceptance: [75, 3, 2, 1, 2],
+    });
     await expect.poll(() => numberAuditAcceptanceProgress(page)).toBeCloseTo(0.75, 1);
     await expect.poll(() => numberAuditSummaryValues(page)).toEqual([4, 1, 1, 1, 2]);
 
@@ -5587,16 +6579,17 @@ test.describe('Dashboard numeric transitions', () => {
     await expect
       .poll(async () => {
         const numbers = await numberAuditNativeValues(page);
-        return numbers.scope[0] > 6 && numbers.scope[0] < 80;
+        return numbers.acceptance[4] > 2 && numbers.acceptance[4] < 6;
       })
       .toBe(true);
     await enableNumberAuditReducedMotion(page);
-    expect(await numberAuditNativeValues(page)).toEqual({
+    expect((await numberAuditNativeValues(page)).acceptance).toEqual([40, 2, 0, 2, 6]);
+    await expectNumberAuditNativeValues(page, {
       scope: [80, 40, 20, 20],
       acceptance: [40, 2, 0, 2, 6],
     });
     expect(await numberAuditAcceptanceProgress(page)).toBeCloseTo(0.4, 2);
-    await expect(page.locator('.native-change-row').first()).toContainText('子变更 2/5');
+    await expect(page.locator('.native-change-row').first()).toContainText('2/5 子变更');
     expect(
       await page
         .locator('.native-acceptance-progress > span')
@@ -5679,12 +6672,7 @@ test.describe('Dashboard numeric transitions', () => {
     await expect(
       page.locator('.native-change-detail h3:not(.ant-skeleton-title)').first(),
     ).toContainText('align-dashboard-copy');
-    await expect
-      .poll(() => numberAuditNativeValues(page))
-      .toEqual({
-        scope: [7, 2, 3, 2],
-        acceptance: [75, 3, 2, 1, 2],
-      });
+    await page.getByRole('tab', { name: '变更详情', exact: true }).click();
     await expect
       .poll(async () =>
         page.evaluate(() => {
@@ -5693,13 +6681,15 @@ test.describe('Dashboard numeric transitions', () => {
         }),
       )
       .toBeGreaterThanOrEqual(4);
+    await expectNumberAuditNativeValues(page, {
+      scope: [7, 2, 3, 2],
+      acceptance: [75, 3, 2, 1, 2],
+    });
     const changeFrames = await page.evaluate(() => {
       const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
       return auditWindow.__numberAuditDetailFrames ?? [];
     });
-    expect(changeFrames.slice(0, 4)).toEqual(
-      Array.from({ length: 4 }, () => [7, 2, 3, 2, 75, 3, 2, 1, 2]),
-    );
+    expect(changeFrames.slice(0, 4)).toEqual(Array.from({ length: 4 }, () => [7, 2, 3, 2]));
 
     let releaseFilter!: () => void;
     let startFilter!: () => void;
@@ -5722,12 +6712,7 @@ test.describe('Dashboard numeric transitions', () => {
     await expect(
       page.locator('.native-change-detail h3:not(.ant-skeleton-title)').first(),
     ).toContainText('ship-native-dashboard');
-    await expect
-      .poll(() => numberAuditNativeValues(page))
-      .toEqual({
-        scope: [2, 1, 1, 0],
-        acceptance: [25, 1, 0, 0, 3],
-      });
+    await page.getByRole('tab', { name: '变更详情', exact: true }).click();
     await expect
       .poll(async () =>
         page.evaluate(() => {
@@ -5736,13 +6721,15 @@ test.describe('Dashboard numeric transitions', () => {
         }),
       )
       .toBeGreaterThanOrEqual(4);
+    await expectNumberAuditNativeValues(page, {
+      scope: [2, 1, 1, 0],
+      acceptance: [25, 1, 0, 0, 3],
+    });
     const filterFrames = await page.evaluate(() => {
       const auditWindow = window as Window & { __numberAuditDetailFrames?: number[][] };
       return auditWindow.__numberAuditDetailFrames ?? [];
     });
-    expect(filterFrames.slice(0, 4)).toEqual(
-      Array.from({ length: 4 }, () => [2, 1, 1, 0, 25, 1, 0, 0, 3]),
-    );
+    expect(filterFrames.slice(0, 4)).toEqual(Array.from({ length: 4 }, () => [2, 1, 1, 0]));
   });
 
   test('keeps a filtered Classic refresh immediate when it completes before the query debounce', async ({
@@ -5759,7 +6746,7 @@ test.describe('Dashboard numeric transitions', () => {
     await page.goto('/');
     await page.getByRole('tab', { name: 'Classic 工作流', exact: true }).click();
     await expect.poll(() => numberAuditSummaryValues(page)).toEqual([1, 1, 1, 1, 1]);
-    await expect(page.locator('.dashboard-change-row').first()).toContainText('任务 1/4');
+    await expect(page.locator('.dashboard-change-row').first()).toContainText('1/4');
 
     const filtered = numberAuditState('numeric-a', [9, 8, 7, 6, 5], {
       classicTotal: 4,

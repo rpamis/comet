@@ -49,6 +49,9 @@ import {
   runMermaid,
 } from './markdown-preview.js';
 import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
+import { DashboardChangeSuggestion } from './change-suggestion.jsx';
+import { copyText } from './copy-text.js';
+import { useExplorerPagination } from './use-explorer-pagination.js';
 import { WorkflowPhaseTrack } from './phase-progress-indicator.jsx';
 import {
   classicChangeStatusPresentation,
@@ -70,6 +73,7 @@ import {
   DashboardWorkspaceRegion,
 } from './workspace-layout.jsx';
 import { ReferenceIcon } from './reference-icon.jsx';
+import { DashboardGitList } from './git-list.jsx';
 import {
   dashboardChangeKey,
   dashboardResponseError,
@@ -189,13 +193,19 @@ const PHASES = [
   ['archive', '归档'],
 ];
 
-const ARTIFACTS = [
-  ['proposal', 'proposal.md', '提案'],
-  ['design', 'design.md', '设计文档'],
-  ['tasks', 'tasks.md', '任务清单'],
-  ['plan', 'plan.md', '实施计划'],
-  ['verifyReport', 'verify-result.md', '验证报告'],
-  ['cometYaml', '.comet.yaml', '变更配置'],
+const CLASSIC_ARTIFACT_SLOTS = [
+  ['proposal', '提案', 'openspec'],
+  ['design', '设计文档', 'openspec'],
+  ['tasks', '任务清单', 'openspec'],
+  ['deltaSpec', 'Delta Spec', 'openspec'],
+  ['designDoc', '技术设计', 'superpowers'],
+  ['plan', '实施计划', 'superpowers'],
+  ['verifyReport', '验证报告', 'superpowers'],
+  ['cometYaml', '.comet.yaml', 'comet'],
+  ['handoff', 'Handoff 上下文', 'comet'],
+  ['checkpoint', 'Checkpoint', 'comet'],
+  ['brainstorm', 'Brainstorm 摘要', 'comet'],
+  ['subagentProgress', 'Subagent 进度', 'comet'],
 ];
 
 const SOURCE_LABELS = {
@@ -405,6 +415,7 @@ export function App({
   portalContainer = null,
 }) {
   const { theme, toggle: toggleTheme } = useTheme({ embedded, themeRoot });
+  const brandPrimary = theme === 'dark' ? '#6e9fff' : '#255ed8';
 
   return (
     <ConfigProvider
@@ -412,19 +423,19 @@ export function App({
       theme={{
         algorithm: theme === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
         token: {
-          colorPrimary: theme === 'dark' ? '#b9a4ff' : '#255ed8',
-          colorBgContainer: theme === 'dark' ? '#14151c' : '#ffffff',
-          colorBgElevated: theme === 'dark' ? '#1a1b24' : '#ffffff',
-          colorBgLayout: theme === 'dark' ? '#0c0d12' : '#eef1f5',
-          colorText: theme === 'dark' ? '#f2f0f7' : '#101827',
-          colorTextSecondary: theme === 'dark' ? '#a7a6b2' : '#5f6979',
-          colorTextPlaceholder: theme === 'dark' ? '#a7a6b2' : '#6f7a8a',
-          colorTextDisabled: theme === 'dark' ? '#a7a6b2' : '#929baa',
-          colorBorder: theme === 'dark' ? '#35353f' : '#e3e8ef',
-          colorSplit: theme === 'dark' ? '#35353f' : '#edf0f4',
-          colorFillAlter: theme === 'dark' ? '#1a1b24' : '#f6f8fb',
-          colorInfoBg: theme === 'dark' ? '#1a1b24' : '#e6f4ff',
-          colorInfoBorder: theme === 'dark' ? '#35353f' : '#91caff',
+          colorPrimary: brandPrimary,
+          colorBgContainer: theme === 'dark' ? '#151923' : '#ffffff',
+          colorBgElevated: theme === 'dark' ? '#1a202b' : '#ffffff',
+          colorBgLayout: theme === 'dark' ? '#0e1420' : '#eef1f5',
+          colorText: theme === 'dark' ? '#edf2fb' : '#101827',
+          colorTextSecondary: theme === 'dark' ? '#aab5c8' : '#5f6979',
+          colorTextPlaceholder: theme === 'dark' ? '#8791a2' : '#6f7a8a',
+          colorTextDisabled: theme === 'dark' ? '#8791a2' : '#929baa',
+          colorBorder: theme === 'dark' ? '#293345' : '#e3e8ef',
+          colorSplit: theme === 'dark' ? '#293345' : '#edf0f4',
+          colorFillAlter: theme === 'dark' ? '#182131' : '#f6f8fb',
+          colorInfoBg: theme === 'dark' ? '#1a202b' : '#e6f4ff',
+          colorInfoBorder: theme === 'dark' ? '#34597f' : '#91caff',
           borderRadius: 12,
           fontFamily: DASHBOARD_FONT_FAMILY,
           fontFamilyCode: DASHBOARD_MONO_FONT_FAMILY,
@@ -432,6 +443,15 @@ export function App({
           fontSizeHeading2: 26,
           fontSizeHeading3: 18,
           fontSizeHeading4: 15,
+        },
+        components: {
+          Button: {
+            colorPrimary: brandPrimary,
+            primaryColor: theme === 'dark' ? '#151923' : '#ffffff',
+            colorPrimaryHover: theme === 'dark' ? '#8bb4ff' : '#1d4fb5',
+            colorPrimaryActive: theme === 'dark' ? '#5b8be8' : '#184399',
+          },
+          Tabs: { colorPrimary: brandPrimary },
         },
       }}
     >
@@ -560,10 +580,12 @@ function DashboardApp({
       snapshotRequestRef.current = controller;
       if (manual) setLoading(true);
       try {
+        const requestedQuery = queryRef.current;
         const next = useDemo
           ? await loadDemoSnapshot()
-          : await fetchDashboardOverview(activeProjectId, controller.signal, queryRef.current);
+          : await fetchDashboardOverview(activeProjectId, controller.signal, requestedQuery);
         if (snapshotRequestRef.current !== controller || controller.signal.aborted) return;
+        if (!useDemo && queryRef.current !== requestedQuery) return;
 
         if (useDemo) {
           setSnapshot(next);
@@ -573,7 +595,10 @@ function DashboardApp({
           setSelectedDetail(selectedDetailRef.current);
           lastLoadedQueryRef.current = query;
         } else {
-          const initialPage = next.initialChanges;
+          const initialPage = {
+            ...next.initialChanges,
+            query: requestedQuery.trim().toLowerCase(),
+          };
           const currentTab = tabRef.current;
           const currentQuery = queryRef.current;
           const queryChanged = currentQuery !== lastLoadedQueryRef.current;
@@ -584,6 +609,7 @@ function DashboardApp({
                 active: refreshDashboardPage(pagesRef.current.active, initialPage),
               };
           const currentPage = currentTab === 'active' ? nextPages.active : nextPages[currentTab];
+          lastLoadedQueryRef.current = currentQuery;
           setSnapshot(materializeOverview(next, initialPage));
           pagesRef.current = nextPages;
           setPages(nextPages);
@@ -607,10 +633,10 @@ function DashboardApp({
                   if (snapshotRequestRef.current !== controller || controller.signal.aborted)
                     return;
                   const currentNativePages = nativePagesRef.current;
-                  const refreshedPage = refreshNativeDashboardPage(
-                    currentNativePages[currentTab],
-                    freshPage,
-                  );
+                  const refreshedPage = refreshNativeDashboardPage(currentNativePages[currentTab], {
+                    ...freshPage,
+                    query: currentQuery.trim().toLowerCase(),
+                  });
                   const refreshedPages = {
                     ...currentNativePages,
                     [currentTab]: refreshedPage,
@@ -681,7 +707,6 @@ function DashboardApp({
               setSelectedDetail(freshDetail);
             }
           }
-          lastLoadedQueryRef.current = currentQuery;
         }
         if (manual) toast('状态已刷新');
       } catch (error) {
@@ -1206,7 +1231,11 @@ function DashboardApp({
       if (useDemo || !activeProjectId) return;
       if (append && pageRequestRef.current) return;
       const existing = pagesRef.current[nextTab];
-      if (append && !existing?.nextCursor) return;
+      if (
+        append &&
+        (!existing?.nextCursor || (existing.query ?? '') !== query.trim().toLowerCase())
+      )
+        return;
       const entry = numberEntryRef.current;
       const requestNumberEntryKey =
         entry?.workflow === 'classic' &&
@@ -1226,8 +1255,11 @@ function DashboardApp({
           signal: controller.signal,
         });
         if (pageRequestRef.current !== controller || controller.signal.aborted) return;
-        const merged =
-          append && existing ? { ...page, items: [...existing.items, ...page.items] } : page;
+        const merged = {
+          ...page,
+          query: query.trim().toLowerCase(),
+          items: append && existing ? [...existing.items, ...page.items] : page.items,
+        };
         setPages((previous) => ({ ...previous, [nextTab]: merged }));
         setSnapshot((previous) =>
           previous ? updateSnapshotChangeRows(previous, nextTab, merged.items) : previous,
@@ -1276,7 +1308,11 @@ function DashboardApp({
       if (useDemo || workflow !== 'native' || !activeProjectId || !snapshot?.native) return;
       if (append && nativePageRequestRef.current) return;
       const existing = nativePagesRef.current[nextTab];
-      if (append && !existing?.nextCursor) return;
+      if (
+        append &&
+        (!existing?.nextCursor || (existing.query ?? '') !== query.trim().toLowerCase())
+      )
+        return;
       const entry = numberEntryRef.current;
       const requestNumberEntryKey =
         entry?.workflow === 'native' &&
@@ -1296,8 +1332,11 @@ function DashboardApp({
           signal: controller.signal,
         });
         if (nativePageRequestRef.current !== controller || controller.signal.aborted) return;
-        const merged =
-          append && existing ? { ...page, items: [...existing.items, ...page.items] } : page;
+        const merged = {
+          ...page,
+          query: query.trim().toLowerCase(),
+          items: append && existing ? [...existing.items, ...page.items] : page.items,
+        };
         const nextPages = { ...nativePagesRef.current, [nextTab]: merged };
         nativePagesRef.current = nextPages;
         setNativePages(nextPages);
@@ -1325,6 +1364,7 @@ function DashboardApp({
   const selectNativeChange = useCallback(
     async (change) => {
       if (!change) return;
+      setArtifact((current) => (current?.nativePreview ? null : current));
       setNativeDetailError(null);
       if (useDemo) {
         setNativeSelectedDetail(change);
@@ -1397,6 +1437,12 @@ function DashboardApp({
     query.trim().toLowerCase(),
     useDemo ? true : Boolean(workflow === 'native' ? nativePage : activePage),
     useDemo ? null : lastLoadedQueryRef.current.trim().toLowerCase(),
+  ]);
+  const explorerIdentity = JSON.stringify([
+    numberProjectIdentity,
+    workflow,
+    tab,
+    query.trim().toLowerCase(),
   ]);
   const activeWorkflowSource = useDemo
     ? null
@@ -1597,6 +1643,8 @@ function DashboardApp({
             setQuery(nextQuery);
           }}
           workflowSource={activeWorkflowSource}
+          workflow={workflow}
+          onWorkflowSelect={selectWorkflow}
           pluginPages={pluginPages}
           pluginSelection={pluginSelection}
           settingsOpen={settingsOpen}
@@ -1610,6 +1658,7 @@ function DashboardApp({
           theme={theme}
           onToggleTheme={onToggleTheme}
           themeToggleDisabled={embedded}
+          logoSrc={embedded ? '/assets/dashboard-website-demo/favicon.png' : '/favicon.png'}
         />
         <div
           className={`dashboard-content-shell${
@@ -1647,29 +1696,6 @@ function DashboardApp({
                 </span>
               )}
             </div>
-            <Tabs
-              className="dashboard-workflow-tabs"
-              activeKey={pluginSelection || !workflow ? '' : workflow}
-              onChange={selectWorkflow}
-              items={[
-                {
-                  key: 'classic',
-                  label: (
-                    <span>
-                      <ReferenceIcon name="branch" /> Classic 工作流
-                    </span>
-                  ),
-                },
-                {
-                  key: 'native',
-                  label: (
-                    <span>
-                      <ReferenceIcon name="native" /> Native 工作流
-                    </span>
-                  ),
-                },
-              ]}
-            />
             {!useDemo && projectsReady && !activeProjectId ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可用项目" />
             ) : !snapshot ? (
@@ -1691,6 +1717,15 @@ function DashboardApp({
             ) : workflow === 'native' ? (
               <NativeWorkflowPanel
                 native={snapshot.native}
+                projectContext={
+                  <GitSnapshot
+                    git={snapshot.git}
+                    compact
+                    projectId={activeProjectId}
+                    useDemo={useDemo}
+                  />
+                }
+                scrollResetKey={explorerIdentity}
                 numberIdentity={numberIdentity}
                 numberEntryKey={numberEntryKey}
                 onNumberEntryComplete={completeNumberEntry}
@@ -1701,7 +1736,10 @@ function DashboardApp({
                 total={nativeVisibleTotal}
                 hasMore={Boolean(nativePage?.nextCursor)}
                 pageLoading={
-                  !nativeViewKnownEmpty && (nativePageLoading === tab || (!useDemo && !nativePage))
+                  !nativeViewKnownEmpty &&
+                  (nativePageLoading === tab ||
+                    (!useDemo &&
+                      (!nativePage || (nativePage.query ?? '') !== query.trim().toLowerCase())))
                 }
                 onLoadMore={() => loadNativePage(tab, true)}
                 selectedDetail={nativeSelectedDetail}
@@ -1712,6 +1750,9 @@ function DashboardApp({
                   nativeDetailError?.change && selectNativeChange(nativeDetailError.change)
                 }
                 onPreview={setArtifact}
+                onReadArtifact={(change, reference, signal) =>
+                  fetchDashboardNativeArtifact(activeProjectId, change, reference.key, signal)
+                }
                 onCopyChangeName={(name) =>
                   copyText(name)
                     .then(() => toast('Change 名称已复制'))
@@ -1721,6 +1762,8 @@ function DashboardApp({
             ) : workflow === 'classic' ? (
               <Dashboard
                 snapshot={snapshot}
+                projectId={activeProjectId}
+                scrollResetKey={explorerIdentity}
                 useDemo={useDemo}
                 numberIdentity={numberIdentity}
                 numberEntryKey={numberEntryKey}
@@ -1736,7 +1779,11 @@ function DashboardApp({
                   void selectChange(id);
                 }}
                 hasMore={Boolean(activePage?.nextCursor)}
-                pageLoading={pageLoading === tab || (!useDemo && !activePage)}
+                pageLoading={
+                  pageLoading === tab ||
+                  (!useDemo &&
+                    (!activePage || (activePage.query ?? '') !== query.trim().toLowerCase()))
+                }
                 onLoadMore={() => loadPage(tab, true)}
                 detailLoading={detailLoading}
                 detailError={detailError}
@@ -1746,7 +1793,6 @@ function DashboardApp({
             ) : (
               <LoadingState />
             )}
-            {!pluginSelection && snapshot?.git && <GitSnapshot git={snapshot.git} />}
           </div>
         </div>
         <DashboardSettingsOverlay
@@ -1881,6 +1927,8 @@ function Topbar({
   activeProjectId,
   onProjectSelect,
   workflowSource,
+  workflow,
+  onWorkflowSelect,
   pluginPages,
   pluginSelection,
   settingsOpen,
@@ -1890,61 +1938,91 @@ function Topbar({
   theme,
   onToggleTheme,
   themeToggleDisabled = false,
+  logoSrc = '/favicon.png',
 }) {
   return (
     <header className="comet-workbench-header sticky top-0 z-30 border-b border-border-soft bg-surface/90 backdrop-blur-xl">
-      <strong className="comet-header-brand">comet</strong>
-      <div className="comet-header-context">
-        <Select
-          className="comet-project-select"
-          value={activeProjectId ?? undefined}
-          placeholder={
-            project?.name ? (
-              <span className="comet-project-selected-label" title={project.name}>
-                {project.name}
-              </span>
-            ) : (
-              '选择项目'
-            )
-          }
-          aria-label="选择项目"
-          suffixIcon={<ReferenceIcon name="chevron" />}
-          showSearch
-          optionFilterProp="searchText"
-          optionLabelProp="selectedLabel"
-          classNames={{ popup: { root: 'comet-project-select-dropdown' } }}
-          onChange={onProjectSelect}
-          options={projects.map((entry) => ({
-            value: entry.id,
-            disabled: entry.availability !== 'available',
-            searchText: `${entry.name} ${entry.path}`,
-            selectedLabel: (
-              <span className="comet-project-selected-label" title={entry.name}>
-                {entry.name}
-              </span>
-            ),
-            label: (
-              <span className="comet-project-option">
-                <strong className="comet-project-option-name" title={entry.name}>
+      <div className="comet-header-left">
+        <strong className="comet-header-brand">
+          <img src={logoSrc} alt="" width={28} height={28} />
+          comet
+        </strong>
+        <div className="comet-header-context">
+          <Select
+            className="comet-project-select"
+            value={activeProjectId ?? undefined}
+            placeholder={
+              project?.name ? (
+                <span className="comet-project-selected-label" title={project.name}>
+                  {project.name}
+                </span>
+              ) : (
+                '选择项目'
+              )
+            }
+            aria-label="选择项目"
+            suffixIcon={<ReferenceIcon name="chevron" />}
+            showSearch
+            optionFilterProp="searchText"
+            optionLabelProp="selectedLabel"
+            classNames={{ popup: { root: 'comet-project-select-dropdown' } }}
+            styles={{ popup: { root: { transition: 'none' } } }}
+            onChange={onProjectSelect}
+            options={projects.map((entry) => ({
+              value: entry.id,
+              disabled: entry.availability !== 'available',
+              searchText: `${entry.name} ${entry.path}`,
+              selectedLabel: (
+                <span className="comet-project-selected-label" title={entry.name}>
                   {entry.name}
-                </strong>
-                <small className="comet-project-option-path" title={entry.path}>
-                  {entry.path}
-                </small>
-              </span>
-            ),
-          }))}
+                </span>
+              ),
+              label: (
+                <span className="comet-project-option">
+                  <strong className="comet-project-option-name" title={entry.name}>
+                    {entry.name}
+                  </strong>
+                  <small className="comet-project-option-path" title={entry.path}>
+                    {entry.path}
+                  </small>
+                </span>
+              ),
+            }))}
+          />
+          {workflowSource && (
+            <Tag
+              className="comet-workflow-source"
+              aria-label={`项目默认工作流来源：${workflowSource}`}
+              color={workflowSource === 'configured' ? 'success' : 'warning'}
+            >
+              {workflowSource}
+            </Tag>
+          )}
+        </div>
+        <Tabs
+          className="dashboard-header-workflow-switch dashboard-workflow-tabs"
+          activeKey={pluginSelection || !workflow ? '' : workflow}
+          onChange={onWorkflowSelect}
+          items={[
+            {
+              key: 'classic',
+              label: (
+                <span>
+                  <ReferenceIcon name="branch" /> Classic 工作流
+                </span>
+              ),
+            },
+            {
+              key: 'native',
+              label: (
+                <span>
+                  <ReferenceIcon name="native" /> Native 工作流
+                </span>
+              ),
+            },
+          ]}
         />
       </div>
-      {workflowSource && (
-        <Tag
-          className="comet-workflow-source"
-          aria-label={`项目默认工作流来源：${workflowSource}`}
-          color={workflowSource === 'configured' ? 'success' : 'warning'}
-        >
-          {workflowSource}
-        </Tag>
-      )}
       <div className="comet-header-search">
         <Input
           value={query}
@@ -2033,6 +2111,7 @@ function Topbar({
 
 function Dashboard({
   snapshot,
+  projectId,
   useDemo,
   numberIdentity,
   numberEntryKey = null,
@@ -2051,6 +2130,7 @@ function Dashboard({
   detailError,
   onRetryDetail,
   onPreview,
+  scrollResetKey,
 }) {
   const hasClassicChanges = snapshot.summary.activeChanges + snapshot.summary.archivedChanges > 0;
   const classicWarning = snapshot.classicError && hasClassicChanges;
@@ -2062,67 +2142,150 @@ function Dashboard({
   });
   const isEmptyView = !pageLoading && visible.length === 0;
   const isLoadingView = pageLoading && visible.length === 0;
+  const contextChange = !isEmptyView && !isLoadingView ? selected : null;
   const numberPageReady = !pageLoading || visible.length > 0;
+  const workspaceRef = useRef(null);
+  const [detailHeight, setDetailHeight] = useState(0);
+  const [explorerTitleHeight, setExplorerTitleHeight] = useState(48);
+  useLayoutEffect(() => {
+    const detail = workspaceRef.current?.querySelector('.classic-change-shell .change-detail');
+    if (!detail) {
+      setDetailHeight(0);
+      setExplorerTitleHeight(48);
+      return;
+    }
+    const shell = detail.closest('.classic-change-shell');
+    const detailHead = detail.querySelector(':scope > .ant-card-head');
+    const explorerTabs = shell.querySelector('.classic-changes-explorer .ant-tabs-nav');
+    const measure = () => {
+      const style = getComputedStyle(shell);
+      const borders =
+        Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
+      setDetailHeight(Math.ceil(detail.getBoundingClientRect().height + borders));
+      setExplorerTitleHeight(
+        Math.max(
+          48,
+          (detailHead?.getBoundingClientRect().height ?? 0) -
+            (explorerTabs?.getBoundingClientRect().height ?? 0),
+        ),
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(detail);
+    if (detailHead) observer.observe(detailHead);
+    if (explorerTabs) observer.observe(explorerTabs);
+    return () => observer.disconnect();
+  }, [selected, isEmptyView, isLoadingView, detailPending, detailError]);
   useEffect(() => {
     if (numberEntryKey !== null && numberPageReady) onNumberEntryComplete?.(numberEntryKey);
   }, [numberEntryKey, numberPageReady, onNumberEntryComplete]);
   return (
-    <div className="mx-auto min-w-0">
+    <div
+      ref={workspaceRef}
+      className="classic-dashboard mx-auto min-w-0"
+      style={{
+        '--classic-detail-height': `${detailHeight}px`,
+        '--classic-explorer-title-height': `${explorerTitleHeight}px`,
+      }}
+    >
       <AntSummaryCards
         snapshot={snapshot}
         numberIdentity={numberIdentity}
         numberEntryKey={numberEntryKey}
       />
       {snapshot.classicError && !hasClassicChanges ? (
-        <ClassicErrorState error={snapshot.classicError} />
+        <>
+          <ClassicErrorState error={snapshot.classicError} />
+          {snapshot.git && (
+            <GitSnapshot git={snapshot.git} projectId={projectId} useDemo={useDemo} />
+          )}
+        </>
       ) : (
         <>
           {classicWarning ? <ClassicWarning error={snapshot.classicError} /> : null}
-          <DashboardWorkspaceRegion
-            leftClassName="dashboard-workspace-left-inner-scroll"
-            stableFrame
-            left={
-              <AntChangesExplorer
-                visible={visible}
-                useDemo={useDemo}
-                numberIdentity={numberIdentity}
-                numberEntryKey={numberPageReady ? numberEntryKey : null}
-                total={visibleTotal}
-                selectedId={selectedId}
-                tab={tab}
-                onTab={onTab}
-                onSelect={onSelect}
-                hasMore={hasMore}
-                pageLoading={pageLoading}
-                onLoadMore={onLoadMore}
+          <div className="classic-change-workspace min-w-0">
+            <div className="classic-change-overview min-w-0">
+              <DashboardWorkspaceRegion
+                className="classic-change-shell"
+                leftClassName="dashboard-workspace-left-inner-scroll"
+                left={
+                  <AntChangesExplorer
+                    visible={visible}
+                    scrollResetKey={scrollResetKey}
+                    useDemo={useDemo}
+                    numberIdentity={numberIdentity}
+                    numberEntryKey={numberPageReady ? numberEntryKey : null}
+                    total={visibleTotal}
+                    selectedId={selectedId}
+                    tab={tab}
+                    onTab={onTab}
+                    onSelect={onSelect}
+                    hasMore={hasMore}
+                    pageLoading={pageLoading}
+                    onLoadMore={onLoadMore}
+                  />
+                }
+                center={
+                  <>
+                    {isEmptyView ? (
+                      <ClassicWorkspaceEmptyDetail snapshot={snapshot} tab={tab} onTab={onTab} />
+                    ) : isLoadingView ? (
+                      <ClassicWorkspaceLoadingDetail />
+                    ) : selected ? (
+                      <AntChangeDetail
+                        change={selected}
+                        identity={JSON.stringify([numberIdentity, dashboardChangeKey(selected)])}
+                        selectedId={selectedId}
+                        useDemo={useDemo}
+                        onPreview={onPreview}
+                      />
+                    ) : detailPending ? (
+                      <ClassicWorkspaceLoadingDetail />
+                    ) : detailError ? (
+                      <DashboardChangeDetail className="change-detail" title="Classic 变更详情">
+                        <div className="text-center text-sm text-danger">
+                          <p role="alert">变更详情加载失败：{detailError.message}</p>
+                          <Button className="mt-4" onClick={onRetryDetail}>
+                            重试
+                          </Button>
+                        </div>
+                      </DashboardChangeDetail>
+                    ) : (
+                      <DashboardChangeDetail
+                        className="change-detail dashboard-change-detail-empty"
+                        title="Classic 变更详情"
+                      >
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="选择左侧变更查看详情"
+                        />
+                      </DashboardChangeDetail>
+                    )}
+                  </>
+                }
               />
-            }
-            center={
-              isEmptyView ? (
-                <ClassicWorkspaceEmptyDetail snapshot={snapshot} tab={tab} onTab={onTab} />
-              ) : isLoadingView ? (
-                <ClassicWorkspaceLoadingDetail />
-              ) : selected ? (
-                <AntChangeDetail
-                  change={selected}
-                  selectedId={selectedId}
-                  useDemo={useDemo}
-                  onPreview={onPreview}
-                />
-              ) : detailPending ? (
-                <ClassicWorkspaceLoadingDetail />
-              ) : detailError ? (
-                <DashboardChangeDetail className="change-detail" title="Classic 变更详情">
-                  <div className="text-center text-sm text-danger">
-                    <p role="alert">变更详情加载失败：{detailError.message}</p>
-                    <Button className="mt-4" onClick={onRetryDetail}>
-                      重试
-                    </Button>
+              <div
+                className={[
+                  'classic-project-context',
+                  !contextChange ? 'is-git-only' : null,
+                  !snapshot.git ? 'is-risk-only' : null,
+                  contextChange && !contextChange.risks?.length ? 'is-empty-risks' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                {contextChange && (
+                  <div className="change-guidance classic-change-risks">
+                    <RiskCard change={contextChange} />
                   </div>
-                </DashboardChangeDetail>
-              ) : null
-            }
-          />
+                )}
+                {snapshot.git && (
+                  <GitSnapshot git={snapshot.git} compact projectId={projectId} useDemo={useDemo} />
+                )}
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>
@@ -2196,7 +2359,15 @@ function ArtifactList({ change, onPreview }) {
   const previewByKey = new Map(
     (change.artifactPreviews ?? []).map((preview) => [preview.key, preview]),
   );
-  const grouped = change.artifacts?.grouped ?? [];
+  const artifactsByKey = new Map((change.artifacts?.grouped ?? []).map((item) => [item.key, item]));
+  const grouped = CLASSIC_ARTIFACT_SLOTS.map(([key, label, source]) => ({
+    key,
+    label,
+    source,
+    exists: false,
+    path: '',
+    ...artifactsByKey.get(key),
+  }));
   const total = grouped.length;
   const ready = grouped.filter((a) => a.exists).length;
   const openspecArtifacts = grouped.filter((a) => a.source === 'openspec');
@@ -2267,7 +2438,7 @@ function ArtifactRow({ artifact, preview, onPreview }) {
 
   return (
     <button
-      className={`group grid w-full grid-cols-[16px_1fr_auto] items-center gap-x-2.5 rounded-md px-2 py-1.5 text-left transition-colors duration-100 ${
+      className={`classic-artifact-row group grid w-full items-center gap-x-2.5 rounded-md px-2 py-1.5 text-left transition-colors duration-100 ${
         exists ? 'cursor-pointer hover:bg-surface' : 'cursor-default opacity-50'
       }`}
       disabled={!exists}
@@ -2283,10 +2454,8 @@ function ArtifactRow({ artifact, preview, onPreview }) {
           <span className="h-2 w-2 rounded-full border border-border" />
         )}
       </span>
-      <span className="min-w-0 truncate text-[13px] text-fg">{artifact.key}</span>
-      <span className="whitespace-nowrap pl-4 text-right text-[12px] text-muted">
-        {statusLabel}
-      </span>
+      <span className="min-w-0 text-[13px] text-fg">{artifact.key}</span>
+      <span className="min-w-0 pl-4 text-right text-[12px] text-muted">{statusLabel}</span>
     </button>
   );
 }
@@ -2428,17 +2597,15 @@ function TaskProgress({ change }) {
   );
 }
 
-function NextAction({ change }) {
-  return (
-    <Card title="下一步建议" tag={phaseLabel(change.phase)}>
-      <div className="rounded-xl bg-fg px-4 py-3 font-mono text-[13px] text-bg">
-        <span className="text-success">$ </span>
-        {change.next?.command ?? '—'}
-      </div>
-      <p className="text-sm text-fg-2">{change.next?.reason ?? '暂无建议'}</p>
-      <p className="text-[13px] leading-relaxed text-muted">{change.next?.description ?? ''}</p>
-    </Card>
-  );
+function NextAction({ change, identity }) {
+  const text = [
+    `$ ${change.next?.command?.trim() ? change.next.command : '—'}`,
+    change.next?.reason?.trim() ? change.next.reason : '暂无建议',
+    change.next?.description,
+  ]
+    .filter((value) => value !== null && value !== undefined && value !== '')
+    .join('\n');
+  return <DashboardChangeSuggestion key={identity} text={text} identity={identity} />;
 }
 
 function ArchiveSummary({ change }) {
@@ -2463,69 +2630,93 @@ function RiskCard({ change }) {
   const risks = change.risks ?? [];
   return (
     <Card title="风险提示" tag={`${risks.length} 项`}>
-      {risks.length === 0 ? (
-        <div className="rounded-xl bg-surface-warm p-3 text-sm text-muted">
-          当前未发现阻塞风险。
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {risks.map((risk) => (
-            <div
-              key={`${risk.code}-${risk.message}`}
-              className="rounded-xl border border-border-soft p-3"
-            >
-              <div className="flex gap-2 text-sm font-semibold">
-                <span
-                  className={
-                    risk.level === 'error'
-                      ? 'text-danger'
-                      : risk.level === 'warning'
-                        ? 'text-warn'
-                        : 'text-meta'
-                  }
-                >
-                  ●
-                </span>
-                <span>{risk.message}</span>
+      <div
+        key={dashboardChangeKey(change)}
+        className="classic-risk-content"
+        role="region"
+        aria-label="风险提示内容"
+        tabIndex={risks.length > 0 ? 0 : undefined}
+      >
+        {risks.length === 0 ? (
+          <div className="rounded-xl bg-surface-warm p-3 text-sm text-muted">
+            当前未发现阻塞风险。
+          </div>
+        ) : (
+          <div className="dashboard-guidance-items">
+            {risks.map((risk) => (
+              <div
+                key={`${risk.code}-${risk.message}`}
+                className="dashboard-guidance-item rounded-xl border border-border-soft p-3"
+              >
+                <div className="flex gap-2 text-sm font-semibold">
+                  <span
+                    className={
+                      risk.level === 'error'
+                        ? 'text-danger'
+                        : risk.level === 'warning'
+                          ? 'text-warn'
+                          : 'text-meta'
+                    }
+                  >
+                    ●
+                  </span>
+                  <span>{risk.message}</span>
+                </div>
+                <div className="mt-1 font-mono text-xs text-meta">{risk.code}</div>
               </div>
-              <div className="mt-1 font-mono text-xs text-meta">{risk.code}</div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
 
-function GitSnapshot({ git }) {
+function GitSnapshot({ git, compact = false, projectId, useDemo = false }) {
+  const content = git ? (
+    <>
+      <KeyValue k="分支" v={git.branch ?? '—'} title={compact ? (git.branch ?? '—') : undefined} />
+      <KeyValue k="HEAD" v={git.head ?? '—'} title={compact ? (git.head ?? '—') : undefined} />
+      <DashboardGitList
+        title="最近提交"
+        kind="commits"
+        items={git.recentCommits ?? []}
+        hasMore={git.recentCommitsHasMore}
+        projectId={projectId}
+        useDemo={useDemo}
+      />
+      <DashboardGitList
+        title="未提交文件"
+        kind="files"
+        items={git.dirtyFileList ?? []}
+        hasMore={git.dirtyFileListHasMore}
+        projectId={projectId}
+        useDemo={useDemo}
+      />
+    </>
+  ) : (
+    <p className="text-xs text-muted">当前项目暂无 Git 信息。</p>
+  );
   return (
-    <section className="dashboard-project-git" aria-label="仓库 Git">
+    <section
+      className={compact ? 'dashboard-project-git classic-project-git' : 'dashboard-project-git'}
+      aria-label="仓库 Git"
+    >
       <Card
         title={
           <>
             <ReferenceIcon name="git" /> 仓库 Git
           </>
         }
-        tag={`${git.dirtyFiles ?? '—'} 个未提交`}
+        tag={git ? `${git.dirtyFiles ?? '—'} 个未提交` : undefined}
       >
-        <KeyValue k="分支" v={git.branch ?? '—'} />
-        <KeyValue k="HEAD" v={git.head ?? '—'} />
-        <div className="pt-2 text-[11px] font-semibold uppercase text-meta">最近提交</div>
-        <ul className="space-y-1">
-          {(git.recentCommits ?? []).map((commit) => (
-            <li key={commit} className="truncate text-sm text-fg-2">
-              {commit}
-            </li>
-          ))}
-        </ul>
-        <div className="pt-2 text-[11px] font-semibold uppercase text-meta">未提交文件</div>
-        <ul className="space-y-1">
-          {(git.dirtyFileList ?? []).slice(0, 5).map((file) => (
-            <li key={file} className="break-all font-mono text-xs text-warn">
-              {file}
-            </li>
-          ))}
-        </ul>
+        {compact ? (
+          <div className="classic-git-content" role="region" aria-label="仓库 Git内容" tabIndex={0}>
+            {content}
+          </div>
+        ) : (
+          content
+        )}
       </Card>
     </section>
   );
@@ -2545,11 +2736,13 @@ function Card({ title, tag, children }) {
   );
 }
 
-function KeyValue({ k, v }) {
+function KeyValue({ k, v, title }) {
   return (
     <div className="flex items-center gap-3 text-sm">
       <span className="w-16 shrink-0 text-muted">{k}</span>
-      <span className="min-w-0 truncate font-mono text-[13px]">{v}</span>
+      <span className="min-w-0 truncate font-mono text-[13px]" title={title}>
+        {v}
+      </span>
     </div>
   );
 }
@@ -2566,6 +2759,48 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
   const [activeTocId, setActiveTocId] = useState('');
   const articleRef = useRef(null);
   const contentScrollRef = useRef(null);
+  const previewPanelRef = useRef(null);
+
+  useEffect(() => {
+    if (!artifact?.nativePreview || embedded) return undefined;
+    const panel = previewPanelRef.current;
+    const trigger = artifact.returnFocus;
+    panel?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        requestClose(onClose);
+      } else if (event.key === 'Tab' && panel) {
+        const targets = [
+          ...panel.querySelectorAll('button:not(:disabled), a[href], [tabindex="0"]'),
+        ].filter((element) => element.getClientRects().length > 0);
+        const first = targets[0];
+        const last = targets[targets.length - 1];
+        if (!first) {
+          event.preventDefault();
+          panel.focus();
+        } else if (
+          event.shiftKey &&
+          (document.activeElement === first || document.activeElement === panel)
+        ) {
+          event.preventDefault();
+          last.focus();
+        } else if (
+          !event.shiftKey &&
+          (document.activeElement === last || document.activeElement === panel)
+        ) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      if (trigger?.isConnected) trigger.focus();
+    };
+  }, [artifact, embedded, onClose, requestClose]);
 
   useEffect(() => {
     if (!artifact || embedded) return undefined;
@@ -2608,11 +2843,14 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
     const isJsonPreview =
       artifact.key === 'handoff' || artifact.key === 'checkpoint' || /\.json$/i.test(previewPath);
     const useStructuredPreview = isYamlPreview || isJsonPreview;
+    const truncationMessage = artifact.nativePreview
+      ? `内容过长，仅预览前 ${(preview?.previewBytes ?? 48 * 1024) / 1024} KiB，未提供全文。`
+      : '内容过长，已截取前 256KB。';
 
     const content = preview?.exists
       ? useStructuredPreview
         ? preview.content?.trimEnd() || ''
-        : `${preview.content?.trimEnd() || '这个产物是空文件。'}${preview.truncated ? '\n\n> 内容过长，已截取前 256KB。' : ''}`
+        : `${preview.content?.trimEnd() || '这个产物是空文件。'}${preview.truncated ? `\n\n> ${truncationMessage}` : ''}`
       : preview
         ? `尚未生成 ${artifact.name}。`
         : '这个产物文件存在，但当前 dashboard 服务返回的数据里没有全文内容。请重启 dashboard 服务后再刷新页面。';
@@ -2634,7 +2872,7 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
                   schema: isNativeStatePreview ? 'native-state' : undefined,
                 });
             if (preview.truncated) {
-              html += '<p><em>内容过长，已截取前 256KB。</em></p>';
+              html += `<p><em>${truncationMessage}</em></p>`;
             }
           }
         } else {
@@ -2724,6 +2962,11 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
         />
       )}
       <section
+        ref={previewPanelRef}
+        role={artifact.nativePreview ? 'dialog' : undefined}
+        aria-modal={artifact.nativePreview ? true : undefined}
+        aria-label={artifact.nativePreview ? `产物预览：${artifact.name}` : undefined}
+        tabIndex={artifact.nativePreview ? -1 : undefined}
         className={[
           'dashboard-artifact-preview-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg',
           fullscreen
@@ -3828,6 +4071,18 @@ async function fetchDashboardNativeChangePage(projectId, status, options = {}) {
   return res.json();
 }
 
+async function fetchDashboardNativeArtifact(projectId, change, key, signal) {
+  const query = new URLSearchParams({ status: change.status, changeName: change.name, key });
+  if (change.locator) query.set('changeLocator', change.locator);
+  if (change.archiveName) query.set('archiveName', change.archiveName);
+  const response = await fetch(
+    `/api/dashboard/projects/${encodeURIComponent(projectId)}/native-artifact?${query}`,
+    { cache: 'no-store', signal },
+  );
+  if (!response.ok) throw new Error(`产物读取失败（HTTP ${response.status}），请刷新详情或重试。`);
+  return response.json();
+}
+
 async function fetchDashboardNativeChangeDetail(projectId, change, signal) {
   const params = new URLSearchParams({ status: change.status, changeName: change.name });
   if (change.locator) params.set('changeLocator', change.locator);
@@ -4094,27 +4349,6 @@ function contextOutcomeLabel(outcome) {
   if (outcome === 'overridden') return '已被覆盖';
   if (outcome === 'corrected') return '已纠正';
   return '导致失败';
-}
-
-async function copyText(text) {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      // 非安全上下文（例如本地预览）没有 Clipboard API 时，保留可用的复制能力。
-    }
-  }
-
-  const input = document.createElement('textarea');
-  input.value = text;
-  input.setAttribute('readonly', '');
-  input.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
-  document.body.append(input);
-  input.select();
-  const copied = document.execCommand('copy');
-  input.remove();
-  if (!copied) throw new Error('当前浏览器不支持复制');
 }
 
 const dashboardRoot = document.getElementById('root');
@@ -8286,6 +8520,7 @@ function AntChangesExplorer({
   hasMore,
   pageLoading,
   onLoadMore,
+  scrollResetKey,
 }) {
   const items = [
     ['active', '活跃'],
@@ -8297,26 +8532,18 @@ function AntChangesExplorer({
       className="dashboard-changes-explorer classic-changes-explorer min-w-0"
       title={<DashboardExplorerTitle count={total} />}
     >
-      <Tabs
-        activeKey={tab}
-        onChange={onTab}
-        tabBarGutter={24}
-        items={items.map((item) => ({
-          ...item,
-          children: (
-            <DashboardChangeList
-              visible={visible}
-              useDemo={useDemo}
-              numberIdentity={numberIdentity}
-              numberEntryKey={numberEntryKey}
-              selectedId={selectedId}
-              onSelect={onSelect}
-              hasMore={hasMore}
-              pageLoading={pageLoading}
-              onLoadMore={onLoadMore}
-            />
-          ),
-        }))}
+      <Tabs activeKey={tab} onChange={onTab} tabBarGutter={24} items={items} />
+      <DashboardChangeList
+        visible={visible}
+        useDemo={useDemo}
+        numberIdentity={numberIdentity}
+        numberEntryKey={numberEntryKey}
+        selectedId={selectedId}
+        onSelect={onSelect}
+        hasMore={hasMore}
+        pageLoading={pageLoading}
+        onLoadMore={onLoadMore}
+        scrollResetKey={scrollResetKey}
       />
     </AntCard>
   );
@@ -8364,35 +8591,23 @@ function DashboardChangeList({
   hasMore,
   pageLoading,
   onLoadMore,
+  scrollResetKey,
 }) {
   const listRef = useRef(null);
   const sentinelRef = useRef(null);
 
-  useEffect(() => {
-    const root = listRef.current;
-    const target = sentinelRef.current;
-    if (!root || !target || !hasMore || !onLoadMore) return undefined;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !pageLoading) onLoadMore();
-      },
-      { root },
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [hasMore, onLoadMore, pageLoading]);
-
-  const handleScroll = useCallback(
-    (event) => {
-      if (!hasMore || pageLoading || !onLoadMore) return;
-      const { scrollTop, clientHeight, scrollHeight } = event.currentTarget;
-      if (scrollTop > 0 && scrollTop + clientHeight >= scrollHeight - 24) onLoadMore();
-    },
-    [hasMore, onLoadMore, pageLoading],
-  );
+  useExplorerPagination({
+    listRef,
+    sentinelRef,
+    resetKey: scrollResetKey,
+    itemCount: visible.length,
+    hasMore,
+    loading: pageLoading,
+    onLoadMore,
+  });
 
   return (
-    <div ref={listRef} className="dashboard-change-list" onScroll={handleScroll}>
+    <div ref={listRef} className="dashboard-change-list">
       {visible.length === 0 ? (
         pageLoading ? (
           <DashboardLineSkeleton
@@ -8411,17 +8626,16 @@ function DashboardChangeList({
             useDemo ? change.demoPhaseProgress : undefined,
           );
           const changeNumberIdentity = JSON.stringify([numberIdentity, dashboardChangeKey(change)]);
-          const showTaskCount =
-            Number.isInteger(change.tasks?.completed) &&
-            Number.isInteger(change.tasks?.total) &&
-            change.tasks.completed >= 0 &&
-            change.tasks.total >= change.tasks.completed &&
-            (change.tasks.total > 0 || change.artifacts?.tasks === true);
           return (
             <div key={dashboardChangeKey(change)} className="dashboard-change-list-item">
               <DashboardExplorerRowTooltip
                 name={change.displayName}
                 status={statusPresentation.label}
+                description={
+                  <>
+                    {phaseLabel(change.phase)} · {change.tasks.completed}/{change.tasks.total}
+                  </>
+                }
                 workspace={change.workspace && !change.workspace.current ? change.workspace : null}
               >
                 <Button
@@ -8433,23 +8647,29 @@ function DashboardChangeList({
                 >
                   <DashboardExplorerRowContent
                     name={change.displayName}
-                    count={
-                      showTaskCount ? (
-                        <>
-                          任务{' '}
+                    description={
+                      <>
+                        {phaseLabel(change.phase)} ·{' '}
+                        {Number.isFinite(change.tasks.completed) ? (
                           <AnimatedNumber
                             value={change.tasks.completed}
                             identity={changeNumberIdentity}
                             numberEntryKey={numberEntryKey}
                           />
-                          /
+                        ) : (
+                          change.tasks.completed
+                        )}
+                        /
+                        {Number.isFinite(change.tasks.total) ? (
                           <AnimatedNumber
                             value={change.tasks.total}
                             identity={changeNumberIdentity}
                             numberEntryKey={numberEntryKey}
                           />
-                        </>
-                      ) : null
+                        ) : (
+                          change.tasks.total
+                        )}
+                      </>
                     }
                     status={<Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>}
                   />
@@ -8474,7 +8694,7 @@ function DashboardChangeList({
   );
 }
 
-function AntChangeDetail({ change, selectedId, useDemo, onPreview }) {
+function AntChangeDetail({ change, identity, selectedId, useDemo, onPreview }) {
   const [copied, setCopied] = useState(false);
   const phaseProgress = useDemo ? change.demoPhaseProgress : undefined;
   const statusPresentation = classicChangeStatusPresentation(change, phaseProgress);
@@ -8503,7 +8723,12 @@ function AntChangeDetail({ change, selectedId, useDemo, onPreview }) {
           </Tooltip>
         </>
       }
-      extra={<Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>}
+      extra={
+        change.status !== 'archived' && !PHASES.some(([phase]) => phase === change.phase) ? (
+          <Pill tone={statusPresentation.tone}>{statusPresentation.label}</Pill>
+        ) : null
+      }
+      suggestion={<NextAction change={change} identity={identity} />}
       meta={
         <>
           <span>{change.workflow ?? '—'}</span>
@@ -8525,14 +8750,11 @@ function AntChangeDetail({ change, selectedId, useDemo, onPreview }) {
         currentPhaseLabel={statusPresentation.label}
         ariaLabel="Classic 生命周期阶段"
       />
-      <div className="change-guidance">
-        {change.status === 'archived' ? (
+      {change.status === 'archived' && (
+        <div className="change-guidance">
           <ArchiveSummary change={change} />
-        ) : (
-          <NextAction change={change} />
-        )}
-        <RiskCard change={change} />
-      </div>
+        </div>
+      )}
       <div className="change-detail-panels grid min-w-0">
         <ArtifactList change={change} onPreview={onPreview} />
         <TaskProgress change={change} />

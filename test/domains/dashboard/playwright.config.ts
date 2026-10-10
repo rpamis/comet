@@ -2,7 +2,14 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: ['dashboard-browser.spec.ts', 'dashboard-master-detail.spec.ts'],
+  testMatch: [
+    'dashboard-browser.spec.ts',
+    'dashboard-master-detail.spec.ts',
+    'dashboard-explorer.spec.ts',
+    'dashboard-suggestion.spec.ts',
+    'dashboard-header.spec.ts',
+    'dashboard-native-layout.spec.ts',
+  ],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

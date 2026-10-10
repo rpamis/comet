@@ -136,7 +136,9 @@ describe('dashboard web source contracts', () => {
     expect(styles).toContain('.classic-changes-explorer');
     expect(layout).toContain('dashboard-master-detail');
     expect(layout).not.toContain('dashboard-workspace-right');
-    expect(styles).toContain('grid-template-columns: 260px minmax(0, 1fr)');
+    expect(styles).toContain(
+      'grid-template-columns: var(--dashboard-explorer-width) minmax(0, 1fr)',
+    );
     expect(layout).toContain('leftClassName');
     expect(source).not.toContain('xl:grid-cols-[320px_minmax(620px,940px)_320px]');
   });
@@ -751,7 +753,8 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('fetchDashboardChangeDetail');
     expect(source).toContain('new URLSearchParams({ changeLocator: changeId })');
     expect(source).toContain('change.workspace && !change.workspace.current');
-    expect(source).toContain('onScroll={handleScroll}');
+    expect(source).toContain('useExplorerPagination({');
+    expect(source).toContain('resetKey: scrollResetKey');
     expect(source).toContain('正在加载 Classic 变更详情');
     expect(source).not.toContain('async function fetchSnapshot');
 

@@ -18,7 +18,9 @@ describe('Native dashboard web source contracts', () => {
     expect(source).toContain('serverPaged');
     expect(source).toContain('onLoadMore');
     expect(source).toContain('native-change-list');
-    expect(source).toContain('onScroll={handleListScroll}');
+    expect(source).toContain('useExplorerPagination({');
+    expect(source).toContain('resetKey: scrollResetKey');
+    expect(source).not.toContain("window.addEventListener('scroll'");
 
     for (const field of [
       'native?.changes',
@@ -134,8 +136,10 @@ describe('Native dashboard web source contracts', () => {
     expect(sharedLayout).toContain('dashboard-explorer-row-name');
     expect(sharedLayout).toContain('dashboard-explorer-row-count');
     expect(sharedLayout).toContain('dashboard-explorer-row-status');
-    expect(classicSource).toContain('change.artifacts?.tasks === true');
-    expect(classicSource).toContain('任务');
+    expect(classicSource).not.toContain('const showTaskCount');
+    expect(classicSource).toContain(
+      '{phaseLabel(change.phase)} · {change.tasks.completed}/{change.tasks.total}',
+    );
     expect(nativeSource).toContain('子变更');
   });
 
@@ -149,7 +153,7 @@ describe('Native dashboard web source contracts', () => {
     expect(source).toContain('const isLoadingView = pageLoading && visibleChanges.length === 0');
     expect(source).toContain('<NativeEmptyChangeDetail');
     expect(source).toContain('emptyProject={!hasNativeChanges}');
-    expect(source).toContain('<NativeChangeDetailSkeleton />');
+    expect(source).toContain('<NativeChangeDetailSkeleton projectContext={projectContext} />');
     expect(source).toContain('native-change-list-skeleton');
     expect(source).not.toContain('<Spin');
     expect(source).not.toContain('NativeWorkspaceLoadingState');

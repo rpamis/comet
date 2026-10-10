@@ -86,7 +86,7 @@ export function WorkflowPhaseTrack({
           };
         })}
       />
-      {children}
+      <div className="dashboard-phase-note-slot">{children}</div>
     </div>
   );
 }
