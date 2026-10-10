@@ -614,14 +614,13 @@ describe('Agent Learning Coordinator', () => {
     const journal = new AgentExperienceJournal(store);
     const review = { kind: 'host-review' as const, id: 'race-review', workspaceId: 'workspace-1' };
     let submitted = false;
-    let coordinator: AgentLearningCoordinator;
     const reflect = vi.fn<AgentLearningAdapter['reflect']>(async () => {
       if (submitted) return [];
       submitted = true;
       expect(await coordinator.resumeReview(review)).toBe(0);
       return { deltas: [], deferred: true, waitFor: [review] };
     });
-    coordinator = new AgentLearningCoordinator({
+    const coordinator = new AgentLearningCoordinator({
       journal,
       learners: [
         {

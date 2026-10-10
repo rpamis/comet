@@ -1,9 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as childProcess from 'node:child_process';
-import { mkdtemp, mkdir, readFile, writeFile, rm, rename, symlink } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  writeFile,
+  rm,
+  rename,
+  symlink,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import {
   readClassicCheckpoint,
   writeClassicCheckpoint,
@@ -61,11 +71,53 @@ it('archives documents in a non-Git coordinator without claiming a child reposit
       delivery: { action: 'archive-only' },
       verification: { status: 'complete', archiveVerified: true },
     });
+    const receiptDir = path.join(root, '.comet', 'classic-deliveries');
+    const [receiptName] = await readdir(receiptDir);
+    const receiptFile = path.join(receiptDir, receiptName);
+    const receipt = JSON.parse(await readFile(receiptFile, 'utf8'));
+    receipt.archiveFiles = Object.fromEntries(Object.entries(receipt.archiveFiles).reverse());
+    await writeFile(receiptFile, JSON.stringify(receipt));
+    await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
+      verification: { status: 'complete', archiveVerified: true },
+    });
+    for (const code of ['ENOENT', 'ENOTDIR']) {
+      const missing = vi
+        .spyOn(fs, 'readdir')
+        .mockRejectedValueOnce(
+          Object.assign(new Error('archive directory disappeared during verification'), { code }),
+        );
+      try {
+        await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
+          verification: { status: 'needsVerification', archiveVerified: false },
+        });
+      } finally {
+        missing.mockRestore();
+      }
+    }
+    const denied = vi
+      .spyOn(fs, 'readdir')
+      .mockRejectedValueOnce(
+        Object.assign(new Error('archive directory is unreadable'), { code: 'EACCES' }),
+      );
+    try {
+      await expect(readClassicDelivery(root, archived)).rejects.toMatchObject({ code: 'EACCES' });
+    } finally {
+      denied.mockRestore();
+    }
     await writeFile(spec, '# Modified feature\n');
+    await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
+      verification: { status: 'complete', archiveVerified: true },
+    });
+    const snapshot = path.join(archived, '.comet', 'main-specs.json');
+    const snapshotSource = await readFile(snapshot, 'utf8');
+    expect(
+      Buffer.from(JSON.parse(snapshotSource).files['feature/spec.md'], 'base64').toString('utf8'),
+    ).toBe('# Feature\n');
+    await writeFile(snapshot, '# Damaged snapshot\n');
     await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
       verification: { status: 'needsVerification', archiveVerified: false },
     });
-    await writeFile(spec, '# Feature\n');
+    await writeFile(snapshot, snapshotSource);
     await writeFile(path.join(archived, 'proposal.md'), '# Changed\n');
     await expect(readClassicDelivery(root, archived)).resolves.toMatchObject({
       verification: { status: 'needsVerification', archiveVerified: false },

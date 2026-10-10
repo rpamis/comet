@@ -6,6 +6,7 @@ import {
   ensureDir,
   copyFile,
   fileExists,
+  isProjectDirectoryMissing,
   readJson,
   writeFile,
   readDir,
@@ -27,6 +28,18 @@ describe('file-system utils', () => {
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('distinguishes missing project directories from access failures', async () => {
+    expect(await isProjectDirectoryMissing(tmpDir)).toBe(false);
+    expect(await isProjectDirectoryMissing(path.join(tmpDir, 'missing'))).toBe(true);
+    const denied = Object.assign(new Error('access denied'), { code: 'EACCES' });
+    const stat = vi.spyOn(fs, 'stat').mockRejectedValueOnce(denied);
+    try {
+      await expect(isProjectDirectoryMissing(tmpDir)).rejects.toBe(denied);
+    } finally {
+      stat.mockRestore();
+    }
   });
 
   describe('ensureDir', () => {

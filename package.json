@@ -98,6 +98,7 @@
     "test:sdk": "vitest run test/domains/engine test/domains/workflow-application test/domains/workflow-generation test/domains/workflow-creation test/domains/eval/application-eval.test.ts test/domains/comet-plugin/plugin-sdk.test.ts test/domains/comet-classic/classic-sdk test/domains/comet-classic/classic-application.test.ts test/domains/comet-native/native-sdk test/domains/comet-native/native-application.test.ts test/domains/comet-native/native-cli-v4-surface.test.ts test/app/runtime-command.test.ts test/app/runtime-application.test.ts test/app/runtime-application-compact.test.ts test/app/native-runtime-dispatch.test.ts test/app/application-distribution.test.ts test/app/application-eval.test.ts test/scripts/sdk-api.test.ts test/scripts/sdk-fixtures.test.ts",
     "test:native-parallel": "vitest run test/domains/comet-native/native-parallel-worktree.test.ts",
     "test:script-smoke": "vitest run test/domains/comet-classic/comet-scripts.test.ts",
+    "test:openspec-upstream": "node test/helpers/openspec-upstream.mjs",
     "test:runtime-smoke": "vitest run test/domains/comet-classic/comet-scripts.test.ts test/repository/native-runtime-assets.test.ts test/repository/comet-entry-runtime-assets.test.ts test/app/cli-smoke.test.ts",
     "test:package-e2e": "node scripts/release/package-e2e.mjs",
     "test:dashboard-e2e": "playwright test --config test/domains/dashboard/playwright.config.ts",
@@ -132,16 +133,20 @@
   "packageManager": "pnpm@10.18.3",
   "overrides": {
     "brace-expansion": "5.0.12",
-    "esbuild": "0.28.2",
     "fast-uri": "3.1.8",
+    "katex": "0.18.2",
+    "source-map-js": "1.2.2",
+    "esbuild": "0.28.2",
     "postcss": "8.5.26",
     "undici": "7.29.1"
   },
   "pnpm": {
     "overrides": {
       "brace-expansion": "5.0.12",
-      "esbuild": "0.28.2",
       "fast-uri": "3.1.8",
+      "katex": "0.18.2",
+      "source-map-js": "1.2.2",
+      "esbuild": "0.28.2",
       "postcss": "8.5.26",
       "undici": "7.29.1"
     }
@@ -177,7 +182,6 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
-    "@fission-ai/openspec": "^1.11.0",
     "@inquirer/ansi": "^2.0.7",
     "@inquirer/core": "^12.0.1",
     "@inquirer/figures": "^2.0.8",
@@ -192,7 +196,7 @@
     "highlight.js": "^11.12.0",
     "marked": "^18.0.11",
     "mermaid": "11.17.2",
-    "smol-toml": "^1.8.0",
+    "smol-toml": "^1.9.0",
     "yaml": "^2.9.0"
   }
 }

@@ -848,7 +848,7 @@ children:
       executable: process.execPath,
       argv: [
         '-e',
-        "const fs=require('node:fs');fs.appendFileSync(process.argv[1],'start\\n');setInterval(()=>{if(fs.existsSync(process.argv[2]))process.exit(0)},25)",
+        "const fs=require('node:fs');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200);fs.appendFileSync(process.argv[1],'start\\n');setInterval(()=>{if(fs.existsSync(process.argv[2]))process.exit(0)},25)",
         marker,
         release,
       ],
@@ -878,6 +878,14 @@ children:
         .catch(() => false);
       return reserved && mutationLockReleased && commandStarted;
     }, 'Runtime owner did not reserve and start its check');
+    await waitForCondition(
+      () =>
+        fs.readFile(marker, 'utf8').then(
+          (content) => content === 'start\n',
+          () => false,
+        ),
+      'Check command did not write its startup marker',
+    );
     const running = await readNativeLocalExecution(file);
     const activePid =
       running?.checks[0]?.activeProcess?.status === 'running'

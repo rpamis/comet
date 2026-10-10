@@ -23,6 +23,43 @@
 <a href="https://trendshift.io/repositories/38989?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-38989" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/38989" alt="rpamis%2Fcomet | Trendshift" width="250" height="55"/></a>
 </p>
 
+## 💎 Sponsorship
+
+This project is supported by sponsors including [PackyCode](https://www.packyapi.ai/register?aff=DIId) and [RunAPI](https://runapi.host).
+
+> [Want to be featured here?](mailto:benyuanming@gmail.com)
+
+<details open>
+<summary>Click to collapse</summary>
+
+<table width="100%">
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://www.packyapi.ai/register?aff=DIId">
+        <img src="https://github.com/rpamis/comet/blob/master/img/PackyCode.png" alt="PackyCode Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      <p>Access leading AI models through PackyCode with one API endpoint and one API key. Enjoy fast, reliable access with automatic failover and dedicated high-speed routes for Codex and Claude Code.</p>
+      <p>Get started with $1 in free credits, a discount on your first top-up, and savings of up to 80% on eligible routes. Pay in RMB with no currency conversion markups or extra top-up fees.</p>
+      <p><a href="https://www.packyapi.ai/register?aff=DIId">Sign up through the link and start building today.</a></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://runapi.host">
+        <img src="https://github.com/rpamis/comet/blob/master/img/RunApi.jpg" alt="RunAPI Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      <p>RunAPI is a fast, reliable AI model API gateway. Access over 150 leading models, including OpenAI, Claude, Gemini, DeepSeek, and Grok, with a single API key and discounts of up to 90%. It works seamlessly with tools such as Claude Code and OpenClaw.</p>
+      <p><a href="https://runapi.host">Sign up through the link and get started today.</a></p>
+    </td>
+  </tr>
+</table>
+
+</details>
+
 ## What is Comet ?
 
 ```
@@ -64,7 +101,7 @@ It allows you to use a toolchain to handle everything from requirements to archi
 - **One-way, resumable Native archive** — Archive first returns a single dry-run continuation command, with explicit isolated-workspace finish choices and blocker paths; continuing the workflow lets Runtime own the archive commit without repeated status queries or manual runtime-file commits.
 - **Supervisor Changes for complex requirements** — Native can split work along real delivery boundaries, manage dependencies and readiness as a DAG, let multiple agents implement and verify in Runtime-created worktrees, and then integrate the results before the parent change's final acceptance.
 - **The stable core for long-running tasks** — Comet's Classic Spec mode combines OpenSpec and Superpowers into a five-phase flow with a state machine, phase checks, and scripts. It suits work that needs an explicit method and strong constraints; its permanent entry point is `/comet-classic`.
-- **Archive documents outside Git** — When Classic documents live in a non-Git coordination root and product code lives in independent child repositories, explicitly choose document-only archive. Runtime records file digests for the archived change and main specs; deliver each child repository separately.
+- **Archive documents outside Git** — When Classic documents live in a non-Git coordination root and product code lives in independent child repositories, explicitly choose document-only archive. Runtime records file digests for the archived change and main spec snapshots; deliver each child repository separately.
 - **A configuration-driven shared entry point** — `/comet` reads only the project's `.comet/config.yaml` and deterministically forwards to `/comet-native` or `/comet-classic`. It does not guess from task size or mix changes, state, or directories across workflows. `comet resume-probe` uses the same configuration to resume through the correct permanent entry point.
 - **Skill platform** — `/comet-any` turns a goal and real Skills into Native extensions, Classic compositions, or standalone SDK workflows, with plan confirmation, complete local exports, and project or user installation. See the [creation and delivery guide](docs/operations/SKILL-CREATION.md).
 - **Composable Skill Runtime SDK** — `@rpamis/comet/runtime` orchestrates Skill/tool steps, approval, outcome validation, and interruption recovery as persistent workflows. Native and Classic are two built-in applications: new changes use SDK Runs by default, while existing changes keep their original Runtime. The Agent platform still provides model, MCP, Hooks, Rules, and tool calls. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md).
@@ -169,6 +206,8 @@ comet init --workflow both
 ```
 
 ### Project configuration
+
+After deleting a project directory, run `comet uninstall <original-project-path> --force --json` to remove its remaining index entry. Dashboard marks missing projects and offers confirmed removal through its missing-project manager. Other missing projects are retained until explicitly removed.
 
 `comet init` generates `.comet/config.yaml` with field-level comments in the selected language. `comet update` fills new managed defaults while preserving user values and unknown extensions.
 

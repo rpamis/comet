@@ -70,28 +70,31 @@ pnpm build
 
 ## Commands
 
-| Command                      | Purpose                                                                               |
-| ---------------------------- | ------------------------------------------------------------------------------------- |
-| `pnpm dev`                   | Watch mode (TypeScript)                                                               |
-| `pnpm build`                 | Full build (Classic, Native, and entry runtimes + dashboard)                          |
-| `pnpm build:classic-runtime` | Build only the Classic runtime (`scripts/build/build-classic-runtime.mjs`)            |
-| `pnpm build:native-runtime`  | Build only the Native runtime (`scripts/build/build-native-runtime.mjs`)              |
-| `pnpm build:entry-runtime`   | Build only the shared entry and Hook Router (`scripts/build/build-entry-runtime.mjs`) |
-| `pnpm build:dashboard`       | Build only the `comet dashboard` frontend (Vite)                                      |
-| `pnpm dev:dashboard`         | Dashboard frontend dev mode                                                           |
-| `pnpm test`                  | Run unit tests (Vitest)                                                               |
-| `pnpm test:coverage`         | Run tests with coverage                                                               |
-| `pnpm test:script-smoke`     | Run the Classic launcher smoke suite; CI entry point                                  |
-| `pnpm test:watch`            | Vitest watch mode                                                                     |
-| `pnpm lint`                  | ESLint + architecture linter                                                          |
-| `pnpm lint:architecture`     | Repository layering linter (`scripts/lint/architecture.mjs`)                          |
-| `pnpm lint:fix`              | ESLint auto-fix                                                                       |
-| `pnpm format`                | Prettier formatting for `app/`, `domains/`, `platform/`                               |
-| `pnpm format:check`          | Prettier check (CI-enforced)                                                          |
-| `pnpm benchmark:context`     | Context compression benchmark                                                         |
-| `pnpm benchmark:execution`   | Context execution benchmark                                                           |
-| `pnpm benchmark:classic`     | Classic baseline regression benchmark                                                 |
-| `pnpm benchmark:bundle`      | Bundle compatibility benchmark (includes build)                                       |
+After `pnpm build`, run `pnpm test:openspec-upstream` to check the real OpenSpec CLI. This explicit check installs OpenSpec 1.11.0 into a temporary fixture with isolated npm configuration and cache. For an offline check, set `COMET_TEST_OPENSPEC_PACKAGE` to an existing package directory. CI runs this check on Node 22 and 24; default Vitest runs require no OpenSpec download.
+
+| Command                       | Purpose                                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------- |
+| `pnpm dev`                    | Watch mode (TypeScript)                                                               |
+| `pnpm build`                  | Full build (Classic, Native, and entry runtimes + dashboard)                          |
+| `pnpm build:classic-runtime`  | Build only the Classic runtime (`scripts/build/build-classic-runtime.mjs`)            |
+| `pnpm build:native-runtime`   | Build only the Native runtime (`scripts/build/build-native-runtime.mjs`)              |
+| `pnpm build:entry-runtime`    | Build only the shared entry and Hook Router (`scripts/build/build-entry-runtime.mjs`) |
+| `pnpm build:dashboard`        | Build only the `comet dashboard` frontend (Vite)                                      |
+| `pnpm dev:dashboard`          | Dashboard frontend dev mode                                                           |
+| `pnpm test`                   | Run unit tests (Vitest)                                                               |
+| `pnpm test:coverage`          | Run tests with coverage                                                               |
+| `pnpm test:script-smoke`      | Run the Classic launcher smoke suite; CI entry point                                  |
+| `pnpm test:openspec-upstream` | Check real OpenSpec CLI status and schema compatibility after building                |
+| `pnpm test:watch`             | Vitest watch mode                                                                     |
+| `pnpm lint`                   | ESLint + architecture linter                                                          |
+| `pnpm lint:architecture`      | Repository layering linter (`scripts/lint/architecture.mjs`)                          |
+| `pnpm lint:fix`               | ESLint auto-fix                                                                       |
+| `pnpm format`                 | Prettier formatting for `app/`, `domains/`, `platform/`                               |
+| `pnpm format:check`           | Prettier check (CI-enforced)                                                          |
+| `pnpm benchmark:context`      | Context compression benchmark                                                         |
+| `pnpm benchmark:execution`    | Context execution benchmark                                                           |
+| `pnpm benchmark:classic`      | Classic baseline regression benchmark                                                 |
+| `pnpm benchmark:bundle`       | Bundle compatibility benchmark (includes build)                                       |
 
 For workflow runtime work, first check freshness for the affected owner. Classic
 launchers also have a focused smoke suite:

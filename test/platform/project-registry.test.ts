@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 
 import {
   ProjectRegistryError,
   getProjectRegistryPath,
+  findProjectRegistryEntry,
   listProjectRegistryEntries,
   readProjectRegistry,
   repairProjectRegistry,
@@ -28,6 +30,120 @@ describe('project installation registry', () => {
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('finds a missing project through an existing parent alias even when registered by its real path', async () => {
+    const parent = path.join(tmpDir, 'real');
+    const project = path.join(parent, 'nested', 'project');
+    const alias = path.join(tmpDir, 'alias');
+    await fs.mkdir(project, { recursive: true });
+    await fs.symlink(parent, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const entry = await upsertProjectInstallation(project, [], 'init', { homeDir });
+    await fs.rm(path.dirname(project), { recursive: true });
+    const requested = path.join(alias, 'nested', 'project');
+    expect(await findProjectRegistryEntry(requested, [entry])).toEqual(entry);
+    expect(await removeProjectInstallation(requested, { homeDir })).toBe(true);
+    expect((await readProjectRegistry({ homeDir })).projects).toEqual([]);
+  });
+
+  it('does not match the old installation when a live alias points to another project', async () => {
+    const original = path.join(tmpDir, 'original');
+    const replacement = path.join(tmpDir, 'replacement');
+    const alias = path.join(tmpDir, 'alias');
+    await fs.mkdir(original);
+    await fs.mkdir(replacement);
+    await fs.symlink(original, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const entry = await upsertProjectInstallation(alias, [], 'init', { homeDir });
+    await fs.unlink(alias);
+    await fs.symlink(replacement, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    expect(await findProjectRegistryEntry(alias, [entry])).toBeUndefined();
+    expect(await removeProjectInstallation(alias, { homeDir })).toBe(false);
+    expect((await readProjectRegistry({ homeDir })).projects).toEqual([entry]);
+  });
+
+  it('does not treat realpath access failures as missing paths', async () => {
+    const denied = Object.assign(new Error('access denied'), { code: 'EACCES' });
+    const realpath = vi.spyOn(fs, 'realpath').mockRejectedValueOnce(denied);
+    try {
+      await expect(findProjectRegistryEntry(tmpDir, [])).rejects.toBe(denied);
+    } finally {
+      realpath.mockRestore();
+    }
+  });
+
+  it('keeps a live canonical project when its registered alias is deleted', async () => {
+    const project = path.join(tmpDir, 'live-target');
+    const alias = path.join(tmpDir, 'deleted-link');
+    await fs.mkdir(project);
+    await fs.symlink(project, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const entry = await upsertProjectInstallation(alias, [], 'init', { homeDir });
+    await fs.unlink(alias);
+    expect(await findProjectRegistryEntry(alias, [entry])).toBeUndefined();
+    expect(await removeProjectInstallation(alias, { homeDir })).toBe(false);
+    expect((await readProjectRegistry({ homeDir })).projects).toEqual([entry]);
+  });
+
+  it('rechecks missing-only removal after waiting for an installation registry writer', async () => {
+    const project = path.join(tmpDir, 'restored-project');
+    const entry = await upsertProjectInstallation(project, [], 'init', { homeDir });
+    const lockPath = `${getProjectRegistryPath(homeDir)}.lock`;
+    let ready!: () => void;
+    let release!: () => void;
+    const locked = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const writer = withRecoverableFileLock(lockPath, async () => {
+      ready();
+      await resume;
+      await fs.mkdir(project);
+    });
+    await locked;
+    let signalAttempt!: () => void;
+    const attempted = new Promise<void>((resolve) => {
+      signalAttempt = resolve;
+    });
+    const originalOpen = fs.open.bind(fs);
+    const open = vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      if (args[0] === lockPath && args[1] === 'wx') signalAttempt();
+      return originalOpen(...args);
+    });
+    const removing = expect(
+      removeProjectInstallation(project, {
+        homeDir,
+        expectedCanonicalPath: entry.canonicalPath,
+        missingOnly: true,
+      }),
+    ).rejects.toThrow('Project directory reappeared');
+    try {
+      await attempted;
+      release();
+      await writer;
+      await removing;
+    } finally {
+      release();
+      await writer;
+      open.mockRestore();
+    }
+    expect((await readProjectRegistry({ homeDir })).projects).toEqual([entry]);
+  });
+
+  it('keeps the original live target when a parent alias is retargeted to a missing child', async () => {
+    const old = path.join(tmpDir, 'old');
+    const next = path.join(tmpDir, 'new');
+    const alias = path.join(tmpDir, 'retargeted-alias');
+    await fs.mkdir(path.join(old, 'project'), { recursive: true });
+    await fs.mkdir(next);
+    await fs.symlink(old, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const project = path.join(alias, 'project');
+    const entry = await upsertProjectInstallation(project, [], 'init', { homeDir });
+    await fs.unlink(alias);
+    await fs.symlink(next, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    expect(await findProjectRegistryEntry(project, [entry])).toBeUndefined();
+    expect(await removeProjectInstallation(project, { homeDir })).toBe(false);
+    expect((await readProjectRegistry({ homeDir })).projects).toEqual([entry]);
   });
 
   it('does not overwrite an addition made while cleanup checks an old snapshot', async () => {

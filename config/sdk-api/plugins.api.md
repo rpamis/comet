@@ -518,7 +518,9 @@ export class PluginRuntime {
     list(scope?: PluginScope): Promise<PluginView[]>;
     // (undocumented)
     reconcileFirstParty(): Promise<void>;
-    replayLearning(): Promise<void>;
+    replayLearning(options?: {
+        readonly retryNow?: boolean;
+    }): Promise<void>;
     // (undocumented)
     resolveContext(id: string, request: PluginContextRequest, scope: PluginScopeTarget, owner?: string): Promise<AgentContextCandidate[]>;
     // (undocumented)

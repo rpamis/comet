@@ -140,7 +140,7 @@ brainstorming → delta spec → 实施 → 验证 → 主 spec 合并 → desig
 
 ### 4. 精确提交归档改动
 
-若 delivery 的 action 为 `archive-only`，归档命令已将 `branch_status` 设为 `handled`，并在最终完整性检查后记录归档目录中全部文件的 SHA-256 摘要。运行 `comet guard <change-name> archive` 和 `comet state delivery <change-name> --verify`；只有返回 `verification.status: complete`，且归档目录、主 spec 和回执均保留时才清除 current selection。此路径不执行以下 Git 提交、push 或 PR 步骤；子仓库交付由各仓库自己的记录证明。归档文件之后发生增删改时，回执校验会退回 `needsVerification`，先恢复或重新处理文档，不覆盖已封存回执。
+若 delivery 的 action 为 `archive-only`，归档命令已将 `branch_status` 设为 `handled`，并在最终完整性检查后记录归档目录中全部文件（含归档时的主 spec 快照）的 SHA-256 摘要。运行 `comet guard <change-name> archive` 和 `comet state delivery <change-name> --verify`；只有返回 `verification.status: complete`，且归档目录、主 spec 快照和回执均保留时才清除 current selection。此路径不执行以下 Git 提交、push 或 PR 步骤；子仓库交付由各仓库自己的记录证明。归档文件之后发生增删改时，回执校验会退回 `needsVerification`，先恢复或重新处理文档，不覆盖已封存回执。
 
 归档脚本只移动文件和合并 spec，不会自动提交。归档完成后工作区会有以下未提交改动：
 

@@ -4,7 +4,10 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { collectDashboardProjectDirectory } from '../../../domains/dashboard/project-directory.js';
+import {
+  collectDashboardProjectDirectory,
+  forgetMissingDashboardProject,
+} from '../../../domains/dashboard/project-directory.js';
 import {
   getProjectRegistryPath,
   upsertProjectInstallation,
@@ -25,6 +28,28 @@ describe('collectDashboardProjectDirectory', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('removes the selected canonical entry when two missing targets share a deleted alias', async () => {
+    const alias = path.join(tempDir, 'shared-alias');
+    let firstId: string | undefined;
+    for (const name of ['first', 'second']) {
+      const target = path.join(tempDir, name);
+      await fs.mkdir(target);
+      await fs.symlink(target, alias, process.platform === 'win32' ? 'junction' : 'dir');
+      await upsertProjectInstallation(alias, [], 'init', { homeDir });
+      if (name === 'first') {
+        const first = await collectDashboardProjectDirectory(currentProject, { homeDir });
+        firstId = first.projects.find((entry) => !entry.isCurrent)?.id;
+      }
+      await fs.unlink(alias);
+      await fs.rm(target, { recursive: true });
+    }
+    const directory = await collectDashboardProjectDirectory(currentProject, { homeDir });
+    const selected = directory.projects.find((entry) => !entry.isCurrent && entry.id !== firstId)!;
+    const updated = await forgetMissingDashboardProject(currentProject, selected, { homeDir });
+    expect(updated.projects.map((entry) => entry.id)).not.toContain(selected.id);
+    expect(updated.projects).toHaveLength(2);
   });
 
   it('distinguishes worktrees of the same repository and keeps IDs stable when unavailable', async () => {

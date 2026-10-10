@@ -18,7 +18,14 @@ export async function getDshProfilePatchPaths(configRoot: string): Promise<strin
       throw error;
     });
     if (!stat?.isFile() || stat.isSymbolicLink()) continue;
-    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+    const source = await fs.readFile(manifestPath, 'utf8');
+    let manifest;
+    try {
+      manifest = JSON.parse(source);
+    } catch (error) {
+      if (error instanceof SyntaxError) continue;
+      throw error;
+    }
     if (manifest?.dsh?.profile && typeof manifest.dsh.profile === 'object') {
       patches.push(path.join(directory, 'cordis.patch.yml'));
     }

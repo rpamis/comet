@@ -4,9 +4,12 @@ import path from 'path';
 
 import {
   ProjectRegistryError,
+  ProjectDirectoryReappearedError,
   readProjectRegistry,
+  removeProjectInstallation,
   type ProjectRegistryEntry,
 } from '../../platform/install/project-registry.js';
+import { isProjectDirectoryMissing } from '../../platform/fs/file-system.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import type { CometProjectWorkflow } from '../workflow-contract/types.js';
 
@@ -32,6 +35,10 @@ export interface DashboardProjectDirectory {
 
 export interface DashboardProjectDirectoryOptions {
   homeDir?: string;
+}
+
+export class DashboardProjectDirectoryError extends Error {
+  readonly status = 409;
 }
 
 function canonicalKey(projectPath: string): string {
@@ -115,7 +122,7 @@ export async function collectDashboardProjectDirectory(
     const key = canonicalKey(entry.canonicalPath || entry.path);
     const existing = candidates.get(key);
     candidates.set(key, {
-      path: entry.path,
+      path: key === currentKey ? currentPath : entry.path,
       lastSeenAt: existing?.lastSeenAt ?? entry.lastSeenAt,
     });
   }
@@ -152,4 +159,37 @@ export function findDashboardProject(
   id: string,
 ): DashboardProjectEntry | undefined {
   return directory.projects.find((project) => project.id === id);
+}
+
+export async function forgetMissingDashboardProject(
+  currentProjectPath: string,
+  project: DashboardProjectEntry,
+  options: DashboardProjectDirectoryOptions = {},
+): Promise<DashboardProjectDirectory> {
+  if (
+    project.isCurrent ||
+    project.availability !== 'missing' ||
+    !(await isProjectDirectoryMissing(project.path))
+  ) {
+    throw new DashboardProjectDirectoryError(
+      'Only missing projects other than the launch project can be removed from the index',
+    );
+  }
+  const registry = await readProjectRegistry({ homeDir: options.homeDir, strict: true });
+  const entry = registry.projects.find(
+    (candidate) => projectId(canonicalKey(candidate.canonicalPath)) === project.id,
+  );
+  if (entry) {
+    try {
+      await removeProjectInstallation(project.path, {
+        homeDir: options.homeDir,
+        expectedCanonicalPath: entry.canonicalPath,
+        missingOnly: true,
+      });
+    } catch (error) {
+      if (!(error instanceof ProjectDirectoryReappearedError)) throw error;
+      throw new DashboardProjectDirectoryError(error.message);
+    }
+  }
+  return collectDashboardProjectDirectory(currentProjectPath, options);
 }

@@ -319,13 +319,20 @@ export async function reconcileDshCordisPatch(
   baseDir: string,
   platform: Platform,
   scope: InstallScope,
-): Promise<void> {
+): Promise<() => Promise<void>> {
   const destinations = await patchPaths(baseDir, platform, scope);
   const rootPatch = dshPatchPath(baseDir, platform, scope);
   const allPaths = [...new Set([...destinations, rootPatch])];
   // 先解析所有配置，避免某个 profile 损坏后留下已被修改的其他 profile。
   const documents = await Promise.all(
-    allPaths.map(async (file) => ({ file, document: await readDshPatchDocument(file) })),
+    allPaths.map(async (file) => ({
+      file,
+      document: await readDshPatchDocument(file),
+      source: await readFile(file, 'utf8').catch((error) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      }),
+    })),
   );
   for (const { file, document } of documents) {
     const patches = document.toJSON() as unknown[];
@@ -344,29 +351,57 @@ export async function reconcileDshCordisPatch(
       }
     }
   }
-  for (const { file, document } of documents) {
-    const removed = removeManagedPatchRows(document, baseDir, platform, scope);
-    if (destinations.includes(file)) {
-      if (!isSeq(document.contents)) throw new Error('dsh patch must contain a YAML sequence');
-      document.add({
-        insert: [
-          {
-            id: DSH_HOOK_ENTRY_ID,
-            name: DSH_HOOK_PACKAGE,
-            config: {
-              configPath: dshHooksConfigPath(baseDir, platform, scope).replaceAll('\\', '/'),
+  const changed = new Set<string>();
+  const rollback = async (): Promise<void> => {
+    const results = await Promise.allSettled(
+      documents
+        .filter(({ file }) => changed.has(file))
+        .map(async ({ file, source }) => {
+          if (source === null) await rm(file, { force: true });
+          else if (
+            (await readFile(file, 'utf8').catch((error) => {
+              if (error.code === 'ENOENT') return null;
+              throw error;
+            })) !== source
+          )
+            await writeFile(file, source);
+        }),
+    );
+    const failures = results.filter((result) => result.status === 'rejected');
+    if (failures.length > 0)
+      throw new Error(`Could not restore ${failures.length} DSH patch file(s)`);
+  };
+  try {
+    for (const { file, document } of documents) {
+      const removed = removeManagedPatchRows(document, baseDir, platform, scope);
+      if (destinations.includes(file)) {
+        if (!isSeq(document.contents)) throw new Error('dsh patch must contain a YAML sequence');
+        document.add({
+          insert: [
+            {
+              id: DSH_HOOK_ENTRY_ID,
+              name: DSH_HOOK_PACKAGE,
+              config: {
+                configPath: dshHooksConfigPath(baseDir, platform, scope).replaceAll('\\', '/'),
+              },
             },
-          },
-        ],
-      });
-      await ensureDir(path.dirname(file));
-      await writeFile(file, document.toString());
-    } else if (removed > 0) {
-      if (isSeq(document.contents) && document.contents.items.length === 0)
-        await rm(file, { force: true });
-      else await writeFile(file, document.toString());
+          ],
+        });
+        await ensureDir(path.dirname(file));
+        changed.add(file);
+        await writeFile(file, document.toString());
+      } else if (removed > 0) {
+        changed.add(file);
+        if (isSeq(document.contents) && document.contents.items.length === 0)
+          await rm(file, { force: true });
+        else await writeFile(file, document.toString());
+      }
     }
+  } catch (error) {
+    await rollback();
+    throw error;
   }
+  return rollback;
 }
 
 export async function removeDshCordisPatch(

@@ -7,7 +7,7 @@ import {
   getPlatformSkillsDir,
   getPlatformSkillsDirs,
 } from '../../platform/install/platforms.js';
-import { fileExists } from '../../platform/fs/file-system.js';
+import { fileExists, isProjectDirectoryMissing } from '../../platform/fs/file-system.js';
 import {
   removeCometSkillsForPlatform,
   removeCometRulesForPlatform,
@@ -40,6 +40,7 @@ interface UninstallOptions {
   currentProject?: boolean;
   recoverProjectCleanup?: boolean;
   recoveryTargets?: ProjectRegistryTarget[];
+  recoveryCanonicalPath?: string;
   targetPlatforms?: string[];
   workflows?: CometWorkflow[];
   companionSkills?: Array<'openspec' | 'superpowers'>;
@@ -226,6 +227,9 @@ async function removeSelectedWorkflowsFromProjectConfig(
 interface SingleProjectUninstallResult {
   projectPath: string;
   projectScopeProcessed: boolean;
+  projectMissing?: true;
+  registryEntryRemoved?: boolean;
+  registryCanonicalPath?: string;
   targets: TargetUninstallResult[];
   workingDirsRemoved: number;
   workingDirsPreserved: string[];
@@ -263,6 +267,7 @@ function mergeCleanupTargets(
 }
 
 function currentProjectJson(result: SingleProjectUninstallResult | null): {
+  registryEntryRemoved?: boolean;
   targets: Array<{
     scope: InstallScope;
     platform: string;
@@ -281,6 +286,9 @@ function currentProjectJson(result: SingleProjectUninstallResult | null): {
   projectInstructionsRemoved: number;
 } {
   return {
+    ...(result?.registryEntryRemoved !== undefined
+      ? { registryEntryRemoved: result.registryEntryRemoved }
+      : {}),
     targets:
       result?.targets.map((r) => ({
         scope: r.scope,
@@ -313,6 +321,40 @@ async function uninstallSingleProject(
   log: (message: string) => void,
 ): Promise<SingleProjectUninstallResult | null> {
   const targetScope = options.scope ?? 'project';
+  if (
+    targetScope === 'project' &&
+    options.recoverProjectCleanup &&
+    (await isProjectDirectoryMissing(projectPath))
+  ) {
+    const lang = options.language ?? 'en';
+    if (!options.force && !options.json) {
+      const confirmed = await select({
+        message: formatMessage(lang, 'removeMissingProjectPrompt', { path: projectPath }),
+        choices: [
+          { name: t(lang, 'uninstallAllProjectsYes'), value: true },
+          { name: t(lang, 'uninstallAllProjectsNo'), value: false },
+        ],
+      });
+      if (!confirmed) return null;
+    }
+    return {
+      projectPath,
+      projectScopeProcessed: true,
+      projectMissing: true,
+      registryCanonicalPath: options.recoveryCanonicalPath,
+      targets: [],
+      workingDirsRemoved: 0,
+      workingDirsPreserved: [],
+      projectInstructionsRemoved: 0,
+      summary: {
+        targetsProcessed: 0,
+        totalSkillsRemoved: 0,
+        totalRulesRemoved: 0,
+        totalHooksRemoved: 0,
+        totalFailures: 0,
+      },
+    };
+  }
   const detectedTargets = await detectInstalledCometTargets(projectPath, {
     scopes: [targetScope],
     respectDetectionPaths: false,
@@ -604,6 +646,17 @@ async function refreshRegistryAfterProjectUninstall(
   if (!result?.projectScopeProcessed) return;
   if (result.summary.totalFailures > 0) return;
 
+  if (result.projectMissing) {
+    if (!(await isProjectDirectoryMissing(result.projectPath))) {
+      throw new Error('Project directory reappeared; retry uninstall to inspect its installations');
+    }
+    result.registryEntryRemoved = await removeProjectInstallation(result.projectPath, {
+      expectedCanonicalPath: result.registryCanonicalPath,
+      missingOnly: true,
+    });
+    return;
+  }
+
   const remaining = await detectInstalledCometTargets(result.projectPath, { scopes: ['project'] });
   if (remaining.length === 0) {
     await removeProjectInstallation(result.projectPath);
@@ -676,16 +729,21 @@ async function uninstallAllIndexedProjects(
   for (const project of runnableProjects) {
     const { projectPath, targets, registryProject } = project;
     const projectTargets = mergeCleanupTargets(targets, registryProject.lastTargets, true);
-    if (!projectTargets.some((target) => selectedPlatformIds.includes(target.platform.id))) {
-      results.push({
-        projectPath,
-        status: 'skipped',
-        reason: 'no installed platforms selected for this project',
-        targets: [],
-      });
-      continue;
-    }
     try {
+      const missingWithoutTargets =
+        projectTargets.length === 0 && (await isProjectDirectoryMissing(projectPath));
+      if (
+        !missingWithoutTargets &&
+        !projectTargets.some((target) => selectedPlatformIds.includes(target.platform.id))
+      ) {
+        results.push({
+          projectPath,
+          status: 'skipped',
+          reason: 'no installed platforms selected for this project',
+          targets: [],
+        });
+        continue;
+      }
       const result = await uninstallSingleProject(
         projectPath,
         {
@@ -697,6 +755,7 @@ async function uninstallAllIndexedProjects(
           targetPlatforms: selectedPlatformIds,
           recoverProjectCleanup: true,
           recoveryTargets: registryProject.lastTargets,
+          recoveryCanonicalPath: registryProject.canonicalPath,
           workflows: workflowSelection.workflows,
           companionSkills: workflowSelection.companionSkills,
         },
@@ -723,6 +782,9 @@ async function uninstallAllIndexedProjects(
         },
         projectInstructionsRemoved: result?.projectInstructionsRemoved ?? 0,
         workingDirsRemoved: result?.workingDirsRemoved ?? 0,
+        ...(result?.registryEntryRemoved !== undefined
+          ? { registryEntryRemoved: result.registryEntryRemoved }
+          : {}),
       });
     } catch (error) {
       results.push({
@@ -798,6 +860,7 @@ export async function uninstallCommand(
       scope: options.scope ?? 'project',
       recoverProjectCleanup: Boolean(registeredProject) && options.scope !== 'global',
       recoveryTargets: registeredProject?.lastTargets,
+      recoveryCanonicalPath: registeredProject?.canonicalPath,
       language: lang,
     },
     log,
@@ -813,6 +876,7 @@ export async function uninstallCommand(
   }
 
   await refreshRegistryAfterProjectUninstall(result);
+  if (result.registryEntryRemoved) log(`  ${t(lang, 'missingProjectIndexRemoved')}`);
 
   if (result.summary.totalFailures > 0) process.exitCode = 1;
 

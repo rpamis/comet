@@ -52,6 +52,24 @@ describe('DSH installed hook contract', () => {
     return parse(await fs.readFile(file, 'utf8'));
   }
 
+  it('preserves existing profile bridges when a Hook configuration update fails', async () => {
+    const desktop = await profile('desktop');
+    const web = await profile('web');
+    await install('global');
+    const before = await Promise.all(
+      [desktop, web].map((dir) => fs.readFile(path.join(dir, 'cordis.patch.yml'), 'utf8')),
+    );
+    await fs.writeFile(path.join(root, '.dsh/hooks.json'), '{invalid');
+    expect(await installCometHooksForPlatform(root, dsh, 'global')).toMatchObject({
+      status: 'failed',
+    });
+    expect(
+      await Promise.all(
+        [desktop, web].map((dir) => fs.readFile(path.join(dir, 'cordis.patch.yml'), 'utf8')),
+      ),
+    ).toEqual(before);
+  });
+
   it('installs a loadable insertion that matches native lower-case write and edit tools', async () => {
     const hooks = await install();
     const warnings: string[] = [];
