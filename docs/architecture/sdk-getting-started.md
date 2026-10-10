@@ -141,7 +141,7 @@ const plugin = definePlugin({
   }),
 });
 const plugins = new PluginRuntime({
-  cometVersion: '0.4.6',
+  cometVersion: '0.5.0',
   store: new MemoryPluginStateStore(),
   descriptors: [plugin],
 });
