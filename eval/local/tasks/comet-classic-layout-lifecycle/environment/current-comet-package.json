@@ -3,7 +3,6 @@
   "type": "module",
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
-    "@fission-ai/openspec": "^1.11.0",
     "@inquirer/ansi": "^2.0.7",
     "@inquirer/core": "^12.0.1",
     "@inquirer/figures": "^2.0.8",
