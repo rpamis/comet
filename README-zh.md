@@ -29,18 +29,18 @@
 
 > [想出现在这里？](mailto:benyuanming@gmail.com)
 
-<details>
+<details open>
 <summary>点击收起</summary>
 
 <table width="100%">
   <tr>
     <td width="25%" align="center" valign="middle">
-      <a href="https://www.packyapi.com/register?aff=AIClient2API">
+      <a href="https://www.packyapi.ai/register?aff=DIId">
         <img src="https://raw.githubusercontent.com/rpamis/comet/91378aef2976954761dc67487f54ba79de6106dd/img/PackyCode.png" alt="PackyCode Sponsor" width="180">
       </a>
     </td>
     <td width="75%" align="left" valign="middle">
-      PackyCode 是一家稳定、高效的 API 中转服务商，一句话接入主流大模型。统一域名、统一密钥、智能容灾切换，97% 可用性。人民币1:1充值，无汇率无手续费坑，新用户首充立享折扣 + $1免费体验额度，多分组折扣低至 2 折起，提供专属Codex/Claude Code高速通道。<a href="https://www.packyapi.com/register?aff=AIClient2API">点此链接注册，立即开始使用！</a>
+      PackyCode 是一家稳定、高效的 API 中转服务商，一句话接入主流大模型。统一域名、统一密钥、智能容灾切换，97% 可用性。人民币1:1充值，无汇率无手续费坑，新用户首充立享折扣 + $1免费体验额度，多分组折扣低至 2 折起，提供专属Codex/Claude Code高速通道。<a href="https://www.packyapi.ai/register?aff=DIId">点此链接注册，立即开始使用！</a>
     </td>
   </tr>
 </table>

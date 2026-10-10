@@ -29,20 +29,20 @@ This project is supported by [PackyCode](https://www.packyapi.ai/register?aff=DI
 
 > [Want to be featured here?](mailto:benyuanming@gmail.com)
 
-<details>
-<summary>Sponsor details</summary>
+<details open>
+<summary>Click to collapse</summary>
 
 <table width="100%">
   <tr>
     <td width="25%" align="center" valign="middle">
-      <a href="https://www.packyapi.com/register?aff=AIClient2API">
+      <a href="https://www.packyapi.ai/register?aff=DIId">
         <img src="https://raw.githubusercontent.com/rpamis/comet/91378aef2976954761dc67487f54ba79de6106dd/img/PackyCode.png" alt="PackyCode Sponsor" width="180">
       </a>
     </td>
     <td width="75%" align="left" valign="middle">
       <p>Access leading AI models through PackyCode with one API endpoint and one API key. Enjoy fast, reliable access with automatic failover and dedicated high-speed routes for Codex and Claude Code.</p>
       <p>Get started with $1 in free credits, a discount on your first top-up, and savings of up to 80% on eligible routes. Pay in RMB with no currency conversion markups or extra top-up fees.</p>
-      <p><a href="https://www.packyapi.com/register?aff=AIClient2API">Sign up through the link and start building today.</a></p>
+      <p><a href="https://www.packyapi.ai/register?aff=DIId">Sign up through the link and start building today.</a></p>
     </td>
   </tr>
 </table>
