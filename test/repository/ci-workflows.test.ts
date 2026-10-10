@@ -92,6 +92,11 @@ describe('CI workflows', () => {
       'windows-latest',
     ]);
     expect(ci.jobs?.['ci-required']?.needs).toContain('package-e2e');
+    for (const jobName of ['quality', 'node-compatibility']) {
+      expect(ci.jobs?.[jobName]?.steps?.map((step) => step.run)).toContain(
+        'pnpm test:openspec-upstream',
+      );
+    }
     expect(ci.jobs?.['dashboard-e2e']?.steps?.map((step) => step.run)).toContain(
       'pnpm install --frozen-lockfile --ignore-scripts',
     );

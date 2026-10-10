@@ -48,6 +48,8 @@ jobs:
       - run: pnpm build
       - name: Verify build is deterministic
         run: git diff --exit-code -- assets
+      - name: Verify external OpenSpec CLI compatibility
+        run: pnpm test:openspec-upstream
       - run: pnpm test:coverage
       - name: Upload coverage report
         if: always()
@@ -81,6 +83,8 @@ jobs:
           version: '0.11.29'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: Verify external OpenSpec CLI compatibility
+        run: pnpm test:openspec-upstream
       - run: pnpm test
 
   runtime-smoke:
