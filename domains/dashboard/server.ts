@@ -25,7 +25,6 @@ import {
   DashboardProjectDirectoryError,
   findDashboardProject,
   forgetMissingDashboardProject,
-  type DashboardProjectDirectoryOptions,
 } from './project-directory.js';
 import { DashboardPluginHostError, type DashboardPluginHostFactory } from './plugin-host.js';
 import type { DashboardChangeTab } from './types.js';
@@ -116,36 +115,32 @@ export async function startDashboardServer(
   const requestedPort = options.port ?? DEFAULT_PORT;
   const port = requestedPort === 0 ? 0 : await findAvailablePort(requestedPort);
   const pluginHostAccess = createDashboardPluginHostAccess(options.pluginHost);
-  const directoryOptions: DashboardProjectDirectoryOptions = {
-    currentCanonicalPath: await fs
-      .realpath(options.projectPath)
-      .catch(() => path.resolve(options.projectPath)),
-  };
+  const currentProjectPath = await fs
+    .realpath(options.projectPath)
+    .catch(() => path.resolve(options.projectPath));
 
   const server = http.createServer((req, res) => {
-    handleRequest(req, res, options.projectPath, webRoot, pluginHostAccess, directoryOptions).catch(
-      (error) => {
-        if (
-          error instanceof DashboardChangeQueryError ||
-          error instanceof NativeDashboardQueryError
-        ) {
-          respondJson(res, req.method ?? 'GET', 400, { error: error.message });
-          return;
-        }
-        if (error instanceof DashboardPluginHostError) {
-          respondJson(res, req.method ?? 'GET', error.statusCode, {
-            error: error.message,
-            ...(error.pluginId ? { pluginId: error.pluginId } : {}),
-          });
-          return;
-        }
-        if (error instanceof DashboardProjectConfigError) {
-          respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
-          return;
-        }
-        respondError(res, 500, `Internal server error: ${(error as Error).message}`);
-      },
-    );
+    handleRequest(req, res, currentProjectPath, webRoot, pluginHostAccess).catch((error) => {
+      if (
+        error instanceof DashboardChangeQueryError ||
+        error instanceof NativeDashboardQueryError
+      ) {
+        respondJson(res, req.method ?? 'GET', 400, { error: error.message });
+        return;
+      }
+      if (error instanceof DashboardPluginHostError) {
+        respondJson(res, req.method ?? 'GET', error.statusCode, {
+          error: error.message,
+          ...(error.pluginId ? { pluginId: error.pluginId } : {}),
+        });
+        return;
+      }
+      if (error instanceof DashboardProjectConfigError) {
+        respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
+        return;
+      }
+      respondError(res, 500, `Internal server error: ${(error as Error).message}`);
+    });
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -175,7 +170,6 @@ async function handleRequest(
   projectPath: string,
   webRoot: string,
   pluginHostAccess?: DashboardPluginHostAccess,
-  directoryOptions: DashboardProjectDirectoryOptions = {},
 ): Promise<void> {
   const authority = req.headers.host;
   const localPort = req.socket.localPort;
@@ -231,7 +225,7 @@ async function handleRequest(
   }
 
   if (pathname === '/api/dashboard/projects') {
-    const directory = await collectDashboardProjectDirectory(projectPath, directoryOptions);
+    const directory = await collectDashboardProjectDirectory(projectPath);
     respondJson(res, req.method, 200, directory);
     return;
   }
@@ -249,7 +243,7 @@ async function handleRequest(
     const projectId = separator === -1 ? suffix : suffix.slice(0, separator);
     const subpath = separator === -1 ? '' : suffix.slice(separator);
 
-    const directory = await collectDashboardProjectDirectory(projectPath, directoryOptions);
+    const directory = await collectDashboardProjectDirectory(projectPath);
     const project = findDashboardProject(directory, projectId);
     if (!project) {
       respondJson(res, req.method, 404, { error: 'Unknown dashboard project id' });
@@ -269,11 +263,7 @@ async function handleRequest(
         return;
       }
       try {
-        const updatedDirectory = await forgetMissingDashboardProject(
-          projectPath,
-          project,
-          directoryOptions,
-        );
+        const updatedDirectory = await forgetMissingDashboardProject(projectPath, project);
         respondJson(res, req.method, 200, updatedDirectory);
       } catch (error) {
         if (!(error instanceof DashboardProjectDirectoryError)) throw error;

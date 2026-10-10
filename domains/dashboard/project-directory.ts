@@ -35,7 +35,6 @@ export interface DashboardProjectDirectory {
 
 export interface DashboardProjectDirectoryOptions {
   homeDir?: string;
-  currentCanonicalPath?: string;
 }
 
 export class DashboardProjectDirectoryError extends Error {
@@ -106,9 +105,7 @@ export async function collectDashboardProjectDirectory(
   options: DashboardProjectDirectoryOptions = {},
 ): Promise<DashboardProjectDirectory> {
   const currentPath = path.resolve(currentProjectPath);
-  const currentKey = canonicalKey(
-    options.currentCanonicalPath ?? (await fs.realpath(currentPath).catch(() => currentPath)),
-  );
+  const currentKey = canonicalKey(await fs.realpath(currentPath).catch(() => currentPath));
   let registryProjects: ProjectRegistryEntry[] = [];
   let warning: string | undefined;
 
@@ -125,7 +122,7 @@ export async function collectDashboardProjectDirectory(
     const key = canonicalKey(entry.canonicalPath || entry.path);
     const existing = candidates.get(key);
     candidates.set(key, {
-      path: entry.path,
+      path: key === currentKey ? currentPath : entry.path,
       lastSeenAt: existing?.lastSeenAt ?? entry.lastSeenAt,
     });
   }
