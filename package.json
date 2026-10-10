@@ -98,7 +98,7 @@
     "katex": "0.18.2",
     "source-map-js": "1.2.2",
     "esbuild": "0.28.2",
-    "postcss": "8.5.26",
+    "postcss": "8.5.29",
     "undici": "7.29.1"
   },
   "pnpm": {
@@ -108,7 +108,7 @@
       "katex": "0.18.2",
       "source-map-js": "1.2.2",
       "esbuild": "0.28.2",
-      "postcss": "8.5.26",
+      "postcss": "8.5.29",
       "undici": "7.29.1"
     }
   },
@@ -124,21 +124,21 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.1.1",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.3",
     "esbuild": "0.28.2",
     "eslint": "^10.4.0",
     "husky": "^9.1.7",
     "jsdom": "^30.0.1",
     "lint-staged": "^17.0.7",
-    "postcss": "8.5.26",
+    "postcss": "8.5.29",
     "prettier": "^3.8.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwindcss": "^4.3.1",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "typescript-eslint": "^8.59.3",
-    "vite": "8.2.2",
-    "vitest": "^4.1.11"
+    "vite": "8.3.3",
+    "vitest": "^5.0.3"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
