@@ -1,3 +1,4 @@
+import { getCurrentVersion } from '../../../platform/version/version.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -30,7 +31,7 @@ async function terminal(base: ApplicationBase, cancelled: boolean, business = fa
       id: 'terminal-hook',
       version: '1',
       base,
-      runtimeVersion: '0.4.5',
+      runtimeVersion: getCurrentVersion(),
       entrySkill: 'SKILL.md',
       module: 'application.mjs',
       skills: [],

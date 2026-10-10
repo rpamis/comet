@@ -6,7 +6,7 @@ import { parse } from 'yaml';
 const repositoryRoot = path.resolve('.');
 
 describe('release metadata', () => {
-  it('keeps package, lockfile, and asset manifest versions aligned', () => {
+  it('keeps package, lockfile, asset manifest, and latest changelog versions aligned', () => {
     const packageJson = JSON.parse(
       readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
     ) as { version: string };
@@ -20,6 +20,10 @@ describe('release metadata', () => {
     expect(packageLock.version).toBe(packageJson.version);
     expect(packageLock.packages[''].version).toBe(packageJson.version);
     expect(assetsManifest.version).toBe(packageJson.version);
+
+    const changelog = readFileSync(path.join(repositoryRoot, 'CHANGELOG.md'), 'utf8');
+    const latestRelease = /^## What's Changed \[([^\]]+)\]/mu.exec(changelog)?.[1];
+    expect(latestRelease).toBe(packageJson.version);
   });
 
   it('keeps direct dependency specifiers aligned in both lockfiles', () => {

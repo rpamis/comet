@@ -1,3 +1,4 @@
+import { getCurrentVersion } from '../../../platform/version/version.js';
 import { Ajv } from 'ajv';
 import { expect, it, vi } from 'vitest';
 import {
@@ -33,7 +34,7 @@ it('reuses fixed plan validators while validating every new proposal and full pl
         id: 'plan-budget',
         version: '1',
         base: 'standalone',
-        runtimeVersion: '0.4.5',
+        runtimeVersion: getCurrentVersion(),
         entrySkill: 'SKILL.md',
         module: 'custom.mjs',
         skills: [],

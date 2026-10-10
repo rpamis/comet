@@ -6,7 +6,7 @@
 
 ## 创建可运行的包
 
-在安装了 Comet 0.4.5 的项目中创建独立目录，例如 `.comet/applications/local-report/`。以下三份文件组成最小 Application 包，全部通过现有公开加载器运行。
+在安装了 Comet 0.4.6 的项目中创建独立目录，例如 `.comet/applications/local-report/`。以下三份文件组成最小 Application 包，全部通过现有公开加载器运行。
 
 `application.json`：
 
@@ -16,7 +16,7 @@
   "id": "local-report",
   "version": "1",
   "base": "standalone",
-  "runtimeVersion": "0.4.5",
+  "runtimeVersion": "0.4.6",
   "entrySkill": "ENTRY.md",
   "module": "application.mjs",
   "skills": [],

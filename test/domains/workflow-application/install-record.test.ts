@@ -1,3 +1,4 @@
+import { getCurrentVersion } from '../../../platform/version/version.js';
 import path from 'node:path';
 import { expect, it } from 'vitest';
 import { applicationInstallSkills } from '../../../domains/workflow-application/install-record.js';
@@ -31,7 +32,7 @@ it('keeps authored instructions and resolves their resource links from the insta
     id: 'authored-suite',
     version: '1',
     base: 'standalone',
-    runtimeVersion: '0.4.5',
+    runtimeVersion: getCurrentVersion(),
     entrySkill: 'SKILL.md',
     module: 'application.mjs',
     skills: [],

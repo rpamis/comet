@@ -1,3 +1,4 @@
+import { getCurrentVersion } from '../../../platform/version/version.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -117,7 +118,7 @@ it('compiles fixed material deterministically and binds entry/install/recovery t
     id: 'quarterly-report',
     version: '1',
     base: 'standalone' as const,
-    runtimeVersion: '0.4.5',
+    runtimeVersion: getCurrentVersion(),
     entrySkill: 'SKILL.md',
     module: 'application.mjs',
     skills: [],
@@ -276,7 +277,7 @@ it('runs a compiled report through public exports and cold process recovery whil
     id: 'compiled-report',
     version: '1',
     base: 'standalone' as const,
-    runtimeVersion: '0.4.5',
+    runtimeVersion: getCurrentVersion(),
     entrySkill: 'SKILL.md',
     module: 'application.mjs',
     skills: [],
@@ -375,7 +376,7 @@ it('assembles Classic replacements and order into actual SDK transitions and ret
       id: 'compiled-classic',
       version: '1',
       base: 'classic-hotfix',
-      runtimeVersion: '0.4.5',
+      runtimeVersion: getCurrentVersion(),
       entrySkill: 'SKILL.md',
       module: 'application.mjs',
       skills: dependencies,

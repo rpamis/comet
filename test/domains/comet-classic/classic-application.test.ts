@@ -1,3 +1,4 @@
+import { getCurrentVersion } from '../../../platform/version/version.js';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
@@ -161,7 +162,7 @@ async function fixture(
     id: `custom-classic-${profile}`,
     version: '1',
     base: `classic-${profile}` as const,
-    runtimeVersion: '0.4.5',
+    runtimeVersion: getCurrentVersion(),
     entrySkill: 'entry/SKILL.md',
     module: 'application.mjs',
     skills: dependencies,
@@ -174,7 +175,7 @@ async function fixture(
     contentHash: 'a'.repeat(64),
     packageRoot,
     projectRoot,
-    runtimeVersion: '0.4.5',
+    runtimeVersion: getCurrentVersion(),
   };
   const context: WorkflowApplicationFactoryContext = {
     manifest,

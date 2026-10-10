@@ -596,7 +596,7 @@ async function main() {
          }),
        };
        const storage: PluginStorageStore = { open: async () => ({ read: async () => null, write: async () => {} }) };
-       const runtime = new PluginRuntime({ cometVersion: '0.4.5', store: new MemoryPluginStateStore(), storage, descriptors: [descriptor] });
+       const runtime = new PluginRuntime({ cometVersion: ${JSON.stringify(packageJson.version)}, store: new MemoryPluginStateStore(), storage, descriptors: [descriptor] });
        const options: CometPluginBridgeOptions = { projectRoot: '.', projectId: 'typed-project', descriptors: [descriptor], config: { 'typed-plugin': { enabled: true } } };
        void runtime; void createDefaultCometPluginBridge(options);
       `,

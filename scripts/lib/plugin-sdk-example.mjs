@@ -58,7 +58,7 @@ const notesPlugin = definePlugin({
 });
 
 const runtime = new PluginRuntime({
-  cometVersion: '0.4.5',
+  cometVersion: '0.4.6',
   store: new MemoryPluginStateStore(),
   storage: new MemoryPluginStorageStore(),
   descriptors: [notesPlugin],

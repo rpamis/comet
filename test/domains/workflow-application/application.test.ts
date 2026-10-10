@@ -35,6 +35,16 @@ describe('application adaptation and SDK authority', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
   const input = { topic: 'Actual topic' };
+  it('rejects an application pinned to a different Runtime before creating saved progress', async () => {
+    const fixture = await createDiskApplication(root);
+    fixture.manifest.runtimeVersion = '0.0.0';
+    await fs.writeFile(fixture.file, JSON.stringify(fixture.manifest));
+
+    await expect(
+      loadWorkflowApplication({ file: fixture.file, projectRoot: root }),
+    ).rejects.toThrow('应用要求 Runtime 0.0.0');
+    await expect(fs.stat(path.join(root, '.comet'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
   it('reads saved progress without loading changed application code or rewriting the Run', async () => {
     const { runtime, fixture } = await application();
     const manifest = JSON.parse(await fs.readFile(fixture.file, 'utf8'));

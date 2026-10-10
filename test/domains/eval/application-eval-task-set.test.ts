@@ -1,3 +1,4 @@
+import { getCurrentVersion } from '../../../platform/version/version.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -40,7 +41,7 @@ beforeEach(async () => {
         id: 'taskset-report',
         version: '1',
         base: 'standalone',
-        runtimeVersion: '0.4.5',
+        runtimeVersion: getCurrentVersion(),
         entrySkill: 'SKILL.md',
         module: 'application.mjs',
         skills: [],
