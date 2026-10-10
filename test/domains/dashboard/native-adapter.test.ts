@@ -209,6 +209,9 @@ describe('Native Dashboard v2 adapter', () => {
         checks: [{ id: 'focused-tests', status: 'running', logAvailable: true }],
       },
       verification: {
+        candidateId: 'candidate-3',
+        iteration: 3,
+        attempt: 2,
         verdict: 'fail',
         assurance: 'host-attested',
         summary: text('一项验收仍失败。'),

@@ -32,15 +32,19 @@ export type NativeDashboardMigrationStatus =
 export type NativeDashboardLocalExecutionReason =
   'current' | 'idle' | 'missing' | 'version-mismatch' | 'invalid' | 'archived';
 
-export interface NativeDashboardArtifactPreview {
+export interface NativeDashboardArtifactReference {
   key: string;
   label: string;
   path: string;
+}
+
+export interface NativeDashboardArtifactPreview extends NativeDashboardArtifactReference {
   exists: boolean;
   content?: string;
   truncated?: boolean;
   size?: number;
   updatedAt?: string;
+  previewBytes?: number;
 }
 
 export interface NativeDashboardAcceptanceCounts {
@@ -97,6 +101,9 @@ export interface NativeDashboardSpecSummary {
 }
 
 export interface NativeDashboardVerificationSummary {
+  candidateId: string;
+  iteration: number;
+  attempt: number;
   verdict: 'pass' | 'fail' | 'blocked';
   assurance: NativePortableVerificationAssurance;
   summary: NativePortableText;
@@ -195,6 +202,7 @@ export type NativeDashboardChangeListItem = NativeDashboardChangeIdentity;
 
 export interface NativeDashboardChangeProjection extends NativeDashboardChangeIdentity {
   artifacts: NativeDashboardArtifactPreview[];
+  artifactReferences?: NativeDashboardArtifactReference[];
   specs: NativeDashboardSpecSummary;
   acceptanceItems: NativeDashboardAcceptanceItem[];
   builderHandoff: NativeDashboardBuilderHandoffSummary | null;
@@ -381,6 +389,9 @@ export function adaptNativeDashboardChange(
       : null,
     verification: state.verification
       ? {
+          candidateId: state.verification.candidate_id,
+          iteration: state.verification.iteration,
+          attempt: state.verification.attempt,
           verdict: state.verification.verdict,
           assurance: state.verification.assurance,
           summary: state.verification.summary,

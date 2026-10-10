@@ -17,6 +17,7 @@ import {
   createNativeChange,
   nativeChangeDir,
 } from '../../../domains/comet-native/native-change.js';
+import type { DashboardGitPage } from '../../../domains/dashboard/types.js';
 
 interface HttpResult {
   status: number;
@@ -43,6 +44,23 @@ function request(port: number, urlPath: string): Promise<HttpResult> {
     req.on('error', reject);
     req.end();
   });
+}
+
+function initializeGitProject(root: string, commitCount = 0): void {
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', root, ...args], { stdio: 'pipe' })
+      .toString()
+      .trim();
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.name', 'Comet Test');
+  git('config', 'user.email', 'comet@test.local');
+  git('config', 'commit.gpgsign', 'false');
+  const tree = git('mktree');
+  let parent: string | undefined;
+  for (let index = 0; index < commitCount; index += 1) {
+    parent = git('commit-tree', tree, ...(parent ? ['-p', parent] : []), '-m', `commit-${index}`);
+  }
+  if (parent) git('update-ref', 'HEAD', parent);
 }
 
 describe('startDashboardServer', () => {
@@ -86,6 +104,24 @@ describe('startDashboardServer', () => {
     );
     git('remote', 'add', 'origin', 'https://example.com/team/shared.git');
     git('worktree', 'add', '-b', 'linked', linked);
+    execFileSync(
+      'git',
+      [
+        '-C',
+        linked,
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.com',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'linked fixture',
+      ],
+      { stdio: 'pipe' },
+    );
     await upsertProjectInstallation(linked, [], 'init', { homeDir: os.homedir() });
     for (const [root, branch] of [
       [projectDir, 'main'],
@@ -99,6 +135,7 @@ describe('startDashboardServer', () => {
       );
       await fs.writeFile(path.join(changeDir, 'proposal.md'), `# ${branch} proposal\n`);
       await fs.writeFile(path.join(changeDir, 'tasks.md'), `- [ ] ${branch} task\n`);
+      await fs.writeFile(path.join(root, `${branch}.txt`), branch);
     }
     const handle = await startDashboardServer({
       projectPath: projectDir,
@@ -119,6 +156,14 @@ describe('startDashboardServer', () => {
         project: { path: entry.path },
         git: { branch },
       });
+      const commitsResponse = await request(handle.port, `${base}/git/commits?limit=1`);
+      expect(commitsResponse.status).toBe(200);
+      const commits = JSON.parse(commitsResponse.body) as DashboardGitPage;
+      expect(commits.items[0]).toMatch(branch === 'main' ? / fixture$/u : / linked fixture$/u);
+      expect(commits.nextCursor === null).toBe(branch === 'main');
+      const filesResponse = await request(handle.port, `${base}/git/files`);
+      expect(filesResponse.status).toBe(200);
+      expect((JSON.parse(filesResponse.body) as DashboardGitPage).items).toContain(`${branch}.txt`);
       const page = await request(handle.port, `${base}/changes?status=active`);
       expect(page.status).toBe(200);
       const current = JSON.parse(page.body).items.find(
@@ -131,12 +176,157 @@ describe('startDashboardServer', () => {
       );
       expect(detail.status).toBe(200);
       expect(JSON.parse(detail.body)).toMatchObject({
-        path: path.join(entry.path, 'openspec', 'changes', 'same-name'),
+        path: await fs.realpath(path.join(entry.path, 'openspec', 'changes', 'same-name')),
         artifactPreviews: expect.arrayContaining([
           expect.objectContaining({ key: 'proposal', content: `# ${branch} proposal\n` }),
         ]),
       });
     }
+  });
+
+  it('serves on-demand Git pages with bounded limits, totals, and stable commit pagination', async () => {
+    initializeGitProject(projectDir, 105);
+    await fs.mkdir(path.join(projectDir, 'nested'));
+    const files = Array.from(
+      { length: 27 },
+      (_, index) => `nested/文件 ${String(index).padStart(2, '0')}.txt`,
+    );
+    for (const file of files) await fs.writeFile(path.join(projectDir, file), file);
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      webRoot: webDir,
+      port: 0,
+    });
+    handles.push(handle);
+    const directory = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body) as {
+      currentProjectId: string;
+    };
+    const base = `/api/dashboard/projects/${directory.currentProjectId}`;
+    const overview = JSON.parse((await request(handle.port, `${base}/overview`)).body);
+    expect(overview.git).toMatchObject({
+      recentCommits: expect.any(Array),
+      recentCommitsHasMore: true,
+      dirtyFiles: 27,
+      dirtyFileListHasMore: true,
+    });
+    expect(overview.git.recentCommits).toHaveLength(5);
+    expect(overview.git.dirtyFileList).toHaveLength(5);
+    const firstResponse = await request(handle.port, `${base}/git/commits`);
+    expect(firstResponse.status).toBe(200);
+    expect(firstResponse.headers['cache-control']).toBe('no-store');
+    const first = JSON.parse(firstResponse.body) as DashboardGitPage;
+    expect(first.items).toHaveLength(50);
+    expect(first.total).toBeNull();
+    expect(first.nextCursor).toEqual(expect.any(String));
+    execFileSync('git', ['-C', projectDir, 'commit', '--allow-empty', '-m', 'new after open'], {
+      stdio: 'pipe',
+    });
+    const secondResponse = await request(
+      handle.port,
+      `${base}/git/commits?cursor=${encodeURIComponent(first.nextCursor!)}`,
+    );
+    expect(secondResponse.status).toBe(200);
+    const second = JSON.parse(secondResponse.body) as DashboardGitPage;
+    const thirdResponse = await request(
+      handle.port,
+      `${base}/git/commits?cursor=${encodeURIComponent(second.nextCursor!)}`,
+    );
+    expect(thirdResponse.status).toBe(200);
+    const third = JSON.parse(thirdResponse.body) as DashboardGitPage;
+    expect(
+      [...first.items, ...second.items, ...third.items].map((line) =>
+        line.split(' ').slice(1).join(' '),
+      ),
+    ).toEqual(Array.from({ length: 105 }, (_, index) => `commit-${104 - index}`));
+    expect(third.nextCursor).toBeNull();
+    const maximumResponse = await request(handle.port, `${base}/git/commits?limit=100`);
+    expect(maximumResponse.status).toBe(200);
+    expect((JSON.parse(maximumResponse.body) as DashboardGitPage).items).toHaveLength(100);
+    const filePages: DashboardGitPage[] = [];
+    let cursor: string | null = null;
+    do {
+      const response = await request(
+        handle.port,
+        `${base}/git/files?limit=10${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+      );
+      expect(response.status).toBe(200);
+      const page = JSON.parse(response.body) as DashboardGitPage;
+      expect(page.total).toBe(27);
+      filePages.push(page);
+      cursor = page.nextCursor;
+    } while (cursor);
+    expect(filePages.map((page) => page.items.length)).toEqual([10, 10, 7]);
+    expect(new Set(filePages.flatMap((page) => page.items))).toEqual(new Set(files));
+    await fs.writeFile(path.join(projectDir, 'new.txt'), 'changed status');
+    const stale = await request(
+      handle.port,
+      `${base}/git/files?cursor=${encodeURIComponent(filePages[0].nextCursor!)}`,
+    );
+    expect(stale.status).toBe(409);
+    expect(JSON.parse(stale.body)).toEqual({ error: 'Git 文件列表已变化，请重新加载。' });
+    for (const kind of ['commits', 'files']) {
+      for (const limit of ['0', '-1', '1.5', '101', '--all', '99999999999999999999']) {
+        const invalid = await request(
+          handle.port,
+          `${base}/git/${kind}?limit=${encodeURIComponent(limit)}`,
+        );
+        expect(invalid.status).toBe(400);
+        expect(JSON.parse(invalid.body).error).toEqual(expect.any(String));
+      }
+      const invalid = await request(handle.port, `${base}/git/${kind}?cursor=--all`);
+      expect(invalid.status).toBe(400);
+    }
+    const wrongList = await request(
+      handle.port,
+      `${base}/git/files?cursor=${encodeURIComponent(first.nextCursor!)}`,
+    );
+    expect(wrongList.status).toBe(400);
+    const unknown = await request(handle.port, '/api/dashboard/projects/unknown/git/commits');
+    expect(unknown.status).toBe(404);
+    const invalidId = await request(handle.port, '/api/dashboard/projects/%ZZ/git/files');
+    expect(invalidId.status).toBe(400);
+    const other = path.join(webDir, 'other-project');
+    await fs.mkdir(other);
+    initializeGitProject(other, 1);
+    await upsertProjectInstallation(other, [], 'init', { homeDir: os.homedir() });
+    const projects = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body) as {
+      projects: Array<{ id: string; path: string }>;
+    };
+    const otherId = projects.projects.find((project) => project.path === other)!.id;
+    const wrongProject = await request(
+      handle.port,
+      `/api/dashboard/projects/${otherId}/git/commits?cursor=${encodeURIComponent(first.nextCursor!)}`,
+    );
+    expect(wrongProject.status).toBe(400);
+  });
+
+  it('distinguishes Git read failures from empty unborn repositories', async () => {
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      webRoot: webDir,
+      port: 0,
+    });
+    handles.push(handle);
+    const directory = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body) as {
+      currentProjectId: string;
+    };
+    const base = `/api/dashboard/projects/${directory.currentProjectId}`;
+    for (const kind of ['commits', 'files']) {
+      const failed = await request(handle.port, `${base}/git/${kind}`);
+      expect(failed.status).toBe(500);
+      expect(JSON.parse(failed.body)).toEqual({ error: expect.any(String) });
+    }
+    initializeGitProject(projectDir);
+    const commits = await request(handle.port, `${base}/git/commits`);
+    expect(commits.status).toBe(200);
+    expect(JSON.parse(commits.body)).toEqual({ items: [], nextCursor: null, total: null });
+    const files = await request(handle.port, `${base}/git/files`);
+    expect(files.status).toBe(200);
+    expect(JSON.parse(files.body)).toEqual({ items: [], nextCursor: null, total: 0 });
+    await fs.writeFile(path.join(projectDir, '.git', 'index'), 'invalid Git index');
+    const damaged = await request(handle.port, `${base}/git/files`);
+    expect(damaged.status).toBe(500);
+    expect(JSON.parse(damaged.body)).toEqual({ error: '读取 Git 文件列表失败。' });
   });
 
   it('serves /api/dashboard with a valid snapshot payload', async () => {
@@ -308,6 +498,25 @@ describe('startDashboardServer', () => {
         expect.objectContaining({ key: 'brief' }),
       ]),
     });
+
+    const artifactQuery = `status=active&changeLocator=${encodeURIComponent(first.items[0].locator)}`;
+    const artifactResponse = await request(
+      handle.port,
+      `${base}/native-artifact?${artifactQuery}&key=brief`,
+    );
+    expect(artifactResponse.status).toBe(200);
+    expect(JSON.parse(artifactResponse.body)).toMatchObject({
+      key: 'brief',
+      exists: true,
+      previewBytes: 48 * 1024,
+    });
+    expect(
+      (await request(handle.port, `${base}/native-artifact?${artifactQuery}&key=../brief.md`))
+        .status,
+    ).toBe(404);
+    expect((await request(handle.port, `${base}/native-artifact?${artifactQuery}`)).status).toBe(
+      400,
+    );
 
     const secondResponse = await request(
       handle.port,

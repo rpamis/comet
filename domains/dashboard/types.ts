@@ -119,6 +119,14 @@ export interface GitSnapshot {
   dirtyFiles: number;
   dirtyFileList: string[];
   recentCommits: string[];
+  recentCommitsHasMore?: boolean;
+  dirtyFileListHasMore?: boolean;
+}
+
+export interface DashboardGitPage {
+  items: string[];
+  nextCursor: string | null;
+  total: number | null;
 }
 
 export interface DashboardProject {

@@ -30,6 +30,7 @@ import {
   type NativePortableState,
 } from '../../../domains/comet-native/native-portable-types.js';
 import {
+  collectNativeDashboardArtifact,
   collectNativeDashboardChangeDetail,
   collectNativeDashboardChangePage,
   collectNativeDashboardOverview,
@@ -195,6 +196,7 @@ describe('Native Dashboard v2 collector', () => {
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-dashboard-collector-'));
+    vi.spyOn(os, 'homedir').mockReturnValue(projectRoot);
   });
 
   afterEach(async () => {
@@ -561,6 +563,66 @@ describe('Native Dashboard v2 collector', () => {
       workspace: { label: 'native/child-a' },
       loop: { nextAction: 'Build child A.' },
     });
+  });
+
+  it('lists all references and capabilities while reading extra artifact content only on request', async () => {
+    await enableNative();
+    const state = activeShapeState('complete-references');
+    state.spec_changes = Array.from({ length: 10 }, (_, index) => ({
+      capability: `cap-${index + 1}`,
+      operation: 'create',
+      source: `specs/cap-${index + 1}.md`,
+    }));
+    state.spec_changes.push({ capability: 'removed-cap', operation: 'remove', source: null });
+    const changeDir = await writeActiveState(state);
+    await fs.mkdir(path.join(changeDir, 'specs'));
+    const extraFile = path.join(changeDir, 'specs', 'cap-10.md');
+    await fs.writeFile(extraFile, 'x'.repeat(64 * 1024));
+    const originalOpen = fs.open.bind(fs);
+    let extraReads = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      if (path.resolve(args[0].toString()) === extraFile) extraReads += 1;
+      return originalOpen(...args);
+    });
+    const options = { status: 'active' as const, name: state.name };
+    const detail = await collectNativeDashboardChangeDetail(projectRoot, options);
+    expect(detail?.artifacts).toHaveLength(8);
+    expect(detail?.artifactReferences).toHaveLength(12);
+    expect(detail?.artifactReferences?.map(({ key }) => key)).not.toContain('spec-removed-cap');
+    expect(detail?.specs).toMatchObject({ total: 11, remove: 1, capabilitiesTruncated: false });
+    expect(detail?.specs.capabilities).toHaveLength(11);
+    expect(extraReads).toBe(0);
+    const extra = await collectNativeDashboardArtifact(projectRoot, {
+      ...options,
+      key: 'spec-cap-10',
+    });
+    expect(extra).toMatchObject({ exists: true, truncated: true, previewBytes: 48 * 1024 });
+    expect(extra?.content).toHaveLength(48 * 1024);
+    expect(extraReads).toBe(1);
+    await expect(
+      collectNativeDashboardArtifact(projectRoot, { ...options, key: '../brief.md' }),
+    ).resolves.toBeNull();
+    await expect(
+      collectNativeDashboardArtifact(projectRoot, { ...options, key: 'spec-removed-cap' }),
+    ).resolves.toBeNull();
+  });
+
+  it('keeps declared artifact previews inside their change root', async () => {
+    await enableNative();
+    const state = activeShapeState('contained-preview');
+    state.spec_changes = [{ capability: 'unsafe', operation: 'create', source: 'specs/unsafe.md' }];
+    const changeDir = await writeActiveState(state);
+    await fs.mkdir(path.join(changeDir, 'specs'));
+    const outside = path.join(projectRoot, 'outside.md');
+    await fs.writeFile(outside, 'outside change root');
+    await fs.symlink(outside, path.join(changeDir, 'specs', 'unsafe.md'));
+    const preview = await collectNativeDashboardArtifact(projectRoot, {
+      status: 'active',
+      name: state.name,
+      key: 'spec-unsafe',
+    });
+    expect(preview).toMatchObject({ exists: false });
+    expect(preview).not.toHaveProperty('content');
   });
 
   it('previews a large artifact from a fixed 48 KiB read budget', async () => {
