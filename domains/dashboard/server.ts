@@ -20,7 +20,12 @@ import {
   DashboardProjectConfigError,
   updateDashboardProjectConfigSettings,
 } from './project-config-settings.js';
-import { collectDashboardProjectDirectory, findDashboardProject } from './project-directory.js';
+import {
+  collectDashboardProjectDirectory,
+  DashboardProjectDirectoryError,
+  findDashboardProject,
+  forgetMissingDashboardProject,
+} from './project-directory.js';
 import { DashboardPluginHostError, type DashboardPluginHostFactory } from './plugin-host.js';
 import type { DashboardChangeTab } from './types.js';
 
@@ -197,10 +202,14 @@ async function handleRequest(
 
   const isPluginRequest = pathname.includes('/plugins');
   const isProjectConfigRequest = pathname.endsWith('/config');
+  const isProjectForgetRequest = pathname.endsWith('/forget');
   if (
     req.method !== 'GET' &&
     req.method !== 'HEAD' &&
-    !(req.method === 'POST' && (isPluginRequest || isProjectConfigRequest))
+    !(
+      req.method === 'POST' &&
+      (isPluginRequest || isProjectConfigRequest || isProjectForgetRequest)
+    )
   ) {
     respondError(res, 405, 'Method not allowed');
     return;
@@ -235,6 +244,28 @@ async function handleRequest(
     const project = findDashboardProject(directory, projectId);
     if (!project) {
       respondJson(res, req.method, 404, { error: 'Unknown dashboard project id' });
+      return;
+    }
+    if (subpath === '/forget') {
+      if (req.method !== 'POST') {
+        respondError(res, 405, 'Method not allowed');
+        return;
+      }
+      if (project.isCurrent || project.availability !== 'missing') {
+        respondError(
+          res,
+          409,
+          'Only missing projects other than the launch project can be removed from the index',
+        );
+        return;
+      }
+      try {
+        const updatedDirectory = await forgetMissingDashboardProject(projectPath, project);
+        respondJson(res, req.method, 200, updatedDirectory);
+      } catch (error) {
+        if (!(error instanceof DashboardProjectDirectoryError)) throw error;
+        respondError(res, error.status, error.message);
+      }
       return;
     }
     if (project.availability !== 'available') {

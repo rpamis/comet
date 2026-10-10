@@ -5,8 +5,10 @@ import path from 'path';
 import {
   ProjectRegistryError,
   readProjectRegistry,
+  removeProjectInstallation,
   type ProjectRegistryEntry,
 } from '../../platform/install/project-registry.js';
+import { isProjectDirectoryMissing } from '../../platform/fs/file-system.js';
 import { readWorkflowProjectConfig } from '../workflow-contract/project-config-reader.js';
 import type { CometProjectWorkflow } from '../workflow-contract/types.js';
 
@@ -32,6 +34,10 @@ export interface DashboardProjectDirectory {
 
 export interface DashboardProjectDirectoryOptions {
   homeDir?: string;
+}
+
+export class DashboardProjectDirectoryError extends Error {
+  readonly status = 409;
 }
 
 function canonicalKey(projectPath: string): string {
@@ -152,4 +158,22 @@ export function findDashboardProject(
   id: string,
 ): DashboardProjectEntry | undefined {
   return directory.projects.find((project) => project.id === id);
+}
+
+export async function forgetMissingDashboardProject(
+  currentProjectPath: string,
+  project: DashboardProjectEntry,
+  options: DashboardProjectDirectoryOptions = {},
+): Promise<DashboardProjectDirectory> {
+  if (
+    project.isCurrent ||
+    project.availability !== 'missing' ||
+    !(await isProjectDirectoryMissing(project.path))
+  ) {
+    throw new DashboardProjectDirectoryError(
+      'Only missing projects other than the launch project can be removed from the index',
+    );
+  }
+  await removeProjectInstallation(project.path, options);
+  return collectDashboardProjectDirectory(currentProjectPath, options);
 }

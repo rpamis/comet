@@ -178,6 +178,8 @@ comet init --workflow both
 
 ### 项目配置
 
+项目目录删除后，可运行 `comet uninstall <原项目路径> --force --json` 仅移除残留索引；Dashboard 会标记缺失项目，也可在“管理缺失项目”中确认移除。其他缺失项目不会自动清理。
+
 `comet init` 会按所选语言生成带逐字段注释的 `.comet/config.yaml`；`comet update` 补齐新增默认值，同时保留用户取值和未知扩展。
 
 <details>

@@ -6,6 +6,7 @@ import path from 'path';
 import {
   ProjectRegistryError,
   getProjectRegistryPath,
+  findProjectRegistryEntry,
   listProjectRegistryEntries,
   readProjectRegistry,
   repairProjectRegistry,
@@ -28,6 +29,45 @@ describe('project installation registry', () => {
 
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('finds a missing project through an existing parent alias even when registered by its real path', async () => {
+    const parent = path.join(tmpDir, 'real');
+    const project = path.join(parent, 'nested', 'project');
+    const alias = path.join(tmpDir, 'alias');
+    await fs.mkdir(project, { recursive: true });
+    await fs.symlink(parent, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const entry = await upsertProjectInstallation(project, [], 'init', { homeDir });
+    await fs.rm(path.dirname(project), { recursive: true });
+    const requested = path.join(alias, 'nested', 'project');
+    expect(await findProjectRegistryEntry(requested, [entry])).toEqual(entry);
+    expect(await removeProjectInstallation(requested, { homeDir })).toBe(true);
+    expect((await readProjectRegistry({ homeDir })).projects).toEqual([]);
+  });
+
+  it('does not match the old installation when a live alias points to another project', async () => {
+    const original = path.join(tmpDir, 'original');
+    const replacement = path.join(tmpDir, 'replacement');
+    const alias = path.join(tmpDir, 'alias');
+    await fs.mkdir(original);
+    await fs.mkdir(replacement);
+    await fs.symlink(original, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const entry = await upsertProjectInstallation(alias, [], 'init', { homeDir });
+    await fs.unlink(alias);
+    await fs.symlink(replacement, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    expect(await findProjectRegistryEntry(alias, [entry])).toBeUndefined();
+    expect(await removeProjectInstallation(alias, { homeDir })).toBe(false);
+    expect((await readProjectRegistry({ homeDir })).projects).toEqual([entry]);
+  });
+
+  it('does not treat realpath access failures as missing paths', async () => {
+    const denied = Object.assign(new Error('access denied'), { code: 'EACCES' });
+    const realpath = vi.spyOn(fs, 'realpath').mockRejectedValueOnce(denied);
+    try {
+      await expect(findProjectRegistryEntry(tmpDir, [])).rejects.toBe(denied);
+    } finally {
+      realpath.mockRestore();
+    }
   });
 
   it('does not overwrite an addition made while cleanup checks an old snapshot', async () => {

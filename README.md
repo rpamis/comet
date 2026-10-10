@@ -197,6 +197,8 @@ comet init --workflow both
 
 ### Project configuration
 
+After deleting a project directory, run `comet uninstall <original-project-path> --force --json` to remove its remaining index entry. Dashboard marks missing projects and offers confirmed removal through its missing-project manager. Other missing projects are retained until explicitly removed.
+
 `comet init` generates `.comet/config.yaml` with field-level comments in the selected language. `comet update` fills new managed defaults while preserving user values and unknown extensions.
 
 <details>

@@ -185,6 +185,39 @@ test.describe('Dashboard project selection', () => {
       ).toHaveCount(noAvailable ? 2 : 1);
     });
   }
+
+  test('marks missing projects and removes only the confirmed index entry', async ({ page }) => {
+    const missing = { ...projects[1], availability: 'missing' };
+    const remaining = { currentProjectId: 'path-0', projects: [projects[0]] };
+    await page.route('**/api/dashboard/projects', (route) =>
+      route.fulfill({
+        json: { currentProjectId: 'path-0', projects: [projects[0], missing] },
+      }),
+    );
+    let removed = false;
+    await page.route('**/api/dashboard/projects/path-1/forget', async (route) => {
+      expect(route.request().method()).toBe('POST');
+      expect(route.request().headers()['content-type']).toBe('application/json');
+      removed = true;
+      await route.fulfill({ json: remaining });
+    });
+    await page.goto('/');
+    await page.locator('.comet-project-select').click();
+    await expect(page.getByText(/目录已不存在/)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: '管理缺失项目' }).click();
+    await page.screenshot({ path: test.info().outputPath('missing-projects.png') });
+    await page.getByRole('button', { name: '从索引移除', exact: true }).click();
+    await page.getByRole('button', { name: /^取\s*消$/ }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(removed).toBe(false);
+    await page.getByRole('button', { name: '管理缺失项目' }).click();
+    await page.getByRole('button', { name: '从索引移除', exact: true }).click();
+    await page.getByRole('button', { name: /^移\s*除$/ }).click();
+    await expect(page.getByRole('button', { name: '管理缺失项目' })).toHaveCount(0);
+    expect(removed).toBe(true);
+    await expect(page.getByRole('button', { name: /^Git 未提交 0 / })).toBeVisible();
+  });
 });
 
 test('uses each project default workflow during startup and project switching', async ({

@@ -65,6 +65,16 @@ export async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
+/** Return true only when a project directory is absent, preserving access errors. */
+export async function isProjectDirectoryMissing(projectPath: string): Promise<boolean> {
+  try {
+    return !(await fs.stat(projectPath)).isDirectory();
+  } catch (error) {
+    if (isMissingPathError(error)) return true;
+    throw error;
+  }
+}
+
 /**
  * Read and parse a JSON file.
  */

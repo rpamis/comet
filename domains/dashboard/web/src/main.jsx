@@ -1493,6 +1493,20 @@ function DashboardApp({
           project={snapshot?.project}
           projects={projects}
           activeProjectId={activeProjectId}
+          onProjectForget={async (entry) => {
+            const res = await fetch(
+              `/api/dashboard/projects/${encodeURIComponent(entry.id)}/forget`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
+              },
+            );
+            if (!res.ok) throw await dashboardResponseError(res);
+            const directory = await res.json();
+            setProjects(directory.projects ?? []);
+            toast('已从索引移除缺失项目');
+          }}
           onProjectSelect={(nextProjectId) => {
             snapshotRequestRef.current?.abort();
             pageRequestRef.current?.abort();
@@ -1751,12 +1765,14 @@ function Topbar({
   projects,
   activeProjectId,
   onProjectSelect,
+  onProjectForget,
   onMenu,
   onRefresh,
   theme,
   onToggleTheme,
   themeToggleDisabled = false,
 }) {
+  const { modal } = AntApp.useApp();
   return (
     <header className="comet-workbench-header sticky top-0 z-30 border-b border-border-soft bg-surface/90 backdrop-blur-xl">
       <Button
@@ -1799,12 +1815,63 @@ function Topbar({
                   {entry.name}
                 </strong>
                 <small className="comet-project-option-path" title={entry.path}>
+                  {entry.availability === 'missing'
+                    ? '目录已不存在 · '
+                    : entry.availability === 'unreadable'
+                      ? '无法读取 · '
+                      : ''}
                   {entry.path}
                 </small>
               </span>
             ),
           }))}
         />
+        {projects.some((entry) => entry.availability === 'missing' && !entry.isCurrent) && (
+          <Popover
+            trigger="click"
+            title="缺失项目"
+            content={
+              <div
+                style={{
+                  maxWidth: 'min(420px, calc(100vw - 48px))',
+                  maxHeight: 280,
+                  overflowY: 'auto',
+                }}
+              >
+                {projects
+                  .filter((entry) => entry.availability === 'missing' && !entry.isCurrent)
+                  .map((entry) => (
+                    <div key={entry.id} style={{ marginBottom: 12 }}>
+                      <div style={{ overflowWrap: 'anywhere' }}>{entry.path}</div>
+                      <Button
+                        size="small"
+                        onClick={() =>
+                          modal.confirm({
+                            title: '从索引移除缺失项目？',
+                            content: entry.path,
+                            okText: '移除',
+                            cancelText: '取消',
+                            onOk: async () => {
+                              try {
+                                await onProjectForget(entry);
+                              } catch (error) {
+                                modal.error({ title: '移除失败', content: error.message });
+                                throw error;
+                              }
+                            },
+                          })
+                        }
+                      >
+                        从索引移除
+                      </Button>
+                    </div>
+                  ))}
+              </div>
+            }
+          >
+            <Button type="text" icon={<DeleteOutlined />} aria-label="管理缺失项目" />
+          </Popover>
+        )}
       </div>
       <div className="comet-header-search">
         <Input

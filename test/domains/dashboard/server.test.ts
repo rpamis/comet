@@ -27,19 +27,26 @@ interface HttpResult {
 // vitest's bundled fetch (undici) refuses to bind a 127.0.0.1 outbound on
 // some macOS configs (EADDRNOTAVAIL with Local 0.0.0.0). The native http
 // client picks the right local address, so the server tests use it directly.
-function request(port: number, urlPath: string): Promise<HttpResult> {
+function request(
+  port: number,
+  urlPath: string,
+  options: http.RequestOptions = {},
+): Promise<HttpResult> {
   return new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, path: urlPath, method: 'GET' }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('data', (chunk: Buffer) => chunks.push(chunk));
-      res.on('end', () => {
-        resolve({
-          status: res.statusCode ?? 0,
-          headers: res.headers,
-          body: Buffer.concat(chunks).toString('utf-8'),
+    const req = http.request(
+      { host: '127.0.0.1', port, path: urlPath, method: 'GET', ...options },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode ?? 0,
+            headers: res.headers,
+            body: Buffer.concat(chunks).toString('utf-8'),
+          });
         });
-      });
-    });
+      },
+    );
     req.on('error', reject);
     req.end();
   });
@@ -67,6 +74,75 @@ describe('startDashboardServer', () => {
     vi.restoreAllMocks();
     await fs.rm(projectDir, { recursive: true, force: true });
     await fs.rm(webDir, { recursive: true, force: true });
+  });
+
+  it('removes a missing project only through a trusted JSON POST without deleting files', async () => {
+    const missing = path.join(webDir, 'missing-project');
+    await upsertProjectInstallation(missing, [], 'init');
+    await upsertProjectInstallation(projectDir, [], 'init');
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      webRoot: webDir,
+      port: 0,
+    });
+    handles.push(handle);
+    const directory = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body);
+    const entry = directory.projects.find((project: { path: string }) => project.path === missing);
+    const endpoint = `/api/dashboard/projects/${entry.id}/forget`;
+    expect((await request(handle.port, endpoint)).status).toBe(405);
+    expect(
+      (
+        await request(handle.port, endpoint, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            origin: 'https://example.com',
+          },
+        })
+      ).status,
+    ).toBe(403);
+    expect((await request(handle.port, endpoint, { method: 'POST' })).status).toBe(415);
+    expect(
+      (
+        await request(handle.port, `/api/dashboard/projects/${directory.currentProjectId}/forget`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+        })
+      ).status,
+    ).toBe(409);
+    // Recreated projects must be rechecked at mutation time.
+    await fs.mkdir(missing);
+    await fs.writeFile(path.join(missing, 'keep.txt'), 'keep');
+    expect(
+      (
+        await request(handle.port, endpoint, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+        })
+      ).status,
+    ).toBe(409);
+    expect(await fs.readFile(path.join(missing, 'keep.txt'), 'utf8')).toBe('keep');
+    await fs.rm(missing, { recursive: true });
+    const removed = await request(handle.port, endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+    });
+    expect(removed.status).toBe(200);
+    expect(JSON.parse(removed.body).projects).toHaveLength(1);
+    expect(
+      (
+        await request(handle.port, endpoint, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+        })
+      ).status,
+    ).toBe(404);
   });
 
   it('routes same-remote worktrees to their own overview and current change details', async () => {
