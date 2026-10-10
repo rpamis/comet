@@ -21,6 +21,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Security
 
+- **OpenSpec dependency isolation**: Remove the unused bundled OpenSpec package and its vulnerable brace-pattern dependency chain. Classic continues using its separately installed OpenSpec CLI; Comet installations no longer include `braces` affected by CVE-2026-93687.
+
 - **Dependency fixes**: Upgrade vulnerable Node.js and Eval dependencies to patched versions, covering HTML sanitization, TOML and URI parsing, math rendering, source maps, network clients, and virtual environments.
 
 ## What's Changed [0.4.4] - 2026-10-03
