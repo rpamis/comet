@@ -23,6 +23,30 @@
 <a href="https://trendshift.io/repositories/38989?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-38989" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/38989" alt="rpamis%2Fcomet | Trendshift" width="250" height="55"/></a>
 </p>
 
+## 💎赞助
+
+本项目由 [PackyCode](https://www.packyapi.ai/register?aff=DIId) 赞助方支持
+
+> [想出现在这里？](mailto:benyuanming@gmail.com)
+
+<details>
+<summary>点击收起</summary>
+
+<table width="100%">
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://www.packyapi.com/register?aff=AIClient2API">
+        <img src="https://github.com/rpamis/comet/blob/master/img/PackyCode.png" alt="PackyCode Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      PackyCode 是一家稳定、高效的 API 中转服务商，一句话接入主流大模型。统一域名、统一密钥、智能容灾切换，97% 可用性。人民币1:1充值，无汇率无手续费坑，新用户首充立享折扣 + $1免费体验额度，多分组折扣低至 2 折起，提供专属Codex/Claude Code高速通道。<a href="https://www.packyapi.com/register?aff=AIClient2API">点此链接注册，立即开始使用！</a>
+    </td>
+  </tr>
+</table>
+
+</details>
+
 ## 什么是Comet ?
 
 ```

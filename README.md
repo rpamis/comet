@@ -23,6 +23,32 @@
 <a href="https://trendshift.io/repositories/38989?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-38989" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/38989" alt="rpamis%2Fcomet | Trendshift" width="250" height="55"/></a>
 </p>
 
+## 💎 Sponsorship
+
+This project is supported by [PackyCode](https://www.packyapi.ai/register?aff=DIId).
+
+> [Want to be featured here?](mailto:benyuanming@gmail.com)
+
+<details>
+<summary>Sponsor details</summary>
+
+<table width="100%">
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://www.packyapi.com/register?aff=AIClient2API">
+        <img src="https://github.com/rpamis/comet/blob/master/img/PackyCode.png" alt="PackyCode Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      <p>Access leading AI models through PackyCode with one API endpoint and one API key. Enjoy fast, reliable access with automatic failover and dedicated high-speed routes for Codex and Claude Code.</p>
+      <p>Get started with $1 in free credits, a discount on your first top-up, and savings of up to 80% on eligible routes. Pay in RMB with no currency conversion markups or extra top-up fees.</p>
+      <p><a href="https://www.packyapi.com/register?aff=AIClient2API">Sign up through the link and start building today.</a></p>
+    </td>
+  </tr>
+</table>
+
+</details>
+
 ## What is Comet ?
 
 ```
