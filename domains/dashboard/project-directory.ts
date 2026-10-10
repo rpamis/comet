@@ -4,6 +4,7 @@ import path from 'path';
 
 import {
   ProjectRegistryError,
+  ProjectDirectoryReappearedError,
   readProjectRegistry,
   removeProjectInstallation,
   type ProjectRegistryEntry,
@@ -34,6 +35,7 @@ export interface DashboardProjectDirectory {
 
 export interface DashboardProjectDirectoryOptions {
   homeDir?: string;
+  currentCanonicalPath?: string;
 }
 
 export class DashboardProjectDirectoryError extends Error {
@@ -104,7 +106,9 @@ export async function collectDashboardProjectDirectory(
   options: DashboardProjectDirectoryOptions = {},
 ): Promise<DashboardProjectDirectory> {
   const currentPath = path.resolve(currentProjectPath);
-  const currentKey = canonicalKey(await fs.realpath(currentPath).catch(() => currentPath));
+  const currentKey = canonicalKey(
+    options.currentCanonicalPath ?? (await fs.realpath(currentPath).catch(() => currentPath)),
+  );
   let registryProjects: ProjectRegistryEntry[] = [];
   let warning: string | undefined;
 
@@ -174,6 +178,21 @@ export async function forgetMissingDashboardProject(
       'Only missing projects other than the launch project can be removed from the index',
     );
   }
-  await removeProjectInstallation(project.path, options);
+  const registry = await readProjectRegistry({ homeDir: options.homeDir, strict: true });
+  const entry = registry.projects.find(
+    (candidate) => projectId(canonicalKey(candidate.canonicalPath)) === project.id,
+  );
+  if (entry) {
+    try {
+      await removeProjectInstallation(project.path, {
+        homeDir: options.homeDir,
+        expectedCanonicalPath: entry.canonicalPath,
+        missingOnly: true,
+      });
+    } catch (error) {
+      if (!(error instanceof ProjectDirectoryReappearedError)) throw error;
+      throw new DashboardProjectDirectoryError(error.message);
+    }
+  }
   return collectDashboardProjectDirectory(currentProjectPath, options);
 }

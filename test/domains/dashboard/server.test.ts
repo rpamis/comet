@@ -145,6 +145,28 @@ describe('startDashboardServer', () => {
     ).toBe(404);
   });
 
+  it('preserves the launch identity after a symlink target is deleted', async () => {
+    const alias = path.join(webDir, 'launch-alias');
+    await fs.symlink(projectDir, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    await upsertProjectInstallation(alias, [], 'init');
+    const handle = await startDashboardServer({ projectPath: alias, webRoot: webDir, port: 0 });
+    handles.push(handle);
+    const before = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body);
+    await fs.rm(projectDir, { recursive: true });
+    const after = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body);
+    expect(after.currentProjectId).toBe(before.currentProjectId);
+    expect(after.projects).toHaveLength(1);
+    expect(after.projects[0].isCurrent).toBe(true);
+    expect(
+      (
+        await request(handle.port, `/api/dashboard/projects/${before.currentProjectId}/forget`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+        })
+      ).status,
+    ).toBe(409);
+  });
+
   it('routes same-remote worktrees to their own overview and current change details', async () => {
     const linked = path.join(webDir, 'linked');
     const git = (...args: string[]) =>

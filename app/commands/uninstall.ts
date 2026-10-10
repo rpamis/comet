@@ -40,6 +40,7 @@ interface UninstallOptions {
   currentProject?: boolean;
   recoverProjectCleanup?: boolean;
   recoveryTargets?: ProjectRegistryTarget[];
+  recoveryCanonicalPath?: string;
   targetPlatforms?: string[];
   workflows?: CometWorkflow[];
   companionSkills?: Array<'openspec' | 'superpowers'>;
@@ -228,6 +229,7 @@ interface SingleProjectUninstallResult {
   projectScopeProcessed: boolean;
   projectMissing?: true;
   registryEntryRemoved?: boolean;
+  registryCanonicalPath?: string;
   targets: TargetUninstallResult[];
   workingDirsRemoved: number;
   workingDirsPreserved: string[];
@@ -339,6 +341,7 @@ async function uninstallSingleProject(
       projectPath,
       projectScopeProcessed: true,
       projectMissing: true,
+      registryCanonicalPath: options.recoveryCanonicalPath,
       targets: [],
       workingDirsRemoved: 0,
       workingDirsPreserved: [],
@@ -647,7 +650,10 @@ async function refreshRegistryAfterProjectUninstall(
     if (!(await isProjectDirectoryMissing(result.projectPath))) {
       throw new Error('Project directory reappeared; retry uninstall to inspect its installations');
     }
-    result.registryEntryRemoved = await removeProjectInstallation(result.projectPath);
+    result.registryEntryRemoved = await removeProjectInstallation(result.projectPath, {
+      expectedCanonicalPath: result.registryCanonicalPath,
+      missingOnly: true,
+    });
     return;
   }
 
@@ -723,21 +729,21 @@ async function uninstallAllIndexedProjects(
   for (const project of runnableProjects) {
     const { projectPath, targets, registryProject } = project;
     const projectTargets = mergeCleanupTargets(targets, registryProject.lastTargets, true);
-    const missingWithoutTargets =
-      projectTargets.length === 0 && (await isProjectDirectoryMissing(projectPath));
-    if (
-      !missingWithoutTargets &&
-      !projectTargets.some((target) => selectedPlatformIds.includes(target.platform.id))
-    ) {
-      results.push({
-        projectPath,
-        status: 'skipped',
-        reason: 'no installed platforms selected for this project',
-        targets: [],
-      });
-      continue;
-    }
     try {
+      const missingWithoutTargets =
+        projectTargets.length === 0 && (await isProjectDirectoryMissing(projectPath));
+      if (
+        !missingWithoutTargets &&
+        !projectTargets.some((target) => selectedPlatformIds.includes(target.platform.id))
+      ) {
+        results.push({
+          projectPath,
+          status: 'skipped',
+          reason: 'no installed platforms selected for this project',
+          targets: [],
+        });
+        continue;
+      }
       const result = await uninstallSingleProject(
         projectPath,
         {
@@ -749,6 +755,7 @@ async function uninstallAllIndexedProjects(
           targetPlatforms: selectedPlatformIds,
           recoverProjectCleanup: true,
           recoveryTargets: registryProject.lastTargets,
+          recoveryCanonicalPath: registryProject.canonicalPath,
           workflows: workflowSelection.workflows,
           companionSkills: workflowSelection.companionSkills,
         },
@@ -853,6 +860,7 @@ export async function uninstallCommand(
       scope: options.scope ?? 'project',
       recoverProjectCleanup: Boolean(registeredProject) && options.scope !== 'global',
       recoveryTargets: registeredProject?.lastTargets,
+      recoveryCanonicalPath: registeredProject?.canonicalPath,
       language: lang,
     },
     log,
