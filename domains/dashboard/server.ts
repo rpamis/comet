@@ -11,10 +11,17 @@ import {
   DashboardChangeQueryError,
 } from './collector.js';
 import {
+  collectNativeDashboardArtifact,
   collectNativeDashboardChangeDetail,
   collectNativeDashboardChangePage,
+  NativeDashboardArtifactReadError,
   NativeDashboardQueryError,
 } from './native-collector.js';
+import {
+  collectDashboardGitCommitPage,
+  collectDashboardGitFilePage,
+  DashboardGitQueryError,
+} from './git.js';
 import {
   collectDashboardProjectConfigSettings,
   DashboardProjectConfigError,
@@ -137,6 +144,15 @@ export async function startDashboardServer(
       }
       if (error instanceof DashboardProjectConfigError) {
         respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
+        return;
+      }
+      if (error instanceof DashboardGitQueryError) {
+        respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
+        return;
+      }
+      if (error instanceof NativeDashboardArtifactReadError) {
+        console.error(error);
+        respondJson(res, req.method ?? 'GET', 500, { error: error.message });
         return;
       }
       respondError(res, 500, `Internal server error: ${(error as Error).message}`);
@@ -288,6 +304,17 @@ async function handleRequest(
       return;
     }
 
+    if (subpath === '/git/commits' || subpath === '/git/files') {
+      const collectPage =
+        subpath === '/git/commits' ? collectDashboardGitCommitPage : collectDashboardGitFilePage;
+      const page = await collectPage(project.path, {
+        limit: parseGitLimit(url.searchParams.get('limit')),
+        cursor: url.searchParams.get('cursor') ?? undefined,
+      });
+      respondJson(res, req.method, 200, page);
+      return;
+    }
+
     if (subpath === '/changes') {
       const page = await collectDashboardChangePage(project.path, {
         status: parseChangeTab(url.searchParams.get('status')),
@@ -310,7 +337,7 @@ async function handleRequest(
       return;
     }
 
-    if (subpath === '/native-change') {
+    if (subpath === '/native-change' || subpath === '/native-artifact') {
       const changeName = url.searchParams.get('changeName');
       const changeLocator = url.searchParams.get('changeLocator');
       const status = url.searchParams.get('status');
@@ -320,12 +347,20 @@ async function handleRequest(
       if (status !== 'active' && status !== 'archived') {
         throw new NativeDashboardQueryError('Invalid Native Dashboard change status');
       }
-      const detail = await collectNativeDashboardChangeDetail(project.path, {
+      const options = {
         status,
         name: changeName ?? '',
         archiveName: url.searchParams.get('archiveName') ?? undefined,
         locator: changeLocator ?? undefined,
-      });
+      } as const;
+      const artifactKey = url.searchParams.get('key');
+      if (subpath === '/native-artifact' && !artifactKey) {
+        throw new NativeDashboardQueryError('缺少 Native 产物名称');
+      }
+      const detail =
+        subpath === '/native-artifact'
+          ? await collectNativeDashboardArtifact(project.path, { ...options, key: artifactKey! })
+          : await collectNativeDashboardChangeDetail(project.path, options);
       if (!detail) {
         respondJson(res, req.method, 404, { error: 'Unknown Native Dashboard change' });
         return;
@@ -503,6 +538,14 @@ function parseChangeLimit(raw: string | null): number | undefined {
   if (raw === null) return undefined;
   if (!/^\d+$/u.test(raw)) {
     throw new DashboardChangeQueryError('Change page limit must be a positive integer');
+  }
+  return Number(raw);
+}
+
+function parseGitLimit(raw: string | null): number | undefined {
+  if (raw === null) return undefined;
+  if (!/^\d+$/u.test(raw)) {
+    throw new DashboardGitQueryError('Git 分页数量必须为 1 到 100 的整数。');
   }
   return Number(raw);
 }

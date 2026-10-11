@@ -48,7 +48,7 @@
   ],
   "scripts": {
     "build": "node build.js",
-    "build:dashboard": "vite build --config domains/dashboard/web/vite.config.mjs",
+    "build:dashboard": "tsc --project domains/dashboard/web/tsconfig.json --noEmit && vite build --config domains/dashboard/web/vite.config.mjs",
     "build:website-dashboard-demo": "node scripts/build/build-website-dashboard-demo.mjs",
     "dev:dashboard": "node scripts/dev-dashboard.mjs",
     "build:classic-runtime": "node scripts/build/build-classic-runtime.mjs",
@@ -130,6 +130,7 @@
     "husky": "^9.1.7",
     "jsdom": "^30.0.1",
     "lint-staged": "^17.0.7",
+    "motion": "^14.0.0",
     "postcss": "8.5.26",
     "prettier": "^3.8.3",
     "react": "^19.2.7",

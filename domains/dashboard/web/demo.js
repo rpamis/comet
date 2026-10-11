@@ -475,6 +475,76 @@ function addCometArtifacts(change) {
   return change;
 }
 
+// Demo 展示记录独立于 API 快照，明确声明完成和执行状态，不按阶段顺序推断。
+export const DEMO_CLASSIC_PHASE_PROGRESS = {
+  'add-auth-rate-limiting': {
+    currentPhase: 'build',
+    phaseStatuses: {
+      open: 'finish',
+      design: 'finish',
+      build: 'process',
+      verify: 'wait',
+      archive: 'wait',
+    },
+    currentPhaseRunning: true,
+    currentPhaseLabel: '构建中',
+    tone: 'info',
+  },
+  'dashboard-redesign': {
+    currentPhase: 'design',
+    phaseStatuses: {
+      open: 'finish',
+      design: 'process',
+      build: 'wait',
+      verify: 'wait',
+      archive: 'wait',
+    },
+    currentPhaseRunning: true,
+    currentPhaseLabel: '设计中',
+    tone: 'info',
+  },
+  'fix-webhook-retries': {
+    currentPhase: 'verify',
+    phaseStatuses: {
+      open: 'finish',
+      design: 'finish',
+      build: 'finish',
+      verify: 'error',
+      archive: 'wait',
+    },
+    currentPhaseRunning: false,
+    currentPhaseLabel: '验证失败',
+    tone: 'danger',
+  },
+  'migrate-config-to-yaml': {
+    currentPhase: 'build',
+    phaseStatuses: {
+      open: 'finish',
+      design: 'finish',
+      build: 'process',
+      verify: 'wait',
+      archive: 'wait',
+    },
+    currentPhaseRunning: false,
+    currentPhaseLabel: '等待依赖',
+    currentPhaseStatus: 'waiting',
+    tone: 'warn',
+  },
+  archived: {
+    currentPhase: 'archive',
+    phaseStatuses: {
+      open: 'finish',
+      design: 'finish',
+      build: 'finish',
+      verify: 'finish',
+      archive: 'finish',
+    },
+    currentPhaseRunning: false,
+    currentPhaseLabel: '已归档',
+    tone: 'neutral',
+  },
+};
+
 /** @type {import('./types.js').DashboardSnapshot} */
 export const DEMO_SNAPSHOT = {
   project: {

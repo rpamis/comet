@@ -40,7 +40,14 @@ export function useDashboardModalState(open) {
   return { fullscreen, toggleFullscreen, requestClose };
 }
 
-function DashboardModalTitle({ title, subtitle, description, fullscreen, onToggleFullscreen }) {
+function DashboardModalTitle({
+  title,
+  subtitle,
+  description,
+  fullscreen,
+  onToggleFullscreen,
+  showFullscreenToggle,
+}) {
   return (
     <div className="dashboard-modal-title dashboard-settings-modal-title">
       <div className="dashboard-modal-title-copy dashboard-settings-modal-title-copy">
@@ -52,16 +59,18 @@ function DashboardModalTitle({ title, subtitle, description, fullscreen, onToggl
           {description && <p>{description}</p>}
         </div>
       </div>
-      <Tooltip title={fullscreen ? '退出全屏' : '全屏展示'} placement="bottom">
-        <Button
-          className="dashboard-modal-expand dashboard-settings-modal-expand"
-          type="text"
-          icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-          aria-label={fullscreen ? '退出全屏' : '全屏展示'}
-          aria-pressed={fullscreen}
-          onClick={onToggleFullscreen}
-        />
-      </Tooltip>
+      {showFullscreenToggle && (
+        <Tooltip title={fullscreen ? '退出全屏' : '全屏展示'} placement="bottom">
+          <Button
+            className="dashboard-modal-expand dashboard-settings-modal-expand"
+            type="text"
+            icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+            aria-label={fullscreen ? '退出全屏' : '全屏展示'}
+            aria-pressed={fullscreen}
+            onClick={onToggleFullscreen}
+          />
+        </Tooltip>
+      )}
     </div>
   );
 }
@@ -77,6 +86,7 @@ export function DashboardModal({
   rootClassName = '',
   footer,
   onClose,
+  showFullscreenToggle = true,
   children,
   ...modalProps
 }) {
@@ -115,6 +125,7 @@ export function DashboardModal({
           description={description}
           fullscreen={fullscreen}
           onToggleFullscreen={toggleFullscreen}
+          showFullscreenToggle={showFullscreenToggle}
         />
       }
       footer={footer}

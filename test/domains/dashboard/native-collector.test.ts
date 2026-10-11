@@ -30,6 +30,7 @@ import {
   type NativePortableState,
 } from '../../../domains/comet-native/native-portable-types.js';
 import {
+  collectNativeDashboardArtifact,
   collectNativeDashboardChangeDetail,
   collectNativeDashboardChangePage,
   collectNativeDashboardOverview,
@@ -195,6 +196,7 @@ describe('Native Dashboard v2 collector', () => {
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-dashboard-collector-'));
+    vi.spyOn(os, 'homedir').mockReturnValue(projectRoot);
   });
 
   afterEach(async () => {
@@ -560,6 +562,142 @@ describe('Native Dashboard v2 collector', () => {
       name: 'child-a',
       workspace: { label: 'native/child-a' },
       loop: { nextAction: 'Build child A.' },
+    });
+  });
+
+  it('lists all references and capabilities while reading extra artifact content only on request', async () => {
+    await enableNative();
+    const state = activeShapeState('complete-references');
+    state.spec_changes = Array.from({ length: 10 }, (_, index) => ({
+      capability: `cap-${index + 1}`,
+      operation: 'create',
+      source: `specs/cap-${index + 1}.md`,
+    }));
+    state.spec_changes.push({ capability: 'removed-cap', operation: 'remove', source: null });
+    const changeDir = await writeActiveState(state);
+    await fs.mkdir(path.join(changeDir, 'specs'));
+    const extraFile = path.join(changeDir, 'specs', 'cap-10.md');
+    await fs.writeFile(extraFile, 'x'.repeat(64 * 1024));
+    const originalOpen = fs.open.bind(fs);
+    let extraReads = 0;
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      if (path.resolve(args[0].toString()) === extraFile) extraReads += 1;
+      return originalOpen(...args);
+    });
+    const options = { status: 'active' as const, name: state.name };
+    const detail = await collectNativeDashboardChangeDetail(projectRoot, options);
+    expect(detail?.artifacts).toHaveLength(8);
+    expect(detail?.artifactReferences).toHaveLength(12);
+    expect(detail?.artifactReferences?.map(({ key }) => key)).not.toContain('spec-removed-cap');
+    expect(detail?.specs).toMatchObject({ total: 11, remove: 1, capabilitiesTruncated: false });
+    expect(detail?.specs.capabilities).toHaveLength(11);
+    expect(extraReads).toBe(0);
+    const extra = await collectNativeDashboardArtifact(projectRoot, {
+      ...options,
+      key: 'spec-cap-10',
+    });
+    expect(extra).toMatchObject({ exists: true, truncated: true, previewBytes: 48 * 1024 });
+    expect(extra?.content).toHaveLength(48 * 1024);
+    expect(extraReads).toBe(1);
+    await expect(
+      collectNativeDashboardArtifact(projectRoot, { ...options, key: '../brief.md' }),
+    ).resolves.toBeNull();
+    await expect(
+      collectNativeDashboardArtifact(projectRoot, { ...options, key: 'spec-removed-cap' }),
+    ).resolves.toBeNull();
+  });
+
+  it('keeps declared artifact previews inside their change root', async () => {
+    await enableNative();
+    const state = activeShapeState('contained-preview');
+    state.spec_changes = [{ capability: 'unsafe', operation: 'create', source: 'specs/unsafe.md' }];
+    const changeDir = await writeActiveState(state);
+    await fs.mkdir(path.join(changeDir, 'specs'));
+    const outside = path.join(projectRoot, 'outside.md');
+    await fs.writeFile(outside, 'outside change root');
+    await fs.symlink(outside, path.join(changeDir, 'specs', 'unsafe.md'));
+    const preview = await collectNativeDashboardArtifact(projectRoot, {
+      status: 'active',
+      name: state.name,
+      key: 'spec-unsafe',
+    });
+    expect(preview).toMatchObject({ exists: false });
+    expect(preview).not.toHaveProperty('content');
+  });
+
+  it.each(['missing', 'invalid', 'outside-directory', 'outside-state'])(
+    'makes an artifact unavailable after its cached state becomes %s',
+    async (condition) => {
+      await enableNative();
+      const state = activeShapeState('unavailable-preview');
+      const changeDir = await writeActiveState(state);
+      const options = { status: 'active' as const, name: state.name, key: 'brief' };
+      await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
+      const stateFile = path.join(changeDir, NATIVE_CHANGE_STATE_FILE);
+      if (condition === 'missing') await fs.unlink(stateFile);
+      if (condition === 'invalid') await fs.writeFile(stateFile, 'not: a native state\n');
+      if (condition === 'outside-directory') {
+        const outside = path.join(projectRoot, 'outside-change');
+        await fs.rename(changeDir, outside);
+        await fs.symlink(outside, changeDir, process.platform === 'win32' ? 'junction' : 'dir');
+      }
+      if (condition === 'outside-state') {
+        const outside = path.join(projectRoot, 'outside-state.yaml');
+        await fs.rename(stateFile, outside);
+        await fs.symlink(outside, stateFile);
+      }
+      await expect(collectNativeDashboardArtifact(projectRoot, options)).resolves.toBeNull();
+    },
+  );
+
+  it.each(['lstat', 'realpath', 'readFile'] as const)(
+    'preserves %s I/O failure diagnostics instead of treating a cached artifact as missing',
+    async (operation) => {
+      await enableNative();
+      const state = activeShapeState('io-preview');
+      const changeDir = await writeActiveState(state);
+      await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
+      const stateFile = path.join(changeDir, NATIVE_CHANGE_STATE_FILE);
+      const failure = Object.assign(new Error(`EIO: private path ${stateFile}`), { code: 'EIO' });
+      const original = fs[operation].bind(fs);
+      vi.spyOn(fs, operation).mockImplementation(async (...args) => {
+        if ([changeDir, stateFile].includes(path.resolve(args[0].toString()))) throw failure;
+        return original(...args);
+      });
+      await expect(
+        collectNativeDashboardArtifact(projectRoot, {
+          status: 'active',
+          name: state.name,
+          key: 'brief',
+        }),
+      ).rejects.toMatchObject({ message: '读取 Native 产物失败。', cause: failure });
+    },
+  );
+
+  it('treats permission denial as unavailable while preserving artifact-content I/O failures', async () => {
+    await enableNative();
+    const state = activeShapeState('artifact-file-io');
+    const changeDir = await writeActiveState(state);
+    await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
+    const options = { status: 'active' as const, name: state.name, key: 'brief' };
+    const stateFile = path.join(changeDir, NATIVE_CHANGE_STATE_FILE);
+    const originalStat = fs.lstat.bind(fs);
+    const denied = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const stat = vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      if (path.resolve(args[0].toString()) === stateFile) throw denied;
+      return originalStat(...args);
+    });
+    await expect(collectNativeDashboardArtifact(projectRoot, options)).resolves.toBeNull();
+    stat.mockRestore();
+    const failure = Object.assign(new Error('artifact read failed'), { code: 'EIO' });
+    const originalOpen = fs.open.bind(fs);
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      if (path.resolve(args[0].toString()) === path.join(changeDir, 'brief.md')) throw failure;
+      return originalOpen(...args);
+    });
+    await expect(collectNativeDashboardArtifact(projectRoot, options)).rejects.toMatchObject({
+      message: '读取 Native 产物失败。',
+      cause: failure,
     });
   });
 

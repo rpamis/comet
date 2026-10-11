@@ -18,7 +18,9 @@ describe('Native dashboard web source contracts', () => {
     expect(source).toContain('serverPaged');
     expect(source).toContain('onLoadMore');
     expect(source).toContain('native-change-list');
-    expect(source).toContain('onScroll={handleListScroll}');
+    expect(source).toContain('useExplorerPagination({');
+    expect(source).toContain('resetKey: scrollResetKey');
+    expect(source).not.toContain("window.addEventListener('scroll'");
 
     for (const field of [
       'native?.changes',
@@ -93,32 +95,55 @@ describe('Native dashboard web source contracts', () => {
     expect(source).not.toContain('<NativeWorkflowPanel native={snapshot.native} />');
   });
 
-  it('uses the same scrolling Badge for Native and Classic change totals', async () => {
-    const [source, classicSource] = await Promise.all([
+  it('uses the shared reduced-motion aware Badge for Native and Classic change totals', async () => {
+    const [source, classicSource, workspaceLayout] = await Promise.all([
       readNativePanelSource(),
       fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'main.jsx'), 'utf8'),
+      fs.readFile(
+        path.resolve('domains', 'dashboard', 'web', 'src', 'workspace-layout.jsx'),
+        'utf8',
+      ),
     ]);
 
     expect(source).toContain(
-      '<Badge count={total} showZero className="native-changes-count ml-2" />',
+      '<DashboardExplorerTitle count={total} badgeClassName="native-changes-count" />',
     );
-    expect(classicSource).toContain('<Badge count={total} showZero className="ml-2" />');
-    expect(source).not.toContain('const animatedTotal = useAnimatedNumber(total, 850, total)');
+    expect(classicSource).toContain('<DashboardExplorerTitle count={total} />');
+    expect(workspaceLayout).toContain(
+      "export function DashboardExplorerTitle({ count, badgeClassName = '' })",
+    );
+    expect(workspaceLayout).toContain(
+      'className={`dashboard-explorer-count ${badgeClassName}`.trim()}',
+    );
+    expect(workspaceLayout).toContain('<ChangeCountBadge');
   });
 
-  it('keeps Native and Classic change summaries on one line', async () => {
-    const [nativeSource, classicSource] = await Promise.all([
+  it('uses shared compact explorer rows with workflow-specific reliable counts', async () => {
+    const [nativeSource, classicSource, sharedLayout] = await Promise.all([
       readNativePanelSource(),
       fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'main.jsx'), 'utf8'),
+      fs.readFile(
+        path.resolve('domains', 'dashboard', 'web', 'src', 'workspace-layout.jsx'),
+        'utf8',
+      ),
     ]);
 
-    expect(nativeSource).toContain('className="mt-1 truncate whitespace-nowrap text-xs text-meta"');
+    expect(nativeSource).toContain('<DashboardExplorerRowTooltip');
+    expect(nativeSource).toContain('<DashboardExplorerRowContent');
+    expect(classicSource).toContain('<DashboardExplorerRowTooltip');
+    expect(classicSource).toContain('<DashboardExplorerRowContent');
+    expect(sharedLayout).toContain('dashboard-explorer-row-icon');
+    expect(sharedLayout).toContain('dashboard-explorer-row-name');
+    expect(sharedLayout).toContain('dashboard-explorer-row-count');
+    expect(sharedLayout).toContain('dashboard-explorer-row-status');
+    expect(classicSource).not.toContain('const showTaskCount');
     expect(classicSource).toContain(
-      'className="mt-0.5 block truncate whitespace-nowrap text-xs text-meta"',
+      '{phaseLabel(change.phase)} · {change.tasks.completed}/{change.tasks.total}',
     );
+    expect(nativeSource).toContain('子变更');
   });
 
-  it('keeps the three-pane Native workspace visible when the selected view is empty', async () => {
+  it('keeps the Native master-detail workspace visible when the selected view is empty', async () => {
     const [source, styles] = await Promise.all([
       readNativePanelSource(),
       fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'styles.css'), 'utf8'),
@@ -128,9 +153,7 @@ describe('Native dashboard web source contracts', () => {
     expect(source).toContain('const isLoadingView = pageLoading && visibleChanges.length === 0');
     expect(source).toContain('<NativeEmptyChangeDetail');
     expect(source).toContain('emptyProject={!hasNativeChanges}');
-    expect(source).toContain('<NativeEmptySidePanel />');
-    expect(source).toContain('<NativeChangeDetailSkeleton />');
-    expect(source).toContain('<NativeSidePanelSkeleton />');
+    expect(source).toContain('<NativeChangeDetailSkeleton projectContext={projectContext} />');
     expect(source).toContain('native-change-list-skeleton');
     expect(source).not.toContain('<Spin');
     expect(source).not.toContain('NativeWorkspaceLoadingState');
@@ -140,9 +163,13 @@ describe('Native dashboard web source contracts', () => {
   });
 
   it('renders Native parent children as an accessible expandable explorer tree', async () => {
-    const [source, styles] = await Promise.all([
+    const [source, styles, sharedLayout] = await Promise.all([
       readNativePanelSource(),
       fs.readFile(path.resolve('domains', 'dashboard', 'web', 'src', 'styles.css'), 'utf8'),
+      fs.readFile(
+        path.resolve('domains', 'dashboard', 'web', 'src', 'workspace-layout.jsx'),
+        'utf8',
+      ),
     ]);
 
     expect(source).toContain('childChangeReference');
@@ -150,10 +177,13 @@ describe('Native dashboard web source contracts', () => {
     expect(source).toContain('native-change-disclosure');
     expect(source).toContain('aria-expanded={expanded}');
     expect(source).toContain('aria-controls={childrenId}');
+    expect(source).toContain('aria-disabled={!reference}');
+    expect(source).toContain('onClick={() => reference && onSelect(reference)}');
     expect(source).toContain('native-child-change-list');
     expect(source).toContain('native-child-change-row');
-    expect(source).toContain('child.workspace.label');
+    expect(sharedLayout).toContain('workspace.label');
+    expect(sharedLayout).toContain('workspace.branch');
+    expect(sharedLayout).toContain("trigger={['hover', 'focus']}");
     expect(styles).toContain('.native-child-change-list');
-    expect(styles).toContain('.dashboard-workspace-label');
   });
 });

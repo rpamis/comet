@@ -1,86 +1,92 @@
 import React from 'react';
+import { Steps } from 'antd';
+import { StageIcon } from './stage-icons';
 
-const ORIGIN_WAVE_DOTS = Array.from({ length: 25 }, (_, index) => {
-  const row = Math.floor(index / 5);
-  const column = index % 5;
-  const ring = Math.abs(row - 1) + Math.abs(column - 1);
-  return {
-    index,
-    restOpacity: 0.2 + (1 - ring / 6) * 0.75,
-    ring,
-  };
-});
-
-function PhaseOriginWave({ label }) {
-  return (
-    <span className="dashboard-phase-origin-wave" role="status" aria-label={`${label} 正在进行`}>
-      {ORIGIN_WAVE_DOTS.map((dot) => (
-        <span
-          key={dot.index}
-          className="dashboard-phase-origin-wave-dot"
-          aria-hidden="true"
-          style={{
-            '--phase-origin-wave-rest': dot.restOpacity,
-            '--phase-origin-wave-ring': dot.ring,
-          }}
-        />
-      ))}
-    </span>
-  );
-}
+const ICON_STAGES = {
+  open: 'launch',
+  shape: 'design',
+  design: 'design',
+  build: 'build',
+  verify: 'verify',
+  archive: 'archive',
+};
 
 export function WorkflowPhaseTrack({
   phases,
-  currentIndex,
-  archived = false,
-  currentPhaseRunning = true,
+  phaseStatuses,
+  phaseIconStatuses = {},
+  currentPhase,
+  currentPhaseRunning = false,
+  currentPhaseLabel,
+  errorLabels = {},
   ariaLabel,
+  children,
 }) {
+  const currentIndex = phases.findIndex(([key]) => key === currentPhase);
   return (
-    <div className="dashboard-phase-track" role="list" aria-label={ariaLabel}>
-      {phases.map(([key, label], index) => {
-        const state =
-          archived || index < currentIndex
-            ? 'done'
-            : index === currentIndex
-              ? 'current'
-              : 'pending';
-        const stateLabel =
-          state === 'done'
-            ? '已完成'
-            : state === 'current' && currentPhaseRunning
-              ? '正在进行'
-              : state === 'current'
-                ? '当前阶段'
-                : '待进行';
-        return (
-          <div
-            key={key}
-            className={`dashboard-phase-item is-${state}${state === 'current' && currentPhaseRunning ? ' is-active' : ''}`}
-            role="listitem"
-          >
-            {index > 0 && <span className="dashboard-phase-rail is-leading" aria-hidden="true" />}
-            {index < phases.length - 1 && (
-              <span className="dashboard-phase-rail is-trailing" aria-hidden="true" />
-            )}
-            <span
-              className="dashboard-phase-node"
-              {...(state === 'current' && currentPhaseRunning
-                ? {}
-                : { 'aria-label': `${label} ${stateLabel}` })}
-            >
-              {state === 'done' ? (
-                '✓'
-              ) : state === 'current' && currentPhaseRunning ? (
-                <PhaseOriginWave label={label} />
-              ) : (
-                index + 1
-              )}
-            </span>
-            <span className="dashboard-phase-label">{label}</span>
-          </div>
-        );
-      })}
+    <div className="dashboard-phase-progress">
+      <Steps
+        className="dashboard-phase-track"
+        role="list"
+        aria-label={ariaLabel}
+        current={currentIndex}
+        orientation="horizontal"
+        titlePlacement="vertical"
+        responsive={false}
+        classNames={{ itemIcon: 'dashboard-phase-icon', itemRail: 'dashboard-phase-rail' }}
+        items={phases.map(([key, label], index) => {
+          const status = phaseStatuses[key] ?? 'wait';
+          const current = key === currentPhase && status !== 'finish';
+          const running = current && status === 'process' && currentPhaseRunning;
+          const suppliedIconStatus =
+            phaseIconStatuses[key] ??
+            (status === 'finish'
+              ? 'success'
+              : status === 'error'
+                ? 'error'
+                : running
+                  ? 'running'
+                  : 'idle');
+          const iconStatus =
+            suppliedIconStatus === 'running' && !running ? 'idle' : suppliedIconStatus;
+          const stateLabel = current
+            ? currentPhaseLabel
+            : status === 'finish'
+              ? '已完成'
+              : status === 'error'
+                ? (errorLabels[key] ?? '执行失败')
+                : index < currentIndex
+                  ? '未确认完成'
+                  : '后续阶段';
+          return {
+            key,
+            status,
+            role: 'listitem',
+            'aria-label': `${label} ${stateLabel}`,
+            'aria-current': current ? 'step' : undefined,
+            className: `dashboard-phase-item is-${status === 'finish' ? 'done' : status === 'error' ? 'error' : current ? 'current' : 'pending'}${current && status === 'error' ? ' is-current' : ''}${running ? ' is-active' : ''}`,
+            icon: (
+              <StageIcon
+                key={key}
+                stage={ICON_STAGES[key]}
+                status={iconStatus}
+                size={72}
+                className="dashboard-stage-icon"
+                surfaceColor="var(--color-surface)"
+                decorative
+              />
+            ),
+            title: <span className="dashboard-phase-label">{label}</span>,
+            content: (
+              <>
+                {current && <span className="dashboard-phase-current-caption">当前所在</span>}
+                <span className="dashboard-phase-state">{stateLabel}</span>
+              </>
+            ),
+          };
+        })}
+      />
+      <div className="dashboard-phase-note-slot">{children}</div>
     </div>
   );
 }
