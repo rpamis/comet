@@ -29,6 +29,15 @@ const brief = `# Outcome
 Add sentence counting.
 # Scope
 Count sentences in text.
+## Directory structure
+### Created
+None.
+### Modified
+None.
+### Deleted
+None.
+### Not created
+None.
 # Non-goals
 No language detection.
 # Acceptance examples

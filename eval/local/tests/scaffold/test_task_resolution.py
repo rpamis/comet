@@ -8,7 +8,7 @@ import pytest
 
 from scaffold.python.auto_tasks import ensure_generated_manifest
 from scaffold.python.eval_context import resolve_eval_context
-from scaffold.python.execution import resolve_execution
+from scaffold.python.execution import ResolvedExecution, resolve_execution
 from scaffold.python.manifests import load_eval_manifest
 from scaffold.python.task_resolution import build_task_catalogue, resolve_task_set
 
@@ -147,7 +147,10 @@ def test_catalogue_rejects_authored_and_recommended_conflict(tmp_path: Path):
         build_task_catalogue(manifest, tasks_dir)
 
 
-def test_resolution_reuses_normal_generation_cache_with_default_interaction(tmp_path: Path):
+def test_resolution_reuses_normal_generation_cache_with_default_interaction(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr("scaffold.python.task_resolution.selected_agent_model", lambda _agent: None)
     tasks_dir = tmp_path / "bundled"
     tasks_dir.mkdir()
     manifest_path, manifest = _manifest(tmp_path, "")
@@ -180,6 +183,7 @@ def test_resolution_reuses_normal_generation_cache_with_default_interaction(tmp_
         manifest,
         build_task_catalogue(manifest, tasks_dir),
         static_collect=True,
+        execution=ResolvedExecution(agent="claude-code", model=None, base_url=None, sources={}),
     )
 
     assert resolved.source == "generated-cache"

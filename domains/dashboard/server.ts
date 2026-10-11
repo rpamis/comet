@@ -26,7 +26,12 @@ import {
   DashboardProjectConfigError,
   updateDashboardProjectConfigSettings,
 } from './project-config-settings.js';
-import { collectDashboardProjectDirectory, findDashboardProject } from './project-directory.js';
+import {
+  collectDashboardProjectDirectory,
+  DashboardProjectDirectoryError,
+  findDashboardProject,
+  forgetMissingDashboardProject,
+} from './project-directory.js';
 import { DashboardPluginHostError, type DashboardPluginHostFactory } from './plugin-host.js';
 import type { DashboardChangeTab } from './types.js';
 
@@ -116,9 +121,12 @@ export async function startDashboardServer(
   const requestedPort = options.port ?? DEFAULT_PORT;
   const port = requestedPort === 0 ? 0 : await findAvailablePort(requestedPort);
   const pluginHostAccess = createDashboardPluginHostAccess(options.pluginHost);
+  const currentProjectPath = await fs
+    .realpath(options.projectPath)
+    .catch(() => path.resolve(options.projectPath));
 
   const server = http.createServer((req, res) => {
-    handleRequest(req, res, options.projectPath, webRoot, pluginHostAccess).catch((error) => {
+    handleRequest(req, res, currentProjectPath, webRoot, pluginHostAccess).catch((error) => {
       if (
         error instanceof DashboardChangeQueryError ||
         error instanceof NativeDashboardQueryError
@@ -207,10 +215,14 @@ async function handleRequest(
 
   const isPluginRequest = pathname.includes('/plugins');
   const isProjectConfigRequest = pathname.endsWith('/config');
+  const isProjectForgetRequest = pathname.endsWith('/forget');
   if (
     req.method !== 'GET' &&
     req.method !== 'HEAD' &&
-    !(req.method === 'POST' && (isPluginRequest || isProjectConfigRequest))
+    !(
+      req.method === 'POST' &&
+      (isPluginRequest || isProjectConfigRequest || isProjectForgetRequest)
+    )
   ) {
     respondError(res, 405, 'Method not allowed');
     return;
@@ -245,6 +257,28 @@ async function handleRequest(
     const project = findDashboardProject(directory, projectId);
     if (!project) {
       respondJson(res, req.method, 404, { error: 'Unknown dashboard project id' });
+      return;
+    }
+    if (subpath === '/forget') {
+      if (req.method !== 'POST') {
+        respondError(res, 405, 'Method not allowed');
+        return;
+      }
+      if (project.isCurrent || project.availability !== 'missing') {
+        respondError(
+          res,
+          409,
+          'Only missing projects other than the launch project can be removed from the index',
+        );
+        return;
+      }
+      try {
+        const updatedDirectory = await forgetMissingDashboardProject(projectPath, project);
+        respondJson(res, req.method, 200, updatedDirectory);
+      } catch (error) {
+        if (!(error instanceof DashboardProjectDirectoryError)) throw error;
+        respondError(res, error.status, error.message);
+      }
       return;
     }
     if (project.availability !== 'available') {

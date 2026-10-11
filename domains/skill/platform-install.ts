@@ -22,11 +22,7 @@ import {
   checkpointClassicLayoutInitialization,
   type ClassicLayoutInitializationPermit,
 } from '../comet-classic/classic-layout-initialization.js';
-import {
-  mergeDshInstruction,
-  reconcileDshCordisPatch,
-  removeDshCordisPatch,
-} from './dsh-adapter.js';
+import { mergeDshInstruction, reconcileDshCordisPatch } from './dsh-adapter.js';
 import {
   parseWorkflowProjectConfigDocument,
   projectConfigComment,
@@ -1445,7 +1441,7 @@ async function installCometHooksForPlatform(
         return result;
       }
       case 'dsh': {
-        await reconcileDshCordisPatch(baseDir, platform, scope);
+        const rollback = await reconcileDshCordisPatch(baseDir, platform, scope);
         try {
           const result = await installClaudeCodeHooks(
             baseDir,
@@ -1454,21 +1450,21 @@ async function installCometHooksForPlatform(
             hooksConfig,
             platform.hookConfigFile ?? 'hooks.json',
             platform.name,
-            { platformId: platform.id, scope },
+            { platformId: platform.id, scope, hookMatcher: platform.hookMatcher },
           );
           if (result.status !== 'installed') {
-            await removeDshCordisPatch(baseDir, platform, scope);
+            await rollback();
             return result;
           }
           return {
             status: 'installed',
             reason:
               scope === 'project'
-                ? 'dsh Hook config installed; load the official bridge in a profile and run `dsh ... --patch .dsh/cordis.patch.yml` to activate it'
-                : 'dsh Hook config installed; load the official bridge in the active profile to activate it',
+                ? 'dsh Hook config installed; restart dsh with `--patch .dsh/cordis.patch.yml` to activate it'
+                : 'dsh Hook config installed in existing profiles (or the home patch before profiles exist); restart DSH to activate it and update again after adding a profile',
           };
         } catch (error) {
-          await removeDshCordisPatch(baseDir, platform, scope);
+          await rollback();
           throw error;
         }
       }

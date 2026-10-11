@@ -1655,6 +1655,110 @@ describe('uninstallCommand interactive selection', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
+  it.each(['plain', 'parent-alias', 'deleted-alias'] as const)(
+    'removes only the index entry for a missing %s project',
+    async (kind) => {
+      const parent = path.join(tmpDir, 'projects');
+      const alias = path.join(tmpDir, 'alias');
+      const project = path.join(parent, 'deleted-project');
+      await fs.mkdir(project, { recursive: true });
+      if (kind !== 'plain') {
+        await fs.symlink(parent, alias, process.platform === 'win32' ? 'junction' : 'dir');
+      }
+      const requestedPath = kind === 'plain' ? project : path.join(alias, 'deleted-project');
+      await upsertProjectInstallation(
+        requestedPath,
+        [{ platform: 'codex', language: 'en' }],
+        'init',
+      );
+      const other = path.join(tmpDir, 'another-missing-project');
+      await upsertProjectInstallation(other, [], 'init');
+      await fs.rm(project, { recursive: true });
+      if (kind === 'deleted-alias') await fs.unlink(alias);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await uninstallCommand(requestedPath, { force: true, json: true });
+        const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+        expect(result.summary).toMatchObject({ targetsProcessed: 0, totalFailures: 0 });
+        expect(result.registryEntryRemoved).toBe(true);
+        const registry = JSON.parse(
+          await fs.readFile(getProjectRegistryPath(os.homedir()), 'utf8'),
+        );
+        expect(registry.projects.map((entry: { path: string }) => entry.path)).toEqual([other]);
+        await expect(fs.stat(requestedPath)).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
+
+  it('keeps a missing project when index removal is declined', async () => {
+    const project = path.join(tmpDir, 'missing-declined');
+    await upsertProjectInstallation(project, [], 'init');
+    mockedSelect.mockResolvedValueOnce(false as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(project, { currentProject: true });
+      const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(os.homedir()), 'utf8'));
+      expect(registry.projects).toHaveLength(1);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('removes missing entries without known targets during explicit all-projects uninstall', async () => {
+    const project = path.join(tmpDir, 'missing-without-targets');
+    await upsertProjectInstallation(project, [], 'init');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(project, { allProjects: true, force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.projects).toEqual([
+        expect.objectContaining({
+          projectPath: project,
+          status: 'uninstalled',
+          registryEntryRemoved: true,
+        }),
+      ]);
+      expect(
+        JSON.parse(await fs.readFile(getProjectRegistryPath(os.homedir()), 'utf8')).projects,
+      ).toEqual([]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('reports a targetless project access failure and continues explicit all-projects cleanup', async () => {
+    const denied = path.join(tmpDir, 'a-denied');
+    const next = path.join(tmpDir, 'b-missing');
+    await upsertProjectInstallation(denied, [], 'init');
+    await upsertProjectInstallation(next, [], 'init');
+    const originalStat = fs.stat.bind(fs);
+    const stat = vi.spyOn(fs, 'stat').mockImplementation(async (...args) => {
+      if (args[0] === denied) throw Object.assign(new Error('access denied'), { code: 'EACCES' });
+      return originalStat(...args);
+    });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await uninstallCommand(next, { allProjects: true, force: true, json: true });
+      const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+      expect(result.projects).toEqual([
+        expect.objectContaining({ projectPath: denied, status: 'failed', reason: 'access denied' }),
+        expect.objectContaining({
+          projectPath: next,
+          status: 'uninstalled',
+          registryEntryRemoved: true,
+        }),
+      ]);
+      expect(process.exitCode).toBe(1);
+      const registry = JSON.parse(await fs.readFile(getProjectRegistryPath(os.homedir()), 'utf8'));
+      expect(registry.projects.map((entry: { path: string }) => entry.path)).toEqual([denied]);
+    } finally {
+      stat.mockRestore();
+      log.mockRestore();
+    }
+  });
+
   it('reports indexed project inspection failure without treating it as an unselected project', async () => {
     await upsertProjectInstallation(tmpDir, [{ platform: 'claude', language: 'en' }], 'init');
     const inspect = vi

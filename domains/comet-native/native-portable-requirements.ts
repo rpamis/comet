@@ -182,11 +182,15 @@ export async function validateNativePortableDocuments(options: {
   specChanges?: readonly NativePortableSpecChange[];
 }): Promise<NativeArtifactValidation> {
   const changeDir = nativePortableChangeDir(options.paths, options.state.name);
+  const constraintsVersion = options.state.document_constraints_version;
+  const compactConstraints = constraintsVersion === 2 || constraintsVersion === 3;
+  const structureConstraints = constraintsVersion === 3;
   const findings: NativeFinding[] = [
     ...(
       await validateNativeBrief(changeDir, options.state.brief, {
         strict: true,
-        compact: options.state.document_constraints_version === 2,
+        compact: compactConstraints,
+        structure: structureConstraints,
       })
     ).findings,
   ];
@@ -768,7 +772,11 @@ export async function readNativePortableAcceptance(options: {
       ...spec,
       contentHash: canonicalHash(
         'comet.native.shape-artifact-content.v1',
-        normalizedShapeArtifactText(source.text, options.state.document_constraints_version === 2),
+        normalizedShapeArtifactText(
+          source.text,
+          options.state.document_constraints_version !== undefined &&
+            options.state.document_constraints_version !== 1,
+        ),
       ),
       ...(deltaContentHash === null ? {} : { deltaContentHash }),
     });
@@ -816,14 +824,20 @@ export async function readNativePortableAcceptance(options: {
     acceptance: buildNativePortableAcceptance({
       briefMarkdown: brief.text,
       specs,
-      resolveBriefReferences: options.state.document_constraints_version === 2,
+      resolveBriefReferences:
+        options.state.document_constraints_version !== undefined &&
+        options.state.document_constraints_version !== 1,
     }),
     formalHash: canonicalHash('comet.native.shape-formal-artifacts.v1', {
       brief: {
         source: brief.ref,
         contentHash: canonicalHash(
           'comet.native.shape-artifact-content.v1',
-          normalizedShapeArtifactText(brief.text, options.state.document_constraints_version === 2),
+          normalizedShapeArtifactText(
+            brief.text,
+            options.state.document_constraints_version !== undefined &&
+              options.state.document_constraints_version !== 1,
+          ),
         ),
       },
       specs: specArtifacts,
@@ -869,7 +883,7 @@ export async function prepareNativePortableShapeConfirmation(options: {
       }
       const shapeBoundary =
         options.enforceDocumentConstraints === true
-          ? { ...state, document_constraints_version: 2 as const }
+          ? { ...state, document_constraints_version: 3 as const }
           : state;
       const specChanges = await discoverNativePortableSpecChanges({ paths: options.paths, state });
       if (options.enforceDocumentConstraints === true) {

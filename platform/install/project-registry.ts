@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { ensureDir } from '../fs/file-system.js';
+import { ensureDir, isProjectDirectoryMissing } from '../fs/file-system.js';
 import { withRecoverableFileLock } from '../fs/plugin-store.js';
 
 export const PROJECT_REGISTRY_SCHEMA_VERSION = 1;
@@ -37,6 +37,13 @@ export interface ProjectRegistryOptions {
   now?: Date;
   strict?: boolean;
 }
+
+export interface ProjectRegistryRemovalOptions extends ProjectRegistryOptions {
+  expectedCanonicalPath?: string;
+  missingOnly?: boolean;
+}
+
+export class ProjectDirectoryReappearedError extends Error {}
 
 export class ProjectRegistryError extends Error {
   constructor(
@@ -196,6 +203,7 @@ function assertProjectRegistry(value: unknown, registryPath: string): ProjectReg
 async function resolveProjectPath(projectPath: string): Promise<{
   path: string;
   canonicalPath: string;
+  missing?: true;
 }> {
   const resolved = path.resolve(projectPath);
   try {
@@ -203,10 +211,28 @@ async function resolveProjectPath(projectPath: string): Promise<{
       path: resolved,
       canonicalPath: await fs.realpath(resolved),
     };
-  } catch {
+  } catch (error) {
+    if (!isMissingRegistryFile(error)) throw error;
+    let ancestor = path.dirname(resolved);
+    while (true) {
+      try {
+        const canonicalAncestor = await fs.realpath(ancestor);
+        return {
+          path: resolved,
+          canonicalPath: path.join(canonicalAncestor, path.relative(ancestor, resolved)),
+          missing: true,
+        };
+      } catch (ancestorError) {
+        if (!isMissingRegistryFile(ancestorError)) throw ancestorError;
+        const parent = path.dirname(ancestor);
+        if (parent === ancestor) break;
+        ancestor = parent;
+      }
+    }
     return {
       path: resolved,
       canonicalPath: resolved,
+      missing: true,
     };
   }
 }
@@ -216,7 +242,19 @@ export async function findProjectRegistryEntry(
   projects: ProjectRegistryEntry[],
 ): Promise<ProjectRegistryEntry | undefined> {
   const resolved = await resolveProjectPath(projectPath);
-  return findProjectRegistryEntryByCanonicalPath(projects, resolved.canonicalPath);
+  const exact = findProjectRegistryEntryByCanonicalPath(projects, resolved.canonicalPath);
+  if (exact || !resolved.missing) return exact;
+  const candidates = [];
+  for (const entry of projects) {
+    if (
+      canonicalKey(entry.path) === canonicalKey(resolved.path) &&
+      (await isProjectDirectoryMissing(entry.canonicalPath))
+    )
+      candidates.push(entry);
+  }
+  // A deleted alias may have been reused for several projects. A path alone
+  // cannot select one of those entries; callers must provide its canonical identity.
+  return candidates.length === 1 ? candidates[0] : undefined;
 }
 
 async function writeProjectRegistry(
@@ -430,7 +468,7 @@ async function upsertProjectInstallationUnlocked(
 
 export async function removeProjectInstallation(
   projectPath: string,
-  options: ProjectRegistryOptions = {},
+  options: ProjectRegistryRemovalOptions = {},
 ): Promise<boolean> {
   return withRecoverableFileLock(`${getProjectRegistryPath(options.homeDir)}.lock`, () =>
     removeProjectInstallationUnlocked(projectPath, options),
@@ -439,12 +477,24 @@ export async function removeProjectInstallation(
 
 async function removeProjectInstallationUnlocked(
   projectPath: string,
-  options: ProjectRegistryOptions = {},
+  options: ProjectRegistryRemovalOptions = {},
 ): Promise<boolean> {
   const registryPath = getProjectRegistryPath(options.homeDir);
   const registry = await readProjectRegistrySnapshot({ ...options, strict: true });
-  const resolved = await resolveProjectPath(projectPath);
-  const key = canonicalKey(resolved.canonicalPath);
+  const entry = options.expectedCanonicalPath
+    ? findProjectRegistryEntryByCanonicalPath(registry.projects, options.expectedCanonicalPath)
+    : await findProjectRegistryEntry(projectPath, registry.projects);
+  if (!entry) return false;
+  if (
+    options.missingOnly &&
+    (!(await isProjectDirectoryMissing(projectPath)) ||
+      !(await isProjectDirectoryMissing(entry.canonicalPath)))
+  ) {
+    throw new ProjectDirectoryReappearedError(
+      'Project directory reappeared; retry uninstall to inspect its installations',
+    );
+  }
+  const key = canonicalKey(entry.canonicalPath);
   const projects = registry.projects.filter(
     (project) => canonicalKey(project.canonicalPath) !== key,
   );

@@ -1111,6 +1111,11 @@ test('Explorer keeps the old empty phase and malformed value display conditions'
     'Build · undefined · 第undefined轮/第undefined次',
     '状态异常 · 修复中 · 第1.5轮/第retry次',
   ]);
+  const disclosure = rows.first().locator('..').locator('button.native-change-disclosure');
+  if ((await disclosure.getAttribute('aria-expanded')) === 'false') {
+    await disclosure.click();
+  }
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
   await expect(list.locator('.native-child-change-row .dashboard-explorer-row-count')).toHaveText([
     '等待前置子任务完成',
     '阶段信息不可用',

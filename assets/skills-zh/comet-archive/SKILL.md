@@ -44,7 +44,7 @@ comet state check <name> archive --json
 - 本次归档将执行的不可逆动作：按 OpenSpec delta 语义合并主 spec、标注 design doc / plan、移动 change 到 archive 目录
 - 归档完成后将采用的提交处理方式：只保留在本地、推送当前绑定分支，或推送后创建 PR
 
-用户确认问题必须以单选题形式呈现，包含以下全部选项。文本降级模式必须使用下表；使用结构化提问时，将“方式”作为短标签、“实际影响”作为说明，不得缩短为含义不明确的选项：
+Git 协调根的用户确认问题必须以单选题形式呈现，包含以下全部选项。文本降级模式必须使用下表；使用结构化提问时，将“方式”作为短标签、“实际影响”作为说明，不得缩短为含义不明确的选项：
 
 | 选项 | 方式                            | 实际影响                                                                                                                                                             |
 | ---- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -54,14 +54,16 @@ comet state check <name> archive --json
 | D    | 「需要调整或重新验证」          | 不归档；运行 `comet state transition <change-name> archive-reopen` 回到 `phase: verify`，再调用 `/comet-verify`；若确认需要修复，再按验证失败决策回到 `/comet-build` |
 | E    | 「暂不归档」                    | 不运行 `archive-confirm` 或归档命令，不提交、不推送；保留未归档的 change、`phase: archive` 和 `branch_status: pending`，等待稍后再次调用 `/comet-archive`            |
 
-只有用户选择 A、B 或 C 后，才将选择保存为 JSON 并通过 Runtime 记录，再确认归档：
+若协调根目录本身不属于 Git 工作树，而业务代码在独立的子仓库，改为向用户确认“仅归档协调文档”或选择 D/E。说明该方式会合并主 spec、移动并保存归档文档，在协调根的 `.comet/classic-deliveries/` 留下文件摘要回执；子仓库的提交和推送须按各仓库单独核对，不能作为协调文档的归档提交。用户确认后写入 `{ "action": "archive-only" }`，不填写 `targetBranch`、`remote`、`commit` 或 `prUrl`。该方式仅适用于非 Git 协调根；Git 项目仍使用 A/B/C。
+
+只有用户选择 A、B、C 或明确确认上述“仅归档协调文档”后，才将选择保存为 JSON 并通过 Runtime 记录，再确认归档：
 
 ```bash
 comet state delivery <change-name> --file <json-path>
 comet state transition <change-name> archive-confirm
 ```
 
-JSON 包含 action（A=local、B=push、C=pr）、targetBranch，以及可选的 remote、commit 和 prUrl。初次记录时，只填写已确认的动作和目标；尚不知道的 commit/prUrl 不得伪造，等操作实际完成后再补写。
+Git 交付的 JSON 包含 action（A=local、B=push、C=pr）、targetBranch，以及可选的 remote、commit 和 prUrl。文档归档的 JSON 只包含 `action: archive-only`。初次记录时，只填写已确认的动作和目标；尚不知道的 commit/prUrl 不得伪造，等操作实际完成后再补写。
 
 targetBranch 是接收归档提交的绑定分支，与 PR 的 base 分支含义不同。PR base 使用已有的明确配置；存在歧义时先澄清。存在多个 remote 时，明确推送目的地，不自行猜测。例如，用户已确认推送时：
 
@@ -124,6 +126,8 @@ brainstorming → delta spec → 实施 → 验证 → 主 spec 合并 → desig
 
 ### 4. 精确提交归档改动
 
+若 delivery 的 action 为 `archive-only`，归档命令已将 `branch_status` 设为 `handled`，并在最终完整性检查后记录归档目录中全部文件（含归档时的主 spec 快照）的 SHA-256 摘要。运行 `comet guard <change-name> archive` 和 `comet state delivery <change-name> --verify`；只有返回 `verification.status: complete`，且归档目录、主 spec 快照和回执均保留时才清除 current selection。此路径不执行以下 Git 提交、push 或 PR 步骤；子仓库交付由各仓库自己的记录证明。归档文件之后发生增删改时，回执校验会退回 `needsVerification`，先恢复或重新处理文档，不覆盖已封存回执。
+
 归档脚本只移动文件和合并 spec，不会自动提交。归档完成后工作区会有以下未提交改动：
 
 - change 目录从 `<classic-change-dir>/` 移动到 `<classic-archive-root>/YYYY-MM-DD-<name>/`
@@ -171,9 +175,9 @@ local 由 Runtime 确认归档提交存在；push 还需确认远端包含该提
 - 归档脚本执行成功（退出码 0）
 - 归档目录 `<classic-archive-root>/YYYY-MM-DD-<change-name>/` 存在
 - 归档后的 `.comet.yaml` 中 `archived: true`
-- 归档状态中的 `branch_status: handled` 已包含在唯一归档提交中
+- 归档状态中的 `branch_status: handled` 已包含在唯一归档提交中；`archive-only` 时包含在文件摘要回执中
 - `comet guard <change-name> archive` 通过
-- 唯一归档提交已按用户在归档前确认的方式处理：选择 A 时只保留本地，选择 B 时已成功推送，选择 C 时已成功推送并创建 PR
+- 唯一归档提交已按用户在归档前确认的方式处理：选择 A 时只保留本地，选择 B 时已成功推送，选择 C 时已成功推送并创建 PR；`archive-only` 时由 Runtime 验证本地文档回执
 - current selection 已在所选处理方式完成后清除
 
 归档脚本会把 `<classic-change-dir>/` 移动到 `<classic-archive-root>/YYYY-MM-DD-<name>/`。

@@ -394,6 +394,59 @@ test.describe('Dashboard project selection', () => {
       ).toHaveCount(noAvailable ? 2 : 1);
     });
   }
+
+  test('marks missing projects and removes only the confirmed index entry', async ({ page }) => {
+    const missing = { ...projects[1], availability: 'missing' };
+    const remaining = { currentProjectId: 'path-0', projects: [projects[0]] };
+    await page.route('**/api/dashboard/projects', (route) =>
+      route.fulfill({
+        json: { currentProjectId: 'path-0', projects: [projects[0], missing] },
+      }),
+    );
+    let removed = false;
+    await page.route('**/api/dashboard/projects/path-1/forget', async (route) => {
+      expect(route.request().method()).toBe('POST');
+      expect(route.request().headers()['content-type']).toBe('application/json');
+      removed = true;
+      await route.fulfill({ json: remaining });
+    });
+    await page.goto('/');
+    const missingProjectManager = page.getByRole('button', { name: '管理缺失项目' });
+    for (const width of [1600, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(missingProjectManager).toBeVisible();
+      const headerBounds = await page.locator('.comet-workbench-header').boundingBox();
+      const managerBounds = await missingProjectManager.boundingBox();
+      expect(headerBounds).not.toBeNull();
+      expect(managerBounds).not.toBeNull();
+      expect(managerBounds!.x).toBeGreaterThanOrEqual(headerBounds!.x);
+      expect(managerBounds!.x + managerBounds!.width).toBeLessThanOrEqual(
+        headerBounds!.x + headerBounds!.width + 1,
+      );
+      expect(managerBounds!.y + managerBounds!.height).toBeLessThanOrEqual(
+        headerBounds!.y + headerBounds!.height + 1,
+      );
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      );
+    }
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.locator('.comet-project-select').click();
+    await expect(page.getByText(/目录已不存在/)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: '管理缺失项目' }).click();
+    await page.screenshot({ path: test.info().outputPath('missing-projects.png') });
+    await page.getByRole('button', { name: '从索引移除', exact: true }).click();
+    await page.getByRole('button', { name: /^取\s*消$/ }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(removed).toBe(false);
+    await page.getByRole('button', { name: '管理缺失项目' }).click();
+    await page.getByRole('button', { name: '从索引移除', exact: true }).click();
+    await page.getByRole('button', { name: /^移\s*除$/ }).click();
+    await expect(page.getByRole('button', { name: '管理缺失项目' })).toHaveCount(0);
+    expect(removed).toBe(true);
+    await expect(page.getByRole('button', { name: /^Git 未提交 0 / })).toBeVisible();
+  });
 });
 
 test('uses each project default workflow during startup and project switching', async ({
@@ -5227,6 +5280,7 @@ test('keeps the project selector inset when switching from a workflow to plugin 
 
 test('keeps long project names discoverable without widening the selector', async ({ page }) => {
   const longProjectName = 'comet-supervisor-config-and-runtime-monitoring';
+  let projectName = 'comet';
 
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.route('**/api/dashboard/**', async (route) => {
@@ -5238,7 +5292,7 @@ test('keeps long project names discoverable without widening the selector', asyn
           projects: [
             {
               id: 'long-project',
-              name: longProjectName,
+              name: projectName,
               path: 'D:/Project/comet-supervisor-config-and-runtime-monitoring',
               lastSeenAt: null,
               availability: 'available',
@@ -5253,7 +5307,7 @@ test('keeps long project names discoverable without widening the selector', asyn
       await route.fulfill({
         json: {
           project: {
-            name: longProjectName,
+            name: projectName,
             path: 'D:/Project/comet-supervisor-config-and-runtime-monitoring',
             generatedAt: '2026-08-28T00:00:00.000Z',
           },
@@ -5278,12 +5332,24 @@ test('keeps long project names discoverable without widening the selector', asyn
 
   const projectSelector = page.locator('.comet-project-select');
   const selectedProject = projectSelector.locator('.comet-project-selected-label');
+  await expect(selectedProject).toHaveText(projectName);
+  await page.evaluate(() => document.fonts.ready);
+  const shortNameWidth = await projectSelector.evaluate(
+    (element) => element.getBoundingClientRect().width,
+  );
+  projectName = longProjectName;
+  await page.reload();
   await expect(selectedProject).toBeVisible();
   await expect(selectedProject).toHaveAttribute('title', longProjectName);
   await expect(selectedProject).toHaveText(longProjectName);
   await expect(selectedProject).toHaveCSS('text-overflow', 'ellipsis');
   await expect(selectedProject).toHaveCSS('white-space', 'nowrap');
-  await expect(projectSelector).toHaveCSS('width', '220px');
+  const longNameWidth = await projectSelector.evaluate(
+    (element) => element.getBoundingClientRect().width,
+  );
+  expect(Math.abs(longNameWidth - shortNameWidth)).toBeLessThanOrEqual(1);
+  expect(longNameWidth).toBeGreaterThanOrEqual(160);
+  expect(longNameWidth).toBeLessThanOrEqual(220);
 
   await projectSelector.click();
   const projectOption = page

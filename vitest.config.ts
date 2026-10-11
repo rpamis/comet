@@ -13,6 +13,10 @@ export default defineConfig({
       // Benchmark tests are developer-only tools, not part of CI validation
       'test/**/context-compression-benchmark.test.ts',
       'test/**/context-execution-benchmark.test.ts',
+      // External CLI compatibility is run explicitly by test:openspec-upstream.
+      ...(process.env.COMET_TEST_OPENSPEC_PACKAGE
+        ? []
+        : ['test/domains/comet-classic/classic-openspec-upstream.test.ts']),
     ],
     coverage: {
       reporter: ['text', 'lcov'],

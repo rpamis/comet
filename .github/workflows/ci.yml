@@ -48,6 +48,8 @@ jobs:
       - run: pnpm build
       - name: Verify build is deterministic
         run: git diff --exit-code -- assets
+      - name: Verify external OpenSpec CLI compatibility
+        run: pnpm test:openspec-upstream
       - run: pnpm test:coverage
       - name: Upload coverage report
         if: always()
@@ -81,6 +83,8 @@ jobs:
           version: '0.11.29'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: Verify external OpenSpec CLI compatibility
+        run: pnpm test:openspec-upstream
       - run: pnpm test
 
   runtime-smoke:
@@ -101,6 +105,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test:native-parallel
+      - name: DSH Hook installation and denial regressions
+        run: >-
+          pnpm exec vitest run
+          test/domains/skill/dsh-hooks.test.ts
+          test/platform/dsh-profiles.test.ts
+          test/domains/comet-entry/hook-adapter.test.ts
+          test/domains/comet-entry/hook-router-runtime.test.ts
       - name: Native check process and recovery regressions
         run: >-
           pnpm exec vitest run

@@ -27,6 +27,7 @@ import {
 } from '../comet-memory/index.js';
 import { getCurrentVersion } from '../../platform/version/version.js';
 import { resolveProjectName } from '../../platform/paths/project-identity.js';
+import { resolveProjectWorktreeRoot } from '../../platform/paths/project-worktree-root.js';
 import { defaultProjectKnowledgeStorageRoot } from '../../platform/paths/project-knowledge-storage.js';
 import {
   JsonFilePluginStorageStore,
@@ -57,7 +58,10 @@ import { readWorkflowProjectConfig } from '../workflow-contract/project-config-r
 import { writeWorkflowProjectConfig } from '../workflow-contract/project-config-writer.js';
 import { DEFAULT_WORKFLOW_MEMORY_PROJECT_CONFIG } from '../workflow-contract/project-config.js';
 import type { WorkflowMemoryProjectConfig } from '../workflow-contract/types.js';
-import { createProjectKnowledgePluginDescriptor } from '../project-knowledge/index.js';
+import {
+  createProjectKnowledgePluginDescriptor,
+  ProjectKnowledgeHostReview,
+} from '../project-knowledge/index.js';
 import type { WorkflowKnowledgeProjectConfig } from '../workflow-contract/types.js';
 import { DEFAULT_WORKFLOW_KNOWLEDGE_PROJECT_CONFIG } from '../workflow-contract/project-config.js';
 import type { ProjectKnowledgeSemanticReviewer } from '../project-knowledge/learning.js';
@@ -437,7 +441,7 @@ export async function createDefaultCometPluginBridge(
   const stateRoot = path.resolve(
     options.stateRoot ?? path.join(homeDirectory, '.comet', 'plugins'),
   );
-  const projectRoot = path.resolve(options.projectRoot);
+  const projectRoot = resolveProjectWorktreeRoot(options.projectRoot);
   const bestEffortContext = options.bestEffortContext === true;
   const contextLockTimeoutMs = bestEffortContext
     ? Math.max(100, Math.min(options.lockTimeoutMs ?? 750, 750))
@@ -489,6 +493,14 @@ export async function createDefaultCometPluginBridge(
     applications: applicationStore,
     defaultCharBudget: effectiveMemoryProviderConfig.taskContextCharLimit,
   });
+  const knowledgeCacheRoot = options.knowledgeCacheRoot
+    ? path.resolve(options.knowledgeCacheRoot)
+    : options.stateRoot
+      ? path.join(stateRoot, 'knowledge-cache')
+      : options.homeDirectory
+        ? defaultProjectKnowledgeStorageRoot(homeDirectory)
+        : undefined;
+  const hostReview = new ProjectKnowledgeHostReview(projectRoot, knowledgeCacheRoot);
   const runtime = new PluginRuntime({
     cometVersion: options.cometVersion ?? getCurrentVersion(),
     store: new JsonPluginStateStore(
@@ -496,7 +508,8 @@ export async function createDefaultCometPluginBridge(
     ),
     storage,
     journals: { user: userJournal, project: projectJournal },
-    replayPendingLearningOnContext: !bestEffortContext,
+    replayPendingLearningOnContext: false,
+    isLearningWaitResolved: (wait) => hostReview.isSubmitted(wait),
     ...(options.scheduleLearning === undefined
       ? {}
       : { scheduleLearning: options.scheduleLearning }),
@@ -562,13 +575,7 @@ export async function createDefaultCometPluginBridge(
               application.scope === 'project' &&
               application.projectId === options.projectId,
           ),
-        ...(options.knowledgeCacheRoot
-          ? { cacheRoot: path.resolve(options.knowledgeCacheRoot) }
-          : options.stateRoot
-            ? { cacheRoot: path.join(stateRoot, 'knowledge-cache') }
-            : options.homeDirectory
-              ? { cacheRoot: defaultProjectKnowledgeStorageRoot(homeDirectory) }
-              : {}),
+        ...(knowledgeCacheRoot ? { cacheRoot: knowledgeCacheRoot } : {}),
         ...(options.runProjectKnowledgeReview
           ? { semanticReviewer: options.runProjectKnowledgeReview }
           : {}),
@@ -586,6 +593,20 @@ export async function createDefaultCometPluginBridge(
   );
   if (!bestEffortContext) await bridge.flushContextApplicationOutbox();
   return bridge;
+}
+
+export async function readDefaultProjectLearningStatus(
+  projectId: string,
+  homeDirectory = os.homedir(),
+): Promise<import('../agent-learning/index.js').AgentLearningStatus> {
+  const stateRoot = path.join(path.resolve(homeDirectory), '.comet', 'plugins');
+  const storage = new JsonFilePluginStorageStore(path.join(stateRoot, 'storage'));
+  const journal = new AgentExperienceJournal(
+    new StorageAgentExperienceJournalStore(
+      await storage.open('comet.agent-learning', 'project', projectId),
+    ),
+  );
+  return journal.status();
 }
 
 function contextAppliedEvent(

@@ -110,6 +110,8 @@ export type TranslationKey =
   | 'superpowersSkills'
   | 'foundCometInstallations'
   | 'foundIndexedProjectCleanup'
+  | 'removeMissingProjectPrompt'
+  | 'missingProjectIndexRemoved'
   | 'globalScope'
   | 'projectScope'
   | 'pathLabel'
@@ -252,6 +254,10 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     superpowersSkills: 'Superpowers Skills',
     foundCometInstallations: 'Found Comet installations on the following targets:',
     foundIndexedProjectCleanup: 'Found an indexed project with follow-on cleanup still pending.',
+    removeMissingProjectPrompt:
+      'Project directory is missing: {path}. Remove only its index entry?',
+    missingProjectIndexRemoved:
+      'Removed the missing project from the index; no files were deleted.',
     globalScope: 'global',
     projectScope: 'project',
     pathLabel: 'Path:',
@@ -395,6 +401,8 @@ const TRANSLATIONS: Record<Language, Record<TranslationKey, string>> = {
     superpowersSkills: 'Superpowers Skills',
     foundCometInstallations: '检测到以下平台已安装 Comet：',
     foundIndexedProjectCleanup: '检测到已索引项目仍有后续清理待处理。',
+    removeMissingProjectPrompt: '项目目录已不存在：{path}。是否仅移除索引记录？',
+    missingProjectIndexRemoved: '已从索引移除缺失项目，未删除任何文件。',
     globalScope: '全局',
     projectScope: '项目',
     pathLabel: '路径：',

@@ -2,7 +2,7 @@
 
 All notable changes to @rpamis/comet will be documented in this file.
 
-## What's Changed [0.4.5] - 2026-10-09
+## What's Changed [Unreleased]
 
 ### Changed
 
@@ -11,6 +11,25 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Dashboard overview metrics**: Show project metrics in compact responsive cards with titles, existing status badges, and explanations beside prominent values in both themes, allowing narrow-screen text to wrap without clipping. Apply consistent selection feedback to all five cards while preserving their business status labels.
 - **Dashboard page alignment**: Fill the available width across the top bar, headings, workflow tabs, and all workflow and plugin page bodies, with shared 32px desktop and 16px narrow-screen gutters. Keep loading and empty states aligned while preserving dialog and local text width limits.
 - **Dashboard counters**: Add brief numeric transitions for updates to overview metrics, change completion counts, scope totals, and acceptance counts. Count up from zero when switching workflows with stable metric widths, and show new projects, changes, and filtered views immediately. Preserve Explorer Badge scrolling when counts change, display exact totals above 99, and stop these counters and progress transitions as soon as reduced motion is enabled.
+
+## What's Changed [0.4.5] - 2026-10-10
+
+### Added
+
+- **Native brief directory structure**: New and reconfirmed Native changes record a "Directory structure" section under Scope listing Created/Modified/Deleted modules and key files plus a deliberate "Not created" list, as a tree or a plain list with per-path annotations, in both artifact languages. Runtime enforces the section at Shape confirmation boundaries created with this release (document constraints v3); changes confirmed by earlier releases keep their original rules and progress. Adding ordinary helper files inside a confirmed module needs no renewed confirmation; scope growth or responsibility shifts update the structure and the related Decision first.
+- **Classic document archive**: Archive specs and change documents from a non-Git coordination root with independent child repositories, using an explicit local document delivery choice, preserved main spec snapshots, and a verified file-digest receipt (#468).
+
+### Fixed
+
+- **Missing project cleanup**: Explicitly uninstall deleted projects by removing their installation index entries, including paths beneath directory aliases. Dashboard labels unavailable projects and lets users remove missing entries after confirmation, while retaining other projects and leaving files untouched (#474).
+- **Project Knowledge review responsiveness**: Keep pending host reviews out of repeated context replay, resume only submitted reviews, bound retries for real failures, and accept batches of review decisions across paths in one Git worktree (#467).
+- **Native fenced examples**: Ignore headings and blocking markers inside fenced code so valid brief and verification examples do not trigger document errors or clarification blockers. Match fence characters and lengths consistently when checking document contents.
+- **DSH workflow protection**: Install loadable Hook bridge patches in existing DSH profiles, match native write and edit tools, and preserve denial decisions through PowerShell. Updates migrate managed legacy patches without duplicating bridges or replacing unrelated configuration; Doctor identifies invalid bridge configuration and explains activation requirements (#466).
+
+### Security
+
+- **OpenSpec dependency isolation**: Remove the unused bundled OpenSpec package and its vulnerable brace-pattern dependency chain. Classic continues using its separately installed OpenSpec CLI; Comet installations no longer include `braces` affected by CVE-2026-93687.
+- **Dependency fixes**: Upgrade vulnerable Node.js and Eval dependencies to patched versions, covering HTML sanitization, TOML and URI parsing, math rendering, source maps, network clients, and virtual environments.
 
 ## What's Changed [0.4.4] - 2026-10-03
 

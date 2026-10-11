@@ -122,6 +122,15 @@ describe('Native v4 public CLI surface', () => {
 Ship the requested behavior.
 # Scope
 Keep the implementation focused.
+## Directory structure
+### Created
+None.
+### Modified
+None.
+### Deleted
+None.
+### Not created
+None.
 # Non-goals
 No unrelated changes.
 # Acceptance examples
@@ -1141,6 +1150,15 @@ Run applicable focused checks.
 Ship the updated requested behavior.
 # Scope
 Keep the implementation focused.
+## Directory structure
+### Created
+None.
+### Modified
+None.
+### Deleted
+None.
+### Not created
+None.
 # Non-goals
 No unrelated changes.
 # Acceptance examples

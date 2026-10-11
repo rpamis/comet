@@ -23,6 +23,40 @@
 <a href="https://trendshift.io/repositories/38989?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-38989" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/38989" alt="rpamis%2Fcomet | Trendshift" width="250" height="55"/></a>
 </p>
 
+## 💎赞助
+
+本项目由 [PackyCode](https://www.packyapi.ai/register?aff=DIId)、[RunApi](https://runapi.host)等赞助方支持
+
+> [想出现在这里？](mailto:benyuanming@gmail.com)
+
+<details open>
+<summary>点击收起</summary>
+
+<table width="100%">
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://www.packyapi.ai/register?aff=DIId">
+        <img src="https://github.com/rpamis/comet/blob/master/img/PackyCode.png" alt="PackyCode Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      PackyCode 是一家稳定、高效的 API 中转服务商，一句话接入主流大模型。统一域名、统一密钥、智能容灾切换，97% 可用性。人民币1:1充值，无汇率无手续费坑，新用户首充立享折扣 + $1免费体验额度，多分组折扣低至 2 折起，提供专属Codex/Claude Code高速通道。<a href="https://www.packyapi.ai/register?aff=DIId">点此链接注册，立即开始使用！</a>
+    </td>
+  </tr>
+  <tr>
+    <td width="25%" align="center" valign="middle">
+      <a href="https://runapi.host">
+        <img src="https://github.com/rpamis/comet/blob/master/img/RunApi.jpg" alt="PackyCode Sponsor" width="180">
+      </a>
+    </td>
+    <td width="75%" align="left" valign="middle">
+      RunAPI 是高效稳定的 AI 模型 API 中转平台，一个 API Key 即可访问 OpenAI、Claude、Gemini、DeepSeek、Grok 等 150+ 主流模型，低至 1 折，极其稳定，可以无缝兼容 Claude Code、OpenClaw 等工具。<a href="https://runapi.host">点此链接注册，立即开始使用！</a>
+    </td>
+  </tr>
+</table>
+
+</details>
+
 ## 什么是Comet ?
 
 ```
@@ -60,10 +94,11 @@
 
 ## 为什么需要 Comet
 
-- **面向强模型的 Native 工作流** — `/comet-native` 用详细 brief、完整目标规格、状态检查和可恢复归档约束结果，同时把计划、实现、测试与审查方法交给模型自主判断；用户可读产物默认位于 `docs/comet/`，并与 Classic 完全分离。详见 [Native 工作流](https://docs.comet.rpamis.com/zh/native/quickstart)。
+- **面向强模型的 Native 工作流** — `/comet-native` 用带改动范围目录结构清单的详细 brief、完整目标规格、状态检查和可恢复归档约束结果，同时把计划、实现、测试与审查方法交给模型自主判断；用户可读产物默认位于 `docs/comet/`，并与 Classic 完全分离。详见 [Native 工作流](https://docs.comet.rpamis.com/zh/native/quickstart)。
 - **单向可恢复的 Native 归档** — Archive 会先给出唯一的 dry-run 续接命令，隔离工作区的完成选项和阻塞路径会明确展示；用户继续流程即可由 Runtime 接管归档提交，无需重复查询状态或手工提交运行时文件。
 - **复杂需求的 Supervisor Change** — Native 可以按真实交付边界拆分子 Change，用 DAG 管理依赖与就绪顺序，让多个 Agent 在 Runtime 创建的独立 worktree 中实现和验证，再统一集成并对父 Change 做最终验收。
 - **长程任务稳定的核心**— Comet 的 Classic Spec 模式结合 OpenSpec 和 Superpowers，用状态机、阶段检查与脚本串联五阶段流程，适合需要明确方法和强约束的任务；永久入口是 `/comet-classic`。
+- **非 Git 协调目录归档** — 当 Classic 文档根目录不属于 Git、业务代码位于独立子仓库时，可明确选择仅归档协调文档；Runtime 保存归档文件和主 spec 快照的摘要回执，子仓库提交仍分别交付。
 - **配置驱动的统一入口** — `/comet` 只读取项目的 `.comet/config.yaml`，确定性转发到 `/comet-native` 或 `/comet-classic`。它不按任务大小猜工作流，也不混用两边的 change、状态和目录。`comet resume-probe` 使用同一配置恢复正确的永久入口。
 - **Skill 平台** — Comet能够编写可复用 Skill 包，并通过 `/comet-any` 把它们整理成可分发 Bundle，你制作的Skill可以像如comet init一样一键分发到所有Coding平台。
 - **Eval 平台**— Comet基于科学的Rubric、Pass@k、Pass^k评分评估你的Skill，让Skill演进是基于科学依据，而不是依靠感觉，支持接入LangSmith评估，让评估真实走进企业级生产环境。基于双Agent架构自动化在你的生产环境完成评估工作
@@ -152,6 +187,8 @@ comet init --workflow both
 ```
 
 ### 项目配置
+
+项目目录删除后，可运行 `comet uninstall <原项目路径> --force --json` 仅移除残留索引；Dashboard 会标记缺失项目，也可在“管理缺失项目”中确认移除。其他缺失项目不会自动清理。
 
 `comet init` 会按所选语言生成带逐字段注释的 `.comet/config.yaml`；`comet update` 补齐新增默认值，同时保留用户取值和未知扩展。
 

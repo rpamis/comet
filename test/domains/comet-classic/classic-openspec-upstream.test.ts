@@ -6,17 +6,18 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { requiredArtifactClosure } from '../../../domains/comet-classic/classic-artifact-requirements.js';
 
-const packages = [
-  path.resolve('node_modules/@fission-ai/openspec'),
-  ...(process.env.COMET_TEST_OPENSPEC_PACKAGE ? [process.env.COMET_TEST_OPENSPEC_PACKAGE] : []),
-];
+const packageRoot = process.env.COMET_TEST_OPENSPEC_PACKAGE;
+if (!packageRoot)
+  throw new Error(
+    'Run pnpm test:openspec-upstream or set COMET_TEST_OPENSPEC_PACKAGE to an installed upstream package',
+  );
 const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0))
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-describe.each(packages)('real OpenSpec status from %s', (packageRoot) => {
+describe('real external OpenSpec status', () => {
   it('exposes skipped specs, transitive requirements and schema-optional design', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-upstream-'));
     roots.push(root);
@@ -44,6 +45,7 @@ describe.each(packages)('real OpenSpec status from %s', (packageRoot) => {
             XDG_CONFIG_HOME: path.join(root, 'config'),
             CI: 'true',
             DO_NOT_TRACK: '1',
+            OPENSPEC_TELEMETRY: '0',
           },
         },
       );

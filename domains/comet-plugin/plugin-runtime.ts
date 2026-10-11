@@ -6,6 +6,8 @@ import {
   validateAgentExperienceEvent,
   type AgentContextCandidate,
   type AgentExperienceEvent,
+  type AgentLearningStatus,
+  type AgentLearningWait,
 } from '../agent-learning/index.js';
 import type {
   PluginContextRequest,
@@ -125,6 +127,7 @@ export interface PluginRuntimeOptions {
     readonly project: AgentExperienceJournal;
   };
   readonly scheduleLearning?: (task: () => Promise<void>) => void | Promise<void>;
+  readonly isLearningWaitResolved?: (wait: AgentLearningWait) => Promise<boolean>;
   /** Skip durable reflection replay while collecting optional Hook context. */
   readonly replayPendingLearningOnContext?: boolean;
   readonly now?: () => Date;
@@ -166,7 +169,7 @@ export class PluginRuntime {
     );
     this.descriptors = descriptors;
     this.now = options.now ?? (() => new Date());
-    this.replayPendingLearningOnContext = options.replayPendingLearningOnContext ?? true;
+    this.replayPendingLearningOnContext = options.replayPendingLearningOnContext ?? false;
     const fallbackJournal =
       options.journal ?? new AgentExperienceJournal(new MemoryAgentExperienceJournalStore());
     const userJournal = options.journals?.user ?? fallbackJournal;
@@ -178,6 +181,7 @@ export class PluginRuntime {
         // Capture is durable before scheduling. Hosts may provide a scheduler, while
         // short-lived CLI processes return immediately and replay unfinished work later.
         schedule: options.scheduleLearning ?? ((task) => void task()),
+        isWaitingResolved: options.isLearningWaitResolved,
         onDiagnostic: (message) => {
           const pluginId = message.split(' reflection', 1)[0] || 'comet.agent-learning';
           this.recordExecutionFailure(pluginId, 'event', new Error(message));
@@ -360,13 +364,30 @@ export class PluginRuntime {
       });
       throw error;
     }
-    await this.replayPendingLearning();
     await this.learningByScope[event.scope].capture(event);
   }
 
+  public async resumeReview(
+    review: AgentLearningWait,
+    matchesLegacy?: (event: AgentExperienceEvent) => Promise<boolean>,
+  ): Promise<number> {
+    return this.learningByScope.project.resumeReview(review, matchesLegacy);
+  }
+
+  public learningStatus(): Promise<AgentLearningStatus> {
+    return this.learningByScope.project.status();
+  }
+
+  public retryFailedLearning(): Promise<number> {
+    return this.learningByScope.project.retryFailed();
+  }
+
   /** Replay durable learning observations captured by an earlier process. */
-  public async replayLearning(): Promise<void> {
-    await this.replayPendingLearning();
+  public async replayLearning(options: { readonly retryNow?: boolean } = {}): Promise<void> {
+    for (const coordinator of this.learningCoordinators) {
+      if (options.retryNow) await coordinator.replayNow();
+      else await coordinator.replayPending();
+    }
   }
 
   private async learningAdapters(event: AgentExperienceEvent) {

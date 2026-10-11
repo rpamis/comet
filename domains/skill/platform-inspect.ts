@@ -24,7 +24,7 @@ import {
 } from './platform-install.js';
 import { readJsonObjectFile } from './json-object.js';
 import type { InitWorkflowSelection } from '../comet-entry/types.js';
-import { dshInstructionPath, hasDshCordisPatch } from './dsh-adapter.js';
+import { dshInstructionPath, inspectDshCordisPatch } from './dsh-adapter.js';
 
 export interface HookInspectionResult {
   present: boolean;
@@ -34,6 +34,7 @@ export interface HookInspectionResult {
   duplicatePresent?: boolean;
   /** dsh has the config/patch, but the active profile still needs the bridge loaded. */
   activationRequired?: boolean;
+  activationMessage?: string;
   error?: string;
 }
 
@@ -565,19 +566,27 @@ export async function inspectCometHooksForPlatform(
         path.join(platformBase, platform.hookConfigFile ?? 'hooks.json'),
         expectedHooks,
         (config) => collectGroupedCommands(config, 'PreToolUse'),
-        (config, expected) => countGroupedHookMatches(config, 'PreToolUse', expected),
+        (config, expected) =>
+          countGroupedHookMatches(config, 'PreToolUse', expected, (matcher) =>
+            resolveInstalledHookMatcher(platform, matcher),
+          ),
       );
-      if (inspection.present && !(await hasDshCordisPatch(baseDir, platform, scope))) {
+      const bridge = await inspectDshCordisPatch(baseDir, platform, scope);
+      if (inspection.present && !bridge.present) {
         inspection = {
           ...inspection,
           present: false,
           managedPresent: true,
-          error: 'dsh Cordis patch is missing the Comet Hook bridge row',
+          error: bridge.error,
         };
       } else if (inspection.present) {
         inspection = {
           ...inspection,
           activationRequired: true,
+          activationMessage:
+            scope === 'project'
+              ? 'DSH bridge configuration is loadable; restart dsh with --patch .dsh/cordis.patch.yml to activate it'
+              : 'DSH bridge configuration is loadable in existing profiles; restart DSH to activate it. Run comet update again after adding a profile',
         };
       }
       break;
