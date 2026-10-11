@@ -60,6 +60,7 @@ const DEFAULT_NATIVE_CHANGE_PAGE_SIZE = 5;
 const MAX_NATIVE_CHANGE_PAGE_SIZE = 50;
 const NATIVE_DASHBOARD_CURSOR_PREFIX = 'native-dashboard-v2.';
 const NATIVE_INDEX_REFRESH_INTERVAL_MS = 30_000;
+const UNAVAILABLE_NATIVE_PATH_CODES = ['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'ELOOP', 'EISDIR'];
 
 const nativeIndexReconciler = new DashboardIndexReconciler(NATIVE_INDEX_REFRESH_INTERVAL_MS);
 
@@ -104,6 +105,34 @@ export class NativeDashboardQueryError extends Error {
   }
 }
 
+export class NativeDashboardArtifactReadError extends Error {
+  constructor(cause: unknown) {
+    super('读取 Native 产物失败。', { cause });
+    this.name = 'NativeDashboardArtifactReadError';
+  }
+}
+
+function isNativeFilesystemFailure(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return (
+    typeof code === 'string' &&
+    /^(?:E[A-Z]+|ERR_FS_[A-Z_]+)$/u.test(code) &&
+    !UNAVAILABLE_NATIVE_PATH_CODES.includes(code)
+  );
+}
+
+function isUnavailableNativePath(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (typeof code === 'string' && UNAVAILABLE_NATIVE_PATH_CODES.includes(code)) return true;
+  // Native 路径校验目前只抛普通 Error；仅识别其明确的包含关系拒绝。
+  return (
+    error instanceof Error &&
+    /^(?:Path (?:is|resolves) outside the Native root:|Native root must not be a symbolic link:)/u.test(
+      error.message,
+    )
+  );
+}
+
 function archiveDate(entry: NativeDashboardEntry): string | null {
   return entry.archiveName ? (ARCHIVE_NAME_PATTERN.exec(entry.archiveName)?.[1] ?? null) : null;
 }
@@ -118,9 +147,11 @@ async function readDashboardState(file: string): Promise<NativeDashboardStateRea
   try {
     return { kind: 'portable', state: await readNativePortableState(file) };
   } catch (portableError) {
+    if (isNativeFilesystemFailure(portableError)) throw portableError;
     try {
       return { kind: 'legacy', state: await readNativeChangeFile(file) };
-    } catch {
+    } catch (legacyError) {
+      if (isNativeFilesystemFailure(legacyError)) throw legacyError;
       return {
         kind: 'invalid',
         message:
@@ -160,6 +191,7 @@ function artifactDescriptors(
 async function readArtifactPreview(
   root: string,
   [key, label, ref]: [string, string, string],
+  reportIOFailure = false,
 ): Promise<NativeDashboardArtifactPreview> {
   const missing: NativeDashboardArtifactPreview = { key, label, path: ref, exists: false };
   try {
@@ -176,7 +208,8 @@ async function readArtifactPreview(
       size: artifact.size,
       previewBytes: NATIVE_DASHBOARD_LIMITS.maxArtifactPreviewBytes,
     };
-  } catch {
+  } catch (error) {
+    if (reportIOFailure && isNativeFilesystemFailure(error)) throw error;
     return missing;
   }
 }
@@ -840,9 +873,11 @@ async function readEntryState(
 ): Promise<{ changeDir: string; read: NativeDashboardStateRead }> {
   const changeDir = entryDirectory(paths, entry);
   await resolveContainedNativePath(paths.nativeRoot, changeDir);
+  const stateFile = path.join(changeDir, NATIVE_CHANGE_STATE_FILE);
+  await resolveContainedNativePath(paths.nativeRoot, stateFile);
   return {
     changeDir,
-    read: await readDashboardState(path.join(changeDir, NATIVE_CHANGE_STATE_FILE)),
+    read: await readDashboardState(stateFile),
   };
 }
 
@@ -1083,13 +1118,18 @@ export async function collectNativeDashboardArtifact(
   projectRoot: string,
   options: NativeDashboardChangeDetailOptions & { key: string },
 ): Promise<NativeDashboardArtifactPreview | null> {
-  const found = await findNativeDashboardCandidate(projectRoot, options);
-  if (!found) return null;
-  const { entry, source } = found.candidate;
-  const { changeDir, read } = await readEntryState(source.paths, entry);
-  if (read.kind === 'invalid' || !matchesEntry(entry, read.state)) return null;
-  const descriptor = artifactDescriptors(read.state).find(([key]) => key === options.key);
-  return descriptor ? readArtifactPreview(changeDir, descriptor) : null;
+  try {
+    const found = await findNativeDashboardCandidate(projectRoot, options);
+    if (!found) return null;
+    const { entry, source } = found.candidate;
+    const { changeDir, read } = await readEntryState(source.paths, entry);
+    if (read.kind === 'invalid' || !matchesEntry(entry, read.state)) return null;
+    const descriptor = artifactDescriptors(read.state).find(([key]) => key === options.key);
+    return descriptor ? await readArtifactPreview(changeDir, descriptor, true) : null;
+  } catch (error) {
+    if (isUnavailableNativePath(error)) return null;
+    throw new NativeDashboardArtifactReadError(error);
+  }
 }
 
 /** Return directory counts only; change YAML is loaded by the paged endpoint. */

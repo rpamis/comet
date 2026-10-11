@@ -1,6 +1,7 @@
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { createHash } from 'crypto';
 import path from 'path';
+import { StringDecoder } from 'string_decoder';
 import { promisify } from 'util';
 import type { DashboardGitPage, GitSnapshot } from './types.js';
 
@@ -34,24 +35,17 @@ interface GitPageCursor {
   offset: number;
 }
 
-/**
- * Collect a lightweight Git snapshot for the dashboard. Best-effort: anything
- * that cannot be resolved (non-repo, missing HEAD, detached state) yields
- * empty/null fields rather than throwing.
- */
+/** 收集 Git 预览；非仓库返回空快照，状态读取失败时保留其他信息并将未提交计数标为未知。 */
 export async function collectGitSnapshot(projectPath: string): Promise<GitSnapshot> {
   const isRepo = await runGit(projectPath, ['rev-parse', '--is-inside-work-tree']);
   if (isRepo.trim() !== 'true') {
     return emptySnapshot();
   }
 
-  const [branch, head, statusOut, log] = await Promise.all([
+  const [branch, head, status, log] = await Promise.all([
     runGit(projectPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']).then(emptyToNull),
     runGit(projectPath, ['log', '-1', '--pretty=format:%h %s']).then(emptyToNull),
-    // NUL-terminated porcelain keeps paths verbatim: git never quotes or
-    // octal-escapes them, so non-ASCII filenames stay readable regardless of
-    // the user's core.quotePath setting.
-    runGit(projectPath, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
+    collectGitStatus(projectPath).catch(() => null),
     runGit(projectPath, [
       'log',
       '--no-show-signature',
@@ -61,15 +55,14 @@ export async function collectGitSnapshot(projectPath: string): Promise<GitSnapsh
     ]),
   ]);
 
-  const dirtyEntries = parsePorcelainRecords(statusOut);
   const recentCommits = parseCommitLines(log);
 
   return {
     branch,
     head,
-    dirtyFiles: dirtyEntries.length,
-    dirtyFileList: dirtyEntries.slice(0, PREVIEW_LIMIT),
-    dirtyFileListHasMore: dirtyEntries.length > PREVIEW_LIMIT,
+    dirtyFiles: status?.total ?? null,
+    dirtyFileList: status?.items ?? [],
+    dirtyFileListHasMore: status !== null && status.total > PREVIEW_LIMIT,
     recentCommits: recentCommits.slice(0, PREVIEW_LIMIT),
     recentCommitsHasMore: recentCommits.length > PREVIEW_LIMIT,
   };
@@ -127,25 +120,18 @@ export async function collectDashboardGitFilePage(
   const cursor = decodeCursor(projectPath, 'files', query.cursor);
   try {
     await requireRepository(projectPath);
-    const status = await executeGit(projectPath, [
-      'status',
-      '--porcelain=v1',
-      '-z',
-      '--untracked-files=all',
-    ]);
-    const anchor = digest(status);
-    if (cursor && cursor.anchor !== anchor) {
+    const offset = cursor?.offset ?? 0;
+    const status = await collectGitStatus(projectPath, offset, limit);
+    if (cursor && cursor.anchor !== status.anchor) {
       throw new DashboardGitQueryError('Git 文件列表已变化，请重新加载。', 409);
     }
-    const entries = parsePorcelainRecords(status);
-    const offset = cursor?.offset ?? 0;
     return {
-      items: entries.slice(offset, offset + limit),
+      items: status.items,
       nextCursor:
-        offset + limit < entries.length
-          ? encodeCursor(projectPath, 'files', anchor, offset + limit)
+        offset + limit < status.total
+          ? encodeCursor(projectPath, 'files', status.anchor, offset + limit)
           : null,
-      total: entries.length,
+      total: status.total,
     };
   } catch (error) {
     if (error instanceof DashboardGitQueryError) throw error;
@@ -275,25 +261,49 @@ function emptyToNull(value: string): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
-/**
- * Parse dirty paths from NUL-terminated porcelain v1 status output.
- *
- * Each record is "XY PATH". Renames and copies store the new path in the
- * entry and the original path in the following NUL record; the snapshot
- * keeps showing the new path. XY is two status characters and the third
- * byte is always a separator, so shorter entries are malformed and skipped
- * to keep the snapshot best-effort.
- */
-function parsePorcelainRecords(raw: string): string[] {
-  const records = raw.split('\0');
-  const paths: string[] = [];
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index];
-    if (record.length < 4) continue;
-    paths.push(record.slice(3));
-    if (record[0] === 'R' || record[0] === 'C' || record[1] === 'R' || record[1] === 'C') {
-      index += 1;
-    }
-  }
-  return paths;
+/** 流式计数和绑定完整状态，只保留当前预览或分页，避免大工作区耗尽输出缓冲区。 */
+function collectGitStatus(
+  cwd: string,
+  offset = 0,
+  limit = PREVIEW_LIMIT,
+): Promise<{ items: string[]; total: number; anchor: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      'git',
+      ['--no-optional-locks', 'status', '--porcelain=v1', '-z', '--untracked-files=all'],
+      { cwd, timeout: RUN_OPTS.timeout, stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+    const hash = createHash('sha256');
+    const decoder = new StringDecoder('utf8');
+    const items: string[] = [];
+    let pending = '';
+    let total = 0;
+    let renameSource = false;
+    child.stdout.on('data', (chunk: Buffer) => {
+      hash.update(chunk);
+      const records = (pending + decoder.write(chunk)).split('\0');
+      pending = records.pop()!;
+      for (const record of records) {
+        if (renameSource) {
+          renameSource = false;
+          continue;
+        }
+        if (record.length < 4) continue;
+        if (total >= offset && items.length < limit) items.push(record.slice(3));
+        total += 1;
+        // 重命名/复制的下一条 NUL 记录是原路径，不另计一个文件。
+        renameSource =
+          record[0] === 'R' || record[0] === 'C' || record[1] === 'R' || record[1] === 'C';
+      }
+    });
+    child.stdout.once('error', reject);
+    child.once('error', reject);
+    child.once('close', (code) => {
+      if (code !== 0 || pending || decoder.end() || renameSource) {
+        reject(new DashboardGitQueryError('读取 Git 文件列表失败。', 500));
+        return;
+      }
+      resolve({ items, total, anchor: hash.digest('hex') });
+    });
+  });
 }

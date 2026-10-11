@@ -14,6 +14,7 @@ import {
   collectNativeDashboardArtifact,
   collectNativeDashboardChangeDetail,
   collectNativeDashboardChangePage,
+  NativeDashboardArtifactReadError,
   NativeDashboardQueryError,
 } from './native-collector.js';
 import {
@@ -147,6 +148,11 @@ export async function startDashboardServer(
       }
       if (error instanceof DashboardGitQueryError) {
         respondJson(res, req.method ?? 'GET', error.statusCode, { error: error.message });
+        return;
+      }
+      if (error instanceof NativeDashboardArtifactReadError) {
+        console.error(error);
+        respondJson(res, req.method ?? 'GET', 500, { error: error.message });
         return;
       }
       respondError(res, 500, `Internal server error: ${(error as Error).message}`);

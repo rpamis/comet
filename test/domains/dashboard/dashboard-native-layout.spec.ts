@@ -1497,6 +1497,52 @@ test('prioritizes failures, marks the prior candidate and shows complete referen
   await expect(trigger).toBeFocused();
 });
 
+test('preserves Native preview focus through polling, fullscreen Escape and close', async ({
+  page,
+}) => {
+  const source = structuredClone(DEMO_SNAPSHOT.native.changes[0]);
+  let detailReads = 0;
+  await page.clock.install();
+  await mockNativeDetail(
+    page,
+    {
+      ...source,
+      phase: 'build',
+      children: [],
+      artifactReferences: [{ key: 'brief', label: '需求简报', path: 'brief.md' }],
+      artifacts: [
+        { key: 'brief', label: '需求简报', path: 'brief.md', exists: true, content: '# Brief' },
+      ],
+    },
+    undefined,
+    async () => {
+      detailReads += 1;
+    },
+  );
+  const trigger = page.locator('.native-artifacts-card').getByRole('button', { name: /brief/ });
+  await trigger.click();
+  const dialog = page.getByRole('dialog', { name: '产物预览：需求简报', exact: true });
+  const copy = dialog.getByRole('button', { name: '复制文件路径', exact: true });
+  await copy.focus();
+  const beforePoll = detailReads;
+  await page.clock.fastForward(30_001);
+  await expect.poll(() => detailReads).toBeGreaterThan(beforePoll);
+  await expect(copy).toBeFocused();
+  await dialog.getByRole('button', { name: '全屏展示', exact: true }).click();
+  await copy.focus();
+  const beforeFullscreenPoll = detailReads;
+  await page.clock.fastForward(30_001);
+  await expect.poll(() => detailReads).toBeGreaterThan(beforeFullscreenPoll);
+  await expect(copy).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '全屏展示', exact: true })).toBeVisible();
+  await expect(copy).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+});
+
 for (const count of [0, 1, 8]) {
   test(`shows every supplied check row without a list disclosure (${count})`, async ({ page }) => {
     const source = structuredClone(DEMO_SNAPSHOT.native.changes[0]);

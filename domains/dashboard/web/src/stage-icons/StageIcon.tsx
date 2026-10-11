@@ -27,11 +27,21 @@ export const STAGE_COLORS: Record<Stage, string> = {
 
 const QUERY = '(prefers-reduced-motion: reduce)';
 const subscribeReducedMotion = (notify: () => void) => {
-  const query = window.matchMedia(QUERY);
-  query.addEventListener('change', notify);
-  return () => query.removeEventListener('change', notify);
+  const query = window.matchMedia?.(QUERY);
+  if (
+    typeof query?.addEventListener === 'function' &&
+    typeof query.removeEventListener === 'function'
+  ) {
+    query.addEventListener('change', notify);
+    return () => query.removeEventListener('change', notify);
+  }
+  if (typeof query?.addListener === 'function' && typeof query.removeListener === 'function') {
+    query.addListener(notify);
+    return () => query.removeListener(notify);
+  }
+  return () => {};
 };
-const readReducedMotion = () => window.matchMedia(QUERY).matches;
+const readReducedMotion = () => window.matchMedia?.(QUERY)?.matches ?? false;
 const serverReducedMotion = () => true;
 
 type Scene = { running: boolean; celebrate: boolean; status: StageStatus };

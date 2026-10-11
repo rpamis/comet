@@ -625,6 +625,82 @@ describe('Native Dashboard v2 collector', () => {
     expect(preview).not.toHaveProperty('content');
   });
 
+  it.each(['missing', 'invalid', 'outside-directory', 'outside-state'])(
+    'makes an artifact unavailable after its cached state becomes %s',
+    async (condition) => {
+      await enableNative();
+      const state = activeShapeState('unavailable-preview');
+      const changeDir = await writeActiveState(state);
+      const options = { status: 'active' as const, name: state.name, key: 'brief' };
+      await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
+      const stateFile = path.join(changeDir, NATIVE_CHANGE_STATE_FILE);
+      if (condition === 'missing') await fs.unlink(stateFile);
+      if (condition === 'invalid') await fs.writeFile(stateFile, 'not: a native state\n');
+      if (condition === 'outside-directory') {
+        const outside = path.join(projectRoot, 'outside-change');
+        await fs.rename(changeDir, outside);
+        await fs.symlink(outside, changeDir, process.platform === 'win32' ? 'junction' : 'dir');
+      }
+      if (condition === 'outside-state') {
+        const outside = path.join(projectRoot, 'outside-state.yaml');
+        await fs.rename(stateFile, outside);
+        await fs.symlink(outside, stateFile);
+      }
+      await expect(collectNativeDashboardArtifact(projectRoot, options)).resolves.toBeNull();
+    },
+  );
+
+  it.each(['lstat', 'realpath', 'readFile'] as const)(
+    'preserves %s I/O failure diagnostics instead of treating a cached artifact as missing',
+    async (operation) => {
+      await enableNative();
+      const state = activeShapeState('io-preview');
+      const changeDir = await writeActiveState(state);
+      await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
+      const stateFile = path.join(changeDir, NATIVE_CHANGE_STATE_FILE);
+      const failure = Object.assign(new Error(`EIO: private path ${stateFile}`), { code: 'EIO' });
+      const original = fs[operation].bind(fs);
+      vi.spyOn(fs, operation).mockImplementation(async (...args) => {
+        if ([changeDir, stateFile].includes(path.resolve(args[0].toString()))) throw failure;
+        return original(...args);
+      });
+      await expect(
+        collectNativeDashboardArtifact(projectRoot, {
+          status: 'active',
+          name: state.name,
+          key: 'brief',
+        }),
+      ).rejects.toMatchObject({ message: '读取 Native 产物失败。', cause: failure });
+    },
+  );
+
+  it('treats permission denial as unavailable while preserving artifact-content I/O failures', async () => {
+    await enableNative();
+    const state = activeShapeState('artifact-file-io');
+    const changeDir = await writeActiveState(state);
+    await collectNativeDashboardChangePage(projectRoot, { status: 'active' });
+    const options = { status: 'active' as const, name: state.name, key: 'brief' };
+    const stateFile = path.join(changeDir, NATIVE_CHANGE_STATE_FILE);
+    const originalStat = fs.lstat.bind(fs);
+    const denied = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const stat = vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      if (path.resolve(args[0].toString()) === stateFile) throw denied;
+      return originalStat(...args);
+    });
+    await expect(collectNativeDashboardArtifact(projectRoot, options)).resolves.toBeNull();
+    stat.mockRestore();
+    const failure = Object.assign(new Error('artifact read failed'), { code: 'EIO' });
+    const originalOpen = fs.open.bind(fs);
+    vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+      if (path.resolve(args[0].toString()) === path.join(changeDir, 'brief.md')) throw failure;
+      return originalOpen(...args);
+    });
+    await expect(collectNativeDashboardArtifact(projectRoot, options)).rejects.toMatchObject({
+      message: '读取 Native 产物失败。',
+      cause: failure,
+    });
+  });
+
   it('previews a large artifact from a fixed 48 KiB read budget', async () => {
     await enableNative();
     const state = activeShapeState('large-preview');

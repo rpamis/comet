@@ -164,6 +164,98 @@ describe('startDashboardServer', () => {
     ).toBe(404);
   });
 
+  it.each(['missing', 'invalid', 'outside-directory', 'outside-state'])(
+    'returns 404 without revealing paths when cached Native artifact state becomes %s',
+    async (condition) => {
+      await writeProjectConfig(projectDir, defaultProjectConfig('docs'));
+      const paths = await nativeProjectPaths(projectDir, 'docs');
+      const state = await createNativeChange({ paths, name: 'artifact-status', language: 'en' });
+      const changeDir = nativeChangeDir(paths, state.name);
+      const stateFile = path.join(changeDir, 'comet-state.yaml');
+      const handle = await startDashboardServer({
+        projectPath: projectDir,
+        port: 0,
+        webRoot: webDir,
+      });
+      handles.push(handle);
+      const directory = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body);
+      const base = `/api/dashboard/projects/${directory.currentProjectId}`;
+      expect((await request(handle.port, `${base}/native-changes?status=active`)).status).toBe(200);
+      if (condition === 'missing') await fs.unlink(stateFile);
+      if (condition === 'invalid') await fs.writeFile(stateFile, 'not: a native state\n');
+      if (condition === 'outside-directory') {
+        const outside = path.join(projectDir, 'outside-change');
+        await fs.rename(changeDir, outside);
+        await fs.symlink(outside, changeDir, process.platform === 'win32' ? 'junction' : 'dir');
+      }
+      if (condition === 'outside-state') {
+        const outside = path.join(projectDir, 'outside-state.yaml');
+        await fs.rename(stateFile, outside);
+        await fs.symlink(outside, stateFile);
+      }
+      const response = await request(
+        handle.port,
+        `${base}/native-artifact?status=active&changeName=${state.name}&key=brief`,
+      );
+      expect(response.status).toBe(404);
+      expect(response.body).not.toContain(projectDir);
+    },
+  );
+
+  it('returns unknown Git summary and an explicit file-page failure when status cannot be read', async () => {
+    initializeGitProject(projectDir, 1);
+    await fs.writeFile(path.join(projectDir, '.git', 'index'), 'invalid Git index');
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      port: 0,
+      webRoot: webDir,
+    });
+    handles.push(handle);
+    const directory = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body);
+    const base = `/api/dashboard/projects/${directory.currentProjectId}`;
+    const overview = await request(handle.port, `${base}/overview`);
+    expect(overview.status).toBe(200);
+    expect(JSON.parse(overview.body)).toMatchObject({
+      summary: { dirtyFiles: null },
+      git: { dirtyFiles: null, dirtyFileList: [] },
+      risks: [{ code: 'GIT_STATUS_UNAVAILABLE' }],
+    });
+    const files = await request(handle.port, `${base}/git/files`);
+    expect(files.status).toBe(500);
+    expect(JSON.parse(files.body)).toEqual({ error: '读取 Git 文件列表失败。' });
+  });
+
+  it('keeps Native artifact I/O diagnostics on the server and returns a safe 500', async () => {
+    await writeProjectConfig(projectDir, defaultProjectConfig('docs'));
+    const paths = await nativeProjectPaths(projectDir, 'docs');
+    const state = await createNativeChange({ paths, name: 'artifact-io', language: 'en' });
+    const stateFile = path.join(nativeChangeDir(paths, state.name), 'comet-state.yaml');
+    const handle = await startDashboardServer({
+      projectPath: projectDir,
+      port: 0,
+      webRoot: webDir,
+    });
+    handles.push(handle);
+    const directory = JSON.parse((await request(handle.port, '/api/dashboard/projects')).body);
+    const base = `/api/dashboard/projects/${directory.currentProjectId}`;
+    expect((await request(handle.port, `${base}/native-changes?status=active`)).status).toBe(200);
+    const failure = Object.assign(new Error(`EIO: private file ${stateFile}`), { code: 'EIO' });
+    const originalRead = fs.readFile.bind(fs);
+    vi.spyOn(fs, 'readFile').mockImplementation(async (...args) => {
+      if (path.resolve(args[0].toString()) === stateFile) throw failure;
+      return originalRead(...args);
+    });
+    const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const response = await request(
+      handle.port,
+      `${base}/native-artifact?status=active&changeName=${state.name}&key=brief`,
+    );
+    expect(response.status).toBe(500);
+    expect(JSON.parse(response.body)).toEqual({ error: '读取 Native 产物失败。' });
+    expect(response.body).not.toContain(stateFile);
+    expect(diagnostic).toHaveBeenCalledWith(expect.objectContaining({ cause: failure }));
+  });
+
   it('preserves the launch identity after a symlink target is deleted', async () => {
     const alias = path.join(webDir, 'launch-alias');
     await fs.symlink(projectDir, alias, process.platform === 'win32' ? 'junction' : 'dir');

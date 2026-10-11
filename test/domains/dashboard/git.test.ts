@@ -8,6 +8,7 @@ import {
   collectDashboardGitFilePage,
   collectGitSnapshot,
 } from '../../../domains/dashboard/git.js';
+import { buildProjectRisks } from '../../../domains/dashboard/risk.js';
 
 const RUN_OPTS = { stdio: 'pipe' as const, timeout: 10_000 };
 
@@ -123,6 +124,56 @@ describe('collectGitSnapshot', () => {
     expect(snap.dirtyFiles).toBe(25);
     expect(snap.dirtyFileList).toHaveLength(5);
     expect(snap.dirtyFileListHasMore).toBe(true);
+  });
+
+  it('counts and pages status output above 1 MiB without reporting a clean workspace', async () => {
+    const directory = path.join('untracked', 'a'.repeat(96), '目录'.repeat(16));
+    await fs.mkdir(path.join(repo, directory), { recursive: true });
+    const names = Array.from({ length: 4000 }, (_, index) =>
+      path.join(directory, `${String(index).padStart(6, '0')}-${'未跟踪'.repeat(10)}.txt`),
+    );
+    for (let index = 0; index < names.length; index += 100) {
+      await Promise.all(
+        names.slice(index, index + 100).map((name) => fs.writeFile(path.join(repo, name), '')),
+      );
+    }
+    const output = execFileSync(
+      'git',
+      ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+      {
+        ...RUN_OPTS,
+        cwd: repo,
+        maxBuffer: 4 * 1024 * 1024,
+      },
+    );
+    expect(output.length).toBeGreaterThan(1024 * 1024);
+    const snapshot = await collectGitSnapshot(repo);
+    expect.soft(snapshot.dirtyFiles).toBe(names.length);
+    expect.soft(snapshot.dirtyFileList).toEqual(names.slice(0, 5));
+    expect.soft(snapshot.dirtyFileListHasMore).toBe(true);
+    const first = await collectDashboardGitFilePage(repo, { limit: 100 });
+    const second = await collectDashboardGitFilePage(repo, {
+      limit: 100,
+      cursor: first.nextCursor!,
+    });
+    expect(first.total).toBe(names.length);
+    expect(second.total).toBe(names.length);
+    expect(first.items).toEqual(names.slice(0, 100));
+    expect(second.items).toEqual(names.slice(100, 200));
+  });
+
+  it('reports an unknown dirty count when Git status fails', async () => {
+    addCommitHistory(repo, 1);
+    await fs.writeFile(path.join(repo, '.git', 'index'), 'invalid Git index');
+    const snapshot = await collectGitSnapshot(repo);
+    expect(snapshot.branch).toBe('main');
+    expect(snapshot.dirtyFiles).toBeNull();
+    expect(snapshot.dirtyFileList).toEqual([]);
+    expect(snapshot.dirtyFileListHasMore).toBe(false);
+    expect(buildProjectRisks({ git: snapshot, changes: [] })).toMatchObject([
+      { code: 'GIT_STATUS_UNAVAILABLE', level: 'warning' },
+    ]);
+    await expect(collectDashboardGitFilePage(repo)).rejects.toMatchObject({ statusCode: 500 });
   });
 
   it.each([0, 5, 6, 105])(

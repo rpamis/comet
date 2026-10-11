@@ -535,6 +535,7 @@ function DashboardApp({
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [artifact, setArtifact] = useState(null);
+  const closeArtifact = useCallback(() => setArtifact(null), []);
   const snapshotRequestRef = useRef(null);
   const pageRequestRef = useRef(null);
   const nativePageRequestRef = useRef(null);
@@ -1364,7 +1365,11 @@ function DashboardApp({
   const selectNativeChange = useCallback(
     async (change) => {
       if (!change) return;
-      setArtifact((current) => (current?.nativePreview ? null : current));
+      const sameChange =
+        nativeSelectedDetailRef.current &&
+        nativeDashboardChangeKey(nativeSelectedDetailRef.current) ===
+          nativeDashboardChangeKey(change);
+      if (!sameChange) setArtifact((current) => (current?.nativePreview ? null : current));
       setNativeDetailError(null);
       if (useDemo) {
         setNativeSelectedDetail(change);
@@ -1375,7 +1380,7 @@ function DashboardApp({
       nativeDetailRequestRef.current?.abort();
       const controller = new AbortController();
       nativeDetailRequestRef.current = controller;
-      setNativeDetailLoading(true);
+      setNativeDetailLoading(!sameChange);
       try {
         const detail = await fetchDashboardNativeChangeDetail(
           activeProjectId,
@@ -1918,15 +1923,11 @@ function DashboardApp({
       </section>
       {portalContainer ? (
         createPortal(
-          <ArtifactDrawer
-            artifact={artifact}
-            embedded={embedded}
-            onClose={() => setArtifact(null)}
-          />,
+          <ArtifactDrawer artifact={artifact} embedded={embedded} onClose={closeArtifact} />,
           portalContainer,
         )
       ) : (
-        <ArtifactDrawer artifact={artifact} embedded={embedded} onClose={() => setArtifact(null)} />
+        <ArtifactDrawer artifact={artifact} embedded={embedded} onClose={closeArtifact} />
       )}
     </main>
   );
@@ -2752,14 +2753,20 @@ function GitSnapshot({ git, compact = false, projectId, useDemo = false }) {
         projectId={projectId}
         useDemo={useDemo}
       />
-      <DashboardGitList
-        title="未提交文件"
-        kind="files"
-        items={git.dirtyFileList ?? []}
-        hasMore={git.dirtyFileListHasMore}
-        projectId={projectId}
-        useDemo={useDemo}
-      />
+      {git.dirtyFiles === null ? (
+        <p role="status" className="text-xs text-muted">
+          Git 未提交状态未知，请刷新重试。
+        </p>
+      ) : (
+        <DashboardGitList
+          title="未提交文件"
+          kind="files"
+          items={git.dirtyFileList ?? []}
+          hasMore={git.dirtyFileListHasMore}
+          projectId={projectId}
+          useDemo={useDemo}
+        />
+      )}
     </>
   ) : (
     <p className="text-xs text-muted">当前项目暂无 Git 信息。</p>
@@ -2775,7 +2782,13 @@ function GitSnapshot({ git, compact = false, projectId, useDemo = false }) {
             <ReferenceIcon name="git" /> 仓库 Git
           </>
         }
-        tag={git ? `${git.dirtyFiles ?? '—'} 个未提交` : undefined}
+        tag={
+          git
+            ? git.dirtyFiles === null
+              ? '未提交状态未知'
+              : `${git.dirtyFiles} 个未提交`
+            : undefined
+        }
       >
         {compact ? (
           <div className="classic-git-content" role="region" aria-label="仓库 Git内容" tabIndex={0}>
@@ -8497,7 +8510,11 @@ function AntSummaryCards({ snapshot, numberIdentity, numberEntryKey }) {
       'Git 未提交',
       snapshot.summary.dirtyFiles,
       '工作区状态',
-      snapshot.summary.dirtyFiles ? '未提交' : '干净',
+      snapshot.summary.dirtyFiles === null
+        ? '未知'
+        : snapshot.summary.dirtyFiles
+          ? '未提交'
+          : '干净',
       BranchesOutlined,
     ],
   ];
@@ -8534,14 +8551,15 @@ function AntSummaryCard({
   selected,
   onClick,
 }) {
-  const displayedValue = useNumberTransition(value, numberIdentity, numberEntryKey);
+  const displayedValue = useNumberTransition(value ?? 0, numberIdentity, numberEntryKey);
+  const valueText = value?.toLocaleString('en-US') ?? '—';
   return (
     <AntCard
       size="small"
       role="button"
       tabIndex={0}
       aria-pressed={selected}
-      aria-label={`${title} ${value} ${note} ${status}`}
+      aria-label={`${title} ${value ?? '—'} ${note} ${status}`}
       className={`dashboard-overview-summary-card dashboard-summary-card dashboard-summary-metric-cell ${tone} ${selected ? 'dashboard-summary-primary' : ''}`}
       onClick={onClick}
       onKeyDown={(event) => {
@@ -8565,9 +8583,9 @@ function AntSummaryCard({
               <div className="dashboard-summary-note">{note}</div>
             </>
           }
-          value={displayedValue}
+          value={value === null ? '—' : displayedValue}
           classNames={{ content: 'dashboard-summary-metric' }}
-          styles={{ content: { minWidth: `${value.toLocaleString('en-US').length}ch` } }}
+          styles={{ content: { minWidth: `${valueText.length}ch` } }}
         />
       </div>
     </AntCard>

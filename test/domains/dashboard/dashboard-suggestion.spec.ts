@@ -6,7 +6,7 @@ type Workflow = 'classic' | 'native';
 type RepositoryGitFixture = {
   branch: string;
   head: string;
-  dirtyFiles: number;
+  dirtyFiles: number | null;
   dirtyFileList: string[];
   recentCommits: string[];
   recentCommitsHasMore?: boolean;
@@ -2150,6 +2150,31 @@ async function expectGitModalScrolling(dialog: Locator, lastText: string) {
     )
     .toBe(true);
   expect(await fixedLayout()).toEqual(before);
+}
+
+for (const workflow of ['classic', 'native'] as const) {
+  test(`Repository Git shows an unreadable status as unknown in ${workflow}`, async ({ page }) => {
+    await installSuggestionFixture(page, workflow, { ...defaultRepositoryGit, dirtyFiles: null });
+    await page.goto('/');
+    await selectChange(
+      page,
+      workflow,
+      workflow === 'classic' ? 'classic-short' : 'native-fallback',
+    );
+    const git = page.locator('.dashboard-project-git');
+    await expect(git).toContainText('未提交状态未知');
+    await expect(git.getByRole('status')).toHaveText('Git 未提交状态未知，请刷新重试。');
+    await expect(git).not.toContainText('暂无未提交文件');
+    await expect(git).not.toContainText('0 个未提交');
+    if (workflow === 'classic') {
+      const metric = page.getByRole('button', {
+        name: 'Git 未提交 — 工作区状态 未知',
+        exact: true,
+      });
+      await expect(metric).toContainText('—');
+      await expect(metric).not.toContainText('干净');
+    }
+  });
 }
 
 test('Repository Git keeps zero and five items passive and independently opens six-item lists with pointer and keyboard access', async ({

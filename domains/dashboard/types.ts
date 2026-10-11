@@ -116,7 +116,7 @@ export interface ChangeDashboardItem {
 export interface GitSnapshot {
   branch: string | null;
   head: string | null;
-  dirtyFiles: number;
+  dirtyFiles: number | null;
   dirtyFileList: string[];
   recentCommits: string[];
   recentCommitsHasMore?: boolean;
@@ -140,7 +140,7 @@ export interface DashboardSummary {
   archivedChanges: number;
   verifyFailed: number;
   tasksIncomplete: number;
-  dirtyFiles: number;
+  dirtyFiles: number | null;
 }
 
 export type DashboardChangeTab = 'active' | 'archived' | 'all';
