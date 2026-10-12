@@ -208,6 +208,20 @@ test('Any preserves pinned runs, child navigation and historical selection throu
   );
   await page.locator('.comet-language-switch').getByText('中文', { exact: true }).click();
   await page.getByRole('tab', { name: '产物', exact: true }).click();
+  const artifactRow = page.locator('.any-artifact-list > button').first();
+  const layout = await artifactRow.evaluate((row) => {
+    const [icon, copy, arrow] = Array.from(row.children).map((child) =>
+      child.getBoundingClientRect(),
+    );
+    return {
+      iconWidth: icon.width,
+      textGap: copy.left - icon.right,
+      arrowInset: row.getBoundingClientRect().right - arrow.right,
+    };
+  });
+  expect(layout.iconWidth).toBeLessThanOrEqual(24);
+  expect(layout.textGap).toBeLessThanOrEqual(16);
+  expect(layout.arrowInset).toBeLessThanOrEqual(16);
   await page.locator('.any-artifact-list').getByRole('button').first().click();
   await expect(page.locator('.dashboard-artifact-preview-panel h2')).not.toBeEmpty();
   await expect(page.locator('.dashboard-artifact-preview-panel')).toContainText('example');
@@ -289,4 +303,79 @@ test('Any transitions preserve the reading surface on refresh and respect reduce
   expect(
     await page.locator('.any-tab-content').evaluate((element) => element.getAnimations().length),
   ).toBe(0);
+});
+
+test('Any self-source links retain detail and Eval returns to the originating evidence tab', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const list = readApplicationDemo('application-runs', {});
+  let reads = 0;
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    if (path === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (path.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: { activeChanges: 0, archivedChanges: 0 },
+          initialChanges: { items: [], total: 0 },
+          git: {},
+          native: null,
+        },
+      });
+    if (path.endsWith('/plugins')) return route.fulfill({ json: { pages: [] } });
+    if (path.endsWith('/application-runs')) return route.fulfill({ json: list });
+    if (path.endsWith('/application-run')) {
+      reads++;
+      const detail = readApplicationDemo('application-run', {
+        locator: url.searchParams.get('locator'),
+      });
+      detail.sourceCreators = [{ locator: detail.locator, runId: detail.runId }];
+      detail.evidence[1].evalRunId = 'linked-eval';
+      return route.fulfill({ json: detail });
+    }
+    if (path.includes('/eval/'))
+      return route.fulfill({ status: 503, json: { error: 'fixture eval unavailable' } });
+    return route.fulfill({ json: { items: [], total: 0 } });
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await expect(page.locator('.any-current')).toContainText('确认安装');
+  await page.getByRole('tab', { name: '版本与证据' }).click();
+  const before = reads;
+  await page.getByRole('button', { name: /查看对应创作/ }).click();
+  await expect(page.locator('.any-current')).toContainText('确认安装');
+  await expect(page.getByRole('tab', { name: '步骤', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  expect(reads).toBe(before);
+  await page.getByRole('tab', { name: '版本与证据' }).click();
+  const origin = await page.evaluate(() => window.history.state.cometDashboard);
+  await page.getByRole('button', { name: '进入 Eval 详情' }).click();
+  await expect(page.getByRole('button', { name: '返回 Comet Any' })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: '返回 Comet Any' }).click();
+  await expect(page.locator('.any-current')).toContainText('确认安装');
+  await expect(page.getByRole('tab', { name: '版本与证据' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  expect(await page.evaluate(() => window.history.state.cometDashboard)).toEqual(origin);
 });

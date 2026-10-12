@@ -767,6 +767,15 @@ export function EvalPanel({
       data-dashboard-motion="page"
       aria-label={t('Eval 工作台')}
     >
+      {navigation.returnTo && (
+        <Button
+          type="text"
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigateDashboard(navigation.returnTo)}
+        >
+          {t('返回 Comet Any')}
+        </Button>
+      )}
       <EvalGuideDrawer
         open={guideOpen}
         onClose={() => setGuideOpen(false)}

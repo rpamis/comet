@@ -295,7 +295,9 @@ async function discoverNativeDashboardSources(
       if (!config?.native) continue;
       sources.push({
         workspace,
-        paths: await nativeProjectPaths(workspace.projectRoot, config.native.artifact_root),
+        paths: await nativeProjectPaths(workspace.projectRoot, config.native.artifact_root, {
+          readOnly: true,
+        }),
       });
     } catch (error) {
       console.warn(
@@ -849,7 +851,11 @@ async function readEntryState(
 }> {
   const changeDir = entryDirectory(paths, entry);
   await resolveContainedNativePath(paths.nativeRoot, changeDir);
-  const sdk = await readNativeDashboardSdkProjection(paths.projectRoot, entry.name);
+  // 归档有独立的最终快照，同名活跃 Run 和本机 Runtime 不能覆盖历史记录。
+  const sdk =
+    entry.status === 'active'
+      ? await readNativeDashboardSdkProjection(paths.projectRoot, entry.name)
+      : null;
   if (sdk) return { changeDir, read: { kind: 'portable', state: sdk.state }, sdk };
   return {
     changeDir,

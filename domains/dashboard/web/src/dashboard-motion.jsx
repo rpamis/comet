@@ -2,6 +2,7 @@ import React, { useCallback, useRef } from 'react';
 import './dashboard-motion.css';
 
 const presets = {
+  fade: { duration: 180, offset: null, opacity: 0.65 },
   page: { duration: 280, offset: '0, 8px' },
   panel: { duration: 240, offset: '0, 6px' },
   tab: { duration: 200, offset: '0, 4px' },
@@ -20,10 +21,12 @@ export function useDashboardMotion(motionKey, kind = 'panel', active = true) {
       if (preference.matches) return;
       const preset = presets[kind] ?? presets.panel;
       const animation = element.animate(
-        [
-          { opacity: 0.58, transform: `translate(${preset.offset})` },
-          { opacity: 1, transform: 'translate(0, 0)' },
-        ],
+        preset.offset === null
+          ? [{ opacity: preset.opacity ?? 0.85 }, { opacity: 1 }]
+          : [
+              { opacity: 0.58, transform: `translate(${preset.offset})` },
+              { opacity: 1, transform: 'translate(0, 0)' },
+            ],
         { duration: preset.duration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
       );
       const reduce = () => {

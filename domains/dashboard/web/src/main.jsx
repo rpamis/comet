@@ -1,4 +1,10 @@
 import {
+  useWorkflowSummary,
+  matchesSummary,
+  SummaryFilterBar,
+  SummaryDetails,
+} from './workflow-summary.jsx';
+import {
   navigateDashboard,
   readDashboardNavigation,
   useDashboardNavigation,
@@ -563,8 +569,58 @@ function DashboardApp({
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
   const [tab, setTab] = useState('active');
+  const [summaryFilter, setSummaryFilter] = useState(null);
+  const [summaryDialog, setSummaryDialog] = useState(null);
+  const [summaryTarget, setSummaryTarget] = useState(null);
+  const summaryData = useWorkflowSummary({
+    projectId: activeProjectId,
+    workflow,
+    snapshot,
+    demo: useDemo,
+    enabled: !evalOpen && !pluginSelection && ['classic', 'native'].includes(workflow),
+  });
+  useEffect(() => {
+    setSummaryFilter(null);
+    setSummaryDialog(null);
+    setSummaryTarget(null);
+  }, [activeProjectId, workflow]);
+
+  const handleSummaryAction = (key) => {
+    if (key === 'git') {
+      setSummaryDialog(key);
+      return;
+    }
+    setQuery('');
+    if (['active', 'archived'].includes(key)) {
+      setSummaryFilter(null);
+      setTab(tab === key && !summaryFilter ? 'all' : key);
+    } else {
+      setTab('active');
+      setSummaryFilter((current) => (current === key ? null : key));
+      if (['tasks', 'pending'].includes(key)) setSummaryDialog(key);
+    }
+  };
+  const loadSummaryDetail = useCallback(
+    (change, signal) => {
+      if (useDemo) return Promise.resolve(change);
+      return workflow === 'native'
+        ? fetchDashboardNativeChangeDetail(activeProjectId, change, signal)
+        : fetchDashboardChangeDetail(activeProjectId, dashboardChangeKey(change), signal);
+    },
+    [activeProjectId, workflow, useDemo],
+  );
   const workspaceScope = `${useDemo ? 'demo' : 'project'}:${activeProjectId ?? ''}:${evalOpen ? 'eval' : (pluginSelection ?? workflow ?? 'default')}`;
   const [query, setQuery] = useDashboardViewState(workspaceScope, 'query', '');
+  const filteredSummaryRows = useMemo(
+    () =>
+      summaryData.rows.filter(
+        (change) =>
+          matchesSummary(change, summaryFilter) &&
+          (!query?.trim() ||
+            (change.displayName ?? change.name).toLowerCase().includes(query.trim().toLowerCase())),
+      ),
+    [summaryData.rows, summaryFilter, query],
+  );
   const workspaceScrollRef = useDashboardScrollRestoration(workspaceScope);
   const [loading, setLoading] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
@@ -1382,11 +1438,17 @@ function DashboardApp({
 
   const selected = selectedDetail;
   const visible = useMemo(
-    () => (useDemo ? filterChanges(snapshot, tab, query) : (pages[tab]?.items ?? [])),
-    [pages, query, snapshot, tab, useDemo, dashboardLanguage],
+    () =>
+      summaryFilter
+        ? filteredSummaryRows
+        : useDemo
+          ? filterChanges(snapshot, tab, query)
+          : (pages[tab]?.items ?? []),
+    [pages, query, snapshot, tab, useDemo, dashboardLanguage, summaryFilter, filteredSummaryRows],
   );
   const activePage = pages[tab];
-  const visibleTotal = useDemo ? visible.length : (activePage?.total ?? visible.length);
+  const visibleTotal =
+    summaryFilter || useDemo ? visible.length : (activePage?.total ?? visible.length);
   const nativePage = nativePages[tab];
   const nativeOverviewTotal =
     tab === 'active'
@@ -1482,7 +1544,10 @@ function DashboardApp({
     visible,
   ]);
 
-  const selectTab = useCallback((nextTab) => setTab(nextTab), []);
+  const selectTab = useCallback((nextTab) => {
+    setSummaryFilter(null);
+    setTab(nextTab);
+  }, []);
 
   const resetSelectedProject = useCallback((nextProjectId) => {
     snapshotRequestRef.current?.abort();
@@ -1672,7 +1737,7 @@ function DashboardApp({
             setWorkflow(workflow === 'any' ? 'any' : nextWorkflow.workflow);
             setWorkflowSource(nextWorkflow.source);
           }}
-          loading={loading}
+          loading={loading || Boolean(pluginSelection && pluginLoading)}
           query={query}
           onQuery={setQuery}
           showSearch={!pluginSelection && (evalOpen || workflow !== 'any')}
@@ -1710,8 +1775,10 @@ function DashboardApp({
         >
           <div
             className={`dashboard-content-inner${
-              pluginSelection ? ' dashboard-content-inner-plugin-center' : ''
-            }${
+              !pluginSelection && (evalOpen || workflow === 'any')
+                ? ' dashboard-content-inner-workspace'
+                : ''
+            }${pluginSelection ? ' dashboard-content-inner-plugin-center' : ''}${
               pluginSelection === 'comet.project-knowledge'
                 ? ' dashboard-content-inner-project-knowledge'
                 : ''
@@ -1782,15 +1849,24 @@ function DashboardApp({
             ) : workflow === 'native' ? (
               <NativeWorkflowPanel
                 native={snapshot.native}
+                summaryTarget={summaryTarget}
+                summaryData={summaryData}
+                summaryFilter={summaryFilter}
+                onSummaryAction={handleSummaryAction}
                 git={snapshot.git}
                 query={query}
                 tab={tab}
                 onTab={selectTab}
-                pagedChanges={useDemo ? null : (nativePage?.items ?? [])}
-                total={nativeVisibleTotal}
-                hasMore={Boolean(nativePage?.nextCursor)}
+                pagedChanges={
+                  summaryFilter ? filteredSummaryRows : useDemo ? null : (nativePage?.items ?? [])
+                }
+                total={summaryFilter ? filteredSummaryRows.length : nativeVisibleTotal}
+                hasMore={!summaryFilter && Boolean(nativePage?.nextCursor)}
                 pageLoading={
-                  !nativeViewKnownEmpty && (nativePageLoading === tab || (!useDemo && !nativePage))
+                  summaryFilter
+                    ? summaryData.loading
+                    : !nativeViewKnownEmpty &&
+                      (nativePageLoading === tab || (!useDemo && !nativePage))
                 }
                 onLoadMore={() => loadNativePage(tab, true)}
                 selectedDetail={nativeSelectedDetail}
@@ -1809,6 +1885,10 @@ function DashboardApp({
               />
             ) : workflow === 'classic' ? (
               <Dashboard
+                summaryTarget={summaryTarget}
+                summaryData={summaryData}
+                summaryFilter={summaryFilter}
+                onSummaryAction={handleSummaryAction}
                 snapshot={snapshot}
                 visible={visible}
                 visibleTotal={visibleTotal}
@@ -1817,8 +1897,8 @@ function DashboardApp({
                 tab={tab}
                 onTab={selectTab}
                 onSelect={selectChange}
-                hasMore={Boolean(activePage?.nextCursor)}
-                pageLoading={pageLoading === tab}
+                hasMore={!summaryFilter && Boolean(activePage?.nextCursor)}
+                pageLoading={summaryFilter ? summaryData.loading : pageLoading === tab}
                 onLoadMore={() => loadPage(tab, true)}
                 detailLoading={detailLoading}
                 detailError={detailError}
@@ -1837,6 +1917,22 @@ function DashboardApp({
             onClose={() => setUpdateOpen(false)}
           />
         )}
+        <SummaryDetails
+          kind={summaryDialog}
+          rows={summaryData.rows.filter((change) => matchesSummary(change, summaryDialog))}
+          summary={summaryData}
+          git={snapshot?.git}
+          loadDetail={loadSummaryDetail}
+          onClose={() => setSummaryDialog(null)}
+          onLocate={(change) => {
+            setSummaryFilter(summaryDialog);
+            setTab('active');
+            setQuery('');
+            setSummaryTarget(change);
+            setSummaryDialog(null);
+            if (workflow !== 'native') selectChange(dashboardChangeKey(change));
+          }}
+        />
         <DashboardSettingsOverlay
           open={settingsOpen}
           readOnly={embedded}
@@ -2127,6 +2223,10 @@ function Topbar({
 }
 
 function Dashboard({
+  summaryTarget,
+  summaryData,
+  summaryFilter,
+  onSummaryAction,
   snapshot,
   visible,
   visibleTotal,
@@ -2144,6 +2244,24 @@ function Dashboard({
   onPreview,
 }) {
   useDashboardLanguage();
+  const locatedSummaryTarget = useRef(null);
+  useEffect(() => {
+    if (
+      locatedSummaryTarget.current === summaryTarget ||
+      !summaryTarget ||
+      !selected ||
+      dashboardChangeKey(summaryTarget) !== dashboardChangeKey(selected)
+    )
+      return;
+    locatedSummaryTarget.current = summaryTarget;
+    const frame = requestAnimationFrame(() =>
+      document.querySelector('.classic-change-detail')?.scrollIntoView({
+        block: 'start',
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [summaryTarget, selected]);
   const hasClassicChanges = snapshot.summary.activeChanges + snapshot.summary.archivedChanges > 0;
   const classicWarning = snapshot.classicError && hasClassicChanges;
   const detailPending = shouldShowDashboardDetailLoading({
@@ -2164,7 +2282,13 @@ function Dashboard({
         command={selected?.next?.command}
         description={t(selected?.next?.description)}
       />
-      <AntSummaryCards snapshot={snapshot} />
+      <AntSummaryCards
+        snapshot={snapshot}
+        summaryData={summaryData}
+        selectedKey={summaryFilter ?? tab}
+        onAction={onSummaryAction}
+      />
+      <SummaryFilterBar filter={summaryFilter} summary={summaryData} onClear={() => onTab('all')} />
       <SectionHead title={t('变更工作区')} hint={t('查看文件产物与项目进度')} />
       {snapshot.classicError && !hasClassicChanges ? (
         <ClassicErrorState error={snapshot.classicError} />
@@ -2188,7 +2312,11 @@ function Dashboard({
               />
             }
             center={
-              isEmptyView ? (
+              isEmptyView && summaryFilter ? (
+                <Empty
+                  description={t(summaryData.error ? '统计读取失败' : '没有符合当前筛选的变更')}
+                />
+              ) : isEmptyView ? (
                 <ClassicWorkspaceEmptyDetail snapshot={snapshot} tab={tab} onTab={onTab} />
               ) : isLoadingView ? (
                 <ClassicWorkspaceLoadingDetail />
@@ -2728,11 +2856,9 @@ function KeyValue({ k, v }) {
 function ArtifactDrawer({ artifact, embedded = false, onClose }) {
   const dashboardLanguage = useDashboardLanguage();
   const [loadState, setLoadState] = useState({ status: 'idle' });
-  const {
-    fullscreen: requestedFullscreen,
-    toggleFullscreen,
-    requestClose,
-  } = useDashboardModalState(Boolean(artifact));
+  const { fullscreen: requestedFullscreen, requestClose } = useDashboardModalState(
+    Boolean(artifact),
+  );
   const fullscreen = !embedded && requestedFullscreen;
   const [toc, setToc] = useState([]);
   const [activeTocId, setActiveTocId] = useState('');
@@ -2871,14 +2997,14 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
   }, [toc, fullscreen]);
 
   useEffect(() => {
-    if (!fullscreen) return undefined;
+    if (!artifact) return undefined;
 
     const onKeyDown = (event) => {
       if (event.key === 'Escape') requestClose(onClose);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [fullscreen, onClose, requestClose]);
+  }, [artifact, fullscreen, onClose, requestClose]);
 
   if (!artifact) return null;
   const preview = artifact.preview;
@@ -2893,7 +3019,7 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
       {!fullscreen && (
         <button
           aria-label={t('产物预览背景')}
-          className="dashboard-artifact-preview-backdrop bg-black/30 max-sm:hidden"
+          className="dashboard-artifact-preview-backdrop bg-transparent max-sm:hidden"
           onClick={() => requestClose(onClose)}
         />
       )}
@@ -2958,59 +3084,15 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
               </div>
             )}
           </div>
-          {!embedded && (
-            <button
-              type="button"
-              className="dashboard-artifact-preview-expand grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
-              onClick={toggleFullscreen}
-              aria-label={fullscreen ? t('退出全屏') : t('全屏展示')}
-              aria-pressed={fullscreen}
-            >
-              {fullscreen ? (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="size-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
-                  />
-                </svg>
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="size-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m-4.5 0L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
-                  />
-                </svg>
-              )}
-            </button>
-          )}
-          {embedded && (
-            <button
-              type="button"
-              className="dashboard-artifact-preview-expand grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
-              onClick={() => requestClose(onClose)}
-              aria-label={t('关闭产物预览')}
-            >
-              <CloseOutlined aria-hidden="true" />
-            </button>
-          )}
+          <button
+            type="button"
+            className="dashboard-artifact-preview-close grid size-8 shrink-0 place-items-center rounded-lg text-fg-2 hover:bg-surface"
+            onClick={onClose}
+            aria-label={t('关闭产物预览')}
+            title={t('关闭产物预览')}
+          >
+            <CloseOutlined aria-hidden="true" />
+          </button>
         </header>
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {fullscreen && toc.length > 0 && (
@@ -4563,6 +4645,27 @@ function AntSidebar({
   );
 }
 
+function PluginWorkspaceSkeleton() {
+  useDashboardLanguage();
+  return (
+    <div className="dashboard-plugin-skeleton" aria-busy="true">
+      <div className="dashboard-plugin-skeleton-toolbar">
+        <Skeleton.Input active size="small" />
+      </div>
+      <div className="dashboard-plugin-skeleton-summary">
+        <Skeleton.Input active size="small" />
+      </div>
+      <div className="dashboard-plugin-skeleton-panes">
+        {[3, 7, 5].map((rows, index) => (
+          <div key={index}>
+            <DashboardLineSkeleton label={t('正在加载 Dashboard')} rows={rows} titleWidth="40%" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PluginCenterPage({
   page,
   loading,
@@ -4573,7 +4676,7 @@ function PluginCenterPage({
   viewScope,
 }) {
   useDashboardLanguage();
-  if (loading && !page) return <LoadingState />;
+  if (loading && !page) return <PluginWorkspaceSkeleton />;
   if (error && !page) {
     return (
       <div className="mx-auto max-w-dashboard">
@@ -4588,7 +4691,7 @@ function PluginCenterPage({
       </div>
     );
   }
-  if (!page) return <LoadingState />;
+  if (!page) return <PluginWorkspaceSkeleton />;
   const syncError = error ? (
     <Alert
       className="mb-3"
@@ -5283,6 +5386,122 @@ function CometConfigSettings({ data, readOnly = false, onSave }) {
   );
 }
 
+function ProviderApiExample({ kind }) {
+  useDashboardLanguage();
+  const [open, setOpen] = useState(false);
+  const memory = kind === 'memory';
+  const schema = memory
+    ? 'comet.personal-memory.provider.v1'
+    : 'comet.project-knowledge.provider.v1';
+  const requestFor = (operation, input) =>
+    memory
+      ? { schema, operation, profile: 'default', projectKey: 'example-project', payload: input }
+      : { schema, operation, scope: 'team/project', projectId: 'example-project', input };
+  const responseFor = (operation, result) =>
+    memory ? { result } : { schema, operation, projectId: 'example-project', result };
+  const examples = [
+    {
+      key: 'status',
+      label: t('连接状态'),
+      request: requestFor('status', memory ? { projectKey: 'example-project' } : {}),
+      response: responseFor(
+        'status',
+        memory
+          ? { learningEnabled: false, retrievalEnabled: true, pausedProjects: [] }
+          : { provider: 'remote', healthy: true, writable: false, diagnostics: [] },
+      ),
+    },
+    {
+      key: 'query',
+      label: t('读取示例'),
+      request: requestFor(
+        'query',
+        memory
+          ? { view: 'combined', query: { projectKey: 'example-project' } }
+          : { kind: 'list', limit: 100 },
+      ),
+      response: responseFor(
+        'query',
+        memory
+          ? { records: [], truncated: false, disabled: false }
+          : { kind: 'list', records: [], truncated: false, diagnostics: [] },
+      ),
+    },
+  ];
+  return (
+    <>
+      <Button type="link" size="small" onClick={() => setOpen(true)}>
+        {t('接口示例')}
+      </Button>
+      <DashboardModal
+        open={open}
+        onClose={() => setOpen(false)}
+        showFullscreen={false}
+        title={t(memory ? '个人记忆接口示例' : '项目知识接口示例')}
+        width={760}
+        footer={
+          <Button aria-label={t('关闭')} onClick={() => setOpen(false)}>
+            {t('关闭')}
+          </Button>
+        }
+      >
+        <div className="dashboard-provider-api-guide">
+          <p>
+            {t(
+              '将这些示例交给服务开发者。已有第三方服务需要实现适配接口；仅替换地址并不代表兼容。',
+            )}
+          </p>
+          <p>
+            {t(
+              '向填写的完整地址发送 POST 请求，不自动追加路径。请求与响应使用 JSON；鉴权按需使用 Bearer Token。',
+            )}
+          </p>
+          <pre>{'Content-Type: application/json\nAuthorization: Bearer <token>'}</pre>
+          <p>
+            {t(
+              '未配置 Token 环境变量时不发送 Authorization。示例中的标识是占位值，实际请求由 Comet 填入；不要把真实密钥写进示例。',
+            )}
+          </p>
+          <Tabs
+            items={examples.map((example) => ({
+              key: example.key,
+              label: example.label,
+              children: (
+                <>
+                  <h4>{t('请求 JSON')}</h4>
+                  <pre data-api-example="request">{JSON.stringify(example.request, null, 2)}</pre>
+                  <h4>{t('成功响应（HTTP 200）')}</h4>
+                  <pre data-api-example="response">{JSON.stringify(example.response, null, 2)}</pre>
+                </>
+              ),
+            }))}
+          />
+          <p>
+            {t(
+              memory
+                ? '个人记忆：profile 区分记忆空间，projectKey 标识项目，参数放在 payload 中。响应可用 result 包裹对象；读取单条使用 get，写入、修改与遗忘使用 apply。'
+                : '项目知识：scope 区分服务范围，projectId 标识项目，参数放在 input 中。响应必须包含相同的 schema、operation 和 projectId，并把结果放在 result 中。读取使用 query，变更使用 apply。',
+            )}
+          </p>
+          <Alert
+            type="info"
+            showIcon
+            message={t('这些是最小连通与空结果示例，不是完整服务实现。')}
+            description={t(
+              '真实记录必须满足对应协议的数据字段与项目隔离要求；自动学习、写入和修改还需实现相应操作。仅返回示例不能提供记忆或知识能力。',
+            )}
+          />
+          <p>
+            {t(
+              '接入顺序：实现适配接口 → 设置鉴权环境变量 → 填写并保存配置 → 检查连接状态和读取结果。HTTP 错误、无效 JSON 或不匹配的响应会被视为失败。',
+            )}
+          </p>
+        </div>
+      </DashboardModal>
+    </>
+  );
+}
+
 function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
   useDashboardLanguage();
   const [remoteUrl, setRemoteUrl] = useState('');
@@ -5499,17 +5718,19 @@ function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
             </div>
             <div className="dashboard-memory-setting dashboard-memory-setting-stack">
               <div className="dashboard-memory-setting-copy">
-                <strong>{t('存储方式')}</strong>
+                <strong>{t('记忆服务')}</strong>
                 <span>
-                  {provider === 'remote' ? t('使用外部记忆服务') : t('使用本地个人记忆存储')}
+                  {providerMode === 'remote'
+                    ? t('通过接口调用外部记忆服务')
+                    : t('由 Comet 在当前设备管理个人记忆，无需配置接口')}
                 </span>
               </div>
               <Select
                 value={providerMode}
-                aria-label={t('个人记忆存储方式')}
+                aria-label={t('个人记忆服务')}
                 options={[
-                  { value: 'local', label: t('本地存储') },
-                  { value: 'remote', label: t('远程存储') },
+                  { value: 'local', label: t('内置服务') },
+                  { value: 'remote', label: t('外部服务') },
                 ]}
                 onChange={setProviderMode}
               />
@@ -5544,36 +5765,79 @@ function PersonalMemorySettings({ page, data, readOnly = false, onInvoke }) {
               </p>
               {providerMode === 'remote' && (
                 <>
-                  <Input
-                    value={providerEndpoint}
-                    onChange={(event) => setProviderEndpoint(event.target.value)}
-                    placeholder="Remote Provider endpoint"
-                    aria-label="Remote Provider endpoint"
-                  />
-                  <div className="dashboard-memory-remote-form">
+                  <div className="dashboard-memory-budget-field">
+                    <div className="dashboard-settings-field-heading">
+                      <label htmlFor="memory-service-endpoint">{t('记忆服务接口地址')}</label>
+                      <ProviderApiExample kind="memory" />
+                    </div>
                     <Input
-                      value={providerTokenEnv}
-                      onChange={(event) => setProviderTokenEnv(event.target.value)}
-                      placeholder={t('Token 环境变量（可选）')}
-                      aria-label={t('Remote Provider token 环境变量')}
+                      id="memory-service-endpoint"
+                      aria-describedby="memory-service-endpoint-help"
+                      value={providerEndpoint}
+                      onChange={(event) => setProviderEndpoint(event.target.value)}
+                      placeholder="https://memory.example.com/comet"
+                      aria-label={t('记忆服务接口地址')}
                     />
-                    <Input
-                      value={providerProfile}
-                      onChange={(event) => setProviderProfile(event.target.value)}
-                      placeholder="Profile"
-                      aria-label="Remote Provider profile"
-                    />
+                    <span id="memory-service-endpoint-help">
+                      {t(
+                        '填写服务提供方给出的完整接口地址，需兼容 Comet 个人记忆协议；不能直接填写模型 API 地址。',
+                      )}
+                    </span>
                   </div>
-                  <Input
-                    value={providerTimeoutMs}
-                    onChange={(event) => setProviderTimeoutMs(event.target.value)}
-                    placeholder={t('请求超时（毫秒）')}
-                    aria-label={t('Remote Provider 请求超时')}
-                  />
+                  <div className="dashboard-memory-remote-form">
+                    <div className="dashboard-memory-budget-field">
+                      <label htmlFor="memory-service-token">{t('Token 环境变量名（可选）')}</label>
+                      <Input
+                        id="memory-service-token"
+                        aria-describedby="memory-service-token-help"
+                        value={providerTokenEnv}
+                        onChange={(event) => setProviderTokenEnv(event.target.value)}
+                        placeholder="COMET_MEMORY_TOKEN"
+                        aria-label={t('Token 环境变量名（可选）')}
+                      />
+                      <span id="memory-service-token-help">
+                        {t(
+                          '填写变量名，例如 COMET_MEMORY_TOKEN，不要填写 Token 本身。在启动 Comet 的环境中设置对应值；无需鉴权时留空。',
+                        )}
+                      </span>
+                    </div>
+                    <div className="dashboard-memory-budget-field">
+                      <label htmlFor="memory-service-profile">{t('记忆空间（Profile）')}</label>
+                      <Input
+                        id="memory-service-profile"
+                        aria-describedby="memory-service-profile-help"
+                        value={providerProfile}
+                        onChange={(event) => setProviderProfile(event.target.value)}
+                        placeholder="default"
+                        aria-label={t('记忆空间（Profile）')}
+                      />
+                      <span id="memory-service-profile-help">
+                        {t('按服务提供方要求填写，用于区分记忆空间；不确定时保留 default。')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="dashboard-memory-budget-field">
+                    <label htmlFor="memory-service-timeout">{t('请求超时（毫秒）')}</label>
+                    <Input
+                      id="memory-service-timeout"
+                      aria-describedby="memory-service-timeout-help"
+                      value={providerTimeoutMs}
+                      onChange={(event) => setProviderTimeoutMs(event.target.value)}
+                      placeholder="5000"
+                      aria-label={t('请求超时（毫秒）')}
+                    />
+                    <span id="memory-service-timeout-help">
+                      {t('通常保留 5000，即最多等待 5 秒。')}
+                    </span>
+                  </div>
                 </>
               )}
               <div className="dashboard-memory-sync-row">
-                <span>{t('Provider 切换不会迁移或删除已有数据；保存后重新加载页面即可生效')}</span>
+                <span>
+                  {t(
+                    '服务切换不会迁移或删除已有数据。请先保存配置，再测试连接；测试使用已保存的配置。',
+                  )}
+                </span>
                 <div className="dashboard-memory-remote-form">
                   <Button disabled={readOnly} onClick={() => onInvoke('test-provider', {})}>
                     {t('测试连接')}
@@ -5804,63 +6068,106 @@ function ProjectKnowledgeSettings({ page, data, readOnly = false, onInvoke }) {
           >
             <div className="dashboard-settings-panel-head">
               <div>
-                <h4 id="knowledge-provider-settings">{t('Provider 与检索')}</h4>
+                <h4 id="knowledge-provider-settings">{t('知识服务与检索')}</h4>
                 <p>{t('选择项目知识来源，并控制 Agent 使用的检索服务')}</p>
               </div>
             </div>
             <div className="dashboard-memory-setting dashboard-memory-setting-stack">
               <div className="dashboard-memory-setting-copy">
-                <strong>Provider</strong>
+                <strong>{t('知识服务')}</strong>
                 <span>
                   {providerMode === 'remote'
-                    ? t('使用团队或外部 Remote Provider')
+                    ? t('通过接口调用外部知识服务')
                     : t('使用当前设备上的本地项目知识索引')}
                 </span>
               </div>
               <Select
                 value={providerMode}
-                aria-label={t('项目知识 Provider')}
+                aria-label={t('项目知识服务')}
                 onChange={setProviderMode}
                 options={[
-                  { value: 'local', label: 'Local Provider' },
-                  { value: 'remote', label: 'Remote Provider' },
+                  { value: 'local', label: t('内置服务') },
+                  { value: 'remote', label: t('外部服务') },
                 ]}
               />
               {providerMode === 'remote' && (
                 <div className="dashboard-knowledge-settings-fields">
-                  <Input
-                    value={endpoint}
-                    onChange={(event) => setEndpoint(event.target.value)}
-                    placeholder="Remote endpoint"
-                    aria-label={t('项目知识 Remote endpoint')}
-                  />
-                  <div className="dashboard-memory-remote-form">
+                  <div className="dashboard-memory-budget-field">
+                    <div className="dashboard-settings-field-heading">
+                      <label htmlFor="knowledge-service-endpoint">{t('知识服务接口地址')}</label>
+                      <ProviderApiExample kind="knowledge" />
+                    </div>
                     <Input
-                      value={tokenEnv}
-                      onChange={(event) => setTokenEnv(event.target.value)}
-                      placeholder={t('Token 环境变量名')}
-                      aria-label={t('项目知识 Token 环境变量名')}
+                      id="knowledge-service-endpoint"
+                      aria-describedby="knowledge-service-endpoint-help"
+                      value={endpoint}
+                      onChange={(event) => setEndpoint(event.target.value)}
+                      placeholder="https://knowledge.example.com/comet"
+                      aria-label={t('知识服务接口地址')}
                     />
-                    <Input
-                      value={scope}
-                      onChange={(event) => setScope(event.target.value)}
-                      placeholder={t('Scope（可选）')}
-                      aria-label={t('项目知识 scope')}
-                    />
+                    <span id="knowledge-service-endpoint-help">
+                      {t(
+                        '填写服务提供方给出的完整 HTTPS 接口地址，需兼容 Comet 项目知识协议；不能直接填写模型 API 地址。',
+                      )}
+                    </span>
                   </div>
-                  <Input
-                    value={timeoutMs}
-                    onChange={(event) => setTimeoutMs(event.target.value)}
-                    placeholder={t('请求超时（毫秒）')}
-                    aria-label={t('项目知识超时')}
-                  />
+                  <div className="dashboard-memory-remote-form">
+                    <div className="dashboard-memory-budget-field">
+                      <label htmlFor="knowledge-service-token">
+                        {t('Token 环境变量名（可选）')}
+                      </label>
+                      <Input
+                        id="knowledge-service-token"
+                        aria-describedby="knowledge-service-token-help"
+                        value={tokenEnv}
+                        onChange={(event) => setTokenEnv(event.target.value)}
+                        placeholder="COMET_KNOWLEDGE_TOKEN"
+                        aria-label={t('Token 环境变量名（可选）')}
+                      />
+                      <span id="knowledge-service-token-help">
+                        {t(
+                          '填写变量名，例如 COMET_KNOWLEDGE_TOKEN，不要填写 Token 本身。在启动 Comet 的环境中设置对应值；无需鉴权时留空。',
+                        )}
+                      </span>
+                    </div>
+                    <div className="dashboard-memory-budget-field">
+                      <label htmlFor="knowledge-service-scope">
+                        {t('知识范围（Scope，可选）')}
+                      </label>
+                      <Input
+                        id="knowledge-service-scope"
+                        aria-describedby="knowledge-service-scope-help"
+                        value={scope}
+                        onChange={(event) => setScope(event.target.value)}
+                        placeholder="team/project"
+                        aria-label={t('知识范围（Scope，可选）')}
+                      />
+                      <span id="knowledge-service-scope-help">
+                        {t('按服务提供方要求填写团队或项目范围；不需要区分时留空。')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="dashboard-memory-budget-field">
+                    <label htmlFor="knowledge-service-timeout">{t('请求超时（毫秒）')}</label>
+                    <Input
+                      id="knowledge-service-timeout"
+                      aria-describedby="knowledge-service-timeout-help"
+                      value={timeoutMs}
+                      onChange={(event) => setTimeoutMs(event.target.value)}
+                      placeholder="5000"
+                      aria-label={t('请求超时（毫秒）')}
+                    />
+                    <span id="knowledge-service-timeout-help">
+                      {t('通常保留 5000，即最多等待 5 秒；允许范围为 100–30000。')}
+                    </span>
+                  </div>
                 </div>
               )}
               <div className="dashboard-memory-sync-row">
                 <span>
                   {providerMode === snapshot.provider && snapshot.retrieval
                     ? snapshot.retrieval
-                    : t('Provider 切换不会删除现有项目知识；保存后重新加载配置即可生效')}
+                    : t('服务切换不会删除现有项目知识；保存后重新加载配置即可生效')}
                 </span>
                 <Button type="primary" disabled={readOnly} onClick={() => void saveProvider()}>
                   {t('保存配置')}
@@ -6131,11 +6438,10 @@ function ProjectKnowledgeRegistry({
     stateFilter === 'all'
       ? records
       : records.filter((record) => projectKnowledgeStateMatches(record, stateFilter));
-  const categoryMotion = useDashboardMotion(categoryFilter, 'panel');
-  const tabMotion = useDashboardMotion(workspaceTab, 'tab');
+  const categoryMotion = useDashboardMotion(`${workspaceTab}:${categoryFilter}`, 'fade');
 
   return (
-    <div ref={tabMotion} data-dashboard-motion="tab" className="dashboard-knowledge-registry">
+    <div className="dashboard-knowledge-registry">
       <aside className="dashboard-knowledge-explorer" aria-label={t('知识分类')}>
         <div className="dashboard-knowledge-explorer-search">
           <Input
@@ -6188,12 +6494,7 @@ function ProjectKnowledgeRegistry({
         </div>
       </aside>
 
-      <section
-        ref={categoryMotion}
-        data-dashboard-motion="panel"
-        className="dashboard-knowledge-ledger"
-        aria-labelledby="knowledge-ledger-title"
-      >
+      <section className="dashboard-knowledge-ledger" aria-labelledby="knowledge-ledger-title">
         <header className="dashboard-knowledge-ledger-toolbar">
           <div>
             <span className="dashboard-contextual-title">
@@ -6268,6 +6569,8 @@ function ProjectKnowledgeRegistry({
           />
         ) : (
           <div
+            ref={categoryMotion}
+            data-dashboard-motion="panel"
             className="dashboard-knowledge-ledger-rows"
             data-dashboard-scroll="knowledge-ledger"
             aria-label={t('项目知识记录列表')}
@@ -6374,7 +6677,7 @@ function ProjectKnowledgeInspector({
   onInvoke,
 }) {
   useDashboardLanguage();
-  const detailMotion = useDashboardMotion(record?.id ?? '', 'detail');
+  const detailMotion = useDashboardMotion(record?.id ?? '', 'fade');
   if (!record) {
     return (
       <aside className="dashboard-knowledge-inspector is-empty" aria-label={t('记录详情')}>
@@ -6661,7 +6964,7 @@ function ProjectKnowledgeSources({
   onSelectRecord,
 }) {
   useDashboardLanguage();
-  const tabMotion = useDashboardMotion('sources', 'tab');
+  const tabMotion = useDashboardMotion('sources', 'fade');
   return (
     <section
       ref={tabMotion}
@@ -6763,7 +7066,7 @@ function ProjectKnowledgeQuery({
   queryCandidateCount,
 }) {
   useDashboardLanguage();
-  const tabMotion = useDashboardMotion('query', 'tab');
+  const tabMotion = useDashboardMotion('query', 'fade');
   const [selectedResult, setSelectedResult] = useState(null);
   const [resultPreview, setResultPreview] = useState({ status: 'idle' });
   useEffect(() => {
@@ -7102,7 +7405,7 @@ function projectMemoryTypeLabel(type) {
 
 function ProjectMemoryPanel({ summary, readOnly = false, onInvoke, viewScope }) {
   const dashboardLanguage = useDashboardLanguage();
-  const tabMotion = useDashboardMotion('project-memory', 'tab');
+  const tabMotion = useDashboardMotion('project-memory', 'fade');
   const memoryScope = `${viewScope}:project-memory:${summary?.directory ?? ''}`;
   const [searchText, setSearchText] = useDashboardViewState(memoryScope, 'searchText', '');
   const [selectedSlug, setSelectedSlug] = useDashboardViewState(memoryScope, 'selectedSlug', null);
@@ -7132,7 +7435,7 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke, viewScope }) 
     visibleEntries.find((entry) => entry.slug === selectedSlug) ?? visibleEntries[0] ?? null;
   const selectedKey = selectedEntry?.slug ?? null;
   const directory = summary?.directory ?? '';
-  const detailMotion = useDashboardMotion(`${directory}:${selectedKey ?? ''}`, 'detail');
+  const detailMotion = useDashboardMotion(`${directory}:${selectedKey ?? ''}`, 'fade');
   const currentDetail =
     detail?.directory === directory && detail?.value?.slug === selectedKey ? detail.value : null;
   useEffect(() => {
@@ -7171,7 +7474,7 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke, viewScope }) 
         '还没有项目记忆。任务结束时 Agent 会把验证过、可复用的经验通过 comet knowledge remember 写入这里。',
       );
   return (
-    <div ref={tabMotion} data-dashboard-motion="tab" className="dashboard-project-memory">
+    <div className="dashboard-project-memory">
       <section className="dashboard-memory-registry" aria-label={t('项目记忆列表')}>
         <div className="dashboard-memory-registry-toolbar">
           <div>
@@ -7213,7 +7516,12 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke, viewScope }) 
           <span>{t('更新时间')}</span>
           <span />
         </div>
-        <div className="dashboard-memory-table-body" data-dashboard-scroll="project-memory-list">
+        <div
+          ref={tabMotion}
+          data-dashboard-motion="tab"
+          className="dashboard-memory-table-body"
+          data-dashboard-scroll="project-memory-list"
+        >
           {visibleEntries.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyDescription} />
           ) : (
@@ -7385,7 +7693,6 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke, viewScope }) 
 
 function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke, viewScope }) {
   const dashboardLanguage = useDashboardLanguage();
-  const pageMotion = useDashboardMotion('project-knowledge', 'page');
   const snapshot = data && typeof data === 'object' ? data : {};
   const [workspaceTab, setWorkspaceTab] = useDashboardViewState(viewScope, 'workspaceTab', 'model');
   const previousWorkspaceTab = useRef(workspaceTab);
@@ -7645,11 +7952,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke, viewSc
         : projectKnowledgeTypeLabel(categoryFilter);
 
   return (
-    <div
-      ref={pageMotion}
-      data-dashboard-motion="page"
-      className="dashboard-tool-page dashboard-tool-page-knowledge min-w-0"
-    >
+    <div className="dashboard-tool-page dashboard-tool-page-knowledge min-w-0">
       <header className="dashboard-knowledge-workspace-head" aria-label={t('项目规则状态与操作')}>
         <div className="dashboard-contextual-title">
           <span
@@ -8012,7 +8315,6 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke, viewSc
 
 function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
   useDashboardLanguage();
-  const pageMotion = useDashboardMotion('personal-memory', 'page');
   const [editingRecord, setEditingRecord] = useState(null);
   const [correctionText, setCorrectionText] = useState('');
   const [correctionSaving, setCorrectionSaving] = useState(false);
@@ -8108,8 +8410,8 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
     visibleMemoryRecords.find((record) => record.id === selectedMemoryId) ??
     visibleMemoryRecords[0] ??
     null;
-  const filterMotion = useDashboardMotion(memoryFilter, 'tab');
-  const detailMotion = useDashboardMotion(selectedRecord?.id ?? '', 'detail');
+  const filterMotion = useDashboardMotion(memoryFilter, 'fade');
+  const detailMotion = useDashboardMotion(selectedRecord?.id ?? '', 'fade');
   const visibleMemoryKey = visibleMemoryRecords.map((record) => record.id).join('|');
   const memoryEmptyDescription = memoryQuery.trim()
     ? t('没有匹配的个人记忆')
@@ -8255,11 +8557,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
     );
   };
   return (
-    <div
-      ref={pageMotion}
-      data-dashboard-motion="page"
-      className="dashboard-tool-page dashboard-tool-page-memory min-w-0"
-    >
+    <div className="dashboard-tool-page dashboard-tool-page-memory min-w-0">
       <PluginCenterHeader
         meta={[
           {
@@ -8428,12 +8726,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
             </span>
           </div>
         </aside>
-        <section
-          ref={filterMotion}
-          data-dashboard-motion="tab"
-          className="dashboard-memory-registry"
-          aria-label={t('个人记忆列表')}
-        >
+        <section className="dashboard-memory-registry" aria-label={t('个人记忆列表')}>
           <div className="dashboard-memory-registry-toolbar">
             <div>
               <span className="dashboard-contextual-title">
@@ -8463,7 +8756,12 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
             <span>{t('更新时间')}</span>
             <span />
           </div>
-          <div className="dashboard-memory-table-body" data-dashboard-scroll="personal-memory-list">
+          <div
+            ref={filterMotion}
+            data-dashboard-motion="tab"
+            className="dashboard-memory-table-body"
+            data-dashboard-scroll="personal-memory-list"
+          >
             {visibleMemoryRecords.length === 0 ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={memoryEmptyDescription} />
             ) : (
@@ -8864,9 +9162,9 @@ function personalMemoryLearningDetails(learning = {}, status = {}) {
   return details.join(' · ');
 }
 
-function AntSummaryCards({ snapshot }) {
+function AntSummaryCards({ snapshot, summaryData, selectedKey, onAction }) {
   useDashboardLanguage();
-  const [selectedIndex, setSelectedIndex] = useState(0);
+
   const cards = [
     [
       t('活跃变更'),
@@ -8884,14 +9182,21 @@ function AntSummaryCards({ snapshot }) {
     ],
     [
       t('Verify 失败'),
-      snapshot.summary.verifyFailed,
+      !summaryData.ready || summaryData.error
+        ? null
+        : summaryData.rows.filter((change) => matchesSummary(change, 'failed')).length,
       t('验证结果'),
       snapshot.summary.verifyFailed ? t('阻塞') : t('健康'),
       SafetyCertificateOutlined,
     ],
     [
       t('未完成任务'),
-      snapshot.summary.tasksIncomplete,
+      !summaryData.ready || summaryData.error
+        ? null
+        : summaryData.rows.reduce(
+            (sum, change) => sum + Math.max(0, change.tasks.total - change.tasks.completed),
+            0,
+          ),
       t('任务推进情况'),
       snapshot.summary.tasksIncomplete ? t('待办') : t('清零'),
       CheckOutlined,
@@ -8915,8 +9220,8 @@ function AntSummaryCards({ snapshot }) {
           status={status}
           icon={Icon}
           tone={`dashboard-summary-tone-${index + 1}`}
-          selected={selectedIndex === index}
-          onClick={() => setSelectedIndex(index)}
+          selected={selectedKey === ['active', 'archived', 'failed', 'tasks', 'git'][index]}
+          onClick={() => onAction(['active', 'archived', 'failed', 'tasks', 'git'][index])}
         />
       ))}
     </section>
@@ -8926,7 +9231,7 @@ function AntSummaryCards({ snapshot }) {
 function AntSummaryCard({ title, value, note, status, icon: Icon, tone, selected, onClick }) {
   useDashboardLanguage();
   // 进入页面或数值变化时，从 0 滚动到目标值；数值不变则保持，避免每次自动刷新都重滚。
-  const animatedValue = useAnimatedNumber(value, 850, value);
+  const animatedValue = useAnimatedNumber(value ?? 0, 850, value ?? 0);
   return (
     <button
       type="button"
@@ -8938,7 +9243,7 @@ function AntSummaryCard({ title, value, note, status, icon: Icon, tone, selected
         <div className="min-w-0">
           <div className="text-[13px] font-medium text-muted">{title}</div>
           <div className="dashboard-summary-metric mt-1 text-[28px] font-semibold leading-none tabular-nums">
-            {Math.round(animatedValue)}
+            {value == null ? '—' : Math.round(animatedValue)}
           </div>
         </div>
         <span className="dashboard-summary-icon" aria-hidden="true">
@@ -9140,7 +9445,7 @@ function AntChangeDetail({ change, onPreview }) {
   );
   return (
     <AntCard
-      className="change-detail min-w-0"
+      className="change-detail classic-change-detail min-w-0"
       title={
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate">{change.displayName}</span>

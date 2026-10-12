@@ -42,6 +42,7 @@ describe('collectGitSnapshot', () => {
         head: null,
         dirtyFiles: 0,
         dirtyFileList: [],
+        dirtyEntries: [],
         recentCommits: [],
       });
     } finally {
@@ -82,6 +83,13 @@ describe('collectGitSnapshot', () => {
     const snap = await collectGitSnapshot(repo);
     expect(snap.dirtyFiles).toBe(3);
     expect(new Set(snap.dirtyFileList)).toEqual(new Set(['kept.txt', 'fresh.txt', 'staged.txt']));
+    expect(snap.dirtyEntries).toEqual(
+      expect.arrayContaining([
+        { path: 'kept.txt', status: ' M' },
+        { path: 'fresh.txt', status: '??' },
+        { path: 'staged.txt', status: 'A ' },
+      ]),
+    );
   });
 
   it('caps dirty file list at 20 entries', async () => {
@@ -96,6 +104,7 @@ describe('collectGitSnapshot', () => {
     const snap = await collectGitSnapshot(repo);
     expect(snap.dirtyFiles).toBe(25);
     expect(snap.dirtyFileList).toHaveLength(20);
+    expect(snap.dirtyEntries).toHaveLength(25);
   });
 
   it.each(['true', 'false'] as const)(
@@ -128,5 +137,6 @@ describe('collectGitSnapshot', () => {
     const snap = await collectGitSnapshot(repo);
     expect(snap.dirtyFiles).toBe(1);
     expect(snap.dirtyFileList).toEqual(['新文件名.txt']);
+    expect(snap.dirtyEntries).toEqual([{ path: '新文件名.txt', status: 'R ' }]);
   });
 });

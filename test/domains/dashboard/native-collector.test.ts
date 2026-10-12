@@ -948,6 +948,53 @@ describe('Native Dashboard v2 collector', () => {
     });
   });
 
+  it('reads and paginates archives without migrating a locked legacy Runtime', async () => {
+    await writeProjectConfig(projectRoot, defaultProjectConfig('docs'));
+    const lockDir = path.join(projectRoot, '.comet/runtime/native/locks/.coordinator');
+    await fs.mkdir(lockDir, { recursive: true });
+    await fs.writeFile(path.join(lockDir, '.pending.tmp'), 'unfinished legacy write');
+    for (const name of ['alpha-change', 'bravo-change', 'charlie-change']) {
+      const base = activeShapeState(name);
+      const state = parseNativePortableState({
+        ...base,
+        phase: 'archive',
+        status: 'done',
+        archived: true,
+        loop: { ...base.loop, stage: 'done' },
+      });
+      const directory = path.join(projectRoot, 'docs/comet/archive', `2026-08-09-${name}`);
+      await fs.mkdir(directory, { recursive: true });
+      await writeNativePortableState(path.join(directory, NATIVE_CHANGE_STATE_FILE), state);
+      await fs.writeFile(path.join(directory, 'brief.md'), '# Archived brief\n');
+    }
+    const first = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'archived',
+      limit: 2,
+    });
+    expect(first.total).toBe(3);
+    expect(first.items).toHaveLength(2);
+    expect(first.items.every((item) => item.phase === 'archive')).toBe(true);
+    expect(first.nextCursor).toBeTruthy();
+    const next = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'archived',
+      limit: 2,
+      cursor: first.nextCursor!,
+    });
+    expect(next.total).toBe(3);
+    expect(next.items).toHaveLength(1);
+    expect(next.nextCursor).toBeNull();
+    const detail = await collectNativeDashboardChangeDetail(projectRoot, {
+      status: 'archived',
+      name: first.items[0].name,
+      archiveName: first.items[0].archiveName,
+    });
+    expect(detail).toMatchObject({ phase: 'archive', lifecycleStatus: 'done' });
+    expect(detail!.artifacts.some((artifact) => artifact.exists)).toBe(true);
+    expect(await fs.readFile(path.join(lockDir, '.pending.tmp'), 'utf8')).toBe(
+      'unfinished legacy write',
+    );
+  });
+
   it('keeps legacy Native archives visible through an explicit read-only adapter', async () => {
     const paths = await enableNative();
     await fs.mkdir(paths.archiveDir, { recursive: true });

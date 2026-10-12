@@ -172,21 +172,22 @@ export function AnyWorkflowPanel({
   );
   const chooseRun = useCallback(
     (next, { restore = null, keepParents = false } = {}) => {
+      const nextRecord = restore?.recordId ?? (next === locator ? recordRef.current : null);
       if (!keepParents) parentStack.current = [];
-      detailRequest.current?.abort();
+      if (next !== locator) detailRequest.current?.abort();
       setLocator(next);
-      setDetail(null);
+      if (next !== locator) setDetail(null);
       setDetailError(null);
-      setRecordId(restore?.recordId ?? null);
+      setRecordId(nextRecord);
       setTab(restore?.tab ?? 'steps');
       setManual(Boolean(restore));
       setNews(false);
       setInspectorOpen(false);
       setGoalExpanded(restore?.goalExpanded ?? false);
       if (restore) setExpanded(restore.expanded);
-      remember(next, restore?.recordId ?? null, restore?.tab ?? 'steps');
+      remember(next, nextRecord, restore?.tab ?? 'steps');
     },
-    [remember],
+    [remember, locator],
   );
   useEffect(() => {
     const timer = setTimeout(() => setSearch(query), 180);
@@ -457,7 +458,20 @@ export function AnyWorkflowPanel({
       setArtifactLoading(null);
     }
   };
-  const openEval = (id) => navigateDashboard({ view: 'eval', projectId, runId: id });
+  const openEval = (id) =>
+    navigateDashboard({
+      view: 'eval',
+      projectId,
+      runId: id,
+      returnTo: {
+        view: 'workflow',
+        workflow: 'any',
+        projectId,
+        runLocator: locator,
+        recordId,
+        runTab: tab,
+      },
+    });
   const copyContext = async () => {
     const text = JSON.stringify(
       {

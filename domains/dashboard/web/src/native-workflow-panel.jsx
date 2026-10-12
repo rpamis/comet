@@ -1,3 +1,4 @@
+import { SummaryFilterBar } from './workflow-summary.jsx';
 import { t, localized, getDashboardLocale } from './dashboard-i18n.js';
 import { useDashboardLanguage } from './dashboard-language.jsx';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -13,7 +14,7 @@ import {
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Badge, Button, Skeleton, Tooltip } from 'antd';
+import { Badge, Button, Empty, Skeleton, Tooltip } from 'antd';
 import {
   isNativePhaseRunning,
   nativeChangeBlockers,
@@ -189,6 +190,10 @@ function acceptanceProgress(change) {
 }
 
 export function NativeWorkflowPanel({
+  summaryTarget,
+  summaryData,
+  summaryFilter,
+  onSummaryAction,
   native,
   git,
   query,
@@ -239,6 +244,9 @@ export function NativeWorkflowPanel({
     });
   }, [native, normalizedQuery, pagedChanges, serverPaged, tab, dashboardLanguage]);
   const [selectedKey, setSelectedKey] = useState(null);
+  useEffect(() => {
+    if (summaryTarget) setSelectedKey(changeKey(summaryTarget));
+  }, [summaryTarget]);
 
   useEffect(
     () => setVisibleChangeCount(NATIVE_CHANGE_PAGE_SIZE),
@@ -348,7 +356,29 @@ export function NativeWorkflowPanel({
   useEffect(() => {
     if (selectedSummary) onSelect?.(selectedSummary);
   }, [onSelect, selectedSummary]);
-  const selected = serverPaged ? selectedDetail : selectedSummary;
+  const selected = serverPaged
+    ? selectedDetail && selectedSummary && changeKey(selectedDetail) === changeKey(selectedSummary)
+      ? selectedDetail
+      : null
+    : selectedSummary;
+  const locatedSummaryTarget = useRef(null);
+  useEffect(() => {
+    if (
+      locatedSummaryTarget.current === summaryTarget ||
+      !summaryTarget ||
+      !selected ||
+      changeKey(summaryTarget) !== changeKey(selected)
+    )
+      return;
+    locatedSummaryTarget.current = summaryTarget;
+    const frame = requestAnimationFrame(() =>
+      document.querySelector('.native-change-detail')?.scrollIntoView({
+        block: 'start',
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [summaryTarget, selected]);
   const detailPending = Boolean(selectedSummary && !selected && (detailLoading || !detailError));
   const hasNativeChanges = Boolean(native && native.totalChangeCount > 0);
   const isEmptyView = !pageLoading && visibleChanges.length === 0;
@@ -365,7 +395,14 @@ export function NativeWorkflowPanel({
         }
       />
       <NativeWorkflowSuggestion change={selected ?? selectedSummary} />
-      <NativeSummaryCards native={native} loadedChanges={visibleChanges} />
+      <NativeSummaryCards
+        native={native}
+        loadedChanges={summaryData.rows}
+        unavailable={!summaryData.ready || Boolean(summaryData.error)}
+        selectedKey={summaryFilter ?? tab}
+        onAction={onSummaryAction}
+      />
+      <SummaryFilterBar filter={summaryFilter} summary={summaryData} onClear={() => onTab('all')} />
       <SectionHead title={t('Native 变更工作区')} hint={t('查看循环、验收、阻塞与恢复状态')} />
       <DashboardWorkspaceRegion
         stableFrame
@@ -387,7 +424,9 @@ export function NativeWorkflowPanel({
           />
         }
         center={
-          isEmptyView ? (
+          isEmptyView && summaryFilter ? (
+            <Empty description={t(summaryData.error ? '统计读取失败' : '没有符合当前筛选的变更')} />
+          ) : isEmptyView ? (
             <NativeEmptyChangeDetail
               native={native}
               tab={tab}
@@ -527,15 +566,15 @@ function SectionHead({ title, hint }) {
   );
 }
 
-function NativeSummaryCards({ native, loadedChanges = [] }) {
+function NativeSummaryCards({ native, loadedChanges = [], unavailable, selectedKey, onAction }) {
   useDashboardLanguage();
-  const [selectedIndex, setSelectedIndex] = useState(0);
+
   const active =
     native?.activeChangeCount ??
     loadedChanges.filter((change) => change.status === 'active').length;
-  const readyToArchive = loadedChanges.filter(
-    (change) => change.loop?.stage === 'archive-ready',
-  ).length;
+  const archived =
+    native?.archivedChangeCount ??
+    loadedChanges.filter((change) => change.status === 'archived').length;
   const running = loadedChanges.filter(
     (change) => change.localExecution?.status === 'running',
   ).length;
@@ -556,10 +595,10 @@ function NativeSummaryCards({ native, loadedChanges = [] }) {
       FlagOutlined,
     ],
     [
-      t('可归档'),
-      readyToArchive,
-      t('已加载的循环状态'),
-      readyToArchive ? t('就绪') : t('暂无'),
+      t('已归档变更'),
+      archived,
+      t('历史变更已归档'),
+      archived ? t('已完成') : t('暂无'),
       CheckCircleOutlined,
     ],
     [
@@ -572,31 +611,33 @@ function NativeSummaryCards({ native, loadedChanges = [] }) {
     [
       t('失败或阻塞'),
       attention,
-      t('已加载的验收与验证'),
+      t('全部活跃变更'),
       attention ? t('需处理') : t('健康'),
       SafetyCertificateOutlined,
     ],
     [
       t('待验收项'),
       pending,
-      t('已加载的验收条目'),
+      t('全部活跃变更的验收条目'),
       pending ? t('待验证') : t('已处理'),
       ApartmentOutlined,
     ],
   ];
   return (
-    <section className="dashboard-summary-strip dashboard-overview-summary-strip">
+    <section className="dashboard-summary-strip dashboard-overview-summary-strip native-summary-strip">
       {cards.map(([label, value, note, tag, Icon], index) => (
         <NativeSummaryCard
           key={label}
           label={label}
-          value={value}
+          value={index > 1 && unavailable ? null : value}
           note={note}
           tag={tag}
           icon={Icon}
-          tone={`dashboard-summary-tone-${index + 1}`}
-          selected={selectedIndex === index}
-          onClick={() => setSelectedIndex(index)}
+          tone={`dashboard-summary-tone-${Math.min(index + 1, 5)}`}
+          selected={
+            selectedKey === ['active', 'archived', 'running', 'attention', 'pending'][index]
+          }
+          onClick={() => onAction(['active', 'archived', 'running', 'attention', 'pending'][index])}
         />
       ))}
     </section>
@@ -605,7 +646,7 @@ function NativeSummaryCards({ native, loadedChanges = [] }) {
 
 function NativeSummaryCard({ label, value, note, tag, icon: Icon, tone, selected, onClick }) {
   useDashboardLanguage();
-  const animatedValue = useAnimatedNumber(value, 850, value);
+  const animatedValue = useAnimatedNumber(value ?? 0, 850, value ?? 0);
   return (
     <button
       type="button"
@@ -617,7 +658,7 @@ function NativeSummaryCard({ label, value, note, tag, icon: Icon, tone, selected
         <div className="min-w-0">
           <div className="text-[13px] font-medium text-muted">{label}</div>
           <div className="dashboard-summary-metric mt-1 text-[28px] font-semibold leading-none tabular-nums">
-            {Math.round(animatedValue)}
+            {value == null ? '—' : Math.round(animatedValue)}
           </div>
         </div>
         <span className="dashboard-summary-icon" aria-hidden="true">
@@ -645,6 +686,19 @@ function NativeChangesExplorer({
   onScroll,
 }) {
   useDashboardLanguage();
+  // Badge 使用字符串 "0" 保留数位 DOM；数值 0 会被 AntD 渲染成静态文本。
+  const [badgeTotal, setBadgeTotal] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setBadgeTotal(total);
+      return undefined;
+    }
+    // Native 的总数可在首屏挂载前已知；先绘制初值，再触发 AntD 与 Classic 相同的数位滚动。
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setBadgeTotal(total));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [total]);
   const [expandedParents, setExpandedParents] = useState(() => new Set());
   const knownParentsRef = useRef(new Set());
   const normalizedQuery = query.trim().toLowerCase();
@@ -698,7 +752,8 @@ function NativeChangesExplorer({
     <aside className="native-changes-explorer flex min-h-0 flex-col rounded-lg border border-border bg-bg shadow-raised">
       <div className="native-changes-explorer-header flex flex-none items-center border-b border-border-soft">
         <h3 className="font-semibold">
-          Changes Explorer <Badge count={total} showZero className="native-changes-count ml-2" />
+          Changes Explorer{' '}
+          <Badge count={String(badgeTotal)} showZero className="native-changes-count ml-2" />
         </h3>
       </div>
       <div className="native-changes-explorer-body flex min-h-0 flex-1 flex-col">

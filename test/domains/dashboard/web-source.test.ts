@@ -248,7 +248,7 @@ describe('dashboard web source contracts', () => {
     expect(settings?.[0]).toContain('tokenEnv');
     expect(settings?.[0]).toContain('tokenConfigured');
     expect(settings?.[0]).toContain('configure-provider');
-    expect(settings?.[0]).toContain('Provider 与检索');
+    expect(settings?.[0]).toContain('知识服务与检索');
     expect(settings?.[0]).toContain('本地索引');
     expect(settings?.[0]).toContain("aria-label={t('切换当前项目知识检索')}");
     expect(settings?.[0]).toContain("action: enabled ? 'enable' : 'disable'");
@@ -357,9 +357,7 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain('DashboardPortalProvider,');
     expect(source).toContain('useDashboardModalState,');
     expect(source).toContain('<DashboardModal');
-    expect(source).toContain("aria-label={fullscreen ? t('退出全屏') : t('全屏展示')}");
-    expect(source).toContain('m0 4.5L15 15');
-    expect(source).not.toContain('m4.5 4.5L15 15');
+    expect(source).toContain("aria-label={t('关闭产物预览')}");
     expect(modal).toContain('mask={{ closable: true }}');
     expect(modal).toContain('dashboard-settings-modal-title-row');
     expect(modal).toContain('const fullscreenRef = useRef(false)');
@@ -374,7 +372,7 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain("{ key: 'comet.eval'");
     expect(source).toContain('<EvalSettings readOnly={evalReadOnly} onSaved={onEvalSaved} />');
     expect(source).not.toContain('dashboard-settings-modal-icon');
-    expect(source).toContain('个人记忆存储方式');
+    expect(source).toContain('个人记忆服务');
     expect(source).toContain('tokenConfigured');
     expect(source).toContain('Comet 默认工作流');
     expect(source).toContain('Hook 允许写入路径');
@@ -452,7 +450,7 @@ describe('dashboard web source contracts', () => {
     expect(source).toContain("aria-label={t('项目规则状态与操作')}");
     expect(source).not.toContain('<h2>{page.label}</h2>');
     expect(styles).toContain('.dashboard-plugin-context-bar');
-    expect(styles).toContain('--dashboard-plugin-body-size: 13px');
+    expect(styles).toContain('--dashboard-plugin-body-size: 14px');
   });
 
   it('keeps personal memory and project knowledge mutations read-only in the website embed', async () => {
@@ -602,7 +600,7 @@ describe('dashboard web source contracts', () => {
   it('uses the change-detail width to switch between stacked and two-column panels', async () => {
     const [source, styles] = await Promise.all([readDashboardSource(), readDashboardStyles()]);
 
-    expect(source).toContain('className="change-detail min-w-0"');
+    expect(source).toContain('className="change-detail classic-change-detail min-w-0"');
     expect(source).toContain('className="change-detail-panels grid min-w-0 gap-4"');
     expect(source).not.toContain('md:grid-cols-[minmax(0,1fr)_minmax(0,340px)]');
     expect(source).toMatch(
@@ -651,9 +649,9 @@ describe('dashboard web source contracts', () => {
   it('keeps the artifact table of contents behind fullscreen preview only', async () => {
     const source = await readDashboardSource();
 
-    expect(source).toContain('useDashboardModalState(Boolean(artifact))');
-    expect(source).toContain('dashboard-artifact-preview-expand');
-    expect(source).toContain("aria-label={fullscreen ? t('退出全屏') : t('全屏展示')}");
+    expect(source).toMatch(/useDashboardModalState\(\s*Boolean\(artifact\),?\s*\)/u);
+    expect(source).not.toContain('dashboard-artifact-preview-expand');
+    expect(source).toContain("aria-label={t('关闭产物预览')}");
     expect(source).toContain('{fullscreen && toc.length > 0 && (');
     expect(source).not.toContain('{toc.length > 0 && (');
   });

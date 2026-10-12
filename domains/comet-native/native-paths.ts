@@ -1,5 +1,6 @@
 import {
   resolveWorkspaceRuntimeRoot,
+  resolveWorkspaceRuntimeRootSync,
   migrateWorkspaceRuntimeDirectory,
   isWorkspaceRuntimeMigrationFence,
   isWorkspaceRuntimeMigrationFenceSync,
@@ -110,6 +111,7 @@ export async function resolveArtifactRoot(projectRoot: string, value: string): P
 export async function nativeProjectPaths(
   projectRoot: string,
   artifactRootRef: string,
+  options: { readOnly?: boolean } = {},
 ): Promise<NativeProjectPaths> {
   const normalized = normalizeArtifactRootRef(artifactRootRef);
   const artifactRoot = await resolveArtifactRoot(projectRoot, normalized);
@@ -125,7 +127,9 @@ export async function nativeProjectPaths(
     throw new Error('The configured Native comet root resolves outside its artifact root');
   }
   const resolvedProjectRoot = path.resolve(projectRoot);
-  const workspaceRuntimeRoot = await resolveWorkspaceRuntimeRoot(resolvedProjectRoot);
+  const workspaceRuntimeRoot = options.readOnly
+    ? resolveWorkspaceRuntimeRootSync(resolvedProjectRoot)
+    : await resolveWorkspaceRuntimeRoot(resolvedProjectRoot);
   const runtimeDir = path.join(workspaceRuntimeRoot, 'native');
   if (await isSymbolicLink(runtimeDir)) {
     throw new Error('The Native Runtime root must not be a symbolic link');
@@ -146,6 +150,7 @@ export async function nativeProjectPaths(
     locksDir: path.join(runtimeDir, 'locks'),
     transactionsDir: path.join(runtimeDir, 'transactions'),
   };
+  if (options.readOnly) return paths;
   const migrationKey = `${workspaceRuntimeRoot}\0${nativeRoot}`;
   let migration = runtimeMigrationInspections.get(migrationKey);
   if (!migration) {

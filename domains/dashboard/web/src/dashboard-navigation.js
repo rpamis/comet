@@ -24,13 +24,21 @@ const id = (value) =>
 
 function normalize(value) {
   const projectId = id(value?.projectId);
-  if (value?.view === 'eval')
-    return {
+  if (value?.view === 'eval') {
+    const route = {
       view: 'eval',
       projectId,
       runId: id(value.runId),
       mode: value.mode === 'new' ? 'new' : 'list',
     };
+    if (
+      value.returnTo?.view === 'workflow' &&
+      value.returnTo.workflow === 'any' &&
+      id(value.returnTo.projectId) === projectId
+    )
+      route.returnTo = normalize(value.returnTo);
+    return route;
+  }
   if (value?.view === 'plugin' && id(value.pluginId))
     return {
       view: 'plugin',

@@ -104,7 +104,7 @@ describe('Native dashboard web source contracts', () => {
     ]);
 
     expect(source).toContain(
-      '<Badge count={total} showZero className="native-changes-count ml-2" />',
+      '<Badge count={String(badgeTotal)} showZero className="native-changes-count ml-2" />',
     );
     expect(classicSource).toContain('<Badge count={total} showZero className="ml-2" />');
     expect(source).not.toContain('const animatedTotal = useAnimatedNumber(total, 850, total)');

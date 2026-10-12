@@ -1,4 +1,6 @@
 .any-workspace {
+  font-size: 14px;
+  --any-pane-height: max(560px, calc(100dvh - 188px));
   min-width: 0;
   color: var(--color-fg);
 }
@@ -10,7 +12,7 @@
   margin-bottom: 14px;
 }
 .any-overview > span {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--color-muted);
 }
 .any-stat-strip {
@@ -26,11 +28,11 @@
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--color-muted);
 }
 .any-stat-strip b {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--color-fg);
 }
@@ -64,17 +66,17 @@
   min-height: 54px;
 }
 .any-panel-heading b {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 .any-panel-heading > span {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-explorer {
   display: flex;
   flex-direction: column;
-  min-height: 820px;
+  min-height: var(--any-pane-height);
   box-shadow: none;
 }
 .any-search {
@@ -82,13 +84,13 @@
 }
 .any-search .ant-input-affix-wrapper {
   background: var(--color-surface-warm);
-  font-size: 12px;
+  font-size: 14px;
 }
 .any-filter-line {
   display: flex;
   gap: 18px;
   padding: 0 14px 8px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--color-muted);
 }
 .any-filter-line button {
@@ -107,7 +109,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-app-row {
@@ -140,7 +142,7 @@
   flex-shrink: 0;
 }
 .any-app-title b {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.7;
   overflow-wrap: anywhere;
@@ -149,7 +151,7 @@
   display: block;
   margin: 10px 0 13px;
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.8;
 }
 .any-app-fact {
@@ -157,7 +159,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
   margin-top: 7px;
 }
@@ -171,18 +173,18 @@
   justify-content: space-between;
   margin-top: 9px;
   gap: 7px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-app-state .ant-tag {
   margin: 0;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 19px;
 }
 .any-version-hint {
   display: block;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.8;
   margin-top: 12px;
   border-top: 1px solid var(--color-border);
@@ -195,23 +197,23 @@
   border-top: 1px solid var(--color-border);
   padding: 15px;
   margin-top: auto;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-explorer-foot small {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.8;
 }
 .any-explorer > .ant-alert {
   margin: 10px;
-  font-size: 11px;
+  font-size: 13px;
 }
 .any-explorer > .ant-btn {
   margin: 10px;
   width: calc(100% - 20px);
 }
 .any-run-panel {
-  min-height: 820px;
+  min-height: var(--any-pane-height);
   border-color: transparent;
   box-shadow: none;
 }
@@ -233,7 +235,7 @@
   gap: 9px;
   align-items: center;
   flex-wrap: wrap;
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1.6;
   font-weight: 600;
   margin: 0;
@@ -247,14 +249,14 @@
   overflow: hidden;
 }
 .any-workspace .ant-tag {
-  font-size: 10px;
+  font-size: 12px;
   line-height: 20px;
   font-weight: 400;
   margin: 0;
   white-space: nowrap;
 }
 .any-run-context p {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.9;
   color: var(--color-muted);
   margin: 0 0 8px;
@@ -265,12 +267,12 @@
   align-items: center;
   gap: 9px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
   margin: 6px 0 14px;
 }
 .any-version {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--color-fg);
 }
@@ -282,13 +284,13 @@
 }
 .any-mode-switch {
   min-width: 0;
-  font-size: 12px;
+  font-size: 14px;
   background: var(--color-surface-warm);
 }
 .any-record-select {
   width: 100%;
   min-width: 0;
-  font-size: 12px;
+  font-size: 14px;
 }
 .any-record-option {
   min-width: 0;
@@ -296,7 +298,7 @@
   overflow-wrap: anywhere;
 }
 .any-record-option b {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
 }
 .any-record-option small {
@@ -305,7 +307,7 @@
   -webkit-line-clamp: 2;
   overflow: hidden;
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-run-controls > .ant-btn {
@@ -318,20 +320,20 @@
 .any-run-context > .ant-collapse-item > .ant-collapse-header {
   padding: 7px 0;
   align-items: center;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-run-context .ant-collapse-body {
   padding: 5px 0 7px;
 }
 .any-run-context small {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-muted);
   overflow-wrap: anywhere;
 }
 .any-parent-back {
   margin: 12px 12px 0;
-  font-size: 12px;
+  font-size: 14px;
 }
 .any-sync-line {
   display: flex;
@@ -340,7 +342,7 @@
   flex-wrap: wrap;
   gap: 6px;
   margin: 0 20px 9px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.8;
   color: var(--color-muted);
 }
@@ -348,16 +350,16 @@
   color: var(--color-warn);
 }
 .any-sync-line .ant-btn {
-  font-size: 11px;
+  font-size: 13px;
   height: 22px;
   padding: 0;
 }
 .any-error {
   margin: 10px 18px !important;
-  font-size: 12px;
+  font-size: 14px;
 }
 .any-error .ant-alert-description {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.8;
   overflow-wrap: anywhere;
 }
@@ -373,18 +375,18 @@
   gap: 10px;
 }
 .any-current-heading b {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 .any-current-heading > span {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-muted);
 }
 .any-current-counts {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 15px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
   margin: 11px 0 8px;
 }
@@ -406,7 +408,7 @@
   border: 1px solid transparent;
   border-radius: 6px;
   text-align: left;
-  font-size: 12px;
+  font-size: 14px;
 }
 .any-active-list button > span:nth-child(2) {
   flex: 1;
@@ -425,7 +427,7 @@
 .any-current > p {
   display: block;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.9;
   margin-top: 10px;
 }
@@ -436,12 +438,12 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 13px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.8;
   color: var(--color-muted);
 }
 .any-continue-context .ant-btn {
-  font-size: 11px;
+  font-size: 13px;
 }
 .any-follow-bar {
   display: flex;
@@ -450,13 +452,21 @@
   gap: 8px;
   flex-wrap: wrap;
   margin: 10px 19px 0;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-muted);
   min-height: 30px;
 }
 .any-follow-bar .ant-btn {
-  font-size: 11px;
+  font-size: 13px;
   padding: 0;
+}
+
+.any-workspace .any-follow-bar .ant-btn-link,
+.any-workspace .any-follow-bar .ant-btn-link:hover,
+.any-workspace .any-follow-bar .ant-btn-link:active {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 .any-follow-bar.has-news {
   color: var(--color-accent);
@@ -468,7 +478,7 @@
   margin-bottom: 0 !important;
 }
 .any-tabs .ant-tabs-tab {
-  font-size: 12px;
+  font-size: 14px;
 }
 .any-tabs .ant-tabs-tab + .ant-tabs-tab {
   margin-left: 24px !important;
@@ -500,11 +510,11 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
 }
 .any-phase-title small {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 400;
   color: var(--color-muted);
 }
@@ -539,7 +549,7 @@
 }
 .any-step-copy b {
   display: block;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   line-height: 1.8;
   overflow-wrap: anywhere;
@@ -547,7 +557,7 @@
 .any-step-copy small {
   display: block;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.8;
   margin-top: 4px;
   overflow-wrap: anywhere;
@@ -555,7 +565,7 @@
 .any-step-copy em {
   margin-left: 6px;
   font-style: normal;
-  font-size: 9px;
+  font-size: 12px;
   border: 1px solid var(--color-border);
   padding: 1px 4px;
   border-radius: 3px;
@@ -564,11 +574,11 @@
   white-space: nowrap;
 }
 .any-step-history {
-  font-size: 11px;
+  font-size: 13px;
   margin: 0 0 10px 24px;
 }
 .any-step-history .ant-collapse-header {
-  font-size: 11px;
+  font-size: 13px;
   padding: 9px !important;
   color: var(--color-muted) !important;
 }
@@ -580,7 +590,7 @@
   gap: 10px;
   padding: 10px;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 13px;
   text-align: left;
 }
 .any-round-row.selected {
@@ -592,7 +602,7 @@
 .any-inspector {
   position: sticky;
   top: 16px;
-  min-height: 820px;
+  min-height: var(--any-pane-height);
   border-width: 0 0 0 1px;
   border-radius: 0;
   box-shadow: none;
@@ -601,21 +611,21 @@
 .any-inspector-inner {
   display: flex;
   flex-direction: column;
-  min-height: 820px;
+  min-height: var(--any-pane-height);
 }
 .any-detail-content {
   padding: 21px 18px 10px;
   min-width: 0;
 }
 .any-detail-content h3 {
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.8;
   font-weight: 600;
   margin-bottom: 11px;
   overflow-wrap: anywhere;
 }
 .any-detail-content > p {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.9;
   color: var(--color-muted);
   margin: 12px 0 17px;
@@ -625,27 +635,85 @@
 }
 .any-detail-content .ant-descriptions-item-label,
 .any-detail-content .ant-descriptions-item-content {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.8;
   overflow-wrap: anywhere;
 }
 .any-detail-content h4 {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   margin: 23px 0 12px;
 }
 .any-detail-content > .ant-btn {
-  font-size: 11px;
+  font-size: 13px;
 }
 .any-detail-content > .ant-collapse {
   margin-top: 14px;
-  font-size: 11px;
+  font-size: 13px;
 }
 .any-detail-content .ant-collapse-header {
-  font-size: 11px;
+  font-size: 13px;
+}
+
+.any-proposal-disclosure {
+  margin-top: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.any-proposal-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-surface-warm);
+  cursor: pointer;
+  list-style: none;
+}
+
+.any-proposal-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.any-proposal-disclosure > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -3px;
+}
+
+.any-proposal-disclosure[open] > summary {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.any-proposal-disclosure[open] > summary .anticon {
+  transform: rotate(90deg);
+}
+
+.any-proposal-body {
+  padding: 12px;
+}
+
+.any-proposal-body > pre {
+  margin: 0;
+  scrollbar-gutter: stable;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .any-proposal-disclosure > summary .anticon {
+    transition: transform 140ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .any-detail-content .ant-motion-collapse,
+  .any-detail-content .ant-collapse-expand-icon svg {
+    transition-duration: 160ms !important;
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
+  }
 }
 .any-detail-content .ant-collapse-body p {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
   line-height: 1.9;
 }
@@ -656,17 +724,17 @@
   align-items: center;
 }
 .any-detail-content .ant-collapse-header-text .ant-tag {
-  font-size: 9px;
+  font-size: 12px;
   line-height: 18px;
 }
 .any-detail-content .ant-collapse-body > .ant-btn {
-  font-size: 11px;
+  font-size: 13px;
 }
 .any-note {
   padding: 13px;
   border-radius: 7px;
   background: var(--color-surface-warm);
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-muted);
   line-height: 1.9;
 }
@@ -679,7 +747,7 @@
   border-radius: 7px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.9;
   max-height: 460px;
   overflow: auto;
@@ -711,16 +779,16 @@
   gap: 8px;
 }
 .any-evidence-card b {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
 }
 .any-evidence-card .ant-tag {
-  font-size: 9px;
+  font-size: 12px;
   line-height: 18px;
 }
 .any-evidence-card small {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-muted);
   line-height: 1.8;
   margin-top: 7px;
@@ -728,7 +796,7 @@
 }
 .any-evidence-card em {
   font-style: normal;
-  font-size: 9px;
+  font-size: 12px;
   color: var(--color-muted);
   display: block;
   margin-top: 6px;
@@ -742,7 +810,7 @@
   font-weight: 600;
 }
 .any-evidence-page > p {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--color-muted);
   line-height: 1.9;
   margin: 11px 0 19px;
@@ -751,13 +819,13 @@
   padding: 15px;
 }
 .any-evidence-page .any-evidence-card b {
-  font-size: 12px;
+  font-size: 14px;
 }
 .any-evidence-page .any-evidence-card small {
-  font-size: 11px;
+  font-size: 13px;
 }
 .any-evidence-page > .ant-collapse {
-  font-size: 11px;
+  font-size: 13px;
   margin-top: 17px;
 }
 .any-history-evidence {
@@ -767,7 +835,7 @@
   gap: 12px;
   width: 100%;
   text-align: left;
-  font-size: 11px;
+  font-size: 13px;
   padding: 12px 0;
 }
 .any-artifact-link {
@@ -780,7 +848,7 @@
   border: 1px solid var(--color-border);
   border-radius: 7px;
   margin-bottom: 7px;
-  font-size: 11px;
+  font-size: 13px;
 }
 .any-artifact-link > span {
   min-width: 0;
@@ -798,7 +866,7 @@
   padding: 14px 18px;
   border-top: 1px solid var(--color-border);
   margin-top: auto;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-muted);
   line-height: 1.8;
 }
@@ -819,18 +887,18 @@
   min-width: 0;
 }
 .any-history .any-sequence {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-muted);
   min-width: 32px;
 }
 .any-history b {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   display: block;
   overflow-wrap: anywhere;
 }
 .any-history small {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-muted);
   display: block;
   margin-top: 5px;
@@ -843,43 +911,51 @@
   padding: 10px 20px;
 }
 .any-artifact-list > button {
-  display: flex;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
   align-items: center;
   gap: 12px;
-  padding: 17px 0;
+  padding: 14px 10px;
   width: 100%;
   border-bottom: 1px solid var(--color-border);
   text-align: left;
 }
 .any-artifact-list > button > span {
-  flex: 1;
   min-width: 0;
+}
+.any-artifact-list > button:hover {
+  background: var(--color-surface-warm);
+}
+.any-artifact-list > button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+  border-radius: 6px;
 }
 .any-artifact-list > button > .anticon:first-child {
   color: var(--color-accent);
-  font-size: 17px;
+  font-size: 18px;
 }
 .any-artifact-list > button > .anticon:last-child {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--color-muted);
 }
 .any-artifact-list b {
   display: block;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   overflow-wrap: anywhere;
 }
 .any-artifact-list small {
   display: block;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.8;
   color: var(--color-muted);
   overflow-wrap: anywhere;
-  margin-top: 5px;
+  margin-top: 2px;
 }
 .any-muted,
 .any-footnote {
-  font-size: 10px !important;
+  font-size: 12px !important;
   color: var(--color-muted);
   line-height: 1.9;
   margin: 15px 8px;
@@ -890,7 +966,7 @@
   justify-content: center;
   gap: 7px;
   text-align: center;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-muted);
   line-height: 1.8;
   margin-top: 23px;
@@ -943,7 +1019,7 @@
   margin: 18px 0 12px;
 }
 .any-observation-drawer > p {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--color-muted);
   line-height: 1.9;
 }
@@ -963,7 +1039,7 @@
 }
 @media (min-width: 1650px) {
   .any-columns {
-    grid-template-columns: 260px minmax(390px, 1fr) 320px;
+    grid-template-columns: clamp(260px, 12vw, 300px) minmax(390px, 1fr) clamp(320px, 17vw, 420px);
   }
 }
 @media (max-width: 1349px) {
@@ -978,7 +1054,7 @@
   }
   .any-overview > span {
     max-width: 240px;
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1.8;
   }
 }
@@ -994,7 +1070,7 @@
     display: none;
   }
   .any-app-title b {
-    font-size: 12px;
+    font-size: 14px;
   }
   .any-current {
     margin: 0 13px;
@@ -1007,16 +1083,16 @@
     margin: 10px 14px 0;
   }
   .any-active-list button {
-    font-size: 11px;
+    font-size: 13px;
     gap: 7px;
     padding: 8px 6px;
   }
   .any-current-counts {
-    font-size: 10px;
+    font-size: 12px;
     gap: 6px 12px;
   }
   .any-phase-title small {
-    font-size: 9px;
+    font-size: 12px;
   }
 }
 @media (max-width: 760px) {
@@ -1044,25 +1120,25 @@
     position: absolute;
     top: 0;
     padding: 4px;
-    font-size: 10px;
+    font-size: 12px;
     gap: 9px;
   }
   .any-app-row {
     width: 205px;
     min-width: 205px;
     margin: 0;
-    max-height: 238px;
+    min-height: 238px;
   }
   .any-app-title b {
-    font-size: 12px;
+    font-size: 14px;
   }
   .any-app-description {
     margin: 7px 0 8px;
-    font-size: 10px;
+    font-size: 12px;
   }
   .any-explorer-foot {
     padding: 12px 14px;
-    font-size: 10px;
+    font-size: 12px;
   }
   .any-explorer-foot small {
     display: none;
@@ -1078,45 +1154,45 @@
     min-width: 0;
     flex: 1;
     padding: 9px 11px;
-    font-size: 11px;
+    font-size: 13px;
     gap: 7px;
   }
   .any-stat-strip b {
-    font-size: 13px;
+    font-size: 14px;
   }
   .any-run-panel {
     min-height: 620px;
   }
   .any-run-title h2 {
-    font-size: 18px;
+    font-size: 20px;
   }
   .any-run-controls {
     grid-template-columns: 1fr;
   }
   .any-sync-line {
     margin: 0 16px 12px;
-    font-size: 9px;
-  }
-  .any-current-heading b {
     font-size: 12px;
   }
+  .any-current-heading b {
+    font-size: 14px;
+  }
   .any-current-heading > span {
-    font-size: 9px;
+    font-size: 12px;
   }
   .any-active-list button {
-    font-size: 11px;
+    font-size: 13px;
   }
   .any-active-list .ant-tag {
-    font-size: 9px;
+    font-size: 12px;
   }
   .any-current-counts {
-    font-size: 10px;
+    font-size: 12px;
   }
   .any-follow-bar {
-    font-size: 9px;
+    font-size: 12px;
   }
   .any-follow-bar .ant-btn {
-    font-size: 10px;
+    font-size: 12px;
   }
   .any-step-list {
     padding: 5px 10px 14px;
@@ -1129,20 +1205,20 @@
     display: none;
   }
   .any-step-row .ant-tag {
-    font-size: 9px;
-  }
-  .any-step-copy b {
     font-size: 12px;
   }
+  .any-step-copy b {
+    font-size: 14px;
+  }
   .any-phase-title small {
-    font-size: 9px;
+    font-size: 12px;
   }
   .any-history > button {
     padding: 15px 12px;
     gap: 7px;
   }
   .any-history b {
-    font-size: 12px;
+    font-size: 14px;
   }
   .any-inspector-inner > .any-panel-heading {
     display: none;
@@ -1154,7 +1230,7 @@
     padding: 14px 0;
   }
   .any-page-foot {
-    font-size: 9px;
+    font-size: 12px;
     align-items: flex-start;
   }
   .any-evidence-page {

@@ -35,7 +35,8 @@ export async function collectGitSnapshot(projectPath: string): Promise<GitSnapsh
     branch,
     head,
     dirtyFiles: dirtyEntries.length,
-    dirtyFileList: dirtyEntries.slice(0, DIRTY_LIMIT),
+    dirtyFileList: dirtyEntries.slice(0, DIRTY_LIMIT).map((entry) => entry.path),
+    dirtyEntries,
     recentCommits: log
       .split(/\r?\n/u)
       .map((line) => line.trim())
@@ -49,6 +50,7 @@ function emptySnapshot(): GitSnapshot {
     head: null,
     dirtyFiles: 0,
     dirtyFileList: [],
+    dirtyEntries: [],
     recentCommits: [],
   };
 }
@@ -76,13 +78,13 @@ function emptyToNull(value: string): string | null {
  * byte is always a separator, so shorter entries are malformed and skipped
  * to keep the snapshot best-effort.
  */
-function parsePorcelainRecords(raw: string): string[] {
+function parsePorcelainRecords(raw: string): { path: string; status: string }[] {
   const records = raw.split('\0');
-  const paths: string[] = [];
+  const paths: { path: string; status: string }[] = [];
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
     if (record.length < 4) continue;
-    paths.push(record.slice(3));
+    paths.push({ path: record.slice(3), status: record.slice(0, 2) });
     if (record[0] === 'R' || record[0] === 'C' || record[1] === 'R' || record[1] === 'C') {
       index += 1;
     }

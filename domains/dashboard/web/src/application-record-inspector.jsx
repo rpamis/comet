@@ -236,29 +236,26 @@ export function ApplicationRecordInspector({
               ))}
             </div>
             {data.decision && <p>{t('已记录决定：{0}', [data.decision.choice])}</p>}
-            <Collapse
-              size="small"
-              items={[
-                {
-                  key: 'proposal',
-                  label: t('完整提案与决定'),
-                  children: (
-                    <pre>
-                      {JSON.stringify(
-                        {
-                          proposal: data.proposal,
-                          choices: data.choices,
-                          proposalHash: data.proposalHash,
-                          decision: data.decision,
-                        },
-                        null,
-                        2,
-                      )}
-                    </pre>
-                  ),
-                },
-              ]}
-            />
+            <details key={record.id} className="any-proposal-disclosure">
+              <summary>
+                <RightOutlined aria-hidden="true" />
+                {t('完整提案与决定')}
+              </summary>
+              <div className="any-proposal-body">
+                <pre>
+                  {JSON.stringify(
+                    {
+                      proposal: data.proposal,
+                      choices: data.choices,
+                      proposalHash: data.proposalHash,
+                      decision: data.decision,
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+              </div>
+            </details>
             <div className="any-note">{t('本页只读；决定必须由 Agent 按当前提案继续处理。')}</div>
           </>
         )}

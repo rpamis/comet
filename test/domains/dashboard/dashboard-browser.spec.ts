@@ -1636,8 +1636,10 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await settingsDialog.getByRole('button', { name: '退出全屏' }).click();
   await expect(settingsDialog.getByRole('button', { name: '全屏展示' })).toBeVisible();
   await expect(settingsDialog.getByLabel('项目知识设置')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Provider 与检索' })).toBeVisible();
-  await expect(page.getByText('COMET_KNOWLEDGE_TOKEN')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '知识服务与检索' })).toBeVisible();
+  await expect(settingsDialog.getByLabel('Token 环境变量名（可选）')).toHaveValue(
+    'COMET_KNOWLEDGE_TOKEN',
+  );
   await expect(page.getByRole('button', { name: '保存配置' })).toBeVisible();
   await expect(page.getByText('bearer-secret', { exact: true })).toHaveCount(0);
 
@@ -1651,9 +1653,9 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
   await expect(
     projectSettings.getByRole('switch', { name: '切换当前项目知识检索' }),
   ).not.toBeChecked();
-  await expect(page.getByRole('heading', { name: 'Provider 与检索' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '知识服务与检索' })).toHaveCount(0);
   await page.getByRole('switch', { name: '切换当前项目知识检索' }).click();
-  await expect(page.getByRole('heading', { name: 'Provider 与检索' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '知识服务与检索' })).toBeVisible();
   await expect(page.getByRole('switch', { name: '切换当前项目知识检索' })).toBeChecked();
 
   await page.getByRole('button', { name: '卸载插件' }).click();
@@ -2265,7 +2267,9 @@ test('collapses long personal memory records until the user expands them', async
   await page.getByRole('button', { name: '设置' }).click();
   await expect(page.getByLabel('个人记忆设置')).toBeVisible();
   await expect(
-    page.getByText('Provider 切换不会迁移或删除已有数据；保存后重新加载页面即可生效'),
+    page.getByText(
+      '服务切换不会迁移或删除已有数据。请先保存配置，再测试连接；测试使用已保存的配置。',
+    ),
   ).toBeVisible();
 });
 
@@ -2550,13 +2554,10 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
   ).toBeVisible();
   await expect(nativeArtifactPreview).toContainText('验收标准');
   await expect(
-    page.locator('.dashboard-artifact-preview-panel > header > .dashboard-artifact-preview-expand'),
+    page.locator('.dashboard-artifact-preview-panel > header > .dashboard-artifact-preview-close'),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: '关闭产物预览' })).toHaveCount(0);
-  await page.getByRole('button', { name: '全屏展示' }).click();
-  await expect(page.getByRole('button', { name: '退出全屏' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '关闭产物预览' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '全屏展示' })).toHaveCount(0);
   await page.locator('.dashboard-artifact-preview-backdrop').click();
   await expect(page.getByRole('heading', { name: '需求简报' })).toBeHidden();
 
@@ -2606,10 +2607,7 @@ test('loads the demo dashboard and previews an artifact', async ({ page }) => {
     }),
   ).toBeVisible();
   await expect(classicArtifactPreview).toContainText('登录和令牌刷新接口在活动流量峰值期间');
-  await page.getByRole('button', { name: '全屏展示' }).click();
-  await expect(page.getByRole('button', { name: '退出全屏' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: '全屏展示' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '全屏展示' })).toHaveCount(0);
   await page.locator('.dashboard-artifact-preview-backdrop').click();
   await expect(page.getByRole('heading', { name: '提案', level: 2 })).toBeHidden();
 
@@ -3540,6 +3538,10 @@ test('keeps Classic and Native overview metrics visually aligned and selectable'
   await classicCards.nth(3).click();
   await expect(classicCards.nth(3)).toHaveClass(/dashboard-summary-primary/);
   await expect(classicCards.first()).not.toHaveClass(/dashboard-summary-primary/);
+  const pendingDialog = page.getByRole('dialog', { name: '未完成任务', exact: true });
+  await expect(pendingDialog).toBeVisible();
+  await pendingDialog.getByRole('button', { name: /关.*闭/ }).click();
+  await expect(pendingDialog).toBeHidden();
 
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
 
@@ -3957,6 +3959,16 @@ test('keeps the Native change list scrollable on a narrow viewport', async ({ pa
 });
 
 test('fills a server-paged Native list when its footer is already visible', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as any).nativeArchiveCounts = [];
+    new MutationObserver(() => {
+      const card = [...document.querySelectorAll('.native-summary-strip button')].find((el) =>
+        el.textContent?.includes('已归档变更'),
+      );
+      const value = card?.querySelector('.dashboard-summary-metric')?.textContent;
+      if (value) (window as any).nativeArchiveCounts.push(Number(value));
+    }).observe(document, { childList: true, characterData: true, subtree: true });
+  });
   const nativeItems = Array.from({ length: 8 }, (_, index) => ({
     workflow: 'native',
     name: `native-${index + 1}`,
@@ -4131,6 +4143,17 @@ test('fills a server-paged Native list when its footer is already visible', asyn
   const list = page.locator('.native-change-list');
   await expect(page.locator('.native-changes-count')).toHaveText('8');
   await expect(list.locator('.native-change-row')).toHaveCount(8);
+  await expect(
+    page
+      .locator('.native-summary-strip button')
+      .filter({ hasText: '已归档变更' })
+      .locator('.dashboard-summary-metric'),
+  ).toHaveText('8');
+  expect(
+    await page.evaluate(() =>
+      (window as any).nativeArchiveCounts.some((value: number) => value > 0 && value < 8),
+    ),
+  ).toBe(true);
   await expect.poll(() => detailRequests).toContain('native-1');
   await expect(page.locator('.native-change-detail-skeleton')).toBeVisible();
   await expect(page.locator('.native-side-panel-skeleton')).toBeVisible();
@@ -4853,8 +4876,14 @@ for (const workspace of ['个人记忆', '项目知识'] as const) {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.addInitScript(() => {
       (window as any).dashboardMotionCalls = [];
+      (window as any).pluginMotionTransforms = [];
       const animate = Element.prototype.animate;
       Element.prototype.animate = function (...args: Parameters<typeof animate>) {
+        if (this.closest('.dashboard-tool-page-memory, .dashboard-tool-page-knowledge')) {
+          for (const frame of Array.isArray(args[0]) ? args[0] : []) {
+            if (frame.transform) (window as any).pluginMotionTransforms.push(frame.transform);
+          }
+        }
         if (this.hasAttribute('data-dashboard-motion'))
           (window as any).dashboardMotionCalls.push(this.getAttribute('data-dashboard-motion'));
         return animate.apply(this, args);
@@ -4867,6 +4896,15 @@ for (const workspace of ['个人记忆', '项目知识'] as const) {
       personal ? '.dashboard-tool-page-memory' : '.dashboard-tool-page-knowledge',
     );
     await expect(surface).toBeVisible();
+    expect(
+      await page.evaluate(() =>
+        (window as any).dashboardMotionCalls.filter((kind: string) => kind === 'enter'),
+      ),
+    ).toEqual([]);
+    await expect(surface).not.toHaveAttribute('data-dashboard-motion');
+    expect(await surface.locator('[data-dashboard-motion] [data-dashboard-motion]').count()).toBe(
+      0,
+    );
     const before = await page.evaluate(() => (window as any).dashboardMotionCalls.length);
     if (personal) {
       await surface
@@ -4884,6 +4922,7 @@ for (const workspace of ['个人记忆', '项目知识'] as const) {
     await expect
       .poll(() => page.evaluate(() => (window as any).dashboardMotionCalls.length))
       .toBeGreaterThan(before);
+    expect(await page.evaluate(() => (window as any).pluginMotionTransforms)).toEqual([]);
     const search = page.getByLabel(personal ? '搜索个人记忆' : '搜索项目知识记录');
     await search.fill('Dashboard');
     await search.fill('');
@@ -5366,3 +5405,443 @@ for (const scenario of ['stable reads', 'loading spacing'] as const) {
     }
   });
 }
+
+test('rolls the Native explorer badge upward when the total is known before mounting', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    (window as any).nativeBadgeRolled = false;
+    new MutationObserver(() => {
+      if (
+        [...document.querySelectorAll('.native-changes-count .ant-scroll-number-only')].some(
+          (element) => (element as HTMLElement).style.transform.startsWith('translateY(-'),
+        )
+      )
+        (window as any).nativeBadgeRolled = true;
+    }).observe(document, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['style'],
+    });
+  });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).nativeBadgeRolled)).toBe(true);
+  await expect
+    .poll(() =>
+      page
+        .locator('.native-changes-count .ant-scroll-number-only')
+        .evaluateAll((elements) =>
+          elements.every((element) => !(element as HTMLElement).style.transform),
+        ),
+    )
+    .toBe(true);
+});
+
+test('keeps plugin content visible during refresh after a structured first-load skeleton', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let requests = 0;
+  await page.route('**/api/dashboard/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: { activeChanges: 0, archivedChanges: 0 },
+          initialChanges: { items: [], total: 0 },
+          git: {},
+          native: null,
+        },
+      });
+    if (pathname.endsWith('/plugins')) return route.fulfill({ json: { pages: DEMO_PLUGIN_PAGES } });
+    const plugin = DEMO_PLUGIN_PAGES.find((entry) =>
+      pathname.endsWith('/plugins/' + entry.pluginId),
+    );
+    if (plugin?.pluginId === 'comet.personal-memory') {
+      requests++;
+      await gate;
+    }
+    return route.fulfill({ json: plugin ?? { items: [], total: 0 } });
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await expect(page.locator('.dashboard-plugin-skeleton')).toBeVisible();
+  await expect(page.locator('.dashboard-plugin-skeleton-panes > div')).toHaveCount(3);
+  release();
+  const surface = page.locator('.dashboard-tool-page-memory');
+  await expect(surface).toBeVisible();
+  const search = page.getByLabel('搜索个人记忆');
+  await search.fill('Dashboard');
+  const before = requests;
+  await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+  await expect.poll(() => requests).toBeGreaterThan(before);
+  await expect(surface).toBeVisible();
+  await expect(search).toHaveValue('Dashboard');
+  await expect(page.locator('.dashboard-plugin-skeleton')).toHaveCount(0);
+});
+
+test('opens the Any proposal on the first frame without a height transition', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page.locator('.any-active-list button').first().click();
+  const disclosure = page.locator('.any-proposal-disclosure');
+  const summary = disclosure.locator('summary');
+  const heights = await summary.evaluate(async (element) => {
+    (element as HTMLElement).click();
+    const body = element.parentElement!.querySelector('.any-proposal-body')!;
+    const result = [];
+    for (let frame = 0; frame < 4; frame++) {
+      await new Promise(requestAnimationFrame);
+      result.push(body.getBoundingClientRect().height);
+    }
+    return result;
+  });
+  expect(heights[0]).toBeGreaterThan(100);
+  expect(new Set(heights).size).toBe(1);
+  await expect(disclosure.locator('pre')).toContainText('proposal');
+  await summary.focus();
+  await page.keyboard.press('Enter');
+  await expect(disclosure).not.toHaveAttribute('open');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.keyboard.press('Space');
+  await expect(disclosure).toHaveAttribute('open');
+  expect(
+    await disclosure.evaluate((element) => element.getAnimations({ subtree: true }).length),
+  ).toBe(0);
+});
+
+test('animates artifact previews and exposes only the close control', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  const open = page.getByRole('button', { name: '需求简报' });
+  await open.click();
+  const panel = page.locator('.dashboard-artifact-preview-panel');
+  await expect(panel).toHaveCSS('animation-name', 'dashboard-artifact-enter');
+  const close = page.getByRole('button', { name: '关闭产物预览' });
+  await expect(close.locator('.anticon-close')).toBeVisible();
+  await expect(panel.getByRole('button', { name: '全屏展示' })).toHaveCount(0);
+  await close.click();
+  await expect(panel).toHaveCount(0);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await open.click();
+  await expect(panel).toHaveCSS('animation-name', 'none');
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+});
+
+test('explains external memory and knowledge service fields before saving', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/?demo');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  for (const [section, service, address] of [
+    ['个人记忆', '个人记忆服务', '记忆服务接口地址'],
+    ['项目知识', '项目知识服务', '知识服务接口地址'],
+  ]) {
+    await page
+      .locator('.dashboard-settings-navigation')
+      .getByRole('menuitem', { name: section })
+      .click();
+    await page.getByRole('combobox', { name: service }).click();
+    await page.getByTitle('外部服务', { exact: true }).click();
+    await expect(page.getByLabel(address, { exact: true })).toBeVisible();
+    const form = page.locator('.dashboard-settings-page');
+    await expect(form).toContainText('通过接口调用外部');
+    await expect(form).toContainText('不能直接填写模型 API 地址');
+    await expect(form).toContainText('不要填写 Token 本身');
+    await expect(form).not.toContainText('使用本地个人记忆存储');
+    await form.getByRole('button', { name: '接口示例', exact: true }).click();
+    const guide = page.getByRole('dialog', {
+      name: section === '个人记忆' ? '个人记忆接口示例' : '项目知识接口示例',
+      exact: true,
+    });
+    await expect(guide).toBeVisible();
+    await expect(guide).toContainText('POST');
+    await expect(guide).toContainText('不是完整服务实现');
+    const statusRequest = JSON.parse(
+      await guide.locator('[data-api-example="request"]:visible').innerText(),
+    );
+    const statusResponse = JSON.parse(
+      await guide.locator('[data-api-example="response"]:visible').innerText(),
+    );
+    expect(statusRequest.operation).toBe('status');
+    expect(statusRequest.schema).toBe(
+      section === '个人记忆'
+        ? 'comet.personal-memory.provider.v1'
+        : 'comet.project-knowledge.provider.v1',
+    );
+    expect(statusResponse.result).toBeTruthy();
+    if (section === '项目知识') expect(statusResponse.projectId).toBe(statusRequest.projectId);
+    await guide.getByRole('tab', { name: '读取示例' }).click();
+    await expect(guide.locator('[data-api-example="request"]:visible')).toContainText(
+      '"operation": "query"',
+    );
+    const query = JSON.parse(
+      await guide.locator('[data-api-example="request"]:visible').innerText(),
+    );
+    expect(query.operation).toBe('query');
+    expect(section === '个人记忆' ? query.payload.view : query.input.kind).toBe(
+      section === '个人记忆' ? 'combined' : 'list',
+    );
+    await guide.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(guide).toBeHidden();
+    const endpoint = page.getByLabel(address, { exact: true });
+    await endpoint.fill('https://service.example.com/comet');
+    await expect(endpoint).toHaveValue('https://service.example.com/comet');
+    await page.setViewportSize({ width: 390, height: 900 });
+    expect(await form.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+  }
+});
+
+test('workflow summary cards filter changes, open pending items and respect dark hover', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/?demo');
+  const cards = page.locator('.dashboard-overview-summary-strip');
+  await cards.getByRole('button', { name: /已归档变更/ }).click();
+  await expect(
+    page.locator('.classic-changes-explorer').getByRole('tab', { name: '已归档', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await cards.getByRole('button', { name: /Verify 失败/ }).click();
+  await expect(page.locator('.dashboard-summary-filter')).toContainText('Verify 失败');
+  await expect(cards.getByRole('button', { name: /Verify 失败/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: '清除筛选', exact: true }).click();
+  await expect(page.locator('.dashboard-summary-filter')).toHaveCount(0);
+  await cards.getByRole('button', { name: /未完成任务/ }).click();
+  let dialog = page.getByRole('dialog', { name: '未完成任务', exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.locator('.ant-collapse-header').first().click();
+  await expect(dialog.locator('.dashboard-summary-items li').first()).toBeVisible();
+  await dialog.locator('.dashboard-summary-item-link').first().click();
+  await expect(dialog).toBeHidden();
+  await cards.getByRole('button', { name: /Git 未提交/ }).click();
+  dialog = page.getByRole('dialog', { name: 'Git 未提交', exact: true });
+  await expect(dialog.locator('.dashboard-summary-git li')).toHaveCount(3);
+  await dialog.getByRole('button', { name: /关.*闭/ }).click();
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await cards.getByRole('button', { name: /正在执行/ }).click();
+  await expect(page.locator('.dashboard-summary-filter')).toContainText('正在执行');
+  await cards.getByRole('button', { name: /正在执行/ }).click();
+  await expect(page.locator('.dashboard-summary-filter')).toHaveCount(0);
+  await cards.getByRole('button', { name: /待验收项/ }).click();
+  dialog = page.getByRole('dialog', { name: '待验收项', exact: true });
+  await expect(dialog).toBeVisible();
+  const pendingGroup = dialog.locator('.ant-collapse-header').last();
+  const targetName = await pendingGroup.evaluate((element) => {
+    const clone = element.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.ant-tag, .ant-collapse-expand-icon').forEach((node) => node.remove());
+    return clone.textContent?.trim() ?? '';
+  });
+  await pendingGroup.click();
+  await expect(dialog.locator('.dashboard-summary-items li').first()).toBeVisible();
+  await dialog.getByRole('button', { name: '定位到变更详情', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('.native-change-detail h3')).toHaveText(targetName);
+  await page.getByRole('button', { name: '切换到暗色模式', exact: true }).click();
+  const memory = page.getByRole('menuitem', { name: '个人记忆' });
+  await memory.hover();
+  await expect
+    .poll(() =>
+      memory.evaluate((e) => {
+        const color = getComputedStyle(e).backgroundColor;
+        const rgb = color.match(/\d+/g)?.slice(0, 3).map(Number) ?? [];
+        return rgb.length === 3 && Math.max(...rgb) < 100;
+      }),
+    )
+    .toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('Native summary reads every active page and retries failures without reporting zero', async ({
+  page,
+}) => {
+  const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+  const base = structuredClone(DEMO_SNAPSHOT);
+  const template = base.native.changes.find((change) => change.status === 'active');
+  const rows = [0, 1, 2].map((index) => ({
+    ...structuredClone(template),
+    locator: 'summary-' + index,
+    name: 'summary-' + index,
+    status: 'active',
+    children: [],
+    loop: { ...template.loop, stage: 'building' },
+    localExecution: { ...template.localExecution, status: index === 2 ? 'running' : 'absent' },
+    verificationResult: 'pass',
+    blockers: [],
+    acceptance: { total: 1, passed: 1, failed: 0, blocked: 0, pending: 0 },
+  }));
+  let fail = true;
+  let revision = 1;
+  let delaySummary = false;
+  const summaryCursors: string[] = [];
+  await page.route('**/api/dashboard/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'summary-fixture',
+          projects: [
+            {
+              id: 'summary-fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { ...base.project, generatedAt: new Date(revision * 1000).toISOString() },
+          summary: { ...base.summary, activeChanges: 0, archivedChanges: 0 },
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          native: {
+            ...base.native,
+            changes: [],
+            totalChangeCount: 3,
+            activeChangeCount: 3,
+            archivedChangeCount: 0,
+          },
+          git: base.git,
+          risks: [],
+        },
+      });
+    if (url.pathname.endsWith('/changes'))
+      return route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
+    if (url.pathname.endsWith('/native-changes')) {
+      const offset = Number(url.searchParams.get('cursor') ?? 0);
+      if (url.searchParams.get('limit') === '100') {
+        summaryCursors.push(String(offset));
+        if (delaySummary) await new Promise((resolve) => setTimeout(resolve, 300));
+        if (fail && offset === 1)
+          return route.fulfill({ status: 503, json: { error: 'Temporary failure' } });
+      }
+      return route.fulfill({
+        json: {
+          status: 'active',
+          items: [rows[offset]],
+          total: 3,
+          nextCursor: offset < 2 ? String(offset + 1) : null,
+        },
+      });
+    }
+    if (url.pathname.endsWith('/native-change'))
+      return route.fulfill({
+        json: rows.find((row) => row.name === url.searchParams.get('changeName')),
+      });
+    return route.continue();
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await expect(page.getByText('统计读取失败', { exact: true })).toBeVisible();
+  const ready = page.locator('.native-summary-strip').getByRole('button', { name: /正在执行/ });
+  await expect(ready.locator('.dashboard-summary-metric')).toHaveText('—');
+  fail = false;
+  await page.getByRole('button', { name: /重.*试/ }).click();
+  await expect(ready.locator('.dashboard-summary-metric')).toHaveText('1');
+  expect(summaryCursors).toContain('2');
+  const metric = ready.locator('.dashboard-summary-metric');
+  await metric.evaluate((element) => {
+    (window as any).summaryRefreshValues = [];
+    new MutationObserver(() =>
+      (window as any).summaryRefreshValues.push(element.textContent),
+    ).observe(element, { subtree: true, childList: true, characterData: true });
+  });
+  revision++;
+  delaySummary = true;
+  await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+  await expect.poll(() => summaryCursors.length).toBeGreaterThan(5);
+  await page.waitForTimeout(1200);
+  expect(await page.evaluate(() => (window as any).summaryRefreshValues)).not.toContain('—');
+  await expect(metric).toHaveText('1');
+
+  await ready.click();
+  await expect(page.locator('.native-changes-explorer')).toContainText('summary-2');
+  await expect(page.locator('.native-changes-explorer')).not.toContainText('summary-0');
+  await expect(page.locator('.native-change-detail h3')).toHaveText('summary-2');
+});
+
+test('uses the same Eval selection style for memory and knowledge in both themes', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/?demo');
+  for (const theme of ['light', 'dark']) {
+    if (theme === 'dark')
+      await page.getByRole('button', { name: '切换到暗色模式', exact: true }).click();
+    const style = async (name: string) => {
+      const item = page.getByRole('menuitem', { name, exact: false });
+      await item.click();
+      await expect(item).toHaveClass(/ant-menu-item-selected/);
+      await item.evaluate(async (element) => {
+        getComputedStyle(element).backgroundColor;
+        await Promise.all(
+          element.getAnimations().map((animation) => animation.finished.catch(() => {})),
+        );
+      });
+      return item.evaluate((element) => {
+        const css = getComputedStyle(element);
+        const icon = getComputedStyle(element.querySelector('.anticon')!);
+        const marker = getComputedStyle(element, '::before');
+        return {
+          color: css.color,
+          background: css.backgroundColor,
+          icon: icon.color,
+          marker: marker.display,
+        };
+      });
+    };
+    const reference = await style('评估 Eval');
+    for (const name of ['个人记忆', '项目知识']) {
+      await style(name);
+      await expect
+        .poll(() =>
+          page.getByRole('menuitem', { name }).evaluate((element) => {
+            const css = getComputedStyle(element);
+            const icon = getComputedStyle(element.querySelector('.anticon')!);
+            const marker = getComputedStyle(element, '::before');
+            return {
+              color: css.color,
+              background: css.backgroundColor,
+              icon: icon.color,
+              marker: marker.display,
+            };
+          }),
+        )
+        .toEqual(reference);
+    }
+  }
+});

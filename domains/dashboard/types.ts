@@ -118,6 +118,7 @@ export interface GitSnapshot {
   head: string | null;
   dirtyFiles: number;
   dirtyFileList: string[];
+  dirtyEntries?: { path: string; status: string }[];
   recentCommits: string[];
 }
 
