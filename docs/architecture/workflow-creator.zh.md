@@ -24,6 +24,14 @@ SDK Skill 应用包含完整入口 Skill 与由 SDK 推进的 Runtime。宿主 A
 
 独立组合的 `transitionHandlers[].sourceHash` 使用公开 SDK 的 `hashRuntimeValue(moduleSource)` 计算完整源码字符串摘要。`executorIds` 与 `validatorRefs` 必须精确匹配实际注册集合及流程引用。需要未声明的执行、验证或证据端口时，装配拒绝并保留原方案；不能以某个名字存在代替真实能力。
 
+## 阶段产物与本地验收
+
+新创作使用 Creator v4，必须在 `manifest.artifactContracts` 中逐阶段声明必需文件及内容条件，或者用 `noArtifactsReason` 说明不产生文件的原因。独立流程覆盖执行步骤；Native、Classic 覆盖新增或替换的 Skill，保留原领域检查。契约绑定真实 `workflowId/stepId`，支持固定相对 `ref`、从输出读取路径的 `refFrom`、同步 JSON Schema、必需文本和 Markdown 章节。文件默认非空，完成回报必须携带实际 SHA-256；SDK 本地执行端口自动收集文件证据。
+
+业务条件由 Agent 编写固定验证器，例如检查来源与结论是否对应、清单记录是否完整。`artifactTests` 为每个必需产物步骤提供正常文件和输出；有业务验证器时，还须提供通过通用文件和输出结构检查的 `invalidCases`。Creator 在无宿主凭据的独立 Node 进程和临时项目中运行检查，自动补充缺失、空文件、内容不符与摘要变化样例。扩展的业务验证器单独验收，原 Native/Classic 候选和审批约束继续由实际领域 Run 核对。
+
+本地验收失败进入 `review-verification`，可以 retry、revise 或 rejected，没有 skip。通过后才进入可选模型 Eval；安装预览再次核对验收报告是否属于当前固定包。实际应用在完成阶段、领取下游动作及接受下游结果时复验文件与原 Action 证据。修复步骤通过同一流程的 `replaces` 声明重做的产物，接受新结果后替代旧证据；未声明的文件变化保持阻塞。完整字段与样例见发布包 `comet-any/reference/sdk-creation.md`。
+
 ## 证据范围
 
 定向测试、生成 Runtime、真实 npm 包消费者、真实宿主 Skill/交接与模型执行分别记录。本地加载通过只能证明当前包和注册实现满足本地契约；用户可见报告明确真实宿主、模型及完整业务样本中尚未执行的部分。凭据仅从执行上下文注入，不写入包、Run、报告或生成配置。

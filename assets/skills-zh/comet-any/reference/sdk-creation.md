@@ -35,6 +35,52 @@ manifest 指定应用身份、基础流程、Runtime 版本和 Skill 依赖。�
 
 分析成功后运行 `next`，取得实际装配结果，结合有效图检查步骤、产物、Skill 绑定和能力限制，再展示方案。
 
+## 阶段产物与本地验收
+
+新创作在 `proposal.manifest.artifactContracts` 中声明阶段产物。独立流程的每个执行步骤必须有契约；Native、Classic 保留原领域验收，为绑定的新增或替换 Skill 声明契约。需要文件时填写 `artifacts`；没有强制文件时填写非空 `noArtifactsReason`。两者不能同时填写。路径或内容条件不明确时先澄清，不按 Skill 名称推断。
+
+每个契约用 `workflowId`、`stepId` 绑定实际步骤。产物使用安全相对路径 `ref`，或用 `refFrom` 从当前步骤 output 读取路径。默认要求非空；可追加 `schema`（同步 JSON Schema）、`requiredText`、`requiredHeadings`。已有输出包含 SHA-256 时用 `sha256From` 指定字段，否则回报的 `outcome.artifacts` 必须包含对应 `uri` 和真实 `sha256`；SDK 执行端口会自动收集实际文件证据。不能把 `exists: true` 或路径字符串当成文件已完成。
+
+子流程的完成结果由 SDK 管理，产物契约必须用 `sha256From` 指向子流程输出中的实际摘要。Action 绑定含 `workspaceFrom` 时，产物相对该次激活的实际工作区检查。
+
+例如设计步骤必须生成文档，方案包含：
+
+```json
+{
+  "manifest": {
+    "artifactContracts": [
+      {
+        "workflowId": "design-build",
+        "stepId": "design",
+        "artifacts": [{ "ref": "docs/design.md", "requiredHeadings": ["目标", "验收"] }]
+      },
+      {
+        "workflowId": "design-build",
+        "stepId": "review",
+        "artifacts": [],
+        "noArtifactsReason": "此步骤只收集审阅意见，不生成新文件。"
+      }
+    ]
+  },
+  "artifactTests": [
+    {
+      "workflowId": "design-build",
+      "stepId": "design",
+      "output": {},
+      "files": { "docs/design.md": "# 目标\n\n实现用户需求。\n\n## 验收\n\n检查实际结果。\n" }
+    }
+  ]
+}
+```
+
+这段是补充到完整 manifest、composition、modules、documents 的字段示例。业务特有条件写入固定模块中的验证器，并绑定到步骤的 `validator`。`artifactTests` 的正常样例必须通过实际检查；有业务验证器时，提供 `invalidCases: [{ name, files, output? }]`，异常材料必须仍通过通用文件和回报结构检查，以证明拒绝来自业务验证器。样例是隔离测试数据，不得包含用户真实凭据。需要当前输入或激活数据时填写样例 `input`、`activation`；验证器应只读本地材料。
+
+验收结果绑定当前 Run、Action、输入和实际文件摘要。后续动作启动前复验其依赖的原结果；内容变化后保留现场并重新检查。显式修复步骤可在契约 `replaces` 中列出同一流程要重做的产物步骤，修订后的结果替代旧证据；不能隐式忽略变化。检查代码、契约或样例变化后走 revise，重新确认和编译。
+
+报告样板由 SDK 提供对应契约与样例，应用本身的来源真实性或其他业务条件仍需单独验证。Creator 本地验收不执行真实宿主、模型或外部服务，不取代业务评估。
+
+本地验收失败进入 `review-verification`：retry 重跑本地检查；revise 返回分析并重新确认方案；rejected 停止并保留现场。此等待点没有 skip 选项，跳过可选模型 Eval 不会跳过必需的本地验收。
+
 ## 用户决定
 
 当前 `waits` 中只有待处理的 Wait 能接受决定。取得用户明确选择后，提交 `operation: resolve-wait`，保留 `runId`、`waitId`、`proposalHash`，附唯一 decisionId 和当前 Wait 支持的 choice。不要替用户审批或选择跳过。

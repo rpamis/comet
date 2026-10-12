@@ -25,6 +25,7 @@ async function candidateEvidenceFixture(
   project: string,
   version: string,
   status: 'passed' | 'failed',
+  artifactCases = false,
 ) {
   const app = await applicationObservationFixture(project, { version, runId: `app-${version}` });
   const runId = `creator-${version}`;
@@ -59,6 +60,24 @@ async function candidateEvidenceFixture(
   run = await completeFixtureAction(runtime, run, 'verify', {
     packageHash: app.packageHash,
     checks: ['fixture validation'],
+    ...(artifactCases
+      ? {
+          artifactVerification: {
+            schema: 'comet.workflow.artifact-verification.v1',
+            packageHash: app.packageHash,
+            contractsHash: 'fixture-contracts',
+            checks: [
+              { workflowId: 'fixture', stepId: 'design', name: 'valid', accepted: true },
+              {
+                workflowId: 'fixture',
+                stepId: 'design',
+                name: 'missing:design.md',
+                accepted: false,
+              },
+            ],
+          },
+        }
+      : {}),
   });
   const result = {
     schema: 'comet.workflow.application.eval.result.v1',
@@ -89,6 +108,20 @@ describe('Comet Any observations', () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('shows bound local artifact cases separately from optional model evidence', async () => {
+    const current = await candidateEvidenceFixture(project, 'artifact-version', 'passed', true);
+    const page = await collectDashboardApplicationRunPage(project, {});
+    const item = page.items.find(
+      (entry) => entry.kind === 'creator' && entry.runId === current.creatorRun.runId,
+    )!;
+    const detail = await collectDashboardApplicationRunDetail(project, item.locator);
+    expect(detail.evidence.find((entry) => entry.kind === 'local')).toMatchObject({
+      status: 'passed',
+      summary: '本地应用与阶段产物的正常、异常样例验收已完成',
+      details: { artifactVerification: { checks: [{ accepted: true }, { accepted: false }] } },
+    });
   });
 
   it('discovers early creation and distinguishes stopped creation from delivery', async () => {

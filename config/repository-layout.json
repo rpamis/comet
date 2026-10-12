@@ -395,6 +395,10 @@
         "to": "engine"
       },
       {
+        "from": "workflow-generation",
+        "to": "workflow-contract"
+      },
+      {
         "from": "workflow-application",
         "to": "workflow-contract"
       },

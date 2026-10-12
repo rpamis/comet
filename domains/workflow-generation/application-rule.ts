@@ -23,6 +23,12 @@ export function renderApplicationRule(
       return `| ${workflow.id}/${id} | ${step.type} | ${bindings.map((binding) => binding.skillId).join(', ') || '—'} | ${scope.join(', ') || '只读或 Runtime 本地端口'} | ${writers.map((binding) => binding.authorizationFrom ?? '由子流程确认').join(', ') || '按当前 Action/Wait'} |`;
     }),
   );
+  const contracts = manifest.artifactContracts
+    ?.map(
+      (c) =>
+        `- ${c.workflowId}/${c.stepId}：${c.artifacts.length ? c.artifacts.map((a) => a.ref ?? `output.${a.refFrom}`).join('、') + '；完成前校验实际文件、内容条件与 SHA-256。' : c.noArtifactsReason}`,
+    )
+    .join('\n');
   return `# ${manifest.id} 应用规则
 
 固定应用 ${manifest.id}@${manifest.version}；Runtime ${manifest.runtimeVersion}；基础流程 ${manifest.base}。Skill 入口与 Runtime 属于同一应用，SDK Run 是进度、执行尝试、批准与恢复的唯一依据。
@@ -36,7 +42,7 @@ ask_user 只提交用户对当前提案的真实决定。审批发生在等待�
 
 | 步骤 | 类型 | 固定 Skill | 声明的写入范围 | 批准来源 |
 | --- | --- | --- | --- | --- |
-${rows.join('\n')}
+${rows.join('\n')}${contracts ? '\n\n## 必需产物\n\n' + contracts + '\n\n实际文件与当前结果证据一致后才能完成阶段；下游领取前重新检查依赖。内容变化时修正原产物或沿已声明的修复步骤继续。' : ''}
 
 ## 写入与证据
 

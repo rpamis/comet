@@ -102,7 +102,7 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 - `scripts/`：构建、发布、benchmark、lint 等仓库自动化脚本。可调用源码模块，但不要成为运行时业务入口。
 - `assets/`：发布资产和内置 Skill 内容。修改 runtime 源码后必须通过构建同步生成资产，不要把业务逻辑只写在生成物里。
 - `domains/workflow-application/`：完整 SDK 应用加载、Skill 适配审查、固定依赖、宿主执行契约和 Run 归属。基础流程种类与应用身份分别表达；Native/Classic 领域可通过 `wrapStore` 同步投影，SDK Run 保持推进权威。
-- `domains/workflow-generation/`：确认方案的确定性装配与本地样板入口；可调用 Native 和 Classic 的公开应用工厂准备样板，不能接管领域审批、验收或 Archive。应用安装预览、不可变版本与本地导出位于 `workflow-application`；平台路径和 Runtime 依赖安装位于 `platform/`。
+- `domains/workflow-generation/`：确认方案的确定性装配、本地样板入口与隔离阶段产物验收；可调用 Native 和 Classic 的公开应用工厂准备样板，通过 `workflow-contract` 的受保护路径检查仅在临时项目创建验收样例，不能接管真实领域审批、验收或 Archive。应用安装预览、不可变版本与本地导出位于 `workflow-application`；平台路径和 Runtime 依赖安装位于 `platform/`。
 - `domains/workflow-creation/`：Creator 的固定 SDK 创作流程，关联自然语言目标、具体方案、用户决定、固定依赖、编译验证与安装预览；复用 `workflow-generation` 组合器和 SDK Run，不保存第二套推进状态。
 - `domains/eval/`：Skill 与 SDK 应用评估的目标解析、完整应用快照、固定用例复用和报告绑定。Creator 可调用其公开入口编排可选 Eval；应用分发只读取内容匹配的评估证据，不依赖模型执行器。
 - `domains/dashboard/`：通过 Eval 的公开入口展示和操作项目评估；评估规则由 `domains/eval/` 维护。通过 `workflow-creation` 和 `workflow-application` 的公开只读入口观测 Creator 与固定应用 Run；存储发现和快照校验复用 SDK，观测不加载应用执行模块或推进流程。

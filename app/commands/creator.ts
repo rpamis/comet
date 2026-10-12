@@ -44,7 +44,7 @@ export async function creatorGuideCommand(_options: CreatorCommandOptions = {}):
     JSON.stringify(
       {
         message:
-          '描述目标后启动创作；原Run ID用于继续。先读取真实Skill并确认方案，编译后选择是否执行Eval；安装预览单独确认。',
+          '描述目标后启动创作；原Run ID用于继续。先读取真实Skill并确认方案，编译并通过必需产物本地验收后选择是否执行Eval；安装预览单独确认。',
         start:
           'comet creator start <name> --goal <自然语言目标> --install-target <项目内相对目录> --host codex|claude-code --json',
         inspect: 'comet creator status <name> --json',
@@ -56,11 +56,13 @@ export async function creatorGuideCommand(_options: CreatorCommandOptions = {}):
           'analyze 由 Agent 创作完整组合 Skill 与业务 Rule，写入 proposal.documents 的 SKILL.md 和 rules/workflow-guard.md；与流程、执行绑定和验收器一起确认。SDK 保留正文并附加通用执行协议，不以入口模板替代业务创作。',
         supported: ['Native新增步骤', 'Classic full/hotfix/tweak编排', '独立SDK流程与报告审批样板'],
         delivery:
-          '新创作使用 Creator v3：SDK Skill 应用包含 Skill、Runtime 和对应 Rule/Hook；安装预览同时展示项目内完整包导出、固定依赖及当前宿主的正式安装计划。install-target 是独立导出目录，例如 .comet/creator/exports/<应用名>，不能与平台入口重叠。',
+          '新创作使用 Creator v4：SDK Skill 应用包含 Skill、Runtime 和对应 Rule/Hook；必需产物与业务验证器通过隔离验收后才可安装。安装预览同时展示项目内完整包导出、固定依赖及当前宿主的正式安装计划。install-target 是独立导出目录，例如 .comet/creator/exports/<应用名>，不能与平台入口重叠。',
         evaluation:
           '可用 --eval-config <JSON文件> 设置 agent、model、judgeAgent、judgeModel、maxTurns、timeoutSeconds。选择评估后自动生成2–4个用例并执行；失败可重试、修复方案或明确跳过，安装预览保留实际结果。凭据只来自执行环境。',
+        artifacts:
+          '方案逐阶段声明 manifest.artifactContracts 和 artifactTests；文件存在、内容条件与实际摘要必须通过。有业务验证器时补充结构有效的异常样例。本地失败进入 review-verification（retry/revise/rejected），不能跳过后安装。',
         limits: [
-          '仅提供当前 Creator 定义；旧创作保留现场并重新创建',
+          'Creator v3 保留原方案和恢复语义；新创作默认v4并要求阶段产物契约',
           'Eval只证明当前用例和所选宿主，不代表全部平台验收',
           '活动Run与依赖漂移保留原现场',
         ],
@@ -85,7 +87,7 @@ export async function creatorStartCommand(
   const runtime = createCreatorRuntime(projectRoot(options));
   const run = await runtime.start({
     runId: name,
-    workflow: { id: 'comet-creator', version: '3' },
+    workflow: { id: 'comet-creator', version: '4' },
     input: {
       goal: options.goal,
       installTarget: options.installTarget,

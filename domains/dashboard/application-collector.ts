@@ -62,6 +62,7 @@ const creatorLabels: Record<string, [string, string]> = {
   'confirm-plan': ['确认创作方案', '准备方案'],
   compile: ['编译应用', '构建与校验'],
   verify: ['校验应用与依赖', '构建与校验'],
+  'review-verification': ['处理产物验收失败', '构建与校验'],
   'eval-preview': ['准备模型评估', '模型评估'],
   'confirm-eval': ['确认是否评估', '模型评估'],
   evaluate: ['模型评估', '模型评估'],
@@ -576,7 +577,9 @@ async function evidence(
     const action = current.run.actions.filter((a) => a.stepId === 'verify').at(-1);
     if (record.packageHash && record.packageHash === packageHash) {
       local.status = 'passed';
-      local.summary = '本地应用、固定依赖与 Runtime 契约校验已完成';
+      local.summary = record.artifactVerification
+        ? '本地应用与阶段产物的正常、异常样例验收已完成'
+        : '本地应用、固定依赖与 Runtime 契约校验已完成';
       local.details = sanitizeApplicationObservation(record);
     } else if (action?.status === 'failed') {
       local.status = 'failed';

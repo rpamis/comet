@@ -6,6 +6,7 @@ import { loadWorkflowApplication } from '@rpamis/comet/applications';
 import {
   prepareWorkflowApplicationPlan,
   compileWorkflowApplication,
+  verifyWorkflowApplicationArtifactContracts,
 } from '@rpamis/comet/applications/compiler';
 
 // 只在调用者选择的隔离目录生成本地报告；--approve 明确批准原 Run 的当前草稿。
@@ -40,11 +41,16 @@ if (!existing) {
     modules: {},
   };
   const plan = await prepareWorkflowApplicationPlan({ proposal, projectRoot, packageRoot });
-  await compileWorkflowApplication({
+  const compiled = await compileWorkflowApplication({
     plan,
     confirmationHash: hashRuntimeValue(plan),
     projectRoot,
     packageRoot,
+  });
+  await verifyWorkflowApplicationArtifactContracts({
+    plan,
+    file: compiled.file,
+    packageHash: compiled.contentHash,
   });
 }
 const loaded = await loadWorkflowApplication({

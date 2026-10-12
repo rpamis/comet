@@ -35,6 +35,54 @@ The example id is report-review. The actual frontmatter name must match manifest
 
 After successful analysis, run `next` to obtain the actual assembled result. Inspect steps, artifacts, Skill bindings, and capability limits against the effective graph, then show the plan.
 
+## Stage artifacts and local verification
+
+New creations declare stage artifacts in `proposal.manifest.artifactContracts`. Every execution step in a standalone workflow needs a contract. Native and Classic retain their domain acceptance checks; declare contracts for added or replaced Skill actions. Use `artifacts` for required files, or a nonempty `noArtifactsReason` when no file is required. Do not combine them. Clarify unknown paths or content requirements before authoring.
+
+Each contract binds an actual `workflowId` and `stepId`. Use a safe relative `ref`, or `refFrom` to read the path from that step's output. Files must be nonempty by default; add synchronous JSON `schema`, `requiredText`, or `requiredHeadings` as needed. Use `sha256From` when an existing output field carries the SHA-256; otherwise `outcome.artifacts` must include the matching `uri` and actual `sha256`. SDK executor ports collect actual file evidence automatically. A path or `exists: true` does not establish completion.
+
+The SDK manages child-workflow outcomes; their artifact contracts must use `sha256From` to read actual hashes from the child result. When an Action binding declares `workspaceFrom`, artifact paths are checked relative to that activation's actual workspace.
+
+For example, a design step requiring a document declares:
+
+```json
+{
+  "manifest": {
+    "artifactContracts": [
+      {
+        "workflowId": "design-build",
+        "stepId": "design",
+        "artifacts": [{ "ref": "docs/design.md", "requiredHeadings": ["Goal", "Acceptance"] }]
+      },
+      {
+        "workflowId": "design-build",
+        "stepId": "review",
+        "artifacts": [],
+        "noArtifactsReason": "This step only collects review feedback."
+      }
+    ]
+  },
+  "artifactTests": [
+    {
+      "workflowId": "design-build",
+      "stepId": "design",
+      "output": {},
+      "files": {
+        "docs/design.md": "# Goal\n\nImplement the requested behavior.\n\n## Acceptance\n\nCheck the actual result.\n"
+      }
+    }
+  ]
+}
+```
+
+These fields supplement the complete manifest, composition, modules, and documents. Implement business-specific requirements in a fixed module validator and bind it to the step's `validator`. A positive `artifactTests` case must pass actual checks. A business validator also needs `invalidCases: [{ name, files, output? }]`; negative material must pass generic file and output-schema checks so rejection demonstrates the business check. Fixtures must contain no real credentials. Supply `input` and `activation` when checks need that context, and keep validators local and read-only.
+
+Evidence remains bound to the current Run, Action, input, and actual file hashes. Before a downstream action starts, the SDK rechecks its original result dependencies. Preserve changed files and revalidate them. A declared repair contract may list the same workflow's rebuilt stages in `replaces`; its accepted result supersedes older evidence. Changes to checks, contracts, or fixtures require revise, new confirmation, and compilation.
+
+The SDK report preset supplies its corresponding contracts and fixtures. Source authenticity and other application-specific requirements still need separate business validation. Creator's local checks do not execute real hosts, models, or external services.
+
+Local verification failures reach `review-verification`: retry reruns local checks, revise returns to analysis and plan confirmation, and rejected stops while preserving the work. This Wait has no skip choice; optional model Eval cannot bypass required local checks.
+
 ## User decisions
 
 Only a pending Wait in the current `waits` accepts a decision. After obtaining the user's explicit choice, submit `operation: resolve-wait`, preserving `runId`, `waitId`, and `proposalHash`, with a unique decisionId and a choice supported by that Wait. Do not approve or skip for the user.

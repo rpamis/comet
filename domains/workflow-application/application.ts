@@ -48,6 +48,11 @@ import {
 import { resolveInstalledWorkflowApplication } from './installed-application.js';
 import { projectWorkflowApplicationRun } from './run-view.js';
 import { createApplicationHook } from './application-hook.js';
+import {
+  applyApplicationArtifactContracts,
+  assertApplicationArtifactDependencies,
+  validateApplicationArtifactContracts,
+} from './artifact-contract.js';
 
 export interface ApplicationRunRecord {
   runId: string;
@@ -161,6 +166,8 @@ export function parseWorkflowApplicationManifest(value: unknown): WorkflowApplic
   if (!value || typeof value !== 'object' || Array.isArray(value))
     applicationError('应用文件必须是 JSON 对象');
   const manifest = value as WorkflowApplicationManifest;
+  if (manifest.artifactContracts !== undefined)
+    validateApplicationArtifactContracts(manifest.artifactContracts);
   if (manifest.schema !== 'comet.workflow.application.v1')
     applicationError('应用格式不受支持，请重新生成 SDK 应用；原文件会保留');
   if (
@@ -333,9 +340,9 @@ export async function loadWorkflowApplication(options: {
   const module = createRequire(file)(path.join(packageRoot, manifest.module));
   if (typeof module.createApplication !== 'function')
     applicationError('应用模块必须导出 createApplication');
-  const implementation: WorkflowApplicationImplementation = await module.createApplication({
+  let implementation: WorkflowApplicationImplementation = await module.createApplication({
     ...(existingRun && !options.useLatestDefinition ? { existingRun } : {}),
-    manifest,
+    manifest: structuredClone(manifest),
     skills,
     projectRoot,
     packageRoot,
@@ -349,6 +356,7 @@ export async function loadWorkflowApplication(options: {
     !implementation.workflows.length
   )
     applicationError('应用模块必须提供完整 SDK 工作流');
+  implementation = applyApplicationArtifactContracts(implementation, { manifest, projectRoot });
   const workflows = implementation.workflows.map(defineWorkflow);
   const bindingKeys = new Set<string>();
   for (const binding of manifest.bindings) {
@@ -394,6 +402,15 @@ export async function loadWorkflowApplication(options: {
       applicationError(`Skill 输出与工作流契约不匹配：${key}`);
     if (
       skill.adapter.completion !== 'self-report' &&
+      !(
+        skill.adapter.completion === 'machine-check' &&
+        manifest.artifactContracts?.some(
+          (c) =>
+            c.workflowId === binding.workflowId &&
+            c.stepId === binding.stepId &&
+            c.artifacts.length,
+        )
+      ) &&
       (!step.validator ||
         !implementation.validators?.some(
           (validator) =>
@@ -560,6 +577,15 @@ export async function loadWorkflowApplication(options: {
           )
         ) {
           assertApplicationSkillExecutionScope({ manifest, skills }, run, action);
+          if (manifest.artifactContracts)
+            await assertApplicationArtifactDependencies(
+              projectRoot,
+              manifest.artifactContracts,
+              run,
+              action.stepId,
+              run.actionContexts[action.id]?.results ?? {},
+              manifest,
+            );
           if (action.type === 'invoke_skill') {
             assertApplicationSkillAction({ manifest, skills }, action, run);
             const executor = implementation.executors?.find(
@@ -587,6 +613,24 @@ export async function loadWorkflowApplication(options: {
           }
         }
       }
+      if (manifest.artifactContracts)
+        for (const wait of run.waits) {
+          if (
+            wait.status === 'resolved' &&
+            wait.decision?.choice === 'approved' &&
+            record?.run.waits.some(
+              (previous) => previous.id === wait.id && previous.status === 'pending',
+            )
+          )
+            await assertApplicationArtifactDependencies(
+              projectRoot,
+              manifest.artifactContracts,
+              run,
+              wait.stepId,
+              wait.results,
+              manifest,
+            );
+        }
       return persistent.compareAndSwap(runId, expectedRevision, {
         runId,
         revision: run.revision,

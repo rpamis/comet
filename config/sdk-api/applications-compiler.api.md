@@ -4,6 +4,47 @@
 
 ```ts
 
+// @public (undocumented)
+export interface ApplicationArtifactTestCase {
+    // (undocumented)
+    activation?: RuntimeValue;
+    // (undocumented)
+    files: Readonly<Record<string, string>>;
+    // (undocumented)
+    input?: RuntimeValue;
+    // (undocumented)
+    invalidCases?: readonly {
+        name: string;
+        output?: RuntimeValue;
+        files: Readonly<Record<string, string>>;
+    }[];
+    // (undocumented)
+    output: RuntimeValue;
+    // (undocumented)
+    state?: RuntimeValue;
+    // (undocumented)
+    stepId: string;
+    // (undocumented)
+    workflowId: string;
+}
+
+// @public (undocumented)
+export interface ApplicationArtifactVerification {
+    // (undocumented)
+    checks: {
+        workflowId: string;
+        stepId: string;
+        name: string;
+        accepted: boolean;
+    }[];
+    // (undocumented)
+    contractsHash: string;
+    // (undocumented)
+    packageHash: string;
+    // (undocumented)
+    schema: 'comet.workflow.artifact-verification.v1';
+}
+
 // @public
 export type ApplicationCompositionPlan = {
     kind: 'report';
@@ -56,6 +97,9 @@ export interface ApplicationExtensionPlan {
 }
 
 // @public (undocumented)
+export function assertArtifactVerificationCases(plan: WorkflowApplicationPlan): void;
+
+// @public (undocumented)
 export interface CompiledWorkflowApplication {
     // (undocumented)
     compositionHash: string;
@@ -102,7 +146,16 @@ export function prepareWorkflowApplicationPlan(options: {
 }): Promise<WorkflowApplicationPlan>;
 
 // @public
+export function verifyWorkflowApplicationArtifactContracts(options: {
+    file: string;
+    plan: WorkflowApplicationPlan;
+    packageHash: string;
+}): Promise<ApplicationArtifactVerification>;
+
+// @public
 export interface WorkflowApplicationPlan {
+    // (undocumented)
+    artifactTests?: readonly ApplicationArtifactTestCase[];
     // (undocumented)
     composition: ApplicationCompositionPlan;
     // (undocumented)

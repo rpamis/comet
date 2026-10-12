@@ -13,6 +13,7 @@ import {
 } from '../../../domains/workflow-creation/index.js';
 import {
   compileWorkflowApplication,
+  prepareWorkflowApplicationPlan,
   type WorkflowApplicationPlan,
 } from '../../../domains/workflow-generation/index.js';
 import { hashRuntimeValue } from '../../../domains/engine/runtime.js';
@@ -63,11 +64,13 @@ async function analyzed(
   prepare = true,
   installTarget = '.comet/creator/exports/weekly-report',
   host = 'codex',
+  version = '3',
+  authored = analysis(),
 ) {
   const runtime = createCreatorRuntime(root);
   let run = await runtime.start({
     runId: 'creation-one',
-    workflow: { id: 'comet-creator', version: '3' },
+    workflow: { id: 'comet-creator', version },
     input: {
       goal: '每周报告先审后发布',
       installTarget,
@@ -94,7 +97,7 @@ async function analyzed(
       claimToken: 'analysis-claim',
       outcomeId: 'analysis-one',
       status: 'succeeded',
-      output: analysis(),
+      output: authored,
     },
   });
   return prepare
@@ -154,6 +157,76 @@ async function choose(run: Awaited<ReturnType<typeof analyzed>>, choice: string)
   });
   return (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run;
 }
+
+it('v4 requires local artifact verification before optional Eval and keeps evidence after cold recovery', async () => {
+  let run = await analyzed(true, '.comet/creator/exports/v4-report', 'codex', '4');
+  expect(run.input).toMatchObject({ artifactContractsVersion: 1 });
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-plan');
+  run = await choose(run, 'approved');
+  expect(run.waits.at(-1)?.stepId, JSON.stringify(run.outputs.verify?.value)).toBe('confirm-eval');
+  expect(run.outputs.verify.value).toMatchObject({
+    artifactVerification: {
+      schema: 'comet.workflow.artifact-verification.v1',
+      packageHash: (run.outputs.compile.value as { contentHash: string }).contentHash,
+    },
+  });
+  run = await choose(run, 'skip');
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-install');
+  run = await choose(run, 'approved');
+  expect(run.status).toBe('completed');
+  expect((await createCreatorRuntime(root).inspect(run.runId)).outputs.verify).toEqual(
+    run.outputs.verify,
+  );
+});
+
+it.each(['revise', 'rejected'])(
+  'v4 keeps invalid local verification at a review Wait with retry and %s but no skip',
+  async (choice) => {
+    const authored = analysis() as ReturnType<typeof analysis> & {
+      proposal: { artifactTests?: unknown[] };
+    };
+    const plan = await prepareWorkflowApplicationPlan({
+      proposal: authored.proposal,
+      projectRoot: root,
+      packageRoot: path.join(root, 'fixture-preview'),
+    });
+    authored.proposal.artifactTests = structuredClone(plan.artifactTests) as unknown[];
+    const bad = authored.proposal.artifactTests[0] as { files: Record<string, string> };
+    for (const ref of Object.keys(bad.files)) bad.files[ref] = '';
+    let run = await analyzed(true, 'exports/invalid-report', 'codex', '4', authored);
+    run = await choose(run, 'approved');
+    expect(run.waits.at(-1)?.stepId).toBe('review-verification');
+    expect(run.outputs.verify.value).toMatchObject({ noFilesWritten: true });
+    const wait = run.waits.at(-1)!;
+    await expect(
+      createCreatorRuntime(root).resolveWait({
+        runId: run.runId,
+        waitId: wait.id,
+        proposalHash: wait.proposalHash,
+        decisionId: 'skip-local',
+        choice: 'skip',
+      }),
+    ).rejects.toThrow();
+    run = await choose(run, 'retry');
+    expect(run.waits.at(-1)?.stepId).toBe('review-verification');
+    run = await choose(run, choice);
+    expect(run.actions.at(-1)?.stepId).toBe(choice === 'revise' ? 'analyze' : 'stop');
+    expect(await fs.stat(path.join(root, 'exports/invalid-report')).catch(() => null)).toBeNull();
+  },
+);
+
+it('v4 rejects missing required artifact cases while keeping analysis correctable', async () => {
+  const authored = analysis() as ReturnType<typeof analysis> & {
+    proposal: { artifactTests?: unknown[] };
+  };
+  authored.proposal.artifactTests = [];
+  await expect(analyzed(true, 'exports/invalid-report', 'codex', '4', authored)).rejects.toThrow(
+    /正常验收样例/,
+  );
+  const run = await createCreatorRuntime(root).inspect('creation-one');
+  expect(run.actions[0].status).toBe('running');
+  expect(run.actions).toHaveLength(1);
+});
 
 it('v3 previews and installs both the full export and the managed project application from one approval', async () => {
   let run = await analyzed(true, '.comet/creator/exports/report');

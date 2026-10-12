@@ -22,9 +22,26 @@ export interface AdaptedSkill extends InspectedSkill {
 // @public (undocumented)
 export interface ApplicationArtifactCheck {
     // (undocumented)
+    nonEmpty?: boolean;
+    // (undocumented)
     ref: string;
+    // (undocumented)
+    requiredHeadings?: readonly string[];
     requiredText?: readonly string[];
     schema?: RuntimeValue;
+}
+
+// @public (undocumented)
+export interface ApplicationArtifactContract {
+    // (undocumented)
+    artifacts: readonly ApplicationRequiredArtifact[];
+    // (undocumented)
+    noArtifactsReason?: string;
+    replaces?: readonly string[];
+    // (undocumented)
+    stepId: string;
+    // (undocumented)
+    workflowId: string;
 }
 
 // @public (undocumented)
@@ -202,6 +219,14 @@ export interface ApplicationInstallPreview {
 }
 
 // @public (undocumented)
+export interface ApplicationRequiredArtifact extends Omit<ApplicationArtifactCheck, 'ref'> {
+    // (undocumented)
+    ref?: string;
+    refFrom?: string;
+    sha256From?: string;
+}
+
+// @public (undocumented)
 export interface ApplicationRunRecord {
     // (undocumented)
     application: ApplicationIdentity;
@@ -272,6 +297,16 @@ export function applicationWaitSkillWork(application: LoadedWorkflowApplication,
     };
 }[];
 
+// @public (undocumented)
+export function collectApplicationArtifactEvidence(projectRoot: string, contract: ApplicationArtifactContract, output: RuntimeValue): Promise<{
+    artifacts: {
+        uri: string;
+        sha256: string;
+    }[];
+    files: Record<string, string>;
+    artifactHashes: Record<string, string>;
+}>;
+
 // @public
 export function createApplicationArtifactValidator(options: ApplicationArtifactValidatorOptions): RuntimeValidator;
 
@@ -296,6 +331,12 @@ export function exportWorkflowApplication(options: {
     file: string;
     contentHash: string;
     files: string[];
+}>;
+
+// @public
+export function inspectApplicationArtifactFiles(projectRoot: string, artifacts: readonly ApplicationArtifactCheck[]): Promise<{
+    files: Record<string, string>;
+    artifactHashes: Record<string, string>;
 }>;
 
 // @public
@@ -1397,6 +1438,12 @@ export function uninstallWorkflowApplication(options: ApplicationDeliveryOptions
 }>;
 
 // @public (undocumented)
+export function validateApplicationArtifactContracts(value: unknown): asserts value is readonly ApplicationArtifactContract[];
+
+// @public (undocumented)
+export function validateApplicationArtifactOutcome(projectRoot: string, contract: ApplicationArtifactContract, outcome: Readonly<RuntimeOutcome>): Promise<void>;
+
+// @public (undocumented)
 export interface WorkflowApplicationFactoryContext {
     // (undocumented)
     createSkillExecutor(host: SkillExecutionHost): RuntimeExecutor;
@@ -1423,6 +1470,8 @@ export interface WorkflowApplicationImplementation extends Omit<CreateRuntimeOpt
 
 // @public (undocumented)
 export interface WorkflowApplicationManifest {
+    // (undocumented)
+    artifactContracts?: readonly ApplicationArtifactContract[];
     // (undocumented)
     base: ApplicationBase;
     // (undocumented)

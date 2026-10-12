@@ -1965,6 +1965,8 @@
   "确认创作方案": "Confirm the creation plan",
   "编译应用": "Compile application",
   "校验应用与依赖": "Validate application and dependencies",
+  "处理产物验收失败": "Review artifact verification failure",
+  "本地应用与阶段产物的正常、异常样例验收已完成": "Local application and stage artifacts passed positive and negative verification cases",
   "准备模型评估": "Prepare model evaluation",
   "确认是否评估": "Confirm evaluation choice",
   "模型评估": "Model evaluation",

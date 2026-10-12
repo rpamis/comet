@@ -12,3 +12,11 @@ export type {
   CompileWorkflowApplicationOptions,
 } from './compiler.js';
 export { prepareWorkflowApplicationExample } from './examples.js';
+export {
+  verifyWorkflowApplicationArtifactContracts,
+  assertArtifactVerificationCases,
+} from './artifact-verification.js';
+export type {
+  ApplicationArtifactTestCase,
+  ApplicationArtifactVerification,
+} from './artifact-verification.js';

@@ -209,6 +209,25 @@ async function main() {
       completedReport.runId !== waitingReport.runId
     )
       throw new Error('Compiled report did not resume and publish the same approved Run');
+    const creatorExample = path.join(consumerDir, 'workflow-creator-example.mjs');
+    await fs.copyFile(
+      path.join(repositoryRoot, 'scripts/lib/workflow-creator-example.mjs'),
+      creatorExample,
+    );
+    const created = parseJsonPayload(
+      run(process.execPath, [creatorExample, path.join(consumerDir, 'creator-project')], {
+        cwd: consumerDir,
+        env: environment,
+      }),
+    );
+    if (
+      created.status !== 'completed' ||
+      !(created.checks > 4) ||
+      created.installed !== 'creator-package-report'
+    )
+      throw new Error(
+        'Packaged Creator did not verify artifacts and formally install the application',
+      );
     const applicationFile = path.join(compilerProject, 'compiled-application/application.json');
     const distributeArgs = [
       'application',

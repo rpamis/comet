@@ -16,6 +16,7 @@ import {
   type RuntimeValue,
   type WorkflowRun,
   type WorkflowRuntime,
+  type CreateRuntimeOptions,
 } from '../engine/runtime.js';
 import {
   prepareWorkflowApplicationPlan,
@@ -23,6 +24,8 @@ import {
   compileWorkflowApplication,
   type WorkflowApplicationPlan,
   type WorkflowApplicationProposal,
+  assertArtifactVerificationCases,
+  verifyWorkflowApplicationArtifactContracts,
 } from '../workflow-generation/index.js';
 import {
   loadWorkflowApplication,
@@ -138,6 +141,29 @@ function assertPlan(run: Readonly<WorkflowRun>): Prepared {
   }
   return prepared;
 }
+function requireArtifactPlan(plan: WorkflowApplicationPlan): void {
+  if (!plan.manifest.artifactContracts)
+    throw new Error(
+      '新创作需要 manifest.artifactContracts，逐阶段声明必需产物或 noArtifactsReason',
+    );
+  for (const workflow of plan.workflows)
+    for (const [stepId, step] of Object.entries(workflow.steps)) {
+      const owned =
+        plan.manifest.base === 'standalone' ||
+        plan.manifest.bindings.some(
+          (b) => b.usage === 'action' && b.workflowId === workflow.id && b.stepId === stepId,
+        );
+      if (
+        owned &&
+        ['invoke_skill', 'call_tool', 'handoff', 'child_workflow'].includes(step.type) &&
+        !plan.manifest.artifactContracts.some(
+          (c) => c.workflowId === workflow.id && c.stepId === stepId,
+        )
+      )
+        throw new Error(`阶段缺少必需产物或无产物原因：${workflow.id}/${stepId}`);
+    }
+  assertArtifactVerificationCases(plan);
+}
 function assertPackage(run: Readonly<WorkflowRun>): Package {
   const compiled = value<Package>(run, 'compile');
   if (
@@ -148,6 +174,7 @@ function assertPackage(run: Readonly<WorkflowRun>): Package {
   return compiled;
 }
 function assertPreview(root: string, run: Readonly<WorkflowRun>): Preview {
+  assertArtifactVerification(run);
   const preview = value<Preview>(run, 'preview');
   const compiled = assertPackage(run);
   if (
@@ -159,6 +186,17 @@ function assertPreview(root: string, run: Readonly<WorkflowRun>): Preview {
   if (hashRuntimeValue(preview.evaluation) !== hashRuntimeValue(evaluationSummary(run)))
     reject('安装预览绑定的 Eval 结果发生变化');
   return preview;
+}
+function assertArtifactVerification(run: Readonly<WorkflowRun>): void {
+  if (object(run.input).artifactContractsVersion !== 1) return;
+  const evidence = object(object(value<RuntimeValue>(run, 'verify')).artifactVerification);
+  if (
+    evidence.schema !== 'comet.workflow.artifact-verification.v1' ||
+    evidence.packageHash !== assertPackage(run).contentHash ||
+    evidence.contractsHash !==
+      hashRuntimeValue(assertPlan(run).plan.manifest.artifactContracts ?? [])
+  )
+    reject('安装前需要当前固定包的阶段产物本地验收');
 }
 
 function distributionOptions(root: string, run: Readonly<WorkflowRun>) {
@@ -314,10 +352,17 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         try {
           return { status: 'succeeded', output: (await execute(run!)) as RuntimeValue };
         } catch (error) {
-          if (action.stepId !== 'preview') throw error;
+          if (
+            action.stepId !== 'preview' &&
+            !(action.stepId === 'verify' && run?.workflow.version === '4')
+          )
+            throw error;
           return {
             status: 'failed',
-            summary: '安装预览未通过，未写入导出或平台安装目标。',
+            summary:
+              action.stepId === 'verify'
+                ? '阶段产物验收未通过，保留方案与拒绝原因后修订或重试。'
+                : '安装预览未通过，未写入导出或平台安装目标。',
             output: {
               reason: error instanceof Error ? error.message : String(error),
               noFilesWritten: true,
@@ -336,6 +381,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         packageRoot: staging,
       });
       requireAuthoredDocuments(plan);
+      if (object(run.input).artifactContractsVersion === 1) requireArtifactPlan(plan);
       for (const skill of plan.manifest.skills)
         if (!path.isAbsolute(skill.root)) throw new Error('创作方案的Skill目录需要绝对路径');
       return {
@@ -353,6 +399,10 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
               .filter((b) => b.workflowId === w.id && b.stepId === id)
               .map((b) => b.skillId),
             output: s.outputSchema ?? null,
+            artifactContract:
+              plan.manifest.artifactContracts?.find(
+                (c) => c.workflowId === w.id && c.stepId === id,
+              ) ?? null,
           })),
         ),
         evaluation: normalizeApplicationEvalSettings(
@@ -398,20 +448,36 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
     'creator.verify': work(async (run) => {
       const compiled = assertPackage(run);
       const loaded = await loadWorkflowApplication({ file: compiled.file, projectRoot: root });
+      const artifactVerification =
+        object(run.input).artifactContractsVersion === 1
+          ? await verifyWorkflowApplicationArtifactContracts({
+              file: compiled.file,
+              plan: assertPlan(run).plan,
+              packageHash: compiled.contentHash,
+            })
+          : undefined;
       return {
         packageHash: compiled.contentHash,
         definitionHashes: loaded.implementation.workflows.map((w) => hashRuntimeValue(w)),
-        checks: ['实际应用加载', '固定Skill与资源摘要', '已确认的有效流程及执行绑定'],
+        checks: [
+          '实际应用加载',
+          '固定Skill与资源摘要',
+          '已确认的有效流程及执行绑定',
+          ...(artifactVerification ? ['隔离阶段产物正常与异常样例'] : []),
+        ],
         notRun: ['本步骤不替代真实宿主、模型和完整业务验收'],
+        ...(artifactVerification ? { artifactVerification } : {}),
       };
     }),
-    'creator.eval-preview': work(async (run) =>
-      previewWorkflowApplicationEval(evaluationOptions(root, run)),
-    ),
+    'creator.eval-preview': work(async (run) => {
+      assertArtifactVerification(run);
+      return previewWorkflowApplicationEval(evaluationOptions(root, run));
+    }),
     'creator.evaluate': work(async (run) =>
       runWorkflowApplicationEval(evaluationRequest(root, run)),
     ),
     'creator.preview': work(async (run) => {
+      assertArtifactVerification(run);
       const compiled = assertPackage(run);
       const target = assertPlan(run).installTarget;
       const destination = contained(root, target);
@@ -473,7 +539,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
     restoreCheckpoint: async (runId, revision, checkpoint) =>
       (await store()).restoreCheckpoint!(runId, revision, checkpoint),
   };
-  const runtime = createRuntime({
+  const runtimeOptions: CreateRuntimeOptions = {
     store: persistent,
     workflows: [
       {
@@ -593,11 +659,12 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
               throw new Error('仅支持Codex和Claude Code适配');
             const analysis = object(outcome.output);
             requireAuthoredDocuments(analysis.proposal);
-            await prepareWorkflowApplicationPlan({
+            const plan = await prepareWorkflowApplicationPlan({
               proposal: analysis.proposal as WorkflowApplicationProposal,
               packageRoot: staging,
               projectRoot: root,
             });
+            if (input.artifactContractsVersion === 1) requireArtifactPlan(plan);
             return { accepted: true };
           } catch (error) {
             return { accepted: false, reason: (error as Error).message };
@@ -783,7 +850,51 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         return { accepted: false, reason: (error as Error).message };
       }
     },
-  });
+  };
+  const legacy = runtimeOptions.workflows![0];
+  const current = structuredClone(legacy);
+  current.version = '4';
+  current.transitionHandler = { id: 'creator-decisions', version: '2' };
+  current.steps.verify = { ...current.steps.verify, retry: 'idempotent' };
+  current.steps['review-verification'] = {
+    type: 'ask_user',
+    proposalFrom: 'verify',
+    choices: ['retry', 'revise', 'rejected'],
+  };
+  current.transitions = [
+    ...(current.transitions ?? []),
+    { from: 'verify', to: 'review-verification', on: 'failed' },
+    { from: 'review-verification', to: 'verify', on: 'retry' },
+    { from: 'review-verification', to: 'analyze', on: 'revise' },
+    { from: 'review-verification', to: 'stop', on: 'rejected' },
+  ];
+  const legacyRouter = runtimeOptions.transitionHandlers![0];
+  runtimeOptions.workflows = [legacy, current];
+  runtimeOptions.transitionHandlers = [
+    legacyRouter,
+    {
+      id: 'creator-decisions',
+      version: '2',
+      apply(input) {
+        const { event } = input;
+        if (
+          event.kind === 'action-outcome' &&
+          event.stepId === 'verify' &&
+          event.outcome.status === 'failed'
+        )
+          return { state: {}, next: ['review-verification'] };
+        if (event.kind === 'wait-resolved' && event.stepId === 'review-verification')
+          return {
+            state: {},
+            next: [
+              event.choice === 'retry' ? 'verify' : event.choice === 'revise' ? 'analyze' : 'stop',
+            ],
+          };
+        return legacyRouter.apply(input);
+      },
+    },
+  ];
+  const runtime = createRuntime(runtimeOptions);
   return {
     ...runtime,
     async resolveWait(command) {
@@ -794,7 +905,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
       return runtime.resolveWait(command);
     },
     start(command) {
-      if (command.workflow.version !== '3')
+      if (!['3', '4'].includes(command.workflow.version))
         throw new Error('当前 Creator 只支持新创作定义；保留旧 Run 与工件，重新创建创作');
       const input = object(command.input);
       text(input.goal, '自然语言目标');
@@ -805,7 +916,13 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         throw new Error(
           '当前创作仅支持Codex和Claude Code宿主适配；保留原输入，选择支持的宿主后继续',
         );
-      return runtime.start(command);
+      return runtime.start({
+        ...command,
+        input: {
+          ...input,
+          ...(command.workflow.version === '4' ? { artifactContractsVersion: 1 } : {}),
+        },
+      });
     },
   };
 }

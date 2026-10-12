@@ -39,6 +39,16 @@ export {
 export type { ApplicationEvaluationEvidence } from './evaluation-evidence.js';
 export type { StandaloneApplicationOptions } from './standalone-application.js';
 export { createApplicationArtifactValidator } from './artifact-validator.js';
+export { inspectApplicationArtifactFiles } from './artifact-validator.js';
+export {
+  collectApplicationArtifactEvidence,
+  validateApplicationArtifactContracts,
+  validateApplicationArtifactOutcome,
+} from './artifact-contract.js';
+export type {
+  ApplicationArtifactContract,
+  ApplicationRequiredArtifact,
+} from './artifact-contract.js';
 export type {
   ApplicationArtifactCheck,
   ApplicationArtifactValidatorOptions,

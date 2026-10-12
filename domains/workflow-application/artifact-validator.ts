@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Ajv, type ValidateFunction } from 'ajv';
+import { Ajv } from 'ajv';
 import {
   hashRuntimeValue,
   type RuntimeValue,
@@ -14,10 +14,77 @@ type CandidateInput = Pick<ValidationInput, 'action' | 'run' | 'context'>;
 
 export interface ApplicationArtifactCheck {
   ref: string;
+  nonEmpty?: boolean;
+  requiredHeadings?: readonly string[];
   /** 提供时先解析实际文件的 JSON，再进行完整结构校验。 */
   schema?: RuntimeValue;
   /** 检查实际 UTF-8 内容；不能以宿主回报中的同名字段替代。 */
   requiredText?: readonly string[];
+}
+
+/** 通用内容检查复用同一次受保护读取，不相信宿主提供的文件内容。 */
+export async function inspectApplicationArtifactFiles(
+  projectRoot: string,
+  artifacts: readonly ApplicationArtifactCheck[],
+): Promise<{ files: Record<string, string>; artifactHashes: Record<string, string> }> {
+  const files: Record<string, string> = {},
+    artifactHashes: Record<string, string> = {};
+  const ajv = new Ajv({ strict: true, allErrors: true });
+  for (const artifact of artifacts) {
+    const actual = await readProtectedProjectFile(projectRoot, artifact.ref, 16 * 1024 * 1024, {
+      label: `必需产物 ${artifact.ref}`,
+    });
+    const source = actual.bytes.toString('utf8');
+    if (artifact.nonEmpty && !source.trim()) throw new Error(`必需产物不能为空：${artifact.ref}`);
+    if (artifact.requiredText?.some((required) => !source.includes(required)))
+      throw new Error(`实际工件不满足内容要求：${artifact.ref}`);
+    if (artifact.requiredHeadings?.length) {
+      const headings = new Set<string>();
+      let fence: { char: string; length: number } | undefined;
+      let previous = '';
+      for (const line of source.split(/\r?\n/u)) {
+        const delimiter = /^ {0,3}(`{3,}|~{3,})/u.exec(line);
+        if (delimiter) {
+          const marker = delimiter[1];
+          if (!fence) fence = { char: marker[0], length: marker.length };
+          else if (
+            fence.char === marker[0] &&
+            marker.length >= fence.length &&
+            line.slice(delimiter[0].length).trim() === ''
+          )
+            fence = undefined;
+          previous = '';
+          continue;
+        }
+        if (fence) continue;
+        const heading = /^ {0,3}#{1,6}\s+(.+?)(?:\s+#+)?\s*$/u.exec(line);
+        if (heading) headings.add(heading[1].trim());
+        else if (previous.trim() && /^ {0,3}(?:=+|-+)\s*$/u.test(line))
+          headings.add(previous.trim());
+        previous = /^ {0,3}\S/u.test(line) ? line : '';
+      }
+      const missing = artifact.requiredHeadings.filter((heading) => !headings.has(heading));
+      if (missing.length)
+        throw new Error(`必需产物缺少章节：${artifact.ref}，${missing.join('、')}`);
+    }
+    if (artifact.schema !== undefined) {
+      const schema = artifact.schema;
+      if (
+        typeof schema !== 'boolean' &&
+        (schema === null ||
+          Array.isArray(schema) ||
+          typeof schema !== 'object' ||
+          schema.$async === true)
+      )
+        throw new Error(`工件需要同步 JSON Schema：${artifact.ref}`);
+      const validate = ajv.compile(schema);
+      if (!validate(JSON.parse(source)))
+        throw new Error(`实际工件结构无效：${artifact.ref}，${ajv.errorsText(validate.errors)}`);
+    }
+    files[artifact.ref] = source;
+    artifactHashes[artifact.ref] = createHash('sha256').update(actual.bytes).digest('hex');
+  }
+  return { files, artifactHashes };
 }
 
 export interface ApplicationArtifactValidatorOptions {
@@ -47,13 +114,18 @@ export function createApplicationArtifactValidator(
   )
     applicationError('实际工件验证器缺少身份、候选读取或工件检查');
   const ajv = new Ajv({ strict: true, allErrors: true });
-  const schemas = new Map<string, ValidateFunction>();
   const refs = new Set<string>();
   for (const artifact of options.artifacts) {
     if (!artifact.ref?.trim() || refs.has(artifact.ref))
       applicationError(`重复或空工件引用：${artifact.ref}`);
     refs.add(artifact.ref);
-    if (artifact.schema === undefined && !artifact.requiredText?.length && !options.validateActual)
+    if (
+      artifact.schema === undefined &&
+      !artifact.requiredText?.length &&
+      !artifact.requiredHeadings?.length &&
+      !artifact.nonEmpty &&
+      !options.validateActual
+    )
       applicationError(`工件缺少实际内容检查：${artifact.ref}`);
     if (artifact.requiredText?.some((text) => typeof text !== 'string' || !text.trim()))
       applicationError(`工件内容检查不能为空：${artifact.ref}`);
@@ -66,7 +138,7 @@ export function createApplicationArtifactValidator(
           artifact.schema.$async === true)
       )
         applicationError(`工件需要同步 JSON Schema：${artifact.ref}`);
-      schemas.set(artifact.ref, ajv.compile(artifact.schema));
+      ajv.compile(artifact.schema);
     }
   }
   const hashSchema = { type: 'string', pattern: '^[a-f0-9]{64}$' };
@@ -107,26 +179,13 @@ export function createApplicationArtifactValidator(
           output.candidateHash !== candidateHash
         )
           throw new Error('当前候选与原 Action 或回报不一致，请重新派发当前候选的检查');
-        const files: Record<string, string> = {};
+        const { files, artifactHashes } = await inspectApplicationArtifactFiles(
+          options.projectRoot,
+          options.artifacts,
+        );
         for (const artifact of options.artifacts) {
-          const actual = await readProtectedProjectFile(
-            options.projectRoot,
-            artifact.ref,
-            16 * 1024 * 1024,
-            { label: '实际验收工件' },
-          );
-          const digest = createHash('sha256').update(actual.bytes).digest('hex');
-          if (output.artifactHashes[artifact.ref] !== digest)
+          if (output.artifactHashes[artifact.ref] !== artifactHashes[artifact.ref])
             throw new Error(`实际工件摘要已变化：${artifact.ref}`);
-          const text = actual.bytes.toString('utf8');
-          files[artifact.ref] = text;
-          const validate = schemas.get(artifact.ref);
-          if (validate && !validate(JSON.parse(text)))
-            throw new Error(
-              `实际工件结构无效：${artifact.ref}，${ajv.errorsText(validate.errors)}`,
-            );
-          if (artifact.requiredText?.some((required) => !text.includes(required)))
-            throw new Error(`实际工件不满足内容要求：${artifact.ref}`);
         }
         const business = await options.validateActual?.({ ...input, files, candidate });
         if (options.validateActual && business?.accepted !== true)

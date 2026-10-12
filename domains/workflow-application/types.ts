@@ -9,6 +9,7 @@ import type {
 } from '../engine/runtime.js';
 import type { CometHookDecision } from '../workflow-contract/hook.js';
 import type { CometHookRequest } from '../../platform/process/hook-adapter.js';
+import type { ApplicationArtifactContract } from './artifact-contract.js';
 
 export type ApplicationBase =
   'standalone' | 'native' | 'classic-full' | 'classic-hotfix' | 'classic-tweak';
@@ -69,6 +70,7 @@ export interface WorkflowApplicationManifest {
   rule?: string;
   skills: ApplicationSkillDependency[];
   bindings: ApplicationSkillBinding[];
+  artifactContracts?: readonly ApplicationArtifactContract[];
 }
 
 export interface InspectedSkill {
