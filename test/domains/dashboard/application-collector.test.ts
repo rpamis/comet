@@ -130,6 +130,88 @@ describe('Comet Any observations', () => {
     expect(history?.items).toHaveLength(2);
     expect(history?.nextCursor).toBeTruthy();
   });
+  it('keeps the same Creator locator when a candidate appears and resolves existing candidate links', async () => {
+    const runId = 'creator-progress';
+    const store = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(project), 'creator'),
+    });
+    const runtime = createRuntime({
+      store,
+      workflows: [
+        {
+          id: 'comet-creator',
+          version: '3',
+          entry: 'analyze',
+          steps: {
+            analyze: { type: 'handoff', ref: 'analyze' },
+            prepare: { type: 'handoff', ref: 'prepare' },
+            'confirm-plan': { type: 'ask_user', proposalFrom: 'prepare', choices: ['approved'] },
+          },
+          transitions: [
+            { from: 'analyze', to: 'prepare' },
+            { from: 'prepare', to: 'confirm-plan' },
+          ],
+        },
+      ],
+    });
+    let run = await runtime.start({
+      runId,
+      workflow: { id: 'comet-creator', version: '3' },
+      input: { goal: 'Prepare a report' },
+    });
+    const initial = (await collectDashboardApplicationRunPage(project)).items[0];
+    run = await completeFixtureAction(runtime, run, 'analyze', { summary: 'Report workflow' });
+    run = await completeFixtureAction(runtime, run, 'prepare', {
+      plan: { manifest: { id: 'report-app', version: '1', base: 'standalone' } },
+    });
+    const prepared = (await collectDashboardApplicationRunPage(project)).items[0];
+    expect(prepared.locator).toBe(initial.locator);
+    const detail = await collectDashboardApplicationRunDetail(project, initial.locator);
+    expect(detail).toMatchObject({
+      runId,
+      revision: run.revision,
+      applicationId: 'report-app',
+      status: 'waiting',
+    });
+    expect(detail?.records.some((r) => r.stepId === 'confirm-plan' && r.active)).toBe(true);
+    const existingLink = `creator:${createHash('sha256')
+      .update(JSON.stringify(['report-app', runId]))
+      .digest('hex')}`;
+    expect(await collectDashboardApplicationRunDetail(project, existingLink)).toMatchObject({
+      locator: initial.locator,
+      runId,
+    });
+    expect(await store.read(runId)).toEqual(run);
+  });
+  it('offers child navigation only after the referenced SDK Run exists', async () => {
+    const fixture = await applicationObservationFixture(project, {
+      parallel: true,
+      child: true,
+      deferChild: true,
+    });
+    const parent = (await collectDashboardApplicationRunPage(project)).items.find(
+      (r) => r.runId === fixture.run.runId,
+    )!;
+    const before = (await collectDashboardApplicationRunDetail(project, parent.locator))!;
+    const reference = fixture.run.children[0];
+    expect(reference).toBeDefined();
+    expect(await fixture.outer.read(reference.runId)).toBeNull();
+    expect(before.records.find((r) => r.childRunId === reference.runId)?.childLocator).toBeNull();
+    expect(before.children[0].locator).toBeNull();
+    expect(await fixture.outer.read(fixture.run.runId)).toMatchObject({ run: fixture.run });
+    await fixture.runtime.next({
+      runId: fixture.run.runId,
+      expectedRevision: fixture.run.revision,
+    });
+    const after = (await collectDashboardApplicationRunDetail(project, parent.locator))!;
+    const child = after.records.find((r) => r.childRunId === reference.runId)!;
+    expect(child.childLocator).toBeTruthy();
+    expect(after.children[0].locator).toBe(child.childLocator);
+    expect(await collectDashboardApplicationRunDetail(project, child.childLocator!)).toMatchObject({
+      runId: reference.runId,
+      parentLocator: parent.locator,
+    });
+  });
   it('does not hide healthy runs when another checkpoint is corrupt', async () => {
     const bad = await applicationObservationFixture(project, { runId: 'broken' });
     await applicationObservationFixture(project, { runId: 'healthy' });

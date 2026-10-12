@@ -98,7 +98,7 @@ export interface DashboardApplicationRunDetail extends DashboardApplicationRunSu
   fixedIdentity: ApplicationIdentity | null;
   sourceCreators: { locator: string; runId: string; version: string }[];
   children: {
-    locator: string;
+    locator: string | null;
     runId: string;
     actionId: string;
     workflow: { id: string; version: string };

@@ -255,6 +255,10 @@ export function AnyWorkflowPanel({
           }
         }
         setDetail(next);
+        if (next.locator !== locator) {
+          setLocator(next.locator);
+          remember(next.locator, recordRef.current, tab);
+        }
         if (!recordRef.current) {
           const first = initialApplicationRecord(next);
           setRecordId(first?.id ?? null);
@@ -426,9 +430,10 @@ export function AnyWorkflowPanel({
         artifactId: artifact.id,
       });
       onPreview?.({
-        ...preview,
-        label:
+        key: preview.key,
+        name:
           preview.status === 'changed' ? t('{0}（内容已变化）', [artifact.label]) : artifact.label,
+        preview,
       });
       if (preview.status === 'changed' || preview.status === 'unavailable')
         setDrawer({

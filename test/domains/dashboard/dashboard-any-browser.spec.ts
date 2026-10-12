@@ -206,6 +206,15 @@ test('Any preserves pinned runs, child navigation and historical selection throu
     'aria-selected',
     'true',
   );
+  await page.locator('.comet-language-switch').getByText('中文', { exact: true }).click();
+  await page.getByRole('tab', { name: '产物', exact: true }).click();
+  await page.locator('.any-artifact-list').getByRole('button').first().click();
+  await expect(page.locator('.dashboard-artifact-preview-panel h2')).not.toBeEmpty();
+  await expect(page.locator('.dashboard-artifact-preview-panel')).toContainText('example');
+  await expect(page.locator('.dashboard-artifact-preview-panel')).not.toContainText(
+    '当前服务未返回全文内容',
+  );
+  await page.getByRole('button', { name: '产物预览背景', exact: true }).click();
   expect(writes).toBe(0);
   expect(parent.application.version).toBe('1.1.0');
 });

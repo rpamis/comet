@@ -141,7 +141,7 @@ function summary(
         ? 'unknown'
         : run.status;
   return {
-    locator: `${kind}:${hash([identity?.id ?? null, runId ?? storageKey])}`,
+    locator: `${kind}:${hash([kind === 'creator' ? null : (identity?.id ?? null), runId ?? storageKey])}`,
     kind,
     isChild: kind === 'application' && Boolean(run?.lineage.length),
     parentRunId: null,
@@ -368,7 +368,10 @@ export async function collectDashboardApplicationRunPage(
   };
 }
 
-function records(entry: Entry): DashboardApplicationRecord[] {
+function records(
+  entry: Entry,
+  childLocators: ReadonlyMap<string, string>,
+): DashboardApplicationRecord[] {
   const run = entry.run!;
   const caption = (stepId: string) =>
     entry.summary.kind === 'creator'
@@ -393,9 +396,7 @@ function records(entry: Entry): DashboardApplicationRecord[] {
         (run.status === 'failed' && a.status === 'failed'),
       data: sanitizeApplicationObservation(a),
       childRunId: child?.runId ?? null,
-      childLocator: child
-        ? summary('application', '', null, entry.summary.application, null, child.runId).locator
-        : null,
+      childLocator: child ? (childLocators.get(child.runId) ?? null) : null,
     });
   }
   for (const w of run.waits) {
@@ -710,7 +711,14 @@ export async function collectDashboardApplicationRunDetail(
   if (!/^(?:creator|application):[a-f0-9]{64}$/u.test(locator))
     throw new DashboardApplicationQueryError('运行记录定位信息无效');
   const data = await dataset(projectRoot);
-  const entry = data.entries.find((e) => e.summary.locator === locator);
+  const entry = data.entries.find(
+    (e) =>
+      e.summary.locator === locator ||
+      (e.creator &&
+        e.summary.applicationId &&
+        `creator:${hash([e.summary.applicationId, e.summary.runId ?? e.creator.storageKey])}` ===
+          locator),
+  );
   if (!entry) {
     if (data.errors.length)
       throw new DashboardApplicationQueryError(
@@ -739,8 +747,13 @@ export async function collectDashboardApplicationRunDetail(
     relatedChange: null,
   };
   if (!entry.run) return empty;
+  const childLocators = new Map(
+    data.entries
+      .filter((e) => e.summary.parentLocator === entry.summary.locator && e.summary.runId)
+      .map((e) => [e.summary.runId!, e.summary.locator]),
+  );
   const run = entry.run,
-    items = records(entry),
+    items = records(entry, childLocators),
     fixed = entry.application?.record?.application ?? null;
   const compiled = object(run.outputs.compile?.value);
   const candidateFile = text(compiled.file);
@@ -783,7 +796,7 @@ export async function collectDashboardApplicationRunDetail(
     fixedIdentity: fixed,
     children: run.children.map((c) => ({
       ...c,
-      locator: summary('application', '', null, entry.summary.application, null, c.runId).locator,
+      locator: childLocators.get(c.runId) ?? null,
     })),
     inspection:
       entry.summary.kind === 'creator'

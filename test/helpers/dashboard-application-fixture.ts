@@ -57,6 +57,7 @@ export async function applicationObservationFixture(
     version?: string;
     parallel?: boolean;
     child?: boolean;
+    deferChild?: boolean;
     claimParallel?: boolean;
   } = {},
 ) {
@@ -189,7 +190,8 @@ export async function applicationObservationFixture(
         });
       }
   }
-  if (options.child) run = await runtime.next({ runId, expectedRevision: run.revision });
+  if (options.child && !options.deferChild)
+    run = await runtime.next({ runId, expectedRevision: run.revision });
   return { identity, packageHash, runtime, run, outer, rootDir };
 }
 
