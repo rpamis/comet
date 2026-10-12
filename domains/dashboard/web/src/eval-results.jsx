@@ -1,5 +1,6 @@
 import { t, localized, getDashboardLocale } from './dashboard-i18n.js';
 import { useDashboardLanguage } from './dashboard-language.jsx';
+import { useDashboardViewState } from './dashboard-view-state.js';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -12,6 +13,7 @@ import {
   Steps,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
@@ -54,12 +56,51 @@ export const numeric = (value, suffix = '') =>
     : '—';
 const cost = (value) => (typeof value === 'number' ? `$${value.toFixed(4)}` : '—');
 
-export function Metric({ label, value, detail }) {
+const duration = (value) => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return '—';
+  const seconds = Math.round(value);
+  const english = getDashboardLocale() === 'en-US';
+  if (seconds < 60) return english ? `${seconds}s` : `${seconds}秒`;
+  const minutes = Math.floor(seconds / 60);
+  const remaining = String(seconds % 60).padStart(2, '0');
+  if (minutes < 60) return english ? `${minutes}m ${remaining}s` : `${minutes}分${remaining}秒`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = String(minutes % 60).padStart(2, '0');
+  return english
+    ? `${hours}h ${remainingMinutes}m ${remaining}s`
+    : `${hours}时${remainingMinutes}分${remaining}秒`;
+};
+const compactNumber = (value) =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? new Intl.NumberFormat('en-US', {
+        notation: 'compact',
+        maximumFractionDigits: 2,
+      }).format(value)
+    : '—';
+
+export function EvalDuration({ value }) {
+  useDashboardLanguage();
+  return (
+    <Tooltip title={numeric(value, t(' 秒'))}>
+      <span className="dashboard-eval-numeric">{duration(value)}</span>
+    </Tooltip>
+  );
+}
+
+export function Metric({ label, value, detail, preciseValue }) {
   useDashboardLanguage();
   return (
     <div className="dashboard-eval-metric">
       <Text type="secondary">{label}</Text>
-      <Text strong>{value}</Text>
+      <Text strong>
+        {preciseValue ? (
+          <Tooltip title={preciseValue}>
+            <span>{value}</span>
+          </Tooltip>
+        ) : (
+          value
+        )}
+      </Text>
       {detail && <Text type="secondary">{detail}</Text>}
     </div>
   );
@@ -292,10 +333,13 @@ export function EvalOverview({ run }) {
           <div className="dashboard-eval-resource-grid">
             <Metric
               label={t('用例耗时')}
-              value={numeric(metrics.durationSeconds)}
-              detail={t('秒')}
+              value={<EvalDuration value={metrics.durationSeconds} />}
             />
-            <Metric label="Tokens" value={numeric(metrics.tokens)} />
+            <Metric
+              label="Tokens"
+              value={compactNumber(metrics.tokens)}
+              preciseValue={numeric(metrics.tokens)}
+            />
             <Metric
               label={t('已知用例费用')}
               value={cost(metrics.knownCostUsd)}
@@ -378,10 +422,11 @@ export function EvalOverview({ run }) {
   );
 }
 
-export function EvalCases({ run, onSelect }) {
+export function EvalCases({ run, onSelect, stateScope }) {
   useDashboardLanguage();
-  const [filter, setFilter] = useState('all');
-  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useDashboardViewState(stateScope, `${run.id}:case-filter`, 'all');
+  const [search, setSearch] = useDashboardViewState(stateScope, `${run.id}:case-search`, '');
+  const [page, setPage] = useDashboardViewState(stateScope, `${run.id}:case-page`, 1);
   const cases = run.cases ?? [];
   const matches = {
     all: () => true,
@@ -408,7 +453,10 @@ export function EvalCases({ run, onSelect }) {
         <Segmented
           aria-label={t('用例筛选')}
           value={filter}
-          onChange={setFilter}
+          onChange={(value) => {
+            setFilter(value);
+            setPage(1);
+          }}
           options={[
             { value: 'all', label: t('全部用例') },
             { value: 'failed', label: t('仅未通过') },
@@ -421,13 +469,21 @@ export function EvalCases({ run, onSelect }) {
           placeholder={t('搜索名称或输入…')}
           allowClear
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
+          }}
         />
       </div>
       <Table
         rowKey="id"
         size="small"
-        pagination={{ ...evalPagination, pageSize: 10 }}
+        pagination={{
+          ...evalPagination,
+          pageSize: 10,
+          current: Math.min(page, Math.max(1, Math.ceil(data.length / 10))),
+          onChange: setPage,
+        }}
         dataSource={data}
         columns={[
           {
@@ -491,7 +547,7 @@ export function EvalCases({ run, onSelect }) {
             title: t('耗时'),
             key: 'duration',
             responsive: ['md'],
-            render: (_, item) => numeric(item.durationSeconds, t(' 秒')),
+            render: (_, item) => <EvalDuration value={item.durationSeconds} />,
           },
         ]}
         locale={{ emptyText: cases.length ? t('没有符合筛选条件的用例') : t('用例结果尚未生成') }}
@@ -508,7 +564,9 @@ export function EvalCaseEvidence({ value, onArtifact }) {
       <div className="dashboard-eval-evidence-heading">
         <CaseStatus item={value} />
         <Text type="secondary">{value.model ?? t('模型未采集')}</Text>
-        <Text type="secondary">{numeric(value.durationSeconds, t(' 秒'))}</Text>
+        <Text type="secondary">
+          <EvalDuration value={value.durationSeconds} />
+        </Text>
       </div>
       <div className="dashboard-eval-reading-grid">
         <EvalSection title={t('输入 / 指令')}>
@@ -960,7 +1018,11 @@ export function EvalComparison({ value }) {
             ],
             [
               t('用例耗时（基线 / 本次）'),
-              `${numeric(value.baseline.metrics.durationSeconds, t(' 秒'))} / ${numeric(value.candidate.metrics.durationSeconds, t(' 秒'))}`,
+              <Space>
+                <EvalDuration value={value.baseline.metrics.durationSeconds} />
+                <span>/</span>
+                <EvalDuration value={value.candidate.metrics.durationSeconds} />
+              </Space>,
             ],
           ]}
         />

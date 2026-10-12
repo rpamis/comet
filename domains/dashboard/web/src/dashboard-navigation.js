@@ -1,6 +1,19 @@
 import { useEffect, useState } from 'react';
 
 const EVENT = 'comet-dashboard-navigation';
+const workspaceRoutes = new WeakMap();
+
+function workspaceKey(route) {
+  return JSON.stringify([route.projectId, route.view, route.workflow ?? route.pluginId ?? null]);
+}
+
+function rememberWorkspace(route, browser) {
+  // 新建表单不作为恢复目标，避免重进页面时误以为未保存配置仍然存在。
+  if (route.view === 'eval' && route.mode === 'new') return;
+  let routes = workspaceRoutes.get(browser);
+  if (!routes) workspaceRoutes.set(browser, (routes = new Map()));
+  routes.set(workspaceKey(route), route);
+}
 const id = (value) =>
   typeof value === 'string' &&
   value.length > 0 &&
@@ -46,14 +59,22 @@ export function readDashboardNavigation(browser = window) {
 }
 
 /** Store page identity in this history entry, leaving the visible Dashboard URL clean. */
-export function navigateDashboard(value, { replace = false } = {}, browser = window) {
-  const route = normalize(value);
+export function navigateDashboard(
+  value,
+  { replace = false, restore = false } = {},
+  browser = window,
+) {
+  rememberWorkspace(readDashboardNavigation(browser), browser);
+  const requested = normalize(value);
+  const route =
+    (restore && workspaceRoutes.get(browser)?.get(workspaceKey(requested))) || requested;
   const url = new URL(browser.location.href);
   for (const key of ['view', 'project', 'run']) url.searchParams.delete(key);
   const state = { ...browser.history.state, cometDashboard: route };
   const current = browser.history.state?.cometDashboard;
   const same = current && JSON.stringify(normalize(current)) === JSON.stringify(route);
   browser.history[replace || same ? 'replaceState' : 'pushState'](state, '', url);
+  rememberWorkspace(route, browser);
   browser.dispatchEvent(new Event(EVENT));
 }
 
@@ -61,7 +82,11 @@ export function useDashboardNavigation({ embedded = false } = {}) {
   const [route, setRoute] = useState(readDashboardNavigation);
   useEffect(() => {
     if (embedded) return undefined;
-    const update = () => setRoute(readDashboardNavigation());
+    const update = () => {
+      const next = readDashboardNavigation();
+      rememberWorkspace(next, window);
+      setRoute(next);
+    };
     window.addEventListener('popstate', update);
     window.addEventListener(EVENT, update);
     // Keep bookmarked Eval links working, then move their identity into history state.

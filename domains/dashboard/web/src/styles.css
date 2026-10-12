@@ -148,6 +148,8 @@ body {
   min-height: calc(100vh - 68px);
   padding: 28px 30px 48px;
   background: var(--color-surface);
+  /* 工作区自行恢复阅读位置，避免浏览器在内容加载后再次校正滚动。 */
+  overflow-anchor: none;
 }
 
 .dashboard-content-inner {

@@ -94,12 +94,11 @@ export function EvalPresetControls({ base, configuration, onApply, compact = fal
         : { size: 'small', title: t('常用配置') })}
     >
       <Space wrap style={{ width: '100%' }}>
-        {compact && <Typography.Text type="secondary">{t('常用配置')}</Typography.Text>}
         <Select
           aria-label={t('常用配置')}
-          placeholder={t('选择已保存的配置')}
+          placeholder={compact ? t('常用配置') : t('选择已保存的配置')}
           allowClear
-          style={{ minWidth: 190, maxWidth: '100%' }}
+          style={{ minWidth: compact ? 150 : 190, maxWidth: '100%' }}
           value={selected ?? undefined}
           onChange={setSelected}
           options={items.map((item) => ({ value: item.id, label: item.name }))}
@@ -116,7 +115,7 @@ export function EvalPresetControls({ base, configuration, onApply, compact = fal
           </Button>
         )}
         {(current || !compact) && (
-          <Button disabled={!current} danger onClick={remove}>
+          <Button type={compact ? 'text' : 'default'} disabled={!current} danger onClick={remove}>
             {t('删除所选配置')}
           </Button>
         )}

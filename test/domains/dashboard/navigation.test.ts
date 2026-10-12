@@ -16,6 +16,53 @@ function browser(url = 'http://localhost:4399/') {
 }
 
 describe('Dashboard navigation without URL suffixes', () => {
+  it('resumes each project workspace without replacing explicit list navigation', () => {
+    const page = browser();
+    navigateDashboard({ view: 'eval', projectId: 'one', runId: 'run-one' }, {}, page);
+    navigateDashboard(
+      {
+        view: 'workflow',
+        projectId: 'one',
+        workflow: 'any',
+        runLocator: 'app:one',
+        recordId: 'action:one:2',
+        runTab: 'history',
+      },
+      {},
+      page,
+    );
+    navigateDashboard({ view: 'eval', projectId: 'two', runId: 'run-two' }, {}, page);
+    navigateDashboard({ view: 'eval', projectId: 'one' }, { restore: true }, page);
+    expect(readDashboardNavigation(page).runId).toBe('run-one');
+    navigateDashboard(
+      { view: 'workflow', projectId: 'one', workflow: 'any' },
+      { restore: true },
+      page,
+    );
+    expect(readDashboardNavigation(page)).toMatchObject({
+      runLocator: 'app:one',
+      recordId: 'action:one:2',
+      runTab: 'history',
+    });
+    navigateDashboard({ view: 'eval', projectId: 'one' }, {}, page);
+    expect(readDashboardNavigation(page).runId).toBeNull();
+    navigateDashboard({ view: 'eval', projectId: 'two' }, { restore: true }, page);
+    expect(readDashboardNavigation(page).runId).toBe('run-two');
+    navigateDashboard({ view: 'eval', projectId: 'one' }, { restore: true }, page);
+    expect(readDashboardNavigation(page).runId).toBeNull();
+  });
+
+  it('does not restore an abandoned creation form or share workspace memory across browser instances', () => {
+    const page = browser();
+    navigateDashboard({ view: 'eval', projectId: 'one', runId: 'run-one' }, {}, page);
+    navigateDashboard({ view: 'eval', projectId: 'one', mode: 'new' }, {}, page);
+    navigateDashboard({ view: 'workflow', projectId: 'one', workflow: 'any' }, {}, page);
+    navigateDashboard({ view: 'eval', projectId: 'one' }, { restore: true }, page);
+    expect(readDashboardNavigation(page)).toMatchObject({ runId: 'run-one', mode: 'list' });
+    const other = browser();
+    navigateDashboard({ view: 'eval', projectId: 'one' }, { restore: true }, other);
+    expect(readDashboardNavigation(other).runId).toBeNull();
+  });
   it('preserves the Any run and activation without persisting execution requests', () => {
     const page = browser();
     navigateDashboard(

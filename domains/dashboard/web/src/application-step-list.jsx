@@ -2,7 +2,11 @@ import React from 'react';
 import { Collapse } from 'antd';
 import { CheckCircleFilled, RightOutlined } from '@ant-design/icons';
 import { t } from './dashboard-i18n.js';
-import { ApplicationStatus, ApplicationStateIcon } from './application-record-inspector.jsx';
+import {
+  ApplicationStatus,
+  ApplicationStateIcon,
+  formatApplicationRecordType,
+} from './application-record-inspector.jsx';
 export function ApplicationStepList({
   steps: originalSteps,
   locator,
@@ -67,7 +71,7 @@ export function ApplicationStepList({
                           {s.current.sequence === null
                             ? t('已准备就绪')
                             : t('顺序 {0}', [s.current.sequence])}{' '}
-                          · {s.current.type}
+                          · {formatApplicationRecordType(s.current.type)}
                         </small>
                       </span>
                       <ApplicationStatus value={s.current.status} />

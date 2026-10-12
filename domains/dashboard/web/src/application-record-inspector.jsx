@@ -45,6 +45,16 @@ const colors = {
 export function ApplicationStatus({ value }) {
   return <Tag color={colors[value]}>{t(statusLabels[value] ?? value)}</Tag>;
 }
+export function formatApplicationRecordType(value) {
+  return t(
+    {
+      handoff: '交给 Agent 执行',
+      call_tool: '调用工具',
+      user_decision: '用户决定',
+      'host-proof': '宿主验证',
+    }[value] ?? value,
+  );
+}
 const kindLabels = {
   action: '执行动作',
   decision: '用户决定',
@@ -199,7 +209,11 @@ export function ApplicationRecordInspector({
               label: t('执行顺序'),
               children: record.sequence === null ? t('尚未分配') : `#${record.sequence}`,
             },
-            { key: 'type', label: t('执行方式'), children: record.type },
+            {
+              key: 'type',
+              label: t('执行方式'),
+              children: formatApplicationRecordType(record.type),
+            },
             { key: 'attempt', label: t('动作尝试'), children: record.attempt ?? t('不适用') },
           ]}
         />
@@ -336,6 +350,7 @@ export function ApplicationRecordInspector({
                       revision: detail.revision,
                       application: detail.application,
                       recordId: record.id,
+                      type: record.type,
                       ...data,
                     },
                     null,

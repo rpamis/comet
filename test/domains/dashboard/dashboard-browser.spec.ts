@@ -1,6 +1,34 @@
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
+test('restores memory and knowledge reading state when switching workspaces', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  const memory = page.locator('.dashboard-tool-page-memory');
+  await expect(page.locator('.comet-header-search')).toHaveCount(0);
+  await memory
+    .locator('.dashboard-memory-filter-rail button')
+    .filter({ hasText: '协作约定' })
+    .click();
+  await page.getByLabel('搜索个人记忆').fill('Dashboard');
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await expect(page.locator('.comet-header-search')).toHaveCount(0);
+  await page.getByRole('tab', { name: '项目规范', exact: true }).click();
+  await page.getByLabel('搜索项目知识记录').fill('测试');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await expect(page.getByLabel('搜索个人记忆')).toHaveValue('Dashboard');
+  await expect(memory.locator('.dashboard-memory-filter-rail button.is-active')).toContainText(
+    '协作约定',
+  );
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await expect(page.getByRole('tab', { name: '项目规范', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.getByLabel('搜索项目知识记录')).toHaveValue('测试');
+});
+
 test('localizes legacy system metadata while keeping authored knowledge and memory unchanged', async ({
   page,
 }) => {
@@ -4868,9 +4896,9 @@ for (const workspace of ['个人记忆', '项目知识'] as const) {
         .click();
     else await page.getByRole('tab', { name: '项目概况', exact: true }).click();
     expect(await page.evaluate(() => (window as any).dashboardMotionCalls.length)).toBe(count);
-    expect(
-      await surface.evaluate((element) => element.getAnimations({ subtree: true }).length),
-    ).toBe(0);
+    await expect
+      .poll(() => surface.evaluate((element) => element.getAnimations({ subtree: true }).length))
+      .toBe(0);
     await search.fill('Dashboard');
     await page.getByRole('button', { name: '立即刷新', exact: true }).click();
     await expect(search).toHaveValue('Dashboard');
@@ -4922,6 +4950,13 @@ test('shows the project memory tab on the demo knowledge page', async ({ page })
 });
 
 test('scrolls a long project memory list inside the knowledge page', async ({ page }) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const source = DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === 'comet.project-knowledge')!;
+  const records = Array.from({ length: 32 }, (_, index) => ({
+    ...source.data.records[0],
+    id: `knowledge-${index}`,
+    title: `项目模型 ${index + 1}`,
+  }));
   const entries = Array.from({ length: 24 }, (_, index) => ({
     slug: `memory-${String(index + 1).padStart(2, '0')}`,
     title: `项目记忆 ${index + 1}`,
@@ -4929,7 +4964,10 @@ test('scrolls a long project memory list inside the knowledge page', async ({ pa
     type: 'procedure',
     created: '2026-09-20T09:12:00.000Z',
     updated: '2026-09-20T09:12:00.000Z',
-    body: `项目记忆 ${index + 1} 的完整内容。`,
+    body: Array.from(
+      { length: 80 },
+      (_, line) => `项目记忆 ${index + 1} 的完整内容，第 ${line + 1} 行。`,
+    ).join('\n'),
   }));
   const knowledgePage = {
     pluginId: 'comet.project-knowledge',
@@ -4942,7 +4980,7 @@ test('scrolls a long project memory list inside the knowledge page', async ({ pa
     data: {
       provider: 'local',
       configured: true,
-      records: [],
+      records,
       manifestPreview: [],
       counts: { trial: 0, proven: 0, enforced: 0, superseded: 0 },
       diagnostics: [],
@@ -4954,6 +4992,11 @@ test('scrolls a long project memory list inside the knowledge page', async ({ pa
       },
     },
   };
+  let delayMemoryRead = false;
+  let releaseMemoryRead: () => void = () => {};
+  const memoryReadGate = new Promise<void>((resolve) => {
+    releaseMemoryRead = resolve;
+  });
 
   await page.setViewportSize({ width: 1600, height: 900 });
   await page.route('**/api/dashboard/**', async (route) => {
@@ -5026,6 +5069,7 @@ test('scrolls a long project memory list inside the knowledge page', async ({ pa
         input?: { slug?: string };
       };
       const memory = entries.find((entry) => entry.slug === body.input?.slug) ?? entries[0];
+      if (delayMemoryRead) await memoryReadGate;
       await route.fulfill({ json: { result: { kind: 'memory', ...memory } } });
       return;
     }
@@ -5034,6 +5078,19 @@ test('scrolls a long project memory list inside the knowledge page', async ({ pa
 
   await page.goto('/');
   await page.getByRole('menuitem', { name: '项目知识' }).click();
+  const knowledgeRows = page.getByLabel('项目知识记录列表');
+  await expect(knowledgeRows.locator('button')).toHaveCount(32);
+  await knowledgeRows.hover();
+  await page.mouse.wheel(0, 400);
+  await expect
+    .poll(() => knowledgeRows.evaluate((element) => element.scrollTop))
+    .toBeCloseTo(400, 0);
+  const knowledgeTop = await knowledgeRows.evaluate((element) => element.scrollTop);
+  await page.getByRole('menuitem', { name: 'Classic 工作流' }).click();
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await expect
+    .poll(() => knowledgeRows.evaluate((element) => element.scrollTop))
+    .toBeCloseTo(knowledgeTop, 0);
   await page.getByRole('tab', { name: '项目记忆' }).click();
 
   const memoryList = page.getByRole('region', { name: '项目记忆列表' });
@@ -5080,6 +5137,33 @@ test('scrolls a long project memory list inside the knowledge page', async ({ pa
       .poll(() => memoryFoot.evaluate((element) => element.scrollHeight <= element.clientHeight))
       .toBe(true);
   }
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const body = page.locator('.dashboard-project-memory-body');
+  await expect(body).toContainText('第 80 行');
+  await body.hover();
+  await page.mouse.wheel(0, 420);
+  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeCloseTo(420, 0);
+  const bodyTop = await body.evaluate((element) => element.scrollTop);
+  const listTop = await memoryRows.evaluate((element) => element.scrollTop);
+  await page.getByRole('menuitem', { name: 'Classic 工作流' }).click();
+  delayMemoryRead = true;
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await expect(page.getByRole('tab', { name: '项目记忆' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  try {
+    await expect(
+      page.getByRole('complementary', { name: '项目记忆详情' }).locator('.ant-skeleton'),
+    ).toBeVisible();
+  } finally {
+    releaseMemoryRead();
+  }
+  await expect(body).toContainText('第 80 行');
+  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeCloseTo(bodyTop, 0);
+  await expect
+    .poll(() => memoryRows.evaluate((element) => element.scrollTop))
+    .toBeCloseTo(listTop, 0);
 });
 
 for (const scenario of ['stable reads', 'loading spacing'] as const) {

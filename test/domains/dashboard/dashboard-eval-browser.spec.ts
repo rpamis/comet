@@ -245,6 +245,93 @@ test.describe('Dashboard Eval', () => {
     await page.getByRole('button', { name: 'summary.md', exact: true }).click();
     await expect(page.getByText('Real report', { exact: true })).toBeVisible();
   });
+  test('keeps the selected run and reading filters across modules and explains compact metrics', async ({
+    page,
+  }) => {
+    await page.route('**/eval/runs/eval-one', (route) =>
+      route.fulfill({
+        json: {
+          ...run,
+          metrics: { ...run.metrics, tokens: 8761234, durationSeconds: 1563.419 },
+          cases: run.cases.map((item) => ({
+            ...item,
+            scores: { correctness: 0.5, instruction_following: 0.4, completeness: 0.6 },
+          })),
+        },
+      }),
+    );
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.getByRole('button', { name: 'writer', exact: true }).click();
+    const conclusion = page.locator('.dashboard-eval-result-word');
+    await expect(conclusion).toHaveText('未通过');
+    expect((await conclusion.boundingBox())!.y).toBeLessThan(550);
+    await expect(page.getByRole('menuitem', { name: /预览 Markdown/u })).not.toBeVisible();
+    await page.getByText('26分03秒', { exact: true }).hover();
+    await expect(page.getByRole('tooltip', { name: '1,563.419 秒', exact: true })).toBeVisible();
+    await page.getByText('8.76M', { exact: true }).hover();
+    await expect(page.getByRole('tooltip', { name: '8,761,234', exact: true })).toBeVisible();
+    await page.locator('.comet-language-switch').getByText('EN', { exact: true }).click();
+    await expect(page.getByText('26m 03s', { exact: true })).toBeVisible();
+    await page.locator('.comet-language-switch').getByText('中文', { exact: true }).click();
+    const workspaceScroll = page.locator('[data-dashboard-scroll="workspace"]');
+    const overview = page.getByRole('tabpanel', { name: '结果概览', exact: true });
+    await expect(overview.getByText('completeness', { exact: true })).toBeVisible();
+    const waitForMotion = () =>
+      expect
+        .poll(() =>
+          page
+            .locator('.dashboard-eval-page')
+            .evaluate((element) =>
+              element
+                .getAnimations({ subtree: true })
+                .some((animation) => animation.playState === 'running'),
+            ),
+        )
+        .toBe(false);
+    await waitForMotion();
+    await workspaceScroll.evaluate((element) =>
+      element.scrollTo({
+        top: element.scrollHeight - element.clientHeight - 8,
+        behavior: 'instant',
+      }),
+    );
+    await expect
+      .poll(() => workspaceScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(80);
+    const readingScroll = await workspaceScroll.evaluate((element) => element.scrollTop);
+    await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+    await expect(page.getByRole('region', { name: 'Comet Any 工作区' })).toBeVisible();
+    await page.getByRole('menuitem', { name: '评估 Eval' }).click();
+    await expect(page.getByRole('tab', { name: '结果概览', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(overview.getByText('completeness', { exact: true })).toBeVisible();
+    await waitForMotion();
+    await expect
+      .poll(() =>
+        workspaceScroll.evaluate(
+          (element, saved) => Math.abs(element.scrollTop - saved),
+          readingScroll,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+    await page.getByRole('tab', { name: '用例结果', exact: true }).click();
+    await page.getByLabel('用例筛选').getByText('仅未通过', { exact: true }).click();
+    await page.getByRole('textbox', { name: '搜索用例', exact: true }).fill('clarify');
+    await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+    await page.getByRole('menuitem', { name: '评估 Eval' }).click();
+    await expect(page.getByRole('tab', { name: '用例结果', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByRole('textbox', { name: '搜索用例', exact: true })).toHaveValue(
+      'clarify',
+    );
+    await expect(page.getByRole('radio', { name: '仅未通过', exact: true })).toBeChecked();
+    await expect(page.getByRole('button', { name: 'clarify', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => history.state.cometDashboard.runId)).toBe('eval-one');
+  });
   test('localizes Eval controls while preserving case evidence and report content', async ({
     page,
   }) => {
@@ -266,7 +353,8 @@ test.describe('Dashboard Eval', () => {
     await page.route('**/eval/runs/eval-one/artifact?*', (route) =>
       route.fulfill({ json: { content: '# 原始报告\n\n中文报告正文', format: 'markdown' } }),
     );
-    await page.getByRole('button', { name: 'Preview Markdown', exact: true }).click();
+    await page.getByRole('button', { name: 'Evaluation reports', exact: true }).click();
+    await page.getByRole('menuitem', { name: /Preview Markdown/u }).click();
     const report = page.getByRole('dialog', { name: 'summary.md', exact: true });
     await expect(report.getByRole('heading', { name: '原始报告', exact: true })).toBeVisible();
     await expect(report.getByText('中文报告正文', { exact: true })).toBeVisible();
@@ -508,7 +596,8 @@ test.describe('Dashboard Eval', () => {
       ['summary.md', 'Markdown'],
       ['summary.html', 'HTML'],
     ]) {
-      await page.getByRole('button', { name: `预览 ${label}`, exact: true }).click();
+      await page.getByRole('button', { name: '评估报告', exact: true }).click();
+      await page.getByRole('menuitem', { name: new RegExp(`预览 ${label}`, 'u') }).click();
       const preview = page.getByRole('dialog', { name: id, exact: true });
       await expect(preview).toBeVisible();
       if (label === 'Markdown') {
@@ -554,8 +643,11 @@ test.describe('Dashboard Eval', () => {
       ['metadata.json', '下载产物 metadata.json'],
     ]) {
       if (id === 'metadata.json') await page.getByRole('tab', { name: '日志与产物' }).click();
+      else await page.getByRole('button', { name: '评估报告', exact: true }).click();
       const pending = page.waitForEvent('download');
-      await page.getByRole('button', { name: label, exact: true }).click();
+      if (id === 'metadata.json')
+        await page.getByRole('button', { name: label, exact: true }).click();
+      else await page.getByRole('menuitem', { name: new RegExp(label, 'u') }).click();
       const download = await pending;
       expect(download.suggestedFilename()).toBe(`eval-one-${id}`);
       expect(await download.failure()).toBeNull();
@@ -568,22 +660,25 @@ test.describe('Dashboard Eval', () => {
     let value: typeof run = { ...run, executionStatus: 'running', artifacts: [] };
     await page.route('**/eval/runs/eval-one', (route) => route.fulfill({ json: value }));
     await page.getByRole('button', { name: 'writer', exact: true }).click();
-    await expect(page.getByRole('button', { name: '下载 Markdown', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: '下载 HTML', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: '预览 Markdown', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: '预览 HTML', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: '评估报告', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /下载 Markdown/u })).toBeDisabled();
+    await expect(page.getByRole('menuitem', { name: /下载 HTML/u })).toBeDisabled();
+    await expect(page.getByRole('menuitem', { name: /预览 Markdown/u })).toBeDisabled();
+    await expect(page.getByRole('menuitem', { name: /预览 HTML/u })).toBeDisabled();
     await expect(page.getByText('报告生成后即可预览或下载，页面会自动更新。')).toBeVisible();
     value = { ...value, executionStatus: 'completed' };
-    await page.getByRole('button', { name: /刷新状态/ }).click();
+    await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+    await page.getByRole('button', { name: '评估报告', exact: true }).click();
     await expect(
       page.getByText('本次运行未生成报告，可在「日志与产物」中查看执行日志。'),
     ).toBeVisible();
     value = { ...run };
-    await page.getByRole('button', { name: /刷新状态/ }).click();
-    await expect(page.getByRole('button', { name: '下载 Markdown', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: '下载 HTML', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: '预览 Markdown', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: '预览 HTML', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+    await page.getByRole('button', { name: '评估报告', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /下载 Markdown/u })).toBeEnabled();
+    await expect(page.getByRole('menuitem', { name: /下载 HTML/u })).toBeDisabled();
+    await expect(page.getByRole('menuitem', { name: /预览 Markdown/u })).toBeEnabled();
+    await expect(page.getByRole('menuitem', { name: /预览 HTML/u })).toBeDisabled();
   });
   test('shows artifact download failures without saving an error response as a report', async ({
     page,
@@ -594,9 +689,11 @@ test.describe('Dashboard Eval', () => {
       route.fulfill({ status: 404, json: { error: '报告文件已不存在，请刷新运行记录' } }),
     );
     await page.getByRole('button', { name: 'writer', exact: true }).click();
-    await page.getByRole('button', { name: '下载 Markdown', exact: true }).click();
+    await page.getByRole('button', { name: '评估报告', exact: true }).click();
+    await page.getByRole('menuitem', { name: /下载 Markdown/u }).click();
     await expect(page.getByText('报告文件已不存在，请刷新运行记录', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: '下载 Markdown', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: '评估报告', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /下载 Markdown/u })).toBeEnabled();
     expect(saved).toEqual([]);
   });
   test('exposes baseline selection and target-specific creation fields', async ({ page }) => {
@@ -674,12 +771,15 @@ test.describe('Dashboard Eval', () => {
     });
     await page.reload();
     await page.getByRole('button', { name: 'writer', exact: true }).click();
+    await page.getByRole('button', { name: '默认参照', exact: true }).click();
     await page.getByRole('button', { name: '取消基线', exact: true }).click();
     await page.getByRole('button', { name: '保留基线', exact: true }).click();
     await expect(page.getByRole('dialog')).not.toBeVisible();
     expect(writes).toBe(0);
+    await page.getByRole('button', { name: '默认参照', exact: true }).click();
     await page.getByRole('button', { name: '取消基线', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: '取消基线', exact: true }).click();
+    await page.getByRole('button', { name: '默认参照', exact: true }).click();
     await expect(page.getByText('默认基线：未设置', { exact: true })).toBeVisible();
     await expect(page.getByText('启动时绑定：eval-one', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '设为基线', exact: true })).toBeVisible();
@@ -1131,6 +1231,7 @@ test.describe('Dashboard Eval', () => {
       animations: 'disabled',
     });
     await page.getByRole('button', { name: /返回详情/ }).click();
+    await page.getByRole('button', { name: '默认参照', exact: true }).click();
     await expect(page.getByText('默认基线：eval-base', { exact: true })).toBeVisible();
     expect(baselineWrites).toBe(0);
   });

@@ -7,7 +7,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 .any-overview > span {
   font-size: 12px;
@@ -21,23 +21,21 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 22px;
-  min-width: 110px;
-  padding: 10px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-bg);
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
   font-size: 12px;
   color: var(--color-muted);
 }
 .any-stat-strip b {
-  font-size: 21px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-fg);
 }
 .any-stat-strip button.selected {
   background: var(--color-accent-soft);
-  border-color: var(--color-accent);
 }
 .any-stat-strip button.selected b {
   color: var(--color-accent);
@@ -77,6 +75,7 @@
   display: flex;
   flex-direction: column;
   min-height: 820px;
+  box-shadow: none;
 }
 .any-search {
   padding: 15px 13px 8px;
@@ -213,9 +212,11 @@
 }
 .any-run-panel {
   min-height: 820px;
+  border-color: transparent;
+  box-shadow: none;
 }
 .any-run-header {
-  padding: 23px 22px 17px;
+  padding: 20px 20px 12px;
 }
 .any-run-title {
   display: flex;
@@ -223,21 +224,27 @@
   gap: 10px;
   align-items: flex-start;
 }
-.any-run-title small {
-  font-size: 11px;
-  color: var(--color-muted);
-  line-height: 1.7;
+.any-run-title > div {
+  min-width: 0;
+  width: 100%;
 }
 .any-run-title h2 {
   display: flex;
   gap: 9px;
   align-items: center;
   flex-wrap: wrap;
-  font-size: 21px;
+  font-size: 18px;
   line-height: 1.6;
   font-weight: 600;
-  margin-top: 6px;
+  margin: 0;
   overflow-wrap: anywhere;
+}
+.any-run-name {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .any-workspace .ant-tag {
   font-size: 10px;
@@ -246,11 +253,11 @@
   margin: 0;
   white-space: nowrap;
 }
-.any-run-header > p {
-  font-size: 13px;
+.any-run-context p {
+  font-size: 12px;
   line-height: 1.9;
   color: var(--color-muted);
-  margin: 9px 0 13px;
+  margin: 0 0 8px;
   overflow-wrap: anywhere;
 }
 .any-version-line {
@@ -260,26 +267,67 @@
   flex-wrap: wrap;
   font-size: 11px;
   color: var(--color-muted);
-  margin: 13px 0 19px;
+  margin: 6px 0 14px;
 }
 .any-version {
-  padding: 4px 8px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, var(--color-border));
-  border-radius: 5px;
-  background: var(--color-accent-soft);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-fg);
+}
+.any-run-controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
 }
 .any-mode-switch {
-  width: 100%;
-  margin-bottom: 10px;
+  min-width: 0;
   font-size: 12px;
   background: var(--color-surface-warm);
 }
 .any-record-select {
   width: 100%;
+  min-width: 0;
   font-size: 12px;
+}
+.any-record-option {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.any-record-option b {
+  font-size: 12px;
+  font-weight: 500;
+}
+.any-record-option small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.any-run-controls > .ant-btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.any-run-context {
+  margin-top: 6px;
+}
+.any-run-context > .ant-collapse-item > .ant-collapse-header {
+  padding: 7px 0;
+  align-items: center;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.any-run-context .ant-collapse-body {
+  padding: 5px 0 7px;
+}
+.any-run-context small {
+  font-size: 10px;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
 }
 .any-parent-back {
   margin: 12px 12px 0;
@@ -291,9 +339,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 0 20px 13px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border);
+  margin: 0 20px 9px;
   font-size: 10px;
   line-height: 1.8;
   color: var(--color-muted);
@@ -317,10 +363,8 @@
 }
 .any-current {
   margin: 0 18px;
-  padding: 15px 13px;
-  border: 1px solid var(--color-border);
-  border-radius: 9px;
-  background: var(--color-surface-warm);
+  padding: 5px 0 15px;
+  border-bottom: 1px solid var(--color-border);
 }
 .any-current-heading {
   display: flex;
@@ -375,8 +419,7 @@
 }
 .any-active-list button:hover,
 .any-active-list button.selected {
-  background: var(--color-bg);
-  border-color: var(--color-border);
+  background: var(--color-accent-soft);
 }
 .any-current > small,
 .any-current > p {
@@ -385,6 +428,20 @@
   font-size: 10px;
   line-height: 1.9;
   margin-top: 10px;
+}
+.any-continue-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 13px;
+  font-size: 10px;
+  line-height: 1.8;
+  color: var(--color-muted);
+}
+.any-continue-context .ant-btn {
+  font-size: 11px;
 }
 .any-follow-bar {
   display: flex;
@@ -536,6 +593,10 @@
   position: sticky;
   top: 16px;
   min-height: 820px;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
 }
 .any-inspector-inner {
   display: flex;
@@ -635,12 +696,13 @@
   width: 100%;
   text-align: left;
   padding: 12px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 7px;
-  background: var(--color-bg);
+  border: 1px solid transparent;
+  border-bottom-color: var(--color-border);
+  border-radius: 0;
+  background: transparent;
 }
 .any-evidence-card:hover {
-  border-color: var(--color-accent);
+  background: var(--color-surface-warm);
 }
 .any-evidence-card > span {
   display: flex;
@@ -936,7 +998,7 @@
   }
   .any-current {
     margin: 0 13px;
-    padding: 13px 11px;
+    padding: 5px 0 13px;
   }
   .any-tabs {
     padding: 0 17px;
@@ -1020,16 +1082,16 @@
     gap: 7px;
   }
   .any-stat-strip b {
-    font-size: 20px;
+    font-size: 13px;
   }
   .any-run-panel {
     min-height: 620px;
   }
   .any-run-title h2 {
-    font-size: 21px;
+    font-size: 18px;
   }
-  .any-run-header > p {
-    font-size: 12px;
+  .any-run-controls {
+    grid-template-columns: 1fr;
   }
   .any-sync-line {
     margin: 0 16px 12px;
@@ -1114,12 +1176,6 @@
     transition: none !important;
     animation: none !important;
   }
-}
-.any-goal-collapsed {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
 }
 .any-choice-tags {
   display: flex;

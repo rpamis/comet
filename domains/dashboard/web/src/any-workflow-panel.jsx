@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDashboardMotion } from './dashboard-motion.jsx';
+import { useDashboardViewState } from './dashboard-view-state.js';
 import {
   Alert,
   Button,
@@ -44,6 +45,7 @@ import {
   ApplicationRecordInspector,
   ApplicationEvidenceView,
   ApplicationObservationDrawer,
+  formatApplicationRecordType,
 } from './application-record-inspector.jsx';
 import { readApplicationDemo } from './application-demo.js';
 import './any-workflow-panel.css';
@@ -83,6 +85,21 @@ export function AnyWorkflowPanel({
 }) {
   useDashboardLanguage();
   const pageMotion = useDashboardMotion('any', 'page');
+  const workspaceElement = useRef(null);
+  const bindWorkspace = useCallback(
+    (element) => {
+      workspaceElement.current = element;
+      pageMotion(element);
+    },
+    [pageMotion],
+  );
+  const getReadingViewport = useCallback(() => {
+    const shell = workspaceElement.current?.closest('.dashboard-content-shell');
+    if (shell && ['auto', 'scroll'].includes(getComputedStyle(shell).overflowY)) {
+      return { element: shell, top: shell.scrollTop, offset: shell.getBoundingClientRect().top };
+    }
+    return { element: window, top: window.scrollY, offset: 0 };
+  }, []);
   const route = useDashboardNavigation();
   const [page, setPage] = useState(null),
     [pageError, setPageError] = useState(null),
@@ -102,20 +119,20 @@ export function AnyWorkflowPanel({
   );
   const runMotion = useDashboardMotion(locator, 'panel');
   const tabMotion = useDashboardMotion(`${locator}:${tab}`, 'tab');
-  const [filter, setFilter] = useState('all'),
-    [scope, setScope] = useState('all'),
+  const viewScope = `${projectId}:any`;
+  const [filter, setFilter] = useDashboardViewState(viewScope, 'filter', 'all'),
+    [scope, setScope] = useDashboardViewState(viewScope, 'scope', 'all'),
     [search, setSearch] = useState(query),
     [tick, setTick] = useState(0);
-  const [mode, setMode] = useState('creator'),
-    [expanded, setExpanded] = useState({}),
-    [manual, setManual] = useState(false),
+  const [expanded, setExpanded] = useDashboardViewState(viewScope, 'expanded', {}),
+    [manual, setManual] = useDashboardViewState(viewScope, 'manual', false),
     [news, setNews] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false),
     [drawer, setDrawer] = useState(null),
     [artifactLoading, setArtifactLoading] = useState(null);
   const [rosters, setRosters] = useState({}),
     [rosterLoading, setRosterLoading] = useState(false);
-  const [goalExpanded, setGoalExpanded] = useState(false);
+  const [goalExpanded, setGoalExpanded] = useDashboardViewState(viewScope, 'goalExpanded', false);
   const pageRequest = useRef(null),
     detailRequest = useRef(null),
     parentStack = useRef([]),
@@ -238,7 +255,6 @@ export function AnyWorkflowPanel({
           }
         }
         setDetail(next);
-        setMode(next.kind);
         if (!recordRef.current) {
           const first = initialApplicationRecord(next);
           setRecordId(first?.id ?? null);
@@ -255,7 +271,10 @@ export function AnyWorkflowPanel({
   }, [locator, request, refreshToken, tick]);
   useLayoutEffect(() => {
     if (restoreScroll.current && detail?.locator === restoreScroll.current.locator) {
-      window.scrollTo({ top: restoreScroll.current.scrollY, behavior: 'instant' });
+      getReadingViewport().element.scrollTo({
+        top: restoreScroll.current.scrollTop,
+        behavior: 'instant',
+      });
       restoreScroll.current = null;
     }
     const saved = anchor.current;
@@ -263,11 +282,11 @@ export function AnyWorkflowPanel({
     anchor.current = null;
     const element = document.getElementById(saved.id);
     if (element)
-      window.scrollBy({
+      getReadingViewport().element.scrollBy({
         top: element.getBoundingClientRect().top - saved.top,
         behavior: 'instant',
       });
-  }, [detail]);
+  }, [detail, getReadingViewport]);
   useEffect(
     () => () => {
       pageRequest.current?.abort();
@@ -277,6 +296,7 @@ export function AnyWorkflowPanel({
   );
   const groups = useMemo(() => groupApplicationRuns(page?.items ?? []), [page]);
   const selectedSummary = detail ?? page?.items.find((r) => r.locator === locator);
+  const mode = selectedSummary?.kind ?? 'creator';
   const applicationId = selectedSummary?.applicationId;
   useEffect(() => {
     if (!applicationId) return;
@@ -348,11 +368,13 @@ export function AnyWorkflowPanel({
     selectRecord(record, { locate: true });
     requestAnimationFrame(() => {
       const element = document.getElementById(`any-record-${record.id}`);
-      if (element)
-        window.scrollTo({
-          top: window.scrollY + element.getBoundingClientRect().top - 100,
+      if (element) {
+        const viewport = getReadingViewport();
+        viewport.element.scrollTo({
+          top: viewport.top + element.getBoundingClientRect().top - viewport.offset - 24,
           behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
         });
+      }
     });
   };
   const selectGroup = (group) => {
@@ -366,7 +388,7 @@ export function AnyWorkflowPanel({
       tab,
       expanded,
       goalExpanded,
-      scrollY: window.scrollY,
+      scrollTop: getReadingViewport().top,
     });
     chooseRun(record.childLocator, { keepParents: true });
   };
@@ -516,7 +538,7 @@ export function AnyWorkflowPanel({
 
   return (
     <section
-      ref={pageMotion}
+      ref={bindWorkspace}
       className="any-workspace"
       data-dashboard-motion="page"
       aria-label={t('Comet Any 工作区')}
@@ -541,7 +563,7 @@ export function AnyWorkflowPanel({
         <span>{t('应用固定版本，创作与运行分别保留')}</span>
       </div>
       <div className="any-columns">
-        <aside className="any-panel any-explorer">
+        <aside className="any-panel any-explorer" data-dashboard-scroll="any-explorer">
           <div className="any-panel-heading">
             <b>{t('创作与应用')}</b>
             <span>{demo ? t('示例数据') : t('当前项目')}</span>
@@ -678,7 +700,7 @@ export function AnyWorkflowPanel({
             <small>{t('尚未命名的创作按目标显示。')}</small>
           </div>
         </aside>
-        <section className="any-panel any-run-panel">
+        <section className="any-panel any-run-panel" data-dashboard-scroll="any-workspace">
           {(parentStack.current.length > 0 || detail?.parentLocator) && (
             <Button
               className="any-parent-back"
@@ -702,51 +724,31 @@ export function AnyWorkflowPanel({
               <div ref={runMotion} className="any-run-header" data-dashboard-motion="panel">
                 <div className="any-run-title">
                   <div>
-                    <small>
-                      {selectedSummary.applicationId
-                        ? t('工作流应用')
-                        : t('早期创作 · 应用尚未生成')}
-                    </small>
                     <h2>
-                      {selectedSummary.title}
+                      <span className="any-run-name">{selectedSummary.title}</span>
                       <ApplicationStatus value={selectedSummary.status} />
                       {selectedSummary.isChild && <Tag>{t('子流程')}</Tag>}
                     </h2>
                   </div>
-                  {detail && !detail.error && (
-                    <Tooltip title={t('复制只读检查上下文')}>
-                      <Button
-                        aria-label={t('复制只读检查上下文')}
-                        icon={<CopyOutlined />}
-                        onClick={copyContext}
-                      />
-                    </Tooltip>
-                  )}
                 </div>
-                <p className={goalExpanded ? '' : 'any-goal-collapsed'}>
-                  {selectedSummary.goal ?? t('查看本次运行的步骤、决定与验收证据。')}
-                </p>
-                {selectedSummary.goal?.length > 100 && (
-                  <Button type="link" size="small" onClick={() => setGoalExpanded((v) => !v)}>
-                    {t(goalExpanded ? '收起目标' : '展开完整目标')}
-                  </Button>
-                )}
                 <div className="any-version-line">
                   {selectedSummary.application ? (
                     <>
-                      <span className="any-version">v{selectedSummary.application.version}</span>
-                      <span>
-                        {t(
+                      <Tooltip
+                        title={t(
                           selectedSummary.kind === 'creator' ? '本次创作版本' : '本次运行固定版本',
                         )}
-                      </span>
+                      >
+                        <span className="any-version">v{selectedSummary.application.version}</span>
+                      </Tooltip>
+                      <span>{baseLabel(selectedSummary.application.base)}</span>
                     </>
                   ) : (
                     <span>{t('尚未生成或无法读取固定应用版本')}</span>
                   )}
                 </div>
                 {selectedGroup && (
-                  <>
+                  <div className="any-run-controls">
                     <Segmented
                       className="any-mode-switch"
                       block
@@ -764,7 +766,6 @@ export function AnyWorkflowPanel({
                         },
                       ]}
                       onChange={(value) => {
-                        setMode(value);
                         const next = preferred(
                           selectedGroup.records.filter((r) => r.kind === value),
                         );
@@ -777,8 +778,15 @@ export function AnyWorkflowPanel({
                       value={locator}
                       options={recordsInMode.map((r) => ({
                         value: r.locator,
-                        label: `${r.application ? 'v' + r.application.version : t('未生成版本')} · ${r.goal ?? r.runId ?? r.title} · ${r.runId ?? t('无法读取')}`,
+                        label: `${r.application ? 'v' + r.application.version : t('未生成版本')} · ${r.runId ?? t('无法读取')}`,
+                        title: r.goal ?? r.title,
                       }))}
+                      optionRender={(option) => (
+                        <div className="any-record-option">
+                          <b>{option.data.label}</b>
+                          <small>{option.data.title}</small>
+                        </div>
+                      )}
                       onChange={(value) => chooseRun(value)}
                     />
                     {roster?.nextCursor && (
@@ -786,19 +794,26 @@ export function AnyWorkflowPanel({
                         {t('加载更多历史记录')}
                       </Button>
                     )}
-                  </>
+                  </div>
                 )}
-              </div>
-              <div className={'any-sync-line ' + (error ? 'has-error' : '')} role="status">
-                <span>
-                  {error ? t('刷新失败，正在显示上次成功读取') : t('上次成功读取')}{' '}
-                  {time ? new Date(time).toLocaleString(getDashboardLocale()) : t('尚未成功读取')}
-                </span>
-                {error && (
-                  <Button size="small" type="link" onClick={() => setTick((v) => v + 1)}>
-                    {t('重试读取')}
-                  </Button>
-                )}
+                <Collapse
+                  className="any-run-context"
+                  ghost
+                  activeKey={goalExpanded ? ['goal'] : []}
+                  onChange={(keys) => setGoalExpanded(keys.includes('goal'))}
+                  items={[
+                    {
+                      key: 'goal',
+                      label: t('目标与运行信息'),
+                      children: (
+                        <>
+                          <p>{selectedSummary.goal ?? t('查看本次运行的步骤、决定与验收证据。')}</p>
+                          <small>{selectedSummary.runId}</small>
+                        </>
+                      ),
+                    },
+                  ]}
+                />
               </div>
               {error && (
                 <Alert
@@ -807,6 +822,13 @@ export function AnyWorkflowPanel({
                   showIcon
                   title={missing ? t('所选运行记录已移除') : t('运行记录刷新失败')}
                   description={systemText(error.message)}
+                  action={
+                    !detail && (
+                      <Button size="small" onClick={() => setTick((v) => v + 1)}>
+                        {t('重试读取')}
+                      </Button>
+                    )
+                  }
                 />
               )}
               {detailLoading && !detail ? (
@@ -870,6 +892,12 @@ export function AnyWorkflowPanel({
                     {current.some((r) => r.status === 'running') && (
                       <small>{t('已领取表示等待宿主回传，不代表宿主当前在线。')}</small>
                     )}
+                    <div className="any-continue-context">
+                      <span>{t('在 Agent 中继续处理，先读取最新运行。')}</span>
+                      <Button size="small" icon={<CopyOutlined />} onClick={copyContext}>
+                        {t('复制只读检查上下文')}
+                      </Button>
+                    </div>
                   </div>
                   <div className={'any-follow-bar ' + (news ? 'has-news' : '')}>
                     <span aria-live="polite">
@@ -884,6 +912,19 @@ export function AnyWorkflowPanel({
                     <Button size="small" type="link" icon={<AimOutlined />} onClick={locateCurrent}>
                       {t('回到当前工作')}
                     </Button>
+                  </div>
+                  <div className={'any-sync-line ' + (error ? 'has-error' : '')} role="status">
+                    <span>
+                      {error ? t('刷新失败，正在显示上次成功读取') : t('上次成功读取')}{' '}
+                      {time
+                        ? new Date(time).toLocaleString(getDashboardLocale())
+                        : t('尚未成功读取')}
+                    </span>
+                    {error && (
+                      <Button size="small" type="link" onClick={() => setTick((v) => v + 1)}>
+                        {t('重试读取')}
+                      </Button>
+                    )}
                   </div>
                   {recordId && !selectedRecord && (
                     <Alert
@@ -939,7 +980,7 @@ export function AnyWorkflowPanel({
                             <span>
                               <b>{r.title === r.stepId ? r.title : t(r.title)}</b>
                               <small>
-                                {r.type} ·{' '}
+                                {formatApplicationRecordType(r.type)} ·{' '}
                                 {r.attempt === null ? t('等待记录') : t('尝试 {0}', [r.attempt])}
                               </small>
                             </span>
@@ -999,7 +1040,9 @@ export function AnyWorkflowPanel({
             </>
           )}
         </section>
-        <aside className="any-panel any-inspector">{inspector}</aside>
+        <aside className="any-panel any-inspector" data-dashboard-scroll="any-inspector">
+          {inspector}
+        </aside>
       </div>
       <p className="any-page-foot">
         <InfoCircleOutlined /> {t('只读观测：运行状态、用户决定和证据均来自保存的 SDK Run。')}

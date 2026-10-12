@@ -2003,5 +2003,11 @@
   "已决定": "Decision recorded",
   "收起目标": "Collapse goal",
   "展开完整目标": "Show complete goal",
-  "原 Eval 报告缺少有效实验身份，不能用于当前候选": "The original Eval report has no valid experiment identity and cannot apply to this candidate"
+  "原 Eval 报告缺少有效实验身份，不能用于当前候选": "The original Eval report has no valid experiment identity and cannot apply to this candidate",
+  "目标与运行信息": "Goal and run details",
+  "在 Agent 中继续处理，先读取最新运行。": "Continue in your Agent after reading the latest run.",
+  "交给 Agent 执行": "Agent handoff",
+  "调用工具": "Tool call",
+  "更多操作": "More actions",
+  "默认": "Default"
 }

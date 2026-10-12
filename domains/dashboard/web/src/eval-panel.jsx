@@ -1,4 +1,5 @@
 import { navigateDashboard, useDashboardNavigation } from './dashboard-navigation.js';
+import { useDashboardViewState } from './dashboard-view-state.js';
 import { t, localized } from './dashboard-i18n.js';
 import { useDashboardLanguage, useDashboardFormLanguage } from './dashboard-language.jsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -11,10 +12,12 @@ import {
   Checkbox,
   Descriptions,
   Drawer,
+  Dropdown,
   Empty,
   Form,
   Input,
   InputNumber,
+  Popover,
   Select,
   Segmented,
   Space,
@@ -35,6 +38,8 @@ import {
   FileTextOutlined,
   FlagOutlined,
   InfoCircleOutlined,
+  MoreOutlined,
+  DownOutlined,
   PlusOutlined,
   ReloadOutlined,
   RightOutlined,
@@ -60,7 +65,7 @@ import {
   EvalComparison,
   EvalArtifacts,
   Metric,
-  numeric,
+  EvalDuration,
   conclusionLabels,
   evalPagination,
 } from './eval-results.jsx';
@@ -187,8 +192,10 @@ export function EvalPanel({
   const pageMotion = useDashboardMotion(`${mode}:${selectedId ?? ''}`, 'page');
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [tab, setTab] = useState('overview');
-  const [runFilter, setRunFilter] = useState('all');
+  const stateScope = `${projectId}:eval`;
+  const [tab, setTab] = useDashboardViewState(stateScope, `${selectedId}:tab`, 'overview');
+  const [runFilter, setRunFilter] = useDashboardViewState(stateScope, 'run-filter', 'all');
+  const [runPage, setRunPage] = useDashboardViewState(stateScope, 'run-page', 1);
   const [caseDetail, setCaseDetail] = useState(null);
   const [artifact, setArtifact] = useState(null);
   const [artifactLoading, setArtifactLoading] = useState(false);
@@ -279,7 +286,6 @@ export function EvalPanel({
     selectedRef.current = run.id;
     setDetail(run);
     setMode('detail');
-    setTab('overview');
     setComparison(null);
     locationFor(projectId, run.id);
     setDetailLoading(true);
@@ -581,20 +587,16 @@ export function EvalPanel({
           label={t('已结束 / 历史')}
           value={runs.filter((run) => terminal(run.executionStatus)).length}
         />
-        <Metric
-          label={t('基线组')}
-          value={runs.filter((run) => run.isBaseline).length}
-          detail={t('每套固定用例最多一个')}
-        />
+        <Metric label={t('基线组')} value={runs.filter((run) => run.isBaseline).length} />
       </div>
-      {!readOnly && (
-        <EvalPresetControls compact base={base} onApply={(config) => newRun(config, true)} />
-      )}
       <div className="dashboard-eval-heading dashboard-eval-list-toolbar">
         <Segmented
           aria-label={t('运行筛选')}
           value={runFilter}
-          onChange={setRunFilter}
+          onChange={(value) => {
+            setRunFilter(value);
+            setRunPage(1);
+          }}
           options={[
             { value: 'all', label: t('全部记录') },
             { value: 'active', label: t('进行中') },
@@ -603,21 +605,30 @@ export function EvalPanel({
           ]}
         />
         <Space wrap>
-          <Button type="text" onClick={() => setGuideOpen(true)}>
-            {t('使用指南')}
-          </Button>
-          <Button icon={<ReloadOutlined />} onClick={() => void refresh(true)} loading={loading}>
-            {t('刷新')}
-          </Button>
-          <Tooltip
-            title={t(
-              '同一目标、固定用例与评分规则最多一个默认基线。完整但未通过的结果也可设置；可以替换或取消，历史证据保留。',
-            )}
+          {!readOnly && (
+            <EvalPresetControls compact base={base} onApply={(config) => newRun(config, true)} />
+          )}
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                { key: 'guide', label: t('使用指南'), onClick: () => setGuideOpen(true) },
+                {
+                  key: 'rules',
+                  label: t('基线规则'),
+                  onClick: () =>
+                    modal.info({
+                      title: t('基线规则'),
+                      content: t(
+                        '同一目标、固定用例与评分规则最多一个默认基线。完整但未通过的结果也可设置；可以替换或取消，历史证据保留。',
+                      ),
+                    }),
+                },
+              ],
+            }}
           >
-            <Button type="text" size="small" icon={<InfoCircleOutlined />}>
-              {t('基线规则')}
-            </Button>
-          </Tooltip>
+            <Button type="text" icon={<MoreOutlined />} aria-label={t('更多操作')} />
+          </Dropdown>
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -644,7 +655,12 @@ export function EvalPanel({
           rowKey="id"
           loading={loading && !filtered.length}
           dataSource={filtered}
-          pagination={{ ...evalPagination, pageSize: 15 }}
+          pagination={{
+            ...evalPagination,
+            pageSize: 15,
+            current: Math.min(runPage, Math.max(1, Math.ceil(filtered.length / 15))),
+            onChange: setRunPage,
+          }}
           size="small"
           columns={[
             {
@@ -671,7 +687,7 @@ export function EvalPanel({
                       {run.origin === 'dashboard' ? 'Dashboard' : t('CLI / 历史')}
                     </span>
                     <span className="dashboard-eval-secondary dashboard-eval-run-id" title={run.id}>
-                      {run.id}
+                      {run.id.length > 24 ? `${run.id.slice(0, 12)}…${run.id.slice(-8)}` : run.id}
                     </span>
                   </span>
                   <span className="dashboard-eval-target-cta" aria-hidden="true">
@@ -689,7 +705,9 @@ export function EvalPanel({
                 <span className="dashboard-eval-numeric">
                   {run.passed} / {run.expectedTotal ?? run.total}
                   <br />
-                  <Text type="secondary">{numeric(run.metrics.durationSeconds, t(' 秒'))}</Text>
+                  <Text type="secondary">
+                    <EvalDuration value={run.metrics.durationSeconds} />
+                  </Text>
                 </span>
               ),
             },
@@ -734,10 +752,18 @@ export function EvalPanel({
     value: run.id,
     label: `${run.target.name} · ${run.target.version ?? '—'} · ${run.id}`,
   });
+  const reportHint = detail?.artifacts?.some((item) =>
+    ['summary.md', 'summary.html'].includes(item.id),
+  )
+    ? t('可直接预览或下载已生成的报告，其他文件在「日志与产物」中查看。')
+    : terminal(detail?.executionStatus)
+      ? t('本次运行未生成报告，可在「日志与产物」中查看执行日志。')
+      : t('报告生成后即可预览或下载，页面会自动更新。');
   return (
     <section
       ref={pageMotion}
       className="dashboard-eval-page"
+      data-dashboard-scroll="eval"
       data-dashboard-motion="page"
       aria-label={t('Eval 工作台')}
     >
@@ -841,8 +867,15 @@ export function EvalPanel({
             <Button type="text" icon={<ArrowLeftOutlined />} onClick={back}>
               {t('运行记录')}
             </Button>
-            <Text type="secondary" className="dashboard-eval-run-id" title={detail.id}>
-              {detail.id}
+            <Text
+              type="secondary"
+              className="dashboard-eval-run-id"
+              title={detail.id}
+              copyable={{ text: detail.id }}
+            >
+              {detail.id.length > 32
+                ? `${detail.id.slice(0, 16)}…${detail.id.slice(-10)}`
+                : detail.id}
             </Text>
           </div>
           <div className="dashboard-eval-heading dashboard-eval-masthead">
@@ -928,92 +961,88 @@ export function EvalPanel({
                 {t('与基线对比')}
               </Button>
             )}
-            <Button type="text" onClick={() => setGuideOpen(true)}>
-              {t('使用指南')}
-            </Button>
-            <Button type="text" onClick={() => void refresh(true)} icon={<ReloadOutlined />}>
-              {t('刷新状态')}
-            </Button>
-          </Space>
-          <div className="dashboard-eval-context-strip">
-            <div className="dashboard-eval-context-section">
-              <div className="dashboard-eval-heading">
-                <Text className="dashboard-eval-section-label">
-                  <FlagOutlined />
-                  {t(' 默认参照')}
-                </Text>
-                <Space size={4}>
-                  {baselineControl(detail)}
-                  <Tooltip title={t('同一目标与固定用例集最多一个，可替换或取消。')}>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<InfoCircleOutlined />}
-                      aria-label={t('基线规则')}
-                    />
-                  </Tooltip>
-                </Space>
-              </div>
-              <Text className="dashboard-eval-context-id" title={detail.baselineRunId ?? ''}>
-                {t('默认基线：')}
-                {detail.baselineRunId ?? t('未设置')}
-              </Text>
-              {detail.boundBaselineRunId && (
-                <Text
-                  type="secondary"
-                  className="dashboard-eval-context-id"
-                  title={detail.boundBaselineRunId}
-                >
-                  {t('启动时绑定：')}
-                  {detail.boundBaselineRunId}
-                </Text>
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  ['summary.md', 'Markdown'],
+                  ['summary.html', 'HTML'],
+                ].flatMap(([id, label]) => [
+                  {
+                    key: `preview:${id}`,
+                    label: t('预览 {0}', [label]),
+                    icon: <EyeOutlined />,
+                    disabled: !detail.artifacts?.some((item) => item.id === id),
+                    onClick: () => void openArtifact(id),
+                  },
+                  {
+                    key: `download:${id}`,
+                    label: t('下载 {0}', [label]),
+                    icon: <DownloadOutlined />,
+                    disabled:
+                      !detail.artifacts?.some((item) => item.id === id) ||
+                      downloads.includes(`${detail.id}/${id}`),
+                    onClick: () => void downloadArtifact(id),
+                  },
+                ]),
+              }}
+              popupRender={(menu) => (
+                <div className="dashboard-eval-report-menu">
+                  {menu}
+                  <Text type="secondary">{reportHint}</Text>
+                </div>
               )}
-            </div>
-            <div className="dashboard-eval-context-section">
-              <Text className="dashboard-eval-section-label">
-                <FileTextOutlined />
-                {t(' 评估报告')}
-              </Text>
-              <Space direction="vertical" size="small">
-                <Space wrap>
-                  {[
-                    ['summary.md', 'Markdown'],
-                    ['summary.html', 'HTML'],
-                  ].map(([id, label]) => (
-                    <Space.Compact key={id}>
-                      <Button
-                        aria-label={t('预览 {0}', [label])}
-                        icon={<EyeOutlined />}
-                        disabled={!detail.artifacts?.some((item) => item.id === id)}
-                        onClick={() => void openArtifact(id)}
-                      >
-                        {t('预览 ')}
-                        {label}
-                      </Button>
-                      <Tooltip title={t('下载 {0}', [label])}>
-                        <Button
-                          aria-label={t('下载 {0}', [label])}
-                          icon={<DownloadOutlined />}
-                          disabled={!detail.artifacts?.some((item) => item.id === id)}
-                          loading={downloads.includes(`${detail.id}/${id}`)}
-                          onClick={() => void downloadArtifact(id)}
-                        />
-                      </Tooltip>
-                    </Space.Compact>
-                  ))}
-                </Space>
-                <Text type="secondary" className="dashboard-eval-secondary">
-                  {detail.artifacts?.some((item) =>
-                    ['summary.md', 'summary.html'].includes(item.id),
-                  )
-                    ? t('可直接预览或下载已生成的报告，其他文件在「日志与产物」中查看。')
-                    : terminal(detail.executionStatus)
-                      ? t('本次运行未生成报告，可在「日志与产物」中查看执行日志。')
-                      : t('报告生成后即可预览或下载，页面会自动更新。')}
-                </Text>
-              </Space>
-            </div>
-          </div>
+            >
+              <Button icon={<FileTextOutlined />} aria-label={t('评估报告')}>
+                {t('评估报告')} <DownOutlined />
+              </Button>
+            </Dropdown>
+            <Popover
+              trigger="click"
+              placement="bottomRight"
+              title={t('默认参照')}
+              content={
+                <div className="dashboard-eval-baseline-popover">
+                  <Text className="dashboard-eval-context-id" title={detail.baselineRunId ?? ''}>
+                    {t('默认基线：')}
+                    {detail.baselineRunId ?? t('未设置')}
+                  </Text>
+                  {detail.boundBaselineRunId && (
+                    <Text
+                      type="secondary"
+                      className="dashboard-eval-context-id"
+                      title={detail.boundBaselineRunId}
+                    >
+                      {t('启动时绑定：')}
+                      {detail.boundBaselineRunId}
+                    </Text>
+                  )}
+                  {baselineControl(detail)}
+                  <Text type="secondary">{t('同一目标与固定用例集最多一个，可替换或取消。')}</Text>
+                </div>
+              }
+            >
+              <Button type="text" icon={<FlagOutlined />} aria-label={t('默认参照')}>
+                {t('默认参照')}
+              </Button>
+            </Popover>
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  { key: 'guide', label: t('使用指南'), onClick: () => setGuideOpen(true) },
+                  {
+                    key: 'refresh',
+                    label: t('刷新状态'),
+                    icon: <ReloadOutlined />,
+                    onClick: () => void refresh(true),
+                  },
+                ],
+              }}
+            >
+              <Button type="text" icon={<MoreOutlined />} aria-label={t('更多操作')} />
+            </Dropdown>
+          </Space>
           <Spin spinning={detailLoading}>
             <Tabs
               tabBarGutter={16}
@@ -1024,7 +1053,9 @@ export function EvalPanel({
                 {
                   key: 'cases',
                   label: t('用例结果'),
-                  children: <EvalCases run={detail} onSelect={setCaseDetail} />,
+                  children: (
+                    <EvalCases run={detail} stateScope={stateScope} onSelect={setCaseDetail} />
+                  ),
                 },
                 ...(detail.target.type === 'application'
                   ? [

@@ -99,6 +99,7 @@ import {
 import { useAnimatedNumber } from './use-animated-number.js';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 import { useDashboardMotion } from './dashboard-motion.jsx';
+import { useDashboardViewState, useDashboardScrollRestoration } from './dashboard-view-state.js';
 import {
   dashboardChangeKey,
   dashboardResponseError,
@@ -562,7 +563,9 @@ function DashboardApp({
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
   const [tab, setTab] = useState('active');
-  const [query, setQuery] = useState('');
+  const workspaceScope = `${useDemo ? 'demo' : 'project'}:${activeProjectId ?? ''}:${evalOpen ? 'eval' : (pluginSelection ?? workflow ?? 'default')}`;
+  const [query, setQuery] = useDashboardViewState(workspaceScope, 'query', '');
+  const workspaceScrollRef = useDashboardScrollRestoration(workspaceScope);
   const [loading, setLoading] = useState(false);
   const [railOpen, setRailOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1500,7 +1503,6 @@ function DashboardApp({
     selectedIdRef.current = null;
     setSelectedDetail(null);
     setDetailError(null);
-    setQuery('');
     setSettingsOpen(false);
     setPluginSelection(null);
     setPluginPages(DASHBOARD_PLUGIN_NAV_PLACEHOLDERS);
@@ -1548,16 +1550,20 @@ function DashboardApp({
           setEvalOpen(true);
           setSettingsOpen(false);
           setPluginSelection(null);
-          if (!embedded) navigateDashboard({ view: 'eval', projectId: activeProjectId });
+          if (!embedded)
+            navigateDashboard({ view: 'eval', projectId: activeProjectId }, { restore: true });
         }}
         onWorkflow={(nextWorkflow) => {
           setEvalOpen(false);
           if (!embedded)
-            navigateDashboard({
-              view: 'workflow',
-              workflow: nextWorkflow,
-              projectId: activeProjectId,
-            });
+            navigateDashboard(
+              {
+                view: 'workflow',
+                workflow: nextWorkflow,
+                projectId: activeProjectId,
+              },
+              { restore: true },
+            );
           setSettingsOpen(false);
           if (nextWorkflow !== workflow) setTab('active');
           setWorkflow(nextWorkflow);
@@ -1594,7 +1600,10 @@ function DashboardApp({
         onPluginSelect={(pluginId) => {
           setEvalOpen(false);
           if (!embedded && pluginId)
-            navigateDashboard({ view: 'plugin', pluginId, projectId: activeProjectId });
+            navigateDashboard(
+              { view: 'plugin', pluginId, projectId: activeProjectId },
+              { restore: true },
+            );
           setSettingsOpen(false);
           setPluginSelection(pluginId);
           setPluginPage(
@@ -1644,14 +1653,17 @@ function DashboardApp({
               navigateDashboard(
                 evalOpen
                   ? { view: 'eval', projectId: nextProjectId }
-                  : {
-                      view: 'workflow',
-                      projectId: nextProjectId,
-                      workflow:
-                        workflow === 'any'
-                          ? 'any'
-                          : resolveDashboardProjectWorkflow(routeProject).workflow,
-                    },
+                  : pluginSelection
+                    ? { view: 'plugin', pluginId: pluginSelection, projectId: nextProjectId }
+                    : {
+                        view: 'workflow',
+                        projectId: nextProjectId,
+                        workflow:
+                          workflow === 'any'
+                            ? 'any'
+                            : resolveDashboardProjectWorkflow(routeProject).workflow,
+                      },
+                { restore: true },
               );
             }
             resetSelectedProject(nextProjectId);
@@ -1663,6 +1675,7 @@ function DashboardApp({
           loading={loading}
           query={query}
           onQuery={setQuery}
+          showSearch={!pluginSelection && (evalOpen || workflow !== 'any')}
           searchPlaceholder={
             evalOpen
               ? t('搜索评估目标或运行记录…')
@@ -1689,6 +1702,8 @@ function DashboardApp({
           themeToggleDisabled={embedded}
         />
         <div
+          ref={workspaceScrollRef}
+          data-dashboard-scroll="workspace"
           className={`dashboard-content-shell${
             pluginSelection ? ' dashboard-content-shell-plugin-center' : ''
           }`}
@@ -1723,6 +1738,8 @@ function DashboardApp({
               <LoadingState />
             ) : pluginSelection ? (
               <PluginCenterPage
+                key={`${activeProjectId}:${pluginSelection}`}
+                viewScope={workspaceScope}
                 page={pluginPage}
                 loading={pluginLoading}
                 error={pluginError}
@@ -1951,6 +1968,7 @@ function Topbar({
   query,
   onQuery,
   searchPlaceholder = t('搜索变更、产物或文件…'),
+  showSearch = true,
   projects,
   activeProjectId,
   onProjectSelect,
@@ -2063,15 +2081,17 @@ function Topbar({
           </Popover>
         )}
       </div>
-      <div className="comet-header-search">
-        <Input
-          value={query}
-          onChange={(event) => onQuery(event.target.value)}
-          prefix={<SearchOutlined className="text-meta" />}
-          placeholder={searchPlaceholder}
-          allowClear
-        />
-      </div>
+      {showSearch && (
+        <div className="comet-header-search">
+          <Input
+            value={query}
+            onChange={(event) => onQuery(event.target.value)}
+            prefix={<SearchOutlined className="text-meta" />}
+            placeholder={searchPlaceholder}
+            allowClear
+          />
+        </div>
+      )}
       <div className="comet-header-actions">
         <Tooltip title={t('立即刷新')}>
           <Button
@@ -4375,7 +4395,7 @@ function AntSidebar({
           <span>{t('工作流')}</span>
           {workflowSource ? (
             <Tag color={workflowSource === 'configured' ? 'success' : 'warning'}>
-              {workflowSource}
+              {workflowSource === 'configured' ? t('已配置') : t('默认')}
             </Tag>
           ) : null}
         </div>
@@ -4543,7 +4563,15 @@ function AntSidebar({
   );
 }
 
-function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onInvoke }) {
+function PluginCenterPage({
+  page,
+  loading,
+  error,
+  readOnly = false,
+  onRetry,
+  onInvoke,
+  viewScope,
+}) {
   useDashboardLanguage();
   if (loading && !page) return <LoadingState />;
   if (error && !page) {
@@ -4576,6 +4604,7 @@ function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onI
       <>
         {syncError}
         <ProjectKnowledgeCenter
+          viewScope={viewScope}
           page={page}
           data={page.data}
           readOnly={readOnly}
@@ -4606,7 +4635,12 @@ function PluginCenterPage({ page, loading, error, readOnly = false, onRetry, onI
     return (
       <>
         {syncError}
-        <PersonalMemoryCenter data={page.data} readOnly={readOnly} onInvoke={onInvoke} />
+        <PersonalMemoryCenter
+          viewScope={viewScope}
+          data={page.data}
+          readOnly={readOnly}
+          onInvoke={onInvoke}
+        />
       </>
     );
   }
@@ -6233,7 +6267,11 @@ function ProjectKnowledgeRegistry({
             }
           />
         ) : (
-          <div className="dashboard-knowledge-ledger-rows" aria-label={t('项目知识记录列表')}>
+          <div
+            className="dashboard-knowledge-ledger-rows"
+            data-dashboard-scroll="knowledge-ledger"
+            aria-label={t('项目知识记录列表')}
+          >
             {visibleRecords.slice(0, 100).map((record) => {
               const sources = projectKnowledgeRecordSources(record);
               const verification = projectKnowledgeVerificationLines(record);
@@ -6369,6 +6407,7 @@ function ProjectKnowledgeInspector({
       ref={detailMotion}
       data-dashboard-motion="detail"
       className="dashboard-knowledge-inspector"
+      data-dashboard-scroll="knowledge-inspector"
       aria-label={t('记录详情')}
     >
       <header>
@@ -7061,11 +7100,12 @@ function projectMemoryTypeLabel(type) {
   return PROJECT_MEMORY_TYPE_META[type]?.label ?? type ?? t('项目记忆');
 }
 
-function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
+function ProjectMemoryPanel({ summary, readOnly = false, onInvoke, viewScope }) {
   const dashboardLanguage = useDashboardLanguage();
   const tabMotion = useDashboardMotion('project-memory', 'tab');
-  const [searchText, setSearchText] = useState('');
-  const [selectedSlug, setSelectedSlug] = useState(null);
+  const memoryScope = `${viewScope}:project-memory:${summary?.directory ?? ''}`;
+  const [searchText, setSearchText] = useDashboardViewState(memoryScope, 'searchText', '');
+  const [selectedSlug, setSelectedSlug] = useDashboardViewState(memoryScope, 'selectedSlug', null);
   const [detail, setDetail] = useState(null);
   const [detailPending, setDetailPending] = useState(false);
   const [detailError, setDetailError] = useState(null);
@@ -7173,7 +7213,7 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
           <span>{t('更新时间')}</span>
           <span />
         </div>
-        <div className="dashboard-memory-table-body">
+        <div className="dashboard-memory-table-body" data-dashboard-scroll="project-memory-list">
           {visibleEntries.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyDescription} />
           ) : (
@@ -7243,6 +7283,7 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
         ref={detailMotion}
         data-dashboard-motion="detail"
         className="dashboard-memory-inspector"
+        data-dashboard-scroll="project-memory-inspector"
         aria-label={t('项目记忆详情')}
       >
         {selectedEntry ? (
@@ -7273,7 +7314,12 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
                       description={detailError}
                     />
                   )}
-                  <pre className="dashboard-project-memory-body">{currentDetail?.body ?? ''}</pre>
+                  <pre
+                    className="dashboard-project-memory-body"
+                    data-dashboard-scroll="project-memory-body"
+                  >
+                    {currentDetail?.body ?? ''}
+                  </pre>
                 </>
               )}
             </section>
@@ -7337,13 +7383,22 @@ function ProjectMemoryPanel({ summary, readOnly = false, onInvoke }) {
   );
 }
 
-function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
+function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke, viewScope }) {
   const dashboardLanguage = useDashboardLanguage();
   const pageMotion = useDashboardMotion('project-knowledge', 'page');
   const snapshot = data && typeof data === 'object' ? data : {};
-  const [workspaceTab, setWorkspaceTab] = useState('model');
-  const [recordSearchText, setRecordSearchText] = useState('');
-  const [sourceSearchText, setSourceSearchText] = useState('');
+  const [workspaceTab, setWorkspaceTab] = useDashboardViewState(viewScope, 'workspaceTab', 'model');
+  const previousWorkspaceTab = useRef(workspaceTab);
+  const [recordSearchText, setRecordSearchText] = useDashboardViewState(
+    viewScope,
+    'recordSearchText',
+    '',
+  );
+  const [sourceSearchText, setSourceSearchText] = useDashboardViewState(
+    viewScope,
+    'sourceSearchText',
+    '',
+  );
   const [selectedSource, setSelectedSource] = useState(null);
   const [sourceContent, setSourceContent] = useState(null);
   const [sourceReadPending, setSourceReadPending] = useState(false);
@@ -7351,10 +7406,18 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
   const sourceContentCacheRef = useRef(new Map());
   const [queryText, setQueryText] = useState('');
   const [queryPending, setQueryPending] = useState(false);
-  const [stateFilter, setStateFilter] = useState('active');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [sortOrder, setSortOrder] = useState('newest');
-  const [selectedRecordId, setSelectedRecordId] = useState(null);
+  const [stateFilter, setStateFilter] = useDashboardViewState(viewScope, 'stateFilter', 'active');
+  const [categoryFilter, setCategoryFilter] = useDashboardViewState(
+    viewScope,
+    'categoryFilter',
+    'all',
+  );
+  const [sortOrder, setSortOrder] = useDashboardViewState(viewScope, 'sortOrder', 'newest');
+  const [selectedRecordId, setSelectedRecordId] = useDashboardViewState(
+    viewScope,
+    'selectedRecordId',
+    null,
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [createSaving, setCreateSaving] = useState(false);
   const [createDraft, setCreateDraft] = useState({
@@ -7471,6 +7534,8 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
     }
   }, [selectedRecord, selectedRecordId]);
   useEffect(() => {
+    if (previousWorkspaceTab.current === workspaceTab) return;
+    previousWorkspaceTab.current = workspaceTab;
     setCategoryFilter('all');
     setSelectedRecordId((currentId) =>
       currentId && workspaceRecords.some((record) => record.id === currentId) ? currentId : null,
@@ -7748,6 +7813,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
         />
       ) : workspaceTab === 'memory' ? (
         <ProjectMemoryPanel
+          viewScope={viewScope}
           summary={snapshot.projectMemory}
           readOnly={readOnly}
           onInvoke={onInvoke}
@@ -7944,7 +8010,7 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke }) {
   );
 }
 
-function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
+function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
   useDashboardLanguage();
   const pageMotion = useDashboardMotion('personal-memory', 'page');
   const [editingRecord, setEditingRecord] = useState(null);
@@ -7958,10 +8024,18 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
   const [newProjectMemorySaving, setNewProjectMemorySaving] = useState(false);
   const [newProjectMemoryText, setNewProjectMemoryText] = useState('');
   const [newProjectMemoryCategory, setNewProjectMemoryCategory] = useState(t('项目约定'));
-  const [expandedRecordIds, setExpandedRecordIds] = useState(() => new Set());
-  const [memoryQuery, setMemoryQuery] = useState('');
-  const [memoryFilter, setMemoryFilter] = useState('all');
-  const [selectedMemoryId, setSelectedMemoryId] = useState(null);
+  const [expandedRecordIds, setExpandedRecordIds] = useDashboardViewState(
+    viewScope,
+    'expandedRecordIds',
+    () => new Set(),
+  );
+  const [memoryQuery, setMemoryQuery] = useDashboardViewState(viewScope, 'memoryQuery', '');
+  const [memoryFilter, setMemoryFilter] = useDashboardViewState(viewScope, 'memoryFilter', 'all');
+  const [selectedMemoryId, setSelectedMemoryId] = useDashboardViewState(
+    viewScope,
+    'selectedMemoryId',
+    null,
+  );
   const status = data?.status ?? {};
   const retrieval = data?.retrieval ?? {};
   const management = data?.management ?? {};
@@ -8389,7 +8463,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
             <span>{t('更新时间')}</span>
             <span />
           </div>
-          <div className="dashboard-memory-table-body">
+          <div className="dashboard-memory-table-body" data-dashboard-scroll="personal-memory-list">
             {visibleMemoryRecords.length === 0 ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={memoryEmptyDescription} />
             ) : (
@@ -8409,6 +8483,7 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke }) {
           ref={detailMotion}
           data-dashboard-motion="detail"
           className="dashboard-memory-inspector"
+          data-dashboard-scroll="personal-memory-inspector"
           aria-label={t('记忆应用详情')}
         >
           {selectedRecord ? (

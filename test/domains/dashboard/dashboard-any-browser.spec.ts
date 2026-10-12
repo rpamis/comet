@@ -4,7 +4,17 @@ import { readApplicationDemo } from '../../../domains/dashboard/web/src/applicat
 test('Any preserves pinned runs, child navigation and historical selection through refresh failures', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          (window as any).copiedAnyContext = JSON.parse(value);
+        },
+      },
+    });
+  });
   let revision = 24,
     fail = false,
     writes = 0;
@@ -71,7 +81,24 @@ test('Any preserves pinned runs, child navigation and historical selection throu
   await page.goto('/');
   await page.getByRole('menuitem', { name: 'Comet Any' }).click();
   await expect(page.getByRole('region', { name: 'Comet Any 工作区' })).toBeVisible();
+  const workspaceScroll = page.locator('[data-dashboard-scroll="workspace"]');
   await expect(page.getByRole('heading', { name: 'Comet Any', exact: true })).toHaveCount(0);
+  await expect(page.locator('.any-current')).toContainText('确认安装');
+  expect(
+    await page.locator('.any-current').evaluate((element) => element.getBoundingClientRect().top),
+  ).toBeLessThan(450);
+  await expect(page.locator('.any-run-context')).not.toContainText('增加独立审查与恢复路径。');
+  await page.getByRole('button', { name: '目标与运行信息' }).click();
+  await expect(page.locator('.any-run-context')).toContainText('增加独立审查与恢复路径。');
+  await page.getByRole('button', { name: '目标与运行信息' }).click();
+  await expect(page.locator('.any-inspector')).toContainText('用户决定');
+  await page.locator('.any-inspector').getByRole('button', { name: '运行标识与原始记录' }).click();
+  await expect(page.locator('.any-inspector pre').last()).toContainText('user_decision');
+  await page.locator('.any-inspector').getByRole('button', { name: '运行标识与原始记录' }).click();
+  await page.getByRole('button', { name: '复制只读检查上下文' }).click();
+  await expect(page.getByRole('dialog')).toContainText('先读取最新 Run');
+  expect(await page.evaluate(() => (window as any).copiedAnyContext.runId)).toBe('creator-041');
+  await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByText('应用运行', { exact: true }).last().click();
   await expect(page.locator('.any-version')).toHaveText('v1.1.0');
   await expect(page.locator('.any-current-counts')).toContainText('2 项执行中');
@@ -79,16 +106,86 @@ test('Any preserves pinned runs, child navigation and historical selection throu
     .locator('.any-active-list')
     .getByRole('button', { name: /独立审查子流程/ })
     .click();
+  await workspaceScroll.evaluate((element) => element.scrollTo({ top: 160, behavior: 'instant' }));
+  await page.getByRole('button', { name: '进入子流程' }).scrollIntoViewIfNeeded();
+  const parentScroll = await workspaceScroll.evaluate((element) => element.scrollTop);
+  expect(parentScroll).toBeGreaterThan(0);
   await page.getByRole('button', { name: '进入子流程' }).click();
   await expect(page.locator('.any-current')).toContainText('1 项等待证据');
   await page.getByRole('button', { name: '返回父运行' }).click();
   await expect(page.locator('.any-inspector h3')).toHaveText('独立审查子流程');
+  await expect
+    .poll(() =>
+      workspaceScroll.evaluate(
+        (element, saved) => Math.abs(element.scrollTop - saved),
+        parentScroll,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+  await workspaceScroll.evaluate((element) => element.scrollTo({ top: 0, behavior: 'instant' }));
+  await page.getByRole('button', { name: '回到当前工作' }).click();
+  await expect(page.locator('.any-step-row.selected')).toContainText('确认文档发布范围');
+  await expect
+    .poll(() =>
+      page.locator('.any-step-row.selected').evaluate((element) => {
+        const pane = element
+          .closest('[data-dashboard-scroll="workspace"]')!
+          .getBoundingClientRect();
+        const record = element.getBoundingClientRect();
+        return record.top >= pane.top && record.bottom <= pane.bottom;
+      }),
+    )
+    .toBe(true);
   await page.getByRole('tab', { name: '执行记录', exact: true }).click();
   await page
     .locator('.any-history')
     .getByRole('button', { name: /追问与记录决定/ })
     .click();
   await expect(page.locator('.any-inspector h3')).toHaveText('追问与记录决定');
+  await expect(page.locator('.any-history')).toContainText('交给 Agent 执行');
+  await page.locator('.any-filter-line').getByRole('button', { name: '需关注' }).click();
+  await page.locator('.any-stat-strip').getByRole('button', { name: /应用/ }).click();
+  await page.getByRole('textbox', { name: '搜索目标或应用' }).fill('grill');
+  await page.getByRole('button', { name: '目标与运行信息' }).click();
+  await expect
+    .poll(() =>
+      page
+        .locator('.any-run-context')
+        .evaluate((element) =>
+          element
+            .getAnimations({ subtree: true })
+            .some((animation) => animation.playState === 'running'),
+        ),
+    )
+    .toBe(false);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await workspaceScroll.evaluate((element) => element.scrollTo({ top: 220, behavior: 'instant' }));
+  await expect
+    .poll(() => workspaceScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  const readingScroll = await workspaceScroll.evaluate((element) => element.scrollTop);
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await expect(page.getByRole('tab', { name: '执行记录', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.locator('.any-inspector h3')).toHaveText('追问与记录决定');
+  await expect(page.locator('.any-filter-line button.selected')).toHaveText('需关注');
+  await expect(page.locator('.any-stat-strip button.selected')).toContainText('应用');
+  await expect(page.getByRole('textbox', { name: '搜索目标或应用' })).toHaveValue('grill');
+  await expect(page.getByRole('button', { name: '目标与运行信息' })).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  );
+  await expect
+    .poll(() =>
+      workspaceScroll.evaluate(
+        (element, saved) => Math.abs(element.scrollTop - saved),
+        readingScroll,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
   revision = 25;
   await page.getByRole('button', { name: '立即刷新', exact: true }).click();
   await expect(page.locator('.any-follow-bar')).toContainText('有新进展');
