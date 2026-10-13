@@ -1,6 +1,6 @@
 # Comet Current-Change Phase Rule
 
-This Rule is the persistent soft safeguard shared by Native and Classic. A project may enable both workflows, but one request must be owned by exactly one workflow/change; never apply both phase models at the same time.
+This Rule determines current ownership and write constraints for Native, Classic, and SDK Skill applications. A project may enable multiple workflows, but one request must be owned by exactly one workflow/change or application Run. Never apply rules from different workflows at the same time.
 
 ## Resolve the current request first
 
@@ -34,13 +34,13 @@ A legacy Classic project without the current project schema uses only the Classi
 
 ## Hook constraint
 
-Each platform must install exactly one Comet Hook Router. One write event may invoke at most one workflow Guard; do not run separate Native and Classic Hooks.
+Each platform must install exactly one Comet Hook Router. It routes Native, Classic, or SDK applications according to the current selection, invoking at most one Guard per write event. Do not install or run multiple sets of Comet Hooks.
 
 The Hook evaluates multi-file and patch targets atomically. Unattributable events and targets that are entirely outside the project remain neutral. Once a write is attributed to this project, it fails closed when the current phase blocks ordinary project writes, multiple ownership candidates exist, or the selection, state, or target scope cannot be read safely. Never bypass the Hook; follow its denial message to resume the owning workflow, and select a current change only when ownership is ambiguous.
 
 The phase table governs only ordinary implementation writes. Before phase evaluation, the Classic Hook always allows `.comet` configuration, the `.superpowers` workspace, neutral documents, and `hook.allow_paths`. Neutral documents are Markdown/text files and LICENSE-style files at the repository root or under `docs/`, `doc/`, `documentation/`, and `.github/`, excluding OpenSpec and Superpowers workflow artifacts. These are explicit control or configuration allowlists: they do not widen phase permissions or permit task updates during Verify. Setting `classic.document_evidence: strict` in `.comet/config.yaml` narrows the allowlist back to root Markdown only.
 
-Native formal artifacts belong only to the configured `<artifact-root>/comet/changes/<change>/` and the project-local `.comet/runtime/native/`. A filename, a `comet/changes/<name>` fragment, or the mere presence of an active change is not enough to attribute another directory to Comet; ordinary same-named Markdown, non-Comet work, and explicitly configured user Hook output remain neutral. Register a Native change through the CLI first, then follow the complete command or absolute target in a denial and retry. Never edit Runtime files or migrate leftovers by hand.
+Native formal artifacts belong to the configured `<artifact-root>/comet/changes/<change>/`. Machine-local Runtime data is stored in the user Comet data directory, isolated by checkout and Git worktree; use the `runtimeDir` returned by the command. The project-local `.comet/runtime/native/` is a legacy layout and must not be used to infer the current Run location. A filename, a `comet/changes/<name>` fragment, or the mere presence of an active change is not enough to attribute another directory to Comet; ordinary same-named Markdown, non-Comet work, and explicitly configured user Hook output remain neutral. Register a Native change through the CLI first, then follow the complete command or absolute target in a denial and retry. Never edit Runtime files or migrate leftovers by hand.
 
 A diagnostic action in a denial only inspects state; it does not replace a recovery command. When Runtime returns a recovery command, run it in the specified working directory and retry the original operation. When `continuation.commandArgs` provides the next action, execute those arguments directly. If Native Archive workspace completion fails, resolve the reported Git problem or user decision, then retry `comet native archive <change> --confirmed`; do not end recovery after running `git status`.
 

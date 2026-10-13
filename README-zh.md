@@ -150,7 +150,7 @@ Comet的许多能力都能够在海内外大厂实践中找到相似之处，想
 
 - **如何稳定触发嵌套 Skill** — 不是让 Agent 依靠文档描述做了“看起来像触发了 Skill”的操作（比如根据 Skill 描述写了文件），而是真正触发 Skill（核心特征：Claude Code CLI 上有 Skill 触发的打印）。Comet 中会触发大量来自 OpenSpec 和 Superpowers 的能力，稳定触发的 Prompt 经过大规模实践打磨
 - **如何让组合 Skill 多阶段自动流转** — 不是靠人工介入。Comet 的 5 阶段流程，除必要的用户选择项外，核心流程能够自动进行 Skill 触发，同时状态机机制也能保障状态扭转的可靠性。
-- **如何把 Spec 生命周期做成可恢复流程** — Comet 会把 OpenSpec 的 change/spec 制品与 Superpowers 的设计、计划文档关联起来，并通过每个 change 的 `.comet.yaml` 记录阶段、执行模式、验证结果和归档状态，让 Agent 中断后能够继续，而不是重新翻文档猜进度。
+- **如何把 Spec 生命周期做成可恢复流程** — Comet 会把 OpenSpec 的 change/spec 制品与 Superpowers 的设计、计划文档关联起来，并通过每个 change 的状态文件记录阶段、执行模式、验证结果和归档状态，让 Agent 中断后能够继续。新建 Classic change 使用 `comet-state.yaml`，已有 `.comet.yaml` 继续原地兼容。
 - **如何把文档同步从“用户提醒”变成自动化** — Comet 将 handoff、状态更新、校验和归档同步放进脚本化流程，减少“记得更新 design doc”“记得同步 spec”“记得归档 change”这类反复提示。
 - **如何设计 Agent 可执行的守护条件** — Comet 的阶段退出不是简单相信 Agent 说“完成了”，而是通过 `comet-guard.mjs`、`comet-yaml-validate.mjs`、`comet-state.mjs` 等脚本检查任务、状态字段、验证证据和归档条件，满足条件后才允许推进。
 - **如何做跨平台 Skill 分发和安装** — Comet 支持多种 AI 编码平台、项目级/全局安装、中文/英文 Skill 选择，以及平台差异化目录（例如 Antigravity 的项目级和全局路径不同），可以作为 CLI 安装器和 Skill 打包结构的参考。
@@ -227,7 +227,7 @@ classic:
 
 - `default_workflow` 决定 `/comet` 默认入口，且必须出现在 `workflows` 中；`ambient_resume`、`memory`、`knowledge` 和 `hook` 由两套工作流共享。
 - `memory.learning` / `retrieval` 控制个人记忆学习与注入；`knowledge.local.include` 可追加项目相对 Markdown glob。`hook.allow_paths` 默认为空，仅在受保护阶段确需写入共享目录时添加项目相对路径，不能绕过 `.comet` 或工作流产物保护。
-- Native 用户可读产物默认位于 `docs/comet/`；新 change 的 SDK Run 保存在 `.comet/runtime/sdk-runs/native/`，旧 change 仍使用原状态目录。可用 `comet init --workflow native --root artifacts` 将用户产物根改为 `artifacts/comet/`。Classic 专属默认值放在 `classic:`，旧顶层字段会由 `comet init` / `comet update` 迁移。
+- Native 用户可读产物默认位于 `docs/comet/`；本机执行数据保存在用户 Comet 数据目录，默认数据根为 `~/.comet`，按 checkout 和 Git worktree 隔离，可用 `COMET_DATA_DIR` 指定工作区外的绝对路径。新 change 使用 SDK Run，旧 change 沿用原 Runtime 格式。可用 `comet init --workflow native --root artifacts` 将用户产物根改为 `artifacts/comet/`。Classic 专属默认值放在 `classic:`，旧顶层字段会由 `comet init` / `comet update` 迁移。存储与恢复边界见 [Runtime SDK 指南](docs/architecture/runtime-sdk.zh.md)。
 
 云端知识、私有化 PR 等高级配置详见 [Native 配置](https://docs.comet.rpamis.com/zh/native/configuration) 与 [Classic 配置](https://docs.comet.rpamis.com/zh/classic/configuration)。Native v4 不再把旧 `snapshot` 预算持久化到用户配置中。
 

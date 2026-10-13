@@ -21,7 +21,7 @@ Each active change directory contains only user-readable formal artifacts that c
 
 The Agent edits only the brief, complete target specifications, an association's `delta.yaml`, and a Supervisor Change's `children.yaml`. Runtime creates and maintains `capability-association.yaml`; it owns `comet-state.yaml` and `verification.md`, generating the report after accepting the first Verifier result.
 
-Machine-local data always lives in the Git-ignored `.comet/runtime/native/` directory. Each active change has `changes/<change-name>/state.json` and `logs/` there; project locks and short-lived transactions also live under this Runtime directory. Runtime alone creates, migrates, and repairs these files.
+The current Runtime stores machine-local data in the user Comet data directory, isolated by checkout and Git worktree. The default data root is `~/.comet`. Set `COMET_DATA_DIR` to an absolute path outside the workspace to override it; the root cannot be the project or one of its subdirectories. Native stores local state, logs, locks, and short-lived transactions in the `runtimeDir` returned by Runtime, which creates, migrates, and repairs these files. The project-local `.comet/runtime/native/` is a legacy layout. If Runtime detects old locks, unfinished writes, or a blocked migration, follow its recovery diagnostics without manually moving or deleting files.
 
 ### Portable state and reports
 
@@ -35,7 +35,7 @@ During Shape, Verify, and Archive, ordinary documentation writes preserve the cu
 
 `.comet/config.yaml` selects the workflow and artifact directory. Synchronize it when a nondefault artifact directory must work across devices; other `.comet/*` data stays local.
 
-Runtime's `artifacts` object is the sole location authority for the current workspace: `briefPath`, `childrenPath`, `specsDir`, and `statePath` are under the configured `<artifact-root>/comet/changes/<change-name>/`; local `runtimeDir` remains under `.comet/runtime/native/`. Do not substitute a same-named file from `.comet/comet/` or another directory when a formal artifact is missing. If the Hook reports a path error, retry the original edit at the exact absolute path it supplies, preserving existing content and reading before merging when needed.
+Runtime's `artifacts` object is the sole location authority for the current workspace: `briefPath`, `childrenPath`, `specsDir`, and `statePath` are under the configured `<artifact-root>/comet/changes/<change-name>/`; local `runtimeDir` is in the user Comet data directory. Do not substitute a same-named file from `.comet/comet/` or another directory when a formal artifact is missing, or construct local Runtime paths yourself. If the Hook reports a path error, retry the original edit at the exact absolute path it supplies, preserving existing content and reading before merging when needed.
 
 ### Brief
 

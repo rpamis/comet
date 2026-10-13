@@ -21,7 +21,7 @@
 
 Agent 只编辑 brief、完整目标规格、关联时的 `delta.yaml` 和 Supervisor Change 的 `children.yaml`。`capability-association.yaml` 由 Runtime 创建并维护；`comet-state.yaml` 与 `verification.md` 由 Runtime 管理，Runtime 第一次接受 Verifier 结果后生成报告。
 
-Runtime 的本机数据固定保存在被 Git 忽略的 `.comet/runtime/native/`。每个 active change 的本机状态和日志位于该目录下的 `changes/<change-name>/state.json` 与 `logs/`；项目级锁和短期事务也放在这个 Runtime 目录中。这些本机文件始终由 Runtime 创建、迁移和修复。
+当前 Runtime 的本机数据保存在用户 Comet 数据目录，按 checkout 和 Git worktree 隔离。默认数据根为 `~/.comet`，可用 `COMET_DATA_DIR` 指定工作区外的绝对路径；不能设为项目或项目子目录。Native 的本机状态、日志、锁和短期事务位于 Runtime 返回的 `runtimeDir`，由 Runtime 创建、迁移和修复。项目内的 `.comet/runtime/native/` 是旧版本布局；发现旧锁、未完成写入或迁移阻塞时，按 Runtime 诊断恢复，不手工搬移或删除。
 
 ### 跨设备状态与报告
 
@@ -35,7 +35,7 @@ Shape、Verify 和 Archive 中的普通文档写入默认保持当前阶段和�
 
 `.comet/config.yaml` 决定使用哪种工作流，以及 change 产物保存在哪个目录。使用非默认产物目录并需要跨设备恢复时，应同步该文件；其余 `.comet/*` 只保留在本机。
 
-Runtime 返回的 `artifacts` 是当前工作区的唯一位置依据：`briefPath`、`childrenPath`、`specsDir` 和 `statePath` 都位于配置解析出的 `<artifact-root>/comet/changes/<change-name>/`，本机 `runtimeDir` 仍位于项目 `.comet/runtime/native/`。不要用 `.comet/comet/` 或其他目录中的同名文件替代缺失产物；若 Hook 指出路径错误，按拒绝信息给出的正确绝对路径重试原编辑，保留已有内容并先读取合并。
+Runtime 返回的 `artifacts` 是当前工作区的唯一位置依据：`briefPath`、`childrenPath`、`specsDir` 和 `statePath` 都位于配置解析出的 `<artifact-root>/comet/changes/<change-name>/`，本机 `runtimeDir` 位于用户 Comet 数据目录。不要用 `.comet/comet/` 或其他目录中的同名文件替代缺失产物，也不要自行拼接本机 Runtime 路径；若 Hook 指出路径错误，按拒绝信息给出的正确绝对路径重试原编辑，保留已有内容并先读取合并。
 
 ### Brief
 

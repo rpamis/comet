@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import {
   hashRuntimeValue,
   createRuntime,
@@ -196,13 +197,14 @@ async function main() {
           input: test.activation,
         });
       const action = run.actions.find((a) => a.status === 'pending')!;
+      const claimToken = randomUUID();
       run = await runtime.claim({
         runId: run.runId,
         actionId: action.id,
         attempt: action.attempt,
         inputHash: action.inputHash,
         executorId: 'artifact-probe',
-        claimToken: 'fixture-only',
+        claimToken,
         capabilities: action.requiredCapabilities,
       });
       let artifacts: { uri: string; sha256: string }[] = [];
@@ -221,7 +223,7 @@ async function main() {
             actionId: action.id,
             attempt: action.attempt,
             inputHash: action.inputHash,
-            claimToken: 'fixture-only',
+            claimToken,
             outcomeId: `probe-${sequence}`,
             status: 'succeeded',
             output,

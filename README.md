@@ -159,7 +159,8 @@ Many Comet capabilities have parallels in current industry practice.
   transitions reliable.
 - **How to make a Spec lifecycle resumable** — Comet links OpenSpec change/spec artifacts with Superpowers design and
   plan documents, then records phase, execution mode, verification result, and archive status in each change's
-  `.comet.yaml`, so an agent can continue after interruption instead of rereading documents and guessing progress.
+  state file so an agent can continue after interruption. New Classic changes use `comet-state.yaml`; existing
+  `.comet.yaml` files remain supported in place.
 - **How to turn doc synchronization from reminders into automation** — Comet scripts handoff, state updates, validation,
   and archive sync, reducing repeated prompts such as "remember to update the design doc" or "remember to archive the
   change."
@@ -245,7 +246,7 @@ classic:
 
 - `default_workflow` selects the default `/comet` entry and must be present in `workflows`. `ambient_resume`, `memory`, `knowledge`, and `hook` are shared by both workflows.
 - `memory.learning` / `retrieval` control personal-memory learning and injection. `knowledge.local.include` can append project-relative Markdown globs. `hook.allow_paths` is empty by default; add project-relative directories only when guarded phases must write shared files. It cannot bypass protection for `.comet` or workflow artifacts.
-- Native stores user-readable artifacts under `docs/comet/` by default. New changes store their SDK Runs under `.comet/runtime/sdk-runs/native/`; existing changes retain their original state directory. Use `comet init --workflow native --root artifacts` to move the user-artifact root to `artifacts/comet/`. Classic-only defaults stay under `classic:`; `comet init` / `comet update` migrate legacy top-level fields.
+- Native stores user-readable artifacts under `docs/comet/` by default. Machine-local execution data is stored in the user Comet data directory, with `~/.comet` as the default root and separate storage for each checkout and Git worktree. Set `COMET_DATA_DIR` to an absolute path outside the workspace to override it. New changes use SDK Runs; existing changes retain their original Runtime format. Use `comet init --workflow native --root artifacts` to move the user-artifact root to `artifacts/comet/`. Classic-only defaults stay under `classic:`; `comet init` / `comet update` migrate legacy top-level fields. See the [Runtime SDK guide](docs/architecture/runtime-sdk.md) for storage and recovery boundaries.
 
 Cloud Knowledge and self-hosted PR providers remain advanced settings; see [Native configuration](https://docs.comet.rpamis.com/en/native/configuration) and [Classic configuration](https://docs.comet.rpamis.com/en/classic/configuration). Native v4 no longer persists the legacy `snapshot` budgets in user configuration.
 

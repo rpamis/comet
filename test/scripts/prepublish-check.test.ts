@@ -106,7 +106,8 @@ describe('prepublish security check', () => {
   it.each([
     'domains/comet-classic/classic-application.ts',
     'domains/comet-native/native-sdk-continuation.ts',
-  ])('accepts public claim placeholders in %s', async (source) => {
+    'domains/workflow-generation/artifact-verification-entry.ts',
+  ])('accepts credential-free SDK modules in %s', async (source) => {
     const root = await makePackageFixture();
     await writeFile(root, 'index.js', await fs.readFile(source, 'utf-8'));
     const result = spawnSync(process.execPath, [prepublishCheck], { cwd: root, encoding: 'utf-8' });
