@@ -3,6 +3,7 @@
 set -uo pipefail
 
 TEXT="${1:-}"
+TEXT="${TEXT//\*/}"
 shift || true
 shopt -s nocasematch
 

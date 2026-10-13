@@ -21,6 +21,7 @@ import { inspectProtectedProjectPath } from '../workflow-contract/protected-proj
 import type {
   ApplicationArtifactTestCase,
   ApplicationArtifactVerification,
+  ApplicationWorkflowTestCase,
 } from './artifact-verification.js';
 import net from 'node:net';
 import tls from 'node:tls';
@@ -77,6 +78,7 @@ async function main() {
     root: string;
     packageHash: string;
     composition: ApplicationCompositionPlan;
+    workflowTests?: ApplicationWorkflowTestCase[];
   };
   const checks: ApplicationArtifactVerification['checks'] = [];
   let sequence = 0;
@@ -313,12 +315,67 @@ async function main() {
       await attempt(invalid.name, files, output);
     }
   }
+  const workflowChecks: NonNullable<ApplicationArtifactVerification['workflowChecks']> = [];
+  for (const test of request.workflowTests ?? []) {
+    const project = path.join(request.root, `workflow-probe-${++sequence}`);
+    await fs.mkdir(project);
+    const application = await loadWorkflowApplication({ file: request.file, projectRoot: project });
+    const definition = application.implementation.workflows.find((w) => w.id === test.workflowId)!;
+    // 沿固定原图运行；进度只保存在隔离内存 Store，不触及用户级 Runtime。
+    const store = createMemoryRuntimeStore<WorkflowRun>();
+    const runtime = createRuntime({ ...application.implementation, store });
+    const runId = 'workflow-probe';
+    await runtime.start({
+      runId,
+      workflow: { id: definition.id, version: definition.version },
+      input: test.input,
+    });
+    const fixture = createRequire(request.file)(path.join(path.dirname(request.file), test.module));
+    if (typeof fixture[test.exportName] !== 'function')
+      throw new Error('完整流程验收模块没有指定入口');
+    await fixture[test.exportName]({
+      runtime: Object.freeze({
+        inspect: runtime.inspect,
+        next: runtime.next,
+        claim: runtime.claim,
+        recordOutcome: runtime.recordOutcome,
+        resolveWait: runtime.resolveWait,
+        execute: runtime.execute,
+      }),
+      runId,
+      projectRoot: project,
+      application: {
+        identity: application.identity,
+        manifest: application.manifest,
+        skills: application.skills,
+        store: Object.freeze({ read: store.read }),
+      },
+    });
+    // 不接受测试模块自报通过；重新加载固定应用，读取根及其子 Run。
+    const fresh = await loadWorkflowApplication({ file: request.file, projectRoot: project });
+    const check = createRuntime({ ...fresh.implementation, store });
+    const root = await check.inspect(runId);
+    let childRuns = 0;
+    const inspect = async (run: WorkflowRun): Promise<void> => {
+      if (run.status !== 'completed')
+        throw new Error(`完整流程 ${test.workflowId} 未完成：${run.workflow.id} / ${run.status}`);
+      for (const child of run.children) {
+        childRuns++;
+        await inspect(await check.inspect(child.runId));
+      }
+    };
+    await inspect(root);
+    workflowChecks.push({ workflowId: test.workflowId, status: 'completed', childRuns });
+  }
   process.stdout.write(
     JSON.stringify({
       schema: 'comet.workflow.artifact-verification.v1',
       packageHash: request.packageHash,
       contractsHash: hashRuntimeValue(request.contracts),
       checks,
+      ...(request.workflowTests?.length
+        ? { workflowChecks, workflowTestsHash: hashRuntimeValue(request.workflowTests) }
+        : {}),
     }),
   );
 }

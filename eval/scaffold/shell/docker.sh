@@ -534,6 +534,17 @@ build_agent_runtime_mount_args() {
     ENV_ARGS+=("-e" "CODEX_HOME=/home/agent/.codex")
     ENV_ARGS+=("-e" "QODER_CONFIG_DIR=/home/agent/.qoder")
     ENV_ARGS+=("-e" "COMET_EVAL_CODEBUDDY_CONFIG_DIR=/home/agent/.codebuddy")
+    if [[ -n "${COMET_APPLICATION_EVAL_CONTEXT:-}" ]]; then
+        local application_metadata
+        application_metadata=$(python3 -c 'import json,os; p=json.loads(os.environ["COMET_APPLICATION_EVAL_CONTEXT"])["preview"]; print("\n".join([p["application"]["id"],p["application"]["version"],p["runtimeIdentityHash"]]))') || return 1
+        application_metadata="${application_metadata//$'\r'/}"
+        local -a application_fields
+        mapfile -t application_fields <<< "$application_metadata"
+        [[ ${#application_fields[@]} -eq 3 ]] || return 1
+        ENV_ARGS+=("-e" "COMET_EVAL_APPLICATION_ID=${application_fields[0]}"
+                   "-e" "COMET_EVAL_APPLICATION_VERSION=${application_fields[1]}"
+                   "-e" "COMET_EVAL_APPLICATION_HASH=${application_fields[2]}")
+    fi
 }
 
 # Build mount + CLI args for the official LangSmith Claude Code plugin.

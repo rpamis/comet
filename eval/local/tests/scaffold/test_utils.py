@@ -1520,6 +1520,143 @@ def test_decision_point_detector_accepts_numbered_archive_reply():
     assert result.returncode == 0
 
 
+@pytest.mark.parametrize("text", ["**Do you approve this spec?**", "**是否批准当前方案？**"])
+def test_decision_point_accepts_markdown_questions(text):
+    assert utils.run_shell("decision-point.sh", text, check=False).returncode == 0
+
+
+def test_completion_point_rejects_child_completion_with_parent_pending():
+    result = utils.run_shell(
+        "completion-point.sh",
+        "The child workflow is completed. The parent still has pending steps.",
+        check=False,
+    )
+    assert result.returncode == 1
+
+
+def test_completion_point_accepts_explicit_parent_completion_after_children():
+    result = utils.run_shell(
+        "completion-point.sh",
+        "The child workflow is completed. The parent workflow is completed.",
+        check=False,
+    )
+    assert result.returncode == 0
+
+
+def test_completion_point_rejects_future_parent_archive_after_child_completion():
+    result = utils.run_shell(
+        "completion-point.sh",
+        "The child workflow is completed. The parent will be archived tomorrow.",
+        check=False,
+    )
+    assert result.returncode == 1
+
+
+@pytest.mark.parametrize(
+    "state,lineage,version,digest,count,expected",
+    [
+        ("completed", [], "1", "fixed", 1, 0),
+        ("completed", [], "1", "fixed", 2, 0),
+        ("waiting", [], "1", "fixed", 2, 1),
+        (["completed", "waiting"], [], "1", "fixed", 2, 1),
+        ("completed", [], "1", "fixed", 0, 1),
+        ("waiting", [], "1", "fixed", 1, 1),
+        ("completed", ["parent"], "1", "fixed", 1, 1),
+        ("completed", [], "2", "fixed", 1, 1),
+        ("completed", [], "1", "changed", 1, 1),
+    ],
+)
+def test_application_completion_uses_owned_root_not_subject_text(
+    tmp_path, state, lineage, version, digest, count, expected
+):
+    package = tmp_path / "node_modules/@rpamis/comet"
+    package.mkdir(parents=True)
+    (package / "package.json").write_text(
+        json.dumps({"type": "module", "exports": {"./applications": "./applications.mjs"}})
+    )
+    record = {
+        "applicationId": "fixture",
+        "record": {
+            "application": {"version": version, "contentHash": digest},
+            "run": {"status": state, "lineage": lineage},
+        },
+        "error": None,
+    }
+    (package / "applications.mjs").write_text(
+        "export async function listWorkflowApplicationRunRecords(){return "
+        + json.dumps(
+            [
+                {
+                    **record,
+                    "record": {
+                        **record["record"],
+                        "run": {
+                            **record["record"]["run"],
+                            "runId": f"run-{index}",
+                            "status": state[index] if isinstance(state, list) else state,
+                        },
+                    },
+                }
+                for index in range(count)
+            ]
+        )
+        + ";}"
+    )
+    env = dict(
+        os.environ,
+        COMET_EVAL_APPLICATION_ID="fixture",
+        COMET_EVAL_APPLICATION_VERSION="1",
+        COMET_EVAL_APPLICATION_HASH="fixed",
+    )
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            utils._to_bash_path(utils.SHELL_DIR / "completion-point.sh"),
+            "Workflow completed.",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.returncode == expected, result.stderr
+
+
+def test_docker_passes_only_fixed_application_identity_to_completion_probe(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    env = _isolated_fake_agent_env(fake_bin, "claude")
+    env["COMET_APPLICATION_EVAL_CONTEXT"] = json.dumps(
+        {
+            "skillRoot": "host-private-path",
+            "preview": {
+                "application": {"id": "fixture", "version": "1"},
+                "runtimeIdentityHash": "fixed",
+            },
+        }
+    )
+    result = subprocess.run(
+        [
+            utils.BASH_EXEC,
+            "-c",
+            'source "$1"; ENV_ARGS=(); build_agent_runtime_mount_args; printf "%s\\0" "${ENV_ARGS[@]}"',
+            "_",
+            utils._to_bash_path(utils.SHELL_DIR / "docker.sh"),
+        ],
+        env=env,
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    for item in (
+        "COMET_EVAL_APPLICATION_ID=fixture",
+        "COMET_EVAL_APPLICATION_VERSION=1",
+        "COMET_EVAL_APPLICATION_HASH=fixed",
+    ):
+        assert item.encode() in result.stdout.split(b"\0")
+    assert b"host-private-path" not in result.stdout
+
+
 def test_completion_point_detector_requires_explicit_non_negated_workflow_completion():
     archived = utils.run_shell(
         "completion-point.sh",

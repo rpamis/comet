@@ -26,9 +26,13 @@ SDK Skill 应用包含完整入口 Skill 与由 SDK 推进的 Runtime。宿主 A
 
 ## 阶段产物与本地验收
 
-新创作使用 Creator v4，必须在 `manifest.artifactContracts` 中逐阶段声明必需文件及内容条件，或者用 `noArtifactsReason` 说明不产生文件的原因。独立流程覆盖执行步骤；Native、Classic 覆盖新增或替换的 Skill，保留原领域检查。契约绑定真实 `workflowId/stepId`，支持固定相对 `ref`、从输出读取路径的 `refFrom`、同步 JSON Schema、必需文本和 Markdown 章节。文件默认非空，完成回报必须携带实际 SHA-256；SDK 本地执行端口自动收集文件证据。
+新创作使用 Creator v5，必须在 `manifest.artifactContracts` 中逐阶段声明必需文件及内容条件，或者用 `noArtifactsReason` 说明不产生文件的原因。独立流程覆盖执行步骤；Native、Classic 覆盖新增或替换的 Skill，保留原领域检查。契约绑定真实 `workflowId/stepId`，支持固定相对 `ref`、从输出读取路径的 `refFrom`、同步 JSON Schema、必需文本和 Markdown 章节。文件默认非空，完成回报必须携带实际 SHA-256；SDK 本地执行端口自动收集文件证据。
 
 业务条件由 Agent 编写固定验证器，例如检查来源与结论是否对应、清单记录是否完整。`artifactTests` 为每个必需产物步骤提供正常文件和输出；有业务验证器时，还须提供通过通用文件和输出结构检查的 `invalidCases`。Creator 在无宿主凭据的独立 Node 进程和临时项目中运行检查，自动补充缺失、空文件、内容不符与摘要变化样例。扩展的业务验证器单独验收，原 Native/Classic 候选和审批约束继续由实际领域 Run 核对。
+
+独立组合还须为每个根流程提供一个 `workflowTests` 样例，沿固定原图运行主要路径，包含实际涉及的会话步骤、子流程和审批；不要求遍历全部分支。每项声明 `workflowId`、启动 `input`、固定测试模块 `module` 与 `exportName`。模块须写入 `proposal.modules`，例如 `tests/workflow.mjs`；导出的异步函数接收 `{ runtime, runId, projectRoot, application }`。根 Run 已启动，使用 `runtime.inspect/next/claim/recordOutcome/resolveWait/execute` 推进，可以调用交付包的辅助模块；`application.store` 仅支持只读查询。Skill 结果及审批使用样例，文件仅写入隔离项目。
+
+测试模块返回“通过”不构成证据。SDK 重新加载固定应用定义，读取隔离内存 Store 中的根 Run 及其实际子 Run，全部完成才接受；报告绑定当前方案样例和固定包。该检查不访问网络、宿主凭据或用户级 Runtime，不验证持久化、CLI 进程和真实模型行为。现有 Creator v3/v4 Run 继续沿原定义恢复，不追加此要求。运行 `comet creator guide --json` 查看字段示例。
 
 本地验收失败进入 `review-verification`，可以 retry、revise 或 rejected，没有 skip。通过后才进入可选模型 Eval；安装预览再次核对验收报告是否属于当前固定包。实际应用在完成阶段、领取下游动作及接受下游结果时复验文件与原 Action 证据。修复步骤通过同一流程的 `replaces` 声明重做的产物，接受新结果后替代旧证据；未声明的文件变化保持阻塞。完整字段与样例见发布包 `comet-any/reference/sdk-creation.md`。
 

@@ -93,9 +93,10 @@ it('starts the new Creator workflow with non-sensitive Eval configuration', asyn
   expect(summary.actions[0].stepId).toBe('analyze');
   const { createCreatorRuntime } = await import('../../domains/workflow-creation/index.js');
   const run = await createCreatorRuntime(root).inspect('new-eval');
-  expect(run.workflow.version).toBe('4');
+  expect(run.workflow.version).toBe('5');
   expect(run.input).toMatchObject({
     artifactContractsVersion: 1,
+    workflowTestsVersion: 1,
     evaluation: { agent: 'codex', model: 'fixture-model', maxTurns: 6 },
   });
 });

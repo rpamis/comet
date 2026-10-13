@@ -7,6 +7,7 @@ import {
   prepareWorkflowApplicationPlan,
   compileWorkflowApplication,
   verifyWorkflowApplicationArtifactContracts,
+  assertWorkflowVerificationCases,
   type WorkflowApplicationProposal,
   prepareWorkflowApplicationExample,
 } from '../../../domains/workflow-generation/index.js';
@@ -125,6 +126,122 @@ it('checks valid artifacts and real missing, empty, changed, malformed and busin
   ]);
   expect(report.checks.filter((c) => c.accepted)).toHaveLength(1);
   expect(await fs.stat(path.join(project, 'docs')).catch(() => null)).toBeNull();
+});
+
+function conversationProposal(stopAtApproval = false): WorkflowApplicationProposal {
+  const p = proposal();
+  p.composition = {
+    kind: 'standalone',
+    executorIds: ['local'],
+    validatorRefs: [],
+    transitionHandlers: [],
+    workflows: [
+      {
+        id: 'chain',
+        version: '1',
+        entry: 'grill',
+        steps: {
+          grill: { type: 'child_workflow', workflow: { id: 'conversation', version: '1' } },
+          implement: { type: 'handoff', ref: 'implement' },
+        },
+        transitions: [{ from: 'grill', to: 'implement' }],
+      },
+      {
+        id: 'conversation',
+        version: '1',
+        entry: 'talk',
+        steps: {
+          talk: { type: 'handoff', ref: 'talk' },
+          approve: { type: 'ask_user', proposalFrom: 'talk', choices: ['approved', 'rejected'] },
+          complete: { type: 'handoff', ref: 'complete' },
+        },
+        transitions: [
+          { from: 'talk', to: 'approve' },
+          { from: 'approve', to: 'complete', on: 'approved' },
+        ],
+      },
+    ],
+  };
+  p.manifest.artifactContracts = [
+    ['chain', 'grill'],
+    ['chain', 'implement'],
+    ['conversation', 'talk'],
+    ['conversation', 'complete'],
+  ].map(([workflowId, stepId]) => ({
+    workflowId,
+    stepId,
+    artifacts: [],
+    noArtifactsReason: '仅核对会话和流程衔接。',
+  }));
+  p.artifactTests = [];
+  p.workflowTests = [
+    { workflowId: 'chain', input: {}, module: 'tests/chain.mjs', exportName: 'verify' },
+  ];
+  p.modules = {
+    'bindings.mjs':
+      "export function createBindings(){return {executors:[{id:'local',capabilities:[],supports:()=>true,execute:async()=>({status:'succeeded',output:{}})}]};}",
+    'tools/session.mjs': `export async function finish(runtime, runId) {
+      const run=await runtime.inspect(runId); const a=run.actions.find(a=>a.status==='pending'&&a.type!=='child_workflow');
+      const claimed=await runtime.claim({runId,actionId:a.id,attempt:a.attempt,inputHash:a.inputHash,executorId:'local',capabilities:[]});
+      const current=claimed.actions.find(item=>item.id===a.id);
+      await runtime.recordOutcome({runId,outcome:{actionId:a.id,attempt:a.attempt,inputHash:a.inputHash,claimToken:current.claim.token,outcomeId:'done-'+a.id,status:'succeeded',output:{}}});
+    }`,
+    'tests/chain.mjs': `import {finish} from '../tools/session.mjs';
+      export async function verify({runtime,runId}) {
+        let parent=await runtime.next({runId});
+        const child=parent.children[0].runId;
+        await finish(runtime,child);
+        ${
+          stopAtApproval
+            ? 'return;'
+            : `const run=await runtime.inspect(child); const w=run.waits.find(w=>w.status==='pending');
+        await runtime.resolveWait({runId:child,waitId:w.id,proposalHash:w.proposalHash,decisionId:'fixture-approval',choice:'approved'});
+        await finish(runtime,child);
+        await runtime.next({runId});
+        await finish(runtime,runId);`
+        }
+      }`,
+  };
+  return p;
+}
+
+it('runs the original parent/child graph, no-file stages, approval and delivered helper to completion', async () => {
+  const { plan, compiled } = await compile(conversationProposal());
+  const report = await verifyWorkflowApplicationArtifactContracts({
+    plan,
+    file: compiled.file,
+    packageHash: compiled.contentHash,
+  });
+  expect(report.workflowChecks).toEqual([
+    { workflowId: 'chain', status: 'completed', childRuns: 1 },
+  ]);
+  expect(
+    await fs.stat(path.join(project, '.comet/current-change.json')).catch(() => null),
+  ).toBeNull();
+});
+
+it('rejects a fixture that returns while the child approval is still pending', async () => {
+  const { plan, compiled } = await compile(conversationProposal(true));
+  await expect(
+    verifyWorkflowApplicationArtifactContracts({
+      plan,
+      file: compiled.file,
+      packageHash: compiled.contentHash,
+    }),
+  ).rejects.toThrow(/完整流程.*未完成/);
+});
+
+it('rejects test modules outside the fixed package even when a raw plan declares them', async () => {
+  const { plan } = await compile(conversationProposal());
+  expect(() =>
+    assertWorkflowVerificationCases({
+      ...plan,
+      modules: { ...plan.modules, '../outside.mjs': 'export function verify(){}' },
+      workflowTests: [
+        { workflowId: 'chain', input: {}, module: '../outside.mjs', exportName: 'verify' },
+      ],
+    }),
+  ).toThrow(/完整流程验收样例无效/);
 });
 it('refuses a business validator that always passes despite a well-formed negative artifact', async () => {
   const { plan, compiled } = await compile(proposal(true));

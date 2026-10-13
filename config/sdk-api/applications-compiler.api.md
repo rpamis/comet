@@ -43,6 +43,14 @@ export interface ApplicationArtifactVerification {
     packageHash: string;
     // (undocumented)
     schema: 'comet.workflow.artifact-verification.v1';
+    // (undocumented)
+    workflowChecks?: {
+        workflowId: string;
+        status: 'completed';
+        childRuns: number;
+    }[];
+    // (undocumented)
+    workflowTestsHash?: string;
 }
 
 // @public
@@ -96,8 +104,23 @@ export interface ApplicationExtensionPlan {
     };
 }
 
+// @public
+export interface ApplicationWorkflowTestCase {
+    // (undocumented)
+    exportName: string;
+    // (undocumented)
+    input: RuntimeValue;
+    // (undocumented)
+    module: string;
+    // (undocumented)
+    workflowId: string;
+}
+
 // @public (undocumented)
 export function assertArtifactVerificationCases(plan: WorkflowApplicationPlan): void;
+
+// @public (undocumented)
+export function assertWorkflowVerificationCases(plan: WorkflowApplicationPlan, required?: boolean): void;
 
 // @public (undocumented)
 export interface CompiledWorkflowApplication {
@@ -168,6 +191,8 @@ export interface WorkflowApplicationPlan {
     schema: 'comet.workflow.application.plan.v1';
     // (undocumented)
     workflows: readonly DefineWorkflowOptions[];
+    // (undocumented)
+    workflowTests?: readonly ApplicationWorkflowTestCase[];
 }
 
 // @public (undocumented)

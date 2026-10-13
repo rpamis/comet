@@ -15,7 +15,10 @@ import {
   type WorkflowApplicationManifest,
   validateApplicationArtifactContracts,
 } from '../workflow-application/index.js';
-import type { ApplicationArtifactTestCase } from './artifact-verification.js';
+import type {
+  ApplicationArtifactTestCase,
+  ApplicationWorkflowTestCase,
+} from './artifact-verification.js';
 import {
   applicationError,
   applicationFilesHash,
@@ -75,6 +78,7 @@ export interface WorkflowApplicationPlan {
   modules: Readonly<Record<string, string>>;
   documents?: Readonly<Record<string, string>>;
   artifactTests?: readonly ApplicationArtifactTestCase[];
+  workflowTests?: readonly ApplicationWorkflowTestCase[];
   composition: ApplicationCompositionPlan;
 }
 
@@ -171,6 +175,21 @@ const planSchema = {
     workflows: { type: 'array', minItems: 1, items: { type: 'object' } },
     modules: { type: 'object', additionalProperties: { type: 'string', minLength: 1 } },
     documents: { type: 'object', additionalProperties: { type: 'string', minLength: 1 } },
+    workflowTests: {
+      type: 'array',
+      maxItems: 32,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['workflowId', 'input', 'module', 'exportName'],
+        properties: {
+          workflowId: textSchema,
+          input: {},
+          module: textSchema,
+          exportName: textSchema,
+        },
+      },
+    },
     artifactTests: {
       type: 'array',
       maxItems: 256,

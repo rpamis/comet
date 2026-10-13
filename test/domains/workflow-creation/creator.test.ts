@@ -66,10 +66,11 @@ async function analyzed(
   host = 'codex',
   version = '3',
   authored = analysis(),
+  runId = 'creation-one',
 ) {
   const runtime = createCreatorRuntime(root);
   let run = await runtime.start({
-    runId: 'creation-one',
+    runId,
     workflow: { id: 'comet-creator', version },
     input: {
       goal: '每周报告先审后发布',
@@ -157,6 +158,92 @@ async function choose(run: Awaited<ReturnType<typeof analyzed>>, choice: string)
   });
   return (await runtime.runUntilBlocked({ runId: run.runId, executorId: 'creator-local' })).run;
 }
+
+it('v5 requires a whole-flow fixture for new standalone compositions and preserves v4 recovery', async () => {
+  const authored = analysis();
+  Object.assign(authored.proposal, {
+    composition: {
+      kind: 'standalone',
+      executorIds: ['local'],
+      validatorRefs: [],
+      transitionHandlers: [],
+      workflows: [
+        {
+          id: 'chain',
+          version: '1',
+          entry: 'talk',
+          steps: { talk: { type: 'handoff', ref: 'talk' } },
+        },
+      ],
+    },
+    modules: {
+      'bindings.mjs':
+        "export function createBindings(){return {executors:[{id:'local',capabilities:[],supports:()=>true,execute:async()=>({status:'succeeded',output:{}})}]};}",
+    },
+    manifest: {
+      ...authored.proposal.manifest,
+      artifactContracts: [
+        { workflowId: 'chain', stepId: 'talk', artifacts: [], noArtifactsReason: '仅处理会话。' },
+      ],
+    },
+  });
+  await expect(analyzed(true, 'export', 'codex', '5', authored)).rejects.toThrow(
+    /完整流程验收样例/,
+  );
+  // 同样的旧 v4 方案仍能恢复，不追加新的确认或验收要求。
+  const old = await analyzed(true, 'export', 'codex', '4', authored, 'legacy-four');
+  expect(old.waits.at(-1)?.stepId).toBe('confirm-plan');
+});
+
+it('v5 verifies the actual whole-flow fixture before optional Eval and rejects unfinished fixtures', async () => {
+  const authored = analysis();
+  Object.assign(authored.proposal, {
+    composition: {
+      kind: 'standalone',
+      executorIds: ['local'],
+      validatorRefs: [],
+      transitionHandlers: [],
+      workflows: [
+        {
+          id: 'chain',
+          version: '1',
+          entry: 'talk',
+          steps: { talk: { type: 'handoff', ref: 'talk' } },
+        },
+      ],
+    },
+    modules: {
+      'bindings.mjs':
+        "export function createBindings(){return {executors:[{id:'local',capabilities:[],supports:()=>true,execute:async()=>({status:'succeeded',output:{}})}]};}",
+      'tests/workflow.mjs':
+        "export async function verify({runtime,runId}){const run=await runtime.inspect(runId);await runtime.execute({runId,actionId:run.actions[0].id,executorId:'local'});}",
+    },
+    manifest: {
+      ...authored.proposal.manifest,
+      artifactContracts: [
+        { workflowId: 'chain', stepId: 'talk', artifacts: [], noArtifactsReason: '仅处理会话。' },
+      ],
+    },
+    workflowTests: [
+      { workflowId: 'chain', input: {}, module: 'tests/workflow.mjs', exportName: 'verify' },
+    ],
+  });
+  let run = await analyzed(true, 'export', 'codex', '5', authored, 'verified-five');
+  run = await choose(run, 'approved');
+  expect(run.waits.at(-1)?.stepId).toBe('confirm-eval');
+  expect(run.outputs.verify.value).toMatchObject({
+    artifactVerification: {
+      workflowChecks: [{ workflowId: 'chain', status: 'completed', childRuns: 0 }],
+    },
+  });
+  Object.assign(authored.proposal.modules, {
+    'tests/workflow.mjs': 'export async function verify(){return {passed:true};}',
+  });
+  let invalid = await analyzed(true, 'other-export', 'codex', '5', authored, 'unfinished-five');
+  invalid = await choose(invalid, 'approved');
+  expect(invalid.waits.at(-1)?.stepId).toBe('review-verification');
+  expect(invalid.actions.find((a) => a.stepId === 'verify')?.status).toBe('failed');
+});
 
 it('v4 requires local artifact verification before optional Eval and keeps evidence after cold recovery', async () => {
   let run = await analyzed(true, '.comet/creator/exports/v4-report', 'codex', '4');

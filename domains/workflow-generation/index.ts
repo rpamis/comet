@@ -15,8 +15,10 @@ export { prepareWorkflowApplicationExample } from './examples.js';
 export {
   verifyWorkflowApplicationArtifactContracts,
   assertArtifactVerificationCases,
+  assertWorkflowVerificationCases,
 } from './artifact-verification.js';
 export type {
   ApplicationArtifactTestCase,
   ApplicationArtifactVerification,
+  ApplicationWorkflowTestCase,
 } from './artifact-verification.js';

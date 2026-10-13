@@ -27,6 +27,52 @@ export interface ApplicationArtifactVerification {
   packageHash: string;
   contractsHash: string;
   checks: { workflowId: string; stepId: string; name: string; accepted: boolean }[];
+  workflowChecks?: { workflowId: string; status: 'completed'; childRuns: number }[];
+  workflowTestsHash?: string;
+}
+/** 仅在隔离项目中调用固定测试模块；审批与宿主结果使用样例，不调用真实模型。 */
+export interface ApplicationWorkflowTestCase {
+  workflowId: string;
+  input: RuntimeValue;
+  module: string;
+  exportName: string;
+}
+
+export function assertWorkflowVerificationCases(
+  plan: WorkflowApplicationPlan,
+  required = false,
+): void {
+  const tests = plan.workflowTests ?? [];
+  const seen = new Set<string>();
+  if (tests.length > 32) throw new Error('完整流程验收样例超过上限');
+  for (const test of tests) {
+    if (
+      plan.composition.kind !== 'standalone' ||
+      plan.workflows.filter((w) => w.id === test.workflowId).length !== 1 ||
+      seen.has(test.workflowId) ||
+      !/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*\.mjs$/u.test(test.module) ||
+      !Object.hasOwn(plan.modules, test.module) ||
+      !/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(test.exportName)
+    )
+      throw new Error(`完整流程验收样例无效：${test.workflowId}`);
+    seen.add(test.workflowId);
+  }
+  if (required && plan.composition.kind === 'standalone') {
+    if (!tests.length)
+      throw new Error(
+        '独立组合缺少完整流程验收样例；在 workflowTests 声明 workflowId、input、module、exportName。',
+      );
+    const children = new Set(
+      plan.workflows.flatMap((w) =>
+        Object.values(w.steps).flatMap((s) => (s.type === 'child_workflow' ? [s.workflow.id] : [])),
+      ),
+    );
+    for (const workflow of plan.workflows)
+      if (!children.has(workflow.id) && !seen.has(workflow.id))
+        throw new Error(
+          `独立组合缺少完整流程验收样例：${workflow.id}；在 workflowTests 声明 workflowId、input、module、exportName，测试模块推进真实 SDK Run 到完成。`,
+        );
+  }
 }
 export function assertArtifactVerificationCases(plan: WorkflowApplicationPlan): void {
   const contracts = plan.manifest.artifactContracts ?? [];
@@ -92,6 +138,7 @@ export async function verifyWorkflowApplicationArtifactContracts(options: {
   packageHash: string;
 }): Promise<ApplicationArtifactVerification> {
   assertArtifactVerificationCases(options.plan);
+  assertWorkflowVerificationCases(options.plan);
   const assertPackage = async () => {
     if (
       (await inspectWorkflowApplicationPackage(path.dirname(options.file), options.packageHash))
@@ -116,6 +163,7 @@ export async function verifyWorkflowApplicationArtifactContracts(options: {
         tests: options.plan.artifactTests ?? [],
         contracts: options.plan.manifest.artifactContracts ?? [],
         composition: options.plan.composition,
+        workflowTests: options.plan.workflowTests ?? [],
         root,
         packageHash: options.packageHash,
       }),
@@ -212,6 +260,22 @@ export async function verifyWorkflowApplicationArtifactContracts(options: {
       report.checks.some((check) => check.accepted !== (check.name === 'valid'))
     )
       throw new Error('阶段产物验收报告与当前固定包或反例结果不匹配');
+    const workflowTests = options.plan.workflowTests ?? [];
+    if (
+      (report.workflowChecks ?? []).length !== workflowTests.length ||
+      (workflowTests.length > 0 && report.workflowTestsHash !== hashRuntimeValue(workflowTests)) ||
+      workflowTests.some(
+        (test) =>
+          !(report.workflowChecks ?? []).some(
+            (check) =>
+              check.workflowId === test.workflowId &&
+              check.status === 'completed' &&
+              Number.isInteger(check.childRuns) &&
+              check.childRuns >= 0,
+          ),
+      )
+    )
+      throw new Error('完整流程验收报告缺失或未完成');
     const expected = new Set<string>();
     for (const test of options.plan.artifactTests ?? []) {
       const add = (name: string) =>

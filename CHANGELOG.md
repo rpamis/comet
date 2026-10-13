@@ -6,6 +6,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Added
 
+- **Standalone workflow checks**: Require new Comet Any standalone compositions to exercise their main workflow in isolation, including conversation-only stages, child workflows, and approvals, before installation. Existing creation Runs retain their original verification and recovery rules.
 - **Comet Any Dashboard**: Observe early workflow creation and fixed-version application runs in a three-pane workspace. Inspect parallel actions, user decisions, evidence waits, repeated activations, rejected outcomes, and child workflows. Keep local validation, model Eval, and host evidence separate, preview bound artifacts with their names and full content, and preserve the selected run and reading position as creation advances and during refreshes. Open child workflows once their saved Runs are available, and return from linked Eval details to the originating Any run and evidence tab. Unreadable records remain visible without hiding healthy runs; observation does not advance the Runtime.
 - **Dashboard updates**: Show the running Comet version in the sidebar with a red indicator for newer npm releases, and confirm updates for all indexed projects in a settings-style dialog. Follow live CLI and npm output, close and reopen the dialog during an update, and review failures before retrying.
 - **Dashboard languages**: Switch between Chinese and English from the top-right corner across workflow, memory, knowledge, settings, and Eval pages, including stored system explanations and repository-generated knowledge descriptions. Remember the browser's language preference while preserving current navigation, form input, saved records, and original document, report, and log content.
@@ -34,6 +35,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Eval user interaction**: Recognize Markdown-formatted approval questions and avoid ending a task when only a child workflow has completed. SDK application evaluations check the fixed application's root Run instead of completion prose.
 - **Classic update ignores**: Restore missing local-state ignore rules when updating Classic-only projects, keeping portable configuration trackable.
 - **Dashboard project memory details**: Keep loaded content visible during background updates, avoid repeated reads when the selected memory is unchanged, and align loading placeholders with the detail pane padding.
 - **Windows Eval inputs**: Pass Claude Code and Codex evaluation prompts through temporary files and stdin so complete Skill and SDK application inputs are preserved without exceeding command-line limits or altering backslashes and newlines.

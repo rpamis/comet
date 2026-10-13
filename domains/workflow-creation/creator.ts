@@ -25,6 +25,7 @@ import {
   type WorkflowApplicationPlan,
   type WorkflowApplicationProposal,
   assertArtifactVerificationCases,
+  assertWorkflowVerificationCases,
   verifyWorkflowApplicationArtifactContracts,
 } from '../workflow-generation/index.js';
 import {
@@ -141,7 +142,7 @@ function assertPlan(run: Readonly<WorkflowRun>): Prepared {
   }
   return prepared;
 }
-function requireArtifactPlan(plan: WorkflowApplicationPlan): void {
+function requireArtifactPlan(plan: WorkflowApplicationPlan, requireWorkflowTests = false): void {
   if (!plan.manifest.artifactContracts)
     throw new Error(
       '新创作需要 manifest.artifactContracts，逐阶段声明必需产物或 noArtifactsReason',
@@ -163,6 +164,7 @@ function requireArtifactPlan(plan: WorkflowApplicationPlan): void {
         throw new Error(`阶段缺少必需产物或无产物原因：${workflow.id}/${stepId}`);
     }
   assertArtifactVerificationCases(plan);
+  assertWorkflowVerificationCases(plan, requireWorkflowTests);
 }
 function assertPackage(run: Readonly<WorkflowRun>): Package {
   const compiled = value<Package>(run, 'compile');
@@ -197,6 +199,9 @@ function assertArtifactVerification(run: Readonly<WorkflowRun>): void {
       hashRuntimeValue(assertPlan(run).plan.manifest.artifactContracts ?? [])
   )
     reject('安装前需要当前固定包的阶段产物本地验收');
+  const workflowTests = assertPlan(run).plan.workflowTests ?? [];
+  if (workflowTests.length && evidence.workflowTestsHash !== hashRuntimeValue(workflowTests))
+    reject('安装前需要当前方案的完整流程验收');
 }
 
 function distributionOptions(root: string, run: Readonly<WorkflowRun>) {
@@ -354,7 +359,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         } catch (error) {
           if (
             action.stepId !== 'preview' &&
-            !(action.stepId === 'verify' && run?.workflow.version === '4')
+            !(action.stepId === 'verify' && ['4', '5'].includes(run?.workflow.version ?? ''))
           )
             throw error;
           return {
@@ -381,7 +386,8 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         packageRoot: staging,
       });
       requireAuthoredDocuments(plan);
-      if (object(run.input).artifactContractsVersion === 1) requireArtifactPlan(plan);
+      if (object(run.input).artifactContractsVersion === 1)
+        requireArtifactPlan(plan, object(run.input).workflowTestsVersion === 1);
       for (const skill of plan.manifest.skills)
         if (!path.isAbsolute(skill.root)) throw new Error('创作方案的Skill目录需要绝对路径');
       return {
@@ -464,6 +470,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
           '固定Skill与资源摘要',
           '已确认的有效流程及执行绑定',
           ...(artifactVerification ? ['隔离阶段产物正常与异常样例'] : []),
+          ...(artifactVerification?.workflowChecks?.length ? ['隔离完整流程及父子衔接样例'] : []),
         ],
         notRun: ['本步骤不替代真实宿主、模型和完整业务验收'],
         ...(artifactVerification ? { artifactVerification } : {}),
@@ -664,7 +671,8 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
               packageRoot: staging,
               projectRoot: root,
             });
-            if (input.artifactContractsVersion === 1) requireArtifactPlan(plan);
+            if (input.artifactContractsVersion === 1)
+              requireArtifactPlan(plan, input.workflowTestsVersion === 1);
             return { accepted: true };
           } catch (error) {
             return { accepted: false, reason: (error as Error).message };
@@ -869,7 +877,9 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
     { from: 'review-verification', to: 'stop', on: 'rejected' },
   ];
   const legacyRouter = runtimeOptions.transitionHandlers![0];
-  runtimeOptions.workflows = [legacy, current];
+  const workflowTested = structuredClone(current);
+  workflowTested.version = '5';
+  runtimeOptions.workflows = [legacy, current, workflowTested];
   runtimeOptions.transitionHandlers = [
     legacyRouter,
     {
@@ -905,7 +915,7 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
       return runtime.resolveWait(command);
     },
     start(command) {
-      if (!['3', '4'].includes(command.workflow.version))
+      if (!['3', '4', '5'].includes(command.workflow.version))
         throw new Error('当前 Creator 只支持新创作定义；保留旧 Run 与工件，重新创建创作');
       const input = object(command.input);
       text(input.goal, '自然语言目标');
@@ -920,7 +930,8 @@ export function createCreatorRuntime(projectRoot: string): WorkflowRuntime {
         ...command,
         input: {
           ...input,
-          ...(command.workflow.version === '4' ? { artifactContractsVersion: 1 } : {}),
+          ...(['4', '5'].includes(command.workflow.version) ? { artifactContractsVersion: 1 } : {}),
+          ...(command.workflow.version === '5' ? { workflowTestsVersion: 1 } : {}),
         },
       });
     },
