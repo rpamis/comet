@@ -3,7 +3,8 @@ import { createNativePortableState } from '../../../domains/comet-native/native-
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as projectionLocking from '../../../platform/fs/recoverable-file-lock.js';
 import { nativeNewCommand } from '../../../domains/comet-native/native-new-command.js';
 import { nativeStatusCommand } from '../../../domains/comet-native/native-status-command.js';
 import { nativeDoctorCommand } from '../../../domains/comet-native/native-doctor-command.js';
@@ -20,6 +21,7 @@ import { readNativeSdkRunRecord } from '../../../domains/comet-native/native-sdk
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 async function fixture() {
@@ -80,12 +82,17 @@ describe('Native SDK read-only projection lock diagnostics', () => {
       'stale',
     ],
   ])(
-    'status and public runtime inspect remain fast and immutable with a %s lock',
+    'status and public runtime inspect never acquire or mutate a %s lock',
     async (_kind, content, expected) => {
       const { root, name, lock, request } = await fixture();
       await fs.writeFile(lock, content);
       const before = await files(root);
-      const started = performance.now();
+      // 直接拒绝获取写锁，避免并发调度和磁盘负载影响固定耗时断言。
+      const acquireLock = vi
+        .spyOn(projectionLocking, 'withRecoverableFileLock')
+        .mockImplementation(async () => {
+          throw new Error('只读查询不能获取写锁');
+        });
       expect((await nativeStatusCommand([name], root)).exitCode).toBe(0);
       const inspect = await runtimeDispatchCommand({
         projectRoot: root,
@@ -98,7 +105,7 @@ describe('Native SDK read-only projection lock diagnostics', () => {
         healthy: false,
         findings: [{ code: `sdk-projection-lock-${expected}` }],
       });
-      expect(performance.now() - started).toBeLessThan(1800);
+      expect(acquireLock).not.toHaveBeenCalled();
       expect(await files(root)).toEqual(before);
     },
   );

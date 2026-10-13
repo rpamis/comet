@@ -12,9 +12,9 @@ import {
 import {
   main,
   isDirectEntry,
-  projectRootFrom,
   runCometHookRouter,
 } from '../../../domains/comet-entry/hook-router-entry.js';
+import { projectRootFrom } from '../../../domains/comet-entry/hook-router-guard-entry.js';
 import { resolveCometHookProjectRoot } from '../../../domains/comet-entry/hook-project-root.js';
 
 vi.mock('../../../domains/comet-entry/hook-router.js', () => ({

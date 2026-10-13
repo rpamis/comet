@@ -74,17 +74,23 @@ describe('packaged Hook Router worktree isolation', () => {
     await selectNativeChange(paths, name);
   }
 
-  it('blocks direct Runtime writes through the installed Router with no selected change', async () => {
-    const runtimeRoot = await resolveWorkspaceRuntimeRoot(primary);
-    for (const ref of [
-      'native/changes/example/state.json',
-      'sdk-runs/classic/run.json',
-      'applications/custom/run.json',
-    ]) {
-      const result = spawnSync(
-        process.execPath,
-        [router, '--platform', 'codex', '--project-root', primary],
-        {
+  it.each(['project', 'global'] as const)(
+    'blocks direct Runtime writes through the %s Router with no selected change',
+    async (scope) => {
+      const routerArgs = [
+        router,
+        '--platform',
+        'codex',
+        ...(scope === 'project' ? ['--project-root', primary] : []),
+      ];
+      const runtimeRoot = await resolveWorkspaceRuntimeRoot(primary);
+      await fs.rm(path.join(primary, '.comet'), { recursive: true, force: true });
+      for (const ref of [
+        'native/changes/example/state.json',
+        'sdk-runs/classic/run.json',
+        'applications/custom/run.json',
+      ]) {
+        const result = spawnSync(process.execPath, routerArgs, {
           cwd: primary,
           input: JSON.stringify({
             tool_name: 'Write',
@@ -93,16 +99,13 @@ describe('packaged Hook Router worktree isolation', () => {
           }),
           encoding: 'utf8',
           timeout: 20_000,
-        },
-      );
-      expect(result.status, result.stderr).toBe(2);
-      expect(result.stderr).toContain('Runtime-owned');
-    }
-    const linkedRoot = await resolveWorkspaceRuntimeRoot(secondary);
-    const linked = spawnSync(
-      process.execPath,
-      [router, '--platform', 'codex', '--project-root', primary],
-      {
+        });
+        expect(result.status, result.stderr).toBe(2);
+        expect(result.stderr).toContain('Runtime-owned');
+      }
+      const linkedRoot = await resolveWorkspaceRuntimeRoot(secondary);
+      await fs.rm(path.join(secondary, '.comet'), { recursive: true, force: true });
+      const linked = spawnSync(process.execPath, routerArgs, {
         cwd: primary,
         input: JSON.stringify({
           tool_name: 'Write',
@@ -111,11 +114,11 @@ describe('packaged Hook Router worktree isolation', () => {
         }),
         encoding: 'utf8',
         timeout: 20_000,
-      },
-    );
-    expect(linked.status, linked.stderr).toBe(2);
-    expect(linked.stderr).toContain('Runtime-owned');
-  });
+      });
+      expect(linked.status, linked.stderr).toBe(2);
+      expect(linked.stderr).toContain('Runtime-owned');
+    },
+  );
 
   it.each([
     ['primary', 'runtime'],

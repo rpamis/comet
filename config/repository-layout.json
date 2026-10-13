@@ -66,11 +66,13 @@
   "entryRuntime": {
     "entries": {
       "runtime": "domains/comet-entry/entry-runtime-entry.ts",
-      "hookRouter": "domains/comet-entry/hook-router-entry.ts"
+      "hookRouter": "domains/comet-entry/hook-router-entry.ts",
+      "hookGuard": "domains/comet-entry/hook-router-guard-entry.ts"
     },
     "outputs": {
       "runtime": "assets/skills/comet/scripts/comet-entry-runtime.mjs",
-      "hookRouter": "assets/skills/comet/scripts/comet-hook-router.mjs"
+      "hookRouter": "assets/skills/comet/scripts/comet-hook-router.mjs",
+      "hookGuard": "assets/skills/comet/scripts/comet-hook-router-guard.mjs"
     }
   },
   "allowedTopLevelEntries": [

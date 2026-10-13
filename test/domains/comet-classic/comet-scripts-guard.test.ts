@@ -5,35 +5,15 @@
  * design guard (design_doc requirement), and build-complete guard (review_mode).
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { execFileSync, spawnSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
+import { runNode, CLASSIC_SCRIPT_COMMAND_TIMEOUT } from '../../helpers/comet-test-utils.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const classicRuntimeRoot = path.resolve('assets', 'skills', 'comet', 'runtime', 'classic');
-const classicSkillRoot = classicRuntimeRoot;
-
-function runNode(
-  cwd: string,
-  script: string,
-  args: string[] = [],
-  env: NodeJS.ProcessEnv = {},
-  timeout?: number,
-) {
-  return spawnSync(process.execPath, [script, ...args], {
-    cwd,
-    encoding: 'utf-8',
-    env: {
-      ...process.env,
-      COMET_RUNTIME_CLASSIC_ROOT: classicRuntimeRoot,
-      COMET_CLASSIC_SKILL_ROOT: classicRuntimeRoot,
-      ...env,
-    },
-    timeout,
-  });
-}
 
 async function writeFile(filePath: string, content: string) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -122,7 +102,13 @@ describe('comet guard', () => {
     );
     await fs.mkdir(path.join(tmpDir, 'docs', 'openspec'), { recursive: true });
 
-    const result = runNode(tmpDir, guardScript, ['dual-root', 'open'], {}, 15000);
+    const result = runNode(
+      tmpDir,
+      guardScript,
+      ['dual-root', 'open'],
+      {},
+      CLASSIC_SCRIPT_COMMAND_TIMEOUT,
+    );
 
     expect(result.status).toBe(0);
     await expect(
@@ -165,7 +151,13 @@ describe('comet guard', () => {
       );
       await fs.rm(path.join(tmpDir, 'openspec/changes/hotfix-open-guard/design.md'));
 
-      const result = runNode(tmpDir, guardScript, ['hotfix-open-guard', 'open'], {}, 15000);
+      const result = runNode(
+        tmpDir,
+        guardScript,
+        ['hotfix-open-guard', 'open'],
+        {},
+        CLASSIC_SCRIPT_COMMAND_TIMEOUT,
+      );
 
       expect(result.status, JSON.stringify({ stderr: result.stderr, stdout: result.stdout })).toBe(
         0,
@@ -202,7 +194,13 @@ describe('comet guard', () => {
       );
       await fs.rm(path.join(tmpDir, 'openspec/changes/full-open-guard/design.md'));
 
-      const result = runNode(tmpDir, guardScript, ['full-open-guard', 'open'], {}, 15000);
+      const result = runNode(
+        tmpDir,
+        guardScript,
+        ['full-open-guard', 'open'],
+        {},
+        CLASSIC_SCRIPT_COMMAND_TIMEOUT,
+      );
 
       expect(
         result.status,
@@ -463,7 +461,13 @@ describe('comet guard', () => {
         JSON.stringify({ scripts: { build: 'node -e "process.exit(0)"' } }),
       );
 
-      const result = runNode(tmpDir, guardScript, ['apply-heal', 'build', '--apply'], {}, 20000);
+      const result = runNode(
+        tmpDir,
+        guardScript,
+        ['apply-heal', 'build', '--apply'],
+        {},
+        CLASSIC_SCRIPT_COMMAND_TIMEOUT,
+      );
 
       expect(result.status, JSON.stringify({ stderr: result.stderr })).toBe(0);
       expect(result.stderr).toContain('bound_branch lazily set to feat-x');

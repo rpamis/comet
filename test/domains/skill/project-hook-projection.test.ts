@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { projectCometHooksFromInstalledScope } from '../../../domains/skill/project-hook-projection.js';
@@ -56,6 +57,22 @@ describe('project Hook projection', () => {
     await expect(
       fs.access(path.join(projectRoot, '.comet', 'current-change.json')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
+    const router = path.join(projectRoot, '.agents/skills/comet/scripts/comet-hook-router.mjs');
+    const result = spawnSync(
+      process.execPath,
+      [router, '--platform', 'codex', '--project-root', projectRoot],
+      {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        input: JSON.stringify({
+          cwd: projectRoot,
+          tool_name: 'Write',
+          tool_input: { file_path: 'example.txt' },
+        }),
+        timeout: 20_000,
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
   });
 
   it('reports a user-owned Kiro canonical Hook collision', async () => {

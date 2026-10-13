@@ -19,6 +19,7 @@ const { matchesMatcher, parseHookOutput } = await import(
 );
 const dsh = PLATFORMS.find((p) => p.id === 'dsh')!;
 const router = path.resolve('assets/skills/comet/scripts/comet-hook-router.mjs');
+const routerGuard = path.resolve('assets/skills/comet/scripts/comet-hook-router-guard.mjs');
 
 describe('DSH installed hook contract', () => {
   let root: string;
@@ -36,6 +37,7 @@ describe('DSH installed hook contract', () => {
     const script = path.join(root, '.dsh/skills/comet/scripts/comet-hook-router.mjs');
     await fs.mkdir(path.dirname(script), { recursive: true });
     await fs.copyFile(router, script);
+    await fs.copyFile(routerGuard, path.join(path.dirname(script), 'comet-hook-router-guard.mjs'));
     return JSON.parse(await fs.readFile(path.join(root, '.dsh/hooks.json'), 'utf8'));
   }
   async function profile(name: string, patch = '- id: user-plugin\n  disabled: false\n') {

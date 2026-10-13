@@ -35,6 +35,7 @@
     "comet/scripts/comet-resume-probe.mjs",
     "comet/scripts/comet-entry-runtime.mjs",
     "comet/scripts/comet-hook-router.mjs",
+    "comet/scripts/comet-hook-router-guard.mjs",
     "comet-native/SKILL.md",
     "comet-native/agents/openai.yaml",
     "comet-native/reference/artifacts.md",

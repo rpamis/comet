@@ -51,6 +51,10 @@ export async function projectCometHooksFromInstalledScope(
         ...HOOK_ROUTER_RUNTIME,
       );
       await copyFile(packagedRouter, projectRouter);
+      await copyFile(
+        path.join(path.dirname(packagedRouter), 'comet-hook-router-guard.mjs'),
+        path.join(path.dirname(projectRouter), 'comet-hook-router-guard.mjs'),
+      );
       const result = await reconcileProjectCometHooksForPlatform(
         targetProjectRoot,
         platform,

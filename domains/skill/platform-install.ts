@@ -65,6 +65,7 @@ const NATIVE_SHARED_SKILL_PATHS = new Set([
   'comet-review/agents/openai.yaml',
   'comet/scripts/comet-entry-runtime.mjs',
   'comet/scripts/comet-hook-router.mjs',
+  'comet/scripts/comet-hook-router-guard.mjs',
 ]);
 const RETIRED_COMET_OWNED_SKILL_PATHS = [
   'comet-native/scripts/comet-native-checkpoint.mjs',
@@ -690,6 +691,7 @@ async function prepareNativeSkillInstallTarget(
         relativePath === 'comet/SKILL.md' ||
         relativePath === 'comet/scripts/comet-entry-runtime.mjs' ||
         relativePath === 'comet/scripts/comet-hook-router.mjs' ||
+        relativePath === 'comet/scripts/comet-hook-router-guard.mjs' ||
         relativePath.startsWith('comet-any/') ||
         relativePath.startsWith('comet-native/'),
     )

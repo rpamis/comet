@@ -30,6 +30,7 @@ async function fixture(
   const home = path.join(root, 'home');
   await fs.mkdir(home);
   vi.stubEnv('HOME', home);
+  vi.stubEnv('USERPROFILE', home);
   vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
   await prepareClassicLegacyProject(projectRoot);
   execFileSync('git', ['init', '-b', 'main'], { cwd: projectRoot, stdio: 'ignore' });
@@ -591,7 +592,7 @@ describe('Classic candidate revisions', () => {
     }).trim();
     const delivered = await f.ok('state', 'complete-delivery', 'example', '--commit', commit);
     expect(delivered.nextAction.kind).toBe('done');
-  }, 60_000);
+  });
   it('rejects Design document drift after plan acceptance and reports the legal reapproval command', async () => {
     const f = await fixture();
     await f.prepareBuild();

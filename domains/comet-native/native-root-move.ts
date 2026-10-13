@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'crypto';
 import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
+import { readNativeTextFilePrefix } from './native-bounded-file.js';
+import { NATIVE_MANAGED_RUN_MARKER } from './native-state-document.js';
 
 import { atomicWriteText } from './native-atomic-file.js';
 import { defaultProjectConfig, readProjectConfig, writeProjectConfig } from './native-config.js';
@@ -105,6 +107,21 @@ async function assertNoOtherLocks(paths: NativeProjectPaths, ownedLock: string):
     if (entry.isFile() || entry.isSymbolicLink()) {
       throw new Error(`Native lock must be diagnosed before moving the root: ${file}`);
     }
+  }
+}
+
+async function assertNoSdkRootMove(paths: NativeProjectPaths): Promise<void> {
+  for (const entry of await walkTree(paths.nativeRoot, { rejectSymlinks: true })) {
+    if (entry.type !== 'file' || path.posix.basename(entry.ref) !== 'comet-state.yaml') continue;
+    const prefix = await readNativeTextFilePrefix({
+      root: paths.nativeRoot,
+      ref: entry.ref,
+      maxBytes: NATIVE_MANAGED_RUN_MARKER.length + 1,
+    });
+    if (/^# comet-execution: managed-run\r?\n/u.test(prefix.text))
+      throw new Error(
+        'Native root move cannot relocate SDK Runs or their archives; keep the current artifact root and select the new root before creating SDK changes',
+      );
   }
 }
 
@@ -920,6 +937,7 @@ export async function moveNativeRoot(options: {
   if (!(await exists(sourcePaths.nativeRoot))) {
     throw new Error(`Native source root does not exist: ${sourcePaths.nativeRoot}`);
   }
+  await assertNoSdkRootMove(sourcePaths);
   await assertNoUnfinishedTransactions(sourcePaths);
   if (await exists(destinationPaths.nativeRoot)) {
     throw new Error(`Native destination is occupied: ${destinationPaths.nativeRoot}`);
@@ -936,6 +954,7 @@ export async function moveNativeRoot(options: {
   const staging = stagingDirectory(destinationPaths, id);
   try {
     await assertNoOtherLocks(sourcePaths, lock.file);
+    await assertNoSdkRootMove(sourcePaths);
     await validateNativeWorkspaceIdentitiesForRootMove(sourcePaths);
     if (await exists(staging)) throw new Error(`Native move staging path is occupied: ${staging}`);
     await writeProjectConfig(options.projectRoot, pendingConfig(current, pending));

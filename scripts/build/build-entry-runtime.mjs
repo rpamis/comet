@@ -18,7 +18,20 @@ for (const [name] of runtimeEntries) {
   if (!runtimeOutputs[name]) throw new Error(`Entry runtime output is missing for ${name}`);
 }
 
-async function bundledRuntime(entry) {
+// The hook-router entry keeps its guard dependency out of the bundle: the
+// dynamic import is rewritten to the sibling output so the fast path never
+// parses the Classic/Native guard graph.
+const hookRouterGuardExternal = {
+  name: 'comet-hook-router-guard-external',
+  setup(build) {
+    build.onResolve({ filter: /hook-router-guard-entry[.]js$/ }, () => ({
+      path: './comet-hook-router-guard.mjs',
+      external: true,
+    }));
+  },
+};
+
+async function bundledRuntime(entry, plugins = []) {
   const result = await build({
     absWorkingDir: repoRoot,
     entryPoints: [entry],
@@ -37,6 +50,7 @@ async function bundledRuntime(entry) {
     treeShaking: true,
     minify: true,
     define: { __COMET_VERSION__: JSON.stringify(packageVersion) },
+    plugins,
     banner: {
       js: [
         '#!/usr/bin/env node',
@@ -54,7 +68,10 @@ async function bundledRuntime(entry) {
 for (const [name, entry] of runtimeEntries) {
   const runtimeOutput = runtimeOutputs[name];
   const outputFile = resolveRepositoryPath(runtimeOutput);
-  const expected = await bundledRuntime(entry);
+  const expected = await bundledRuntime(
+    entry,
+    name === 'hookRouter' ? [hookRouterGuardExternal] : [],
+  );
 
   if (process.argv.includes('--check')) {
     let actual;

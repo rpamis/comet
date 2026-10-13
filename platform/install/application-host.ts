@@ -14,6 +14,7 @@ export interface ApplicationHostIntegrationOptions {
   skillsRoot: string;
   ruleSource: string;
   routerSource: string;
+  routerGuardSource?: string;
 }
 
 export interface ApplicationHostIntegrationFile {
@@ -297,6 +298,15 @@ async function planIntegration(
     path.resolve(options.projectRoot, options.routerSource),
     'utf8',
   );
+  // 兼容仅传 Router 路径的调用方；自包含 Router 不需要额外依赖。
+  const routerGuardSource =
+    options.routerGuardSource ??
+    (routerContent.includes('./comet-hook-router-guard.mjs')
+      ? path.join(path.dirname(options.routerSource), 'comet-hook-router-guard.mjs')
+      : undefined);
+  const routerGuardContent = routerGuardSource
+    ? await readFile(path.resolve(options.projectRoot, routerGuardSource), 'utf8')
+    : null;
   const files: PlannedFile[] = [];
   const conflicts: string[] = [];
   let rule: ApplicationHostIntegrationState = {
@@ -416,6 +426,14 @@ async function planIntegration(
       () => markedRouter(routerContent),
       (existing) => isManagedRouter(existing) || existing === routerContent,
     );
+    const guardReady =
+      routerGuardContent === null ||
+      (await add(
+        'router',
+        path.join(skillsRoot, 'comet/scripts/comet-hook-router-guard.mjs'),
+        () => markedRouter(routerGuardContent),
+        (existing) => isManagedRouter(existing) || existing === routerGuardContent,
+      ));
     const fileName =
       platform.hookConfigFile ??
       (platform.hookFormat === 'claude-code' && options.scope === 'project'
@@ -505,7 +523,7 @@ async function planIntegration(
       return JSON.stringify(settings, null, 2) + '\n';
     });
     hook = {
-      status: routerReady && configReady ? 'available' : 'conflict',
+      status: routerReady && guardReady && configReady ? 'available' : 'conflict',
       path: target,
       executionVerified: false,
       activationRequired:
@@ -529,6 +547,7 @@ async function planIntegration(
     skillsRoot,
     ruleSourceHash: hash(ruleContent),
     routerSourceHash: hash(routerContent),
+    routerGuardSourceHash: routerGuardContent === null ? null : hash(routerGuardContent),
     files: previewFiles,
     rule,
     hook,

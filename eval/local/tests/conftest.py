@@ -1744,7 +1744,12 @@ def prebuild_docker_image(request):
 @pytest.fixture
 def test_dir(tmp_path):
     """Create isolated test directory (pytest manages cleanup)."""
-    return tmp_path
+    yield tmp_path
+    if (tmp_path / ".eval-runtime-volume").is_file():
+        from scaffold.python.utils import run_shell
+        result = run_shell("docker.sh", "cleanup-runtime-data", str(tmp_path), timeout=30, check=False)
+        if result.returncode != 0:
+            raise RuntimeError("Eval Runtime data cleanup failed: " + (result.stderr or result.stdout))
 
 
 @pytest.fixture

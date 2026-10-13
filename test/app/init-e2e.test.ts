@@ -59,6 +59,7 @@ function isNativeInstallSkillPath(skillPath: string): boolean {
     skillPath.startsWith('comet-review/') ||
     skillPath === 'comet/scripts/comet-entry-runtime.mjs' ||
     skillPath === 'comet/scripts/comet-hook-router.mjs' ||
+    skillPath === 'comet/scripts/comet-hook-router-guard.mjs' ||
     skillPath.startsWith('comet-native/') ||
     skillPath.startsWith('comet-any/') ||
     skillPath.startsWith('comet-memory/')
@@ -1562,6 +1563,35 @@ describe('comet init E2E', () => {
     });
     await expect(fs.access(path.join(tmpDir, 'comet'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  it.each(['missing', 'changed'] as const)(
+    'does not activate Native while skipping a %s Router Guard',
+    async (kind) => {
+      mockExternalSuccess();
+      await fs.mkdir(path.join(tmpDir, '.claude'));
+      const { initCommand } = await import('../../app/commands/init.js');
+      await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, scope: 'project', workflow: 'native' }),
+      );
+      const guard = path.join(tmpDir, '.claude/skills/comet/scripts/comet-hook-router-guard.mjs');
+      if (kind === 'missing') await fs.rm(guard);
+      else await fs.writeFile(guard, '// user-pinned Guard\n');
+      const config = path.join(tmpDir, '.comet/config.yaml');
+      await fs.rm(config);
+      await expect(
+        initCommand(tmpDir, {
+          yes: true,
+          json: true,
+          scope: 'project',
+          workflow: 'native',
+          skipExisting: true,
+        }),
+      ).rejects.toThrow(/comet-hook-router-guard[.]mjs/u);
+      await expect(fs.access(config)).rejects.toMatchObject({ code: 'ENOENT' });
+      if (kind === 'changed')
+        await expect(fs.readFile(guard, 'utf8')).resolves.toBe('// user-pinned Guard\n');
+    },
+  );
 
   it('does not activate Native over a mismatched existing /comet entry without overwrite', async () => {
     mockExternalSuccess();

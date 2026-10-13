@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import { parseDocument } from 'yaml';
 import { resolveClassicRunDirectory } from '../../../domains/comet-classic/classic-runtime-paths.js';
+import { runNode, CLASSIC_SCRIPT_COMMAND_TIMEOUT } from '../../helpers/comet-test-utils.js';
 
 const scriptsDir = path.resolve('assets', 'skills', 'comet', 'scripts');
 const classicRuntimeRoot = path.resolve('assets', 'skills', 'comet', 'runtime', 'classic');
@@ -15,29 +16,6 @@ const classicSkillRoot = classicRuntimeRoot;
 // POSIX-style path on every platform.
 function posixPath(filePath: string): string {
   return path.resolve(filePath).replace(/\\/g, '/');
-}
-
-function runNode(
-  cwd: string,
-  script: string,
-  args: string[] = [],
-  env: NodeJS.ProcessEnv = {},
-  timeout?: number,
-) {
-  const isolatedHome = path.join(cwd, '.test-home');
-  return spawnSync(process.execPath, [script, ...args], {
-    cwd,
-    encoding: 'utf-8',
-    env: {
-      ...process.env,
-      HOME: isolatedHome,
-      USERPROFILE: isolatedHome,
-      COMET_RUNTIME_CLASSIC_ROOT: classicRuntimeRoot,
-      COMET_CLASSIC_SKILL_ROOT: classicRuntimeRoot,
-      ...env,
-    },
-    timeout,
-  });
 }
 
 async function writeFile(filePath: string, content: string) {
@@ -286,7 +264,7 @@ describe('comet scripts', () => {
     expect(yaml).toContain('phase: open');
     expect(yaml).toContain('verification_report: null');
     expect(yaml).toContain('branch_status: pending');
-  }, 20_000);
+  });
 
   it('validates the optional machine-owned check epoch in generated commands', async () => {
     expect(
@@ -320,7 +298,6 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
       expect(isolation.stdout.trim()).toBe('null');
     },
-    20_000,
   );
 
   it('prints successful initialization to stdout so PowerShell does not surface NativeCommandError', async () => {
@@ -337,7 +314,7 @@ describe('comet scripts', () => {
       'Initialized: openspec/changes/powershell-friendly/.comet.yaml (workflow=full)',
     );
     expect(result.stderr).toBe('');
-  }, 20_000);
+  });
 
   it('keeps hook guard read-only when COMET_RUNTIME_CLASSIC_ROOT is configured', async () => {
     const init = runNode(
@@ -365,7 +342,7 @@ describe('comet scripts', () => {
     await expect(fs.access(path.join(changeDir, '.comet'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
-  }, 20_000);
+  });
 
   it('keeps COMET_CLASSIC_SKILL_ROOT as a compatibility fallback', async () => {
     const init = runNode(
@@ -386,7 +363,7 @@ describe('comet scripts', () => {
 
     expect(init.status).toBe(0);
     expect(result.status).toBe(2);
-  }, 20_000);
+  });
 
   it('blocks repo source writes when an isolation: current change drifts off its bound branch', async () => {
     execFileSync('git', ['init', '-b', 'feature-A'], { cwd: tmpDir, stdio: 'ignore' });
@@ -429,7 +406,7 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain(
       "bound to branch 'feature-A', but current branch is 'feature-B'",
     );
-  }, 20_000);
+  });
 
   it('falls back to the embedded Classic runtime package when installed script assets omit internal runtime files', async () => {
     const init = runNode(
@@ -460,7 +437,7 @@ describe('comet scripts', () => {
       'utf8',
     );
     expect(JSON.parse(runState)).toMatchObject({ skill: 'comet-classic' });
-  }, 20_000);
+  });
 
   it('rejects change names that OpenSpec cannot archive later', async () => {
     const upper = runNode(tmpDir, stateScript, [
@@ -500,7 +477,7 @@ describe('comet scripts', () => {
     expect(datePrefixed.status).not.toBe(0);
     expect(datePrefixed.stderr).toContain('Invalid change name');
     expect(valid.status).toBe(0);
-  }, 20_000);
+  });
 
   it('snapshots language from .comet/config.yaml when initializing a change', async () => {
     await writeFile(
@@ -525,7 +502,7 @@ describe('comet scripts', () => {
     expect(yaml).toContain('language: zh-CN');
     expect(get.status).toBe(0);
     expect(get.stdout.trim()).toBe('zh-CN');
-  }, 20_000);
+  });
 
   it('ignores legacy top-level Classic settings until init or update migrates them', async () => {
     await writeFile(
@@ -558,7 +535,7 @@ describe('comet scripts', () => {
     expect(yaml).toContain('context_compression: off');
     expect(yaml).toContain('review_mode: standard');
     expect(yaml).toContain('auto_transition: true');
-  }, 20_000);
+  });
 
   it('falls back to the global Comet language when project config omits language', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
@@ -580,7 +557,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('language: zh-CN');
-  }, 20_000);
+  });
 
   it('lets project language override the global Comet language', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
@@ -606,7 +583,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('language: en');
-  }, 20_000);
+  });
 
   it('rejects an invalid global Comet language when project config omits language', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
@@ -624,7 +601,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('classic.language must be en or zh-CN');
-  }, 20_000);
+  });
 
   it('fails closed when .comet/config.yaml contains malformed unrelated YAML', async () => {
     await writeFile(
@@ -644,7 +621,7 @@ describe('comet scripts', () => {
     await expect(
       fs.access(path.join(tmpDir, 'openspec', 'changes', 'unrelated-malformed-field')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
-  }, 20_000);
+  });
 
   it('rejects an explicit empty review_mode instead of silently defaulting', async () => {
     await writeFile(
@@ -661,7 +638,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('classic.review_mode must be off, standard, or thorough');
-  }, 20_000);
+  });
 
   it('rejects zh as an invalid project language when initializing a change', async () => {
     await writeFile(
@@ -679,7 +656,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('classic.language must be en or zh-CN');
-  }, 20_000);
+  });
 
   it('lets COMET_LANGUAGE override the project language default', async () => {
     await writeFile(
@@ -702,7 +679,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('language: en');
-  }, 20_000);
+  });
 
   it('rejects invalid language from .comet/config.yaml when initializing a change', async () => {
     await writeFile(
@@ -720,7 +697,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('classic.language must be en or zh-CN');
-  }, 20_000);
+  });
 
   it('initializes build_pause as null for new changes', async () => {
     const result = runNode(tmpDir, stateScript, [
@@ -737,7 +714,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('build_pause: null');
-  }, 20_000);
+  });
 
   it('initializes subagent_dispatch as null for new changes', async () => {
     const result = runNode(tmpDir, stateScript, [
@@ -754,7 +731,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('subagent_dispatch: null');
-  }, 20_000);
+  });
 
   it('initializes tdd_mode as null for full workflow', async () => {
     const result = runNode(tmpDir, stateScript, [
@@ -771,7 +748,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('tdd_mode: null');
-  }, 20_000);
+  });
 
   it('initializes review_mode as standard for full workflow', async () => {
     const result = runNode(tmpDir, stateScript, [
@@ -788,7 +765,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('review_mode: standard');
-  }, 20_000);
+  });
 
   it('initializes review_mode as off for hotfix workflow', async () => {
     const result = runNode(tmpDir, stateScript, [
@@ -805,7 +782,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('review_mode: off');
-  }, 20_000);
+  });
 
   it('initializes tdd_mode as direct for hotfix workflow', async () => {
     const result = runNode(tmpDir, stateScript, [
@@ -822,7 +799,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('tdd_mode: direct');
-  }, 20_000);
+  });
 
   it('initializes context_compression as off by default', async () => {
     const result = runNode(tmpDir, stateScript, [
@@ -839,7 +816,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('context_compression: off');
-  }, 20_000);
+  });
 
   it('snapshots beta context compression from .comet/config.yaml when initializing a change', async () => {
     await writeFile(
@@ -861,7 +838,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('context_compression: beta');
-  }, 20_000);
+  });
 
   it('snapshots review_mode from .comet/config.yaml when initializing a full change', async () => {
     await writeFile(
@@ -883,7 +860,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('review_mode: standard');
-  }, 20_000);
+  });
 
   it('rejects invalid review_mode from .comet/config.yaml when initializing a change', async () => {
     await writeFile(
@@ -901,7 +878,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('classic.review_mode must be off, standard, or thorough');
-  }, 20_000);
+  });
 
   it('lets COMET_CONTEXT_COMPRESSION override the project context compression default', async () => {
     await writeFile(
@@ -924,7 +901,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(yaml).toContain('context_compression: off');
-  }, 20_000);
+  });
 
   it('initializes auto_transition as true when openspec comet config is absent', async () => {
     const result = runNode(tmpDir, stateScript, [
@@ -948,7 +925,7 @@ describe('comet scripts', () => {
     expect(yaml).toContain('auto_transition: true');
     expect(get.status).toBe(0);
     expect(get.stdout.trim()).toBe('true');
-  }, 20_000);
+  });
 
   it('initializes auto_transition from .comet/config.yaml when set to false', async () => {
     await fs.mkdir(path.join(tmpDir, '.comet'), { recursive: true });
@@ -978,7 +955,7 @@ describe('comet scripts', () => {
     expect(yaml).toContain('auto_transition: false');
     expect(get.status).toBe(0);
     expect(get.stdout.trim()).toBe('false');
-  }, 20_000);
+  });
 
   it('sets auto_transition to false and rejects invalid auto_transition values', async () => {
     await createChange(
@@ -1022,7 +999,7 @@ describe('comet scripts', () => {
     expect(get.stdout.trim()).toBe('false');
     expect(setInvalid.status).not.toBe(0);
     expect(setInvalid.stderr).toContain('Invalid value');
-  }, 20_000);
+  });
 
   it('validates the language field in .comet.yaml', async () => {
     await createChange(
@@ -1064,7 +1041,7 @@ describe('comet scripts', () => {
     expect(setInvalid.status).not.toBe(0);
     expect(setInvalid.stderr).toContain("Invalid language from language: 'pirate'");
     expect(setInvalid.stderr).toContain('Valid values: en, zh-CN');
-  }, 20_000);
+  });
 
   it('allows changing the language field between valid values', async () => {
     await createChange(
@@ -1101,7 +1078,7 @@ describe('comet scripts', () => {
     expect(set.status).toBe(0);
     expect(get.stdout.trim()).toBe('zh-CN');
     expect(valid.status).toBe(0);
-  }, 20_000);
+  });
 
   it('accepts bound_branch field in .comet.yaml without unknown field errors', async () => {
     await createChange(
@@ -1131,7 +1108,7 @@ describe('comet scripts', () => {
 
     expect(valid.status).toBe(0);
     expect(valid.stderr).not.toContain("unknown field 'bound_branch'");
-  }, 20_000);
+  });
 
   it('rejects a numeric bound_branch value in comet validate', async () => {
     await createChange(
@@ -1159,7 +1136,7 @@ describe('comet scripts', () => {
 
     expect(valid.status).toBe(1);
     expect(valid.stderr).toContain("bound_branch='123' is not a string or null");
-  }, 20_000);
+  });
 
   it('rejects array and mapping bound_branch values in comet validate', async () => {
     await createChange(
@@ -1208,7 +1185,7 @@ describe('comet scripts', () => {
     expect(arrayResult.stderr).toContain('is not a string or null');
     expect(mappingResult.status).toBe(1);
     expect(mappingResult.stderr).toContain('is not a string or null');
-  }, 20_000);
+  });
 
   it('accepts a quoted numeric bound_branch string in comet validate', async () => {
     await createChange(
@@ -1236,7 +1213,7 @@ describe('comet scripts', () => {
 
     expect(valid.status).toBe(0);
     expect(valid.stderr).not.toContain('bound_branch');
-  }, 20_000);
+  });
 
   it('next resolves auto for full workflow when auto_transition is true', async () => {
     await createChange(
@@ -1252,7 +1229,7 @@ describe('comet scripts', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('NEXT: auto');
     expect(result.stdout).toContain('SKILL: comet-verify');
-  }, 20_000);
+  });
 
   it('next resolves manual with hint when auto_transition is false', async () => {
     await createChange(
@@ -1269,7 +1246,7 @@ describe('comet scripts', () => {
     expect(result.stdout).toContain('NEXT: manual');
     expect(result.stdout).toContain('SKILL: comet-build');
     expect(result.stdout).toContain('HINT:');
-  }, 20_000);
+  });
 
   it('next maps hotfix and tweak workflows to their preset skills in build phase', async () => {
     await createChange(
@@ -1292,7 +1269,7 @@ describe('comet scripts', () => {
 
     expect(hotfix.stdout).toContain('SKILL: comet-hotfix');
     expect(tweak.stdout).toContain('SKILL: comet-tweak');
-  }, 20_000);
+  });
 
   it('next requires delivery reconciliation for an archived change without authorization', async () => {
     await createChange(
@@ -1312,7 +1289,7 @@ describe('comet scripts', () => {
     const structured = runNode(tmpDir, stateScript, ['next', 'next-done', '--json']);
     expect(structured.status, structured.stderr).toBe(0);
     expect(JSON.parse(structured.stdout).data.nextAction).toEqual({ kind: 'delivery' });
-  }, 20_000);
+  });
 
   it('next maps each non-build phase to the owning skill', async () => {
     await createChange(
@@ -1335,14 +1312,14 @@ describe('comet scripts', () => {
 
     expect(design.stdout).toContain('SKILL: comet-design');
     expect(archive.stdout).toContain('SKILL: comet-archive');
-  }, 20_000);
+  });
 
   it('next exits non-zero when comet-state.yaml is missing', async () => {
     const result = runNode(tmpDir, stateScript, ['next', 'next-missing']);
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('comet-state.yaml not found');
-  }, 20_000);
+  });
 
   it('task-checkoff verifies one uniquely checked task', async () => {
     const tasksFile = path.join(tmpDir, 'docs', 'plan.md');
@@ -1356,7 +1333,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('TASK_CHECKOFF: PASS');
-  }, 20_000);
+  });
 
   it('task-checkoff rejects an unchecked task', async () => {
     const tasksFile = path.join(tmpDir, 'docs', 'plan.md');
@@ -1370,7 +1347,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('task is not checked');
-  }, 20_000);
+  });
 
   it('task-checkoff rejects duplicate task text across checkbox states', async () => {
     const tasksFile = path.join(tmpDir, 'docs', 'plan.md');
@@ -1384,7 +1361,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('task text must appear exactly once');
-  }, 20_000);
+  });
 
   it('task-checkoff rejects paths outside the repository', async () => {
     const result = runNode(tmpDir, stateScript, [
@@ -1395,7 +1372,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("cannot contain '..'");
-  }, 20_000);
+  });
 
   it('task-checkoff rejects missing task file', async () => {
     const result = runNode(tmpDir, stateScript, [
@@ -1406,7 +1383,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('Task file not found');
-  }, 20_000);
+  });
 
   it('task-checkoff rejects empty task text', async () => {
     const tasksFile = path.join(tmpDir, 'docs', 'plan.md');
@@ -1416,7 +1393,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('Task text cannot be empty');
-  }, 20_000);
+  });
 
   it('task-checkoff rejects file with no checkbox lines', async () => {
     const tasksFile = path.join(tmpDir, 'docs', 'empty.md');
@@ -1426,7 +1403,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('task text must appear exactly once');
-  }, 20_000);
+  });
 
   it('comet-env.mjs prints the scripts directory it lives in', async () => {
     const envScript = path.join(tmpDir, 'scripts', 'comet-env.mjs');
@@ -1440,7 +1417,7 @@ describe('comet scripts', () => {
     for (const sibling of ['comet-state.mjs', 'comet-guard.mjs', 'comet-hook-guard.mjs']) {
       await expect(fs.access(`${printedDir}/${sibling}`)).resolves.toBeUndefined();
     }
-  }, 20_000);
+  });
 
   it('blocks build phase when the project build command fails', async () => {
     await createChange(
@@ -1474,7 +1451,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] Build passes');
-  }, 20_000);
+  });
 
   it('blocks open guard when Chinese workflow artifacts are clearly English', async () => {
     await createChange(
@@ -1518,7 +1495,7 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] proposal.md matches configured language');
     expect(result.stderr).toContain('configured language is zh-CN');
-  }, 20_000);
+  });
 
   it('uses the global Comet language in guards when change and project values are absent', async () => {
     const fakeHome = path.join(tmpDir, 'fake-home');
@@ -1566,7 +1543,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('configured language is zh-CN');
-  }, 20_000);
+  });
 
   it('fails closed before language checks when .comet/config.yaml is malformed', async () => {
     await writeFile(
@@ -1602,7 +1579,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/invalid YAML|flow sequence/iu);
-  }, 20_000);
+  });
 
   it('allows Chinese workflow artifacts with English technical terms', async () => {
     await createChange(
@@ -1645,7 +1622,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('[PASS] proposal.md matches configured language');
-  }, 20_000);
+  });
 
   it('blocks open guard when English workflow artifacts are clearly Chinese', async () => {
     await createChange(
@@ -1689,7 +1666,7 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] proposal.md matches configured language');
     expect(result.stderr).toContain('configured language is en');
-  }, 20_000);
+  });
 
   it('excludes fenced code blocks from the language dominance check', async () => {
     await createChange(
@@ -1740,7 +1717,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('[PASS] proposal.md matches configured language');
-  }, 20_000);
+  });
 
   it('fails closed in guard when project config has an invalid language value', async () => {
     await writeFile(
@@ -1780,7 +1757,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('classic.language must be en or zh-CN');
-  }, 20_000);
+  });
 
   it('generates a design handoff and requires minimal design doc linkage before leaving design', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -1867,7 +1844,7 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
     expect(result.stderr).toContain('[PASS] Design Doc frontmatter links current change');
     expect(result.stderr).toContain('[PASS] Design Doc declares OpenSpec as canonical spec');
-  }, 20_000);
+  });
 
   it('accepts handoff source paths containing regular expression metacharacters', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -1931,7 +1908,7 @@ describe('comet scripts', () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
-  }, 20_000);
+  });
 
   it('generates a beta spec projection handoff with verbatim spec content', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2045,7 +2022,7 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('[PASS] design handoff context exists');
     expect(result.stderr).toContain('[PASS] design handoff markdown is traceable');
     expect(result.stderr).toContain('[PASS] beta spec-context.json is structurally valid');
-  }, 20_000);
+  });
 
   it('blocks beta design exit when spec-context.json is structurally invalid', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2122,7 +2099,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] beta spec-context.json is structurally valid');
-  }, 20_000);
+  });
 
   it('blocks beta design exit when spec-context.json is malformed JSON', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2207,7 +2184,7 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] beta spec-context.json is structurally valid');
     expect(result.stderr).toContain('invalid JSON');
-  }, 20_000);
+  });
 
   it('reads comet yaml fields without including trailing comments', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2240,7 +2217,7 @@ describe('comet scripts', () => {
     expect(phase.stdout.trim()).toBe('design');
     expect(validate.status, validate.stderr).toBe(0);
     expect(handoff.status).toBe(0);
-  }, 20_000);
+  });
 
   it('accepts design doc frontmatter after a BOM and leading blank lines', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2290,7 +2267,7 @@ describe('comet scripts', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('[PASS] Design Doc frontmatter links current change');
     expect(result.stderr).toContain('[PASS] Design Doc declares OpenSpec as canonical spec');
-  }, 20_000);
+  });
 
   it('generates a full-mode design handoff when --full is passed', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2332,7 +2309,7 @@ describe('comet scripts', () => {
     );
     expect(contextMarkdown).toContain('Mode: full');
     expect(contextMarkdown).not.toContain('[TRUNCATED]');
-  }, 20_000);
+  });
 
   it('warns when --full is passed in beta mode', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2375,7 +2352,7 @@ describe('comet scripts', () => {
       'handoff_context',
     ]).stdout.trim();
     expect(contextPath).toBe('openspec/changes/beta-full-warn/.comet/handoff/spec-context.json');
-  }, 20_000);
+  });
 
   it('rejects handoff generation when required OpenSpec artifacts are missing', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2407,7 +2384,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('required OpenSpec artifact missing or empty');
-  }, 20_000);
+  });
 
   it('detects OpenSpec artifacts changed after handoff was generated', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2445,7 +2422,7 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] design handoff context exists');
     expect(result.stderr).toContain('OpenSpec artifacts changed after handoff was generated');
-  }, 20_000);
+  });
 
   it('--hash-only outputs context hash without generating handoff files', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2498,14 +2475,14 @@ describe('comet scripts', () => {
         () => false,
       ),
     ).toBe(false);
-  }, 20_000);
+  });
 
   it('--hash-only fails for non-existent change', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
     const result = runNode(tmpDir, handoffScript, ['no-such-change', '--hash-only']);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('change directory not found');
-  }, 20_000);
+  });
 
   it('--hash-only fails when required files are missing', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2536,7 +2513,7 @@ describe('comet scripts', () => {
     const result = runNode(tmpDir, handoffScript, ['hash-missing-files', '--hash-only']);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('required file missing or empty');
-  }, 20_000);
+  });
 
   it('blocks design exit when design doc frontmatter is missing required fields', async () => {
     const handoffScript = path.join(tmpDir, 'scripts', 'comet-handoff.mjs');
@@ -2586,7 +2563,7 @@ describe('comet scripts', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('[FAIL] Design Doc frontmatter links current change');
-  }, 20_000);
+  });
 
   it('blocks build completion until isolation and build mode are selected', async () => {
     await createChange(
@@ -2630,7 +2607,7 @@ describe('comet scripts', () => {
     expect(guard.stderr).toContain('Next: ask the user to choose an execution mode');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('isolation must be current, branch, or worktree');
-  }, 20_000);
+  });
 
   it('allows full workflow build completion with current-branch isolation', async () => {
     execFileSync('git', ['init', '-b', 'feature'], { cwd: tmpDir, stdio: 'ignore' });
@@ -2687,7 +2664,7 @@ describe('comet scripts', () => {
     expect(transition.status, transition.stderr).toBe(0);
     expect(transition.stderr).toContain('[SET] phase=verify');
     expect(transition.stderr).toContain('[TRANSITION] build-complete');
-  }, 60_000);
+  });
 
   it('blocks build completion until tdd_mode is selected for full workflow', async () => {
     await createChange(
@@ -2728,7 +2705,7 @@ describe('comet scripts', () => {
     expect(guard.stderr).toContain('tdd_mode must be tdd or direct');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('tdd_mode must be selected');
-  }, 20_000);
+  });
 
   it('allows hotfix to bypass tdd_mode check', async () => {
     await createChange(
@@ -2761,7 +2738,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('[PASS] tdd_mode selected');
-  }, 20_000);
+  });
 
   it('blocks build completion until review_mode is selected for full workflow', async () => {
     await createChange(
@@ -2803,7 +2780,7 @@ describe('comet scripts', () => {
     expect(guard.stderr).toContain('review_mode must be off, standard, or thorough');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('review_mode must be off, standard, or thorough');
-  }, 20_000);
+  });
 
   it('allows setting review_mode to off, standard, and thorough', async () => {
     runNode(tmpDir, stateScript, ['init', 'review-mode-set', 'full', '--runtime', 'compat']);
@@ -2815,7 +2792,7 @@ describe('comet scripts', () => {
       expect(set.status).toBe(0);
       expect(get.stdout.trim()).toBe(value);
     }
-  }, 20_000);
+  });
 
   it('allows setting build_pause to plan-ready and back to null', async () => {
     await createChange(
@@ -2852,7 +2829,7 @@ describe('comet scripts', () => {
     expect(planReady.stdout.trim()).toBe('plan-ready');
     expect(setNull.status).toBe(0);
     expect(pausedNull.stdout.trim()).toBe('null');
-  }, 20_000);
+  });
 
   it('rejects invalid build_pause values during schema validation', async () => {
     await createChange(
@@ -2880,7 +2857,7 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("build_pause='paused' is not valid");
     expect(result.stderr).toContain('FATAL: .comet.yaml schema validation failed');
-  }, 20_000);
+  });
 
   it('rejects invalid subagent_dispatch values during schema validation', async () => {
     await createChange(
@@ -2909,7 +2886,7 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("subagent_dispatch='fake' is not valid");
     expect(result.stderr).toContain('FATAL: .comet.yaml schema validation failed');
-  }, 20_000);
+  });
 
   it('rejects invalid tdd_mode values during schema validation', async () => {
     await createChange(
@@ -2938,7 +2915,7 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("tdd_mode='always' is not valid");
     expect(result.stderr).toContain('FATAL: .comet.yaml schema validation failed');
-  }, 20_000);
+  });
 
   it('rejects invalid review_mode values during schema validation', async () => {
     await createChange(
@@ -2968,7 +2945,7 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("review_mode='noisy' is not valid");
     expect(result.stderr).toContain('FATAL: .comet.yaml schema validation failed');
-  }, 20_000);
+  });
 
   it('rejects direct build mode for full workflow without explicit override', async () => {
     await createChange(
@@ -3001,7 +2978,7 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('[FAIL] build_mode allowed for workflow');
     expect(result.stderr).toContain('direct is only allowed for hotfix/tweak');
     expect(result.stderr).toContain('Next: choose executing-plans or subagent-driven-development');
-  }, 20_000);
+  });
 
   it('prints actionable remediation for unfinished tasks', async () => {
     await createChange(
@@ -3039,7 +3016,7 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('Unfinished tasks:');
     expect(result.stderr).toContain('finish guard remediation');
     expect(result.stderr).toContain('Next: complete or explicitly remove unfinished tasks');
-  }, 20_000);
+  });
 
   it('rejects unmapped legacy plan tasks until their implementation and scope are reconciled', async () => {
     await writeFile(
@@ -3086,7 +3063,7 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('pending plan task');
     expect(result.stderr).toContain('map them to tasks.md IDs or add genuinely extra tasks');
     expect(result.stderr).toContain('Checkbox state alone is not evidence of completion');
-  }, 20_000);
+  });
 
   it('rejects direct build mode for full workflow during state transition', async () => {
     await createChange(
@@ -3150,7 +3127,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('[PASS] build_mode allowed for workflow');
-  }, 20_000);
+  });
 
   it('rejects subagent build mode without confirmed background dispatch', async () => {
     await createChange(
@@ -3195,7 +3172,7 @@ describe('comet scripts', () => {
     expect(guard.stderr).not.toContain('real background subagent');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('subagent_dispatch must be confirmed');
-  }, 20_000);
+  });
 
   it('allows subagent build mode when background dispatch is confirmed', async () => {
     await createChange(
@@ -3229,7 +3206,7 @@ describe('comet scripts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('[PASS] subagent dispatch confirmed');
-  }, 20_000);
+  });
 
   it('rejects removed build and verify command fields', async () => {
     await createChange(
@@ -3314,7 +3291,7 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('[PASS] Build passes');
     expect(migrated).not.toContain('build_command');
     expect(migrated).not.toContain('verify_command');
-  }, 20_000);
+  });
 
   it('treats repo-root comet.yaml as absent when running inferred build checks', async () => {
     await createChange(
@@ -3363,7 +3340,7 @@ describe('comet scripts', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).not.toContain('root configured failure');
     expect(result.stderr).toContain('[PASS] Build passes');
-  }, 20_000);
+  });
 
   it('rejects removed project verify_command instead of silently skipping it', async () => {
     await createChange(
@@ -3410,7 +3387,7 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('verify_command has been removed');
     expect(result.stderr).not.toContain('[PASS] Verification passes');
-  }, 20_000);
+  });
 
   it('does not silently pass when a malformed project config still references a removed command field', async () => {
     await createChange(
@@ -3455,7 +3432,7 @@ describe('comet scripts', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).not.toContain('[PASS] Verification passes');
     expect(result.stderr).toContain('Invalid .comet/config.yaml');
-  }, 20_000);
+  });
 
   it('validates archive completeness after the change has moved into archive', async () => {
     await createChange(
@@ -3562,7 +3539,7 @@ describe('comet scripts', () => {
     expect(validate.stderr).toContain(
       '[VALIDATE] openspec/changes/archive/2026-05-21-resolved-archive/.comet.yaml',
     );
-  }, 20_000);
+  });
 
   it('reports accurate archive step counts when syncing and annotating', async () => {
     const archiveScript = path.join(tmpDir, 'scripts', 'comet-archive.mjs');
@@ -3626,7 +3603,7 @@ describe('comet scripts', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('Archive complete. 8/8 steps succeeded.');
     await expect(fs.readFile(logFile, 'utf-8')).resolves.toBe('archive ready-to-archive --yes\n');
-  }, 20_000);
+  });
 
   it('merges delta specs without copying delta-only requirement headings into main specs', async () => {
     const archiveScript = path.join(tmpDir, 'scripts', 'comet-archive.mjs');
@@ -3708,7 +3685,7 @@ describe('comet scripts', () => {
     expect(mainSpec).not.toContain('## MODIFIED Requirements');
     expect(mainSpec).not.toContain('## REMOVED Requirements');
     expect(mainSpec).not.toContain('## RENAMED Requirements');
-  }, 20_000);
+  });
 
   it('annotates archive metadata with the actual OpenSpec archive directory name', async () => {
     const archiveScript = path.join(tmpDir, 'scripts', 'comet-archive.mjs');
@@ -3767,7 +3744,7 @@ describe('comet scripts', () => {
         ),
       ),
     ).resolves.toBeDefined();
-  }, 20_000);
+  });
 
   it('uses plan base-ref to scale verification after changes have been committed', async () => {
     execFileSync('git', ['init'], { cwd: tmpDir, stdio: 'ignore' });
@@ -3817,7 +3794,7 @@ describe('comet scripts', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('recommendation=full');
     expect(mode.stdout.trim()).toBe('null');
-  }, 20_000);
+  });
 
   it('scale defaults to light when no tasks.md, no specs, and no git diff', async () => {
     await createChange(
@@ -3920,7 +3897,7 @@ describe('comet scripts', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('recommendation=full');
     expect(mode.stdout.trim()).toBe('null');
-  }, 20_000);
+  });
 
   it('blocks build-complete when review_mode is null for full workflow', async () => {
     await createChange(
@@ -4132,7 +4109,7 @@ describe('comet scripts', () => {
     expect(guard.stderr).toContain('review_mode must be off, standard, or thorough');
     expect(transition.status).not.toBe(0);
     expect(transition.stderr).toContain('review_mode must be selected before leaving build');
-  }, 20_000);
+  });
 
   it('blocks open-complete when an open artifact is missing', async () => {
     await createChange(
@@ -4344,7 +4321,7 @@ describe('comet scripts', () => {
     expect(verifiedAt.stdout.trim()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(archiveConfirmation.stdout.trim()).toBe('pending');
     // This round trip starts more than twenty isolated Runtime processes.
-  }, 60_000);
+  });
 
   it('confirms archive only after the final archive confirmation decision', async () => {
     await createChange(
@@ -4396,7 +4373,7 @@ describe('comet scripts', () => {
     expect(pending.stdout.trim()).toBe('pending');
     expect(result.status).toBe(0);
     expect(confirmation.stdout.trim()).toBe('confirmed');
-  }, 20_000);
+  });
 
   it('reopens archive phase for adjustment or re-verification before archiving', async () => {
     await writeFile(
@@ -4446,7 +4423,7 @@ describe('comet scripts', () => {
     expect(report.stdout.trim()).toBe('docs/superpowers/reports/archive-reopen.md');
     expect(branchStatus.stdout.trim()).toBe('pending');
     expect(confirmation.stdout.trim()).toBe('null');
-  }, 20_000);
+  });
 
   it('rejects archive-reopen after the change is already archived', async () => {
     await writeFile(
@@ -4494,7 +4471,7 @@ describe('comet scripts', () => {
     expect(confirm.stderr).toContain('already archived');
     expect(phase.stdout.trim()).toBe('archive');
     expect(verifyResult.stdout.trim()).toBe('pass');
-  }, 20_000);
+  });
 
   it('blocks verify guard when verification evidence is missing', async () => {
     await createChange(
@@ -4530,7 +4507,7 @@ describe('comet scripts', () => {
     expect(result.stderr).toContain('[FAIL] verification_report exists');
     expect(result.stderr).not.toContain('branch_status=handled');
     expect(phase.stdout.trim()).toBe('verify');
-  }, 20_000);
+  });
 
   it('lets verify guard apply transition after verification and branch evidence are recorded', async () => {
     await createChange(
@@ -4663,7 +4640,7 @@ describe('comet scripts', () => {
       expect(reviewMode.stdout.trim()).toBe('null');
       expect(isolation.stdout.trim()).toBe('null');
     }
-  }, 20_000);
+  });
 
   it('rejects preset-escalate for full workflow and non-build phases', async () => {
     await createChange(
@@ -4722,7 +4699,7 @@ describe('comet scripts', () => {
     ]);
     expect(wrongPhaseResult.status).not.toBe(0);
     expect(wrongPhaseResult.stderr).toContain('expected phase build');
-  }, 20_000);
+  });
 
   it('clears bound_branch when preset-escalate clears isolation', async () => {
     const name = 'escalate-with-bound-branch';
@@ -4755,7 +4732,7 @@ describe('comet scripts', () => {
     expect(transitionResult.status).toBe(0);
     expect(boundBranch.stdout.trim()).toBe('null');
     expect(isolation.stdout.trim()).toBe('null');
-  }, 20_000);
+  });
 
   it('reports error for malformed .comet.yaml on get', async () => {
     const changeDir = path.join(tmpDir, 'openspec', 'changes', 'bad-yaml');
@@ -5616,7 +5593,7 @@ describe('comet scripts', () => {
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('unknown field(s): a_custom, z_custom');
       expect(result.stderr).not.toContain('build_command');
-    }, 20_000);
+    });
   });
 
   describe('guard_open skips design.md for hotfix/tweak workflows', () => {
@@ -5649,14 +5626,20 @@ describe('comet scripts', () => {
       );
       await fs.rm(path.join(tmpDir, 'openspec/changes/hotfix-open-guard/design.md'));
 
-      const result = runNode(tmpDir, guardScript, ['hotfix-open-guard', 'open'], {}, 15000);
+      const result = runNode(
+        tmpDir,
+        guardScript,
+        ['hotfix-open-guard', 'open'],
+        {},
+        CLASSIC_SCRIPT_COMMAND_TIMEOUT,
+      );
 
       expect(
         result.status,
         JSON.stringify({ stderr: result.stderr, stdout: result.stdout, error: result.error }),
       ).toBe(0);
       expect(result.stderr).toContain('ALL CHECKS PASSED');
-    }, 20_000);
+    });
 
     it('fails open guard for full workflow without design.md', async () => {
       await createChange(
@@ -5687,14 +5670,20 @@ describe('comet scripts', () => {
       );
       await fs.rm(path.join(tmpDir, 'openspec/changes/full-open-guard/design.md'));
 
-      const result = runNode(tmpDir, guardScript, ['full-open-guard', 'open'], {}, 15000);
+      const result = runNode(
+        tmpDir,
+        guardScript,
+        ['full-open-guard', 'open'],
+        {},
+        CLASSIC_SCRIPT_COMMAND_TIMEOUT,
+      );
 
       expect(
         result.status,
         JSON.stringify({ stderr: result.stderr, stdout: result.stdout, error: result.error }),
       ).not.toBe(0);
       expect(result.stderr).toContain('[FAIL] design.md exists and non-empty');
-    }, 20_000);
+    });
   });
 
   describe('review fix: design guard requires design_doc for full workflow', () => {
@@ -5730,7 +5719,7 @@ describe('comet scripts', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('[FAIL] design_doc is recorded for full workflow');
-    }, 20_000);
+    });
   });
 
   describe('comet-hook-guard.mjs — phase write guard', () => {
@@ -5742,7 +5731,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
 
     it.each([
       ['valid pre-Run state', ''],
@@ -5819,7 +5808,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
 
     it('allows matching docs/superpowers/ writes in design phase', async () => {
       await createChange(
@@ -5857,7 +5846,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
 
     it('allows the first standard Superpowers plan write without a private suffix', async () => {
       await createChange(
@@ -5890,7 +5879,7 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stderr).toContain('phase: build, superpowers');
-    }, 20_000);
+    });
 
     it('blocks a second write after the standard Superpowers plan slot is occupied', async () => {
       const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
@@ -5926,7 +5915,7 @@ describe('comet scripts', () => {
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('plan is already recorded');
       expect(result.stderr).toContain(recorded);
-    }, 20_000);
+    });
 
     it('blocks a named standard plan after the distributed plan slot is occupied', async () => {
       const recorded = 'docs/superpowers/plans/2026-07-13-existing.md';
@@ -5962,7 +5951,7 @@ describe('comet scripts', () => {
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('plan is already recorded');
       expect(result.stderr).toContain(recorded);
-    }, 20_000);
+    });
 
     it.skipIf(process.platform !== 'win32')(
       'blocks a Windows case-variant named plan after the distributed slot is occupied',
@@ -6001,7 +5990,6 @@ describe('comet scripts', () => {
         expect(result.stderr).toContain('plan is already recorded');
         expect(result.stderr).toContain(recorded);
       },
-      20_000,
     );
 
     it('blocks source code writes in design phase', async () => {
@@ -6045,7 +6033,7 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('Current phase: design');
       expect(result.stderr).toContain('This phase does not allow source writes');
       expect(result.stderr).not.toMatch(/[一-龥]/);
-    }, 20_000);
+    });
 
     it('does not treat root .comet.yaml as a supported Comet config file', async () => {
       await createChange(
@@ -6085,7 +6073,7 @@ describe('comet scripts', () => {
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('Current phase: design');
       expect(result.stderr).toContain('This phase does not allow source writes');
-    }, 20_000);
+    });
 
     it('blocks source code writes in open phase', async () => {
       await createChange(
@@ -6127,7 +6115,7 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('This phase does not allow source writes');
       expect(result.stderr).toContain('open');
       expect(result.stderr).not.toMatch(/[一-龥]/);
-    }, 20_000);
+    });
 
     it('allows source code writes in build phase', async () => {
       await writeFile(path.join(tmpDir, 'docs', 'superpowers', 'plans', 'test.md'), 'plan\n');
@@ -6166,7 +6154,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
 
     it('blocks source code writes in verify phase', async () => {
       await createChange(
@@ -6208,7 +6196,7 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain(
         'comet state transition test-hook verify-fail, then retry the implementation edit in Build',
       );
-    }, 20_000);
+    });
 
     it('blocks source code writes in archive phase', async () => {
       await createChange(
@@ -6250,31 +6238,27 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('This phase does not allow source writes');
       expect(result.stderr).toContain('archive');
       expect(result.stderr).not.toMatch(/[一-龥]/);
-    }, 20_000);
+    });
 
     it.each([
       ['Claude workspace source', path.join('.claude', 'worktrees', 'change', 'src', 'feature.ts')],
       ['Codex config', path.join('.codex', 'rules', 'custom.md')],
-    ])(
-      'does not bypass phase protection for %s',
-      async (_label, target) => {
-        await createChange(
-          tmpDir,
-          'test-hook',
-          ['workflow: full', 'phase: design', 'context_compression: off', ''].join('\n'),
-        );
+    ])('does not bypass phase protection for %s', async (_label, target) => {
+      await createChange(
+        tmpDir,
+        'test-hook',
+        ['workflow: full', 'phase: design', 'context_compression: off', ''].join('\n'),
+      );
 
-        const targetFile = path.join(tmpDir, target);
-        await fs.mkdir(path.dirname(targetFile), { recursive: true });
+      const targetFile = path.join(tmpDir, target);
+      await fs.mkdir(path.dirname(targetFile), { recursive: true });
 
-        const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
+      const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
-        expect(result.status).toBe(2);
-        expect(result.stderr).toContain('Current phase: design');
-        expect(result.stderr).toContain('This phase does not allow source writes');
-      },
-      20_000,
-    );
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('Current phase: design');
+      expect(result.stderr).toContain('This phase does not allow source writes');
+    });
 
     it('ignores archived changes and allows writes', async () => {
       const archiveDir = path.join(tmpDir, 'openspec', 'changes', 'archive');
@@ -6295,7 +6279,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
 
     it('skips changes with archived: true still in changes/ directory', async () => {
       // Old change: archived but not yet moved to archive/ subdirectory
@@ -6334,7 +6318,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
 
     it('allows new change artifact writes while another change is in archive phase (no state file yet)', async () => {
       // Existing change stalled in archive phase, not yet archived
@@ -6352,7 +6336,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
 
     it('governs change-dir writes by the change own phase, not an unrelated active change', async () => {
       // Change A: stalled in archive phase, not yet archived
@@ -6373,7 +6357,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
 
     it('allows docs/superpowers writes for the matching design change when another active change is open', async () => {
       await createChange(
@@ -6407,7 +6391,7 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stderr).toContain('phase: design, superpowers');
-    }, 20_000);
+    });
 
     it('matches docs/superpowers writes to the longest change name boundary', async () => {
       await createChange(
@@ -6441,7 +6425,7 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stderr).toContain('phase: design, superpowers');
-    }, 20_000);
+    });
 
     it('requires selection before a standard specs write with multiple active changes', async () => {
       await createChange(
@@ -6466,7 +6450,7 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain(
         'comet state select a-open-change | comet state select z-design-change',
       );
-    }, 20_000);
+    });
 
     it('requires selection before an unmatched standard specs write with multiple eligible changes', async () => {
       await createChange(
@@ -6495,7 +6479,7 @@ describe('comet scripts', () => {
       expect(result.status).toBe(2);
       expect(result.stderr).toContain('multiple active changes require a current change');
       expect(result.stderr).toContain('comet state select auth | comet state select payments');
-    }, 20_000);
+    });
 
     it('requires a current change for repo source writes with multiple active changes', async () => {
       await createChange(
@@ -6536,7 +6520,7 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain('a-build-ready');
       expect(result.stderr).toContain('z-design-active');
       expect(result.stderr).not.toContain('Current phase: design');
-    }, 20_000);
+    });
 
     it('allows selected build source writes while another active change is in design', async () => {
       await writeFile(
@@ -6572,7 +6556,7 @@ describe('comet scripts', () => {
 
       expect(result.status).toBe(0);
       expect(result.stderr).toContain('phase: build');
-    }, 20_000);
+    });
 
     it('blocks full-workflow build source writes when design_doc is null (illegal jump)', async () => {
       await createChange(
@@ -6607,7 +6591,7 @@ describe('comet scripts', () => {
         'Current phase: build (workflow: full), but design_doc is empty',
       );
       expect(result.stderr).not.toMatch(/[一-龥]/);
-    }, 20_000);
+    });
 
     it('allows preset-workflow build source writes when design_doc is null', async () => {
       await createChange(
@@ -6623,7 +6607,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
 
     it('allows full-workflow build source writes once design_doc points to a file', async () => {
       await createChange(
@@ -6646,7 +6630,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, hookStdin(targetFile));
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
 
     it('blocks source edits (Edit tool) during open phase same as Write', async () => {
       await createChange(tmpDir, 'edit-block-open', 'phase: open\narchived: false\n');
@@ -6664,7 +6648,7 @@ describe('comet scripts', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('BLOCKED');
-    }, 20_000);
+    });
 
     it('allows source edits (Edit tool) during build phase', async () => {
       await createChange(
@@ -6685,7 +6669,7 @@ describe('comet scripts', () => {
       const result = runHookGuard(tmpDir, hookGuardScript, editStdin);
 
       expect(result.status).toBe(0);
-    }, 20_000);
+    });
   });
 
   describe('workspace mode branch binding', () => {
@@ -6725,7 +6709,6 @@ describe('comet scripts', () => {
         expect(yaml).toContain(`isolation: ${isolation}`);
         expect(yaml).toContain('bound_branch: main');
       },
-      20_000,
     );
 
     it.each(['current', 'branch', 'worktree'])(
@@ -6761,7 +6744,6 @@ describe('comet scripts', () => {
         expect(yaml).toContain(`isolation: ${isolation}`);
         expect(yaml).toContain('bound_branch: branch-A');
       },
-      20_000,
     );
 
     it('re-points bound_branch when switching between workspace modes', async () => {
@@ -6790,7 +6772,7 @@ describe('comet scripts', () => {
       );
       expect(yaml).toContain('isolation: worktree');
       expect(yaml).toContain('bound_branch: branch-B');
-    }, 20_000);
+    });
 
     it('omits the branch suffix when selecting a change without a binding', async () => {
       execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
@@ -6813,7 +6795,7 @@ describe('comet scripts', () => {
       expect(result.status).toBe(0);
       expect(result.stderr).toContain('[SELECTED] current change: unbound-select');
       expect(result.stderr).not.toContain('(branch:');
-    }, 20_000);
+    });
 
     it('rejects select while the bound branch has drifted', async () => {
       execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
@@ -6844,7 +6826,7 @@ describe('comet scripts', () => {
       expect(result.stderr).toContain("bound to branch 'main'");
       expect(result.stderr).toContain("current branch is 'other'");
       await expect(fs.access(path.join(tmpDir, '.comet', 'current-change.json'))).rejects.toThrow();
-    }, 20_000);
+    });
 
     it.each(['current', 'branch', 'worktree'])(
       'detached HEAD rejects set isolation %s with "HEAD is detached" error',
@@ -6881,7 +6863,6 @@ describe('comet scripts', () => {
         expect(yaml).toContain('isolation: null');
         expect(yaml).toContain('bound_branch: null');
       },
-      20_000,
     );
 
     it.each(['current', 'branch', 'worktree'])(
@@ -6911,7 +6892,6 @@ describe('comet scripts', () => {
         expect(yaml).toContain(`isolation: ${isolation}`);
         expect(yaml).toContain('bound_branch: null');
       },
-      20_000,
     );
 
     it.each(['current', 'branch', 'worktree'])(
@@ -6948,7 +6928,6 @@ describe('comet scripts', () => {
         const yaml = await fs.readFile(stateFile, 'utf-8');
         expect(yaml).toContain('bound_branch: workflow-branch');
       },
-      20_000,
     );
 
     it('rejects direct set bound_branch with "machine-owned" error', async () => {
@@ -6976,7 +6955,7 @@ describe('comet scripts', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('machine-owned');
-    }, 20_000);
+    });
   });
 
   describe('state check bound_branch drift', () => {
@@ -7015,7 +6994,6 @@ describe('comet scripts', () => {
           "bound to branch 'feature-A', but current branch is 'feature-B'",
         );
       },
-      20_000,
     );
 
     it('drift is still detected after the .comet/ sidecar is deleted (reads .comet.yaml, not the sidecar)', async () => {
@@ -7062,7 +7040,7 @@ describe('comet scripts', () => {
       expect(result.stdout).toContain(
         "bound to branch 'feature-A', but current branch is 'feature-B'",
       );
-    }, 20_000);
+    });
 
     it('detached HEAD on an already-bound change: state check returns non-zero with detached HEAD in output', async () => {
       execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
@@ -7091,7 +7069,7 @@ describe('comet scripts', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stdout).toContain('detached HEAD');
-    }, 20_000);
+    });
 
     it.each(['current', 'branch', 'worktree'])(
       'gap B: isolation=%s with no bound_branch self-heals on a real branch and passes',
@@ -7123,7 +7101,6 @@ describe('comet scripts', () => {
         const get = runNode(tmpDir, stateScript, ['get', 'check-gap-b', 'bound_branch']);
         expect(get.stdout.trim()).toBe('hotfix-branch');
       },
-      20_000,
     );
   });
 
@@ -7180,7 +7157,7 @@ describe('comet scripts', () => {
         from: 'feature-A',
         to: 'feature-B',
       });
-    }, 20_000);
+    });
 
     it('rejects rebind when the change is not yet bound', async () => {
       execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
@@ -7213,7 +7190,7 @@ describe('comet scripts', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('not yet bound');
-    }, 20_000);
+    });
 
     it('rejects rebind while HEAD is detached', async () => {
       execFileSync('git', ['init', '-b', 'main'], { cwd: tmpDir, stdio: 'ignore' });
@@ -7248,7 +7225,7 @@ describe('comet scripts', () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain('HEAD is detached');
-    }, 20_000);
+    });
   });
 
   describe('guard bound_branch drift', () => {
@@ -7294,7 +7271,6 @@ describe('comet scripts', () => {
           "bound to branch 'feature-A', but current branch is 'feature-B'",
         );
       },
-      20_000,
     );
   });
 });

@@ -46,10 +46,12 @@ describe('repository layout registry', () => {
       entries: {
         runtime: 'domains/comet-entry/entry-runtime-entry.ts',
         hookRouter: 'domains/comet-entry/hook-router-entry.ts',
+        hookGuard: 'domains/comet-entry/hook-router-guard-entry.ts',
       },
       outputs: {
         runtime: 'assets/skills/comet/scripts/comet-entry-runtime.mjs',
         hookRouter: 'assets/skills/comet/scripts/comet-hook-router.mjs',
+        hookGuard: 'assets/skills/comet/scripts/comet-hook-router-guard.mjs',
       },
     });
     expect(resolveRepositoryPath(layout.entryRuntime.outputs.runtime)).toBe(
@@ -104,6 +106,9 @@ describe('repository layout registry', () => {
     expect(layout.allowedTopLevelEntries).toContain('codecov.yml');
     expect(layout.allowedTopLevelEntries).not.toContain('src');
     expect(layout.allowedCodeFiles).toEqual([
+      'eval/archives/grill-test-20261013/application/application.mjs',
+      'eval/archives/grill-test-20261013/application/bindings.mjs',
+      'eval/archives/grill-test-20261013/application/tools/session.mjs',
       'bin/comet-daemon-route.js',
       'bin/comet-daemon-router.js',
       'bin/fast-runtime-router.js',

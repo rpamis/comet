@@ -344,6 +344,10 @@ async function hostOptions(
         : undefined,
     ruleSource: path.join(runtimeRoot, 'assets/skills/comet/rules/comet-workflow-guard.md'),
     routerSource: path.join(runtimeRoot, 'assets/skills/comet/scripts/comet-hook-router.mjs'),
+    routerGuardSource: path.join(
+      runtimeRoot,
+      'assets/skills/comet/scripts/comet-hook-router-guard.mjs',
+    ),
   };
 }
 

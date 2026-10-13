@@ -3,6 +3,8 @@ import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { execFileSync } from 'node:child_process';
+import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
 
 import {
   applyClassicRootMove,
@@ -276,6 +278,26 @@ describe('Classic root move', () => {
       externalRoots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })),
     );
   });
+
+  it.each(['comet-state.yaml', '.comet.yaml'])(
+    'rejects SDK root moves with %s before relocating the change and preserves its next command',
+    async (stateFile) => {
+      await fs.rm(path.join(projectRoot, '.git'), { recursive: true });
+      execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
+      const cli = (args: string[]) =>
+        runClassicCli([...args, '--json'], undefined, { projectRoot, invocationCwd: projectRoot });
+      expect((await cli(['state', 'init', 'sdk-root', 'tweak'])).exitCode).toBe(0);
+      const current = path.join(projectRoot, 'openspec/changes/sdk-root/comet-state.yaml');
+      const file = path.join(projectRoot, 'openspec/changes/sdk-root', stateFile);
+      if (file !== current) await fs.rename(current, file);
+      const before = await fs.readFile(file, 'utf8');
+      await expect(applyClassicRootMove(projectRoot)).rejects.toThrow(/SDK/);
+      expect(await fs.readFile(file, 'utf8')).toBe(before);
+      expect((await cli(['state', 'next', 'sdk-root'])).exitCode).toBe(0);
+      expect((await readProjectConfig(projectRoot))?.classic?.artifact_layout).toBe('legacy');
+      await expect(fs.access(path.join(projectRoot, 'docs/openspec'))).rejects.toThrow();
+    },
+  );
 
   it('reports a dry run without modifying files or config', async () => {
     const plan = await planClassicRootMove(projectRoot);

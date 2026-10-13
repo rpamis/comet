@@ -20,12 +20,20 @@ const generatedHookRouter = path.resolve(
   'scripts',
   'comet-hook-router.mjs',
 );
+const generatedHookRouterGuard = path.resolve(
+  'assets',
+  'skills',
+  'comet',
+  'scripts',
+  'comet-hook-router-guard.mjs',
+);
 const builder = path.resolve('scripts', 'build', 'build-entry-runtime.mjs');
 
 describe('Comet entry resolver runtime release asset', () => {
   let temporaryRoot: string;
   let skillOnlyRuntime: string;
   let skillOnlyHookRouter: string;
+  let skillOnlyHookRouterGuard: string;
 
   beforeEach(async () => {
     temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-entry-runtime-'));
@@ -43,9 +51,17 @@ describe('Comet entry resolver runtime release asset', () => {
       'scripts',
       'comet-hook-router.mjs',
     );
+    skillOnlyHookRouterGuard = path.join(
+      temporaryRoot,
+      'installed-skills',
+      'comet',
+      'scripts',
+      'comet-hook-router-guard.mjs',
+    );
     await fs.mkdir(path.dirname(skillOnlyRuntime), { recursive: true });
     await fs.copyFile(generatedRuntime, skillOnlyRuntime);
     await fs.copyFile(generatedHookRouter, skillOnlyHookRouter);
+    await fs.copyFile(generatedHookRouterGuard, skillOnlyHookRouterGuard);
   });
 
   afterEach(async () => {
@@ -76,8 +92,10 @@ describe('Comet entry resolver runtime release asset', () => {
     expect(manifest.skills).toContain('comet/scripts/comet-hook-router.mjs');
     const source = await fs.readFile(generatedHookRouter, 'utf8');
     expect(source.startsWith('#!/usr/bin/env node\n')).toBe(true);
-    expect(source).toContain('comet.selection.v2');
-    expect(source).toContain('Multiple active Comet changes');
+    expect(source).toContain('./comet-hook-router-guard.mjs');
+    const guardSource = await fs.readFile(generatedHookRouterGuard, 'utf8');
+    expect(guardSource).toContain('comet.selection.v2');
+    expect(guardSource).toContain('Multiple active Comet changes');
 
     const unsupported = spawnSync(
       process.execPath,
@@ -137,7 +155,9 @@ describe('Comet entry resolver runtime release asset', () => {
     ).rejects.toMatchObject({ code: 'ENOENT' });
     const packageVersion = JSON.parse(await fs.readFile(path.resolve('package.json'), 'utf8'))
       .version as string;
-    expect(await fs.readFile(skillOnlyHookRouter, 'utf8')).toContain(`return"${packageVersion}"`);
+    expect(await fs.readFile(skillOnlyHookRouterGuard, 'utf8')).toContain(
+      `return"${packageVersion}"`,
+    );
   });
 
   it('reports bounded plugin initialization failures from an installed-only Hook Router', async () => {

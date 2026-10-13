@@ -15,37 +15,54 @@ import type {
   SkillExecutionHost,
 } from './types.js';
 
-type SkillExecutionApplication = Pick<LoadedWorkflowApplication, 'manifest' | 'skills'>;
+type SkillExecutionApplication = Pick<LoadedWorkflowApplication, 'manifest' | 'skills'> & {
+  projectRoot?: string;
+};
+
+export function applicationSkillScopesOverlap(left: string, right: string): boolean {
+  const contains = (root: string, file: string) => {
+    const relative = path.relative(path.resolve(root), path.resolve(file));
+    return (
+      !relative ||
+      (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep))
+    );
+  };
+  return contains(left, right) || contains(right, left);
+}
 
 /** 核对本次激活的共享资源；图中跨轮互达不能证明当前 Action 串行。 */
 export function assertApplicationSkillExecutionScope(
   application: SkillExecutionApplication,
   run: Readonly<WorkflowRun>,
   action: Readonly<RuntimeAction>,
+  relatedRuns: readonly Readonly<WorkflowRun>[] = [],
 ): void {
-  const scopes = (candidate: Readonly<RuntimeAction>) =>
+  const scopes = (owner: Readonly<WorkflowRun>, candidate: Readonly<RuntimeAction>) =>
     application.manifest.bindings
       .filter(
         (binding) =>
-          binding.workflowId === run.workflow.id &&
+          binding.workflowId === owner.workflow.id &&
           binding.stepId === candidate.stepId &&
           binding.usage === 'action',
       )
       .flatMap((binding) => {
         const skill = application.skills.get(binding.skillId);
         if (!skill || skill.adapter.sideEffect === 'read') return [];
-        if (!binding.workspaceFrom || skill.adapter.sideEffect !== 'write')
+        if (skill.adapter.sideEffect !== 'write')
           return skill.adapter.scope.map((ref) => ({
             ref,
             workspace: false,
             write: skill.adapter.sideEffect === 'write',
           }));
-        let workspace: unknown = candidate.input;
-        for (const field of binding.workspaceFrom.split('.'))
-          workspace =
-            workspace && typeof workspace === 'object'
-              ? (workspace as Record<string, unknown>)[field]
-              : undefined;
+        let workspace: unknown = application.projectRoot ?? process.cwd();
+        if (binding.workspaceFrom) {
+          workspace = candidate.input;
+          for (const field of binding.workspaceFrom.split('.'))
+            workspace =
+              workspace && typeof workspace === 'object'
+                ? (workspace as Record<string, unknown>)[field]
+                : undefined;
+        }
         if (typeof workspace !== 'string' || !path.isAbsolute(workspace))
           throw new RuntimeProtocolError('COMMAND_REJECTED', 'Skill 缺少实际写入工作区');
         return skill.adapter.scope.map((ref) => {
@@ -55,43 +72,43 @@ export function assertApplicationSkillExecutionScope(
             parent = path.dirname(parent);
           return {
             ref: path.resolve(realpathSync(parent), path.relative(parent, target)),
-            workspace: true,
+            workspace: Boolean(binding.workspaceFrom),
             write: true,
           };
         });
       });
-  const current = scopes(action);
+  const current = scopes(run, action);
   if (!current.length) return;
-  for (const other of run.actions) {
-    if (
-      other.id !== action.id &&
-      ['pending', 'running', 'unknown'].includes(other.status) &&
-      scopes(other).some((scope) =>
-        current.some((target) => {
-          if (scope.write && target.write && scope.workspace !== target.workspace)
-            throw new RuntimeProtocolError(
-              'COMMAND_REJECTED',
-              '并行写入不能混用声明工作区和默认范围；请为两项工作指定实际工作区',
-            );
-          if (!scope.workspace || !target.workspace) return target.ref === scope.ref;
-          const contains = (root: string, file: string) => {
-            const relative = path.relative(root, file);
-            return (
-              !relative ||
-              (!path.isAbsolute(relative) &&
-                relative !== '..' &&
-                !relative.startsWith('..' + path.sep))
-            );
-          };
-          return contains(scope.ref, target.ref) || contains(target.ref, scope.ref);
-        }),
+  for (const peer of [run, ...relatedRuns.filter((peer) => peer.runId !== run.runId)])
+    for (const other of peer.actions) {
+      if (
+        (peer.runId !== run.runId || other.id !== action.id) &&
+        (peer.runId === run.runId
+          ? ['pending', 'running', 'unknown']
+          : ['running', 'unknown']
+        ).includes(other.status) &&
+        scopes(peer, other).some((scope) =>
+          current.some((target) => {
+            if (
+              peer.runId === run.runId &&
+              scope.write &&
+              target.write &&
+              scope.workspace !== target.workspace
+            )
+              throw new RuntimeProtocolError(
+                'COMMAND_REJECTED',
+                '并行写入不能混用声明工作区和默认范围；请为两项工作指定实际工作区',
+              );
+            if (!scope.write || !target.write) return target.ref === scope.ref;
+            return applicationSkillScopesOverlap(scope.ref, target.ref);
+          }),
+        )
       )
-    )
-      throw new RuntimeProtocolError(
-        'COMMAND_REJECTED',
-        `Skill 写入范围存在并行冲突：${action.stepId} / ${other.stepId}；请隔离范围或声明串行依赖`,
-      );
-  }
+        throw new RuntimeProtocolError(
+          'COMMAND_REJECTED',
+          `Skill 写入范围存在并行冲突：${action.stepId} / ${other.stepId}；请隔离范围或声明串行依赖`,
+        );
+    }
 }
 
 function requiredBinding(

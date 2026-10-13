@@ -810,6 +810,35 @@ def test_user_authored_validation_commands_receive_no_agent_or_reporting_secrets
     assert "ENV_ARGS" not in command_block
 
 
+@pytest.mark.parametrize("command", ["docker_run", "docker_run_command", "docker_run_agent", "docker_run_claude_loop", "docker_run_agent_loop"])
+def test_eval_containers_share_case_scoped_comet_data_outside_the_workspace(tmp_path, command):
+    (tmp_path / "_eval_current_comet").mkdir()
+    log = tmp_path / "docker-args.txt"
+    script = '''
+source "$1"
+docker_build() { printf '%s' fake-image; }
+resolve_runtime_image() { printf '%s' fake-image; }
+prepare_agent_workspace_owner() { return 0; }
+build_env_args() { ENV_ARGS=(); }
+build_agent_runtime_mount_args() { RUNTIME_CONFIG_MOUNT_ARGS=(); RUNTIME_CONFIG_TMPFS_ARGS=(); }
+build_plugin_args() { PLUGIN_MOUNT_ARGS=(); PLUGIN_CLI_ARGS=(); }
+build_langfuse_plugin_args() { LANGFUSE_PLUGIN_MOUNT_ARGS=(); LANGFUSE_PLUGIN_CLI_ARGS=(); }
+build_trusted_oracle_mount_args() { TRUSTED_ORACLE_MOUNT_ARGS=(); }
+TIMEOUT_CMD=""
+docker() { printf '%s\\n' "$*" >> "$FIXTURE_ARGS"; }
+"$3" "$2" 'Test prompt' --agent claude-code --max-turns 1
+'''
+    result = subprocess.run(
+        [utils.BASH_EXEC, "-c", script, "_", utils._to_bash_path(utils.SHELL_DIR / "docker.sh"), utils._to_bash_path(tmp_path), command],
+        env={**os.environ, "FIXTURE_ARGS": utils._to_bash_path(log)}, capture_output=True, text=True, timeout=AGENT_FIXTURE_TIMEOUT, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text()
+    assert "COMET_DATA_DIR=//opt/comet-eval-data" in calls
+    assert "comet-eval-data-" in calls
+    assert "://opt/comet-eval-data" in calls
+
+
 def test_docker_harness_mounts_langfuse_official_plugin_and_enables_trace_image():
     docker_sh = (utils.SHELL_DIR / "docker.sh").read_text(encoding="utf-8")
     overlay = (utils.SHELL_DIR.parent / "docker" / "agent-overlay.Dockerfile").read_text(

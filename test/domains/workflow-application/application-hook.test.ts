@@ -135,3 +135,126 @@ it('requires the declared application Rule to exist within the fixed package', a
     /规则|Rule/,
   );
 });
+
+it('rejects nested default write scopes when repair-cycle reachability does not serialize active work', async () => {
+  const disk = await createScopeCycleApplication(root, false);
+  disk.manifest.skills[0].adapter.scope = ['reports'];
+  const nested = structuredClone(disk.manifest.skills[0]);
+  nested.id = 'nested-writer';
+  nested.adapter.scope = ['reports/final.md'];
+  disk.manifest.skills.push(nested);
+  disk.manifest.bindings[1].skillId = nested.id;
+  await fs.writeFile(disk.file, JSON.stringify(disk.manifest));
+  const module = path.join(disk.packageRoot, 'application.mjs');
+  await fs.writeFile(
+    module,
+    (await fs.readFile(module, 'utf8')).replace(
+      'export function createApplication',
+      'workflow.steps.right = {...workflow.steps.right, ref:"nested-writer"};\nexport function createApplication',
+    ),
+  );
+  const loaded = await loadWorkflowApplication({ file: disk.file, projectRoot: root });
+  const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
+  let run = await runtime.start({
+    runId: 'nested',
+    workflow: { id: 'editorial', version: '1' },
+    input: { topic: 'actual' },
+  });
+  run = await runtime.execute({
+    runId: run.runId,
+    actionId: run.actions[0].id,
+    executorId: 'tool-host',
+  });
+  const wait = run.waits[0];
+  run = await runtime.resolveWait({
+    runId: run.runId,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: 'approved',
+    choice: 'approved',
+  });
+  run = await runtime.execute({
+    runId: run.runId,
+    actionId: run.actions.at(-1)!.id,
+    executorId: 'tool-host',
+  });
+  const action = run.actions.find((a) => a.stepId === 'left')!;
+  await expect(
+    runtime.claim({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'local-skill',
+      capabilities: ['skill-script'],
+      claimToken: 'nested-claim',
+    }),
+  ).rejects.toMatchObject({ code: 'COMMAND_REJECTED' });
+  expect((await runtime.inspect(run.runId)).actions.find((a) => a.id === action.id)?.status).toBe(
+    'pending',
+  );
+});
+
+it('serializes competing claims across sibling Runs and retains unknown write ownership', async () => {
+  const disk = await createScopeCycleApplication(root, true);
+  disk.manifest.skills[0].adapter.inputSchema = { type: 'object' };
+  await fs.writeFile(disk.file, JSON.stringify(disk.manifest));
+  const module = path.join(disk.packageRoot, 'application.mjs');
+  await fs.writeFile(
+    module,
+    (await fs.readFile(module, 'utf8')).replace(
+      'workflows: [workflow]',
+      `workflows: [workflow,{id:'parent',version:'1',entry:['a','b'],steps:{a:{type:'child_workflow',workflow:{id:'editorial',version:'1'}},b:{type:'child_workflow',workflow:{id:'editorial',version:'1'}}}}]`,
+    ),
+  );
+  const loaded = await loadWorkflowApplication({ file: disk.file, projectRoot: root });
+  const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
+  let parent = await runtime.start({
+    runId: 'parent',
+    workflow: { id: 'parent', version: '1' },
+    input: { topic: 'actual' },
+  });
+  parent = await runtime.next({ runId: parent.runId });
+  const claims = [];
+  for (const child of parent.children) {
+    let run = await runtime.inspect(child.runId);
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions[0].id,
+      executorId: 'tool-host',
+    });
+    const wait = run.waits[0];
+    run = await runtime.resolveWait({
+      runId: run.runId,
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      decisionId: 'approved',
+      choice: 'approved',
+    });
+    const action = run.actions.find((a) => a.status === 'pending')!;
+    claims.push({
+      runId: run.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'local-skill',
+      capabilities: ['skill-script'],
+      claimToken: run.runId + '-claim',
+    });
+  }
+  const results = await Promise.allSettled(claims.map((claim) => runtime.claim(claim)));
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+  const rejected = results.find((result) => result.status === 'rejected') as PromiseRejectedResult;
+  expect(rejected.reason).toMatchObject({ code: 'COMMAND_REJECTED' });
+  expect(
+    await loaded.implementation.inspectHook!(parent, { intent: 'write', targets: ['shared.txt'] }),
+  ).toMatchObject({ allowed: true });
+  const winner = results.findIndex((result) => result.status === 'fulfilled');
+  await runtime.markUnknown({ ...claims[winner], reason: 'lost executor' });
+  await expect(runtime.claim(claims[1 - winner])).rejects.toMatchObject({
+    code: 'COMMAND_REJECTED',
+  });
+  expect(
+    await loaded.implementation.inspectHook!(parent, { intent: 'write', targets: ['shared.txt'] }),
+  ).toMatchObject({ allowed: false });
+});

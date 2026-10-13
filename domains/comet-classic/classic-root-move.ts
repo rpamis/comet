@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import type { BigIntStats, Dirent, Stats } from 'fs';
 import path from 'path';
+import { hasClassicManagedRunMarker } from './classic-state.js';
+import { isClassicStateFileName } from './classic-state-file.js';
 
 import {
   hasComparableFileObject,
@@ -984,6 +986,13 @@ async function scanTree(
         `Classic root move source file ${relative}`,
         stat,
       );
+      if (
+        isClassicStateFileName(path.posix.basename(relative)) &&
+        hasClassicManagedRunMarker(bytes.toString('utf8'))
+      )
+        throw new Error(
+          'Classic root move cannot relocate SDK Runs or their archives; keep the current layout and select the new layout before creating SDK changes',
+        );
       totalBytes += bytes.byteLength;
       files.push({ path: relative, size: bytes.byteLength, hash: hashBytes(bytes) });
     }

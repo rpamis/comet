@@ -210,6 +210,37 @@ describe('SDK application host integration', () => {
     ).rejects.toThrow();
   });
 
+  it('binds the Router Guard source to preview and refuses drift before writing', async () => {
+    options.routerGuardSource = path.join(root, 'router-guard.mjs');
+    await writeFile(options.routerGuardSource, '// original Guard\n');
+    const preview = await previewApplicationHostIntegration(options);
+    expect(preview.files).toContainEqual(
+      expect.objectContaining({
+        role: 'router',
+        path: path.join(options.skillsRoot, 'comet/scripts/comet-hook-router-guard.mjs'),
+      }),
+    );
+    await writeFile(options.routerGuardSource, '// changed Guard\n');
+    await expect(installApplicationHostIntegration({ ...options, preview })).rejects.toThrow(
+      /changed|drift/i,
+    );
+    await expect(readFile(path.join(root, '.claude/settings.local.json'))).rejects.toThrow();
+  });
+
+  it('preserves a user-owned Router Guard and reports the installation conflict', async () => {
+    options.routerGuardSource = path.join(root, 'router-guard.mjs');
+    await writeFile(options.routerGuardSource, '// bundled Guard\n');
+    const target = path.join(options.skillsRoot, 'comet/scripts/comet-hook-router-guard.mjs');
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, '// user-owned Guard\n');
+    const preview = await previewApplicationHostIntegration(options);
+    expect(preview.hook.status).toBe('conflict');
+    await expect(installApplicationHostIntegration({ ...options, preview })).rejects.toThrow(
+      /conflict/i,
+    );
+    await expect(readFile(target, 'utf8')).resolves.toBe('// user-owned Guard\n');
+  });
+
   it('rejects source drift after preview', async () => {
     const preview = await previewApplicationHostIntegration(options);
     await writeFile(options.ruleSource, 'changed rule');

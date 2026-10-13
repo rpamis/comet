@@ -58,7 +58,7 @@ export function createApplicationHook(
     '.comet/applications',
     '.comet/creator',
   ].map((ref) => path.resolve(root, ref));
-  const application = { manifest: options.manifest, skills: options.skills };
+  const application = { manifest: options.manifest, skills: options.skills, projectRoot: root };
   const instructions = ['AGENTS.md', 'AGENTS.override.md', 'CLAUDE.md'].map((ref) =>
     path.join(root, ref),
   );
@@ -136,7 +136,7 @@ export function createApplicationHook(
             )
               continue;
             assertApplicationSkillAction(application, action, current);
-            assertApplicationSkillExecutionScope(application, current, action);
+            assertApplicationSkillExecutionScope(application, current, action, runs);
             permitted.push(...skill.adapter.scope.map((ref) => path.resolve(base, ref)));
           }
           if (!binding.workspaceFrom && !actions.length)

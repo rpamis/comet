@@ -3,7 +3,11 @@ import {
   resolveWorkspaceRuntimeRootSync,
   isWorkspaceRuntimeMigrationFence,
 } from '../workflow-contract/workspace-runtime.js';
-import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
+import {
+  inspectProtectedProjectPath,
+  ensureProtectedProjectDirectory,
+} from '../workflow-contract/protected-project-path.js';
+import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createRequire, isBuiltin } from 'node:module';
@@ -15,6 +19,7 @@ import {
   hashRuntimeValue,
   RuntimeProtocolError,
   parseWorkflowRun,
+  listFileRuntimeStoreRuns,
   type RuntimeStore,
   type WorkflowRun,
 } from '../engine/runtime.js';
@@ -43,6 +48,7 @@ import type {
 import {
   assertApplicationSkillExecutionScope,
   assertApplicationSkillAction,
+  applicationSkillScopesOverlap,
   createApplicationSkillExecutor,
 } from './skill-executor.js';
 import { resolveInstalledWorkflowApplication } from './installed-application.js';
@@ -348,7 +354,7 @@ export async function loadWorkflowApplication(options: {
     packageRoot,
     identity,
     createSkillExecutor: (host: Parameters<typeof createApplicationSkillExecutor>[1]) =>
-      createApplicationSkillExecutor({ manifest, skills }, host),
+      createApplicationSkillExecutor({ manifest, skills, projectRoot }, host),
   });
   if (
     !implementation ||
@@ -504,7 +510,17 @@ export async function loadWorkflowApplication(options: {
           skills
             .get(current.skillId)!
             .adapter.scope.some((scope) =>
-              skills.get(other.skillId)!.adapter.scope.includes(scope),
+              skills
+                .get(other.skillId)!
+                .adapter.scope.some((otherScope) =>
+                  skills.get(current.skillId)!.adapter.sideEffect === 'write' &&
+                  skills.get(other.skillId)!.adapter.sideEffect === 'write'
+                    ? applicationSkillScopesOverlap(
+                        path.resolve(projectRoot, scope),
+                        path.resolve(projectRoot, otherScope),
+                      )
+                    : otherScope === scope,
+                ),
             ) &&
           !reaches(current.stepId, other.stepId) &&
           !reaches(other.stepId, current.stepId)
@@ -518,6 +534,43 @@ export async function loadWorkflowApplication(options: {
     if (options.readOnly)
       throw new RuntimeProtocolError('READ_ONLY_OPERATION', '应用诊断不能恢复或推进 Run');
   };
+  const withScopeLock = async <T>(operation: () => Promise<T>): Promise<T> => {
+    const root = await resolveWorkspaceRuntimeRoot(projectRoot);
+    const directory = await ensureProtectedProjectDirectory(root, 'application-scope-locks', {
+      label: '应用写入范围锁',
+    });
+    return withRecoverableFileLock(path.join(directory, `${manifest.id}.lock`), operation);
+  };
+  const relatedRuns = async (run: WorkflowRun): Promise<WorkflowRun[]> => {
+    const records = await listFileRuntimeStoreRuns<ApplicationRunRecord>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(projectRoot), 'applications', manifest.id),
+      mirroredRevisionPaths: ['run.revision'],
+    });
+    const peers: WorkflowRun[] = [];
+    for (const item of records) {
+      if (item.runId === run.runId) continue;
+      if (item.error || !item.record)
+        throw new RuntimeProtocolError(
+          'INVALID_RUN',
+          '其他应用 Run 无法读取，不能安全领取共享写入范围',
+        );
+      const peer = parseWorkflowRun(item.record.run, item.runId!);
+      if (
+        !peer.actions.some(
+          (action) =>
+            ['running', 'unknown'].includes(action.status) && action.type === 'invoke_skill',
+        )
+      )
+        continue;
+      if (item.record.application.contentHash !== identity.contentHash)
+        throw new RuntimeProtocolError(
+          'COMMAND_REJECTED',
+          '其他固定版本的 Skill 仍占用此应用工作区；先完成执行或核对未知结果',
+        );
+      peers.push(peer);
+    }
+    return peers;
+  };
   const pinnedStore: RuntimeStore<WorkflowRun> = {
     async read(runId) {
       await assertCurrentMaterial();
@@ -529,114 +582,142 @@ export async function loadWorkflowApplication(options: {
     async restoreCheckpoint(runId, expectedRevision, run) {
       assertWritable();
       await assertCurrentMaterial();
-      const record = await persistent.read(runId);
-      if (record) assertIdentity(record);
-      if (run.runId !== runId || run.actions.some((action) => action.status === 'running')) {
-        throw new RuntimeProtocolError(
-          'INVALID_RUN',
-          '应用恢复必须使用同一 Run 的 portable checkpoint，活跃领取须先转为 unknown',
-        );
-      }
-      const workflow =
-        manifest.base === 'native'
-          ? 'native'
-          : manifest.base.startsWith('classic-')
-            ? 'classic'
-            : null;
-      if (workflow) {
-        const owner = await readChangeRuntimeOwner(projectRoot, workflow, runId);
-        if (
-          !owner ||
-          owner.format !== 'sdk' ||
-          owner.application !== identity.id ||
-          owner.runId !== runId
-        ) {
+      const restore = async () => {
+        const record = await persistent.read(runId);
+        if (record) assertIdentity(record);
+        if (run.runId !== runId || run.actions.some((action) => action.status === 'running')) {
           throw new RuntimeProtocolError(
             'INVALID_RUN',
-            '恢复 Run 前须验证相同的固定应用和 change 归属',
+            '应用恢复必须使用同一 Run 的 portable checkpoint，活跃领取须先转为 unknown',
           );
         }
-      }
-      const restored = { runId, revision: run.revision, application: identity, run };
-      assertIdentity(restored);
-      return persistent.restoreCheckpoint!(runId, expectedRevision, restored);
+        const workflow =
+          manifest.base === 'native'
+            ? 'native'
+            : manifest.base.startsWith('classic-')
+              ? 'classic'
+              : null;
+        if (workflow) {
+          const owner = await readChangeRuntimeOwner(projectRoot, workflow, runId);
+          if (
+            !owner ||
+            owner.format !== 'sdk' ||
+            owner.application !== identity.id ||
+            owner.runId !== runId
+          ) {
+            throw new RuntimeProtocolError(
+              'INVALID_RUN',
+              '恢复 Run 前须验证相同的固定应用和 change 归属',
+            );
+          }
+        }
+        const restored = { runId, revision: run.revision, application: identity, run };
+        assertIdentity(restored);
+        for (const action of run.actions.filter(
+          (action) => action.status === 'unknown' && action.type === 'invoke_skill',
+        ))
+          assertApplicationSkillExecutionScope(
+            { manifest, skills, projectRoot },
+            run,
+            action,
+            await relatedRuns(run),
+          );
+        return persistent.restoreCheckpoint!(runId, expectedRevision, restored);
+      };
+      return run.actions.some(
+        (action) => action.status === 'unknown' && action.type === 'invoke_skill',
+      )
+        ? withScopeLock(restore)
+        : restore();
     },
     async compareAndSwap(runId, expectedRevision, run) {
       assertWritable();
       await assertCurrentMaterial();
-      const record = await persistent.read(runId);
-      if (record) assertIdentity(record);
-      for (const action of run.actions) {
-        if (
-          action.status === 'running' &&
-          !record?.run.actions.some(
-            (previous) =>
-              previous.id === action.id &&
-              previous.status === 'running' &&
-              previous.claim?.token === action.claim?.token,
-          )
-        ) {
-          assertApplicationSkillExecutionScope({ manifest, skills }, run, action);
-          if (manifest.artifactContracts)
-            await assertApplicationArtifactDependencies(
-              projectRoot,
-              manifest.artifactContracts,
-              run,
-              action.stepId,
-              run.actionContexts[action.id]?.results ?? {},
-              manifest,
-            );
-          if (action.type === 'invoke_skill') {
-            assertApplicationSkillAction({ manifest, skills }, action, run);
-            const executor = implementation.executors?.find(
-              (executor) => executor.id === action.claim?.executorId,
-            );
-            if (!executor)
-              throw new RuntimeProtocolError(
-                'EXECUTOR_UNAVAILABLE',
-                'Skill 必须由应用已配置的执行端口领取',
-              );
-            if (!executor.supports(structuredClone(action)) || !executor.preflight)
-              throw new RuntimeProtocolError(
-                'EXECUTOR_UNSUPPORTED',
-                'Skill 执行端口缺少对应的领取预检',
-              );
-            if (
-              action.requiredCapabilities.some(
-                (capability) => !executor.capabilities.includes(capability),
-              )
+      const commit = async () => {
+        const record = await persistent.read(runId);
+        if (record) assertIdentity(record);
+        for (const action of run.actions) {
+          if (
+            action.status === 'running' &&
+            !record?.run.actions.some(
+              (previous) =>
+                previous.id === action.id &&
+                previous.status === 'running' &&
+                previous.claim?.token === action.claim?.token,
             )
-              throw new RuntimeProtocolError(
-                'CAPABILITY_REQUIRED',
-                '已配置执行端口缺少 Skill 所需能力',
+          ) {
+            assertApplicationSkillExecutionScope(
+              { manifest, skills, projectRoot },
+              run,
+              action,
+              await relatedRuns(run),
+            );
+            if (manifest.artifactContracts)
+              await assertApplicationArtifactDependencies(
+                projectRoot,
+                manifest.artifactContracts,
+                run,
+                action.stepId,
+                run.actionContexts[action.id]?.results ?? {},
+                manifest,
               );
+            if (action.type === 'invoke_skill') {
+              assertApplicationSkillAction({ manifest, skills }, action, run);
+              const executor = implementation.executors?.find(
+                (executor) => executor.id === action.claim?.executorId,
+              );
+              if (!executor)
+                throw new RuntimeProtocolError(
+                  'EXECUTOR_UNAVAILABLE',
+                  'Skill 必须由应用已配置的执行端口领取',
+                );
+              if (!executor.supports(structuredClone(action)) || !executor.preflight)
+                throw new RuntimeProtocolError(
+                  'EXECUTOR_UNSUPPORTED',
+                  'Skill 执行端口缺少对应的领取预检',
+                );
+              if (
+                action.requiredCapabilities.some(
+                  (capability) => !executor.capabilities.includes(capability),
+                )
+              )
+                throw new RuntimeProtocolError(
+                  'CAPABILITY_REQUIRED',
+                  '已配置执行端口缺少 Skill 所需能力',
+                );
+            }
           }
         }
-      }
-      if (manifest.artifactContracts)
-        for (const wait of run.waits) {
-          if (
-            wait.status === 'resolved' &&
-            wait.decision?.choice === 'approved' &&
-            record?.run.waits.some(
-              (previous) => previous.id === wait.id && previous.status === 'pending',
+        if (manifest.artifactContracts)
+          for (const wait of run.waits) {
+            if (
+              wait.status === 'resolved' &&
+              wait.decision?.choice === 'approved' &&
+              record?.run.waits.some(
+                (previous) => previous.id === wait.id && previous.status === 'pending',
+              )
             )
-          )
-            await assertApplicationArtifactDependencies(
-              projectRoot,
-              manifest.artifactContracts,
-              run,
-              wait.stepId,
-              wait.results,
-              manifest,
-            );
-        }
-      return persistent.compareAndSwap(runId, expectedRevision, {
-        runId,
-        revision: run.revision,
-        application: identity,
-        run,
-      });
+              await assertApplicationArtifactDependencies(
+                projectRoot,
+                manifest.artifactContracts,
+                run,
+                wait.stepId,
+                wait.results,
+                manifest,
+              );
+          }
+        return persistent.compareAndSwap(runId, expectedRevision, {
+          runId,
+          revision: run.revision,
+          application: identity,
+          run,
+        });
+      };
+      return run.actions.some(
+        (action) => action.status === 'running' && action.type === 'invoke_skill',
+      )
+        ? withScopeLock(commit)
+        : commit();
     },
   };
   const store = implementation.wrapStore

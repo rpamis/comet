@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_NATIVE_SNAPSHOT_CONFIG,
+  defaultProjectConfig,
   readProjectConfig,
   writeProjectConfig,
 } from '../../../domains/comet-native/native-config.js';
 import { createNativeChange } from '../../../domains/comet-native/native-change.js';
+import { createNativeSdkChange } from '../../../domains/comet-native/native-sdk-create.js';
 import { sha256File } from '../../../domains/comet-native/native-hash.js';
 import { acquireNativeLock, releaseNativeLock } from '../../../domains/comet-native/native-lock.js';
 import {
@@ -39,6 +41,46 @@ describe('Native artifact root moves', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await fs.rm(projectRoot, { recursive: true, force: true });
+  });
+
+  it('rejects SDK root moves before changing documents or configuration and preserves continuation', async () => {
+    await fs.rm(path.join(projectRoot, '.git'), { recursive: true });
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    await createNativeSdkChange({
+      paths,
+      name: 'sdk-root',
+      language: 'en',
+      initialProjectConfig: defaultProjectConfig('docs'),
+      workspaceBinding: { isolation: 'current', changeBranch: null, targetBranch: null },
+    });
+    const before = await fs.readFile(
+      path.join(paths.changesDir, 'sdk-root/comet-state.yaml'),
+      'utf8',
+    );
+    await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'artifacts' })).rejects.toThrow(
+      /SDK/,
+    );
+    expect(
+      await fs.readFile(path.join(paths.changesDir, 'sdk-root/comet-state.yaml'), 'utf8'),
+    ).toBe(before);
+    const status = await runNativeCliDetailed([
+      'status',
+      'sdk-root',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(status.output, JSON.stringify(status.dispatch)).toMatchObject({ exitCode: 0 });
+    const next = await runNativeCliDetailed([
+      'next',
+      'sdk-root',
+      '--project-root',
+      projectRoot,
+      '--json',
+    ]);
+    expect(next.dispatch.error?.code).toBe('document-invalid');
+    expect((await readProjectConfig(projectRoot))?.native.pending_root_move).toBeUndefined();
+    await expect(fs.access(path.join(projectRoot, 'artifacts/comet'))).rejects.toThrow();
   });
 
   it('rechecks the branch after CLI root resolution before writing a root-move transaction', async () => {
@@ -423,7 +465,7 @@ describe('Native artifact root moves', () => {
     await expect(moveNativeRoot({ projectRoot, toArtifactRoot: 'docs' })).rejects.toThrow(
       /contains a symlink/u,
     );
-    expect((await readProjectConfig(projectRoot))?.native.pending_root_move?.stage).toBe('copying');
+    expect((await readProjectConfig(projectRoot))?.native.pending_root_move).toBeUndefined();
     expect(await fs.stat(source)).toBeTruthy();
   });
 

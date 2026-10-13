@@ -142,9 +142,34 @@ def test_drifted_installation_preview_cannot_start_subject_execution(tmp_path, m
 
 def test_no_runtime_run_cannot_be_reported_as_sdk_execution(tmp_path, monkeypatch):
     _context(tmp_path, monkeypatch)
+    monkeypatch.setattr("scaffold.python.utils.run_command_in_docker", lambda *_: SimpleNamespace(returncode=0, stdout="[]"))
     passed, failed = application_runs_validator(tmp_path, {"skill_package_path": "_eval_target_skills/skill"})
     assert not passed
     assert failed == ["No actual SDK application Run was verified"]
+
+
+def test_runtime_discovery_uses_the_public_sdk_without_legacy_workspace_files(tmp_path, monkeypatch):
+    _context(tmp_path, monkeypatch)
+    calls = []
+
+    def run(_directory, command, _timeout):
+        calls.append(command)
+        if "listWorkflowApplicationRunRecords" in command:
+            return SimpleNamespace(returncode=0, stdout=json.dumps([
+                {"applicationId": "report", "runId": "one", "record": {}, "error": None},
+            ]))
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "status": "succeeded",
+            "application": {"id": "report", "version": "1", "contentHash": "fixed-runtime"},
+            "data": {"workflow": {"id": "publish", "hash": "fixed-definition"},
+                     "actions": [{"stepId": "draft", "attempt": 1, "status": "succeeded"}], "waits": []},
+        }))
+
+    monkeypatch.setattr("scaffold.python.utils.run_command_in_docker", run)
+    passed, failed = application_runs_validator(tmp_path, {"skill_package_path": "snapshot"})
+    assert passed == ["SDK Run inspected by actual Runtime: one"]
+    assert not failed
+    assert len(calls) == 2
 
 
 def test_persisted_reports_keep_application_coverage_and_environment_failure(tmp_path):
@@ -193,10 +218,10 @@ def test_wsl_bridge_retains_the_application_experiment_identity(monkeypatch):
 
 def test_runtime_inspection_rejects_forged_or_other_application_run(tmp_path, monkeypatch):
     _context(tmp_path, monkeypatch)
-    storage = tmp_path / ".comet/runtime/applications/report/run-one"
-    storage.mkdir(parents=True)
-    (storage / "0000000000000001.json").write_text(json.dumps({"run": {"runId": "one"}}))
-    monkeypatch.setattr("scaffold.python.utils.run_command_in_docker", lambda *_: SimpleNamespace(returncode=0, stdout=json.dumps({"status": "succeeded", "application": {"id": "another", "version": "1"}, "data": {"actions": [], "waits": []}})))
+    def run(_directory, command, _timeout):
+        payload = [{"applicationId": "report", "runId": "one", "record": {}, "error": None}] if "listWorkflowApplicationRunRecords" in command else {"status": "succeeded", "application": {"id": "another", "version": "1"}, "data": {"actions": [], "waits": []}}
+        return SimpleNamespace(returncode=0, stdout=json.dumps(payload))
+    monkeypatch.setattr("scaffold.python.utils.run_command_in_docker", run)
     passed, failed = application_runs_validator(tmp_path, {"skill_package_path": "_eval_target_skills/skill"})
     assert not passed
     assert any("another application" in failure for failure in failed)
@@ -205,11 +230,8 @@ def test_runtime_inspection_rejects_forged_or_other_application_run(tmp_path, mo
 @pytest.mark.parametrize("runtime_hash,definition_hash,accepted", [("fixed-runtime", "fixed-definition", True), ("changed", "fixed-definition", False), ("fixed-runtime", "changed", False)])
 def test_runtime_inspection_binds_actual_code_and_tracks_decisions_and_recovery(tmp_path, monkeypatch, runtime_hash, definition_hash, accepted):
     _context(tmp_path, monkeypatch)
-    storage = tmp_path / ".comet/runtime/applications/report/run-one"
-    storage.mkdir(parents=True)
-    (storage / "0000000000000001.json").write_text(json.dumps({"run": {"runId": "one"}}))
     response = {"status": "succeeded", "application": {"id": "report", "version": "1", "contentHash": runtime_hash}, "data": {"workflow": {"id": "publish", "hash": definition_hash}, "actions": [{"stepId": "draft", "attempt": 2, "status": "succeeded"}], "waits": [{"stepId": "approve", "decision": {"choice": "rejected"}}]}}
-    monkeypatch.setattr("scaffold.python.utils.run_command_in_docker", lambda *_: SimpleNamespace(returncode=0, stdout=json.dumps(response)))
+    monkeypatch.setattr("scaffold.python.utils.run_command_in_docker", lambda _directory, command, _timeout: SimpleNamespace(returncode=0, stdout=json.dumps([{"applicationId": "report", "runId": "one", "record": {}, "error": None}] if "listWorkflowApplicationRunRecords" in command else response)))
     outputs = {"skill_package_path": "_eval_target_skills/skill"}
     passed, failed = application_runs_validator(tmp_path, outputs)
     assert bool(passed) == accepted

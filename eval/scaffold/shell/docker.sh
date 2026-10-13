@@ -616,6 +616,38 @@ build_trusted_oracle_mount_args() {
     fi
 }
 
+eval_runtime_volume() {
+    printf 'comet-eval-data-%s' "$(sha256_text "$1" | cut -c1-24)"
+}
+
+# 当前 Runtime 位于 /workspace 之外；每个用例的执行和校验容器共享同一卷。
+prepare_eval_runtime_data() {
+    local dir="$1" image="$2" volume owner
+    COMET_RUNTIME_MOUNT_ARGS=()
+    [[ -d "$dir/_eval_current_comet" || -f "$dir/.include-current-comet-cli" ]] || return 0
+    volume=$(eval_runtime_volume "$dir") || return 1
+    owner=$(docker image inspect --format '{{.Config.User}}' "$image") || return 1
+    owner="${owner//$'\r'/}"
+    docker volume create --label "comet.eval.workspace=$(sha256_text "$dir")" "$volume" >/dev/null || return 1
+    printf '%s\n' "$volume" > "$dir/.eval-runtime-volume" || return 1
+    docker run --rm --user root -v "$volume://opt/comet-eval-data" "$image" sh -ec '
+        chown "${1:-0}" /opt/comet-eval-data
+        chmod 0700 /opt/comet-eval-data
+    ' _ "$owner" </dev/null || return 1
+    COMET_RUNTIME_MOUNT_ARGS=(-v "$volume://opt/comet-eval-data" -e "COMET_DATA_DIR=//opt/comet-eval-data")
+}
+
+cleanup_eval_runtime_data() {
+    local volume observed
+    volume=$(eval_runtime_volume "$1") || return 1
+    observed=$(docker volume ls -q --filter "name=^${volume}$") || return 1
+    observed="${observed//$'\r'/}"
+    if [[ "$observed" == "$volume" ]]; then
+        docker volume rm "$volume" >/dev/null || return 1
+    fi
+    rm -f -- "$1/.eval-runtime-volume"
+}
+
 # Docker Desktop presents Windows bind-mount roots as root-owned even when the
 # task image runs its Agent as a non-root user. Git rejects /workspace as unsafe
 # when Comet deliberately ignores user/global Git configuration. Change only
@@ -655,11 +687,14 @@ docker_run() {
     build_env_args
     build_trusted_oracle_mount_args "$dir"
 
+    prepare_eval_runtime_data "$dir" "$image_name" || return 1
+
     local windir
     windir=$(_winpath "$dir")
 
     docker run --rm \
         -v "$windir://workspace" \
+        "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
         -w //workspace \
         "${ENV_ARGS[@]}" \
@@ -699,11 +734,13 @@ docker_run_command() {
     local image_name
     image_name=$(docker_build "$dir") || return 1
     build_trusted_oracle_mount_args "$dir"
+    prepare_eval_runtime_data "$dir" "$image_name" || return 1
 
     local windir
     windir=$(_winpath "$dir")
     local docker_command=(docker run --rm
         -v "$windir://workspace"
+        "${COMET_RUNTIME_MOUNT_ARGS[@]}"
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"}
         -w //workspace
         "$image_name"
@@ -816,6 +853,7 @@ docker_run_agent() (
     fi
     build_langfuse_plugin_args "$agent"
     build_trusted_oracle_mount_args "$dir"
+    prepare_eval_runtime_data "$dir" "$image_id" || return 1
     local -a prompt_mount_args=() prompt_docker_args=()
     local prompt_input=/dev/null
     if [[ -n "$prompt_file" ]]; then
@@ -845,6 +883,7 @@ docker_run_agent() (
             ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
             "${prompt_docker_args[@]}" \
             -v "$windir://workspace" \
+            "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
             "${prompt_mount_args[@]}" \
             "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
             "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
@@ -860,6 +899,7 @@ docker_run_agent() (
             ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
             "${prompt_docker_args[@]}" \
             -v "$windir://workspace" \
+            "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
             "${prompt_mount_args[@]}" \
             "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
             "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
@@ -946,6 +986,7 @@ docker_run_claude_loop() {
     build_plugin_args
     build_langfuse_plugin_args "claude-code"
     build_trusted_oracle_mount_args "$dir"
+    prepare_eval_runtime_data "$dir" "$image_id" || return 1
 
     local windir
     windir=$(_winpath "$dir")
@@ -962,6 +1003,7 @@ docker_run_claude_loop() {
     docker run --rm --name "$container_name" \
         ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
+        "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
         "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
         "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
@@ -1021,6 +1063,7 @@ docker_run_agent_loop() {
     fi
     build_langfuse_plugin_args "$agent"
     build_trusted_oracle_mount_args "$dir"
+    prepare_eval_runtime_data "$dir" "$image_id" || return 1
 
     local windir
     windir=$(_winpath "$dir")
@@ -1031,6 +1074,7 @@ docker_run_agent_loop() {
     docker run --rm --name "$container_name" \
         ${APPLICATION_EVAL_LABEL_ARGS[@]+"${APPLICATION_EVAL_LABEL_ARGS[@]}"} \
         -v "$windir://workspace" \
+        "${COMET_RUNTIME_MOUNT_ARGS[@]}" \
         "${RUNTIME_CONFIG_MOUNT_ARGS[@]}" \
         "${RUNTIME_CONFIG_TMPFS_ARGS[@]}" \
         ${TRUSTED_ORACLE_MOUNT_ARGS[@]+"${TRUSTED_ORACLE_MOUNT_ARGS[@]}"} \
@@ -1069,6 +1113,10 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     shift || true
 
     case "$cmd" in
+    cleanup-runtime-data)
+        dir="${1:?Missing Eval workspace}"
+        cleanup_eval_runtime_data "$(realpath "$dir")"
+        ;;
     check)
         if check_docker; then
             echo "OK"

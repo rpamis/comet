@@ -2,7 +2,8 @@ import { getCurrentVersion } from '../../../platform/version/version.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { resolveWorkspaceRuntimeRootSync } from '../../../platform/paths/workspace-runtime.js';
 import { once } from 'node:events';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -72,6 +73,24 @@ it('previews and installs Skill/Runtime/Rule/Hook, preserves shared integration 
     await fs.readFile(path.join(consumer, '.claude/settings.local.json'), 'utf8'),
   );
   expect(settings.hooks.PreToolUse).toHaveLength(1);
+  const handler = settings.hooks.PreToolUse[0].hooks[0];
+  for (const [filePath, exitCode] of [
+    ['example.txt', 0],
+    [path.join(resolveWorkspaceRuntimeRootSync(consumer), 'applications/state.json'), 2],
+  ] as const) {
+    const result = spawnSync(process.execPath, handler.args, {
+      cwd: consumer,
+      encoding: 'utf8',
+      input: JSON.stringify({
+        cwd: consumer,
+        tool_name: 'Write',
+        tool_input: { file_path: filePath },
+      }),
+      timeout: 20_000,
+    });
+    expect(result.status, result.stderr).toBe(exitCode);
+    expect(result.stderr).not.toContain('Cannot find module');
+  }
   const unchanged = await previewWorkflowApplicationInstall(options);
   expect(unchanged.operation).toBe('unchanged');
   await fs.writeFile(

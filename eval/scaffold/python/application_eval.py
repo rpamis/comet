@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -104,27 +105,37 @@ def application_runs_validator(test_dir: Path, outputs: dict) -> tuple[list[str]
     package = outputs.get("skill_package_path")
     if not isinstance(package, str) or not package:
         return [], ["SDK application package snapshot is unavailable"]
-    root = test_dir / ".comet/runtime/applications" / identity["id"]
     passed: list[str] = []
     failed: list[str] = []
     observed: set[str] = set()
     executed: set[str] = set()
     choices: set[str] = set()
     recovered: set[str] = set()
-    runs = sorted(root.glob("*")) if root.is_dir() else []
-    for directory in runs:
-        if directory.is_symlink() or not directory.is_dir():
-            failed.append("SDK Run storage contains an invalid directory")
-            continue
-        revisions = sorted(directory.glob("[0-9]" * 16 + ".json"))
-        if not revisions:
-            continue
+    discovery = (
+        "import { listWorkflowApplicationRunRecords } from '@rpamis/comet/applications';"
+        "console.log(JSON.stringify(await listWorkflowApplicationRunRecords('/workspace')));"
+    )
+    try:
+        listed = run_command_in_docker(test_dir, "node --input-type=module -e " + shlex.quote(discovery), 60)
+        runs = json.loads(listed.stdout)
+        if listed.returncode != 0 or not isinstance(runs, list):
+            raise ValueError("Runtime Run discovery failed")
+    except (OSError, ValueError, TypeError) as exc:
+        runs = []
+        failed.append("SDK Run discovery rejected: " + str(exc))
+    for record in runs:
         try:
-            saved = json.loads(revisions[-1].read_text(encoding="utf-8"))
-            run_id = saved["run"]["runId"]
+            if not isinstance(record, dict):
+                raise ValueError("Runtime Run discovery returned an invalid record")
+            if record.get("applicationId") != identity["id"]:
+                continue
+            if record.get("error") or record.get("record") is None:
+                raise ValueError("Runtime rejected the saved application Run")
+            run_id = record.get("runId")
+            if not isinstance(run_id, str) or not run_id:
+                raise ValueError("Runtime Run discovery returned an invalid Run ID")
             request = test_dir / ".eval-sdk-inspect.json"
             request.write_text(json.dumps({"operation": "inspect", "runId": run_id}), encoding="utf-8")
-            import shlex
 
             command = (
                 "comet runtime dispatch --application "
