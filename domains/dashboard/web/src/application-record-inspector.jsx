@@ -256,7 +256,13 @@ export function ApplicationRecordInspector({
                 </pre>
               </div>
             </details>
-            <div className="any-note">{t('本页只读；决定必须由 Agent 按当前提案继续处理。')}</div>
+            <div className="any-note">
+              {t(
+                detail.archive
+                  ? '历史实验 · 只读'
+                  : '本页只读；决定必须由 Agent 按当前提案继续处理。',
+              )}
+            </div>
           </>
         )}
         {record.kind === 'evidence' && (
@@ -359,7 +365,9 @@ export function ApplicationRecordInspector({
           ]}
         />
       </div>
-      <div className="any-inspector-foot">{t('只读观测 · 决定与恢复由 Agent 继续')}</div>
+      <div className="any-inspector-foot">
+        {t(detail.archive ? '历史实验 · 只读' : '只读观测 · 决定与恢复由 Agent 继续')}
+      </div>
     </div>
   );
 }
@@ -395,7 +403,7 @@ export function ApplicationEvidenceView({ detail, onEvidence, onSource, onEval }
           items={[
             {
               key: 'history',
-              label: t('历史证据 · 对应其他版本或内容'),
+              label: t(detail.archive ? '原 Creator 评估决定' : '历史证据 · 对应其他版本或内容'),
               children: detail.otherEvidence.map((e, i) => (
                 <button key={i} className="any-history-evidence" onClick={() => onEvidence(e)}>
                   <span>

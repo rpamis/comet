@@ -105,3 +105,10 @@ export function resolveRepositoryEvalWorkspace(): RepositoryEvalWorkspace {
 
 export { listEvalPresets, saveEvalPreset, deleteEvalPreset } from './eval-run-presets.js';
 export { readEvalRetrySelection } from './eval-run-retry.js';
+export {
+  listEvalArchives,
+  readEvalArchiveFile,
+  evalArchiveRoot,
+  evalArchiveRunId,
+} from './eval-archives.js';
+export type { EvalArchiveObservation, EvalArchive } from './eval-archives.js';

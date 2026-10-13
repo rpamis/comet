@@ -1,0 +1,87 @@
+{
+  "schema": "comet.workflow.application.eval.result.v1",
+  "experimentId": "grill-test-faithful-graph-one-shot-20261013",
+  "confirmationHash": "7da5e2a64a2762701a3830e5e82d73eb5e66f7fb007783f32f68243c72cdc6d5",
+  "snapshotHash": "59ee7782df5f3057fd6e7784b23323495de69757565cc754343f723ad0da6a6a",
+  "application": {
+    "id": "grill-test",
+    "version": "3",
+    "base": "standalone",
+    "runtimeVersion": "0.5.0",
+    "contentHash": "5c95c6a0669eb7c85719f99338e7affe12a81fd4e71af28544c6384c059065f0"
+  },
+  "settings": {
+    "agent": "claude-code",
+    "model": "glm-5.3[1M]",
+    "judgeAgent": "claude-code",
+    "judgeModel": "glm-5.3-flash",
+    "maxTurns": 12,
+    "timeoutSeconds": 900
+  },
+  "status": "incomplete",
+  "taskNames": [
+    "comet-graph-execution-review"
+  ],
+  "passed": 0,
+  "total": 1,
+  "report": "summary.md",
+  "limitations": [
+    "仅证明所选 Agent、模型和当前用例的结果；多平台安装不等于全部宿主验收。",
+    "2–4 个自动生成用例不保证覆盖全部分支、外部系统或恢复路径。",
+    "审批在隔离评估环境中模拟，不授权真实发布；外部集成必须使用测试替身。",
+    "预算按用例数、交互轮数和总时限限制；实际模型费用另行报告。",
+    "Uncovered SDK steps: grill-me/complete, grill-me/confirm-understanding, grill-me/grill, grill-me/reject, grill-test/authorize-implementation, grill-test/grill, grill-test/implement, grill-test/reject, grill-test/spec, grill-test/tickets, grill-test/verify, implement/implement, to-spec/complete, to-spec/confirm-spec, to-spec/reject, to-spec/spec, to-tickets/complete, to-tickets/confirm-tickets, to-tickets/reject, to-tickets/tickets",
+    "Uncovered decisions: grill-me/confirm-understanding/approved, grill-me/confirm-understanding/rejected, grill-test/authorize-implementation/approved, grill-test/authorize-implementation/rejected, to-spec/confirm-spec/approved, to-spec/confirm-spec/rejected, to-tickets/confirm-tickets/approved, to-tickets/confirm-tickets/rejected"
+  ],
+  "failures": [
+    "graph_execution_review: e_after_review(thread_id=\"thread-b\")\n    \n>       assert len(resumed_a[\"results\"]) == 2\nE       assert 0 == 2\nE        +  where 0 = len([])\n\ntest_pipeline.py:50: AssertionError\n=========================== short test summary info ============================\nFAILED test_pipeline.py::test_fan_out_processes_every_task_without_review - A...\nFAILED test_pipeline.py::test_multi_task_run_interrupts_for_review_before_summary\nFAILED test_pipeline.py::test_resume_after_review_continues_same_thread - Ass...\nFAILED test_pipeline.py::test_thread_state_is_isolated_by_thread_id - assert ...\n4 failed in 0.09s",
+    "SDK evidence rejected: Retained SDK Store failed validation",
+    "Agent execution failed with exit code 124",
+    "No SDK workflow step or decision was actually executed"
+  ],
+  "coveredSteps": [],
+  "executedSteps": [],
+  "uncoveredSteps": [
+    "grill-me/complete",
+    "grill-me/confirm-understanding",
+    "grill-me/grill",
+    "grill-me/reject",
+    "grill-test/authorize-implementation",
+    "grill-test/grill",
+    "grill-test/implement",
+    "grill-test/reject",
+    "grill-test/spec",
+    "grill-test/tickets",
+    "grill-test/verify",
+    "implement/implement",
+    "to-spec/complete",
+    "to-spec/confirm-spec",
+    "to-spec/reject",
+    "to-spec/spec",
+    "to-tickets/complete",
+    "to-tickets/confirm-tickets",
+    "to-tickets/reject",
+    "to-tickets/tickets"
+  ],
+  "coveredChoices": [],
+  "uncoveredChoices": [
+    "grill-me/confirm-understanding/approved",
+    "grill-me/confirm-understanding/rejected",
+    "grill-test/authorize-implementation/approved",
+    "grill-test/authorize-implementation/rejected",
+    "to-spec/confirm-spec/approved",
+    "to-spec/confirm-spec/rejected",
+    "to-tickets/confirm-tickets/approved",
+    "to-tickets/confirm-tickets/rejected"
+  ],
+  "recoveredActions": [],
+  "actualModels": [
+    "glm-5.2",
+    "glm-5.3[1m]"
+  ],
+  "modelIdentityAvailable": true,
+  "caseCostUsd": 1.60632,
+  "knownCaseCostUsd": 1.60632,
+  "costUsd": null,
+  "costStatus": "case-costs-only"
+}

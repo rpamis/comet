@@ -1,0 +1,313 @@
+{
+  "reason": "SDK claim tokens are redacted; affected receipt hashes bind redacted outcomes. Original receipt hashes retained here. Run IDs, revisions, states, decisions and business outputs are unchanged.",
+  "receipts": [
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:1",
+      "outcomeId": "0b3e0526-7eb2-4a5b-8113-09c432b4b699",
+      "sourceReceiptHash": "b4155afbbbc3d7d2e6c6912bbb1bd8a6d8376ec292b8dfcdfa7ce5288b5841b1",
+      "redactedReceiptHash": "a81e113ac1a8aa03a2a796e4177d4331222e1a188bcc7aa33ee294ec712bfd88"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:2",
+      "outcomeId": "grill-test-final:2:1:executor-result",
+      "sourceReceiptHash": "b97ec74778e37a4f85a98b81f561eae907c1e235d10dfadec39956913902af8c",
+      "redactedReceiptHash": "7823505273d9d225ba70c189ea7185ebc520318fcc3eac04c106a5f625944ae4"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:4",
+      "outcomeId": "grill-test-final:4:1:executor-result",
+      "sourceReceiptHash": "6b6e784cd532ec65fa2e8c6be0a0ace21661e74fc14775f2b39e343f5f0991b3",
+      "redactedReceiptHash": "6bd6dd354337203fa6701337a3e13aa308fb02b325f5a966aaa59e539c6166f3"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:5",
+      "outcomeId": "grill-test-final:5:1:executor-result",
+      "sourceReceiptHash": "47146b8b570d6170f2827b51123e4663db65129a88863ad1ccb96319917280b9",
+      "redactedReceiptHash": "a78be1b0293afe7a9bfa6911d9884c6b7a8bd9658b4923883116f65e2a5b4900"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:6",
+      "outcomeId": "grill-test-final:6:1:executor-result",
+      "sourceReceiptHash": "6d4670329a1e2ddc8f4a5cfbf3931ef3fb1e1c1df4dfca46f85abb9c5fc104d3",
+      "redactedReceiptHash": "c8c3f88762349ee6f0230d12b3ebcb1d487e790669731fd081decfa9c4bc1402"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:8",
+      "outcomeId": "958e188c-1185-4fa8-bd13-e37e5f6eac2c",
+      "sourceReceiptHash": "ca877fa54aba5d85defe1bbacffbe1904ee08f232dbfce867a8ca2317a64d3c8",
+      "redactedReceiptHash": "baf5119958eebbfaaf6a54f493efa662ccce845baa2f59a2b95d15980f900e9b"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:9",
+      "outcomeId": "grill-test-final:9:1:executor-result",
+      "sourceReceiptHash": "afb46dca1a9dde1125bbfa2ed548d815390a41e990dc52d4d9c0cbb74fa3c5dd",
+      "redactedReceiptHash": "eb98adcf739ad1fefddf532edbf40a0f072f09b3474dd915691a3bd43fafa6a8"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:11",
+      "outcomeId": "grill-test-final:11:1:executor-result",
+      "sourceReceiptHash": "e695a5ee3e379d987b3e33dd1196d036899018a4e39108c1a4ee59165d0de66c",
+      "redactedReceiptHash": "649aaa6aa5c921ec0f4d5fc256410526600e10a33d31d44536b362c4924b274c"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:12",
+      "outcomeId": "grill-test-final:12:1:executor-result",
+      "sourceReceiptHash": "e3a3b7096d6e9cf2c4e74146e7b64f4395509c876351b2e6fc19ee632416bd09",
+      "redactedReceiptHash": "06c9435d527a8e739ccfde482b4148a9f8a05858517939c3c78484ee1e287f55"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:13",
+      "outcomeId": "grill-test-final:13:1:executor-result",
+      "sourceReceiptHash": "885994a2a6fd94cd15a550d5eebe9af74e216ba161e0c5e4a49d7510e74fe547",
+      "redactedReceiptHash": "c8cb7c3056103453b9544c46eb9d023f5351b92673cc14c1f688a2ba1c2d7d59"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:15",
+      "outcomeId": "991b931d-d6a5-4971-88d8-8c304cfb6eec",
+      "sourceReceiptHash": "ea95f48e6edb91b8f5f85ad8580bbe41d3b9aaf36cdb39cdbd8d884562d4a39a",
+      "redactedReceiptHash": "2a75efe920eb0c20c334fd622f74976a7a422d2fe04b333ba64b504350cae640"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:16",
+      "outcomeId": "grill-test-final:16:1:executor-result",
+      "sourceReceiptHash": "411c63c2b3a3abf4179387549ab904b5016f901c06f67f908669126aa11ea678",
+      "redactedReceiptHash": "0dcd914da1c0b69fe340a973499c73a017bf9f35480f21a3054024f3aa58f324"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:18",
+      "outcomeId": "grill-test-final:18:1:executor-result",
+      "sourceReceiptHash": "e7c704bdb436b7d57058cda23bc4ce4a7992291015a14392f4a22421e802751b",
+      "redactedReceiptHash": "790e5bd368d3a049e39dab0c6cd5c482866e6c120edbbf0dc2ae1f06af1b275c"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:19",
+      "outcomeId": "grill-test-final:19:1:executor-result",
+      "sourceReceiptHash": "802225e256ab7621374a621645e4b6dd529e4cfa4d56da5e719b3552ee6b6b14",
+      "redactedReceiptHash": "8debb4a24b2eeb5d67295d0ce868f84e9e9ef2f352f9a8808901c8f549b9c116"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:20",
+      "outcomeId": "grill-test-final:20:1:executor-result",
+      "sourceReceiptHash": "a97be9b703e3c5760686aa14a09957e7d08090b39ddcacb1cd72e8f23d7ceca1",
+      "redactedReceiptHash": "aca8a1ab54dcedc1380f64f42fc8e3c3282ce8d393b08e90605a853adf882bd8"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:22",
+      "outcomeId": "f60a0b73-f62b-4de9-a0a0-c1f8b4caf612",
+      "sourceReceiptHash": "8cfe96ebf470e3d4de875fc796689dc73e581f8277cea26fad587563a8338e78",
+      "redactedReceiptHash": "1763cb4057b1607b52eb2605fb328e6af74768e7c750570b5a6aa010120cccae"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:23",
+      "outcomeId": "grill-test-final:23:1:executor-result",
+      "sourceReceiptHash": "89b66ad58ae77fcb4ee93e8a6b2200885ba16ec1361d4e9dd329df709b6f10c8",
+      "redactedReceiptHash": "b31fd5d68271f0bc955abf379e9d472093ccdadb948de22782ef8974b2119cef"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:25",
+      "outcomeId": "grill-test-final:25:1:executor-result",
+      "sourceReceiptHash": "1c749845dfd5737ba2ddd33bf7aa09cedd69614d259e549ff439e9272a7c201d",
+      "redactedReceiptHash": "7958749f8d83522b7958f60fc19dfa4e7873405f89421fc258f14d32f96b321f"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:26",
+      "outcomeId": "grill-test-final:26:1:executor-result",
+      "sourceReceiptHash": "43e911a22709cb862379a93016b94be75c51620b67cdff97fa4590077fb790e0",
+      "redactedReceiptHash": "35616b331e70051f2525487e2a1acf5174807c05ffa69f00c964161eb3e8b43f"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:27",
+      "outcomeId": "grill-test-final:27:1:executor-result",
+      "sourceReceiptHash": "b3f64057c643a1ace519ad011451e20bf23e5dd58e360d266e0bb0eb11459a6b",
+      "redactedReceiptHash": "cc15e7223f491e968a73077f81d2ed4e48a117ae531177b8395eb4146692dfd6"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:29",
+      "outcomeId": "290d74f0-fe29-4dbd-8793-71d744db0439",
+      "sourceReceiptHash": "84e09913eba71c4f3d3758cff77299a1fe6f46f4944b06eb5bc7077f9808b59f",
+      "redactedReceiptHash": "c475fa8e5fb801b48e5b563a4b5a108b908482f2c486c996ae99430fb14cc474"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:30",
+      "outcomeId": "grill-test-final:30:1:executor-result",
+      "sourceReceiptHash": "33e5b0f7cee8f35fd4059aa7015d9b95bf0a971e9f2dc8fbc7de0753d0efb6c2",
+      "redactedReceiptHash": "b6de0b026800a45d275dacc5427c6d73a4e391783cb09c96e742aea72cdd15db"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:32",
+      "outcomeId": "grill-test-final:32:1:executor-result",
+      "sourceReceiptHash": "6762112f5cf9090145d64d33c0610659fa69ebb9fa8b3de413dcc2550241fe5f",
+      "redactedReceiptHash": "c942fec73223d879945e96f079b9aed345183ec8fb87a4b19c347cdcb77ebfe8"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:33",
+      "outcomeId": "grill-test-final:33:1:executor-result",
+      "sourceReceiptHash": "b1daf3becc2b044ea6e78468a48e3608f196ea866caa93f2002c6cd26b83e956",
+      "redactedReceiptHash": "0d2c744ae67d51a86b7d562db3d0fe45cdd4869b649f35ababa293d34100cd20"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:34",
+      "outcomeId": "grill-test-final:34:1:executor-result",
+      "sourceReceiptHash": "543be822d675189ee41cee61592e605caf1988a430be25219e77ea9b5fb3a0bb",
+      "redactedReceiptHash": "3db7e108e77c407fa55d861d590210ae293bce3ffaa41bc9d2f3eddce1eadad3"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:36",
+      "outcomeId": "1d6f5ba2-9210-4f61-be37-24769c8711d1",
+      "sourceReceiptHash": "f900c759e253f8aadfbe4accb575930d9c7810a643ba6e8baae4b34ad103a8b2",
+      "redactedReceiptHash": "acee5fdacd59b871c908175cc8300b6b4b569cf5ca8951eef6bac68c8608f7e8"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:37",
+      "outcomeId": "grill-test-final:37:1:executor-result",
+      "sourceReceiptHash": "29e93829275ef7de1a32f9f9cee998f8ad2b1f068c89ce28702cc93afc8d55e0",
+      "redactedReceiptHash": "cac0631a00f38f1123bbbaa6ef02cae8b7f3a88887cfdf4bbfd97ae82962185b"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:39",
+      "outcomeId": "grill-test-final:39:1:executor-result",
+      "sourceReceiptHash": "0dd5617609d62a49066d0344b07297481eb58eb2c8894b4f5f1bb18c455c1f68",
+      "redactedReceiptHash": "d268a326ef714bf01c64e14001d98935f32f2039961a3467ddb667182fc6e870"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:40",
+      "outcomeId": "grill-test-final:40:1:executor-result",
+      "sourceReceiptHash": "59f1177b754a8f1aa4762297719bd9916cff048ec352c13243ed7190ef525088",
+      "redactedReceiptHash": "caa72b2aa6372690da95fa00e15c9435bd6223d6dc7f9185f3fe7fc79918cf70"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:41",
+      "outcomeId": "grill-test-final:41:1:executor-result",
+      "sourceReceiptHash": "dfb488d535912212de9a04dc46ba5efb88f2ed691342ae28283ee7fed9820f3a",
+      "redactedReceiptHash": "bba2c524d365fc9a090ec9fe91abb01362679fd507d5dd631203135d9ea73218"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:43",
+      "outcomeId": "grill-test-final:43:1:executor-result",
+      "sourceReceiptHash": "1a11228b422991ce15704bdf2ff8853501a958c8fc11d169a8b0c553fcbfa429",
+      "redactedReceiptHash": "9d58694b04091e3f8e464516950ea819a93df35288b09ebeae7396ee4c945473"
+    },
+    {
+      "runId": "grill-test-final",
+      "actionId": "grill-test-final:45",
+      "outcomeId": "grill-test-final:45:1:executor-result",
+      "sourceReceiptHash": "d1305961915130d531297b14b03a46a7fcb7b33515f39c6b5b5cb6708a47145b",
+      "redactedReceiptHash": "04adb921eaf7ea5d53dcb3a1dfe36cb35113eb590a62c5e28dd27d3e8a205c91"
+    },
+    {
+      "runId": "child-d3ced903123afecdcf65448247a6d9bbb356fa9aaca815b5ae838c444aef6860",
+      "actionId": "child-d3ced903123afecdcf65448247a6d9bbb356fa9aaca815b5ae838c444aef6860:1",
+      "outcomeId": "b7c5f655-b67c-4a48-a5fb-cad6319257b2",
+      "sourceReceiptHash": "5c453ab9b7c240d95fe9d9bda64cc320581d5fe845de0790a80d6453c3b0c28e",
+      "redactedReceiptHash": "2cf90a843e21400b9d1dca1fb1d5288344a117b37d94f5ca89713a397595b737"
+    },
+    {
+      "runId": "child-d3ced903123afecdcf65448247a6d9bbb356fa9aaca815b5ae838c444aef6860",
+      "actionId": "child-d3ced903123afecdcf65448247a6d9bbb356fa9aaca815b5ae838c444aef6860:3",
+      "outcomeId": "child-d3ced903123afecdcf65448247a6d9bbb356fa9aaca815b5ae838c444aef6860:3:1:executor-result",
+      "sourceReceiptHash": "31dae30340895ab4f7e2dee606dbb22668930904012f781d48a987ec6c002332",
+      "redactedReceiptHash": "0ad3c60ace2c689752f4e667392f6f5007cfa09769a3befa1f1f6805ab9c0359"
+    },
+    {
+      "runId": "child-ca86e3ded97c995186e8d5b2e4ced8e0bf50f7b031bab6965c1656e16f835335",
+      "actionId": "child-ca86e3ded97c995186e8d5b2e4ced8e0bf50f7b031bab6965c1656e16f835335:1",
+      "outcomeId": "716070b5-d043-4d42-8e7f-b2cf1d5a6785",
+      "sourceReceiptHash": "a619a9d325cf71f97537c02815dd1e54c7edc4ff2160d19ab3139d19e76e7e59",
+      "redactedReceiptHash": "0998af4486a79b0477ab8471d14eb45b9ba0413ee8c1d3049c674fa82d378f92"
+    },
+    {
+      "runId": "child-ca86e3ded97c995186e8d5b2e4ced8e0bf50f7b031bab6965c1656e16f835335",
+      "actionId": "child-ca86e3ded97c995186e8d5b2e4ced8e0bf50f7b031bab6965c1656e16f835335:3",
+      "outcomeId": "child-ca86e3ded97c995186e8d5b2e4ced8e0bf50f7b031bab6965c1656e16f835335:3:1:executor-result",
+      "sourceReceiptHash": "e1a7e73cf33ca45314e07961b3111347764b869516c67c3bcb03bf2d4c2d0900",
+      "redactedReceiptHash": "fd220a834b82bb713ca5e0240e9bf91484796696543cfdad888c3c1c84b1b6f4"
+    },
+    {
+      "runId": "d4903448-9787-40d1-91bc-0e0e8762b138",
+      "actionId": "d4903448-9787-40d1-91bc-0e0e8762b138:1",
+      "outcomeId": "child-d3ced903123afecdcf65448247a6d9bbb356fa9aaca815b5ae838c444aef6860:6",
+      "sourceReceiptHash": "361c47da724d54436af46460f6a113eba67e24eb179b605964e6ad48c88f4df2",
+      "redactedReceiptHash": "ebebbb9e78311a67be2a2b76b85312de4c96250475d7eb84f2c3d0f1334f27ac"
+    },
+    {
+      "runId": "d4903448-9787-40d1-91bc-0e0e8762b138",
+      "actionId": "d4903448-9787-40d1-91bc-0e0e8762b138:2",
+      "outcomeId": "child-35fd01fb3751793b9b411b2d6be23101db7535419a259258889d03a17555d386:6",
+      "sourceReceiptHash": "99f29a8ca5554af6bbc115ffd53aa56dda80272c8fd2f7e8160dfc73d99d431e",
+      "redactedReceiptHash": "d72ea75bc5419dc8ea3504010dfa0e534789b168876b815ed7265ee589df3ee3"
+    },
+    {
+      "runId": "d4903448-9787-40d1-91bc-0e0e8762b138",
+      "actionId": "d4903448-9787-40d1-91bc-0e0e8762b138:3",
+      "outcomeId": "child-ca86e3ded97c995186e8d5b2e4ced8e0bf50f7b031bab6965c1656e16f835335:6",
+      "sourceReceiptHash": "26f85946d1834e3b956a9be3311f90b2a158bda5761058a490c8afffcd727ac6",
+      "redactedReceiptHash": "f0496ce290bbc4e21cb8e1f3c48c947a552d0812c5959e473e0070e6ecefe7b1"
+    },
+    {
+      "runId": "d4903448-9787-40d1-91bc-0e0e8762b138",
+      "actionId": "d4903448-9787-40d1-91bc-0e0e8762b138:5",
+      "outcomeId": "child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f:3",
+      "sourceReceiptHash": "eabe00ec602b306da71b52148901cc3ae76d38bf82ae4f27b46240c581a33782",
+      "redactedReceiptHash": "31605c8dddf827c13908747f77758784000f01cea3516d6df3df44fbf1c9b8df"
+    },
+    {
+      "runId": "d4903448-9787-40d1-91bc-0e0e8762b138",
+      "actionId": "d4903448-9787-40d1-91bc-0e0e8762b138:6",
+      "outcomeId": "d4903448-9787-40d1-91bc-0e0e8762b138:6:1:executor-result",
+      "sourceReceiptHash": "fa11d24020852e5f5abbc79dc95816e134ca82ae08437833aded23dde1bb8dd0",
+      "redactedReceiptHash": "cc547613f7a66741b6f19c30e0c62bdf2b566da40754f084953e105bcc33cb3a"
+    },
+    {
+      "runId": "child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f",
+      "actionId": "child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f:1",
+      "outcomeId": "96acc142-4bf8-4ca4-a3f0-772c4f9668c3",
+      "sourceReceiptHash": "07cdbdf2faf2fb8d205d610256360605cd8039ea9d42dec11496d3750ac7fedc",
+      "redactedReceiptHash": "0836033374ab387fe9ed11e5db1b618fdf5fc48f4b754a9ec6accc19487a9bf4"
+    },
+    {
+      "runId": "child-35fd01fb3751793b9b411b2d6be23101db7535419a259258889d03a17555d386",
+      "actionId": "child-35fd01fb3751793b9b411b2d6be23101db7535419a259258889d03a17555d386:1",
+      "outcomeId": "83497b20-88ee-4901-a307-5ca76fbe3d52",
+      "sourceReceiptHash": "74428f68a0e13892f13e65afb141c81aa30c3a39eef9575737ff80055b0a20ed",
+      "redactedReceiptHash": "491f2b9dc1a883c59e8954ea406e307a76a31183dfac47310c951b25424c35ca"
+    },
+    {
+      "runId": "child-35fd01fb3751793b9b411b2d6be23101db7535419a259258889d03a17555d386",
+      "actionId": "child-35fd01fb3751793b9b411b2d6be23101db7535419a259258889d03a17555d386:3",
+      "outcomeId": "child-35fd01fb3751793b9b411b2d6be23101db7535419a259258889d03a17555d386:3:1:executor-result",
+      "sourceReceiptHash": "d3ba8d452d80da74b1d41d2c2a8defa173b426fd1c38649ae9c7b691d57bf280",
+      "redactedReceiptHash": "a6148c389b8fad451d32c5cf623dd156a76df5f1d915bf9ef4da4c0968536841"
+    }
+  ]
+}

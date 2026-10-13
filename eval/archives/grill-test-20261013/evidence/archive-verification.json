@@ -1,0 +1,41 @@
+{
+  "schema": "comet.eval.archive-verification.v1",
+  "checkedAt": "2026-10-13T14:05:39.093Z",
+  "sourceCommit": "bcb970b2bbd3413c498251eeca985cec5e7b2d1e",
+  "fixedPackage": {
+    "files": 31,
+    "sha256": "5c95c6a0669eb7c85719f99338e7affe12a81fd4e71af28544c6384c059065f0",
+    "bytesUnchanged": true
+  },
+  "snapshots": {
+    "count": 6,
+    "creatorRevision": 78,
+    "rootRevision": 12,
+    "runIdsRevisionsStatesBusinessOutputsAndDecisionsUnchanged": true,
+    "claimCredentialsRedacted": true
+  },
+  "businessChecks": {
+    "originalTestsUnchanged": true,
+    "allTestsPassed": 13,
+    "command": "uv run python -B -m pytest archives/grill-test-20261013/task/final -q -p no:cacheprovider"
+  },
+  "dashboardChecks": {
+    "source": "isolated staged snapshot",
+    "unitTestsPassed": 57,
+    "browserTestsPassed": 5,
+    "lint": "passed",
+    "typeScript": "passed",
+    "format": "passed",
+    "gitBlobHashes": "matched"
+  },
+  "securityChecks": {
+    "processCredentialLiteralsAndKnownTokenPatternsAbsent": true,
+    "providerConfigurationExcluded": true,
+    "apiCredentialsNotPersisted": true
+  },
+  "notRun": [
+    "No new model Eval or Native run: this task archives existing evidence.",
+    "Local whole-repository suite not run: focused read-only archive and Dashboard checks used.",
+    "CI result is not covered by this local verification record."
+  ]
+}

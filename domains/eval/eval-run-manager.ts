@@ -192,6 +192,7 @@ export async function requestStopEvalRun(project: string, id: string): Promise<E
   return readEvalRun(project, id);
 }
 export async function reconcileEvalRun(project: string, id: string): Promise<EvalRunDetail> {
+  if (id.startsWith('archive-')) return readEvalRun(project, id);
   const record = await readManagedEvalRun(project, id);
   if (record?.owner && !['completed', 'stopped', 'interrupted'].includes(record.status)) {
     const liveness = await inspectProcessLiveness(record.owner.pid, record.owner.identity);

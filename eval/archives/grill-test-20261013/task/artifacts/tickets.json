@@ -1,0 +1,28 @@
+{
+  "tickets": [
+    {
+      "id": "01",
+      "file": ".scratch/grill-test/issues/01-fan-out-all-tasks.md",
+      "blockedBy": [],
+      "acceptanceIds": ["AC-1"]
+    },
+    {
+      "id": "02",
+      "file": ".scratch/grill-test/issues/02-interrupt-review-before-summary.md",
+      "blockedBy": ["01"],
+      "acceptanceIds": ["AC-2"]
+    },
+    {
+      "id": "03",
+      "file": ".scratch/grill-test/issues/03-resume-same-thread.md",
+      "blockedBy": ["02"],
+      "acceptanceIds": ["AC-3"]
+    },
+    {
+      "id": "04",
+      "file": ".scratch/grill-test/issues/04-thread-isolation-and-regressions.md",
+      "blockedBy": ["03"],
+      "acceptanceIds": ["AC-4"]
+    }
+  ]
+}

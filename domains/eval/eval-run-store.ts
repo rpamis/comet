@@ -3,6 +3,15 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import { isPathWithin } from './standalone-context.js';
+import {
+  listEvalArchives,
+  archiveEvalDetail,
+  archiveEvalError,
+  readArchivedEvalRun,
+  readEvalArchive,
+  readEvalArchiveFile,
+  isEvalArchiveRunId,
+} from './eval-archives.js';
 import type {
   EvalCaseResult,
   EvalManagedRun,
@@ -264,6 +273,8 @@ function normalizeProgress(value: Json | null, id: string): EvalRunDetail['progr
   };
 }
 export async function readEvalRun(project: string, id: string): Promise<EvalRunDetail> {
+  const archived = await readArchivedEvalRun(project, id);
+  if (archived) return archived;
   const root = await evalRunPath(project, id);
   try {
     if (!(await fs.stat(root)).isDirectory()) throw new Error();
@@ -462,6 +473,9 @@ export async function listEvalRuns(project: string): Promise<EvalRunDetail[]> {
       throw error;
     });
   const runs: EvalRunDetail[] = [];
+  const archives = await listEvalArchives(project);
+  runs.push(...archives.items.map((item) => archiveEvalDetail(item.archive)));
+  runs.push(...archives.errors.map((e) => archiveEvalError(e.id, e.message)));
   for (const entry of entries.filter((entry) => entry.isDirectory() && RUN_ID.test(entry.name))) {
     runs.push(await readEvalRun(project, entry.name));
   }
@@ -474,6 +488,8 @@ export async function setEvalBaseline(
   id: string,
   expectedPrevious?: string,
 ): Promise<EvalRunDetail> {
+  if ((await readArchivedEvalRun(project, id))?.archiveId)
+    throw new EvalRunError('历史归档只读，不能设置基线', 409);
   const file = await evalStoragePath(project, 'baselines.json');
   await fs.mkdir(path.dirname(file), { recursive: true });
   await withRecoverableFileLock(`${file}.lock`, async () => {
@@ -492,6 +508,8 @@ export async function setEvalBaseline(
   return readEvalRun(project, id);
 }
 export async function clearEvalBaseline(project: string, id: string): Promise<EvalRunDetail> {
+  if ((await readArchivedEvalRun(project, id))?.archiveId)
+    throw new EvalRunError('历史归档只读，不能清除基线', 409);
   const file = await evalStoragePath(project, 'baselines.json');
   await fs.mkdir(path.dirname(file), { recursive: true });
   await withRecoverableFileLock(`${file}.lock`, async () => {
@@ -595,6 +613,22 @@ export async function readEvalArtifact(
   format: 'markdown' | 'html' | 'json' | 'text';
   truncated?: boolean;
 }> {
+  if (isEvalArchiveRunId(id)) {
+    if (options.tail) throw new EvalRunError('历史归档不支持末尾预览');
+    const { archive } = await readEvalArchive(project, id.slice('archive-'.length));
+    const report = archive.reports.find((r) => r.path === artifactId);
+    if (!report) throw new EvalRunError('归档没有这个报告', 404);
+    const bytes = await readEvalArchiveFile(project, archive, report.path);
+    if (bytes.length > 4 * 1024 * 1024) throw new EvalRunError('产物超过预览限制', 413);
+    return {
+      content: redactEvalOutput(bytes.toString('utf8')),
+      format: report.path.endsWith('.md')
+        ? 'markdown'
+        : report.path.endsWith('.json')
+          ? 'json'
+          : 'text',
+    };
+  }
   if (
     !/^(?:summary\.(?:md|html)|(?:application-result|metadata)\.json|execution\.log|(?:reports|events|raw)\/[\w.-]+\.(?:json|txt))$/u.test(
       artifactId,

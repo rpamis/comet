@@ -319,13 +319,26 @@ export function EvalOverview({ run }) {
             <Tag>{run.executionStatus === 'completed' ? t('执行已结束') : t('以当前结果为准')}</Tag>
           </div>
           <div className="dashboard-eval-result-word">{conclusionLabels[run.conclusion]}</div>
-          <Text type="secondary">{t('任务检查决定结论；评分和执行证据用于解释结果。')}</Text>
+          <Text type="secondary">
+            {t(
+              run.archiveId
+                ? '专项复核记录；业务任务结果与完整应用 Eval 分开判断。'
+                : '任务检查决定结论；评分和执行证据用于解释结果。',
+            )}
+          </Text>
           <div className="dashboard-eval-result-counts">
-            <Metric label={t('通过用例')} value={`${run.passed} / ${expected}`} />
             <Metric
-              label={t('完整结果')}
-              value={run.total}
-              detail={t('预期 {0} 个', [run.expectedTotal ?? t('未知')])}
+              label={t(run.archiveId ? '原始业务测试通过项' : '通过用例')}
+              value={run.archiveAssessment?.originalTestsPassed ?? `${run.passed} / ${expected}`}
+            />
+            <Metric
+              label={t(run.archiveId ? '含回归测试通过项' : '完整结果')}
+              value={run.archiveAssessment?.regressionTestsPassed ?? run.total}
+              detail={
+                run.archiveId
+                  ? t('完整应用 Eval 未执行')
+                  : t('预期 {0} 个', [run.expectedTotal ?? t('未知')])
+              }
             />
           </div>
         </Card>

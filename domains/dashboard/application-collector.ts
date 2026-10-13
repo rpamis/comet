@@ -18,7 +18,14 @@ import {
   readChangeRuntimeOwner,
   SDK_APPLICATIONS,
 } from '../workflow-contract/change-runtime-owner.js';
-import { collectEvalRuns } from '../eval/index.js';
+import {
+  collectEvalRuns,
+  listEvalArchives,
+  evalArchiveRoot,
+  evalArchiveRunId,
+  readEvalArchiveFile,
+  type EvalArchiveObservation,
+} from '../eval/index.js';
 import { collectNativeDashboardChangePage } from './native-collector.js';
 import { collectDashboardChangePage } from './collector.js';
 import type {
@@ -38,6 +45,8 @@ type Entry = {
   run: Run | null;
   creator: CreatorRunObservation | null;
   application: WorkflowApplicationRunObservation | null;
+  archive?: EvalArchiveObservation;
+  archivedIdentity?: ApplicationRunRecord['application'] | null;
 };
 const object = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -176,6 +185,7 @@ async function dataset(projectRoot: string) {
   const result = await Promise.allSettled([
     listCreatorRunRecords(projectRoot),
     listWorkflowApplicationRunRecords(projectRoot),
+    listEvalArchives(projectRoot),
   ]);
   const entries: Entry[] = [];
   const errors: DashboardApplicationRunPage['errors'] = [];
@@ -229,11 +239,63 @@ async function dataset(projectRoot: string) {
       message:
         result[1].reason instanceof Error ? result[1].reason.message : String(result[1].reason),
     });
+  if (result[2].status === 'fulfilled') {
+    for (const observation of result[2].value.items) {
+      const a = observation.archive.application;
+      for (const snapshot of observation.runs) {
+        const item = summary(
+          snapshot.kind,
+          snapshot.run.runId,
+          snapshot.run,
+          {
+            id: a.id,
+            version: a.version,
+            base: a.base,
+            contentHash: a.contentHash,
+            packageHash: a.packageHash,
+          },
+          null,
+          snapshot.run.runId,
+        );
+        item.locator = `${snapshot.kind}:${hash(['archive', observation.archive.id, snapshot.kind, snapshot.run.runId])}`;
+        item.archive = { id: observation.archive.id, title: observation.archive.title };
+        entries.push({
+          summary: item,
+          run: snapshot.run,
+          creator: null,
+          application: null,
+          archive: observation,
+          archivedIdentity: snapshot.identity,
+        });
+      }
+    }
+    errors.push(
+      ...result[2].value.errors.map((e) => ({
+        source: 'application' as const,
+        message: `${e.id}：${e.message}`,
+      })),
+    );
+    for (const error of result[2].value.errors) {
+      const item = summary(
+        'application',
+        error.id,
+        null,
+        null,
+        { code: 'ARCHIVE_UNREADABLE', message: error.message },
+        null,
+      );
+      item.locator = `application:${hash(['archive-error', error.id])}`;
+      item.title = error.id;
+      item.archive = { id: error.id, title: error.id };
+      entries.push({ summary: item, run: null, creator: null, application: null });
+    }
+  } else errors.push({ source: 'application', message: String(result[2].reason) });
   for (const child of entries.filter((e) => e.summary.kind === 'application')) {
     const parent = entries.find(
       (e) =>
         e.run &&
         e.summary.applicationId === child.summary.applicationId &&
+        e.summary.archive?.id === child.summary.archive?.id &&
         e.run.children.some(
           (c) =>
             c.runId === child.summary.runId &&
@@ -522,7 +584,7 @@ function artifacts(
   }
   for (const [stepId, output] of Object.entries(entry.run!.outputs))
     append(`${stepId}-result.json`, null, null, null, output.value);
-  if (entry.creator)
+  if (entry.summary.kind === 'creator')
     for (const [ref, value] of Object.entries(
       object(object(object(entry.run!.outputs.prepare?.value).plan).documents),
     )) {
@@ -757,7 +819,98 @@ export async function collectDashboardApplicationRunDetail(
   );
   const run = entry.run,
     items = records(entry, childLocators),
-    fixed = entry.application?.record?.application ?? null;
+    fixed = entry.archivedIdentity ?? entry.application?.record?.application ?? null;
+  if (entry.archive) {
+    const archive = entry.archive.archive;
+    let material: DashboardApplicationRunDetail['material'];
+    try {
+      const ref = `${evalArchiveRoot(archive.id)}/${archive.application.root}/application.json`;
+      const inspected = await inspectProtectedProjectPath(projectRoot, ref, {
+        expected: 'file',
+        label: '归档固定应用',
+      });
+      material = await inspectWorkflowApplicationPackage(
+        path.dirname(inspected.target),
+        archive.application.packageHash,
+      );
+    } catch (error) {
+      material = { status: 'unavailable', message: String(error) };
+    }
+    const identity = entry.summary.application;
+    const creator = data.entries.find(
+      (e) => e.archive?.archive.id === archive.id && e.summary.kind === 'creator',
+    );
+    const local = emptyEvidence('local', identity);
+    const verify = object(creator?.run?.outputs.verify?.value);
+    if (verify.packageHash === archive.application.packageHash) {
+      local.status = material.status === 'matched' ? 'passed' : 'stale';
+      local.summary = '原 Creator 本地验收记录；归档固定应用内容单独校验';
+      local.details = sanitizeApplicationObservation(verify);
+      local.sourceLocator = creator!.summary.locator;
+      local.sourceRunId = creator!.summary.runId;
+    }
+    const model = {
+      ...emptyEvidence('model', identity),
+      status: 'incomplete' as const,
+      evalRunId: evalArchiveRunId(archive.id),
+      summary: '历史专项复核；业务完成不代表完整应用 Eval 已通过',
+      details: sanitizeApplicationObservation(archive.assessment),
+    };
+    const linked = artifacts(entry, items).map((a) => {
+      if (!a.uri) return a;
+      const mapped = archive.artifactMappings?.[a.uri];
+      return mapped
+        ? { ...a, uri: `${evalArchiveRoot(archive.id)}/${mapped}`, sha256: archive.files[mapped] }
+        : { ...a, uri: null };
+    });
+    // 原状态仍保留在 Run 记录中；专项复核另附，不覆盖 Creator 的跳过决定。
+    const skipped = creator?.run?.waits.some(
+      (w) => w.stepId === 'confirm-eval' && w.decision?.choice === 'skip',
+    );
+    return {
+      ...empty,
+      sequence: run.sequence,
+      workflow: run.workflow,
+      records: items,
+      currentIds: items.filter((r) => r.active).map((r) => r.id),
+      definitionStatus: 'observed',
+      material,
+      fixedIdentity: fixed,
+      artifacts: [
+        ...linked,
+        ...archive.reports.map((r) => ({
+          id: hash(['archive-report', archive.id, r.path]),
+          label: r.label,
+          recordId: null,
+          uri: `${evalArchiveRoot(archive.id)}/${r.path}`,
+          sha256: archive.files[r.path],
+        })),
+      ],
+      evidence: [local, model, emptyEvidence('host', identity)],
+      otherEvidence: skipped
+        ? [
+            {
+              ...emptyEvidence('model', identity),
+              status: 'skipped',
+              summary: '原 Creator 明确跳过模型评估；专项复核在之后独立执行',
+              sourceLocator: creator!.summary.locator,
+              sourceRunId: creator!.summary.runId,
+            },
+          ]
+        : [],
+      sourceCreators: creator?.summary.runId
+        ? [
+            {
+              locator: creator.summary.locator,
+              runId: creator.summary.runId,
+              version: archive.application.version,
+            },
+          ]
+        : [],
+      children: run.children.map((c) => ({ ...c, locator: childLocators.get(c.runId) ?? null })),
+      inspection: null,
+    };
+  }
   const compiled = object(run.outputs.compile?.value);
   const candidateFile = text(compiled.file);
   let material: Awaited<ReturnType<typeof inspectWorkflowApplicationMaterial>> | null = fixed
@@ -922,6 +1075,30 @@ export async function readDashboardApplicationArtifact(
     };
   }
   if (!artifact.uri) throw new DashboardApplicationQueryError('工件缺少可读取引用');
+  if (detail.archive) {
+    const archives = await listEvalArchives(projectRoot);
+    const archive = archives.items.find((item) => item.archive.id === detail.archive!.id)?.archive;
+    if (!archive) throw new DashboardApplicationQueryError('历史归档无法读取', 409);
+    const prefix = `${evalArchiveRoot(archive.id)}/`;
+    if (!artifact.uri.startsWith(prefix))
+      throw new DashboardApplicationQueryError('工件引用超出归档范围', 403);
+    const bytes = await readEvalArchiveFile(
+      projectRoot,
+      archive,
+      artifact.uri.slice(prefix.length),
+    );
+    const content = bytes.toString('utf8');
+    return {
+      key: artifact.id,
+      label: artifact.label,
+      path: artifact.uri,
+      exists: true,
+      content: content.slice(0, 256 * 1024),
+      truncated: content.length > 256 * 1024,
+      status: 'matched',
+      sha256: artifact.sha256,
+    };
+  }
   if (
     /^[a-z][a-z\d+.-]*:/iu.test(artifact.uri) &&
     !artifact.uri.startsWith('file:') &&

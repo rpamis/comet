@@ -1,0 +1,24 @@
+[metadata]
+name = "comet-graph-execution-review"
+description = "Fix parallel fan-out, human review, and resume behavior in a graph-style processing pipeline"
+difficulty = "hard"
+category = "comet"
+tags = ["comet", "workflow", "graph", "review", "resume"]
+default_treatments = [
+    "CONTROL",
+    "COMET_FULL_040_BETA",
+    "COMET_FULL_039",
+]
+
+[template]
+required = []
+
+[environment]
+description = "Python workspace with a graph-style pipeline that drops fan-out results and finalizes before review."
+dockerfile = "environment/Dockerfile"
+timeout_sec = 900
+
+[validation]
+test_scripts = "test_graph_execution_review.py"
+target_artifacts = []
+timeout = 120

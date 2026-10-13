@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import ts from 'typescript';
 import {
   readGitignoredDirectoryEntries,
@@ -262,6 +263,20 @@ for (const file of walkFiles('.', ignoredGeneratedTrees, ignoredGeneratedRelativ
     allowedRootSourceFiles.has(normalized);
   if (!allowed) {
     fail(`${normalized} is code outside an approved code root`);
+  }
+  if (normalized.startsWith('eval/archives/') && allowedCodeFiles.has(normalized)) {
+    const match = /^(eval\/archives\/[^/]+)\/(application\/.+)$/u.exec(normalized);
+    try {
+      if (!match) throw new Error('invalid frozen application path');
+      const archive = readJson(`${match[1]}/archive.json`);
+      const digest = createHash('sha256')
+        .update(readFileSync(path.join(root, normalized)))
+        .digest('hex');
+      if (archive.schema !== 'comet.eval.archive.v1' || archive.files?.[match[2]] !== digest)
+        throw new Error('file does not match archive manifest');
+    } catch (error) {
+      fail(`${normalized} is not a verified frozen Eval artifact: ${error.message}`);
+    }
   }
 }
 

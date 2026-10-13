@@ -110,6 +110,7 @@ pnpm test           # 高风险修改或最终交付前需要本地全量验证�
 - `domains/comet-native/native-application.ts`：公开 Native 扩展工厂，复用原领域状态机并绑定候选审查；Native 可依赖 `workflow-application` 的加载及宿主契约，默认主流程仍不依赖外部 Skill。
 - `domains/comet-classic/classic-application.ts`：公开 Classic 组合工厂，替换执行 Skill 并在领域检查点追加有验收和恢复路径的步骤；沿用 Classic 状态机，SDK Run 保持推进权威。
 - `eval/scaffold/shell/` 中仅允许 `config/repository-layout.json` 明确列出的隔离评审 sidecar 入口；它们属于 Eval 容器边界，不是产品 Runtime 入口。
+- `eval/archives/` 保存可随 Git 克隆的历史实验。归档应用模块必须逐文件登记到 `config/repository-layout.json`，并匹配归档清单的内容摘要；它们只供只读观测，不属于产品 Runtime 或安装入口。冻结文件禁止格式化和换行转换。
 
 测试目录必须跟随被测对象归属：
 

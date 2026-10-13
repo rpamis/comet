@@ -1,0 +1,200 @@
+[
+  {
+    "file": "D:\\Project\\Comet\\eval\\local\\logs\\experiments\\native_rc1_20260828_0952\\reports\\comet_graph_execution_review_COMET_NATIVE_PHASE1_r1_rep1_report.json",
+    "passed": true,
+    "businessChecks": [
+      "graph_execution_review: fan-out, review interruption, resume, and thread isolation pass"
+    ],
+    "elapsed": 510.532,
+    "turns": 97,
+    "tools": 111,
+    "tokens": 6157318,
+    "modelUsage": [
+      "deepseek-v4-flash[1m]",
+      "deepseek-v4-flash"
+    ],
+    "identity": {
+      "schema": "comet.eval.execution-identity.v1",
+      "image_id_hash": "sha256:c92b1402df9f8dbf898f567fab4458eac4ef53b64a4d2ea60df6f5c44a3e4c5e",
+      "image_repo_digests_hash": "sha256:00c48c2666d87488aa26c266468b51d1ddbf42d7cd4cbef6ed19df814ec35056",
+      "image_ref_hash": "sha256:5d203e03d76890a13aa8b8640f26148cbbcbb02c6429b37651e106ee614cbcbe",
+      "claude_tool_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+      "model_selection_hash": "sha256:d11919267226f174b1b319fb64bd2b5c65bd9bb0ce8bd44128a0a479b817fe5c",
+      "interaction_hash": "sha256:92c5bdf86701f184f1d99e641e32a6f66a1a34edcb2eccc0823530f588703e64",
+      "model_source": "explicit",
+      "interaction_mode": "auto_user",
+      "interaction_max_turns": "12",
+      "agent": "claude-code",
+      "agent_cli": "claude",
+      "agent_cli_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+      "agent_cli_version": "2.1.220 (Claude Code)"
+    },
+    "caseManifest": {
+      "schema": "comet.eval.case-manifest.v2",
+      "task": "comet-graph-execution-review",
+      "case_hash": "sha256:fa82a6e04f456dc860f2ba15ac701fa812fb169e392d1770bbc6485d5a479dc3",
+      "task_hash": "sha256:4e2a12443454caee16390c7e3e8463bc21e57d5ee5be476fcaffdd7c3f8da19a",
+      "instruction_hash": "sha256:d29253af81f7a75e63639927d6726d90e5b3b3f3b61851603939b878044bc060",
+      "validator_hash": "sha256:09e32017f6d8ad0250f32e19e760de0347dad2b7fe89255e2e01b3aea008c63c",
+      "environment_hash": "sha256:ba2a3824081fe704ee9385e1d1fd843a1cf29b28159c54b5fec32f9a47785dcd",
+      "data_hash": "sha256:b7b3aede84b3cb0edbea85abfb62dab3e0d8e43975e68b80a5a411cf67c32ff4",
+      "prompt_hash": "sha256:96092c75d7aa145b05d563e3e131398f1c9cab5004adc7f8e5e00bc15f7901b1",
+      "runner_hash": "sha256:57c832402ff8972106bf7be930460f0e9dc83cae92ce0b1acc5513c8c9d0766f",
+      "controller_hash": "sha256:2ed0738dc38236f58e146ded4a4575aeff06c1ed6a42d49b8d75162f0fc03667",
+      "execution_hash": "sha256:92a24c47b8dc294e5c32881ba7dcb2d3ffe0db353a2dff116fe5760e893c80f6",
+      "execution_identity": {
+        "agent": "claude-code",
+        "agent_cli": "claude",
+        "agent_cli_version": "2.1.220 (Claude Code)",
+        "agent_cli_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+        "claude_tool_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+        "image_id_hash": "sha256:c92b1402df9f8dbf898f567fab4458eac4ef53b64a4d2ea60df6f5c44a3e4c5e",
+        "image_ref_hash": "sha256:5d203e03d76890a13aa8b8640f26148cbbcbb02c6429b37651e106ee614cbcbe",
+        "image_repo_digests_hash": "sha256:00c48c2666d87488aa26c266468b51d1ddbf42d7cd4cbef6ed19df814ec35056",
+        "interaction_hash": "sha256:92c5bdf86701f184f1d99e641e32a6f66a1a34edcb2eccc0823530f588703e64",
+        "interaction_max_turns": "12",
+        "interaction_mode": "auto_user",
+        "model_selection_hash": "sha256:d11919267226f174b1b319fb64bd2b5c65bd9bb0ce8bd44128a0a479b817fe5c",
+        "model_source": "explicit",
+        "schema": "comet.eval.execution-identity.v1"
+      }
+    },
+    "interactionConfig": {
+      "mode": "auto_user",
+      "max_turns": 12
+    },
+    "timestamp": "2026-08-28T10:12:34.870625"
+  },
+  {
+    "file": "D:\\Project\\Comet\\eval\\local\\logs\\experiments\\native_rc1_20260828_0952\\reports\\comet_graph_execution_review_COMET_NATIVE_PHASE1_r2_rep1_report.json",
+    "passed": true,
+    "businessChecks": [
+      "graph_execution_review: fan-out, review interruption, resume, and thread isolation pass"
+    ],
+    "elapsed": 549.625,
+    "turns": 102,
+    "tools": 112,
+    "tokens": 8116260,
+    "modelUsage": [
+      "deepseek-v4-flash[1m]",
+      "deepseek-v4-flash"
+    ],
+    "identity": {
+      "schema": "comet.eval.execution-identity.v1",
+      "image_id_hash": "sha256:c92b1402df9f8dbf898f567fab4458eac4ef53b64a4d2ea60df6f5c44a3e4c5e",
+      "image_repo_digests_hash": "sha256:00c48c2666d87488aa26c266468b51d1ddbf42d7cd4cbef6ed19df814ec35056",
+      "image_ref_hash": "sha256:5d203e03d76890a13aa8b8640f26148cbbcbb02c6429b37651e106ee614cbcbe",
+      "claude_tool_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+      "model_selection_hash": "sha256:d11919267226f174b1b319fb64bd2b5c65bd9bb0ce8bd44128a0a479b817fe5c",
+      "interaction_hash": "sha256:92c5bdf86701f184f1d99e641e32a6f66a1a34edcb2eccc0823530f588703e64",
+      "model_source": "explicit",
+      "interaction_mode": "auto_user",
+      "interaction_max_turns": "12",
+      "agent": "claude-code",
+      "agent_cli": "claude",
+      "agent_cli_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+      "agent_cli_version": "2.1.220 (Claude Code)"
+    },
+    "caseManifest": {
+      "schema": "comet.eval.case-manifest.v2",
+      "task": "comet-graph-execution-review",
+      "case_hash": "sha256:fa82a6e04f456dc860f2ba15ac701fa812fb169e392d1770bbc6485d5a479dc3",
+      "task_hash": "sha256:4e2a12443454caee16390c7e3e8463bc21e57d5ee5be476fcaffdd7c3f8da19a",
+      "instruction_hash": "sha256:d29253af81f7a75e63639927d6726d90e5b3b3f3b61851603939b878044bc060",
+      "validator_hash": "sha256:09e32017f6d8ad0250f32e19e760de0347dad2b7fe89255e2e01b3aea008c63c",
+      "environment_hash": "sha256:ba2a3824081fe704ee9385e1d1fd843a1cf29b28159c54b5fec32f9a47785dcd",
+      "data_hash": "sha256:b7b3aede84b3cb0edbea85abfb62dab3e0d8e43975e68b80a5a411cf67c32ff4",
+      "prompt_hash": "sha256:96092c75d7aa145b05d563e3e131398f1c9cab5004adc7f8e5e00bc15f7901b1",
+      "runner_hash": "sha256:57c832402ff8972106bf7be930460f0e9dc83cae92ce0b1acc5513c8c9d0766f",
+      "controller_hash": "sha256:2ed0738dc38236f58e146ded4a4575aeff06c1ed6a42d49b8d75162f0fc03667",
+      "execution_hash": "sha256:92a24c47b8dc294e5c32881ba7dcb2d3ffe0db353a2dff116fe5760e893c80f6",
+      "execution_identity": {
+        "agent": "claude-code",
+        "agent_cli": "claude",
+        "agent_cli_version": "2.1.220 (Claude Code)",
+        "agent_cli_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+        "claude_tool_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+        "image_id_hash": "sha256:c92b1402df9f8dbf898f567fab4458eac4ef53b64a4d2ea60df6f5c44a3e4c5e",
+        "image_ref_hash": "sha256:5d203e03d76890a13aa8b8640f26148cbbcbb02c6429b37651e106ee614cbcbe",
+        "image_repo_digests_hash": "sha256:00c48c2666d87488aa26c266468b51d1ddbf42d7cd4cbef6ed19df814ec35056",
+        "interaction_hash": "sha256:92c5bdf86701f184f1d99e641e32a6f66a1a34edcb2eccc0823530f588703e64",
+        "interaction_max_turns": "12",
+        "interaction_mode": "auto_user",
+        "model_selection_hash": "sha256:d11919267226f174b1b319fb64bd2b5c65bd9bb0ce8bd44128a0a479b817fe5c",
+        "model_source": "explicit",
+        "schema": "comet.eval.execution-identity.v1"
+      }
+    },
+    "interactionConfig": {
+      "mode": "auto_user",
+      "max_turns": 12
+    },
+    "timestamp": "2026-08-28T11:13:18.056481"
+  },
+  {
+    "file": "D:\\Project\\Comet\\eval\\local\\logs\\experiments\\native_rc1_resume_20260828_1219\\reports\\comet_graph_execution_review_COMET_NATIVE_PHASE1_r3_rep1_report.json",
+    "passed": true,
+    "businessChecks": [
+      "graph_execution_review: fan-out, review interruption, resume, and thread isolation pass"
+    ],
+    "elapsed": 364.108,
+    "turns": 78,
+    "tools": 96,
+    "tokens": 3620283,
+    "modelUsage": [
+      "deepseek-v4-flash[1m]",
+      "deepseek-v4-flash"
+    ],
+    "identity": {
+      "schema": "comet.eval.execution-identity.v1",
+      "image_id_hash": "sha256:c92b1402df9f8dbf898f567fab4458eac4ef53b64a4d2ea60df6f5c44a3e4c5e",
+      "image_repo_digests_hash": "sha256:00c48c2666d87488aa26c266468b51d1ddbf42d7cd4cbef6ed19df814ec35056",
+      "image_ref_hash": "sha256:5d203e03d76890a13aa8b8640f26148cbbcbb02c6429b37651e106ee614cbcbe",
+      "claude_tool_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+      "model_selection_hash": "sha256:d11919267226f174b1b319fb64bd2b5c65bd9bb0ce8bd44128a0a479b817fe5c",
+      "interaction_hash": "sha256:92c5bdf86701f184f1d99e641e32a6f66a1a34edcb2eccc0823530f588703e64",
+      "model_source": "explicit",
+      "interaction_mode": "auto_user",
+      "interaction_max_turns": "12",
+      "agent": "claude-code",
+      "agent_cli": "claude",
+      "agent_cli_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+      "agent_cli_version": "2.1.220 (Claude Code)"
+    },
+    "caseManifest": {
+      "schema": "comet.eval.case-manifest.v2",
+      "task": "comet-graph-execution-review",
+      "case_hash": "sha256:fa82a6e04f456dc860f2ba15ac701fa812fb169e392d1770bbc6485d5a479dc3",
+      "task_hash": "sha256:4e2a12443454caee16390c7e3e8463bc21e57d5ee5be476fcaffdd7c3f8da19a",
+      "instruction_hash": "sha256:d29253af81f7a75e63639927d6726d90e5b3b3f3b61851603939b878044bc060",
+      "validator_hash": "sha256:09e32017f6d8ad0250f32e19e760de0347dad2b7fe89255e2e01b3aea008c63c",
+      "environment_hash": "sha256:ba2a3824081fe704ee9385e1d1fd843a1cf29b28159c54b5fec32f9a47785dcd",
+      "data_hash": "sha256:b7b3aede84b3cb0edbea85abfb62dab3e0d8e43975e68b80a5a411cf67c32ff4",
+      "prompt_hash": "sha256:96092c75d7aa145b05d563e3e131398f1c9cab5004adc7f8e5e00bc15f7901b1",
+      "runner_hash": "sha256:57c832402ff8972106bf7be930460f0e9dc83cae92ce0b1acc5513c8c9d0766f",
+      "controller_hash": "sha256:2ed0738dc38236f58e146ded4a4575aeff06c1ed6a42d49b8d75162f0fc03667",
+      "execution_hash": "sha256:92a24c47b8dc294e5c32881ba7dcb2d3ffe0db353a2dff116fe5760e893c80f6",
+      "execution_identity": {
+        "agent": "claude-code",
+        "agent_cli": "claude",
+        "agent_cli_version": "2.1.220 (Claude Code)",
+        "agent_cli_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+        "claude_tool_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+        "image_id_hash": "sha256:c92b1402df9f8dbf898f567fab4458eac4ef53b64a4d2ea60df6f5c44a3e4c5e",
+        "image_ref_hash": "sha256:5d203e03d76890a13aa8b8640f26148cbbcbb02c6429b37651e106ee614cbcbe",
+        "image_repo_digests_hash": "sha256:00c48c2666d87488aa26c266468b51d1ddbf42d7cd4cbef6ed19df814ec35056",
+        "interaction_hash": "sha256:92c5bdf86701f184f1d99e641e32a6f66a1a34edcb2eccc0823530f588703e64",
+        "interaction_max_turns": "12",
+        "interaction_mode": "auto_user",
+        "model_selection_hash": "sha256:d11919267226f174b1b319fb64bd2b5c65bd9bb0ce8bd44128a0a479b817fe5c",
+        "model_source": "explicit",
+        "schema": "comet.eval.execution-identity.v1"
+      }
+    },
+    "interactionConfig": {
+      "mode": "auto_user",
+      "max_turns": 12
+    },
+    "timestamp": "2026-08-28T12:26:15.724831"
+  }
+]

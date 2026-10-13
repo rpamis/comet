@@ -1,0 +1,473 @@
+{
+  "preview": {
+    "application": {
+      "id": "grill-test",
+      "version": "3",
+      "base": "standalone",
+      "runtimeVersion": "0.5.0",
+      "contentHash": "5c95c6a0669eb7c85719f99338e7affe12a81fd4e71af28544c6384c059065f0"
+    },
+    "goal": "Faithfully run conversation-only grill, conversation-to-spec, local tickets and implementation on the fixed hard graph task",
+    "entrySkill": "SKILL.md",
+    "runtimeIdentityHash": "775131d526fb5fd49097bfe75f16e99f3bd437831628d2c8253ca1fc9ba8e13b",
+    "settings": {
+      "agent": "claude-code",
+      "model": "glm-5.3[1M]",
+      "judgeAgent": "claude-code",
+      "judgeModel": "glm-5.3-flash",
+      "maxTurns": 12,
+      "timeoutSeconds": 900
+    },
+    "workflows": [
+      {
+        "id": "grill-test",
+        "version": "3",
+        "steps": [
+          "authorize-implementation",
+          "grill",
+          "implement",
+          "reject",
+          "spec",
+          "tickets",
+          "verify"
+        ],
+        "definition": {
+          "entry": "grill",
+          "id": "grill-test",
+          "maxTransitions": 24,
+          "steps": {
+            "authorize-implementation": {
+              "choices": [
+                "approved",
+                "rejected"
+              ],
+              "proposalFrom": [
+                "grill",
+                "spec",
+                "tickets"
+              ],
+              "type": "ask_user"
+            },
+            "grill": {
+              "type": "child_workflow",
+              "workflow": {
+                "id": "grill-me",
+                "version": "1"
+              }
+            },
+            "implement": {
+              "type": "child_workflow",
+              "workflow": {
+                "id": "implement",
+                "version": "1"
+              }
+            },
+            "reject": {
+              "ref": "reject",
+              "retry": "manual",
+              "type": "call_tool"
+            },
+            "spec": {
+              "type": "child_workflow",
+              "workflow": {
+                "id": "to-spec",
+                "version": "1"
+              }
+            },
+            "tickets": {
+              "type": "child_workflow",
+              "workflow": {
+                "id": "to-tickets",
+                "version": "1"
+              }
+            },
+            "verify": {
+              "outputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                  "summary": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "summary"
+                ],
+                "type": "object"
+              },
+              "ref": "verify",
+              "requiredCapabilities": [
+                "local-test"
+              ],
+              "retry": "manual",
+              "type": "call_tool",
+              "validator": {
+                "id": "grill-test-verify",
+                "version": "1"
+              }
+            }
+          },
+          "transitions": [
+            {
+              "from": "grill",
+              "to": "spec"
+            },
+            {
+              "from": "spec",
+              "to": "tickets"
+            },
+            {
+              "from": "tickets",
+              "to": "authorize-implementation"
+            },
+            {
+              "from": "authorize-implementation",
+              "on": "approved",
+              "to": "implement"
+            },
+            {
+              "from": "authorize-implementation",
+              "on": "rejected",
+              "to": "reject"
+            },
+            {
+              "from": "implement",
+              "to": "verify"
+            }
+          ],
+          "version": "3"
+        },
+        "definitionHash": "67407fa53a748d7fec91003b65f4ab98c62490fc02155eee6d62a45a1cb9f6c3"
+      },
+      {
+        "id": "grill-me",
+        "version": "1",
+        "steps": [
+          "complete",
+          "confirm-understanding",
+          "grill",
+          "reject"
+        ],
+        "definition": {
+          "entry": "grill",
+          "id": "grill-me",
+          "maxTransitions": 8,
+          "steps": {
+            "complete": {
+              "outputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                  "summary": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "summary"
+                ],
+                "type": "object"
+              },
+              "ref": "complete",
+              "type": "call_tool"
+            },
+            "confirm-understanding": {
+              "choices": [
+                "approved",
+                "rejected"
+              ],
+              "proposalFrom": "grill",
+              "type": "ask_user"
+            },
+            "grill": {
+              "outputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                  "summary": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "summary"
+                ],
+                "type": "object"
+              },
+              "ref": "grill-me",
+              "requiredCapabilities": [
+                "skill-load",
+                "handoff"
+              ],
+              "retry": "manual",
+              "type": "handoff"
+            },
+            "reject": {
+              "ref": "reject",
+              "retry": "manual",
+              "type": "call_tool"
+            }
+          },
+          "transitions": [
+            {
+              "from": "grill",
+              "to": "confirm-understanding"
+            },
+            {
+              "from": "confirm-understanding",
+              "on": "rejected",
+              "to": "reject"
+            },
+            {
+              "from": "confirm-understanding",
+              "on": "approved",
+              "to": "complete"
+            }
+          ],
+          "version": "1"
+        },
+        "definitionHash": "7f3ee9a28e5928644edb2ca887728941a90def28b3082077ee63e1b92497fbb8"
+      },
+      {
+        "id": "to-spec",
+        "version": "1",
+        "steps": [
+          "complete",
+          "confirm-spec",
+          "reject",
+          "spec"
+        ],
+        "definition": {
+          "entry": "spec",
+          "id": "to-spec",
+          "maxTransitions": 8,
+          "steps": {
+            "complete": {
+              "outputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                  "summary": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "summary"
+                ],
+                "type": "object"
+              },
+              "ref": "complete",
+              "type": "call_tool"
+            },
+            "confirm-spec": {
+              "choices": [
+                "approved",
+                "rejected"
+              ],
+              "proposalFrom": "spec",
+              "type": "ask_user"
+            },
+            "reject": {
+              "ref": "reject",
+              "retry": "manual",
+              "type": "call_tool"
+            },
+            "spec": {
+              "outputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                  "summary": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "summary"
+                ],
+                "type": "object"
+              },
+              "ref": "to-spec",
+              "requiredCapabilities": [
+                "skill-load",
+                "handoff"
+              ],
+              "retry": "manual",
+              "type": "handoff",
+              "validator": {
+                "id": "grill-test-spec",
+                "version": "1"
+              }
+            }
+          },
+          "transitions": [
+            {
+              "from": "spec",
+              "to": "confirm-spec"
+            },
+            {
+              "from": "confirm-spec",
+              "on": "rejected",
+              "to": "reject"
+            },
+            {
+              "from": "confirm-spec",
+              "on": "approved",
+              "to": "complete"
+            }
+          ],
+          "version": "1"
+        },
+        "definitionHash": "1c40226f53132aabd50226c0998462233738f3fa55f9a1e79cce0870b9bb6f35"
+      },
+      {
+        "id": "to-tickets",
+        "version": "1",
+        "steps": [
+          "complete",
+          "confirm-tickets",
+          "reject",
+          "tickets"
+        ],
+        "definition": {
+          "entry": "tickets",
+          "id": "to-tickets",
+          "maxTransitions": 8,
+          "steps": {
+            "complete": {
+              "outputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                  "summary": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "summary"
+                ],
+                "type": "object"
+              },
+              "ref": "complete",
+              "type": "call_tool"
+            },
+            "confirm-tickets": {
+              "choices": [
+                "approved",
+                "rejected"
+              ],
+              "proposalFrom": "tickets",
+              "type": "ask_user"
+            },
+            "reject": {
+              "ref": "reject",
+              "retry": "manual",
+              "type": "call_tool"
+            },
+            "tickets": {
+              "outputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                  "summary": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "summary"
+                ],
+                "type": "object"
+              },
+              "ref": "to-tickets",
+              "requiredCapabilities": [
+                "skill-load",
+                "handoff"
+              ],
+              "retry": "manual",
+              "type": "handoff",
+              "validator": {
+                "id": "grill-test-tickets",
+                "version": "1"
+              }
+            }
+          },
+          "transitions": [
+            {
+              "from": "tickets",
+              "to": "confirm-tickets"
+            },
+            {
+              "from": "confirm-tickets",
+              "on": "rejected",
+              "to": "reject"
+            },
+            {
+              "from": "confirm-tickets",
+              "on": "approved",
+              "to": "complete"
+            }
+          ],
+          "version": "1"
+        },
+        "definitionHash": "b34f1c75855b6bdee68c6072ce79407115acff89c1cf9b4dc7fed20dc1b966e7"
+      },
+      {
+        "id": "implement",
+        "version": "1",
+        "steps": [
+          "implement"
+        ],
+        "definition": {
+          "entry": "implement",
+          "id": "implement",
+          "maxTransitions": 4,
+          "steps": {
+            "implement": {
+              "outputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                  "summary": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "summary"
+                ],
+                "type": "object"
+              },
+              "ref": "implement",
+              "requiredCapabilities": [
+                "skill-load",
+                "handoff"
+              ],
+              "retry": "manual",
+              "type": "handoff",
+              "validator": {
+                "id": "grill-test-implement",
+                "version": "1"
+              }
+            }
+          },
+          "transitions": [],
+          "version": "1"
+        },
+        "definitionHash": "81556732f5bb6f5c0e1ac020633d3d81f6036fad2b6dfd0a4ca44075aba44844"
+      }
+    ],
+    "taskCount": {
+      "min": 2,
+      "max": 4
+    },
+    "limitations": [
+      "仅证明所选 Agent、模型和当前用例的结果；多平台安装不等于全部宿主验收。",
+      "2–4 个自动生成用例不保证覆盖全部分支、外部系统或恢复路径。",
+      "审批在隔离评估环境中模拟，不授权真实发布；外部集成必须使用测试替身。",
+      "预算按用例数、交互轮数和总时限限制；实际模型费用另行报告。"
+    ],
+    "noModelsStarted": true,
+    "blockedReasons": [],
+    "confirmationHash": "7da5e2a64a2762701a3830e5e82d73eb5e66f7fb007783f32f68243c72cdc6d5"
+  },
+  "experimentId": "grill-test-faithful-graph-one-shot-20261013",
+  "skillRoot": "D:\\Project\\Comet\\.comet\\experiments\\grill-test-final\\.comet\\eval\\cache\\application-7da5e2a64a2762701a3830e5e82d73eb5e66f7fb007783f32f68243c72cdc6d5\\skill",
+  "snapshotHash": "59ee7782df5f3057fd6e7784b23323495de69757565cc754343f723ad0da6a6a",
+  "resultFile": "D:\\Project\\Comet\\.comet\\experiments\\grill-test-final\\.comet\\eval\\runs\\grill-test-faithful-graph-one-shot-20261013\\application-result.json"
+}

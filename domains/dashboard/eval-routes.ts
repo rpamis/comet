@@ -117,6 +117,7 @@ export async function handleDashboardEvalRequest(
     if (body.failedOnly !== undefined && typeof body.failedOnly !== 'boolean')
       throw new EvalRunError('failedOnly 必须是布尔值');
     const run = await reconcileEvalRun(project, id);
+    if (run.archiveId) throw new EvalRunError('历史归档只读，请选择原应用创建新的评估', 409);
     if (!run.config.target) throw new EvalRunError('旧报告缺少目标路径，请重新选择评估目标', 409);
     const config = {
       ...run.config,

@@ -1,0 +1,625 @@
+{
+  "name": "comet-graph-execution-review-COMET_NATIVE_PHASE1-r3",
+  "rep": 1,
+  "passed": true,
+  "run_id": "1ed2a6cb-67ee-4966-a31a-836f94aaefeb",
+  "checks_passed": [
+    "graph_execution_review: fan-out, review interruption, resume, and thread isolation pass",
+    "native_skill_invocation",
+    "native_artifacts",
+    "native_state",
+    "native_loop",
+    "native_isolation",
+    "[RUBRIC] completion: 1.00 - 6/6 baseline checks passed",
+    "[RUBRIC] skill_invocation: 1.00 - 1/1 passed; invoked=comet-native",
+    "[RUBRIC] artifact_presence: N/A - N/A - no expected_artifacts configured",
+    "[RUBRIC] instruction_following: 1.00 - no explicit constraint failures",
+    "[RUBRIC] interaction_compliance: 1.00 - turns=1, max=12",
+    "[RUBRIC] efficiency: 1.00 - turns=78 tools=96 dur=364s",
+    "[RUBRIC] safety_boundary: 1.00 - no dangerous command pattern observed",
+    "[RUBRIC] weighted_score: 1.00"
+  ],
+  "checks_failed": [],
+  "sample_quality": {
+    "status": "included",
+    "reason_code": "valid_signal",
+    "reason": "Run completed with validator evidence",
+    "include_in_analysis": true,
+    "confidence": "high",
+    "evidence": [
+      "result event present"
+    ]
+  },
+  "events_summary": {
+    "duration_seconds": 364.108,
+    "num_turns": 78,
+    "tool_calls": 96,
+    "input_tokens": 68013,
+    "output_tokens": 34062,
+    "cache_read_input_tokens": 3518208,
+    "cache_creation_input_tokens": 0,
+    "total_tokens": 3620283,
+    "total_cost_usd": 3.5586280000000006,
+    "model_usage": {
+      "deepseek-v4-flash[1m]": {
+        "inputTokens": 68013,
+        "outputTokens": 34062,
+        "cacheReadInputTokens": 3518208,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 2.9507190000000008,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 32000
+      },
+      "deepseek-v4-flash": {
+        "inputTokens": 52763,
+        "outputTokens": 10126,
+        "cacheReadInputTokens": 181888,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.6079089999999999,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    },
+    "files_created": [
+      "/workspace/docs/comet/changes/fix-review-pipeline/brief.md",
+      "/workspace/docs/comet/changes/fix-review-pipeline/specs/pipeline/spec.md",
+      "/workspace/pipeline.py",
+      "/tmp/builder-handoff.json",
+      "/tmp/dispatch-verifier.json",
+      "/tmp/dispatch-verifier.json",
+      "/tmp/verifier-result.json",
+      "/tmp/verifier-result.json"
+    ],
+    "skills_invoked": [
+      "comet-native"
+    ],
+    "skill_invocations": [
+      "comet-native"
+    ],
+    "scripts_used": [],
+    "profile": "generic",
+    "skill_sources": [
+      {
+        "name": "comet-native",
+        "source_type": "path",
+        "path": "D:\\Project\\Comet\\assets\\skills\\comet-native",
+        "hash": "sha256:7ed5bb452d4fcdcc705247d03266ccc897358bd0ef050e9b7ce4b18594da00fb"
+      }
+    ],
+    "eval_manifest": null,
+    "case_manifest": {
+      "schema": "comet.eval.case-manifest.v2",
+      "task": "comet-graph-execution-review",
+      "case_hash": "sha256:fa82a6e04f456dc860f2ba15ac701fa812fb169e392d1770bbc6485d5a479dc3",
+      "task_hash": "sha256:4e2a12443454caee16390c7e3e8463bc21e57d5ee5be476fcaffdd7c3f8da19a",
+      "instruction_hash": "sha256:d29253af81f7a75e63639927d6726d90e5b3b3f3b61851603939b878044bc060",
+      "validator_hash": "sha256:09e32017f6d8ad0250f32e19e760de0347dad2b7fe89255e2e01b3aea008c63c",
+      "environment_hash": "sha256:ba2a3824081fe704ee9385e1d1fd843a1cf29b28159c54b5fec32f9a47785dcd",
+      "data_hash": "sha256:b7b3aede84b3cb0edbea85abfb62dab3e0d8e43975e68b80a5a411cf67c32ff4",
+      "prompt_hash": "sha256:96092c75d7aa145b05d563e3e131398f1c9cab5004adc7f8e5e00bc15f7901b1",
+      "runner_hash": "sha256:57c832402ff8972106bf7be930460f0e9dc83cae92ce0b1acc5513c8c9d0766f",
+      "controller_hash": "sha256:2ed0738dc38236f58e146ded4a4575aeff06c1ed6a42d49b8d75162f0fc03667",
+      "execution_hash": "sha256:92a24c47b8dc294e5c32881ba7dcb2d3ffe0db353a2dff116fe5760e893c80f6",
+      "execution_identity": {
+        "agent": "claude-code",
+        "agent_cli": "claude",
+        "agent_cli_version": "2.1.220 (Claude Code)",
+        "agent_cli_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+        "claude_tool_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+        "image_id_hash": "sha256:c92b1402df9f8dbf898f567fab4458eac4ef53b64a4d2ea60df6f5c44a3e4c5e",
+        "image_ref_hash": "sha256:5d203e03d76890a13aa8b8640f26148cbbcbb02c6429b37651e106ee614cbcbe",
+        "image_repo_digests_hash": "sha256:00c48c2666d87488aa26c266468b51d1ddbf42d7cd4cbef6ed19df814ec35056",
+        "interaction_hash": "sha256:92c5bdf86701f184f1d99e641e32a6f66a1a34edcb2eccc0823530f588703e64",
+        "interaction_max_turns": "12",
+        "interaction_mode": "auto_user",
+        "model_selection_hash": "sha256:d11919267226f174b1b319fb64bd2b5c65bd9bb0ce8bd44128a0a479b817fe5c",
+        "model_source": "explicit",
+        "schema": "comet.eval.execution-identity.v1"
+      }
+    },
+    "eval_generation": null,
+    "interaction": {
+      "mode": "auto_user",
+      "max_turns": 12,
+      "actual_turns": 1,
+      "decision_points": 0,
+      "deterministic_replies": 0,
+      "completion_signals": 1,
+      "fresh_resume_boundaries": 0,
+      "role_sessions": {
+        "subject": [
+          "e6c61b41-5d33-4040-91be-e053e0cebebd"
+        ],
+        "simulator": [],
+        "judge": []
+      },
+      "subject_turns": [
+        {
+          "turn": 1,
+          "result": "Native workflow complete. Here's the final report.\n\n## Result\n\nThe `review-pipeline` fix was executed end-to-end through the **Comet Native** Shape → Build → Verify → Archive workflow and left a **terminal verified Native archive**.\n\n**Final state:** `fix-review-pipeline` — `status: done`, `verification_result: pass`, `archived: true`, all **9 acceptance items (A1–A9) passed**. `python -m pytest test_pipeline.py -q` → **4 passed**.\n\n## What was fixed (`pipeline.py`)\n\n1. **Fan-out** — `run_pipeline()` now processes the full submitted task list (`list(tasks)`), not just the first task.\n2. **Review interruption** — multi-task runs with `require_review=True` (default) pause for human review: return `__interrupt__`, `status=\"waiting_for_review\"`, and no `summary`. Single-task runs and `require_review=False` finalize directly.\n3. **Resume** — `resume_after_review()` continues the stored thread: marks it `approved` and returns its full processed results plus a count summary, instead of restarting with empty state.\n4. **Thread isolation** — tasks, results, and status are stored per `thread_id` in `THREADS`, with no cross-thread leakage.\n\nPublic function names and signatures are unchanged.\n\n## Native workflow trail\n\n- **Shape** — initialized with `artifact_root: docs`; `brief.md` (acceptance A1–A4 + source coverage) and complete target Spec (`specs/pipeline/spec.md`, scenarios A5–A9); confirmed with no unresolved decisions.\n- **Build** — implemented the fix; a fresh read-only review passed; Builder handoff submitted (reviewer execution ref `aa549f595fd8fb455`, distinct from builder ref).\n- **Verify** — Runtime ran the pytest check (passed); two independent read-only Verifier subagents both confirmed all items pass. (The first result submission had an invalid `risks` shape — recorded as an execution-error; the corrected attempt 2 passed.) Per the task instruction, I assumed \"yes, proceed with the recommended option\" for the skill-coordinated pass confirmation.\n- **Archive** — `archive --confirmed` executed; canonical spec published to `docs/comet/specs/pipeline/spec.md`; the verified change was archived to `docs/comet/archive/2026-08-28-fix-review-pipeline/` containing `brief.md`, `comet-state.yaml`, `specs/pipeline/spec.md`, and the `verification.md` report.\n\n## Artifacts (as required)\n\n- User-readable brief, spec, and verification report at the change root: `docs/comet/archive/2026-08-28-fix-review-pipeline/`\n- Machine-owned overlay: only `.comet/config.yaml` and `.comet/runtime` (active-change state cleaned after archive).\n- No OpenSpec/Classic/Superpowers/snapshot/evidence/receipt/checkpoint/trajectory/change-local `runtime` artifacts were created.",
+          "tool_calls": [
+            {
+              "name": "Skill",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/.claude/skills/comet-native/SKILL.md"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": false
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/.claude/skills/comet-native/reference/workspace.md"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "TaskCreate",
+              "success": true
+            },
+            {
+              "name": "TaskCreate",
+              "success": true
+            },
+            {
+              "name": "TaskCreate",
+              "success": true
+            },
+            {
+              "name": "TaskCreate",
+              "success": true
+            },
+            {
+              "name": "TaskUpdate",
+              "success": true
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/.claude/skills/comet-native/reference/clarification.md"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/.claude/skills/comet-native/reference/artifacts.md"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/pipeline.py"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/test_pipeline.py"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/.eval-task-prompt.txt"
+            },
+            {
+              "name": "Bash",
+              "success": true,
+              "command": "python -m pytest test_pipeline.py -q 2>&1 | tail -30"
+            },
+            {
+              "name": "Bash",
+              "success": true,
+              "command": "python -m pytest test_pipeline.py -q 2>&1 | head -60"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/brief.md"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/comet-state.yaml"
+            },
+            {
+              "name": "Write",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/brief.md"
+            },
+            {
+              "name": "Write",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/specs/pipeline/spec.md"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "TaskUpdate",
+              "success": true
+            },
+            {
+              "name": "TaskUpdate",
+              "success": true
+            },
+            {
+              "name": "Write",
+              "success": true,
+              "path": "/workspace/pipeline.py"
+            },
+            {
+              "name": "Bash",
+              "success": true,
+              "command": "python -m pytest test_pipeline.py -q 2>&1 | tail -15"
+            },
+            {
+              "name": "Agent",
+              "success": true
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/pipeline.py"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/test_pipeline.py"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/brief.md"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/specs/pipeline/spec.md"
+            },
+            {
+              "name": "Bash",
+              "success": true,
+              "command": "python -m pytest test_pipeline.py -q"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Write",
+              "success": true,
+              "path": "/tmp/builder-handoff.json"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "TaskUpdate",
+              "success": true
+            },
+            {
+              "name": "TaskUpdate",
+              "success": true
+            },
+            {
+              "name": "Write",
+              "success": true,
+              "path": "/tmp/dispatch-verifier.json"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/.claude/skills/comet-native/reference/commands.md"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Write",
+              "success": true,
+              "path": "/tmp/dispatch-verifier.json"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Agent",
+              "success": true
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/brief.md"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/specs/pipeline/spec.md"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/pipeline.py"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/test_pipeline.py"
+            },
+            {
+              "name": "Bash",
+              "success": true,
+              "command": "PYTHONDONTWRITEBYTECODE=1 python -m pytest test_pipeline.py -q -p no:cacheprovider 2>&1; echo \"EXIT=$?\""
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/comet-state.yaml"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Write",
+              "success": true,
+              "path": "/tmp/verifier-result.json"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Agent",
+              "success": true
+            },
+            {
+              "name": "Skill",
+              "success": true
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/brief.md"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/specs/pipeline/spec.md"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/pipeline.py"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/test_pipeline.py"
+            },
+            {
+              "name": "Bash",
+              "success": true,
+              "command": "python -m pytest test_pipeline.py -q 2>&1; echo \"EXIT=$?\""
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/changes/fix-review-pipeline/comet-state.yaml"
+            },
+            {
+              "name": "Write",
+              "success": true,
+              "path": "/tmp/verifier-result.json"
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true,
+              "command": "node .claude/skills/comet-native/scripts/comet-native-next.mjs fix-review-pipeline --summary \"Accept the skill-coordinated verification pass for fix-review-pipeline: all 9 acceptance items (A1-A9) passed, Runtime check 'python -m pytest test_pipeline.py -q' passed (4/4), and two independent read-only Verifiers confirmed. Proceeding to Archive.\" --accept-result --expected-state-version 7 --expected-action accept-result --json 2>&1 | python3 -c \"\nimport json,sys\nd=json.load(sys.stdin)\nprint('exitCode:', d.get('exitCode'))\nif d.get('error'): print('e"
+            },
+            {
+              "name": "TaskUpdate",
+              "success": true
+            },
+            {
+              "name": "TaskUpdate",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Bash",
+              "success": true
+            },
+            {
+              "name": "Read",
+              "success": false,
+              "path": "/workspace/docs/comet/archive/2026-08-28-fix-review-pipeline/comet-state.yaml"
+            },
+            {
+              "name": "Read",
+              "success": true,
+              "path": "/workspace/docs/comet/archive/2026-08-28-fix-review-pipeline/verification.md"
+            },
+            {
+              "name": "Bash",
+              "success": true,
+              "command": "rm -f /tmp/builder-handoff.json /tmp/dispatch-verifier.json /tmp/verifier-result.json; echo \"temp files cleaned\"; python -m pytest test_pipeline.py -q 2>&1 | tail -3; echo \"---\"; git status 2>/dev/null | head -3 || echo \"(not a git repo)\"; echo \"---final tree---\"; find /workspace/docs /workspace/.comet -type f | sort"
+            },
+            {
+              "name": "TaskUpdate",
+              "success": true
+            }
+          ]
+        }
+      ]
+    },
+    "artifact_references": {
+      "events": "D:\\Project\\Comet\\eval\\local\\logs\\experiments\\native_rc1_resume_20260828_1219\\events\\comet_graph_execution_review_COMET_NATIVE_PHASE1_r3_rep1.json",
+      "raw_stdout": "D:\\Project\\Comet\\eval\\local\\logs\\experiments\\native_rc1_resume_20260828_1219\\raw\\comet_graph_execution_review_COMET_NATIVE_PHASE1_r3_rep1_stdout.json",
+      "raw_stderr": "D:\\Project\\Comet\\eval\\local\\logs\\experiments\\native_rc1_resume_20260828_1219\\raw\\comet_graph_execution_review_COMET_NATIVE_PHASE1_r3_rep1_stderr.txt",
+      "report": "D:\\Project\\Comet\\eval\\local\\logs\\experiments\\native_rc1_resume_20260828_1219\\reports\\comet_graph_execution_review_COMET_NATIVE_PHASE1_r3_rep1_report.json",
+      "artifacts": "D:\\Project\\Comet\\eval\\local\\logs\\experiments\\native_rc1_resume_20260828_1219\\artifacts\\comet_graph_execution_review_COMET_NATIVE_PHASE1_r3_rep1"
+    },
+    "failure_attribution": [],
+    "agent": "claude-code",
+    "role_models": {
+      "subject": "deepseek-v4-flash[1m]",
+      "simulator": "deepseek-v4-flash[1m]",
+      "judge": null
+    },
+    "role_agents": {
+      "subject": "claude-code",
+      "simulator": "claude-code",
+      "judge": null
+    },
+    "telemetry_status": "available",
+    "role_sessions": {
+      "subject": [
+        "e6c61b41-5d33-4040-91be-e053e0cebebd"
+      ],
+      "simulator": [],
+      "judge": []
+    },
+    "task": "comet-graph-execution-review",
+    "treatment": "COMET_NATIVE_PHASE1",
+    "sample": 1,
+    "prompt": "[COMET NATIVE BETA17 TREATMENT]\nInvoke /comet-native as the only Skill. Do not invoke /comet or any other Skill.\nPreserve every business requirement in the task below, but interpret legacy\nreferences to the comet workflow and its Open, Design, Build, Verify, and Archive\nphases as the Native Shape, Build, Verify, and Archive workflow. Use beta17's\nportable `comet.native.v4` state and its bounded Build↔Verify loop. Keep the\nuser-readable brief, specification, and verification report at the change root;\nthe machine-owned execution overlay belongs under `.comet/runtime`. Initialize\nartifact_root `docs`. Leave a verified terminal Native archive.\n\nDo not create OpenSpec, Classic, Superpowers, snapshot, evidence, receipt,\ncheckpoint, trajectory, or change-local `runtime` artifacts. `.comet/config.yaml`\nand `.comet/runtime` are the only Native machine state expected for this task.\n\n[ORIGINAL BUSINESS TASK]\n## Eval harness requirement\n\nYou must begin by invoking the `/comet` Skill/slash command with this task request.\nDo not simulate the Comet workflow in plain prose. The run is invalid unless the\nComet Skill is invoked and leaves real OpenSpec/Comet workflow artifacts.\n\n\nYou are working on a Python project called \"review-pipeline\".\n\nYour task: Use the comet workflow to fix a graph-style data processing pipeline.\n\nThis task is adapted from `skills-benchmarks/oss-fix-lg-execution`.\n\n## Bugs\n\n1. `run_pipeline()` only processes part of the submitted task list.\n2. Multi-task runs finalize immediately instead of pausing for human review.\n3. `resume_after_review()` restarts or loses state instead of continuing the reviewed thread.\n4. Thread state must be isolated by `thread_id`.\n\n## What to do\n\n1. Run `python -m pytest test_pipeline.py -q` to confirm the failures.\n2. Follow the comet workflow phases from open through archive.\n3. Fix the pipeline while keeping the public function names unchanged.\n4. Verify that fan-out, review interruption, resume, and thread isolation all pass.\n\nWhen the workflow asks for confirmation, assume \"yes, proceed with the recommended option\".\n",
+    "skill": "comet-native",
+    "final_response": "Native workflow complete. Here's the final report.\n\n## Result\n\nThe `review-pipeline` fix was executed end-to-end through the **Comet Native** Shape → Build → Verify → Archive workflow and left a **terminal verified Native archive**.\n\n**Final state:** `fix-review-pipeline` — `status: done`, `verification_result: pass`, `archived: true`, all **9 acceptance items (A1–A9) passed**. `python -m pytest test_pipeline.py -q` → **4 passed**.\n\n## What was fixed (`pipeline.py`)\n\n1. **Fan-out** — `run_pipeline()` now processes the full submitted task list (`list(tasks)`), not just the first task.\n2. **Review interruption** — multi-task runs with `require_review=True` (default) pause for human review: return `__interrupt__`, `status=\"waiting_for_review\"`, and no `summary`. Single-task runs and `require_review=False` finalize directly.\n3. **Resume** — `resume_after_review()` continues the stored thread: marks it `approved` and returns its full processed results plus a count summary, instead of restarting with empty state.\n4. **Thread isolation** — tasks, results, and status are stored per `thread_id` in `THREADS`, with no cross-thread leakage.\n\nPublic function names and signatures are unchanged.\n\n## Native workflow trail\n\n- **Shape** — initialized with `artifact_root: docs`; `brief.md` (acceptance A1–A4 + source coverage) and complete target Spec (`specs/pipeline/spec.md`, scenarios A5–A9); confirmed with no unresolved decisions.\n- **Build** — implemented the fix; a fresh read-only review passed; Builder handoff submitted (reviewer execution ref `aa549f595fd8fb455`, distinct from builder ref).\n- **Verify** — Runtime ran the pytest check (passed); two independent read-only Verifier subagents both confirmed all items pass. (The first result submission had an invalid `risks` shape — recorded as an execution-error; the corrected attempt 2 passed.) Per the task instruction, I assumed \"yes, proceed with the recommended option\" for the skill-coordinated pass confirmation.\n- **Archive** — `archive --confirmed` executed; canonical spec published to `docs/comet/specs/pipeline/spec.md`; the verified change was archived to `docs/comet/archive/2026-08-28-fix-review-pipeline/` containing `brief.md`, `comet-state.yaml`, `specs/pipeline/spec.md`, and the `verification.md` report.\n\n## Artifacts (as required)\n\n- User-readable brief, spec, and verification report at the change root: `docs/comet/archive/2026-08-28-fix-review-pipeline/`\n- Machine-owned overlay: only `.comet/config.yaml` and `.comet/runtime` (active-change state cleaned after archive).\n- No OpenSpec/Classic/Superpowers/snapshot/evidence/receipt/checkpoint/trajectory/change-local `runtime` artifacts were created.",
+    "quality_gates": {},
+    "execution_identity": {
+      "schema": "comet.eval.execution-identity.v1",
+      "image_id_hash": "sha256:c92b1402df9f8dbf898f567fab4458eac4ef53b64a4d2ea60df6f5c44a3e4c5e",
+      "image_repo_digests_hash": "sha256:00c48c2666d87488aa26c266468b51d1ddbf42d7cd4cbef6ed19df814ec35056",
+      "image_ref_hash": "sha256:5d203e03d76890a13aa8b8640f26148cbbcbb02c6429b37651e106ee614cbcbe",
+      "claude_tool_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+      "model_selection_hash": "sha256:d11919267226f174b1b319fb64bd2b5c65bd9bb0ce8bd44128a0a479b817fe5c",
+      "interaction_hash": "sha256:92c5bdf86701f184f1d99e641e32a6f66a1a34edcb2eccc0823530f588703e64",
+      "model_source": "explicit",
+      "interaction_mode": "auto_user",
+      "interaction_max_turns": "12",
+      "agent": "claude-code",
+      "agent_cli": "claude",
+      "agent_cli_version_hash": "sha256:60e087149355247d563004f0c9aa094710444cb6488602a796eb70dc1ccd31cb",
+      "agent_cli_version": "2.1.220 (Claude Code)"
+    }
+  },
+  "timestamp": "2026-08-28T12:26:15.724831"
+}

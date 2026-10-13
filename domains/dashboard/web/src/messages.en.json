@@ -1,4 +1,10 @@
 {
+  "历史实验 · 只读": "Historical experiment · Read only",
+  "原 Creator 评估决定": "Original Creator evaluation decision",
+  "原始业务测试通过项": "Original business checks passed",
+  "含回归测试通过项": "Checks passed including regressions",
+  "完整应用 Eval 未执行": "Full application Eval was not performed",
+  "专项复核记录；业务任务结果与完整应用 Eval 分开判断。": "Task review record; task outcomes are assessed separately from full application Eval.",
   "已启动": "Started",
   "设计中": "Designing",
   "构建中": "Building",

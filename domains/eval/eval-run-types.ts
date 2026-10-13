@@ -74,6 +74,12 @@ export interface EvalCaseResult {
   artifacts: Array<{ id: string; label: string }>;
 }
 export interface EvalRunDetail {
+  archiveId?: string;
+  archiveAssessment?: {
+    taskCompleted: boolean;
+    originalTestsPassed: number;
+    regressionTestsPassed: number;
+  };
   id: string;
   origin: 'dashboard' | 'cli' | 'history';
   createdAt: string | null;

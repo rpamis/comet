@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 
 interface DependencyTestLayout {
@@ -128,6 +129,39 @@ async function makeMinimalRepository(): Promise<string> {
 }
 
 describe('architecture lint', () => {
+  it('accepts only registered archive modules whose bytes match the frozen manifest', async () => {
+    const root = await makeMinimalRepository();
+    await writeFile(root, '.gitignore', '');
+    const file = 'eval/archives/example/application/application.mjs';
+    const content = 'throw new Error("READ_ONLY_ARCHIVE");\n';
+    const layoutFile = path.join(root, 'config/repository-layout.json');
+    const layout = JSON.parse(await fs.readFile(layoutFile, 'utf8'));
+    layout.allowedCodeFiles = [file];
+    await fs.writeFile(layoutFile, JSON.stringify(layout));
+    await writeFile(root, file, content);
+    await writeFile(
+      root,
+      'eval/archives/example/archive.json',
+      JSON.stringify({
+        schema: 'comet.eval.archive.v1',
+        files: {
+          'application/application.mjs': createHash('sha256').update(content).digest('hex'),
+        },
+      }),
+    );
+    const check = () =>
+      spawnSync(process.execPath, [path.resolve('scripts/lint/architecture.mjs')], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+    const accepted = check();
+    expect(accepted.stderr).toBe('');
+    expect(accepted.status).toBe(0);
+    await writeFile(root, file, 'export {};\n');
+    expect(check().stderr).toContain('not a verified frozen Eval artifact');
+    await writeFile(root, 'eval/archives/example/application/extra.mjs', 'export {};\n');
+    expect(check().stderr).toContain('code outside an approved code root');
+  });
   it('ignores Git-ignored ZCode runtime files', async () => {
     const root = await makeMinimalRepository();
     await writeFile(root, '.gitignore', '.zcode\n');

@@ -1,0 +1,6 @@
+{
+  ".scratch/grill-test/issues/01-fan-out-all-tasks.md": "375ac56bfa754be0dc7b903056fbedb9e67c0bbdafae99674bd6b6d45f478213",
+  ".scratch/grill-test/issues/02-interrupt-review-before-summary.md": "b00cbc97948cd225a68b3998d3f51a1da63e2cc5dcc093aaf6b1bbe8e75b0535",
+  ".scratch/grill-test/issues/03-resume-same-thread.md": "59c0cbd448b42b232cc49cafd6c99a317a36bae72655cf12d23ee52b7019774f",
+  ".scratch/grill-test/issues/04-thread-isolation-and-regressions.md": "f7c863ab7b7eca95939553f681b41a947c3a3478b8aa0d3550dd6b7f7fb81137"
+}

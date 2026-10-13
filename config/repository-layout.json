@@ -316,6 +316,10 @@
       },
       {
         "from": "eval",
+        "to": "workflow-contract"
+      },
+      {
+        "from": "eval",
         "to": "workflow-application"
       },
       {
@@ -592,6 +596,9 @@
   "platformModules": ["fs", "http", "install", "paths", "process", "version"],
   "scriptModules": ["benchmark", "build", "install", "lib", "lint", "release"],
   "allowedCodeFiles": [
+    "eval/archives/grill-test-20261013/application/application.mjs",
+    "eval/archives/grill-test-20261013/application/bindings.mjs",
+    "eval/archives/grill-test-20261013/application/tools/session.mjs",
     "bin/comet-daemon-route.js",
     "bin/comet-daemon-router.js",
     "bin/fast-runtime-router.js"

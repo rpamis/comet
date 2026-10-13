@@ -1,0 +1,20 @@
+{
+  "experiment_id": "grill-test-faithful-graph-one-shot-20261013",
+  "started_at": "2026-10-13T14:29:28.912838",
+  "treatments": [
+    "comet-graph-execution-review-DYNAMIC_SKILL-r1"
+  ],
+  "expected_case_matrix": {
+    "schema": "comet.eval.expected-case-matrix.v1",
+    "matrix_hash": "sha256:7f3133377e2f18129c9ae59099c0b660aaf9f626ab458ff3a1890a2f0bc0d550",
+    "case_count": 1,
+    "path": "expected-case-matrix.json"
+  },
+  "pytest_exitstatus": 1,
+  "completed_at": "2026-10-13T14:47:37.573821",
+  "total_runs": 1,
+  "total_passed": 0,
+  "report_outputs": {
+    "markdown": "D:\\Project\\Comet\\.comet\\experiments\\grill-test-final\\benchmark\\logs\\experiments\\grill-test-faithful-graph-one-shot-20261013\\summary.md"
+  }
+}

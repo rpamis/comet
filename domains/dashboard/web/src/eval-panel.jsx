@@ -684,7 +684,11 @@ export function EvalPanel({
                     <span className="dashboard-eval-target-name">{run.target.name}</span>
                     <span className="dashboard-eval-secondary">
                       {run.target.version ?? '—'} ·{' '}
-                      {run.origin === 'dashboard' ? 'Dashboard' : t('CLI / 历史')}
+                      {run.archiveId
+                        ? t('历史实验 · 只读')
+                        : run.origin === 'dashboard'
+                          ? 'Dashboard'
+                          : t('CLI / 历史')}
                     </span>
                     <span className="dashboard-eval-secondary dashboard-eval-run-id" title={run.id}>
                       {run.id.length > 24 ? `${run.id.slice(0, 12)}…${run.id.slice(-8)}` : run.id}
@@ -934,6 +938,7 @@ export function EvalPanel({
             />
           )}
           <Space wrap className="dashboard-eval-actions">
+            {detail.archiveId && <Tag>{t('历史实验 · 只读')}</Tag>}
             {detail.availableActions.stop && (
               <Button
                 danger
@@ -973,10 +978,15 @@ export function EvalPanel({
             <Dropdown
               trigger={['click']}
               menu={{
-                items: [
-                  ['summary.md', 'Markdown'],
-                  ['summary.html', 'HTML'],
-                ].flatMap(([id, label]) => [
+                items: (detail.archiveId
+                  ? (detail.artifacts ?? [])
+                      .filter((item) => item.format === 'markdown')
+                      .map((item) => [item.id, item.label])
+                  : [
+                      ['summary.md', 'Markdown'],
+                      ['summary.html', 'HTML'],
+                    ]
+                ).flatMap(([id, label]) => [
                   {
                     key: `preview:${id}`,
                     label: t('预览 {0}', [label]),

@@ -1,5 +1,77 @@
 import { test, expect } from '@playwright/test';
 import { readApplicationDemo } from '../../../domains/dashboard/web/src/application-demo.js';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+test('a cloned historical archive exposes its original chain and readonly Eval report', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-archive-browser-'));
+  const previous = process.env.COMET_USER_DATA_ROOT;
+  process.env.COMET_USER_DATA_ROOT = path.join(root, 'user');
+  const project = path.join(root, 'project');
+  await fs.mkdir(path.join(project, 'eval/archives'), { recursive: true });
+  await fs.cp(
+    path.resolve('eval/archives/grill-test-20261013'),
+    path.join(project, 'eval/archives/grill-test-20261013'),
+    { recursive: true },
+  );
+  const { startDashboardServer } = await import('../../../domains/dashboard/server.js');
+  const server = await startDashboardServer({
+    projectPath: project,
+    port: 0,
+    webRoot: path.resolve('dist/domains/dashboard/web'),
+  });
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    page.setDefaultTimeout(20_000);
+    await page.goto(server.url);
+    await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+    await expect(page.locator('.any-run-header')).toContainText('历史实验 · 只读');
+    await expect(page.getByRole('button', { name: '复制只读检查上下文' })).toHaveCount(0);
+    await page.getByText('应用运行', { exact: true }).last().click();
+    await page.getByRole('tab', { name: '执行记录', exact: true }).click();
+    await page.locator('.any-history').getByRole('button', { name: /grill/ }).click();
+    await page.getByRole('button', { name: '进入子流程' }).click();
+    await expect(page.getByRole('button', { name: '返回父运行' })).toBeVisible();
+    await page.getByRole('button', { name: '返回父运行' }).click();
+    await page.getByRole('tab', { name: '版本与证据', exact: true }).click();
+    await page.getByRole('button', { name: '进入 Eval 详情' }).click();
+    await expect(page.locator('.dashboard-eval-detail')).toContainText('历史实验 · 只读');
+    await expect(page.locator('.dashboard-eval-detail')).toContainText('完整应用 Eval 未执行');
+    await expect(page.getByRole('button', { name: '修改配置后重新评估' })).toHaveCount(0);
+    await page.getByRole('button', { name: '评估报告', exact: true }).click();
+    await page.getByRole('menuitem', { name: '预览 专项复核报告' }).click();
+    await expect(page.getByRole('dialog')).toContainText('业务成功不等于完整应用 Eval 通过');
+    await page.screenshot({
+      path: test.info().outputPath('archive-report.png'),
+      fullPage: true,
+      animations: 'disabled',
+      timeout: 20_000,
+    });
+    await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+      )
+      .toBe(true);
+    await page.screenshot({
+      path: test.info().outputPath('archive-narrow.png'),
+      fullPage: true,
+      animations: 'disabled',
+      timeout: 20_000,
+    });
+  } finally {
+    await page.close();
+    await server.close();
+    if (previous === undefined) delete process.env.COMET_USER_DATA_ROOT;
+    else process.env.COMET_USER_DATA_ROOT = previous;
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
 
 test('Any preserves pinned runs, child navigation and historical selection through refresh failures', async ({
   page,

@@ -1,0 +1,1618 @@
+{
+  "application": {
+    "base": "standalone",
+    "contentHash": "775131d526fb5fd49097bfe75f16e99f3bd437831628d2c8253ca1fc9ba8e13b",
+    "id": "grill-test",
+    "packageRoot": "/workspace/.comet/applications/grill-test/versions/5c95c6a0669eb7c85719f99338e7affe12a81fd4e71af28544c6384c059065f0",
+    "projectRoot": "/workspace",
+    "runtimeVersion": "0.5.0",
+    "version": "3"
+  },
+  "revision": 3,
+  "run": {
+    "actionContexts": {
+      "child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f:1": {
+        "results": {},
+        "sequence": 1
+      }
+    },
+    "actions": [
+      {
+        "attempt": 1,
+        "claim": {
+          "executorId": "grill-test-host",
+          "sessionId": "actual-host-4ddc7a40-b0e3-411e-8504-1b6fe523112e",
+          "token": "[redacted]"
+        },
+        "id": "child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f:1",
+        "input": {
+          "input": {
+            "input": {
+              "acceptance": [
+                {
+                  "description": "fan-out processes every task",
+                  "id": "AC-1"
+                },
+                {
+                  "description": "multi-task review pauses before summary",
+                  "id": "AC-2"
+                },
+                {
+                  "description": "resume continues the same reviewed thread",
+                  "id": "AC-3"
+                },
+                {
+                  "description": "thread_id isolates state",
+                  "id": "AC-4"
+                }
+              ],
+              "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+              "testCommand": [
+                "python",
+                "-m",
+                "pytest",
+                "test_pipeline.py",
+                "-q"
+              ]
+            },
+            "outputs": {
+              "authorize-implementation": {
+                "choice": "approved",
+                "proposal": {
+                  "input": {
+                    "acceptance": [
+                      {
+                        "description": "fan-out processes every task",
+                        "id": "AC-1"
+                      },
+                      {
+                        "description": "multi-task review pauses before summary",
+                        "id": "AC-2"
+                      },
+                      {
+                        "description": "resume continues the same reviewed thread",
+                        "id": "AC-3"
+                      },
+                      {
+                        "description": "thread_id isolates state",
+                        "id": "AC-4"
+                      }
+                    ],
+                    "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                    "testCommand": [
+                      "python",
+                      "-m",
+                      "pytest",
+                      "test_pipeline.py",
+                      "-q"
+                    ]
+                  },
+                  "outputs": {
+                    "grill": {
+                      "complete": {
+                        "summary": "Original Skill stage completed after actual understanding or document approval"
+                      },
+                      "confirm-understanding": {
+                        "choice": "approved",
+                        "proposal": {
+                          "input": {
+                            "input": {
+                              "acceptance": [
+                                {
+                                  "description": "fan-out processes every task",
+                                  "id": "AC-1"
+                                },
+                                {
+                                  "description": "multi-task review pauses before summary",
+                                  "id": "AC-2"
+                                },
+                                {
+                                  "description": "resume continues the same reviewed thread",
+                                  "id": "AC-3"
+                                },
+                                {
+                                  "description": "thread_id isolates state",
+                                  "id": "AC-4"
+                                }
+                              ],
+                              "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                              "testCommand": [
+                                "python",
+                                "-m",
+                                "pytest",
+                                "test_pipeline.py",
+                                "-q"
+                              ]
+                            },
+                            "outputs": {}
+                          },
+                          "outputs": {
+                            "grill": {
+                              "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                            }
+                          }
+                        }
+                      },
+                      "grill": {
+                        "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                      }
+                    },
+                    "spec": {
+                      "complete": {
+                        "summary": "Original Skill stage completed after actual understanding or document approval"
+                      },
+                      "confirm-spec": {
+                        "choice": "approved",
+                        "proposal": {
+                          "input": {
+                            "input": {
+                              "acceptance": [
+                                {
+                                  "description": "fan-out processes every task",
+                                  "id": "AC-1"
+                                },
+                                {
+                                  "description": "multi-task review pauses before summary",
+                                  "id": "AC-2"
+                                },
+                                {
+                                  "description": "resume continues the same reviewed thread",
+                                  "id": "AC-3"
+                                },
+                                {
+                                  "description": "thread_id isolates state",
+                                  "id": "AC-4"
+                                }
+                              ],
+                              "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                              "testCommand": [
+                                "python",
+                                "-m",
+                                "pytest",
+                                "test_pipeline.py",
+                                "-q"
+                              ]
+                            },
+                            "outputs": {
+                              "grill": {
+                                "complete": {
+                                  "summary": "Original Skill stage completed after actual understanding or document approval"
+                                },
+                                "confirm-understanding": {
+                                  "choice": "approved",
+                                  "proposal": {
+                                    "input": {
+                                      "input": {
+                                        "acceptance": [
+                                          {
+                                            "description": "fan-out processes every task",
+                                            "id": "AC-1"
+                                          },
+                                          {
+                                            "description": "multi-task review pauses before summary",
+                                            "id": "AC-2"
+                                          },
+                                          {
+                                            "description": "resume continues the same reviewed thread",
+                                            "id": "AC-3"
+                                          },
+                                          {
+                                            "description": "thread_id isolates state",
+                                            "id": "AC-4"
+                                          }
+                                        ],
+                                        "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                        "testCommand": [
+                                          "python",
+                                          "-m",
+                                          "pytest",
+                                          "test_pipeline.py",
+                                          "-q"
+                                        ]
+                                      },
+                                      "outputs": {}
+                                    },
+                                    "outputs": {
+                                      "grill": {
+                                        "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                      }
+                                    }
+                                  }
+                                },
+                                "grill": {
+                                  "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                }
+                              }
+                            }
+                          },
+                          "outputs": {
+                            "spec": {
+                              "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                            }
+                          }
+                        }
+                      },
+                      "spec": {
+                        "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                      }
+                    },
+                    "tickets": {
+                      "complete": {
+                        "summary": "Original Skill stage completed after actual understanding or document approval"
+                      },
+                      "confirm-tickets": {
+                        "choice": "approved",
+                        "proposal": {
+                          "input": {
+                            "input": {
+                              "acceptance": [
+                                {
+                                  "description": "fan-out processes every task",
+                                  "id": "AC-1"
+                                },
+                                {
+                                  "description": "multi-task review pauses before summary",
+                                  "id": "AC-2"
+                                },
+                                {
+                                  "description": "resume continues the same reviewed thread",
+                                  "id": "AC-3"
+                                },
+                                {
+                                  "description": "thread_id isolates state",
+                                  "id": "AC-4"
+                                }
+                              ],
+                              "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                              "testCommand": [
+                                "python",
+                                "-m",
+                                "pytest",
+                                "test_pipeline.py",
+                                "-q"
+                              ]
+                            },
+                            "outputs": {
+                              "grill": {
+                                "complete": {
+                                  "summary": "Original Skill stage completed after actual understanding or document approval"
+                                },
+                                "confirm-understanding": {
+                                  "choice": "approved",
+                                  "proposal": {
+                                    "input": {
+                                      "input": {
+                                        "acceptance": [
+                                          {
+                                            "description": "fan-out processes every task",
+                                            "id": "AC-1"
+                                          },
+                                          {
+                                            "description": "multi-task review pauses before summary",
+                                            "id": "AC-2"
+                                          },
+                                          {
+                                            "description": "resume continues the same reviewed thread",
+                                            "id": "AC-3"
+                                          },
+                                          {
+                                            "description": "thread_id isolates state",
+                                            "id": "AC-4"
+                                          }
+                                        ],
+                                        "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                        "testCommand": [
+                                          "python",
+                                          "-m",
+                                          "pytest",
+                                          "test_pipeline.py",
+                                          "-q"
+                                        ]
+                                      },
+                                      "outputs": {}
+                                    },
+                                    "outputs": {
+                                      "grill": {
+                                        "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                      }
+                                    }
+                                  }
+                                },
+                                "grill": {
+                                  "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                }
+                              },
+                              "spec": {
+                                "complete": {
+                                  "summary": "Original Skill stage completed after actual understanding or document approval"
+                                },
+                                "confirm-spec": {
+                                  "choice": "approved",
+                                  "proposal": {
+                                    "input": {
+                                      "input": {
+                                        "acceptance": [
+                                          {
+                                            "description": "fan-out processes every task",
+                                            "id": "AC-1"
+                                          },
+                                          {
+                                            "description": "multi-task review pauses before summary",
+                                            "id": "AC-2"
+                                          },
+                                          {
+                                            "description": "resume continues the same reviewed thread",
+                                            "id": "AC-3"
+                                          },
+                                          {
+                                            "description": "thread_id isolates state",
+                                            "id": "AC-4"
+                                          }
+                                        ],
+                                        "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                        "testCommand": [
+                                          "python",
+                                          "-m",
+                                          "pytest",
+                                          "test_pipeline.py",
+                                          "-q"
+                                        ]
+                                      },
+                                      "outputs": {
+                                        "grill": {
+                                          "complete": {
+                                            "summary": "Original Skill stage completed after actual understanding or document approval"
+                                          },
+                                          "confirm-understanding": {
+                                            "choice": "approved",
+                                            "proposal": {
+                                              "input": {
+                                                "input": {
+                                                  "acceptance": [
+                                                    {
+                                                      "description": "fan-out processes every task",
+                                                      "id": "AC-1"
+                                                    },
+                                                    {
+                                                      "description": "multi-task review pauses before summary",
+                                                      "id": "AC-2"
+                                                    },
+                                                    {
+                                                      "description": "resume continues the same reviewed thread",
+                                                      "id": "AC-3"
+                                                    },
+                                                    {
+                                                      "description": "thread_id isolates state",
+                                                      "id": "AC-4"
+                                                    }
+                                                  ],
+                                                  "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                                  "testCommand": [
+                                                    "python",
+                                                    "-m",
+                                                    "pytest",
+                                                    "test_pipeline.py",
+                                                    "-q"
+                                                  ]
+                                                },
+                                                "outputs": {}
+                                              },
+                                              "outputs": {
+                                                "grill": {
+                                                  "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                                }
+                                              }
+                                            }
+                                          },
+                                          "grill": {
+                                            "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "outputs": {
+                                      "spec": {
+                                        "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                                      }
+                                    }
+                                  }
+                                },
+                                "spec": {
+                                  "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                                }
+                              }
+                            }
+                          },
+                          "outputs": {
+                            "tickets": {
+                              "summary": "Broke the approved Spec into four tracer-bullet vertical slices, one per acceptance criterion, published one file per ticket in dependency order under .scratch/grill-test/issues/ with the ready-for-agent status. Breakdown presented to the user: 01 fan-out of every submitted task with immediate non-reviewed finalize (AC-1, no blockers); 02 uniform review interrupt before the summary with self-describing payload and compute-then-pause (AC-2, blocked by 01); 03 same-thread resume returning stored results with fail-loud unknown threads and idempotent re-resume (AC-3, blocked by 02); 04 thread isolation by identifier plus regression tests for the confirmed edge decisions, original suite untouched (AC-4, blocked by 03). Granularity and blocking edges proceed under the user's explicit continuation directive to carry the same SDK Run through actual implementation, review and complete verification; the linear chain matches the shared state each slice builds on. Index saved at .scratch/grill-test/tickets.json with id/file/blockedBy/acceptanceIds per ticket."
+                            }
+                          }
+                        }
+                      },
+                      "tickets": {
+                        "summary": "Broke the approved Spec into four tracer-bullet vertical slices, one per acceptance criterion, published one file per ticket in dependency order under .scratch/grill-test/issues/ with the ready-for-agent status. Breakdown presented to the user: 01 fan-out of every submitted task with immediate non-reviewed finalize (AC-1, no blockers); 02 uniform review interrupt before the summary with self-describing payload and compute-then-pause (AC-2, blocked by 01); 03 same-thread resume returning stored results with fail-loud unknown threads and idempotent re-resume (AC-3, blocked by 02); 04 thread isolation by identifier plus regression tests for the confirmed edge decisions, original suite untouched (AC-4, blocked by 03). Granularity and blocking edges proceed under the user's explicit continuation directive to carry the same SDK Run through actual implementation, review and complete verification; the linear chain matches the shared state each slice builds on. Index saved at .scratch/grill-test/tickets.json with id/file/blockedBy/acceptanceIds per ticket."
+                      }
+                    }
+                  }
+                }
+              },
+              "grill": {
+                "complete": {
+                  "summary": "Original Skill stage completed after actual understanding or document approval"
+                },
+                "confirm-understanding": {
+                  "choice": "approved",
+                  "proposal": {
+                    "input": {
+                      "input": {
+                        "acceptance": [
+                          {
+                            "description": "fan-out processes every task",
+                            "id": "AC-1"
+                          },
+                          {
+                            "description": "multi-task review pauses before summary",
+                            "id": "AC-2"
+                          },
+                          {
+                            "description": "resume continues the same reviewed thread",
+                            "id": "AC-3"
+                          },
+                          {
+                            "description": "thread_id isolates state",
+                            "id": "AC-4"
+                          }
+                        ],
+                        "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                        "testCommand": [
+                          "python",
+                          "-m",
+                          "pytest",
+                          "test_pipeline.py",
+                          "-q"
+                        ]
+                      },
+                      "outputs": {}
+                    },
+                    "outputs": {
+                      "grill": {
+                        "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                      }
+                    }
+                  }
+                },
+                "grill": {
+                  "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                }
+              },
+              "spec": {
+                "complete": {
+                  "summary": "Original Skill stage completed after actual understanding or document approval"
+                },
+                "confirm-spec": {
+                  "choice": "approved",
+                  "proposal": {
+                    "input": {
+                      "input": {
+                        "acceptance": [
+                          {
+                            "description": "fan-out processes every task",
+                            "id": "AC-1"
+                          },
+                          {
+                            "description": "multi-task review pauses before summary",
+                            "id": "AC-2"
+                          },
+                          {
+                            "description": "resume continues the same reviewed thread",
+                            "id": "AC-3"
+                          },
+                          {
+                            "description": "thread_id isolates state",
+                            "id": "AC-4"
+                          }
+                        ],
+                        "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                        "testCommand": [
+                          "python",
+                          "-m",
+                          "pytest",
+                          "test_pipeline.py",
+                          "-q"
+                        ]
+                      },
+                      "outputs": {
+                        "grill": {
+                          "complete": {
+                            "summary": "Original Skill stage completed after actual understanding or document approval"
+                          },
+                          "confirm-understanding": {
+                            "choice": "approved",
+                            "proposal": {
+                              "input": {
+                                "input": {
+                                  "acceptance": [
+                                    {
+                                      "description": "fan-out processes every task",
+                                      "id": "AC-1"
+                                    },
+                                    {
+                                      "description": "multi-task review pauses before summary",
+                                      "id": "AC-2"
+                                    },
+                                    {
+                                      "description": "resume continues the same reviewed thread",
+                                      "id": "AC-3"
+                                    },
+                                    {
+                                      "description": "thread_id isolates state",
+                                      "id": "AC-4"
+                                    }
+                                  ],
+                                  "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                  "testCommand": [
+                                    "python",
+                                    "-m",
+                                    "pytest",
+                                    "test_pipeline.py",
+                                    "-q"
+                                  ]
+                                },
+                                "outputs": {}
+                              },
+                              "outputs": {
+                                "grill": {
+                                  "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                }
+                              }
+                            }
+                          },
+                          "grill": {
+                            "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                          }
+                        }
+                      }
+                    },
+                    "outputs": {
+                      "spec": {
+                        "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                      }
+                    }
+                  }
+                },
+                "spec": {
+                  "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                }
+              },
+              "tickets": {
+                "complete": {
+                  "summary": "Original Skill stage completed after actual understanding or document approval"
+                },
+                "confirm-tickets": {
+                  "choice": "approved",
+                  "proposal": {
+                    "input": {
+                      "input": {
+                        "acceptance": [
+                          {
+                            "description": "fan-out processes every task",
+                            "id": "AC-1"
+                          },
+                          {
+                            "description": "multi-task review pauses before summary",
+                            "id": "AC-2"
+                          },
+                          {
+                            "description": "resume continues the same reviewed thread",
+                            "id": "AC-3"
+                          },
+                          {
+                            "description": "thread_id isolates state",
+                            "id": "AC-4"
+                          }
+                        ],
+                        "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                        "testCommand": [
+                          "python",
+                          "-m",
+                          "pytest",
+                          "test_pipeline.py",
+                          "-q"
+                        ]
+                      },
+                      "outputs": {
+                        "grill": {
+                          "complete": {
+                            "summary": "Original Skill stage completed after actual understanding or document approval"
+                          },
+                          "confirm-understanding": {
+                            "choice": "approved",
+                            "proposal": {
+                              "input": {
+                                "input": {
+                                  "acceptance": [
+                                    {
+                                      "description": "fan-out processes every task",
+                                      "id": "AC-1"
+                                    },
+                                    {
+                                      "description": "multi-task review pauses before summary",
+                                      "id": "AC-2"
+                                    },
+                                    {
+                                      "description": "resume continues the same reviewed thread",
+                                      "id": "AC-3"
+                                    },
+                                    {
+                                      "description": "thread_id isolates state",
+                                      "id": "AC-4"
+                                    }
+                                  ],
+                                  "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                  "testCommand": [
+                                    "python",
+                                    "-m",
+                                    "pytest",
+                                    "test_pipeline.py",
+                                    "-q"
+                                  ]
+                                },
+                                "outputs": {}
+                              },
+                              "outputs": {
+                                "grill": {
+                                  "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                }
+                              }
+                            }
+                          },
+                          "grill": {
+                            "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                          }
+                        },
+                        "spec": {
+                          "complete": {
+                            "summary": "Original Skill stage completed after actual understanding or document approval"
+                          },
+                          "confirm-spec": {
+                            "choice": "approved",
+                            "proposal": {
+                              "input": {
+                                "input": {
+                                  "acceptance": [
+                                    {
+                                      "description": "fan-out processes every task",
+                                      "id": "AC-1"
+                                    },
+                                    {
+                                      "description": "multi-task review pauses before summary",
+                                      "id": "AC-2"
+                                    },
+                                    {
+                                      "description": "resume continues the same reviewed thread",
+                                      "id": "AC-3"
+                                    },
+                                    {
+                                      "description": "thread_id isolates state",
+                                      "id": "AC-4"
+                                    }
+                                  ],
+                                  "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                  "testCommand": [
+                                    "python",
+                                    "-m",
+                                    "pytest",
+                                    "test_pipeline.py",
+                                    "-q"
+                                  ]
+                                },
+                                "outputs": {
+                                  "grill": {
+                                    "complete": {
+                                      "summary": "Original Skill stage completed after actual understanding or document approval"
+                                    },
+                                    "confirm-understanding": {
+                                      "choice": "approved",
+                                      "proposal": {
+                                        "input": {
+                                          "input": {
+                                            "acceptance": [
+                                              {
+                                                "description": "fan-out processes every task",
+                                                "id": "AC-1"
+                                              },
+                                              {
+                                                "description": "multi-task review pauses before summary",
+                                                "id": "AC-2"
+                                              },
+                                              {
+                                                "description": "resume continues the same reviewed thread",
+                                                "id": "AC-3"
+                                              },
+                                              {
+                                                "description": "thread_id isolates state",
+                                                "id": "AC-4"
+                                              }
+                                            ],
+                                            "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                            "testCommand": [
+                                              "python",
+                                              "-m",
+                                              "pytest",
+                                              "test_pipeline.py",
+                                              "-q"
+                                            ]
+                                          },
+                                          "outputs": {}
+                                        },
+                                        "outputs": {
+                                          "grill": {
+                                            "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "grill": {
+                                      "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                    }
+                                  }
+                                }
+                              },
+                              "outputs": {
+                                "spec": {
+                                  "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                                }
+                              }
+                            }
+                          },
+                          "spec": {
+                            "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                          }
+                        }
+                      }
+                    },
+                    "outputs": {
+                      "tickets": {
+                        "summary": "Broke the approved Spec into four tracer-bullet vertical slices, one per acceptance criterion, published one file per ticket in dependency order under .scratch/grill-test/issues/ with the ready-for-agent status. Breakdown presented to the user: 01 fan-out of every submitted task with immediate non-reviewed finalize (AC-1, no blockers); 02 uniform review interrupt before the summary with self-describing payload and compute-then-pause (AC-2, blocked by 01); 03 same-thread resume returning stored results with fail-loud unknown threads and idempotent re-resume (AC-3, blocked by 02); 04 thread isolation by identifier plus regression tests for the confirmed edge decisions, original suite untouched (AC-4, blocked by 03). Granularity and blocking edges proceed under the user's explicit continuation directive to carry the same SDK Run through actual implementation, review and complete verification; the linear chain matches the shared state each slice builds on. Index saved at .scratch/grill-test/tickets.json with id/file/blockedBy/acceptanceIds per ticket."
+                      }
+                    }
+                  }
+                },
+                "tickets": {
+                  "summary": "Broke the approved Spec into four tracer-bullet vertical slices, one per acceptance criterion, published one file per ticket in dependency order under .scratch/grill-test/issues/ with the ready-for-agent status. Breakdown presented to the user: 01 fan-out of every submitted task with immediate non-reviewed finalize (AC-1, no blockers); 02 uniform review interrupt before the summary with self-describing payload and compute-then-pause (AC-2, blocked by 01); 03 same-thread resume returning stored results with fail-loud unknown threads and idempotent re-resume (AC-3, blocked by 02); 04 thread isolation by identifier plus regression tests for the confirmed edge decisions, original suite untouched (AC-4, blocked by 03). Granularity and blocking edges proceed under the user's explicit continuation directive to carry the same SDK Run through actual implementation, review and complete verification; the linear chain matches the shared state each slice builds on. Index saved at .scratch/grill-test/tickets.json with id/file/blockedBy/acceptanceIds per ticket."
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "inputHash": "0670198e3d807c1a9998d4b603cc396839c49e73363b47eb3bea5715350fdd53",
+        "outcome": {
+          "actionId": "child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f:1",
+          "artifacts": [
+            {
+              "sha256": "2fc40aea6ef7ce7121a474fb90bef1aaf33f921e986b216bf6012f53f9208488",
+              "uri": ".scratch/grill-test/implementation.json"
+            }
+          ],
+          "attempt": 1,
+          "claimToken": "[redacted]",
+          "inputHash": "0670198e3d807c1a9998d4b603cc396839c49e73363b47eb3bea5715350fdd53",
+          "outcomeId": "96acc142-4bf8-4ca4-a3f0-772c4f9668c3",
+          "output": {
+            "summary": "Implemented all four approved tickets against the pre-agreed public seam (run_pipeline, resume_after_review, THREADS) using TDD red-green cycles: ticket 01 removed the slice-to-first-task truncation so every submitted task is processed and non-reviewed runs finalize over the full batch; ticket 02 added the uniform review gate that computes and stores results first, then interrupts before the summary with the self-describing payload (reason human_review, thread_id, pending tasks) and no summary, while empty submissions finalize immediately; ticket 03 made resume continue the exact stored thread, flipping it to approved and returning its stored results with a count summary, failing loudly with KeyError on unknown threads and idempotently on repeated resumes; ticket 04 confirmed per-thread isolation by identifier and pinned the confirmed edge decisions with nine regression tests in a separate file, leaving the original acceptance suite untouched. The original implement Skill's loop was followed: single test file run per cycle, full suite once at the end (13 passed including the unchanged original 4), typecheck via py_compile. Both code-review axes (Standards and Spec) ran as independent parallel sub-agents per the original code-review Skill; their actionable findings were applied: shared _store_thread private helper, honest task_list rename, copy-on-return hardening for idempotent resume, and the reverse-resume-order plus mutation-isolation regression pins. Work committed locally on master as 05ba441; public API and test_pipeline.py unchanged (empty diff verified). Fixed verification command python -m pytest test_pipeline.py -q passes 4/4 with exit 0."
+          },
+          "status": "succeeded"
+        },
+        "protocolVersion": 1,
+        "receipts": [
+          {
+            "hash": "0836033374ab387fe9ed11e5db1b618fdf5fc48f4b754a9ec6accc19487a9bf4",
+            "outcomeId": "96acc142-4bf8-4ca4-a3f0-772c4f9668c3"
+          }
+        ],
+        "reconciliations": [],
+        "ref": "implement",
+        "requiredCapabilities": [
+          "skill-load",
+          "handoff"
+        ],
+        "retry": "manual",
+        "runId": "child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f",
+        "status": "succeeded",
+        "stepId": "implement",
+        "type": "handoff"
+      }
+    ],
+    "children": [],
+    "definitionHashes": {
+      "[\"implement\",\"1\"]": "81556732f5bb6f5c0e1ac020633d3d81f6036fad2b6dfd0a4ca44075aba44844"
+    },
+    "input": {
+      "input": {
+        "acceptance": [
+          {
+            "description": "fan-out processes every task",
+            "id": "AC-1"
+          },
+          {
+            "description": "multi-task review pauses before summary",
+            "id": "AC-2"
+          },
+          {
+            "description": "resume continues the same reviewed thread",
+            "id": "AC-3"
+          },
+          {
+            "description": "thread_id isolates state",
+            "id": "AC-4"
+          }
+        ],
+        "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+        "testCommand": [
+          "python",
+          "-m",
+          "pytest",
+          "test_pipeline.py",
+          "-q"
+        ]
+      },
+      "outputs": {
+        "authorize-implementation": {
+          "choice": "approved",
+          "proposal": {
+            "input": {
+              "acceptance": [
+                {
+                  "description": "fan-out processes every task",
+                  "id": "AC-1"
+                },
+                {
+                  "description": "multi-task review pauses before summary",
+                  "id": "AC-2"
+                },
+                {
+                  "description": "resume continues the same reviewed thread",
+                  "id": "AC-3"
+                },
+                {
+                  "description": "thread_id isolates state",
+                  "id": "AC-4"
+                }
+              ],
+              "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+              "testCommand": [
+                "python",
+                "-m",
+                "pytest",
+                "test_pipeline.py",
+                "-q"
+              ]
+            },
+            "outputs": {
+              "grill": {
+                "complete": {
+                  "summary": "Original Skill stage completed after actual understanding or document approval"
+                },
+                "confirm-understanding": {
+                  "choice": "approved",
+                  "proposal": {
+                    "input": {
+                      "input": {
+                        "acceptance": [
+                          {
+                            "description": "fan-out processes every task",
+                            "id": "AC-1"
+                          },
+                          {
+                            "description": "multi-task review pauses before summary",
+                            "id": "AC-2"
+                          },
+                          {
+                            "description": "resume continues the same reviewed thread",
+                            "id": "AC-3"
+                          },
+                          {
+                            "description": "thread_id isolates state",
+                            "id": "AC-4"
+                          }
+                        ],
+                        "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                        "testCommand": [
+                          "python",
+                          "-m",
+                          "pytest",
+                          "test_pipeline.py",
+                          "-q"
+                        ]
+                      },
+                      "outputs": {}
+                    },
+                    "outputs": {
+                      "grill": {
+                        "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                      }
+                    }
+                  }
+                },
+                "grill": {
+                  "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                }
+              },
+              "spec": {
+                "complete": {
+                  "summary": "Original Skill stage completed after actual understanding or document approval"
+                },
+                "confirm-spec": {
+                  "choice": "approved",
+                  "proposal": {
+                    "input": {
+                      "input": {
+                        "acceptance": [
+                          {
+                            "description": "fan-out processes every task",
+                            "id": "AC-1"
+                          },
+                          {
+                            "description": "multi-task review pauses before summary",
+                            "id": "AC-2"
+                          },
+                          {
+                            "description": "resume continues the same reviewed thread",
+                            "id": "AC-3"
+                          },
+                          {
+                            "description": "thread_id isolates state",
+                            "id": "AC-4"
+                          }
+                        ],
+                        "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                        "testCommand": [
+                          "python",
+                          "-m",
+                          "pytest",
+                          "test_pipeline.py",
+                          "-q"
+                        ]
+                      },
+                      "outputs": {
+                        "grill": {
+                          "complete": {
+                            "summary": "Original Skill stage completed after actual understanding or document approval"
+                          },
+                          "confirm-understanding": {
+                            "choice": "approved",
+                            "proposal": {
+                              "input": {
+                                "input": {
+                                  "acceptance": [
+                                    {
+                                      "description": "fan-out processes every task",
+                                      "id": "AC-1"
+                                    },
+                                    {
+                                      "description": "multi-task review pauses before summary",
+                                      "id": "AC-2"
+                                    },
+                                    {
+                                      "description": "resume continues the same reviewed thread",
+                                      "id": "AC-3"
+                                    },
+                                    {
+                                      "description": "thread_id isolates state",
+                                      "id": "AC-4"
+                                    }
+                                  ],
+                                  "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                  "testCommand": [
+                                    "python",
+                                    "-m",
+                                    "pytest",
+                                    "test_pipeline.py",
+                                    "-q"
+                                  ]
+                                },
+                                "outputs": {}
+                              },
+                              "outputs": {
+                                "grill": {
+                                  "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                }
+                              }
+                            }
+                          },
+                          "grill": {
+                            "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                          }
+                        }
+                      }
+                    },
+                    "outputs": {
+                      "spec": {
+                        "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                      }
+                    }
+                  }
+                },
+                "spec": {
+                  "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                }
+              },
+              "tickets": {
+                "complete": {
+                  "summary": "Original Skill stage completed after actual understanding or document approval"
+                },
+                "confirm-tickets": {
+                  "choice": "approved",
+                  "proposal": {
+                    "input": {
+                      "input": {
+                        "acceptance": [
+                          {
+                            "description": "fan-out processes every task",
+                            "id": "AC-1"
+                          },
+                          {
+                            "description": "multi-task review pauses before summary",
+                            "id": "AC-2"
+                          },
+                          {
+                            "description": "resume continues the same reviewed thread",
+                            "id": "AC-3"
+                          },
+                          {
+                            "description": "thread_id isolates state",
+                            "id": "AC-4"
+                          }
+                        ],
+                        "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                        "testCommand": [
+                          "python",
+                          "-m",
+                          "pytest",
+                          "test_pipeline.py",
+                          "-q"
+                        ]
+                      },
+                      "outputs": {
+                        "grill": {
+                          "complete": {
+                            "summary": "Original Skill stage completed after actual understanding or document approval"
+                          },
+                          "confirm-understanding": {
+                            "choice": "approved",
+                            "proposal": {
+                              "input": {
+                                "input": {
+                                  "acceptance": [
+                                    {
+                                      "description": "fan-out processes every task",
+                                      "id": "AC-1"
+                                    },
+                                    {
+                                      "description": "multi-task review pauses before summary",
+                                      "id": "AC-2"
+                                    },
+                                    {
+                                      "description": "resume continues the same reviewed thread",
+                                      "id": "AC-3"
+                                    },
+                                    {
+                                      "description": "thread_id isolates state",
+                                      "id": "AC-4"
+                                    }
+                                  ],
+                                  "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                  "testCommand": [
+                                    "python",
+                                    "-m",
+                                    "pytest",
+                                    "test_pipeline.py",
+                                    "-q"
+                                  ]
+                                },
+                                "outputs": {}
+                              },
+                              "outputs": {
+                                "grill": {
+                                  "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                }
+                              }
+                            }
+                          },
+                          "grill": {
+                            "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                          }
+                        },
+                        "spec": {
+                          "complete": {
+                            "summary": "Original Skill stage completed after actual understanding or document approval"
+                          },
+                          "confirm-spec": {
+                            "choice": "approved",
+                            "proposal": {
+                              "input": {
+                                "input": {
+                                  "acceptance": [
+                                    {
+                                      "description": "fan-out processes every task",
+                                      "id": "AC-1"
+                                    },
+                                    {
+                                      "description": "multi-task review pauses before summary",
+                                      "id": "AC-2"
+                                    },
+                                    {
+                                      "description": "resume continues the same reviewed thread",
+                                      "id": "AC-3"
+                                    },
+                                    {
+                                      "description": "thread_id isolates state",
+                                      "id": "AC-4"
+                                    }
+                                  ],
+                                  "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                  "testCommand": [
+                                    "python",
+                                    "-m",
+                                    "pytest",
+                                    "test_pipeline.py",
+                                    "-q"
+                                  ]
+                                },
+                                "outputs": {
+                                  "grill": {
+                                    "complete": {
+                                      "summary": "Original Skill stage completed after actual understanding or document approval"
+                                    },
+                                    "confirm-understanding": {
+                                      "choice": "approved",
+                                      "proposal": {
+                                        "input": {
+                                          "input": {
+                                            "acceptance": [
+                                              {
+                                                "description": "fan-out processes every task",
+                                                "id": "AC-1"
+                                              },
+                                              {
+                                                "description": "multi-task review pauses before summary",
+                                                "id": "AC-2"
+                                              },
+                                              {
+                                                "description": "resume continues the same reviewed thread",
+                                                "id": "AC-3"
+                                              },
+                                              {
+                                                "description": "thread_id isolates state",
+                                                "id": "AC-4"
+                                              }
+                                            ],
+                                            "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                            "testCommand": [
+                                              "python",
+                                              "-m",
+                                              "pytest",
+                                              "test_pipeline.py",
+                                              "-q"
+                                            ]
+                                          },
+                                          "outputs": {}
+                                        },
+                                        "outputs": {
+                                          "grill": {
+                                            "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "grill": {
+                                      "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                    }
+                                  }
+                                }
+                              },
+                              "outputs": {
+                                "spec": {
+                                  "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                                }
+                              }
+                            }
+                          },
+                          "spec": {
+                            "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                          }
+                        }
+                      }
+                    },
+                    "outputs": {
+                      "tickets": {
+                        "summary": "Broke the approved Spec into four tracer-bullet vertical slices, one per acceptance criterion, published one file per ticket in dependency order under .scratch/grill-test/issues/ with the ready-for-agent status. Breakdown presented to the user: 01 fan-out of every submitted task with immediate non-reviewed finalize (AC-1, no blockers); 02 uniform review interrupt before the summary with self-describing payload and compute-then-pause (AC-2, blocked by 01); 03 same-thread resume returning stored results with fail-loud unknown threads and idempotent re-resume (AC-3, blocked by 02); 04 thread isolation by identifier plus regression tests for the confirmed edge decisions, original suite untouched (AC-4, blocked by 03). Granularity and blocking edges proceed under the user's explicit continuation directive to carry the same SDK Run through actual implementation, review and complete verification; the linear chain matches the shared state each slice builds on. Index saved at .scratch/grill-test/tickets.json with id/file/blockedBy/acceptanceIds per ticket."
+                      }
+                    }
+                  }
+                },
+                "tickets": {
+                  "summary": "Broke the approved Spec into four tracer-bullet vertical slices, one per acceptance criterion, published one file per ticket in dependency order under .scratch/grill-test/issues/ with the ready-for-agent status. Breakdown presented to the user: 01 fan-out of every submitted task with immediate non-reviewed finalize (AC-1, no blockers); 02 uniform review interrupt before the summary with self-describing payload and compute-then-pause (AC-2, blocked by 01); 03 same-thread resume returning stored results with fail-loud unknown threads and idempotent re-resume (AC-3, blocked by 02); 04 thread isolation by identifier plus regression tests for the confirmed edge decisions, original suite untouched (AC-4, blocked by 03). Granularity and blocking edges proceed under the user's explicit continuation directive to carry the same SDK Run through actual implementation, review and complete verification; the linear chain matches the shared state each slice builds on. Index saved at .scratch/grill-test/tickets.json with id/file/blockedBy/acceptanceIds per ticket."
+                }
+              }
+            }
+          }
+        },
+        "grill": {
+          "complete": {
+            "summary": "Original Skill stage completed after actual understanding or document approval"
+          },
+          "confirm-understanding": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "input": {
+                  "acceptance": [
+                    {
+                      "description": "fan-out processes every task",
+                      "id": "AC-1"
+                    },
+                    {
+                      "description": "multi-task review pauses before summary",
+                      "id": "AC-2"
+                    },
+                    {
+                      "description": "resume continues the same reviewed thread",
+                      "id": "AC-3"
+                    },
+                    {
+                      "description": "thread_id isolates state",
+                      "id": "AC-4"
+                    }
+                  ],
+                  "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                  "testCommand": [
+                    "python",
+                    "-m",
+                    "pytest",
+                    "test_pipeline.py",
+                    "-q"
+                  ]
+                },
+                "outputs": {}
+              },
+              "outputs": {
+                "grill": {
+                  "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                }
+              }
+            }
+          },
+          "grill": {
+            "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+          }
+        },
+        "spec": {
+          "complete": {
+            "summary": "Original Skill stage completed after actual understanding or document approval"
+          },
+          "confirm-spec": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "input": {
+                  "acceptance": [
+                    {
+                      "description": "fan-out processes every task",
+                      "id": "AC-1"
+                    },
+                    {
+                      "description": "multi-task review pauses before summary",
+                      "id": "AC-2"
+                    },
+                    {
+                      "description": "resume continues the same reviewed thread",
+                      "id": "AC-3"
+                    },
+                    {
+                      "description": "thread_id isolates state",
+                      "id": "AC-4"
+                    }
+                  ],
+                  "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                  "testCommand": [
+                    "python",
+                    "-m",
+                    "pytest",
+                    "test_pipeline.py",
+                    "-q"
+                  ]
+                },
+                "outputs": {
+                  "grill": {
+                    "complete": {
+                      "summary": "Original Skill stage completed after actual understanding or document approval"
+                    },
+                    "confirm-understanding": {
+                      "choice": "approved",
+                      "proposal": {
+                        "input": {
+                          "input": {
+                            "acceptance": [
+                              {
+                                "description": "fan-out processes every task",
+                                "id": "AC-1"
+                              },
+                              {
+                                "description": "multi-task review pauses before summary",
+                                "id": "AC-2"
+                              },
+                              {
+                                "description": "resume continues the same reviewed thread",
+                                "id": "AC-3"
+                              },
+                              {
+                                "description": "thread_id isolates state",
+                                "id": "AC-4"
+                              }
+                            ],
+                            "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                            "testCommand": [
+                              "python",
+                              "-m",
+                              "pytest",
+                              "test_pipeline.py",
+                              "-q"
+                            ]
+                          },
+                          "outputs": {}
+                        },
+                        "outputs": {
+                          "grill": {
+                            "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                          }
+                        }
+                      }
+                    },
+                    "grill": {
+                      "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                    }
+                  }
+                }
+              },
+              "outputs": {
+                "spec": {
+                  "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                }
+              }
+            }
+          },
+          "spec": {
+            "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+          }
+        },
+        "tickets": {
+          "complete": {
+            "summary": "Original Skill stage completed after actual understanding or document approval"
+          },
+          "confirm-tickets": {
+            "choice": "approved",
+            "proposal": {
+              "input": {
+                "input": {
+                  "acceptance": [
+                    {
+                      "description": "fan-out processes every task",
+                      "id": "AC-1"
+                    },
+                    {
+                      "description": "multi-task review pauses before summary",
+                      "id": "AC-2"
+                    },
+                    {
+                      "description": "resume continues the same reviewed thread",
+                      "id": "AC-3"
+                    },
+                    {
+                      "description": "thread_id isolates state",
+                      "id": "AC-4"
+                    }
+                  ],
+                  "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                  "testCommand": [
+                    "python",
+                    "-m",
+                    "pytest",
+                    "test_pipeline.py",
+                    "-q"
+                  ]
+                },
+                "outputs": {
+                  "grill": {
+                    "complete": {
+                      "summary": "Original Skill stage completed after actual understanding or document approval"
+                    },
+                    "confirm-understanding": {
+                      "choice": "approved",
+                      "proposal": {
+                        "input": {
+                          "input": {
+                            "acceptance": [
+                              {
+                                "description": "fan-out processes every task",
+                                "id": "AC-1"
+                              },
+                              {
+                                "description": "multi-task review pauses before summary",
+                                "id": "AC-2"
+                              },
+                              {
+                                "description": "resume continues the same reviewed thread",
+                                "id": "AC-3"
+                              },
+                              {
+                                "description": "thread_id isolates state",
+                                "id": "AC-4"
+                              }
+                            ],
+                            "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                            "testCommand": [
+                              "python",
+                              "-m",
+                              "pytest",
+                              "test_pipeline.py",
+                              "-q"
+                            ]
+                          },
+                          "outputs": {}
+                        },
+                        "outputs": {
+                          "grill": {
+                            "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                          }
+                        }
+                      }
+                    },
+                    "grill": {
+                      "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                    }
+                  },
+                  "spec": {
+                    "complete": {
+                      "summary": "Original Skill stage completed after actual understanding or document approval"
+                    },
+                    "confirm-spec": {
+                      "choice": "approved",
+                      "proposal": {
+                        "input": {
+                          "input": {
+                            "acceptance": [
+                              {
+                                "description": "fan-out processes every task",
+                                "id": "AC-1"
+                              },
+                              {
+                                "description": "multi-task review pauses before summary",
+                                "id": "AC-2"
+                              },
+                              {
+                                "description": "resume continues the same reviewed thread",
+                                "id": "AC-3"
+                              },
+                              {
+                                "description": "thread_id isolates state",
+                                "id": "AC-4"
+                              }
+                            ],
+                            "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                            "testCommand": [
+                              "python",
+                              "-m",
+                              "pytest",
+                              "test_pipeline.py",
+                              "-q"
+                            ]
+                          },
+                          "outputs": {
+                            "grill": {
+                              "complete": {
+                                "summary": "Original Skill stage completed after actual understanding or document approval"
+                              },
+                              "confirm-understanding": {
+                                "choice": "approved",
+                                "proposal": {
+                                  "input": {
+                                    "input": {
+                                      "acceptance": [
+                                        {
+                                          "description": "fan-out processes every task",
+                                          "id": "AC-1"
+                                        },
+                                        {
+                                          "description": "multi-task review pauses before summary",
+                                          "id": "AC-2"
+                                        },
+                                        {
+                                          "description": "resume continues the same reviewed thread",
+                                          "id": "AC-3"
+                                        },
+                                        {
+                                          "description": "thread_id isolates state",
+                                          "id": "AC-4"
+                                        }
+                                      ],
+                                      "goal": "Fix the review-pipeline bugs: run_pipeline only processes part of the submitted task list; multi-task runs finalize immediately instead of pausing for human review; resume_after_review restarts or loses state instead of continuing the reviewed thread; thread state must be isolated by thread_id. Keep public function names unchanged and keep test_pipeline.py unchanged.",
+                                      "testCommand": [
+                                        "python",
+                                        "-m",
+                                        "pytest",
+                                        "test_pipeline.py",
+                                        "-q"
+                                      ]
+                                    },
+                                    "outputs": {}
+                                  },
+                                  "outputs": {
+                                    "grill": {
+                                      "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                                    }
+                                  }
+                                }
+                              },
+                              "grill": {
+                                "summary": "Grilling session completed on the real frontier; user agreed to all eight decisions. Q1: review gate is uniform - run_pipeline pauses for review whenever require_review=True and there is at least one task; require_review=False finalizes immediately. Q2: __interrupt__ carries a self-describing dict payload {reason: human_review, thread_id, tasks}. Q3: all tasks are processed and results stored in THREADS[thread_id] before pausing; the interrupt stops finalization/summary, not execution (pause before summary, AC-2). Q4: resume_after_review raises KeyError on an unknown thread_id instead of silently returning an empty approval. Q5: after resume the thread state is retained and status flips to approved; repeated resumes idempotently return the same results. Q6: calling run_pipeline again on an existing thread_id starts fresh and overwrites that thread's state. Q7: an empty task list finalizes immediately ('finalized 0 task(s)') even with require_review=True. Q8: module-private helpers may be added; public names run_pipeline, resume_after_review and THREADS, their signatures/defaults, and test_pipeline.py stay untouched. Facts verified by the host (not asked of the user): THREADS is a module-global dict keyed by thread_id; test_pipeline.py is the only consumer; baseline pytest shows 4 failures matching AC-1..AC-4; local Markdown tracker under .scratch/grill-test/; test command python -m pytest test_pipeline.py -q. User confirmed shared understanding and empty frontier in the host session."
+                              }
+                            }
+                          }
+                        },
+                        "outputs": {
+                          "spec": {
+                            "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                          }
+                        }
+                      }
+                    },
+                    "spec": {
+                      "summary": "Synthesized the confirmed grilling conversation into the first formal document without re-interviewing. Spec published to the configured local Markdown tracker at .scratch/grill-test/spec.md with the ready-for-agent label. Contains the seven template sections (Problem Statement, Solution, User Stories, Implementation Decisions, Testing Decisions, Out of Scope, Further Notes) and records acceptance IDs AC-1..AC-4 with their mapping. Test seams confirmed with the user in session: the unchanged public module API (run_pipeline, resume_after_review, THREADS) driven by the existing pytest suite; no new seams. All eight grilling decisions are encoded as implementation decisions; the unchanged test command is python -m pytest test_pipeline.py -q."
+                    }
+                  }
+                }
+              },
+              "outputs": {
+                "tickets": {
+                  "summary": "Broke the approved Spec into four tracer-bullet vertical slices, one per acceptance criterion, published one file per ticket in dependency order under .scratch/grill-test/issues/ with the ready-for-agent status. Breakdown presented to the user: 01 fan-out of every submitted task with immediate non-reviewed finalize (AC-1, no blockers); 02 uniform review interrupt before the summary with self-describing payload and compute-then-pause (AC-2, blocked by 01); 03 same-thread resume returning stored results with fail-loud unknown threads and idempotent re-resume (AC-3, blocked by 02); 04 thread isolation by identifier plus regression tests for the confirmed edge decisions, original suite untouched (AC-4, blocked by 03). Granularity and blocking edges proceed under the user's explicit continuation directive to carry the same SDK Run through actual implementation, review and complete verification; the linear chain matches the shared state each slice builds on. Index saved at .scratch/grill-test/tickets.json with id/file/blockedBy/acceptanceIds per ticket."
+                }
+              }
+            }
+          },
+          "tickets": {
+            "summary": "Broke the approved Spec into four tracer-bullet vertical slices, one per acceptance criterion, published one file per ticket in dependency order under .scratch/grill-test/issues/ with the ready-for-agent status. Breakdown presented to the user: 01 fan-out of every submitted task with immediate non-reviewed finalize (AC-1, no blockers); 02 uniform review interrupt before the summary with self-describing payload and compute-then-pause (AC-2, blocked by 01); 03 same-thread resume returning stored results with fail-loud unknown threads and idempotent re-resume (AC-3, blocked by 02); 04 thread isolation by identifier plus regression tests for the confirmed edge decisions, original suite untouched (AC-4, blocked by 03). Granularity and blocking edges proceed under the user's explicit continuation directive to carry the same SDK Run through actual implementation, review and complete verification; the linear chain matches the shared state each slice builds on. Index saved at .scratch/grill-test/tickets.json with id/file/blockedBy/acceptanceIds per ticket."
+          }
+        }
+      }
+    },
+    "joins": {},
+    "lineage": [
+      "d4903448-9787-40d1-91bc-0e0e8762b138"
+    ],
+    "outputs": {
+      "implement": {
+        "sequence": 1,
+        "value": {
+          "summary": "Implemented all four approved tickets against the pre-agreed public seam (run_pipeline, resume_after_review, THREADS) using TDD red-green cycles: ticket 01 removed the slice-to-first-task truncation so every submitted task is processed and non-reviewed runs finalize over the full batch; ticket 02 added the uniform review gate that computes and stores results first, then interrupts before the summary with the self-describing payload (reason human_review, thread_id, pending tasks) and no summary, while empty submissions finalize immediately; ticket 03 made resume continue the exact stored thread, flipping it to approved and returning its stored results with a count summary, failing loudly with KeyError on unknown threads and idempotently on repeated resumes; ticket 04 confirmed per-thread isolation by identifier and pinned the confirmed edge decisions with nine regression tests in a separate file, leaving the original acceptance suite untouched. The original implement Skill's loop was followed: single test file run per cycle, full suite once at the end (13 passed including the unchanged original 4), typecheck via py_compile. Both code-review axes (Standards and Spec) ran as independent parallel sub-agents per the original code-review Skill; their actionable findings were applied: shared _store_thread private helper, honest task_list rename, copy-on-return hardening for idempotent resume, and the reverse-resume-order plus mutation-isolation regression pins. Work committed locally on master as 05ba441; public API and test_pipeline.py unchanged (empty diff verified). Fixed verification command python -m pytest test_pipeline.py -q passes 4/4 with exit 0."
+        }
+      }
+    },
+    "protocolVersion": 1,
+    "ready": [],
+    "revision": 3,
+    "runId": "child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f",
+    "schemaVersion": 1,
+    "sequence": 1,
+    "status": "completed",
+    "waits": [],
+    "workflow": {
+      "hash": "81556732f5bb6f5c0e1ac020633d3d81f6036fad2b6dfd0a4ca44075aba44844",
+      "id": "implement",
+      "version": "1"
+    }
+  },
+  "runId": "child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f"
+}

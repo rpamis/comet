@@ -1,0 +1,221 @@
+{
+  "schema": "comet.eval.archive.v1",
+  "id": "grill-test-20261013",
+  "title": "grill-test@3 高难任务与 Native 历史对照",
+  "application": {
+    "id": "grill-test",
+    "version": "3",
+    "base": "standalone",
+    "root": "application",
+    "contentHash": "775131d526fb5fd49097bfe75f16e99f3bd437831628d2c8253ca1fc9ba8e13b",
+    "packageHash": "5c95c6a0669eb7c85719f99338e7affe12a81fd4e71af28544c6384c059065f0"
+  },
+  "files": {
+    "application/application.json": "25ae93a04a52b38ea26cad8a561d84cab0d2ac0469f976692387801561e71146",
+    "application/application.mjs": "36b9fa7af64745fc4d74e0c112f0eaf5c65fbfe7ad42024621570b6cdab628e9",
+    "application/bindings.mjs": "bb97bc0f0c5a5b051a6d57ea0e1292eb37080bb4a75522adbb626d8fc396c505",
+    "application/installation.json": "2873d54a2d16efc51793faefef337b97c3657051e87cbca4aa237145cb5404e3",
+    "application/references/execution.md": "86accd100eb02cd999f6cf336efb8e107fc60db835a30939feef47fcbc7d11fa",
+    "application/rules/workflow-guard.md": "8e4f4ba69f13a3285fd02568bd7312ac4df5caf77dd08705774722375fed7a3e",
+    "application/SKILL.md": "c4bf61828645aa5e0e87b2a10b9ddfb25404781ea09385e70746f551aba06a59",
+    "application/skills/code-review/agents/openai.yaml": "3f72329747a916ac8ab2b4004490c79e1be6774a8a83e5b258d6ddc7e866abfe",
+    "application/skills/code-review/SKILL.md": "e32441ce3f64628daeb6270bf56104f461b1341aa472cc3968424e90ece17bc4",
+    "application/skills/grill-me/agents/openai.yaml": "c03a1eee1161bb70ca360b3d17705638b93bc8eec41319732725dc05a53196a5",
+    "application/skills/grill-me/SKILL.md": "9c71927d4f0fd32d815247b4ca1fc782d4c5f2f3c1d6d023d188d4a7e0299b21",
+    "application/skills/grilling/agents/openai.yaml": "ad75163922ff8263acdd25ebc37420e8fcf1fccb93483fd5742e9bd26f5c45f6",
+    "application/skills/grilling/SKILL.md": "00d2ccb00b7c02e448330f6405077a9cee664b92e5734228323b164abb9b8dbb",
+    "application/skills/implement/agents/openai.yaml": "8494f83602c58f8ab33d047d0516cdb90b8c29e6d564de0cef810daaca378bcb",
+    "application/skills/implement/SKILL.md": "30cd7bc1ebfb3891e85a1eed3b3b81aea0fa4ad4553a784de7f8e421b2d223e0",
+    "application/skills/setup-matt-pocock-skills/agents/openai.yaml": "53d0bf3786862a1cb5013ca78f12013b166d0819823dae0d3f9eb13eee2acdf2",
+    "application/skills/setup-matt-pocock-skills/domain.md": "f39269422d1a1c137b53b81cb120570f52d54d1823a5005ec685f4458f3437dd",
+    "application/skills/setup-matt-pocock-skills/issue-tracker-github.md": "042aa5779f0fec6448fad11e681768ce4bf401ae34aa38def7296135fea54d4b",
+    "application/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md": "3aff63c1dda8f18432974d296fdaac562329357a4afd9b498e38fcf7a1c67163",
+    "application/skills/setup-matt-pocock-skills/issue-tracker-local.md": "a19c63ec8b29ae332ae795cfa44740e66bd538da85284af16da4acd88c69ea66",
+    "application/skills/setup-matt-pocock-skills/SKILL.md": "e6ef895b9285ae0b0cf6aedcfdc12bca6123170d79f27d40d685388b75288fab",
+    "application/skills/setup-matt-pocock-skills/triage-labels.md": "493d08d7a8007d3604cdf64d45717045034a5037c9e9917bae1ad9340fad75b8",
+    "application/skills/tdd/agents/openai.yaml": "f8e2afc1fbcd6a6e1178c30f290ca9f2286c949a0b74b8b68fd14f198b78ebac",
+    "application/skills/tdd/mocking.md": "73a10b6a26b56197c738a764c1e4205af98c74553f4a713795997f6bc35b917d",
+    "application/skills/tdd/SKILL.md": "4bc06151a5d5c37af1ee5613dc07b67ecf18b2e22e6a26e8538a3a995a8aafca",
+    "application/skills/tdd/tests.md": "0b401f98bd3684d2fea6440d6946afcf8f5f68ac6a65599dd7a2b90dd9f02eb5",
+    "application/skills/to-spec/agents/openai.yaml": "55037139831219743dda1f716fe69eab3366e922529f69cc988fea3b1d34c74a",
+    "application/skills/to-spec/SKILL.md": "7d7fd04f7e47b8ebac52abe1497725570cbc1c15a56c673fe386950f95931cfb",
+    "application/skills/to-tickets/agents/openai.yaml": "e396b8caaf6cdd95c94cf707a7ca2fa5c3a04b37ae5d4301b5b360a7ff7a34cb",
+    "application/skills/to-tickets/SKILL.md": "b9478faa82b40c653bba2ea110682b5ae22a6736e4600768ae158c17db861ae2",
+    "application/tools/session.mjs": "662fa1042fd754e4f3a325748bb395c95811586af7ef227b4b6261d63641ee72",
+    "task/original/environment/Dockerfile": "52b191bf3fadb8a551b3f53ec612f9409ea05664ff5bd0acccac31ca41f26a48",
+    "task/original/environment/pipeline.py": "b0e7e1c5d319404572ba64af4cc53e90cd1bd0f87253d45a2d7e7fd9362c19b4",
+    "task/original/environment/test_pipeline.py": "631808fd3aa677e7153f2c542fd6bb489f5b7a2d4cb1e5cc8cf5e418fdeca50f",
+    "task/original/instruction.md": "81346df5bc3e05bbb1a81b0f5f0fb9d6601333939c377bf971f8daacb41508f7",
+    "task/original/task.toml": "4d92d9fab2369441a21bf1da24a28c27854ebef12b37dfa506ca75c786e544f3",
+    "task/original/validation/test_graph_execution_review.py": "b6be871ece4ff71f4d8de62725f90f21e849c148461da74880da0fcc1e9ceb42",
+    "task/final/pipeline.py": "23960adc29d7f2799a947cb374e2ce52738fb0fb7a3654280b6af9664bd70723",
+    "task/final/test_pipeline.py": "631808fd3aa677e7153f2c542fd6bb489f5b7a2d4cb1e5cc8cf5e418fdeca50f",
+    "task/final/test_pipeline_regressions.py": "da59edb22c6bc1cf2350ffb79811b48bd5aa9ea313c46a62f70ccb729c898010",
+    "task/artifacts/spec.md": "9dba4a9d8cafad0c79c238e7d4178db1869747b0cd02416e7e931814804cc9ea",
+    "task/artifacts/tickets.json": "569de28750750dac8edd4aa74218cd7dd63246ec05b1cd464b66b6b062931ce5",
+    "task/artifacts/implementation.json": "2fc40aea6ef7ce7121a474fb90bef1aaf33f921e986b216bf6012f53f9208488",
+    "task/artifacts/verification.json": "a2e6b936e07de4acc71875c283bcba59245ee6857167e13709134c9297ce2616",
+    "task/artifacts/issues/01-fan-out-all-tasks.md": "375ac56bfa754be0dc7b903056fbedb9e67c0bbdafae99674bd6b6d45f478213",
+    "task/artifacts/issues/02-interrupt-review-before-summary.md": "b00cbc97948cd225a68b3998d3f51a1da63e2cc5dcc093aaf6b1bbe8e75b0535",
+    "task/artifacts/issues/03-resume-same-thread.md": "59c0cbd448b42b232cc49cafd6c99a317a36bae72655cf12d23ee52b7019774f",
+    "task/artifacts/issues/04-thread-isolation-and-regressions.md": "f7c863ab7b7eca95939553f681b41a947c3a3478b8aa0d3550dd6b7f7fb81137",
+    "runs/creator.json.gz": "0f1a3f7827cda236ad2681102f3a0c3dd9d5ce5ad9b8bf22986dce973553609e",
+    "runs/child-d3ced903123afecdcf65448247a6d9bbb356fa9aaca815b5ae838c444aef6860.json": "bb327bb24e71c3dd2104d5900efb94490475689b6bbac42d61f19975e3f50a42",
+    "runs/child-ca86e3ded97c995186e8d5b2e4ced8e0bf50f7b031bab6965c1656e16f835335.json": "4659e9d620427fafb6f39c50c6dd829f1319cba81fc6e90a9344dfa9c268b5a8",
+    "runs/d4903448-9787-40d1-91bc-0e0e8762b138.json": "49ea38bfd5a0437ef14899ab2e4cfd1e071966221ce6cf895cbc6099784b9f76",
+    "runs/child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f.json": "8de567fd8eee8e967d1efb51c6cef90e38de634194994dd07ee84aab70cb9db1",
+    "runs/child-35fd01fb3751793b9b411b2d6be23101db7535419a259258889d03a17555d386.json": "c92655ac2a181ece76b78702b73ab0b74ce349b64bebe05e0872c3ccc1d02087",
+    "reports/report.md": "4b78d5ef6d49f4a69827b40d19cbb769f25112d152ef4a495885b7374306fe51",
+    "reports/trajectory-analysis.md": "a6a0f3a15f84de9b3eb27393ebf7137b1fb331ddd84a916ac6150b96a589da8c",
+    "reports/provenance-audit.md": "9fc9f4852f1e35644d6bc9092edd498efa2d22d46ea80390650f411e39f861bd",
+    "reports/flow-enhancement-assessment.md": "02a1f6678060ebed1e543e9e5251122c94d20434cb9c79354975d11de85109f0",
+    "evidence/independent-conclusion.json": "19f8a3c9ce660ad480640e34de41fc1d4230a4c1f9783e1718ebc848c11e37d1",
+    "evidence/native-baselines.json": "5e42adfe494121b24396f0de8c3c31f7a00c7f2cbdd1b780f52b6b3ef42f68e2",
+    "evidence/prepared-context-glm.json": "ca064c6c40a05bea177a2a701369d6ae0bc4e9c0d1c46912cb421d1260f42caf",
+    "evidence/continuation/independent-final-check.json": "32c453a12ea8aeaefdd08f44054bc01e61dc4644cabcee7b58cc2eb9b33e4cf5",
+    "evidence/continuation/execution.json": "b67f646f06b771df9139fce82146467bd74566bf9486b858a8b535f3c6cba5cd",
+    "evidence/continuation/started.json": "0c3cc8cea497cd9a3f8b87409797e1c6e02a85c19205b2fe2310d4937f88c88c",
+    "evidence/continuation/events.json": "16767aef954f0d86d5b7f490ce96700172e36293eeb89493a0a4c1ddac12a7f1",
+    "evidence/continuation/session-evidence.json": "50609c46a9d0e89bd6ef3eb77aea1396957839ebcc94dca13b9bdeb74d6fa411",
+    "evidence/continuation/prompt.md": "43d44b88838ae9eb1feac70770de9ff1415dda618cc5551c3378e7d9936b8c45",
+    "evidence/continuation/input-context.json": "16501a165328637923cfe9651c4e3731fa0aae7d8e0f11a05da59a9f23f5df68",
+    "evidence/continuation/stderr.txt": "c2595e1987c0f9b88a34407333d8118f5052990da350d1bb3bb2f1a46fe6917c",
+    "evidence/continuation/accepted-ticket-hashes.json": "f43ae35286842f98b81b709458cf5f045d436ae47b8fa7b330704ebbfbdba003",
+    "evidence/continuation/reviewed-candidate-hashes.json": "72fbca0788b14d0ad13768089bacf9c2e38ccedf7b55f20cefb3ebbec844d314",
+    "evidence/initial/metadata.json": "84fedd1c43c251ff9a4c89b9f5600217f12986152c8015d77024c856bbaed4c2",
+    "evidence/initial/expected-case-matrix.json": "7abc25cd8a014870459d731621172656d944cf30b3df4c1f7d177ccb014311a8",
+    "evidence/initial/application-result.json": "989a0e5d8e74a414870626d7dbb7c7afb03c21ab8aa17c2dd4224813e9cda3d9",
+    "evidence/initial/summary.md": "093ccf4bf0d426fd95e9e242ccccef4042edf3faa8ba7a63bb1e40456f68e857",
+    "evidence/initial/reports/comet_graph_execution_review_DYNAMIC_SKILL_r1_rep1_report.json": "3469189b04e439cdd92288ba36fa962eda4b85fca2fc790de64ad912f7c9a06f",
+    "evidence/initial/events/comet_graph_execution_review_DYNAMIC_SKILL_r1_rep1.json": "204fdc976b9af985583c31aeb58b875cd8ba482b33bd1d4cac743365f5969f37",
+    "evidence/native/report-1.json": "44dfa8b7c2be53ff08f45e6d731395c7dc28af66acf28b03b091fa06609b7d1e",
+    "evidence/native/report-2.json": "95676fe9c3ea0a5365ad33eb5ea18537a43f7ca45856e4323dd454691c5f3322",
+    "evidence/native/report-3.json": "08e86a152f11f667afd9c40ef2737989b6e358449a61ed5b4b1628ae259f863e",
+    "reports/summary.md": "855de967e2c78a37efd6497692153a55f3d5019b658c0e28c3ad3c4f21e62ac0",
+    "evidence/file-provenance.json": "a1c4a5163073800c9e4044be8763c9997a9fa95fc266495d16951a9f3f7cfef4",
+    "evidence/snapshot-redactions.json": "9ffb60b241eb43bd7ba30e3bc56afdafeb7e15becfd855677e0129c60cfefc34",
+    "evidence/archive-verification.json": "cd95d05017c64ea3fbfb8851b14f2248de7b2c398182aed79fa6979dfb76e9cd",
+    "evidence/dashboard-desktop.png": "41abfaecc1aeb8053d20a811433a11611a5a27537909d198a699eb90d94902c0",
+    "evidence/dashboard-narrow.png": "5bca981b4c395e906222397f74789ee28abb63a11236e4922d1992ceea1b3ea1",
+    ".gitattributes": "176601b84a972eb78860546414eea7db36c18273234d9784ef7bca06223440c8",
+    "README.md": "7efdd9b6aa51ec55c1de37c5d8287d54d7aaf75b3df64fcf4d341d58122dfe64"
+  },
+  "runs": [
+    {
+      "kind": "creator",
+      "runId": "grill-test-final",
+      "file": "runs/creator.json.gz"
+    },
+    {
+      "kind": "application",
+      "runId": "child-d3ced903123afecdcf65448247a6d9bbb356fa9aaca815b5ae838c444aef6860",
+      "file": "runs/child-d3ced903123afecdcf65448247a6d9bbb356fa9aaca815b5ae838c444aef6860.json"
+    },
+    {
+      "kind": "application",
+      "runId": "child-ca86e3ded97c995186e8d5b2e4ced8e0bf50f7b031bab6965c1656e16f835335",
+      "file": "runs/child-ca86e3ded97c995186e8d5b2e4ced8e0bf50f7b031bab6965c1656e16f835335.json"
+    },
+    {
+      "kind": "application",
+      "runId": "d4903448-9787-40d1-91bc-0e0e8762b138",
+      "file": "runs/d4903448-9787-40d1-91bc-0e0e8762b138.json"
+    },
+    {
+      "kind": "application",
+      "runId": "child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f",
+      "file": "runs/child-d0409ae376ca635202d7e859be1b3f37a9708ce89e1404bd6b8301778581083f.json"
+    },
+    {
+      "kind": "application",
+      "runId": "child-35fd01fb3751793b9b411b2d6be23101db7535419a259258889d03a17555d386",
+      "file": "runs/child-35fd01fb3751793b9b411b2d6be23101db7535419a259258889d03a17555d386.json"
+    }
+  ],
+  "reports": [
+    {
+      "path": "reports/summary.md",
+      "label": "专项复核报告"
+    },
+    {
+      "path": "reports/report.md",
+      "label": "原任务结果与 Native 对照"
+    },
+    {
+      "path": "reports/trajectory-analysis.md",
+      "label": "Skill 调用轨迹"
+    },
+    {
+      "path": "reports/provenance-audit.md",
+      "label": "产物来源与干预审计"
+    },
+    {
+      "path": "reports/flow-enhancement-assessment.md",
+      "label": "必要增强分析"
+    },
+    {
+      "path": "evidence/independent-conclusion.json",
+      "label": "独立结论"
+    },
+    {
+      "path": "evidence/continuation/independent-final-check.json",
+      "label": "完整独立验收"
+    },
+    {
+      "path": "evidence/native-baselines.json",
+      "label": "Native 原始报告索引"
+    },
+    {
+      "path": "evidence/archive-verification.json",
+      "label": "归档迁移验证"
+    }
+  ],
+  "artifactMappings": {
+    ".scratch/grill-test/spec.md": "task/artifacts/spec.md",
+    "/workspace/.scratch/grill-test/spec.md": "task/artifacts/spec.md",
+    "D:\\Project\\Comet\\.comet\\experiments\\grill-test-final\\benchmark\\workspace-subject\\test_task_treatment_comet_grap0\\.scratch\\grill-test\\spec.md": "task/artifacts/spec.md",
+    "D:/Project/Comet/.comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/spec.md": "task/artifacts/spec.md",
+    ".scratch/grill-test/tickets.json": "task/artifacts/tickets.json",
+    "/workspace/.scratch/grill-test/tickets.json": "task/artifacts/tickets.json",
+    "D:\\Project\\Comet\\.comet\\experiments\\grill-test-final\\benchmark\\workspace-subject\\test_task_treatment_comet_grap0\\.scratch\\grill-test\\tickets.json": "task/artifacts/tickets.json",
+    "D:/Project/Comet/.comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/tickets.json": "task/artifacts/tickets.json",
+    ".scratch/grill-test/implementation.json": "task/artifacts/implementation.json",
+    "/workspace/.scratch/grill-test/implementation.json": "task/artifacts/implementation.json",
+    "D:\\Project\\Comet\\.comet\\experiments\\grill-test-final\\benchmark\\workspace-subject\\test_task_treatment_comet_grap0\\.scratch\\grill-test\\implementation.json": "task/artifacts/implementation.json",
+    "D:/Project/Comet/.comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/implementation.json": "task/artifacts/implementation.json",
+    ".scratch/grill-test/verification.json": "task/artifacts/verification.json",
+    "/workspace/.scratch/grill-test/verification.json": "task/artifacts/verification.json",
+    "D:\\Project\\Comet\\.comet\\experiments\\grill-test-final\\benchmark\\workspace-subject\\test_task_treatment_comet_grap0\\.scratch\\grill-test\\verification.json": "task/artifacts/verification.json",
+    "D:/Project/Comet/.comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/verification.json": "task/artifacts/verification.json"
+  },
+  "assessment": {
+    "task": "comet-graph-execution-review",
+    "taskCompleted": true,
+    "originalTestsPassed": 4,
+    "regressionTestsPassed": 13,
+    "models": [
+      "glm-5.2",
+      "glm-5.3[1m]"
+    ],
+    "createdAt": "2026-10-13T14:29:28.912838",
+    "completedAt": "2026-10-13T09:09:43.920Z",
+    "durationSeconds": 3219.193,
+    "tokens": 4936396,
+    "limitations": [
+      "首次 900 秒超时，后续以 7200 秒预算恢复同一任务，并加入额外宿主指导。",
+      "Creator 原流程明确跳过模型 Eval；本归档为单任务专项复核，未执行正式 2–4 用例应用 Eval。",
+      "Native 对照为 2026-08-28 的三份历史样本；模型、Runtime 和预算不同，不能证明效率或稳定性同级。",
+      "原始路径只作为来源证据保留；归档文件均通过相对路径读取，不能恢复或推进原 Run。"
+    ]
+  },
+  "source": {
+    "creatorProjectRoot": "D:\\Project\\Comet\\.comet\\experiments\\grill-test-final",
+    "executionProjectRoot": "/workspace",
+    "executionHostWorkspace": "D:\\Project\\Comet\\.comet\\experiments\\grill-test-final\\benchmark\\workspace-subject\\test_task_treatment_comet_grap0",
+    "runtimeVersion": "0.5.0",
+    "sourceBaseline": "6c61992131b840a8bd2a75a218a1f5333824e290",
+    "finalBusinessCommit": "05ba4419b80522c8781ef1083c80963282ba3440",
+    "evalSnapshotHash": "59ee7782df5f3057fd6e7784b23323495de69757565cc754343f723ad0da6a6a",
+    "redactions": "SDK claim credentials and credential-like text are redacted; application and task bytes are unchanged."
+  }
+}

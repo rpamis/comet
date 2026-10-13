@@ -1,0 +1,13 @@
+{
+  "command": [
+    "python",
+    "-m",
+    "pytest",
+    "test_pipeline.py",
+    "-q"
+  ],
+  "exitCode": 0,
+  "stdout": "....                                                                     [100%]\n4 passed in 0.05s\n",
+  "stderr": "",
+  "status": "passed"
+}

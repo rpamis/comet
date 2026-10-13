@@ -19,6 +19,7 @@ export interface DashboardApplicationIdentity {
   packageHash: string | null;
 }
 export interface DashboardApplicationRunSummary {
+  archive?: { id: string; title: string };
   locator: string;
   kind: DashboardApplicationRunKind;
   isChild: boolean;

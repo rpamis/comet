@@ -1,0 +1,446 @@
+[
+  {
+    "archived": "application/application.json",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/application.json",
+    "sourceSha256": "25ae93a04a52b38ea26cad8a561d84cab0d2ac0469f976692387801561e71146",
+    "archivedSha256": "25ae93a04a52b38ea26cad8a561d84cab0d2ac0469f976692387801561e71146"
+  },
+  {
+    "archived": "application/application.mjs",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/application.mjs",
+    "sourceSha256": "36b9fa7af64745fc4d74e0c112f0eaf5c65fbfe7ad42024621570b6cdab628e9",
+    "archivedSha256": "36b9fa7af64745fc4d74e0c112f0eaf5c65fbfe7ad42024621570b6cdab628e9"
+  },
+  {
+    "archived": "application/bindings.mjs",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/bindings.mjs",
+    "sourceSha256": "bb97bc0f0c5a5b051a6d57ea0e1292eb37080bb4a75522adbb626d8fc396c505",
+    "archivedSha256": "bb97bc0f0c5a5b051a6d57ea0e1292eb37080bb4a75522adbb626d8fc396c505"
+  },
+  {
+    "archived": "application/installation.json",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/installation.json",
+    "sourceSha256": "2873d54a2d16efc51793faefef337b97c3657051e87cbca4aa237145cb5404e3",
+    "archivedSha256": "2873d54a2d16efc51793faefef337b97c3657051e87cbca4aa237145cb5404e3"
+  },
+  {
+    "archived": "application/references/execution.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/references/execution.md",
+    "sourceSha256": "86accd100eb02cd999f6cf336efb8e107fc60db835a30939feef47fcbc7d11fa",
+    "archivedSha256": "86accd100eb02cd999f6cf336efb8e107fc60db835a30939feef47fcbc7d11fa"
+  },
+  {
+    "archived": "application/rules/workflow-guard.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/rules/workflow-guard.md",
+    "sourceSha256": "8e4f4ba69f13a3285fd02568bd7312ac4df5caf77dd08705774722375fed7a3e",
+    "archivedSha256": "8e4f4ba69f13a3285fd02568bd7312ac4df5caf77dd08705774722375fed7a3e"
+  },
+  {
+    "archived": "application/SKILL.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/SKILL.md",
+    "sourceSha256": "c4bf61828645aa5e0e87b2a10b9ddfb25404781ea09385e70746f551aba06a59",
+    "archivedSha256": "c4bf61828645aa5e0e87b2a10b9ddfb25404781ea09385e70746f551aba06a59"
+  },
+  {
+    "archived": "application/skills/code-review/agents/openai.yaml",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/code-review/agents/openai.yaml",
+    "sourceSha256": "3f72329747a916ac8ab2b4004490c79e1be6774a8a83e5b258d6ddc7e866abfe",
+    "archivedSha256": "3f72329747a916ac8ab2b4004490c79e1be6774a8a83e5b258d6ddc7e866abfe"
+  },
+  {
+    "archived": "application/skills/code-review/SKILL.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/code-review/SKILL.md",
+    "sourceSha256": "e32441ce3f64628daeb6270bf56104f461b1341aa472cc3968424e90ece17bc4",
+    "archivedSha256": "e32441ce3f64628daeb6270bf56104f461b1341aa472cc3968424e90ece17bc4"
+  },
+  {
+    "archived": "application/skills/grill-me/agents/openai.yaml",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/grill-me/agents/openai.yaml",
+    "sourceSha256": "c03a1eee1161bb70ca360b3d17705638b93bc8eec41319732725dc05a53196a5",
+    "archivedSha256": "c03a1eee1161bb70ca360b3d17705638b93bc8eec41319732725dc05a53196a5"
+  },
+  {
+    "archived": "application/skills/grill-me/SKILL.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/grill-me/SKILL.md",
+    "sourceSha256": "9c71927d4f0fd32d815247b4ca1fc782d4c5f2f3c1d6d023d188d4a7e0299b21",
+    "archivedSha256": "9c71927d4f0fd32d815247b4ca1fc782d4c5f2f3c1d6d023d188d4a7e0299b21"
+  },
+  {
+    "archived": "application/skills/grilling/agents/openai.yaml",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/grilling/agents/openai.yaml",
+    "sourceSha256": "ad75163922ff8263acdd25ebc37420e8fcf1fccb93483fd5742e9bd26f5c45f6",
+    "archivedSha256": "ad75163922ff8263acdd25ebc37420e8fcf1fccb93483fd5742e9bd26f5c45f6"
+  },
+  {
+    "archived": "application/skills/grilling/SKILL.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/grilling/SKILL.md",
+    "sourceSha256": "00d2ccb00b7c02e448330f6405077a9cee664b92e5734228323b164abb9b8dbb",
+    "archivedSha256": "00d2ccb00b7c02e448330f6405077a9cee664b92e5734228323b164abb9b8dbb"
+  },
+  {
+    "archived": "application/skills/implement/agents/openai.yaml",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/implement/agents/openai.yaml",
+    "sourceSha256": "8494f83602c58f8ab33d047d0516cdb90b8c29e6d564de0cef810daaca378bcb",
+    "archivedSha256": "8494f83602c58f8ab33d047d0516cdb90b8c29e6d564de0cef810daaca378bcb"
+  },
+  {
+    "archived": "application/skills/implement/SKILL.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/implement/SKILL.md",
+    "sourceSha256": "30cd7bc1ebfb3891e85a1eed3b3b81aea0fa4ad4553a784de7f8e421b2d223e0",
+    "archivedSha256": "30cd7bc1ebfb3891e85a1eed3b3b81aea0fa4ad4553a784de7f8e421b2d223e0"
+  },
+  {
+    "archived": "application/skills/setup-matt-pocock-skills/agents/openai.yaml",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/setup-matt-pocock-skills/agents/openai.yaml",
+    "sourceSha256": "53d0bf3786862a1cb5013ca78f12013b166d0819823dae0d3f9eb13eee2acdf2",
+    "archivedSha256": "53d0bf3786862a1cb5013ca78f12013b166d0819823dae0d3f9eb13eee2acdf2"
+  },
+  {
+    "archived": "application/skills/setup-matt-pocock-skills/domain.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/setup-matt-pocock-skills/domain.md",
+    "sourceSha256": "f39269422d1a1c137b53b81cb120570f52d54d1823a5005ec685f4458f3437dd",
+    "archivedSha256": "f39269422d1a1c137b53b81cb120570f52d54d1823a5005ec685f4458f3437dd"
+  },
+  {
+    "archived": "application/skills/setup-matt-pocock-skills/issue-tracker-github.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/setup-matt-pocock-skills/issue-tracker-github.md",
+    "sourceSha256": "042aa5779f0fec6448fad11e681768ce4bf401ae34aa38def7296135fea54d4b",
+    "archivedSha256": "042aa5779f0fec6448fad11e681768ce4bf401ae34aa38def7296135fea54d4b"
+  },
+  {
+    "archived": "application/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md",
+    "sourceSha256": "3aff63c1dda8f18432974d296fdaac562329357a4afd9b498e38fcf7a1c67163",
+    "archivedSha256": "3aff63c1dda8f18432974d296fdaac562329357a4afd9b498e38fcf7a1c67163"
+  },
+  {
+    "archived": "application/skills/setup-matt-pocock-skills/issue-tracker-local.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/setup-matt-pocock-skills/issue-tracker-local.md",
+    "sourceSha256": "a19c63ec8b29ae332ae795cfa44740e66bd538da85284af16da4acd88c69ea66",
+    "archivedSha256": "a19c63ec8b29ae332ae795cfa44740e66bd538da85284af16da4acd88c69ea66"
+  },
+  {
+    "archived": "application/skills/setup-matt-pocock-skills/SKILL.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/setup-matt-pocock-skills/SKILL.md",
+    "sourceSha256": "e6ef895b9285ae0b0cf6aedcfdc12bca6123170d79f27d40d685388b75288fab",
+    "archivedSha256": "e6ef895b9285ae0b0cf6aedcfdc12bca6123170d79f27d40d685388b75288fab"
+  },
+  {
+    "archived": "application/skills/setup-matt-pocock-skills/triage-labels.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/setup-matt-pocock-skills/triage-labels.md",
+    "sourceSha256": "493d08d7a8007d3604cdf64d45717045034a5037c9e9917bae1ad9340fad75b8",
+    "archivedSha256": "493d08d7a8007d3604cdf64d45717045034a5037c9e9917bae1ad9340fad75b8"
+  },
+  {
+    "archived": "application/skills/tdd/agents/openai.yaml",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/tdd/agents/openai.yaml",
+    "sourceSha256": "f8e2afc1fbcd6a6e1178c30f290ca9f2286c949a0b74b8b68fd14f198b78ebac",
+    "archivedSha256": "f8e2afc1fbcd6a6e1178c30f290ca9f2286c949a0b74b8b68fd14f198b78ebac"
+  },
+  {
+    "archived": "application/skills/tdd/mocking.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/tdd/mocking.md",
+    "sourceSha256": "73a10b6a26b56197c738a764c1e4205af98c74553f4a713795997f6bc35b917d",
+    "archivedSha256": "73a10b6a26b56197c738a764c1e4205af98c74553f4a713795997f6bc35b917d"
+  },
+  {
+    "archived": "application/skills/tdd/SKILL.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/tdd/SKILL.md",
+    "sourceSha256": "4bc06151a5d5c37af1ee5613dc07b67ecf18b2e22e6a26e8538a3a995a8aafca",
+    "archivedSha256": "4bc06151a5d5c37af1ee5613dc07b67ecf18b2e22e6a26e8538a3a995a8aafca"
+  },
+  {
+    "archived": "application/skills/tdd/tests.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/tdd/tests.md",
+    "sourceSha256": "0b401f98bd3684d2fea6440d6946afcf8f5f68ac6a65599dd7a2b90dd9f02eb5",
+    "archivedSha256": "0b401f98bd3684d2fea6440d6946afcf8f5f68ac6a65599dd7a2b90dd9f02eb5"
+  },
+  {
+    "archived": "application/skills/to-spec/agents/openai.yaml",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/to-spec/agents/openai.yaml",
+    "sourceSha256": "55037139831219743dda1f716fe69eab3366e922529f69cc988fea3b1d34c74a",
+    "archivedSha256": "55037139831219743dda1f716fe69eab3366e922529f69cc988fea3b1d34c74a"
+  },
+  {
+    "archived": "application/skills/to-spec/SKILL.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/to-spec/SKILL.md",
+    "sourceSha256": "7d7fd04f7e47b8ebac52abe1497725570cbc1c15a56c673fe386950f95931cfb",
+    "archivedSha256": "7d7fd04f7e47b8ebac52abe1497725570cbc1c15a56c673fe386950f95931cfb"
+  },
+  {
+    "archived": "application/skills/to-tickets/agents/openai.yaml",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/to-tickets/agents/openai.yaml",
+    "sourceSha256": "e396b8caaf6cdd95c94cf707a7ca2fa5c3a04b37ae5d4301b5b360a7ff7a34cb",
+    "archivedSha256": "e396b8caaf6cdd95c94cf707a7ca2fa5c3a04b37ae5d4301b5b360a7ff7a34cb"
+  },
+  {
+    "archived": "application/skills/to-tickets/SKILL.md",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/skills/to-tickets/SKILL.md",
+    "sourceSha256": "b9478faa82b40c653bba2ea110682b5ae22a6736e4600768ae158c17db861ae2",
+    "archivedSha256": "b9478faa82b40c653bba2ea110682b5ae22a6736e4600768ae158c17db861ae2"
+  },
+  {
+    "archived": "application/tools/session.mjs",
+    "source": ".comet/experiments/grill-test-final/exports/grill-test/tools/session.mjs",
+    "sourceSha256": "662fa1042fd754e4f3a325748bb395c95811586af7ef227b4b6261d63641ee72",
+    "archivedSha256": "662fa1042fd754e4f3a325748bb395c95811586af7ef227b4b6261d63641ee72"
+  },
+  {
+    "archived": "task/original/environment/Dockerfile",
+    "source": "eval/local/tasks/comet-graph-execution-review/environment/Dockerfile",
+    "sourceSha256": "52b191bf3fadb8a551b3f53ec612f9409ea05664ff5bd0acccac31ca41f26a48",
+    "archivedSha256": "52b191bf3fadb8a551b3f53ec612f9409ea05664ff5bd0acccac31ca41f26a48"
+  },
+  {
+    "archived": "task/original/environment/pipeline.py",
+    "source": "eval/local/tasks/comet-graph-execution-review/environment/pipeline.py",
+    "sourceSha256": "b0e7e1c5d319404572ba64af4cc53e90cd1bd0f87253d45a2d7e7fd9362c19b4",
+    "archivedSha256": "b0e7e1c5d319404572ba64af4cc53e90cd1bd0f87253d45a2d7e7fd9362c19b4"
+  },
+  {
+    "archived": "task/original/environment/test_pipeline.py",
+    "source": "eval/local/tasks/comet-graph-execution-review/environment/test_pipeline.py",
+    "sourceSha256": "631808fd3aa677e7153f2c542fd6bb489f5b7a2d4cb1e5cc8cf5e418fdeca50f",
+    "archivedSha256": "631808fd3aa677e7153f2c542fd6bb489f5b7a2d4cb1e5cc8cf5e418fdeca50f"
+  },
+  {
+    "archived": "task/original/instruction.md",
+    "source": "eval/local/tasks/comet-graph-execution-review/instruction.md",
+    "sourceSha256": "81346df5bc3e05bbb1a81b0f5f0fb9d6601333939c377bf971f8daacb41508f7",
+    "archivedSha256": "81346df5bc3e05bbb1a81b0f5f0fb9d6601333939c377bf971f8daacb41508f7"
+  },
+  {
+    "archived": "task/original/task.toml",
+    "source": "eval/local/tasks/comet-graph-execution-review/task.toml",
+    "sourceSha256": "4d92d9fab2369441a21bf1da24a28c27854ebef12b37dfa506ca75c786e544f3",
+    "archivedSha256": "4d92d9fab2369441a21bf1da24a28c27854ebef12b37dfa506ca75c786e544f3"
+  },
+  {
+    "archived": "task/original/validation/test_graph_execution_review.py",
+    "source": "eval/local/tasks/comet-graph-execution-review/validation/test_graph_execution_review.py",
+    "sourceSha256": "b6be871ece4ff71f4d8de62725f90f21e849c148461da74880da0fcc1e9ceb42",
+    "archivedSha256": "b6be871ece4ff71f4d8de62725f90f21e849c148461da74880da0fcc1e9ceb42"
+  },
+  {
+    "archived": "task/final/pipeline.py",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/pipeline.py",
+    "sourceSha256": "23960adc29d7f2799a947cb374e2ce52738fb0fb7a3654280b6af9664bd70723",
+    "archivedSha256": "23960adc29d7f2799a947cb374e2ce52738fb0fb7a3654280b6af9664bd70723"
+  },
+  {
+    "archived": "task/final/test_pipeline.py",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/test_pipeline.py",
+    "sourceSha256": "631808fd3aa677e7153f2c542fd6bb489f5b7a2d4cb1e5cc8cf5e418fdeca50f",
+    "archivedSha256": "631808fd3aa677e7153f2c542fd6bb489f5b7a2d4cb1e5cc8cf5e418fdeca50f"
+  },
+  {
+    "archived": "task/final/test_pipeline_regressions.py",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/test_pipeline_regressions.py",
+    "sourceSha256": "da59edb22c6bc1cf2350ffb79811b48bd5aa9ea313c46a62f70ccb729c898010",
+    "archivedSha256": "da59edb22c6bc1cf2350ffb79811b48bd5aa9ea313c46a62f70ccb729c898010"
+  },
+  {
+    "archived": "task/artifacts/spec.md",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/spec.md",
+    "sourceSha256": "9dba4a9d8cafad0c79c238e7d4178db1869747b0cd02416e7e931814804cc9ea",
+    "archivedSha256": "9dba4a9d8cafad0c79c238e7d4178db1869747b0cd02416e7e931814804cc9ea"
+  },
+  {
+    "archived": "task/artifacts/tickets.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/tickets.json",
+    "sourceSha256": "569de28750750dac8edd4aa74218cd7dd63246ec05b1cd464b66b6b062931ce5",
+    "archivedSha256": "569de28750750dac8edd4aa74218cd7dd63246ec05b1cd464b66b6b062931ce5"
+  },
+  {
+    "archived": "task/artifacts/implementation.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/implementation.json",
+    "sourceSha256": "2fc40aea6ef7ce7121a474fb90bef1aaf33f921e986b216bf6012f53f9208488",
+    "archivedSha256": "2fc40aea6ef7ce7121a474fb90bef1aaf33f921e986b216bf6012f53f9208488"
+  },
+  {
+    "archived": "task/artifacts/verification.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/verification.json",
+    "sourceSha256": "a2e6b936e07de4acc71875c283bcba59245ee6857167e13709134c9297ce2616",
+    "archivedSha256": "a2e6b936e07de4acc71875c283bcba59245ee6857167e13709134c9297ce2616"
+  },
+  {
+    "archived": "task/artifacts/issues/01-fan-out-all-tasks.md",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/issues/01-fan-out-all-tasks.md",
+    "sourceSha256": "375ac56bfa754be0dc7b903056fbedb9e67c0bbdafae99674bd6b6d45f478213",
+    "archivedSha256": "375ac56bfa754be0dc7b903056fbedb9e67c0bbdafae99674bd6b6d45f478213"
+  },
+  {
+    "archived": "task/artifacts/issues/02-interrupt-review-before-summary.md",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/issues/02-interrupt-review-before-summary.md",
+    "sourceSha256": "b00cbc97948cd225a68b3998d3f51a1da63e2cc5dcc093aaf6b1bbe8e75b0535",
+    "archivedSha256": "b00cbc97948cd225a68b3998d3f51a1da63e2cc5dcc093aaf6b1bbe8e75b0535"
+  },
+  {
+    "archived": "task/artifacts/issues/03-resume-same-thread.md",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/issues/03-resume-same-thread.md",
+    "sourceSha256": "59c0cbd448b42b232cc49cafd6c99a317a36bae72655cf12d23ee52b7019774f",
+    "archivedSha256": "59c0cbd448b42b232cc49cafd6c99a317a36bae72655cf12d23ee52b7019774f"
+  },
+  {
+    "archived": "task/artifacts/issues/04-thread-isolation-and-regressions.md",
+    "source": ".comet/experiments/grill-test-final/benchmark/workspace-subject/test_task_treatment_comet_grap0/.scratch/grill-test/issues/04-thread-isolation-and-regressions.md",
+    "sourceSha256": "f7c863ab7b7eca95939553f681b41a947c3a3478b8aa0d3550dd6b7f7fb81137",
+    "archivedSha256": "f7c863ab7b7eca95939553f681b41a947c3a3478b8aa0d3550dd6b7f7fb81137"
+  },
+  {
+    "archived": "reports/report.md",
+    "source": ".comet/experiments/grill-test-final/report.md",
+    "sourceSha256": "4b78d5ef6d49f4a69827b40d19cbb769f25112d152ef4a495885b7374306fe51",
+    "archivedSha256": "4b78d5ef6d49f4a69827b40d19cbb769f25112d152ef4a495885b7374306fe51"
+  },
+  {
+    "archived": "reports/trajectory-analysis.md",
+    "source": ".comet/experiments/grill-test-final/trajectory-analysis.md",
+    "sourceSha256": "a6a0f3a15f84de9b3eb27393ebf7137b1fb331ddd84a916ac6150b96a589da8c",
+    "archivedSha256": "a6a0f3a15f84de9b3eb27393ebf7137b1fb331ddd84a916ac6150b96a589da8c"
+  },
+  {
+    "archived": "reports/provenance-audit.md",
+    "source": ".comet/experiments/grill-test-final/provenance-audit.md",
+    "sourceSha256": "9fc9f4852f1e35644d6bc9092edd498efa2d22d46ea80390650f411e39f861bd",
+    "archivedSha256": "9fc9f4852f1e35644d6bc9092edd498efa2d22d46ea80390650f411e39f861bd"
+  },
+  {
+    "archived": "reports/flow-enhancement-assessment.md",
+    "source": ".comet/experiments/grill-test-final/flow-enhancement-assessment.md",
+    "sourceSha256": "02a1f6678060ebed1e543e9e5251122c94d20434cb9c79354975d11de85109f0",
+    "archivedSha256": "02a1f6678060ebed1e543e9e5251122c94d20434cb9c79354975d11de85109f0"
+  },
+  {
+    "archived": "evidence/independent-conclusion.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/independent-conclusion.json",
+    "sourceSha256": "70ada89e8ccb025fb482b4f34269d2a55591e178df9b64e17e5ea4a5e959b120",
+    "archivedSha256": "19f8a3c9ce660ad480640e34de41fc1d4230a4c1f9783e1718ebc848c11e37d1"
+  },
+  {
+    "archived": "evidence/native-baselines.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/native-baselines.json",
+    "sourceSha256": "151cf9bd3c0dced119e4024d6d8aa900f885e7ae9d4f97efb862b0ba7245c5ff",
+    "archivedSha256": "5e42adfe494121b24396f0de8c3c31f7a00c7f2cbdd1b780f52b6b3ef42f68e2"
+  },
+  {
+    "archived": "evidence/prepared-context-glm.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/prepared-context-glm.json",
+    "sourceSha256": "464c853dd902d6bf201a316e81bd099c86c57d3463b02cde8ca79644adeeb970",
+    "archivedSha256": "ca064c6c40a05bea177a2a701369d6ae0bc4e9c0d1c46912cb421d1260f42caf"
+  },
+  {
+    "archived": "evidence/continuation/independent-final-check.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/continuation-recovered/independent-final-check.json",
+    "sourceSha256": "083a2f9ee9005ea92a9890a36ddfc19638164e7a6a6e89e073135ab7d30a748e",
+    "archivedSha256": "32c453a12ea8aeaefdd08f44054bc01e61dc4644cabcee7b58cc2eb9b33e4cf5"
+  },
+  {
+    "archived": "evidence/continuation/execution.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/continuation-recovered/execution.json",
+    "sourceSha256": "026d90c0feed8ff19fe99253804b1bcc39e97e864c2e3c8ec1db95ac648d2426",
+    "archivedSha256": "b67f646f06b771df9139fce82146467bd74566bf9486b858a8b535f3c6cba5cd"
+  },
+  {
+    "archived": "evidence/continuation/started.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/continuation-recovered/started.json",
+    "sourceSha256": "7db22dc0d07410f1246662bbbc7d1f8900a20f9aa42dfa8844bc254819ed5ea7",
+    "archivedSha256": "0c3cc8cea497cd9a3f8b87409797e1c6e02a85c19205b2fe2310d4937f88c88c"
+  },
+  {
+    "archived": "evidence/continuation/events.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/continuation-recovered/events.json",
+    "sourceSha256": "d6dc2acb3983bd235745e7f54559a2d5c60af2b0f008335e694a703996e5a068",
+    "archivedSha256": "16767aef954f0d86d5b7f490ce96700172e36293eeb89493a0a4c1ddac12a7f1"
+  },
+  {
+    "archived": "evidence/continuation/session-evidence.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/continuation-recovered/session-evidence.json",
+    "sourceSha256": "f0fa04b6cb7fd0b547747f48af842501952f0ce342b6c278b98ea431f6634c13",
+    "archivedSha256": "50609c46a9d0e89bd6ef3eb77aea1396957839ebcc94dca13b9bdeb74d6fa411"
+  },
+  {
+    "archived": "evidence/continuation/prompt.md",
+    "source": ".comet/experiments/grill-test-final/benchmark/continuation-recovered/prompt.md",
+    "sourceSha256": "43d44b88838ae9eb1feac70770de9ff1415dda618cc5551c3378e7d9936b8c45",
+    "archivedSha256": "43d44b88838ae9eb1feac70770de9ff1415dda618cc5551c3378e7d9936b8c45"
+  },
+  {
+    "archived": "evidence/continuation/input-context.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/continuation-recovered/input-context.json",
+    "sourceSha256": "6da1b93b53857d28a6334b1626a51d2342a6bc877634f69b78254c53eafd6ec7",
+    "archivedSha256": "16501a165328637923cfe9651c4e3731fa0aae7d8e0f11a05da59a9f23f5df68"
+  },
+  {
+    "archived": "evidence/continuation/stderr.txt",
+    "source": ".comet/experiments/grill-test-final/benchmark/continuation-recovered/stderr.txt",
+    "sourceSha256": "c2595e1987c0f9b88a34407333d8118f5052990da350d1bb3bb2f1a46fe6917c",
+    "archivedSha256": "c2595e1987c0f9b88a34407333d8118f5052990da350d1bb3bb2f1a46fe6917c"
+  },
+  {
+    "archived": "evidence/continuation/accepted-ticket-hashes.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/continuation-recovered/accepted-ticket-hashes.json",
+    "sourceSha256": "617148afff308f028eb94ea97b165145c670426c7526e5b044142f5a275aecc2",
+    "archivedSha256": "f43ae35286842f98b81b709458cf5f045d436ae47b8fa7b330704ebbfbdba003"
+  },
+  {
+    "archived": "evidence/continuation/reviewed-candidate-hashes.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/continuation-recovered/reviewed-candidate-hashes.json",
+    "sourceSha256": "ed712adbd265870548796d987e613a68d2ab453549300a4dc2fc071173039089",
+    "archivedSha256": "72fbca0788b14d0ad13768089bacf9c2e38ccedf7b55f20cefb3ebbec844d314"
+  },
+  {
+    "archived": "evidence/initial/metadata.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/logs/experiments/grill-test-faithful-graph-one-shot-20261013/metadata.json",
+    "sourceSha256": "f9d69129d09ddcc8d8abdf91b44c955dedf4e405d90bbceb4014a70baff1b94f",
+    "archivedSha256": "84fedd1c43c251ff9a4c89b9f5600217f12986152c8015d77024c856bbaed4c2"
+  },
+  {
+    "archived": "evidence/initial/expected-case-matrix.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/logs/experiments/grill-test-faithful-graph-one-shot-20261013/expected-case-matrix.json",
+    "sourceSha256": "1ec1406c16740c4267c2e4c7bac5d8760f588ddec423137aced3a01f44f421a7",
+    "archivedSha256": "7abc25cd8a014870459d731621172656d944cf30b3df4c1f7d177ccb014311a8"
+  },
+  {
+    "archived": "evidence/initial/application-result.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/logs/experiments/grill-test-faithful-graph-one-shot-20261013/application-result.json",
+    "sourceSha256": "a212344b5336da07adf5213cd1f8efc0c32462160e2f591413f9651c53ba6132",
+    "archivedSha256": "989a0e5d8e74a414870626d7dbb7c7afb03c21ab8aa17c2dd4224813e9cda3d9"
+  },
+  {
+    "archived": "evidence/initial/summary.md",
+    "source": ".comet/experiments/grill-test-final/benchmark/logs/experiments/grill-test-faithful-graph-one-shot-20261013/summary.md",
+    "sourceSha256": "093ccf4bf0d426fd95e9e242ccccef4042edf3faa8ba7a63bb1e40456f68e857",
+    "archivedSha256": "093ccf4bf0d426fd95e9e242ccccef4042edf3faa8ba7a63bb1e40456f68e857"
+  },
+  {
+    "archived": "evidence/initial/reports/comet_graph_execution_review_DYNAMIC_SKILL_r1_rep1_report.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/logs/experiments/grill-test-faithful-graph-one-shot-20261013/reports/comet_graph_execution_review_DYNAMIC_SKILL_r1_rep1_report.json",
+    "sourceSha256": "d58221dbe7657104b246f1212fdaa9a203b2c3ea268fd1e625519123353f33a8",
+    "archivedSha256": "3469189b04e439cdd92288ba36fa962eda4b85fca2fc790de64ad912f7c9a06f"
+  },
+  {
+    "archived": "evidence/initial/events/comet_graph_execution_review_DYNAMIC_SKILL_r1_rep1.json",
+    "source": ".comet/experiments/grill-test-final/benchmark/logs/experiments/grill-test-faithful-graph-one-shot-20261013/events/comet_graph_execution_review_DYNAMIC_SKILL_r1_rep1.json",
+    "sourceSha256": "5efafddb90fae53a5ec1a5333a602e06832db47e232f5448afcdc50b4df55222",
+    "archivedSha256": "204fdc976b9af985583c31aeb58b875cd8ba482b33bd1d4cac743365f5969f37"
+  },
+  {
+    "archived": "evidence/native/report-1.json",
+    "source": "eval/local/logs/experiments/native_rc1_20260828_0952/reports/comet_graph_execution_review_COMET_NATIVE_PHASE1_r1_rep1_report.json",
+    "sourceSha256": "eae69f8f16400233412c0756722497fb97b3fba420ddfa4ea670948cb97611c0",
+    "archivedSha256": "44dfa8b7c2be53ff08f45e6d731395c7dc28af66acf28b03b091fa06609b7d1e"
+  },
+  {
+    "archived": "evidence/native/report-2.json",
+    "source": "eval/local/logs/experiments/native_rc1_20260828_0952/reports/comet_graph_execution_review_COMET_NATIVE_PHASE1_r2_rep1_report.json",
+    "sourceSha256": "1ac8e7b8fec528d4b0c4d3d8df16d707da0cace408c8067d0af62aa6e131a180",
+    "archivedSha256": "95676fe9c3ea0a5365ad33eb5ea18537a43f7ca45856e4323dd454691c5f3322"
+  },
+  {
+    "archived": "evidence/native/report-3.json",
+    "source": "eval/local/logs/experiments/native_rc1_resume_20260828_1219/reports/comet_graph_execution_review_COMET_NATIVE_PHASE1_r3_rep1_report.json",
+    "sourceSha256": "a434e709d97ecc59cb46d26bb173cf251b362db35ce54252e0b51913203a7a8f",
+    "archivedSha256": "08e86a152f11f667afd9c40ef2737989b6e358449a61ed5b4b1628ae259f863e"
+  }
+]

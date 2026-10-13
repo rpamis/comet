@@ -747,6 +747,7 @@ export function AnyWorkflowPanel({
                       <span className="any-run-name">{selectedSummary.title}</span>
                       <ApplicationStatus value={selectedSummary.status} />
                       {selectedSummary.isChild && <Tag>{t('子流程')}</Tag>}
+                      {selectedSummary.archive && <Tag>{t('历史实验 · 只读')}</Tag>}
                     </h2>
                   </div>
                 </div>
@@ -911,12 +912,14 @@ export function AnyWorkflowPanel({
                     {current.some((r) => r.status === 'running') && (
                       <small>{t('已领取表示等待宿主回传，不代表宿主当前在线。')}</small>
                     )}
-                    <div className="any-continue-context">
-                      <span>{t('在 Agent 中继续处理，先读取最新运行。')}</span>
-                      <Button size="small" icon={<CopyOutlined />} onClick={copyContext}>
-                        {t('复制只读检查上下文')}
-                      </Button>
-                    </div>
+                    {!detail.archive && (
+                      <div className="any-continue-context">
+                        <span>{t('在 Agent 中继续处理，先读取最新运行。')}</span>
+                        <Button size="small" icon={<CopyOutlined />} onClick={copyContext}>
+                          {t('复制只读检查上下文')}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <div className={'any-follow-bar ' + (news ? 'has-news' : '')}>
                     <span aria-live="polite">
