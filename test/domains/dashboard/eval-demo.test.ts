@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { readEvalDemo } from '../../../domains/dashboard/web/src/eval-demo.js';
+import {
+  readEvalDemo,
+  readEvalDemoSettings,
+} from '../../../domains/dashboard/web/src/eval-demo.js';
 
 describe('Dashboard evaluation demo', () => {
+  it('previews independent model and budget settings without credential values', () => {
+    const settings = readEvalDemoSettings();
+    expect(settings.defaults.judgeEnabled).toBe(true);
+    expect(settings.defaults.applicationTimeoutSeconds).toBeLessThan(
+      settings.defaults.skillTimeoutSeconds,
+    );
+    expect(settings.credentials.main).toMatchObject({ configured: false, saved: false });
+    expect(settings.credentials.judge).toMatchObject({ configured: false, saved: false });
+    expect(settings.credentials.main).not.toHaveProperty('value');
+    settings.defaults.model = 'changed';
+    expect(readEvalDemoSettings().defaults.model).toBe('demo-model');
+  });
   it('provides a searchable run with separate results and uncovered recovery paths', async () => {
     const { items } = await readEvalDemo('/runs');
     expect(items).toHaveLength(1);

@@ -314,6 +314,7 @@ export function EvalPanel({
     if (!demo) locationFor(projectId, null);
   };
   const newRun = (config, review = false) => {
+    if (readOnly) return;
     setInitialConfig(config ?? null);
     setReviewTarget(review);
     setMode('new');
@@ -649,12 +650,20 @@ export function EvalPanel({
       {!loading && runs.length === 0 && <EvalFirstUse />}
       {!loading && !filtered.length ? (
         <Empty description={runs.length ? t('没有符合筛选条件的记录') : t('暂无评估记录')}>
-          <Paragraph type="secondary">
-            {t('选择本地 Skill 或 SDK 应用，预检通过后开始第一次评估。')}
-          </Paragraph>
-          <Button type="primary" onClick={() => newRun()}>
-            {t('新建评估')}
-          </Button>
+          {!runs.length && (
+            <Paragraph type="secondary">
+              {readOnly
+                ? t('Eval 操作仅在本地 Dashboard 中提供')
+                : t('选择本地 Skill 或 SDK 应用，预检通过后开始第一次评估。')}
+            </Paragraph>
+          )}
+          {runs.length ? (
+            <Button onClick={() => setRunFilter('all')}>{t('清除筛选')}</Button>
+          ) : !readOnly ? (
+            <Button type="primary" onClick={() => newRun()}>
+              {t('新建评估')}
+            </Button>
+          ) : null}
         </Empty>
       ) : (
         <Table

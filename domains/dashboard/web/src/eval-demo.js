@@ -11,7 +11,8 @@ const run = {
     type: 'application',
     version: '1.1.0',
     path: 'weekly-report/application.json',
-    contentHash: 'b'.repeat(64),
+    // SHA-256("report-workflow@1.1.0:content")，用于演示固定内容身份。
+    contentHash: 'bf2ea408688d087fd31ad3f4b4ab8389276263721fe2b61e2f7e05e2bf2e955a',
   },
   config: {
     target: 'weekly-report/application.json',
@@ -91,4 +92,30 @@ export async function readEvalDemo(suffix, { body } = {}) {
         '# 报告工作流评估示例\n\n两项示例用例中，一项通过，一项未通过来源检查。\n\n此记录仅展示界面交互，不证明真实模型或宿主已通过验收。',
     };
   throw new Error('示例记录不存在');
+}
+
+export function readEvalDemoSettings() {
+  return {
+    revision: 'demo-settings',
+    path: '~/.comet/eval/.env',
+    defaults: {
+      agent: 'codex',
+      model: 'demo-model',
+      baseUrl: 'https://provider.example/v1',
+      judgeEnabled: true,
+      judgeAgent: 'claude-code',
+      judgeModel: 'demo-judge',
+      judgeBaseUrl: 'https://judge.example/v1',
+      skillTimeoutSeconds: 600,
+      skillMaxTurns: 40,
+      applicationTimeoutSeconds: 180,
+      applicationMaxTurns: 12,
+    },
+    credentials: {
+      main: { configured: false, saved: false, source: null, kind: 'api-key' },
+      judge: { configured: false, saved: false, source: null, kind: 'api-key' },
+    },
+    overrides: [],
+    warnings: [],
+  };
 }

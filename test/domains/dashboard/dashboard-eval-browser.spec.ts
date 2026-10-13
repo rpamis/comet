@@ -58,6 +58,52 @@ const run = {
   artifacts: [{ id: 'summary.md', label: 'summary.md', format: 'markdown' }],
   diagnostics: [],
 };
+test('read-only Eval demo keeps empty filters out of creation and live APIs', async ({ page }) => {
+  const apiRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/dashboard')) apiRequests.push(request.url());
+  });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: /评估 Eval/ }).click();
+  await expect(page.locator('.dashboard-eval-history-table')).toBeVisible();
+  for (const filter of ['进行中', '仅看基线']) {
+    await page.locator('.ant-segmented-item').filter({ hasText: filter }).click();
+    await expect(page.getByText('没有符合筛选条件的记录', { exact: true })).toBeVisible();
+    for (const button of await page.getByRole('button', { name: '新建评估', exact: true }).all())
+      await expect(button).toBeDisabled();
+    await page.getByRole('button', { name: '清除筛选', exact: true }).click();
+    await expect(page.locator('.dashboard-eval-history-table')).toBeVisible();
+  }
+  await expect(page.locator('.dashboard-eval-create')).toHaveCount(0);
+  expect(apiRequests).toEqual([]);
+});
+
+test('read-only Eval settings demo shows configuration without saving or requesting APIs', async ({
+  page,
+}) => {
+  const apiRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/dashboard')) apiRequests.push(request.url());
+  });
+  await page.goto('/?demo');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page
+    .locator('.dashboard-settings-navigation')
+    .getByRole('menuitem', { name: /Eval/ })
+    .click();
+  const settings = page.locator('.dashboard-eval-settings');
+  await expect(settings).toBeVisible();
+  await expect(settings.getByText('默认执行端点', { exact: true })).toBeVisible();
+  await expect(settings.getByText('默认 Judge 模型', { exact: true })).toBeVisible();
+  await expect(settings.getByText('默认执行预算', { exact: true })).toBeVisible();
+  await expect(
+    settings.getByRole('button', { name: '保存 Eval 设置', exact: true }),
+  ).toBeDisabled();
+  await expect(settings.getByRole('button', { name: '检查本地环境', exact: true })).toBeDisabled();
+  for (const field of await settings.locator('input').all()) await expect(field).toBeDisabled();
+  expect(apiRequests).toEqual([]);
+});
+
 test.describe('Dashboard Eval', () => {
   test('animates view and tab changes without replaying on refresh or reduced motion', async ({
     page,

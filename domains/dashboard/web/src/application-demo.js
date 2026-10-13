@@ -1,11 +1,29 @@
 // 仅现有 ?demo 展示模式使用；真实工作区始终请求只读 API。
-const locator = (kind, n) => `${kind}:${String(n).padStart(64, '0')}`;
+// SHA-256 从固定示例身份预计算，保持版本及关联记录一致，不代表真实包验收。
+const locatorHashes = [
+  'f1b2ddfe2ed6828c90cfd1580574fa83346b002685fbc6e9947a1acb5c0dd867',
+  '44a7f2927bf7a939be02ad773b3a53e2edcb975c3117a1d73eda34aabeaf11bf',
+  '8a91e0423d788667a4981080a11a74cfe8ad3b9672ba596134ee6d14bebccb4f',
+  '0277b305b27517a34e9507079dddcf65eca4c790592f1cef7174d31f80efcd6b',
+  '9d8c3e533a62e32ace91aa9669e1bd69e0229059215945fa74bfd353c7a2e660',
+  'bcada955ec1497464e4dc67ec93cac314ae184f553fc1f9d798ace425eafbf40',
+];
+const locator = (kind, n) => `${kind}:${locatorHashes[n - 1]}`;
+const applicationHashes = {
+  '1.1.0': {
+    contentHash: '4956377f6229a579058625f57bc30e4de20c626e084a4f7783cca52ca04771cd',
+    packageHash: '7c08c31332a63cf0731ef8e35d63efecd96c40e4310a6476104d9b3ce0416142',
+  },
+  '1.2.0': {
+    contentHash: '6d71f72fda1ec233d9f8795b919dffcee4cb1b6700edb6a5d38654f094075df2',
+    packageHash: 'fe6ca7ea18f8af1ea823aa9436c306b67c7bfdee4f6bdc17388ced964cee6010',
+  },
+};
 const identity = (version) => ({
   id: 'grill-suite',
   version,
   base: 'standalone',
-  contentHash: 'a'.repeat(64),
-  packageHash: 'b'.repeat(64),
+  ...applicationHashes[version],
 });
 const record = (id, title, phase, status, kind = 'action', sequence = 1, data = {}) => ({
   id,
@@ -34,7 +52,7 @@ const proof = (version) =>
   ].map((e) => ({
     ...e,
     version,
-    contentHash: 'b'.repeat(64),
+    contentHash: applicationHashes[version]?.contentHash ?? null,
     sourceLocator: null,
     sourceRunId: null,
     report: null,

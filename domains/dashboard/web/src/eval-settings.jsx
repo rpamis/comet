@@ -19,6 +19,7 @@ import {
 import { ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import './eval-panel.css';
 import { evalDisplayError } from './eval-guidance.jsx';
+import { readEvalDemoSettings } from './eval-demo.js';
 const { Text, Title } = Typography;
 const endpoint = '/api/dashboard/eval/settings';
 const agents = ['claude-code', 'codex', 'qoder', 'codebuddy'].map((value) => ({
@@ -82,6 +83,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
   };
   useEffect(() => {
     if (readOnly) {
+      apply(readEvalDemoSettings());
       setLoading(false);
       return;
     }
@@ -101,7 +103,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
     return () => controller.abort();
   }, [readOnly, reload]);
   const save = async () => {
-    if (saving || loading) return;
+    if (readOnly || saving || loading) return;
     setSaving(true);
     setError(null);
     try {
@@ -167,7 +169,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
             <Input.Password
               autoComplete="off"
               placeholder={status?.configured ? t('留空保留已有凭据') : t('输入凭据')}
-              disabled={clear}
+              disabled={readOnly || clear}
             />
           </Form.Item>
         </div>
@@ -175,7 +177,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
           <Button
             type="text"
             danger={!clear}
-            disabled={saving}
+            disabled={readOnly || saving}
             onClick={() => {
               setClear(!clear);
               form.setFieldValue(field, '');
@@ -199,8 +201,6 @@ export function EvalSettings({ readOnly = false, onSaved }) {
       </div>
     );
   };
-  if (readOnly)
-    return <Alert type="info" showIcon message={t('Eval 设置仅在本地 Dashboard 中提供')} />;
   return (
     <div className="dashboard-eval-page dashboard-eval-settings" aria-label={t('Eval 设置')}>
       <div className="dashboard-eval-heading">
@@ -215,7 +215,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
             type="primary"
             icon={<SaveOutlined />}
             aria-label={t('保存 Eval 设置')}
-            disabled={loading || !data}
+            disabled={readOnly || loading || !data}
             loading={saving}
             onClick={() => void save()}
           >
@@ -223,13 +223,21 @@ export function EvalSettings({ readOnly = false, onSaved }) {
           </Button>
           <Button
             icon={<ReloadOutlined />}
-            disabled={loading || saving}
+            disabled={readOnly || loading || saving}
             onClick={() => setReload((value) => value + 1)}
           >
             {t('重新读取设置')}
           </Button>
         </Space>
       </div>
+      {readOnly && (
+        <Alert
+          type="info"
+          showIcon
+          message={t('示例数据')}
+          description={t('Eval 操作仅在本地 Dashboard 中提供')}
+        />
+      )}
       {error && (
         <Alert type="error" showIcon message={t('Eval 设置需要调整')} description={t(error)} />
       )}
@@ -247,6 +255,7 @@ export function EvalSettings({ readOnly = false, onSaved }) {
             name="eval-user-settings"
             form={form}
             layout="vertical"
+            disabled={readOnly}
             onValuesChange={() => {
               setDirty(true);
               setError(null);
@@ -334,8 +343,9 @@ export function EvalSettings({ readOnly = false, onSaved }) {
               <Space wrap>
                 <Button
                   loading={checking}
-                  disabled={saving || dirty}
+                  disabled={readOnly || saving || dirty}
                   onClick={async () => {
+                    if (readOnly) return;
                     setChecking(true);
                     setError(null);
                     try {
