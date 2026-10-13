@@ -46,6 +46,7 @@ import {
 } from '@ant-design/icons';
 import { renderMarkdown } from './markdown-preview.js';
 import './eval-panel.css';
+import { readEvalDemo } from './eval-demo.js';
 import { DashboardMotion, useDashboardMotion } from './dashboard-motion.jsx';
 import {
   EvalFirstUse,
@@ -175,10 +176,16 @@ export function EvalPanel({
   projectPath,
   query = '',
   readOnly = false,
+  demo = false,
   refreshToken = 0,
   onSettings,
 }) {
   useDashboardLanguage();
+  const readJson = useCallback(
+    (base, suffix, options) =>
+      demo ? readEvalDemo(suffix, options) : requestJson(base, suffix, options),
+    [demo],
+  );
   const navigation = useDashboardNavigation();
   const base = `/api/dashboard/projects/${encodeURIComponent(projectId)}/eval`;
   const { message, modal } = App.useApp();
@@ -218,13 +225,13 @@ export function EvalPanel({
   selectedRef.current = selectedId;
   const refresh = useCallback(
     async (manual = false) => {
-      if (readOnly || inFlight.current) return;
+      if ((readOnly && !demo) || inFlight.current) return;
       inFlight.current = true;
       const current = new AbortController();
       controller.current = current;
       if (manual) setLoading(true);
       try {
-        const data = await requestJson(
+        const data = await readJson(
           base,
           `/runs${query ? `?q=${encodeURIComponent(query)}` : ''}`,
           { signal: current.signal },
@@ -234,7 +241,7 @@ export function EvalPanel({
         setError(null);
         const id = selectedRef.current;
         if (id) {
-          const run = await requestJson(base, `/runs/${encodeURIComponent(id)}`, {
+          const run = await readJson(base, `/runs/${encodeURIComponent(id)}`, {
             signal: current.signal,
           });
           if (active.current && selectedRef.current === id) setDetail(run);
@@ -246,7 +253,7 @@ export function EvalPanel({
         if (active.current) setLoading(false);
       }
     },
-    [base, query, readOnly],
+    [base, query, readOnly, demo, readJson],
   );
   useEffect(() => {
     active.current = true;
@@ -287,10 +294,10 @@ export function EvalPanel({
     setDetail(run);
     setMode('detail');
     setComparison(null);
-    locationFor(projectId, run.id);
+    if (!demo) locationFor(projectId, run.id);
     setDetailLoading(true);
     try {
-      const value = await requestJson(base, `/runs/${encodeURIComponent(run.id)}`);
+      const value = await readJson(base, `/runs/${encodeURIComponent(run.id)}`);
       if (active.current && selectedRef.current === run.id) setDetail(value);
     } catch (err) {
       message.error(err.message);
@@ -304,7 +311,7 @@ export function EvalPanel({
     selectedRef.current = null;
     setDetail(null);
     setComparison(null);
-    locationFor(projectId, null);
+    if (!demo) locationFor(projectId, null);
   };
   const newRun = (config, review = false) => {
     setInitialConfig(config ?? null);
@@ -444,7 +451,7 @@ export function EvalPanel({
     setArtifactLoading(true);
     setArtifact({ label: id, format: 'text', content: '' });
     try {
-      const value = await requestJson(
+      const value = await readJson(
         base,
         `/runs/${encodeURIComponent(runId)}/artifact?ref=${encodeURIComponent(id)}${id === 'execution.log' ? '&tail=1' : ''}`,
         { signal: request.signal },
@@ -468,7 +475,7 @@ export function EvalPanel({
     downloadRequests.current.set(key, request);
     setDownloads((current) => [...current, key]);
     try {
-      const value = await requestJson(
+      const value = await readJson(
         base,
         `/runs/${encodeURIComponent(runId)}/artifact?ref=${encodeURIComponent(id)}`,
         { signal: request.signal },
@@ -808,7 +815,7 @@ export function EvalPanel({
           onClose={() => setError(null)}
         />
       )}
-      {readOnly ? (
+      {readOnly && !demo ? (
         <Empty description={t('Eval 操作仅在本地 Dashboard 中提供')} />
       ) : mode === 'new' ? (
         <EvalCreate

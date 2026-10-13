@@ -41,10 +41,13 @@ function observeScroll(root, scope) {
   const doc = root.ownerDocument;
   const win = doc.defaultView;
   if (!win) return () => {};
+  const eventRoot = root.getRootNode();
+  const embedded = eventRoot !== doc;
   if (!scrollPositions.has(scope)) scrollPositions.set(scope, new Map());
   const positions = scrollPositions.get(scope);
   const pending = new Map(positions);
-  if (!pending.has(documentPosition)) pending.set(documentPosition, { top: 0, left: 0 });
+  if (embedded) pending.delete(documentPosition);
+  else if (!pending.has(documentPosition)) pending.set(documentPosition, { top: 0, left: 0 });
   let frame = null;
   let active = true;
   let resizeObserver;
@@ -64,7 +67,8 @@ function observeScroll(root, scope) {
   const readDocument = () => ({ top: win.scrollY, left: win.scrollX });
   const readPane = (element) => ({ top: element.scrollTop, left: element.scrollLeft });
   const capture = () => {
-    if (!pending.has(documentPosition)) positions.set(documentPosition, readDocument());
+    if (!embedded && !pending.has(documentPosition))
+      positions.set(documentPosition, readDocument());
     for (const [name, element] of panes()) {
       if (!pending.has(name)) positions.set(name, readPane(element));
     }
@@ -115,7 +119,8 @@ function observeScroll(root, scope) {
   };
   const onScroll = (event) => {
     if (event.target === doc || event.target === win) {
-      if (!pending.has(documentPosition)) positions.set(documentPosition, readDocument());
+      if (!embedded && !pending.has(documentPosition))
+        positions.set(documentPosition, readDocument());
       return;
     }
     const element = event.target;
@@ -149,24 +154,24 @@ function observeScroll(root, scope) {
   if (typeof win.ResizeObserver === 'function') {
     resizeObserver = new win.ResizeObserver(schedule);
     resizeObserver.observe(root);
-    resizeObserver.observe(doc.documentElement);
+    if (!embedded) resizeObserver.observe(doc.documentElement);
   }
   if (typeof win.MutationObserver === 'function') {
     mutationObserver = new win.MutationObserver(schedule);
     mutationObserver.observe(root, { childList: true, subtree: true });
   }
-  doc.addEventListener('scroll', onScroll, true);
+  eventRoot.addEventListener('scroll', onScroll, true);
   for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
-    doc.addEventListener(type, onIntent, { capture: true, passive: true });
+    eventRoot.addEventListener(type, onIntent, { capture: true, passive: true });
   }
   schedule();
   return () => {
     active = false;
     // ref 清理时内容可能已经替换，不能用被夹断的位置覆盖最后的滚动记录。
     stopWaiting();
-    doc.removeEventListener('scroll', onScroll, true);
+    eventRoot.removeEventListener('scroll', onScroll, true);
     for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
-      doc.removeEventListener(type, onIntent, true);
+      eventRoot.removeEventListener(type, onIntent, true);
     }
   };
 }

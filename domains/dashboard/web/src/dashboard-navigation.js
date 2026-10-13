@@ -87,9 +87,12 @@ export function navigateDashboard(
 }
 
 export function useDashboardNavigation({ embedded = false } = {}) {
-  const [route, setRoute] = useState(readDashboardNavigation);
+  const isEmbedded = embedded || globalThis.__COMET_DASHBOARD_EMBED__ === true;
+  const [route, setRoute] = useState(() =>
+    isEmbedded ? normalize(null) : readDashboardNavigation(),
+  );
   useEffect(() => {
-    if (embedded) return undefined;
+    if (isEmbedded) return undefined;
     const update = () => {
       const next = readDashboardNavigation();
       rememberWorkspace(next, window);
@@ -107,6 +110,6 @@ export function useDashboardNavigation({ embedded = false } = {}) {
       window.removeEventListener('popstate', update);
       window.removeEventListener(EVENT, update);
     };
-  }, [embedded]);
+  }, [isEmbedded]);
   return route;
 }

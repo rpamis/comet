@@ -1784,13 +1784,14 @@ function DashboardApp({
                 : ''
             }`}
           >
-            {evalOpen && activeProjectId ? (
+            {evalOpen && (activeProjectId || useDemo) ? (
               <EvalPanel
-                key={activeProjectId}
-                projectId={activeProjectId}
+                key={activeProjectId ?? 'demo'}
+                projectId={activeProjectId ?? 'demo'}
                 projectPath={projects.find((project) => project.id === activeProjectId)?.path}
                 query={query}
                 readOnly={embedded || useDemo}
+                demo={useDemo}
                 refreshToken={evalRefreshToken}
                 onSettings={() => {
                   setSettingsSection('comet.eval');
@@ -4499,23 +4500,21 @@ function AntSidebar({
           }}
         />
       </div>
-      {!embedded && (
-        <div className="dashboard-sidebar-group">
-          <div className="dashboard-sidebar-label">{t('评估')}</div>
-          <Menu
-            className="dashboard-sidebar-menu"
-            mode="inline"
-            inlineCollapsed={collapsed}
-            inlineIndent={12}
-            selectedKeys={evalSelected ? ['eval'] : []}
-            items={[{ key: 'eval', icon: <FlagOutlined />, label: t('评估 Eval') }]}
-            onClick={() => {
-              onEvalSelect?.();
-              onClose();
-            }}
-          />
-        </div>
-      )}
+      <div className="dashboard-sidebar-group">
+        <div className="dashboard-sidebar-label">{t('评估')}</div>
+        <Menu
+          className="dashboard-sidebar-menu"
+          mode="inline"
+          inlineCollapsed={collapsed}
+          inlineIndent={12}
+          selectedKeys={evalSelected ? ['eval'] : []}
+          items={[{ key: 'eval', icon: <FlagOutlined />, label: t('评估 Eval') }]}
+          onClick={() => {
+            onEvalSelect?.();
+            onClose();
+          }}
+        />
+      </div>
       <div className="dashboard-sidebar-group">
         <div className="dashboard-sidebar-label">{t('插件中心')}</div>
         <Menu

@@ -7,6 +7,7 @@ import {
   useDashboardScrollRestoration,
   useDashboardViewState,
 } from '../../../domains/dashboard/web/src/dashboard-view-state.js';
+import { useDashboardNavigation } from '../../../domains/dashboard/web/src/dashboard-navigation.js';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -103,6 +104,19 @@ afterEach(() => {
 });
 
 describe('Dashboard reading state', () => {
+  it('keeps embedded child panels out of the host browser history', () => {
+    vi.stubGlobal('__COMET_DASHBOARD_EMBED__', true);
+    const replace = vi.spyOn(window.history, 'replaceState');
+    const push = vi.spyOn(window.history, 'pushState');
+    function EmbeddedPanel() {
+      useDashboardNavigation();
+      return createElement('div', null, 'embedded');
+    }
+    act(() => root.render(createElement(EmbeddedPanel)));
+    expect(replace).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it('restores a view on remount without initializing it again', () => {
     const scope = `project-${sequence++}:eval`;
     const initial = vi.fn(() => 'list');
@@ -139,6 +153,32 @@ describe('Dashboard reading state', () => {
 });
 
 describe('Dashboard scroll restoration', () => {
+  it('restores only embedded panes without scrolling the host document', () => {
+    const scope = `embedded-scroll-${sequence++}`;
+    act(() => root.unmount());
+    const shadow = container.attachShadow({ mode: 'open' });
+    root = createRoot(shadow);
+    vi.stubGlobal('scrollY', 640);
+    act(() => root.render(createElement(Scroll, { scope: `${scope}:classic` })));
+    flushFrames();
+    expect(window.scrollY).toBe(640);
+    expect(window.scrollTo).not.toHaveBeenCalled();
+
+    const pane = shadow.querySelector('[data-dashboard-scroll="results"]') as HTMLElement;
+    pane.scrollTop = 350;
+    pane.scrollLeft = 60;
+    pane.dispatchEvent(new Event('scroll'));
+    act(() => root.render(createElement(Scroll, { scope: `${scope}:native` })));
+    flushFrames();
+    expect(window.scrollY).toBe(640);
+    expect(pane.scrollTop).toBe(0);
+    act(() => root.render(createElement(Scroll, { scope: `${scope}:classic` })));
+    flushFrames();
+    expect(pane.scrollTop).toBe(350);
+    expect(pane.scrollLeft).toBe(60);
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+
   it.each(['unchanged', 'clamped during teardown', 'awaiting a scroll event before navigation'])(
     'restores the root scroll container when the document stays fixed and its DOM is %s',
     (geometry) => {

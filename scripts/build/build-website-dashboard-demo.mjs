@@ -107,6 +107,12 @@ await Promise.all([
     JSON.stringify({ css: stylesheet.toString() }),
   ),
   fs.writeFile(path.join(outputRoot, 'dashboard-website-demo.js.json'), JSON.stringify({ js })),
+  // 部分预览器不提供 JSON 静态路由；文本包装与 JSON 包装使用完全相同的内容。
+  fs.writeFile(
+    path.join(outputRoot, 'dashboard-website-demo.css.txt'),
+    JSON.stringify({ css: stylesheet.toString() }),
+  ),
+  fs.writeFile(path.join(outputRoot, 'dashboard-website-demo.js.txt'), JSON.stringify({ js })),
   fs.unlink(cssPath),
   fs.unlink(jsPath),
 ]);
