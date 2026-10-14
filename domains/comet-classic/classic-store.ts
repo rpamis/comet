@@ -4,6 +4,7 @@ import {
   isClassicStateFileName,
 } from './classic-state-file.js';
 import { randomUUID } from 'node:crypto';
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import {
   resolveWorkspaceRuntimeRoot,
   isWorkspaceRuntimeMigrationFence,
@@ -286,11 +287,16 @@ export interface ReadClassicStateOptions {
   migrate?: boolean;
 }
 
+const cachedReadClassicStateWithoutMigration = memoizedHookRead(
+  'classicStateProjection',
+  (changeDir: string) => readClassicStateWithoutMigration(changeDir),
+);
+
 export async function readClassicState(
   changeDir: string,
   options: ReadClassicStateOptions = {},
 ): Promise<ClassicStateProjection> {
-  if (options.migrate === false) return readClassicStateWithoutMigration(changeDir);
+  if (options.migrate === false) return cachedReadClassicStateWithoutMigration(changeDir);
   if (!(await holdsClassicStateLock(await resolveClassicRunDirectory(changeDir)))) {
     const stable = await readStableClassicState(changeDir);
     if (stable !== null) return stable;

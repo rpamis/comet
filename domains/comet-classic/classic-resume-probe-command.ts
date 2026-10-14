@@ -5,6 +5,7 @@ import {
   resolveCometResumeProbe,
 } from './classic-resume-probe.js';
 import { classicCommandProjectRoot, withProjectContext } from './classic-command-context.js';
+import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
 
 function result(exitCode: number, stdout?: string, stderr?: string): ClassicCommandResult {
   return {
@@ -60,7 +61,11 @@ export const classicResumeProbeCommand: ClassicCommandHandler = withProjectConte
 
   try {
     const parsedInput = fromStdin ? parseStdinInput(source) : JSON.parse(source);
-    const resolution = await resolveCometResumeProbe(classicCommandProjectRoot(), parsedInput);
+    // Read-only probe: one decision may inspect hundreds of archived changes,
+    // so activate the per-decision read cache like the entry probe does.
+    const resolution = await runWithHookReadCache(() =>
+      resolveCometResumeProbe(classicCommandProjectRoot(), parsedInput),
+    );
     return result(0, `${JSON.stringify(resolution, null, 2)}\n`);
   } catch (error) {
     if (error instanceof SyntaxError) {

@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import path from 'node:path';
 
 export const CLASSIC_STATE_FILE = 'comet-state.yaml';
@@ -12,7 +13,7 @@ export function isClassicStateFileName(name: string): boolean {
 }
 
 /** 保留已有文件名；两个来源同时存在时拒绝读写，包括损坏的符号链接。 */
-export async function resolveClassicStateFile(
+async function resolveClassicStateFileImpl(
   changeDir: string,
   options: { defaultFileName?: (typeof CLASSIC_STATE_FILES)[number] } = {},
 ): Promise<string> {
@@ -37,4 +38,17 @@ export async function resolveClassicStateFile(
       `Classic state must be a regular file, not a symlink or directory: ${path.join(changeDir, unsafe[0])}`,
     );
   return path.join(changeDir, found[0] ?? options.defaultFileName ?? CLASSIC_STATE_FILE);
+}
+
+const cachedResolveClassicStateFile = memoizedHookRead(
+  'classicStateFile',
+  (changeDir: string, options?: { defaultFileName?: (typeof CLASSIC_STATE_FILES)[number] }) =>
+    resolveClassicStateFileImpl(changeDir, options),
+);
+
+export async function resolveClassicStateFile(
+  changeDir: string,
+  options: { defaultFileName?: (typeof CLASSIC_STATE_FILES)[number] } = {},
+): Promise<string> {
+  return cachedResolveClassicStateFile(changeDir, options);
 }

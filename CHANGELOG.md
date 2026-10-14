@@ -26,6 +26,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Resume probe latency**: The read-only `comet resume-probe` no longer re-runs git delivery verification for every archived change. It decides from the sealed delivery receipt within one cached, batched-concurrent decision, cutting a 20s+ probe in repositories with many archived changes down to about two seconds and restoring tool-call responsiveness (#482).
 - **Eval user interaction**: Recognize Markdown-formatted approval questions and avoid ending a task when only a child workflow has completed. SDK application evaluations check the fixed application's root Run instead of completion prose.
 - **Eval execution**: Preserve complete task inputs when invoking evaluation Agents, stop timed-out turns and owned containers, and retain generated cases and failure information for recovery.
 - **Classic checks and initialization**: Fail promptly when declared inputs are missing or unreadable, and recognize the Git branch before its first commit so branch-bound initialization can proceed.

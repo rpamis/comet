@@ -9,6 +9,7 @@ import {
   type RaceSafeReadResult,
 } from '../../platform/fs/race-safe-read.js';
 import { normalizeWorkflowRelativePath } from './project-config.js';
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 
 export type ProtectedProjectPathKind = 'missing' | 'file' | 'directory';
 
@@ -79,13 +80,24 @@ function isInside(root: string, target: string): boolean {
   );
 }
 
+// Per-decision memoization for the chain verification reads: one probe or
+// Hook decision re-verifies the same ancestor prefixes hundreds of times.
+// Outside an active read-cache scope (CLI writes, receipt hashing) these
+// wrappers are pass-through, so verification semantics stay unchanged there.
+const cachedChainLstat = memoizedHookRead('protectedChainLstat', (target: string) =>
+  fs.lstat(target),
+);
+const cachedChainRealpath = memoizedHookRead('protectedChainRealpath', (target: string) =>
+  fs.realpath(target),
+);
+
 async function assertRealProjectRoot(projectRoot: string, label: string): Promise<string> {
   const lexicalRoot = path.resolve(projectRoot);
-  const stat = await fs.lstat(lexicalRoot);
+  const stat = await cachedChainLstat(lexicalRoot);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error(`${label} project root must be a real directory`);
   }
-  return fs.realpath(lexicalRoot);
+  return cachedChainRealpath(lexicalRoot);
 }
 
 async function inspectExistingChain(
@@ -99,7 +111,7 @@ async function inspectExistingChain(
     cursor = path.join(cursor, segments[index]);
     let stat;
     try {
-      stat = await fs.lstat(cursor);
+      stat = await cachedChainLstat(cursor);
     } catch (error) {
       if (isMissingPath(error)) return { exists: false, kind: 'missing' };
       throw error;
@@ -120,7 +132,7 @@ async function inspectExistingChain(
     ) {
       throw new Error(`${options.label} must be a real ${options.expected}`);
     }
-    const realCursor = await fs.realpath(cursor);
+    const realCursor = await cachedChainRealpath(cursor);
     if (!isInside(realRoot, realCursor)) {
       throw new Error(`${options.label} resolves outside the project root`);
     }
@@ -138,7 +150,7 @@ async function inspectExistingChain(
  * Resolve a project-relative path while rejecting lexical traversal, special
  * filesystem objects, symlink/junction ancestors, and physical root escapes.
  */
-export async function inspectProtectedProjectPath(
+async function inspectProtectedProjectPathUncached(
   projectRoot: string,
   relativePath: string,
   options: ProtectedProjectPathOptions,
@@ -159,6 +171,38 @@ export async function inspectProtectedProjectPath(
     exists: result.exists,
     kind: result.kind,
   };
+}
+
+// Whole-inspection memoization: one probe decision asks about the same
+// (root, path, expectation) many times through exists/read wrappers; the
+// per-level stat cache below still pays path math and promise chains. The
+// label is deliberately not part of the key — it only shapes error wording,
+// and rejections are not cached by the read-cache contract anyway. Outside an
+// active read-cache scope every call inspects unchanged.
+const cachedInspectProtectedProjectPath = memoizedHookRead(
+  'protectedInspectPath',
+  (projectRoot: string, relativePath: string, expected: string) =>
+    inspectProtectedProjectPathUncached(projectRoot, relativePath, {
+      label: 'Protected project path',
+      expected: expected as ProtectedProjectPathOptions['expected'],
+    }),
+);
+
+export async function inspectProtectedProjectPath(
+  projectRoot: string,
+  relativePath: string,
+  options: ProtectedProjectPathOptions,
+): Promise<ProtectedProjectPathInspection> {
+  if (options.expected === undefined)
+    return inspectProtectedProjectPathUncached(projectRoot, relativePath, options);
+  try {
+    return await cachedInspectProtectedProjectPath(projectRoot, relativePath, options.expected);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Protected project path')) {
+      error.message = error.message.replaceAll('Protected project path', options.label);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -319,7 +363,7 @@ export async function protectedProjectFileExists(
   ).exists;
 }
 
-export async function readProtectedProjectFile(
+async function readProtectedProjectFileUncached(
   projectRoot: string,
   relativePath: string,
   maxBytes: number,
@@ -347,4 +391,36 @@ export async function readProtectedProjectFile(
       });
     },
   });
+}
+
+// Reads co-operating with an atomic write (hooks) bypass the cache so their
+// staged checks keep firing; plain decision-scope reads are immutable by the
+// read-cache contract, so repeating callers share one race-safe read.
+const CACHED_READ_LABEL = 'Cached protected project read';
+const cachedReadProtectedProjectFile = memoizedHookRead(
+  'protectedReadFile',
+  (projectRoot: string, relativePath: string, maxBytes: number) =>
+    readProtectedProjectFileUncached(projectRoot, relativePath, maxBytes, {
+      label: CACHED_READ_LABEL,
+    }),
+);
+
+export async function readProtectedProjectFile(
+  projectRoot: string,
+  relativePath: string,
+  maxBytes: number,
+  options: Omit<RaceSafeReadOptions, 'verify'> & { label: string },
+): Promise<RaceSafeReadResult> {
+  if (options.hooks || options.bigint)
+    return readProtectedProjectFileUncached(projectRoot, relativePath, maxBytes, options);
+  try {
+    return await cachedReadProtectedProjectFile(projectRoot, relativePath, maxBytes);
+  } catch (error) {
+    // The cached read runs under a neutral label; surface failures under the
+    // caller's label so diagnostics keep their contractual wording.
+    if (error instanceof Error && error.message.includes(CACHED_READ_LABEL)) {
+      error.message = error.message.replaceAll(CACHED_READ_LABEL, options.label);
+    }
+    throw error;
+  }
 }

@@ -19,6 +19,7 @@ import {
   runExternalCommand,
 } from '../../platform/process/external-command.js';
 import { nonInteractiveGitEnvironment } from '../../platform/process/git-environment.js';
+import { memoizedHookRead, memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
 import { classicTaskRevision, parseClassicTasks } from './classic-tasks.js';
 import type { ClassicState } from './classic-state.js';
 import {
@@ -358,6 +359,10 @@ function stateObject(source: string): Record<string, unknown> {
   return object(document.toJS());
 }
 
+const readGitCommonDirectory = memoizedHookReadSync('classicGitCommonDirectory', (root: string) =>
+  verifyingGit(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']),
+);
+
 function identity(state: Record<string, unknown>, changeDir: string, root: string): string {
   if (typeof state.run_id === 'string' && state.run_id) return `run:${state.run_id}`;
   return legacyIdentity(state, changeDir, root);
@@ -393,12 +398,21 @@ function authorizedIdentity(
   throw new Error('Classic delivery change identity mismatch');
 }
 
-async function currentState(root: string, changeDir: string) {
+const cachedCurrentState = memoizedHookRead(
+  'classicCurrentState',
+  async (root: string, changeDir: string) => currentStateUncached(root, changeDir),
+);
+
+async function currentStateUncached(root: string, changeDir: string) {
   return stateObject(
     await readClassicProjectFile(root, await resolveClassicStateFile(changeDir), {
       label: 'Classic delivery state',
     }),
   );
+}
+
+async function currentState(root: string, changeDir: string) {
+  return cachedCurrentState(root, changeDir);
 }
 
 class GitCommandTimeoutError extends Error {
@@ -710,7 +724,7 @@ async function receiptLocations(
       file,
     );
     locations.set(local.target, { root, file: local.target });
-    const common = verifyingGit(root, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
+    const common = readGitCommonDirectory(root);
     if (common) {
       const sourceRoot = await fs.realpath(common);
       const source = path.join(sourceRoot, 'comet', 'classic-deliveries', filename);
@@ -931,8 +945,9 @@ function verifiedPrUrl(value: string, repository: string): string | null {
 export async function readClassicDelivery(
   root: string,
   changeDir: string,
-  options: { verifyRemote?: boolean } = {},
+  options: { verifyRemote?: boolean; evidence?: boolean } = {},
 ) {
+  const evidence = options.evidence !== false;
   const raw = await readRecord(root, changeDir, 'delivery.json');
   if (raw === undefined)
     return { delivery: null, verification: { status: 'needsAuthorization' as const } };
@@ -998,6 +1013,30 @@ export async function readClassicDelivery(
       verification: {
         status: archiveVerified ? ('complete' as const) : ('needsVerification' as const),
         archiveVerified,
+      },
+    };
+  }
+  // Probe callers only need to know whether delivery is still pending, so the
+  // sealed receipt alone decides: a receipt bound to this authorization with a
+  // recorded commit or PR is treated as delivered, everything else stays
+  // pending for the full git verification owned by verify/archive flows.
+  if (!evidence) {
+    return {
+      delivery,
+      verification: {
+        status:
+          receipt?.commit || receipt?.prUrl
+            ? ('complete' as const)
+            : ('needsVerification' as const),
+        currentBranch: null,
+        commitExists: false,
+        archiveCommitted: false,
+        observedCommit: null,
+        observedPrUrl: null,
+        remoteVerified: false,
+        prVerified: false,
+        remoteStatus: 'notChecked' as const,
+        prStatus: 'notChecked' as const,
       },
     };
   }

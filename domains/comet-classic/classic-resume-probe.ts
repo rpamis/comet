@@ -396,53 +396,63 @@ async function discoverPendingArchivedChanges(projectRoot: string): Promise<Acti
   });
   if (!archiveInspection.exists) return [];
 
+  // 批量并发只重叠每个归档目录的只读 IO 等待；任何目录失败仍按整体失败处理。
+  const entries = (await readDir(layout.archiveDir))
+    .map((entry) => ({ entry, name: archivedChangeName(entry) }))
+    .filter((item): item is { entry: string; name: string } => item.name !== null);
   const changes: ActiveProbeChange[] = [];
-  for (const entry of await readDir(layout.archiveDir)) {
-    const name = archivedChangeName(entry);
-    if (!name) continue;
-    const directory = path.join(layout.archiveDir, entry);
-    const inspection = await inspectClassicProjectTarget(projectRoot, directory, {
-      label: `Classic archived change ${entry}`,
-      expected: 'directory',
-    });
-    if (!inspection.exists) continue;
+  const CONCURRENCY = 8;
+  for (let offset = 0; offset < entries.length; offset += CONCURRENCY) {
+    const results = await Promise.all(
+      entries.slice(offset, offset + CONCURRENCY).map(async ({ entry, name }) => {
+        const directory = path.join(layout.archiveDir, entry);
+        const inspection = await inspectClassicProjectTarget(projectRoot, directory, {
+          label: `Classic archived change ${entry}`,
+          expected: 'directory',
+        });
+        if (!inspection.exists) return null;
 
-    const projection = await readClassicState(inspection.target, { migrate: false });
-    const managed = await inspectManagedRun(
-      projectRoot,
-      name,
-      await resolveClassicStateFile(inspection.target),
+        const projection = await readClassicState(inspection.target, { migrate: false });
+        const managed = await inspectManagedRun(
+          projectRoot,
+          name,
+          await resolveClassicStateFile(inspection.target),
+        );
+        if (managed.state) projection.classic = managed.state;
+        const classic = projection.classic;
+        if (!classic?.archived || classic.phase !== 'archive') return null;
+        const delivery = await readClassicDelivery(projectRoot, inspection.target, {
+          evidence: false,
+        });
+        if (['complete', 'local-verified'].includes(delivery.verification.status)) return null;
+
+        const baseDiagnostic = diagnosticFromProjection(inspection.target, name, projection);
+        const diagnostic = managed.lostRun
+          ? {
+              ...baseDiagnostic,
+              valid: false,
+              nextCommand: null,
+              error: `Classic change ${name} has a state file but lost its local Run history`,
+            }
+          : baseDiagnostic;
+        const change: ActiveProbeChange = {
+          name,
+          workflow: classic.workflow,
+          phase: 'archive',
+          nextCommand: diagnostic.nextCommand,
+          diagnostic,
+          buildPause: null,
+          hasClassicProjection: true,
+          verifyResult: classic.verifyResult,
+          archived: true,
+          text: '',
+          missingCometState: false,
+        };
+        change.text = await changeSearchText(projectRoot, inspection.target, change);
+        return change;
+      }),
     );
-    if (managed.state) projection.classic = managed.state;
-    const classic = projection.classic;
-    if (!classic?.archived || classic.phase !== 'archive') continue;
-    const delivery = await readClassicDelivery(projectRoot, inspection.target);
-    if (['complete', 'local-verified'].includes(delivery.verification.status)) continue;
-
-    const baseDiagnostic = diagnosticFromProjection(inspection.target, name, projection);
-    const diagnostic = managed.lostRun
-      ? {
-          ...baseDiagnostic,
-          valid: false,
-          nextCommand: null,
-          error: `Classic change ${name} has a state file but lost its local Run history`,
-        }
-      : baseDiagnostic;
-    const change: ActiveProbeChange = {
-      name,
-      workflow: classic.workflow,
-      phase: 'archive',
-      nextCommand: diagnostic.nextCommand,
-      diagnostic,
-      buildPause: null,
-      hasClassicProjection: true,
-      verifyResult: classic.verifyResult,
-      archived: true,
-      text: '',
-      missingCometState: false,
-    };
-    change.text = await changeSearchText(projectRoot, inspection.target, change);
-    changes.push(change);
+    for (const change of results) if (change) changes.push(change);
   }
   return changes;
 }

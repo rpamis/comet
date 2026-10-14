@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { memoizedHookRead } from '../../platform/process/hook-read-cache.js';
 import path from 'node:path';
 
 import { atomicWriteContainedText } from './contained-atomic-write.js';
@@ -153,7 +154,17 @@ export async function readChangeRuntimeOwner(
   return current ?? legacy;
 }
 
-export async function readSdkChangeOwner(
+const cachedReadSdkChangeOwner = memoizedHookRead(
+  'sdkChangeOwner',
+  (
+    projectRoot: string,
+    workflow: CometProjectWorkflow,
+    change: string,
+    options: { readOnly?: boolean },
+  ) => readSdkChangeOwnerUncached(projectRoot, workflow, change, options),
+);
+
+async function readSdkChangeOwnerUncached(
   projectRoot: string,
   workflow: CometProjectWorkflow,
   change: string,
@@ -161,6 +172,15 @@ export async function readSdkChangeOwner(
 ): Promise<SdkChangeOwner | null> {
   const owner = await readChangeRuntimeOwner(projectRoot, workflow, change, options);
   return owner?.format === 'sdk' ? owner : null;
+}
+
+export async function readSdkChangeOwner(
+  projectRoot: string,
+  workflow: CometProjectWorkflow,
+  change: string,
+  options: { readOnly?: boolean } = {},
+): Promise<SdkChangeOwner | null> {
+  return cachedReadSdkChangeOwner(projectRoot, workflow, change, options);
 }
 
 export async function listSdkChangeNames(

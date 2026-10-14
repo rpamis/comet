@@ -1,3 +1,4 @@
+import { memoizedHookReadSync } from '../process/hook-read-cache.js';
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync, type BigIntStats } from 'node:fs';
 import os from 'node:os';
@@ -20,8 +21,19 @@ function canonicalExistingPath(target: string): string {
   return process.platform === 'win32' ? realpathSync.native(target) : realpathSync(target);
 }
 
-/** 工作区身份关联这份 checkout 的创建实例；远端地址、分支和修改时间均不参与。 */
+// 身份解析含多次 realpathSync；同一决策内对同一根重复解析数百次（探针遍历归档），
+// 仅在激活读缓存的作用域内复用，其余调用保持逐次解析。
+const cachedWorkspaceIdentity = memoizedHookReadSync('workspaceIdentity', computeWorkspaceIdentity);
+
 export function resolveWorkspaceIdentity(projectRoot: string): {
+  projectRoot: string;
+  workspaceId: string;
+} {
+  return cachedWorkspaceIdentity(projectRoot);
+}
+
+/** 工作区身份关联这份 checkout 的创建实例；远端地址、分支和修改时间均不参与。 */
+function computeWorkspaceIdentity(projectRoot: string): {
   projectRoot: string;
   workspaceId: string;
 } {
