@@ -662,7 +662,11 @@ describe('dashboard web source contracts', () => {
     expect(styles).toContain('.md-github {');
     expect(styles).toContain('overflow-x: auto;');
     expect(styles).toContain('width: 100%;');
-    expect(styles).not.toContain('width: max-content;');
+    postcss.parse(styles).walkRules((rule) => {
+      if (rule.selector.includes('.md-github')) {
+        rule.walkDecls('width', (declaration) => expect(declaration.value).not.toBe('max-content'));
+      }
+    });
     expect(styles).toContain('.md-github th {');
     expect(styles).toContain('white-space: nowrap;');
   });

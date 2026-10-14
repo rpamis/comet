@@ -829,6 +829,21 @@ export function installWorkflowApplication(options: ApplicationDeliveryOptions &
 export function listWorkflowApplicationRunRecords(projectRoot: string): Promise<WorkflowApplicationRunObservation[]>;
 
 // @public (undocumented)
+export function listWorkflowApplicationRunSources(projectRoot: string, options?: {
+    excludeApplications?: readonly string[];
+}): Promise<{
+    applicationId: string;
+    rootDir: string;
+    storageKey: string;
+    runId: string | null;
+    fingerprint: string;
+    error: {
+        code: string;
+        message: string;
+    } | null;
+}[]>;
+
+// @public (undocumented)
 export interface LoadedWorkflowApplication {
     // (undocumented)
     identity: ApplicationIdentity;
@@ -1262,6 +1277,9 @@ export function readSelectedWorkflowApplication(projectRoot: string): Promise<{
 
 // @public
 export function readWorkflowApplicationRun(projectRoot: string, applicationId: string, runId: string): Promise<WorkflowRun | null>;
+
+// @public (undocumented)
+export function readWorkflowApplicationRunObservation(projectRoot: string, applicationId: string, runId: string): Promise<WorkflowApplicationRunObservation>;
 
 // @public
 export function readWorkflowApplicationRunRecord(projectRoot: string, applicationId: string, runId: string): Promise<ApplicationRunRecord | null>;

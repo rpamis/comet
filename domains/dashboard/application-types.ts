@@ -43,6 +43,9 @@ export interface DashboardApplicationRunSummary {
   error: { code: string; message: string } | null;
 }
 export interface DashboardApplicationRunPage {
+  indexing?: boolean;
+  indexedCount?: number;
+  sourceCount?: number;
   items: DashboardApplicationRunSummary[];
   total: number;
   nextCursor: string | null;

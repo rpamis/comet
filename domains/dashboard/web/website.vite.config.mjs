@@ -3,6 +3,7 @@ import path from 'node:path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
+import { dashboardFontScaleCss } from './src/font-scale.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -10,6 +11,7 @@ export default defineConfig({
   root: here,
   publicDir: false,
   plugins: [react(), tailwindcss()],
+  css: { postcss: { plugins: [dashboardFontScaleCss()] } },
   define: {
     'globalThis.__COMET_DASHBOARD_EMBED__': 'true',
     'process.env.NODE_ENV': JSON.stringify('production'),

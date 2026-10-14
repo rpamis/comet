@@ -1,7 +1,6 @@
 import {
   EVAL_AGENT_IDS,
   EvalRunError,
-  collectEvalRuns,
   reconcileEvalRun,
   previewEvalRun,
   startEvalRun,
@@ -14,6 +13,8 @@ import {
   saveEvalPreset,
   deleteEvalPreset,
 } from '../eval/index.js';
+import { collectDashboardEvalRunPage } from './eval-collector.js';
+import { markDashboardSummaryIndexDirty } from './summary-index.js';
 
 export async function handleDashboardEvalRequest(
   project: string,
@@ -27,6 +28,7 @@ export async function handleDashboardEvalRequest(
       ? (input as Record<string, unknown>)
       : {};
   const read = method === 'GET' || method === 'HEAD';
+  if (!read) markDashboardSummaryIndexDirty(project, 'eval-v1');
   if (read && subpath === '/presets')
     return { status: 200, body: { items: await listEvalPresets(project) } };
   if (method === 'POST' && subpath === '/presets')
@@ -47,19 +49,16 @@ export async function handleDashboardEvalRequest(
       },
     };
   if (read && subpath === '/runs') {
-    const items = await collectEvalRuns(project);
-    const search = (query.get('q') ?? '').toLocaleLowerCase();
     return {
       status: 200,
-      body: {
-        items: search
-          ? items.filter((run) =>
-              `${run.id} ${run.target.name} ${run.target.path ?? ''}`
-                .toLocaleLowerCase()
-                .includes(search),
-            )
-          : items,
-      },
+      body: await collectDashboardEvalRunPage(project, {
+        q: query.get('q') ?? undefined,
+        status: query.get('status') ?? undefined,
+        limit: query.has('limit') ? Number(query.get('limit')) : undefined,
+        offset: query.has('offset') ? Number(query.get('offset')) : undefined,
+        baselineScope: query.get('baselineScope') ?? undefined,
+        cached: query.get('refresh') !== '1',
+      }),
     };
   }
   if (method === 'POST' && subpath === '/preview') {

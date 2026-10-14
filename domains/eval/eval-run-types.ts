@@ -140,6 +140,32 @@ export interface EvalRunDetail {
   stale: boolean | null;
   diagnostics: string[];
 }
+export type EvalRunSummary = Pick<
+  EvalRunDetail,
+  | 'id'
+  | 'origin'
+  | 'createdAt'
+  | 'completedAt'
+  | 'executionStatus'
+  | 'conclusion'
+  | 'target'
+  | 'passed'
+  | 'total'
+  | 'expectedTotal'
+  | 'metrics'
+  | 'baselineScope'
+  | 'baselineRunId'
+  | 'boundBaselineRunId'
+  | 'isBaseline'
+  | 'baselineEligible'
+  | 'baselineDisabledReason'
+  | 'availableActions'
+  | 'stale'
+  | 'diagnostics'
+  | 'archiveId'
+  | 'archiveAssessment'
+> & { model: string | null; agent: string | null; retrySourceRunId?: string };
+
 export interface EvalRunComparison {
   comparable: boolean;
   reasons: string[];

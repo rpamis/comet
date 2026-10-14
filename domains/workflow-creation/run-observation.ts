@@ -1,6 +1,7 @@
 import path from 'node:path';
 import {
   listFileRuntimeStoreRuns,
+  listFileRuntimeStoreRunSources,
   createFileRuntimeStore,
   parseWorkflowRun,
   type WorkflowRun,
@@ -12,6 +13,17 @@ export interface CreatorRunObservation {
   runId: string | null;
   run: WorkflowRun | null;
   error: { code: string; message: string } | null;
+}
+
+export async function listCreatorRunSources(projectRoot: string) {
+  const result = [];
+  for (const root of await readWorkspaceRuntimeRoots(projectRoot)) {
+    for (const source of await listFileRuntimeStoreRunSources({
+      rootDir: path.join(root, 'creator'),
+    }))
+      result.push({ ...source, rootDir: path.join(root, 'creator') });
+  }
+  return result;
 }
 
 /** 观测不创建 Creator Runtime，避免 inspect 触发工作区迁移。 */

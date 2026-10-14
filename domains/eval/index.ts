@@ -26,6 +26,14 @@ export {
 } from './eval-run-store.js';
 export type { EvalRunPreview } from './eval-run-preview.js';
 export type { EvalRunConfig, EvalRunDetail, EvalRunComparison } from './eval-run-types.js';
+export type { EvalRunSummary } from './eval-run-types.js';
+export {
+  listEvalRunSources,
+  listEvalArchiveSources,
+  readEvalRunSummary,
+  summarizeEvalRun,
+} from './eval-run-sources.js';
+export { readEvalBaselines } from './eval-run-store.js';
 export { resolveEvalExecution } from './eval-execution-config.js';
 export {
   beginCliEvalTracking,
@@ -107,6 +115,10 @@ export { listEvalPresets, saveEvalPreset, deleteEvalPreset } from './eval-run-pr
 export { readEvalRetrySelection } from './eval-run-retry.js';
 export {
   listEvalArchives,
+  readEvalArchive,
+  readEvalArchiveManifest,
+  archiveEvalDetail,
+  archiveEvalError,
   readEvalArchiveFile,
   evalArchiveRoot,
   evalArchiveRunId,

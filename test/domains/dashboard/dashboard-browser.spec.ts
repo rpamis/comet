@@ -1,5 +1,177 @@
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+for (const workflow of ['Classic', 'Native']) {
+  test(`${workflow} keeps the center frame when a summary filter has no matches`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1760, height: 1000 });
+    await page.goto('/?demo');
+    await page.getByRole('menuitem', { name: `${workflow} 工作流` }).click();
+    const search = page.locator('.comet-header-search input');
+    await page
+      .locator('.dashboard-overview-summary-strip')
+      .getByRole('button', { name: workflow === 'Native' ? /失败或阻塞/ : /Verify 失败/ })
+      .click();
+    await search.fill('no-matching-change-frame-check');
+    await expect(page.getByText('没有符合当前筛选的变更', { exact: true })).toBeVisible();
+    const center = page.locator('.dashboard-workspace-center > *').first();
+    const right = page.locator('.dashboard-workspace-right');
+    const style = (element: Element) => {
+      const css = getComputedStyle(element);
+      return {
+        borderWidth: css.borderTopWidth,
+        borderColor: css.borderTopColor,
+        radius: css.borderTopLeftRadius,
+        background: css.backgroundColor,
+      };
+    };
+    const expected = await right.evaluate(style);
+    expect(await center.evaluate(style)).toEqual(expected);
+    expect((await center.boundingBox())!.height).toBeGreaterThanOrEqual(320);
+    await page.getByRole('button', { name: '切换到暗色模式', exact: true }).click();
+    expect(await center.evaluate(style)).toEqual(await right.evaluate(style));
+    await page.screenshot({
+      path: path.join(os.tmpdir(), `comet-${workflow.toLowerCase()}-empty-frame.png`),
+    });
+    await page.setViewportSize({ width: 720, height: 1000 });
+    expect(await center.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await search.fill('');
+    await page.getByRole('button', { name: '清除筛选', exact: true }).click();
+    await expect(page.getByText('没有符合当前筛选的变更', { exact: true })).toHaveCount(0);
+    await expect(
+      page.locator(
+        `.dashboard-workspace-center .${workflow === 'Native' ? 'native-change-detail' : 'change-detail'}`,
+      ),
+    ).toBeVisible();
+  });
+}
+
+test('drags the font slider in dark mode and scales Tailwind, code and AntD controls once', async ({
+  page,
+  context,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/?demo');
+  await page.getByRole('button', { name: '切换到暗色模式', exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('menuitem', { name: '外观' }).click();
+  const selectors = [
+    '.dashboard-section-heading',
+    '.dashboard-workbench code',
+    '.dashboard-font-size-actions .ant-btn',
+  ];
+  const sizes = async () =>
+    page.evaluate(
+      (selectors) =>
+        selectors.map((selector) =>
+          parseFloat(getComputedStyle(document.querySelector(selector)!).fontSize),
+        ),
+      selectors,
+    );
+  const original = await sizes();
+  const track = dialog.locator('.ant-slider');
+  const bounds = (await track.boundingBox())!;
+  await page.mouse.click(
+    bounds.x + (bounds.width * (125 - 90)) / (150 - 90),
+    bounds.y + bounds.height / 2,
+  );
+  await expect(dialog.getByRole('slider')).toHaveAttribute('aria-valuenow', '125');
+  await expect.poll(sizes).toEqual(original.map((size) => size * 1.25));
+  const second = await context.newPage();
+  await second.goto('/?demo');
+  await expect(second.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect
+    .poll(() =>
+      second.evaluate(() =>
+        document.documentElement.style.getPropertyValue('--dashboard-font-scale'),
+      ),
+    )
+    .toBe('1.25');
+  await dialog.getByRole('slider').focus();
+  await dialog.getByRole('slider').press('Home');
+  await expect
+    .poll(() =>
+      second.evaluate(() =>
+        document.documentElement.style.getPropertyValue('--dashboard-font-scale'),
+      ),
+    )
+    .toBe('0.9');
+  await dialog.getByRole('slider').press('End');
+  await page.screenshot({ path: path.join(os.tmpdir(), 'comet-dashboard-font-size-dark.png') });
+  await second.close();
+});
+
+test('adjusts all dashboard typography live and restores the browser preference', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/?demo');
+  const sidebarText = page
+    .locator('.dashboard-sidebar')
+    .getByRole('menuitem', { name: '个人记忆' });
+  const original = await sidebarText.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: /Comet 设置/u });
+  await dialog.getByRole('menuitem', { name: '外观' }).click();
+  const slider = dialog.getByRole('slider', { name: '字体大小', exact: true });
+  await expect(slider).toHaveAttribute('aria-valuenow', '100');
+  const sample = dialog.locator(
+    '.dashboard-appearance-settings .dashboard-settings-section-head p',
+  );
+  const sampleSize = await sample.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  await slider.focus();
+  await slider.press('End');
+  await expect(slider).toHaveAttribute('aria-valuenow', '150');
+  await expect
+    .poll(() => sample.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)))
+    .toBeCloseTo(sampleSize * 1.5, 1);
+  await expect
+    .poll(() => sidebarText.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)))
+    .toBeCloseTo(original * 1.5, 1);
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('comet-dashboard-font-scale')))
+    .toBe('150');
+  await page.reload();
+  await expect
+    .poll(() => sidebarText.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)))
+    .toBeCloseTo(original * 1.5, 1);
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await dialog.getByRole('menuitem', { name: '外观' }).click();
+  await dialog.getByRole('button', { name: '恢复默认', exact: true }).click();
+  await expect(dialog.getByRole('slider')).toHaveAttribute('aria-valuenow', '100');
+  await expect
+    .poll(() => sidebarText.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)))
+    .toBeCloseTo(original, 1);
+});
+
+test('keeps appearance usable in a narrow English dashboard without project data', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 900 });
+  await page.route('**/api/dashboard/**', (route) =>
+    route.fulfill({ json: { projects: [], pages: [] } }),
+  );
+  await page.goto('/');
+  await page.locator('.comet-language-switch').getByText('EN', { exact: true }).click();
+  await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('menuitem', { name: 'Appearance' }).click();
+  const slider = dialog.getByRole('slider', { name: 'Font size', exact: true });
+  await slider.focus();
+  await slider.press('End');
+  await expect(slider).toHaveAttribute('aria-valuenow', '150');
+  await expect(dialog.getByRole('button', { name: 'Reset to default', exact: true })).toBeVisible();
+  expect(
+    await dialog
+      .locator('.dashboard-settings-content')
+      .evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+  ).toBe(true);
+});
 
 test('restores memory and knowledge reading state when switching workspaces', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });

@@ -1,6 +1,11 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { listFileRuntimeStoreRuns, hashRuntimeValue, parseWorkflowRun } from '../engine/runtime.js';
+import {
+  listFileRuntimeStoreRuns,
+  listFileRuntimeStoreRunSources,
+  hashRuntimeValue,
+  parseWorkflowRun,
+} from '../engine/runtime.js';
 import { readWorkspaceRuntimeRoots } from '../workflow-contract/workspace-runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import { readWorkflowApplicationRunRecord, type ApplicationRunRecord } from './application.js';
@@ -17,6 +22,81 @@ export interface WorkflowApplicationRunObservation {
   runId: string | null;
   record: ApplicationRunRecord | null;
   error: { code: string; message: string } | null;
+}
+
+export async function listWorkflowApplicationRunSources(
+  projectRoot: string,
+  options: { excludeApplications?: readonly string[] } = {},
+) {
+  const result = [];
+  for (const root of await readWorkspaceRuntimeRoots(projectRoot)) {
+    const target = path.join(root, 'applications');
+    const volume = path.parse(root).root;
+    if (
+      !(
+        await inspectProtectedProjectPath(
+          volume,
+          path.relative(volume, target).replaceAll('\\', '/'),
+          { label: '应用 Runtime 观测', expected: 'directory' },
+        )
+      ).exists
+    )
+      continue;
+    for (const entry of await fs.readdir(target, { withFileTypes: true })) {
+      if (options.excludeApplications?.includes(entry.name)) continue;
+      const applicationId = entry.name;
+      if (
+        !/^[a-z][a-z\d]*(?:[.-][a-z\d]+)*$/u.test(applicationId) ||
+        !entry.isDirectory() ||
+        entry.isSymbolicLink()
+      ) {
+        result.push({
+          applicationId,
+          rootDir: target,
+          storageKey: applicationId,
+          runId: null,
+          fingerprint: applicationId,
+          error: { code: 'APPLICATION_UNREADABLE', message: '应用 Runtime 目录项目无效' },
+        });
+        continue;
+      }
+      for (const source of await listFileRuntimeStoreRunSources({
+        rootDir: path.join(target, applicationId),
+        mirroredRevisionPaths: ['run.revision'],
+      }))
+        result.push({ ...source, applicationId, rootDir: path.join(target, applicationId) });
+    }
+  }
+  return result;
+}
+
+export async function readWorkflowApplicationRunObservation(
+  projectRoot: string,
+  applicationId: string,
+  runId: string,
+): Promise<WorkflowApplicationRunObservation> {
+  const item = { applicationId, runId, storageKey: hashRuntimeValue(runId) };
+  try {
+    const record = await readWorkflowApplicationRunRecord(projectRoot, applicationId, runId);
+    if (!record) throw new Error('应用 Run 已消失，请重新读取列表');
+    record.run = parseWorkflowRun(record.run, runId);
+    if (
+      path.resolve(record.application.projectRoot) !== (await fs.realpath(projectRoot)) ||
+      !record.application.version ||
+      !/^[a-f0-9]{64}$/u.test(record.application.contentHash)
+    )
+      throw new Error('应用固定身份与当前工作区不匹配');
+    return { ...item, record, error: null };
+  } catch (error) {
+    return {
+      ...item,
+      record: null,
+      error: {
+        code: 'APPLICATION_UNREADABLE',
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
 }
 
 /** 返回固定身份和 SDK 保存的状态；单条失败不会遮住其他 Run。 */

@@ -1,9 +1,16 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { listCreatorRunRecords, type CreatorRunObservation } from '../workflow-creation/index.js';
+import {
+  listCreatorRunRecords,
+  listCreatorRunSources,
+  readCreatorRunRecord,
+  type CreatorRunObservation,
+} from '../workflow-creation/index.js';
 import {
   listWorkflowApplicationRunRecords,
+  listWorkflowApplicationRunSources,
+  readWorkflowApplicationRunObservation,
   inspectWorkflowApplicationMaterial,
   inspectWorkflowApplicationPackage,
   readApplicationEvaluationEvidence,
@@ -19,8 +26,11 @@ import {
   SDK_APPLICATIONS,
 } from '../workflow-contract/change-runtime-owner.js';
 import {
-  collectEvalRuns,
+  readEvalRun,
   listEvalArchives,
+  listEvalArchiveSources,
+  readEvalArchive,
+  readEvalArchiveManifest,
   evalArchiveRoot,
   evalArchiveRunId,
   readEvalArchiveFile,
@@ -28,6 +38,7 @@ import {
 } from '../eval/index.js';
 import { collectNativeDashboardChangePage } from './native-collector.js';
 import { collectDashboardChangePage } from './collector.js';
+import { DashboardSummaryIndex, type DashboardSummarySource } from './summary-index.js';
 import type {
   DashboardApplicationRunKind,
   DashboardApplicationRunSummary,
@@ -320,6 +331,404 @@ function limit(value: unknown): number {
     throw new DashboardApplicationQueryError('每页记录数必须在 1 到 100 之间');
   return n;
 }
+
+type ApplicationReference = {
+  summary: DashboardApplicationRunSummary;
+  source: {
+    kind: 'creator' | 'application' | 'archive';
+    runId: string | null;
+    storageKey: string;
+    applicationId?: string;
+    archiveId?: string;
+    archiveKind?: DashboardApplicationRunKind;
+  };
+  children: string[];
+};
+
+function creatorEntry(observation: CreatorRunObservation): Entry {
+  return {
+    summary: summary(
+      'creator',
+      observation.storageKey,
+      observation.run,
+      observation.run ? candidate(observation.run) : null,
+      observation.error,
+      observation.runId,
+    ),
+    run: observation.run,
+    creator: observation,
+    application: null,
+  };
+}
+function applicationEntry(observation: WorkflowApplicationRunObservation): Entry {
+  const fixed = observation.record?.application;
+  const identity = fixed
+    ? {
+        id: fixed.id,
+        version: fixed.version,
+        base: fixed.base,
+        contentHash: fixed.contentHash,
+        packageHash: null,
+      }
+    : null;
+  const item = summary(
+    'application',
+    observation.storageKey,
+    observation.record?.run ?? null,
+    identity,
+    observation.error,
+    observation.runId,
+  );
+  if (!fixed) {
+    item.applicationId = observation.applicationId;
+    item.locator = `application:${hash([observation.applicationId, observation.runId ?? observation.storageKey])}`;
+    item.title = observation.applicationId;
+  }
+  return {
+    summary: item,
+    run: observation.record?.run ?? null,
+    creator: null,
+    application: observation,
+  };
+}
+function archivedEntries(observation: EvalArchiveObservation): Entry[] {
+  const entries = observation.runs.map((snapshot) => {
+    const a = observation.archive.application;
+    const item = summary(
+      snapshot.kind,
+      snapshot.run.runId,
+      snapshot.run,
+      {
+        id: a.id,
+        version: a.version,
+        base: a.base,
+        contentHash: a.contentHash,
+        packageHash: a.packageHash,
+      },
+      null,
+      snapshot.run.runId,
+    );
+    item.locator = `${snapshot.kind}:${hash(['archive', observation.archive.id, snapshot.kind, snapshot.run.runId])}`;
+    item.archive = { id: observation.archive.id, title: observation.archive.title };
+    return {
+      summary: item,
+      run: snapshot.run,
+      creator: null,
+      application: null,
+      archive: observation,
+      archivedIdentity: snapshot.identity,
+    };
+  });
+  linkEntries(entries);
+  return entries;
+}
+function linkEntries(entries: Entry[]): void {
+  for (const child of entries.filter((e) => e.summary.kind === 'application')) {
+    const parent = entries.find(
+      (e) =>
+        e.run &&
+        e.summary.applicationId === child.summary.applicationId &&
+        e.summary.archive?.id === child.summary.archive?.id &&
+        e.run.children.some(
+          (c) =>
+            c.runId === child.summary.runId &&
+            (!child.run ||
+              (c.workflow.id === child.run.workflow.id &&
+                c.workflow.version === child.run.workflow.version)),
+        ),
+    );
+    if (parent) {
+      child.summary.isChild = true;
+      child.summary.parentRunId = parent.summary.runId;
+      child.summary.parentLocator = parent.summary.locator;
+    }
+  }
+}
+function reference(entry: Entry): ApplicationReference {
+  const parentRunId = entry.run?.lineage.at(-1) ?? null;
+  const item = {
+    ...entry.summary,
+    parentRunId,
+    parentLocator: parentRunId
+      ? entry.archive
+        ? `application:${hash(['archive', entry.archive.archive.id, 'application', parentRunId])}`
+        : `application:${hash([entry.summary.applicationId, parentRunId])}`
+      : null,
+  };
+  return {
+    summary: item,
+    children: entry.run?.children.map((c) => c.runId) ?? [],
+    source: entry.archive
+      ? {
+          kind: 'archive',
+          runId: item.runId,
+          storageKey: item.runId ?? '',
+          archiveId: entry.archive.archive.id,
+          archiveKind: item.kind,
+        }
+      : {
+          kind: item.kind,
+          runId: item.runId,
+          storageKey:
+            entry.creator?.storageKey ?? entry.application?.storageKey ?? item.runId ?? '',
+          applicationId: item.applicationId ?? undefined,
+        },
+  };
+}
+function applicationSummaryIndex(projectRoot: string) {
+  return new DashboardSummaryIndex({
+    projectRoot,
+    namespace: 'any-v1',
+    discover: async () => {
+      const [creators, applications, archives] = await Promise.all([
+        listCreatorRunSources(projectRoot),
+        listWorkflowApplicationRunSources(projectRoot, { excludeApplications: SDK_APPLICATIONS }),
+        listEvalArchiveSources(projectRoot),
+      ]);
+      const sources: DashboardSummarySource[] = [];
+      const add = (key: string, fingerprint: string, load: () => Promise<Entry[]>) =>
+        sources.push({
+          key,
+          fingerprint,
+          read: async () =>
+            (await load()).map((entry) => {
+              const ref = reference(entry),
+                s = ref.summary;
+              return {
+                key: s.locator,
+                sortKey: s.locator,
+                search: `${s.title} ${s.goal ?? ''} ${s.runId ?? ''} ${s.application?.version ?? ''}`,
+                status: s.status,
+                kind: s.kind,
+                group: s.applicationId,
+                attention: Boolean(
+                  s.error ||
+                  s.status === 'failed' ||
+                  s.activity.unknown + s.activity.decisions + s.activity.evidence > 0,
+                ),
+                payload: ref,
+              };
+            }),
+        });
+      const creatorGroups = new Map<string, typeof creators>();
+      for (const source of creators) {
+        const key = source.runId ?? source.storageKey;
+        creatorGroups.set(key, [...(creatorGroups.get(key) ?? []), source]);
+      }
+      for (const [key, group] of creatorGroups) {
+        const source = group[0];
+        add(`creator:${key}`, hash(group.map((s) => [s.rootDir, s.fingerprint])), async () => {
+          let run: Run | null = null,
+            error = source.error;
+          try {
+            if (!error && source.runId) run = await readCreatorRunRecord(projectRoot, source.runId);
+          } catch (cause) {
+            error = { code: 'CREATOR_UNREADABLE', message: String(cause) };
+          }
+          return [creatorEntry({ ...source, run, error })];
+        });
+      }
+      const applicationGroups = new Map<string, typeof applications>();
+      for (const source of applications) {
+        const key = `${source.applicationId}:${source.runId ?? source.storageKey}`;
+        applicationGroups.set(key, [...(applicationGroups.get(key) ?? []), source]);
+      }
+      for (const [key, group] of applicationGroups) {
+        const source = group[0];
+        add(`application:${key}`, hash(group.map((s) => [s.rootDir, s.fingerprint])), async () => [
+          applicationEntry(
+            source.error || !source.runId
+              ? { ...source, record: null }
+              : await readWorkflowApplicationRunObservation(
+                  projectRoot,
+                  source.applicationId,
+                  source.runId,
+                ),
+          ),
+        ]);
+      }
+      for (const source of archives)
+        add(`archive:${source.id}`, source.fingerprint, async () => {
+          if (!source.error) return archivedEntries(await readEvalArchive(projectRoot, source.id));
+          const item = summary(
+            'application',
+            source.id,
+            null,
+            null,
+            { code: 'ARCHIVE_UNREADABLE', message: source.error },
+            null,
+          );
+          item.locator = `application:${hash(['archive-error', source.id])}`;
+          item.title = source.id;
+          item.archive = { id: source.id, title: source.id };
+          return [{ summary: item, run: null, creator: null, application: null }];
+        });
+      return sources;
+    },
+  });
+}
+
+async function readReference(
+  projectRoot: string,
+  ref: ApplicationReference,
+): Promise<Entry | null> {
+  if (ref.source.kind === 'archive')
+    return (
+      archivedEntries(await readEvalArchive(projectRoot, ref.source.archiveId!)).find(
+        (e) => e.summary.locator === ref.summary.locator,
+      ) ?? null
+    );
+  if (!ref.source.runId)
+    return { summary: ref.summary, run: null, creator: null, application: null };
+  if (ref.source.kind === 'creator') {
+    const run = await readCreatorRunRecord(projectRoot, ref.source.runId);
+    return run
+      ? creatorEntry({ storageKey: ref.source.storageKey, runId: run.runId, run, error: null })
+      : null;
+  }
+  const observation = await readWorkflowApplicationRunObservation(
+    projectRoot,
+    ref.source.applicationId!,
+    ref.source.runId,
+  );
+  return applicationEntry(observation);
+}
+
+async function detailDataset(
+  projectRoot: string,
+  locator: string,
+): Promise<{
+  entries: Entry[];
+  errors: DashboardApplicationRunPage['errors'];
+  indexing?: boolean;
+}> {
+  const store = applicationSummaryIndex(projectRoot);
+  let refs: ApplicationReference[];
+  let indexing: boolean;
+  try {
+    const cached = await store.query<ApplicationReference>();
+    refs = cached.items;
+    indexing = cached.indexing;
+  } catch {
+    return dataset(projectRoot);
+  }
+  let ref = refs.find(
+    (r) =>
+      r.summary.locator === locator ||
+      (r.summary.kind === 'creator' &&
+        r.summary.applicationId &&
+        `creator:${hash([r.summary.applicationId, r.summary.runId ?? r.source.storageKey])}` ===
+          locator),
+  );
+  if (!ref) {
+    const [creators, applications, archives] = await Promise.all([
+      listCreatorRunSources(projectRoot),
+      listWorkflowApplicationRunSources(projectRoot, { excludeApplications: SDK_APPLICATIONS }),
+      listEvalArchiveSources(projectRoot),
+    ]);
+    const creator = creators.find(
+      (source) => `creator:${hash([null, source.runId ?? source.storageKey])}` === locator,
+    );
+    const application = applications.find(
+      (source) =>
+        `application:${hash([source.applicationId, source.runId ?? source.storageKey])}` ===
+        locator,
+    );
+    if (creator?.runId) {
+      const run = await readCreatorRunRecord(projectRoot, creator.runId);
+      if (run) ref = reference(creatorEntry({ ...creator, run }));
+    } else if (application?.runId)
+      ref = reference(
+        applicationEntry(
+          await readWorkflowApplicationRunObservation(
+            projectRoot,
+            application.applicationId,
+            application.runId,
+          ),
+        ),
+      );
+    else {
+      for (const archive of archives) {
+        if (archive.error) continue;
+        const manifest = await readEvalArchiveManifest(projectRoot, archive.id);
+        if (
+          manifest.runs.some(
+            (run) =>
+              `${run.kind}:${hash(['archive', archive.id, run.kind, run.runId])}` === locator,
+          )
+        ) {
+          const entry = archivedEntries(await readEvalArchive(projectRoot, archive.id)).find(
+            (entry) => entry.summary.locator === locator,
+          );
+          if (entry) ref = reference(entry);
+          break;
+        }
+      }
+    }
+    if (ref) refs.push(ref);
+    else {
+      // Older candidate URLs included application identity in the Creator locator.
+      for (const creator of await listCreatorRunRecords(projectRoot)) {
+        const entry = creatorEntry(creator);
+        if (
+          entry.summary.applicationId &&
+          `creator:${hash([entry.summary.applicationId, creator.runId ?? creator.storageKey])}` ===
+            locator
+        ) {
+          ref = reference(entry);
+          refs.push(ref);
+          break;
+        }
+      }
+    }
+  }
+  if (!ref) return { entries: [] as Entry[], errors: [] as DashboardApplicationRunPage['errors'] };
+  if (ref.source.kind === 'archive')
+    return {
+      entries: archivedEntries(await readEvalArchive(projectRoot, ref.source.archiveId!)),
+      errors: [] as DashboardApplicationRunPage['errors'],
+    };
+  const selected = await readReference(projectRoot, ref);
+  if (!selected)
+    return { entries: [] as Entry[], errors: [] as DashboardApplicationRunPage['errors'] };
+  selected.summary = reference(selected).summary;
+  const entries: Entry[] = refs.map((r) => ({
+    summary: r.summary,
+    run: null,
+    creator: null,
+    application: null,
+  }));
+  for (const relevant of refs.filter(
+    (r) =>
+      r.summary.locator === ref!.summary.locator ||
+      (r.summary.kind === 'creator' &&
+        r.summary.applicationId === selected.summary.applicationId &&
+        selected.summary.applicationId),
+  )) {
+    const entry =
+      relevant.summary.locator === ref.summary.locator
+        ? selected
+        : await readReference(projectRoot, relevant);
+    const position = entries.findIndex((e) => e.summary.locator === relevant.summary.locator);
+    if (entry) entries[position] = entry;
+  }
+  if (selected.application?.record) {
+    for (const child of selected.run?.children ?? []) {
+      const observation = await readWorkflowApplicationRunObservation(
+        projectRoot,
+        selected.application.applicationId,
+        child.runId,
+      );
+      if (!observation.record || observation.error) continue;
+      const entry = applicationEntry(observation);
+      const position = entries.findIndex((e) => e.summary.locator === entry.summary.locator);
+      if (position < 0) entries.push(entry);
+      else entries[position] = entry;
+    }
+  }
+  linkEntries(entries);
+  return { entries, errors: [] as DashboardApplicationRunPage['errors'], indexing };
+}
 function page<T>(items: T[], fingerprint: string, cursor: string | undefined, size: number) {
   let offset = 0;
   if (cursor) {
@@ -369,6 +778,8 @@ export async function collectDashboardApplicationRunPage(
     q?: string;
     limit?: number;
     cursor?: string;
+    cached?: boolean;
+    scope?: string;
   } = {},
 ): Promise<DashboardApplicationRunPage> {
   if (query.kind && !['all', 'creator', 'application'].includes(query.kind))
@@ -392,6 +803,83 @@ export async function collectDashboardApplicationRunPage(
   )
     throw new DashboardApplicationQueryError('运行状态无效');
   if ((query.q?.length ?? 0) > 512) throw new DashboardApplicationQueryError('搜索内容过长');
+  if (query.scope && !['all', 'draft', 'apps'].includes(query.scope))
+    throw new DashboardApplicationQueryError('应用范围无效');
+  const pageSize = limit(query.limit);
+  try {
+    const store = applicationSummaryIndex(projectRoot);
+    await store.ensure({ fresh: !query.cached });
+    const filter = {
+      search: query.q,
+      kind: query.kind && query.kind !== 'all' ? query.kind : undefined,
+      group: query.applicationId,
+      statuses:
+        query.status === 'active'
+          ? ['running', 'waiting', 'unknown']
+          : query.status && query.status !== 'all' && query.status !== 'attention'
+            ? [query.status]
+            : undefined,
+      attention: query.status === 'attention' ? true : undefined,
+      hasGroup: query.scope && query.scope !== 'all' ? query.scope === 'apps' : undefined,
+    };
+    const metadata = await store.query({ ...filter, limit: 0 });
+    const fingerprint = hash([
+      path.resolve(projectRoot),
+      query.kind ?? 'all',
+      query.status ?? 'all',
+      query.applicationId ?? '',
+      query.q ?? '',
+      query.scope ?? 'all',
+      metadata.generation,
+    ]);
+    let offset = 0;
+    if (query.cursor) {
+      try {
+        if (query.cursor.length > 8192) throw new Error();
+        const parsed = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8'));
+        if (
+          parsed.schema !== 'comet.dashboard.application-cursor.v1' ||
+          !Number.isSafeInteger(parsed.offset) ||
+          parsed.offset < 0 ||
+          parsed.offset > metadata.total
+        )
+          throw new Error();
+        if (parsed.fingerprint !== fingerprint)
+          throw new DashboardApplicationQueryError(
+            '运行记录已变化，请重新读取当前页',
+            409,
+            'STALE_APPLICATION_CURSOR',
+          );
+        offset = parsed.offset;
+      } catch (error) {
+        if (error instanceof DashboardApplicationQueryError) throw error;
+        throw new DashboardApplicationQueryError('分页游标无效');
+      }
+    }
+    const result = await store.query<ApplicationReference>({ ...filter, limit: pageSize, offset });
+    return {
+      items: result.items.map((r) => r.summary),
+      total: result.total,
+      nextCursor:
+        offset + pageSize < result.total
+          ? Buffer.from(
+              JSON.stringify({
+                schema: 'comet.dashboard.application-cursor.v1',
+                fingerprint,
+                offset: offset + pageSize,
+              }),
+            ).toString('base64url')
+          : null,
+      fingerprint,
+      readAt: new Date().toISOString(),
+      errors: result.errors.map((message) => ({ source: 'application' as const, message })),
+      indexing: result.indexing,
+      indexedCount: result.indexedCount,
+      sourceCount: result.sourceCount,
+    };
+  } catch (error) {
+    if (error instanceof DashboardApplicationQueryError) throw error;
+  }
   const size = limit(query.limit),
     data = await dataset(projectRoot),
     search = (query.q ?? '').toLocaleLowerCase();
@@ -401,6 +889,9 @@ export async function collectDashboardApplicationRunPage(
       (s) =>
         (!query.kind || query.kind === 'all' || s.kind === query.kind) &&
         (!query.applicationId || s.applicationId === query.applicationId) &&
+        (!query.scope ||
+          query.scope === 'all' ||
+          (query.scope === 'apps' ? Boolean(s.applicationId) : !s.applicationId)) &&
         `${s.title} ${s.goal ?? ''} ${s.runId ?? ''} ${s.application?.version ?? ''}`
           .toLocaleLowerCase()
           .includes(search) &&
@@ -420,6 +911,7 @@ export async function collectDashboardApplicationRunPage(
     query.status ?? 'all',
     query.applicationId ?? '',
     search,
+    query.scope ?? 'all',
     items.map((s) => [s.locator, s.revision, s.status, s.error?.code]),
     data.errors,
   ]);
@@ -725,8 +1217,8 @@ async function evidence(
     const ref = path.relative(projectRoot, model.report).replaceAll('\\', '/');
     const match = /^\.comet\/eval\/runs\/([^/]+)\/(?:summary\.md|summary\.html)$/u.exec(ref);
     if (match) {
-      const runs = await collectEvalRuns(projectRoot).catch(() => []);
-      if (runs.some((r) => r.id === match[1])) model.evalRunId = match[1];
+      const linked = await readEvalRun(projectRoot, match[1]).catch(() => null);
+      if (linked) model.evalRunId = match[1];
     }
   }
   const other: DashboardApplicationEvidence[] = available
@@ -776,7 +1268,9 @@ export async function collectDashboardApplicationDeliverySource(
 ) {
   if (!/^(?:creator|application):[a-f0-9]{64}$/u.test(locator))
     throw new DashboardApplicationQueryError('运行记录定位信息无效');
-  const entry = (await dataset(projectRoot)).entries.find((e) => e.summary.locator === locator);
+  const entry = (await detailDataset(projectRoot, locator)).entries.find(
+    (e) => e.summary.locator === locator,
+  );
   if (!entry) throw new DashboardApplicationQueryError('运行记录不存在', 404);
   if (
     entry.archive ||
@@ -824,7 +1318,7 @@ export async function collectDashboardApplicationRunDetail(
 ): Promise<DashboardApplicationRunDetail | null> {
   if (!/^(?:creator|application):[a-f0-9]{64}$/u.test(locator))
     throw new DashboardApplicationQueryError('运行记录定位信息无效');
-  const data = await dataset(projectRoot);
+  const data = await detailDataset(projectRoot, locator);
   const entry = data.entries.find(
     (e) =>
       e.summary.locator === locator ||
@@ -986,6 +1480,13 @@ export async function collectDashboardApplicationRunDetail(
     }
   }
   const proof = await evidence(projectRoot, entry, data.entries, material);
+  if (data.indexing && !entry.creator) {
+    for (const item of proof.evidence)
+      if (item.status === 'not-recorded' && item.kind !== 'host') {
+        item.status = 'unavailable';
+        item.summary = '关联创作记录仍在同步，请稍后刷新。';
+      }
+  }
   const result: DashboardApplicationRunDetail = {
     ...empty,
     ...proof,

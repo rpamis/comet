@@ -19,10 +19,18 @@ export interface FileRuntimeStoreRun<T extends RuntimeRecord> {
   error: { code: string; message: string } | null;
 }
 
+export interface FileRuntimeStoreRunSource {
+  storageKey: string;
+  runId: string | null;
+  fingerprint: string;
+  error: { code: string; message: string } | null;
+}
+
 /** 枚举只发现身份；每条记录仍通过原 Store 校验，不迁移、恢复或写入。 */
-export async function listFileRuntimeStoreRuns<T extends RuntimeRecord = RuntimeRecord>(
+async function discoverFileRuntimeStoreRunSources(
   options: FileRuntimeStoreOptions,
-): Promise<FileRuntimeStoreRun<T>[]> {
+  withFingerprint: boolean,
+): Promise<FileRuntimeStoreRunSource[]> {
   const root = path.resolve(options.rootDir);
   const volume = path.parse(root).root;
   const rootRef = path.relative(volume, root).replaceAll('\\', '/');
@@ -37,8 +45,16 @@ export async function listFileRuntimeStoreRuns<T extends RuntimeRecord = Runtime
     ).exists
   )
     return [];
-  const store = createFileRuntimeStore<T>(options);
-  const result: FileRuntimeStoreRun<T>[] = [];
+  const result: FileRuntimeStoreRunSource[] = [];
+  const stamp = async (ref: string) => {
+    const inspection = await inspectProtectedProjectPath(root, ref, {
+      label: 'RuntimeStore source',
+      expected: 'file',
+    });
+    if (!inspection.exists) return null;
+    const stat = await fs.lstat(inspection.target);
+    return [ref, stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino, stat.dev];
+  };
   const json = async (ref: string) =>
     JSON.parse(
       new TextDecoder('utf-8', { fatal: true }).decode(
@@ -98,14 +114,58 @@ export async function listFileRuntimeStoreRuns<T extends RuntimeRecord = Runtime
       )
         throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 记录身份与目录不匹配');
       runId = identity;
-      const record = await store.read(runId);
-      if (!record)
-        throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 当前记录缺失');
-      result.push({ storageKey: entry.name, runId, record, error: null });
+      const refs = !withFingerprint
+        ? []
+        : entry.isFile()
+          ? [entry.name, `.runtime-store-v2/${entry.name}/checkpoint.json`]
+          : (await fs.readdir(path.join(root, entry.name)))
+              .filter((name) => /^[0-9]{16}\.json$/u.test(name))
+              .sort()
+              .map((name) => `${entry.name}/${name}`);
+      const fingerprint = createHash('sha256')
+        .update(JSON.stringify(await Promise.all(refs.map(stamp))))
+        .digest('hex');
+      result.push({ storageKey: entry.name, runId, fingerprint, error: null });
     } catch (error) {
       result.push({
         storageKey: entry.name,
         runId,
+        fingerprint: JSON.stringify(
+          await fs
+            .lstat(path.join(root, entry.name))
+            .then((stat) => [stat.size, stat.mtimeMs, stat.ctimeMs, stat.ino])
+            .catch(() => null),
+        ),
+        error: {
+          code: error instanceof RuntimeProtocolError ? error.code : 'STORE_UNREADABLE',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+  return result;
+}
+
+/** Read each discovered Run through the original validating Store. */
+export async function listFileRuntimeStoreRuns<T extends RuntimeRecord = RuntimeRecord>(
+  options: FileRuntimeStoreOptions,
+): Promise<FileRuntimeStoreRun<T>[]> {
+  const store = createFileRuntimeStore<T>(options);
+  const result: FileRuntimeStoreRun<T>[] = [];
+  for (const source of await discoverFileRuntimeStoreRunSources(options, false)) {
+    const identity = { storageKey: source.storageKey, runId: source.runId, error: source.error };
+    if (source.error || !source.runId) {
+      result.push({ ...identity, record: null });
+      continue;
+    }
+    try {
+      const record = await store.read(source.runId);
+      if (!record)
+        throw new RuntimeProtocolError('STORE_CORRUPT_RECORD', 'RuntimeStore 当前记录缺失');
+      result.push({ ...identity, record });
+    } catch (error) {
+      result.push({
+        ...identity,
         record: null,
         error: {
           code: error instanceof RuntimeProtocolError ? error.code : 'STORE_UNREADABLE',
@@ -115,4 +175,10 @@ export async function listFileRuntimeStoreRuns<T extends RuntimeRecord = Runtime
     }
   }
   return result;
+}
+
+export async function listFileRuntimeStoreRunSources(
+  options: FileRuntimeStoreOptions,
+): Promise<FileRuntimeStoreRunSource[]> {
+  return discoverFileRuntimeStoreRunSources(options, true);
 }

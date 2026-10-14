@@ -136,6 +136,7 @@ export function AnyWorkflowPanel({
     [rosterLoading, setRosterLoading] = useState(false);
   const [goalExpanded, setGoalExpanded] = useDashboardViewState(viewScope, 'goalExpanded', false);
   const pageRequest = useRef(null),
+    latestRefreshToken = useRef(refreshToken),
     detailRequest = useRef(null),
     parentStack = useRef([]),
     anchor = useRef(null),
@@ -197,9 +198,9 @@ export function AnyWorkflowPanel({
     return () => clearTimeout(timer);
   }, [query]);
   useEffect(() => {
-    const timer = setInterval(() => setTick((v) => v + 1), 30000);
+    const timer = setInterval(() => setTick((v) => v + 1), page?.indexing ? 1000 : 30000);
     return () => clearInterval(timer);
-  }, []);
+  }, [page?.indexing]);
   useEffect(() => {
     if (
       !demo &&
@@ -220,7 +221,13 @@ export function AnyWorkflowPanel({
     const controller = new AbortController();
     pageRequest.current = controller;
     setPageLoading(!pageRef.current);
-    request('application-runs', { q: search, status: 'all', limit: 100 }, controller.signal)
+    const forceRefresh = latestRefreshToken.current !== refreshToken;
+    latestRefreshToken.current = refreshToken;
+    request(
+      'application-runs',
+      { q: search, scope, status: 'all', limit: 100, ...(forceRefresh ? { refresh: 1 } : {}) },
+      controller.signal,
+    )
       .then((next) => {
         if (controller.signal.aborted) return;
         setPageError(null);
@@ -238,7 +245,7 @@ export function AnyWorkflowPanel({
         if (!controller.signal.aborted) setPageLoading(false);
       });
     return () => controller.abort();
-  }, [request, search, filter, refreshToken, tick]);
+  }, [request, search, scope, filter, refreshToken, tick]);
   useEffect(() => {
     if (!locator) return;
     detailRequest.current?.abort();
@@ -505,6 +512,7 @@ export function AnyWorkflowPanel({
     try {
       const next = await request('application-runs', {
         q: search,
+        scope,
         status: 'all',
         limit: 100,
         cursor: page.nextCursor,
@@ -621,6 +629,11 @@ export function AnyWorkflowPanel({
             </div>
           ) : (
             <div className="any-entity-list">
+              {page?.indexing && (
+                <p role="status">
+                  {t('正在同步列表')} · {page.indexedCount} / {page.sourceCount}
+                </p>
+              )}
               {[
                 ['draft', '早期创作'],
                 ['apps', '已生成应用'],
@@ -677,7 +690,7 @@ export function AnyWorkflowPanel({
                   )
                 );
               })}
-              {!visibleGroups.length && (
+              {!visibleGroups.length && !page?.indexing && (
                 <Empty
                   description={
                     pageError

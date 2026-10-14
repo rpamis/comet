@@ -91,6 +91,11 @@ import { NativeWorkflowPanel } from './native-workflow-panel.jsx';
 import { AnyWorkflowPanel } from './any-workflow-panel.jsx';
 import { EvalPanel } from './eval-panel.jsx';
 import { EvalSettings } from './eval-settings.jsx';
+import {
+  DashboardAppearanceContext,
+  DashboardAppearanceSettings,
+  useDashboardFontScale,
+} from './dashboard-appearance.jsx';
 import { DashboardVersion, DashboardUpdateModal, useDashboardUpdate } from './dashboard-update.jsx';
 import { WorkflowPhaseTrack } from './phase-progress-indicator.jsx';
 import {
@@ -446,6 +451,20 @@ export function App({
 }) {
   const language = useDashboardLanguage();
   const { theme, toggle: toggleTheme } = useTheme({ embedded, themeRoot });
+  const appearance = useDashboardFontScale({ embedded, themeRoot });
+  const scaledFontTokens = useMemo(() => {
+    if (appearance.fontScale === 100) return {};
+    const original = antdTheme.getDesignToken({
+      token: { fontSize: 14, fontSizeHeading2: 26, fontSizeHeading3: 18, fontSizeHeading4: 15 },
+    });
+    return Object.fromEntries(
+      Object.entries(original)
+        .filter(
+          ([key, value]) => /^(?:fontSize|controlHeight)/u.test(key) && typeof value === 'number',
+        )
+        .map(([key, value]) => [key, (value * appearance.fontScale) / 100]),
+    );
+  }, [appearance.fontScale]);
 
   useEffect(() => {
     if (embedded) return undefined;
@@ -486,21 +505,24 @@ export function App({
           fontSizeHeading2: 26,
           fontSizeHeading3: 18,
           fontSizeHeading4: 15,
+          ...scaledFontTokens,
         },
       }}
     >
-      <DashboardPortalProvider container={portalContainer}>
-        <AntApp>
-          <DashboardApp
-            theme={theme}
-            onToggleTheme={toggleTheme}
-            forceDemo={forceDemo}
-            demoPluginPages={demoPluginPages}
-            embedded={embedded}
-            portalContainer={portalContainer}
-          />
-        </AntApp>
-      </DashboardPortalProvider>
+      <DashboardAppearanceContext.Provider value={appearance}>
+        <DashboardPortalProvider container={portalContainer}>
+          <AntApp>
+            <DashboardApp
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              forceDemo={forceDemo}
+              demoPluginPages={demoPluginPages}
+              embedded={embedded}
+              portalContainer={portalContainer}
+            />
+          </AntApp>
+        </DashboardPortalProvider>
+      </DashboardAppearanceContext.Provider>
     </ConfigProvider>
   );
 }
@@ -1029,7 +1051,13 @@ function DashboardApp({
   }, [demoPluginPages, pluginSelection, useDemo]);
 
   useEffect(() => {
-    if (!useDemo || !settingsOpen || !settingsSection || settingsSection === 'comet.eval')
+    if (
+      !useDemo ||
+      !settingsOpen ||
+      !settingsSection ||
+      settingsSection === 'comet.eval' ||
+      settingsSection === 'comet.appearance'
+    )
       return undefined;
     let cancelled = false;
     setSettingsLoading(true);
@@ -1071,7 +1099,8 @@ function DashboardApp({
       !activeProjectId ||
       !settingsOpen ||
       !settingsSection ||
-      settingsSection === 'comet.eval'
+      settingsSection === 'comet.eval' ||
+      settingsSection === 'comet.appearance'
     )
       return undefined;
     let cancelled = false;
@@ -1947,7 +1976,8 @@ function DashboardApp({
           error={settingsError}
           onClose={() => setSettingsOpen(false)}
           onSection={(pluginId) => {
-            if (pluginId === 'comet.eval') setSettingsLoading(false);
+            if (pluginId === 'comet.eval' || pluginId === 'comet.appearance')
+              setSettingsLoading(false);
             setSettingsSection(pluginId);
             setSettingsPage(
               useDemo && pluginId !== 'comet.config'
@@ -2314,9 +2344,11 @@ function Dashboard({
             }
             center={
               isEmptyView && summaryFilter ? (
-                <Empty
-                  description={t(summaryData.error ? '统计读取失败' : '没有符合当前筛选的变更')}
-                />
+                <section className="dashboard-workspace-empty-panel">
+                  <Empty
+                    description={t(summaryData.error ? '统计读取失败' : '没有符合当前筛选的变更')}
+                  />
+                </section>
               ) : isEmptyView ? (
                 <ClassicWorkspaceEmptyDetail snapshot={snapshot} tab={tab} onTab={onTab} />
               ) : isLoadingView ? (
@@ -4782,7 +4814,15 @@ function DashboardSettingsOverlay({
       width={920}
       open={open}
       title={t('Comet 设置')}
-      subtitle={readOnly ? t('只读预览') : section === 'comet.eval' ? t('本机用户') : t('当前项目')}
+      subtitle={
+        section === 'comet.appearance'
+          ? t(readOnly ? '当前预览' : '此浏览器')
+          : readOnly
+            ? t('只读预览')
+            : section === 'comet.eval'
+              ? t('本机用户')
+              : t('当前项目')
+      }
       description={t('管理记忆、知识、工作流与 Eval 配置')}
       onClose={onClose}
       footer={
@@ -4837,6 +4877,7 @@ function DashboardSettingsPage({
     pages.filter((item) => !item.pending).map((item) => item.pluginId),
   );
   const settingsPages = [
+    { key: 'comet.appearance', icon: <SunOutlined />, label: t('外观') },
     {
       key: 'comet.personal-memory',
       icon: <UserOutlined />,
@@ -4866,12 +4907,14 @@ function DashboardSettingsPage({
           />
         </aside>
         <section
-          className={`dashboard-settings-main${readOnly ? ' is-read-only' : ''}`}
+          className={`dashboard-settings-main${readOnly && section !== 'comet.appearance' ? ' is-read-only' : ''}`}
           aria-live="polite"
-          aria-disabled={readOnly || undefined}
+          aria-disabled={(readOnly && section !== 'comet.appearance') || undefined}
         >
           <div className="dashboard-settings-content">
-            {section === 'comet.eval' ? (
+            {section === 'comet.appearance' ? (
+              <DashboardAppearanceSettings />
+            ) : section === 'comet.eval' ? (
               active ? (
                 <EvalSettings readOnly={evalReadOnly} onSaved={onEvalSaved} />
               ) : null

@@ -163,6 +163,10 @@ export async function readEvalArchiveFile(
     throw new Error(`归档文件内容已变化：${file}`);
   return bytes;
 }
+export async function readEvalArchiveManifest(project: string, id: string): Promise<EvalArchive> {
+  return manifest(project, id);
+}
+
 export async function readEvalArchive(
   project: string,
   id: string,

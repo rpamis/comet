@@ -125,6 +125,7 @@ body {
 .dashboard-workbench {
   background: var(--color-surface);
   font-family: var(--font-ui);
+  font-size: calc(14px * var(--dashboard-font-scale, 1));
   font-kerning: normal;
   line-height: 1.55;
   text-wrap: pretty;
@@ -1276,6 +1277,53 @@ body {
 
 .dashboard-settings-main {
   min-width: 0;
+}
+
+.dashboard-font-size-heading,
+.dashboard-font-size-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.dashboard-font-size-heading h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.dashboard-font-size-heading output {
+  color: var(--color-fg-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-font-size-control {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 0 26px;
+}
+
+.dashboard-font-size-small {
+  font-size: 12px;
+}
+.dashboard-font-size-large {
+  font-size: 22px;
+}
+.dashboard-font-size-control .ant-slider {
+  margin-inline: 8px;
+}
+.dashboard-font-size-actions {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.dashboard-font-size-actions .ant-btn {
+  white-space: normal;
+  height: auto;
+  min-height: 32px;
 }
 
 .dashboard-settings-stack {
@@ -5849,6 +5897,19 @@ body {
   box-shadow: var(--shadow-card);
 }
 
+.dashboard-workspace-empty-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  height: 100%;
+  padding: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 15px;
+  background: var(--color-bg);
+  box-shadow: var(--shadow-card);
+}
+
 .native-change-detail-empty,
 .classic-change-detail-empty {
   display: flex;
@@ -7907,7 +7968,7 @@ body {
 }
 
 .dashboard-settings-modal .dashboard-settings-shell {
-  grid-template-columns: 190px minmax(0, 1fr);
+  grid-template-columns: calc(190px * var(--dashboard-font-scale, 1)) minmax(0, 1fr);
   align-items: stretch;
   width: 100%;
   height: 100%;
@@ -8132,11 +8193,18 @@ body {
 
   .dashboard-settings-modal .dashboard-settings-navigation .ant-menu {
     display: flex;
+    width: max-content;
+    min-width: 100%;
   }
 
   .dashboard-settings-modal .dashboard-settings-navigation .ant-menu-item {
-    flex: 1;
+    flex: 0 0 auto;
+    width: auto;
     white-space: nowrap;
+  }
+
+  .dashboard-settings-modal .dashboard-settings-navigation {
+    overflow-x: auto;
   }
 
   .dashboard-settings-modal-title p,
@@ -8437,9 +8505,9 @@ body {
 }
 
 .dashboard-settings-modal .dashboard-settings-navigation .ant-menu-item {
-  height: 40px;
+  height: calc(40px * var(--dashboard-font-scale, 1));
   font-size: 14px;
-  line-height: 40px;
+  line-height: calc(40px * var(--dashboard-font-scale, 1));
 }
 
 .dashboard-settings-modal .dashboard-settings-section-head {
@@ -8455,6 +8523,10 @@ body {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.dashboard-settings-modal .dashboard-appearance-settings .dashboard-settings-section-head {
+  display: block;
 }
 
 .dashboard-settings-modal .dashboard-settings-panel-head {

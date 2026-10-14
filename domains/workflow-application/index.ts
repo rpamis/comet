@@ -10,6 +10,8 @@ export {
 } from './application.js';
 export {
   listWorkflowApplicationRunRecords,
+  listWorkflowApplicationRunSources,
+  readWorkflowApplicationRunObservation,
   inspectWorkflowApplicationMaterial,
   inspectWorkflowApplicationPackage,
 } from './run-observation.js';

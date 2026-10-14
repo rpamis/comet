@@ -229,6 +229,10 @@ async function baselineMap(project: string): Promise<Record<string, string>> {
     ? (object(data.baselines) as Record<string, string>)
     : {};
 }
+
+export async function readEvalBaselines(project: string): Promise<Record<string, string>> {
+  return baselineMap(project);
+}
 function normalizeProgress(value: Json | null, id: string): EvalRunDetail['progress'] {
   const phases = ['preparing', 'generating', 'running', 'judging', 'finalizing'] as const;
   const phase = phases.find((item) => item === value?.phase);

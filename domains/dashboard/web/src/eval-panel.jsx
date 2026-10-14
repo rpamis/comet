@@ -152,7 +152,9 @@ function RunStatus({ run }) {
           {conclusionLabels[run.conclusion]}
         </Tag>
       )}
-      {run.config?.retrySourceRunId && <Tag color="blue">{t('失败重跑')}</Tag>}
+      {(run.retrySourceRunId ?? run.config?.retrySourceRunId) && (
+        <Tag color="blue">{t('失败重跑')}</Tag>
+      )}
     </Space>
   );
 }
@@ -190,6 +192,9 @@ export function EvalPanel({
   const base = `/api/dashboard/projects/${encodeURIComponent(projectId)}/eval`;
   const { message, modal } = App.useApp();
   const [runs, setRuns] = useState([]);
+  const [runPageInfo, setRunPageInfo] = useState(null);
+  const [comparisonRuns, setComparisonRuns] = useState([]);
+  const [detailRefreshRevision, setDetailRefreshRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [mode, setMode] = useState(() =>
@@ -222,9 +227,11 @@ export function EvalPanel({
   const active = useRef(true);
   const selectedRef = useRef(selectedId);
   const inFlight = useRef(false);
+  const latestRefreshToken = useRef(refreshToken);
   selectedRef.current = selectedId;
   const refresh = useCallback(
     async (manual = false) => {
+      if (manual) setDetailRefreshRevision((value) => value + 1);
       if ((readOnly && !demo) || inFlight.current) return;
       inFlight.current = true;
       const current = new AbortController();
@@ -233,45 +240,54 @@ export function EvalPanel({
       try {
         const data = await readJson(
           base,
-          `/runs${query ? `?q=${encodeURIComponent(query)}` : ''}`,
+          `/runs?${new URLSearchParams({ q: query ?? '', status: runFilter, limit: '15', offset: String((runPage - 1) * 15), ...(manual ? { refresh: '1' } : {}) })}`,
           { signal: current.signal },
         );
         if (!active.current || current.signal.aborted) return;
         setRuns(data.items ?? []);
+        setRunPageInfo(typeof data.total === 'number' ? data : null);
         setError(null);
-        const id = selectedRef.current;
-        if (id) {
-          const run = await readJson(base, `/runs/${encodeURIComponent(id)}`, {
-            signal: current.signal,
-          });
-          if (active.current && selectedRef.current === id) setDetail(run);
-        }
       } catch (err) {
         if (active.current && err.name !== 'AbortError') setError(err.message);
       } finally {
-        inFlight.current = false;
-        if (active.current) setLoading(false);
+        if (controller.current === current) {
+          inFlight.current = false;
+          if (active.current) setLoading(false);
+        }
       }
     },
-    [base, query, readOnly, demo, readJson],
+    [base, query, runFilter, runPage, readOnly, demo, readJson],
   );
   useEffect(() => {
     active.current = true;
     void refresh();
-    const timer = setInterval(() => {
-      if (!document.hidden) void refresh();
-    }, 3000);
+    const timer = setInterval(
+      () => {
+        if (!document.hidden) void refresh();
+      },
+      runPageInfo?.indexing
+        ? 1000
+        : (runPageInfo?.counts?.active ??
+              runs.filter((run) => !terminal(run.executionStatus)).length) > 0
+          ? 3000
+          : 30000,
+    );
     return () => {
       active.current = false;
       controller.current?.abort();
+      inFlight.current = false;
       artifactRequest.current?.abort();
       for (const request of downloadRequests.current.values()) request.abort();
       downloadRequests.current.clear();
       clearInterval(timer);
     };
-  }, [refresh]);
+  }, [refresh, runPageInfo?.indexing, runPageInfo?.counts?.active]);
+  useEffect(() => setRunPage(1), [query]);
   useEffect(() => {
-    if (refreshToken) void refresh(true);
+    if (latestRefreshToken.current !== refreshToken) {
+      latestRefreshToken.current = refreshToken;
+      void refresh(true);
+    }
   }, [refreshToken, refresh]);
   useEffect(() => {
     if (navigation.view !== 'eval' || (navigation.projectId && navigation.projectId !== projectId))
@@ -284,27 +300,81 @@ export function EvalPanel({
       setComparison(null);
       setCaseDetail(null);
       setArtifact(null);
-      if (runId) void refresh();
     }
     setMode(runId ? 'detail' : navigation.mode === 'new' ? 'new' : 'list');
   }, [navigation, projectId, refresh]);
   const openRun = async (run) => {
     setSelectedId(run.id);
     selectedRef.current = run.id;
-    setDetail(run);
+    setDetail(null);
     setMode('detail');
     setComparison(null);
     if (!demo) locationFor(projectId, run.id);
-    setDetailLoading(true);
-    try {
-      const value = await readJson(base, `/runs/${encodeURIComponent(run.id)}`);
-      if (active.current && selectedRef.current === run.id) setDetail(value);
-    } catch (err) {
-      message.error(err.message);
-    } finally {
-      if (active.current) setDetailLoading(false);
-    }
   };
+  useEffect(() => {
+    if (mode !== 'detail' || !selectedId) return undefined;
+    const current = new AbortController();
+    let pending = false;
+    const update = async () => {
+      if (pending) return;
+      pending = true;
+      if (!detail) setDetailLoading(true);
+      try {
+        const value = await readJson(base, `/runs/${encodeURIComponent(selectedId)}`, {
+          signal: current.signal,
+        });
+        if (!current.signal.aborted && selectedRef.current === selectedId) setDetail(value);
+      } catch (error) {
+        if (!current.signal.aborted) message.error(error.message);
+      } finally {
+        pending = false;
+        if (!current.signal.aborted) setDetailLoading(false);
+      }
+    };
+    void update();
+    const timer = terminal(detail?.executionStatus)
+      ? null
+      : setInterval(() => {
+          if (!document.hidden) void update();
+        }, 3000);
+    return () => {
+      current.abort();
+      if (timer) clearInterval(timer);
+    };
+  }, [base, mode, selectedId, detail?.executionStatus, detailRefreshRevision, readJson]);
+  useEffect(() => {
+    if (demo || mode !== 'detail' || !detail?.baselineScope) {
+      setComparisonRuns([]);
+      return undefined;
+    }
+    const current = new AbortController();
+    const load = async (filter) => {
+      const values = [];
+      let offset = 0;
+      for (;;) {
+        const result = await readJson(
+          base,
+          `/runs?${new URLSearchParams({ ...filter, limit: '100', offset: String(offset) })}`,
+          { signal: current.signal },
+        );
+        values.push(...(result.items ?? []));
+        if (
+          result.nextOffset === null ||
+          result.nextOffset === undefined ||
+          result.nextOffset <= offset
+        )
+          break;
+        offset = result.nextOffset;
+      }
+      return values;
+    };
+    void Promise.all([load({ baselineScope: detail.baselineScope }), load({ status: 'baseline' })])
+      .then((values) => {
+        if (!current.signal.aborted) setComparisonRuns(values.flat());
+      })
+      .catch(() => {});
+    return () => current.abort();
+  }, [base, demo, mode, detail?.baselineScope, readJson]);
   const back = () => {
     setMode('list');
     setSelectedId(null);
@@ -574,28 +644,39 @@ export function EvalPanel({
         {run.baselineRunId ? t('替换默认基线') : t('设为基线')}
       </Button>
     );
-  const filtered = runs.filter((run) =>
-    runFilter === 'active'
-      ? !terminal(run.executionStatus)
-      : runFilter === 'finished'
-        ? terminal(run.executionStatus)
-        : runFilter === 'baseline'
-          ? run.isBaseline
-          : true,
-  );
+  const filtered = runPageInfo
+    ? runs
+    : runs.filter((run) =>
+        runFilter === 'active'
+          ? !terminal(run.executionStatus)
+          : runFilter === 'finished'
+            ? terminal(run.executionStatus)
+            : runFilter === 'baseline'
+              ? run.isBaseline
+              : true,
+      );
   const list = (
     <div className="dashboard-eval-stack">
       <div className="dashboard-eval-summary-band" aria-label={t('评估记录统计')}>
-        <Metric label={t('运行记录')} value={runs.length} />
+        <Metric label={t('运行记录')} value={runPageInfo?.counts?.all ?? runs.length} />
         <Metric
           label={t('进行中')}
-          value={runs.filter((run) => !terminal(run.executionStatus)).length}
+          value={
+            runPageInfo?.counts?.active ??
+            runs.filter((run) => !terminal(run.executionStatus)).length
+          }
         />
         <Metric
           label={t('已结束 / 历史')}
-          value={runs.filter((run) => terminal(run.executionStatus)).length}
+          value={
+            runPageInfo?.counts?.finished ??
+            runs.filter((run) => terminal(run.executionStatus)).length
+          }
         />
-        <Metric label={t('基线组')} value={runs.filter((run) => run.isBaseline).length} />
+        <Metric
+          label={t('基线组')}
+          value={runPageInfo?.counts?.baseline ?? runs.filter((run) => run.isBaseline).length}
+        />
       </div>
       <div className="dashboard-eval-heading dashboard-eval-list-toolbar">
         <Segmented
@@ -647,8 +728,24 @@ export function EvalPanel({
           </Button>
         </Space>
       </div>
-      {!loading && runs.length === 0 && <EvalFirstUse />}
-      {!loading && !filtered.length ? (
+      {runPageInfo?.indexing && (
+        <Alert
+          type="info"
+          showIcon
+          message={t('正在同步列表')}
+          description={`${runPageInfo.indexedCount} / ${runPageInfo.sourceCount}`}
+        />
+      )}
+      {runPageInfo?.errors?.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('最新数据同步失败，当前显示缓存')}
+          description={runPageInfo.errors.map(t).join('\n')}
+        />
+      )}
+      {!loading && !runPageInfo?.indexing && runs.length === 0 && <EvalFirstUse />}
+      {!loading && !runPageInfo?.indexing && !filtered.length ? (
         <Empty description={runs.length ? t('没有符合筛选条件的记录') : t('暂无评估记录')}>
           {!runs.length && (
             <Paragraph type="secondary">
@@ -674,7 +771,11 @@ export function EvalPanel({
           pagination={{
             ...evalPagination,
             pageSize: 15,
-            current: Math.min(runPage, Math.max(1, Math.ceil(filtered.length / 15))),
+            current: Math.min(
+              runPage,
+              Math.max(1, Math.ceil((runPageInfo?.total ?? filtered.length) / 15)),
+            ),
+            total: runPageInfo?.total ?? filtered.length,
             onChange: setRunPage,
           }}
           size="small"
@@ -737,9 +838,9 @@ export function EvalPanel({
               responsive: ['lg'],
               render: (_, run) => (
                 <span>
-                  {run.config.model ?? run.cases[0]?.model ?? '—'}
+                  {run.model ?? run.config?.model ?? run.cases?.[0]?.model ?? '—'}
                   <br />
-                  <Text type="secondary">{run.config.agent ?? '—'}</Text>
+                  <Text type="secondary">{run.agent ?? run.config?.agent ?? '—'}</Text>
                 </span>
               ),
             },
@@ -749,8 +850,11 @@ export function EvalPanel({
       )}
     </div>
   );
+  const comparisonPool = [
+    ...new Map([...runs, ...comparisonRuns].map((run) => [run.id, run])).values(),
+  ];
   const candidates = detail
-    ? runs.filter(
+    ? comparisonPool.filter(
         (run) =>
           run.id !== detail.id &&
           run.baselineEligible &&
@@ -760,7 +864,7 @@ export function EvalPanel({
     : [];
   const defaultReference = detail?.boundBaselineRunId || detail?.baselineRunId;
   const otherBaselines = detail
-    ? runs.filter(
+    ? comparisonPool.filter(
         (run) =>
           run.id !== detail.id &&
           run.isBaseline &&

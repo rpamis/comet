@@ -2107,5 +2107,16 @@
   "需要的宿主能力": "Required host capabilities",
   "当前内容的模型评估": "Model evaluation for this content",
   "完整应用文件": "Complete application files",
-  "确认后将复制这些文件并写入所选平台配置。修改选项后需重新预览。": "Confirmation copies these files and writes the selected platform configuration. Preview again after changing any options."
+  "确认后将复制这些文件并写入所选平台配置。修改选项后需重新预览。": "Confirmation copies these files and writes the selected platform configuration. Preview again after changing any options.",
+  "外观": "Appearance",
+  "字体大小": "Font size",
+  "恢复默认": "Reset to default",
+  "此浏览器": "This browser",
+  "调整 Dashboard 的文字大小，所有项目沿用此浏览器的偏好。": "Adjust Dashboard text size. All projects use this browser preference.",
+  "拖动即时生效，100% 保持原有字号。": "Changes apply immediately. 100% keeps the original text sizes.",
+  "调整当前预览的文字大小，重新加载后恢复默认。": "Adjust text in this preview. Reloading restores the default size.",
+  "当前预览": "Current preview",
+  "正在同步列表": "Syncing the list",
+  "列表缓存暂不可用，当前直接读取运行记录。": "The list cache is unavailable. Run records are being read directly.",
+  "关联创作记录仍在同步，请稍后刷新。": "Related creation records are still syncing. Refresh shortly."
 }

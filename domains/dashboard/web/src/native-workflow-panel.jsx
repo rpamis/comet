@@ -425,7 +425,11 @@ export function NativeWorkflowPanel({
         }
         center={
           isEmptyView && summaryFilter ? (
-            <Empty description={t(summaryData.error ? '统计读取失败' : '没有符合当前筛选的变更')} />
+            <section className="dashboard-workspace-empty-panel">
+              <Empty
+                description={t(summaryData.error ? '统计读取失败' : '没有符合当前筛选的变更')}
+              />
+            </section>
           ) : isEmptyView ? (
             <NativeEmptyChangeDetail
               native={native}

@@ -92,6 +92,18 @@ export function listCreatorRuns(projectRoot: string): Promise<{
 }[]>;
 
 // @public (undocumented)
+export function listCreatorRunSources(projectRoot: string): Promise<{
+    rootDir: string;
+    storageKey: string;
+    runId: string | null;
+    fingerprint: string;
+    error: {
+        code: string;
+        message: string;
+    } | null;
+}[]>;
+
+// @public (undocumented)
 export function readCreatorRunRecord(projectRoot: string, runId: string): Promise<WorkflowRun | null>;
 
 // (No @packageDocumentation comment for this package)

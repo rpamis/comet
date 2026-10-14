@@ -275,6 +275,79 @@ test.describe('Dashboard Eval', () => {
     await page.goto('/');
     await page.getByRole('menuitem', { name: '评估 Eval' }).click();
   });
+  test('uses summary-only server pages and stops frequent polling for completed history', async ({
+    page,
+  }) => {
+    const { config: _config, cases: _cases, artifacts: _artifacts, ...base } = run;
+    const summaries = Array.from({ length: 17 }, (_, i) => ({
+      ...base,
+      id: i === 0 ? 'eval-one' : `eval-${i}`,
+      target: { ...run.target, name: `writer-${i}` },
+      model: 'model-a',
+      agent: 'codex',
+    }));
+    const requests: URL[] = [];
+    await page.route('**/eval/runs?*', (route) => {
+      const url = new URL(route.request().url());
+      requests.push(url);
+      const offset = Number(url.searchParams.get('offset') ?? 0),
+        limit = Number(url.searchParams.get('limit') ?? 15);
+      return route.fulfill({
+        json: {
+          items: summaries.slice(offset, offset + limit),
+          total: 17,
+          counts: { all: 17, active: 0, finished: 17, baseline: 0 },
+          indexing: false,
+          indexedCount: 17,
+          sourceCount: 17,
+          nextOffset: offset + limit < 17 ? offset + limit : null,
+        },
+      });
+    });
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'writer-0', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('cell', { name: 'model-a codex', exact: true }).first(),
+    ).toBeVisible();
+    const before = requests.length;
+    await page.waitForTimeout(3500);
+    expect(requests.length).toBe(before);
+    await page.getByRole('button', { name: '下一页', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'writer-15', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'writer-0', exact: true })).toHaveCount(0);
+    expect(
+      requests.some(
+        (url) => url.searchParams.get('offset') === '15' && url.searchParams.get('limit') === '15',
+      ),
+    ).toBe(true);
+  });
+
+  test('keeps partial indexing visible and refreshes the list when summaries become ready', async ({
+    page,
+  }) => {
+    let calls = 0;
+    const { config: _config, cases: _cases, ...summary } = run;
+    await page.route('**/eval/runs?*', (route) => {
+      calls++;
+      return route.fulfill({
+        json: {
+          items: [{ ...summary, model: 'model-a', agent: 'codex' }],
+          total: 1,
+          counts: { all: 1, active: 0, finished: 1, baseline: 0 },
+          indexing: calls < 3,
+          indexedCount: calls < 3 ? 1 : 100,
+          sourceCount: 100,
+          nextOffset: null,
+        },
+      });
+    });
+    await page.reload();
+    await expect(page.getByText('正在同步列表', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'writer', exact: true })).toBeVisible();
+    await expect(page.getByText('正在同步列表', { exact: true })).toHaveCount(0);
+    expect(calls).toBeGreaterThanOrEqual(3);
+  });
+
   test('shows project history, result evidence, SDK coverage and reports', async ({ page }) => {
     await page.getByRole('button', { name: 'writer', exact: true }).click();
     await expect(page.getByText('已知用例费用', { exact: true })).toBeVisible();
@@ -807,7 +880,7 @@ test.describe('Dashboard Eval', () => {
       isBaseline: true,
     };
     let writes = 0;
-    await page.route('**/eval/runs', (route) => route.fulfill({ json: { items: [value] } }));
+    await page.route('**/eval/runs?*', (route) => route.fulfill({ json: { items: [value] } }));
     await page.route('**/eval/runs/eval-one', (route) => route.fulfill({ json: value }));
     await page.route('**/eval/runs/eval-one/baseline/clear', (route) => {
       expect(route.request().method()).toBe('POST');
@@ -846,7 +919,7 @@ test.describe('Dashboard Eval', () => {
       },
       { ...run, id: 'eval-base', target: { ...run.target, name: 'reference' }, isBaseline: true },
     ];
-    await page.route('**/eval/runs', (route) => route.fulfill({ json: { items: values } }));
+    await page.route('**/eval/runs?*', (route) => route.fulfill({ json: { items: values } }));
     await page.reload();
     await page.getByLabel('运行筛选').getByText('进行中', { exact: true }).click();
     await expect(page.getByRole('button', { name: 'working', exact: true })).toBeVisible();
@@ -887,7 +960,7 @@ test.describe('Dashboard Eval', () => {
   test('shows first-use and Docker recovery instructions without starting a model', async ({
     page,
   }) => {
-    await page.route('**/eval/runs', (route) => route.fulfill({ json: { items: [] } }));
+    await page.route('**/eval/runs?*', (route) => route.fulfill({ json: { items: [] } }));
     await page.route('**/eval/preview', (route) =>
       route.fulfill({
         json: {
@@ -919,7 +992,7 @@ test.describe('Dashboard Eval', () => {
     page,
   }) => {
     let starts = 0;
-    await page.route('**/eval/runs', (route) => {
+    await page.route('**/eval/runs?*', (route) => {
       if (route.request().method() === 'POST') starts++;
       return route.fulfill({ json: { items: [] } });
     });
@@ -1094,7 +1167,7 @@ test.describe('Dashboard Eval', () => {
         cases: [{ ...run.cases[0], task: id }],
       }));
       let writes = 0;
-      await page.route('**/eval/runs', (route) =>
+      await page.route('**/eval/runs?*', (route) =>
         route.fulfill({ json: { items: [candidate, ...references] } }),
       );
       await page.route('**/eval/runs/eval-one', (route) => route.fulfill({ json: candidate }));
@@ -1211,7 +1284,7 @@ test.describe('Dashboard Eval', () => {
       isBaseline: id === 'eval-base',
     }));
     let baselineWrites = 0;
-    await page.route('**/eval/runs', (route) =>
+    await page.route('**/eval/runs?*', (route) =>
       route.fulfill({ json: { items: [candidate, ...references] } }),
     );
     await page.route('**/eval/runs/eval-one', (route) => route.fulfill({ json: candidate }));
@@ -1293,7 +1366,9 @@ test.describe('Dashboard Eval', () => {
       id: index === 0 ? run.id : `eval-${index + 1}`,
       target: { ...run.target, name: index === 0 ? 'writer' : `writer-${index + 1}` },
     }));
-    await page.route('**/eval/runs', (route) => route.fulfill({ json: { items: paginationRuns } }));
+    await page.route('**/eval/runs?*', (route) =>
+      route.fulfill({ json: { items: paginationRuns } }),
+    );
     await page.reload();
     const nextPage = page.getByRole('button', { name: '下一页', exact: true });
     const previousPage = page.getByRole('button', { name: '上一页', exact: true });
@@ -1441,7 +1516,7 @@ test.describe('Dashboard Eval', () => {
         },
       });
     });
-    await page.route('**/eval/runs', async (route) => {
+    await page.route(/\/eval\/runs(?:\?.*)?$/u, async (route) => {
       if (route.request().method() === 'POST') {
         launchCount++;
         const input = route.request().postDataJSON();

@@ -138,6 +138,20 @@ describe('Comet Any observations', () => {
     expect(page.items.find((i) => i.runId === 'stopped')?.status).toBe('stopped');
     expect(page.items.find((i) => i.runId === 'delivered')?.status).toBe('delivered');
   });
+  it('opens a direct application link before indexing and filters drafts separately from applications', async () => {
+    const fixture = await applicationObservationFixture(project);
+    await creatorObservationFixture(project);
+    const locator = `application:${createHash('sha256')
+      .update(JSON.stringify([fixture.identity.id, 'run-one']))
+      .digest('hex')}`;
+    expect(await collectDashboardApplicationRunDetail(project, locator)).toMatchObject({
+      runId: 'run-one',
+    });
+    const drafts = await collectDashboardApplicationRunPage(project, { scope: 'draft' });
+    expect(drafts.items.map((item) => item.runId)).toEqual(['creator-draft']);
+    const applications = await collectDashboardApplicationRunPage(project, { scope: 'apps' });
+    expect(applications.items.map((item) => item.runId)).toEqual(['run-one']);
+  });
   it('keeps fixed versions and all parallel actions, with read-only secret-free detail', async () => {
     const fixture = await applicationObservationFixture(project, { parallel: true });
     await applicationObservationFixture(project, { runId: 'old-run', version: '1.0.0' });

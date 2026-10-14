@@ -4,7 +4,10 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createFileRuntimeStore } from '../../../domains/engine/runtime.js';
-import { listFileRuntimeStoreRuns } from '../../../domains/engine/runtime-store-discovery.js';
+import {
+  listFileRuntimeStoreRuns,
+  listFileRuntimeStoreRunSources,
+} from '../../../domains/engine/runtime-store-discovery.js';
 
 describe('read-only RuntimeStore discovery', () => {
   let root: string;
@@ -15,6 +18,18 @@ describe('read-only RuntimeStore discovery', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
   const key = (id: string) => createHash('sha256').update(JSON.stringify(id)).digest('hex');
+
+  it('discovers identity and changing source fingerprints without reading full checkpoints', async () => {
+    const store = createFileRuntimeStore({ rootDir: root });
+    await store.compareAndSwap('one', null, { runId: 'one', revision: 1 });
+    const first = (await listFileRuntimeStoreRunSources({ rootDir: root }))[0];
+    expect(first.runId).toBe('one');
+    expect(first).not.toHaveProperty('record');
+    await store.compareAndSwap('one', 1, { runId: 'one', revision: 2 });
+    expect((await listFileRuntimeStoreRunSources({ rootDir: root }))[0].fingerprint).not.toBe(
+      first.fingerprint,
+    );
+  });
 
   it('discovers validated checkpoints without creating or changing files', async () => {
     const missing = path.join(root, 'missing');

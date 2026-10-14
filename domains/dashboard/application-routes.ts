@@ -21,6 +21,8 @@ export async function handleDashboardApplicationRequest(
         q: query.get('q') ?? undefined,
         limit: query.has('limit') ? Number(query.get('limit')) : undefined,
         cursor: query.get('cursor') ?? undefined,
+        cached: query.get('refresh') !== '1',
+        scope: query.get('scope') ?? undefined,
       }),
     };
   const locator = query.get('locator');
