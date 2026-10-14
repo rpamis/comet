@@ -32,6 +32,18 @@ describe('built CLI smoke', () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
   });
 
+  it('exposes edit review and returns structured errors for invalid workflow input', () => {
+    const help = runCli('edit-review', '--help');
+    expect(help.status).toBe(0);
+    expect(help.stdout).toContain('--confirmed');
+    const invalid = runCli('edit-review', 'show', 'unknown', 'demo', '--json');
+    expect(invalid.status).toBe(1);
+    expect(JSON.parse(invalid.stdout)).toMatchObject({
+      ok: false,
+      error: '工作流必须是 native 或 classic',
+    });
+  });
+
   it('returns an unhealthy Doctor result and nonzero exit through the built CLI', async () => {
     for (const json of [false, true]) {
       const result = spawnSync(

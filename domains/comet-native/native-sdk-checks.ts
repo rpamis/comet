@@ -46,6 +46,8 @@ import {
   nativeSupervisorIntegrationWorktree,
 } from './native-supervisor-workspace.js';
 import { toNativePortableText } from './native-portable-text.js';
+import { nativeCheckInputFingerprint, nativeCandidateInputGate } from './native-portable-checks.js';
+import { nativeEditReviewScope } from './native-edit-review.js';
 import type { NativePortableCheckSummary } from './native-portable-types.js';
 
 interface NativeSdkCheckResult {
@@ -73,6 +75,9 @@ interface NativeSdkCheckInterruption {
 }
 
 interface NativeSdkCheckOutcome {
+  candidateInputFingerprintGate?: string | null;
+  inputBefore?: string;
+  inputAfter?: string;
   interruption?: NativeSdkCheckInterruption;
   candidateId: string;
   checks: NativeSdkCheckResult[];
@@ -126,8 +131,48 @@ function checkPlansForAction(
     record(action.input, 'Native checks Action input').outputs,
     'Native checks inputs',
   );
-  if (!requested)
-    return nativeSdkCheckPlans(outputs['supervisor.parent.builder'] ?? outputs['build.builder']);
+  if (!requested) {
+    const initial = nativeSdkCheckPlans(
+      outputs['supervisor.parent.builder'] ?? outputs['build.builder'],
+    );
+    const index = run.actions.findIndex((entry) => entry.id === action.id);
+    const priorChecks = run.actions
+      .slice(0, index)
+      .filter(
+        (entry) =>
+          entry.stepId === 'verify.checks' && ['succeeded', 'failed'].includes(entry.status),
+      );
+    if (!priorChecks.length) return initial;
+    const plans = new Map(initial.map((plan) => [plan.id, plan]));
+    const builderIndex = run.actions
+      .slice(0, index)
+      .map(
+        (entry) =>
+          ['build.builder', 'supervisor.parent.builder'].includes(entry.stepId) &&
+          entry.status === 'succeeded',
+      )
+      .lastIndexOf(true);
+    if (run.actions.indexOf(priorChecks.at(-1)!) < builderIndex) return initial;
+    for (const prior of run.actions.slice(builderIndex + 1, index))
+      if (
+        prior.stepId === 'verify.requested-checks' &&
+        ['succeeded', 'failed'].includes(prior.status)
+      ) {
+        const previousOutputs = record(
+          record(prior.input, 'Native checks input').outputs,
+          'Native check outputs',
+        );
+        const response = record(
+          record(previousOutputs['verify.verifier'], 'Verifier request').response,
+          'Verifier response',
+        );
+        for (const plan of nativeSdkCheckPlans({ verificationChecks: response.checks }))
+          plans.set(plan.id, plan);
+      }
+    if ([...plans.values()].some((plan) => !plan.repeatable))
+      throw new Error('不可重复执行的检查不能重放；请先确认后续验证方式');
+    return [...plans.values()];
+  }
   const verifier = record(outputs['verify.verifier'], 'Native Verifier check request');
   const response = record(verifier.response, 'Native Verifier check request response');
   if (verifier.candidateId !== candidateId || response.kind !== 'request-checks') {
@@ -145,6 +190,7 @@ function checkPlansForAction(
     )
     .lastIndexOf(true);
   const priorKeys = new Set<string>();
+  const priorById = new Map<string, NativeCheckPlan>();
   for (const prior of run.actions.slice(candidateStart + 1, actionIndex)) {
     if (
       !['verify.checks', 'verify.requested-checks'].includes(prior.stepId) ||
@@ -167,7 +213,18 @@ function checkPlansForAction(
               'Prior Verifier response',
             ).checks,
           });
-    for (const plan of priorPlans) priorKeys.add(nativeCheckPlanKey(plan));
+    for (const plan of priorPlans) {
+      priorKeys.add(nativeCheckPlanKey(plan));
+      priorById.set(plan.id, plan);
+    }
+  }
+  if (verifier.refreshChecks === true) {
+    if ([...priorById.values()].some((plan) => !plan.repeatable))
+      throw new Error(
+        '失效检查中包含不可重复执行的命令；不得重放，请通过原工作流修订并确认后续验证方式',
+      );
+    for (const plan of requestedPlans) priorById.set(plan.id, plan);
+    return [...priorById.values()];
   }
   return requestedPlans.filter((plan) => !priorKeys.has(nativeCheckPlanKey(plan)));
 }
@@ -472,9 +529,6 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
     const paths = await nativeProjectPaths(context.projectRoot, artifactRootRef);
     const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
     if (drift.drifted) throw new Error(drift.reason ?? 'Native acceptance changed');
-    if (action.stepId === 'verify.requested-checks') {
-      await nativeSdkCurrentCheckSummaries({ run, projectRoot: context.projectRoot });
-    }
     if (supervisorChild && supervisorBranch && executionRoot) {
       if (supervisorIntegration && candidateCommit && mergeActionId) {
         await assertSupervisorIntegrationCheckWorkspace({
@@ -512,6 +566,15 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
     }
     const checkRoot = executionRoot ?? context.projectRoot;
     preflightNativeCheckPlans(checkRoot, plans);
+    if (state.phase === 'verify' && state.builder_handoff)
+      await assertNativeSdkCandidateUnchanged({ run, projectRoot: context.projectRoot });
+    const fingerprintOptions = {
+      state,
+      projectRoot: checkRoot,
+      plans,
+      managedArtifactRoot: paths.artifactRoot,
+    };
+    const inputBefore = await nativeCheckInputFingerprint(fingerprintOptions);
 
     const runtimeRef = checkRuntimeRef(run);
     await ensureProtectedProjectDirectory(paths.workspaceRuntimeRoot, `${runtimeRef}/logs/checks`, {
@@ -562,6 +625,18 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
           ? ('succeeded' as const)
           : ('failed' as const),
         output: {
+          inputBefore,
+          inputAfter: await nativeCheckInputFingerprint(fingerprintOptions),
+          candidateInputFingerprintGate:
+            state.phase === 'verify' && state.builder_handoff
+              ? await nativeCandidateInputGate({
+                  projectRoot: checkRoot,
+                  candidateId,
+                  plans,
+                  managedArtifactRoot: paths.artifactRoot,
+                  editReviewScope: nativeEditReviewScope(paths, state),
+                })
+              : null,
           candidateId,
           checks,
           completedAt: new Date().toISOString(),
@@ -586,9 +661,53 @@ async function validatedCheckResults(options: {
   candidateId: string;
   plans: NativeCheckPlan[];
   projectRoot: string;
+  allowCandidateSuccessor?: boolean;
 }): Promise<NativeSdkCheckResult[]> {
   const { run, action, outcome, candidateId, plans, projectRoot } = options;
   const output = record(outcome.output, 'Native check outcome') as unknown as NativeSdkCheckOutcome;
+  if (outcome.status === 'succeeded' && !output.interruption && !options.allowCandidateSuccessor) {
+    // 已完成检查也会在 await-user 和 Archive 前复核；不能把当时的执行阶段当作当前阶段。
+    const state = parseNativePortableState(run.state);
+    const input = record(run.input, 'Native SDK Run input');
+    if (typeof input.artifactRootRef !== 'string')
+      throw new Error('Native checks lack their artifact root');
+    const artifactRootRef = input.artifactRootRef;
+    const activation = (
+      action.input as { activation?: { worktree?: string; integrationWorktree?: string } }
+    ).activation;
+    const parent = state.children_contract_hash
+      ? run.actions
+          .slice()
+          .reverse()
+          .find(
+            (entry) => entry.stepId === 'supervisor.parent.builder' && entry.status === 'succeeded',
+          )
+      : undefined;
+    const parentActivation = (
+      parent?.input as { activation?: { integrationWorktree?: string } } | undefined
+    )?.activation;
+    const executionRoot =
+      action.stepId === 'supervisor.child.checks'
+        ? activation?.worktree
+        : action.stepId === 'supervisor.child.integration-checks'
+          ? activation?.integrationWorktree
+          : parentActivation?.integrationWorktree;
+    const paths = await nativeProjectPaths(projectRoot, artifactRootRef, { readOnly: true });
+    if (
+      !output.inputBefore ||
+      !output.inputAfter ||
+      output.inputAfter !==
+        (await nativeCheckInputFingerprint({
+          state,
+          projectRoot: executionRoot ?? projectRoot,
+          plans,
+          managedArtifactRoot: paths.artifactRoot,
+        }))
+    )
+      throw new Error(
+        'Native 检查输入已变化；保留 Verify，由当前 Verifier 请求原检查并提交 refreshChecks: true，刷新证据后再验收',
+      );
+  }
   if (
     output.candidateId !== candidateId ||
     !Array.isArray(output.checks) ||
@@ -821,21 +940,35 @@ export async function nativeSdkCurrentCheckSummaries(options: {
       builderActionId: parentBuilder.id,
     });
   }
-  const checks = (
-    await Promise.all(
-      actions.map(async (action) => {
-        const plans = checkPlansForAction(run, action, state.builder_handoff!.candidate_id);
-        return validatedCheckResults({
-          run,
-          action,
-          outcome: action.outcome!,
-          candidateId: state.builder_handoff!.candidate_id,
-          plans,
-          projectRoot,
-        });
-      }),
-    )
-  ).flat();
+  const covered = new Set<string>();
+  const checks: NativeSdkCheckResult[] = [];
+  let validated = false;
+  const order = new Map<string, number>();
+  for (const action of actions)
+    for (const check of (action.outcome?.output as unknown as NativeSdkCheckOutcome)?.checks ?? [])
+      if (!order.has(check.id)) order.set(check.id, order.size);
+  for (const action of actions.slice().reverse()) {
+    const ids = ((action.outcome?.output as unknown as NativeSdkCheckOutcome)?.checks ?? []).map(
+      (check) => check.id,
+    );
+    if (validated && ids.every((id) => covered.has(id))) continue;
+    const plans = checkPlansForAction(run, action, state.builder_handoff!.candidate_id);
+    const current = await validatedCheckResults({
+      run,
+      action,
+      outcome: action.outcome!,
+      candidateId: state.builder_handoff!.candidate_id,
+      plans,
+      projectRoot,
+    });
+    validated = true;
+    for (const check of current)
+      if (!covered.has(check.id)) {
+        checks.push(check);
+        covered.add(check.id);
+      }
+  }
+  checks.sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0));
   return checks.map((check) => ({
     id: check.id,
     name: toNativePortableText(check.name),
@@ -846,6 +979,59 @@ export async function nativeSdkCurrentCheckSummaries(options: {
     exit_code: check.exitCode,
     duration_ms: check.durationMs,
   }));
+}
+
+/** 刷新检查只能保留语义未变或已复核的候选，不能把代码改动当作排版重新绑定。 */
+export async function assertNativeSdkCandidateUnchanged(options: {
+  run: Readonly<WorkflowRun>;
+  projectRoot: string;
+}) {
+  const state = parseNativePortableState(options.run.state);
+  if (!state.builder_handoff) return;
+  const current = options.run.actions
+    .slice()
+    .reverse()
+    .find(
+      (action) =>
+        ['verify.checks', 'verify.requested-checks'].includes(action.stepId) &&
+        action.status === 'succeeded' &&
+        (action.outcome?.output as { candidateId?: unknown } | undefined)?.candidateId ===
+          state.builder_handoff!.candidate_id,
+    );
+  const recorded = (current?.outcome?.output as unknown as NativeSdkCheckOutcome | undefined)
+    ?.candidateInputFingerprintGate;
+  // 旧收据没有语义摘要；显式重新验收建立绑定，不能据此复用旧成功证据。
+  if (!current || recorded === undefined || recorded === null) return;
+  const plans = checkPlansForAction(options.run, current, state.builder_handoff.candidate_id);
+  const input = record(options.run.input, 'Native SDK Run input');
+  if (typeof input.artifactRootRef !== 'string')
+    throw new Error('Native candidate lacks its artifact root');
+  const paths = await nativeProjectPaths(options.projectRoot, input.artifactRootRef, {
+    readOnly: true,
+  });
+  const parent = state.children_contract_hash
+    ? options.run.actions
+        .slice()
+        .reverse()
+        .find(
+          (action) =>
+            action.stepId === 'supervisor.parent.builder' && action.status === 'succeeded',
+        )
+    : undefined;
+  const executionRoot =
+    (parent?.input as { activation?: { integrationWorktree?: string } } | undefined)?.activation
+      ?.integrationWorktree ?? options.projectRoot;
+  const actual = await nativeCandidateInputGate({
+    projectRoot: executionRoot,
+    candidateId: state.builder_handoff.candidate_id,
+    plans,
+    managedArtifactRoot: paths.artifactRoot,
+    editReviewScope: nativeEditReviewScope(paths, state),
+  });
+  if (actual !== recorded)
+    throw new Error(
+      'Native 候选实现已变化或无法完整复核；请通过原工作流修订，不能仅刷新检查来接受代码改动',
+    );
 }
 
 export async function nativeSdkSupervisorChildCheckSummaries(options: {
@@ -887,6 +1073,7 @@ export async function nativeSdkSupervisorChildCheckSummaries(options: {
     candidateId,
     plans,
     projectRoot: options.projectRoot,
+    allowCandidateSuccessor: options.allowCandidateSuccessor,
   });
   if (checks.length === 0 || checks.some(({ status }) => status !== 'passed')) {
     throw new Error('Native Supervisor Child checks did not all pass');

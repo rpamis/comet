@@ -29,6 +29,7 @@ export interface NativePortableAcceptanceCounts {
 }
 
 export interface NativePortableStatusProjection {
+  editReviews?: EditReviewObservation[];
   schema: 'comet.native.status.v2';
   name: string;
   artifacts: NativeChangeArtifactPaths;
@@ -467,6 +468,9 @@ export async function inspectNativePortableStatus(options: {
   gitContext?: GitWorktreeContext;
 }): Promise<NativePortableStatusProjection> {
   const runtime = await readNativePortableRuntime(options);
+  const editReviews = runtime.state.builder_handoff
+    ? await inspectEditReviews(nativeEditReviewScope(options.paths, runtime.state))
+    : [];
   const stateSummary = nativePortableStateSummary(runtime.state);
   const localExpected = runtime.state.status === 'active' && runtime.state.loop.stage !== 'done';
   const children = await inspectNativeChildren({ paths: options.paths, state: runtime.state });
@@ -624,6 +628,7 @@ export async function inspectNativePortableStatus(options: {
   return {
     schema: 'comet.native.status.v2',
     name: runtime.state.name,
+    ...(editReviews.length ? { editReviews } : {}),
     artifacts: nativeChangeArtifactPaths(options.paths, runtime.state.name),
     phase: runtime.state.phase,
     status: runtime.state.status,
@@ -754,3 +759,8 @@ export async function listNativePortableStatus(options: {
     nextOffset: offset + selected.length < names.length ? offset + selected.length : null,
   };
 }
+import {
+  inspectEditReviews,
+  type EditReviewObservation,
+} from '../workflow-contract/edit-review.js';
+import { nativeEditReviewScope } from './native-edit-review.js';

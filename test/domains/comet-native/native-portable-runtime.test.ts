@@ -242,19 +242,29 @@ describe('Native portable Runtime vertical path', () => {
     },
   );
 
-  it.each([false, true])(
-    'reruns byte-bound checks without returning to Build after ordinary comments (dirty: %s)',
-    async (dirty) => {
+  it.each([
+    ['main.ts', 'export const value = 1;\n', '// Explain the output.\n', false],
+    ['main.ts', 'export const value = 1;\n', '// Explain the output.\n', true],
+    ['settings.json', '{"value":1}', '', false],
+    ['settings.json', '{"value":1}', '', true],
+    ['settings.yaml', 'value: 1\n', '# Explain the output.\n', false],
+    ['settings.toml', 'value = 1\n', '# Explain the output.\n', true],
+    ['README.md', 'value 1\n', 'Explain the output.\n', false],
+    ['worker.py', 'value = 1\n', '# Explain the output.\n', false],
+    ['worker.py', 'value = 1\n', '# Explain the output.\n', true],
+  ] as const)(
+    'reruns byte-bound checks without returning to Build after non-behavioral edits (%s, dirty: %s)',
+    async (ref, initial, prefix, dirty) => {
       const git = (...args: string[]) =>
         execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
       git('init', '--quiet');
       git('config', 'user.email', 'test@example.com');
       git('config', 'user.name', 'Test');
-      const file = path.join(root, 'main.ts');
-      await fs.writeFile(file, 'export const value = 1;\n');
-      git('add', 'main.ts');
+      const file = path.join(root, ref);
+      await fs.writeFile(file, initial);
+      git('add', ref);
       git('commit', '--quiet', '-m', 'fixture');
-      if (dirty) await fs.writeFile(file, 'export const value = 2;\n');
+      if (dirty) await fs.writeFile(file, initial.replace('1', '2'));
       await createNativePortableChange({ paths, name: 'comment-edit', language: 'en' });
       await fs.writeFile(
         path.join(nativePortableChangeDir(paths, 'comment-edit'), 'brief.md'),
@@ -281,7 +291,10 @@ describe('Native portable Runtime vertical path', () => {
           id: 'output',
           name: 'Output',
           executable: process.execPath,
-          argv: ['-e', "console.log(require('node:fs').readFileSync('main.ts', 'utf8'))"],
+          argv: [
+            '-e',
+            `console.log(require('node:fs').readFileSync(${JSON.stringify(ref)}, 'utf8'))`,
+          ],
           cwdRef: '.',
           timeoutMs: 10000,
           repeatable: true,
@@ -289,7 +302,36 @@ describe('Native portable Runtime vertical path', () => {
       ];
       await executeNativePortableCheckPlan({ paths, name: state.name, plans });
       const before = (await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name)))!;
-      await fs.writeFile(file, '// Explain the output.\n' + (await fs.readFile(file, 'utf8')));
+      const beforeEdit = await fs.readFile(file, 'utf8');
+      const afterEdit = ref.endsWith('.json')
+        ? JSON.stringify(JSON.parse(beforeEdit), null, 2)
+        : prefix + beforeEdit;
+      if (ref.endsWith('.py')) {
+        const { nativeEditReviewScope } =
+          await import('../../../domains/comet-native/native-edit-review.js');
+        const { prepareEditReview, recordEditReview } =
+          await import('../../../domains/workflow-contract/edit-review.js');
+        const scope = nativeEditReviewScope(
+          paths,
+          await readNativePortableChange(paths, state.name),
+        );
+        const proposal = await prepareEditReview(scope, {
+          intent: 'write',
+          toolName: 'Write',
+          targets: [ref],
+          writes: [{ path: ref, content: afterEdit }],
+        });
+        await recordEditReview(
+          scope,
+          {
+            proposalHash: proposal.proposalHash,
+            decision: 'non-behavioral',
+            summary: 'Python comment only.',
+          },
+          { kind: 'user-confirmed', executionRef: 'user' },
+        );
+      }
+      await fs.writeFile(file, afterEdit);
       const checked = await executeNativePortableCheckPlan({ paths, name: state.name, plans });
       expect(checked.disposition).toBe('executed');
       expect((await readNativePortableChange(paths, state.name)).phase).toBe('verify');
@@ -302,7 +344,7 @@ describe('Native portable Runtime vertical path', () => {
           path.join(nativePreferredChangeRuntimeDir(paths, state.name), after.checks[0].log),
           'utf8',
         ),
-      ).toContain('Explain the output');
+      ).toContain(ref.endsWith('.json') ? '"value": ' : 'Explain the output');
     },
   );
 

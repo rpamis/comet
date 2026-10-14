@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readRunState } from '../../../domains/engine/state.js';
 import { classicStateCommand } from '../../../domains/comet-classic/classic-state-command.js';
 import { classicGuardCommand } from '../../../domains/comet-classic/classic-guard.js';
+import { parseCometHookRequest } from '../../../platform/process/hook-adapter.js';
 import {
   inspectClassicHookGuard,
   listActiveClassicHookChanges,
@@ -18,6 +19,121 @@ const scriptByCommand: Record<string, string> = {
   state: path.join(scriptsDir, 'comet-state.mjs'),
 };
 const temporary: string[] = [];
+
+describe('Classic non-behavioral Verify edits', () => {
+  it.each([
+    ['source.ts', 'export const value = 1;\n', '// Explain the value.\nexport const value = 1;\n'],
+    ['settings.json', '{"enabled":true}', '{\n  "enabled": true\n}'],
+    ['settings.yaml', 'enabled: true\n', '# Explain the setting.\nenabled: true\n'],
+  ])('keeps Verify for a concrete neutral edit of %s', async (file, before, after) => {
+    const root = await makeProject();
+    const changeDir = await seedChange(root, 'neutral-edit', 'verify', {
+      workflow: 'hotfix',
+      isolation: 'current',
+    });
+    await fs.writeFile(path.join(root, file), before);
+    const state = await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8');
+    const decision = await inspectClassicHookGuard(
+      root,
+      'neutral-edit',
+      parseCometHookRequest(
+        JSON.stringify({
+          tool_name: 'Edit',
+          tool_input: { file_path: path.join(root, file), old_string: before, new_string: after },
+        }),
+      ),
+    );
+    expect(decision).toMatchObject({ allowed: true, phase: 'verify' });
+    expect(await fs.readFile(path.join(changeDir, '.comet.yaml'), 'utf8')).toBe(state);
+  });
+  it('keeps Agent guidance outside the neutral-document whitelist', async () => {
+    const root = await makeProject();
+    await seedChange(root, 'guidance-edit', 'verify', { workflow: 'hotfix', isolation: 'current' });
+    await fs.writeFile(path.join(root, 'AGENTS.md'), 'Ask before deployment.\n');
+    const decision = await inspectClassicHookGuard(
+      root,
+      'guidance-edit',
+      parseCometHookRequest(
+        JSON.stringify({
+          tool_name: 'Write',
+          tool_input: {
+            file_path: path.join(root, 'AGENTS.md'),
+            content: 'Deploy without asking.\n',
+          },
+        }),
+      ),
+    );
+    expect(decision.allowed).toBe(false);
+  });
+  it('keeps Verify while reviewing an unsupported-language edit and allows only that proposal', async () => {
+    const root = await makeProject();
+    await seedChange(root, 'review-edit', 'verify', { workflow: 'hotfix', isolation: 'current' });
+    const target = path.join(root, 'worker.py');
+    await fs.writeFile(target, 'value = 1\n');
+    const request = parseCometHookRequest(
+      JSON.stringify({
+        tool_name: 'Write',
+        tool_input: { file_path: target, content: '# explanation\nvalue = 1\n' },
+      }),
+    );
+    const denied = await inspectClassicHookGuard(root, 'review-edit', request);
+    expect(denied).toMatchObject({ allowed: false, phase: 'verify' });
+    expect(denied.reason).toContain('edit-review prepare');
+    const { runClassicEditReviewCommand } =
+      await import('../../../domains/comet-classic/classic-edit-review-command.js');
+    const shown = await runClassicEditReviewCommand({
+      projectRoot: root,
+      name: 'review-edit',
+      operation: 'show',
+    });
+    const reviews = (shown as { reviews: { proposalHash: string }[] }).reviews;
+    expect(reviews).toHaveLength(1);
+    const file = `${root}-review.json`;
+    try {
+      await fs.writeFile(
+        file,
+        JSON.stringify({
+          proposalHash: reviews[0].proposalHash,
+          decision: 'non-behavioral',
+          summary: 'Python comment only.',
+        }),
+      );
+      await expect(
+        runClassicEditReviewCommand({
+          projectRoot: root,
+          name: 'review-edit',
+          operation: 'record',
+          file,
+        }),
+      ).rejects.toThrow('--confirmed');
+      await runClassicEditReviewCommand({
+        projectRoot: root,
+        name: 'review-edit',
+        operation: 'record',
+        file,
+        confirmed: true,
+      });
+    } finally {
+      await fs.rm(file, { force: true });
+    }
+    expect(await inspectClassicHookGuard(root, 'review-edit', request)).toMatchObject({
+      allowed: true,
+      phase: 'verify',
+    });
+    expect(
+      await inspectClassicHookGuard(
+        root,
+        'review-edit',
+        parseCometHookRequest(
+          JSON.stringify({
+            tool_name: 'Write',
+            tool_input: { file_path: target, content: '# explanation\nvalue = 2\n' },
+          }),
+        ),
+      ),
+    ).toMatchObject({ allowed: false, phase: 'verify' });
+  });
+});
 
 afterEach(async () => {
   await Promise.all(

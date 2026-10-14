@@ -1,3 +1,4 @@
+import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import path from 'node:path';
 import type { NativeWorkspaceFinish } from './native-workspace.js';
 import {
@@ -48,6 +49,7 @@ export async function confirmNativePortableSkillCoordinatedPass(options: {
         action: 'accept-result',
       });
       await ensureNativePortableAcceptanceCurrentLocked({ paths: options.paths, state });
+      await assertNativeEditReviewsComplete(options.paths, state);
       if (
         options.finish !== undefined &&
         !['keep', 'merge', 'push', 'pull-request'].includes(options.finish)

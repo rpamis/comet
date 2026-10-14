@@ -118,11 +118,14 @@ describe('Classic runtime release assets', () => {
     const scriptFiles = new Set(
       (await fs.readdir(scriptsDirectory)).filter((fileName) => fileName.endsWith('.mjs')),
     );
-    const importPattern = /from\s+['"]\.\/([^'"]+)['"]/g;
+    await initModuleLexer;
 
     for (const fileName of scriptFiles) {
       const source = await fs.readFile(path.join(scriptsDirectory, fileName), 'utf-8');
-      const imports = [...source.matchAll(importPattern)].map((match) => match[1]);
+      const [moduleImports] = parseModuleImports(source);
+      const imports = moduleImports.flatMap((entry) =>
+        entry.n?.startsWith('./') ? [entry.n.slice(2)] : [],
+      );
 
       for (const importName of imports) {
         expect(scriptFiles.has(importName), `${fileName} imports missing ${importName}`).toBe(true);
@@ -141,3 +144,4 @@ describe('Classic runtime release assets', () => {
     expect(packageJson.files).toContain('scripts/install/postinstall.js');
   });
 });
+import { init as initModuleLexer, parse as parseModuleImports } from 'es-module-lexer';

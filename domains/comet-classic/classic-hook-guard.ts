@@ -11,8 +11,16 @@ import {
   type ClassicLayoutPaths,
 } from './classic-layout.js';
 import { inspectClassicActiveChangeDirectory, openSpecChangeNameError } from './classic-paths.js';
-import { inspectClassicProjectTarget } from './classic-protected-path.js';
+import { inspectClassicProjectTarget, readClassicProjectFile } from './classic-protected-path.js';
 import type { CometHookRequest } from '../../platform/process/hook-adapter.js';
+import {
+  proposedCometHookFileContent,
+  parseCometHookRequest,
+} from '../../platform/process/hook-adapter.js';
+import { classifyEditImpact } from '../workflow-contract/edit-impact.js';
+import { isAgentInstructionPath } from '../workflow-contract/neutral-document-path.js';
+import { prepareEditReview, isReviewedEditProposal } from '../workflow-contract/edit-review.js';
+import { classicEditReviewScope } from './classic-edit-review.js';
 import type { CometHookDecision } from '../workflow-contract/hook.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { scopeCometHookTargets } from '../workflow-contract/hook-target-scope.js';
@@ -53,9 +61,10 @@ function allowed(message: string): ClassicCommandResult {
   return result(0, `[COMET-HOOK] allowed: ${message}`);
 }
 
-async function inputTarget(): Promise<string> {
-  if (process.env.FILE_PATH) return process.env.FILE_PATH;
-  if (process.stdin.isTTY) return '';
+async function inputRequest(): Promise<CometHookRequest> {
+  if (process.env.FILE_PATH)
+    return { intent: 'write', toolName: null, targets: [process.env.FILE_PATH] };
+  if (process.stdin.isTTY) return { intent: 'unknown', toolName: null, targets: [] };
   const stdin = await readStdinTextWithTimeoutAsync();
   if (stdin.text === null) {
     process.stderr.write(
@@ -64,13 +73,7 @@ async function inputTarget(): Promise<string> {
     process.exit(1);
   }
   const input = stripUtf8Bom(stdin.text);
-  if (!input) return '';
-  try {
-    const parsed = JSON.parse(input) as { tool_input?: { file_path?: unknown } };
-    return typeof parsed.tool_input?.file_path === 'string' ? parsed.tool_input.file_path : '';
-  } catch {
-    return '';
-  }
+  return parseCometHookRequest(input);
 }
 
 function normalized(value: string): string {
@@ -1012,6 +1015,7 @@ async function inspectClassicHookTarget(
   target: string,
   selectedChangeName?: string,
   scopeTargets: typeof scopeCometHookTargets = scopeCometHookTargets,
+  request?: CometHookRequest,
 ): Promise<ClassicCommandResult> {
   try {
     const scoped = await scopeTargets(projectRoot, [target]);
@@ -1065,10 +1069,9 @@ async function inspectClassicHookTarget(
     return allowed(`${relativePath} (whitelist: neutral document)`);
   }
   if (
-    relativePath === 'CLAUDE.md' ||
     relativePath === 'CHANGELOG.md' ||
     relativePath === 'README.md' ||
-    isRootMarkdown(relativePath)
+    (isRootMarkdown(relativePath) && !isAgentInstructionPath(relativePath))
   ) {
     return allowed(`${relativePath} (whitelist: root markdown)`);
   }
@@ -1177,6 +1180,77 @@ async function inspectClassicHookTarget(
     }
     return allowed(`${relativePath} (phase: ${phase})`);
   }
+  if (phase === 'verify' && request?.writes) {
+    const proposals = request.writes.filter(
+      (proposal) =>
+        path.resolve(projectRoot, proposal.path) === path.resolve(projectRoot, relativePath),
+    );
+    if (proposals.length === 1) {
+      try {
+        const scope = governing.classic
+          ? await classicEditReviewScope(projectRoot, changeName, governing.classic)
+          : null;
+        if (
+          scope?.formalPrefixes.some(
+            (prefix) => relativePath === prefix || relativePath.startsWith(prefix + '/'),
+          )
+        )
+          return blocked(
+            relativePath,
+            phase,
+            changeName,
+            classicLocale(governing.classic?.language),
+          );
+        const before = await readClassicProjectFile(projectRoot, relativePath, {
+          label: 'Classic 编辑前内容',
+          maxBytes: 1024 * 1024,
+        });
+        const after = proposedCometHookFileContent(proposals[0], before);
+        if (after !== null) {
+          const impact = classifyEditImpact(relativePath, before, after);
+          if (
+            impact.kind === 'non-behavioral' ||
+            impact.kind === 'unchanged' ||
+            (impact.kind === 'review-required' &&
+              scope &&
+              (await isReviewedEditProposal(scope, relativePath, before, after)))
+          )
+            return allowed(
+              `${relativePath} (phase: verify, non-behavioral edit; refresh affected check evidence)`,
+            );
+          if (impact.kind === 'review-required' && scope) {
+            await prepareEditReview(
+              await classicEditReviewScope(projectRoot, changeName, governing.classic!, true),
+              {
+                ...request,
+                targets: [relativePath],
+                cwd: projectRoot,
+              },
+            );
+            return result(
+              2,
+              `Classic 保留 Verify：${impact.reason}。使用 comet edit-review prepare classic ${changeName} --file <hook-input.json> 读取具体复核任务，让当前独立 Verifier 复核并通过 record 提交；复核前不得通过或归档。`,
+            );
+          }
+        }
+      } catch (error) {
+        if (
+          (error as NodeJS.ErrnoException).code === 'ENOENT' ||
+          (error instanceof Error && error.message.includes('does not exist'))
+        )
+          return blocked(
+            relativePath,
+            phase,
+            changeName,
+            classicLocale(governing.classic?.language),
+          );
+        return result(
+          2,
+          `Classic 保留 Verify：无法完整判定编辑；${error instanceof Error ? error.message : String(error)}。补齐具体编辑后复核，不得直接通过或归档。`,
+        );
+      }
+    }
+  }
   return blocked(relativePath, phase, changeName, classicLocale(governing.classic?.language));
 }
 
@@ -1237,6 +1311,7 @@ export async function inspectClassicHookGuard(
       target,
       changeName,
       dependencies.scopeTargets,
+      request,
     );
     if (inspected.exitCode !== 0) {
       return {
@@ -1262,7 +1337,21 @@ export async function inspectClassicHookGuard(
 
 export const classicHookGuardCommand: ClassicCommandHandler = async (args) => {
   const projectRoot = parseProjectRoot(args);
-  const target = await inputTarget();
-  if (!target) return allowed('no file path in tool input');
-  return inspectClassicHookTarget(projectRoot, target);
+  const request = await inputRequest();
+  if (!request.targets.length) return allowed('no file path in tool input');
+  let last: ClassicCommandResult | undefined;
+  for (const target of request.targets) {
+    const decision = await inspectClassicHookTarget(
+      projectRoot,
+      target,
+      undefined,
+      undefined,
+      request,
+    );
+    if (decision.exitCode !== 0) return decision;
+    last = decision;
+  }
+  return request.targets.length === 1 && last
+    ? last
+    : allowed('all write targets passed the Classic guard');
 };

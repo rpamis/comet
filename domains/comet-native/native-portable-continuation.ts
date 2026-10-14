@@ -828,6 +828,14 @@ export function nativePortableContinuation(
             flag: '--accept-result',
             confirmationInput: 'user-decision',
           }),
+          nativeNextDecisionAlternative({
+            name: 'retry-verifier',
+            change: state.name,
+            stateVersion: state.state_version,
+            expectedAction: 'retry-verifier',
+            flag: '--retry-verifier',
+            confirmationInput: 'user-decision',
+          }),
           ...nativeNextRevisionAlternatives({
             change: state.name,
             stateVersion: state.state_version,

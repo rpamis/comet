@@ -3223,7 +3223,10 @@ Run applicable focused checks.
 
   it('retries an unavailable Verifier with the same candidate and completed checks', async () => {
     const name = 'retry-unavailable-verifier';
-    const counter = path.join(projectRoot, 'unavailable-retry-check-count.txt');
+    const counter = path.join(
+      resolveWorkspaceRuntimeRootSync(projectRoot),
+      'unavailable-retry-check-count.txt',
+    );
     const check = {
       id: 'runtime-pass',
       name: 'Runtime pass',

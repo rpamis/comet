@@ -1,3 +1,4 @@
+import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -693,6 +694,7 @@ export async function inspectNativePortableArchive(options: {
   }
   try {
     assertArchiveReady(state);
+    await assertNativeEditReviewsComplete(options.paths, state);
   } catch (error) {
     blockers.push((error as Error).message);
   }
@@ -792,6 +794,7 @@ export async function applyNativeSdkArchiveSpecs(options: {
     `apply SDK Archive specs ${state.name}`,
     async () => {
       assertArchiveReady(state);
+      await assertNativeEditReviewsComplete(paths, state);
       let transaction = await readTransaction(paths, state.name);
       if (!transaction) {
         const preflight = await inspectNativePortableArchive({ paths, name: state.name, state });
@@ -1252,6 +1255,7 @@ export async function archiveNativePortableChange(options: {
       if (!transaction) {
         if (!state.archived) {
           assertArchiveReady(state);
+          await assertNativeEditReviewsComplete(options.paths, state);
         } else if (state.status !== 'done' || state.loop.stage !== 'done') {
           throw new Error('Native active archived state is inconsistent');
         }

@@ -534,6 +534,9 @@ export async function classicSdkEntryData(
   observation: { openApprovalHash?: string } = {},
 ) {
   const { run, projectRoot } = inspected;
+  const editReviews = await inspectEditReviews(
+    await classicEditReviewScope(projectRoot, change, run.state as unknown as ClassicState),
+  );
   const state = run.state as unknown as ClassicState;
   const base = {
     change,
@@ -542,6 +545,7 @@ export async function classicSdkEntryData(
     configuration: state,
     projectRoot,
     workspace: { projectRoot },
+    ...(editReviews.length ? { editReviews } : {}),
     run: classicSdkRunSummary(run, details),
     nextAction: classicSdkNextAction(run),
     continuation: classicSdkContinuation(run, projectRoot, change, observation),
@@ -662,3 +666,5 @@ export function classicSdkBlockedContinuation(
     instruction: `当前工作仍被阻塞：${message}。先修复或核对所列问题；不要重复原失败命令，也不要重放已领取的工作。`,
   };
 }
+import { inspectEditReviews } from '../workflow-contract/edit-review.js';
+import { classicEditReviewScope } from './classic-edit-review.js';

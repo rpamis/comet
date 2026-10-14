@@ -1,3 +1,4 @@
+import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
 import { classicSdkEntryData } from './classic-sdk-output.js';
 import { createHash } from 'crypto';
@@ -378,6 +379,7 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
       throw new ArchiveFailure(red('FATAL: archive requires Classic state'));
     }
     const classic = projection.classic;
+    if (!classic.archived) await assertClassicEditReviewsComplete(projectRoot, change, classic);
     const designDoc = classic.designDoc;
     const planPath = classic.plan;
 
@@ -419,6 +421,7 @@ export const classicArchiveCommand: ClassicCommandHandler = withProjectContext(a
       const actionId = `classic-archive:${change}`;
       const recovering = await withClassicStateLock(changeDir, async () => {
         const runtime = await ensureClassicRuntimeRun(changeDir);
+        await assertClassicEditReviewsComplete(projectRoot, change, runtime.classic);
         if (runtime.classic.phase !== 'archive' || runtime.classic.verifyResult !== 'pass') {
           throw new ArchiveFailure(
             red('FATAL: Archive state changed before preparing the pending action.'),

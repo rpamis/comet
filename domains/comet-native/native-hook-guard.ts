@@ -33,7 +33,9 @@ import {
 } from './native-portable-runtime.js';
 import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
 import type { NativePortableState } from './native-portable-types.js';
-import { isNativeOrdinaryCommentEdit } from './native-source-comments.js';
+import { classifyEditImpact } from '../workflow-contract/edit-impact.js';
+import { prepareEditReview, isReviewedEditProposal } from '../workflow-contract/edit-review.js';
+import { nativeEditReviewScope } from './native-edit-review.js';
 import { readNativeBoundedTextFile } from './native-bounded-file.js';
 
 const readHookProjectConfig = memoizedHookRead('nativeHookProjectConfig', readProjectConfig);
@@ -456,19 +458,27 @@ async function inspectPortableWriteTargets(options: {
         change: state.name,
       };
     }
-    if (
-      state.phase === 'verify' &&
-      (await ordinaryCommentWrites(projectRoot, implementationTargets, request))
-    ) {
+    const editImpact =
+      state.phase === 'verify'
+        ? await implementationWriteImpact(paths, state, implementationTargets, request)
+        : 'implementation-changed';
+    if (editImpact === 'non-behavioral') {
       return {
         allowed: true,
-        reason:
-          'Native ordinary comment edit; remain in Verify. Runtime checks bind the actual bytes and must be rerun after the write.',
+        reason: 'Native 非行为修改：保留 Verify；修改后必须按实际文件内容刷新检查证据。',
         workflow: 'native',
         phase: state.phase,
         change: state.name,
       };
     }
+    if (editImpact === 'review-required')
+      return {
+        allowed: false,
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+        reason: `本地无法确定编辑影响，保留 Verify。使用 comet edit-review prepare native ${state.name} --file <hook-input.json> 读取具体复核任务，让当前独立 Verifier 复核并通过 record 提交；复核前不得通过或归档。`,
+      };
     if (state.phase === 'verify' || state.phase === 'archive') {
       if (sdkOwned) {
         return {
@@ -534,28 +544,57 @@ async function inspectPortableWriteTargets(options: {
   };
 }
 
-async function ordinaryCommentWrites(
-  projectRoot: string,
+async function implementationWriteImpact(
+  paths: NativeProjectPaths,
+  state: NativePortableState,
   targets: readonly string[],
   request: NativeHookRequest,
-): Promise<boolean> {
+): Promise<'non-behavioral' | 'implementation-changed' | 'review-required'> {
+  const projectRoot = paths.projectRoot;
+  if (
+    (await nativeDocumentWritesRevert(projectRoot)) &&
+    targets.some((target) => isNativeNeutralDocumentWrite(paths, target))
+  )
+    return 'implementation-changed';
+  let needsReview = false;
   for (const relative of targets) {
     const proposals =
       request.writes?.filter(
         (proposal) =>
           path.resolve(projectRoot, proposal.path) === path.resolve(projectRoot, relative),
       ) ?? [];
-    if (proposals.length !== 1) return false;
+    if (proposals.length !== 1) return 'review-required';
     try {
       const source = await readNativeBoundedTextFile({ root: projectRoot, ref: relative });
       const after = proposedCometHookFileContent(proposals[0], source.text);
-      if (after === null || !isNativeOrdinaryCommentEdit(relative, source.text, after))
-        return false;
+      if (after === null) return 'review-required';
+      const impact = classifyEditImpact(relative, source.text, after);
+      if (impact.kind === 'implementation-changed' || impact.kind === 'requirements-changed')
+        return 'implementation-changed';
+      if (
+        impact.kind === 'review-required' &&
+        !(await isReviewedEditProposal(
+          nativeEditReviewScope(paths, state),
+          relative,
+          source.text,
+          after,
+        ))
+      )
+        needsReview = true;
     } catch {
-      return false;
+      return 'review-required';
     }
   }
-  return targets.length > 0;
+  if (needsReview) {
+    await prepareEditReview(nativeEditReviewScope(paths, state), {
+      ...request,
+      toolName: request.toolName ?? null,
+      targets: [...targets],
+      cwd: projectRoot,
+    });
+    return 'review-required';
+  }
+  return targets.length > 0 ? 'non-behavioral' : 'review-required';
 }
 
 function isWithin(parent: string, target: string): boolean {

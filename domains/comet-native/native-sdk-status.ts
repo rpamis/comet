@@ -52,6 +52,9 @@ export async function projectNativeSdkStatus(
   const actions = statusRecords(run.actions, options.details);
   const waits = statusRecords(run.waits, options.details);
   const evidenceWaits = statusRecords(run.evidenceWaits ?? [], options.details);
+  const editReviews = state.builder_handoff
+    ? await inspectEditReviews(nativeEditReviewScope(paths, state))
+    : [];
   return {
     schema: 'comet.native.sdk-status.v1' as const,
     runtimeFormat: 'sdk' as const,
@@ -59,6 +62,7 @@ export async function projectNativeSdkStatus(
       ? { application: application.identity, skillWork: applicationSkillWork(application, run) }
       : {}),
     name: options.name,
+    ...(editReviews.length ? { editReviews } : {}),
     language: state.language,
     phase: state.phase,
     status: cancellation?.status ?? state.status,
@@ -131,3 +135,5 @@ export async function projectNativeSdkStatus(
 }
 
 export type NativeSdkStatusProjection = Awaited<ReturnType<typeof inspectNativeSdkStatus>>;
+import { inspectEditReviews } from '../workflow-contract/edit-review.js';
+import { nativeEditReviewScope } from './native-edit-review.js';

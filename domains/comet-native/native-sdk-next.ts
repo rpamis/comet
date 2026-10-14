@@ -343,6 +343,7 @@ export async function advanceNativeSdkChange(
     decision?.expectedAction === 'retry-verifier'
   ) {
     const retry = decision.expectedAction === 'retry-verifier';
+    const reverify = retry && state.loop.next_action === 'confirm-skill-coordinated-pass';
     const loopStop =
       decision.expectedAction === 'revise-implementation' &&
       state.loop.next_action === 'await-user';
@@ -350,7 +351,7 @@ export async function advanceNativeSdkChange(
       (candidate) =>
         candidate.status === 'pending' &&
         (retry
-          ? candidate.stepId === 'verify.retry'
+          ? candidate.stepId === (reverify ? 'verify.confirm' : 'verify.retry')
           : loopStop
             ? ['verify.stop', 'verify.checks-stop'].includes(candidate.stepId)
             : candidate.stepId === 'verify.confirm'),
@@ -359,7 +360,11 @@ export async function advanceNativeSdkChange(
       !wait ||
       state.phase !== 'verify' ||
       state.loop.next_action !==
-        (retry ? 'retry-verifier' : loopStop ? 'await-user' : 'confirm-skill-coordinated-pass') ||
+        (retry && !reverify
+          ? 'retry-verifier'
+          : loopStop
+            ? 'await-user'
+            : 'confirm-skill-coordinated-pass') ||
       state.state_version !== decision.expectedStateVersion ||
       wait.proposalHash !== decision.proposalHash
     ) {
@@ -371,7 +376,9 @@ export async function advanceNativeSdkChange(
     }
     if (!decision.summary.trim()) throw new NativeUsageError('--summary must not be empty');
     const choice = retry
-      ? 'retry'
+      ? reverify
+        ? 'reverify'
+        : 'retry'
       : loopStop
         ? 'repair'
         : decision.expectedAction === 'accept-result'

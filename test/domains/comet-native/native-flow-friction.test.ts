@@ -184,10 +184,18 @@ None.
     },
   );
 
-  it('keeps Verify when a concrete Edit only adds an ordinary source comment', async () => {
+  it.each([
+    [
+      'main.ts',
+      'export const greeting = "hello";\n',
+      '// Explain the greeting.\nexport const greeting = "hello";\n',
+    ],
+    ['settings.json', '{"enabled":true}', '{\n  "enabled": true\n}'],
+    ['settings.yaml', 'enabled: true\n', '# Explain the setting.\nenabled: true\n'],
+    ['worker.py', 'value = 1\n', '# Explain the value.\nvalue = 1\n'],
+  ])('keeps Verify for a concrete non-behavioral edit of %s', async (file, source, proposed) => {
     await confirm();
-    const source = 'export const greeting = "hello";\n';
-    const target = path.join(root, 'main.ts');
+    const target = path.join(root, file);
     await fs.writeFile(target, source);
     const dispatched = await input({
       kind: 'builder-handoff',
@@ -216,13 +224,65 @@ None.
           tool_input: {
             file_path: target,
             old_string: source,
-            new_string: '// Explain the greeting.\n' + source,
+            new_string: proposed,
           },
         }),
       ),
       'tiny',
     );
-    expect(decision).toMatchObject({ allowed: true, phase: 'verify' });
+    if (file === 'worker.py') {
+      expect(decision).toMatchObject({ allowed: false, phase: 'verify' });
+      expect(decision.reason).toContain('保留 Verify');
+      const { runNativeEditReviewCommand } =
+        await import('../../../domains/comet-native/native-edit-review-command.js');
+      const shown = await runNativeEditReviewCommand({
+        projectRoot: root,
+        name: 'tiny',
+        operation: 'show',
+      });
+      const reviews = (shown as { reviews: { proposalHash: string }[] }).reviews;
+      expect(reviews).toHaveLength(1);
+      const resultFile = `${root}-review.json`;
+      try {
+        await fs.writeFile(
+          resultFile,
+          JSON.stringify({
+            proposalHash: reviews[0].proposalHash,
+            decision: 'non-behavioral',
+            summary: 'Only a Python comment changed.',
+          }),
+        );
+        await expect(
+          runNativeEditReviewCommand({
+            projectRoot: root,
+            name: 'tiny',
+            operation: 'record',
+            file: resultFile,
+          }),
+        ).rejects.toThrow('--confirmed');
+        await runNativeEditReviewCommand({
+          projectRoot: root,
+          name: 'tiny',
+          operation: 'record',
+          file: resultFile,
+          confirmed: true,
+        });
+      } finally {
+        await fs.rm(resultFile, { force: true });
+      }
+      expect(
+        await inspectNativeHookGuard(
+          root,
+          parseNativeHookRequest(
+            JSON.stringify({
+              tool_name: 'Write',
+              tool_input: { file_path: target, content: proposed },
+            }),
+          ),
+          'tiny',
+        ),
+      ).toMatchObject({ allowed: true, phase: 'verify' });
+    } else expect(decision).toMatchObject({ allowed: true, phase: 'verify' });
     expect(() =>
       execFileSync(
         process.execPath,
@@ -240,7 +300,7 @@ None.
             tool_input: {
               file_path: target,
               old_string: source,
-              new_string: '// Explain the greeting.\n' + source,
+              new_string: proposed,
             },
           }),
           stdio: ['pipe', 'pipe', 'pipe'],

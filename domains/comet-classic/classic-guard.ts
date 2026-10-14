@@ -1,3 +1,4 @@
+import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
 import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
@@ -1316,6 +1317,8 @@ async function applyStateUpdateLocked(
   // boundBranchMatches may have lazily healed bound_branch on disk, and a
   // stale projection would write the pre-heal null back over it.
   const context = await ensureClassicRuntimeRun(changeDir);
+  if (phase === 'verify' || phase === 'archive')
+    await assertClassicEditReviewsComplete(classicCommandProjectRoot(), change, context.classic);
   if ((phase === 'build' || phase === 'verify') && process.env.COMET_SKIP_BUILD !== '1') {
     const evaluation = await evaluateCommandCheck(
       classicCommandProjectRoot(),
@@ -1558,6 +1561,12 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
       const changeDir = await resolveChangeDir(change);
       await preflight(changeDir, change);
       const runContext = await ensureClassicRuntimeRun(changeDir);
+      if (phase === 'verify' || phase === 'archive')
+        await assertClassicEditReviewsComplete(
+          classicCommandProjectRoot(),
+          change,
+          runContext.classic,
+        );
       output.data = {
         change,
         phase: runContext.classic.phase,

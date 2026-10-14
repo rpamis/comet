@@ -24,10 +24,23 @@ export const NATIVE_SDK_PRE_CHECK_RECOVERY_HASH =
   '500dc5be719eb5493dbdadf35c372de49f0232439eef849bb521f6b3db346aff';
 export const NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH =
   '241450a81ad7237162f72c834e8e7712f1becd90c0a78fa3a1714c86efa4ca06';
+export const NATIVE_SDK_PRE_EDIT_REVIEW_HASH =
+  'a4fa2f7ad12c5c7dd37374f9cb5f1154f2c686e3b3b5473533154c01fdcdd9ea';
+
+export function nativeSdkBeforeEditReview(workflow: DefineWorkflowOptions) {
+  const previous = structuredClone(workflow);
+  const confirmation = previous.steps['verify.confirm'];
+  if (confirmation?.type === 'ask_user' && Array.isArray(confirmation.choices))
+    confirmation.choices = confirmation.choices.filter((choice) => choice !== 'reverify');
+  previous.transitions = previous.transitions?.filter(
+    (edge) => !(edge.from === 'verify.confirm' && edge.on === 'reverify'),
+  );
+  return previous;
+}
 
 /** 只撤回指定版本新增的定义；其余步骤、绑定和转移必须与原 hash 完全一致。 */
 export function nativeSdkBeforeVerifierRecovery(workflow: DefineWorkflowOptions) {
-  const previous = structuredClone(workflow);
+  const previous = nativeSdkBeforeEditReview(workflow);
   const recoverySteps = [
     'supervisor.child.verifier-retry',
     'supervisor.child.checks-stop',
@@ -44,6 +57,7 @@ export function nativeSdkBeforeVerifierRecovery(workflow: DefineWorkflowOptions)
 }
 
 export function nativeSdkLegacyDefinitions(workflow: DefineWorkflowOptions) {
+  const beforeEditReview = nativeSdkBeforeEditReview(workflow);
   const beforeVerifierRecovery = nativeSdkBeforeVerifierRecovery(workflow);
   const beforeCheckRecovery = structuredClone(beforeVerifierRecovery);
   delete beforeCheckRecovery.steps['verify.checks-stop'];
@@ -64,9 +78,14 @@ export function nativeSdkLegacyDefinitions(workflow: DefineWorkflowOptions) {
     NATIVE_SDK_PRE_CHECK_RECOVERY_HASH,
     NATIVE_SDK_PRE_CHILD_ARCHIVE_HASH,
   ];
-  return definitions.filter(
-    (candidate, index) => hashRuntimeValue(defineWorkflow(candidate)) === hashes[index],
-  );
+  return [
+    ...(hashRuntimeValue(defineWorkflow(beforeEditReview)) === NATIVE_SDK_PRE_EDIT_REVIEW_HASH
+      ? [beforeEditReview]
+      : []),
+    ...definitions.filter(
+      (candidate, index) => hashRuntimeValue(defineWorkflow(candidate)) === hashes[index],
+    ),
+  ];
 }
 
 /** 旧定义继续保存原语义，只有显式 doctor 迁移才增加新的恢复后继。 */

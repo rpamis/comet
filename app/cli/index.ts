@@ -69,6 +69,18 @@ program
   });
 
 program
+  .command('edit-review <operation> <workflow> <change>')
+  .description('在 Verify 中准备、提交或查看具体编辑的影响复核（prepare、record、show）')
+  .option('--project-root <path>', '当前工作区路径')
+  .option('--file <path>', 'prepare 的完整 Hook 请求或 record 的复核结果 JSON')
+  .option('--confirmed', 'Compat 用户已明确确认这份具体复核结果')
+  .option('--json', '输出 JSON')
+  .action(async (operation, workflow, name, options) => {
+    const { editReviewCommand } = await import('../commands/edit-review.js');
+    await editReviewCommand(operation, workflow, name, options);
+  });
+
+program
   .command('task [path]')
   .description('Select context for a regular Comet Skill task and record its outcome')
   .requiredOption('--task <text>', '用户原始请求')

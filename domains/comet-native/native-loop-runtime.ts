@@ -788,7 +788,11 @@ export function retryNativeVerifier(stateInput: NativePortableState): NativePort
     state.blockers.some(
       ({ resolution_action }) => resolution_action === 'confirm-verifier-unavailable',
     );
-  if (state.phase !== 'verify' || (!executionBlocked && !verifierUnavailable)) {
+  const passed =
+    state.status === 'await-user' &&
+    state.verification_result === 'pass' &&
+    state.loop.next_action === 'confirm-skill-coordinated-pass';
+  if (state.phase !== 'verify' || (!executionBlocked && !verifierUnavailable && !passed)) {
     throw new Error('Native change is not blocked on Verifier infrastructure');
   }
   const unresolvedIds = pendingAcceptanceIds(state);
@@ -797,11 +801,20 @@ export function retryNativeVerifier(stateInput: NativePortableState): NativePort
     ...state,
     status: 'active',
     state_version: nextVersion(state),
-    ...(verifierUnavailable
+    ...(verifierUnavailable || passed
       ? {
           verification_result: 'pending' as const,
           verification_report: null,
           verification: null,
+          ...(passed
+            ? {
+                acceptance: state.acceptance.map((item) => ({
+                  ...item,
+                  result: 'pending' as const,
+                  reason: null,
+                })),
+              }
+            : {}),
         }
       : {}),
     blockers: [],

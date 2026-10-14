@@ -64,7 +64,10 @@ describe('Native runtime release asset', () => {
     ]) {
       expect(source).toContain(command);
     }
-    expect(source).not.toMatch(/domains\/comet-classic|openspec|superpowers|requiredSkillCalls/iu);
+    // Agent 目录可以作为受保护的输入路径出现；检查实际的外部工作流调用。
+    expect(source).not.toMatch(
+      /domains\/comet-classic|openspec|superpowers:[a-z][a-z-]*|requiredSkillCalls/iu,
+    );
     expect(source).not.toMatch(/CLASSIC_RUN_STORAGE/u);
     expect(source).toContain('.comet/config.yaml');
     expect(source).toContain('Hook write target was not attributed to the guarded project');

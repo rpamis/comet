@@ -1,3 +1,4 @@
+import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
 import { classicSdkCheckLogHash } from './classic-sdk-check-record.js';
 import { randomUUID } from 'node:crypto';
 import { classicSdkRunMatchesProfile } from './classic-sdk-profile.js';
@@ -89,6 +90,11 @@ export async function assertClassicSdkArchiveReady(
       throw new Error('Classic SDK Run is not ready to Archive');
     }
     const approved = archiveApproval(run);
+    await assertClassicEditReviewsComplete(
+      projectRoot,
+      path.posix.basename(String((run.input as { changeDir?: string }).changeDir)),
+      state,
+    );
     const branch = liveGitBranch(projectRoot);
     if (!branch || branch !== state.boundBranch || branch !== approved.targetBranch) {
       throw new Error('Classic Archive branch differs from the approved bound branch');

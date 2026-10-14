@@ -1,3 +1,4 @@
+import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
 import { classicSdkCheckDirectoryRef, classicSdkCheckLogHash } from './classic-sdk-check-record.js';
 import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
@@ -982,6 +983,11 @@ const verificationReportEvidenceValidator: RuntimeEvidenceValidator = {
         ref,
         state.language,
       );
+      await assertClassicEditReviewsComplete(
+        context.projectRoot,
+        path.posix.basename(String((run.input as { changeDir?: string }).changeDir)),
+        state,
+      );
       if (receipt.ref !== ref || receipt.contentHash !== contentHash) {
         return reject('Classic Verify report changed');
       }
@@ -1043,6 +1049,8 @@ function classicCheckEvidenceValidator(scope: 'build' | 'verify'): RuntimeEviden
         return reject(`Classic ${scope} check receipt is incomplete, failed, or stale`);
       }
       try {
+        if (scope === 'verify')
+          await assertClassicEditReviewsComplete(root, path.posix.basename(changeDirRef), state);
         if (
           run.input !== null &&
           typeof run.input === 'object' &&

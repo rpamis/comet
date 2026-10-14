@@ -5,7 +5,7 @@ describe('neutral document paths', () => {
   it('treats root documentation files as neutral', () => {
     expect(isNeutralDocumentPath('README.md')).toBe(true);
     expect(isNeutralDocumentPath('CHANGELOG.md')).toBe(true);
-    expect(isNeutralDocumentPath('AGENTS.md')).toBe(true);
+    expect(isNeutralDocumentPath('AGENTS.md')).toBe(false);
     expect(isNeutralDocumentPath('LICENSE')).toBe(true);
     expect(isNeutralDocumentPath('LICENSE-MIT')).toBe(true);
     expect(isNeutralDocumentPath('NOTICE')).toBe(true);
@@ -25,6 +25,16 @@ describe('neutral document paths', () => {
   });
 
   it('keeps source, tests, and non-document files bound', () => {
+    for (const file of [
+      'AGENTS.md',
+      'docs/AGENTS.md',
+      'CLAUDE.md',
+      'SKILL.md',
+      '.github/instructions/review.md',
+      '.claude/rules/safety.md',
+      'assets/skills-zh/demo/SKILL.md',
+    ])
+      expect(isNeutralDocumentPath(file)).toBe(false);
     expect(isNeutralDocumentPath('src/index.ts')).toBe(false);
     expect(isNeutralDocumentPath('src/component.md')).toBe(false);
     expect(isNeutralDocumentPath('test/fixtures/data.txt')).toBe(false);

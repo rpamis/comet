@@ -1,3 +1,4 @@
+import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
@@ -160,6 +161,7 @@ async function revalidatedReport(
   const drift = await inspectNativePortableAcceptanceDrift({ paths, state });
   if (drift.drifted) throw new Error(drift.reason ?? 'Native acceptance changed');
   await nativeSdkCurrentCheckSummaries({ run, projectRoot });
+  await assertNativeEditReviewsComplete(paths, state);
   const file = path.join(paths.changesDir, state.name, 'verification.md');
   const ref = path.relative(projectRoot, file).replaceAll('\\', '/');
   const prior = run.outputs['verify.report']?.value as Record<string, unknown> | undefined;

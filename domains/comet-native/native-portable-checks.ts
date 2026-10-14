@@ -10,7 +10,12 @@ import {
 import type { Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { gitStatusPaths, runGitCommand } from '../../platform/process/git.js';
+import { gitStatusPaths, runGitCommand, readGitBlob } from '../../platform/process/git.js';
+import { approvedEditFingerprint, type EditReviewScope } from '../workflow-contract/edit-review.js';
+import { editContentHash } from '../workflow-contract/edit-impact.js';
+import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
+import { readProjectConfig } from './native-config.js';
+import { nativeEditReviewScope } from './native-edit-review.js';
 import {
   inspectProcessLiveness,
   inspectProcessTreeLiveness,
@@ -443,7 +448,7 @@ async function nativeIgnoredCheckInputSnapshot(
   managedArtifactRoot?: string,
   runnerInputs: ReadonlySet<string> = new Set(),
 ): Promise<NativeIgnoredInputSnapshot> {
-  const cwdRefs = [...new Set(plans.map(({ cwdRef }) => cwdRef))];
+  const cwdRefs = [...new Set(plans.length ? plans.map(({ cwdRef }) => cwdRef) : ['.'])];
   if (cwdRefs.length === 0) return { complete: true, files: [] };
 
   let ignoredPaths: string[];
@@ -501,7 +506,7 @@ async function nativePhysicalCheckInputSnapshot(
   managedArtifactRoot?: string,
   runnerInputs: ReadonlySet<string> = new Set(),
 ): Promise<NativeIgnoredInputSnapshot> {
-  const cwdRefs = [...new Set(plans.map(({ cwdRef }) => cwdRef))];
+  const cwdRefs = [...new Set(plans.length ? plans.map(({ cwdRef }) => cwdRef) : ['.'])];
   const files = new Map<string, NativeIgnoredInputFile>();
   let totalBytes = 0;
   const isGeneratedDirectory = (name: string): boolean =>
@@ -541,7 +546,6 @@ async function nativePhysicalCheckInputSnapshot(
         }
         continue;
       }
-      if (!insideGeneratedDirectory) continue;
       if (sensitiveNativeIgnoredInputPath(relative)) return false;
       if (!entry.isFile()) return false;
       try {
@@ -810,6 +814,7 @@ interface NativeCheckInputGateOptions {
   candidateId: string | null;
   plans?: readonly NativeCheckPlan[];
   managedArtifactRoot?: string;
+  editReviewScope?: EditReviewScope;
 }
 
 async function readNativeCheckInputObservation(options: NativeCheckInputGateOptions) {
@@ -913,7 +918,39 @@ async function nativeCandidateCommentGate(
   options: NativeCheckInputGateOptions,
   observation: Awaited<ReturnType<typeof readNativeCheckInputObservation>>,
 ): Promise<string | null> {
-  if (!observation) return null;
+  if (!observation) {
+    try {
+      // 非 Git 工作区也比较实际源码；不完整读取不能证明候选未变。
+      const runnerInputs = await nativeRunnerInputArtifactPaths(options.projectRoot);
+      const physical = await nativePhysicalCheckInputSnapshot(
+        options.projectRoot,
+        options.plans ?? [],
+        options.managedArtifactRoot,
+        runnerInputs,
+      );
+      if (!physical.complete) return null;
+      observation = {
+        runnerInputs,
+        binding: {
+          candidateId: options.candidateId,
+          head: '',
+          branch: '',
+          status: '',
+          staged: '',
+          workingTree: physical.files.map(({ path, digest }) => ({ path, digest })),
+          projectRoot: path.resolve(options.projectRoot),
+          machineId: os.hostname(),
+          execPath: process.execPath,
+          node: process.version,
+          platform: process.platform,
+          arch: process.arch,
+          boundEnvironment: boundEnvironmentEntries(),
+        },
+      };
+    } catch {
+      return null;
+    }
+  }
   const unchangedPaths = new Set<string>();
   const workingTree: typeof observation.binding.workingTree = [];
   const index = new Map(
@@ -922,8 +959,25 @@ async function nativeCandidateCommentGate(
       return match ? [[match[3], { mode: match[1], objectId: match[2] }] as const] : [];
     }),
   );
+  const config = await readProjectConfig(options.projectRoot);
   for (const entry of observation.binding.workingTree) {
-    if (!supportsNativeSourceComments(entry.path)) {
+    if (
+      config?.native.document_writes !== 'revert' &&
+      isNeutralDocumentPath(entry.path, [
+        '.comet',
+        ...(options.managedArtifactRoot
+          ? [
+              path
+                .relative(options.projectRoot, path.join(options.managedArtifactRoot, 'comet'))
+                .replaceAll('\\', '/'),
+            ]
+          : []),
+      ])
+    ) {
+      unchangedPaths.add(entry.path);
+      continue;
+    }
+    if (!supportsNativeSourceComments(entry.path) && !options.editReviewScope) {
       workingTree.push(entry);
       continue;
     }
@@ -934,7 +988,11 @@ async function nativeCandidateCommentGate(
       });
       if (digestNativeCheckInput(Buffer.from(source.text).toString('base64')) !== entry.digest)
         return null;
-      const fingerprint = nativeSourceCommentFingerprint(entry.path, source.text);
+      const reviewed = options.editReviewScope
+        ? await approvedEditFingerprint(options.editReviewScope, entry.path, source.text)
+        : null;
+      const fingerprint =
+        reviewed?.fingerprint ?? nativeSourceCommentFingerprint(entry.path, source.text);
       if (!fingerprint) {
         workingTree.push(entry);
         continue;
@@ -945,14 +1003,12 @@ async function nativeCandidateCommentGate(
         // chmod、重命名和删除仍需新候选，不能被注释判定掩盖。
         const modeMatches =
           process.platform === 'win32' || Boolean(mode & 0o111) === (indexed.mode === '100755');
-        const indexedSource = runGitCommand(options.projectRoot, [
-          'cat-file',
-          'blob',
-          indexed.objectId,
-        ]);
+        const indexedSource = readGitBlob(options.projectRoot, indexed.objectId);
         if (
           modeMatches &&
-          nativeSourceCommentFingerprint(entry.path, indexedSource) === fingerprint
+          (reviewed
+            ? editContentHash(indexedSource) === reviewed.beforeHash
+            : nativeSourceCommentFingerprint(entry.path, indexedSource) === fingerprint)
         ) {
           unchangedPaths.add(entry.path);
           continue;
@@ -961,10 +1017,13 @@ async function nativeCandidateCommentGate(
       const mode = (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
       workingTree.push({
         path: entry.path,
-        digest: canonicalHash('comet.native.comment-source.v1', {
-          fingerprint,
-          executable: process.platform === 'win32' ? false : Boolean(mode & 0o111),
-        }),
+        digest:
+          reviewed && !reviewed.semantic
+            ? fingerprint
+            : canonicalHash('comet.native.comment-source.v1', {
+                fingerprint,
+                executable: process.platform === 'win32' ? false : Boolean(mode & 0o111),
+              }),
       });
     } catch {
       // 二进制、大文件及不支持的语法沿用真实内容绑定。
@@ -974,6 +1033,14 @@ async function nativeCandidateCommentGate(
   const status = observation.binding.status
     .split('\0')
     .filter((record) => {
+      if (config?.native.document_writes !== 'revert') {
+        const ref = record.length >= 4 ? record.slice(3) : '';
+        if (
+          unchangedPaths.has(ref) &&
+          isNeutralDocumentPath(ref, ['.comet', ...(options.editReviewScope?.formalPrefixes ?? [])])
+        )
+          return false;
+      }
       const match = record.trimStart().match(/^M (.+)$/u);
       return !match || !unchangedPaths.has(match[1]);
     })
@@ -997,6 +1064,12 @@ async function nativeCheckInputGates(options: NativeCheckInputGateOptions) {
     gate: await nativeCheckGateFromObservation(options, observation),
     candidateGate: await nativeCandidateCommentGate(options, observation),
   };
+}
+
+export async function nativeCandidateInputGate(
+  options: NativeCheckInputGateOptions,
+): Promise<string | null> {
+  return nativeCandidateCommentGate(options, await readNativeCheckInputObservation(options));
 }
 
 export function authoritativePortableChecks(options: {
@@ -1285,6 +1358,7 @@ async function reserveNativePortableCheckPlan(options: {
         candidateId: state.builder_handoff?.candidate_id ?? null,
         plans: options.plans,
         managedArtifactRoot: options.paths.artifactRoot,
+        editReviewScope: nativeEditReviewScope(options.paths, state),
       });
       let branch = observedBranch;
       const file = nativeLocalExecutionFile(options.paths, state.name);

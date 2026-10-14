@@ -1,3 +1,4 @@
+import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import path from 'node:path';
 
 import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/paths/git-worktree.js';
@@ -38,6 +39,7 @@ import { inspectProtectedProjectPath } from '../workflow-contract/protected-proj
 import {
   nativeSdkCheckExecutor,
   nativeSdkCurrentCheckSummaries,
+  assertNativeSdkCandidateUnchanged,
   nativeSdkCheckPlans,
   nativeSdkCheckValidator,
 } from './native-sdk-checks.js';
@@ -574,7 +576,10 @@ function verifierResultState(
         entry.status === 'succeeded',
     )
     .lastIndexOf(true);
-  const candidateActions = run.actions.slice(candidateStart + 1);
+  const checkStart = run.actions
+    .map((entry) => entry.stepId === 'verify.checks' && entry.status === 'succeeded')
+    .lastIndexOf(true);
+  const candidateActions = run.actions.slice(Math.max(candidateStart, checkStart) + 1);
   const allPreviousRequests = candidateActions.filter(
     (entry) =>
       entry.stepId === 'verify.verifier' && entry.id !== action.id && entry.status === 'succeeded',
@@ -617,7 +622,7 @@ function verifierResultState(
       )
       .map((entry) => entry.outcome?.output as { checks?: unknown } | undefined),
   ];
-  const checks: NativePortableCheckSummary[] = allCheckOutputs.flatMap((batch) =>
+  const allChecks: NativePortableCheckSummary[] = allCheckOutputs.flatMap((batch) =>
     (Array.isArray(batch?.checks) ? batch.checks : []).map((entry) => {
       const check = entry as Record<string, unknown>;
       if (
@@ -645,6 +650,7 @@ function verifierResultState(
       };
     }),
   );
+  const checks = [...new Map(allChecks.map((check) => [check.id, check])).values()];
   const input = run.input as { maxVerifyFailures?: unknown };
   const maxVerifyFailures = input.maxVerifyFailures ?? DEFAULT_WORKFLOW_NATIVE_MAX_VERIFY_FAILURES;
   if (!Number.isSafeInteger(maxVerifyFailures) || (maxVerifyFailures as number) < 1) {
@@ -685,6 +691,7 @@ function verifierResultState(
     }
     if (
       allPreviousRequests.length > 0 &&
+      output.refreshChecks !== true &&
       applied.response.checks.every((check) =>
         earlierRequests.some(
           (prior) => normalizeNativeCheckRequestId(prior) === normalizeNativeCheckRequestId(check),
@@ -905,7 +912,18 @@ const verifierValidator: RuntimeValidator = {
       if (drift.drifted) {
         return { accepted: false, reason: drift.reason ?? 'Native acceptance changed' };
       }
-      await nativeSdkCurrentCheckSummaries({ run, projectRoot: context.projectRoot });
+      const requested =
+        (outcome.output as { response?: { kind?: unknown } } | null)?.response?.kind ===
+        'request-checks';
+      if (requested)
+        await assertNativeSdkCandidateUnchanged({ run, projectRoot: context.projectRoot });
+      const passing =
+        (outcome.output as { response?: { result?: { verdict?: unknown } } } | null)?.response
+          ?.result?.verdict === 'pass';
+      if (!requested && passing) {
+        await nativeSdkCurrentCheckSummaries({ run, projectRoot: context.projectRoot });
+        await assertNativeEditReviewsComplete(paths, state);
+      }
       if (outcome.status === 'failed') verifierExecutionFailureState(run, action, outcome);
       else verifierResultState(run, action, outcome);
       return { accepted: true };
@@ -1174,7 +1192,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         'verify.confirm': {
           type: 'ask_user',
           proposalFrom: 'verify.report',
-          choices: ['approved', 'rejected'],
+          choices: ['approved', 'rejected', 'reverify'],
         },
         'verify.revalidate': {
           type: 'call_tool',
@@ -1288,6 +1306,7 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
         { from: 'verify.requested-checks', to: 'verify.checks-stop', on: 'failed' },
         { from: 'verify.report', to: 'verify.confirm' },
         { from: 'verify.confirm', to: 'verify.revalidate', on: 'approved' },
+        { from: 'verify.confirm', to: 'verify.checks', on: 'reverify' },
         { from: 'verify.confirm', to: 'build.builder', on: 'rejected' },
         { from: 'verify.confirm', to: 'supervisor.parent.builder', on: 'rejected' },
         { from: 'verify.revalidate', to: 'archive.prepare' },
@@ -2213,6 +2232,35 @@ export function defineNativeWorkflowApplication(): NativeWorkflowApplication {
           return { state: state as unknown as RuntimeValue, next: ['verify.confirm'] };
         }
         if (event.kind === 'wait-resolved' && event.stepId === 'verify.confirm') {
+          if (event.choice === 'reverify') {
+            const plans = nativeSdkCheckPlans(
+              run.outputs['supervisor.parent.builder']?.value ??
+                run.outputs['build.builder']?.value,
+            );
+            if (plans.some((plan) => !plan.repeatable))
+              throw new Error('不可重复执行的检查不能重放；请先确认后续验证方式');
+            return {
+              state: parseNativePortableState({
+                ...state,
+                status: 'active',
+                state_version: state.state_version + 1,
+                verification: null,
+                verification_result: 'pending',
+                verification_report: null,
+                acceptance: state.acceptance.map((item) => ({
+                  ...item,
+                  result: 'pending',
+                  reason: null,
+                })),
+                loop: {
+                  ...state.loop,
+                  stage: 'verify-ready',
+                  next_action: 'run-required-checks-and-dispatch-verifier',
+                },
+              }) as unknown as RuntimeValue,
+              next: ['verify.checks'],
+            };
+          }
           if (event.choice === 'approved') {
             return { state: state as unknown as RuntimeValue, next: ['verify.revalidate'] };
           }

@@ -659,6 +659,9 @@ export async function projectNativeSdkContinuation(options: {
         : [
             sdkDecision(state, 'accept-result', verifyWait.proposalHash),
             sdkDecision(state, 'revise-implementation', verifyWait.proposalHash),
+            ...(verifyWait.choices.includes('reverify')
+              ? [sdkDecision(state, 'retry-verifier', verifyWait.proposalHash)]
+              : []),
             sdkDecision(state, 'revise-requirements'),
           ],
       userCommunication: communication(

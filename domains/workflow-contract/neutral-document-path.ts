@@ -18,6 +18,19 @@
  * root `.txt`/`.rst` files are common command inputs (fixtures, data files),
  * so only Markdown and license/credits files are neutral at the root.
  */
+export function isAgentInstructionPath(file: string): boolean {
+  const normalized = file.replaceAll('\\', '/');
+  return (
+    /(?:^|\/)(?:AGENTS|CLAUDE|GEMINI|QWEN|SKILL)\.md$/iu.test(normalized) ||
+    /(?:^|\/)(?:\.agents|\.claude|\.codex|\.cursor|\.windsurf|\.kiro|\.superpowers)(?:\/|$)/iu.test(
+      normalized,
+    ) ||
+    /(?:^|\/)assets\/skills(?:-[^/]+)?\//iu.test(normalized) ||
+    /(?:^|\/)\.github\/(?:instructions|prompts)\//iu.test(normalized) ||
+    /(?:^|\/)copilot-instructions\.md$/iu.test(normalized)
+  );
+}
+
 const ROOT_DOCUMENTATION_EXTENSIONS = new Set(['.md', '.markdown']);
 const DIRECTORY_DOCUMENTATION_EXTENSIONS = new Set(['.md', '.markdown', '.rst', '.txt']);
 const DOCUMENTATION_ROOT_DIRECTORIES = new Set(['docs', 'doc', 'documentation', '.github']);
@@ -45,6 +58,7 @@ export function isNeutralDocumentPath(
   protectedPrefixes: readonly string[] = [],
 ): boolean {
   const normalized = normalizeRelative(relativePath);
+  if (isAgentInstructionPath(normalized)) return false;
   if (!normalized || normalized.endsWith('/')) return false;
   if (isProtected(normalized, protectedPrefixes)) return false;
   const segments = normalized.split('/');

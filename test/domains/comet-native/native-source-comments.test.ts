@@ -12,7 +12,10 @@ describe('Native ordinary source comments', () => {
     'main.mts',
     'main.cts',
   ])('recognizes ordinary comments in %s', (file) => {
-    const source = 'export const value = "// this is a string";\n';
+    const source =
+      file === 'main.cjs'
+        ? 'module.exports.value = "// this is a string";\n'
+        : 'export const value = "// this is a string";\n';
     expect(
       isNativeOrdinaryCommentEdit(file, source, '// 中文说明\n' + source + '/* More detail. */\n'),
     ).toBe(true);

@@ -5179,6 +5179,101 @@ children:
     ).rejects.toThrow(/OUTCOME_REJECTED/);
   });
 
+  it('refreshes byte-bound SDK checks in Verify after a non-behavioral edit', async () => {
+    const check = {
+      id: 'required',
+      name: 'Required check',
+      executable: process.execPath,
+      argv: ['-e', 'process.stdout.write("checked")'],
+      cwdRef: '.',
+      timeoutMs: 5000,
+      repeatable: true,
+    };
+    const prepared = await dispatchedVerifier([check], 'memory', undefined, false);
+    const { root, runtime } = prepared;
+    await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":true}');
+    const ready = await runtime.execute({
+      runId: prepared.run.runId,
+      actionId: prepared.run.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: 'initial-format-check', projectRoot: root },
+    });
+    const state = ready.state as unknown as NativePortableState;
+    const candidateId = state.builder_handoff!.candidate_id;
+    await fs.writeFile(path.join(root, 'settings.json'), '{\n "enabled": true\n}');
+    await expect(nativeSdkCurrentCheckSummaries({ run: ready, projectRoot: root })).rejects.toThrow(
+      '检查输入已变化',
+    );
+    const requested = await succeedLatestAction(
+      runtime,
+      ready,
+      {
+        candidateId,
+        verifierExecutionRef: 'verifier-session-1',
+        refreshChecks: true,
+        response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
+      },
+      root,
+      'refresh-request',
+      'verifier-session-1',
+    );
+    const refreshed = await runtime.execute({
+      runId: requested.runId,
+      actionId: requested.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: 'refresh-execution', projectRoot: root },
+    });
+    expect((refreshed.state as unknown as NativePortableState).phase).toBe('verify');
+    expect((refreshed.state as unknown as NativePortableState).builder_handoff?.candidate_id).toBe(
+      candidateId,
+    );
+    expect(
+      await nativeSdkCurrentCheckSummaries({ run: refreshed, projectRoot: root }),
+    ).toHaveLength(1);
+    await fs.writeFile(path.join(root, 'settings.json'), '{\n    "enabled": true\n}\n');
+    await expect(
+      nativeSdkCurrentCheckSummaries({ run: refreshed, projectRoot: root }),
+    ).rejects.toThrow('检查输入已变化');
+    const requestedAgain = await succeedLatestAction(
+      runtime,
+      refreshed,
+      {
+        candidateId,
+        verifierExecutionRef: 'verifier-session-1',
+        refreshChecks: true,
+        response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
+      },
+      root,
+      'refresh-second-request',
+      'verifier-session-1',
+    );
+    const latest = await runtime.execute({
+      runId: requestedAgain.runId,
+      actionId: requestedAgain.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: 'refresh-second-execution', projectRoot: root },
+    });
+    expect(await nativeSdkCurrentCheckSummaries({ run: latest, projectRoot: root })).toHaveLength(
+      1,
+    );
+    await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":false}');
+    await expect(
+      succeedLatestAction(
+        runtime,
+        latest,
+        {
+          candidateId,
+          verifierExecutionRef: 'verifier-session-1',
+          refreshChecks: true,
+          response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
+        },
+        root,
+        'reject-code-rebind',
+        'verifier-session-1',
+      ),
+    ).rejects.toThrow('OUTCOME_REJECTED');
+  });
+
   it('lets a new Verifier session reuse requested checks after the prior session fails', async () => {
     const { root, runtime, run: ready } = await dispatchedVerifier();
     const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
@@ -5389,6 +5484,111 @@ children:
         'verifier-session-1',
       ),
     ).rejects.toThrow(/OUTCOME_REJECTED/);
+  });
+
+  it('reverifies the same candidate after a passed result without returning to Build', async () => {
+    const prepared = await dispatchedVerifier(
+      [
+        {
+          id: 'required',
+          name: 'Required check',
+          executable: process.execPath,
+          argv: ['-e', 'process.stdout.write("checked")'],
+          cwdRef: '.',
+          timeoutMs: 5000,
+          repeatable: true,
+        },
+      ],
+      'memory',
+      undefined,
+      false,
+    );
+    const { root, runtime } = prepared;
+    await fs.writeFile(path.join(root, 'settings.json'), '{"enabled":true}');
+    const ready = await runtime.execute({
+      runId: prepared.run.runId,
+      actionId: prepared.run.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: 'initial-reverify-check', projectRoot: root },
+    });
+    const candidateId = (ready.state as unknown as NativePortableState).builder_handoff!
+      .candidate_id;
+    let run = await succeedLatestAction(
+      runtime,
+      ready,
+      {
+        candidateId,
+        verifierExecutionRef: 'verifier-session-1',
+        response: {
+          kind: 'final-result',
+          result: {
+            iteration: 1,
+            attempt: 1,
+            verdict: 'pass',
+            acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified.' }],
+            risks: [],
+            summary: 'Passed.',
+          },
+        },
+      },
+      root,
+      'before-edit-pass',
+      'verifier-session-1',
+    );
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-report',
+      context: { requestId: 'before-edit-report', projectRoot: root },
+    });
+    await fs.writeFile(path.join(root, 'settings.json'), '{\n  "enabled": true\n}');
+    const wait = run.waits.at(-1)!;
+    run = await runtime.resolveWait({
+      runId: run.runId,
+      waitId: wait.id,
+      proposalHash: wait.proposalHash,
+      decisionId: 'reverify-after-edit',
+      choice: 'reverify',
+    });
+    expect(run.state).toMatchObject({
+      phase: 'verify',
+      verification_result: 'pending',
+      builder_handoff: { candidate_id: candidateId },
+    });
+    run = await runtime.execute({
+      runId: run.runId,
+      actionId: run.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: 'after-edit-checks', projectRoot: root },
+    });
+    expect(run.state).toMatchObject({ phase: 'verify', loop: { iteration: 1, attempt: 2 } });
+    const verified = await succeedLatestAction(
+      runtime,
+      run,
+      {
+        candidateId,
+        verifierExecutionRef: 'verifier-session-2',
+        response: {
+          kind: 'final-result',
+          result: {
+            iteration: 1,
+            attempt: 2,
+            verdict: 'pass',
+            acceptance: [{ id: 'A1', result: 'passed', reason: 'Verified current bytes.' }],
+            risks: [],
+            summary: 'Passed current candidate.',
+          },
+        },
+      },
+      root,
+      'after-edit-pass',
+      'verifier-session-2',
+    );
+    expect(verified.state).toMatchObject({
+      phase: 'verify',
+      verification_result: 'pass',
+      builder_handoff: { candidate_id: candidateId },
+    });
   });
 
   it('does not enter Build when Shape documents change after approval', async () => {

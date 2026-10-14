@@ -241,6 +241,19 @@ export async function inspectNativeSdkDefinitionUpgrade(
   if (!ready)
     throw new Error('Reconcile running or unknown Actions before upgrading the definition');
   const next = structuredClone(run);
+  if (
+    workflow.steps['verify.confirm']?.type === 'ask_user' &&
+    Array.isArray(workflow.steps['verify.confirm'].choices) &&
+    workflow.steps['verify.confirm'].choices.includes('reverify')
+  ) {
+    for (const wait of next.waits)
+      if (
+        wait.stepId === 'verify.confirm' &&
+        wait.status === 'pending' &&
+        !wait.choices.includes('reverify')
+      )
+        wait.choices = [...wait.choices, 'reverify'];
+  }
   next.workflow.hash = result.toHash;
   next.definitionHashes[JSON.stringify([definition.id, definition.version])] = result.toHash;
   const recoverableFailureSteps = NATIVE_SDK_RECOVERABLE_FAILURE_STEPS;

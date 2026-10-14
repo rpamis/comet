@@ -1,3 +1,4 @@
+import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
 import { resolveClassicStateFile, LEGACY_CLASSIC_STATE_FILE } from './classic-state-file.js';
 import { randomUUID } from 'node:crypto';
 import {
@@ -1052,6 +1053,10 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
     }
   } else if (event === 'archive-confirm') {
     await requirePhase(name, 'archive');
+    const { directory } = await changeDirectory(name);
+    const current = await readClassicState(directory, { migrate: false });
+    if (current.classic)
+      await assertClassicEditReviewsComplete(classicCommandProjectRoot(), name, current.classic);
     if ((await readField(name, 'verify_result')) !== 'pass') {
       fail(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
     }
@@ -1079,6 +1084,10 @@ async function transitionLocked(output: CommandOutput, name: string, event: stri
     }
   } else {
     await requirePhase(name, 'archive');
+    const { directory } = await changeDirectory(name);
+    const current = await readClassicState(directory, { migrate: false });
+    if (current.classic)
+      await assertClassicEditReviewsComplete(classicCommandProjectRoot(), name, current.classic);
     if ((await readField(name, 'verify_result')) !== 'pass') {
       fail(`ERROR: Cannot transition '${name}': verify_result must be pass before archiving`);
     }

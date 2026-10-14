@@ -43,6 +43,12 @@ export function runGitCommand(cwd: string, args: readonly string[]): string {
   return executeGitCommand(cwd, args).trim();
 }
 
+/** 源文件比较保留前后空白和换行，不能使用会 trim 的命令输出。 */
+export function readGitBlob(cwd: string, objectId: string): string {
+  if (!/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(objectId)) throw new Error('Invalid Git blob id');
+  return executeGitCommand(cwd, ['cat-file', 'blob', objectId]);
+}
+
 export function gitWorktreeIsClean(cwd: string): boolean {
   return runGitCommand(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']) === '';
 }

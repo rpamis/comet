@@ -1,3 +1,4 @@
+import { assertNativeEditReviewsComplete } from './native-edit-review.js';
 import { randomUUID } from 'node:crypto';
 import {
   activeNativeVerifierAction,
@@ -438,6 +439,8 @@ export async function submitNativePortableVerifierResult(options: {
         );
       }
       const position = nativeVerifierResponsePosition(parsedResponse);
+      if (parsedResponse.kind !== 'request-checks')
+        await assertNativeEditReviewsComplete(options.paths, state);
       if (position.iteration !== state.loop.iteration || position.attempt !== state.loop.attempt) {
         throw new Error('Native Verifier result is stale for the current iteration or attempt');
       }
