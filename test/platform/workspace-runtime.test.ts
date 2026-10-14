@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { build } from 'esbuild';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -245,7 +247,7 @@ describe('workspace runtime identity', () => {
     expect(await fs.readFile(path.join(oldRoot, 'old-state.json'), 'utf8')).toBe('{"old":true}');
   });
 
-  it('keeps identity through Git maintenance and a new process', () => {
+  it('keeps identity through Git maintenance and a new process', async () => {
     const git = (...args: string[]) =>
       execFileSync('git', ['-C', project, ...args], { stdio: 'pipe' });
     git('init');
@@ -263,13 +265,22 @@ describe('workspace runtime identity', () => {
     git('gc');
     git('repack', '-ad');
     expect(resolveWorkspaceRuntimeRootSync(project)).toBe(before);
-    const moduleUrl = new URL('../../platform/paths/workspace-runtime.ts', import.meta.url).href;
+    const bundle = path.join(temporary, 'workspace-runtime.mjs');
+    await build({
+      entryPoints: [
+        fileURLToPath(new URL('../../platform/paths/workspace-runtime.ts', import.meta.url)),
+      ],
+      outfile: bundle,
+      bundle: true,
+      platform: 'node',
+      format: 'esm',
+    });
+    const moduleUrl = pathToFileURL(bundle).href;
     const script = `import { resolveWorkspaceRuntimeRootSync } from ${JSON.stringify(moduleUrl)}; process.stdout.write(resolveWorkspaceRuntimeRootSync(${JSON.stringify(project)}));`;
-    const freshProcess = execFileSync(
-      process.execPath,
-      ['--experimental-strip-types', '--input-type=module', '-e', script],
-      { encoding: 'utf8', env: process.env },
-    );
+    const freshProcess = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      encoding: 'utf8',
+      env: process.env,
+    });
     expect(freshProcess).toBe(before);
   });
 });

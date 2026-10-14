@@ -18,6 +18,20 @@ import { PLATFORMS } from '../../../platform/install/platforms.js';
 
 let root: string;
 let source: Awaited<ReturnType<typeof createDiskApplication>>;
+it('rejects a changed export package before writing when a content hash was confirmed', async () => {
+  const inspected = await inspectApplicationSkill(source.packageRoot);
+  await fs.appendFile(path.join(source.packageRoot, 'SKILL.md'), '\nChanged after preview\n');
+  const destination = path.join(root, 'export-after-change');
+  await expect(
+    exportWorkflowApplication({
+      file: source.file,
+      projectRoot: root,
+      destination,
+      expectedContentHash: inspected.contentHash,
+    }),
+  ).rejects.toThrow('内容已变化');
+  await expect(fs.stat(destination)).rejects.toMatchObject({ code: 'ENOENT' });
+});
 beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-sdk-delivery-'));
   await fs.mkdir(path.join(root, 'source'));

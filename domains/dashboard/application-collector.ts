@@ -769,6 +769,55 @@ async function evidence(
   };
 }
 
+/** 分发只使用保存的完整应用身份，不接受浏览器指定源文件，也不推进 Run。 */
+export async function collectDashboardApplicationDeliverySource(
+  projectRoot: string,
+  locator: string,
+) {
+  if (!/^(?:creator|application):[a-f0-9]{64}$/u.test(locator))
+    throw new DashboardApplicationQueryError('运行记录定位信息无效');
+  const entry = (await dataset(projectRoot)).entries.find((e) => e.summary.locator === locator);
+  if (!entry) throw new DashboardApplicationQueryError('运行记录不存在', 404);
+  if (
+    entry.archive ||
+    !entry.run ||
+    !entry.summary.application ||
+    (entry.creator && (entry.run.status !== 'completed' || !entry.run.outputs.install))
+  )
+    throw new DashboardApplicationQueryError(
+      '历史实验和未完成创作不能分发，请先在 Agent 中完成创作',
+      409,
+    );
+  const fixed = entry.application?.record?.application;
+  const compiled = object(entry.run.outputs.compile?.value);
+  const file = fixed ? path.join(fixed.packageRoot, 'application.json') : text(compiled.file);
+  if (!file) throw new DashboardApplicationQueryError('找不到完整应用包', 409);
+  if (!fixed) {
+    const relative = path.relative(path.resolve(projectRoot), path.resolve(file));
+    await inspectProtectedProjectPath(projectRoot, relative.replaceAll('\\', '/'), {
+      expected: 'file',
+      label: 'Creator 分发候选',
+    });
+  }
+  const material = fixed
+    ? await inspectWorkflowApplicationMaterial(fixed)
+    : await inspectWorkflowApplicationPackage(
+        path.dirname(file),
+        entry.summary.application.packageHash ?? '',
+      );
+  if (material.status !== 'matched' || !material.packageHash)
+    throw new DashboardApplicationQueryError(
+      '应用内容已变化或不可读取，请重新完成创作并选择固定版本',
+      409,
+    );
+  return {
+    file,
+    id: entry.summary.application.id,
+    version: entry.summary.application.version,
+    contentHash: material.packageHash,
+  };
+}
+
 export async function collectDashboardApplicationRunDetail(
   projectRoot: string,
   locator: string,

@@ -50,6 +50,7 @@ import {
 import { readApplicationDemo } from './application-demo.js';
 import './any-workflow-panel.css';
 import { ApplicationStepList } from './application-step-list.jsx';
+import { ApplicationDeliveryModal } from './application-delivery-modal.jsx';
 
 const attention = (r) =>
   r.error ||
@@ -130,6 +131,7 @@ export function AnyWorkflowPanel({
   const [inspectorOpen, setInspectorOpen] = useState(false),
     [drawer, setDrawer] = useState(null),
     [artifactLoading, setArtifactLoading] = useState(null);
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [rosters, setRosters] = useState({}),
     [rosterLoading, setRosterLoading] = useState(false);
   const [goalExpanded, setGoalExpanded] = useDashboardViewState(viewScope, 'goalExpanded', false);
@@ -183,6 +185,7 @@ export function AnyWorkflowPanel({
       setManual(Boolean(restore));
       setNews(false);
       setInspectorOpen(false);
+      setDeliveryOpen(false);
       setGoalExpanded(restore?.goalExpanded ?? false);
       if (restore) setExpanded(restore.expanded);
       remember(next, nextRecord, restore?.tab ?? 'steps');
@@ -767,6 +770,24 @@ export function AnyWorkflowPanel({
                     <span>{t('尚未生成或无法读取固定应用版本')}</span>
                   )}
                 </div>
+                {!selectedSummary.archive && selectedSummary.application && (
+                  <div className="any-delivery-trigger">
+                    <Tooltip title={t('完成创作并校验固定版本后，可分发或导出完整应用。')}>
+                      <Button
+                        size="small"
+                        disabled={
+                          !detail ||
+                          detailLoading ||
+                          detail.material.status !== 'matched' ||
+                          (detail.kind === 'creator' && detail.status !== 'delivered')
+                        }
+                        onClick={() => setDeliveryOpen(true)}
+                      >
+                        {t('分发 / 导出')}
+                      </Button>
+                    </Tooltip>
+                  </div>
+                )}
                 {selectedGroup && (
                   <div className="any-run-controls">
                     <Segmented
@@ -1066,6 +1087,16 @@ export function AnyWorkflowPanel({
           {inspector}
         </aside>
       </div>
+      {deliveryOpen && detail?.application && (
+        <ApplicationDeliveryModal
+          key={locator}
+          projectId={projectId}
+          projectPath={projectPath}
+          detail={detail}
+          demo={demo}
+          onClose={() => setDeliveryOpen(false)}
+        />
+      )}
       <p className="any-page-foot">
         <InfoCircleOutlined /> {t('只读观测：运行状态、用户决定和证据均来自保存的 SDK Run。')}
       </p>

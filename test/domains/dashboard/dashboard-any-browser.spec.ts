@@ -3,6 +3,218 @@ import { readApplicationDemo } from '../../../domains/dashboard/web/src/applicat
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createDiskApplication } from '../../helpers/workflow-application.js';
+
+test('Any distribution and export use the real local backend in isolated directories', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-any-delivery-browser-'));
+  const previous = process.env.COMET_DATA_DIR;
+  const previousUser = process.env.COMET_USER_DATA_ROOT;
+  process.env.COMET_DATA_DIR = path.join(root, 'data');
+  process.env.COMET_USER_DATA_ROOT = path.join(root, 'user');
+  const project = path.join(root, 'source'),
+    consumer = path.join(root, 'consumer');
+  await fs.mkdir(project);
+  await fs.mkdir(consumer);
+  const source = await createDiskApplication(project);
+  await fs.cp(source.skillRoot, path.join(source.packageRoot, 'skills/writer'), {
+    recursive: true,
+  });
+  source.manifest.skills[0].root = 'skills/writer';
+  await fs.writeFile(source.file, JSON.stringify(source.manifest));
+  const { loadWorkflowApplication } =
+    await import('../../../domains/workflow-application/index.js');
+  const { createRuntime } = await import('../../../domains/engine/runtime.js');
+  const application = await loadWorkflowApplication({
+    file: source.file,
+    projectRoot: project,
+    runId: 'browser-delivery',
+  });
+  await createRuntime({ ...application.implementation, store: application.store }).start({
+    runId: 'browser-delivery',
+    workflow: { id: 'editorial', version: '1' },
+    input: { topic: 'Delivery' },
+  });
+  const { startDashboardServer } = await import('../../../domains/dashboard/server.js');
+  const server = await startDashboardServer({
+    projectPath: project,
+    port: 0,
+    webRoot: path.resolve('dist/domains/dashboard/web'),
+  });
+  try {
+    await page.goto(server.url);
+    await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+    await page.getByRole('button', { name: '分发 / 导出' }).click();
+    const dialog = page.getByRole('dialog', { name: '分发 / 导出应用' });
+    await dialog.getByLabel('目标根目录').fill(consumer);
+    await dialog.getByRole('button', { name: '预览安装' }).click();
+    await expect(dialog).toContainText(path.join(consumer, '.agents/skills/editorial'));
+    expect(await fs.readdir(consumer)).toEqual([]);
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+    await dialog.getByRole('button', { name: '确认安装' }).click();
+    await expect(dialog).toContainText('分发完成');
+    expect(
+      await fs.readFile(path.join(consumer, '.agents/skills/writer/scripts/run.mjs'), 'utf8'),
+    ).toContain('JSON.parse');
+    await dialog.getByText('导出到目录', { exact: true }).click();
+    const destination = path.join(root, 'export');
+    await dialog.getByLabel('导出目录').fill(destination);
+    await dialog.getByRole('button', { name: '预览导出' }).click();
+    await expect(dialog).toContainText(destination);
+    await dialog.getByRole('button', { name: '确认导出' }).click();
+    await expect(dialog).toContainText('导出完成');
+    expect(await fs.readFile(path.join(destination, 'application.json'), 'utf8')).toContain(
+      'editorial',
+    );
+  } finally {
+    await server.close();
+    if (previous === undefined) delete process.env.COMET_DATA_DIR;
+    else process.env.COMET_DATA_DIR = previous;
+    if (previousUser === undefined) delete process.env.COMET_USER_DATA_ROOT;
+    else process.env.COMET_USER_DATA_ROOT = previousUser;
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Any delivery previews targets before installation and invalidates previews when options change', async ({
+  page,
+}) => {
+  const calls: any[] = [];
+  const list = readApplicationDemo('application-runs', {});
+  await page.route('**/api/dashboard/**', async (route) => {
+    const request = route.request(),
+      url = new URL(request.url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: {},
+          initialChanges: { items: [], total: 0 },
+          git: {},
+        },
+      });
+    if (url.pathname.endsWith('/application-runs')) return route.fulfill({ json: list });
+    if (url.pathname.endsWith('/application-run')) {
+      const detail = readApplicationDemo('application-run', {
+        locator: url.searchParams.get('locator'),
+      });
+      detail.status = 'delivered';
+      return route.fulfill({ json: detail });
+    }
+    if (url.pathname.endsWith('/application-delivery')) {
+      if (request.method() === 'GET')
+        return route.fulfill({
+          json: {
+            projectRoot: '/fixture',
+            platforms: [
+              { id: 'codex', name: 'Codex' },
+              { id: 'cursor', name: 'Cursor' },
+            ],
+          },
+        });
+      const body = request.postDataJSON();
+      calls.push(body);
+      if (body.action === 'preview-install')
+        return route.fulfill({
+          json: {
+            id: 'grill-suite',
+            version: '1.2.0',
+            operation: 'install',
+            confirmationHash: 'preview-hash',
+            target: `${body.targetDirectory}/.comet/applications`,
+            files: ['application.json', 'SKILL.md'],
+            platforms: [
+              { id: 'codex', name: 'Codex', skillsRoot: `${body.targetDirectory}/.agents/skills` },
+            ],
+            hostSkills: [
+              {
+                name: 'grill-suite',
+                root: `${body.targetDirectory}/.agents/skills/grill-suite`,
+                operation: 'create',
+                kind: 'entry',
+              },
+            ],
+            hostIntegration: [
+              {
+                platformId: 'codex',
+                files: [
+                  {
+                    role: 'rule',
+                    path: `${body.targetDirectory}/.codex/rules/workflow.md`,
+                    operation: 'create',
+                  },
+                ],
+              },
+            ],
+            requiredCapabilities: ['skill-script'],
+            evaluation: { status: 'not-recorded' },
+          },
+        });
+      return route.fulfill({
+        json: { file: '/consumer/.comet/applications/grill-suite/application.json' },
+      });
+    }
+    return route.fulfill({ json: { items: [], pages: [] } });
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page.getByRole('button', { name: '分发 / 导出' }).click();
+  const dialog = page.getByRole('dialog', { name: '分发 / 导出应用' });
+  await expect(dialog.getByRole('button', { name: '确认安装' })).toHaveCount(0);
+  await dialog.getByLabel('目标根目录').fill('/consumer');
+  await dialog.getByRole('button', { name: '预览安装' }).click();
+  await expect(dialog).toContainText('/consumer/.agents/skills/grill-suite');
+  await expect(dialog).toContainText('/consumer/.codex/rules/workflow.md');
+  expect(calls.map((c) => c.action)).toEqual(['preview-install']);
+  await dialog.getByLabel('目标根目录').fill('/another');
+  await expect(dialog.getByRole('button', { name: '确认安装' })).toHaveCount(0);
+  await dialog.getByRole('button', { name: '预览安装' }).click();
+  await dialog.getByRole('button', { name: '确认安装' }).click();
+  expect(calls.at(-1)).toMatchObject({
+    action: 'install',
+    targetDirectory: '/another',
+    confirmationHash: 'preview-hash',
+  });
+  await expect(dialog).toContainText('分发完成');
+});
+
+test('Any delivery demo shows destination controls without making delivery API requests', async ({
+  page,
+}) => {
+  let requests = 0;
+  page.on('request', (request) => {
+    if (request.url().includes('application-delivery')) requests++;
+  });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: 'Comet Any' }).click();
+  await page.getByText('应用运行', { exact: true }).last().click();
+  await page.getByRole('button', { name: '分发 / 导出' }).click();
+  const dialog = page.getByRole('dialog', { name: '分发 / 导出应用' });
+  await expect(dialog).toContainText('示例预览');
+  await expect(dialog.getByRole('button', { name: '预览安装' })).toBeDisabled();
+  await dialog.getByText('导出到目录', { exact: true }).click();
+  await expect(dialog.getByLabel('导出目录')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '预览导出' })).toBeDisabled();
+  expect(requests).toBe(0);
+});
 
 test('a cloned historical archive exposes its original chain and readonly Eval report', async ({
   page,

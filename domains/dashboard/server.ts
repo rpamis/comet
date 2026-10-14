@@ -30,6 +30,7 @@ import { DashboardPluginHostError, type DashboardPluginHostFactory } from './plu
 import type { DashboardChangeTab } from './types.js';
 import { handleDashboardEvalRequest } from './eval-routes.js';
 import { handleDashboardApplicationRequest } from './application-routes.js';
+import { handleDashboardApplicationDeliveryRequest } from './application-delivery.js';
 import { DashboardApplicationQueryError } from './application-collector.js';
 import {
   readUserEvalSettings,
@@ -239,6 +240,8 @@ async function handleRequest(
   const isEvalRequest =
     isEvalSettingsRequest || /^\/api\/dashboard\/projects\/[^/]+\/eval(?:\/|$)/u.test(pathname);
   const isUpdateRequest = pathname === '/api/dashboard/update';
+  const isApplicationDeliveryRequest =
+    /^\/api\/dashboard\/projects\/[^/]+\/application-delivery$/u.test(pathname);
   if (
     req.method !== 'GET' &&
     req.method !== 'HEAD' &&
@@ -248,7 +251,8 @@ async function handleRequest(
         isProjectConfigRequest ||
         isProjectForgetRequest ||
         isEvalRequest ||
-        isUpdateRequest)
+        isUpdateRequest ||
+        isApplicationDeliveryRequest)
     )
   ) {
     respondError(res, 405, 'Method not allowed');
@@ -347,6 +351,16 @@ async function handleRequest(
         error: 'Dashboard project is unavailable',
         availability: project.availability,
       });
+      return;
+    }
+
+    if (subpath === '/application-delivery') {
+      const result = await handleDashboardApplicationDeliveryRequest(
+        project.path,
+        req.method ?? 'GET',
+        req.method === 'POST' ? await readJsonBody(req) : undefined,
+      );
+      respondJson(res, req.method, result.status, result.body);
       return;
     }
 

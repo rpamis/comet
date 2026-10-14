@@ -327,6 +327,7 @@ export function exportWorkflowApplication(options: {
     file: string;
     projectRoot: string;
     destination: string;
+    expectedContentHash?: string;
 }): Promise<{
     file: string;
     contentHash: string;

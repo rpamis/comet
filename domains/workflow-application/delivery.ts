@@ -520,8 +520,11 @@ export async function exportWorkflowApplication(options: {
   file: string;
   projectRoot: string;
   destination: string;
+  expectedContentHash?: string;
 }) {
   const { files, contentHash } = await completePackage(options.file, options.projectRoot);
+  if (options.expectedContentHash && options.expectedContentHash !== contentHash)
+    applicationError('导出应用内容已变化；重新预览并确认');
   const destination = path.resolve(options.destination);
   try {
     await fs.lstat(destination);

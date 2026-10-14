@@ -21,7 +21,8 @@ describe('Native check executor', () => {
   });
 
   afterEach(async () => {
-    await fs.rm(root, { recursive: true, force: true });
+    // Windows 进程退出后可能短暂占用 cwd；有限重试，不掩盖持续占用。
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('streams output longer than 64 KiB to a log without summary validation', async () => {
