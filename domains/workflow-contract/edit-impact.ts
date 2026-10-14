@@ -212,8 +212,6 @@ export function classifyEditImpact(
   if (before === after)
     return { kind: 'unchanged', reason: '文件内容未改变', fingerprint: previous };
   const current = editSemanticFingerprint(file, after);
-  if (previous !== null && previous === current)
-    return { kind: 'non-behavioral', reason: '解析后的结构和有效值未改变', fingerprint: current };
   if (options.formal)
     return {
       kind: 'requirements-changed',
@@ -226,20 +224,12 @@ export function classifyEditImpact(
       reason: 'Agent 执行指令发生变化',
       fingerprint: current,
     };
-  if (
-    previous !== null &&
-    current !== null &&
-    (SOURCE_EXTENSIONS.has(path.extname(file).toLowerCase()) ||
-      DATA_EXTENSIONS.has(path.extname(file).toLowerCase()))
-  )
-    return {
-      kind: 'implementation-changed',
-      reason: '代码结构或配置有效值发生变化',
-      fingerprint: current,
-    };
+  // 解析器只提供等价证据。结构不同或格式未知都不能据此判断行为影响。
+  if (previous !== null && previous === current)
+    return { kind: 'non-behavioral', reason: '解析后的结构和有效值未改变', fingerprint: current };
   return {
     kind: 'review-required',
-    reason: '本地规则无法证明本次编辑不改变行为，需要复核具体差异',
+    reason: '本地无法证明行为等价，需要结合具体差异、文件用途和验收条件复核',
     fingerprint: current,
   };
 }

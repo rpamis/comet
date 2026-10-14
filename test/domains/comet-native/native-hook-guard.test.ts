@@ -136,6 +136,7 @@ describe('Native phase Hook guard', () => {
   it('discards the selected Hook snapshot before returning a candidate to Build', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig());
     const { paths, state } = await portableBuild('hook-invalidates', 'docs');
+    await fs.writeFile(path.join(projectRoot, 'AGENTS.md'), 'Run checks.\n');
     await submitNativePortableBuilderCandidate({
       paths,
       name: state.name,
@@ -165,7 +166,16 @@ describe('Native phase Hook guard', () => {
         phase: 'verify',
       });
       expect(
-        await inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts'), state.name),
+        await inspectNativeHookGuard(
+          projectRoot,
+          {
+            intent: 'write',
+            targets: ['AGENTS.md'],
+            toolName: 'Write',
+            writes: [{ path: 'AGENTS.md', content: 'Skip checks.\n' }],
+          },
+          state.name,
+        ),
       ).toMatchObject({ allowed: true, phase: 'build' });
       expect(await resolveActiveNativeHookChange(projectRoot, state.name)).toMatchObject({
         phase: 'build',
@@ -560,7 +570,7 @@ describe('Native phase Hook guard', () => {
     });
   });
 
-  it('invalidates a portable Verify candidate before allowing an implementation write', async () => {
+  it('keeps a portable Verify candidate pending when an implementation write has no content', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const { paths, state } = await portableBuild('portable-verify-write');
     const runner = createNativeRunnerChannel();
@@ -599,20 +609,19 @@ describe('Native phase Hook guard', () => {
     await expect(
       inspectNativeHookGuard(projectRoot, writeRequest('src/index.ts')),
     ).resolves.toMatchObject({
-      allowed: true,
-      phase: 'build',
-      reason: expect.stringContaining('candidate was invalidated'),
+      allowed: false,
+      phase: 'verify',
+      reason: expect.stringContaining('edit-review prepare'),
     });
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
-      phase: 'build',
+      phase: 'verify',
       builder_handoff: {
         review: { reviewer_execution_ref: 'runtime-owned-state-reviewer' },
       },
-      verification: null,
     });
   });
 
-  it('allows concurrent implementation writes after invalidating one Verify candidate once', async () => {
+  it('keeps concurrent unclassified writes pending without revising the Verify candidate', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const { paths, state } = await portableBuild('portable-concurrent-write');
     const runner = createNativeRunnerChannel();
@@ -638,19 +647,19 @@ describe('Native phase Hook guard', () => {
     ]);
 
     expect(results).toEqual([
-      expect.objectContaining({ allowed: true, phase: 'build' }),
-      expect.objectContaining({ allowed: true, phase: 'build' }),
+      expect.objectContaining({ allowed: false, phase: 'verify' }),
+      expect.objectContaining({ allowed: false, phase: 'verify' }),
     ]);
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
-      phase: 'build',
-      loop: { iteration: 2 },
+      phase: 'verify',
+      loop: { iteration: 1 },
       builder_handoff: {
         review: { reviewer_execution_ref: 'concurrent-guard-reviewer' },
       },
     });
   });
 
-  it('preserves a Verify candidate for resource messages and still invalidates mixed file writes', async () => {
+  it('preserves a Verify candidate for resource messages and holds unclassified mixed writes', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const { paths, state } = await portableBuild('portable-resource-targets');
     const runner = createNativeRunnerChannel();
@@ -677,7 +686,7 @@ describe('Native phase Hook guard', () => {
     expect(await readNativePortableChange(paths, state.name)).toEqual(before);
     await expect(
       inspectNativeHookGuard(projectRoot, writeRequest('agent:/Main', 'src/new-file.ts')),
-    ).resolves.toMatchObject({ allowed: true, phase: 'build' });
+    ).resolves.toMatchObject({ allowed: false, phase: 'verify' });
   });
 
   it('keeps a portable Verify candidate valid for neutral document writes', async () => {
@@ -713,7 +722,7 @@ describe('Native phase Hook guard', () => {
     });
   });
 
-  it('still invalidates a portable Verify candidate when a material write mixes with documents', async () => {
+  it('holds an unclassified material write mixed with documents in Verify', async () => {
     await writeProjectConfig(projectRoot, defaultProjectConfig('.'));
     const { paths, state } = await portableBuild('portable-mixed-write');
     const runner = createNativeRunnerChannel();
@@ -736,12 +745,12 @@ describe('Native phase Hook guard', () => {
     await expect(
       inspectNativeHookGuard(projectRoot, writeRequest('README.md', 'src/index.ts')),
     ).resolves.toMatchObject({
-      allowed: true,
-      phase: 'build',
-      reason: expect.stringContaining('candidate was invalidated'),
+      allowed: false,
+      phase: 'verify',
+      reason: expect.stringContaining('edit-review prepare'),
     });
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
-      phase: 'build',
+      phase: 'verify',
     });
   });
 

@@ -15,7 +15,7 @@ const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
-async function fixture() {
+async function fixture(workflow: 'native' | 'classic' = 'native') {
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-edit-review-'));
   const runtimeRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-edit-review-runtime-'));
   roots.push(projectRoot, runtimeRoot);
@@ -23,7 +23,7 @@ async function fixture() {
   const scope = {
     projectRoot,
     runtimeRoot,
-    workflow: 'native' as const,
+    workflow,
     change: 'review',
     candidateKey: 'candidate-1',
     formalPrefixes: ['docs/comet'],
@@ -145,15 +145,39 @@ describe('bound edit reviews', () => {
       ),
     ).rejects.toThrow('已有');
   });
-  it('cannot review away known behavior changes or formal approvals', async () => {
-    const f = await fixture();
-    await fs.writeFile(path.join(f.scope.projectRoot, 'settings.json'), '{"enabled":true}');
-    await expect(
-      prepareEditReview(f.scope, {
+  it.each(['native', 'classic'] as const)(
+    'lets the %s Verifier assess a changed configuration value and require revision',
+    async (workflow) => {
+      const f = await fixture(workflow);
+      await fs.writeFile(path.join(f.scope.projectRoot, 'settings.json'), '{"enabled":true}');
+      const proposal = await prepareEditReview(f.scope, {
         intent: 'write',
         toolName: 'Write',
         targets: ['settings.json'],
         writes: [{ path: 'settings.json', content: '{"enabled":false}' }],
+      });
+      await expect(assertEditReviewsComplete(f.scope)).rejects.toThrow('待复核');
+      await recordEditReview(
+        f.scope,
+        {
+          proposalHash: proposal.proposalHash,
+          decision: 'implementation-changed',
+          summary: 'The enabled flag controls runtime execution; revision is required.',
+        },
+        { kind: 'runtime-verifier', executionRef: 'verifier' },
+      );
+      await expect(assertEditReviewsComplete(f.scope)).rejects.toThrow('原工作流');
+    },
+  );
+  it('cannot review away execution instructions or formal approvals', async () => {
+    const f = await fixture();
+    await fs.writeFile(path.join(f.scope.projectRoot, 'AGENTS.md'), 'Run checks.');
+    await expect(
+      prepareEditReview(f.scope, {
+        intent: 'write',
+        toolName: 'Write',
+        targets: ['AGENTS.md'],
+        writes: [{ path: 'AGENTS.md', content: 'Skip checks.' }],
       }),
     ).rejects.toThrow('实现');
     await fs.mkdir(path.join(f.scope.projectRoot, 'docs/comet'), { recursive: true });

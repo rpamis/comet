@@ -48,7 +48,7 @@ export async function runClassicEditReviewCommand(options: {
         proposal: await prepareEditReview(scope, request),
         request,
         instructions:
-          '复核完整编辑前后内容及其调用场景；确认不改变行为后 record。应用编辑后重新执行失效检查，再完成当前 Verifier。Compat 必须由用户明确确认复核结果；SDK 沿用当前独立 Verifier 的 claim。',
+          '读取原文件和完整编辑请求，结合差异、实际使用方及当前验收条件判断影响；文件扩展名、语法结构或 hash 不同本身不能决定回滚。通过 record 提交 non-behavioral、implementation-changed 或 requirements-changed，并说明依据；无法确定时保持待复核。非行为修改应用后重新执行失效检查，再完成当前 Verifier。Compat 必须由用户明确确认复核结果；SDK 沿用当前独立 Verifier 的 claim。',
       };
     }
     if (options.operation !== 'record')

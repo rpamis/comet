@@ -252,6 +252,9 @@ describe('Native portable Runtime vertical path', () => {
     ['README.md', 'value 1\n', 'Explain the output.\n', false],
     ['worker.py', 'value = 1\n', '# Explain the output.\n', false],
     ['worker.py', 'value = 1\n', '# Explain the output.\n', true],
+    ['refactor.ts', 'export function value() { return 1; }', '', false],
+    ['refactor.ts', 'export function value() { return 1; }', '', true],
+    ['labels.json', '{"value":"Ready 1"}', '', false],
   ] as const)(
     'reruns byte-bound checks without returning to Build after non-behavioral edits (%s, dirty: %s)',
     async (ref, initial, prefix, dirty) => {
@@ -303,10 +306,17 @@ describe('Native portable Runtime vertical path', () => {
       await executeNativePortableCheckPlan({ paths, name: state.name, plans });
       const before = (await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name)))!;
       const beforeEdit = await fs.readFile(file, 'utf8');
-      const afterEdit = ref.endsWith('.json')
-        ? JSON.stringify(JSON.parse(beforeEdit), null, 2)
-        : prefix + beforeEdit;
-      if (ref.endsWith('.py')) {
+      const afterEdit =
+        ref === 'refactor.ts'
+          ? beforeEdit.replace(/return (\d+);/u, 'const result = $1; return result;')
+          : ref === 'labels.json'
+            ? beforeEdit.replace('Ready', 'Ready to continue')
+            : ref.endsWith('.json')
+              ? JSON.stringify(JSON.parse(beforeEdit), null, 2)
+              : prefix + beforeEdit;
+      if (ref.endsWith('.py') || ref === 'refactor.ts' || ref === 'labels.json') {
+        const { inspectNativeHookGuard } =
+          await import('../../../domains/comet-native/native-hook-guard.js');
         const { nativeEditReviewScope } =
           await import('../../../domains/comet-native/native-edit-review.js');
         const { prepareEditReview, recordEditReview } =
@@ -315,21 +325,29 @@ describe('Native portable Runtime vertical path', () => {
           paths,
           await readNativePortableChange(paths, state.name),
         );
-        const proposal = await prepareEditReview(scope, {
-          intent: 'write',
+        const request = {
+          intent: 'write' as const,
           toolName: 'Write',
           targets: [ref],
           writes: [{ path: ref, content: afterEdit }],
-        });
+        };
+        const blocked = await inspectNativeHookGuard(root, request, state.name);
+        expect(blocked).toMatchObject({ allowed: false, phase: 'verify' });
+        expect(blocked.reason).toContain('edit-review prepare');
+        const proposal = await prepareEditReview(scope, request);
         await recordEditReview(
           scope,
           {
             proposalHash: proposal.proposalHash,
             decision: 'non-behavioral',
-            summary: 'Python comment only.',
+            summary: 'Reviewed the diff and consumers; acceptance behavior is unchanged.',
           },
           { kind: 'user-confirmed', executionRef: 'user' },
         );
+        expect(await inspectNativeHookGuard(root, request, state.name)).toMatchObject({
+          allowed: true,
+          phase: 'verify',
+        });
       }
       await fs.writeFile(file, afterEdit);
       const checked = await executeNativePortableCheckPlan({ paths, name: state.name, plans });
@@ -344,7 +362,7 @@ describe('Native portable Runtime vertical path', () => {
           path.join(nativePreferredChangeRuntimeDir(paths, state.name), after.checks[0].log),
           'utf8',
         ),
-      ).toContain(ref.endsWith('.json') ? '"value": ' : 'Explain the output');
+      ).toContain(afterEdit.trim());
     },
   );
 

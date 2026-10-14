@@ -5274,6 +5274,128 @@ children:
     ).rejects.toThrow('OUTCOME_REJECTED');
   });
 
+  it('refreshes the same SDK candidate after its independent Verifier approves a structural edit', async () => {
+    const check = {
+      id: 'required',
+      name: 'Required check',
+      executable: process.execPath,
+      argv: ['-e', 'process.stdout.write("checked")'],
+      cwdRef: '.',
+      timeoutMs: 5000,
+      repeatable: true,
+    };
+    const prepared = await dispatchedVerifier([check], 'memory', undefined, false);
+    const { root, paths, runtime } = prepared;
+    const before = 'export function value() { return 1; }';
+    const after = 'export function value() { const result = 1; return result; }';
+    const target = path.join(root, 'value.ts');
+    await fs.writeFile(target, before);
+    const ready = await runtime.execute({
+      runId: prepared.run.runId,
+      actionId: prepared.run.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: 'structural-initial-check', projectRoot: root },
+    });
+    const state = ready.state as NativePortableState;
+    const { nativeEditReviewScope } =
+      await import('../../../domains/comet-native/native-edit-review.js');
+    const {
+      prepareEditReview,
+      recordEditReview,
+      claimedEditReviewAuthority,
+      assertEditReviewsComplete,
+    } = await import('../../../domains/workflow-contract/edit-review.js');
+    const scope = nativeEditReviewScope(paths, state);
+    const proposal = await prepareEditReview(scope, {
+      intent: 'write',
+      toolName: 'Write',
+      targets: ['value.ts'],
+      writes: [{ path: 'value.ts', content: after }],
+    });
+    await expect(assertEditReviewsComplete(scope)).rejects.toThrow('待复核');
+    const action = ready.actions.at(-1)!;
+    const context = { requestId: 'structural-review', projectRoot: root };
+    const claim = {
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      claimToken: 'structural-review',
+      sessionId: 'verifier-session-1',
+    };
+    const claimed = await runtime.claim({
+      runId: ready.runId,
+      actionId: action.id,
+      attempt: action.attempt,
+      inputHash: action.inputHash,
+      executorId: 'native-host',
+      sessionId: claim.sessionId,
+      claimToken: claim.claimToken,
+      context,
+    });
+    await recordEditReview(
+      scope,
+      {
+        proposalHash: proposal.proposalHash,
+        decision: 'non-behavioral',
+        summary:
+          'The local constant preserves the returned value; callers and acceptance behavior are unchanged.',
+      },
+      claimedEditReviewAuthority(claimed.actions, 'verify.verifier', 'builder-session-1', claim),
+    );
+    await fs.writeFile(target, after);
+    await expect(nativeSdkCurrentCheckSummaries({ run: ready, projectRoot: root })).rejects.toThrow(
+      '检查输入已变化',
+    );
+    const requested = await runtime.recordOutcome({
+      runId: ready.runId,
+      outcome: {
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claimToken: claim.claimToken,
+        outcomeId: 'structural-refresh',
+        status: 'succeeded',
+        output: {
+          candidateId: state.builder_handoff!.candidate_id,
+          verifierExecutionRef: claim.sessionId,
+          refreshChecks: true,
+          response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
+        },
+      },
+      context,
+    });
+    const refreshed = await runtime.execute({
+      runId: requested.runId,
+      actionId: requested.actions.at(-1)!.id,
+      executorId: 'comet-native-checks',
+      context: { requestId: 'structural-refreshed-check', projectRoot: root },
+    });
+    expect(refreshed.state).toMatchObject({
+      phase: 'verify',
+      builder_handoff: { candidate_id: state.builder_handoff!.candidate_id },
+    });
+    expect(
+      await nativeSdkCurrentCheckSummaries({ run: refreshed, projectRoot: root }),
+    ).toHaveLength(1);
+    await fs.writeFile(target, after.replace('result = 1', 'result = 2'));
+    await expect(assertEditReviewsComplete(scope)).rejects.toThrow('不匹配');
+    await expect(
+      succeedLatestAction(
+        runtime,
+        refreshed,
+        {
+          candidateId: state.builder_handoff!.candidate_id,
+          verifierExecutionRef: claim.sessionId,
+          refreshChecks: true,
+          response: { kind: 'request-checks', iteration: 1, attempt: 1, checks: [check] },
+        },
+        root,
+        'unreviewed-structural-change',
+        claim.sessionId,
+      ),
+    ).rejects.toThrow('OUTCOME_REJECTED');
+  });
+
   it('lets a new Verifier session reuse requested checks after the prior session fails', async () => {
     const { root, runtime, run: ready } = await dispatchedVerifier();
     const candidateId = (ready.state as NativePortableState).builder_handoff!.candidate_id;
