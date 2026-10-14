@@ -71,7 +71,10 @@ export async function runExternalCommandAsync(
         else chunks.push(chunk);
       };
       child.stdout.on('data', (chunk: Buffer) => collect(stdout, chunk));
-      child.stderr.on('data', (chunk: Buffer) => collect(stderr, chunk));
+      child.stderr.on('data', (chunk: Buffer) => {
+        collect(stderr, chunk);
+        if (!settled) options.onStderr?.(chunk.toString('utf8'));
+      });
       child.once('error', (error) => {
         if (settled) return;
         settled = true;
@@ -105,6 +108,7 @@ export interface ExternalCommandOptions {
   maxBufferBytes?: number;
   input?: string;
   signal?: AbortSignal;
+  onStderr?: (chunk: string) => void;
 }
 
 export class ExternalCommandError extends Error {

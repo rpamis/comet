@@ -13,6 +13,25 @@ import {
 describe('external command provider', () => {
   let tempRoot: string | undefined;
 
+  it('forwards bounded diagnostics without mixing them into successful JSON output', async () => {
+    let diagnostics = '';
+    const result = await runExternalCommandAsync(
+      process.execPath,
+      [
+        '-e',
+        'process.stderr.write("provider unavailable"); process.stdout.write("{\\\"context\\\":[]}")',
+      ],
+      {
+        onStderr: (chunk) => {
+          diagnostics += chunk;
+        },
+        timeoutMs: 5000,
+      },
+    );
+    expect(JSON.parse(result)).toEqual({ context: [] });
+    expect(diagnostics).toBe('provider unavailable');
+  });
+
   it('keeps timers responsive while an asynchronous child is running', async () => {
     let completed = false;
     const probe = runExternalCommandAsync(

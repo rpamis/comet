@@ -11,6 +11,9 @@ vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
   recordCometContextOutcome,
   recordCometWorkflowResult,
 }));
+vi.mock('../../app/commands/comet-task-context.js', () => ({
+  collectCometTaskContext: collectCometPluginContext,
+}));
 
 describe('ordinary Comet task host', () => {
   beforeEach(() => {

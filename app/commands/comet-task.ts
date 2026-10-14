@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { collectCometTaskContext } from './comet-task-context.js';
 import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
 
 import {
@@ -115,7 +116,7 @@ async function runCometTaskCommand(
   const context =
     options.expandContext || options.application || options.complete
       ? []
-      : await collectCometPluginContext(projectRoot, request);
+      : await collectCometTaskContext(projectRoot, request);
   let learningCheckVerified: boolean | undefined;
   let projectMemory: ProjectMemoryCompletionStatus | undefined;
   if (options.complete) {
