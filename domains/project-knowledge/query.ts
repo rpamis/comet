@@ -9,7 +9,18 @@ export const PROJECT_KNOWLEDGE_QUERY_BUDGETS = {
 const EN_STOP_WORDS = new Set(
   'a an and are as at be by for from in is it of on or that the this to with you your'.split(' '),
 );
-const ZH_STOP_WORDS = new Set(['请', '帮我', '一下', '这个', '进行', '实现', '需要', '如何']);
+const ZH_STOP_WORDS = new Set([
+  '请',
+  '帮我',
+  '一下',
+  '这个',
+  '进行',
+  '实现',
+  '需要',
+  '如何',
+  '流程',
+  '移动',
+]);
 
 function normalizedText(value: string, max = MAX_TASK_CHARS): string {
   return [...value]
@@ -156,7 +167,10 @@ export function createProjectKnowledgeQuery(input: {
   const strongTerms = strong.slice(0, PROJECT_KNOWLEDGE_QUERY_BUDGETS.strong);
   const phraseTerms = phrases.slice(0, PROJECT_KNOWLEDGE_QUERY_BUDGETS.phrase);
   const weakTerms = weak
-    .filter((term) => !strongTerms.includes(term) && !phraseTerms.includes(term))
+    .filter(
+      (term) =>
+        !ZH_STOP_WORDS.has(term) && !strongTerms.includes(term) && !phraseTerms.includes(term),
+    )
     .slice(0, PROJECT_KNOWLEDGE_QUERY_BUDGETS.weak);
   const terms = [...strongTerms, ...phraseTerms, ...weakTerms];
   const remoteQuery = [
@@ -184,4 +198,10 @@ export function queryContainsTerm(text: string, term: string): boolean {
 
 export function queryHasStrongMatch(query: ProjectKnowledgeQuery, text: string): boolean {
   return query.strongTerms.some((term) => queryContainsTerm(text, term));
+}
+
+export function independentQueryTermCount(values: readonly string[]): number {
+  const terms = [...new Set(values.map((value) => value.toLocaleLowerCase()))];
+  return terms.filter((term) => !terms.some((other) => other !== term && other.includes(term)))
+    .length;
 }

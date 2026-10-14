@@ -8,7 +8,7 @@ import { readProtectedProjectFile } from '../workflow-contract/protected-project
 import { knowledgeDocumentKindRank } from './corpus.js';
 import type { ProjectKnowledgeIndexStatus } from './index-store.js';
 import { ProjectKnowledgeLocalStore } from './local-store.js';
-import { queryContainsTerm, queryHasStrongMatch } from './query.js';
+import { independentQueryTermCount, queryContainsTerm, queryHasStrongMatch } from './query.js';
 import {
   parseProjectKnowledgeRecord,
   projectKnowledgeRecordFamily,
@@ -330,7 +330,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
           complete: this.options.corpusComplete !== false,
         });
         refreshedSources = [...sync.refreshedSources, ...sync.changedSources];
-        sections = await this.readCurrentSections(store.searchSections(request.query), diagnostics);
+        sections = store.searchSections(request.query);
         indexSynced = true;
       } catch {
         refreshedSources = [...this.options.corpus];
@@ -347,12 +347,18 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     sections = await this.readCurrentSections(sections, diagnostics);
     const recordResults = store?.searchRecords(request.query) ?? [];
     const channels = [recordResults, sections, exact];
+    const historyRequested =
+      /历史|旧版|以前|当时|\bhistor(?:y|ical)\b|\barchived\b/iu.test(request.query.task) ||
+      /(?:^|\/)archive(?:\/|$)/u.test(request.query.path ?? '');
+    const currentBehavior =
+      !historyRequested && /当前|现行|现在|最新|\bcurrent\b|\blatest\b/iu.test(request.query.task);
     const queryTerms = [
       ...new Set(request.query.terms.map((term) => term.toLocaleLowerCase()).filter(Boolean)),
     ];
     const fused = new Map<string, { result: ProjectKnowledgeResult; score: number }>();
     for (const [channel, channelResults] of channels.entries()) {
       channelResults.forEach((result, rank) => {
+        if (currentBehavior && result.document?.kind.endsWith('-archive')) return;
         const key = result.record
           ? `record:${result.record.id}`
           : `${result.source}\u0000${result.title ?? ''}`;
@@ -382,9 +388,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
           ),
       )
       .map(({ result, score }) => ({ result: { ...result, score }, score }))) {
-      const key = result.record
-        ? `record:${result.record.id}`
-        : `${result.source}\u0000${result.title ?? ''}`;
+      const key = result.record ? `record:${result.record.id}` : result.source;
       if (results.has(key)) continue;
       if (result.record) {
         if (recordCount >= 2) {
@@ -647,7 +651,12 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     }
     if (invalidJson) return [];
     return [...candidates.values()]
-      .filter((candidate) => candidate.strong || candidate.matchedTerms.size >= 2)
+      .filter(
+        (candidate) =>
+          candidate.strong ||
+          query.phraseTerms.some((term) => candidate.matchedTerms.has(term)) ||
+          independentQueryTermCount([...candidate.matchedTerms]) >= 2,
+      )
       .sort((left, right) => candidateSort(left, right, query))
       .slice(0, 8);
   }

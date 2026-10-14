@@ -1,10 +1,12 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, type Stats } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { openProjectKnowledgeDatabase, type ProjectKnowledgeDatabase } from './sqlite.js';
+import { independentQueryTermCount } from './query.js';
+import { knowledgeDocumentKindRank } from './corpus.js';
 import type {
   ProjectKnowledgeDocument,
   ProjectKnowledgeDiagnosticReporter,
@@ -17,6 +19,38 @@ const MAX_SOURCE_BYTES = 256 * 1024;
 const MAX_SECTION_CHARS = 16_000;
 const MAX_LEXICAL_TERMS = 256;
 const MAX_SYNC_MS = 2_000;
+const SOURCE_READ_CONCURRENCY = 8;
+
+interface IndexSourceRead {
+  readonly stat?: Stats;
+  readonly read?: Awaited<ReturnType<typeof readProtectedProjectFile>>;
+  readonly error?: unknown;
+}
+
+async function readIndexSource(
+  projectRoot: string,
+  document: ProjectKnowledgeDocument,
+): Promise<IndexSourceRead> {
+  let stat: Stats;
+  try {
+    stat = await fs.lstat(document.absolutePath);
+  } catch (error) {
+    return { error };
+  }
+  let read: IndexSourceRead['read'];
+  try {
+    read = await readProtectedProjectFile(projectRoot, document.source, MAX_SOURCE_BYTES, {
+      label: document.source,
+    });
+    const afterRead = await fs.lstat(document.absolutePath);
+    if (afterRead.size !== read.stat.size || afterRead.mtimeMs !== read.stat.mtimeMs) {
+      throw new Error('source changed while it was being indexed');
+    }
+    return { stat, read };
+  } catch (error) {
+    return { stat, read, error };
+  }
+}
 
 export interface ProjectKnowledgeIndexOptions {
   readonly projectRoot: string;
@@ -387,6 +421,13 @@ export class ProjectKnowledgeIndexStore {
   ): Promise<ProjectKnowledgeIndexSyncResult> {
     await this.open();
     const database = this.requireDatabase();
+    corpus = [...corpus].sort(
+      (left, right) => knowledgeDocumentKindRank(left.kind) - knowledgeDocumentKindRank(right.kind),
+    );
+    const resumeKey = `refresh-source:${this.workspaceId}`;
+    const resumeSource = options.force ? undefined : metaMap(database).get(resumeKey);
+    const resumeIndex = corpus.findIndex((document) => document.source === resumeSource);
+    if (resumeIndex > 0) corpus = [...corpus.slice(resumeIndex), ...corpus.slice(0, resumeIndex)];
     const known = new Map(
       (
         database
@@ -405,6 +446,8 @@ export class ProjectKnowledgeIndexStore {
     const changedSources: ProjectKnowledgeDocument[] = [];
     const refreshedSources: ProjectKnowledgeDocument[] = [];
     this.lastSyncReadBytes = 0;
+    let sourceReads: readonly IndexSourceRead[] = [];
+    let nextSource = '';
     for (let index = 0; index < corpus.length; index += 1) {
       const document = corpus[index];
       if (options.deadline !== undefined && Date.now() > options.deadline) {
@@ -413,12 +456,24 @@ export class ProjectKnowledgeIndexStore {
           message: '未进入检索：索引刷新超过时间预算，尚未处理的语料当前不会参与召回。',
         });
         changedSources.push(...corpus.slice(index));
+        nextSource = document.source;
         break;
       }
-      let stat;
-      try {
-        stat = await fs.lstat(document.absolutePath);
-      } catch {
+      if (index % SOURCE_READ_CONCURRENCY === 0) {
+        // Limit in-flight protected reads; keep SQLite updates in corpus order.
+        sourceReads = await Promise.all(
+          corpus
+            .slice(index, index + SOURCE_READ_CONCURRENCY)
+            .map((source) => readIndexSource(this.projectRoot, source)),
+        );
+        this.lastSyncReadBytes += sourceReads.reduce(
+          (total, source) => total + (source.read?.bytes.length ?? 0),
+          0,
+        );
+      }
+      const sourceRead = sourceReads[index % SOURCE_READ_CONCURRENCY];
+      const stat = sourceRead.stat;
+      if (!stat) {
         changedSources.push(document);
         if (known.has(document.source)) {
           this.reportDiagnostic?.({
@@ -430,24 +485,16 @@ export class ProjectKnowledgeIndexStore {
       }
       const previous = known.get(document.source);
       try {
-        const read = await readProtectedProjectFile(
-          this.projectRoot,
-          document.source,
-          MAX_SOURCE_BYTES,
-          { label: document.source },
-        );
-        this.lastSyncReadBytes += read.bytes.length;
+        if (sourceRead.error || !sourceRead.read) throw sourceRead.error;
+        const read = sourceRead.read;
         if (options.deadline !== undefined && Date.now() > options.deadline) {
           this.reportDiagnostic?.({
             code: 'index-budget',
             message: '未进入检索：索引刷新超过时间预算，尚未处理的语料当前不会参与召回。',
           });
           changedSources.push(...corpus.slice(index));
+          nextSource = document.source;
           break;
-        }
-        const afterRead = await fs.lstat(document.absolutePath);
-        if (afterRead.size !== read.stat.size || afterRead.mtimeMs !== read.stat.mtimeMs) {
-          throw new Error('source changed while it was being indexed');
         }
         const digest = contentDigest(read.bytes);
         if (
@@ -469,6 +516,7 @@ export class ProjectKnowledgeIndexStore {
             message: '未进入检索：索引刷新超过时间预算，尚未处理的语料当前不会参与召回。',
           });
           changedSources.push(...corpus.slice(index));
+          nextSource = document.source;
           break;
         }
         try {
@@ -503,6 +551,7 @@ export class ProjectKnowledgeIndexStore {
         if (!corpusSources.has(source)) this.removeSource(database, this.workspaceId, source);
       }
     }
+    setMeta(database, resumeKey, nextSource);
     return { changedSources, refreshedSources, status: this.status() };
   }
 
@@ -510,6 +559,12 @@ export class ProjectKnowledgeIndexStore {
     const started = performance.now();
     const database = this.requireDatabase();
     const channels: Array<{ name: string; rows: SearchRow[] }> = [];
+    const strongTerms = ftsExpression(query.strongTerms);
+    if (strongTerms)
+      channels.push({
+        name: 'fts-strong',
+        rows: this.searchChannel(database, this.workspaceId, 'terms', strongTerms, 20),
+      });
     const terms = ftsExpression([...query.strongTerms, ...query.phraseTerms, ...query.weakTerms]);
     if (terms)
       channels.push({
@@ -545,20 +600,27 @@ export class ProjectKnowledgeIndexStore {
         const phrase = query.phraseTerms.some((term) =>
           searchable.includes(term.toLocaleLowerCase()),
         );
-        const matchedTerms = query.terms.filter((term) =>
-          searchable.includes(term.toLocaleLowerCase()),
-        ).length;
+        const matchedTerms = independentQueryTermCount(
+          query.terms.filter((term) => searchable.includes(term.toLocaleLowerCase())),
+        );
+        const topic =
+          `${row.source.split('/').slice(-2).join('/')}\n${row.title}\n${row.heading_path}`.toLocaleLowerCase();
+        const topicPhrase = query.phraseTerms.some((term) =>
+          topic.includes(term.toLocaleLowerCase()),
+        );
         const pathAssociation = Boolean(
           query.path && row.source.toLocaleLowerCase().includes(query.path.toLocaleLowerCase()),
         );
         const kindRank = row.kind.endsWith('-spec') ? 0 : row.kind.endsWith('-archive') ? 1 : 2;
         return {
           row,
+          strong,
           reliable: strong || phrase || matchedTerms >= 2,
           score:
             score +
             (strong ? 0.05 : 0) +
             (phrase ? 0.025 : 0) +
+            (topicPhrase ? 0.05 : 0) +
             (pathAssociation ? 0.03 : 0) -
             kindRank * 0.05,
           names,
@@ -567,7 +629,9 @@ export class ProjectKnowledgeIndexStore {
       .filter((candidate) => candidate.reliable)
       .sort(
         (left, right) =>
-          right.score - left.score || left.row.source.localeCompare(right.row.source),
+          Number(right.strong) - Number(left.strong) ||
+          right.score - left.score ||
+          left.row.source.localeCompare(right.row.source),
       )
       .slice(0, 40);
     const elapsed = Math.round((performance.now() - started) * 100) / 100;
@@ -801,10 +865,18 @@ export class ProjectKnowledgeIndexStore {
   ): SearchRow[] {
     const table = channel === 'terms' ? 'pk_fts_terms' : 'pk_fts_trigram';
     const weights =
-      channel === 'terms' ? '0.0, 0.0, 1.0, 3.0, 2.0, 0.8, 1.5' : '0.0, 0.0, 1.0, 2.5, 1.8, 0.7';
+      channel === 'terms' ? '0.0, 0.0, 1.0, 3.0, 2.0, 0.8' : '0.0, 0.0, 1.0, 2.5, 1.8';
     return database
       .prepare(
-        `SELECT s.id, s.source, p.kind, p.archived_at, s.title, s.heading_path, s.body, bm25(${table}, ${weights}) AS rank FROM ${table} JOIN pk_sections s ON s.id = ${table}.rowid JOIN pk_sources p ON p.workspace_id = s.workspace_id AND p.source = s.source WHERE ${table} MATCH ? AND s.workspace_id = ? ORDER BY rank LIMIT ?`,
+        `WITH matches AS MATERIALIZED (
+          SELECT s.id, s.source, p.kind, p.archived_at, s.title, s.heading_path, s.body, bm25(${table}, ${weights}) AS rank
+          FROM ${table} JOIN pk_sections s ON s.id = ${table}.rowid
+          JOIN pk_sources p ON p.workspace_id = s.workspace_id AND p.source = s.source
+          WHERE ${table} MATCH ? AND s.workspace_id = ?
+        ), documents AS (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY source ORDER BY rank, id) AS source_rank FROM matches
+        ) SELECT * FROM documents WHERE source_rank <= 3
+          ORDER BY CASE WHEN kind IN ('native-spec', 'classic-spec') THEN 0 ELSE 1 END, rank LIMIT ?`,
       )
       .all(expression, workspaceId, limit) as unknown as SearchRow[];
   }

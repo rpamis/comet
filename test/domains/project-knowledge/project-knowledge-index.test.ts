@@ -61,6 +61,413 @@ describe('project knowledge query planning', () => {
 });
 
 describe('project knowledge section index', () => {
+  test('ranks the document topic ahead of repeated incidental mentions in another document', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const current = {
+      absolutePath: path.join(root, 'runtime.md'),
+      source: 'runtime.md',
+      kind: 'native-spec' as const,
+    };
+    const incidental = {
+      absolutePath: path.join(root, 'general.md'),
+      source: 'general.md',
+      kind: 'native-spec' as const,
+    };
+    const store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    try {
+      await fs.writeFile(
+        current.absolutePath,
+        `# Native runtime storage\n\n${'Relevant detailed requirements. '.repeat(200)}\n`,
+      );
+      await fs.writeFile(
+        incidental.absolutePath,
+        `# General\n\n${'Native runtime storage '.repeat(80)}\n`,
+      );
+      await store.rebuild([incidental, current]);
+      expect(
+        store.search(createProjectKnowledgeQuery({ task: 'Native runtime storage' }))[0]?.source,
+      ).toBe('runtime.md');
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ['当前 CurrentBehaviorKey 行为', ['current.md']],
+    ['查看当前项目 CurrentBehaviorKey 的历史记录', ['archive.md', 'current.md']],
+  ])('uses the requested source scope for %s', async (task, expected) => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const corpus = ['current.md', 'archive.md'].map((source, index) => ({
+      absolutePath: path.join(root, source),
+      source,
+      kind: index === 0 ? ('native-spec' as const) : ('native-archive' as const),
+    }));
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus,
+      runRipgrep: async () => ({
+        stdout: '',
+        stderr: '',
+        exitCode: 1,
+        timedOut: false,
+        truncated: false,
+        matchLimitReached: false,
+      }),
+    });
+    try {
+      await Promise.all(
+        corpus.map((document) =>
+          fs.writeFile(document.absolutePath, '# Behavior\n\nCurrentBehaviorKey\n'),
+        ),
+      );
+      const result = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task }),
+      });
+      expect(
+        result.kind === 'search' && result.results.map((entry) => entry.source).sort(),
+      ).toEqual(expected);
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ['财务发票审批流程', '# SDK\n\n审批使用用户确认。工作流程支持恢复。\n'],
+    ['移动端推送证书轮换', '# Workspace\n\n移动项目目录，完成后推送代码。\n'],
+  ])('abstains for %s when only generic actions match', async (task, content) => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const document = {
+      absolutePath: path.join(root, 'general.md'),
+      source: 'general.md',
+      kind: 'native-spec' as const,
+    };
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus: [document],
+      runRipgrep: async () => ({
+        stdout: '',
+        stderr: '',
+        exitCode: 1,
+        timedOut: false,
+        truncated: false,
+        matchLimitReached: false,
+      }),
+    });
+    try {
+      await fs.writeFile(document.absolutePath, content);
+      const result = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task }),
+      });
+      expect(result.kind === 'search' && result.results).toEqual([]);
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('resumes a budget-limited refresh after reopening instead of repeatedly scanning the first source', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const corpus = ['first.md', 'second.md'].map((source) => ({
+      absolutePath: path.join(root, source),
+      source,
+      kind: 'native-spec' as const,
+    }));
+    let store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    let now: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      await Promise.all(
+        corpus.map((document) =>
+          fs.writeFile(document.absolutePath, '# Refresh\n\nRefreshResumeKey\n'),
+        ),
+      );
+      await store.open();
+      let ticks = [0, 0, 0, 0, 3000];
+      now = vi.spyOn(Date, 'now').mockImplementation(() => ticks.shift() ?? 3000);
+      const first = await store.syncCorpus(corpus);
+      expect(first.status.sourceCount).toBe(1);
+      now.mockRestore();
+      store.close();
+      store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+      await store.open();
+      ticks = [0, 0, 0, 0, 3000];
+      now = vi.spyOn(Date, 'now').mockImplementation(() => ticks.shift() ?? 3000);
+      const second = await store.syncCorpus(corpus);
+      expect(second.status.sourceCount).toBe(2);
+    } finally {
+      now?.mockRestore();
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('refreshes current Specs before archives when the incremental budget is exhausted', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    const current = {
+      absolutePath: path.join(root, 'current.md'),
+      source: 'current.md',
+      kind: 'native-spec' as const,
+    };
+    const archive = {
+      absolutePath: path.join(root, 'archive.md'),
+      source: 'archive.md',
+      kind: 'native-archive' as const,
+    };
+    let now: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      await Promise.all(
+        [current, archive].map((document) =>
+          fs.writeFile(document.absolutePath, '# Knowledge\n\nBudgetPriorityKey\n'),
+        ),
+      );
+      await store.open();
+      const ticks = [0, 0, 0, 0, 3000];
+      now = vi.spyOn(Date, 'now').mockImplementation(() => ticks.shift() ?? 3000);
+      const result = await store.syncCorpus([archive, current]);
+      expect(result.status.sources.map((source) => source.source)).toEqual(['current.md']);
+      expect(result.changedSources).toEqual([archive]);
+    } finally {
+      now?.mockRestore();
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('retains an exact archive identifier when the current Specs match only generic words', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    const current = {
+      absolutePath: path.join(root, 'current.md'),
+      source: 'current.md',
+      kind: 'native-spec' as const,
+    };
+    const archive = {
+      absolutePath: path.join(root, 'archive.md'),
+      source: 'archive.md',
+      kind: 'native-archive' as const,
+    };
+    try {
+      await fs.writeFile(
+        current.absolutePath,
+        Array.from(
+          { length: 70 },
+          (_, index) => `# Knowledge ${index}\n\nproject knowledge\n`,
+        ).join('\n'),
+      );
+      await fs.writeFile(
+        archive.absolutePath,
+        '# History\n\nArchivedRuntimeKey project knowledge\n',
+      );
+      await store.rebuild([current, archive]);
+      expect(
+        store
+          .search(createProjectKnowledgeQuery({ task: 'ArchivedRuntimeKey project knowledge' }))
+          .map((result) => result.source),
+      ).toContain('archive.md');
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps a current Spec in the candidate pool when many archive sections match the same identifier', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    const current = {
+      absolutePath: path.join(root, 'current.md'),
+      source: 'current.md',
+      kind: 'native-spec' as const,
+    };
+    const archive = {
+      absolutePath: path.join(root, 'archive.md'),
+      source: 'archive.md',
+      kind: 'native-archive' as const,
+    };
+    try {
+      await fs.writeFile(
+        current.absolutePath,
+        `# Current\n\nSharedKnowledgeKey ${'current behavior '.repeat(100)}\n`,
+      );
+      await fs.writeFile(
+        archive.absolutePath,
+        Array.from(
+          { length: 70 },
+          (_, index) => `# Archived ${index}\n\nSharedKnowledgeKey SharedKnowledgeKey\n`,
+        ).join('\n'),
+      );
+      await store.rebuild([archive, current]);
+      expect(
+        store.search(createProjectKnowledgeQuery({ task: 'SharedKnowledgeKey' }))[0]?.source,
+      ).toBe('current.md');
+    } finally {
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('returns distinct document sources instead of filling the result limit with one document', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const corpus = ['first.md', 'second.md', 'third.md'].map((source) => ({
+      absolutePath: path.join(root, source),
+      source,
+      kind: 'native-spec' as const,
+    }));
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus,
+      runRipgrep: async () => ({
+        stdout: '',
+        stderr: '',
+        exitCode: 1,
+        timedOut: false,
+        truncated: false,
+        matchLimitReached: false,
+      }),
+    });
+    try {
+      await Promise.all(
+        corpus.map((document, index) =>
+          fs.writeFile(
+            document.absolutePath,
+            Array.from(
+              { length: index === 0 ? 70 : 1 },
+              (_, section) => `# Topic ${section}\n\nSharedKnowledgeKey source ${index}.\n`,
+            ).join('\n'),
+          ),
+        ),
+      );
+      await provider.apply({ kind: 'refresh' });
+      const result = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'SharedKnowledgeKey' }),
+        limit: 4,
+      });
+      expect(result.kind).toBe('search');
+      if (result.kind !== 'search') return;
+      expect(result.results.map((entry) => entry.source).sort()).toEqual([
+        'first.md',
+        'second.md',
+        'third.md',
+      ]);
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('abstains when nested Chinese query fragments all match only one unrelated phrase', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const source = 'sdk.md';
+    const document = {
+      absolutePath: path.join(root, source),
+      source,
+      kind: 'native-spec' as const,
+    };
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus: [document],
+      runRipgrep: async () => ({
+        stdout: '',
+        stderr: '',
+        exitCode: 1,
+        timedOut: false,
+        truncated: false,
+        matchLimitReached: false,
+      }),
+    });
+    try {
+      await fs.writeFile(document.absolutePath, '# SDK\n\n审批流程支持用户确认和恢复。\n');
+      const result = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: '财务发票审批流程' }),
+      });
+      expect(result.kind === 'search' && result.results).toEqual([]);
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('reads another corpus source while an earlier source is waiting for filesystem I/O', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const files = ['first.md', 'second.md'].map((name) => path.join(root, name));
+    await Promise.all(
+      files.map((file, index) => fs.writeFile(file, `# Source ${index}\n\nEvidence ${index}.\n`)),
+    );
+    const store = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+    const originalLstat = fs.lstat;
+    let releaseFirst: () => void = () => {};
+    const firstRead = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let waiting = false;
+    let firstStarted = false;
+    let overlapped = false;
+    const fallback = setTimeout(() => releaseFirst(), 1000);
+    const lstat = vi.spyOn(fs, 'lstat').mockImplementation(async (...args) => {
+      if (String(args[0]) === files[0] && !firstStarted) {
+        firstStarted = true;
+        waiting = true;
+        await firstRead;
+        waiting = false;
+      } else if (String(args[0]) === files[1] && waiting) {
+        overlapped = true;
+        releaseFirst();
+      }
+      return originalLstat(...args);
+    });
+    try {
+      const sync = await store.syncCorpus(
+        files.map((file, index) => ({
+          absolutePath: file,
+          source: ['first.md', 'second.md'][index],
+          kind: 'native-spec' as const,
+        })),
+      );
+      expect(sync.status.sourceCount).toBe(2);
+      expect(overlapped).toBe(true);
+      expect(
+        store
+          .search(createProjectKnowledgeQuery({ task: 'Evidence Source' }))
+          .map((result) => result.source),
+      ).toEqual(expect.arrayContaining(['first.md', 'second.md']));
+    } finally {
+      releaseFirst();
+      clearTimeout(fallback);
+      lstat.mockRestore();
+      store.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
   test('parses heading paths and keeps an unchanged section row during a source delta', async () => {
     const root = await temporaryRoot();
     const cacheRoot = await temporaryRoot();
