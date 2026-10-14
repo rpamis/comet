@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { realpathSync } from 'node:fs';
 
+import { createFileRuntimeStore, type WorkflowRun } from '../engine/runtime.js';
+import { resolveWorkspaceRuntimeRootSync } from '../workflow-contract/workspace-runtime.js';
 import { readSdkChangeOwner } from '../workflow-contract/change-runtime-owner.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import {
@@ -904,18 +906,38 @@ export async function listDiscoveredNativeStatusPage(options: {
 }): Promise<NativeDiscoveredStatusPageProjection> {
   const sources = await discoverSources(options.projectRoot);
   const legacyCandidates = await discoverCandidates(options.projectRoot, sources);
-  const sdkCandidates = (
-    await Promise.all(
-      sources.map(async (source) =>
-        (source.sdkNames ?? (await listNativeSdkChangeNames(source.projectRoot))).map((name) => ({
-          kind: 'sdk' as const,
-          name,
-          projectRoot: source.projectRoot,
-          bindingState: 'aligned' as const,
-        })),
-      ),
-    )
-  ).flat();
+  // Cancelled SDK changes left the active lifecycle. Skip them with a cheap
+  // Run-file status probe so paging keeps inspecting only requested pages;
+  // application-owned runs are not probed here and stay listed. The full name
+  // set is still used for ownership and conflict checks, so a cancelled SDK
+  // change cannot resurface as a legacy portable candidate.
+  const sdkDiscoveries = await Promise.all(
+    sources.map(async (source) => {
+      const names = source.sdkNames ?? (await listNativeSdkChangeNames(source.projectRoot));
+      const store = createFileRuntimeStore<WorkflowRun>({
+        rootDir: path.join(
+          resolveWorkspaceRuntimeRootSync(source.projectRoot),
+          'sdk-runs',
+          'native',
+        ),
+      });
+      const kept: string[] = [];
+      for (const name of names) {
+        const run = await store.read(name).catch(() => null);
+        if (run?.status === 'cancelled') continue;
+        kept.push(name);
+      }
+      return { source, names, kept };
+    }),
+  );
+  const sdkCandidates = sdkDiscoveries.flatMap(({ source, kept }) =>
+    kept.map((name) => ({
+      kind: 'sdk' as const,
+      name,
+      projectRoot: source.projectRoot,
+      bindingState: 'aligned' as const,
+    })),
+  );
   const legacyByName = new Map<string, NativeStatusCandidate[]>();
   for (const candidate of legacyCandidates) {
     const matching = legacyByName.get(candidate.name) ?? [];
@@ -923,7 +945,9 @@ export async function listDiscoveredNativeStatusPage(options: {
     legacyByName.set(candidate.name, matching);
   }
   const sdkNames = new Set<string>();
-  for (const sdk of sdkCandidates) {
+  for (const sdk of sdkDiscoveries.flatMap(({ source, names }) =>
+    names.map((name) => ({ name, projectRoot: source.projectRoot })),
+  )) {
     if (sdkNames.has(sdk.name)) {
       throw new Error(`Native SDK change ${sdk.name} has multiple workspace owners`);
     }

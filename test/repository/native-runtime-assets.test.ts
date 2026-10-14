@@ -97,6 +97,7 @@ describe('Native runtime release asset', () => {
       'comet-native-show.mjs',
       'comet-native-status.mjs',
       'comet-native-select.mjs',
+      'comet-native-cancel.mjs',
       'comet-native-next.mjs',
       'comet-native-archive.mjs',
       'comet-native-doctor.mjs',

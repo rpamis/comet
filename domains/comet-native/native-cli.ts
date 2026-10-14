@@ -1,4 +1,5 @@
 import { nativeArchiveCommand } from './native-archive-command.js';
+import { nativeCancelCommand } from './native-cancel-command.js';
 import { nativeCheckCommand } from './native-check-command.js';
 import { nativeDoctorCommand } from './native-doctor-command.js';
 import { nativeHookGuardCommand } from './native-hook-guard-command.js';
@@ -55,6 +56,7 @@ const COMMAND_HANDLERS: Record<string, NativeCommandHandler> = {
   select: nativeSelectCommand,
   next: nativeNextCommand,
   archive: nativeArchiveCommand,
+  cancel: nativeCancelCommand,
   check: nativeCheckCommand,
   doctor: nativeDoctorCommand,
   transfer: nativeTransferCommand,

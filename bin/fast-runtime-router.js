@@ -11,6 +11,7 @@ const NATIVE_COMMANDS = new Set([
   'show',
   'status',
   'select',
+  'cancel',
   'next',
   'archive',
   'doctor',

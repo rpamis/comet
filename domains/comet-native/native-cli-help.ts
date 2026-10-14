@@ -39,6 +39,7 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'select <change-name>         Select a change in its bound workspace.',
       'next <change-name>           Confirm or recover a stable workflow boundary.',
       'archive <change-name>        Preview and execute Archive plus workspace finish.',
+      'cancel <change-name>         Cancel an unfinished change while keeping its code and workspace.',
       'doctor [<change-name>]       Diagnose, migrate, or rebuild local execution state.',
       'transfer export|import        Move an active Supervisor Child Build to another checkout.',
     ],
@@ -223,6 +224,17 @@ const HELP: Readonly<Record<string, NativeHelpEntry>> = Object.freeze({
       'comet native next session-timeout --summary "Retry semantic verification" --resolve-verifier-blocker',
       'comet native next session-timeout --runner-input <temporary-json-file>',
     ],
+  },
+  cancel: {
+    usage: 'comet native cancel <change-name> [--reason <text>] [--dry-run]',
+    purpose:
+      'Cancel an unfinished SDK Native change: it stops counting as active without verification or a fake Archive.',
+    options: [
+      '--reason <text>  Record why the change is cancelled; defaults to a neutral user-cancellation note.',
+      '--dry-run        List what cancellation would stop, release, and retain without changing any state.',
+    ],
+    output:
+      'The cancellation status and its outstanding acknowledgements. Code, commits, branches, and the workspace are always retained; deleting implementations or worktrees stays a separate explicit Git operation. Completed changes are rejected in favor of archive; legacy 0.4 runtime changes keep their original lifecycle.',
   },
   archive: {
     usage:
