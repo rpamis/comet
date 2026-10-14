@@ -3,6 +3,8 @@ import { mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from 
 import path from 'node:path';
 
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
+import type { ProjectKnowledgeRecordSourceVersion } from './records.js';
 
 export const PROJECT_MEMORY_TYPES = [
   'fact',
@@ -41,6 +43,10 @@ export interface ProjectMemoryEntry {
   readonly updated: string;
   readonly paths: readonly string[];
   readonly source?: string;
+  readonly workflow?: string;
+  readonly change?: string;
+  readonly sourceVersions?: readonly ProjectKnowledgeRecordSourceVersion[];
+  readonly sourceStatus?: 'current' | 'changed';
   readonly body: string;
 }
 
@@ -58,6 +64,9 @@ export interface WriteProjectMemoryInput {
   readonly slug?: string;
   readonly paths?: readonly string[];
   readonly source?: string;
+  readonly workflow?: string;
+  readonly change?: string;
+  readonly evidence?: readonly string[];
 }
 
 export interface WriteProjectMemoryResult {
@@ -128,6 +137,12 @@ function serializeMemoryDocument(entry: ProjectMemoryEntry): string {
     `updated: ${entry.updated}`,
     `paths: ${JSON.stringify(entry.paths.map((value) => singleLine(value, 200)))}`,
     ...(entry.source === undefined ? [] : [`source: ${singleLine(entry.source, 200)}`]),
+    ...(entry.workflow === undefined
+      ? []
+      : [`workflow: ${entry.workflow}`, `change: ${entry.change}`]),
+    ...(entry.sourceVersions === undefined
+      ? []
+      : [`sourceVersions: ${JSON.stringify(entry.sourceVersions)}`]),
   ];
   return `---\n${frontmatter.join('\n')}\n---\n\n${entry.body.replace(/\r\n/gu, '\n').trim()}\n`;
 }
@@ -141,6 +156,9 @@ interface ParsedMemoryDocument {
   readonly updated: string;
   readonly paths: readonly string[];
   readonly source?: string;
+  readonly workflow?: string;
+  readonly change?: string;
+  readonly sourceVersions?: readonly ProjectKnowledgeRecordSourceVersion[];
   readonly body: string;
 }
 
@@ -177,6 +195,37 @@ function parseMemoryDocument(raw: string): ParsedMemoryDocument | null {
     }
   }
   const source = fields.get('source');
+  const workflow = fields.get('workflow');
+  const change = fields.get('change');
+  if ((workflow === undefined) !== (change === undefined) || workflow === '' || change === '')
+    return null;
+  let sourceVersions: readonly ProjectKnowledgeRecordSourceVersion[] | undefined;
+  if (fields.has('sourceVersions')) {
+    try {
+      const versions: unknown = JSON.parse(fields.get('sourceVersions')!);
+      if (
+        !Array.isArray(versions) ||
+        versions.length > MAX_PATHS ||
+        versions.some(
+          (version) =>
+            !version ||
+            typeof version.source !== 'string' ||
+            !version.source ||
+            typeof version.digest !== 'string' ||
+            !/^[a-f0-9]{64}$/u.test(version.digest) ||
+            !Number.isSafeInteger(version.size) ||
+            version.size < 0 ||
+            typeof version.modifiedAt !== 'number' ||
+            !Number.isFinite(version.modifiedAt) ||
+            version.modifiedAt < 0,
+        )
+      )
+        return null;
+      sourceVersions = versions;
+    } catch {
+      return null;
+    }
+  }
   return {
     slug,
     title,
@@ -186,6 +235,8 @@ function parseMemoryDocument(raw: string): ParsedMemoryDocument | null {
     updated,
     paths,
     ...(source === undefined ? {} : { source }),
+    ...(workflow === undefined ? {} : { workflow, change }),
+    ...(sourceVersions === undefined ? {} : { sourceVersions }),
     body: lines
       .slice(closing + 1)
       .join('\n')
@@ -351,7 +402,39 @@ export async function readProjectMemory(
   }
   const parsed = parseMemoryDocument(raw);
   if (parsed === null || parsed.slug !== slug) return null;
-  return parsed;
+  if (!parsed.sourceVersions?.length) return parsed;
+  const sourceStatus = (await projectMemorySourcesCurrent(projectRoot, parsed.sourceVersions))
+    ? 'current'
+    : 'changed';
+  return { ...parsed, sourceStatus };
+}
+
+async function captureMemorySource(
+  projectRoot: string,
+  source: string,
+): Promise<ProjectKnowledgeRecordSourceVersion> {
+  const read = await readProtectedProjectFile(projectRoot, source, 1024 * 1024, { label: source });
+  return {
+    source,
+    size: Number(read.stat.size),
+    modifiedAt: Number(read.stat.mtimeMs),
+    digest: createHash('sha256').update(read.bytes).digest('hex'),
+  };
+}
+
+async function projectMemorySourcesCurrent(
+  projectRoot: string,
+  sources: readonly ProjectKnowledgeRecordSourceVersion[],
+): Promise<boolean> {
+  for (const source of sources) {
+    try {
+      const current = await captureMemorySource(projectRoot, source.source);
+      if (current.digest !== source.digest) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }
 
 export interface ProjectMemoryEntrySummary {
@@ -363,6 +446,8 @@ export interface ProjectMemoryEntrySummary {
   readonly updated: string;
   readonly paths: readonly string[];
   readonly source?: string;
+  readonly workflow?: string;
+  readonly change?: string;
 }
 
 const MAX_SUMMARY_ENTRIES = 200;
@@ -385,6 +470,7 @@ export async function readProjectMemoryEntries(
       updated: entry.updated,
       paths: entry.paths,
       ...(entry.source === undefined ? {} : { source: entry.source }),
+      ...(entry.workflow === undefined ? {} : { workflow: entry.workflow, change: entry.change }),
     }));
 }
 
@@ -414,6 +500,19 @@ export async function writeProjectMemory(
     .filter(Boolean)
     .slice(0, MAX_PATHS);
   const source = input.source === undefined ? undefined : singleLine(input.source, 200);
+  const workflow = input.workflow === undefined ? undefined : singleLine(input.workflow, 200);
+  const change = input.change === undefined ? undefined : singleLine(input.change, 200);
+  if ((workflow === undefined) !== (change === undefined) || workflow === '' || change === '') {
+    throw new Error('项目记忆必须同时提供非空 workflow 和 change');
+  }
+  if (input.evidence && input.evidence.length > MAX_PATHS)
+    throw new Error(`项目记忆最多绑定 ${MAX_PATHS} 个来源文件`);
+  const sourceVersions =
+    input.evidence === undefined
+      ? undefined
+      : await Promise.all(
+          [...new Set(input.evidence)].map((file) => captureMemorySource(projectRoot, file)),
+        );
   const explicitSlug = input.slug?.trim().toLowerCase();
   if (explicitSlug !== undefined && explicitSlug !== '' && !isValidSlug(explicitSlug)) {
     throw new Error('项目记忆 slug 只能包含小写字母、数字和中划线，且不超过 64 个字符');
@@ -454,24 +553,17 @@ export async function writeProjectMemory(
       ...(source === undefined && previous?.source === undefined
         ? {}
         : { source: source ?? previous?.source }),
+      ...(workflow === undefined && previous?.workflow === undefined
+        ? {}
+        : { workflow: workflow ?? previous?.workflow, change: change ?? previous?.change }),
+      ...(sourceVersions === undefined && previous?.sourceVersions === undefined
+        ? {}
+        : { sourceVersions: sourceVersions ?? previous?.sourceVersions }),
       body,
     };
     const file = path.join(directory, memoryFileName(slug));
     await atomicWrite(file, serializeMemoryDocument(entry));
-    const merged = [
-      ...existing.filter((current) => current.slug !== slug),
-      {
-        slug,
-        title,
-        description,
-        type,
-        created: entry.created,
-        updated: entry.updated,
-        paths,
-        ...(entry.source === undefined ? {} : { source: entry.source }),
-        body,
-      },
-    ];
+    const merged = [...existing.filter((current) => current.slug !== slug), entry];
     await atomicWrite(path.join(directory, PROJECT_MEMORY_INDEX_FILE), renderIndexDocument(merged));
     return {
       action: previous === undefined ? 'created' : 'updated',
@@ -549,8 +641,8 @@ export function renderProjectMemoryIndexContext(
   const heading = language === 'en' ? '## Project memory index' : '## 项目记忆索引';
   const hint =
     language === 'en'
-      ? 'Each line is a durable lesson learned in this project. Expand the full note with the same task arguments plus --expand-context "project-memory:<slug>".'
-      : '以下每行是本项目沉淀的一条可复用经验；需要完整内容时用同一任务参数追加 --expand-context "project-memory:<slug>" 展开。';
+      ? 'Each line locates a recorded project lesson. Before applying it, expand the full note with the same task arguments plus --expand-context "project-memory:<slug>" and check its current sources; stale source-bound notes cannot be expanded.'
+      : '以下每行用于定位项目经验。采用前，用同一任务参数追加 --expand-context "project-memory:<slug>" 展开并核对当前来源；绑定来源已变化的记忆不会展开。';
   const lines = [heading, hint];
   for (const entry of entries.slice(0, MAX_CONTEXT_ENTRIES)) {
     const line = `- ${singleLine(entry.title, MAX_TITLE_CHARS)} — ${singleLine(

@@ -19,6 +19,8 @@ const VALUE_OPTIONS = new Set([
   '--verification-result',
   '--outcome',
   '--learning-check',
+  '--project-learning-check',
+  '--memory',
   '--workflow',
   '--change',
 ]);
@@ -35,6 +37,7 @@ const CHOICES: Record<string, readonly string[]> = {
     'contributed-to-failure',
   ],
   '--learning-check': ['submitted', 'no-observation', 'not-run'],
+  '--project-learning-check': ['submitted', 'no-observation', 'not-run'],
 };
 
 interface ParsedTaskArgs {
@@ -104,6 +107,14 @@ function parseTaskArgs(args: readonly string[]): ParsedTaskArgs | null {
       ...(value('--learning-check') !== undefined
         ? { learningCheck: value('--learning-check') as CometTaskCommandOptions['learningCheck'] }
         : {}),
+      ...(value('--project-learning-check') === undefined
+        ? {}
+        : {
+            projectLearningCheck: value(
+              '--project-learning-check',
+            ) as CometTaskCommandOptions['projectLearningCheck'],
+          }),
+      ...(value('--memory') === undefined ? {} : { memory: value('--memory') }),
       ...(value('--workflow') !== undefined ? { workflow: value('--workflow') } : {}),
       ...(value('--change') !== undefined ? { change: value('--change') } : {}),
       ...(flags.has('--json') ? { json: true } : {}),

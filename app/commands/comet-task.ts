@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { collectCometTaskContext } from './comet-task-context.js';
+import { collectCometTaskContext, readCometTaskProjectLearning } from './comet-task-context.js';
 import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
 
 import {
@@ -12,6 +12,8 @@ import {
   readProjectMemoryEntries,
   renderProjectMemoryCompletionReminder,
   type ProjectMemoryCompletionStatus,
+  type ProjectLearningCheck,
+  type ProjectLearningStatus,
 } from '../../domains/project-knowledge/index.js';
 import type { AgentContextOutcomeStatus } from '../../domains/agent-learning/index.js';
 
@@ -30,6 +32,8 @@ export interface CometTaskCommandOptions {
   readonly verificationResult?: 'passed' | 'failed';
   readonly complete?: boolean;
   readonly learningCheck?: 'submitted' | 'no-observation' | 'not-run';
+  readonly projectLearningCheck?: ProjectLearningCheck;
+  readonly memory?: string;
   readonly workflow?: string;
   readonly change?: string;
   readonly json?: boolean;
@@ -42,6 +46,7 @@ export interface CometTaskCommandResult {
   readonly learningCheck?: 'submitted' | 'no-observation' | 'not-run';
   readonly learningCheckVerified?: boolean;
   readonly projectMemory?: ProjectMemoryCompletionStatus;
+  readonly projectLearning?: ProjectLearningStatus;
 }
 
 /**
@@ -61,6 +66,21 @@ async function runCometTaskCommand(
   options: CometTaskCommandOptions,
 ): Promise<CometTaskCommandResult> {
   const projectRoot = path.resolve(targetPath);
+  if (
+    (options.projectLearningCheck !== undefined || options.memory !== undefined) &&
+    !options.complete
+  ) {
+    throw new Error('--project-learning-check and --memory require --complete');
+  }
+  if (
+    options.projectLearningCheck !== undefined &&
+    !['submitted', 'no-observation', 'not-run'].includes(options.projectLearningCheck)
+  ) {
+    throw new Error('Invalid --project-learning-check');
+  }
+  if (options.memory !== undefined && options.projectLearningCheck !== 'submitted') {
+    throw new Error('--memory requires --project-learning-check submitted');
+  }
   const request = {
     task: requireText(options.task, '--task'),
     ...(options.path ? { path: options.path } : {}),
@@ -119,6 +139,7 @@ async function runCometTaskCommand(
       : await collectCometTaskContext(projectRoot, request);
   let learningCheckVerified: boolean | undefined;
   let projectMemory: ProjectMemoryCompletionStatus | undefined;
+  let projectLearning: ProjectLearningStatus | undefined;
   if (options.complete) {
     const learningStatus = await recordCometWorkflowResult({
       projectRoot,
@@ -143,6 +164,20 @@ async function runCometTaskCommand(
     } catch {
       // The reminder is advisory and must never block the completion checkpoint.
     }
+    projectLearning = await readCometTaskProjectLearning(projectRoot, {
+      workflow: options.workflow!,
+      change: options.change!,
+      check: options.projectLearningCheck ?? 'not-run',
+      ...(options.memory === undefined
+        ? {}
+        : {
+            memorySlugs: options.memory
+              .split(',')
+              .map((slug) => slug.trim())
+              .filter(Boolean),
+          }),
+    });
+    for (const action of projectLearning.nextActions) console.error(`Project learning: ${action}`);
   }
   const result = {
     context,
@@ -151,6 +186,7 @@ async function runCometTaskCommand(
     ...(options.complete ? { learningCheck: options.learningCheck ?? ('not-run' as const) } : {}),
     ...(learningCheckVerified === undefined ? {} : { learningCheckVerified }),
     ...(projectMemory === undefined ? {} : { projectMemory }),
+    ...(projectLearning === undefined ? {} : { projectLearning }),
   };
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else if (expansion) {

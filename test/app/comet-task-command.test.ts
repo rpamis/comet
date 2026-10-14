@@ -13,11 +13,63 @@ vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
 }));
 vi.mock('../../app/commands/comet-task-context.js', () => ({
   collectCometTaskContext: collectCometPluginContext,
+  readCometTaskProjectLearning: async (root: string, request: unknown) => {
+    const { readProjectLearningStatus } =
+      await import('../../domains/project-knowledge/project-learning.js');
+    return readProjectLearningStatus(root, {
+      ...request,
+      homeDirectory: process.env.COMET_DATA_DIR,
+    });
+  },
 }));
 
 describe('ordinary Comet task host', () => {
+  it('reports project learning as not checked independently of a successful personal memory check', async () => {
+    recordCometWorkflowResult.mockResolvedValueOnce({ submissionVerified: true });
+    const { cometTaskCommand } = await import('../../app/commands/comet-task.js');
+    const result = await cometTaskCommand('D:/repo', {
+      task: 'Finish the change',
+      complete: true,
+      workflow: 'native',
+      change: 'learning-a',
+      learningCheck: 'submitted',
+      json: true,
+    });
+    expect(result.learningCheckVerified).toBe(true);
+    expect(result.projectLearning).toMatchObject({ check: 'not-run', submissionVerified: false });
+  });
+
+  it('does not accept a claimed project lesson without a verified memory receipt', async () => {
+    const { cometTaskCommand } = await import('../../app/commands/comet-task.js');
+    const result = await cometTaskCommand('D:/repo', {
+      task: 'Finish the change',
+      complete: true,
+      workflow: 'native',
+      change: 'learning-b',
+      projectLearningCheck: 'submitted',
+      memory: 'nonexistent-lesson',
+      json: true,
+    });
+    expect(result.projectLearning).toMatchObject({ check: 'submitted', submissionVerified: false });
+    expect(result.projectLearning?.memories).toEqual([
+      { slug: 'nonexistent-lesson', verified: false, reason: 'missing' },
+    ]);
+  });
+
+  it('rejects project learning declarations outside completion before recording a checkpoint', async () => {
+    collectCometPluginContext.mockResolvedValueOnce([]);
+    const { cometTaskCommand } = await import('../../app/commands/comet-task.js');
+    await expect(
+      cometTaskCommand('D:/repo', {
+        task: 'Explore',
+        projectLearningCheck: 'no-observation',
+      }),
+    ).rejects.toThrow(/complete/);
+    expect(recordCometWorkflowResult).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
+    collectCometPluginContext.mockReset();
   });
 
   it('shares identity during the task request and refreshes it on the next invocation', async () => {

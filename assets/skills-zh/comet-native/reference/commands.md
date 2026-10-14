@@ -65,10 +65,17 @@ comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --sess
 项目记忆与个人记忆独立保存。当前项目中已经验证、未来任务仍可复用的事实、决策、模式、步骤、约束或失败处理，任务结束前写入项目记忆：
 
 ```text
-comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --json
+comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --workflow native --change <change-id> --evidence "<来源文件，逗号分隔>" --json
 ```
 
-同一标题默认更新已有条目，不重复创建；没有可复用经验时跳过。任务摘要、一次性命令输出和未验证的猜测不得写入项目记忆。项目记忆索引会随任务上下文注入，需要完整内容时，用同一任务参数追加 `--expand-context "project-memory:<slug>"` 展开。
+同一标题默认更新已有条目，不重复创建；没有可复用经验时跳过。`--evidence` 绑定实际支持结论的项目内文件；没有文件依据的协作决策可省略。返回的 `slug` 是本次写入回执。采用已有经验前，用同一任务参数追加 `--expand-context "project-memory:<slug>"` 展开并核对当前来源；来源变化或不可读取时，先验证并更新经验。任务摘要、一次性命令输出和未验证的猜测不得写入。
+
+任务结束前，Agent 独立完成项目学习检查：
+
+1. 运行 `comet knowledge review <project-root> --workflow native --change <change-id> --json`，只处理本次 change 的待评审。
+2. 按返回的 `recordFields` 和来源证据，由 Agent 编写评审动作文件并用 `--id <id> --file <actions.json>` 提交；没有可复用经验时提交 `[]`。用户无需编写 JSON。核对 `submission.status` 为 `applied`；`accepted` 仅表示动作已接收。
+3. 将本次已验证、尚未记录的项目经验写入上面的记忆命令。保存后，在完成命令中传 `--project-learning-check submitted --memory <slug>`；多个回执用逗号分隔。确认没有可复用经验时传 `--project-learning-check no-observation`；未检查时传 `not-run`。
+4. 检查完成响应的 `projectLearning`：`submissionVerified` 必须为 `true`，`pendingHostReviewCount` 和 `pendingReflectionCount` 都为 `0`，才报告项目学习检查已完成。否则按 `nextActions` 处理，并明确未完成项；学习失败不阻断已完成的开发任务。
 
 每次任务结束前必须完成一次学习检查：如果本次出现了有明确后续复用条件的用户纠正、偏好或协作习惯，先调用 `comet memory observe`，再用 `comet task ... --complete --learning-check submitted`；确认没有合格观察时用 `--learning-check no-observation`。没有执行检查时显式使用 `--learning-check not-run`。首次观察只会形成 `trial` 候选，来自不同 change 的第二次独立成功观察才可能晋级；不要为了产生记录而提交任务摘要或测试结果。
 
@@ -76,7 +83,7 @@ comet knowledge remember <project-root> --title "<简明标题>" --text "<现象
 
 实际使用某条上下文后，从 JSON 的 `applications[].applicationId`（Hook 文本中的 `application_id`）取得标识。使用结果明确时，运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json` 记录结果；没有实际使用的条目不能标为成功。
 
-验证、编译或 linter 失败时，按错误信息修复并重跑。任务结束时，仍调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow <workflow> --change <change-id> --learning-check submitted|no-observation|not-run --json` 保存任务完成记录。命令不可用、没有返回内容或自动检索失败时，继续处理任务。没有 Hook 的平台由本 Skill 调用相同接口；`comet memory context` 只作为兼容入口。
+验证、编译或 linter 失败时，按错误信息修复并重跑。任务结束时，调用 `comet task <project-root> --task "<用户原始请求>" --complete --workflow native --change <change-id> --learning-check submitted|no-observation|not-run --project-learning-check submitted|no-observation|not-run [--memory <slug>] --json` 保存任务完成记录。两个检查分别表示个人记忆和项目经验，不能互相替代。命令不可用、没有返回内容或自动检索失败时，继续处理任务。没有 Hook 的平台由本 Skill 调用相同接口；`comet memory context` 只作为兼容入口。
 
 ## 用户 Hook 写入
 

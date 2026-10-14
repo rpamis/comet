@@ -105,6 +105,14 @@ program
     ]),
   )
   .option('--workflow <workflow>', '工作流类型')
+  .addOption(
+    new Option('--project-learning-check <state>', '任务结束时项目经验学习检查结果').choices([
+      'submitted',
+      'no-observation',
+      'not-run',
+    ]),
+  )
+  .option('--memory <slugs>', '本次写入的项目记忆 slug，多个用逗号分隔')
   .option('--change <id>', '当前 change ID')
   .option('--json', 'Output as JSON')
   .action(async (targetPath = '.', options) => {
@@ -294,6 +302,8 @@ if (requestedArgs.includes('knowledge')) {
     .option('--id <id>', '待评审经验 ID')
     .option('--file <file>', '评审动作 JSON 文件')
     .option('--retry-failed', '重新尝试已达到重试上限的经验学习')
+    .option('--workflow <workflow>', '只查看指定工作流和 change 的待评审')
+    .option('--change <id>', '当前 change ID，与 --workflow 一起使用')
     .option('--json', 'Output as JSON')
     .action(async (targetPath = '.', options) => {
       const { projectKnowledgeReviewCommand } = await import('../commands/project-knowledge.js');
@@ -373,12 +383,22 @@ if (requestedArgs.includes('knowledge')) {
     .option('--slug <slug>', '固定记忆标识；缺省从标题派生')
     .option('--paths <paths>', '相关路径，逗号分隔')
     .option('--source <source>', '经验来源，例如 change 标识')
+    .option('--workflow <workflow>', '写入经验的工作流，与 --change 一起使用')
+    .option('--change <id>', '写入经验的 change ID')
+    .option('--evidence <paths>', '绑定的项目来源文件，逗号分隔；来源变化后记忆需复核')
     .option('--cache-root <dir>', '项目记忆缓存根目录')
     .option('--json', 'Output as JSON')
     .action(async (targetPath = '.', options) => {
       const { projectKnowledgeRememberCommand } = await import('../commands/project-knowledge.js');
       await projectKnowledgeRememberCommand(targetPath, {
         ...options,
+        evidence:
+          typeof options.evidence === 'string'
+            ? options.evidence
+                .split(',')
+                .map((entry: string) => entry.trim())
+                .filter(Boolean)
+            : undefined,
         paths:
           typeof options.paths === 'string'
             ? options.paths

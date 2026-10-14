@@ -65,10 +65,17 @@ Save memory as follows:
 Project Memory is separate from Personal Memory. Before task completion, write facts, decisions, patterns, procedures, constraints, or failure resolutions that are verified in the current project and reusable in future tasks:
 
 ```text
-comet knowledge remember <project-root> --title "<concise title>" --text "<symptom, approach, verification>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --json
+comet knowledge remember <project-root> --title "<concise title>" --text "<symptom, approach, verification>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --workflow native --change <change-id> --evidence "<source files, comma-separated>" --json
 ```
 
-The same title updates the existing entry instead of creating a duplicate. Skip the write when nothing is reusable. The project memory index is injected with task context; expand one entry with the same task arguments plus `--expand-context "project-memory:<slug>"`. Never save task summaries, one-off command output, or unverified guesses in Project Memory.
+The same title updates the existing entry instead of creating a duplicate. Skip the write when nothing is reusable. `--evidence` binds project files that support the conclusion; omit it for collaboration decisions without file evidence. The returned `slug` is the write receipt. Before applying an existing lesson, expand it with the same task arguments plus `--expand-context "project-memory:<slug>"` and check its current sources. Verify and update the lesson when a source changes or becomes unreadable. Never save task summaries, one-off command output, or unverified guesses.
+
+Before task completion, the Agent performs a separate project learning check:
+
+1. Run `comet knowledge review <project-root> --workflow native --change <change-id> --json` and process only this change's pending reviews.
+2. Using the returned `recordFields` and source evidence, the Agent writes review actions and submits them with `--id <id> --file <actions.json>`. Submit `[]` when no reusable lesson is supported. The user does not write JSON. Confirm `submission.status` is `applied`; `accepted` means the actions were received.
+3. Save verified reusable lessons that have not yet been recorded. Pass `--project-learning-check submitted --memory <slug>` to the completion command after saving; separate multiple receipts with commas. Pass `no-observation` if there is no reusable lesson, or `not-run` if the check was not performed.
+4. Inspect `projectLearning` in the completion response. Report the project learning check complete only when `submissionVerified` is `true` and both `pendingHostReviewCount` and `pendingReflectionCount` are `0`. Otherwise follow `nextActions` and report unfinished work. Learning failures do not block completed development work.
 
 Before every task ends, complete one learning check. When the task contains a user correction, preference, or collaboration practice with a clear reuse condition, call `comet memory observe` and then pass `--learning-check submitted` to `comet task ... --complete`. If you checked and found no qualifying observation, pass `--learning-check no-observation`; if no check was performed, pass `--learning-check not-run`. The first observation creates only a `trial` candidate; a second independent successful observation from a different change may promote it. Do not submit a task summary or test result to manufacture a record.
 
@@ -76,7 +83,7 @@ The observation JSON `learning.result` reports `candidate-created`, `candidate-p
 
 After actually using an item, obtain its identifier from JSON `applications[].applicationId` (`application_id` in Hook text). Once the outcome is known, record it with `comet task <project-root> --task "<original user request>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`. Never report successful use of an unused item.
 
-If verification, compilation, or linting fails, address the error and rerun. At task completion, still call `comet task <project-root> --task "<original user request>" --complete --workflow <workflow> --change <change-id> --learning-check submitted|no-observation|not-run --json` to record completion. An unavailable command, empty result, or failed automatic retrieval does not block the task. On platforms without Hooks, this Skill calls the same interfaces; `comet memory context` is a compatibility entry only.
+If verification, compilation, or linting fails, address the error and rerun. At task completion, call `comet task <project-root> --task "<original user request>" --complete --workflow native --change <change-id> --learning-check submitted|no-observation|not-run --project-learning-check submitted|no-observation|not-run [--memory <slug>] --json` to record completion. The two checks cover Personal Memory and project experience independently. An unavailable command, empty result, or failed automatic retrieval does not block the task. On platforms without Hooks, this Skill calls the same interfaces; `comet memory context` is a compatibility entry only.
 
 ## User Hook writes
 

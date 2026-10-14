@@ -55,6 +55,48 @@ afterEach(() => {
 });
 
 describe('comet knowledge commands', () => {
+  test('lists only the current change reviews while retaining unrelated pending experience', async () => {
+    const { root, cacheRoot } = await projectFixture();
+    const homeDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-review-home-'));
+    const queue = new ProjectKnowledgeHostReview(root, cacheRoot);
+    const packet = {
+      eventName: 'change.archived',
+      workflow: 'native',
+      changeId: 'current',
+      success: true,
+      occurredAt: '2026-10-14T10:00:00Z',
+      sources: [],
+      changedHint: {
+        eventName: 'change.archived',
+        workflow: 'native',
+        changeId: 'current',
+        success: true,
+        changedPaths: [],
+        artifactRefs: [],
+        verificationCommands: [],
+        verificationResults: [],
+      },
+    };
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await expect(queue.review(packet)).rejects.toThrow('pending');
+      await expect(queue.review({ ...packet, changeId: 'other' })).rejects.toThrow('pending');
+      const result = await projectKnowledgeReviewCommand(root, {
+        cacheRoot,
+        homeDirectory,
+        workflow: 'native',
+        change: 'current',
+        json: true,
+      });
+      expect(result.pending).toHaveLength(1);
+      expect(result.pending[0].packet.changeId).toBe('current');
+      expect(await queue.pending()).toHaveLength(2);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+      await fs.rm(homeDirectory, { recursive: true, force: true });
+    }
+  });
   test.each([false, true])(
     'reports remote outages without pretending a query succeeded (json=%s)',
     async (json) => {

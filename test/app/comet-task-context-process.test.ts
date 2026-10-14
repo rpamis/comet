@@ -34,11 +34,33 @@ beforeAll(async () => {
     },
   });
   await fs.writeFile(path.join(root, 'package.json'), '{"type":"module"}');
+  await build({
+    entryPoints: ['app/commands/project-knowledge.ts'],
+    outfile: path.join(root, 'knowledge.mjs'),
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    define: { __COMET_VERSION__: '"0.5.0"' },
+    banner: {
+      js: "import { createRequire as taskTestRequire } from 'node:module'; const require = taskTestRequire(import.meta.url);",
+    },
+  });
+  await build({
+    entryPoints: ['domains/comet-entry/plugin-context.ts'],
+    outfile: path.join(root, 'bridge.mjs'),
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    define: { __COMET_VERSION__: '"0.5.0"' },
+    banner: {
+      js: "import { createRequire as taskTestRequire } from 'node:module'; const require = taskTestRequire(import.meta.url);",
+    },
+  });
   await fs.writeFile(
     path.join(root, 'runner.mjs'),
     `
     import { cometTaskCommand } from './command.mjs';
-    await cometTaskCommand(process.argv[2], { task: '开启全新的报表功能 change', json: true });
+    await cometTaskCommand(process.argv[2], { task: '开启全新的报表功能 change', json: true, ...JSON.parse(process.argv[3] ?? '{}') });
   `,
   );
 });
@@ -53,13 +75,17 @@ async function fixture(name: string) {
   await fs.mkdir(project, { recursive: true });
   return { home, project };
 }
-async function run(home: string, project: string) {
-  return execFileAsync(process.execPath, [path.join(root, 'runner.mjs'), project], {
-    env: { ...process.env, USERPROFILE: home, HOME: home },
-    timeout: 18_000,
-    killSignal: 'SIGKILL',
-    windowsHide: true,
-  });
+async function run(home: string, project: string, options = {}) {
+  return execFileAsync(
+    process.execPath,
+    [path.join(root, 'runner.mjs'), project, JSON.stringify(options)],
+    {
+      env: { ...process.env, USERPROFILE: home, HOME: home },
+      timeout: 18_000,
+      killSignal: 'SIGKILL',
+      windowsHide: true,
+    },
+  );
 }
 
 test('a new project with no memory returns an empty successful response', async () => {
@@ -68,6 +94,145 @@ test('a new project with no memory returns an empty successful response', async 
   expect(JSON.parse(result.stdout)).toEqual({ context: [] });
   expect(result.stderr).not.toMatch(/timed out|exceeded/i);
 });
+
+test('reports a real waiting lifecycle review and closes only the reviewed change after application', async () => {
+  const { home, project } = await fixture('review-lifecycle');
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  await fs.writeFile(path.join(project, 'retry.ts'), 'retry(1);');
+  await execFileAsync(process.execPath, ['--check', path.join(project, 'retry.ts')], {
+    env,
+    windowsHide: true,
+  });
+  await fs.writeFile(
+    path.join(root, 'checkpoint.mjs'),
+    `
+    import { recordCometWorkflowResult } from './bridge.mjs';
+    await recordCometWorkflowResult({ projectRoot: process.argv[2], workflow: 'native', changeId: process.argv[3], command: 'archive', success: true, changedPaths: ['retry.ts'], verificationResults: [{ command: 'node --check retry.ts', success: true }] });
+  `,
+  );
+  for (const change of ['current', 'other'])
+    await execFileAsync(process.execPath, [path.join(root, 'checkpoint.mjs'), project, change], {
+      env,
+      timeout: 20_000,
+      windowsHide: true,
+    });
+  const options = {
+    complete: true,
+    workflow: 'native',
+    change: 'current',
+    projectLearningCheck: 'no-observation',
+  };
+  const waiting = JSON.parse((await run(home, project, options)).stdout);
+  expect(waiting.projectLearning).toMatchObject({
+    submissionVerified: false,
+    pendingHostReviewCount: 1,
+    pendingReflectionCount: 1,
+  });
+  await fs.writeFile(
+    path.join(root, 'review.mjs'),
+    `
+    import { projectKnowledgeReviewCommand } from './knowledge.mjs';
+    await projectKnowledgeReviewCommand(process.argv[2], { workflow: 'native', change: 'current', json: true, ...(process.argv[3] ? { id: process.argv[3], file: process.argv[4] } : {}) });
+  `,
+  );
+  const pending = JSON.parse(
+    (
+      await execFileAsync(process.execPath, [path.join(root, 'review.mjs'), project], {
+        env,
+        timeout: 20_000,
+        windowsHide: true,
+      })
+    ).stdout,
+  );
+  expect(pending.pending).toHaveLength(1);
+  const actions = path.join(project, 'actions.json');
+  await fs.writeFile(actions, '[]');
+  const reviewed = JSON.parse(
+    (
+      await execFileAsync(
+        process.execPath,
+        [path.join(root, 'review.mjs'), project, pending.pending[0].id, actions],
+        { env, timeout: 20_000, windowsHide: true },
+      )
+    ).stdout,
+  );
+  expect(reviewed.submission.status).toBe('applied');
+  const complete = JSON.parse((await run(home, project, options)).stdout);
+  expect(complete.projectLearning).toMatchObject({
+    submissionVerified: true,
+    pendingHostReviewCount: 0,
+    pendingReflectionCount: 0,
+  });
+  const unrelated = JSON.parse((await run(home, project, { ...options, change: 'other' })).stdout);
+  expect(unrelated.projectLearning.pendingHostReviewCount).toBe(1);
+}, 60_000);
+
+test('keeps completion usable when a mismatched helper returns an invalid learning response', async () => {
+  const { home, project } = await fixture('invalid-learning-helper');
+  const worker = path.join(root, 'comet-task-context-worker.js');
+  const original = await fs.readFile(worker);
+  try {
+    await fs.writeFile(
+      worker,
+      `process.stdin.resume(); process.stdin.on('end', () => process.stdout.write('[]'));`,
+    );
+    const result = JSON.parse(
+      (
+        await run(home, project, {
+          complete: true,
+          workflow: 'native',
+          change: 'current',
+          projectLearningCheck: 'no-observation',
+        })
+      ).stdout,
+    );
+    expect(result.projectLearning).toMatchObject({ unavailable: true, submissionVerified: false });
+  } finally {
+    await fs.writeFile(worker, original);
+  }
+});
+
+test('checks completion receipts in the real helper process and refuses stale-source lessons', async () => {
+  const { home, project } = await fixture('completion');
+  await fs.writeFile(path.join(project, 'retry.ts'), 'retry(1);');
+  await fs.writeFile(
+    path.join(root, 'remember.mjs'),
+    `
+    import { projectKnowledgeRememberCommand } from './knowledge.mjs';
+    await projectKnowledgeRememberCommand(process.argv[2], { title: 'Retry once', text: 'Retry once after a transient failure.', workflow: 'native', change: 'current', evidence: ['retry.ts'], json: true });
+  `,
+  );
+  const written = await execFileAsync(
+    process.execPath,
+    [path.join(root, 'remember.mjs'), project],
+    {
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+      timeout: 18_000,
+      windowsHide: true,
+    },
+  );
+  const receipt = JSON.parse(written.stdout);
+  expect(receipt.entry).toMatchObject({ workflow: 'native', change: 'current' });
+  const options = {
+    complete: true,
+    workflow: 'native',
+    change: 'current',
+    projectLearningCheck: 'submitted',
+    memory: receipt.slug,
+  };
+  const completion = JSON.parse((await run(home, project, options)).stdout);
+  expect(completion.projectLearning).toMatchObject({
+    submissionVerified: true,
+    pendingHostReviewCount: 0,
+    pendingReflectionCount: 0,
+  });
+  await fs.writeFile(path.join(project, 'retry.ts'), 'retry(2);');
+  const stale = JSON.parse((await run(home, project, options)).stdout);
+  expect(stale.projectLearning.submissionVerified).toBe(false);
+  expect(stale.projectLearning.memories).toEqual([
+    { slug: receipt.slug, verified: false, reason: 'source-changed' },
+  ]);
+}, 45_000);
 
 test('a new change still recalls user preferences and persists their application for later feedback', async () => {
   const { home, project } = await fixture('preferences');

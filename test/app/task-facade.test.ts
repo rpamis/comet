@@ -3,6 +3,33 @@ import { describe, expect, it } from 'vitest';
 import { resolveTaskFacadeOptions } from '../../app/commands/task-facade.js';
 
 describe('comet task fast facade argument parsing', () => {
+  it('preserves independent project learning declarations and memory receipts', () => {
+    expect(
+      resolveTaskFacadeOptions([
+        '.',
+        '--task',
+        'finish',
+        '--complete',
+        '--workflow',
+        'native',
+        '--change',
+        'a',
+        '--project-learning-check',
+        'submitted',
+        '--memory',
+        'retry-once,verify-build',
+      ]),
+    ).toMatchObject({
+      options: {
+        projectLearningCheck: 'submitted',
+        memory: 'retry-once,verify-build',
+        complete: true,
+      },
+    });
+    expect(
+      resolveTaskFacadeOptions(['--task', 'finish', '--project-learning-check', 'done']),
+    ).toBeNull();
+  });
   it('parses the documented options into the command shape', () => {
     expect(
       resolveTaskFacadeOptions([

@@ -28,6 +28,126 @@ async function tempRoot(prefix: string): Promise<string> {
 const fixedNow = (iso: string) => () => new Date(iso);
 
 describe('project memory store', () => {
+  test('does not expand stale memory into an Agent policy, while keeping the note readable', async () => {
+    const root = await tempRoot('comet-project-memory-stale-');
+    const cacheRoot = await tempRoot('comet-project-memory-cache-');
+    try {
+      await fs.writeFile(path.join(root, 'retry.ts'), 'retry(1);');
+      const saved = await writeProjectMemory(
+        root,
+        { title: 'Retry once', text: 'Always retry once.', evidence: ['retry.ts'] },
+        { cacheRoot },
+      );
+      const storageStore = new MemoryPluginStorageStore();
+      const module = await createProjectKnowledgeModule(
+        {
+          storage: await storageStore.open('comet.project-knowledge', 'project', 'stale'),
+          reportDiagnostic: () => undefined,
+        } as never,
+        { projectRoot: root, cacheRoot, knowledgeConfig: { provider: 'local' } },
+      );
+      const request = { task: 'Use retry policy', projectId: resolveStableProjectId(root) };
+      expect(await module.resolveContext?.(`project-memory:${saved.slug}`, request)).not.toBeNull();
+      await fs.writeFile(path.join(root, 'retry.ts'), 'retry(2);');
+      expect(await module.resolveContext?.(`project-memory:${saved.slug}`, request)).toBeNull();
+      expect((await readProjectMemory(root, saved.slug, cacheRoot))?.body).toBe(
+        'Always retry once.',
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+  test('binds a saved lesson to its workflow and change rather than merely counting existing memories', async () => {
+    const root = await tempRoot('comet-project-memory-receipt-');
+    const cacheRoot = await tempRoot('comet-project-memory-cache-');
+    try {
+      const saved = await writeProjectMemory(
+        root,
+        {
+          title: 'Retry only transient failures',
+          text: 'Retry a failed network request once.',
+          workflow: 'native',
+          change: 'change-a',
+        },
+        { cacheRoot },
+      );
+      const entry = await readProjectMemory(root, saved.slug, cacheRoot);
+      expect(entry).toMatchObject({ workflow: 'native', change: 'change-a' });
+      const updated = await writeProjectMemory(
+        root,
+        {
+          title: 'Retry only transient failures',
+          text: 'Retry only retryable failures.',
+          workflow: 'classic',
+          change: 'change-b',
+        },
+        { cacheRoot },
+      );
+      expect(updated.slug).toBe(saved.slug);
+      expect(await readProjectMemory(root, saved.slug, cacheRoot)).toMatchObject({
+        workflow: 'classic',
+        change: 'change-b',
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('captures evidence content and marks a lesson stale when same-size source content changes', async () => {
+    const root = await tempRoot('comet-project-memory-evidence-');
+    const cacheRoot = await tempRoot('comet-project-memory-cache-');
+    try {
+      await fs.writeFile(path.join(root, 'retry.ts'), 'retry(1);');
+      const original = await fs.stat(path.join(root, 'retry.ts'));
+      const saved = await writeProjectMemory(
+        root,
+        {
+          title: 'Retry once',
+          text: 'The retry count is one.',
+          evidence: ['retry.ts'],
+        },
+        { cacheRoot },
+      );
+      const current = await readProjectMemory(root, saved.slug, cacheRoot);
+      expect(current?.sourceVersions).toHaveLength(1);
+      expect(current?.sourceStatus).toBe('current');
+      await fs.writeFile(path.join(root, 'retry.ts'), 'retry(2);');
+      await fs.utimes(path.join(root, 'retry.ts'), original.atime, original.mtime);
+      const stale = await readProjectMemory(root, saved.slug, cacheRoot);
+      expect(stale?.sourceStatus).toBe('changed');
+      expect(stale?.body).toBe('The retry count is one.');
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects incomplete task receipts and evidence outside the project before writing', async () => {
+    const root = await tempRoot('comet-project-memory-invalid-');
+    const cacheRoot = await tempRoot('comet-project-memory-cache-');
+    try {
+      await expect(
+        writeProjectMemory(
+          root,
+          { title: 'Lesson', text: 'Use checks', workflow: 'native' },
+          { cacheRoot },
+        ),
+      ).rejects.toThrow();
+      await expect(
+        writeProjectMemory(
+          root,
+          { title: 'Lesson', text: 'Use checks', evidence: ['../outside.txt'] },
+          { cacheRoot },
+        ),
+      ).rejects.toThrow();
+      expect(await readProjectMemoryEntries(root, cacheRoot)).toEqual([]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
   test('creates a memory file and regenerates the MEMORY.md index', async () => {
     const root = await tempRoot('comet-project-memory-');
     const cacheRoot = await tempRoot('comet-project-memory-cache-');

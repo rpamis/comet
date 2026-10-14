@@ -845,6 +845,14 @@ async function createProjectKnowledgeModule(
         const slug = id.slice(PROJECT_MEMORY_EXPANSION_PREFIX.length);
         const entry = await readProjectMemory(options.projectRoot, slug, options.cacheRoot);
         if (entry === null) return null;
+        if (entry.sourceStatus === 'changed') {
+          reportDiagnostic({
+            code: 'project-memory-source-changed',
+            message: `项目记忆 ${slug} 的来源已变化或不可读取；请核对当前来源并更新记忆后再使用。`,
+          });
+          await diagnosticWrite;
+          return null;
+        }
         return projectMemoryEntryCandidate(entry, request.projectId, options.language);
       }
       let activeProvider: ProjectKnowledgeProvider | null = null;
