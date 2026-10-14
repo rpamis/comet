@@ -242,6 +242,70 @@ describe('Native portable Runtime vertical path', () => {
     },
   );
 
+  it.each([false, true])(
+    'reruns byte-bound checks without returning to Build after ordinary comments (dirty: %s)',
+    async (dirty) => {
+      const git = (...args: string[]) =>
+        execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
+      git('init', '--quiet');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      const file = path.join(root, 'main.ts');
+      await fs.writeFile(file, 'export const value = 1;\n');
+      git('add', 'main.ts');
+      git('commit', '--quiet', '-m', 'fixture');
+      if (dirty) await fs.writeFile(file, 'export const value = 2;\n');
+      await createNativePortableChange({ paths, name: 'comment-edit', language: 'en' });
+      await fs.writeFile(
+        path.join(nativePortableChangeDir(paths, 'comment-edit'), 'brief.md'),
+        '# Acceptance examples\n- Output remains correct.\n',
+      );
+      const state = await confirmNativePortableShape({ paths, name: 'comment-edit' });
+      const runner = createNativeRunnerChannel();
+      await submitNativePortableBuilderCandidate({
+        paths,
+        name: state.name,
+        input: {
+          identity: runner.captureExecutionIdentity({
+            identityProvider: 'test-host',
+            executionRef: 'comment-builder',
+          }),
+          candidateId: 'comments',
+          summary: 'Implemented the output.',
+          addressedAcceptanceIds: ['A1'],
+          acceptanceReview: fixtureAcceptanceReview(['A1']),
+        },
+      });
+      const plans = [
+        {
+          id: 'output',
+          name: 'Output',
+          executable: process.execPath,
+          argv: ['-e', "console.log(require('node:fs').readFileSync('main.ts', 'utf8'))"],
+          cwdRef: '.',
+          timeoutMs: 10000,
+          repeatable: true,
+        },
+      ];
+      await executeNativePortableCheckPlan({ paths, name: state.name, plans });
+      const before = (await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name)))!;
+      await fs.writeFile(file, '// Explain the output.\n' + (await fs.readFile(file, 'utf8')));
+      const checked = await executeNativePortableCheckPlan({ paths, name: state.name, plans });
+      expect(checked.disposition).toBe('executed');
+      expect((await readNativePortableChange(paths, state.name)).phase).toBe('verify');
+      const after = (await readNativeLocalExecution(nativeLocalExecutionFile(paths, state.name)))!;
+      expect(after.candidateId).toBe(before.candidateId);
+      expect(after.inputFingerprint).not.toBe(before.inputFingerprint);
+      expect(after.checks[0].operationId).not.toBe(before.checks[0].operationId);
+      expect(
+        await fs.readFile(
+          path.join(nativePreferredChangeRuntimeDir(paths, state.name), after.checks[0].log),
+          'utf8',
+        ),
+      ).toContain('Explain the output');
+    },
+  );
+
   it('bounds portable names, state discovery, and initial project configuration', async () => {
     expect(() => nativePortableChangeDir(paths, '../escape')).toThrow('Invalid Native change name');
     await expect(isNativePortableChange(paths, 'missing')).resolves.toBe(false);

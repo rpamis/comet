@@ -123,6 +123,54 @@ describe('Classic workspace preparation and routing', () => {
     await expect(fs.access(path.join(root, '.comet', 'current-change.json'))).rejects.toThrow();
   });
 
+  it('keeps a copied change local when its worktree branch needs rebinding', async () => {
+    await seedChange(root, 'copied-change', 'main');
+    git(root, 'add', 'openspec');
+    git(root, 'commit', '-m', 'seed coordinator');
+    await selectCurrentChange(root, 'copied-change');
+    const prepared = await prepareClassicWorkspace({
+      projectRoot: root,
+      name: 'copied-change',
+      isolation: 'worktree',
+    });
+    worktrees.push(prepared.projectRoot);
+    const stateFile = path.join(root, 'openspec/changes/copied-change/.comet.yaml');
+    const original = await fs.readFile(stateFile, 'utf8');
+    expect(
+      await resolveClassicWorkspace({ projectRoot: prepared.projectRoot, name: 'copied-change' }),
+    ).toMatchObject({ projectRoot: prepared.projectRoot, routed: false });
+    await expect(selectCurrentChange(prepared.projectRoot, 'copied-change')).rejects.toThrow(
+      'bound to branch',
+    );
+    const rebound = await classicStateCommand(['rebind', 'copied-change'], {
+      json: false,
+      projectRoot: prepared.projectRoot,
+      invocationCwd: prepared.projectRoot,
+    });
+    expect(rebound.exitCode).toBe(0);
+    expect((await selectCurrentChange(prepared.projectRoot, 'copied-change')).branch).toBe(
+      'comet/copied-change',
+    );
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(original);
+    expect((await selectCurrentChange(root, 'copied-change')).branch).toBe('main');
+    const router = path.resolve('assets/skills/comet/scripts/comet-hook-router.mjs');
+    for (const workspace of [root, prepared.projectRoot]) {
+      expect(() =>
+        execFileSync(process.execPath, [router, '--platform', 'codex', '--project-root', root], {
+          cwd: root,
+          input: JSON.stringify({
+            tool_name: 'Edit',
+            cwd: workspace,
+            tool_input: {
+              file_path: path.join(workspace, 'openspec/changes/copied-change/tasks.md'),
+            },
+          }),
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }),
+      ).not.toThrow();
+    }
+  });
+
   it('selects an SDK-owned Classic change in its linked worktree from the primary worktree', async () => {
     const prepared = await prepareClassicWorkspace({
       projectRoot: root,

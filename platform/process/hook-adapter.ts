@@ -13,6 +13,14 @@ export interface CometHookRequest {
   task?: string;
   cwd?: string;
   sessionId?: string;
+  writes?: CometHookWriteProposal[];
+}
+
+export interface CometHookWriteProposal {
+  path: string;
+  content?: string;
+  replacements?: { oldText: string; newText: string; replaceAll: boolean }[];
+  patch?: string;
 }
 
 export interface CometHookAdapterDecision {
@@ -35,6 +43,7 @@ const WRITE_TOOL_NAMES = new Set([
   'deletefile',
   'edit',
   'editfile',
+  'multiedit',
   'patch',
   'searchreplace',
   'strreplaceeditor',
@@ -214,6 +223,83 @@ function collectTargets(input: Record<string, unknown>, args: unknown): string[]
   return normalizeCometHookTargets(targets);
 }
 
+function collectWriteProposals(args: unknown): CometHookWriteProposal[] {
+  if (typeof args === 'string' && args.startsWith('*** Begin Patch') && /^[- +].+/mu.test(args))
+    return patchTargets(args).map((file) => ({ path: file, patch: args }));
+  if (!isRecord(args)) return [];
+  for (const key of PATCH_KEYS) {
+    if (typeof args[key] === 'string') return collectWriteProposals(args[key]);
+  }
+  const file = SINGULAR_PATH_KEYS.map((key) => args[key]).find(
+    (value) => typeof value === 'string',
+  );
+  if (typeof file !== 'string') return [];
+  if (typeof args.content === 'string') return [{ path: file, content: args.content }];
+  const edits = Array.isArray(args.edits) ? args.edits : [args];
+  const replacements: NonNullable<CometHookWriteProposal['replacements']> = [];
+  for (const edit of edits) {
+    if (!isRecord(edit)) return [];
+    const oldText = edit.old_string ?? edit.oldString;
+    const newText = edit.new_string ?? edit.newString;
+    if (typeof oldText !== 'string' || !oldText || typeof newText !== 'string') return [];
+    replacements.push({ oldText, newText, replaceAll: edit.replace_all === true });
+  }
+  return replacements.length ? [{ path: file, replacements }] : [];
+}
+
+/** 无完整、唯一匹配的编辑内容时返回 null，不推测工具实际会写什么。 */
+export function proposedCometHookFileContent(
+  proposal: CometHookWriteProposal,
+  before: string,
+): string | null {
+  if (proposal.content !== undefined) return proposal.content;
+  let after = before;
+  if (proposal.replacements) {
+    for (const edit of proposal.replacements) {
+      const first = after.indexOf(edit.oldText);
+      if (
+        first < 0 ||
+        (!edit.replaceAll && after.indexOf(edit.oldText, first + edit.oldText.length) >= 0)
+      )
+        return null;
+      after = edit.replaceAll
+        ? after.split(edit.oldText).join(edit.newText)
+        : after.slice(0, first) + edit.newText + after.slice(first + edit.oldText.length);
+    }
+    return after;
+  }
+  if (!proposal.patch?.startsWith('*** Begin Patch')) return null;
+  const lines = proposal.patch.replaceAll('\r\n', '\n').split('\n');
+  const start = lines.indexOf(`*** Update File: ${proposal.path}`);
+  if (start < 0) return null;
+  let oldLines: string[] = [],
+    newLines: string[] = [];
+  const apply = (): boolean => {
+    if (!oldLines.length) return false;
+    const oldText = oldLines.join('\n');
+    const index = after.indexOf(oldText);
+    if (index < 0 || after.indexOf(oldText, index + oldText.length) >= 0) return false;
+    after = after.slice(0, index) + newLines.join('\n') + after.slice(index + oldText.length);
+    oldLines = [];
+    newLines = [];
+    return true;
+  };
+  for (const line of lines.slice(start + 1)) {
+    if (line.startsWith('***')) return oldLines.length && apply() ? after : null;
+    if (line.startsWith('@@')) {
+      if (oldLines.length && !apply()) return null;
+      continue;
+    }
+    if (line.startsWith(' ')) {
+      oldLines.push(line.slice(1));
+      newLines.push(line.slice(1));
+    } else if (line.startsWith('-')) oldLines.push(line.slice(1));
+    else if (line.startsWith('+')) newLines.push(line.slice(1));
+    else return null;
+  }
+  return null;
+}
+
 export function parseCometHookRequest(source: string, filePath?: string): CometHookRequest {
   if (filePath?.trim()) {
     const targets = normalizeCometHookTargets([filePath]);
@@ -232,6 +318,7 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
         intent: files.length > 0 ? 'write' : 'non-write',
         targets: files,
         toolName: 'apply_patch',
+        ...(collectWriteProposals(source).length ? { writes: collectWriteProposals(source) } : {}),
       };
     }
     return { intent: 'unknown', targets: [], toolName: null };
@@ -239,7 +326,9 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
   if (!isRecord(input)) return { intent: 'unknown', targets: [], toolName: null };
 
   const toolName = readToolName(input);
-  const targets = collectTargets(input, readToolArguments(input));
+  const args = readToolArguments(input);
+  const targets = collectTargets(input, args);
+  const writes = collectWriteProposals(args);
   const cwd = readWorkingDirectory(input);
   const sessionId = readSessionId(input);
   if (readHookEventName(input) === 'beforeagentstart') {
@@ -258,6 +347,7 @@ export function parseCometHookRequest(source: string, filePath?: string): CometH
       intent: targets.length > 0 ? 'write' : 'unknown',
       targets,
       toolName,
+      ...(writes.length ? { writes } : {}),
       ...(cwd ? { cwd } : {}),
       ...(sessionId ? { sessionId } : {}),
     };

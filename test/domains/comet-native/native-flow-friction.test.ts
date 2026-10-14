@@ -184,6 +184,72 @@ None.
     },
   );
 
+  it('keeps Verify when a concrete Edit only adds an ordinary source comment', async () => {
+    await confirm();
+    const source = 'export const greeting = "hello";\n';
+    const target = path.join(root, 'main.ts');
+    await fs.writeFile(target, source);
+    const dispatched = await input({
+      kind: 'builder-handoff',
+      summary: 'Implemented the greeting.',
+      addressed_acceptance_ids: ['A1'],
+      acceptance_review: [
+        {
+          id: 'A1',
+          status: 'implemented-with-evidence',
+          evidence: ['The greeting is hello.'],
+          note: 'Matches A1.',
+        },
+      ],
+      checks: [],
+      verification_checks: [],
+      known_limits: [],
+    });
+    expect(dispatched.agent?.phase).toBe('verify');
+    const { parseNativeHookRequest } =
+      await import('../../../domains/comet-native/native-hook-guard.js');
+    const decision = await inspectNativeHookGuard(
+      root,
+      parseNativeHookRequest(
+        JSON.stringify({
+          tool_name: 'Edit',
+          tool_input: {
+            file_path: target,
+            old_string: source,
+            new_string: '// Explain the greeting.\n' + source,
+          },
+        }),
+      ),
+      'tiny',
+    );
+    expect(decision).toMatchObject({ allowed: true, phase: 'verify' });
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          path.resolve('assets/skills/comet/scripts/comet-hook-router.mjs'),
+          '--platform',
+          'codex',
+          '--project-root',
+          root,
+        ],
+        {
+          cwd: root,
+          input: JSON.stringify({
+            tool_name: 'Edit',
+            tool_input: {
+              file_path: target,
+              old_string: source,
+              new_string: '// Explain the greeting.\n' + source,
+            },
+          }),
+          stdio: ['pipe', 'pipe', 'pipe'],
+        },
+      ),
+    ).not.toThrow();
+    expect((await command(['status', 'tiny'])).agent?.phase).toBe('verify');
+  });
+
   it('still requires confirmation when meaningful constraints change', async () => {
     await confirm();
     await fs.writeFile(

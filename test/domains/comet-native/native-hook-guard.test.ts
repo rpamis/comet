@@ -384,6 +384,40 @@ describe('Native phase Hook guard', () => {
     await expect(inspectNativeSdkRun(projectRoot, 'sdk-guard')).resolves.toMatchObject({
       state: { phase: 'verify' },
     });
+    const sourceFile = path.join(projectRoot, 'source.ts');
+    const source = 'export const value = 1;\n';
+    await fs.writeFile(sourceFile, source);
+    const beforeComment = await inspectNativeSdkRun(projectRoot, 'sdk-guard');
+    const commentRequest = parseNativeHookRequest(
+      JSON.stringify({
+        tool_name: 'Edit',
+        tool_input: {
+          file_path: sourceFile,
+          old_string: source,
+          new_string: '// Explain the value.\n' + source,
+        },
+      }),
+    );
+    await expect(
+      inspectNativeHookGuard(projectRoot, commentRequest, 'sdk-guard'),
+    ).resolves.toMatchObject({ allowed: true, phase: 'verify' });
+    expect((await inspectNativeSdkRun(projectRoot, 'sdk-guard')).run).toEqual(beforeComment.run);
+    await expect(
+      inspectNativeHookGuard(
+        projectRoot,
+        parseNativeHookRequest(
+          JSON.stringify({
+            tool_name: 'Edit',
+            tool_input: {
+              file_path: sourceFile,
+              old_string: source,
+              new_string: '// @ts-nocheck\n' + source,
+            },
+          }),
+        ),
+        'sdk-guard',
+      ),
+    ).resolves.toMatchObject({ allowed: false, phase: 'verify' });
     await expect(
       fs.readFile(path.join(paths.changesDir, 'sdk-guard', 'comet-state.yaml'), 'utf8'),
     ).resolves.toContain('phase: verify');

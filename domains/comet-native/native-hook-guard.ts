@@ -9,6 +9,7 @@ import {
   parseCometHookRequest,
   readCometHookRequest,
   normalizeCometHookTargets,
+  proposedCometHookFileContent,
 } from '../../platform/process/hook-adapter.js';
 import type { CometHookIntent, CometHookRequest } from '../../platform/process/hook-adapter.js';
 import type { CometHookDecision } from '../workflow-contract/hook.js';
@@ -32,6 +33,8 @@ import {
 } from './native-portable-runtime.js';
 import { inspectNativePortableAcceptanceDrift } from './native-portable-requirements.js';
 import type { NativePortableState } from './native-portable-types.js';
+import { isNativeOrdinaryCommentEdit } from './native-source-comments.js';
+import { readNativeBoundedTextFile } from './native-bounded-file.js';
 
 const readHookProjectConfig = memoizedHookRead('nativeHookProjectConfig', readProjectConfig);
 
@@ -453,6 +456,19 @@ async function inspectPortableWriteTargets(options: {
         change: state.name,
       };
     }
+    if (
+      state.phase === 'verify' &&
+      (await ordinaryCommentWrites(projectRoot, implementationTargets, request))
+    ) {
+      return {
+        allowed: true,
+        reason:
+          'Native ordinary comment edit; remain in Verify. Runtime checks bind the actual bytes and must be rerun after the write.',
+        workflow: 'native',
+        phase: state.phase,
+        change: state.name,
+      };
+    }
     if (state.phase === 'verify' || state.phase === 'archive') {
       if (sdkOwned) {
         return {
@@ -516,6 +532,30 @@ async function inspectPortableWriteTargets(options: {
     phase: state.phase,
     change: state.name,
   };
+}
+
+async function ordinaryCommentWrites(
+  projectRoot: string,
+  targets: readonly string[],
+  request: NativeHookRequest,
+): Promise<boolean> {
+  for (const relative of targets) {
+    const proposals =
+      request.writes?.filter(
+        (proposal) =>
+          path.resolve(projectRoot, proposal.path) === path.resolve(projectRoot, relative),
+      ) ?? [];
+    if (proposals.length !== 1) return false;
+    try {
+      const source = await readNativeBoundedTextFile({ root: projectRoot, ref: relative });
+      const after = proposedCometHookFileContent(proposals[0], source.text);
+      if (after === null || !isNativeOrdinaryCommentEdit(relative, source.text, after))
+        return false;
+    } catch {
+      return false;
+    }
+  }
+  return targets.length > 0;
 }
 
 function isWithin(parent: string, target: string): boolean {
@@ -663,13 +703,13 @@ export async function resolveActiveNativeHookChange(
 }
 
 export function parseNativeHookRequest(source: string): NativeHookRequest {
-  const { intent, targets } = parseCometHookRequest(source);
-  return { intent, targets };
+  const { intent, targets, writes } = parseCometHookRequest(source);
+  return { intent, targets, ...(writes ? { writes } : {}) };
 }
 
 export async function readNativeHookRequest(): Promise<NativeHookRequest> {
-  const { intent, targets } = await readCometHookRequest();
-  return { intent, targets };
+  const { intent, targets, writes } = await readCometHookRequest();
+  return { intent, targets, ...(writes ? { writes } : {}) };
 }
 
 /** Inspect only targets that can be attributed to Native before workflow ownership is resolved. */

@@ -65,6 +65,11 @@ import {
   writePortableMutation,
 } from './native-portable-storage.js';
 import { ensureNativePortableAcceptanceCurrentLocked } from './native-portable-requirements.js';
+import { readNativeBoundedTextFile } from './native-bounded-file.js';
+import {
+  nativeSourceCommentFingerprint,
+  supportsNativeSourceComments,
+} from './native-source-comments.js';
 
 export function localCheckCwdRef(projectRoot: string, cwd: string): string {
   const relative = path.relative(path.resolve(projectRoot), path.resolve(cwd));
@@ -904,6 +909,83 @@ export async function nativeCheckInputGate(
   return nativeCheckGateFromObservation(options, await readNativeCheckInputObservation(options));
 }
 
+async function nativeCandidateCommentGate(
+  options: NativeCheckInputGateOptions,
+  observation: Awaited<ReturnType<typeof readNativeCheckInputObservation>>,
+): Promise<string | null> {
+  if (!observation) return null;
+  const unchangedPaths = new Set<string>();
+  const workingTree: typeof observation.binding.workingTree = [];
+  const index = new Map(
+    observation.binding.staged.split('\0').flatMap((record) => {
+      const match = record.match(/^(100644|100755) ([a-f0-9]+) 0\t(.+)$/u);
+      return match ? [[match[3], { mode: match[1], objectId: match[2] }] as const] : [];
+    }),
+  );
+  for (const entry of observation.binding.workingTree) {
+    if (!supportsNativeSourceComments(entry.path)) {
+      workingTree.push(entry);
+      continue;
+    }
+    try {
+      const source = await readNativeBoundedTextFile({
+        root: options.projectRoot,
+        ref: entry.path,
+      });
+      if (digestNativeCheckInput(Buffer.from(source.text).toString('base64')) !== entry.digest)
+        return null;
+      const fingerprint = nativeSourceCommentFingerprint(entry.path, source.text);
+      if (!fingerprint) {
+        workingTree.push(entry);
+        continue;
+      }
+      const indexed = index.get(entry.path);
+      if (indexed) {
+        const mode = (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
+        // chmod、重命名和删除仍需新候选，不能被注释判定掩盖。
+        const modeMatches =
+          process.platform === 'win32' || Boolean(mode & 0o111) === (indexed.mode === '100755');
+        const indexedSource = runGitCommand(options.projectRoot, [
+          'cat-file',
+          'blob',
+          indexed.objectId,
+        ]);
+        if (
+          modeMatches &&
+          nativeSourceCommentFingerprint(entry.path, indexedSource) === fingerprint
+        ) {
+          unchangedPaths.add(entry.path);
+          continue;
+        }
+      }
+      const mode = (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
+      workingTree.push({
+        path: entry.path,
+        digest: canonicalHash('comet.native.comment-source.v1', {
+          fingerprint,
+          executable: process.platform === 'win32' ? false : Boolean(mode & 0o111),
+        }),
+      });
+    } catch {
+      // 二进制、大文件及不支持的语法沿用真实内容绑定。
+      workingTree.push(entry);
+    }
+  }
+  const status = observation.binding.status
+    .split('\0')
+    .filter((record) => {
+      const match = record.trimStart().match(/^M (.+)$/u);
+      return !match || !unchangedPaths.has(match[1]);
+    })
+    .join('\0')
+    .trim();
+  return canonicalHash('comet.native.candidate-comment-gate.v1', {
+    ...observation.binding,
+    status,
+    workingTree,
+  });
+}
+
 /** Share only the reservation's observation; checks and later requests still capture fresh inputs. */
 async function nativeCheckInputGates(options: NativeCheckInputGateOptions) {
   const observation = await readNativeCheckInputObservation(options);
@@ -913,7 +995,7 @@ async function nativeCheckInputGates(options: NativeCheckInputGateOptions) {
         ? currentBranch(options.projectRoot)
         : observation.binding.branch || null,
     gate: await nativeCheckGateFromObservation(options, observation),
-    candidateGate: await nativeCheckGateFromObservation({ ...options, plans: [] }, observation),
+    candidateGate: await nativeCandidateCommentGate(options, observation),
   };
 }
 

@@ -182,6 +182,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
+    "@babel/parser": "7.29.8",
     "@inquirer/ansi": "^2.0.7",
     "@inquirer/core": "^12.0.1",
     "@inquirer/figures": "^2.0.8",

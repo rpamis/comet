@@ -555,7 +555,15 @@ export async function resolveClassicWorkspace(options: {
   }
 
   const aligned = candidates.filter(candidateIsAligned);
-  const requested = aligned.find((candidate) => samePath(candidate.projectRoot, requestedRoot));
+  // 当前 checkout 的副本必须先处理自己的分支绑定，不能因漂移跳到主仓库。
+  const requestedContext = inspectGitWorktree(requestedRoot);
+  const linked =
+    requestedContext.primaryWorktreeRoot !== null &&
+    !samePath(requestedRoot, requestedContext.primaryWorktreeRoot);
+  const requested = candidates.find(
+    (candidate) =>
+      samePath(candidate.projectRoot, requestedRoot) && (candidateIsAligned(candidate) || linked),
+  );
   const selected = requested ?? aligned[0];
   if (selected) {
     return {

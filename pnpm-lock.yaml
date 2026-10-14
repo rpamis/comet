@@ -20,6 +20,9 @@ importers:
       '@ant-design/icons':
         specifier: ^6.3.2
         version: 6.3.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@babel/parser':
+        specifier: 7.29.8
+        version: 7.29.8
       '@inquirer/ansi':
         specifier: ^2.0.7
         version: 2.0.7
