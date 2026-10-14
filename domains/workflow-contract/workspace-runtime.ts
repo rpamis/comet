@@ -820,6 +820,111 @@ async function writeMigrationFence(journal: MigrationJournal, projectRoot: strin
  * 仅恢复已证明退出的迁移实例。每次都按 journal 的摘要重验数据；不确定副本、
  * 来源不符的部分副本、活跃或未知主机 owner 均保留原样，不按超时时间抢占。
  */
+interface MigrationRepairFailure {
+  journalFingerprint: string;
+  sourceDigest: string;
+  error: string;
+  recordedAt: string;
+}
+
+function repairFailureFile(workspaceRoot: string): string {
+  return path.join(workspaceRoot, '.runtime-migration-repair-failure.json');
+}
+
+/** 递归枚举源树的名字/大小/mtime 摘要；只做元数据遍历，不读文件内容。 */
+async function migrationSourceDigest(source: string): Promise<string | null> {
+  const entries: string[] = [];
+  async function walk(directory: string, prefix: string): Promise<void> {
+    let listing;
+    try {
+      listing = await fs.readdir(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of listing.sort((left, right) => left.name.localeCompare(right.name))) {
+      let stat;
+      try {
+        stat = await fs.lstat(path.join(directory, entry.name), { bigint: true });
+      } catch {
+        continue;
+      }
+      entries.push(
+        `${prefix}${entry.name}:${stat.isDirectory() ? 'd' : 'f'}:${stat.size}:${stat.mtimeNs}`,
+      );
+      if (entry.isDirectory() && !entry.isSymbolicLink()) {
+        await walk(path.join(directory, entry.name), `${prefix}${entry.name}/`);
+      }
+    }
+  }
+  await walk(source, '');
+  if (entries.length === 0) return null;
+  return createHash('sha256')
+    .update(entries.join(String.fromCharCode(10)))
+    .digest('hex');
+}
+
+async function journalFingerprintOf(source: string): Promise<string | null> {
+  const stat = await statOrNull(journalPath(source));
+  if (!stat) return null;
+  return `${stat.size}:${stat.mtimeNs}`;
+}
+
+/**
+ * 迁移恢复失败会重读整棵源树做摘要核验，代价随源体积线性增长。把失败连同
+ * journal 与源树的元数据指纹记在用户级工作区：源未变化时后续启动直接复现
+ * 同一错误，任何源内容变化都会使记录失效并重新尝试完整恢复。
+ */
+export async function recallFailedMigrationRepair(
+  source: string,
+  location: ReturnType<typeof resolveWorkspaceRuntimeLocation>,
+): Promise<Error | null> {
+  try {
+    const value = (await readJson(
+      repairFailureFile(location.workspaceRoot),
+    )) as Partial<MigrationRepairFailure> | null;
+    if (!value || typeof value !== 'object') return null;
+    const journalFingerprint = await journalFingerprintOf(source);
+    const sourceDigest = await migrationSourceDigest(source);
+    if (
+      typeof value.journalFingerprint !== 'string' ||
+      typeof value.sourceDigest !== 'string' ||
+      typeof value.error !== 'string' ||
+      journalFingerprint !== value.journalFingerprint ||
+      sourceDigest !== value.sourceDigest
+    )
+      return null;
+    return new Error(`Runtime 迁移恢复此前已失败且源未变化，跳过重复扫描：${value.error}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function recordFailedMigrationRepair(
+  source: string,
+  location: ReturnType<typeof resolveWorkspaceRuntimeLocation>,
+  error: unknown,
+): Promise<void> {
+  try {
+    const journalFingerprint = await journalFingerprintOf(source);
+    const sourceDigest = await migrationSourceDigest(source);
+    if (!journalFingerprint || !sourceDigest) return;
+    const failure: MigrationRepairFailure = {
+      journalFingerprint,
+      sourceDigest,
+      error: error instanceof Error ? error.message : String(error),
+      recordedAt: new Date().toISOString(),
+    };
+    await ensureAbsoluteDirectory(location.workspaceRoot);
+    await fs.writeFile(
+      repairFailureFile(location.workspaceRoot),
+      JSON.stringify(failure, null, 2) + String.fromCharCode(10),
+      'utf8',
+    );
+  } catch {
+    // 失败记录是加速缓存；写不进去时下次照常完整恢复。
+  }
+}
+
 export async function repairWorkspaceRuntimeMigration(
   source: string,
   target: string,
@@ -1271,9 +1376,16 @@ export async function resolveWorkspaceRuntimeRoot(projectRoot: string): Promise<
   const source = path.join(location.projectRoot, '.comet', 'runtime');
   // 本机数据丢失时由 workflow 的便携 checkpoint 决定能否恢复；有效 fence 只
   // 阻断旧路径写入，不能让已存在的便携恢复入口永久失效。未完成迁移须先处理。
-  await repairWorkspaceRuntimeMigration(source, location.runtimeRoot, {
-    projectRoot: location.projectRoot,
-  });
+  const recalledFailure = await recallFailedMigrationRepair(source, location);
+  if (recalledFailure) throw recalledFailure;
+  try {
+    await repairWorkspaceRuntimeMigration(source, location.runtimeRoot, {
+      projectRoot: location.projectRoot,
+    });
+  } catch (error) {
+    await recordFailedMigrationRepair(source, location, error);
+    throw error;
+  }
   if (await isWorkspaceRuntimeMigrationFence(source)) {
     const fence = parseFence(await readJson(source));
     if (
