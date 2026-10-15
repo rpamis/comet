@@ -1,3 +1,4 @@
+import { nativeTaskContextRequest } from './native-task-context.js';
 import type { CliContinuationMode } from '../workflow-contract/output-envelope.js';
 import type { NativeChildrenInspection } from './native-children.js';
 import type { NativePortableExpectedContinuationAction } from './native-portable-runtime.js';
@@ -58,6 +59,7 @@ export interface NativePortableContinuation {
   disposition: 'continue' | 'await-user' | 'blocked' | 'done';
   mode: CliContinuationMode;
   cwd?: string;
+  contextRequest?: ReturnType<typeof nativeTaskContextRequest>;
   requiresUserDecision: boolean;
   action:
     | 'prepare-shape-confirmation'
@@ -722,6 +724,7 @@ export function nativePortableContinuation(
     phase: state.phase,
     status: state.status,
     stateVersion: state.state_version,
+    ...(state.status === 'active' ? { contextRequest: nativeTaskContextRequest(state) } : {}),
     mode: 'execute' as const,
     inputOptions: [] as NativePortableContinuation['inputOptions'],
     requiresUserDecision: userCommunication.required,

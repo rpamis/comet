@@ -392,6 +392,54 @@ describe('CLI lazy command actions', () => {
     expect(personalMemoryRememberCommand).not.toHaveBeenCalled();
   });
 
+  it('parses snapshot delivery and repeatable memory phase selectors', async () => {
+    await runAction(
+      [
+        'task',
+        'project',
+        '--task',
+        'Verify',
+        '--context-mode',
+        'snapshot',
+        '--phase',
+        'verify',
+        '--session',
+        'verifier',
+      ],
+      cometTaskCommand,
+    );
+    expect(cometTaskCommand).toHaveBeenLastCalledWith(
+      'project',
+      expect.objectContaining({ contextMode: 'snapshot', phase: 'verify', session: 'verifier' }),
+    );
+    await runAction(
+      [
+        'memory',
+        'remember',
+        'project',
+        '--text',
+        'Use my Skill',
+        '--phase',
+        'build',
+        '--phase',
+        'verify',
+      ],
+      personalMemoryRememberCommand,
+    );
+    expect(personalMemoryRememberCommand).toHaveBeenLastCalledWith(
+      'project',
+      expect.objectContaining({ phases: ['build', 'verify'] }),
+    );
+    await runAction(
+      ['memory', 'correct', 'project', '--id', 'id', '--phase', 'verify'],
+      personalMemoryCorrectCommand,
+    );
+    expect(personalMemoryCorrectCommand).toHaveBeenLastCalledWith(
+      'project',
+      expect.objectContaining({ phases: ['verify'] }),
+    );
+  });
+
   it('loads and dispatches every deferred command group when invoked', async () => {
     await runAction(['init', 'project'], initCommand);
     await runAction(['status', 'project'], statusCommand);

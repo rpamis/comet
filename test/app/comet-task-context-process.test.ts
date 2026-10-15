@@ -241,7 +241,8 @@ test('a new change still recalls user preferences and persists their application
     path.join(home, '.comet/memory/profile.md'),
     '# 个人画像\n\n## 沟通偏好\n\n- 使用中文回复\n',
   );
-  const result = await run(home, project);
+  const request = { session: 'builder', phase: 'build' };
+  const result = await run(home, project, request);
   const response = JSON.parse(result.stdout);
   expect(response.context).toHaveLength(1);
   expect(response.context[0].text).toContain('使用中文回复');
@@ -251,6 +252,31 @@ test('a new change still recalls user preferences and persists their application
     'utf8',
   );
   expect(persisted).toContain(response.context[0].applications[0].applicationId);
+  expect(JSON.parse((await run(home, project, request)).stdout).context).toEqual([]);
+  const restored = JSON.parse(
+    (await run(home, project, { ...request, contextMode: 'snapshot' })).stdout,
+  );
+  expect(restored.context[0].text).toContain('使用中文回复');
+  expect(restored.context[0].applications[0].applicationId).toBe(
+    response.context[0].applications[0].applicationId,
+  );
+  const verify = JSON.parse((await run(home, project, { ...request, phase: 'verify' })).stdout);
+  expect(verify.context[0].text).toContain('使用中文回复');
+  const independent = JSON.parse(
+    (await run(home, project, { phase: 'verify', session: 'verifier', contextMode: 'snapshot' }))
+      .stdout,
+  );
+  expect(independent.context[0].text).toContain('使用中文回复');
+  expect(independent.context[0].applications[0].applicationId).not.toBe(
+    verify.context[0].applications[0].applicationId,
+  );
+  const restoredStore = JSON.parse(
+    await fs.readFile(
+      path.join(home, '.comet/plugins/storage/comet.agent-context-user-global.json'),
+      'utf8',
+    ),
+  );
+  expect(restoredStore.records).toHaveLength(3);
 });
 
 test('an unresponsive memory provider is canceled without blocking a new task or requiring retry', async () => {

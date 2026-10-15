@@ -11,6 +11,8 @@ export interface AgentContextRequest {
   readonly operation?: string;
   readonly phase?: string;
   readonly sessionId?: string;
+  /** Snapshot delivery restores the current applicable set after a handoff or context loss. */
+  readonly contextMode?: 'incremental' | 'snapshot';
   readonly charBudget?: number;
   readonly language?: 'zh-CN' | 'en';
 }
@@ -351,7 +353,14 @@ export class ContextDirector {
   ): Promise<AgentContextSelection> {
     const candidates = values.map(validateAgentContextCandidate);
     const episodeId = `context:${randomUUID()}`;
-    const sessionKey = request.sessionId ?? episodeId;
+    const sessionKey = JSON.stringify([
+      request.sessionId ?? episodeId,
+      request.projectId,
+      request.task,
+      request.phase,
+      request.path,
+      request.operation,
+    ]);
     const delivered = this.delivered.get(sessionKey) ?? new Map<string, string>();
     this.delivered.set(sessionKey, delivered);
     const persisted = await this.applications.list();
@@ -365,6 +374,7 @@ export class ContextDirector {
         );
         if (
           application.sessionId === request.sessionId &&
+          contextDeliveryMatchesRequest(application, request) &&
           candidate !== undefined &&
           applicationMatchesCandidate(application, candidate, request)
         ) {
@@ -390,7 +400,11 @@ export class ContextDirector {
       if (candidate.state === 'superseded' || !candidateCanBeConsidered(candidate, request))
         continue;
       const digest = candidate.digest ?? digestCandidate(candidate);
-      if (delivered.get(applicationKey(candidate.owner, candidate.id)) === digest) continue;
+      if (
+        request.contextMode !== 'snapshot' &&
+        delivered.get(applicationKey(candidate.owner, candidate.id)) === digest
+      )
+        continue;
       const candidateHistory = (
         history.get(applicationKey(candidate.owner, candidate.id)) ?? []
       ).filter((application) => applicationMatchesCandidate(application, candidate, request));
@@ -433,15 +447,26 @@ export class ContextDirector {
           candidateSelectorsMatch(candidate, request));
       const candidateDigest = candidate.digest ?? digestCandidate(candidate);
       const attempt = (delivery: 'full' | 'manifest', summaryLimit = 320): boolean => {
-        const application = contextApplication({
-          candidate,
-          candidateDigest,
-          episodeId,
-          request,
-          whyApplied,
-          delivery,
-          appliedAt,
-        });
+        const application =
+          (request.sessionId === undefined
+            ? undefined
+            : persisted.find(
+                (record) =>
+                  record.sessionId === request.sessionId &&
+                  applicationMatchesCandidate(record, candidate, request) &&
+                  contextDeliveryMatchesRequest(record, request) &&
+                  record.candidateDigest === candidateDigest &&
+                  record.delivery === delivery,
+              )) ??
+          contextApplication({
+            candidate,
+            candidateDigest,
+            episodeId,
+            request,
+            whyApplied,
+            delivery,
+            appliedAt,
+          });
         const nextCore = [...coreMemory];
         const nextPolicies = [...activePolicies];
         const nextManifest = [...manifest];
@@ -470,7 +495,9 @@ export class ContextDirector {
       if ([320, 160, 80, 32, 0].some((limit) => attempt('manifest', limit))) continue;
     }
     for (const application of applications) {
-      await this.applications.append(application);
+      if (!persisted.some((record) => record.applicationId === application.applicationId)) {
+        await this.applications.append(application);
+      }
       delivered.set(
         applicationKey(application.owner, application.candidateId),
         application.candidateDigest,
@@ -1057,6 +1084,19 @@ function isOutcomeStatus(value: unknown): value is AgentContextOutcomeStatus {
     'corrected',
     'contributed-to-failure',
   ].includes(String(value));
+}
+
+function contextDeliveryMatchesRequest(
+  application: AgentContextApplicationRecord,
+  request: AgentContextRequest,
+): boolean {
+  return (
+    (application.scope === 'user' || application.projectId === request.projectId) &&
+    application.task === request.task &&
+    application.phase === request.phase &&
+    application.path === request.path &&
+    application.operation === request.operation
+  );
 }
 
 function applicationMatchesCandidate(

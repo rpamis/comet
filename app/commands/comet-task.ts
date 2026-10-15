@@ -24,6 +24,7 @@ export interface CometTaskCommandOptions {
   readonly operation?: string;
   readonly session?: string;
   readonly contextBudget?: string | number;
+  readonly contextMode?: 'incremental' | 'snapshot';
   readonly expandContext?: string;
   readonly application?: string;
   readonly outcome?: AgentContextOutcomeStatus;
@@ -87,6 +88,7 @@ async function runCometTaskCommand(
     ...(options.phase ? { phase: options.phase } : {}),
     ...(options.operation ? { operation: options.operation } : {}),
     ...(options.session ? { sessionId: options.session } : {}),
+    ...(options.contextMode ? { contextMode: options.contextMode } : {}),
     ...(contextBudget(options.contextBudget) === undefined
       ? {}
       : { charBudget: contextBudget(options.contextBudget) }),

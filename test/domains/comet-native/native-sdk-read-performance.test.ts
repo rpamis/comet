@@ -217,6 +217,10 @@ describe('Native SDK read work budgets', () => {
       )!.input,
     );
     expect(status.continuation).toMatchObject({ mode: 'execute', cwd: root });
+    expect(status.pendingActions![0]).toMatchObject({
+      contextRequest: { phase: 'build', contextMode: 'snapshot' },
+    });
+    expect(status.pendingActions![0].contextRequest.commandArgs).toContain(root);
     expect(status.continuation.commandArgs).toEqual([
       'comet',
       'runtime',
@@ -241,6 +245,9 @@ describe('Native SDK read work budgets', () => {
     });
     expect(claimed.actions.find((action) => action.id === pending.id)?.status).toBe('running');
     const waiting = await inspectNativeSdkStatus({ projectRoot: root, name });
+    expect(waiting.activeActions![0].contextRequest?.commandArgs).toContain(
+      'budget-builder-session',
+    );
     expect(waiting.activeActions![0].outcomeRequest!.outcome.output).toMatchObject({
       summary: expect.any(String),
       addressedAcceptanceIds: before.state.acceptance.map(({ id }) => id),

@@ -1,4 +1,5 @@
 import { canonicalHash } from './native-canonical-hash.js';
+import { nativeTaskContextRequest } from './native-task-context.js';
 import type { NativeChildrenContract } from './native-children-contract.js';
 import type { NativeChildStatusProjection, NativeChildrenInspection } from './native-children.js';
 import {
@@ -479,6 +480,11 @@ export function projectNativeSupervisorTask(
   return {
     ...task,
     controlProjectRoot,
+    contextRequest: nativeTaskContextRequest({
+      phase: task.role === 'verifier' ? 'verify' : 'build',
+      language: 'en',
+      projectRoot: task.projectRoot,
+    }),
     returnAction: {
       cwd: controlProjectRoot,
       commandArgs: [

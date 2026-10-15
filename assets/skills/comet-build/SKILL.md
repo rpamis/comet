@@ -5,6 +5,8 @@ description: 'Plan, implement, and accept Classic tasks. Use when the user invok
 
 # Comet Phase 3: Plan and Build
 
+On first entering a phase, handing off to a new Agent, or restoring context, read and follow [Task Context and Artifact Language](../comet-classic/reference/scripts.md#task-context-and-artifact-language). Prefer the current continuation or claimed Action's `contextRequest`; do not retrieve repeatedly during uninterrupted work in the same phase.
+
 After entry returns layout, follow `comet-classic/reference/classic-layout.md` to bind each logical root to its directory. Do not reload the protocol if it is already in context. Use the adapter for all OpenSpec CLI calls and the bound `<classic-*>` roots for paths; do not run an extra root show first.
 
 ## SDK Run path

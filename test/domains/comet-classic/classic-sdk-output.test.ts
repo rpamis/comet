@@ -58,6 +58,64 @@ const root = '/tmp/project with spaces';
 
 describe('Classic next-step source projection', () => {
   it.each(['full', 'hotfix', 'tweak'])(
+    'restores %s stage context without changing the Action or its approval bindings',
+    (profile) => {
+      const run = fixture(`${profile}.build.execute`, 'comet-build');
+      run.workflow.id = `comet-classic-${profile}`;
+      run.state = { ...(run.state as object), workflow: profile, language: 'zh-CN' };
+      const before = structuredClone(run);
+      const build = classicSdkContinuation(run, root, 'demo');
+      expect(build.contextRequest).toMatchObject({ phase: 'build', contextMode: 'snapshot' });
+      expect(build.contextRequest?.commandArgs).toEqual([
+        'comet',
+        'task',
+        root,
+        '--task',
+        '<original-task>',
+        '--phase',
+        'build',
+        '--session',
+        '<receiving-session-id>',
+        '--context-mode',
+        'snapshot',
+        '--json',
+      ]);
+      expect(build.current.actions[0].contextRequest).toEqual(build.contextRequest);
+      expect(build.contextRequest?.instruction).toContain('已确认的执行方式');
+      expect(run).toEqual(before);
+
+      run.state = { ...(run.state as object), phase: 'verify' };
+      run.actions[0].stepId = `${profile}.verify.run`;
+      run.actions[0].ref = 'comet-verify';
+      run.actions[0].status = 'running';
+      run.actions[0].claim = {
+        executorId: 'reviewer',
+        token: 'claim',
+        sessionId: 'review-session',
+      };
+      const verify = classicSdkContinuation(run, root, 'demo');
+      expect(verify.contextRequest?.phase).toBe('verify');
+      expect(verify.current.actions[0].contextRequest?.commandArgs).toContain('review-session');
+      expect(verify.current.actions[0].inputHash).toBe(before.actions[0].inputHash);
+      expect(verify.mode).toBe('wait');
+      run.actions[0].status = 'unknown';
+      expect(classicSdkContinuation(run, root, 'demo').current.actions[0].contextRequest).toEqual(
+        verify.current.actions[0].contextRequest,
+      );
+    },
+  );
+
+  it.each(['completed', 'cancelled'] as const)(
+    'does not request stage context after %s',
+    (status) => {
+      const run = fixture();
+      run.actions = [];
+      run.status = status;
+      expect(classicSdkContinuation(run, root, 'demo').contextRequest).toBeUndefined();
+    },
+  );
+
+  it.each(['full', 'hotfix', 'tweak'])(
     'maps %s check tools to executable argv, never a Skill',
     (profile) => {
       const run = fixture(`${profile}.build.check`);

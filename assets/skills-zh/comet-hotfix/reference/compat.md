@@ -16,9 +16,9 @@
 
 恢复已有 hotfix change 时，第一项状态操作必须是 `comet state select <change-name>`；创建新 change 时，在 `.comet.yaml` 初始化成功后立即运行该命令，再进入源码写入步骤。
 
-进入 hotfix 工作区并读取当前状态 `phase` 后，运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<本次任务稳定标识>" --json`，按以下规则使用返回的上下文：
+进入工作区并读取当前阶段后，以及阶段切换、换 Agent 或上下文恢复时，按 `comet-classic/reference/scripts.md` 的任务上下文协议使用当前 `contextRequest`；没有描述时运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<接收方稳定会话标识>" --context-mode snapshot --json`。
 
-- 只将返回的 `text` 加入当前上下文。Context Manifest（`manifest` / `<context_manifest>`）只包含摘要、应用原因和固定 ID；需要正文、来源或验证方式时，增加 `--expand-context "<id>"`。路径、操作或阶段变化后，使用同一 `--session` 重新选择适用条目。
+- 将 `context[].text` 加入上下文；需要清单中条目的正文时增加 `--expand-context "<id>"`。同一阶段连续执行不重复获取；路径或操作变化时用同一会话和 `--context-mode incremental`。派发子任务时交付上下文请求和有效配置，由接收方用自己的会话获取，偏好不能跳过配置确认或必需审查。
 - 用户明确要求长期记住时，调用 `comet memory remember ... --scope global|project`。对于用户未明确要求记忆、但可重复采用且相对稳定的协作方式，才调用 `comet memory observe`；不得保存任务摘要、进展、命令输出或测试结果。
 - 任务结束前，将本次验证过且未来任务仍可复用的项目经验写入项目记忆：`comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --workflow classic --change <change-id> --json`。同一标题默认更新已有条目；没有可复用经验时跳过，任务摘要、一次性命令输出和未验证的猜测不得写入项目记忆。
 - 实际使用某条记录、且使用结果已经明确后，取 `applications[].applicationId`（Hook 文本中的 `application_id`），运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`，记录使用结果。

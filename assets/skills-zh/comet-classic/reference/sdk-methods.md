@@ -2,7 +2,7 @@
 
 仅在 `runtimeFormat: sdk` 时读取当前阶段的章节。阶段命令、Action、Wait 和输入模板以主 Skill 与最新 continuation 为准；本参考说明实际工作和完成条件。
 
-所有产物与外部 Skill 输入使用当前 configuration.language。上下文、记忆接入和恢复按 scripts.md 的当前任务协议执行，保留已有事实与有效证据。
+所有产物与外部 Skill 输入使用当前 configuration.language。每次阶段入口、接收新 Agent 和上下文恢复，先按 [任务上下文协议](scripts.md#任务上下文与产物语言) 使用当前 continuation 或已领取 Action 的 `contextRequest`；派发子任务时一并交付阶段、任务范围、实际工作区和有效配置。保留已有事实与有效证据。
 
 ## 开始与产物
 

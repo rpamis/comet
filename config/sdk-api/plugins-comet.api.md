@@ -103,6 +103,8 @@ export interface CometPluginContextRequest {
     // (undocumented)
     readonly charBudget?: number;
     // (undocumented)
+    readonly contextMode?: 'incremental' | 'snapshot';
+    // (undocumented)
     readonly operation?: string;
     // (undocumented)
     readonly path?: string;

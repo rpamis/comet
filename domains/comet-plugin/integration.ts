@@ -102,6 +102,7 @@ export interface CometPluginContextRequest {
   readonly phase?: string;
   readonly operation?: string;
   readonly sessionId?: string;
+  readonly contextMode?: 'incremental' | 'snapshot';
   readonly charBudget?: number;
 }
 

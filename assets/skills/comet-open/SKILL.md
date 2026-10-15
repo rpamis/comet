@@ -5,6 +5,8 @@ description: 'Create a Classic change, clarify its requirements, and obtain user
 
 # Comet Phase 1: Open
 
+On first entering a phase, handing off to a new Agent, or restoring context, read and follow [Task Context and Artifact Language](../comet-classic/reference/scripts.md#task-context-and-artifact-language). Prefer the current continuation or claimed Action's `contextRequest`; do not retrieve repeatedly during uninterrupted work in the same phase.
+
 Before starting or resuming, read and follow `comet-classic/reference/classic-layout.md`. All OpenSpec CLI calls in this file must use the adapter, and all paths must use the `<classic-*>` logical roots bound by that protocol.
 
 ## Prerequisites

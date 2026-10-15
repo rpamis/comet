@@ -48,6 +48,15 @@ describe('Classic compact recovery and task reconciliation', () => {
     expect(data.nextAction).toMatchObject({ kind: 'reconcile-task', taskId: 'a' });
     expect(data.taskState).toMatchObject({ total: 1, completed: 0, next: { id: 'a' } });
     expect(data.taskState.tasks).toBeUndefined();
+    expect(data.continuation.contextRequest).toMatchObject({
+      phase: 'build',
+      contextMode: 'snapshot',
+    });
+    expect(data.continuation.contextRequest.commandArgs).toContain(root);
+    expect(data.continuation.contextRequest.commandArgs).toContain('<receiving-session-id>');
+    expect(JSON.parse(result.stdout!).agent.continuation.contextRequest).toEqual(
+      data.continuation.contextRequest,
+    );
   });
 
   it.each(['drift', 'unbound-detached'] as const)(

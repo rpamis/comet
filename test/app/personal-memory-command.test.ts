@@ -29,6 +29,44 @@ describe('personal memory commands', () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
 
+  it('preserves explicit phase preferences through saving and correction', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'comet-phase-memory-'));
+    roots.push(root);
+    const options = {
+      memoryRoot: path.join(root, 'memory'),
+      stateRoot: path.join(root, 'plugins'),
+      json: true,
+    };
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const saved = (await personalMemoryRememberCommand(root, {
+      ...options,
+      scope: 'project',
+      text: 'Use my preferred Skill during Verify.',
+      phases: ['verify'],
+    })) as { id: string; phases: string[] };
+    expect(saved.phases).toEqual(['verify']);
+    expect(
+      (
+        (await personalMemoryRetrieveCommand(root, { ...options, phase: 'build' })) as {
+          records: unknown[];
+        }
+      ).records,
+    ).toEqual([]);
+    expect(
+      (
+        (await personalMemoryRetrieveCommand(root, { ...options, phase: 'verify' })) as {
+          records: unknown[];
+        }
+      ).records,
+    ).toHaveLength(1);
+    const corrected = (await personalMemoryCorrectCommand(root, {
+      ...options,
+      id: saved.id,
+      phases: ['build', 'verify'],
+    })) as { phases: string[] };
+    expect(corrected.phases).toEqual(['build', 'verify']);
+  });
+
   it('uses the shared bridge for explicit memory, retrieval, context, and status', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'comet-memory-cli-'));
     roots.push(root);
@@ -362,6 +400,6 @@ describe('personal memory commands', () => {
         id: 'missing-id',
         json: true,
       }),
-    ).rejects.toThrow('At least one of --text or --category is required');
+    ).rejects.toThrow('At least one of --text, --category or --phase is required');
   });
 });

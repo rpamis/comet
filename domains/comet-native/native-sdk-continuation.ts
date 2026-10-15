@@ -1,3 +1,4 @@
+import { nativeTaskContextRequest } from './native-task-context.js';
 import {
   hashRuntimeValue,
   type WorkflowRun,
@@ -524,6 +525,19 @@ export async function projectNativeSdkContinuation(options: {
     suggestedReply: null,
     agentInstruction: instruction,
   });
+  const actionContextRequest = (action: RuntimeAction) => {
+    const input = action.input as {
+      worktree?: unknown;
+      activation?: { worktree?: unknown };
+    } | null;
+    const worktree = input?.activation?.worktree ?? input?.worktree;
+    return nativeTaskContextRequest({
+      phase: action.ref?.includes('verifier') ? 'verify' : 'build',
+      language: state.language,
+      projectRoot: typeof worktree === 'string' ? worktree : projectRoot,
+      sessionId: action.claim?.sessionId,
+    });
+  };
   const base: NativePortableContinuation = {
     schema: 'comet.native.continuation.v2',
     skill: 'comet-native',
@@ -531,6 +545,15 @@ export async function projectNativeSdkContinuation(options: {
     phase: state.phase,
     status: state.status,
     stateVersion: state.state_version,
+    ...(state.status === 'active'
+      ? {
+          contextRequest: nativeTaskContextRequest({
+            phase: state.phase,
+            language: state.language,
+            projectRoot,
+          }),
+        }
+      : {}),
     disposition: 'continue',
     mode: 'execute',
     requiresUserDecision: false,
@@ -606,6 +629,7 @@ export async function projectNativeSdkContinuation(options: {
           : sdkCommandArgs(['comet', 'native', 'next', state.name], projectRoot),
       ...(action.type === 'handoff'
         ? {
+            contextRequest: actionContextRequest(action),
             ...(action.ref?.includes('verifier')
               ? {
                   sessionRequirements: {
@@ -1098,8 +1122,8 @@ export async function projectNativeSdkContinuation(options: {
             )
           : handoff
             ? localized(
-                'Use the pending Action claimRequest with a real stable session ID and unique claim token. Work only after the claim succeeds, using the returned Action input; Verifiers need a separate read-only session. Submit the original Action outcome, then follow the returned Run.',
-                '在待执行 Action 的 claimRequest 中填入真实稳定的会话标识和唯一领取令牌。领取成功后按返回的 Action 输入开展工作；Verifier 必须使用独立只读会话。提交原 Action 的结果后按返回的 Run 继续。',
+                'Use the pending Action claimRequest with a real stable session ID and unique claim token. After the claim succeeds, the receiving Agent reads its contextRequest before starting work. Use the returned Action input; Verifiers need a separate read-only session. Submit the original Action outcome, then follow the returned Run.',
+                '在待执行 Action 的 claimRequest 中填入真实稳定的会话标识和唯一领取令牌。领取成功后，接收 Agent 先执行自己的 contextRequest，再按返回的 Action 输入开展工作；Verifier 必须使用独立只读会话。提交原 Action 的结果后按返回的 Run 继续。',
               )
             : localized(
                 'Execute the next Runtime-owned Action and follow its returned state. It revalidates current evidence before committing.',
@@ -1225,6 +1249,7 @@ export async function projectNativeSdkContinuation(options: {
             type: action.type,
             ref: action.ref,
             claim: action.claim,
+            ...(action.type === 'handoff' ? { contextRequest: actionContextRequest(action) } : {}),
             commandArgs: dispatchCommandArgs,
             outcomeRequest: nativeSdkOutcomeRequest(run, action, state),
             ...nativeSdkOutcomeAlternatives(run, action, state),

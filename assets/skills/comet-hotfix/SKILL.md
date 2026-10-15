@@ -17,7 +17,9 @@ A short defect-repair flow: open → build → root cause check → verify → a
 
 **When the preset may no longer fit:** If the repair encounters changes listed under “Escalation decisions,” let the user decide whether to use the full `/comet-classic` flow.
 
-Follow the Classic entry memory protocol; personal memory contains reusable user information, never task summaries, progress, command output, or test results.
+On first entering a phase, handing off to a new Agent, or restoring context, read and follow [Task Context and Artifact Language](../comet-classic/reference/scripts.md#task-context-and-artifact-language). Prefer the current continuation or claimed Action's `contextRequest`; do not retrieve repeatedly during uninterrupted work in the same phase.
+
+Personal memory contains reusable user information, never task summaries, progress, command output, or test results.
 
 ## SDK Run path
 

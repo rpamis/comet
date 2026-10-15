@@ -42,21 +42,25 @@ Builder 已部分执行且原 Action 已提交 `failed` 时，保留工作区和
 
 ## 记忆接入
 
-进入 change 工作区并读取 Runtime 当前 `phase` 后，Agent 自动运行一次：
+进入 change 工作区并取得当前 `phase` 后，优先执行当前任务包的 `contextRequest`（包括 Compat 的 `supervisorTask.contextRequest`）；没有任务专属请求时使用 `continuation.contextRequest`。SDK 的 Builder、Verifier 和子任务使用对应 `pendingActions[]` 或 `activeActions[]` 中的 `contextRequest`，由接收方在领取成功后执行。命令中的任务填用户原始请求，会话填接收 Agent 自己的稳定标识；原始请求缺失时先从当前 brief 恢复目标。
+
+首次进入阶段、交接给新 Agent、上下文压缩或新会话恢复后，各执行一次完整读取。旧响应没有 `contextRequest` 时使用：
 
 ```text
-comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<本次任务稳定标识>" --json
+comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<接收 Agent 的稳定标识>" --context-mode snapshot --json
 ```
 
-只把返回 JSON 的 `text` 加入当前上下文。`manifest`（注入文本中的 `<context_manifest>`）是 Context Manifest，即上下文条目清单，只包含摘要、使用原因和固定 ID。
+把返回 JSON 中 `context[].text` 加入当前上下文。完整读取返回当前阶段适用的内容，不受本会话此前已交付记录的去重影响；重复读取不代表重复使用或成功执行。`manifest`（注入文本中的 `<context_manifest>`）是 Context Manifest，即上下文条目清单，只包含摘要、使用原因和固定 ID。
 
-当前任务需要正文、来源或验证方式时，运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<同一标识>" --expand-context "<id>" --json`。路径、操作或阶段变化时，保留同一个 `--session`，用新的 `--path`、`--operation`、`--phase` 重新检索；内容未变化的条目不会重复返回。
+当前任务需要正文、来源或验证方式时，运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<同一标识>" --expand-context "<id>" --json`。同一阶段连续执行时复用已取得的内容；路径或操作变化时保留会话标识，按新的 `--path`、`--operation` 重新检索，默认增量模式只返回尚未交付的适用内容。
+
+交接时附上接收方的 `contextRequest`，保留用户原话、适用条件和来源；Verifier 只接收适用的验收偏好、项目约束和客观证据，不把 Builder 的自评当作结论。按平台实际可用的技能加载接口执行适用的 Skill 偏好；不可用、与当前指令冲突或不符合只读角色时说明原因。记忆已交付、Skill 已加载和实际遵循分别核对；Skill 不代替 Runtime 检查、用户授权或独立验收。获取为空或失败时，沿用明确指令继续，不循环重试，也不为检索结果变化回滚工作流阶段。
 
 若 `<active_policies>` 中包含 `<verification command="...">`，将这些命令加入当前 Verify 的检查，并记录实际结果。只有对应命令成功执行后，Runtime 才会将该策略设为强制执行。
 
 记忆按以下规则保存：
 
-- 用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember <project-root> --text "<偏好或约定>" --scope global|project --json`，立即保存为用户明确指定的记忆。
+- 用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember <project-root> --text "<偏好或约定>" --scope global|project --json`，立即保存为用户明确指定的记忆。用户明确限定阶段时追加可重复的 `--phase`，例如 `--phase build --phase verify`；纠正适用阶段使用 `comet memory correct <project-root> --id <id> --phase <phase> --json`。保留用户原话，不把当前阶段自动当作长期适用条件。
 - 用户没有提出长期记忆要求，但协作方式已经稳定、可供以后任务复用时，才调用 `comet memory observe <project-root> --text "<协作方式>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`。
 - 两者都不得保存任务摘要、实现进展、命令输出或测试结果。
 

@@ -72,6 +72,14 @@ describe('Classic SDK compact entry and recovery summaries', () => {
       layout: { schema: 'comet.classic-layout.v1' },
     });
     expect(opened.agent.workspace.cwd).toBe(projectRoot);
+    expect(opened.data.continuation.contextRequest).toMatchObject({
+      phase: 'design',
+      contextMode: 'snapshot',
+    });
+    expect(opened.data.continuation.contextRequest.commandArgs).toContain(projectRoot);
+    expect(opened.agent.continuation.contextRequest).toEqual(
+      opened.data.continuation.contextRequest,
+    );
     expect(opened.data.continuation).toEqual(
       (await cli('state', 'next', 'demo')).data.continuation,
     );

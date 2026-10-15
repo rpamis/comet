@@ -20,7 +20,9 @@ Tweak 为 Comet 五阶段流程提供一组预设配置。它通过 OpenSpec 完
 
 **不适用**：变更过程中如发现 SDK 方法参考的预设范围复核列出的变化，需要由用户决定是否改用完整 `/comet-classic` 流程。
 
-记忆接入沿用 Classic 入口协议；个人记忆只保存可复用用户信息，不写入任务摘要、进展、命令输出或测试结果。
+首次进入阶段、交接给新 Agent 或上下文恢复后，读取并执行 [任务上下文与产物语言](../comet-classic/reference/scripts.md#任务上下文与产物语言)，优先采用当前 continuation 或已领取 Action 的 `contextRequest`；同一阶段连续执行不重复获取。
+
+个人记忆只保存可复用用户信息，不写入任务摘要、进展、命令输出或测试结果。
 
 ## SDK Run 路径
 

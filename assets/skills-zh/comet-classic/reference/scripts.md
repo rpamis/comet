@@ -133,11 +133,19 @@ comet archive <change-name>
 
 所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言，配置值为规范化语言 ID：`en` 或 `zh-CN`。已有 change 优先使用本次有效入口返回的 `configuration.language`；仅入口未提供该字段时，才通过 `comet state get <name> language` 读取实际状态文件中的 `language`。新旧两种状态文件均不存在时，依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；两处都没有配置时，才使用当前用户请求的语言。调用外部 OpenSpec/Superpowers Skill 时，必须把最终确定的语言明确写入提示词或 ARGUMENTS。
 
-绑定 Classic 工作区并读取实际状态文件当前 `phase` 后，Agent 自动运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<本次任务稳定标识>" --json`。只将返回的 `text` 加入上下文。Context Manifest（`manifest` / `<context_manifest>`）是上下文清单，只包含摘要、选用原因和稳定 ID。需要正文、来源或验证方式时，运行同一命令并增加 `--expand-context "<id>"`。路径、操作或阶段发生变化时，沿用同一 `--session`，传入新的 `--path`、`--operation`、`--phase`，重新选择适用内容。
+首次进入阶段、交接给新 Agent 或上下文恢复后，按当前 `agent.continuation.contextRequest` 获取一次任务上下文；SDK 已领取 Action 时，优先使用 `data.continuation.current.actions[]` 中对应 Action 的 `contextRequest`。本协议适用于 full、hotfix、tweak 的 SDK 与 Compat 路径，直接调用阶段 Skill 也要执行。普通状态查询、等待原任务和同一阶段内的连续执行不重复获取。
+
+没有请求描述时，绑定实际工作区并读取当前 `phase`，运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<接收方稳定会话标识>" --context-mode snapshot --json`。原始请求缺失时从当前 proposal、specs 和任务范围恢复目标。阶段切换沿用当前 Agent 的会话标识；换 Agent 时使用接收方自己的标识，不能复用派发者或已领取 Action 的其他执行者标识。同一 Agent 恢复时沿用原标识并获取 snapshot，避免已交付记录阻止内容重新进入上下文。
+
+将 `context[].text` 加入上下文。Context Manifest（`manifest` / `<context_manifest>`）只包含摘要、选用原因和稳定 ID；需要正文、来源或验证方式时，用同一请求增加 `--expand-context "<id>"`。同一阶段连续执行中路径或操作变化时，沿用同一 `--session`，传新的 `--path`、`--operation`，使用 `--context-mode incremental` 获取新增内容。不要因每次状态响应仍带 `contextRequest` 就重复检索。空结果或获取失败时按已有明确指令继续，不循环重试。
+
+派发实现、审查或其他子任务时，交付当前阶段、任务范围、实际工作区、有效配置、适用偏好与项目约束，并附上此上下文请求。接收方用自己的会话标识执行一次；只有隔离的独立验收阶段才使用 `verify`，Build 内审查仍使用 `build`。子任务边界限制优先，不能因继承偏好扩大写入范围或省略独立审查。
+
+偏好中要求特定 Skill 时，按当前平台实际可用能力加载，并明确所需方法。与已确认的执行方式、TDD、审查配置或固定 Skill 冲突时说明具体差异；配置变更按现有确认流程处理，不静默替换或重复询问仍有效的决定。不可用或不兼容时说明原因并继续可执行部分。分别记录“偏好已交付”“Skill 已加载”“方法已执行”，不将检索成功当作执行成功。记忆内容不写入 `handoff_context`、`handoff_hash` 或其他批准、验收绑定；记忆变化本身不触发回滚，也不能代替 Runtime 检查、用户授权和必需审查。
 
 若 `<active_policies>` 中包含 `<verification command="...">`，将这些命令加入当前 Verify 的检查并记录实际结果。只有命令成功执行过，对应策略才能设为强制执行。
 
-用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember ... --scope global|project`。用户没有明确要求、但协作方式稳定且可跨任务复用时，才调用 `comet memory observe --text "<偏好内容>" --workflow <classic|native> --change <change-id> --candidate-key <change-id>-<行为短名>`（三个选项均为必需；`--candidate-key` 用 change ID 加行为短名生成稳定标识）。两者都不得保存任务摘要、进展、命令输出或测试结果。
+用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember ... --scope global|project`。用户明确限定适用阶段时，添加可重复的 `--phase`，例如 `--phase build --phase verify`；修改已有记录用 `comet memory correct <project-root> --id <id> --phase build --phase verify --json`。只保存明确的阶段条件，不自行扩展适用范围。用户没有明确要求、但协作方式稳定且可跨任务复用时，才调用 `comet memory observe --text "<偏好内容>" --workflow <classic|native> --change <change-id> --candidate-key <change-id>-<行为短名>`（三个选项均为必需；`--candidate-key` 用 change ID 加行为短名生成稳定标识）。两者都不得保存任务摘要、进展、命令输出或测试结果。
 
 项目记忆与个人记忆独立保存。任务结束前，把本次验证过且未来任务仍可复用的经验写入项目记忆：`comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --workflow classic --change <change-id> --evidence "<来源文件，逗号分隔>" --json`。同一标题默认更新已有条目。`--evidence` 绑定支持结论的项目内文件；没有文件依据的协作决策可省略。采用已有经验前，追加 `--expand-context "project-memory:<slug>"` 展开并核对来源；来源变化或不可读取时先验证并更新。任务摘要、一次性命令输出和未验证的猜测不得写入。
 

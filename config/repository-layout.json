@@ -523,6 +523,7 @@
       "domains/workflow-contract/edit-impact.ts",
       "domains/workflow-contract/edit-review.ts",
       "domains/workflow-contract/output-envelope.ts",
+      "domains/workflow-contract/task-context.ts",
       "domains/workflow-contract/project-config-reader.ts",
       "domains/workflow-contract/project-config-writer.ts",
       "domains/workflow-contract/project-config.ts",

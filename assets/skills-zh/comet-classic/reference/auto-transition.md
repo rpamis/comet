@@ -1,5 +1,7 @@
 # 自动衔接下一阶段协议
 
+进入新阶段或交给新 Agent 时，把当前 continuation 与 `contextRequest` 一并交给接收方，按 [任务上下文协议](scripts.md#任务上下文与产物语言) 获取一次快照。`wait` 等待原任务，同一阶段连续命令不重复获取。
+
 规范路径：`comet-classic/reference/auto-transition.md`
 
 本协议由所有 comet 子 skill 共享，定义阶段守卫推进后的自动衔接规则。

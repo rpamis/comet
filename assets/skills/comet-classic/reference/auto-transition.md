@@ -1,5 +1,7 @@
 # Automatic Phase Handoff Protocol
 
+On entering a new phase or handing work to a new Agent, pass the current continuation and `contextRequest` to the receiver, who retrieves one snapshot using the [task context protocol](scripts.md#task-context-and-artifact-language). A `wait` continues waiting for the original task; uninterrupted commands in one phase do not require repeated retrieval.
+
 Canonical path: `comet-classic/reference/auto-transition.md`
 
 All comet sub-skills share these handoff rules after a phase Guard advances state.

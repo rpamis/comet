@@ -11,6 +11,47 @@ async function englishSkill(name: string): Promise<string> {
 }
 
 describe('Classic Chinese Skill SDK routing', () => {
+  it.each(['skills', 'skills-zh'])(
+    'provides stage context at every Classic entry in %s',
+    async (root) => {
+      for (const name of [
+        'comet-classic',
+        'comet-open',
+        'comet-design',
+        'comet-build',
+        'comet-verify',
+        'comet-archive',
+        'comet-hotfix',
+        'comet-tweak',
+      ]) {
+        const skill = await readFile(path.resolve('assets', root, name, 'SKILL.md'), 'utf8');
+        expect(skill, name).toContain('contextRequest');
+        expect(skill, name).toContain('reference/scripts.md#');
+      }
+      const scripts = await readFile(
+        path.resolve('assets', root, 'comet-classic/reference/scripts.md'),
+        'utf8',
+      );
+      for (const marker of [
+        '--context-mode snapshot',
+        '--context-mode incremental',
+        'context[].text',
+        '--phase build --phase verify',
+        'handoff_hash',
+      ]) {
+        expect(scripts).toContain(marker);
+      }
+      for (const name of ['comet-hotfix', 'comet-tweak']) {
+        const compat = await readFile(
+          path.resolve('assets', root, name, 'reference/compat.md'),
+          'utf8',
+        );
+        expect(compat).toContain('--context-mode snapshot');
+        expect(compat).toContain('--context-mode incremental');
+      }
+    },
+  );
+
   it('describes checkpoint-backed recovery in both English Classic entries', async () => {
     const entry = await englishSkill('comet-classic');
     const open = await englishSkill('comet-open');

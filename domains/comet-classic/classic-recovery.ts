@@ -17,6 +17,7 @@ import { readClassicState } from './classic-store.js';
 import { classicConfigurationReadiness } from './classic-build-configuration.js';
 import { inspectEditReviews, editReviewContinuation } from '../workflow-contract/edit-review.js';
 import { classicEditReviewScope } from './classic-edit-review.js';
+import { classicTaskContextRequest } from './classic-task-context.js';
 
 export interface ClassicNextAction {
   kind: string;
@@ -261,6 +262,7 @@ export async function classicRecoveryContext(
     continuation: {
       ...nextAction,
       cwd: root,
+      ...(!state.archived ? { contextRequest: classicTaskContextRequest(state, root) } : {}),
       skill:
         state.phase === 'build' && ['hotfix', 'tweak'].includes(state.workflow)
           ? `comet-${state.workflow}`

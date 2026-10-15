@@ -92,6 +92,11 @@ program
   .option('--operation <operation>', '当前操作，例如 edit、review 或 verify')
   .option('--session <id>', '当前 Agent 会话标识，用于避免重复注入')
   .option('--context-budget <characters>', '本次注入的字符预算')
+  .addOption(
+    new Option('--context-mode <mode>', '连续会话使用增量；交接或恢复时读取完整适用上下文').choices(
+      ['incremental', 'snapshot'],
+    ),
+  )
   .option('--expand-context <id>', '按 Context Manifest 标识渐进加载完整内容')
   .option('--application <id>', '记录一次上下文应用结果')
   .option('--decision <text>', '说明采用这条知识后作出的具体决定')
@@ -188,6 +193,7 @@ if (requestedArgs.includes('memory')) {
     .option('--task <text>', '任务描述')
     .option('--path <path>', '当前文件或目录')
     .option('--operation <operation>', '当前操作')
+    .option('--phase <phase>', '当前工作阶段')
     .option('--category <category>', '记忆类别')
     .option('--tag <tag>', '记忆标签', collect, [])
     .option('--query <text>', '关键词')
@@ -203,6 +209,7 @@ if (requestedArgs.includes('memory')) {
     .command('remember [path]')
     .description('手动记录一条个人记忆')
     .requiredOption('--text <text>', '记忆内容')
+    .option('--phase <phase>', '适用阶段；可重复，不指定则沿用通用适用范围', collect, [])
     .option('--category <category>', '记忆类别')
     .addOption(
       new Option('--scope <scope>', '记忆范围').choices(['global', 'project']).default('project'),
@@ -210,19 +217,28 @@ if (requestedArgs.includes('memory')) {
     .option('--json', 'Output as JSON')
     .action(async (targetPath = '.', options) => {
       const { personalMemoryRememberCommand } = await import('../commands/personal-memory.js');
-      await personalMemoryRememberCommand(targetPath, options);
+      const { phase, ...memoryOptions } = options;
+      await personalMemoryRememberCommand(targetPath, {
+        ...memoryOptions,
+        phases: phase.length ? phase : undefined,
+      });
     });
 
   memory
     .command('correct [path]')
     .description('纠正一条个人记忆')
     .requiredOption('--id <id>', '记忆标识')
+    .option('--phase <phase>', '新的适用阶段；可重复', collect, [])
     .option('--text <text>', '新的记忆内容')
     .option('--category <category>', '新的记忆类别')
     .option('--json', 'Output as JSON')
     .action(async (targetPath = '.', options) => {
       const { personalMemoryCorrectCommand } = await import('../commands/personal-memory.js');
-      await personalMemoryCorrectCommand(targetPath, options);
+      const { phase, ...memoryOptions } = options;
+      await personalMemoryCorrectCommand(targetPath, {
+        ...memoryOptions,
+        phases: phase.length ? phase : undefined,
+      });
     });
 
   memory

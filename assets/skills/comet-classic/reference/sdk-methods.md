@@ -2,7 +2,7 @@
 
 Read only the current phase when `runtimeFormat: sdk`. The main Skill and latest continuation supply commands, Actions, Waits, and templates; this reference defines the work and completion conditions.
 
-Use current configuration.language for artifacts and external Skill inputs. Follow the current-task context, memory, and recovery protocol in scripts.md, preserving saved facts and valid evidence.
+Use current configuration.language for artifacts and external Skill inputs. At phase entry, when receiving work as a new Agent, or after context recovery, first follow the [task context protocol](scripts.md#task-context-and-artifact-language) using the current continuation or claimed Action's `contextRequest`. Pass the phase, task scope, actual workspace and valid configuration when dispatching child tasks. Preserve saved facts and valid evidence.
 
 ## Entry and artifacts
 

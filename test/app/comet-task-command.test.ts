@@ -24,6 +24,24 @@ vi.mock('../../app/commands/comet-task-context.js', () => ({
 }));
 
 describe('ordinary Comet task host', () => {
+  it('forwards snapshot delivery with the receiving session and current phase', async () => {
+    collectCometPluginContext.mockResolvedValueOnce([]);
+    const { cometTaskCommand } = await import('../../app/commands/comet-task.js');
+    await cometTaskCommand('D:/repo', {
+      task: 'Verify the feature',
+      phase: 'verify',
+      session: 'independent-verifier',
+      contextMode: 'snapshot',
+      json: true,
+    });
+    expect(collectCometPluginContext).toHaveBeenLastCalledWith(expect.any(String), {
+      task: 'Verify the feature',
+      phase: 'verify',
+      sessionId: 'independent-verifier',
+      contextMode: 'snapshot',
+    });
+  });
+
   it('reports project learning as not checked independently of a successful personal memory check', async () => {
     recordCometWorkflowResult.mockResolvedValueOnce({ submissionVerified: true });
     const { cometTaskCommand } = await import('../../app/commands/comet-task.js');

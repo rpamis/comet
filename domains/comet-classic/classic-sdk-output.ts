@@ -5,6 +5,7 @@ import { resolveClassicChangeDirectory } from './classic-paths.js';
 import { classicSdkNextAction, findClassicSdkWorkspace } from './classic-sdk-status.js';
 import { inspectClassicSdkActionRecovery } from './classic-sdk-check-recovery.js';
 import type { ClassicState } from './classic-state.js';
+import { classicTaskContextRequest } from './classic-task-context.js';
 
 /** 当前 Run 的有界视图；保留所有并行动作，不把历史输入重复展开。 */
 export function classicSdkRunSummary(run: WorkflowRun, details = false) {
@@ -202,6 +203,9 @@ export function classicSdkContinuation(
   const current = {
     actions: summary.actions.map((action) => ({
       ...action,
+      ...(action.type === 'invoke_skill'
+        ? { contextRequest: classicTaskContextRequest(state, projectRoot, action.claim?.sessionId) }
+        : {}),
       ...classicSdkCurrentInput(
         run,
         run.actions.find((entry) => entry.id === action.id)!,
@@ -246,6 +250,9 @@ export function classicSdkContinuation(
     run: { id: run.runId, revision: run.revision, status: run.status },
     current,
     automatic: state.autoTransition ?? true,
+    ...(!['completed', 'cancelled'].includes(run.status) && !state.archived
+      ? { contextRequest: classicTaskContextRequest(state, projectRoot) }
+      : {}),
     dispatch: { commandArgs: dispatch },
     ...(summary.actions.length
       ? {

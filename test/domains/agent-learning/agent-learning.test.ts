@@ -1030,6 +1030,43 @@ describe('Context Director', () => {
     expect(contextOutcomeTargetIds(references, 'plugin.other')).toEqual([]);
   });
 
+  it('delivers stage preferences at each phase and restores snapshots without duplicate applications', async () => {
+    const applications = new MemoryAgentContextApplicationStore();
+    const policy = candidate({
+      memoryType: 'collaboration-policy',
+      content: 'Use the requested Skill during Build and Verify.',
+      selectors: { phases: ['build', 'verify'] },
+    });
+    const request = { task: 'Implement feature', sessionId: 'builder', phase: 'build' };
+    const director = new ContextDirector({ applications });
+    expect((await director.select([policy], { ...request, phase: 'shape' })).text).toBe('');
+    const build = await director.select([policy], request);
+    expect(build.activePolicies).toEqual([policy]);
+    expect((await director.select([policy], request)).text).toBe('');
+    const verify = await director.select([policy], { ...request, phase: 'verify' });
+    expect(verify.activePolicies).toEqual([policy]);
+    const restored = await new ContextDirector({ applications }).select([policy], {
+      ...request,
+      contextMode: 'snapshot',
+    });
+    expect(restored.activePolicies).toEqual([policy]);
+    expect(restored.applications[0]?.applicationId).toBe(build.applications[0]?.applicationId);
+    expect(await applications.list()).toHaveLength(2);
+    const independent = await director.select([policy], {
+      ...request,
+      phase: 'verify',
+      sessionId: 'verifier',
+      contextMode: 'snapshot',
+    });
+    expect(independent.activePolicies).toEqual([policy]);
+    expect(await applications.list()).toHaveLength(3);
+    const changed = { ...policy, content: 'The user corrected the preferred Skill.' };
+    const refreshed = await director.select([changed], { ...request, contextMode: 'snapshot' });
+    expect(refreshed.activePolicies).toEqual([changed]);
+    expect(refreshed.applications[0]?.applicationId).not.toBe(build.applications[0]?.applicationId);
+    expect((await director.select([], { ...request, contextMode: 'snapshot' })).text).toBe('');
+  });
+
   it('does not redeliver unchanged units and uses outcome feedback in later ranking', async () => {
     const director = new ContextDirector();
     const first = await director.select(

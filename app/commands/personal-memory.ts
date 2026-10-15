@@ -13,6 +13,7 @@ export interface PersonalMemoryCommandOptions {
   readonly task?: string;
   readonly path?: string;
   readonly phase?: string;
+  readonly phases?: readonly string[];
   readonly query?: string;
   readonly operation?: string;
   readonly tags?: readonly string[];
@@ -82,6 +83,7 @@ export async function personalMemoryRememberCommand(
     ...(options.scope === 'global' ? {} : { projectKey: bridge.currentProjectId }),
     category: options.category ?? defaultMemoryCategory(language),
     text: requireText(options.text, '--text'),
+    ...(options.phases === undefined ? {} : { phases: options.phases }),
     language,
   });
   printAction(
@@ -119,13 +121,14 @@ export async function personalMemoryCorrectCommand(
   const bridge = await createBridge(targetPath, options);
   const language = await resolveDisplayLanguage(targetPath, options);
   const correction = {
+    ...(options.phases === undefined ? {} : { phases: options.phases }),
     ...(options.text === undefined ? {} : { text: requireText(options.text, '--text') }),
     ...(options.category === undefined
       ? {}
       : { category: requireText(options.category, '--category') }),
   };
   if (Object.keys(correction).length === 0) {
-    throw new Error('At least one of --text or --category is required');
+    throw new Error('At least one of --text, --category or --phase is required');
   }
   const record = await bridge.correct(requireId(options.id), correction);
   printAction(

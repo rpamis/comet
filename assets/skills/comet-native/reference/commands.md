@@ -42,21 +42,25 @@ If `supervisor.parent.deliver`, `archive.execute`, `archive.finalize`, or `super
 
 ## Memory integration
 
-After entering the change workspace and reading Runtime's current `phase`, the Agent automatically runs once:
+After entering the change workspace and obtaining its current `phase`, prefer the current task packet's `contextRequest`, including Compat `supervisorTask.contextRequest`; use `continuation.contextRequest` when no task-specific request exists. SDK Builders, Verifiers and children use the `contextRequest` of their corresponding `pendingActions[]` or `activeActions[]`, after the receiver successfully claims the Action. Supply the original user request and the receiving Agent's own stable session ID. If the original request is missing, first recover the goal from the current brief.
+
+Read a full snapshot once on first entering a phase, handing off to a new Agent, or recovering after context compression or in a new session. For older responses without `contextRequest`, use:
 
 ```text
-comet task <project-root> --task "<original user request>" --phase "<phase>" --session "<stable task identifier>" --json
+comet task <project-root> --task "<original user request>" --phase "<phase>" --session "<receiving Agent stable identifier>" --context-mode snapshot --json
 ```
 
-Add only the returned JSON `text` to context. `manifest` (`<context_manifest>` in injected text) is the Context Manifest: a list of context items containing only summaries, reasons for use, and stable IDs.
+Add the returned JSON `context[].text` to context. A snapshot returns the currently applicable content even when this session received it before; repeated retrieval does not imply repeated use or successful execution. `manifest` (`<context_manifest>` in injected text) is the Context Manifest: a list of context items containing only summaries, reasons for use, and stable IDs.
 
-When the task needs full text, sources, or verification methods, run `comet task <project-root> --task "<original user request>" --phase "<phase>" --session "<same identifier>" --expand-context "<id>" --json`. When paths, operations, or phase change, retain the same `--session` and retrieve again with the new `--path`, `--operation`, and `--phase`; unchanged items are not returned again.
+When the task needs full text, sources, or verification methods, run `comet task <project-root> --task "<original user request>" --phase "<phase>" --session "<same identifier>" --expand-context "<id>" --json`. Reuse context during uninterrupted work in the same phase. When paths or operations change, retain the session ID and retrieve with the new `--path` and `--operation`; the default incremental mode returns applicable content not yet delivered for that context.
+
+Include the receiver's `contextRequest` in handoffs, preserving the user's wording, applicability and sources. Give Verifiers applicable verification preferences, project constraints and objective evidence; do not pass Builder self-assessment as a verdict. Use the host's actual Skill loading interface for applicable Skill preferences, and explain unavailable Skills, conflicts with current instructions or incompatibility with a read-only role. Check context delivery, Skill loading and actual compliance separately. Skills do not replace Runtime checks, user authorization or independent verification. Continue with explicit instructions after empty or failed retrieval, without retry loops or workflow rollback caused by changed retrieval results.
 
 If `<active_policies>` includes `<verification command="...">`, include those commands in current Verify checks and record actual results. Runtime makes the policy mandatory only after its command executes successfully.
 
 Save memory as follows:
 
-- When the user explicitly asks to remember a preference or project convention long term, call `comet memory remember <project-root> --text "<preference or convention>" --scope global|project --json` to save it immediately as explicit user memory.
+- When the user explicitly asks to remember a preference or project convention long term, call `comet memory remember <project-root> --text "<preference or convention>" --scope global|project --json` to save it immediately as explicit user memory. Add repeatable `--phase` only when the user explicitly limits applicability, for example `--phase build --phase verify`. Correct phase applicability with `comet memory correct <project-root> --id <id> --phase <phase> --json`. Preserve the user's wording; do not automatically limit a preference to the current phase.
 - Only when the user has not requested long-term memory, but a collaboration practice is stable and reusable in future tasks, call `comet memory observe <project-root> --text "<collaboration practice>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`.
 - Neither command may save task summaries, implementation progress, command output, or test results.
 

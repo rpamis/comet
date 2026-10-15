@@ -483,6 +483,7 @@ describe('Native SDK Workflow Application', () => {
     });
     expect(pending.pendingAction).toMatchObject({
       stepId: 'verify.verifier',
+      contextRequest: { phase: 'verify', contextMode: 'snapshot' },
       sessionRequirements: {
         independent: true,
         readOnly: true,
@@ -1277,6 +1278,18 @@ children:
       receipt: string,
       sessionId: string,
     ) {
+      const projection = await projectNativeSdkContinuation({
+        run,
+        state: run.state as unknown as NativePortableState,
+        projectRoot: root,
+      });
+      const handoff = projection.pendingActions?.find(({ id }) => id === action.id);
+      expect(handoff?.contextRequest?.phase).toBe(
+        action.ref?.includes('verifier') ? 'verify' : 'build',
+      );
+      expect(handoff?.contextRequest?.commandArgs).toContain(
+        (action.input as { activation: { worktree: string } }).activation.worktree,
+      );
       const context = { requestId: receipt, projectRoot: root };
       const claimed = await runtime.claim({
         runId: run.runId,
