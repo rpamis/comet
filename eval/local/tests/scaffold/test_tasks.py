@@ -147,6 +147,33 @@ def test_classic_layout_lifecycle_uses_current_cli_and_compatible_openspec():
     ]
 
 
+@pytest.mark.parametrize(
+    ("environment_ref", "extra_dependencies"),
+    [
+        ("scaffold/environments/workflow-application", {}),
+        ("local/tasks/comet-classic-layout-lifecycle/environment", {}),
+        (
+            "local/tasks/comet-native-workflow/environment",
+            {"@fission-ai/openspec": "^1.11.0"},
+        ),
+        ("local/tasks/comet-native-wave-f-dashboard-readonly/environment", {}),
+    ],
+)
+def test_current_cli_environments_keep_runtime_dependencies_and_overrides(
+    environment_ref, extra_dependencies
+):
+    source = Path(__file__).resolve().parents[4]
+    package = json.loads((source / "package.json").read_text(encoding="utf-8"))
+    snapshot = json.loads(
+        (source / "eval" / environment_ref / "current-comet-package.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert snapshot["dependencies"] == package["dependencies"] | extra_dependencies
+    assert snapshot.get("overrides", {}) == package.get("overrides", {})
+
+
 def test_comet_task_prompt_requires_real_comet_invocation():
     task = load_task("comet-fix-median")
 

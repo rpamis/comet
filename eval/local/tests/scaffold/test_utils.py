@@ -826,7 +826,8 @@ build_langfuse_plugin_args() { LANGFUSE_PLUGIN_MOUNT_ARGS=(); LANGFUSE_PLUGIN_CL
 build_trusted_oracle_mount_args() { TRUSTED_ORACLE_MOUNT_ARGS=(); }
 TIMEOUT_CMD=""
 docker() { printf '%s\\n' "$*" >> "$FIXTURE_ARGS"; }
-"$3" "$2" 'Test prompt' --agent claude-code --max-turns 1
+"$3" "$2" 'Test prompt' --agent claude-code --max-turns 1 || exit $?
+cleanup_eval_runtime_data "$2"
 '''
     result = subprocess.run(
         [utils.BASH_EXEC, "-c", script, "_", utils._to_bash_path(utils.SHELL_DIR / "docker.sh"), utils._to_bash_path(tmp_path), command],
@@ -837,6 +838,8 @@ docker() { printf '%s\\n' "$*" >> "$FIXTURE_ARGS"; }
     assert "COMET_DATA_DIR=//opt/comet-eval-data" in calls
     assert "comet-eval-data-" in calls
     assert "://opt/comet-eval-data" in calls
+    assert "volume ls -q --filter" in calls
+    assert not (tmp_path / ".eval-runtime-volume").exists()
 
 
 def test_docker_harness_mounts_langfuse_official_plugin_and_enables_trace_image():

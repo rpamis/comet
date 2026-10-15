@@ -3,6 +3,7 @@
   "private": true,
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
+    "@babel/parser": "7.29.8",
     "@fission-ai/openspec": "^1.11.0",
     "@inquirer/ansi": "^2.0.7",
     "@inquirer/core": "^12.0.1",
@@ -16,9 +17,19 @@
     "dompurify": "^3.4.16",
     "es-module-lexer": "2.3.2",
     "highlight.js": "^11.12.0",
+    "jsonc-parser": "3.3.1",
     "marked": "^18.0.11",
     "mermaid": "11.17.2",
-    "smol-toml": "^1.8.0",
+    "smol-toml": "^1.9.0",
     "yaml": "^2.9.0"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.12",
+    "fast-uri": "3.1.8",
+    "katex": "0.18.2",
+    "source-map-js": "1.2.2",
+    "esbuild": "0.28.2",
+    "postcss": "8.5.26",
+    "undici": "7.29.1"
   }
 }
