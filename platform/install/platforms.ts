@@ -348,6 +348,15 @@ export const PLATFORMS: Platform[] = [
     openspecToolId: 'pi',
   },
   {
+    id: 'prime-agent',
+    name: 'Prime Agent',
+    skillsDir: '.prime/agent',
+    globalSkillsDir: '.prime/agent',
+    openspecToolId: 'claude',
+    openspecMirrorFrom: 'claude',
+    supportsHooks: false,
+  },
+  {
     id: 'oh-my-pi',
     name: 'Oh My Pi',
     skillsDir: '.omp',

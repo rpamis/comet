@@ -6,11 +6,13 @@ import path from 'path';
 import { PLATFORMS } from '../../../platform/install/platforms.js';
 import {
   copyCometRulesForPlatform,
+  copyCometSkillsForPlatform,
   installCometHooksForPlatform,
 } from '../../../domains/skill/platform-install.js';
 import {
   removeCometHooksForPlatform,
   removeCometRulesForPlatform,
+  removeCometSkillsForPlatform,
 } from '../../../domains/skill/uninstall.js';
 
 describe('removeCometHooksForPlatform', () => {
@@ -23,6 +25,32 @@ describe('removeCometHooksForPlatform', () => {
   afterEach(async () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
+  it.each(['project', 'global'] as const)(
+    'uninstalls Prime Agent managed skills in %s scope while preserving user files',
+    async (scope) => {
+      const prime = PLATFORMS.find(({ id }) => id === 'prime-agent')!;
+      const userFile = path.join(tmpDir, '.prime/agent/skills/my-skill/SKILL.md');
+      await fs.mkdir(path.dirname(userFile), { recursive: true });
+      await fs.writeFile(userFile, 'My own skill.\n');
+      const settings = path.join(tmpDir, '.prime/agent/settings.json');
+      await fs.writeFile(settings, '{"userSetting":true}\n');
+      expect(
+        await copyCometSkillsForPlatform(tmpDir, prime, true, 'skills', scope, 'copy', 'native'),
+      ).toMatchObject({ failed: 0 });
+      const { getPlatformRuleDestinations, inspectCometHooksForPlatform } =
+        await import('../../../domains/skill/platform-inspect.js');
+      expect(await getPlatformRuleDestinations(tmpDir, prime, scope, 'native')).toEqual([]);
+      expect(await inspectCometHooksForPlatform(tmpDir, prime, scope, 'native')).toMatchObject({
+        present: false,
+      });
+      expect(await removeCometSkillsForPlatform(tmpDir, prime, scope)).toMatchObject({ failed: 0 });
+      await expect(
+        fs.access(path.join(tmpDir, '.prime/agent/skills/comet/SKILL.md')),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await fs.readFile(userFile, 'utf8')).toBe('My own skill.\n');
+      expect(await fs.readFile(settings, 'utf8')).toBe('{"userSetting":true}\n');
+    },
+  );
 
   it('removes an exec-form Claude Code Router while preserving user hooks', async () => {
     const claude = PLATFORMS.find((platform) => platform.id === 'claude')!;

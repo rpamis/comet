@@ -22,7 +22,7 @@ describe('resolvePlatformTarget', () => {
   });
 
   it('creates a conservative project-scoped custom platform', () => {
-    expect(resolvePlatformTarget('test', 'project')).toEqual({
+    expect(resolvePlatformTarget('test', 'project', { allowCustom: true })).toEqual({
       native: false,
       platform: {
         id: 'test',
@@ -36,6 +36,23 @@ describe('resolvePlatformTarget', () => {
       },
     });
   });
+  it('rejects unknown platform ids unless custom installation is explicit', () => {
+    expect(() => resolvePlatformTarget('prime-agnet', 'project')).toThrow('Unknown platform');
+  });
+  it.each(['project', 'global'] as const)(
+    'resolves Prime Agent with its native %s skill directory',
+    (scope) => {
+      expect(resolvePlatformTarget('prime-agent', scope)).toMatchObject({
+        native: true,
+        platform: {
+          skillsDir: '.prime/agent',
+          globalSkillsDir: '.prime/agent',
+          supportsHooks: false,
+          openspecMirrorFrom: 'claude',
+        },
+      });
+    },
+  );
 
   it.each(['', '   '])('rejects empty platform id %#', (platformId) => {
     expect(() => resolvePlatformTarget(platformId, 'project')).toThrow(
@@ -53,7 +70,7 @@ describe('resolvePlatformTarget', () => {
   );
 
   it('rejects global custom platform targets', () => {
-    expect(() => resolvePlatformTarget('test', 'global')).toThrow(
+    expect(() => resolvePlatformTarget('test', 'global', { allowCustom: true })).toThrow(
       'custom --platform targets are only supported with project scope',
     );
   });

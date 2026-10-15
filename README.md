@@ -292,7 +292,7 @@ Comet Eval's automated dual-agent architecture can integrate online with LangSmi
 
 ## Supported Platforms
 
-`comet init` supports 37 AI coding platforms:
+`comet init` supports 38 AI coding platforms:
 
 <details>
 <summary>View full platform list</summary>
@@ -316,7 +316,8 @@ Comet Eval's automated dual-agent architecture can integrate online with LangSmi
 | ForgeCode          | `.forge/`     | Trae          | `.trae/`     |
 | Trae CN            | `.trae-cn/`   | ZCode         | `.zcode/`    |
 | MimoCode           | `.mimocode/`  | CoStrict      | `.cospec/`   |
-| Grok               | `.grok/`      |               |              |
+| Grok               | `.grok/`      | Prime Agent   | `.prime/agent/` |
+| Oh My Pi           | `.omp/`       | DeepSeek Harness | `.dsh/` |
 
 </details>
 

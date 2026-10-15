@@ -177,6 +177,91 @@ describe('comet init E2E', () => {
     await fs.rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
+  it.each(['native', 'classic'] as const)(
+    'installs Prime Agent %s in both scopes without unsupported host configuration',
+    async (workflow) => {
+      mockExternalSuccess();
+      const { initCommand } = await import('../../app/commands/init.js');
+      for (const scope of ['project', 'global'] as const) {
+        const result = await captureJsonOutput(() =>
+          initCommand(tmpDir, {
+            yes: true,
+            json: true,
+            scope,
+            workflow,
+            platform: 'prime-agent',
+            language: 'zh',
+          }),
+        );
+        expect(result.status).toBe('complete');
+        expect(result.selectedPlatforms).toEqual(['prime-agent']);
+        const root = scope === 'project' ? tmpDir : os.homedir();
+        await expect(
+          fs.access(path.join(root, '.prime/agent/skills/comet/SKILL.md')),
+        ).resolves.toBeUndefined();
+        if (workflow === 'classic')
+          await expect(
+            fs.access(path.join(root, '.prime/agent/skills/openspec-propose/SKILL.md')),
+          ).resolves.toBeUndefined();
+        for (const unwanted of [
+          '.prime-agent',
+          '.claude',
+          '.prime/agent/rules',
+          '.prime/agent/settings.local.json',
+        ]) {
+          await expect(fs.access(path.join(root, unwanted))).rejects.toMatchObject({
+            code: 'ENOENT',
+          });
+        }
+      }
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it(
+    'preserves Chinese configuration and instructions when adding Prime Agent without a language option',
+    async () => {
+      mockExternalSuccess();
+      const { initCommand } = await import('../../app/commands/init.js');
+      await captureJsonOutput(() =>
+        initCommand(tmpDir, {
+          yes: true,
+          json: true,
+          scope: 'project',
+          platform: 'codex',
+          workflow: 'classic',
+          language: 'zh',
+        }),
+      );
+      const instructions = await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8');
+      const result = await captureJsonOutput(() =>
+        initCommand(tmpDir, { yes: true, json: true, scope: 'project', platform: 'prime-agent' }),
+      );
+      expect(result.language).toBe('zh');
+      expect(
+        parse(await fs.readFile(path.join(tmpDir, '.comet/config.yaml'), 'utf8')).classic.language,
+      ).toBe('zh-CN');
+      expect(await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).toBe(instructions);
+    },
+    INIT_E2E_TIMEOUT_MS,
+  );
+
+  it('rejects an unknown init platform before touching configuration or instructions', async () => {
+    mockExternalSuccess();
+    await fs.writeFile(path.join(tmpDir, 'AGENTS.md'), 'Keep my instructions.\n');
+    const { initCommand } = await import('../../app/commands/init.js');
+    await expect(
+      initCommand(tmpDir, { yes: true, json: true, platform: 'prime-agnet' }),
+    ).rejects.toThrow('Unknown platform');
+    expect(await fs.readFile(path.join(tmpDir, 'AGENTS.md'), 'utf8')).toBe(
+      'Keep my instructions.\n',
+    );
+    await expect(fs.access(path.join(tmpDir, '.comet'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.access(path.join(tmpDir, '.prime-agnet'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
   it('offers Native, Classic, and Both with fixed detail rows', async () => {
     const { workflowChoiceNames } = await import('../../app/commands/init.js');
 
@@ -1703,6 +1788,7 @@ describe('comet init E2E', () => {
         yes: true,
         json: true,
         platform: 'test',
+        customPlatform: true,
       }),
     );
 
@@ -1736,6 +1822,7 @@ describe('comet init E2E', () => {
         yes: true,
         json: true,
         platform: 'test',
+        customPlatform: true,
         workflow: 'native',
       }),
     );
@@ -1765,6 +1852,7 @@ describe('comet init E2E', () => {
         json: true,
         scope: 'global',
         platform: 'test',
+        customPlatform: true,
       }),
     ).rejects.toThrow('custom --platform targets are only supported with project scope');
   });

@@ -2279,6 +2279,48 @@ describe('update command helpers', () => {
     ).resolves.toBe('# Stale Claude Comet\n');
   });
 
+  it.each(['project', 'global'] as const)(
+    'updates Prime Agent in %s scope without inventing Hook support',
+    async (scope) => {
+      const fakeHome = path.join(tmpDir, 'prime-home');
+      vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+      await writeProjectConfig(tmpDir, defaultProjectConfig('docs', 'zh-CN'));
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        await updateCommand(tmpDir, {
+          json: true,
+          yes: true,
+          skipNpm: true,
+          scope,
+          platform: 'prime-agent',
+        });
+        const result = JSON.parse(log.mock.calls.map((call) => call.join(' ')).join('\n'));
+        expect(result.skills.targets).toContainEqual(
+          expect.objectContaining({ platform: 'prime-agent', scope }),
+        );
+        const root = scope === 'project' ? tmpDir : fakeHome;
+        await expect(
+          fs.access(path.join(root, '.prime/agent/skills/comet/SKILL.md')),
+        ).resolves.toBeUndefined();
+        await expect(
+          fs.access(path.join(root, '.prime/agent/settings.local.json')),
+        ).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(fs.access(path.join(root, '.prime/agent/rules'))).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
+
+  it('rejects unknown update platforms before running package updates', async () => {
+    await expect(updateCommand(tmpDir, { json: true, platform: 'prime-agnet' })).rejects.toThrow(
+      'Unknown platform',
+    );
+    expect(mockedSpawn).not.toHaveBeenCalled();
+  });
+
   it('updates project-scoped custom platform workflow assets', async () => {
     const fakeHome = path.join(tmpDir, 'explicit-custom-home');
     const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
@@ -2289,6 +2331,7 @@ describe('update command helpers', () => {
         json: true,
         skipNpm: true,
         platform: 'test',
+        customPlatform: true,
       });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
@@ -2330,6 +2373,7 @@ describe('update command helpers', () => {
         json: true,
         skipNpm: true,
         platform: 'test',
+        customPlatform: true,
       });
       json = log.mock.calls.map((call) => call.join(' ')).join('\n');
     } finally {
@@ -3093,6 +3137,7 @@ describe('update command helpers', () => {
         skipNpm: true,
         scope: 'global',
         platform: 'test',
+        customPlatform: true,
       }),
     ).rejects.toThrow('custom --platform targets are only supported with project scope');
   });

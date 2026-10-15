@@ -108,6 +108,7 @@ interface UpdateOptions {
   npmSkipReason?: string;
   skipPackageSelfUpdate?: boolean;
   platform?: string;
+  customPlatform?: boolean;
 }
 
 async function refreshGlobalWorkflowConfig(
@@ -1362,7 +1363,9 @@ async function updateSingleProject(
                     projectConfigDocument?.classic?.language,
                 )
               : 'en');
-          const target = resolvePlatformTarget(options.platform!, scope);
+          const target = resolvePlatformTarget(options.platform!, scope, {
+            allowCustom: options.customPlatform,
+          });
           return {
             scope,
             platform: target.platform,
@@ -2339,6 +2342,12 @@ export async function updateCommand(
   const projectPath = path.resolve(targetPath);
   const log = options.json ? () => undefined : console.log;
   const lang = options.language ?? 'en';
+  if (options.customPlatform && !options.platform)
+    throw new Error('--custom-platform requires --platform');
+  if (options.platform)
+    resolvePlatformTarget(options.platform, options.scope ?? 'project', {
+      allowCustom: options.customPlatform,
+    });
 
   assertProjectScopeOptions(options);
   if (options.targetVersion !== undefined && !parseSemver(options.targetVersion)) {

@@ -31,8 +31,11 @@ describe('README assets', () => {
     expect(quickStartZh).toContain('cd your-project');
     expect(quickStartZh).toContain('comet init');
     expect(quickStartZh).not.toContain('comet init --scope global');
-    expect(readmeEn).toContain('`comet init` supports 37 AI coding platforms:');
-    expect(readmeZh).toContain('`comet init` 支持 37 个 AI 编码平台：');
+    const { PLATFORMS } = await import('../../platform/install/platforms.js');
+    expect(readmeEn).toContain(`\`comet init\` supports ${PLATFORMS.length} AI coding platforms:`);
+    expect(readmeZh).toContain(`\`comet init\` 支持 ${PLATFORMS.length} 个 AI 编码平台：`);
+    expect(readmeEn).toContain('Prime Agent');
+    expect(readmeZh).toContain('Prime Agent');
   });
 
   it('keeps English and Chinese README feature summaries aligned', async () => {

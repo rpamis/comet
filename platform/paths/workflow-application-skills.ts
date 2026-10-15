@@ -10,7 +10,7 @@ export function workflowApplicationPlatforms(ids: readonly string[]): string[] {
   return [
     ...new Set(
       requested.map((id) => {
-        const target = resolvePlatformTarget(id, 'project');
+        const target = resolvePlatformTarget(id, 'project', { allowCustom: true });
         if (!target.native) throw new Error(`未知平台：${id}；请选择 Comet 已支持的平台`);
         return target.platform.id;
       }),

@@ -6,6 +6,7 @@ import { isCommandAvailable, getNpmExecutable } from './openspec.js';
 import { printCommandErrorDetails } from '../../platform/process/command-error.js';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
+import { parse as parseJsonc, printParseErrorCode, type ParseError } from 'jsonc-parser';
 
 import type { InstallScope } from '../../platform/install/types.js';
 
@@ -45,6 +46,7 @@ interface CodegraphAgentDiagnostic {
   scope: 'global' | 'project' | 'both';
   configPath: string | null;
   registered: boolean;
+  registrationStatus?: 'registered' | 'not_registered' | 'disabled' | 'invalid' | 'unknown';
   valid: boolean;
   effective: boolean;
   detail: string;
@@ -144,26 +146,35 @@ function recordValue(value: unknown): Record<string, unknown> | null {
 }
 
 function parseJsonLike(source: string): unknown {
-  try {
-    return JSON.parse(source) as unknown;
-  } catch {
-    const withoutComments = source
-      .replace(/\/\*[\s\S]*?\*\//gu, '')
-      .replace(/^\s*\/\/.*$/gmu, '')
-      .replace(/,\s*([}\]])/gu, '$1');
-    return JSON.parse(withoutComments) as unknown;
+  const errors: ParseError[] = [];
+  const value: unknown = parseJsonc(source, errors, { allowTrailingComma: true });
+  if (errors.length) {
+    const error = errors[0];
+    throw new Error(`Invalid JSONC: ${printParseErrorCode(error.error)} at offset ${error.offset}`);
   }
+  return value;
 }
 
-function inspectJsonMcpEntry(source: string): CodegraphMcpEntryInspection {
+function inspectJsonMcpEntry(source: string, nestedServers: boolean): CodegraphMcpEntryInspection {
   const config = recordValue(parseJsonLike(source));
-  const servers = recordValue(config?.mcpServers) ?? recordValue(config?.mcp);
+  const mcp = recordValue(config?.mcp);
+  const servers =
+    recordValue(config?.mcpServers) ?? (nestedServers ? recordValue(mcp?.servers) : null) ?? mcp;
   const entry = servers?.codegraph;
   if (entry === undefined) return { present: false, valid: false };
   const entryRecord = recordValue(entry);
+  const enabled =
+    entryRecord?.disabled === true
+      ? false
+      : typeof entryRecord?.enabled === 'boolean'
+        ? entryRecord.enabled
+        : undefined;
   return {
     present: true,
-    valid: codegraphCommandLooksValid(entryRecord?.command),
+    valid: enabled !== false && codegraphCommandLooksValid(entryRecord?.command),
+    ...(entryRecord?.command !== undefined ? { command: entryRecord.command } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
+    ...(enabled === false ? { disabled: true } : {}),
   };
 }
 
@@ -203,6 +214,8 @@ function mergeCodegraphConfigLayers(
     inspection: CodegraphMcpEntryInspection;
   }>,
 ): Array<{ candidate: CodegraphConfigCandidate; inspection: CodegraphMcpEntryInspection }> {
+  const errors = inspections.filter(({ inspection }) => inspection.error !== undefined);
+  if (errors.length) return errors;
   let selected:
     { candidate: CodegraphConfigCandidate; inspection: CodegraphMcpEntryInspection } | undefined;
   let command: unknown;
@@ -242,13 +255,14 @@ function mergeCodegraphConfigLayers(
 
 function inspectCodegraphConfigCandidate(
   candidate: CodegraphConfigCandidate,
+  agentId: CodegraphAgentId,
 ): CodegraphMcpEntryInspection | null {
   if (!fs.existsSync(candidate.path)) return null;
   try {
     const source = fs.readFileSync(candidate.path, 'utf8');
     if (candidate.format === 'toml') return inspectTomlMcpEntry(source);
     if (candidate.format === 'yaml') return inspectYamlMcpEntry(source);
-    return inspectJsonMcpEntry(source);
+    return inspectJsonMcpEntry(source, agentId === 'opencode');
   } catch (error) {
     return {
       present: false,
@@ -341,15 +355,16 @@ function codegraphAgentDefinitions(
     {
       id: 'opencode',
       name: 'OpenCode',
+      mergeConfigLayers: true,
       candidates: [
-        jsonCandidate('global', path.join(opencodeDir, 'opencode.jsonc'), 'jsonc', [opencodeDir]),
         jsonCandidate('global', path.join(opencodeDir, 'opencode.json'), 'json', [opencodeDir]),
-        jsonCandidate('project', path.join(project, 'opencode.jsonc'), 'jsonc', [
+        jsonCandidate('global', path.join(opencodeDir, 'opencode.jsonc'), 'jsonc', [opencodeDir]),
+        jsonCandidate('project', path.join(project, 'opencode.json'), 'json', [
           path.join(project, '.opencode'),
           path.join(project, 'opencode.jsonc'),
           path.join(project, 'opencode.json'),
         ]),
-        jsonCandidate('project', path.join(project, 'opencode.json'), 'json', [
+        jsonCandidate('project', path.join(project, 'opencode.jsonc'), 'jsonc', [
           path.join(project, '.opencode'),
           path.join(project, 'opencode.jsonc'),
           path.join(project, 'opencode.json'),
@@ -423,7 +438,10 @@ function inspectCodegraphMcp(
     if (existing.length === 0) continue;
 
     const inspectedCandidates = candidates
-      .map((candidate) => ({ candidate, inspection: inspectCodegraphConfigCandidate(candidate) }))
+      .map((candidate) => ({
+        candidate,
+        inspection: inspectCodegraphConfigCandidate(candidate, definition.id),
+      }))
       .filter(
         (
           result,
@@ -453,7 +471,18 @@ function inspectCodegraphMcp(
           : existing[0].scope;
     const registeredCandidate = inspections.find(({ inspection }) => inspection.present);
     const configPath = (registeredCandidate ?? inspections[0])?.candidate.path ?? existing[0].path;
-    const effective = cliStatus === 'installed' && indexStatus === 'current' && valid;
+    const hasErrors = inspections.some(({ inspection }) => inspection.error !== undefined);
+    const disabled = inspections.some(({ inspection }) => inspection.disabled);
+    const registrationStatus = hasErrors
+      ? 'unknown'
+      : !registered
+        ? 'not_registered'
+        : valid
+          ? 'registered'
+          : disabled
+            ? 'disabled'
+            : 'invalid';
+    const effective = !hasErrors && cliStatus === 'installed' && indexStatus === 'current' && valid;
     const errors = inspections
       .map(({ inspection }) => inspection.error)
       .filter((error): error is string => Boolean(error));
@@ -464,22 +493,28 @@ function inspectCodegraphMcp(
       scope: agentScope,
       configPath,
       registered,
+      registrationStatus,
       valid,
       effective,
-      detail: registered
-        ? valid
-          ? `CodeGraph MCP is registered at ${configPath}`
-          : inspections.some(({ inspection }) => inspection.disabled)
-            ? `CodeGraph MCP entry at ${configPath} is disabled`
-            : `CodeGraph MCP entry at ${configPath} does not point to the CodeGraph server`
-        : (errors[0] ?? `CodeGraph MCP is not registered at ${configPath}`),
+      detail: hasErrors
+        ? errors[0]
+        : registered
+          ? valid
+            ? `CodeGraph MCP is registered at ${configPath}`
+            : inspections.some(({ inspection }) => inspection.disabled)
+              ? `CodeGraph MCP entry at ${configPath} is disabled`
+              : `CodeGraph MCP entry at ${configPath} does not point to the CodeGraph server`
+          : (errors[0] ?? `CodeGraph MCP is not registered at ${configPath}`),
     });
     effectiveForAgent[definition.id] = effective;
   }
 
   const registeredCount = agents.filter((agent) => agent.registered).length;
-  const mcpStatus: CodegraphMcpStatus =
-    agents.length === 0
+  const mcpStatus: CodegraphMcpStatus = agents.some(
+    (agent) => agent.registrationStatus === 'unknown',
+  )
+    ? 'unavailable'
+    : agents.length === 0
       ? 'not_detected'
       : registeredCount === 0
         ? 'not_registered'

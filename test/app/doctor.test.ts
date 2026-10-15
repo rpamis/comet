@@ -596,6 +596,24 @@ describe('doctor command', () => {
     }
   });
 
+  it('reports an unreadable CodeGraph registration without telling the user it is missing', async () => {
+    const homeDir = path.join(tmpDir, 'codegraph-home');
+    await writeProjectConfig(tmpDir, defaultProjectConfig('docs'));
+    await fs.writeFile(path.join(tmpDir, 'opencode.jsonc'), '{"mcp": ');
+    const payload = await collectDoctorPayload(tmpDir, 'project', homeDir);
+    expect(payload.codegraph).toMatchObject({
+      mcpStatus: 'unavailable',
+      agents: [expect.objectContaining({ id: 'opencode', registrationStatus: 'unknown' })],
+    });
+    expect(payload.results).toContainEqual(
+      expect.objectContaining({
+        check: 'CodeGraph MCP registration',
+        status: 'warn',
+        message: expect.stringContaining('unable to inspect'),
+      }),
+    );
+  });
+
   it('reports CodeGraph CLI, project index, and Codex MCP registration as separate layers', async () => {
     const homeDir = path.join(tmpDir, 'codegraph-home');
     const binDir = path.join(tmpDir, 'codegraph-bin');

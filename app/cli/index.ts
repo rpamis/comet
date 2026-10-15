@@ -39,6 +39,7 @@ program
   .option('--overwrite', 'Overwrite manifest-managed files')
   .option('--json', 'Output as JSON')
   .option('--platform <platform>', 'Platform target to initialize')
+  .option('--custom-platform', 'Allow a project-scoped custom Claude-compatible platform target')
   .addOption(
     new Option('--codegraph <action>', 'Project CodeGraph index action').choices(['init', 'skip']),
   )
@@ -537,6 +538,7 @@ program
   .option('--target-version <version>', 'Update to this exact Comet version without downgrading')
   .option('--json', 'Output as JSON')
   .option('--platform <platform>', 'Platform target to update')
+  .option('--custom-platform', 'Allow a project-scoped custom Claude-compatible platform target')
   .addOption(new Option('--language <lang>', 'Language for skills').choices(['en', 'zh']))
   .addOption(
     new Option('--classic-layout <layout>', 'Classic root to record when both roots exist').choices(

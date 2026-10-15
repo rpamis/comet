@@ -46,6 +46,105 @@ describe('codegraph', () => {
     });
   }
 
+  it.each([
+    [
+      'flat JSONC with globs',
+      '{/* config */ "permission":{"/mnt/**":"allow"},"mcp":{"codegraph":{"command":["codegraph","serve","--mcp"]}},"other":{"*/.ssh/*":"ask"},}',
+    ],
+    [
+      'nested MCP',
+      '{"mcp":{"servers":{"codegraph":{"command":["codegraph","serve","--mcp"],"enabled":true}}}}',
+    ],
+    [
+      'inline comments',
+      '{"mcp":{"codegraph":{"command":["codegraph","serve","--mcp"]}} // comment\n}',
+    ],
+  ])('recognizes OpenCode %s without rewriting strings', async (_name, source) => {
+    writeReadyCodegraphIndex();
+    mockReadyCodegraphCli();
+    fs.writeFileSync(path.join(tmpDir, 'opencode.jsonc'), source);
+    const { inspectCodegraphIntegration } =
+      await import('../../../domains/integrations/codegraph.js');
+    const diagnostic = inspectCodegraphIntegration(tmpDir, 'project', path.join(tmpDir, 'home'));
+    expect(diagnostic.agents.find(({ id }) => id === 'opencode')).toMatchObject({
+      registered: true,
+      valid: true,
+      effective: true,
+    });
+    expect(fs.readFileSync(path.join(tmpDir, 'opencode.jsonc'), 'utf8')).toBe(source);
+  });
+
+  it.each(['{"enabled":false}', '{"disabled":true}'])(
+    'keeps a disabled JSON MCP registered but ineffective (%s)',
+    async (flags) => {
+      writeReadyCodegraphIndex();
+      mockReadyCodegraphCli();
+      fs.writeFileSync(
+        path.join(tmpDir, 'opencode.json'),
+        JSON.stringify({
+          mcp: { codegraph: { command: ['codegraph', 'serve', '--mcp'], ...JSON.parse(flags) } },
+        }),
+      );
+      const { inspectCodegraphIntegration } =
+        await import('../../../domains/integrations/codegraph.js');
+      const diagnostic = inspectCodegraphIntegration(tmpDir, 'project', path.join(tmpDir, 'home'));
+      expect(diagnostic.agents.find(({ id }) => id === 'opencode')).toMatchObject({
+        registered: true,
+        valid: false,
+        effective: false,
+        registrationStatus: 'disabled',
+      });
+    },
+  );
+
+  it('reports malformed JSONC as unknown rather than an absent registration', async () => {
+    writeReadyCodegraphIndex();
+    mockReadyCodegraphCli();
+    fs.writeFileSync(
+      path.join(tmpDir, 'opencode.jsonc'),
+      '{"mcp":{"codegraph":{"command":["codegraph"]}}, "broken": }',
+    );
+    const { inspectCodegraphIntegration } =
+      await import('../../../domains/integrations/codegraph.js');
+    const diagnostic = inspectCodegraphIntegration(tmpDir, 'project', path.join(tmpDir, 'home'));
+    expect(diagnostic.mcpStatus).toBe('unavailable');
+    expect(diagnostic.agents.find(({ id }) => id === 'opencode')).toMatchObject({
+      registrationStatus: 'unknown',
+      effective: false,
+    });
+  });
+
+  it('lets project OpenCode settings disable a global registration', async () => {
+    writeReadyCodegraphIndex();
+    mockReadyCodegraphCli();
+    const home = path.join(tmpDir, 'home');
+    const configRoot =
+      process.platform === 'win32'
+        ? path.join(home, 'AppData', 'Roaming', 'opencode')
+        : path.join(home, '.config', 'opencode');
+    fs.mkdirSync(configRoot, { recursive: true });
+    fs.writeFileSync(
+      path.join(configRoot, 'opencode.json'),
+      '{"mcp":{"codegraph":{"command":["codegraph","serve","--mcp"]}}}',
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'opencode.jsonc'),
+      '{"mcp":{"codegraph":{"enabled":false}}}',
+    );
+    const { inspectCodegraphIntegration } =
+      await import('../../../domains/integrations/codegraph.js');
+    expect(
+      inspectCodegraphIntegration(tmpDir, 'project', home).agents.find(
+        ({ id }) => id === 'opencode',
+      ),
+    ).toMatchObject({
+      registered: true,
+      valid: false,
+      effective: false,
+      registrationStatus: 'disabled',
+    });
+  });
+
   it('detects an existing project CodeGraph index', async () => {
     const codegraphDir = path.join(tmpDir, '.codegraph');
     fs.mkdirSync(codegraphDir, { recursive: true });

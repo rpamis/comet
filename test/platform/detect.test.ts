@@ -45,6 +45,12 @@ describe('detect', () => {
     homedirSpy.mockRestore();
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
+  it('detects Prime Agent only at its own nested config root', async () => {
+    await fs.mkdir(path.join(tmpDir, '.prime'), { recursive: true });
+    expect(await detectPlatforms(tmpDir)).not.toContain('prime-agent');
+    await fs.mkdir(path.join(tmpDir, '.prime/agent'), { recursive: true });
+    expect(await detectPlatforms(tmpDir)).toContain('prime-agent');
+  });
 
   describe('getBaseDir', () => {
     it('returns home directory for global scope', () => {

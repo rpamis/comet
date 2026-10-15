@@ -46,6 +46,7 @@ const SKILLS_AGENT_MAP: Record<string, string | null> = {
   // The Skills CLI does not yet ship an Oh My Pi target. Stage through the
   // portable Claude layout and copy into OMP's native skills root.
   'oh-my-pi': null,
+  'prime-agent': null,
   // dsh has a native Skill root but no Skills CLI agent id. Stage through the
   // portable Claude layout and copy into .dsh/skills.
   dsh: null,
@@ -505,6 +506,19 @@ async function installSuperpowersForPlatforms(
   if (shouldInstallOhMyPi) {
     const ohMyPiStatus = await installSuperpowersForOhMyPi(projectPath, scope);
     if (ohMyPiStatus === 'failed') failed = true;
+  }
+  if (platformIds.includes('prime-agent')) {
+    const status = await stageAndCopySuperpowers(
+      'prime-agent',
+      {
+        command: getNpxExecutable(),
+        args: [...buildSuperpowersInstallArgs(), '--agent', STAGE_AGENT],
+      },
+      projectPath,
+      scope,
+      'Prime Agent',
+    );
+    if (status === 'failed') failed = true;
   }
 
   if (shouldInstallDsh) {

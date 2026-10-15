@@ -76,6 +76,7 @@ const DEFAULT_WORKFLOW_NATIVE_MANAGED_SKILL_EXCLUDES = [
   '.opencode/skills/**',
   '.omp/skills/**',
   '.pi/skills/**',
+  '.prime/agent/skills/**',
   '.qoder/skills/**',
   '.qwen/skills/**',
   '.roo/skills/**',

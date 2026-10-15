@@ -101,8 +101,9 @@ describe('superpowers', () => {
       expect(SKILLS_AGENT_MAP['dsh']).toBeNull();
     });
 
-    it('has entries for all 37 platforms', async () => {
+    it('has entries for every registered platform', async () => {
       const { SKILLS_AGENT_MAP } = await import('../../../domains/integrations/superpowers.js');
+      const { PLATFORMS } = await import('../../../platform/install/platforms.js');
       const platformIds = [
         'claude',
         'cursor',
@@ -130,6 +131,7 @@ describe('superpowers', () => {
         'factory',
         'iflow',
         'pi',
+        'prime-agent',
         'oh-my-pi',
         'qoder',
         'antigravity',
@@ -145,7 +147,7 @@ describe('superpowers', () => {
       for (const id of platformIds) {
         expect(SKILLS_AGENT_MAP).toHaveProperty(id);
       }
-      expect(Object.keys(SKILLS_AGENT_MAP)).toHaveLength(37);
+      expect(Object.keys(SKILLS_AGENT_MAP).sort()).toEqual(PLATFORMS.map(({ id }) => id).sort());
     });
   });
 

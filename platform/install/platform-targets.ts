@@ -13,6 +13,7 @@ const PLATFORM_ID_ALIASES: Readonly<Record<string, string>> = {
 export function resolvePlatformTarget(
   platformId: string,
   scope: InstallScope,
+  options: { allowCustom?: boolean } = {},
 ): PlatformTargetResolution {
   const normalized = platformId.trim();
   if (normalized.length === 0) {
@@ -30,6 +31,11 @@ export function resolvePlatformTarget(
 
   if (scope === 'global') {
     throw new Error('custom --platform targets are only supported with project scope');
+  }
+  if (!options.allowCustom) {
+    throw new Error(
+      `Unknown platform: ${normalized}. Select a supported platform, or use --custom-platform explicitly for a project-scoped Claude-compatible target.`,
+    );
   }
 
   return {

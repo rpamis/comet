@@ -98,6 +98,7 @@ type InitOptions = {
   workflow?: InitWorkflowSelection;
   artifactRoot?: string;
   platform?: string;
+  customPlatform?: boolean;
   codegraph?: 'init' | 'skip';
 };
 
@@ -227,10 +228,20 @@ async function selectScope(options: InitOptions, lang: string): Promise<InstallS
   });
 }
 
-async function selectLanguage(options: InitOptions): Promise<LanguageConfig> {
+async function selectLanguage(
+  options: InitOptions,
+  existingLanguage?: string,
+): Promise<LanguageConfig> {
   if (options.language) {
-    return LANGUAGES.find((l) => l.id === options.language) ?? LANGUAGES[0];
+    const language = LANGUAGES.find((l) => l.id === options.language);
+    if (!language) throw new Error(`Unsupported language: ${options.language}`);
+    return language;
   }
+  const existing = LANGUAGES.find(
+    (language) =>
+      language.id === existingLanguage || language.artifactLanguage === existingLanguage,
+  );
+  if (existing) return existing;
   if (options.yes || options.json) return LANGUAGES[0];
 
   const langId = await select({
@@ -544,12 +555,12 @@ export async function initCommand(
     await printVersionInfo(log);
   }
 
-  const language = await selectLanguage(options);
-  const lang = language.id;
-
-  log(`  ${t(lang, 'settingUp')} ${projectPath}\n`);
-
-  const scope = await selectScope(options, lang);
+  if (options.customPlatform && !options.platform)
+    throw new Error('--custom-platform requires --platform');
+  const scope = await selectScope(options, options.language ?? 'en');
+  const explicitTarget = options.platform
+    ? resolvePlatformTarget(options.platform, scope, { allowCustom: options.customPlatform })
+    : null;
   const detected = await detectPlatforms(scope === 'global' ? os.homedir() : projectPath);
   if (scope === 'global' && options.codegraph === 'init') {
     throw new Error('--codegraph init is only valid for project-scope initialization');
@@ -564,6 +575,35 @@ export async function initCommand(
           allowMissingNativeFields: true,
         })
       : null;
+  const initialGlobalConfig =
+    scope === 'global'
+      ? await readWorkflowGlobalConfigForLifecycle(getBaseDir(scope, projectPath))
+      : null;
+  const languageDocument = initialProjectConfigSnapshot?.document ?? initialGlobalConfig;
+  const languageWorkflow =
+    options.workflow === 'classic'
+      ? 'classic'
+      : options.workflow === 'native'
+        ? 'native'
+        : (initialProjectConfigSnapshot?.document?.config?.default_workflow ??
+          initialGlobalConfig?.default_workflow);
+  const configuredLanguage =
+    (languageWorkflow ? languageDocument?.[languageWorkflow]?.language : undefined) ??
+    languageDocument?.classic?.language ??
+    languageDocument?.native?.language;
+  const installed =
+    !options.language && !configuredLanguage
+      ? await detectInstalledCometTargets(projectPath, { scopes: [scope] })
+      : [];
+  const existingLanguage =
+    configuredLanguage ??
+    installed.find((target) => target.platform.id === explicitTarget?.platform.id)?.language ??
+    (new Set(installed.map((target) => target.language)).size === 1
+      ? installed[0]?.language
+      : undefined);
+  const language = await selectLanguage(options, existingLanguage);
+  const lang = language.id;
+  log(`  ${t(lang, 'settingUp')} ${projectPath}\n`);
   const suggestedWorkflowDecision =
     scope === 'project'
       ? await resolveInitWorkflow(
@@ -574,10 +614,6 @@ export async function initCommand(
           },
           initialProjectConfigSnapshot!,
         )
-      : null;
-  const initialGlobalConfig =
-    scope === 'global'
-      ? await readWorkflowGlobalConfigForLifecycle(getBaseDir(scope, projectPath))
       : null;
   const configuredWorkflows =
     initialProjectConfigSnapshot?.document?.config?.workflows ??
@@ -616,8 +652,8 @@ export async function initCommand(
   const installMode =
     workflowSelection === 'native' ? 'copy' : await selectInstallMode(options, lang);
 
-  const selectedPlatformTargets: PlatformTargetResolution[] = options.platform
-    ? [resolvePlatformTarget(options.platform, scope)]
+  const selectedPlatformTargets: PlatformTargetResolution[] = explicitTarget
+    ? [explicitTarget]
     : (await selectPlatforms(detected, options, lang)).map((platformId) => ({
         platform: PLATFORMS.find((platform) => platform.id === platformId)!,
         native: true,
@@ -1293,7 +1329,9 @@ export async function initCommand(
           config.classic = {
             ...config.classic,
             artifact_layout: workflowDecision.classicArtifactLayout,
-            language: language.artifactLanguage,
+            language: options.language
+              ? language.artifactLanguage
+              : (config.classic?.language ?? language.artifactLanguage),
             context_compression: config.classic?.context_compression ?? 'off',
             review_mode: config.classic?.review_mode ?? 'standard',
             auto_transition: config.classic?.auto_transition ?? true,

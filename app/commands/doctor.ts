@@ -1233,7 +1233,7 @@ function codegraphCheckResults(diagnostic: CodegraphIntegrationDiagnostic): Chec
       : diagnostic.agents
           .map(
             (agent) =>
-              `${agent.name}: ${agent.registered ? (agent.valid ? 'registered' : 'invalid entry') : 'not registered'}`,
+              `${agent.name}: ${agent.registrationStatus === 'unknown' ? `unable to inspect (${agent.detail})` : agent.registrationStatus === 'disabled' ? 'disabled' : agent.registered ? (agent.valid ? 'registered' : 'invalid entry') : 'not registered'}`,
           )
           .join('; ');
   const mcpResult: CheckResult = {
@@ -1244,9 +1244,12 @@ function codegraphCheckResults(diagnostic: CodegraphIntegrationDiagnostic): Chec
   const effectiveResults = diagnostic.agents.map((agent) => ({
     check: `CodeGraph effective for ${agent.name}`,
     status: agent.effective ? ('pass' as const) : ('warn' as const),
-    message: agent.effective
-      ? 'CLI, current project index, and MCP registration are ready'
-      : 'not ready — requires an installed CLI, current project index, and valid MCP registration',
+    message:
+      agent.registrationStatus === 'unknown'
+        ? agent.detail
+        : agent.effective
+          ? 'CLI, current project index, and MCP registration are ready'
+          : 'not ready — requires an installed CLI, current project index, and valid MCP registration',
   }));
   return [cliResult, indexResult, mcpResult, ...effectiveResults];
 }
