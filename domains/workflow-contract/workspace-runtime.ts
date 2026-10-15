@@ -1391,12 +1391,17 @@ export async function resolveWorkspaceRuntimeRoot(projectRoot: string): Promise<
     if (
       fence?.workspaceId === location.workspaceId &&
       fence.target === location.runtimeRoot &&
-      fence.kind === 'directory' &&
-      !(await statOrNull(location.runtimeRoot))
-    )
-      await ensureProtectedProjectDirectory(location.workspaceRoot, 'runtime', {
-        label: 'Workspace Runtime 恢复目录',
-      });
+      fence.kind === 'directory'
+    ) {
+      if (!(await statOrNull(location.runtimeRoot)))
+        await ensureProtectedProjectDirectory(location.workspaceRoot, 'runtime', {
+          label: 'Workspace Runtime 恢复目录',
+        });
+      // journal 已完成恢复，fence 也已核对当前 workspace；只验证真实目标，
+      // 不再为同一次访问重复运行两轮迁移和目录准备。
+      await assertPath(location.workspaceRoot, location.runtimeRoot, 'directory');
+      return location.runtimeRoot;
+    }
   }
   await migrateWorkspaceRuntimeDirectory(source, location.runtimeRoot, {
     projectRoot: location.projectRoot,

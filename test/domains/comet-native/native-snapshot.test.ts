@@ -106,7 +106,7 @@ describe('Native VCS-independent content snapshots', () => {
         expect(snapshot.complete).toBe(true);
         expect(snapshot.entries.map((entry) => entry.path)).toEqual(refs);
         expect(peak).toBeGreaterThan(1);
-        expect(peak).toBeLessThanOrEqual(4);
+        expect(peak).toBeLessThanOrEqual(16);
         expect(active).toBe(0);
         const limited = await createNativeContentSnapshot(paths, { limits: { maxFiles: 3 } });
         expect(limited.entries.map((entry) => entry.path)).toEqual(refs.slice(0, 3));

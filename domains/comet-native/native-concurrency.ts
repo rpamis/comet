@@ -8,13 +8,23 @@ export async function mapWithConcurrency<T, R>(
   }
   const results = new Array<R>(items.length);
   let nextIndex = 0;
+  let failed = false;
   const worker = async (): Promise<void> => {
-    while (nextIndex < items.length) {
+    while (!failed && nextIndex < items.length) {
       const index = nextIndex;
       nextIndex += 1;
-      results[index] = await mapper(items[index], index);
+      try {
+        results[index] = await mapper(items[index], index);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+  const settled = await Promise.allSettled(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  );
+  const failure = settled.find((result) => result.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
   return results;
 }

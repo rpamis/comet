@@ -80,14 +80,18 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
     const requestedArgv = args.slice(separator + 1);
     const checked = pendingEvidence
       ? inspected.run
-      : await executeClassicSdkCommandCheck(inspected.runtime, {
-          runId: inspected.run.runId,
-          projectRoot: sdkWorkspace.projectRoot,
-          argv: requestedArgv,
-          cwd,
-          timeoutMs,
-          reusable,
-        });
+      : await executeClassicSdkCommandCheck(
+          inspected.runtime,
+          {
+            runId: inspected.run.runId,
+            projectRoot: sdkWorkspace.projectRoot,
+            argv: requestedArgv,
+            cwd,
+            timeoutMs,
+            reusable,
+          },
+          inspected.run,
+        );
     const action = checked.actions
       .slice()
       .reverse()

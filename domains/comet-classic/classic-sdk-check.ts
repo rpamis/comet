@@ -405,9 +405,11 @@ export function createClassicSdkCheckExecutor(projectRoot: string): RuntimeExecu
 export async function executeClassicSdkCommandCheck(
   runtime: Pick<WorkflowRuntime, 'inspect' | 'claim' | 'recordOutcome' | 'markUnknown'>,
   input: ClassicSdkCheckInput,
+  inspectedRun?: WorkflowRun,
 ): Promise<WorkflowRun> {
   const root = path.resolve(input.projectRoot);
-  const run = await runtime.inspect(input.runId);
+  const run = inspectedRun ?? (await runtime.inspect(input.runId));
+  if (run.runId !== input.runId) throw new Error('Classic check belongs to a different Run');
   const state = run.state as unknown as ClassicState;
   const action = run.actions
     .slice()
@@ -421,7 +423,7 @@ export async function executeClassicSdkCommandCheck(
   await checkedInput(run, action, input);
   const token = randomUUID();
   const requestId = randomUUID();
-  await runtime.claim({
+  const claimed = await runtime.claim({
     runId: run.runId,
     actionId: action.id,
     attempt: action.attempt,
@@ -432,7 +434,7 @@ export async function executeClassicSdkCommandCheck(
     context: { requestId, projectRoot: root },
   });
   try {
-    const claimed = await runtime.inspect(run.runId);
+    // claim 已按 revision 原子核对并返回提交后的 Run，不立即重新读取同一记录。
     const claimedAction = claimed.actions.find((entry) => entry.id === action.id)!;
     const result = await runClassicSdkCommandCheck(claimed, claimedAction, input);
     return await runtime.recordOutcome({

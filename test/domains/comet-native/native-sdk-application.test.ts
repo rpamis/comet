@@ -33,6 +33,10 @@ import { removeNativeWorkspaceConfig } from '../../../domains/comet-native/nativ
 import { createNativeSdkStateStore } from '../../../domains/comet-native/native-sdk-state-store.js';
 import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
 import {
+  projectNativeSdkContinuation,
+  projectNativeSdkDispatchResult,
+} from '../../../domains/comet-native/native-sdk-continuation.js';
+import {
   inspectNativeSdkDefinitionUpgrade,
   loadOwnedNativeSdkRuntime,
 } from '../../../domains/comet-native/native-runtime-ownership.js';
@@ -469,6 +473,96 @@ async function awaitingArchiveFinalization(storeKind: 'memory' | 'file' = 'memor
 }
 
 describe('Native SDK Workflow Application', () => {
+  it('binds a separate Verifier handoff and accepts its filled outcome template', async () => {
+    const { root, runtime, run: prepared } = await dispatchedVerifier();
+    const action = prepared.actions.at(-1)!;
+    const pending = await projectNativeSdkContinuation({
+      run: prepared,
+      state: prepared.state as unknown as NativePortableState,
+      projectRoot: root,
+    });
+    expect(pending.pendingAction).toMatchObject({
+      stepId: 'verify.verifier',
+      sessionRequirements: {
+        independent: true,
+        readOnly: true,
+        mustDifferFromSessionId: 'builder-session-1',
+      },
+    });
+    const claim = pending.pendingAction!.claimRequest!;
+    const { operation: _operation, ...request } = claim;
+    const context = { requestId: 'template-verifier', projectRoot: root };
+    const claimed = await runtime.claim({
+      ...request,
+      sessionId: 'template-verifier-session',
+      claimToken: 'template-verifier-token',
+      context,
+    });
+    const projection = await projectNativeSdkDispatchResult({
+      run: claimed,
+      state: claimed.state as unknown as NativePortableState,
+      actionId: action.id,
+      projectRoot: root,
+    });
+    const template = projection.outcomeRequest!;
+    const output = template.outcome.output as {
+      candidateId: string;
+      verifierExecutionRef: string;
+      response: {
+        kind: string;
+        result: { iteration: number; attempt: number; acceptance: { id: string }[] };
+      };
+    };
+    expect(output.verifierExecutionRef).toBe('template-verifier-session');
+    expect(output.candidateId).toBe(
+      (claimed.state as unknown as NativePortableState).builder_handoff!.candidate_id,
+    );
+    expect(projection.failureOutcomeRequest).toMatchObject({
+      outcome: { claimToken: 'template-verifier-token', status: 'failed' },
+    });
+    expect(projection.requestChecksOutcomeRequest).toMatchObject({
+      outcome: {
+        output: {
+          candidateId: output.candidateId,
+          response: {
+            kind: 'request-checks',
+            iteration: output.response.result.iteration,
+            attempt: output.response.result.attempt,
+            checks: [{ cwdRef: '.' }],
+          },
+        },
+      },
+    });
+    const finished = await runtime.recordOutcome({
+      runId: claimed.runId,
+      outcome: {
+        ...template.outcome,
+        status: 'succeeded',
+        outcomeId: 'template-verifier-result',
+        output: {
+          ...output,
+          response: {
+            kind: 'final-result',
+            result: {
+              ...output.response.result,
+              verdict: 'pass',
+              acceptance: output.response.result.acceptance.map(({ id }) => ({
+                id,
+                result: 'passed',
+                reason: 'Independently inspected the fixture implementation and checks.',
+              })),
+              risks: [],
+              summary: 'The fixture meets all confirmed acceptance criteria.',
+            },
+          },
+        },
+      },
+      context,
+    });
+    expect(finished.actions.find(({ id }) => id === action.id)?.status).toBe('succeeded');
+    expect(finished.state).toMatchObject({ verification_result: 'pass' });
+  });
+
   it('preserves interrupted finalization and recovers its original receipt without replaying Archive', async () => {
     const { root, paths, runtime, run } = await awaitingArchiveApplication('sdk', undefined, true);
     const options = {

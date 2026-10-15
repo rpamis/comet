@@ -115,18 +115,35 @@ describe('Native dispatch CLI presentation', () => {
         inputHash: action.inputHash,
         claimToken: action.claim!.token,
         outcomeId: '<outcome-id>',
-        status: '<succeeded|failed>',
-        output: '<actual-action-output>',
+        status: 'succeeded',
+        output: expect.objectContaining({
+          summary: expect.any(String),
+          addressedAcceptanceIds: ['A1'],
+          acceptanceReview: [expect.objectContaining({ id: 'A1' })],
+          verificationChecks: [expect.objectContaining({ executable: '<executable>' })],
+        }),
+      },
+    });
+    expect(compact.data.failureOutcomeRequest).toMatchObject({
+      operation: 'record-outcome',
+      runId: name,
+      outcome: {
+        actionId: action.id,
+        claimToken: action.claim!.token,
+        status: 'failed',
+        output: { summary: '<actual-execution-failure>' },
       },
     });
     expect(compact.data.continuation.userCommunication.agentInstruction).toContain(
       'original claimed task',
     );
-    expect(compact.data.activeActions[0].outcomeRequest).toEqual(compact.data.outcomeRequest);
+    expect(compact.data.activeActions[0].outcomeRequestRef).toBe('outcomeRequest');
+    expect(compact.data.activeActions[0]).not.toHaveProperty('outcomeRequest');
     for (const key of ['actions', 'outputs', 'actionContexts', 'waits'])
       expect(compact.data).not.toHaveProperty(key);
     expect(Buffer.byteLength(JSON.stringify(compact.data))).toBeLessThan(
-      Buffer.byteLength(JSON.stringify(committed)) / 2,
+      // 当前 Action 的具体结果契约可增加固定正文，历史仍不得重复返回。
+      Buffer.byteLength(JSON.stringify(committed)) / 2 + 1024,
     );
     const sdk = await runtimeDispatchCommand({
       application: 'native',

@@ -2611,7 +2611,7 @@ export async function createNativeContentSnapshot(
   ) => {
     // 先读取独立文件，再按选择顺序发布；预算、条目顺序和首条 Hook 保持串行语义。
     if (
-      captures.length >= 4 ||
+      captures.length >= 16 ||
       entries.length + captures.length >= limits.maxFiles ||
       totalBytes + captures.reduce((sum, capture) => sum + capture.bytes, 0) + before.size >
         limits.maxTotalBytes
@@ -2703,145 +2703,166 @@ export async function createNativeContentSnapshot(
   const revalidateCapturedEntries = async (): Promise<void> => {
     reportCometRuntimeProgress('复查项目文件', 0, capturedEntryValidations.size);
     let validated = 0;
-    for (const [relative, validation] of [...capturedEntryValidations]) {
-      reportCometRuntimeProgress('复查项目文件', validated++, capturedEntryValidations.size);
+    const validations = [...capturedEntryValidations];
+    // 只预读一小批文件元数据，仍按原顺序发布失效项，保留省略上限和超时语义。
+    for (let offset = 0; offset < validations.length;) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      if (validation.kind === 'file') {
+      // 首项先核对；若单项已耗尽预算，就不再启动后续读取。
+      const batch = validations.slice(offset, offset + (offset === 0 ? 1 : 16));
+      offset += batch.length;
+      const observations = await Promise.all(
+        batch.map(async ([, validation]) => {
+          if (validation.kind !== 'file') return null;
+          try {
+            const realTarget = await fs.realpath(validation.target);
+            if (!nativeSnapshotExecutionHasBudget(execution)) return null;
+            return { realTarget, stat: await fs.lstat(validation.target) };
+          } catch (error) {
+            return { error };
+          }
+        }),
+      );
+      for (const [index, [relative, validation]] of batch.entries()) {
+        reportCometRuntimeProgress('复查项目文件', validated++, capturedEntryValidations.size);
+        if (!nativeSnapshotExecutionHasBudget(execution)) return;
+        if (validation.kind === 'file') {
+          let realTarget: string;
+          let stat: import('fs').Stats;
+          try {
+            const observation = observations[index];
+            if (!observation) return;
+            if ('error' in observation) throw observation.error;
+            ({ realTarget, stat } = observation);
+          } catch (error) {
+            if (!nativeSnapshotExecutionHasBudget(execution)) return;
+            if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+            invalidateCapturedEntry(relative, {
+              path: relative,
+              size: null,
+              type: 'file',
+              reason: isUnreadableError(error) ? 'unreadable' : 'changed-during-read',
+            });
+            continue;
+          }
+          if (!nativeSnapshotExecutionHasBudget(execution)) return;
+          if (
+            realTarget !== validation.realTarget ||
+            !stat.isFile() ||
+            stat.isSymbolicLink() ||
+            !sameFileIdentity(validation.stat, stat) ||
+            stat.size !== validation.stat.size ||
+            stat.mtimeMs !== validation.stat.mtimeMs ||
+            stat.ctimeMs !== validation.stat.ctimeMs
+          ) {
+            invalidateCapturedEntry(relative, {
+              path: relative,
+              size: stat.isFile() ? stat.size : null,
+              type: stat.isFile() ? 'file' : 'other',
+              reason: 'changed-during-read',
+            });
+          }
+          continue;
+        }
+
+        if (validation.kind === 'symlink') {
+          let stat: import('fs').Stats;
+          let rawTarget: Buffer;
+          try {
+            stat = await fs.lstat(validation.target);
+            if (!nativeSnapshotExecutionHasBudget(execution)) return;
+            rawTarget = await fs.readlink(validation.target, { encoding: 'buffer' });
+          } catch (error) {
+            if (!nativeSnapshotExecutionHasBudget(execution)) return;
+            if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+            invalidateCapturedEntry(relative, {
+              path: relative,
+              size: null,
+              type: 'other',
+              reason: isUnreadableError(error) ? 'unreadable' : 'changed-during-read',
+            });
+            continue;
+          }
+          if (!nativeSnapshotExecutionHasBudget(execution)) return;
+          if (
+            !stat.isSymbolicLink() ||
+            !sameFileIdentity(validation.stat, stat) ||
+            stat.mtimeMs !== validation.stat.mtimeMs ||
+            stat.ctimeMs !== validation.stat.ctimeMs ||
+            !validation.rawTarget.equals(rawTarget)
+          ) {
+            invalidateCapturedEntry(relative, {
+              path: relative,
+              size: null,
+              type: 'other',
+              reason: 'changed-during-read',
+            });
+          }
+          continue;
+        }
+
         let realTarget: string;
         let stat: import('fs').Stats;
         try {
           realTarget = await fs.realpath(validation.target);
           if (!nativeSnapshotExecutionHasBudget(execution)) return;
           stat = await fs.lstat(validation.target);
-        } catch (error) {
+        } catch {
           if (!nativeSnapshotExecutionHasBudget(execution)) return;
-          if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
           invalidateCapturedEntry(relative, {
             path: relative,
             size: null,
-            type: 'file',
-            reason: isUnreadableError(error) ? 'unreadable' : 'changed-during-read',
+            type: 'directory',
+            reason: 'gitlink-unavailable',
           });
           continue;
         }
         if (!nativeSnapshotExecutionHasBudget(execution)) return;
-        if (
-          realTarget !== validation.realTarget ||
-          !stat.isFile() ||
-          stat.isSymbolicLink() ||
-          !sameFileIdentity(validation.stat, stat) ||
-          stat.size !== validation.stat.size ||
-          stat.mtimeMs !== validation.stat.mtimeMs ||
-          stat.ctimeMs !== validation.stat.ctimeMs
-        ) {
+        const validBoundary =
+          realTarget === validation.realTarget &&
+          stat.isDirectory() &&
+          !stat.isSymbolicLink() &&
+          sameFileIdentity(validation.stat, stat) &&
+          isInsidePath(physicalProjectRoot, realTarget) &&
+          !sameOrInside(physicalNativeRoot, realTarget);
+        if (!validBoundary) {
           invalidateCapturedEntry(relative, {
             path: relative,
-            size: stat.isFile() ? stat.size : null,
-            type: stat.isFile() ? 'file' : 'other',
-            reason: 'changed-during-read',
+            size: null,
+            type: 'directory',
+            reason: 'gitlink-changed',
           });
+          continue;
         }
-        continue;
-      }
-
-      if (validation.kind === 'symlink') {
-        let stat: import('fs').Stats;
-        let rawTarget: Buffer;
+        let workingTree: Awaited<ReturnType<typeof inspectGitlinkWorkingTree>>;
         try {
-          stat = await fs.lstat(validation.target);
           if (!nativeSnapshotExecutionHasBudget(execution)) return;
-          rawTarget = await fs.readlink(validation.target, { encoding: 'buffer' });
+          workingTree = await inspectGitlinkWorkingTree(execution, realTarget);
         } catch (error) {
-          if (!nativeSnapshotExecutionHasBudget(execution)) return;
-          if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+          if (isNativeGitSnapshotTimeout(error)) throw error;
           invalidateCapturedEntry(relative, {
             path: relative,
             size: null,
-            type: 'other',
-            reason: isUnreadableError(error) ? 'unreadable' : 'changed-during-read',
+            type: 'directory',
+            reason: 'gitlink-unavailable',
           });
           continue;
         }
         if (!nativeSnapshotExecutionHasBudget(execution)) return;
-        if (
-          !stat.isSymbolicLink() ||
-          !sameFileIdentity(validation.stat, stat) ||
-          stat.mtimeMs !== validation.stat.mtimeMs ||
-          stat.ctimeMs !== validation.stat.ctimeMs ||
-          !validation.rawTarget.equals(rawTarget)
-        ) {
+        if (workingTree.dirty) {
           invalidateCapturedEntry(relative, {
             path: relative,
             size: null,
-            type: 'other',
-            reason: 'changed-during-read',
+            type: 'directory',
+            reason: 'gitlink-dirty',
+          });
+        } else if (workingTree.hash !== validation.hash) {
+          invalidateCapturedEntry(relative, {
+            path: relative,
+            size: null,
+            type: 'directory',
+            reason: 'gitlink-changed',
           });
         }
-        continue;
-      }
-
-      let realTarget: string;
-      let stat: import('fs').Stats;
-      try {
-        realTarget = await fs.realpath(validation.target);
-        if (!nativeSnapshotExecutionHasBudget(execution)) return;
-        stat = await fs.lstat(validation.target);
-      } catch {
-        if (!nativeSnapshotExecutionHasBudget(execution)) return;
-        invalidateCapturedEntry(relative, {
-          path: relative,
-          size: null,
-          type: 'directory',
-          reason: 'gitlink-unavailable',
-        });
-        continue;
-      }
-      if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      const validBoundary =
-        realTarget === validation.realTarget &&
-        stat.isDirectory() &&
-        !stat.isSymbolicLink() &&
-        sameFileIdentity(validation.stat, stat) &&
-        isInsidePath(physicalProjectRoot, realTarget) &&
-        !sameOrInside(physicalNativeRoot, realTarget);
-      if (!validBoundary) {
-        invalidateCapturedEntry(relative, {
-          path: relative,
-          size: null,
-          type: 'directory',
-          reason: 'gitlink-changed',
-        });
-        continue;
-      }
-      let workingTree: Awaited<ReturnType<typeof inspectGitlinkWorkingTree>>;
-      try {
-        if (!nativeSnapshotExecutionHasBudget(execution)) return;
-        workingTree = await inspectGitlinkWorkingTree(execution, realTarget);
-      } catch (error) {
-        if (isNativeGitSnapshotTimeout(error)) throw error;
-        invalidateCapturedEntry(relative, {
-          path: relative,
-          size: null,
-          type: 'directory',
-          reason: 'gitlink-unavailable',
-        });
-        continue;
-      }
-      if (!nativeSnapshotExecutionHasBudget(execution)) return;
-      if (workingTree.dirty) {
-        invalidateCapturedEntry(relative, {
-          path: relative,
-          size: null,
-          type: 'directory',
-          reason: 'gitlink-dirty',
-        });
-      } else if (workingTree.hash !== validation.hash) {
-        invalidateCapturedEntry(relative, {
-          path: relative,
-          size: null,
-          type: 'directory',
-          reason: 'gitlink-changed',
-        });
       }
     }
     for (const [relative, target] of capturedTrackedAbsences) {

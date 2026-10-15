@@ -290,10 +290,33 @@ it.each(['input', 'environment', 'unmarked', 'log'] as const)(
   },
 );
 
+it('uses the committed claim without redundant inspection and rejects a stale supplied Run before executing', async () => {
+  const f = await fixture('tweak', false);
+  await f.cli('state', 'complete-build', 'example');
+  const { runtime, run } = await f.inspect();
+  const inspect = vi.spyOn(runtime, 'inspect');
+  const input = {
+    runId: run.runId,
+    projectRoot: f.projectRoot,
+    argv: f.command('committed-claim'),
+  };
+  try {
+    const checked = await executeClassicSdkCommandCheck(runtime, input, run);
+    expect(checked.actions.at(-1)?.status).toBe('succeeded');
+    expect(inspect).not.toHaveBeenCalled();
+    await expect(executeClassicSdkCommandCheck(runtime, input, run)).rejects.toThrow();
+    expect(await fs.readFile(f.checkCount, 'utf8')).toBe('committed-claim\n');
+    expect(inspect).not.toHaveBeenCalled();
+  } finally {
+    inspect.mockRestore();
+  }
+});
+
 describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify rounds', (profile) => {
   it('reuses the same successful command across Build and Verify after validating its inputs and log', async () => {
     const f = await fixture(profile, false);
     const argv = f.command('shared');
+    const probe = vi.spyOn(fs, 'lstat');
     await f.put(
       '.comet/check-policy.json',
       JSON.stringify({
@@ -316,6 +339,9 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
       ...argv,
     );
     expect(result.exitCode, result.stdout).toBe(0);
+    const pathChecks = probe.mock.calls.length;
+    probe.mockRestore();
+    expect(pathChecks).toBeLessThan(profile === 'full' ? 19_000 : 17_000);
     expect(await fs.readFile(f.checkCount, 'utf8')).toBe('shared\n');
     const run = (await f.inspect()).run;
     const checks = run.actions.filter((action) => action.ref === 'classic-check');

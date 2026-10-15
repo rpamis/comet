@@ -285,18 +285,40 @@ export async function digestNativeInputFileContent(
   const handle = await fs.open(file, 'r');
   let total = 0;
   try {
-    const buffer = Buffer.allocUnsafe(NATIVE_INPUT_BASE64_CHUNK_BYTES);
-    while (true) {
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+    const buffer = Buffer.allocUnsafe(
+      Math.min(NATIVE_INPUT_BASE64_CHUNK_BYTES, Math.max(3, Math.ceil(before.size / 3) * 3)),
+    );
+    let buffered = 0;
+    // 长度来自读取前的 stat；读后仍核对长度、身份和时间，省去每个文件的额外 EOF 读取。
+    while (total < before.size) {
+      const { bytesRead } = await handle.read(
+        buffer,
+        buffered,
+        Math.min(buffer.length - buffered, before.size - total),
+        null,
+      );
       if (bytesRead === 0) break;
       total += bytesRead;
-      hash.update(buffer.subarray(0, bytesRead).toString('base64'));
+      buffered += bytesRead;
+      // 短读也先补齐三字节对齐的块，只有文件末尾允许 base64 填充。
+      if (buffered === buffer.length || total === before.size) {
+        hash.update(buffer.subarray(0, buffered).toString('base64'));
+        buffered = 0;
+      }
     }
   } finally {
     await handle.close();
   }
   const after = await fs.lstat(file);
-  if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
+  if (
+    !after.isFile() ||
+    after.ino !== before.ino ||
+    after.dev !== before.dev ||
+    after.size !== before.size ||
+    after.mtimeMs !== before.mtimeMs ||
+    after.ctimeMs !== before.ctimeMs ||
+    total !== before.size
+  ) {
     throw new Error('Native check input changed while reading');
   }
   return { digest: hash.digest('hex'), size: total };
@@ -676,7 +698,7 @@ export async function nativeCheckInputFingerprint(options: {
       .split('\0')
       .filter(Boolean)
       .sort();
-    gitSnapshot.diff = await mapWithConcurrency(changed, 4, async (relative) => {
+    gitSnapshot.diff = await mapWithConcurrency(changed, 16, async (relative) => {
       const target = path.resolve(options.projectRoot, ...relative.split('/'));
       try {
         const { digest } = await digestNativeInputFileContent(target);
@@ -712,7 +734,7 @@ export async function nativeCheckInputFingerprint(options: {
       .split('\0')
       .filter(Boolean)
       .sort();
-    gitSnapshot.untracked = await mapWithConcurrency(untracked, 4, async (relative) => {
+    gitSnapshot.untracked = await mapWithConcurrency(untracked, 16, async (relative) => {
       const target = path.resolve(options.projectRoot, ...relative.split('/'));
       try {
         const { digest, size } = await digestNativeInputFileContent(target);

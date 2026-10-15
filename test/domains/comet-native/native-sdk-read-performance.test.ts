@@ -190,7 +190,14 @@ describe('Native SDK read work budgets', () => {
   });
 
   it('provides a directly claimable Builder template without another inspect or compat runner input', async () => {
-    const { root, name, runtime } = await preparedChange();
+    const { root, name, runtime, prepared } = await preparedChange();
+    expect(prepared.verificationRequirements).toMatchObject({
+      required: true,
+      checkBefore: 'build',
+      independentSession: true,
+      capabilityStatus: 'host-check-required',
+      unavailable: { action: 'stop-before-build' },
+    });
     const before = await inspectNativeSdkRun(root, name);
     await advanceNativeSdkChange(root, name, {
       expectedAction: 'confirm-shape',
@@ -234,6 +241,15 @@ describe('Native SDK read work budgets', () => {
     });
     expect(claimed.actions.find((action) => action.id === pending.id)?.status).toBe('running');
     const waiting = await inspectNativeSdkStatus({ projectRoot: root, name });
+    expect(waiting.activeActions![0].outcomeRequest!.outcome.output).toMatchObject({
+      summary: expect.any(String),
+      addressedAcceptanceIds: before.state.acceptance.map(({ id }) => id),
+      acceptanceReview: before.state.acceptance.map(({ id }) => ({ id })),
+      verificationChecks: [{ executable: expect.any(String), argv: expect.any(Array) }],
+    });
+    expect(waiting.activeActions![0].failureOutcomeRequest).toMatchObject({
+      outcome: { status: 'failed', output: { summary: expect.any(String) } },
+    });
     expect(waiting.continuation).toMatchObject({ mode: 'wait', commandArgs: null, cwd: root });
     expect(waiting.activeActions![0].input).toEqual(
       claimed.actions.find((action) => action.id === pending.id)!.input,

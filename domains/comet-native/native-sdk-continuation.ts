@@ -103,7 +103,94 @@ function sdkDispatchCommand(applicationId: string, projectRoot: string): string[
 }
 
 /** 模板只绑定原领取身份；状态和结果必须来自本次真实执行。 */
-function nativeSdkOutcomeRequest(run: WorkflowRun, action: RuntimeAction) {
+function nativeSdkOutcomeOutput(
+  run: WorkflowRun,
+  state: NativePortableState,
+  action: RuntimeAction,
+): RuntimeValue {
+  const activation = (action.input as { activation?: Record<string, RuntimeValue> })?.activation;
+  const check = {
+    id: '<check-id>',
+    name: '<check-name>',
+    executable: '<executable>',
+    argv: ['<argument>'],
+    cwdRef: '.',
+    timeoutMs: '<positive-integer>',
+    repeatable: '<true|false>',
+  };
+  const acceptance = (
+    Array.isArray(activation?.acceptance)
+      ? (activation.acceptance as { id: string }[])
+      : state.acceptance
+  ).map(({ id }) => ({ id, result: '<passed|failed|blocked>', reason: '<observed-evidence>' }));
+  if (['build.builder', 'supervisor.parent.builder'].includes(action.stepId))
+    return {
+      summary: '<actual-implementation-summary>',
+      addressedAcceptanceIds: state.acceptance.map(({ id }) => id),
+      acceptanceReview: state.acceptance.map(({ id }) => ({
+        id,
+        status: '<implemented-with-evidence|implemented-no-evidence|not-implemented|known-fail>',
+        evidence: ['<actual-implementation-evidence>'],
+        note: '<self-review>',
+      })),
+      checks: [
+        { name: '<check-name>', result: '<passed|failed|not-run>', note: '<actual-result>' },
+      ],
+      knownLimits: ['<actual-limit-or-remove-entry>'],
+      submittedAt: '<ISO-8601-UTC-time>',
+      verificationChecks: [check],
+      ...(action.stepId === 'supervisor.parent.builder'
+        ? { candidateCommit: '<current-integration-HEAD>' }
+        : {}),
+    };
+  if (action.stepId === 'verify.verifier')
+    return {
+      candidateId: state.builder_handoff?.candidate_id ?? null,
+      verifierExecutionRef: action.claim?.sessionId ?? '<independent-session-id>',
+      response: {
+        kind: 'final-result',
+        result: {
+          iteration: state.loop.iteration,
+          attempt: state.loop.attempt,
+          verdict: '<pass|fail|blocked>',
+          acceptance,
+          risks: ['<observed-risk-or-remove-entry>'],
+          summary: '<independent-verification-summary>',
+        },
+      },
+    };
+  if (action.stepId === 'supervisor.child.builder')
+    return { candidateCommit: '<current-child-HEAD>', verificationChecks: [check] };
+  if (action.stepId === 'supervisor.child.verifier')
+    return {
+      candidateCommit: activation?.candidateCommit ?? null,
+      verdict: '<pass|fail|blocked>',
+      evidence: {
+        summary: '<independent-verification-summary>',
+        checks: (
+          (
+            run.actions.find(({ id }) => id === activation?.checkActionId)?.outcome?.output as
+              { checks?: { id: string }[] } | undefined
+          )?.checks ?? []
+        ).map(({ id }) => id),
+        acceptance,
+      },
+      integrationChecks: [{ ...check, repeatable: true }],
+    };
+  if (action.stepId === 'supervisor.child.integration-repair')
+    return {
+      summary: '<repair-summary>',
+      integrationCommit: '<new-integration-HEAD>',
+      integrationChecks: [{ ...check, repeatable: true }],
+    };
+  return '<actual-action-output>';
+}
+
+function nativeSdkOutcomeRequest(
+  run: WorkflowRun,
+  action: RuntimeAction,
+  state: NativePortableState,
+) {
   if (!action.claim || !['running', 'unknown'].includes(action.status)) return null;
   return {
     operation: 'record-outcome',
@@ -114,9 +201,62 @@ function nativeSdkOutcomeRequest(run: WorkflowRun, action: RuntimeAction) {
       inputHash: action.inputHash,
       claimToken: action.claim.token,
       outcomeId: '<outcome-id>',
-      status: '<succeeded|failed>',
-      output: '<actual-action-output>',
+      status: action.type === 'handoff' ? 'succeeded' : '<succeeded|failed>',
+      output: nativeSdkOutcomeOutput(run, state, action),
     },
+  };
+}
+
+function nativeSdkOutcomeAlternatives(
+  run: WorkflowRun,
+  action: RuntimeAction,
+  state: NativePortableState,
+) {
+  const request = nativeSdkOutcomeRequest(run, action, state);
+  if (!request || action.type !== 'handoff') return {};
+  return {
+    outcomeTemplateInstruction:
+      state.language === 'zh-CN'
+        ? '用实际结果替换全部占位值，删除不适用的列表项。succeeded 表示任务已完成，验收是否通过由 verdict 表达。保留原领取身份，禁止直接提交未填写的模板。'
+        : 'Replace every placeholder with observed results; remove unused list entries. succeeded means the task finished, not that acceptance passed. Keep the original claim identity. Never submit this template unchanged.',
+    failureOutcomeRequest: {
+      ...request,
+      outcome: {
+        ...request.outcome,
+        status: 'failed',
+        output: { summary: '<actual-execution-failure>' },
+      },
+    },
+    ...(action.stepId === 'verify.verifier'
+      ? {
+          requestChecksOutcomeRequest: {
+            ...request,
+            outcome: {
+              ...request.outcome,
+              output: {
+                candidateId: state.builder_handoff?.candidate_id ?? null,
+                verifierExecutionRef: action.claim?.sessionId ?? null,
+                response: {
+                  kind: 'request-checks',
+                  iteration: state.loop.iteration,
+                  attempt: state.loop.attempt,
+                  checks: [
+                    {
+                      id: '<check-id>',
+                      name: '<check-name>',
+                      executable: '<executable>',
+                      argv: ['<argument>'],
+                      cwdRef: '.',
+                      timeoutMs: '<positive-integer>',
+                      repeatable: '<true|false>',
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }
+      : {}),
   };
 }
 
@@ -168,16 +308,33 @@ export async function projectNativeSdkDispatchResult(options: {
   const action = run.actions.find((entry) => entry.id === options.actionId);
   if (!action) throw new Error(`Native SDK Action ${options.actionId} is missing`);
   const applicationId = options.applicationId ?? 'native';
-  const outcomeRequest = nativeSdkOutcomeRequest(run, action);
+  const outcomeRequest = nativeSdkOutcomeRequest(run, action, state);
   const projection = await projectNativeSdkContinuation(options);
   // 领取响应已经包含完整 Action；原任务索引复用该正文，避免重复序列化输入。
   const activeActions =
     'activeActions' in projection
       ? projection.activeActions?.map((current) => {
           if (current.id !== action.id) return current;
-          const { input, ...identity } = current;
+          const { input, outcomeRequest: _outcomeRequest, ...identity } = current;
           void input;
-          return { ...identity, inputRef: 'action.input' };
+          void _outcomeRequest;
+          for (const field of [
+            'outcomeTemplateInstruction',
+            'failureOutcomeRequest',
+            'requestChecksOutcomeRequest',
+          ])
+            Reflect.deleteProperty(identity, field);
+          return {
+            ...identity,
+            inputRef: 'action.input',
+            outcomeRequestRef: 'outcomeRequest',
+            ...(action.type === 'handoff'
+              ? { failureOutcomeRequestRef: 'failureOutcomeRequest' }
+              : {}),
+            ...(action.stepId === 'verify.verifier'
+              ? { requestChecksOutcomeRequestRef: 'requestChecksOutcomeRequest' }
+              : {}),
+          };
         })
       : undefined;
   return {
@@ -190,6 +347,7 @@ export async function projectNativeSdkDispatchResult(options: {
     state,
     action,
     ...(outcomeRequest ? { outcomeRequest } : {}),
+    ...nativeSdkOutcomeAlternatives(run, action, state),
     ...projection,
     ...(activeActions ? { activeActions } : {}),
     inspection: {
@@ -448,6 +606,27 @@ export async function projectNativeSdkContinuation(options: {
           : sdkCommandArgs(['comet', 'native', 'next', state.name], projectRoot),
       ...(action.type === 'handoff'
         ? {
+            ...(action.ref?.includes('verifier')
+              ? {
+                  sessionRequirements: {
+                    independent: true,
+                    readOnly: true,
+                    mustDifferFromSessionId:
+                      action.stepId === 'verify.verifier'
+                        ? (state.builder_handoff?.builder_execution_ref ?? null)
+                        : ((action.input as { activation?: { builderSessionId?: string } })
+                            ?.activation?.builderSessionId ?? null),
+                    resumeCommandArgs: sdkCommandArgs(
+                      ['comet', 'native', 'status', state.name],
+                      projectRoot,
+                    ),
+                    instruction: localized(
+                      'Launch a separate read-only session in this project. Pass this Action input and claimRequest to it. That session must claim with its own stable session ID before verification and submit its own outcome; the Builder must not claim on its behalf.',
+                      '在此项目启动独立只读会话，将本 Action 输入和 claimRequest 交给它。由该会话在验收前使用自己的稳定会话标识领取，并回报自己的结果；Builder 不代领。',
+                    ),
+                  },
+                }
+              : {}),
             claimRequest: {
               operation: 'claim',
               runId: run.runId,
@@ -984,8 +1163,55 @@ export async function projectNativeSdkContinuation(options: {
         userCommunication: communication(edit.instruction ?? '先处理当前编辑复核。'),
       };
   }
+  if (
+    state.phase === 'shape' ||
+    (state.phase === 'build' &&
+      nextAction?.type === 'handoff' &&
+      !nextAction.ref?.includes('verifier'))
+  ) {
+    continuation = {
+      ...continuation,
+      userCommunication: {
+        ...continuation.userCommunication,
+        agentInstruction:
+          localized(
+            'Check verificationRequirements before starting implementation. If this host has neither an independent subagent nor a separate Verifier session, explain the limitation and arrange that session before Build. ',
+            '开始实现前按 verificationRequirements 核对宿主能力；没有独立子 Agent 或另一个 Verifier 会话时，先说明限制并安排会话，再开始 Build。',
+          ) + continuation.userCommunication.agentInstruction,
+      },
+    };
+  }
   return {
     continuation: bindSdkContinuation(continuation, projectRoot),
+    ...(state.phase === 'shape' ||
+    (state.phase === 'build' &&
+      nextAction?.type === 'handoff' &&
+      !nextAction.ref?.includes('verifier'))
+      ? {
+          verificationRequirements: {
+            required: true,
+            checkBefore: 'build',
+            independentSession: true,
+            capabilityStatus: 'host-check-required',
+            supportedModes: ['subagent', 'separate-session'],
+            instruction: localized(
+              'Before starting Build, check that this host can provide a separate read-only Verifier session. Runtime cannot detect host capabilities. A separate session may resume this same project and claim the Verifier Action; use its own session identity and preserve the original task when waiting.',
+              '开始 Build 前，先核对宿主能否提供独立只读 Verifier 会话；Runtime 无法自动探测宿主能力。可用独立子 Agent，或在同一项目另开会话领取 Verifier Action；使用该会话自己的执行标识，等待时继续跟踪原任务。',
+            ),
+            unavailable: {
+              action: 'stop-before-build',
+              instruction: localized(
+                'Explain the missing capability before implementation. Arrange a separate Verifier session, then resume the same Run. Preserve completed work and checks; never fabricate independent verification or repeatedly retry an unavailable executor.',
+                '实现前说明缺少独立验收能力，安排另一个 Verifier 会话后恢复同一 Run。保留已有工作和检查，不伪造独立验收，不反复重试不可用的执行者。',
+              ),
+              resumeCommandArgs: sdkCommandArgs(
+                ['comet', 'native', 'status', state.name],
+                projectRoot,
+              ),
+            },
+          },
+        }
+      : {}),
     ...(checkExecutions.length > 0 ? { checkExecutions } : {}),
     ...(active.length > 0
       ? {
@@ -1000,7 +1226,8 @@ export async function projectNativeSdkContinuation(options: {
             ref: action.ref,
             claim: action.claim,
             commandArgs: dispatchCommandArgs,
-            outcomeRequest: nativeSdkOutcomeRequest(run, action),
+            outcomeRequest: nativeSdkOutcomeRequest(run, action, state),
+            ...nativeSdkOutcomeAlternatives(run, action, state),
             ...nativeSdkHostRecoveryRequests(run, action),
           })),
         }
