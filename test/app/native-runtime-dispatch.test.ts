@@ -139,6 +139,13 @@ describe('Native dispatch CLI presentation', () => {
     );
     expect(compact.data.activeActions[0].outcomeRequestRef).toBe('outcomeRequest');
     expect(compact.data.activeActions[0]).not.toHaveProperty('outcomeRequest');
+    expect(compact.data.activeActions[0].contextRequest).toMatchObject({
+      phase: 'build',
+      contextMode: 'snapshot',
+      commandArgs: expect.arrayContaining([root, 'builder-session', '--context-mode', 'snapshot']),
+    });
+    expect(compact.data.continuation).not.toHaveProperty('contextRequest');
+    expect(compact.data.activeActions[0].contextRequest).not.toHaveProperty('instruction');
     for (const key of ['actions', 'outputs', 'actionContexts', 'waits'])
       expect(compact.data).not.toHaveProperty(key);
     expect(Buffer.byteLength(JSON.stringify(compact.data))).toBeLessThan(

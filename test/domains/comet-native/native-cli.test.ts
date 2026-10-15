@@ -1322,7 +1322,14 @@ describe('Comet Native CLI dispatcher', () => {
         continuation: { action: 'prepare-shape-confirmation' },
       },
     });
-    expect(JSON.stringify(result.data)).not.toMatch(/hash|snapshot/iu);
+    const state = await readNativePortableChange(paths, 'remove-capability');
+    expect(state.spec_changes).toEqual([
+      { capability: 'legacy-capability', operation: 'remove', source: null },
+    ]);
+    expect(JSON.stringify(state)).not.toMatch(/hash|snapshot/iu);
+    expect(result).toMatchObject({
+      data: { continuation: { contextRequest: { contextMode: 'snapshot' } } },
+    });
   });
 
   it('shows a brief larger than the retired per-file read budget', async () => {

@@ -316,7 +316,7 @@ export async function projectNativeSdkDispatchResult(options: {
     'activeActions' in projection
       ? projection.activeActions?.map((current) => {
           if (current.id !== action.id) return current;
-          const { input, outcomeRequest: _outcomeRequest, ...identity } = current;
+          const { input, outcomeRequest: _outcomeRequest, contextRequest, ...identity } = current;
           void input;
           void _outcomeRequest;
           for (const field of [
@@ -327,6 +327,15 @@ export async function projectNativeSdkDispatchResult(options: {
             Reflect.deleteProperty(identity, field);
           return {
             ...identity,
+            ...(contextRequest
+              ? {
+                  contextRequest: {
+                    phase: contextRequest.phase,
+                    contextMode: contextRequest.contextMode,
+                    commandArgs: contextRequest.commandArgs,
+                  },
+                }
+              : {}),
             inputRef: 'action.input',
             outcomeRequestRef: 'outcomeRequest',
             ...(action.type === 'handoff'
@@ -338,6 +347,12 @@ export async function projectNativeSdkDispatchResult(options: {
           };
         })
       : undefined;
+  // 领取方使用当前 Action 的请求；完整协议仍由状态响应和 Skill 提供。
+  const { contextRequest: _phaseContext, ...continuationWithoutContext } = projection.continuation;
+  void _phaseContext;
+  const hasClaimedContext = activeActions?.some(
+    (current) => current.id === action.id && 'contextRequest' in current,
+  );
   return {
     schema: 'comet.native.dispatch-result.v1' as const,
     runId: run.runId,
@@ -350,6 +365,7 @@ export async function projectNativeSdkDispatchResult(options: {
     ...(outcomeRequest ? { outcomeRequest } : {}),
     ...nativeSdkOutcomeAlternatives(run, action, state),
     ...projection,
+    ...(hasClaimedContext ? { continuation: continuationWithoutContext } : {}),
     ...(activeActions ? { activeActions } : {}),
     inspection: {
       commandArgs: [
