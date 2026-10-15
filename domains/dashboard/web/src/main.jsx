@@ -612,7 +612,7 @@ function DashboardApp({
       setSummaryDialog(key);
       return;
     }
-    setQuery('');
+    clearSearch();
     if (['active', 'archived'].includes(key)) {
       setSummaryFilter(null);
       setTab(tab === key && !summaryFilter ? 'all' : key);
@@ -633,6 +633,11 @@ function DashboardApp({
   );
   const workspaceScope = `${useDemo ? 'demo' : 'project'}:${activeProjectId ?? ''}:${evalOpen ? 'eval' : (pluginSelection ?? workflow ?? 'default')}`;
   const [query, setQuery] = useDashboardViewState(workspaceScope, 'query', '');
+  const [searchResetToken, setSearchResetToken] = useState(0);
+  const clearSearch = () => {
+    setQuery('');
+    setSearchResetToken((value) => value + 1);
+  };
   const filteredSummaryRows = useMemo(
     () =>
       summaryData.rows.filter(
@@ -1465,6 +1470,14 @@ function DashboardApp({
     [activeProjectId, toast, useDemo],
   );
 
+  const copyNativeChangeName = useCallback(
+    (name) =>
+      copyText(name)
+        .then(() => toast(t('Change 名称已复制')))
+        .catch(() => toast(t('复制 Change 名称失败'), 'error')),
+    [toast],
+  );
+
   const selected = selectedDetail;
   const visible = useMemo(
     () =>
@@ -1769,6 +1782,7 @@ function DashboardApp({
           loading={loading || Boolean(pluginSelection && pluginLoading)}
           query={query}
           onQuery={setQuery}
+          searchKey={`${workspaceScope}:${searchResetToken}`}
           showSearch={!pluginSelection && (evalOpen || workflow !== 'any')}
           searchPlaceholder={
             evalOpen
@@ -1907,11 +1921,7 @@ function DashboardApp({
                   nativeDetailError?.change && selectNativeChange(nativeDetailError.change)
                 }
                 onPreview={setArtifact}
-                onCopyChangeName={(name) =>
-                  copyText(name)
-                    .then(() => toast(t('Change 名称已复制')))
-                    .catch(() => toast(t('复制 Change 名称失败'), 'error'))
-                }
+                onCopyChangeName={copyNativeChangeName}
               />
             ) : workflow === 'classic' ? (
               <Dashboard
@@ -1957,7 +1967,7 @@ function DashboardApp({
           onLocate={(change) => {
             setSummaryFilter(summaryDialog);
             setTab('active');
-            setQuery('');
+            clearSearch();
             setSummaryTarget(change);
             setSummaryDialog(null);
             if (workflow !== 'native') selectChange(dashboardChangeKey(change));
@@ -2089,11 +2099,48 @@ function DashboardApp({
   );
 }
 
+function DashboardSearchInput({ query, onQuery, placeholder }) {
+  const [draft, setDraft] = useState(query);
+  const [composing, setComposing] = useState(false);
+  const submittedQuery = useRef(query);
+  const onQueryRef = useRef(onQuery);
+  onQueryRef.current = onQuery;
+  useEffect(() => {
+    if (query !== submittedQuery.current) {
+      submittedQuery.current = query;
+      setDraft(query);
+    }
+  }, [query]);
+  useEffect(() => {
+    if (composing || draft === query) return undefined;
+    const timer = window.setTimeout(() => {
+      submittedQuery.current = draft;
+      onQueryRef.current(draft);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [draft, query, composing]);
+  return (
+    <Input
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onCompositionStart={() => setComposing(true)}
+      onCompositionEnd={(event) => {
+        setComposing(false);
+        setDraft(event.currentTarget.value);
+      }}
+      prefix={<SearchOutlined className="text-meta" />}
+      placeholder={placeholder}
+      allowClear
+    />
+  );
+}
+
 function Topbar({
   project,
   loading,
   query,
   onQuery,
+  searchKey,
   searchPlaceholder = t('搜索变更、产物或文件…'),
   showSearch = true,
   projects,
@@ -2210,12 +2257,11 @@ function Topbar({
       </div>
       {showSearch && (
         <div className="comet-header-search">
-          <Input
-            value={query}
-            onChange={(event) => onQuery(event.target.value)}
-            prefix={<SearchOutlined className="text-meta" />}
+          <DashboardSearchInput
+            key={searchKey}
+            query={query}
+            onQuery={onQuery}
             placeholder={searchPlaceholder}
-            allowClear
           />
         </div>
       )}

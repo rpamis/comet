@@ -6017,3 +6017,132 @@ test('uses the same Eval selection style for memory and knowledge in both themes
     }
   }
 });
+
+test('keeps Native search typing local and refreshes one selected detail once', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const counters = window as typeof window & { nativeAcceptanceReads: number };
+    counters.nativeAcceptanceReads = 0;
+    const json = Response.prototype.json;
+    Response.prototype.json = async function () {
+      const value = await json.call(this);
+      if (/\/native-change(?:\?|$)/u.test(this.url) && value?.acceptanceItems) {
+        const items = value.acceptanceItems;
+        Object.defineProperty(value, 'acceptanceItems', {
+          enumerable: true,
+          get() {
+            counters.nativeAcceptanceReads += 1;
+            return items;
+          },
+        });
+      }
+      return value;
+    };
+  });
+  const { DEMO_SNAPSHOT } = await import('../../../domains/dashboard/web/demo.js');
+  const base = structuredClone(DEMO_SNAPSHOT);
+  const row = structuredClone(base.native.changes.find((change) => change.status === 'active')!);
+  row.name = 'search-performance-fixture';
+  row.locator = 'search-performance-fixture';
+  row.children = [];
+  row.acceptanceItems = Array.from({ length: 60 }, (_, index) => ({
+    ...row.acceptanceItems[0],
+    id: 'A' + index,
+    text: 'Acceptance item ' + index,
+  }));
+  row.acceptance = { total: 60, passed: 0, failed: 0, blocked: 0, pending: 60 };
+  let detailRequests = 0;
+  let listRequests = 0;
+  await page.route('**/api/dashboard/**', (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'search-fixture',
+          projects: [
+            {
+              id: 'search-fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (url.pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: base.project,
+          summary: base.summary,
+          git: base.git,
+          risks: [],
+          initialChanges: { status: 'active', items: [], total: 0, nextCursor: null },
+          native: {
+            ...base.native,
+            changes: [],
+            activeChangeCount: 1,
+            archivedChangeCount: 0,
+            totalChangeCount: 1,
+          },
+        },
+      });
+    if (url.pathname.endsWith('/changes'))
+      return route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
+    if (url.pathname.endsWith('/native-changes')) {
+      listRequests++;
+      return route.fulfill({
+        json: { status: 'active', items: [row], total: 1, nextCursor: null },
+      });
+    }
+    if (url.pathname.endsWith('/native-change')) {
+      detailRequests++;
+      return route.fulfill({ json: row });
+    }
+    if (url.pathname.endsWith('/plugins')) return route.fulfill({ json: { pages: [] } });
+    return route.fulfill({ json: {} });
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await expect(page.locator('.native-change-detail h3.truncate')).toHaveText(row.name);
+  const firstDetails = detailRequests;
+  await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+  await expect(page.getByText('状态已刷新', { exact: true })).toBeVisible();
+  await page.waitForTimeout(100);
+  expect(detailRequests - firstDetails).toBe(1);
+  await page.clock.install();
+  const beforeLists = listRequests;
+  const beforeDetails = detailRequests;
+  const beforeAcceptanceReads = await page.evaluate(
+    () => (window as typeof window & { nativeAcceptanceReads: number }).nativeAcceptanceReads,
+  );
+  expect(beforeAcceptanceReads).toBeGreaterThan(0);
+  const search = page.locator('.comet-header-search input');
+  await search.pressSequentially('search', { delay: 10 });
+  await expect(search).toHaveValue('search');
+  expect(listRequests).toBe(beforeLists);
+  expect(detailRequests).toBe(beforeDetails);
+  expect(
+    await page.evaluate(
+      () => (window as typeof window & { nativeAcceptanceReads: number }).nativeAcceptanceReads,
+    ),
+  ).toBe(beforeAcceptanceReads);
+  await expect(page.locator('.native-change-detail h3.truncate')).toHaveText(row.name);
+  await page.clock.runFor(700);
+  await expect.poll(() => listRequests).toBeGreaterThan(beforeLists);
+  await expect(page.locator('.native-change-detail h3.truncate')).toHaveText(row.name);
+  const beforeComposition = listRequests;
+  await search.dispatchEvent('compositionstart');
+  await search.fill('输入');
+  await page.clock.runFor(700);
+  expect(listRequests).toBe(beforeComposition);
+  await search.dispatchEvent('compositionend');
+  await page.clock.runFor(700);
+  await expect.poll(() => listRequests).toBeGreaterThan(beforeComposition);
+  await search.fill('');
+  await page.clock.runFor(700);
+  await expect(search).toHaveValue('');
+  await expect(page.locator('.native-change-detail h3.truncate')).toHaveText(row.name);
+});

@@ -11,9 +11,9 @@
  * IO and `git` forks without any cross-invocation consistency risk — the
  * cache dies with the process.
  *
- * The cache is opt-in: only the Hook entry point activates it, and only the
- * Hook-path read functions consult it. CLI commands, writes, and Native
- * receipt/hash verification never go through this cache. This module lives
+ * The cache is opt-in: Hook decisions and read-only Dashboard discovery
+ * scans activate it for one invocation. Runtime mutations and Native
+ * receipt/hash verification do not activate this cache. This module lives
  * in `platform/` so every domain can share it without creating import
  * cycles (no domain dependency on a higher layer).
  */
@@ -45,7 +45,7 @@ export function invalidateHookReadCache(): void {
  * Run `work` with a per-invocation read cache active. Reads issued through
  * `memoizedHookRead` during `work` are cached by their argument key for the
  * duration of the call. The cache is dropped as soon as `work` settles, so it
- * never leaks across Hook invocations or into CLI command paths.
+ * never leaks across invocations or into Runtime mutation paths.
  */
 export async function runWithHookReadCache<T>(work: () => Promise<T>): Promise<T> {
   if (currentScope() !== null) {

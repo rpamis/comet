@@ -353,9 +353,12 @@ export function NativeWorkflowPanel({
     selectableChanges.find((change) => changeKey(change) === selectedKey) ??
     selectableChanges[0] ??
     null;
+  const selectedSummaryKey = selectedSummary ? changeKey(selectedSummary) : null;
+  const selectedSummaryRef = useRef(selectedSummary);
+  selectedSummaryRef.current = selectedSummary;
   useEffect(() => {
-    if (selectedSummary) onSelect?.(selectedSummary);
-  }, [onSelect, selectedSummary]);
+    if (selectedSummaryRef.current) onSelect?.(selectedSummaryRef.current);
+  }, [onSelect, selectedSummaryKey]);
   const selected = serverPaged
     ? selectedDetail && selectedSummary && changeKey(selectedDetail) === changeKey(selectedSummary)
       ? selectedDetail
@@ -945,7 +948,11 @@ function NativeChangeListSkeleton({ compact = false }) {
   );
 }
 
-function NativeChangeDetail({ change, onPreview, onCopyChangeName }) {
+const NativeChangeDetail = React.memo(function NativeChangeDetail({
+  change,
+  onPreview,
+  onCopyChangeName,
+}) {
   useDashboardLanguage();
   const [copied, setCopied] = useState(false);
   useEffect(() => setCopied(false), [change.name]);
@@ -1002,7 +1009,7 @@ function NativeChangeDetail({ change, onPreview, onCopyChangeName }) {
       </div>
     </section>
   );
-}
+});
 
 function NativeChangeDetailSkeleton() {
   useDashboardLanguage();

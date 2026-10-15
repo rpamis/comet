@@ -473,6 +473,7 @@
       "domains/comet-native/native-runtime-ownership.ts",
       "domains/comet-native/native-sdk-supervisor-plan.ts",
       "domains/comet-native/native-sdk-state-store.ts",
+      "domains/comet-native/native-supervisor-state.ts",
       "domains/comet-native/native-sdk-status.ts",
       "domains/comet-native/native-selection.ts",
       "domains/comet-native/native-specs.ts",

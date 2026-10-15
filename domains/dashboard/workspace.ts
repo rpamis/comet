@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
 
 import { inspectGitWorktree, listGitWorktrees } from '../../platform/paths/git-worktree.js';
 import { PROJECT_CONFIG_FILE } from '../comet-native/native-paths.js';
@@ -77,6 +78,15 @@ function hasProjectConfig(root: string): boolean {
  * workspace root, and sibling worktrees map to the same relative subdirectory.
  */
 export function collectDashboardWorkspaceSources(projectRoot: string): DashboardWorkspaceSource[] {
+  return cachedDashboardWorkspaceSources(path.resolve(projectRoot));
+}
+
+const cachedDashboardWorkspaceSources = memoizedHookReadSync(
+  'dashboardWorkspaceSources',
+  collectDashboardWorkspaceSourcesUncached,
+);
+
+function collectDashboardWorkspaceSourcesUncached(projectRoot: string): DashboardWorkspaceSource[] {
   const requestedRoot = path.resolve(projectRoot);
   const requestedContext = inspectGitWorktree(requestedRoot);
   const worktreeRoot = requestedContext.currentWorktreeRoot ?? requestedRoot;

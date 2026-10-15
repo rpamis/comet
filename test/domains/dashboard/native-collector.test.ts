@@ -36,6 +36,8 @@ import {
   collectNativeDashboardProjection,
 } from '../../../domains/dashboard/native-collector.js';
 import { DashboardIndexStore } from '../../../domains/dashboard/index-store.js';
+import { DashboardIndexReconciler } from '../../../domains/dashboard/index-reconciler.js';
+import * as dashboardWorkspace from '../../../domains/dashboard/workspace.js';
 import * as nativeRunStore from '../../../domains/comet-native/native-sdk-state-store.js';
 import * as applicationRunStore from '../../../domains/workflow-application/application.js';
 import * as changeOwnership from '../../../domains/workflow-contract/change-runtime-owner.js';
@@ -198,14 +200,20 @@ function localExecution(
 
 describe('Native Dashboard v2 collector', () => {
   let projectRoot: string;
+  let cacheRoot: string;
 
   beforeEach(async () => {
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-dashboard-collector-'));
+    cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-dashboard-home-'));
+    for (const key of ['HOME', 'USERPROFILE', 'LOCALAPPDATA', 'XDG_CACHE_HOME'])
+      vi.stubEnv(key, cacheRoot);
   });
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     await fs.rm(projectRoot, { recursive: true, force: true });
+    await fs.rm(cacheRoot, { recursive: true, force: true });
   });
 
   async function enableNative() {
@@ -1097,6 +1105,60 @@ describe('Native Dashboard v2 collector', () => {
         locator: 'not-a-native-locator',
       }),
     ).resolves.toBeNull();
+  });
+
+  it('does not rebuild unchanged Native directory indexes on the next polling interval', async () => {
+    const paths = await enableNative();
+    await writeActiveState(activeShapeState('unchanged-index'));
+    await writeActiveState(activeShapeState('unchanged-second'));
+    await fs.mkdir(paths.archiveDir, { recursive: true });
+    for (let index = 0; index < 120; index += 1)
+      await fs.mkdir(path.join(paths.archiveDir, `2026-10-15-archive-${index}`));
+    await collectNativeDashboardOverview(projectRoot);
+    const pending: Promise<unknown>[] = [];
+    vi.spyOn(DashboardIndexReconciler.prototype, 'schedule').mockImplementation((_key, task) => {
+      pending.push(Promise.resolve().then(task));
+    });
+    const readdir = vi.spyOn(fs, 'readdir');
+    const eligible = vi.spyOn(dashboardWorkspace, 'isDashboardWorkspaceSourceEligible');
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now + 31_000);
+    await collectNativeDashboardOverview(projectRoot);
+    await Promise.all(pending);
+    expect(readdir).not.toHaveBeenCalled();
+    expect(eligible).toHaveBeenCalledTimes(1);
+    const first = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'active',
+      limit: 1,
+    });
+    expect(first.nextCursor).not.toBeNull();
+    await collectNativeDashboardChangePage(projectRoot, {
+      status: 'active',
+      limit: 1,
+      cursor: first.nextCursor!,
+    });
+    expect(readdir).not.toHaveBeenCalled();
+  });
+
+  it('refreshes persisted Native paths when the Runtime data root changes', async () => {
+    await enableNative();
+    await writeActiveState(activeShapeState('runtime-root'));
+    await collectNativeDashboardOverview(projectRoot);
+    const dataRoot = path.join(cacheRoot, 'other-runtime-data');
+    vi.stubEnv('COMET_DATA_DIR', dataRoot);
+    await collectNativeDashboardOverview(projectRoot);
+    const store = new DashboardIndexStore({ projectRoot });
+    await store.open();
+    try {
+      const index = await store.readNativeIndex<{
+        all: Array<{ source: { paths: { workspaceRuntimeRoot: string } } }>;
+      }>();
+      expect(index!.all[0].source.paths.workspaceRuntimeRoot.startsWith(dataRoot + path.sep)).toBe(
+        true,
+      );
+    } finally {
+      await store.close();
+    }
   });
 
   it('serves a warm Native list from the SQLite index before background refresh', async () => {

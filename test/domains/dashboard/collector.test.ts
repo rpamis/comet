@@ -71,13 +71,112 @@ function git(root: string, args: string[]): string {
 
 describe('collectDashboardSnapshot', () => {
   let root: string;
+  let cacheRoot: string;
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-collector-'));
+    cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-collector-home-'));
+    for (const key of ['HOME', 'USERPROFILE', 'LOCALAPPDATA', 'XDG_CACHE_HOME'])
+      vi.stubEnv(key, cacheRoot);
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(cacheRoot, { recursive: true, force: true });
+  });
+
+  it('bounds overview path inspection across linked worktrees and archived changes', async () => {
+    git(root, ['init', '-q']);
+    git(root, [
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '--allow-empty',
+      '-qm',
+      'seed',
+    ]);
+    const workspaces = [root];
+    for (let index = 1; index < 6; index += 1) {
+      const worktree = path.join(root, '.worktrees', `workspace-${index}`);
+      git(root, ['worktree', 'add', '-qb', `dashboard-${index}`, worktree]);
+      workspaces.push(worktree);
+    }
+    for (const [workspaceIndex, workspace] of workspaces.entries()) {
+      for (let index = 0; index < 24; index += 1) {
+        await writeChange(workspace, {
+          name:
+            index < 4
+              ? `active-${workspaceIndex}-${index}`
+              : `2026-10-15-archived-${workspaceIndex}-${index}`,
+          status: index < 4 ? 'active' : 'archived',
+          yaml: { phase: index < 4 ? 'build' : 'archive', workflow: 'full' },
+          tasks: '- [ ] Task\n',
+          proposal: true,
+          design: true,
+          plan: true,
+        });
+      }
+    }
+    const lstat = vi.spyOn(fs, 'lstat');
+    const realpath = vi.spyOn(fs, 'realpath');
+    try {
+      const overview = await collectDashboardOverview(root);
+      expect(overview.summary).toMatchObject({ activeChanges: 24, archivedChanges: 120 });
+      const calls = { lstat: lstat.mock.calls.length, realpath: realpath.mock.calls.length };
+      console.info('Dashboard overview filesystem calls', calls);
+      expect(calls.lstat + calls.realpath).toBeLessThan(8000);
+      lstat.mockClear();
+      realpath.mockClear();
+      await collectDashboardOverview(root);
+      const warm = { lstat: lstat.mock.calls.length, realpath: realpath.mock.calls.length };
+      console.info('Unchanged Dashboard overview filesystem calls', warm);
+      expect(warm.lstat + warm.realpath).toBeLessThan(1500);
+      expect(
+        lstat.mock.calls.some(([file]) => String(file).replaceAll('\\', '/').includes('/archive/')),
+      ).toBe(false);
+    } finally {
+      lstat.mockRestore();
+      realpath.mockRestore();
+    }
+  });
+
+  it('refreshes cached Classic summaries after active files and external report changes', async () => {
+    await writeChange(root, {
+      name: 'cached',
+      yaml: { phase: 'build', verification_report: 'reports/result.md' },
+      tasks: '- [ ] Work\n',
+    });
+    expect((await collectDashboardOverview(root)).summary.tasksIncomplete).toBe(1);
+    const dir = path.join(root, 'openspec/changes/cached');
+    await fs.writeFile(path.join(dir, 'tasks.md'), '- [x] Work\n');
+    expect((await collectDashboardOverview(root)).summary.tasksIncomplete).toBe(0);
+    await fs.mkdir(path.join(root, 'reports'));
+    await fs.writeFile(path.join(root, 'reports/result.md'), '# Failed check\n');
+    expect((await collectDashboardOverview(root)).summary.verifyFailed).toBe(1);
+    await fs.rm(path.join(root, 'reports/result.md'));
+    expect((await collectDashboardOverview(root)).summary.verifyFailed).toBe(0);
+    await fs.writeFile(path.join(dir, '.comet.yaml'), 'phase: verify\n');
+    expect((await collectDashboardOverview(root)).initialChanges.items[0].phase).toBe('verify');
+  });
+
+  it('rejects a change directory replaced by a junction after a cached overview', async () => {
+    await writeChange(root, { name: 'cached', yaml: { phase: 'build' } });
+    expect((await collectDashboardOverview(root)).summary.activeChanges).toBe(1);
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-dashboard-cache-outside-'));
+    try {
+      await fs.writeFile(path.join(outside, '.comet.yaml'), 'phase: verify\nworkflow: secret\n');
+      const dir = path.join(root, 'openspec/changes/cached');
+      await fs.rename(dir, path.join(root, 'retained-change'));
+      await fs.symlink(outside, dir, process.platform === 'win32' ? 'junction' : 'dir');
+      const overview = await collectDashboardOverview(root);
+      expect(overview.summary.activeChanges).toBe(0);
+      expect(JSON.stringify(overview)).not.toContain('secret');
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
   });
 
   it('shows Classic checkpoint and progress from user Runtime without recreating project records', async () => {
