@@ -2,7 +2,6 @@ import { resolveClassicStateFile } from '../comet-classic/classic-state-file.js'
 import { inspectClassicProjectTarget } from '../comet-classic/classic-protected-path.js';
 import { promises as fs } from 'fs';
 import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
-import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
 import path from 'path';
 import os from 'node:os';
 import { collectGitSnapshot } from './git.js';
@@ -18,6 +17,7 @@ import { parseCometYaml, type CometYaml } from './yaml.js';
 import { resolveVerify } from './verify-parser.js';
 import {
   collectDashboardWorkspaceSources,
+  withDashboardReadScope,
   dashboardWorkspaceIdentity,
   encodeDashboardChangeLocator,
   parseDashboardChangeLocator,
@@ -193,6 +193,15 @@ export async function collectDashboardChangePage(
   projectPath: string,
   options: DashboardChangePageOptions,
 ): Promise<DashboardChangePage> {
+  return withDashboardReadScope(projectPath, () =>
+    collectDashboardChangePageUncached(projectPath, options),
+  );
+}
+
+async function collectDashboardChangePageUncached(
+  projectPath: string,
+  options: DashboardChangePageOptions,
+): Promise<DashboardChangePage> {
   const collection = await collectClassicChangeCandidates(path.resolve(projectPath));
   if (collection.errors.length > 0) {
     throw new DashboardChangeQueryError(collection.errors.join('\n'));
@@ -205,8 +214,8 @@ export async function collectDashboardOverview(
   projectPath: string,
   options: DashboardOverviewOptions = {},
 ): Promise<DashboardOverview> {
-  return withProjectIdentityScope(() =>
-    runWithHookReadCache(() => collectDashboardOverviewUncached(projectPath, options)),
+  return withDashboardReadScope(projectPath, () =>
+    collectDashboardOverviewUncached(projectPath, options),
   );
 }
 
@@ -267,6 +276,15 @@ async function collectDashboardOverviewUncached(
 
 /** Load one full Classic change after the user selects it in the explorer. */
 export async function collectDashboardChangeDetail(
+  projectPath: string,
+  locatorOrId: string,
+): Promise<ChangeDashboardItem | null> {
+  return withDashboardReadScope(projectPath, () =>
+    collectDashboardChangeDetailUncached(projectPath, locatorOrId),
+  );
+}
+
+async function collectDashboardChangeDetailUncached(
   projectPath: string,
   locatorOrId: string,
 ): Promise<ChangeDashboardItem | null> {

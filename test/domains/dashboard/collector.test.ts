@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { snapshotCometRuntimeMetrics } from '../../../platform/process/runtime-metrics.js';
 import {
   collectDashboardChangeDetail,
   collectDashboardChangePage,
@@ -84,6 +85,48 @@ describe('collectDashboardSnapshot', () => {
     vi.unstubAllEnvs();
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(cacheRoot, { recursive: true, force: true });
+  });
+
+  it('bounds selected Classic detail path inspection independently of overview', async () => {
+    await writeChange(root, {
+      name: 'selected',
+      yaml: { phase: 'build', workflow: 'full' },
+      tasks: '- [ ] Work\n',
+      proposal: true,
+      design: true,
+      plan: true,
+    });
+    const lstat = vi.spyOn(fs, 'lstat');
+    const realpath = vi.spyOn(fs, 'realpath');
+    try {
+      const detail = await collectDashboardChangeDetail(root, 'openspec/changes/selected');
+      expect(detail?.name).toBe('selected');
+      console.info(
+        'Classic selected detail path calls',
+        lstat.mock.calls.length,
+        realpath.mock.calls.length,
+      );
+      expect(lstat.mock.calls.length + realpath.mock.calls.length).toBeLessThan(250);
+    } finally {
+      lstat.mockRestore();
+      realpath.mockRestore();
+    }
+  });
+
+  it('reuses worktree discovery for consecutive detail reads and observes branch changes', async () => {
+    git(root, ['init', '-q']);
+    git(root, ['remote', 'add', 'origin', 'https://example.invalid/detail-performance.git']);
+    await writeChange(root, { name: 'selected', yaml: { phase: 'build' } });
+    await collectDashboardChangeDetail(root, 'openspec/changes/selected');
+    const before = snapshotCometRuntimeMetrics().gitCommands;
+    expect((await collectDashboardChangeDetail(root, 'openspec/changes/selected'))?.name).toBe(
+      'selected',
+    );
+    expect(snapshotCometRuntimeMetrics().gitCommands - before).toBeLessThanOrEqual(1);
+    git(root, ['symbolic-ref', 'HEAD', 'refs/heads/renamed']);
+    expect(
+      (await collectDashboardChangeDetail(root, 'openspec/changes/selected'))?.workspace.branch,
+    ).toBe('renamed');
   });
 
   it('bounds overview path inspection across linked worktrees and archived changes', async () => {

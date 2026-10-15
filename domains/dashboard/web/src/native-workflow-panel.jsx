@@ -14,7 +14,7 @@ import {
   SafetyCertificateOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Badge, Button, Empty, Skeleton, Tooltip } from 'antd';
+import { Badge, Button, Empty, Pagination, Skeleton, Tooltip } from 'antd';
 import {
   isNativePhaseRunning,
   nativeChangeBlockers,
@@ -1002,10 +1002,14 @@ const NativeChangeDetail = React.memo(function NativeChangeDetail({
           <NativeLoopRecoveryCard change={change} />
           <NativeScopeCard change={change} />
         </div>
-        <NativeAcceptanceCard change={change} />
-        <NativeVerificationCard change={change} />
+        <NativeAcceptanceCard key={changeKey(change)} change={change} />
+        <NativeVerificationCard key={changeKey(change)} change={change} />
         <NativeBlockersCard blockers={nativeChangeBlockers(change)} />
-        <NativeHistoryCard history={change.history ?? []} overflow={change.historyOverflow} />
+        <NativeHistoryCard
+          key={changeKey(change)}
+          history={change.history ?? []}
+          overflow={change.historyOverflow}
+        />
       </div>
     </section>
   );
@@ -1163,10 +1167,31 @@ function ScopeMetric({ label, value, tone }) {
   );
 }
 
+function useDetailPage(items) {
+  const [page, setPage] = useState(1);
+  const current = Math.min(page, Math.max(1, Math.ceil(items.length / 20)));
+  return {
+    items: items.slice((current - 1) * 20, current * 20),
+    pagination:
+      items.length > 20 ? (
+        <Pagination
+          className="mt-3"
+          size="small"
+          current={current}
+          pageSize={20}
+          total={items.length}
+          showSizeChanger={false}
+          onChange={setPage}
+        />
+      ) : null,
+  };
+}
+
 function NativeAcceptanceCard({ change }) {
   useDashboardLanguage();
   const acceptance = change.acceptance;
   const progress = acceptanceProgress(change);
+  const page = useDetailPage(change.acceptanceItems ?? []);
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -1191,7 +1216,7 @@ function NativeAcceptanceCard({ change }) {
       </div>
       {(change.acceptanceItems ?? []).length > 0 && (
         <ul className="mt-4 space-y-2 border-t border-border-soft pt-4">
-          {change.acceptanceItems.map((item) => (
+          {page.items.map((item) => (
             <li key={item.id} className="rounded-lg bg-surface px-3 py-3 text-xs">
               <div className="flex items-start gap-3">
                 <span className="font-mono text-meta">{item.id}</span>
@@ -1205,6 +1230,7 @@ function NativeAcceptanceCard({ change }) {
           ))}
         </ul>
       )}
+      {page.pagination}
     </article>
   );
 }
@@ -1222,6 +1248,7 @@ function AcceptanceMetric({ label, value }) {
 function NativeVerificationCard({ change }) {
   useDashboardLanguage();
   const checks = change.checks ?? [];
+  const page = useDetailPage(checks);
   const assurance = assurancePresentation(change);
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
@@ -1256,7 +1283,7 @@ function NativeVerificationCard({ change }) {
             {t('尚无持久化检查摘要。')}
           </p>
         ) : (
-          checks.map((check) => (
+          page.items.map((check) => (
             <div
               key={check.id}
               className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border-soft px-3 py-2.5 text-xs"
@@ -1277,6 +1304,7 @@ function NativeVerificationCard({ change }) {
           ))
         )}
       </div>
+      {page.pagination}
     </article>
   );
 }
@@ -1320,6 +1348,7 @@ function NativeBlockersCard({ blockers }) {
 
 function NativeHistoryCard({ history, overflow }) {
   useDashboardLanguage();
+  const page = useDetailPage(history);
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="flex items-center justify-between gap-3">
@@ -1343,7 +1372,7 @@ function NativeHistoryCard({ history, overflow }) {
         <p className="mt-3 text-xs text-muted">{t('尚无完成的循环记录。')}</p>
       ) : (
         <ol className="mt-4 space-y-2">
-          {history.map((entry, index) => (
+          {page.items.map((entry, index) => (
             <li
               key={`${entry.goalCycle}-${entry.iteration}-${entry.attempt}-${index}`}
               className="flex items-start gap-3 rounded-lg border border-border-soft px-3 py-3 text-xs"
@@ -1362,6 +1391,7 @@ function NativeHistoryCard({ history, overflow }) {
           ))}
         </ol>
       )}
+      {page.pagination}
     </article>
   );
 }

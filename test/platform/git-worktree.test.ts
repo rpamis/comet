@@ -182,6 +182,35 @@ describe('Git worktree inspection', () => {
     expect(snapshotCometRuntimeMetrics().gitCommands).toBeGreaterThan(before.gitCommands);
   });
 
+  it('waits for both asynchronous Git probes before falling back from a non-repository', async () => {
+    vi.stubEnv('GIT_CONFIG_GLOBAL', path.join(primary, 'empty-config'));
+    let release!: () => void;
+    const pending = new Promise<string>((resolve) => {
+      release = () => resolve('');
+    });
+    const probe = vi
+      .spyOn(commands, 'runExternalCommandAsync')
+      .mockImplementation(async (_command, args) => {
+        if (args.includes('rev-parse'))
+          throw new commands.ExternalCommandError('git', args, 'not a git repository');
+        return pending;
+      });
+    let read = false;
+    const query = createGitWorktreeReadCache().run(primary, async () => {
+      read = true;
+      return 'read';
+    });
+    try {
+      await vi.waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(read).toBe(false);
+    } finally {
+      release();
+      await query;
+    }
+    expect(read).toBe(true);
+  });
+
   it('refreshes worktree registrations and falls back for indirect configuration', async () => {
     const cache = createGitWorktreeReadCache();
     const query = () =>

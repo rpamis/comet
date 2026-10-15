@@ -5914,7 +5914,9 @@ test('Native summary reads every active page and retries failures without report
       return route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
     if (url.pathname.endsWith('/native-changes')) {
       const offset = Number(url.searchParams.get('cursor') ?? 0);
-      if (url.searchParams.get('limit') === '100') {
+      if (Number(url.searchParams.get('limit')) > 50)
+        return route.fulfill({ status: 400, json: { error: 'Page limit exceeds 50' } });
+      if (url.searchParams.get('limit') === '50') {
         summaryCursors.push(String(offset));
         if (delaySummary) await new Promise((resolve) => setTimeout(resolve, 300));
         if (fail && offset === 1)
@@ -6046,15 +6048,17 @@ test('keeps Native search typing local and refreshes one selected detail once', 
   row.name = 'search-performance-fixture';
   row.locator = 'search-performance-fixture';
   row.children = [];
-  row.acceptanceItems = Array.from({ length: 60 }, (_, index) => ({
+  row.acceptanceItems = Array.from({ length: 260 }, (_, index) => ({
     ...row.acceptanceItems[0],
     id: 'A' + index,
     text: 'Acceptance item ' + index,
   }));
-  row.acceptance = { total: 60, passed: 0, failed: 0, blocked: 0, pending: 60 };
+  row.acceptance = { total: 260, passed: 0, failed: 0, blocked: 0, pending: 260 };
   let detailRequests = 0;
   let listRequests = 0;
-  await page.route('**/api/dashboard/**', (route) => {
+  let holdSearch = false;
+  let releaseSearch: (() => void) | undefined;
+  await page.route('**/api/dashboard/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/api/dashboard/projects')
       return route.fulfill({
@@ -6092,6 +6096,11 @@ test('keeps Native search typing local and refreshes one selected detail once', 
       return route.fulfill({ json: { status: 'active', items: [], total: 0, nextCursor: null } });
     if (url.pathname.endsWith('/native-changes')) {
       listRequests++;
+      if (holdSearch && url.searchParams.get('q')) {
+        await new Promise<void>((resolve) => {
+          releaseSearch = resolve;
+        });
+      }
       return route.fulfill({
         json: { status: 'active', items: [row], total: 1, nextCursor: null },
       });
@@ -6107,6 +6116,13 @@ test('keeps Native search typing local and refreshes one selected detail once', 
   await page.goto('/');
   await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
   await expect(page.locator('.native-change-detail h3.truncate')).toHaveText(row.name);
+  const acceptance = page
+    .locator('article')
+    .filter({ has: page.getByRole('heading', { name: '验收状态', exact: true }) });
+  await expect(acceptance.locator('ul.space-y-2 > li')).toHaveCount(20);
+  await acceptance.getByTitle('2', { exact: true }).click();
+  await expect(acceptance.getByText('Acceptance item 20', { exact: true })).toBeVisible();
+  await acceptance.getByTitle('1', { exact: true }).click();
   const firstDetails = detailRequests;
   await page.getByRole('button', { name: '立即刷新', exact: true }).click();
   await expect(page.getByText('状态已刷新', { exact: true })).toBeVisible();
@@ -6120,6 +6136,7 @@ test('keeps Native search typing local and refreshes one selected detail once', 
   );
   expect(beforeAcceptanceReads).toBeGreaterThan(0);
   const search = page.locator('.comet-header-search input');
+  holdSearch = true;
   await search.pressSequentially('search', { delay: 10 });
   await expect(search).toHaveValue('search');
   expect(listRequests).toBe(beforeLists);
@@ -6130,9 +6147,12 @@ test('keeps Native search typing local and refreshes one selected detail once', 
     ),
   ).toBe(beforeAcceptanceReads);
   await expect(page.locator('.native-change-detail h3.truncate')).toHaveText(row.name);
-  await page.clock.runFor(700);
+  await page.clock.runFor(250);
   await expect.poll(() => listRequests).toBeGreaterThan(beforeLists);
   await expect(page.locator('.native-change-detail h3.truncate')).toHaveText(row.name);
+  expect(detailRequests).toBe(beforeDetails);
+  holdSearch = false;
+  releaseSearch?.();
   const beforeComposition = listRequests;
   await search.dispatchEvent('compositionstart');
   await search.fill('输入');

@@ -1,6 +1,5 @@
 import { promises as fs } from 'node:fs';
 import { fingerprintDashboardFiles } from './source-version.js';
-import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -55,6 +54,7 @@ import {
 } from './native-sdk-projection.js';
 import {
   collectDashboardWorkspaceSources,
+  withDashboardReadScope,
   dashboardWorkspaceIdentity,
   encodeDashboardChangeLocator,
   isDashboardWorkspaceSourceEligible,
@@ -665,16 +665,20 @@ async function readCachedNativeDashboardEntries(
   projectRoot: string,
   status: DashboardChangeTab,
   query: string | undefined,
-): Promise<{ entries: NativeDashboardRootCandidate[]; query: string } | null> {
+  limit: number,
+  offset: number,
+): Promise<{ entries: NativeDashboardRootCandidate[]; query: string; total: number } | null> {
   const store = new DashboardIndexStore({ projectRoot });
   try {
     await store.open();
     const result = await store.queryNativeIndex<NativeDashboardRootCandidate>({
       status,
       query,
+      limit,
+      offset,
     });
     if (!result.indexed) return null;
-    return { entries: result.rows, query: query?.trim().toLowerCase() ?? '' };
+    return { entries: result.rows, query: query?.trim().toLowerCase() ?? '', total: result.total };
   } catch {
     return null;
   } finally {
@@ -899,16 +903,20 @@ function nativeDashboardOffset(options: {
   status: DashboardChangeTab;
   query: string;
   entries: readonly NativeDashboardRootCandidate[];
+  total: number;
+  entriesOffset: number;
 }): number {
   if (!options.cursor) return 0;
   const cursor = parseNativeDashboardCursor(options.cursor);
   if (
     cursor.status !== options.status ||
     cursor.query !== options.query ||
-    cursor.total !== options.entries.length ||
+    cursor.total !== options.total ||
     cursor.offset <= 0 ||
-    cursor.offset >= options.entries.length ||
-    nativeDashboardCandidateKey(options.entries[cursor.offset]) !== cursor.nextKey
+    cursor.offset >= options.total ||
+    !options.entries[cursor.offset - options.entriesOffset] ||
+    nativeDashboardCandidateKey(options.entries[cursor.offset - options.entriesOffset]) !==
+      cursor.nextKey
   ) {
     throw new NativeDashboardQueryError('Stale Native Dashboard change cursor');
   }
@@ -1065,7 +1073,7 @@ export async function collectNativeDashboardChangePage(
   projectRoot: string,
   options: NativeDashboardChangePageOptions,
 ): Promise<NativeDashboardChangePage> {
-  return withProjectIdentityScope(() =>
+  return withDashboardReadScope(projectRoot, () =>
     collectNativeDashboardChangePageUncached(projectRoot, options),
   );
 }
@@ -1081,21 +1089,31 @@ async function collectNativeDashboardChangePageUncached(
     nextCursor: null,
   };
   const root = path.resolve(projectRoot);
+  const limit = nativeDashboardPageLimit(options.limit);
+  const requestedOffset = options.cursor ? parseNativeDashboardCursor(options.cursor).offset : 0;
   const index = await buildNativeDashboardIndex(root, {
     refreshIfChanged: Boolean(options.cursor),
   });
   if (!index) return emptyPage;
-  const listed =
-    (await readCachedNativeDashboardEntries(root, options.status, options.query)) ??
-    listNativeDashboardEntries(index, options.status, options.query);
+  const cached = await readCachedNativeDashboardEntries(
+    root,
+    options.status,
+    options.query,
+    limit + 1,
+    requestedOffset,
+  );
+  const listed = cached ?? listNativeDashboardEntries(index, options.status, options.query);
+  const total = cached?.total ?? listed.entries.length;
+  const entriesOffset = cached ? requestedOffset : 0;
   const offset = nativeDashboardOffset({
     cursor: options.cursor,
     status: options.status,
     query: listed.query,
     entries: listed.entries,
+    total,
+    entriesOffset,
   });
-  const limit = nativeDashboardPageLimit(options.limit);
-  const pageEntries = listed.entries.slice(offset, offset + limit);
+  const pageEntries = listed.entries.slice(offset - entriesOffset, offset - entriesOffset + limit);
   const nextOffset = offset + pageEntries.length;
   return {
     status: options.status,
@@ -1104,15 +1122,15 @@ async function collectNativeDashboardChangePageUncached(
         collectNativeChangeListItem(candidate, candidate.children, index.all),
       ),
     ),
-    total: listed.entries.length,
+    total,
     nextCursor:
-      nextOffset < listed.entries.length
+      nextOffset < total
         ? encodeNativeDashboardCursor({
             status: options.status,
             query: listed.query,
             offset: nextOffset,
-            total: listed.entries.length,
-            nextKey: nativeDashboardCandidateKey(listed.entries[nextOffset]),
+            total,
+            nextKey: nativeDashboardCandidateKey(listed.entries[nextOffset - entriesOffset]),
           })
         : null,
   };
@@ -1131,7 +1149,7 @@ export async function collectNativeDashboardChangeDetail(
   projectRoot: string,
   options: NativeDashboardChangeDetailOptions,
 ): Promise<NativeDashboardChangeProjection | null> {
-  return withProjectIdentityScope(() =>
+  return withDashboardReadScope(projectRoot, () =>
     collectNativeDashboardChangeDetailUncached(projectRoot, options),
   );
 }

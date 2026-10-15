@@ -663,6 +663,7 @@ function DashboardApp({
   const nativePagesRef = useRef({ active: null, archived: null, all: null });
   const nativeSelectedDetailRef = useRef(null);
   const lastLoadedQueryRef = useRef('');
+  const requestedSearchRef = useRef(null);
   const { message: messageApi } = AntApp.useApp();
   const toast = useCallback((content, type = 'success') => messageApi[type](content), [messageApi]);
 
@@ -1365,28 +1366,9 @@ function DashboardApp({
   );
 
   useEffect(() => {
-    if (useDemo || !snapshot || !activeProjectId || query === lastLoadedQueryRef.current) {
-      return undefined;
-    }
-    const timer = window.setTimeout(() => {
-      snapshotRequestRef.current?.abort();
-      pageRequestRef.current?.abort();
-      nativePageRequestRef.current?.abort();
-      setPages({ active: null, archived: null, all: null });
-      pagesRef.current = { active: null, archived: null, all: null };
-      setNativePages({ active: null, archived: null, all: null });
-      nativePagesRef.current = { active: null, archived: null, all: null };
-      setNativeSelectedDetail(null);
-      nativeSelectedDetailRef.current = null;
-      setNativeDetailError(null);
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [activeProjectId, query, snapshot, useDemo]);
-
-  useEffect(() => {
-    if (useDemo || !snapshot || !activeProjectId || pages[tab]) return;
+    if (useDemo || workflow !== 'classic' || !snapshot || !activeProjectId || pages[tab]) return;
     void loadPage(tab);
-  }, [activeProjectId, loadPage, pages, snapshot, tab, useDemo]);
+  }, [activeProjectId, loadPage, pages, snapshot, tab, useDemo, workflow]);
 
   const loadNativePage = useCallback(
     async (nextTab, append = false) => {
@@ -1410,6 +1392,7 @@ function DashboardApp({
         const nextPages = { ...nativePagesRef.current, [nextTab]: merged };
         nativePagesRef.current = nextPages;
         setNativePages(nextPages);
+        lastLoadedQueryRef.current = query;
       } catch (error) {
         if (controller.signal.aborted) return;
         if (append && isStaleNativeDashboardCursorError(error)) {
@@ -1429,6 +1412,35 @@ function DashboardApp({
     },
     [activeProjectId, query, snapshot, toast, useDemo, workflow],
   );
+
+  useEffect(() => {
+    if (useDemo || !snapshot || !activeProjectId) return;
+    const requestKey = JSON.stringify([activeProjectId, workflow, query]);
+    if (requestedSearchRef.current === requestKey) return;
+    requestedSearchRef.current = requestKey;
+    if (
+      query === lastLoadedQueryRef.current &&
+      !pageRequestRef.current &&
+      !nativePageRequestRef.current
+    ) {
+      return;
+    }
+    // 输入框已经防抖。保留当前列表和详情，收到新结果后再更新选择。
+    snapshotRequestRef.current?.abort();
+    pageRequestRef.current?.abort();
+    nativePageRequestRef.current?.abort();
+    const nextPages = { active: null, archived: null, all: null };
+    const nextNativePages = { active: null, archived: null, all: null };
+    if (workflow === 'native' && nativePagesRef.current[tab])
+      nextNativePages[tab] = { ...nativePagesRef.current[tab], nextCursor: null };
+    else if (pagesRef.current[tab]) nextPages[tab] = { ...pagesRef.current[tab], nextCursor: null };
+    pagesRef.current = nextPages;
+    nativePagesRef.current = nextNativePages;
+    setPages(nextPages);
+    setNativePages(nextNativePages);
+    if (workflow === 'native') void loadNativePage(tab);
+    else if (workflow === 'classic') void loadPage(tab);
+  }, [activeProjectId, loadNativePage, loadPage, query, snapshot, tab, useDemo, workflow]);
 
   const selectNativeChange = useCallback(
     async (change) => {
@@ -1552,7 +1564,7 @@ function DashboardApp({
   );
 
   useEffect(() => {
-    if (useDemo || !snapshot || !activeProjectId) return;
+    if (useDemo || workflow !== 'classic' || !snapshot || !activeProjectId) return;
     if (
       !shouldAutoLoadDashboardDetail({
         detailLoading,
@@ -1584,6 +1596,7 @@ function DashboardApp({
     snapshot,
     useDemo,
     visible,
+    workflow,
   ]);
 
   const selectTab = useCallback((nextTab) => {
@@ -1592,6 +1605,7 @@ function DashboardApp({
   }, []);
 
   const resetSelectedProject = useCallback((nextProjectId) => {
+    requestedSearchRef.current = null;
     snapshotRequestRef.current?.abort();
     pageRequestRef.current?.abort();
     nativePageRequestRef.current?.abort();

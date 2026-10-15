@@ -1,13 +1,41 @@
 import { createHash } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
+import {
+  memoizedHookReadSync,
+  runWithHookReadCache,
+} from '../../platform/process/hook-read-cache.js';
+import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
 
-import { inspectGitWorktree, listGitWorktrees } from '../../platform/paths/git-worktree.js';
+import {
+  createGitWorktreeReadCache,
+  inspectGitWorktree,
+  listGitWorktrees,
+} from '../../platform/paths/git-worktree.js';
 import { PROJECT_CONFIG_FILE } from '../comet-native/native-paths.js';
 
 const DASHBOARD_CHANGE_LOCATOR_PREFIX = 'dashboard-change-v1';
 const WORKSPACE_ID_PATTERN = /^[a-f0-9]{64}$/u;
+const dashboardWorktreeCache = createGitWorktreeReadCache();
+
+/** 先异步核对 Git 元数据，再在单次只读请求内共享路径与项目观察。 */
+export async function withDashboardReadScope<T>(
+  projectRoot: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  let started = false;
+  const read = () => {
+    started = true;
+    return withProjectIdentityScope(() => runWithHookReadCache(work));
+  };
+  try {
+    return await dashboardWorktreeCache.run(projectRoot, read);
+  } catch (error) {
+    // Git 探测失败时沿用原有发现逻辑；业务读取失败不能重复执行。
+    if (!started) return read();
+    throw error;
+  }
+}
 
 export interface DashboardWorkspaceIdentity {
   id: string;

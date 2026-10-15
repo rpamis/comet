@@ -1140,6 +1140,33 @@ describe('Native Dashboard v2 collector', () => {
     expect(readdir).not.toHaveBeenCalled();
   });
 
+  it('decodes only one Native search page and its continuation from SQLite', async () => {
+    const paths = await enableNative();
+    await fs.mkdir(paths.archiveDir, { recursive: true });
+    for (let index = 0; index < 60; index += 1)
+      await fs.mkdir(path.join(paths.archiveDir, `2026-10-15-archive-${index}`));
+    await collectNativeDashboardOverview(projectRoot);
+    const query = vi.spyOn(DashboardIndexStore.prototype, 'queryNativeIndex');
+    const first = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'archived',
+      query: 'archive',
+      limit: 5,
+    });
+    expect(first.total).toBe(60);
+    expect(first.items).toHaveLength(5);
+    expect((await query.mock.results[0].value).rows).toHaveLength(6);
+    query.mockClear();
+    const second = await collectNativeDashboardChangePage(projectRoot, {
+      status: 'archived',
+      query: 'archive',
+      limit: 5,
+      cursor: first.nextCursor!,
+    });
+    expect(second.items).toHaveLength(5);
+    expect(second.items[0].locator).not.toBe(first.items[0].locator);
+    expect((await query.mock.results[0].value).rows).toHaveLength(6);
+  });
+
   it('refreshes persisted Native paths when the Runtime data root changes', async () => {
     await enableNative();
     await writeActiveState(activeShapeState('runtime-root'));

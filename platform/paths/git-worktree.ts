@@ -120,7 +120,7 @@ export function createGitWorktreeReadCache(): {
         await Promise.all(
           paths.map(async (target) => {
             try {
-              const [root, output] = await Promise.all([
+              const probes = await Promise.allSettled([
                 runExternalCommandAsync('git', ['-C', target, 'rev-parse', '--show-toplevel'], {
                   timeoutMs: 1000,
                   maxBufferBytes: 16384,
@@ -131,6 +131,12 @@ export function createGitWorktreeReadCache(): {
                   { timeoutMs: 1000, maxBufferBytes: 262144 },
                 ),
               ]);
+              // 两个探测都结束后才能回退；失败的探测不能留下仍占用目录的子进程。
+              const failure = probes.find((probe) => probe.status === 'rejected');
+              if (failure?.status === 'rejected') throw failure.reason;
+              const [root, output] = probes.map(
+                (probe) => (probe as PromiseFulfilledResult<string>).value,
+              );
               const worktrees = parseGitWorktrees(output.trim());
               if (worktrees.some((entry) => samePath(entry.root, root.trim()))) {
                 roots.set(
