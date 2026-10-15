@@ -1,0 +1,193 @@
+{
+  "schema": "comet.workflow-scale-benchmark.v1",
+  "complete": true,
+  "createdAt": "2026-10-15T06:24:18.029Z",
+  "node": "v22.20.0",
+  "platform": "win32",
+  "cpu": "Intel(R) Core(TM) i5-10600KF CPU @ 4.10GHz",
+  "packageVersion": "0.5.0",
+  "sourceHead": "44766251a539e67363cac6647733719f6b03f180",
+  "workingTreeStatus": null,
+  "runtimeSha256": {
+    "domains/comet-native/native-snapshot.js": "9d6e1d666f23f4675efc688575d4e33af4f55aa536644633709acd772582db62",
+    "domains/comet-native/native-portable-checks.js": "ac60f6d35e504be1a65ae6b5302eed79b4d05980495abb41a90a586add316226",
+    "domains/comet-classic/classic-check-snapshot.js": "1d0e8ad2a75b0cb3a1452c3b61c897913d6adcfc793e9f641aa4b2585cb7d68b",
+    "domains/comet-classic/classic-sdk-check.js": "84ae11a3f34aa4e70ba26d19216d6c2616e54ce1ba7093c7b1ffb0f867329faa",
+    "platform/process/git.js": "fbfd2e31b18ce38de1e3e218d020a8aa2d4d444296fad01ebd6acb50da142035"
+  },
+  "benchmarkSha256": "377171058ad97d8924585e6bb1ecae9bc67fd832ea7c66832f62585141aec5d4",
+  "daemon": "off",
+  "timing": "warm filesystem; API operations in one process, acceptance through fresh CLI; setup and restore excluded",
+  "runs": 3,
+  "warmups": 1,
+  "rows": [
+    {
+      "name": "native-full-10000",
+      "dimension": "files",
+      "fileCount": 10000,
+      "runtimeFormat": "shared",
+      "medianMs": 11696.355000000003,
+      "p95ObservedMs": 11772.150100000006,
+      "samples": [
+        {
+          "milliseconds": 11678.316399999996,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 11696.355000000003,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 11772.150100000006,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        }
+      ]
+    },
+    {
+      "name": "native-incremental-clean-10000",
+      "dimension": "files",
+      "fileCount": 10000,
+      "runtimeFormat": "shared",
+      "medianMs": 2651.5497999999934,
+      "p95ObservedMs": 2844.0715999999957,
+      "samples": [
+        {
+          "milliseconds": 2590.34169999999,
+          "gitCommands": 10,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 2844.0715999999957,
+          "gitCommands": 10,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 2651.5497999999934,
+          "gitCommands": 10,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        }
+      ]
+    },
+    {
+      "name": "native-incremental-dirty-10000",
+      "dimension": "files",
+      "fileCount": 10000,
+      "runtimeFormat": "shared",
+      "medianMs": 11635.151800000007,
+      "p95ObservedMs": 11682.50559999999,
+      "samples": [
+        {
+          "milliseconds": 11577.49089999999,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 11682.50559999999,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 11635.151800000007,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        }
+      ]
+    },
+    {
+      "name": "classic-input-dirty-10000",
+      "dimension": "files",
+      "fileCount": 10000,
+      "runtimeFormat": "shared",
+      "medianMs": 5778.303500000009,
+      "p95ObservedMs": 5949.933300000004,
+      "samples": [
+        {
+          "milliseconds": 5949.933300000004,
+          "gitCommands": 43,
+          "entries": 10003,
+          "snapshotComplete": null,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 5765.7744999999995,
+          "gitCommands": 43,
+          "entries": 10003,
+          "snapshotComplete": null,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 5778.303500000009,
+          "gitCommands": 43,
+          "entries": 10003,
+          "snapshotComplete": null,
+          "omitted": 0
+        }
+      ]
+    },
+    {
+      "name": "native-input-dirty-10000",
+      "dimension": "files",
+      "fileCount": 10000,
+      "runtimeFormat": "shared",
+      "medianMs": 4595.98940000002,
+      "p95ObservedMs": 4668.233299999993,
+      "samples": [
+        {
+          "milliseconds": 4668.233299999993,
+          "gitCommands": 7
+        },
+        {
+          "milliseconds": 4557.989600000001,
+          "gitCommands": 7
+        },
+        {
+          "milliseconds": 4595.98940000002,
+          "gitCommands": 7
+        }
+      ]
+    },
+    {
+      "name": "native-comment-gate-300",
+      "dimension": "dirty-files",
+      "dirtyFileCount": 300,
+      "runtimeFormat": "shared",
+      "medianMs": 25017.27549999999,
+      "p95ObservedMs": 25020.339699999982,
+      "samples": [
+        {
+          "milliseconds": 25017.27549999999,
+          "gitCommands": 305
+        },
+        {
+          "milliseconds": 24812.508699999977,
+          "gitCommands": 305
+        },
+        {
+          "milliseconds": 25020.339699999982,
+          "gitCommands": 305
+        }
+      ]
+    }
+  ]
+}

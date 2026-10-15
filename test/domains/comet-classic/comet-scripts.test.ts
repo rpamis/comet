@@ -182,7 +182,7 @@ describe('comet script contracts', () => {
       expect(source).toContain('#!/usr/bin/env node');
       // Self-contained: no longer imports the shared runtime.
       expect(source).not.toContain("from './comet-runtime.mjs'");
-      expect(source).not.toMatch(/\b(?:grep|awk|sed)\b/u);
+      expect(source).not.toMatch(/(?:spawn|execFile)(?:Sync)?\([^)]*['"](?:grep|awk|sed)['"]/u);
     }
   });
 

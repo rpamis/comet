@@ -8,12 +8,14 @@ import {
   type RuntimeAction,
   type RuntimeExecutor,
   type RuntimeOutcome,
+  type RuntimeValue,
   type WorkflowRun,
   type WorkflowRuntime,
 } from '../engine/runtime.js';
 import { inspectProtectedProjectPath } from '../workflow-contract/protected-project-path.js';
 import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
 import { spawnCommand } from '../../platform/process/spawn-command.js';
+import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { checkEnvironmentFingerprint, collectCheckSnapshot } from './classic-check-snapshot.js';
 import { checkManifestHash, diffCheckManifests } from './classic-check-manifest.js';
 import { readCheckPolicy } from './classic-check-policy.js';
@@ -26,6 +28,8 @@ import {
   classicSdkCheckRecordRef,
   classicSdkCheckDirectoryRef,
   recordClassicSdkCheckReceipt,
+  assertClassicSdkCheckReceipt,
+  classicSdkCheckLogHash,
 } from './classic-sdk-check-record.js';
 
 interface ClassicSdkCheckInput {
@@ -34,6 +38,7 @@ interface ClassicSdkCheckInput {
   argv: string[];
   cwd?: string;
   timeoutMs?: number;
+  reusable?: boolean;
 }
 
 function within(root: string, target: string): boolean {
@@ -162,13 +167,14 @@ export function classicSdkCheckCommand(
     throw new Error('Classic check command does not match the fixed Action input');
   const command = object(plans[scope], label);
   if (
-    Object.keys(command).some((key) => !['argv', 'cwd', 'timeoutMs'].includes(key)) ||
+    Object.keys(command).some((key) => !['argv', 'cwd', 'timeoutMs', 'reusable'].includes(key)) ||
     !Array.isArray(command.argv) ||
     command.argv.length === 0 ||
     command.argv.some((arg) => typeof arg !== 'string' || arg.includes('\0')) ||
     !(command.argv[0] as string).trim() ||
     (command.cwd !== undefined && typeof command.cwd !== 'string') ||
-    (command.timeoutMs !== undefined && typeof command.timeoutMs !== 'number')
+    (command.timeoutMs !== undefined && typeof command.timeoutMs !== 'number') ||
+    (command.reusable !== undefined && typeof command.reusable !== 'boolean')
   )
     throw new Error(label);
   return {
@@ -177,6 +183,7 @@ export function classicSdkCheckCommand(
     argv: command.argv as string[],
     cwd: command.cwd as string | undefined,
     timeoutMs: command.timeoutMs as number | undefined,
+    reusable: command.reusable === true,
   };
 }
 
@@ -191,7 +198,8 @@ export async function assertClassicSdkCheckCommandBinding(
   if (
     hashRuntimeValue(output.argv) !== hashRuntimeValue(input.argv) ||
     output.cwd !== cwd.relative ||
-    output.timeoutMs !== (input.timeoutMs ?? 300_000)
+    output.timeoutMs !== (input.timeoutMs ?? 300_000) ||
+    (output.reusable === true) !== (input.reusable === true)
   )
     throw new Error('Classic check receipt does not match the fixed command');
 }
@@ -213,6 +221,79 @@ export async function runClassicSdkCommandCheck(
     cwd.absolute,
     await readCheckPolicy(root, identity),
   );
+  // 只有明确声明为本地可复用的检查才跳过执行；新的失败或中断会遮蔽旧成功记录。
+  const previous = input.reusable
+    ? run.actions
+        .slice(
+          0,
+          run.actions.findIndex((entry) => entry.id === action.id),
+        )
+        .reverse()
+        .find((entry) => {
+          const output = entry.outcome?.output as Record<string, unknown> | undefined;
+          return (
+            entry.ref === 'classic-check' &&
+            (output === undefined ||
+              (hashRuntimeValue(output.argv ?? null) === hashRuntimeValue(identity.argv) &&
+                output.cwd === identity.cwd))
+          );
+        })
+    : undefined;
+  const prior = previous?.outcome?.output as Record<string, unknown> | undefined;
+  if (
+    previous?.status === 'succeeded' &&
+    prior?.reusable === true &&
+    prior.exitCode === 0 &&
+    prior.inputBefore === before.digest &&
+    prior.inputAfter === before.digest &&
+    prior.environment === environment &&
+    prior.timeoutMs === timeoutMs &&
+    typeof prior.receiptRef === 'string' &&
+    typeof prior.contentHash === 'string'
+  ) {
+    await assertClassicSdkCheckReceipt(root, run, previous, {
+      status: previous.outcome!.status,
+      output: previous.outcome!.output,
+    });
+    await classicSdkCheckLogHash(
+      root,
+      run,
+      previous,
+      prior.receiptRef,
+      prior.contentHash,
+      'Classic reusable check log',
+    );
+    const reused: Pick<RuntimeOutcome, 'status' | 'output'> = {
+      status: 'succeeded',
+      output: {
+        ...(prior as Record<string, RuntimeValue>),
+        scope,
+        checkEpoch: state.checkEpoch ?? 0,
+        reused: true,
+        reusedFrom: previous.id,
+      },
+    };
+    await recordClassicSdkCheckReceipt(root, run, action, reused);
+    await writeClassicProjectText(
+      root,
+      classicSdkCheckRecordRef(run, action),
+      JSON.stringify({
+        schema: 'comet.classic-sdk-check.v1',
+        runId: run.runId,
+        actionId: action.id,
+        attempt: action.attempt,
+        inputHash: action.inputHash,
+        claim: action.claim,
+        command: { ...identity, timeoutMs },
+        receiptRef: prior.receiptRef,
+        manifestRef: prior.manifestRef,
+        status: 'completed',
+        result: reused,
+      }),
+      { label: 'Classic SDK reused check recovery record' },
+    );
+    return reused;
+  }
   const logPath = path.join(checksDir, `${randomUUID()}.log`);
   const manifestPath = path.join(checksDir, `${randomUUID()}.manifest`);
   const receiptRef = path.relative(root, logPath).replaceAll('\\', '/');
@@ -237,6 +318,7 @@ export async function runClassicSdkCommandCheck(
       label: 'Classic SDK check recovery record',
     },
   );
+  reportCometRuntimeProgress(`执行 ${scope} 检查：${identity.argv[0]}`);
   const result = await runCommand(identity.argv, cwd.absolute, timeoutMs);
   const after = await collectCheckSnapshot(root, change.target, identity, snapshotOptions).catch(
     () => null,
@@ -281,6 +363,8 @@ export async function runClassicSdkCommandCheck(
       manifestHash: after ? checkManifestHash(after.manifest) : null,
       tier: 'full',
       checkEpoch: state.checkEpoch ?? 0,
+      reusable: input.reusable === true,
+      reused: false,
     },
   };
   await recordClassicSdkCheckReceipt(root, run, action, outcome);

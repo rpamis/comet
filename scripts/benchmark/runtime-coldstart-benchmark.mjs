@@ -26,11 +26,13 @@ export function isolatedBenchmarkEnvironment(home, inherited = process.env) {
     XDG_DATA_HOME: path.join(home, '.local/share'),
     GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'),
     GIT_CONFIG_SYSTEM: path.join(home, 'git-system'),
+    COMET_DATA_DIR: path.join(home, '.comet-data'),
     NODE_OPTIONS: '',
     COMET_TASK: '',
     COMET_TASK_PHASE: '',
     COMET_TASK_PATH: '',
     COMET_SKIP_UPDATE_CHECK: '1',
+    COMET_DAEMON: 'off',
   };
 }
 
@@ -123,7 +125,7 @@ function expectedData(expected) {
   };
 }
 
-async function directorySnapshot(root) {
+export async function directorySnapshot(root) {
   const files = new Map();
   const directories = new Set();
   async function walk(directory) {
@@ -142,7 +144,7 @@ async function directorySnapshot(root) {
   return { files, directories };
 }
 
-async function restoreSnapshot(root, snapshot) {
+export async function restoreSnapshot(root, snapshot) {
   const current = await directorySnapshot(root);
   for (const file of current.files.keys()) {
     if (!snapshot.files.has(file)) await fs.unlink(file);
@@ -201,7 +203,13 @@ process.on('exit', () => {
 });
 `;
 
-async function createFixture(repoRoot, worktreeCounts) {
+async function createFixture(repoRoot, worktreeCounts, selectedTargets = []) {
+  const wants = (prefix) =>
+    !selectedTargets.length || selectedTargets.some((name) => name.startsWith(prefix));
+  const wantsNative =
+    !selectedTargets.length ||
+    selectedTargets.some((name) => /^(?:native-(?!sdk)|entry-|task-)/u.test(name));
+  const wantsClassic = wants('classic-current') || wants('classic-next');
   const temp = await fs.realpath(os.tmpdir());
   const root = await fs.mkdtemp(path.join(temp, 'comet-runtime-benchmark-'));
   const home = path.join(root, 'home');
@@ -248,38 +256,98 @@ async function createFixture(repoRoot, worktreeCounts) {
       { name: `fixture ${args.join(' ')}`, cwd, args: [bin, ...args], validate },
       env,
     );
+  const runtimeRoots = new Map();
+  async function runtimeRoot(cwd) {
+    if (runtimeRoots.has(cwd)) return runtimeRoots.get(cwd);
+    const module = pathToFileURL(
+      path.join(repoRoot, 'dist/domains/workflow-contract/workspace-runtime.js'),
+    ).href;
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '--eval',
+        'import {resolveWorkspaceRuntimeRootSync} from ' +
+          JSON.stringify(module) +
+          ';console.log(JSON.stringify(resolveWorkspaceRuntimeRootSync(process.cwd())));',
+      ],
+      { cwd, env, encoding: 'utf8', windowsHide: true },
+    );
+    validateRuntimeProcess({ name: 'resolve isolated benchmark Runtime' }, result);
+    const resolved = path.resolve(JSON.parse(result.stdout));
+    const relative = path.relative(home, resolved);
+    if (path.isAbsolute(relative) || relative === '..' || relative.startsWith('..' + path.sep))
+      throw new Error('Runtime fixture escaped isolated home');
+    await fs.mkdir(resolved, { recursive: true });
+    runtimeRoots.set(cwd, resolved);
+    return resolved;
+  }
+  async function fixtureSnapshot(cwd) {
+    const runtime = await runtimeRoot(cwd);
+    return {
+      project: await directorySnapshot(cwd),
+      runtime,
+      records: await directorySnapshot(runtime),
+    };
+  }
+  async function restoreFixture(cwd, snapshot) {
+    if (snapshot.runtime !== (await runtimeRoot(cwd)))
+      throw new Error('Runtime snapshot belongs to another fixture');
+    await restoreSnapshot(cwd, snapshot.project);
+    await restoreSnapshot(snapshot.runtime, snapshot.records);
+  }
   const add = (name, cwd, args, validate = jsonSuccess, extra = {}) =>
     targets.push({ name, cwd, args: [bin, ...args], validate, ...extra });
   try {
-    await initialize(native);
-    await initialize(classic);
-    await cli(
-      native,
-      ['native', 'new', 'benchmark-native', '--json'],
-      expectedData({ phase: 'shape', state_version: 1 }),
-    );
-    await fs.mkdir(path.join(classic, '.comet'), { recursive: true });
-    await fs.writeFile(
-      path.join(classic, '.comet/config.yaml'),
-      'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n',
-    );
-    await fs.mkdir(path.join(classic, 'openspec/changes'), { recursive: true });
-    await fs.mkdir(path.join(classic, 'openspec/specs'), { recursive: true });
-    await cli(classic, ['state', 'init', 'benchmark-classic', 'tweak', '--json']);
-    await cli(classic, ['state', 'select', 'benchmark-classic', '--json']);
+    await fs.mkdir(native, { recursive: true });
+    await fs.mkdir(classic, { recursive: true });
+    if (wantsNative) await initialize(native);
+    if (wantsClassic) await initialize(classic);
+    if (wantsNative) {
+      await cli(
+        native,
+        ['native', 'new', 'benchmark-native', '--runtime', 'compat', '--json'],
+        expectedData({ phase: 'shape', state_version: 1 }),
+      );
+    }
+    if (wantsClassic) {
+      await fs.mkdir(path.join(classic, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(classic, '.comet/config.yaml'),
+        'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n  language: en\n  context_compression: off\n  review_mode: standard\n  auto_transition: true\n',
+      );
+      await fs.mkdir(path.join(classic, 'openspec/changes'), { recursive: true });
+      await fs.mkdir(path.join(classic, 'openspec/specs'), { recursive: true });
+      await cli(classic, [
+        'state',
+        'init',
+        'benchmark-classic',
+        'tweak',
+        '--runtime',
+        'compat',
+        '--json',
+      ]);
+      await cli(classic, ['state', 'select', 'benchmark-classic', '--json']);
+    }
     const changeDir = path.join(native, 'docs/comet/changes/benchmark-native');
     const stateFile = path.join(changeDir, 'comet-state.yaml');
-    await fs.writeFile(
-      path.join(changeDir, 'brief.md'),
-      '# Outcome\nVerify a fixture behavior.\n# Scope\nOne minimal change.\n# Non-goals\nNo extra behavior.\n# Acceptance examples\n- The fixture behaves correctly.\n# Constraints and invariants\nKeep existing behavior.\n# Decisions\nUse the smallest implementation.\n# Open questions\nNone.\n# Verification expectations\nRun the focused check.\n',
-    );
-    const nativeSpecDir = path.join(changeDir, 'specs', 'benchmark-native');
-    await fs.mkdir(nativeSpecDir, { recursive: true });
-    await fs.writeFile(
-      path.join(nativeSpecDir, 'spec.md'),
-      '# Fixture behavior\n\n## Requirement: fixture output\nThe fixture keeps its existing output.\n\nScenario: Existing output remains available\n- WHEN the fixture is queried\n- THEN the existing output is returned\n',
-    );
-    const snapshotRoots = ['docs', '.comet'].map((part) => path.join(native, part));
+    if (wantsNative) {
+      await fs.writeFile(
+        path.join(changeDir, 'brief.md'),
+        '# Outcome\nVerify a fixture behavior.\n# Scope\nOne minimal change.\n## Directory structure\n### Created\nNone.\n### Modified\n- README.md - preserve the existing fixture behavior.\n### Deleted\nNone.\n### Not created\nNone.\n# Non-goals\nNo extra behavior.\n# Acceptance examples\n- The fixture behaves correctly.\n# Constraints and invariants\nKeep existing behavior.\n# Decisions\nUse the smallest implementation.\n# Open questions\nNone.\n# Verification expectations\nRun the focused check.\n',
+      );
+      const nativeSpecDir = path.join(changeDir, 'specs', 'benchmark-native');
+      await fs.mkdir(nativeSpecDir, { recursive: true });
+      await fs.writeFile(
+        path.join(nativeSpecDir, 'spec.md'),
+        '# Fixture behavior\n\n## Requirement: fixture output\nThe fixture keeps its existing output.\n\nScenario: Existing output remains available\n- WHEN the fixture is queried\n- THEN the existing output is returned\n',
+      );
+    }
+    const snapshotRoots = wantsNative
+      ? ['docs', '.comet', await runtimeRoot(native)].map((part) =>
+          path.isAbsolute(part) ? part : path.join(native, part),
+        )
+      : [];
     const snapshots = await Promise.all(snapshotRoots.map(directorySnapshot));
     const restore = async () => {
       for (let i = 0; i < snapshots.length; i++)
@@ -348,64 +416,82 @@ async function createFixture(repoRoot, worktreeCounts) {
           throw new Error('Wrong Native show target');
       },
     );
-    const checkRoot = path.join(root, 'classic-check');
-    await initialize(checkRoot);
-    await fs.mkdir(path.join(checkRoot, '.comet'), { recursive: true });
-    await fs.copyFile(
-      path.join(classic, '.comet/config.yaml'),
-      path.join(checkRoot, '.comet/config.yaml'),
-    );
-    await fs.writeFile(path.join(checkRoot, '.gitignore'), '.comet/runtime/\n');
-    await fs.mkdir(path.join(checkRoot, 'openspec/changes'), { recursive: true });
-    await fs.mkdir(path.join(checkRoot, 'openspec/specs'), { recursive: true });
-    await cli(checkRoot, ['state', 'init', 'benchmark-check', 'tweak', '--json']);
-    const materialCheckInput = path.join(checkRoot, 'openspec/changes/benchmark-check/input.txt');
-    await fs.writeFile(materialCheckInput, 'Initial material check input\n');
-    const checkArgs = [
-      'check',
-      'run',
-      'benchmark-check',
-      'build',
-      '--local',
-      '--json',
-      '--',
-      process.execPath,
-      '-e',
-      "console.log('fixture check passed')",
-    ];
-    const validateCheck = (reused) => (stdout) => {
-      if (!classicCheckEvidenceMatches(stdout, reused)) {
-        throw new Error('Classic check did not produce the expected valid evidence');
-      }
-    };
-    const freshCheckSnapshot = await directorySnapshot(checkRoot);
-    await cli(checkRoot, checkArgs, validateCheck(false));
-    const passedCheckSnapshot = await directorySnapshot(checkRoot);
-    add('classic-check-execute', checkRoot, checkArgs, validateCheck(false), {
-      prepare: () => restoreSnapshot(checkRoot, freshCheckSnapshot),
-    });
-    add('classic-check-reuse', checkRoot, checkArgs, validateCheck(true), {
-      prepare: () => restoreSnapshot(checkRoot, passedCheckSnapshot),
-    });
-    add('classic-check-invalidate', checkRoot, checkArgs, validateCheck(false), {
-      prepare: async () => {
-        await restoreSnapshot(checkRoot, passedCheckSnapshot);
-        await fs.writeFile(materialCheckInput, 'Changed material check input\n');
-      },
-    });
-    const nativeCheckRoot = path.join(root, 'native-check');
-    await initialize(nativeCheckRoot);
-    await fs.writeFile(path.join(nativeCheckRoot, '.gitignore'), '.comet/runtime/\n');
-    await cli(nativeCheckRoot, ['native', 'new', 'benchmark-check', '--json']);
-    await fs.writeFile(
-      path.join(nativeCheckRoot, 'docs/comet/changes/benchmark-check/brief.md'),
-      '# Acceptance examples\n- The fixture behaves correctly.\n',
-    );
-    const nativeModule = (name) =>
-      JSON.stringify(
-        pathToFileURL(path.join(repoRoot, 'dist/domains/comet-native', name + '.js')).href,
+    if (wants('classic-check-')) {
+      const checkRoot = path.join(root, 'classic-check');
+      await initialize(checkRoot);
+      await fs.mkdir(path.join(checkRoot, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(checkRoot, '.comet/config.yaml'),
+        'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n  language: en\n  context_compression: off\n  review_mode: standard\n  auto_transition: true\n',
       );
-    const nativeCheckPrelude = `
+      await fs.writeFile(path.join(checkRoot, '.gitignore'), '.comet/runtime/\n');
+      await fs.mkdir(path.join(checkRoot, 'openspec/changes'), { recursive: true });
+      await fs.mkdir(path.join(checkRoot, 'openspec/specs'), { recursive: true });
+      await cli(checkRoot, [
+        'state',
+        'init',
+        'benchmark-check',
+        'tweak',
+        '--runtime',
+        'compat',
+        '--json',
+      ]);
+      const materialCheckInput = path.join(checkRoot, 'openspec/changes/benchmark-check/input.txt');
+      await fs.writeFile(materialCheckInput, 'Initial material check input\n');
+      const checkArgs = [
+        'check',
+        'run',
+        'benchmark-check',
+        'build',
+        '--local',
+        '--json',
+        '--',
+        process.execPath,
+        '-e',
+        "console.log('fixture check passed')",
+      ];
+      const validateCheck = (reused) => (stdout) => {
+        if (!classicCheckEvidenceMatches(stdout, reused)) {
+          throw new Error('Classic check did not produce the expected valid evidence');
+        }
+      };
+      const freshCheckSnapshot = await fixtureSnapshot(checkRoot);
+      await cli(checkRoot, checkArgs, validateCheck(false));
+      const passedCheckSnapshot = await fixtureSnapshot(checkRoot);
+      add('classic-check-execute', checkRoot, checkArgs, validateCheck(false), {
+        prepare: () => restoreFixture(checkRoot, freshCheckSnapshot),
+      });
+      add('classic-check-reuse', checkRoot, checkArgs, validateCheck(true), {
+        prepare: () => restoreFixture(checkRoot, passedCheckSnapshot),
+      });
+      add('classic-check-invalidate', checkRoot, checkArgs, validateCheck(false), {
+        prepare: async () => {
+          await restoreFixture(checkRoot, passedCheckSnapshot);
+          await fs.writeFile(materialCheckInput, 'Changed material check input\n');
+        },
+      });
+    }
+    if (wants('native-check-')) {
+      const nativeCheckRoot = path.join(root, 'native-check');
+      await initialize(nativeCheckRoot);
+      await fs.writeFile(path.join(nativeCheckRoot, '.gitignore'), '.comet/runtime/\n');
+      await cli(nativeCheckRoot, [
+        'native',
+        'new',
+        'benchmark-check',
+        '--runtime',
+        'compat',
+        '--json',
+      ]);
+      await fs.writeFile(
+        path.join(nativeCheckRoot, 'docs/comet/changes/benchmark-check/brief.md'),
+        await fs.readFile(path.join(changeDir, 'brief.md'), 'utf8'),
+      );
+      const nativeModule = (name) =>
+        JSON.stringify(
+          pathToFileURL(path.join(repoRoot, 'dist/domains/comet-native', name + '.js')).href,
+        );
+      const nativeCheckPrelude = `
       import * as runtime from ${nativeModule('native-portable-runtime')};
       import { nativeProjectPaths } from ${nativeModule('native-paths')};
       import { readNativeLocalExecution } from ${nativeModule('native-local-execution')};
@@ -413,14 +499,14 @@ async function createFixture(repoRoot, worktreeCounts) {
       const paths = await nativeProjectPaths(process.cwd(), 'docs');
       const name = 'benchmark-check';
       const passed = {id:'passed',name:'Passed',executable:process.execPath,argv:['-e',"console.log('passed')"],cwdRef:'.',timeoutMs:10000,repeatable:true};
-      const interrupted = {id:'interrupted',name:'Interrupted',executable:process.execPath,argv:['-e','setTimeout(() => {}, 250)'],cwdRef:'.',timeoutMs:20,repeatable:true};
+      const interrupted = {id:'interrupted',name:'Interrupted',executable:process.execPath,argv:['-e','setTimeout(() => {}, 10000)'],cwdRef:'.',timeoutMs:2000,repeatable:true};
     `;
-    const nativeDriver = (code) => ['--input-type=module', '--eval', nativeCheckPrelude + code];
-    await measureRuntimeSample(
-      {
-        name: 'prepare Native check candidate',
-        cwd: nativeCheckRoot,
-        args: nativeDriver(`
+      const nativeDriver = (code) => ['--input-type=module', '--eval', nativeCheckPrelude + code];
+      await measureRuntimeSample(
+        {
+          name: 'prepare Native check candidate',
+          cwd: nativeCheckRoot,
+          args: nativeDriver(`
         await runtime.prepareNativePortableShapeConfirmation({paths,name});
         await runtime.confirmNativePortableShape({paths,name});
         const runner = createNativeRunnerChannel();
@@ -430,66 +516,67 @@ async function createFixture(repoRoot, worktreeCounts) {
           acceptanceReview:[{id:'A1',status:'implemented-with-evidence',evidence:['README.md'],note:'Fixture output is implemented.'}]
         }});
       `),
-      },
-      env,
-    );
-    const nativeFresh = await directorySnapshot(nativeCheckRoot);
-    const nativeExecution = nativeDriver(`
+        },
+        env,
+      );
+      const nativeFresh = await fixtureSnapshot(nativeCheckRoot);
+      const nativeExecution = nativeDriver(`
       await runtime.executeNativePortableCheckPlan({paths,name,plans:[passed]});
       console.log(JSON.stringify((await readNativeLocalExecution(runtime.nativeLocalExecutionFile(paths,name))).checks));
     `);
-    const validateNativeChecks = (counts, statuses) => (stdout) => {
-      const checks = JSON.parse(stdout);
-      if (
-        JSON.stringify(checks.map((c) => c.executionCount)) !== JSON.stringify(counts) ||
-        JSON.stringify(checks.map((c) => c.status)) !== JSON.stringify(statuses)
-      )
-        throw new Error('Native check evidence or execution counts did not match the scenario');
-    };
-    await measureRuntimeSample(
-      {
-        name: 'prepare Native passed evidence',
-        cwd: nativeCheckRoot,
-        args: nativeExecution,
-        validate: validateNativeChecks([1], ['passed']),
-      },
-      env,
-    );
-    const nativePassed = await directorySnapshot(nativeCheckRoot);
-    for (const [name, snapshot] of [
-      ['native-check-execute', nativeFresh],
-      ['native-check-reuse', nativePassed],
-    ]) {
+      const validateNativeChecks = (counts, statuses) => (stdout) => {
+        const checks = JSON.parse(stdout);
+        if (
+          JSON.stringify(checks.map((c) => c.executionCount)) !== JSON.stringify(counts) ||
+          JSON.stringify(checks.map((c) => c.status)) !== JSON.stringify(statuses)
+        )
+          throw new Error('Native check evidence or execution counts did not match the scenario');
+      };
+      await measureRuntimeSample(
+        {
+          name: 'prepare Native passed evidence',
+          cwd: nativeCheckRoot,
+          args: nativeExecution,
+          validate: validateNativeChecks([1], ['passed']),
+        },
+        env,
+      );
+      const nativePassed = await fixtureSnapshot(nativeCheckRoot);
+      for (const [name, snapshot] of [
+        ['native-check-execute', nativeFresh],
+        ['native-check-reuse', nativePassed],
+      ]) {
+        targets.push({
+          name,
+          cwd: nativeCheckRoot,
+          args: nativeExecution,
+          validate: validateNativeChecks([1], ['passed']),
+          prepare: () => restoreFixture(nativeCheckRoot, snapshot),
+        });
+      }
+      await restoreFixture(nativeCheckRoot, nativeFresh);
+      await measureRuntimeSample(
+        {
+          name: 'prepare Native interrupted evidence',
+          cwd: nativeCheckRoot,
+          args: nativeDriver(
+            `await runtime.executeNativePortableCheckPlan({paths,name,plans:[passed,interrupted]});`,
+          ),
+        },
+        env,
+      );
+      const nativeInterrupted = await fixtureSnapshot(nativeCheckRoot);
       targets.push({
-        name,
+        name: 'native-check-retry-interrupted',
         cwd: nativeCheckRoot,
-        args: nativeExecution,
-        validate: validateNativeChecks([1], ['passed']),
-        prepare: () => restoreSnapshot(nativeCheckRoot, snapshot),
-      });
-    }
-    await restoreSnapshot(nativeCheckRoot, nativeFresh);
-    await measureRuntimeSample(
-      {
-        name: 'prepare Native interrupted evidence',
-        cwd: nativeCheckRoot,
-        args: nativeDriver(
-          `await runtime.executeNativePortableCheckPlan({paths,name,plans:[passed,interrupted]});`,
-        ),
-      },
-      env,
-    );
-    const nativeInterrupted = await directorySnapshot(nativeCheckRoot);
-    targets.push({
-      name: 'native-check-retry-interrupted',
-      cwd: nativeCheckRoot,
-      args: nativeDriver(`
+        args: nativeDriver(`
         await runtime.retryNativePortableCheckPlan({paths,name,checkIds:['interrupted']});
         console.log(JSON.stringify((await readNativeLocalExecution(runtime.nativeLocalExecutionFile(paths,name))).checks));
       `),
-      validate: validateNativeChecks([1, 2], ['passed', 'interrupted']),
-      prepare: () => restoreSnapshot(nativeCheckRoot, nativeInterrupted),
-    });
+        validate: validateNativeChecks([1, 2], ['passed', 'interrupted']),
+        prepare: () => restoreFixture(nativeCheckRoot, nativeInterrupted),
+      });
+    }
     const nextArgs = [
       'native',
       'next',
@@ -514,6 +601,7 @@ async function createFixture(repoRoot, worktreeCounts) {
       ...nextExtra,
     });
     for (const origin of [false, true]) {
+      if (!wants(origin ? 'task-origin' : 'task-no-origin')) continue;
       const taskRoot = path.join(root, origin ? 'task-origin' : 'task-no-origin');
       await initialize(taskRoot);
       await fs.mkdir(path.join(taskRoot, '.comet'), { recursive: true });
@@ -581,13 +669,133 @@ async function createFixture(repoRoot, worktreeCounts) {
               git(native, ['worktree', 'add', '-b', name, worktree, 'main']);
               await cli(
                 worktree,
-                ['native', 'new', name, '--json'],
+                ['native', 'new', name, '--runtime', 'compat', '--json'],
                 expectedData({ name, phase: 'shape' }),
               );
             }
           },
         },
       );
+    }
+    if (wants('native-sdk-')) {
+      const sdk = path.join(root, 'native-sdk');
+      await initialize(sdk);
+      await cli(sdk, ['native', 'new', 'benchmark-sdk', '--runtime', 'sdk', '--json']);
+      add(
+        'native-sdk-status-public',
+        sdk,
+        ['native', 'status', 'benchmark-sdk', '--json'],
+        (stdout) => {
+          if (jsonSuccess(stdout).data?.runtimeFormat !== 'sdk')
+            throw new Error('Expected Native SDK status');
+        },
+        { runtimeFormat: 'sdk' },
+      );
+    }
+    if (wants('classic-sdk-')) {
+      const sdk = path.join(root, 'classic-sdk');
+      await initialize(sdk);
+      await fs.mkdir(path.join(sdk, '.comet'));
+      await fs.writeFile(
+        path.join(sdk, '.comet/config.yaml'),
+        'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: legacy\n  language: en\n  context_compression: off\n  review_mode: standard\n  auto_transition: true\n',
+      );
+      await fs.mkdir(path.join(sdk, 'openspec/changes'), { recursive: true });
+      await fs.mkdir(path.join(sdk, 'openspec/specs'), { recursive: true });
+      await cli(sdk, [
+        'state',
+        'init',
+        'benchmark-sdk',
+        'tweak',
+        '--isolation',
+        'current',
+        '--runtime',
+        'sdk',
+        '--json',
+      ]);
+      const sdkOpen = await fixtureSnapshot(sdk);
+      add(
+        'classic-sdk-next-public',
+        sdk,
+        ['state', 'next', 'benchmark-sdk', '--json'],
+        (stdout) => {
+          if (jsonSuccess(stdout).data?.runtimeFormat !== 'sdk')
+            throw new Error('Expected Classic SDK next');
+        },
+        { runtimeFormat: 'sdk', prepare: () => restoreFixture(sdk, sdkOpen) },
+      );
+      if (wants('classic-sdk-build-verify-reuse')) {
+        const change = path.join(sdk, 'openspec/changes/benchmark-sdk');
+        for (const [name, source] of Object.entries({
+          'proposal.md': '# Proposal\nPreserve fixture output.\n',
+          'design.md': '# Design\nKeep current output.\n',
+          'tasks.md': '- [x] Keep fixture output\n',
+        }))
+          await fs.writeFile(path.join(change, name), source);
+        let approvalHash;
+        await cli(sdk, ['guard', 'benchmark-sdk', 'open', '--json'], (stdout) => {
+          approvalHash = jsonSuccess(stdout).data.approvalHash;
+        });
+        await cli(sdk, [
+          'guard',
+          'benchmark-sdk',
+          'open',
+          '--apply',
+          '--approval-hash',
+          approvalHash,
+          '--json',
+        ]);
+        const marker = path.join(root, 'sdk-check-count');
+        const command = [
+          process.execPath,
+          '-e',
+          'require("node:fs").appendFileSync(' + JSON.stringify(marker) + ',"checked\\n")',
+        ];
+        await fs.writeFile(
+          path.join(sdk, '.comet/check-policy.json'),
+          JSON.stringify({
+            version: 2,
+            commands: [{ argv: command, cwd: '.', files: ['README.md'] }],
+          }),
+        );
+        await fs.mkdir(path.join(sdk, 'docs/superpowers/reports'), { recursive: true });
+        await fs.writeFile(
+          path.join(sdk, 'docs/superpowers/reports/verify.md'),
+          '# Verification\nFixture output remains available.\n',
+        );
+        const original = await fixtureSnapshot(sdk);
+        const module = pathToFileURL(
+          path.join(repoRoot, 'dist/domains/comet-classic/classic-cli.js'),
+        ).href;
+        const code =
+          'import {runClassicCli} from ' +
+          JSON.stringify(module) +
+          ';import fs from "node:fs/promises";const argv=' +
+          JSON.stringify(command) +
+          ';for(const scope of ["build","verify"]){const result=await runClassicCli(["guard","benchmark-sdk",scope,...(scope==="verify"?["--report","docs/superpowers/reports/verify.md"]:[]),"--apply","--local","--json","--",...argv],undefined,{projectRoot:process.cwd(),invocationCwd:process.cwd()});if(result.exitCode)throw Error(JSON.parse(result.stdout??"{}").data?.issues?.map(issue=>issue.message).join("; ")??result.stderr);if(scope==="verify")console.log(result.stdout)}';
+        add(
+          'classic-sdk-build-verify-reuse',
+          sdk,
+          ['--input-type=module', '--eval', code],
+          (stdout) => {
+            const data = jsonSuccess(stdout).data;
+            if (data?.phase !== 'archive' || data.reused !== true)
+              throw new Error('SDK cross-phase reuse failed');
+          },
+          {
+            runtimeFormat: 'sdk',
+            prepare: async () => {
+              await restoreFixture(sdk, original);
+              await fs.writeFile(marker, '');
+            },
+            postcondition: async () => {
+              if ((await fs.readFile(marker, 'utf8')).split('checked').length !== 2)
+                throw new Error('SDK reused check executed more than once');
+            },
+          },
+        );
+        targets.at(-1).args = targets.at(-1).args.slice(1);
+      }
     }
     return { root, home, env, profile, targets, cleanup };
   } catch (error) {
@@ -661,7 +869,7 @@ export async function runRuntimeBenchmark(options = {}) {
     });
     return result.status === 0 ? result.stdout.trim() : null;
   };
-  const fixture = await createFixture(repoRoot, worktreeCounts);
+  const fixture = await createFixture(repoRoot, worktreeCounts, options.targets);
   const report = {
     schema: SCHEMA,
     complete: false,
@@ -679,6 +887,7 @@ export async function runRuntimeBenchmark(options = {}) {
     logicalCpus: os.cpus().length,
     threshold: DEFAULT_THRESHOLD,
     timing: 'fresh-node-process-warm-filesystem; excludes fixture setup and postcondition checks',
+    daemon: 'off',
     warmups: 3,
     runs,
     gitBudgetsEnforced: options.enforceGitBudgets !== false,
@@ -722,6 +931,8 @@ export async function runRuntimeBenchmark(options = {}) {
         command: target.args.map((arg) =>
           arg.replaceAll(repoRoot, '<package>').replaceAll(fixture.root, '<fixture>'),
         ),
+        runtimeFormat:
+          target.runtimeFormat ?? (/^(?:native-|classic-)/u.test(target.name) ? 'compat' : null),
         worktreeCount: target.worktreeCount ?? 1,
         origin: target.origin ?? false,
         ...(target.contextState ? { contextState: target.contextState } : {}),

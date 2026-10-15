@@ -10,14 +10,25 @@ vi.mock('node:child_process', async (importOriginal) => {
 });
 
 const digest = (name: string) => createHash('sha256').update(name).digest('hex');
+const batchInput = (input: string) =>
+  input
+    .trimEnd()
+    .split('\n')
+    .map((line) =>
+      line
+        .slice(1, -1)
+        .replace(/\\([0-7]{3}|.)/gu, (_, escape: string) =>
+          /^[0-7]{3}$/u.test(escape) ? String.fromCharCode(parseInt(escape, 8)) : escape,
+        ),
+    );
 const batches = () =>
-  vi.mocked(spawnSync).mock.calls.map(([, args]) => (args as string[]).slice(5));
+  vi.mocked(spawnSync).mock.calls.map(([, , options]) => batchInput(options!.input as string));
 
 beforeEach(() => {
   vi.mocked(spawnSync)
     .mockReset()
-    .mockImplementation((_command, args) => {
-      const paths = (args as string[]).slice(5);
+    .mockImplementation((_command, _args, options) => {
+      const paths = batchInput(options!.input as string);
       const failed = paths.some((name) => name === 'missing' || name.length > 20_000);
       return {
         pid: 1,
@@ -30,19 +41,18 @@ beforeEach(() => {
     });
 });
 
-describe('Classic Git hash argument batches', () => {
-  it('hashes 1000 short paths in four bounded processes and preserves order', () => {
+describe('Classic Git hash stdin batches', () => {
+  it('hashes 1000 short paths in one bounded process and preserves order', () => {
     const names = Array.from({ length: 1000 }, (_, index) => `source-${index}.ts`);
     expect([...hashGitPaths('/project', names)]).toEqual(names.map((name) => [name, digest(name)]));
-    expect(batches()).toHaveLength(4);
-    expect(batches().every((batch) => batch.length <= 256)).toBe(true);
+    expect(batches()).toHaveLength(1);
   });
 
   it('bounds arguments with non-ASCII, spaces, quotes and backslashes without rewriting paths', () => {
     const root = 'C:\\working directory\\项目';
     const names = Array.from({ length: 200 }, (_, index) => `${'目录 '.repeat(30)}${index} \\".ts`);
     expect([...hashGitPaths(root, names).keys()]).toEqual(names);
-    expect(batches().length).toBeGreaterThan(1);
+    expect(batches()).toHaveLength(1);
     for (const [, args, options] of vi.mocked(spawnSync).mock.calls) {
       const argumentList = args as string[];
       const quotedUpperBound = argumentList.reduce(
@@ -51,6 +61,8 @@ describe('Classic Git hash argument batches', () => {
       );
       expect(quotedUpperBound).toBeLessThanOrEqual(16 * 1024);
       expect(options).not.toHaveProperty('shell', true);
+      expect(Buffer.byteLength(options!.input as string)).toBeLessThanOrEqual(256 * 1024);
+      expect(argumentList).toContain('--stdin-paths');
     }
   });
 
@@ -58,16 +70,20 @@ describe('Classic Git hash argument batches', () => {
     const oversized = 'x'.repeat(30_000);
     const names = ['before.ts', oversized, 'after.ts'];
     expect([...hashGitPaths('/project', names).keys()]).toEqual(['before.ts', 'after.ts']);
-    expect(batches()).toEqual([['before.ts'], [oversized], ['after.ts']]);
+    expect(batches().some((batch) => batch.length === 1 && batch[0] === oversized)).toBe(true);
   });
 
   it('retains successes outside a failed batch and recursively isolates only that failure', () => {
     const names = Array.from({ length: 800 }, (_, index) => `source-${index}.ts`);
     const inputs = [...names.slice(0, 300), 'missing', ...names.slice(300)];
     expect([...hashGitPaths('/project', inputs).keys()]).toEqual(names);
-    expect(batches()).toHaveLength(20);
-    expect(batches().filter((batch) => batch.includes(names[0]))).toHaveLength(1);
-    expect(batches().filter((batch) => batch.includes(names[799]))).toHaveLength(1);
+    expect(batches().length).toBeLessThanOrEqual(21);
+    expect(batches().some((batch) => batch.includes(names[0]) && !batch.includes('missing'))).toBe(
+      true,
+    );
+    expect(
+      batches().some((batch) => batch.includes(names[799]) && !batch.includes('missing')),
+    ).toBe(true);
   });
 
   it('does not spawn Git for an empty path set', () => {

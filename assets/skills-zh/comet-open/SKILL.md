@@ -21,13 +21,13 @@ description: '创建 Classic change，整理需求并请用户确认。在用户
 
 响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 等待原任务，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。下文依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
 
-恢复已有 change 时，先运行 `comet state next <name> --json` 确认 Runtime 归属，再按 `data.runtimeFormat` 处理：
+恢复已有 change 时，复用同一工作区和 Run 的最新有效 continuation 与归属；冷恢复、外部状态变化或信息缺失时才运行 `comet state next <name> --json`，再按 `data.runtimeFormat` 处理：
 
 - `sdk`：复用现有 Run，按 `data.nextAction.kind` 恢复；已领取但结果未明的 Action 先核对原结果，不重新创建 change 或重发外部工作。
 - `compat`：复用原流程和 `.comet.yaml`；不能自动把该 change 改建为 SDK Run。
 - 命令失败：核对错误、归属记录、Run 和实际状态文件。归属冲突或状态格式异常时停止并报告；若本地 Run 记录丢失，先检查状态文件中的 `run_checkpoint`，按 `/comet-classic` 的恢复步骤沿用已保存阶段。旧状态没有检查点且用户明确同意重启时，才回到 Open 重新核对证据和确认。只有证实尚无任何 Runtime 归属、change 目录有效时，才按所选隔离方式准备工作区并初始化。不得因缺少某一个文件名就重新初始化。
 
-SDK 与旧 change 都通过以下命令绑定工作区：
+SDK 与旧 change 在冷恢复、工作区变化或绑定信息缺失时，通过以下命令核对并绑定工作区；已有有效选择和 projectRoot 时直接复用：
 
 ```bash
 comet classic workspace resolve <change-name> --json
@@ -229,7 +229,7 @@ SDK Run 保存在用户级工作区 Runtime 目录；新 change 保存 `comet-st
 
 ### 3. 入口状态验证
 
-验证状态机已正确初始化：
+已有初始化或选择成功返回的同一 Run、Open phase、工作区和 revision 时，直接继续 Step 4。冷恢复、外部状态变化或必要信息缺失时才验证初始化状态：
 
 ```bash
 comet state check <name> open

@@ -38,7 +38,32 @@ describe('Classic direct script entry', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
+
+  it.each(['guard', 'hook-guard'] as const)(
+    'reports live %s progress only outside Hooks and keeps JSON clean',
+    async (command) => {
+      vi.useFakeTimers();
+      const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+      const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      let finish!: () => void;
+      const pending = createClassicCommandRunner(command, async () => {
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        return { exitCode: 0, data: { finished: true } };
+      })([command, '--json']);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(stderr.mock.calls.length).toBe(command === 'guard' ? 1 : 0);
+      expect(stdout).not.toHaveBeenCalled();
+      finish();
+      expect(JSON.parse((await pending).stdout!).data).toEqual({ finished: true });
+      stderr.mockClear();
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(stderr).not.toHaveBeenCalled();
+    },
+  );
 
   it('preserves the shared runtime command field in JSON mode', async () => {
     let output = '';

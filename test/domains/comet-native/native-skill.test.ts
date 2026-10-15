@@ -14,6 +14,7 @@ const markdownFiles = [
   'reference/artifacts.md',
   'reference/clarification.md',
   'reference/commands.md',
+  'reference/edit-review.md',
   'reference/recovery.md',
   'reference/workspace.md',
 ] as const;
@@ -115,6 +116,7 @@ describe('Comet Native Skills', () => {
         'reference/artifacts.md',
         'reference/clarification.md',
         'reference/commands.md',
+        'reference/edit-review.md',
         'reference/recovery.md',
         'reference/workspace.md',
       ]);

@@ -55,7 +55,7 @@ comet state select <change-name> --json
 
 只有新需求才考虑推荐轻量流程：风险符合预设要求且用户已明确选择时直接进入；由 Agent 推荐时，说明依据，并展示 hotfix/tweak 与保留 full 的选项及各自影响，等待用户确认。不得擅自把已有 full change 改成轻量流程。公共 API、数据迁移、安全、并发或跨模块设计应按实际风险处理，不能因为文件少就省略必要步骤。
 
-运行 hotfix/tweak 时必须读取所选预设的“升级判定”：出现其中列出的升级条件，或改动文件数超过提示阈值时，展示继续预设或升级 full 的选择并等待答复；用户选择升级后才运行 `comet state transition <name> preset-escalate`。`verify_mode` 只决定验证级别，不能替代 workflow 选择或预设升级确认。
+运行 hotfix/tweak 时，SDK 必须读取并执行[预设范围复核](reference/sdk-methods.md#预设范围复核)，按该节核对并复用仍有效的 `rulings.md` 授权；Compat 读取所选预设的 `reference/compat.md` 中“升级判定”。仅文件数超限时先核对范围和已有授权，需要新决定时才展示继续预设或升级 full 的选项。用户选择升级后，使用当前 Run 的 continuation 或 Compat 对应命令推进。`verify_mode` 只决定验证级别，不能替代 workflow 选择或预设升级确认。
 
 恢复会话、外部状态变化，或计划、任务、审查、交付记录与实际情况不一致时，读取 `comet-classic/reference/context-recovery.md`，根据当前阶段入口返回的 nextAction 确定还有哪些步骤未完成。沿用仍有效的配置和成果；任务未勾选不等于尚未实现。具体恢复步骤以该参考文件为准。
 

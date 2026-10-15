@@ -72,6 +72,7 @@ export interface NativePortableContinuation {
     | 'retry-checks'
     | 'await-verifier'
     | 'repair'
+    | 'review-edit'
     | 'retry-verifier'
     | 'archive'
     | 'none';

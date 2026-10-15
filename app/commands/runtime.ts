@@ -2,6 +2,7 @@ import { resolveWorkspaceRuntimeRoot } from '../../domains/workflow-contract/wor
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import {
   createFileRuntimeStore,
   createRuntime,
@@ -582,7 +583,7 @@ export async function runtimeDispatchCommand(
       }
       const runtime = createRuntime({ ...loaded.implementation, store: loaded.store });
       const context = { requestId, projectRoot, invocationCwd, environment };
-      const data = await dispatch(runtime, request, context);
+      const data = await withCometRuntimeProgress(() => dispatch(runtime, request, context));
       if (request.operation === 'start') await selectWorkflowApplication(loaded, data.runId);
       const skillWork = applicationSkillWork(loaded, data);
       const waitSkillWork = applicationWaitSkillWork(loaded, data);
@@ -855,7 +856,7 @@ export async function runtimeDispatchCommand(
     const data =
       request.operation === 'inspect' && boundRun
         ? boundRun
-        : await dispatch(runtime, request, context);
+        : await withCometRuntimeProgress(() => dispatch(runtime, request, context));
     const response: Extract<RuntimeCommandResponse, { status: 'succeeded' }> = {
       protocolVersion: 1,
       requestId,

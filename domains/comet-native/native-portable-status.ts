@@ -504,7 +504,7 @@ export async function inspectNativePortableStatus(options: {
         }
       : {}),
   });
-  const effectiveContinuation =
+  let effectiveContinuation =
     workspace.bindingState === 'mismatch'
       ? {
           ...continuation,
@@ -520,6 +520,37 @@ export async function inspectNativePortableStatus(options: {
           },
         }
       : continuation;
+  if (
+    workspace.bindingState !== 'mismatch' &&
+    runtime.state.phase === 'verify' &&
+    runtime.state.builder_handoff
+  ) {
+    const edit = await editReviewContinuation(
+      nativeEditReviewScope(options.paths, runtime.state),
+      editReviews,
+      false,
+    );
+    if (edit)
+      effectiveContinuation = {
+        ...effectiveContinuation,
+        ...edit,
+        action: 'review-edit',
+        commandArgs: edit.commandArgs ? [...edit.commandArgs] : null,
+        requiredInputs: [...edit.requiredInputs],
+        requiresUserDecision: edit.mode === 'ask',
+        disposition:
+          edit.mode === 'ask' ? 'await-user' : edit.mode === 'reconcile' ? 'blocked' : 'continue',
+        inputOptions: [],
+        commandAlternatives: undefined,
+        runnerAction: { ...effectiveContinuation.runnerAction, kind: 'none' },
+        userCommunication: {
+          ...effectiveContinuation.userCommunication,
+          agentInstruction: edit.instruction ?? '',
+          message: edit.instruction ?? null,
+          required: edit.mode === 'ask',
+        },
+      };
+  }
   const supervisorRoots = supervisor ? supervisorPublicRoots(options.paths, supervisor) : [];
   const supervisorSummary = supervisor
     ? (() => {
@@ -761,6 +792,7 @@ export async function listNativePortableStatus(options: {
 }
 import {
   inspectEditReviews,
+  editReviewContinuation,
   type EditReviewObservation,
 } from '../workflow-contract/edit-review.js';
 import { nativeEditReviewScope } from './native-edit-review.js';

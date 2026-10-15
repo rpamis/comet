@@ -3728,7 +3728,8 @@ Run applicable focused checks.
     const acceptance = Array.from({ length: 40 }, (_, index) => `Behavior ${index + 1} works.`);
     await prepareBuild(name, acceptance);
     await runnerStep(name, builderHandoff(['A1']));
-    const counter = path.join(projectRoot, 'semantic-blocker-count.txt');
+    const paths = await nativeProjectPaths(projectRoot, 'docs');
+    const counter = path.join(paths.workspaceRuntimeRoot, 'semantic-blocker-count.txt');
     const plan = {
       kind: 'dispatch-verifier',
       checks: [
@@ -3803,7 +3804,6 @@ Run applicable focused checks.
         },
       },
     });
-    const paths = await nativeProjectPaths(projectRoot, 'docs');
     const localFile = nativeLocalExecutionFile(paths, name);
     expect(await readNativeLocalExecution(localFile)).toMatchObject({
       execution: { stage: 'checking', status: 'completed' },

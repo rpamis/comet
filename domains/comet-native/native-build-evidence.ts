@@ -104,6 +104,8 @@ function nativeBaselineIncompleteError(
     omittedByReason,
     samplePaths,
     baseline.omitted.length > samplePaths.length || overflowCount > 0,
+    baseline.limits,
+    baseline.policy?.hash ?? null,
   );
 }
 
@@ -123,6 +125,8 @@ function nativeBaselineProjectionIncompleteError(
     { 'manifest-size': projection.omittedCount },
     removedPaths,
     projection.omittedCount > removedPaths.length,
+    baseline.limits,
+    baseline.policy?.hash ?? null,
   );
 }
 

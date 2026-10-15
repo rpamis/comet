@@ -327,8 +327,57 @@ describe('Native parallel linked-worktree Runtime', () => {
       COMMAND_TIMEOUT_MS,
       { ...process.env, FILE_PATH: BUSINESS_SOURCE },
     );
-    assertCompleted(guard, 'guard manual source edit');
+    expect(guard.exitCode, guard.stderr).toBe(2);
+    expect(guard.data).toMatchObject({ allowed: false, phase: 'verify' });
+    const { runNativeEditReviewCommand } =
+      await import('../../../domains/comet-native/native-edit-review-command.js');
+    const reviewFile = path.join(
+      resolveWorkspaceRuntimeRootSync(editedWorktree.root),
+      'test-edit-review.json',
+    );
+    await fs.writeFile(
+      reviewFile,
+      JSON.stringify({
+        tool_name: 'Write',
+        tool_input: { file_path: BUSINESS_SOURCE, content: userSource },
+      }),
+    );
+    const proposal = await runNativeEditReviewCommand({
+      projectRoot: editedWorktree.root,
+      name: editedWorktree.name,
+      operation: 'prepare',
+      file: reviewFile,
+    });
     await fs.writeFile(path.join(editedWorktree.root, BUSINESS_SOURCE), userSource);
+    await fs.writeFile(
+      reviewFile,
+      JSON.stringify({
+        proposalHash: proposal.proposal!.proposalHash,
+        decision: 'implementation-changed',
+        summary: 'The exported business value changes; rebuild the candidate.',
+      }),
+    );
+    await runNativeEditReviewCommand({
+      projectRoot: editedWorktree.root,
+      name: editedWorktree.name,
+      operation: 'record',
+      file: reviewFile,
+      confirmed: true,
+    });
+
+    assertCompleted(
+      await runNativeCommand(
+        'next',
+        [
+          editedWorktree.name,
+          '--revise-implementation',
+          '--summary',
+          'Confirmed business value revision',
+        ],
+        editedWorktree.root,
+      ),
+      'revise the edited implementation',
+    );
 
     const [editedStatus, untouchedStatus] = await Promise.all([
       runNativeCommand('status', [editedWorktree.name], editedWorktree.root),

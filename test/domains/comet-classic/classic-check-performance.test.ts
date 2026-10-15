@@ -30,7 +30,7 @@ describe('Classic snapshot work budgets', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('keeps 1000 dirty inputs plus one deleted tracked input within 8 Git calls', async () => {
+  it('keeps 1000 dirty inputs plus one deleted tracked input within 5 Git calls', async () => {
     const names = Array.from(
       { length: 1001 },
       (_, index) => `input-${String(index).padStart(4, '0')}.txt`,
@@ -42,7 +42,7 @@ describe('Classic snapshot work budgets', () => {
     await Promise.all(names.slice(1).map((name) => fs.writeFile(path.join(root, name), 'new')));
     await fs.unlink(path.join(root, names[0]));
     const { result, metrics } = await withCometRuntimeMetrics(snapshot);
-    expect(metrics.gitCommands).toBeLessThanOrEqual(8);
+    expect(metrics.gitCommands).toBeLessThanOrEqual(5);
     expect(result.digest).not.toBe(before.digest);
     expect(result.entries.find(({ p }) => p === names[0])?.h).toBe('missing');
     expect(
@@ -70,6 +70,26 @@ describe('Classic snapshot work budgets', () => {
       .split(/\r?\n/u);
     expect([...result.values()]).toEqual(expected);
     expect(metrics.gitCommands).toBeLessThanOrEqual(17);
+  });
+
+  it('passes Unicode and option-like names through Git stdin without changing their meaning', async () => {
+    const names = [
+      '--option-like.ts',
+      '中文 space.ts',
+      ...(process.platform === 'win32'
+        ? []
+        : ['line\nbreak.ts', 'quote".ts', 'back\\slash.ts', 'tab\tname.ts']),
+    ];
+    await Promise.all(names.map((name) => fs.writeFile(path.join(root, name), name)));
+    const result = hashGitPaths(root, names);
+    const expected = execFileSync('git', ['hash-object', '--no-filters', '--', ...names], {
+      cwd: root,
+      encoding: 'utf8',
+    })
+      .trim()
+      .split(/\r?\n/u);
+    expect([...result.keys()]).toEqual(names);
+    expect([...result.values()]).toEqual(expected);
   });
 
   it('excludes output and runtime files before Git hashing', async () => {

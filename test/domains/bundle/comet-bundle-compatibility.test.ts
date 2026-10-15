@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import path from 'path';
+import { PLATFORMS } from '../../../platform/install/platforms.js';
 import { runCometBundleCompatibilityBenchmark } from '../../../domains/bundle/compatibility-benchmark.js';
 
 describe('current Comet Bundle compatibility benchmark', () => {
@@ -8,7 +9,7 @@ describe('current Comet Bundle compatibility benchmark', () => {
       repoRoot: path.resolve('.'),
     });
 
-    expect(result.platforms).toBe(37);
+    expect(result.platforms).toBe(PLATFORMS.length);
     expect(result.skillContractRate).toBe(1);
     expect(result.ruleContractRate).toBe(1);
     expect(result.hookContractRate).toBe(1);

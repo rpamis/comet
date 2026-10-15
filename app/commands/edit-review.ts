@@ -8,6 +8,8 @@ export async function editReviewCommand(
     projectRoot?: string;
     file?: string;
     confirmed?: boolean;
+    session?: string;
+    proposalHash?: string;
   },
 ) {
   try {
@@ -16,6 +18,7 @@ export async function editReviewCommand(
       projectRoot: path.resolve(options.projectRoot ?? process.cwd()),
       name,
       operation,
+      sessionId: options.session,
     };
     const data =
       workflow === 'native'

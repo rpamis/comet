@@ -1,5 +1,8 @@
 import { isClassicStateFileName } from './classic-state-file.js';
-import { measureCometGitCommand } from '../../platform/process/runtime-metrics.js';
+import {
+  measureCometGitCommand,
+  reportCometRuntimeProgress,
+} from '../../platform/process/runtime-metrics.js';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -17,10 +20,11 @@ import {
   type CheckManifestEntry,
 } from './classic-check-manifest.js';
 
-function git(root: string, args: string[]): string | null {
+function git(root: string, args: string[], input?: string): string | null {
   const result = measureCometGitCommand(() =>
     spawnSync('git', ['-C', root, ...args], {
       encoding: 'utf8',
+      ...(input === undefined ? {} : { input }),
       windowsHide: true,
       timeout: 30_000,
       // The buffer ceiling only guards runaway output; memory grows with the
@@ -36,7 +40,11 @@ function git(root: string, args: string[]): string | null {
 export function hashGitPaths(root: string, paths: readonly string[]): Map<string, string> {
   const hashes = new Map<string, string>();
   const hashBatch = (batch: readonly string[]): void => {
-    const output = git(root, ['hash-object', '--no-filters', '--', ...batch]);
+    const output = git(
+      root,
+      ['hash-object', '--no-filters', '--stdin-paths'],
+      batch.map(quotePath).join('\n') + '\n',
+    );
     const values = output?.trimEnd().split(/\r?\n/u);
     if (values?.length === batch.length && values.every((value) => /^[0-9a-f]+$/iu.test(value))) {
       batch.forEach((relative, index) => hashes.set(relative, values[index]));
@@ -49,21 +57,33 @@ export function hashGitPaths(root: string, paths: readonly string[]): Map<string
       hashBatch(batch.slice(middle));
     }
   };
-  // Leave room for executable/options and Windows argument quoting. Doubling
-  // UTF-8 bytes bounds quoted UTF-16 characters too, including spaces and
-  // backslashes. A single over-budget path is isolated and may fail normally.
-  const argumentBytes = (value: string) => Buffer.byteLength(value, 'utf8') * 2 + 3;
-  const fixedBytes = argumentBytes(root) + 128;
-  const maxArgumentBytes = 16 * 1024;
-  const maxPaths = 256;
+  // Git stdin paths use C quoting, independent of Windows command-line limits.
+  // Bound input and output sizes while retaining failure isolation per batch.
+  function quotePath(value: string): string {
+    if (value.includes('\0')) throw new Error('Git input path contains NUL');
+    let quoted = '"';
+    for (const character of value) {
+      const code = character.codePointAt(0)!;
+      quoted +=
+        character === '"' || character === '\\'
+          ? '\\' + character
+          : code < 32 || code === 127
+            ? '\\' + code.toString(8).padStart(3, '0')
+            : character;
+    }
+    return quoted + '"';
+  }
+  const inputBytes = (value: string) => Buffer.byteLength(quotePath(value), 'utf8') + 1;
+  const maxInputBytes = 256 * 1024;
+  const maxPaths = 4096;
   let batch: string[] = [];
-  let batchBytes = fixedBytes;
+  let batchBytes = 0;
   for (const relative of paths) {
-    const bytes = argumentBytes(relative);
-    if (batch.length && (batch.length >= maxPaths || batchBytes + bytes > maxArgumentBytes)) {
+    const bytes = inputBytes(relative);
+    if (batch.length && (batch.length >= maxPaths || batchBytes + bytes > maxInputBytes)) {
       hashBatch(batch);
       batch = [];
-      batchBytes = fixedBytes;
+      batchBytes = 0;
     }
     batch.push(relative);
     batchBytes += bytes;
@@ -184,6 +204,7 @@ export async function collectCheckSnapshot(
   identity?: CheckIdentity,
   options: CheckSnapshotOptions = {},
 ): Promise<CheckSnapshot> {
+  reportCometRuntimeProgress('核对检查输入', 0);
   root = path.resolve(root);
   changeDir = path.resolve(changeDir);
   const legacy = options.legacy === true;
@@ -383,6 +404,7 @@ export async function collectCheckSnapshot(
     for (const part of snapshot.binding) hash.update(part);
     if (snapshot.directory) await tree(snapshot.directory);
     if (snapshot.entry) entries.push(snapshot.entry);
+    reportCometRuntimeProgress('核对检查输入', entries.length);
   }
 
   async function file(absolute: string, repositoryContentHash?: string): Promise<void> {

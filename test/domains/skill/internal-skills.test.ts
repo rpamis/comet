@@ -1,3 +1,4 @@
+import { readSkillWithCompat } from '../../helpers/skill-content.js';
 import { describe, expect, it } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -30,9 +31,7 @@ describe('internal Skill assets', () => {
 
     for (const name of skillNames) {
       const [chinese, english] = await Promise.all(
-        ['assets/skills-zh', 'assets/skills'].map((root) =>
-          fs.readFile(path.resolve(root, name, 'SKILL.md'), 'utf8'),
-        ),
+        ['assets/skills-zh', 'assets/skills'].map((root) => readSkillWithCompat(root, name)),
       );
       expect(chinese, `${name} Chinese selection protocol`).toContain(
         'comet state select <change-name>',
@@ -52,10 +51,11 @@ describe('internal Skill assets', () => {
     expect(englishRule).toContain('not installed by the current manifest');
 
     const [chineseBuild, englishBuild] = await Promise.all([
-      fs.readFile(path.resolve('assets/skills-zh/comet-build/SKILL.md'), 'utf8'),
-      fs.readFile(path.resolve('assets/skills/comet-build/SKILL.md'), 'utf8'),
+      readSkillWithCompat('assets/skills-zh', 'comet-build'),
+      readSkillWithCompat('assets/skills', 'comet-build'),
     ]);
-    for (const build of [chineseBuild, englishBuild]) {
+    for (const content of [chineseBuild, englishBuild]) {
+      const build = content.split(/\n# comet-build Compat/u)[1] ?? content;
       const selection = build.indexOf('comet state select <change-name>');
       const entry = build.indexOf('comet state check <name> build --json');
       expect(selection).toBeGreaterThanOrEqual(0);
@@ -74,8 +74,8 @@ describe('internal Skill assets', () => {
 
   it('keeps the bilingual Hotfix execution summary aligned', async () => {
     const [chinese, english] = await Promise.all([
-      fs.readFile(path.resolve('assets/skills-zh/comet-hotfix/SKILL.md'), 'utf8'),
-      fs.readFile(path.resolve('assets/skills/comet-hotfix/SKILL.md'), 'utf8'),
+      readSkillWithCompat('assets/skills-zh', 'comet-hotfix'),
+      readSkillWithCompat('assets/skills', 'comet-hotfix'),
     ]);
 
     expect(chinese).toContain('open → build → 根因消除检查 → verify → archive');

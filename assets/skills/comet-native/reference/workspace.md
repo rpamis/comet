@@ -32,6 +32,10 @@ Only when a branch was renamed, repurposed by the user, or has unclear ownership
 
 ## Archive completion
 
+SDK: execute continuation Archive commands without Compat finish or confirmed flags. Run completed and business done prove SDK archival only. First inspect saved Run delivery results and actual Git; complete only missing work without repeating completed commits or integrations. Then verify the bound branch, delivery target, and this change's files; explicitly stage and review the diff, and complete authorized commit, merge, push, or PR work. Verify the actual commit SHA, target branch, remote SHA, and PR separately. Investigate unknown results read-only before recovery. Preserve unrelated changes and dirty workspaces. Without external delivery authorization, describe the archive and retained location; with authorization, continue delivery without asking again.
+
+The finish options, workspaceFinishResult, and recovery commands below apply only to Compat.
+
 Continue only when `continuation` permits Archive. Reuse the accepted verification result. Reuse any finish choice made when accepting the result without asking again. A `current` workspace needs no finish choice: show the current branch and directory, explain that no merge, push, or PR creation will occur, and follow the latest `continuation`.
 
 For `branch` or `worktree` isolation that needs a finish choice, show the actual change branch, target branch, and directory once and offer all options below as single choice. Text questions must use this table. Structured questions must use the mode as the short label and its actual impact as the description, not just `merge`, `push`, `pull-request`, or `keep`.

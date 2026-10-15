@@ -18,6 +18,12 @@ import { NATIVE_SDK_ARCHIVE_STEPS } from './native-sdk-archive.js';
 import { collectNativeSdkShapeProposal } from './native-sdk-application.js';
 import { nativeProjectPaths } from './native-paths.js';
 import {
+  editReviewContinuation,
+  inspectEditReviews,
+  type EditReviewObservation,
+} from '../workflow-contract/edit-review.js';
+import { nativeEditReviewScope } from './native-edit-review.js';
+import {
   nativeSdkRequirementsRevisionAllowed,
   nativeSdkStoppedBuilderWait,
 } from './native-sdk-revise.js';
@@ -349,6 +355,7 @@ export async function projectNativeSdkContinuation(options: {
   projectRoot: string;
   applicationId?: string;
   skillExecutors?: readonly RuntimeExecutor[];
+  editReviews?: readonly EditReviewObservation[];
 }) {
   const { run, state, projectRoot } = options;
   const dispatchCommandArgs = sdkDispatchCommand(options.applicationId ?? 'native', projectRoot);
@@ -548,8 +555,12 @@ export async function projectNativeSdkContinuation(options: {
       commandArgs: state.status === 'done' ? null : ['comet', 'native', 'doctor', state.name],
       userCommunication: communication(
         localized(
-          'This Run has completed. Inspect its preserved results before starting any further work.',
-          '此 Run 已结束。继续开展工作前请核对保留的结果。',
+          state.status === 'done'
+            ? 'SDK Archive has completed. Finish and verify any Git delivery already authorized by the user before reporting the task complete; Run completion alone does not prove commit, push, or PR delivery.'
+            : 'The Run ended without completing the Native change. Inspect preserved results and follow Doctor before reporting completion.',
+          state.status === 'done'
+            ? 'SDK 归档已完成。宣告任务完成前，继续执行并核对用户已经授权的 Git 交付；Run 完成不能证明提交、推送或 PR 已完成。'
+            : 'Run 已结束，但 Native change 尚未完成。核对保留的结果并按 Doctor 恢复，不能宣告完成。',
         ),
       ),
     };
@@ -947,6 +958,31 @@ export async function projectNativeSdkContinuation(options: {
         ),
       ),
     };
+  }
+  if (state.phase === 'verify' && state.builder_handoff) {
+    const input = run.input as { artifactRootRef: string };
+    const paths = await nativeProjectPaths(projectRoot, input.artifactRootRef, { readOnly: true });
+    const scope = nativeEditReviewScope(paths, state);
+    const edit = await editReviewContinuation(
+      scope,
+      options.editReviews ?? (await inspectEditReviews(scope)),
+      true,
+    );
+    if (edit)
+      continuation = {
+        ...continuation,
+        ...edit,
+        action: 'review-edit',
+        commandArgs: edit.commandArgs ? [...edit.commandArgs] : null,
+        requiredInputs: [...edit.requiredInputs],
+        inputOptions: [],
+        commandAlternatives: undefined,
+        requiresUserDecision: edit.mode === 'ask',
+        disposition:
+          edit.mode === 'ask' ? 'await-user' : edit.mode === 'reconcile' ? 'blocked' : 'continue',
+        runnerAction: { ...continuation.runnerAction, kind: 'none' },
+        userCommunication: communication(edit.instruction ?? '先处理当前编辑复核。'),
+      };
   }
   return {
     continuation: bindSdkContinuation(continuation, projectRoot),

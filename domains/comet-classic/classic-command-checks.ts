@@ -6,6 +6,7 @@ import type { RuntimeAction } from '../engine/runtime-action.js';
 import type { RunState, TrajectoryEvent } from '../engine/types.js';
 import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
 import { spawnCommand } from '../../platform/process/spawn-command.js';
+import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import {
   checkEnvironmentFingerprint,
   collectCheckSnapshot,
@@ -690,6 +691,7 @@ export async function executeCommandCheck(
   const logPath = path.join(changeDir, '.comet', 'checks', `${randomUUID()}.log`);
   // The platform adapter preserves argv and rejects unsafe Windows batch arguments.
   const result = await new Promise<{ exitCode: number; output: string }>((resolve) => {
+    reportCometRuntimeProgress(`执行 ${input.scope} 检查：${input.argv[0]}`);
     const child = spawnCommand(input.argv[0], input.argv.slice(1), {
       cwd: path.resolve(root, cwd),
     });

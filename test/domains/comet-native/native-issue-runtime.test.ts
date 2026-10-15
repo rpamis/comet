@@ -189,7 +189,7 @@ describe('packaged Runtime issue regressions', () => {
           { id: 'A2', result: 'passed' },
         ],
       });
-      function hook(event: unknown) {
+      function hook(event: unknown, expectedStatus = 0) {
         const result = spawnSync(
           process.execPath,
           [router, '--platform', 'oh-my-pi', '--project-root', root],
@@ -201,25 +201,32 @@ describe('packaged Runtime issue regressions', () => {
             windowsHide: true,
           },
         );
-        expect(result.status, result.stderr).toBe(0);
+        expect(result.status, result.stderr).toBe(expectedStatus);
       }
       hook({
         tool_input: { targets: ['agent:/Main', 'proc:/verify-server/kill', 'xd:/report_issue'] },
       });
       hook({ tool_name: 'write', tool_input: { path: 'agent:/Main' } });
       expect(invoke(['show', name]).data.state).toEqual(before);
-      hook({
-        tool_name: 'write',
-        tool_input: { targets: ['file://%broken', 'agent:/Main', 'src/new-file.ts'] },
-      });
-      expect(invoke(['show', name]).data.state).toMatchObject({
-        phase: 'build',
-        verification_result: 'pending',
-        acceptance: [
-          { id: 'A1', result: 'pending' },
-          { id: 'A2', result: 'pending' },
-        ],
-      });
+      hook(
+        {
+          tool_name: 'write',
+          tool_input: { targets: ['file://%broken', 'agent:/Main', 'src/new-file.ts'] },
+        },
+        phase === 'verify' ? 2 : 0,
+      );
+      expect(invoke(['show', name]).data.state).toMatchObject(
+        phase === 'verify'
+          ? { phase: 'verify' }
+          : {
+              phase: 'build',
+              verification_result: 'pending',
+              acceptance: [
+                { id: 'A1', result: 'pending' },
+                { id: 'A2', result: 'pending' },
+              ],
+            },
+      );
     },
   );
 });

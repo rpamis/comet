@@ -1,4 +1,5 @@
 import { nativeArchiveCommand } from './native-archive-command.js';
+import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { nativeCancelCommand } from './native-cancel-command.js';
 import { nativeCheckCommand } from './native-check-command.js';
 import { nativeDoctorCommand } from './native-doctor-command.js';
@@ -113,9 +114,12 @@ export async function runNativeCliDetailed(
     command = dispatchArgs[0] ?? null;
     const invoke = () =>
       dispatch(dispatchArgs, explicitProjectRoot, options.invocationCwd ?? process.cwd());
-    const dispatchResult = isNativeReadOnlyCommand(command ?? '', dispatchArgs.slice(1))
-      ? await withGitWorktreeReadScope(invoke)
-      : await invoke();
+    const run = async () =>
+      isNativeReadOnlyCommand(command ?? '', dispatchArgs.slice(1))
+        ? await withGitWorktreeReadScope(invoke)
+        : await invoke();
+    const dispatchResult =
+      command === 'hook-guard' ? await run() : await withCometRuntimeProgress(run);
     const rendered = renderNativeCommandDetailed(dispatchResult, json, verbose);
     return {
       dispatch: dispatchResult,

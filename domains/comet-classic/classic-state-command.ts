@@ -2593,8 +2593,9 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         }
       } else if (subcommand === 'propose-build' || subcommand === 'decide-build') {
         const proposing = subcommand === 'propose-build';
+        const confirmed = proposing && rest.length === 4 && rest[3] === '--confirmed';
         if (
-          (proposing && (rest.length !== 3 || rest[1] !== '--file' || !rest[2])) ||
+          (proposing && ((!confirmed && rest.length !== 3) || rest[1] !== '--file' || !rest[2])) ||
           (!proposing &&
             (rest.length !== 5 ||
               rest[1] !== '--proposal-hash' ||
@@ -2603,7 +2604,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         ) {
           fail(
             proposing
-              ? 'Usage: comet state propose-build <change-name> --file <json>'
+              ? 'Usage: comet state propose-build <change-name> --file <json> [--confirmed]'
               : 'Usage: comet state decide-build <change-name> --proposal-hash <sha256> --choice <approved|rejected>',
           );
         }
@@ -2620,6 +2621,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
               projectRoot: workspace.projectRoot,
               change: rest[0],
               configurationRef: rest[2],
+              confirmed,
             })
           : await decideClassicSdkBuild({
               projectRoot: workspace.projectRoot,
@@ -2633,7 +2635,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
           .find((candidate) => candidate.stepId === 'full.build.confirm');
         output.data = {
           ...(await sdkEntryData(rest[0], { run, projectRoot: workspace.projectRoot })),
-          ...(proposing && wait
+          ...(proposing && wait?.status === 'pending'
             ? { wait: { id: wait.id, proposalHash: wait.proposalHash, choices: wait.choices } }
             : {}),
         };
@@ -2803,7 +2805,8 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
             });
         await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'complete-build') {
-        requiredExact(rest, 1, 'Usage: comet state complete-build <change-name>');
+        if (rest.length !== 1 && !(rest.length === 3 && rest[1] === '--session' && rest[2]?.trim()))
+          fail('Usage: comet state complete-build <change-name> [--session <execution-reference>]');
         validateChangeName(rest[0]);
         const projectRoot = classicCommandProjectRoot();
         const localOwner = await resolveClassicChangeRuntimeOwner(projectRoot, rest[0]);
@@ -2815,6 +2818,7 @@ export const classicStateCommand: ClassicCommandHandler = withProjectContext(
         const run = await completeClassicSdkBuild({
           projectRoot: workspace.projectRoot,
           change: rest[0],
+          sessionId: rest[2],
         });
         await nextSdk(output, rest[0], run, workspace.projectRoot);
       } else if (subcommand === 'transition') {

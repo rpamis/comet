@@ -3,7 +3,10 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { performance } from 'node:perf_hooks';
-import { recordCometGitCommand } from '../../platform/process/runtime-metrics.js';
+import {
+  recordCometGitCommand,
+  reportCometRuntimeProgress,
+} from '../../platform/process/runtime-metrics.js';
 
 import { atomicWriteJson } from './native-atomic-file.js';
 import {
@@ -2363,6 +2366,7 @@ export async function createNativeContentSnapshot(
   paths: NativeProjectPaths,
   options: SnapshotOptions = {},
 ): Promise<NativeContentSnapshotManifest> {
+  reportCometRuntimeProgress('选择项目输入');
   const limits = {
     maxFiles: options.limits?.maxFiles ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxFiles,
     maxFileBytes: options.limits?.maxFileBytes ?? DEFAULT_NATIVE_SNAPSHOT_LIMITS.maxFileBytes,
@@ -2451,6 +2455,7 @@ export async function createNativeContentSnapshot(
     validation: NativeCapturedEntryValidation,
   ): Promise<void> => {
     entries.push(entry);
+    reportCometRuntimeProgress('读取项目文件', entries.length);
     totalBytes += entry.size;
     capturedEntryValidations.set(entry.path, validation);
     if (!notifiedFirstEntry) {
@@ -2473,7 +2478,16 @@ export async function createNativeContentSnapshot(
     relative: string,
     before: import('fs').Stats,
     gitObjectId?: string,
+    publication?: {
+      omit: (value: NativeSnapshotOmission) => void;
+      record: (
+        entry: NativeSnapshotEntry,
+        validation: NativeCapturedEntryValidation,
+      ) => Promise<void>;
+    },
   ): Promise<void> => {
+    const publishOmission = publication?.omit ?? omit;
+    const publishEntry = publication?.record ?? recordCapturedEntry;
     if (!before.isFile() || before.isSymbolicLink()) return;
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
     let realTarget;
@@ -2482,7 +2496,7 @@ export async function createNativeContentSnapshot(
     } catch (error) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
-      omit({
+      publishOmission({
         path: relative,
         size: before.size,
         type: 'file',
@@ -2498,15 +2512,15 @@ export async function createNativeContentSnapshot(
       return;
     }
     if (entries.length >= limits.maxFiles) {
-      omit({ path: relative, size: before.size, type: 'file', reason: 'file-count' });
+      publishOmission({ path: relative, size: before.size, type: 'file', reason: 'file-count' });
       return;
     }
     if (before.size > limits.maxFileBytes) {
-      omit({ path: relative, size: before.size, type: 'file', reason: 'file-size' });
+      publishOmission({ path: relative, size: before.size, type: 'file', reason: 'file-size' });
       return;
     }
     if (totalBytes + before.size > limits.maxTotalBytes) {
-      omit({ path: relative, size: before.size, type: 'file', reason: 'total-size' });
+      publishOmission({ path: relative, size: before.size, type: 'file', reason: 'total-size' });
       return;
     }
     let boundedHash;
@@ -2521,7 +2535,12 @@ export async function createNativeContentSnapshot(
         return;
       }
       if (boundedHash.status === 'changed') {
-        omit({ path: relative, size: null, type: 'file', reason: 'changed-during-read' });
+        publishOmission({
+          path: relative,
+          size: null,
+          type: 'file',
+          reason: 'changed-during-read',
+        });
         return;
       }
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
@@ -2531,7 +2550,7 @@ export async function createNativeContentSnapshot(
     } catch (error) {
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
-      omit({
+      publishOmission({
         path: relative,
         size: before.size,
         type: 'file',
@@ -2551,7 +2570,7 @@ export async function createNativeContentSnapshot(
       after.mtimeMs !== before.mtimeMs ||
       after.ctimeMs !== before.ctimeMs
     ) {
-      omit({
+      publishOmission({
         path: relative,
         size: after.isFile() ? after.size : null,
         type: after.isFile() ? 'file' : 'other',
@@ -2560,7 +2579,7 @@ export async function createNativeContentSnapshot(
       return;
     }
     if (!nativeSnapshotExecutionHasBudget(execution)) return;
-    await recordCapturedEntry(
+    await publishEntry(
       {
         path: relative,
         hash: boundedHash.hash,
@@ -2570,6 +2589,57 @@ export async function createNativeContentSnapshot(
       },
       { kind: 'file', target, realTarget, stat: after },
     );
+  };
+
+  const captures: Array<{
+    bytes: number;
+    effects: Array<() => void | Promise<void>>;
+    settled: Promise<{ error?: unknown }>;
+  }> = [];
+  const flushCaptures = async () => {
+    const batch = captures.splice(0);
+    const results = await Promise.all(batch.map((capture) => capture.settled));
+    const failure = results.find((result) => 'error' in result);
+    if (failure) throw failure.error;
+    for (const capture of batch) for (const effect of capture.effects) await effect();
+  };
+  const queueCaptureFile = async (
+    target: string,
+    relative: string,
+    before: import('fs').Stats,
+    boundObjectId?: string,
+  ) => {
+    // 先读取独立文件，再按选择顺序发布；预算、条目顺序和首条 Hook 保持串行语义。
+    if (
+      captures.length >= 4 ||
+      entries.length + captures.length >= limits.maxFiles ||
+      totalBytes + captures.reduce((sum, capture) => sum + capture.bytes, 0) + before.size >
+        limits.maxTotalBytes
+    )
+      await flushCaptures();
+    if (
+      !notifiedFirstEntry ||
+      before.size > limits.maxFileBytes ||
+      entries.length >= limits.maxFiles ||
+      totalBytes + before.size > limits.maxTotalBytes
+    ) {
+      await flushCaptures();
+      await captureFile(target, relative, before, boundObjectId);
+    } else {
+      const effects: Array<() => void | Promise<void>> = [];
+      const settled = captureFile(target, relative, before, boundObjectId, {
+        omit: (value) => {
+          effects.push(() => omit(value));
+        },
+        record: async (entry, validation) => {
+          effects.push(() => recordCapturedEntry(entry, validation));
+        },
+      }).then(
+        () => ({}),
+        (error: unknown) => ({ error }),
+      );
+      captures.push({ bytes: before.size, effects, settled });
+    }
   };
 
   const captureSymbolicLink = async (
@@ -2631,7 +2701,10 @@ export async function createNativeContentSnapshot(
   };
 
   const revalidateCapturedEntries = async (): Promise<void> => {
+    reportCometRuntimeProgress('复查项目文件', 0, capturedEntryValidations.size);
+    let validated = 0;
     for (const [relative, validation] of [...capturedEntryValidations]) {
+      reportCometRuntimeProgress('复查项目文件', validated++, capturedEntryValidations.size);
       if (!nativeSnapshotExecutionHasBudget(execution)) return;
       if (validation.kind === 'file') {
         let realTarget: string;
@@ -2810,44 +2883,51 @@ export async function createNativeContentSnapshot(
       hooks: options.physicalSelectionHooks,
     });
     await options.physicalSelectionHooks?.afterInitialSelection?.();
-    for (const record of before.records) {
-      if (record.type !== 'file' && record.type !== 'symlink') continue;
-      if (capturedEntryValidations.has(record.path)) continue;
-      if (remainingNativeSnapshotTime(execution) < 1) break;
-      if (!snapshotPolicyIncludes(policy, record.path, execution)) continue;
-      if (remainingNativeSnapshotTime(execution) < 1) break;
-      const target = path.resolve(projectRoot, ...record.path.split('/'));
-      let stat: import('fs').Stats;
-      try {
-        stat = await fs.lstat(target);
-      } catch (error) {
-        if (!nativeSnapshotExecutionHasBudget(execution)) break;
-        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
-        omit({
-          path: record.path,
-          size: null,
-          type: 'file',
-          reason: isChangedDuringReadError(error) ? 'changed-during-read' : 'unreadable',
-        });
-        continue;
-      }
-      if (remainingNativeSnapshotTime(execution) < 1) break;
-      if (record.type === 'symlink' && stat.isSymbolicLink()) {
-        await captureSymbolicLink(target, record.path, stat);
+    try {
+      for (const record of before.records) {
+        if (record.type !== 'file' && record.type !== 'symlink') continue;
+        if (capturedEntryValidations.has(record.path)) continue;
         if (remainingNativeSnapshotTime(execution) < 1) break;
-        continue;
+        if (!snapshotPolicyIncludes(policy, record.path, execution)) continue;
+        if (remainingNativeSnapshotTime(execution) < 1) break;
+        const target = path.resolve(projectRoot, ...record.path.split('/'));
+        let stat: import('fs').Stats;
+        try {
+          stat = await fs.lstat(target);
+        } catch (error) {
+          await flushCaptures();
+          if (!nativeSnapshotExecutionHasBudget(execution)) break;
+          if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
+          omit({
+            path: record.path,
+            size: null,
+            type: 'file',
+            reason: isChangedDuringReadError(error) ? 'changed-during-read' : 'unreadable',
+          });
+          continue;
+        }
+        if (remainingNativeSnapshotTime(execution) < 1) break;
+        if (record.type === 'symlink' && stat.isSymbolicLink()) {
+          await flushCaptures();
+          await captureSymbolicLink(target, record.path, stat);
+          if (remainingNativeSnapshotTime(execution) < 1) break;
+          continue;
+        }
+        if (record.type !== 'file' || !stat.isFile() || stat.isSymbolicLink()) {
+          await flushCaptures();
+          omit({
+            path: record.path,
+            size: stat.isFile() ? stat.size : null,
+            type: stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : 'other',
+            reason: 'changed-during-read',
+          });
+          continue;
+        }
+        await queueCaptureFile(target, record.path, stat);
+        if (remainingNativeSnapshotTime(execution) < 1) break;
       }
-      if (record.type !== 'file' || !stat.isFile() || stat.isSymbolicLink()) {
-        omit({
-          path: record.path,
-          size: stat.isFile() ? stat.size : null,
-          type: stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : 'other',
-          reason: 'changed-during-read',
-        });
-        continue;
-      }
-      await captureFile(target, record.path, stat);
-      if (remainingNativeSnapshotTime(execution) < 1) break;
+    } finally {
+      await flushCaptures();
     }
     if (remainingNativeSnapshotTime(execution) >= 1) await revalidateCapturedEntries();
     const after = await nativePhysicalSnapshotSelection({
@@ -2947,159 +3027,168 @@ export async function createNativeContentSnapshot(
     }
     const reusedTrackedPaths = new Set<string>();
     const boundObjectIdPaths = new Set<string>();
-    for (const relative of selectionPaths(gitSelection)) {
-      if (capturedEntryValidations.has(relative)) continue;
-      if (!isSnapshotProjectRef(paths, relative)) continue;
-      if (remainingNativeSnapshotTime(execution) < 1) break;
-      if (!snapshotPolicyIncludes(policy, relative, execution)) continue;
-      if (remainingNativeSnapshotTime(execution) < 1) break;
-      const target = path.resolve(projectRoot, ...relative.split('/'));
-      if (
-        target === configFile ||
-        target === selectionFile ||
-        sameOrInside(runtimeRoot, target) ||
-        denylist.some((denied) => sameOrInside(denied, target))
-      ) {
-        continue;
-      }
-      if (gitSelection.gitlinks.has(relative)) {
-        if (entries.length >= limits.maxFiles) {
-          omit({ path: relative, size: 0, type: 'file', reason: 'file-count' });
-          continue;
-        }
-        let realGitlink: string;
-        let gitlinkStat: import('fs').Stats;
-        try {
-          [realGitlink, gitlinkStat] = await Promise.all([fs.realpath(target), fs.lstat(target)]);
-        } catch {
-          omit({
-            path: relative,
-            size: null,
-            type: 'directory',
-            reason: 'gitlink-unavailable',
-          });
-          continue;
-        }
+    try {
+      for (const relative of selectionPaths(gitSelection)) {
+        if (capturedEntryValidations.has(relative)) continue;
+        if (!isSnapshotProjectRef(paths, relative)) continue;
+        if (remainingNativeSnapshotTime(execution) < 1) break;
+        if (!snapshotPolicyIncludes(policy, relative, execution)) continue;
+        if (remainingNativeSnapshotTime(execution) < 1) break;
+        const target = path.resolve(projectRoot, ...relative.split('/'));
         if (
-          gitlinkStat.isSymbolicLink() ||
-          !gitlinkStat.isDirectory() ||
-          !isInsidePath(physicalProjectRoot, realGitlink) ||
-          sameOrInside(physicalNativeRoot, realGitlink)
+          target === configFile ||
+          target === selectionFile ||
+          sameOrInside(runtimeRoot, target) ||
+          denylist.some((denied) => sameOrInside(denied, target))
         ) {
-          omit({
-            path: relative,
-            size: null,
-            type: 'directory',
-            reason: 'gitlink-unavailable',
-          });
           continue;
         }
-        try {
-          const workingTree = await inspectGitlinkWorkingTree(execution, realGitlink);
-          if (workingTree.dirty) {
+        if (gitSelection.gitlinks.has(relative)) {
+          await flushCaptures();
+          if (entries.length >= limits.maxFiles) {
+            omit({ path: relative, size: 0, type: 'file', reason: 'file-count' });
+            continue;
+          }
+          let realGitlink: string;
+          let gitlinkStat: import('fs').Stats;
+          try {
+            [realGitlink, gitlinkStat] = await Promise.all([fs.realpath(target), fs.lstat(target)]);
+          } catch {
             omit({
               path: relative,
               size: null,
               type: 'directory',
-              reason: 'gitlink-dirty',
+              reason: 'gitlink-unavailable',
             });
             continue;
           }
-          await recordCapturedEntry(
-            {
+          if (
+            gitlinkStat.isSymbolicLink() ||
+            !gitlinkStat.isDirectory() ||
+            !isInsidePath(physicalProjectRoot, realGitlink) ||
+            sameOrInside(physicalNativeRoot, realGitlink)
+          ) {
+            omit({
               path: relative,
-              hash: workingTree.hash,
-              size: 0,
-              type: 'file',
-            },
-            {
-              kind: 'gitlink',
-              target,
-              realTarget: realGitlink,
-              stat: gitlinkStat,
-              hash: workingTree.hash,
-            },
-          );
+              size: null,
+              type: 'directory',
+              reason: 'gitlink-unavailable',
+            });
+            continue;
+          }
+          try {
+            const workingTree = await inspectGitlinkWorkingTree(execution, realGitlink);
+            if (workingTree.dirty) {
+              omit({
+                path: relative,
+                size: null,
+                type: 'directory',
+                reason: 'gitlink-dirty',
+              });
+              continue;
+            }
+            await recordCapturedEntry(
+              {
+                path: relative,
+                hash: workingTree.hash,
+                size: 0,
+                type: 'file',
+              },
+              {
+                kind: 'gitlink',
+                target,
+                realTarget: realGitlink,
+                stat: gitlinkStat,
+                hash: workingTree.hash,
+              },
+            );
+          } catch (error) {
+            if (isNativeGitSnapshotTimeout(error)) throw error;
+            // The index knows this is a gitlink, but an uninitialized, unreadable, or
+            // concurrently changing checkout has no trustworthy working-tree pointer.
+            omit({
+              path: relative,
+              size: null,
+              type: 'directory',
+              reason: 'gitlink-unavailable',
+            });
+          }
+          continue;
+        }
+        let before;
+        try {
+          before = await fs.lstat(target);
         } catch (error) {
-          if (isNativeGitSnapshotTimeout(error)) throw error;
-          // The index knows this is a gitlink, but an uninitialized, unreadable, or
-          // concurrently changing checkout has no trustworthy working-tree pointer.
+          await flushCaptures();
+          if (isChangedDuringReadError(error) && gitSelection.tracked.has(relative)) {
+            capturedTrackedAbsences.set(relative, target);
+            continue;
+          }
+          if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
           omit({
             path: relative,
             size: null,
-            type: 'directory',
-            reason: 'gitlink-unavailable',
+            type: 'file',
+            reason: isChangedDuringReadError(error) ? 'changed-during-read' : 'unreadable',
           });
-        }
-        continue;
-      }
-      let before;
-      try {
-        before = await fs.lstat(target);
-      } catch (error) {
-        if (isChangedDuringReadError(error) && gitSelection.tracked.has(relative)) {
-          capturedTrackedAbsences.set(relative, target);
           continue;
         }
-        if (!isUnreadableError(error) && !isChangedDuringReadError(error)) throw error;
-        omit({
-          path: relative,
-          size: null,
-          type: 'file',
-          reason: isChangedDuringReadError(error) ? 'changed-during-read' : 'unreadable',
-        });
-        continue;
-      }
-      if (before.isSymbolicLink()) {
-        await captureSymbolicLink(target, relative, before);
-        continue;
-      }
-      if (!before.isFile()) {
-        if (!gitSelection.nestedRepositories.has(relative)) {
-          omit({ path: relative, size: null, type: 'other', reason: 'changed-during-read' });
-        }
-        continue;
-      }
-      // Incremental reuse: if this tracked file's git blob object id matches
-      // baseline and the working tree is not modified, the content is
-      // provably unchanged — reuse the baseline hash without reading the file.
-      const currentObjectId = gitSelection.trackedObjectIds.get(relative);
-      const baselineEntry = currentObjectId ? baselineByPath.get(relative) : undefined;
-      if (
-        incrementalEnabled &&
-        baselineEntry?.gitObjectId !== undefined &&
-        baselineEntry.gitObjectId === currentObjectId &&
-        !unsafeGitObjectIdPaths.has(relative) &&
-        !workingTreeModified.has(relative)
-      ) {
-        if (entries.length >= limits.maxFiles) {
-          omit({ path: relative, size: baselineEntry.size, type: 'file', reason: 'file-count' });
+        if (before.isSymbolicLink()) {
+          await flushCaptures();
+          await captureSymbolicLink(target, relative, before);
           continue;
         }
-        if (baselineEntry.size > limits.maxFileBytes) {
-          omit({ path: relative, size: baselineEntry.size, type: 'file', reason: 'file-size' });
+        if (!before.isFile()) {
+          await flushCaptures();
+          if (!gitSelection.nestedRepositories.has(relative)) {
+            omit({ path: relative, size: null, type: 'other', reason: 'changed-during-read' });
+          }
           continue;
         }
-        if (totalBytes + baselineEntry.size > limits.maxTotalBytes) {
-          omit({ path: relative, size: baselineEntry.size, type: 'file', reason: 'total-size' });
+        // Incremental reuse: if this tracked file's git blob object id matches
+        // baseline and the working tree is not modified, the content is
+        // provably unchanged — reuse the baseline hash without reading the file.
+        const currentObjectId = gitSelection.trackedObjectIds.get(relative);
+        const baselineEntry = currentObjectId ? baselineByPath.get(relative) : undefined;
+        if (
+          incrementalEnabled &&
+          baselineEntry?.gitObjectId !== undefined &&
+          baselineEntry.gitObjectId === currentObjectId &&
+          !unsafeGitObjectIdPaths.has(relative) &&
+          !workingTreeModified.has(relative)
+        ) {
+          await flushCaptures();
+          if (entries.length >= limits.maxFiles) {
+            omit({ path: relative, size: baselineEntry.size, type: 'file', reason: 'file-count' });
+            continue;
+          }
+          if (baselineEntry.size > limits.maxFileBytes) {
+            omit({ path: relative, size: baselineEntry.size, type: 'file', reason: 'file-size' });
+            continue;
+          }
+          if (totalBytes + baselineEntry.size > limits.maxTotalBytes) {
+            omit({ path: relative, size: baselineEntry.size, type: 'file', reason: 'total-size' });
+            continue;
+          }
+          // Reuse the baseline entry verbatim (path, hash, size, gitObjectId).
+          // Do not register a validation: the file is not opened, so there is no
+          // TOCTOU window and revalidateCapturedEntries correctly skips it.
+          entries.push({ ...baselineEntry });
+          totalBytes += baselineEntry.size;
+          reusedTrackedPaths.add(relative);
           continue;
         }
-        // Reuse the baseline entry verbatim (path, hash, size, gitObjectId).
-        // Do not register a validation: the file is not opened, so there is no
-        // TOCTOU window and revalidateCapturedEntries correctly skips it.
-        entries.push({ ...baselineEntry });
-        totalBytes += baselineEntry.size;
-        reusedTrackedPaths.add(relative);
-        continue;
+        const boundObjectId =
+          gitObjectIdsTrusted &&
+          !unsafeGitObjectIdPaths.has(relative) &&
+          !workingTreeModified.has(relative)
+            ? currentObjectId
+            : undefined;
+        await queueCaptureFile(target, relative, before, boundObjectId);
+        if (boundObjectId !== undefined) boundObjectIdPaths.add(relative);
       }
-      const boundObjectId =
-        gitObjectIdsTrusted &&
-        !unsafeGitObjectIdPaths.has(relative) &&
-        !workingTreeModified.has(relative)
-          ? currentObjectId
-          : undefined;
-      await captureFile(target, relative, before, boundObjectId);
-      if (boundObjectId !== undefined) boundObjectIdPaths.add(relative);
+    } finally {
+      await flushCaptures();
     }
     await revalidateCapturedEntries();
     await options.gitSelectionHooks?.afterContentRevalidation?.();

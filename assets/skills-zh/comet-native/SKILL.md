@@ -53,6 +53,8 @@ Agent 先调查能够查明的事实，只询问会改变用户可见结果、�
 
 新建需求或重新确认 Shape 时，brief 只要求目标、范围、非目标和验收示例四个核心章节；有约束、关键决定、待解决问题或特殊验证要求时再补对应章节。Runtime 同时检查完整目标 Spec 或明确的无产品行为变更理由及正式路径。失败会给出文件和修复动作；补齐后重跑 continuation。后续阶段的旧需求保留进度，回到 Shape 时再检查。
 
+Verify 中编辑被拒绝并提示复核时，必须读取[编辑复核](reference/edit-review.md)，按当前候选的任务领取、提交和重试原编辑；阶段保留不代表该编辑已通过验收。
+
 ## Build ↔ Verify Loop
 
 Builder 提交候选实现后，由 Runtime 执行必要检查，再交给新的只读 Verifier 验收。未通过则回 Build 修复并重新提交；全部通过后，等待用户接受验收结果。
@@ -83,17 +85,17 @@ Build、Verify 和 Archive 会复查正式文件绑定。新确认的 Shape 按 
 
 按 Verify 协议立即启动新的只读 Verifier，原样传递任务包。派发只代表登记：平台接受启动调用、且 Verifier 回报 `verifier-started` 后，才说明它已运行；启动失败立即按异常流程处理。任务包含验收正文时直接使用，否则按分页读取全部 scopeIds。Verifier 独立判断全部验收项，复用与当前实现、工作区和输入匹配的 Runtime 检查，只补缺失或失效证据；文件和日志正文按需读取。
 
-等待工具超时后，继续等待同一个 Verifier。回执未到且子代理无响应时，先核实启动是否成功；只有平台确认执行失败、超时、任务丢失或结束后无结果时才登记错误。Runtime 接受完整结果后，按最新状态继续。只有用户明确接受结果后才执行 `--accept-result`，仅完成自动检查的结果也须明确接受。隔离工作区可在同一回复中接受结果并选择交付方式，执行带 `--finish` 的备选命令；用户未选择时再询问。
+等待工具超时后，继续等待同一个 Verifier。回执未到且子代理无响应时，先核实启动是否成功；只有平台确认执行失败、超时、任务丢失或结束后无结果时才登记错误。Runtime 接受完整结果后，按最新状态继续。只有用户明确接受结果后才执行 `--accept-result`，仅完成自动检查的结果也须明确接受。Compat 隔离工作区可在同一回复中接受结果并选择交付方式，执行带 `--finish` 的备选命令；用户未选择时再询问。
 
 完成标准：Runtime 接受每项验收结论并给出下一步；返回 Build 就继续修复，返回等待或阻塞就处理对应条件，不把阶段结束当任务完成。
 
 ## Archive
 
-`continuation` 允许 Archive 时，必须先读[Archive 收尾](reference/workspace.md#archive-收尾)，使用已接受的验收结果，执行最新 continuation。用户明确选择收尾方式后，可执行对应的 `--confirmed --finish` 完整命令，由 Runtime 完成预检和事务内复查；返回 dry-run 时先运行预览，`ready: true` 后执行返回的唯一 confirmed 命令。只处理同一响应列出的阻塞。
+`continuation` 允许 Archive 时，必须先读[Archive 收尾](reference/workspace.md#archive-收尾)，使用已接受的验收结果，执行最新 continuation。SDK 直接执行返回的 Archive 命令，归档后按用户已有授权完成并核对 Git 交付；Compat 用户明确选择收尾方式后，可执行对应的 `--confirmed --finish` 完整命令，由 Runtime 完成预检和事务内复查；返回 dry-run 时先运行预览，`ready: true` 后执行返回的唯一 confirmed 命令。只处理同一响应列出的阻塞。
 
-只提交本 change 的实现和正式产物，保留无关修改。检查 `workspaceFinishResult`，阻塞时按 `recoveryArgs` 保留现场并恢复。已有授权足以处理的提交说明和本地阻塞由 Agent 修复后继续，不要求用户再次说“重试”；需要新增授权或外部信息时才询问。
+只提交本 change 的实现和正式产物，保留无关修改。Compat 检查 `workspaceFinishResult`，阻塞时按 `recoveryArgs` 保留现场并恢复；SDK 以 Run 与实际 Git 结果分别核对归档和交付。已有授权足以处理的提交说明和本地阻塞由 Agent 修复后继续，不要求用户再次说“重试”；需要新增授权或外部信息时才询问。
 
-完成标准：状态为 `done`，用户授权的工作区收尾为 `completed` 或 `kept`，并按记忆接入协议记录任务完成；其他结果继续处理。
+完成标准：状态为 `done`；SDK Run 为 `completed` 且用户授权的 Git 交付已实际完成并核对，Compat 工作区收尾为 `completed` 或 `kept`；随后按记忆接入协议记录任务完成。其他结果继续处理。
 
 ## 后续指令
 

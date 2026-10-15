@@ -107,7 +107,7 @@ describe('Bundle platform compiler', () => {
 
   it('derives one dry-run target from every registered platform', async () => {
     expect(targets).toHaveLength(PLATFORMS.length);
-    expect(targets).toHaveLength(37);
+    expect(targets.map((target) => target.id)).toEqual(PLATFORMS.map((platform) => platform.id));
 
     for (const target of targets) {
       const report = await compileBundleForPlatform(ir(), target, {

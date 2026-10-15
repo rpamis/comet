@@ -1202,7 +1202,7 @@ async function inspectClassicHookTarget(
             classicLocale(governing.classic?.language),
           );
         const before = await readClassicProjectFile(projectRoot, relativePath, {
-          label: 'Classic 编辑前内容',
+          label: 'Classic content before edit',
           maxBytes: 1024 * 1024,
         });
         const after = proposedCometHookFileContent(proposals[0], before);
@@ -1229,7 +1229,7 @@ async function inspectClassicHookTarget(
             );
             return result(
               2,
-              `Classic 保留 Verify：${impact.reason}。使用 comet edit-review prepare classic ${changeName} --file <hook-input.json> 读取具体复核任务，让当前独立 Verifier 复核并通过 record 提交；复核前不得通过或归档。`,
+              `Classic remains in Verify: the concrete edit requires review. Run comet edit-review show classic ${changeName} for the proposal and continuation; an independent session must claim and record the returned task, or obtain user confirmation in Compat. Acceptance and archive remain blocked until review.`,
             );
           }
         }
@@ -1246,7 +1246,7 @@ async function inspectClassicHookTarget(
           );
         return result(
           2,
-          `Classic 保留 Verify：无法完整判定编辑；${error instanceof Error ? error.message : String(error)}。补齐具体编辑后复核，不得直接通过或归档。`,
+          `Classic remains in Verify: edit impact could not be determined; ${error instanceof Error ? error.message : String(error)}. Supply the complete edit for review before acceptance or archive.`,
         );
       }
     }

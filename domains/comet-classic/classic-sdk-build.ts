@@ -86,6 +86,7 @@ export async function proposeClassicSdkBuild(options: {
   projectRoot: string;
   change: string;
   configurationRef: string;
+  confirmed?: boolean;
 }): Promise<WorkflowRun> {
   const { projectRoot, change } = options;
   const { run, state, runtime, profile } = await inspectClassicSdkRun(projectRoot, change);
@@ -129,7 +130,7 @@ export async function proposeClassicSdkBuild(options: {
     executorId: 'comet-classic-state',
     claimToken,
   });
-  return runtime.recordOutcome({
+  const proposed = await runtime.recordOutcome({
     runId: run.runId,
     expectedRevision: claimed.revision,
     outcome: {
@@ -142,6 +143,19 @@ export async function proposeClassicSdkBuild(options: {
       output,
     },
     context: { requestId: randomUUID(), projectRoot },
+  });
+  if (!options.confirmed) return proposed;
+  const wait = proposed.waits.find(
+    (entry) => entry.stepId === 'full.build.confirm' && entry.status === 'pending',
+  );
+  if (!wait) throw new Error('Classic Build proposal has no pending configuration decision');
+  return runtime.resolveWait({
+    runId: proposed.runId,
+    expectedRevision: proposed.revision,
+    waitId: wait.id,
+    proposalHash: wait.proposalHash,
+    decisionId: randomUUID(),
+    choice: 'approved',
   });
 }
 
@@ -378,6 +392,7 @@ export async function continueClassicSdkBuildPlan(options: {
 export async function completeClassicSdkBuild(options: {
   projectRoot: string;
   change: string;
+  sessionId?: string;
 }): Promise<WorkflowRun> {
   const { projectRoot, change } = options;
   const { run, state, runtime, profile } = await inspectClassicSdkRun(projectRoot, change);
@@ -401,6 +416,11 @@ export async function completeClassicSdkBuild(options: {
       : null;
   if (!changeDirRef) throw new Error('Classic SDK Run has no change directory');
   await assertClassicBuildReady(projectRoot, changeDirRef, state, run);
+  if (
+    options.sessionId !== undefined &&
+    (!options.sessionId.trim() || options.sessionId.includes('\0'))
+  )
+    throw new Error('Classic Builder session must be a nonempty execution reference');
   const claimToken = randomUUID();
   const claimed = await runtime.claim({
     runId: run.runId,
@@ -409,6 +429,7 @@ export async function completeClassicSdkBuild(options: {
     attempt: action.attempt,
     inputHash: action.inputHash,
     executorId: 'comet-classic-state',
+    sessionId: options.sessionId ?? `classic-builder/${action.id}/${action.attempt}`,
     claimToken,
   });
   return runtime.recordOutcome({

@@ -368,6 +368,9 @@ export async function classicSdkBuildGuard(options: {
   apply: boolean;
   argv?: string[];
   checkCwd?: string;
+  checkTimeoutMs?: number;
+  reusable?: boolean;
+  sessionId?: string;
 }): Promise<ClassicCommandResult> {
   const { projectRoot, invocationCwd, change, apply, argv } = options;
   const inspected = await inspectClassicSdkRun(projectRoot, change);
@@ -454,13 +457,29 @@ export async function classicSdkBuildGuard(options: {
       guardAttempt,
     );
   }
-  if (buildPending) await completeClassicSdkBuild({ projectRoot, change });
+  if (buildPending)
+    await completeClassicSdkBuild({ projectRoot, change, sessionId: options.sessionId });
   const cwd = sdkCheckCwd(projectRoot, invocationCwd, options.checkCwd);
-  const checked = await classicCheckCommand(['run', change, 'build', '--cwd', cwd, '--', ...argv], {
-    json: false,
-    invocationCwd,
-    projectRoot,
-  });
+  const checked = await classicCheckCommand(
+    [
+      'run',
+      change,
+      'build',
+      '--cwd',
+      cwd,
+      ...(options.checkTimeoutMs === undefined
+        ? []
+        : ['--timeout-ms', String(options.checkTimeoutMs)]),
+      ...(options.reusable ? ['--local'] : []),
+      '--',
+      ...argv,
+    ],
+    {
+      json: false,
+      invocationCwd,
+      projectRoot,
+    },
+  );
   const finished = await inspectClassicSdkRun(projectRoot, change);
   if (checked.exitCode !== 0) {
     const failed = await guardResult(
@@ -481,7 +500,7 @@ export async function classicSdkBuildGuard(options: {
       },
     };
   }
-  return finished.state.phase === 'verify'
+  const result = await (finished.state.phase === 'verify'
     ? guardResult(change, 'verify', projectRoot, null, undefined, finished.run, guardAttempt)
     : guardResult(
         change,
@@ -491,7 +510,14 @@ export async function classicSdkBuildGuard(options: {
         'Classic SDK Build check remains pending',
         finished.run,
         guardAttempt,
-      );
+      ));
+  return {
+    ...result,
+    data: {
+      ...(checked.data as Record<string, unknown>),
+      ...(result.data as Record<string, unknown>),
+    },
+  };
 }
 
 /** Preview or finish Verify through report evidence and a real SDK check. */
@@ -503,6 +529,8 @@ export async function classicSdkVerifyGuard(options: {
   apply: boolean;
   argv?: string[];
   checkCwd?: string;
+  checkTimeoutMs?: number;
+  reusable?: boolean;
 }): Promise<ClassicCommandResult> {
   const { projectRoot, invocationCwd, change, reportRef, apply, argv } = options;
   const inspected = await inspectClassicSdkRun(projectRoot, change);
@@ -664,7 +692,19 @@ export async function classicSdkVerifyGuard(options: {
   }
   const cwd = sdkCheckCwd(projectRoot, invocationCwd, options.checkCwd);
   const checked = await classicCheckCommand(
-    ['run', change, 'verify', '--cwd', cwd, '--', ...argv],
+    [
+      'run',
+      change,
+      'verify',
+      '--cwd',
+      cwd,
+      ...(options.checkTimeoutMs === undefined
+        ? []
+        : ['--timeout-ms', String(options.checkTimeoutMs)]),
+      ...(options.reusable ? ['--local'] : []),
+      '--',
+      ...argv,
+    ],
     {
       json: false,
       invocationCwd,
@@ -691,7 +731,7 @@ export async function classicSdkVerifyGuard(options: {
       },
     };
   }
-  return finished.state.phase === 'archive'
+  const result = await (finished.state.phase === 'archive'
     ? guardResult(change, 'archive', projectRoot, null, undefined, finished.run, guardAttempt)
     : guardResult(
         change,
@@ -701,7 +741,14 @@ export async function classicSdkVerifyGuard(options: {
         'Classic SDK Verify check remains pending',
         finished.run,
         guardAttempt,
-      );
+      ));
+  return {
+    ...result,
+    data: {
+      ...(checked.data as Record<string, unknown>),
+      ...(result.data as Record<string, unknown>),
+    },
+  };
 }
 
 /** Preview or execute only an explicitly approved SDK Archive; delivery remains separate. */

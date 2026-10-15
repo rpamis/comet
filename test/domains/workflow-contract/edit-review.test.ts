@@ -9,6 +9,10 @@ import {
   assertEditReviewsComplete,
   approvedEditFingerprint,
   claimedEditReviewAuthority,
+  claimEditReview,
+  claimedEditReviewExecutionAuthority,
+  editReviewContinuation,
+  rememberEditReviewInput,
 } from '../../../domains/workflow-contract/edit-review.js';
 
 const roots: string[] = [];
@@ -48,6 +52,94 @@ async function fixture(workflow: 'native' | 'classic' = 'native') {
   return { scope, request };
 }
 describe('bound edit reviews', () => {
+  it('recovers a bound independent review without claiming the formal Verifier Action', async () => {
+    const f = await fixture();
+    const proposal = await prepareEditReview(f.scope, f.request);
+    await expect(
+      claimEditReview(f.scope, { sessionId: 'builder', builderExecutionRef: 'builder' }),
+    ).rejects.toThrow('独立');
+    const claimed = await claimEditReview(f.scope, {
+      sessionId: 'reviewer',
+      builderExecutionRef: 'builder',
+    });
+    expect(
+      (await claimEditReview(f.scope, { sessionId: 'reviewer', builderExecutionRef: 'builder' }))
+        .recordTemplate,
+    ).toEqual(claimed.recordTemplate);
+    const input = {
+      ...claimed.recordTemplate,
+      decision: 'non-behavioral' as const,
+      summary: 'Only explanatory text changes.',
+    };
+    await expect(
+      claimedEditReviewExecutionAuthority(f.scope, 'builder', {
+        ...input,
+        reviewer: { sessionId: 'reviewer', claimToken: 'wrong' },
+      }),
+    ).rejects.toThrow('回执');
+    await expect(
+      claimedEditReviewExecutionAuthority({ ...f.scope, candidateKey: 'other' }, 'builder', input),
+    ).rejects.toThrow();
+    const authority = await claimedEditReviewExecutionAuthority(f.scope, 'builder', input);
+    const receipt = await recordEditReview(f.scope, input, authority);
+    expect(JSON.stringify(receipt)).not.toContain(input.reviewer.claimToken);
+    expect(
+      (
+        await claimEditReview(f.scope, {
+          sessionId: 'reviewer',
+          builderExecutionRef: 'builder',
+          proposalHash: proposal.proposalHash,
+        })
+      ).recordTemplate.reviewer.claimToken,
+    ).toBe(input.reviewer.claimToken);
+    await expect(
+      claimEditReview(f.scope, {
+        sessionId: 'another-reviewer',
+        builderExecutionRef: 'builder',
+        proposalHash: proposal.proposalHash,
+      }),
+    ).rejects.toThrow('已有复核结论');
+    expect(
+      (await editReviewContinuation(f.scope, await inspectEditReviews(f.scope), true))
+        ?.requiredInputs,
+    ).toContain('重试已经复核通过的原始编辑调用');
+    await fs.writeFile(
+      path.join(f.scope.projectRoot, 'worker.py'),
+      '# Explain the value.\nvalue = 1\n',
+    );
+    expect(
+      await editReviewContinuation(f.scope, await inspectEditReviews(f.scope), true),
+    ).toBeNull();
+    expect(receipt.proposalHash).toBe(proposal.proposalHash);
+  });
+
+  it('keeps original input outside Runtime and refuses to reuse a changed input reference', async () => {
+    const f = await fixture();
+    const proposal = await prepareEditReview(f.scope, f.request);
+    const inputFile = path.join(f.scope.projectRoot, 'request.json');
+    const source = JSON.stringify(f.request);
+    await fs.writeFile(inputFile, source);
+    await rememberEditReviewInput(f.scope, proposal.proposalHash, inputFile, source);
+    const next = await editReviewContinuation(f.scope, await inspectEditReviews(f.scope), true);
+    expect(next?.commandArgs).toContain(inputFile);
+    const claimed = await claimEditReview(f.scope, {
+      sessionId: 'reviewer',
+      builderExecutionRef: 'builder',
+      proposalHash: proposal.proposalHash,
+    });
+    expect(claimed.originalRequestRef).toBe(inputFile);
+    expect(claimed.originalRequestHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(claimed).not.toHaveProperty('request');
+    await fs.writeFile(inputFile, '{}');
+    expect(
+      (await editReviewContinuation(f.scope, await inspectEditReviews(f.scope), true))
+        ?.requiredInputs,
+    ).toContain('原始编辑请求');
+    await expect(
+      rememberEditReviewInput(f.scope, proposal.proposalHash, inputFile, source),
+    ).rejects.toThrow('发生变化');
+  });
+
   it('requires the current independent claimed Verifier session', () => {
     const action = {
       id: 'verify-1',

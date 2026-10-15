@@ -129,6 +129,7 @@ export async function projectNativeSdkStatus(
       projectRoot: options.projectRoot,
       applicationId: application?.identity.id,
       skillExecutors: application?.implementation.executors,
+      editReviews,
     })),
     ...(options.details ? { details: { state } } : {}),
   };

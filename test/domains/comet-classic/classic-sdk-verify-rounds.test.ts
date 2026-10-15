@@ -26,7 +26,11 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-async function fixture(profile: 'full' | 'tweak' | 'hotfix', buildFirst = true) {
+async function fixture(
+  profile: 'full' | 'tweak' | 'hotfix',
+  buildFirst = true,
+  confirmedConfiguration = false,
+) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic verify rounds '));
   roots.push(root);
   const projectRoot = path.join(root, 'project');
@@ -112,16 +116,18 @@ async function fixture(profile: 'full' | 'tweak' | 'hotfix', buildFirst = true) 
       'example',
       '--file',
       'build configuration.json',
+      ...(confirmedConfiguration ? ['--confirmed'] : []),
     );
-    await cli(
-      'state',
-      'decide-build',
-      'example',
-      '--proposal-hash',
-      build.wait.proposalHash,
-      '--choice',
-      'approved',
-    );
+    if (!confirmedConfiguration)
+      await cli(
+        'state',
+        'decide-build',
+        'example',
+        '--proposal-hash',
+        build.wait.proposalHash,
+        '--choice',
+        'approved',
+      );
     await put(
       planRef,
       `<!-- comet-task-authority: ${changeDir}/tasks.md -->\n# Plan\n<!-- comet-task-ref:impl -->\nCheck the ready constant.\n`,
@@ -214,7 +220,111 @@ async function fixture(profile: 'full' | 'tweak' | 'hotfix', buildFirst = true) 
   };
 }
 
+it('records an explicitly chosen Build configuration and its approval in one CLI handoff', async () => {
+  const f = await fixture('full', false, true);
+  const run = (await f.inspect()).run;
+  expect(run.waits.find((wait) => wait.stepId === 'full.build.confirm')).toMatchObject({
+    status: 'resolved',
+    decision: { choice: 'approved' },
+  });
+  expect(run.actions.find((action) => action.stepId === 'full.build.execute')).toMatchObject({
+    status: 'pending',
+  });
+  expect(run.waits.filter((wait) => wait.stepId === 'full.build.confirm')).toHaveLength(1);
+});
+
+it.each(['input', 'environment', 'unmarked', 'log'] as const)(
+  'does not reuse SDK checks after %s changes',
+  async (mutation) => {
+    const f = await fixture('tweak', false);
+    const argv = f.command('shared');
+    vi.stubEnv('COMET_REUSE_TEST_ENV', 'before');
+    await f.put(
+      '.comet/check-policy.json',
+      JSON.stringify({
+        version: 2,
+        commands: [{ argv, cwd: '.', files: ['source.js'], env: ['COMET_REUSE_TEST_ENV'] }],
+      }),
+    );
+    await f.cli(
+      'guard',
+      'example',
+      'build',
+      '--apply',
+      ...(mutation === 'unmarked' ? [] : ['--local']),
+      '--',
+      ...argv,
+    );
+    if (mutation === 'input') await f.put('source.js', 'export const ready = false;\n');
+    if (mutation === 'environment') vi.stubEnv('COMET_REUSE_TEST_ENV', 'after');
+    if (mutation === 'log') {
+      const action = (await f.inspect()).run.actions.find(
+        (entry) => entry.ref === 'classic-check',
+      )!;
+      const output = action.outcome!.output as { receiptRef: string };
+      const log = (await resolveClassicLocalTarget(
+        f.projectRoot,
+        path.join(f.projectRoot, output.receiptRef),
+      ))!.target;
+      await fs.writeFile(log, 'changed execution log');
+    }
+    const result = await f.invoke(
+      'guard',
+      'example',
+      'verify',
+      '--report',
+      f.reportRef,
+      '--apply',
+      '--local',
+      '--',
+      ...argv,
+    );
+    if (mutation === 'log') {
+      expect(result.exitCode).not.toBe(0);
+      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('shared\n');
+    } else {
+      expect(result.exitCode, result.stdout).toBe(0);
+      expect(result.response.data.reused).toBe(false);
+      expect(await fs.readFile(f.checkCount, 'utf8')).toBe('shared\nshared\n');
+    }
+  },
+);
+
 describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify rounds', (profile) => {
+  it('reuses the same successful command across Build and Verify after validating its inputs and log', async () => {
+    const f = await fixture(profile, false);
+    const argv = f.command('shared');
+    await f.put(
+      '.comet/check-policy.json',
+      JSON.stringify({
+        version: 2,
+        commands: [{ argv, cwd: '.', files: ['source.js'] }],
+      }),
+    );
+    expect(
+      (await f.invoke('guard', 'example', 'build', '--apply', '--local', '--', ...argv)).exitCode,
+    ).toBe(0);
+    const result = await f.invoke(
+      'guard',
+      'example',
+      'verify',
+      '--report',
+      f.reportRef,
+      '--apply',
+      '--local',
+      '--',
+      ...argv,
+    );
+    expect(result.exitCode, result.stdout).toBe(0);
+    expect(await fs.readFile(f.checkCount, 'utf8')).toBe('shared\n');
+    const run = (await f.inspect()).run;
+    const checks = run.actions.filter((action) => action.ref === 'classic-check');
+    expect(checks.at(-1)?.outcome?.output).toMatchObject({
+      reused: true,
+      reusedFrom: checks[0].id,
+    });
+  });
+
   it('returns the committed Run and original receipt after a real Build failure without replay', async () => {
     const f = await fixture(profile, false);
     const failed = await f.invoke(

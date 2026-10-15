@@ -70,6 +70,54 @@ describe('Native VCS-independent content snapshots', () => {
     ]);
   });
 
+  it.each([false, true])(
+    'reads independent files concurrently while preserving selection order and limits (Git: %s)',
+    async (git) => {
+      if (git) await execFileAsync('git', ['init'], { cwd: projectRoot });
+      const refs = Array.from(
+        { length: 16 },
+        (_, index) => `file-${String(index).padStart(2, '0')}.ts`,
+      );
+      await Promise.all(refs.map((ref) => fs.writeFile(path.join(projectRoot, ref), ref)));
+      const open = fs.open.bind(fs);
+      let active = 0;
+      let peak = 0;
+      const spy = vi
+        .spyOn(fs, 'open')
+        .mockImplementation(async (...args: Parameters<typeof fs.open>) => {
+          const handle = await open(...args);
+          if (String(args[0]).endsWith('.ts')) {
+            const read = handle.read.bind(handle);
+            handle.read = (async (...parameters: Parameters<typeof handle.read>) => {
+              active += 1;
+              peak = Math.max(peak, active);
+              try {
+                await new Promise((resolve) => setTimeout(resolve, 5));
+                return await read(...parameters);
+              } finally {
+                active -= 1;
+              }
+            }) as typeof handle.read;
+          }
+          return handle;
+        });
+      try {
+        const snapshot = await createNativeContentSnapshot(paths);
+        expect(snapshot.complete).toBe(true);
+        expect(snapshot.entries.map((entry) => entry.path)).toEqual(refs);
+        expect(peak).toBeGreaterThan(1);
+        expect(peak).toBeLessThanOrEqual(4);
+        expect(active).toBe(0);
+        const limited = await createNativeContentSnapshot(paths, { limits: { maxFiles: 3 } });
+        expect(limited.entries.map((entry) => entry.path)).toEqual(refs.slice(0, 3));
+        expect(limited.omittedCount).toBe(13);
+        expect(active).toBe(0);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
+
   it('records only safe project-relative metadata and excludes secrets, caches, Native state, and links', async () => {
     const safe = 'export const safe = true;\n';
     await execFileAsync('git', ['init'], { cwd: projectRoot });

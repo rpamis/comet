@@ -611,7 +611,7 @@ describe('Native phase Hook guard', () => {
     ).resolves.toMatchObject({
       allowed: false,
       phase: 'verify',
-      reason: expect.stringContaining('edit-review prepare'),
+      reason: expect.stringContaining('edit-review show native'),
     });
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
       phase: 'verify',
@@ -747,7 +747,7 @@ describe('Native phase Hook guard', () => {
     ).resolves.toMatchObject({
       allowed: false,
       phase: 'verify',
-      reason: expect.stringContaining('edit-review prepare'),
+      reason: expect.stringContaining('edit-review show native'),
     });
     await expect(readNativePortableChange(paths, state.name)).resolves.toMatchObject({
       phase: 'verify',

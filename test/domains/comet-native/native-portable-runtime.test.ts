@@ -333,7 +333,7 @@ describe('Native portable Runtime vertical path', () => {
         };
         const blocked = await inspectNativeHookGuard(root, request, state.name);
         expect(blocked).toMatchObject({ allowed: false, phase: 'verify' });
-        expect(blocked.reason).toContain('edit-review prepare');
+        expect(blocked.reason).toContain('edit-review show native');
         const proposal = await prepareEditReview(scope, request);
         await recordEditReview(
           scope,
@@ -964,8 +964,11 @@ children:
         review: passedReview('orphaned-reviewer'),
       },
     });
-    const marker = path.join(root, 'check-starts.txt');
-    const release = path.join(root, 'release-check');
+    // 进程同步文件不属于候选实现，避免恢复测试自行改变检查输入。
+    const controls = path.join(paths.workspaceRuntimeRoot, 'test-orphaned-check-control');
+    await fs.mkdir(controls, { recursive: true });
+    const marker = path.join(controls, 'check-starts.txt');
+    const release = path.join(controls, 'release-check');
     const plan = {
       id: 'orphaned-check',
       name: 'Orphaned check',

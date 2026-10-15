@@ -119,7 +119,8 @@
     "prepack": "node scripts/release/npm-readme.mjs apply",
     "postpack": "node scripts/release/npm-readme.mjs restore",
     "prepublishOnly": "node scripts/release/prepublish-check.js && node build.js",
-    "postinstall": "node scripts/install/postinstall.js"
+    "postinstall": "node scripts/install/postinstall.js",
+    "benchmark:workflow-scale": "node scripts/benchmark/workflow-scale-benchmark.mjs"
   },
   "lint-staged": {
     "app/**/*.{ts,tsx,js,mjs,cjs,json,md,yaml,yml}": "prettier --write",

@@ -57,12 +57,14 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
     if (rerun) throw new Error('Classic SDK check rerun requires a new pending check Action');
     let cwd = '.';
     let timeoutMs = 300_000;
+    let reusable = false;
     for (let index = 3; index < separator; index += 1) {
       const option = args[index];
       if (option === '--cwd' && index + 1 < separator) cwd = args[++index];
       else if (option === '--timeout-ms' && index + 1 < separator)
         timeoutMs = Number(args[++index]);
-      else if (option === '--local' || option === '--incremental')
+      else if (option === '--local') reusable = true;
+      else if (option === '--incremental')
         throw new Error(`Classic SDK checks require full execution; ${option} is not supported`);
       else throw new Error(`Unknown or incomplete check option: ${option}`);
     }
@@ -84,6 +86,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
           argv: requestedArgv,
           cwd,
           timeoutMs,
+          reusable,
         });
     const action = checked.actions
       .slice()
@@ -94,6 +97,7 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
           argv?: string[];
           cwd?: string;
           timeoutMs?: number;
+          reusable?: boolean;
           exitCode?: number;
           inputBefore?: string;
           inputAfter?: string;
@@ -109,7 +113,8 @@ export const classicCheckCommand: ClassicCommandHandler = withProjectContext(asy
       (action?.status !== 'succeeded' ||
         JSON.stringify(result.argv) !== JSON.stringify(requestedArgv) ||
         result.cwd !== cwd ||
-        result.timeoutMs !== timeoutMs)
+        result.timeoutMs !== timeoutMs ||
+        (result.reusable === true) !== reusable)
     ) {
       throw new Error('Classic SDK check recovery does not match the recorded command');
     }

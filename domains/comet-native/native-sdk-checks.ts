@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { inspectGitWorktree, resolveGitRef, samePath } from '../../platform/paths/git-worktree.js';
 import { runGitCommand } from '../../platform/process/git.js';
+import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import {
   hashProtectedProjectFile,
   ensureProtectedProjectDirectory,
@@ -593,6 +594,7 @@ export const nativeSdkCheckExecutor: RuntimeExecutor = {
     try {
       for (const plan of plans) {
         await registration.assertNotStopped();
+        reportCometRuntimeProgress(`执行检查：${plan.name}`);
         const executed = await executeNativeCheck({
           projectRoot: checkRoot,
           runtimeDir,

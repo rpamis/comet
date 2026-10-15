@@ -21,13 +21,13 @@ Every question and artifact-generation request passed to OpenSpec must specify t
 
 When the response already includes `agent.continuation.mode`, follow `comet-classic/reference/auto-transition.md` first. `wait` means wait for the original task, without running recovery queries merely because the compatibility field says `nextAction.kind: reconcile`. Use the current response’s commands and inputs; submit `completion` only after the Skill’s actual work is complete. Recovery rules below based on `nextAction.kind` apply only to older responses without `mode`.
 
-When resuming an existing change, first run `comet state next <name> --json` to identify Runtime ownership:
+When resuming an existing change, reuse the latest valid continuation and ownership for the same workspace and Run. Query `comet state next <name> --json` only on cold recovery, external changes, or missing information:
 
 - `sdk`: reuse the Run and recover according to `data.nextAction.kind`. Investigate a claimed Action with an unknown outcome before recreating or redispatching work.
 - `compat`: reuse the original flow and `.comet.yaml`; never migrate it automatically.
 - If the command fails, inspect its error, ownership record, Run, and actual state file. Stop on conflict or malformed state. If local Run history is missing, first check `run_checkpoint` in the state file and follow `/comet-classic`'s recovery steps to resume the saved phase. Only an older state without a checkpoint may return to Open after the user explicitly consents to restoration and fresh evidence and approvals. Prepare and initialize a workspace only when no Runtime owns a valid change directory. A missing filename alone is not evidence that initialization is needed.
 
-Bind the workspace for both SDK and compat changes:
+For SDK and Compat, resolve and bind the workspace on cold recovery, changed workspace, or missing bindings. Reuse an existing valid selection and projectRoot:
 
 ```bash
 comet classic workspace resolve <change-name> --json
@@ -227,7 +227,7 @@ The SDK Run is stored in the user-level workspace Runtime directory. New changes
 
 ### 3. Validate entry state
 
-Check that state was initialized correctly:
+Reuse a successful initialization or selection response containing the same Run, Open phase, workspace, and revision, then continue to Step 4. Check initialization only on cold recovery, external changes, or missing information:
 
 ```bash
 comet state check <name> open

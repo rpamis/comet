@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readSkillWithCompat } from '../../helpers/skill-content.js';
 
 const nativeZhRoot = path.resolve('assets', 'skills-zh', 'comet-native');
 const nativeEnRoot = path.resolve('assets', 'skills', 'comet-native');
@@ -140,8 +141,9 @@ describe('Native 中文记忆接入契约', () => {
     expect(commands).toContain('## 项目记忆');
     expect(commands).toContain('comet knowledge remember <project-root>');
     expect(commands).toContain('同一标题默认更新');
-    expect(commands).toContain('项目记忆索引会随任务上下文注入');
-    expect(commands).toContain('任务摘要、一次性命令输出和未验证的猜测不得写入项目记忆');
+    expect(commands).toContain('--expand-context "project-memory:<slug>"');
+    expect(commands).toContain('展开并核对当前来源');
+    expect(commands).toContain('任务摘要、一次性命令输出和未验证的猜测不得写入');
     expect(commands).toContain('--learning-check submitted|no-observation|not-run');
   });
 });
@@ -163,8 +165,8 @@ describe('English memory integration contract', () => {
     const nativeCommands = await readAsset('skills/comet-native/reference/commands.md');
     const classicSkill = await readAsset('skills/comet-classic/SKILL.md');
     const classicScripts = await readAsset('skills/comet-classic/reference/scripts.md');
-    const hotfix = await readAsset('skills/comet-hotfix/SKILL.md');
-    const tweak = await readAsset('skills/comet-tweak/SKILL.md');
+    const hotfix = await readSkillWithCompat(path.resolve('assets/skills'), 'comet-hotfix');
+    const tweak = await readSkillWithCompat(path.resolve('assets/skills'), 'comet-tweak');
 
     expect(nativeSkill).toContain(
       'Project experience and personal preferences are stored separately',
@@ -173,7 +175,8 @@ describe('English memory integration contract', () => {
     expect(nativeCommands).toContain('## Project memory');
     expect(nativeCommands).toContain('comet knowledge remember <project-root>');
     expect(nativeCommands).toContain('The same title updates the existing entry');
-    expect(nativeCommands).toContain('The project memory index is injected with task context');
+    expect(nativeCommands).toContain('--expand-context "project-memory:<slug>"');
+    expect(nativeCommands).toContain('check its current sources');
     expect(nativeCommands).toContain(
       'Never save task summaries, one-off command output, or unverified guesses',
     );

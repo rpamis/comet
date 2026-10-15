@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { gitStatusPaths } from '../../platform/process/git.js';
+import { gitStatusPaths, readGitBlobs } from '../../platform/process/git.js';
 
 describe('Git process helpers', () => {
   let projectRoot: string;
@@ -41,5 +41,26 @@ describe('Git process helpers', () => {
     await fs.rm(path.join(projectRoot, '.comet', 'current-change.json'));
 
     expect(gitStatusPaths(projectRoot)).toEqual(['.comet/current-change.json']);
+  });
+
+  it('preserves UTF-8, empty content, and newlines while omitting oversized or missing blobs', () => {
+    const put = (source: string) =>
+      execFileSync('git', ['hash-object', '-w', '--stdin'], {
+        cwd: projectRoot,
+        input: source,
+        encoding: 'utf8',
+      }).trim();
+    const text = ' \n中文\nline\n\n';
+    const id = put(text);
+    const empty = put('');
+    const large = put('x'.repeat(129));
+    expect(readGitBlobs(projectRoot, [id, empty, id, large, '0'.repeat(40)], 128)).toEqual(
+      new Map([
+        [id, text],
+        [empty, ''],
+      ]),
+    );
+    expect(() => readGitBlobs(projectRoot, ['HEAD:secret'])).toThrow('Invalid Git blob id');
+    expect(readGitBlobs(projectRoot, [])).toEqual(new Map());
   });
 });

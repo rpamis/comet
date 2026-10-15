@@ -1,3 +1,4 @@
+import { readSkillWithCompat } from '../../helpers/skill-content.js';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
@@ -6,7 +7,7 @@ const skillRoot = path.resolve('assets', 'skills');
 const zhSkillRoot = path.resolve('assets', 'skills-zh');
 
 async function readSkill(root: string, name: string): Promise<string> {
-  return fs.readFile(path.join(root, name, 'SKILL.md'), 'utf8');
+  return readSkillWithCompat(root, name);
 }
 
 function descriptionOf(skill: string): string {
@@ -74,11 +75,12 @@ describe('Chinese Classic efficiency contracts', () => {
     expect(entry).toContain('新 full change 交 `/comet-open`');
     expect(entry).toContain('hotfix/tweak 分别交 `/comet-hotfix`、`/comet-tweak`');
     expect(entry).not.toContain('新 change 统一交 `/comet-open`');
-    expect(entry).toContain('用户选择升级后才运行');
-    expect(entry).toContain('comet state transition <name> preset-escalate');
+    expect(entry).toContain('用户选择升级后');
+    expect(entry).toContain('当前 Run 的 continuation 或 Compat 对应命令');
     for (const preset of ['hotfix', 'tweak']) {
       const skill = await readSkill(zhSkillRoot, `comet-${preset}`);
       expect(skill).toContain(`comet state init <name> ${preset}`);
+      expect(skill).toContain('preset-escalate');
     }
   });
 

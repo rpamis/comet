@@ -53,6 +53,8 @@ Complete when requirements sources are fully processed within the coverage bound
 
 New or reconfirmed briefs need outcome, scope, non-goals, and acceptance examples. Add constraints, decisions, open questions, or special verification requirements when applicable. Runtime also checks formal paths and a complete target Spec or concrete no-product-behavior-change reason. Repair reported artifacts and rerun continuation. Existing later-phase changes retain progress until Shape.
 
+When a Verify edit is denied for review, read [edit review](reference/edit-review.md) and follow the current candidate task to claim, record, and retry the original edit. Preserving a phase does not mean the edit has passed acceptance.
+
 ## Build ↔ Verify Loop
 
 After the Builder submits a candidate, Runtime runs required checks and a new read-only Verifier assesses it. On failure, return to Build, repair, and resubmit. Once every item passes, wait for the user to accept the result.
@@ -83,17 +85,17 @@ Complete when the implementation and relevant checks are ready for verification,
 
 Launch a new read-only Verifier immediately under the Verify protocol with the unchanged task package. Report it as running only after the platform accepts startup and the Verifier reports `verifier-started`; handle launch failures immediately. Use inline acceptance text or page through every scopeId. The Verifier assesses all acceptance items independently, reuses Runtime checks matching implementation, workspace, and inputs, and adds missing or invalidated evidence. Read files and logs on demand.
 
-After a wait-tool timeout, keep waiting for the same Verifier. If its receipt is missing and it is unresponsive, check launch success. Report errors only for confirmed failure, execution timeout, task loss, or completion without a usable result. Follow current state after Runtime accepts results. Run `--accept-result` only after explicit user acceptance, including automated-check-only results. For isolated workspaces, accept results and choose delivery in one reply with `--finish`; ask separately if no finish was chosen.
+After a wait-tool timeout, keep waiting for the same Verifier. If its receipt is missing and it is unresponsive, check launch success. Report errors only for confirmed failure, execution timeout, task loss, or completion without a usable result. Follow current state after Runtime accepts results. Run `--accept-result` only after explicit user acceptance, including automated-check-only results. For Compat isolated workspaces, accept results and choose delivery in one reply with `--finish`; ask separately if no finish was chosen.
 
 Complete when Runtime accepts each verdict and supplies the next action. Continue repairs on Build, or address the specified waiting or blocking condition. Ending a phase does not mean the task is finished.
 
 ## Archive
 
-When `continuation` permits Archive, read [Archive completion](reference/workspace.md#archive-completion), reuse the accepted result, and follow continuation. After an explicit finish choice, execute its complete `--confirmed --finish` command; Runtime preflights and rechecks the transaction. If dry-run is returned, preview and run its unique confirmed command after `ready: true`. Address the returned blockers.
+When `continuation` permits Archive, read [Archive completion](reference/workspace.md#archive-completion), reuse the accepted result, and follow continuation. For SDK, execute the returned Archive command, then complete and verify Git delivery under existing user authorization. For Compat, after an explicit finish choice, execute its complete `--confirmed --finish` command; Runtime preflights and rechecks the transaction. If dry-run is returned, preview and run its unique confirmed command after `ready: true`. Address the returned blockers.
 
-Commit only this change's implementation and formal artifacts; preserve unrelated edits. Inspect `workspaceFinishResult`, preserving the workspace and following `recoveryArgs` if blocked. Fix commit messages and local blockers under existing authorization and continue; ask only for new authorization or external information.
+Commit only this change's implementation and formal artifacts; preserve unrelated edits. For Compat, inspect `workspaceFinishResult`, preserving the workspace and following `recoveryArgs` if blocked; for SDK, verify Run archival and actual Git delivery separately. Fix commit messages and local blockers under existing authorization and continue; ask only for new authorization or external information.
 
-Complete when state is `done`, authorized workspace finishing is `completed` or `kept`, and task completion has been recorded through memory integration. Continue handling any other result.
+Complete when state is `done`; SDK Run is `completed` and authorized Git delivery has actually completed and been verified, or Compat workspace finishing is `completed` or `kept`; then record completion through memory integration. Continue handling any other result.
 
 ## Continuation
 

@@ -457,7 +457,8 @@ export function classicSdkContinuation(
       requiredInputs = [
         'configuration-json: 已讨论的 build_mode、tdd_mode、review_mode、subagent_dispatch 与必要的 direct_override',
       ];
-      preparation = '准备实际执行配置后提案；提交不会代替用户对当前配置的批准。';
+      preparation =
+        '只补缺失或改变的配置决定；用户已明确选择当前完整配置时加 --confirmed 一次提交提案与批准，否则提交后等待当前 Wait 的决定。已有有效批准不重复提问。';
     } else if (action.stepId.endsWith('.build.plan')) {
       commandArgs = command('submit-plan', '--plan', '<plan-ref>');
       requiredInputs = ['plan-ref: 引用当前 Design Doc 和 task IDs 的真实计划'];
@@ -538,6 +539,15 @@ export async function classicSdkEntryData(
     await classicEditReviewScope(projectRoot, change, run.state as unknown as ClassicState),
   );
   const state = run.state as unknown as ClassicState;
+  const normalContinuation = classicSdkContinuation(run, projectRoot, change, observation);
+  const edit =
+    state.phase === 'verify'
+      ? await editReviewContinuation(
+          await classicEditReviewScope(projectRoot, change, state),
+          editReviews,
+          true,
+        )
+      : null;
   const base = {
     change,
     runtimeFormat: 'sdk' as const,
@@ -548,11 +558,15 @@ export async function classicSdkEntryData(
     ...(editReviews.length ? { editReviews } : {}),
     run: classicSdkRunSummary(run, details),
     nextAction: classicSdkNextAction(run),
-    continuation: classicSdkContinuation(run, projectRoot, change, observation),
+    continuation: edit
+      ? { ...normalContinuation, ...edit, skill: undefined, completion: undefined }
+      : normalContinuation,
   };
   try {
     const { directory } = await resolveClassicChangeDirectory(change, projectRoot);
-    const recovery = await classicRecoveryContext(projectRoot, directory, state, details, null);
+    const recovery = await classicRecoveryContext(projectRoot, directory, state, details, null, {
+      editReview: false,
+    });
     const actionRecovery = run.actions.some((action) => action.status === 'unknown')
       ? await inspectClassicSdkActionRecovery(projectRoot, run)
       : null;
@@ -666,5 +680,5 @@ export function classicSdkBlockedContinuation(
     instruction: `当前工作仍被阻塞：${message}。先修复或核对所列问题；不要重复原失败命令，也不要重放已领取的工作。`,
   };
 }
-import { inspectEditReviews } from '../workflow-contract/edit-review.js';
+import { inspectEditReviews, editReviewContinuation } from '../workflow-contract/edit-review.js';
 import { classicEditReviewScope } from './classic-edit-review.js';

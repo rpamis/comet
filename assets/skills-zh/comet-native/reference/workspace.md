@@ -32,6 +32,10 @@ Supervisor Change 中由 `readyChildren` 返回的子任务固定使用独立 `w
 
 ## Archive 收尾
 
+SDK：执行 continuation 的 Archive 命令，不携带 Compat 的 finish 或 confirmed 参数。Run completed 与业务 done 只证明 SDK 归档；先读取 Run 保存的交付结果并核对实际 Git，只补未完成动作，不重复已完成的提交或集成。归档后核对当前绑定分支、目标与本 change 改动，显式暂存并审查 staged diff，按已有授权完成提交、merge、push 或 PR。分别核对提交 SHA、目标分支、远端 SHA 和真实 PR；结果未知先只读核对再恢复。保留无关改动与脏工作区。没有外部交付授权时只说明已归档及当前保留位置；已有授权时继续完成，不再询问相同选择。
+
+以下收尾选项、workspaceFinishResult 与恢复命令仅用于 Compat。
+
 只有 `continuation` 允许 Archive 时才继续。归档直接使用已接受的验收结果。用户接受结果时已经选择了收尾方式的，沿用该选择，不再次询问。使用 `current` 工作区时，不需要选择收尾方式：展示当前分支和目录，说明不会执行 merge、push 或创建 PR，再按最新 `continuation` 继续。
 
 使用 `branch` 或 `worktree`、且需要选择收尾方式时，一次展示实际 change 分支、目标分支和目录，用单选题提供以下全部选项。文本提问必须使用下表；结构化提问必须将“方式”作为短标签、“实际影响”作为说明，不得只显示 `merge`、`push`、`pull-request` 或 `keep`。

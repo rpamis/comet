@@ -1,3 +1,4 @@
+import { readSkillWithCompat } from '../../helpers/skill-content.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
@@ -279,10 +280,7 @@ describe('skills', () => {
         ['comet-tweak', 'comet-tweak'],
       ] as const;
       for (const [skill, name] of pairs) {
-        let zh = await fs.readFile(
-          path.join(getAssetsDir(), 'skills-zh', skill, 'SKILL.md'),
-          'utf8',
-        );
+        let zh = await readSkillWithCompat(path.join(getAssetsDir(), 'skills-zh'), skill);
         if (skill === 'comet-classic') {
           zh += await readLinkedSkillSection(
             zh,
@@ -293,7 +291,7 @@ describe('skills', () => {
         if (skill === 'comet-native') {
           zh += await readLinkedSkillSection(zh, 'reference/commands.md#记忆接入');
         }
-        let en = await fs.readFile(path.join(getAssetsDir(), 'skills', skill, 'SKILL.md'), 'utf8');
+        let en = await readSkillWithCompat(path.join(getAssetsDir(), 'skills'), skill);
         if (skill === 'comet-classic') {
           en += await readLinkedSkillSection(
             en,
@@ -325,10 +323,7 @@ describe('skills', () => {
         'comet-hotfix',
         'comet-tweak',
       ]) {
-        let content = await fs.readFile(
-          path.join(getAssetsDir(), 'skills-zh', skill, 'SKILL.md'),
-          'utf8',
-        );
+        let content = await readSkillWithCompat(path.join(getAssetsDir(), 'skills-zh'), skill);
         if (skill === 'comet-classic') {
           content += await readLinkedSkillSection(
             content,
@@ -354,10 +349,7 @@ describe('skills', () => {
         'comet-hotfix',
         'comet-tweak',
       ]) {
-        let content = await fs.readFile(
-          path.join(getAssetsDir(), 'skills', skill, 'SKILL.md'),
-          'utf8',
-        );
+        let content = await readSkillWithCompat(path.join(getAssetsDir(), 'skills'), skill);
         if (skill === 'comet-classic') {
           content += await readLinkedSkillSection(
             content,
@@ -2599,10 +2591,7 @@ describe('skills', () => {
 
   describe('Chinese Comet workflow safeguards', () => {
     it('uses the OpenSpec status graph to drive Chinese open artifacts', async () => {
-      const zhOpen = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-open', 'SKILL.md'),
-        'utf-8',
-      );
+      const zhOpen = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-open');
 
       expect(zhOpen).toContain(
         'comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json',
@@ -2633,10 +2622,7 @@ describe('skills', () => {
     });
 
     it('uses the OpenSpec status graph to drive English open artifacts', async () => {
-      const enOpen = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-open', 'SKILL.md'),
-        'utf-8',
-      );
+      const enOpen = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-open');
 
       expect(enOpen).toContain(
         'comet classic openspec --agent-json -- instructions <artifact-id> --change "<name>" --json',
@@ -2669,14 +2655,8 @@ describe('skills', () => {
     });
 
     it('routes Chinese tweak build through OpenSpec apply without changing full workflow', async () => {
-      const zhTweak = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-tweak', 'SKILL.md'),
-        'utf-8',
-      );
-      const zhBuild = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-build', 'SKILL.md'),
-        'utf-8',
-      );
+      const zhTweak = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-tweak');
+      const zhBuild = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-build');
 
       expect(zhTweak).toContain('使用 Skill 工具加载 `openspec-apply-change` 技能');
       expect(zhTweak).toContain('这条 apply 路径只属于 tweak');
@@ -2689,38 +2669,29 @@ describe('skills', () => {
     });
 
     it('requires explicit user confirmation at full-workflow decision points', async () => {
-      const zhComet = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-classic', 'SKILL.md'),
-        'utf-8',
+      const zhComet = await readSkillWithCompat(
+        path.resolve('assets', 'skills-zh'),
+        'comet-classic',
       );
-      const zhOpen = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-open', 'SKILL.md'),
-        'utf-8',
+      const zhOpen = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-open');
+      const zhDesign = await readSkillWithCompat(
+        path.resolve('assets', 'skills-zh'),
+        'comet-design',
       );
-      const zhDesign = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-design', 'SKILL.md'),
-        'utf-8',
+      const zhBuild = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-build');
+      const zhVerify = await readSkillWithCompat(
+        path.resolve('assets', 'skills-zh'),
+        'comet-verify',
       );
-      const zhBuild = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-build', 'SKILL.md'),
-        'utf-8',
+      const zhArchive = await readSkillWithCompat(
+        path.resolve('assets', 'skills-zh'),
+        'comet-archive',
       );
-      const zhVerify = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-verify', 'SKILL.md'),
-        'utf-8',
+      const zhHotfix = await readSkillWithCompat(
+        path.resolve('assets', 'skills-zh'),
+        'comet-hotfix',
       );
-      const zhArchive = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-archive', 'SKILL.md'),
-        'utf-8',
-      );
-      const zhHotfix = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-hotfix', 'SKILL.md'),
-        'utf-8',
-      );
-      const zhTweak = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-tweak', 'SKILL.md'),
-        'utf-8',
-      );
+      const zhTweak = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-tweak');
       const zhScripts = await fs.readFile(
         path.resolve('assets', 'skills-zh', 'comet-classic', 'reference', 'scripts.md'),
         'utf-8',
@@ -3134,38 +3105,17 @@ describe('skills', () => {
 
   describe('English Comet workflow safeguards', () => {
     it('matches the Chinese workflow decision-point requirements', async () => {
-      const enComet = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-classic', 'SKILL.md'),
-        'utf-8',
+      const enComet = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-classic');
+      const enOpen = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-open');
+      const enDesign = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-design');
+      const enBuild = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-build');
+      const enVerify = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-verify');
+      const enArchive = await readSkillWithCompat(
+        path.resolve('assets', 'skills'),
+        'comet-archive',
       );
-      const enOpen = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-open', 'SKILL.md'),
-        'utf-8',
-      );
-      const enDesign = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-design', 'SKILL.md'),
-        'utf-8',
-      );
-      const enBuild = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-build', 'SKILL.md'),
-        'utf-8',
-      );
-      const enVerify = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-verify', 'SKILL.md'),
-        'utf-8',
-      );
-      const enArchive = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-archive', 'SKILL.md'),
-        'utf-8',
-      );
-      const enHotfix = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-hotfix', 'SKILL.md'),
-        'utf-8',
-      );
-      const enTweak = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-tweak', 'SKILL.md'),
-        'utf-8',
-      );
+      const enHotfix = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-hotfix');
+      const enTweak = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-tweak');
       const enScripts = await fs.readFile(
         path.resolve('assets', 'skills', 'comet-classic', 'reference', 'scripts.md'),
         'utf-8',
@@ -3730,10 +3680,7 @@ describe('skills', () => {
           await Promise.all(
             skillNames.map(async (skillName) => [
               skillName,
-              await fs.readFile(
-                path.resolve('assets', languageDir, skillName, 'SKILL.md'),
-                'utf-8',
-              ),
+              await readSkillWithCompat(path.resolve('assets', languageDir), skillName),
             ]),
           ),
         ) as Record<(typeof skillNames)[number], string>;
@@ -3800,14 +3747,8 @@ describe('skills', () => {
 
   describe('Comet build subagent dispatch safeguards', () => {
     it('creates the implementation plan inline instead of dispatching a planning subagent', async () => {
-      const zhBuild = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-build', 'SKILL.md'),
-        'utf-8',
-      );
-      const enBuild = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-build', 'SKILL.md'),
-        'utf-8',
-      );
+      const zhBuild = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-build');
+      const enBuild = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-build');
       const zhPlanSection = zhBuild.slice(zhBuild.indexOf('### 2.'), zhBuild.indexOf('### 3.'));
       const enPlanSection = enBuild.slice(enBuild.indexOf('### 2.'), enBuild.indexOf('### 3.'));
 
@@ -3832,10 +3773,7 @@ describe('skills', () => {
     });
 
     it('composes the Superpowers loop with the Chinese Comet dispatch contract', async () => {
-      const zhBuild = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-build', 'SKILL.md'),
-        'utf-8',
-      );
+      const zhBuild = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-build');
       const zhDispatch = await fs.readFile(
         path.resolve('assets', 'skills-zh', 'comet-classic', 'reference', 'subagent-dispatch.md'),
         'utf-8',
@@ -3931,10 +3869,7 @@ describe('skills', () => {
     });
 
     it('keeps the English dispatch contract behaviorally aligned', async () => {
-      const enBuild = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-build', 'SKILL.md'),
-        'utf-8',
-      );
+      const enBuild = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-build');
       const enDispatch = await fs.readFile(
         path.resolve('assets', 'skills', 'comet-classic', 'reference', 'subagent-dispatch.md'),
         'utf-8',
@@ -4259,14 +4194,8 @@ describe('skills', () => {
     });
 
     it('documents Ambient Resume in both Comet entry Skills', async () => {
-      const zh = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-classic', 'SKILL.md'),
-        'utf-8',
-      );
-      const en = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-classic', 'SKILL.md'),
-        'utf-8',
-      );
+      const zh = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-classic');
+      const en = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-classic');
 
       expect(zh).toContain('Ambient Resume');
       expect(zh).toContain('comet resume-probe . --stdin --json');
@@ -4278,14 +4207,8 @@ describe('skills', () => {
     });
 
     it('documents continuation reuse and conditional status recovery in both Native Skills', async () => {
-      const zh = await fs.readFile(
-        path.resolve('assets', 'skills-zh', 'comet-native', 'SKILL.md'),
-        'utf-8',
-      );
-      const en = await fs.readFile(
-        path.resolve('assets', 'skills', 'comet-native', 'SKILL.md'),
-        'utf-8',
-      );
+      const zh = await readSkillWithCompat(path.resolve('assets', 'skills-zh'), 'comet-native');
+      const en = await readSkillWithCompat(path.resolve('assets', 'skills'), 'comet-native');
 
       expect(zh).toContain('直接复用共用 workflow guard 的轻量所有权读取结果');
       expect(zh).toContain('命令因版本或所有权被拒绝');

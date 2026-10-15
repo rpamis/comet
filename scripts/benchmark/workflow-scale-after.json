@@ -1,0 +1,193 @@
+{
+  "schema": "comet.workflow-scale-benchmark.v1",
+  "complete": true,
+  "createdAt": "2026-10-15T06:26:28.342Z",
+  "node": "v22.20.0",
+  "platform": "win32",
+  "cpu": "Intel(R) Core(TM) i5-10600KF CPU @ 4.10GHz",
+  "packageVersion": "0.5.0",
+  "sourceHead": "44766251a539e67363cac6647733719f6b03f180",
+  "workingTreeStatus": "M CHANGELOG.md\n M app/cli/index.ts\n M app/commands/edit-review.ts\n M app/commands/runtime.ts\n M assets/manifest.json\n M assets/skills-zh/comet-archive/SKILL.md\n M assets/skills-zh/comet-build/SKILL.md\n M assets/skills-zh/comet-design/SKILL.md\n M assets/skills-zh/comet-hotfix/SKILL.md\n M assets/skills-zh/comet-native/SKILL.md\n M assets/skills-zh/comet-native/reference/workspace.md\n M assets/skills-zh/comet-open/SKILL.md\n M assets/skills-zh/comet-tweak/SKILL.md\n M assets/skills-zh/comet-verify/SKILL.md\n M assets/skills/comet-archive/SKILL.md\n M assets/skills/comet-build/SKILL.md\n M assets/skills/comet-design/SKILL.md\n M assets/skills/comet-hotfix/SKILL.md\n M assets/skills/comet-native/SKILL.md\n M assets/skills/comet-native/reference/workspace.md\n M assets/skills/comet-native/scripts/comet-native-archive.mjs\n M assets/skills/comet-native/scripts/comet-native-cancel.mjs\n M assets/skills/comet-native/scripts/comet-native-doctor.mjs\n M assets/skills/comet-native/scripts/comet-native-hook-guard.mjs\n M assets/skills/comet-native/scripts/comet-native-init.mjs\n M assets/skills/comet-native/scripts/comet-native-new.mjs\n M assets/skills/comet-native/scripts/comet-native-next.mjs\n M assets/skills/comet-native/scripts/comet-native-root.mjs\n M assets/skills/comet-native/scripts/comet-native-runtime.mjs\n M assets/skills/comet-native/scripts/comet-native-select.mjs\n M assets/skills/comet-native/scripts/comet-native-show.mjs\n M assets/skills/comet-native/scripts/comet-native-spec.mjs\n M assets/skills/comet-native/scripts/comet-native-status.mjs\n M assets/skills/comet-native/scripts/comet-native-transfer.mjs\n M assets/skills/comet-open/SKILL.md\n M assets/skills/comet-tweak/SKILL.md\n M assets/skills/comet-verify/SKILL.md\n M assets/skills/comet/scripts/comet-archive.mjs\n M assets/skills/comet/scripts/comet-check.mjs\n M assets/skills/comet/scripts/comet-entry-runtime.mjs\n M assets/skills/comet/scripts/comet-guard.mjs\n M assets/skills/comet/scripts/comet-handoff.mjs\n M assets/skills/comet/scripts/comet-hook-guard.mjs\n M assets/skills/comet/scripts/comet-hook-router-guard.mjs\n M assets/skills/comet/scripts/comet-intent.mjs\n M assets/skills/comet/scripts/comet-resume-probe.mjs\n M assets/skills/comet/scripts/comet-runtime.mjs\n M assets/skills/comet/scripts/comet-state.mjs\n M assets/skills/comet/scripts/comet-yaml-validate.mjs\n M domains/comet-classic/classic-check-command.ts\n M domains/comet-classic/classic-check-snapshot.ts\n M domains/comet-classic/classic-cli-help.ts\n M domains/comet-classic/classic-cli.ts\n M domains/comet-classic/classic-command-checks.ts\n M domains/comet-classic/classic-edit-review-command.ts\n M domains/comet-classic/classic-guard.ts\n M domains/comet-classic/classic-hook-guard.ts\n M domains/comet-classic/classic-recovery.ts\n M domains/comet-classic/classic-sdk-build.ts\n M domains/comet-classic/classic-sdk-check.ts\n M domains/comet-classic/classic-sdk-guard.ts\n M domains/comet-classic/classic-sdk-output.ts\n M domains/comet-classic/classic-state-command.ts\n M domains/comet-native/native-build-evidence.ts\n M domains/comet-native/native-cli.ts\n M domains/comet-native/native-edit-review-command.ts\n M domains/comet-native/native-hook-guard.ts\n M domains/comet-native/native-portable-checks.ts\n M domains/comet-native/native-portable-continuation.ts\n M domains/comet-native/native-portable-status.ts\n M domains/comet-native/native-sdk-checks.ts\n M domains/comet-native/native-sdk-continuation.ts\n M domains/comet-native/native-sdk-status.ts\n M domains/comet-native/native-snapshot.ts\n M domains/workflow-contract/edit-review.ts\n M package.json\n M platform/process/git.ts\n M platform/process/runtime-metrics.ts\n M scripts/benchmark/runtime-coldstart-benchmark.mjs\n M test/domains/comet-classic/classic-check-hash-batching.test.ts\n M test/domains/comet-classic/classic-check-performance.test.ts\n M test/domains/comet-classic/classic-sdk-verify-rounds.test.ts\n M test/domains/comet-native/native-snapshot.test.ts\n M test/domains/skill/internal-skills.test.ts\n M test/domains/skill/skills.test.ts\n M test/domains/skill/workflow-optimization-contract.test.ts\n M test/domains/workflow-contract/edit-review.test.ts\n M test/platform/git-process.test.ts\n M test/scripts/runtime-coldstart-benchmark.test.ts\n?? assets/skills-zh/comet-archive/reference/\n?? assets/skills-zh/comet-build/reference/\n?? assets/skills-zh/comet-classic/reference/sdk-methods.md\n?? assets/skills-zh/comet-design/reference/\n?? assets/skills-zh/comet-hotfix/reference/\n?? assets/skills-zh/comet-tweak/reference/\n?? assets/skills-zh/comet-verify/reference/\n?? assets/skills-zh/comet/reference/\n?? assets/skills/comet-archive/reference/\n?? assets/skills/comet-build/reference/\n?? assets/skills/comet-classic/reference/sdk-methods.md\n?? assets/skills/comet-design/reference/\n?? assets/skills/comet-hotfix/reference/\n?? assets/skills/comet-tweak/reference/\n?? assets/skills/comet-verify/reference/\n?? assets/skills/comet/reference/\n?? scripts/benchmark/README.md\n?? scripts/benchmark/workflow-scale-benchmark.mjs\n?? test/domains/comet-classic/classic-sdk-edit-review.test.ts\n?? test/domains/comet-native/native-candidate-performance.test.ts\n?? test/domains/comet-native/native-sdk-edit-review.test.ts\n?? test/domains/skill/sdk-flow-handoffs.test.ts\n?? test/helpers/skill-content.ts\n?? test/platform/runtime-metrics.test.ts\n?? test/scripts/workflow-scale-benchmark.test.ts",
+  "runtimeSha256": {
+    "domains/comet-native/native-snapshot.js": "9319732d5397d9bcd82b09364ca365a3c69e5bfacbfa536e7c730df0ba779f62",
+    "domains/comet-native/native-portable-checks.js": "d9cf32ada4c05e874dfa7a5eca3db0b24ef10b8037a45a31286f6f196d15ff15",
+    "domains/comet-classic/classic-check-snapshot.js": "7f67cdaa2ae677fd95bf922d4c4e57344b3ec61aab01c87660bd92c534be178c",
+    "domains/comet-classic/classic-sdk-check.js": "5b1a49546f9179316c4befd13aa3b272cd1155846e5cd626f3aebbfe280aee2a",
+    "platform/process/git.js": "c63b8cac63e2bc615c00b7974129b0e3ac6846d81c9e1e5afe2e7acdfc9e7404"
+  },
+  "benchmarkSha256": "377171058ad97d8924585e6bb1ecae9bc67fd832ea7c66832f62585141aec5d4",
+  "daemon": "off",
+  "timing": "warm filesystem; API operations in one process, acceptance through fresh CLI; setup and restore excluded",
+  "runs": 3,
+  "warmups": 1,
+  "rows": [
+    {
+      "name": "native-full-10000",
+      "dimension": "files",
+      "fileCount": 10000,
+      "runtimeFormat": "shared",
+      "medianMs": 6057.185299999997,
+      "p95ObservedMs": 6061.767300000003,
+      "samples": [
+        {
+          "milliseconds": 6061.767300000003,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 6057.185299999997,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 6031.976799999997,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        }
+      ]
+    },
+    {
+      "name": "native-incremental-clean-10000",
+      "dimension": "files",
+      "fileCount": 10000,
+      "runtimeFormat": "shared",
+      "medianMs": 2591.5718999999954,
+      "p95ObservedMs": 2603.1028000000006,
+      "samples": [
+        {
+          "milliseconds": 2586.323399999994,
+          "gitCommands": 10,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 2591.5718999999954,
+          "gitCommands": 10,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 2603.1028000000006,
+          "gitCommands": 10,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        }
+      ]
+    },
+    {
+      "name": "native-incremental-dirty-10000",
+      "dimension": "files",
+      "fileCount": 10000,
+      "runtimeFormat": "shared",
+      "medianMs": 6142.520700000008,
+      "p95ObservedMs": 6368.1158,
+      "samples": [
+        {
+          "milliseconds": 6053.987300000008,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 6142.520700000008,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 6368.1158,
+          "gitCommands": 9,
+          "entries": 10000,
+          "snapshotComplete": true,
+          "omitted": 0
+        }
+      ]
+    },
+    {
+      "name": "classic-input-dirty-10000",
+      "dimension": "files",
+      "fileCount": 10000,
+      "runtimeFormat": "shared",
+      "medianMs": 2864.0255000000034,
+      "p95ObservedMs": 2864.7565999999933,
+      "samples": [
+        {
+          "milliseconds": 2864.7565999999933,
+          "gitCommands": 6,
+          "entries": 10003,
+          "snapshotComplete": null,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 2851.0678000000044,
+          "gitCommands": 6,
+          "entries": 10003,
+          "snapshotComplete": null,
+          "omitted": 0
+        },
+        {
+          "milliseconds": 2864.0255000000034,
+          "gitCommands": 6,
+          "entries": 10003,
+          "snapshotComplete": null,
+          "omitted": 0
+        }
+      ]
+    },
+    {
+      "name": "native-input-dirty-10000",
+      "dimension": "files",
+      "fileCount": 10000,
+      "runtimeFormat": "shared",
+      "medianMs": 4628.275300000008,
+      "p95ObservedMs": 4664.366500000004,
+      "samples": [
+        {
+          "milliseconds": 4628.275300000008,
+          "gitCommands": 7
+        },
+        {
+          "milliseconds": 4600.479300000006,
+          "gitCommands": 7
+        },
+        {
+          "milliseconds": 4664.366500000004,
+          "gitCommands": 7
+        }
+      ]
+    },
+    {
+      "name": "native-comment-gate-300",
+      "dimension": "dirty-files",
+      "dirtyFileCount": 300,
+      "runtimeFormat": "shared",
+      "medianMs": 1873.9639000000025,
+      "p95ObservedMs": 1892.5417000000016,
+      "samples": [
+        {
+          "milliseconds": 1892.5417000000016,
+          "gitCommands": 15
+        },
+        {
+          "milliseconds": 1866.3024000000005,
+          "gitCommands": 15
+        },
+        {
+          "milliseconds": 1873.9639000000025,
+          "gitCommands": 15
+        }
+      ]
+    }
+  ]
+}

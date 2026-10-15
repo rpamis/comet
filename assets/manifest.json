@@ -2,8 +2,10 @@
   "version": "0.5.0",
   "skills": [
     "comet/SKILL.md",
+    "comet/reference/edit-review.md",
     "comet/agents/openai.yaml",
     "comet-classic/SKILL.md",
+    "comet-classic/reference/sdk-methods.md",
     "comet-classic/agents/openai.yaml",
     "comet-classic/reference/auto-transition.md",
     "comet-classic/reference/classic-layout.md",
@@ -39,6 +41,7 @@
     "comet-native/SKILL.md",
     "comet-native/agents/openai.yaml",
     "comet-native/reference/artifacts.md",
+    "comet-native/reference/edit-review.md",
     "comet-native/reference/clarification.md",
     "comet-native/reference/commands.md",
     "comet-native/reference/recovery.md",
@@ -53,23 +56,29 @@
     "comet-native/scripts/comet-native-status.mjs",
     "comet-native/scripts/comet-native-select.mjs",
     "comet-native/scripts/comet-native-cancel.mjs",
-  "comet-native/scripts/comet-native-next.mjs",
+    "comet-native/scripts/comet-native-next.mjs",
     "comet-native/scripts/comet-native-archive.mjs",
     "comet-native/scripts/comet-native-doctor.mjs",
     "comet-native/scripts/comet-native-transfer.mjs",
     "comet-open/SKILL.md",
     "comet-open/agents/openai.yaml",
     "comet-design/SKILL.md",
+    "comet-design/reference/compat.md",
     "comet-design/agents/openai.yaml",
     "comet-build/SKILL.md",
+    "comet-build/reference/compat.md",
     "comet-build/agents/openai.yaml",
     "comet-verify/SKILL.md",
+    "comet-verify/reference/compat.md",
     "comet-verify/agents/openai.yaml",
     "comet-archive/SKILL.md",
+    "comet-archive/reference/compat.md",
     "comet-archive/agents/openai.yaml",
     "comet-hotfix/SKILL.md",
+    "comet-hotfix/reference/compat.md",
     "comet-hotfix/agents/openai.yaml",
     "comet-tweak/SKILL.md",
+    "comet-tweak/reference/compat.md",
     "comet-tweak/agents/openai.yaml",
     "comet-memory/SKILL.md",
     "comet-memory/agents/openai.yaml"
@@ -87,7 +96,17 @@
     }
   },
   "languages": [
-    { "id": "en", "name": "English", "skillsDir": "skills", "artifactLanguage": "en" },
-    { "id": "zh", "name": "中文", "skillsDir": "skills-zh", "artifactLanguage": "zh-CN" }
+    {
+      "id": "en",
+      "name": "English",
+      "skillsDir": "skills",
+      "artifactLanguage": "en"
+    },
+    {
+      "id": "zh",
+      "name": "中文",
+      "skillsDir": "skills-zh",
+      "artifactLanguage": "zh-CN"
+    }
   ]
 }

@@ -477,7 +477,7 @@ async function inspectPortableWriteTargets(options: {
         workflow: 'native',
         phase: state.phase,
         change: state.name,
-        reason: `本地无法确定编辑影响，保留 Verify。使用 comet edit-review prepare native ${state.name} --file <hook-input.json> 读取具体复核任务，让当前独立 Verifier 复核并通过 record 提交；复核前不得通过或归档。`,
+        reason: `本地无法确定编辑影响，保留 Verify。使用 comet edit-review show native ${state.name} 读取待复核提案和 continuation；按返回任务由独立会话 claim 并 record，Compat 由用户确认。复核前不得通过或归档。`,
       };
     if (state.phase === 'verify' || state.phase === 'archive') {
       if (sdkOwned) {

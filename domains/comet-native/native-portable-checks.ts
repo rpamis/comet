@@ -10,8 +10,12 @@ import {
 import type { Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { gitStatusPaths, runGitCommand, readGitBlob } from '../../platform/process/git.js';
-import { approvedEditFingerprint, type EditReviewScope } from '../workflow-contract/edit-review.js';
+import { gitStatusPaths, runGitCommand, readGitBlobs } from '../../platform/process/git.js';
+import {
+  approvedEditFingerprint,
+  inspectEditReviews,
+  type EditReviewScope,
+} from '../workflow-contract/edit-review.js';
 import { editContentHash } from '../workflow-contract/edit-impact.js';
 import { isNeutralDocumentPath } from '../workflow-contract/neutral-document-path.js';
 import { readProjectConfig } from './native-config.js';
@@ -960,74 +964,94 @@ async function nativeCandidateCommentGate(
     }),
   );
   const config = await readProjectConfig(options.projectRoot);
-  for (const entry of observation.binding.workingTree) {
-    if (
-      config?.native.document_writes !== 'revert' &&
-      isNeutralDocumentPath(entry.path, [
-        '.comet',
-        ...(options.managedArtifactRoot
-          ? [
-              path
-                .relative(options.projectRoot, path.join(options.managedArtifactRoot, 'comet'))
-                .replaceAll('\\', '/'),
-            ]
-          : []),
-      ])
-    ) {
-      unchangedPaths.add(entry.path);
-      continue;
-    }
-    if (!supportsNativeSourceComments(entry.path) && !options.editReviewScope) {
-      workingTree.push(entry);
-      continue;
-    }
+  const reviews = options.editReviewScope ? await inspectEditReviews(options.editReviewScope) : [];
+  for (let offset = 0; offset < observation.binding.workingTree.length; offset += 64) {
+    const batch = observation.binding.workingTree.slice(offset, offset + 64);
+    let indexedBlobs: Map<string, string>;
     try {
-      const source = await readNativeBoundedTextFile({
-        root: options.projectRoot,
-        ref: entry.path,
-      });
-      if (digestNativeCheckInput(Buffer.from(source.text).toString('base64')) !== entry.digest)
-        return null;
-      const reviewed = options.editReviewScope
-        ? await approvedEditFingerprint(options.editReviewScope, entry.path, source.text)
-        : null;
-      const fingerprint =
-        reviewed?.fingerprint ?? nativeSourceCommentFingerprint(entry.path, source.text);
-      if (!fingerprint) {
+      indexedBlobs = readGitBlobs(
+        options.projectRoot,
+        batch.flatMap((entry) => {
+          const indexed = index.get(entry.path);
+          return indexed ? [indexed.objectId] : [];
+        }),
+      );
+    } catch {
+      return null;
+    }
+    for (const entry of batch) {
+      if (
+        config?.native.document_writes !== 'revert' &&
+        isNeutralDocumentPath(entry.path, [
+          '.comet',
+          ...(options.managedArtifactRoot
+            ? [
+                path
+                  .relative(options.projectRoot, path.join(options.managedArtifactRoot, 'comet'))
+                  .replaceAll('\\', '/'),
+              ]
+            : []),
+        ])
+      ) {
+        unchangedPaths.add(entry.path);
+        continue;
+      }
+      if (!supportsNativeSourceComments(entry.path) && !options.editReviewScope) {
         workingTree.push(entry);
         continue;
       }
-      const indexed = index.get(entry.path);
-      if (indexed) {
-        const mode = (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
-        // chmod、重命名和删除仍需新候选，不能被注释判定掩盖。
-        const modeMatches =
-          process.platform === 'win32' || Boolean(mode & 0o111) === (indexed.mode === '100755');
-        const indexedSource = readGitBlob(options.projectRoot, indexed.objectId);
-        if (
-          modeMatches &&
-          (reviewed
-            ? editContentHash(indexedSource) === reviewed.beforeHash
-            : nativeSourceCommentFingerprint(entry.path, indexedSource) === fingerprint)
-        ) {
-          unchangedPaths.add(entry.path);
+      try {
+        const source = await readNativeBoundedTextFile({
+          root: options.projectRoot,
+          ref: entry.path,
+        });
+        if (digestNativeCheckInput(Buffer.from(source.text).toString('base64')) !== entry.digest)
+          return null;
+        const reviewed = options.editReviewScope
+          ? await approvedEditFingerprint(options.editReviewScope, entry.path, source.text, reviews)
+          : null;
+        const fingerprint =
+          reviewed?.fingerprint ?? nativeSourceCommentFingerprint(entry.path, source.text);
+        if (!fingerprint) {
+          workingTree.push(entry);
           continue;
         }
+        const indexed = index.get(entry.path);
+        if (indexed) {
+          const mode = (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
+          // chmod、重命名和删除仍需新候选，不能被注释判定掩盖。
+          const modeMatches =
+            process.platform === 'win32' || Boolean(mode & 0o111) === (indexed.mode === '100755');
+          const indexedSource = indexedBlobs.get(indexed.objectId);
+          if (indexedSource === undefined) {
+            workingTree.push(entry);
+            continue;
+          }
+          if (
+            modeMatches &&
+            (reviewed
+              ? editContentHash(indexedSource) === reviewed.beforeHash
+              : nativeSourceCommentFingerprint(entry.path, indexedSource) === fingerprint)
+          ) {
+            unchangedPaths.add(entry.path);
+            continue;
+          }
+        }
+        const mode = (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
+        workingTree.push({
+          path: entry.path,
+          digest:
+            reviewed && !reviewed.semantic
+              ? fingerprint
+              : canonicalHash('comet.native.comment-source.v1', {
+                  fingerprint,
+                  executable: process.platform === 'win32' ? false : Boolean(mode & 0o111),
+                }),
+        });
+      } catch {
+        // 二进制、大文件及不支持的语法沿用真实内容绑定。
+        workingTree.push(entry);
       }
-      const mode = (await fs.lstat(path.resolve(options.projectRoot, entry.path))).mode;
-      workingTree.push({
-        path: entry.path,
-        digest:
-          reviewed && !reviewed.semantic
-            ? fingerprint
-            : canonicalHash('comet.native.comment-source.v1', {
-                fingerprint,
-                executable: process.platform === 'win32' ? false : Boolean(mode & 0o111),
-              }),
-      });
-    } catch {
-      // 二进制、大文件及不支持的语法沿用真实内容绑定。
-      workingTree.push(entry);
     }
   }
   const status = observation.binding.status

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync } from 'fs';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -96,8 +95,14 @@ describe('Classic runtime release assets', () => {
     expect(manifestReferences).toEqual(
       englishFiles.map((fileName) => `comet-classic/reference/${fileName}`),
     );
-    expect(existsSync(path.resolve('assets', 'skills', 'comet', 'reference'))).toBe(false);
-    expect(existsSync(path.resolve('assets', 'skills-zh', 'comet', 'reference'))).toBe(false);
+    expect(await fs.readdir(path.resolve('assets', 'skills', 'comet', 'reference'))).toEqual([
+      'edit-review.md',
+    ]);
+    expect(manifest.skills).toContain('comet/reference/edit-review.md');
+    expect(await fs.readdir(path.resolve('assets', 'skills-zh', 'comet', 'reference'))).toEqual([
+      'edit-review.md',
+    ]);
+    expect(manifest.skills).toContain('comet/reference/edit-review.md');
   });
 
   it('lists every shipped Classic script in the assets manifest', async () => {

@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'url';
+import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { classicCommandHelp } from './classic-cli-help.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import {
@@ -243,16 +244,18 @@ export async function runClassicCli(
   const json = argv[0] !== 'openspec' && argv.some((arg, index) => owns(index) && arg === '--json');
   const args = argv.filter((argument, index) => !json || !owns(index) || argument !== '--json');
   const command = args.shift();
-  const result = await dispatch(
-    command,
-    args,
-    {
-      json,
-      invocationCwd: runOptions.invocationCwd ?? process.cwd(),
-      ...(runOptions.projectRoot ? { projectRoot: runOptions.projectRoot } : {}),
-    },
-    handlers,
-  );
+  const invoke = () =>
+    dispatch(
+      command,
+      args,
+      {
+        json,
+        invocationCwd: runOptions.invocationCwd ?? process.cwd(),
+        ...(runOptions.projectRoot ? { projectRoot: runOptions.projectRoot } : {}),
+      },
+      handlers,
+    );
+  const result = command === 'hook-guard' ? await invoke() : await withCometRuntimeProgress(invoke);
   const projected = withSdkContinuation(result);
   return json ? jsonResult(command, projected) : projected;
 }

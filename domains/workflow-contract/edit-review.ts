@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { TextDecoder } from 'node:util';
@@ -7,6 +7,7 @@ import {
   proposedCometHookFileContent,
   type CometHookRequest,
 } from '../../platform/process/hook-adapter.js';
+import type { CliActionContinuation } from './output-envelope.js';
 import { atomicWriteContainedText } from './contained-atomic-write.js';
 import {
   inspectProtectedProjectPath,
@@ -29,6 +30,16 @@ export interface EditReviewInput {
   proposalHash: string;
   decision: EditReviewDecision;
   summary: string;
+  reviewer?: { sessionId: string; claimToken: string };
+}
+export interface EditReviewCommandOptions {
+  projectRoot: string;
+  name: string;
+  operation: string;
+  file?: string;
+  confirmed?: boolean;
+  sessionId?: string;
+  proposalHash?: string;
 }
 export interface EditReviewAuthority {
   kind: 'runtime-verifier' | 'user-confirmed';
@@ -226,6 +237,258 @@ async function writeOnce(root: string, ref: string, value: unknown): Promise<voi
   });
 }
 
+/** 原请求留在调用方的临时文件，只保存路径及摘要，恢复时重新校验内容。 */
+export async function rememberEditReviewInput(
+  scope: EditReviewScope,
+  proposalHash: string,
+  file: string,
+  expectedSource?: string,
+) {
+  if (!HASH.test(proposalHash)) throw new Error('编辑复核提案无效');
+  const source = await fs.readFile(file, 'utf8');
+  if (expectedSource !== undefined && editContentHash(source) !== editContentHash(expectedSource))
+    throw new Error('原编辑请求在准备复核期间发生变化，请重新读取');
+  const root = await directory(scope, true);
+  await atomicWriteContainedText(
+    path.join(root, `${proposalHash}.input-ref.json`),
+    JSON.stringify({
+      file: path.resolve(file),
+      hash: editContentHash(source),
+    }) + '\n',
+    { containedRoot: root },
+  );
+}
+
+async function editReviewInputReference(scope: EditReviewScope, proposalHash: string) {
+  const root = await directory(scope);
+  const ref = (await readJson(root, `${proposalHash}.input-ref.json`)) as {
+    file?: unknown;
+    hash?: unknown;
+  } | null;
+  if (
+    !ref ||
+    typeof ref.file !== 'string' ||
+    !path.isAbsolute(ref.file) ||
+    typeof ref.hash !== 'string' ||
+    !HASH.test(ref.hash)
+  )
+    return null;
+  try {
+    const source = await fs.readFile(ref.file, 'utf8');
+    return editContentHash(source) === ref.hash ? { file: ref.file, hash: ref.hash } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 编辑复核只授权一份具体差异，不领取或完成原工作流的正式 Verify Action。 */
+export async function claimEditReview(
+  scope: EditReviewScope,
+  options: {
+    sessionId: string;
+    builderExecutionRef: string;
+    proposalHash?: string;
+  },
+) {
+  if (
+    !options.sessionId?.trim() ||
+    !options.builderExecutionRef ||
+    options.sessionId === options.builderExecutionRef ||
+    options.sessionId.includes('\0')
+  )
+    throw new Error('编辑复核必须由独立于 Builder 的会话执行');
+  const reviews = await inspectEditReviews(scope);
+  const pending = reviews.filter((review) => !review.receipt);
+  const proposal = options.proposalHash
+    ? reviews.find((review) => review.proposalHash === options.proposalHash)
+    : pending.length === 1
+      ? pending[0]
+      : undefined;
+  if (!proposal) throw new Error('请选择当前候选中的具体编辑复核提案');
+  const root = await directory(scope, true);
+  const ref = `${proposal.proposalHash}.${objectHash(options.sessionId)}.claim.json`;
+  const claim = await withRecoverableFileLock(path.join(root, '.lock'), async () => {
+    const existing = await readJson(root, ref);
+    if (existing)
+      return existing as {
+        proposalHash: string;
+        sessionId: string;
+        builderExecutionRef: string;
+        claimToken: string;
+      };
+    if (proposal.receipt)
+      throw new Error('提案已有复核结论；恢复时使用原复核会话与提案，不重新派发');
+    const created = {
+      proposalHash: proposal.proposalHash,
+      sessionId: options.sessionId,
+      builderExecutionRef: options.builderExecutionRef,
+      claimToken: randomUUID(),
+    };
+    await writeOnce(root, ref, created);
+    return created;
+  });
+  if (
+    claim.proposalHash !== proposal.proposalHash ||
+    claim.sessionId !== options.sessionId ||
+    claim.builderExecutionRef !== options.builderExecutionRef ||
+    !claim.claimToken
+  )
+    throw new Error('编辑复核领取记录与当前候选不匹配');
+  const input = await editReviewInputReference(scope, proposal.proposalHash);
+  return {
+    proposal,
+    builderExecutionRef: options.builderExecutionRef,
+    readPaths: proposal.edits.map((edit) => path.resolve(scope.projectRoot, edit.path)),
+    ...(input ? { originalRequestRef: input.file, originalRequestHash: input.hash } : {}),
+    recordTemplate: {
+      proposalHash: proposal.proposalHash,
+      decision: '<non-behavioral|implementation-changed|requirements-changed|discard>',
+      summary: '<结合实际使用方和验收条件说明判断依据>',
+      reviewer: { sessionId: claim.sessionId, claimToken: claim.claimToken },
+    },
+    continuation: {
+      mode: 'execute' as const,
+      commandArgs: [
+        'comet',
+        'edit-review',
+        'record',
+        scope.workflow,
+        scope.change,
+        '--project-root',
+        scope.projectRoot,
+        '--file',
+        '<review-result.json>',
+        '--json',
+      ],
+      requiredInputs: [
+        '独立复核具体差异及其使用方',
+        ...(input
+          ? [`读取原始编辑请求：${input.file}；摘要：${input.hash}`]
+          : ['与提案摘要匹配的原始编辑请求；缺失时不得批准']),
+      ],
+      instruction:
+        '只读核对差异、使用方和当前验收条件，再填写 recordTemplate；通过后重试原编辑并刷新失效检查。会话标识仅关联执行，不表示宿主身份已认证。',
+    },
+  };
+}
+
+export async function claimedEditReviewExecutionAuthority(
+  scope: EditReviewScope,
+  builderExecutionRef: string,
+  input: EditReviewInput,
+): Promise<EditReviewAuthority> {
+  const reviewer = input.reviewer;
+  if (
+    !HASH.test(input.proposalHash) ||
+    !reviewer?.sessionId ||
+    !reviewer.claimToken ||
+    reviewer.sessionId === builderExecutionRef
+  )
+    throw new Error('编辑复核需要当前独立复核会话的领取回执');
+  const root = await directory(scope);
+  const saved = (await readJson(
+    root,
+    `${input.proposalHash}.${objectHash(reviewer.sessionId)}.claim.json`,
+  )) as {
+    proposalHash?: string;
+    sessionId?: string;
+    builderExecutionRef?: string;
+    claimToken?: string;
+  } | null;
+  if (
+    !saved ||
+    saved.proposalHash !== input.proposalHash ||
+    saved.sessionId !== reviewer.sessionId ||
+    saved.builderExecutionRef !== builderExecutionRef ||
+    saved.claimToken !== reviewer.claimToken
+  )
+    throw new Error('编辑复核领取回执不属于当前候选或已失效');
+  return {
+    kind: 'runtime-verifier',
+    executionRef: `edit-review/${input.proposalHash}/${reviewer.sessionId}`,
+  };
+}
+
+export async function editReviewContinuation(
+  scope: EditReviewScope,
+  reviews: readonly EditReviewObservation[],
+  sdk: boolean,
+): Promise<CliActionContinuation | null> {
+  for (const review of reviews) {
+    const command = [
+      'comet',
+      'edit-review',
+      'show',
+      scope.workflow,
+      scope.change,
+      '--project-root',
+      scope.projectRoot,
+      '--json',
+    ];
+    if (!review.receipt) {
+      const input = await editReviewInputReference(scope, review.proposalHash);
+      return {
+        mode: sdk ? 'execute' : 'ask',
+        commandArgs: sdk
+          ? [
+              'comet',
+              'edit-review',
+              'claim',
+              scope.workflow,
+              scope.change,
+              '--project-root',
+              scope.projectRoot,
+              '--proposal-hash',
+              review.proposalHash,
+              '--session',
+              '<independent-reviewer-session>',
+              ...(input ? ['--file', input.file] : []),
+              '--json',
+            ]
+          : command,
+        requiredInputs: sdk
+          ? ['独立复核会话标识', ...(!input ? ['原始编辑请求'] : [])]
+          : ['用户明确确认具体编辑复核结果'],
+        instruction:
+          '先处理这份编辑复核，保留候选和 Verify；缺少原请求时从被拒绝的编辑调用恢复，不能凭内容 hash 猜测差异。',
+      };
+    }
+    if (['implementation-changed', 'requirements-changed'].includes(review.receipt.decision))
+      return {
+        mode: 'reconcile',
+        commandArgs: command,
+        requiredInputs: ['通过原工作流修订或丢弃尚未应用的编辑'],
+        instruction: `复核结论为 ${review.receipt.decision}，不能接受当前候选。`,
+      };
+    if (review.receipt.decision === 'non-behavioral')
+      for (const edit of review.edits) {
+        const current = await currentContent(scope, edit.path);
+        if (current?.hash === edit.beforeHash && edit.beforeHash !== edit.afterHash) {
+          const input = await editReviewInputReference(scope, review.proposalHash);
+          return {
+            mode: 'execute',
+            commandArgs: null,
+            requiredInputs: [
+              '重试已经复核通过的原始编辑调用',
+              input
+                ? `读取已核对的原始请求：${input.file}`
+                : '从原会话恢复完整原始编辑请求；不能凭摘要重建写入',
+            ],
+            instruction: '原样重试已批准编辑；内容摘要必须匹配。应用后刷新失效检查并继续原工作流。',
+          };
+        }
+        if (!reaches(approvedEdges(reviews, edit.path), edit.afterHash, current?.hash ?? null))
+          return {
+            mode: 'reconcile',
+            commandArgs: command,
+            requiredInputs: ['为当前具体编辑重新准备复核'],
+            instruction: '当前文件与已批准内容不匹配，保留 Verify 并核对差异。',
+          };
+      }
+  }
+  return null;
+}
+
 /** 只保存内容 hash，不把源文件、工具参数或凭据复制进 Runtime。 */
 export async function prepareEditReview(
   scope: EditReviewScope,
@@ -374,7 +637,13 @@ export async function recordEditReview(
     if (input.decision === 'discard' && (current?.hash ?? null) !== edit.beforeHash)
       throw new Error('编辑已经应用，不能丢弃复核来接受新内容');
   }
-  const receipt: ReviewReceipt = { schema: 'comet.edit-review.receipt.v1', ...input, authority };
+  const receipt: ReviewReceipt = {
+    schema: 'comet.edit-review.receipt.v1',
+    proposalHash: input.proposalHash,
+    decision: input.decision,
+    summary: input.summary,
+    authority,
+  };
   const root = await directory(scope, true);
   await withRecoverableFileLock(path.join(root, '.lock'), () =>
     writeOnce(
@@ -438,8 +707,9 @@ export async function approvedEditFingerprint(
   scope: EditReviewScope,
   file: string,
   source: string,
+  reviews?: readonly EditReviewObservation[],
 ): Promise<{ fingerprint: string | null; semantic: boolean; beforeHash: string | null } | null> {
-  const edges = approvedEdges(await inspectEditReviews(scope), file);
+  const edges = approvedEdges(reviews ?? (await inspectEditReviews(scope)), file);
   const currentHash = editContentHash(source);
   const first = edges.find(
     (edge) =>

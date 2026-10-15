@@ -47,6 +47,7 @@ describe('Runtime cold-start benchmark evidence', () => {
     const inherited = {
       HOME: '/user',
       LOCALAPPDATA: '/user/cache',
+      COMET_DATA_DIR: '/user/comet-data',
       COMET_TASK: 'private task',
       NODE_OPTIONS: '--inspect',
       PATH: 'unchanged',
@@ -62,10 +63,15 @@ describe('Runtime cold-start benchmark evidence', () => {
       'XDG_DATA_HOME',
       'GIT_CONFIG_GLOBAL',
       'GIT_CONFIG_SYSTEM',
+      'COMET_DATA_DIR',
     ]) {
-      expect(path.relative(home, env[key]).startsWith('..')).toBe(false);
+      const relative = path.relative(home, env[key]);
+      expect(
+        path.isAbsolute(relative) || relative === '..' || relative.startsWith('..' + path.sep),
+      ).toBe(false);
     }
     expect(env).toMatchObject({ COMET_TASK: '', NODE_OPTIONS: '', PATH: 'unchanged' });
+    expect(env.COMET_DAEMON).toBe('off');
     expect(inherited.COMET_TASK).toBe('private task');
   });
 

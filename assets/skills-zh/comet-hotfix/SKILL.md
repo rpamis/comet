@@ -13,258 +13,30 @@ description: '使用 Classic 预设流程修复局部缺陷。在用户明确调
 
 1. 修复已有功能的缺陷，不新增功能
 2. 不涉及接口变更或架构调整
-3. 改动范围可预估（文件数仅作提示，不会自动要求升级，见下方升级判定）
+3. 改动范围可预估（文件数仅作提示，不会自动要求升级，见 SDK 方法参考的预设范围复核）
 
-**不适用**：修复过程中如发现「升级判定」章节列出的变化，需要由用户决定是否改用完整 `/comet-classic` 流程。
+**不适用**：修复过程中如发现 SDK 方法参考的预设范围复核列出的变化，需要由用户决定是否改用完整 `/comet-classic` 流程。
+
+记忆接入沿用 Classic 入口协议；个人记忆只保存可复用用户信息，不写入任务摘要、进展、命令输出或测试结果。
 
 ## SDK Run 路径
 
+进入 SDK 阶段时，必须读取 [SDK 执行方法](../comet-classic/reference/sdk-methods.md) 中当前阶段的章节；Verify 编辑被拒绝或出现待复核提案时，读取[编辑复核](../comet/reference/edit-review.md)。
+
 SDK 新 change 的状态文件为 `comet-state.yaml`；历史 `.comet.yaml` 保持原地读写，compat 初始化仍用旧名。两文件共存时（包括其中一个是失效符号链接）停止并保留现场，不自动改名或覆盖。以 Runtime 返回的归属与路径为准。
 
-响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 等待原任务，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。下文依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
+响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 等待原任务，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。本节依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
 
-开始或恢复时，优先复用当前有效结果中的 `agent.continuation` / `data.nextAction` 及已绑定的 change、工作区、phase 和 Run revision，按已知的 `data.runtimeFormat` 路由。只有冷恢复、外部状态变化或缺少这些信息时，才运行 `comet state next <change-name> --json`。`sdk` 只按本节推进；下文的适用条件、复现与根因消除方法、升级判定和文件数授权规则仍适用，下文的旧状态写入、旧证据命令及 `.comet.yaml` 判断不执行。若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> <phase> --recover --json` 核对原 Action；结果未明时不重做实现、检查或归档。
+开始或恢复时，优先复用当前有效结果中的 `agent.continuation` / `data.nextAction` 及已绑定的 change、工作区、phase 和 Run revision，按已知的 `data.runtimeFormat` 路由。只有冷恢复、外部状态变化或缺少这些信息时，才运行 `comet state next <change-name> --json`。`sdk` 只按本节推进；SDK 方法参考的适用条件、复现与根因消除方法、升级判定和文件数授权规则仍适用，状态与证据通过本节命令提交。若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> <phase> --recover --json` 核对原 Action；结果未明时不重做实现、检查或归档。
 
-1. 新建时先按下文让用户选择工作区隔离方式，运行 `comet classic workspace prepare <name> --isolation <selected-isolation> --json`，进入返回的 `projectRoot`，再运行 `comet state init <name> hotfix --isolation <selected-isolation>`、`comet state select <name>`。按下文 Step 1 创建精简版 OpenSpec 产物；运行 `comet state check <change-name> open --json` 与 `comet guard <change-name> open --json` 预检，保存返回的 `data.approvalHash`。向用户展示本次 Open 产物与范围，获得明确批准后，运行 `comet guard <change-name> open --apply --approval-hash <approvalHash>`。产物变化后必须重新预览并确认，不复用旧哈希。只有 Run 进入 Build，Open 才完成；状态文件是 change 下的 `comet-state.yaml`，历史 change 沿用原文件名。
-2. `hotfix.build.execute` 待执行时，沿用本次 change、工作区和 Run，直接恢复 Build，不重新初始化或重跑 Open。按下文 Step 2–3 先复现缺陷、保存失败证据、完成任务并核对根因。出现实质升级信号或文件数超限且无有效授权时，先运行 `comet state propose-escalation <change-name> --reason "<reason>"`；向用户展示当前原因和继续 hotfix / 升级 full 的影响，并保存返回的 `data.wait.proposalHash`。用户明确选择后运行 `comet state decide-escalation <change-name> --proposal-hash <proposalHash> --choice <continue|upgrade>`。`continue` 仍须满足下文的范围、风险与 ruling 要求；`upgrade` 在同一个 Run 和工作区进入 full Design，立即按入口加载 comet-design。恢复待决定 Wait 时复用原提案，不重新提案或替用户选。
+1. 新建时先按 [工作区选择](../comet-classic/reference/workspace.md) 确定隔离方式，运行 `comet classic workspace prepare <name> --isolation <selected-isolation> --json`，进入返回的 `projectRoot`，再运行 `comet state init <name> hotfix --isolation <selected-isolation>`，随后运行 `comet state select <name>` 绑定 Hook 路由。按 SDK 方法参考的开始与产物章节创建精简版 OpenSpec 产物；运行 `comet guard <change-name> open --json` 预览确认内容，保存返回的 `data.approvalHash`。向用户展示本次 Open 产物与范围，获得明确批准后，运行 `comet guard <change-name> open --apply --approval-hash <approvalHash>`。产物变化后必须重新预览并确认，不复用旧哈希。只有 Run 进入 Build，Open 才完成；状态文件是 change 下的 `comet-state.yaml`，历史 change 沿用原文件名。
+2. `hotfix.build.execute` 待执行时，沿用本次 change、工作区和 Run，直接恢复 Build，不重新初始化或重跑 Open。按 SDK 方法参考的预设范围复核章节 先复现缺陷、保存失败证据、完成任务并核对根因。出现实质升级信号或文件数超限且无有效授权时，先运行 `comet state propose-escalation <change-name> --reason "<reason>"`；向用户展示当前原因和继续 hotfix / 升级 full 的影响，并保存返回的 `data.wait.proposalHash`。用户明确选择后运行 `comet state decide-escalation <change-name> --proposal-hash <proposalHash> --choice <continue|upgrade>`。`continue` 仍须满足 SDK 方法参考的范围、风险与 ruling 要求；`upgrade` 在同一个 Run 和工作区进入 full Design，立即按入口加载 comet-design。恢复待决定 Wait 时复用原提案，不重新提案或替用户选。
 3. 根因消除、任务完成且仍适合 hotfix 时，以完整构建或验收命令运行 `comet guard <change-name> build --apply -- <program> [args...]`。此处没有新的用户决定，`--apply` 会重新校验当前任务、配置、工作区和证据，再执行真实检查并提交收据；只有成功且证据有效时进入 Verify。仅在需要诊断时运行 `comet guard <change-name> build` 只读预检。失败后使用返回的当前状态；结果未提供 continuation 时再读 `state next --json`，不重播结果未明的 Action。
 4. Run 进入 Verify 时，**立即执行：** 使用 Skill 工具加载 comet-verify 技能。禁止跳过此步骤。该 Skill 的 SDK 路径完成报告、独立检查和真实命令收据。Run 进入 Archive 时，**立即执行：** 使用 Skill 工具加载 comet-archive 技能。禁止跳过此步骤。归档和交付仍须获得用户当前授权；当前成功结果显示 Run 完成后才能宣告完成；缺少完成状态时再读 `state next --json`。
 
-每次推进后，优先使用同次结果的 `agent.continuation` / `data.nextAction`；状态仍有效且信息完整时，不重复 next、select 或 check。仅在冷恢复、外部状态变化或缺少必要信息时补读。`decision`、`evidence`、`reconcile` 先处理当前 Run 的等待或恢复；`action` 才执行对应步骤。以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`。
+每次推进后，优先使用同次结果的 `agent.continuation` / `data.nextAction`；状态仍有效且信息完整时，不重复 next、select 或 check。仅在冷恢复、外部状态变化或缺少必要信息时补读。`decision`、`evidence`、`reconcile` 先处理当前 Run 的等待或恢复；`action` 才执行对应步骤。
+确定性的本地检查按 SDK 方法参考在 `--` 前加 `--local`，Runtime 核对完整输入和日志后才复用；外部检查保持真实执行。SDK Build 使用稳定的 `--session <builder-execution-ref>` 关联执行；full 的 complete-build 已携带时无需再次传入。
 
----
+## Compat 路径
 
-## 流程（预设流程，6 步）
-
-### 0. 设置输出语言
-
-精简版 OpenSpec 产物必须使用 Comet 配置产物语言。`.comet.yaml` 尚不存在时依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`，初始化后使用 `comet state get <name> language` 读取。
-
-执行顺序：open → build → 根因消除检查 → verify → archive。Hotfix 预设各阶段的执行方式：创建必要文档后直接构建，检查根因是否消除，按规模选择验证方式，验证通过后进入归档前的最终确认。
-
-开始前，按 `comet-classic/reference/scripts.md` 使用正式支持的 Comet CLI；从任意入口恢复任务时，先按 `comet-classic/reference/context-recovery.md` 检查 phase/workflow。
-
-恢复已有 hotfix change 时，第一项状态操作必须是 `comet state select <change-name>`；创建新 change 时，在 `.comet.yaml` 初始化成功后立即运行该命令，再进入源码写入步骤。
-
-进入 hotfix 工作区并读取当前状态 `phase` 后，运行 `comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --session "<本次任务稳定标识>" --json`，按以下规则使用返回的上下文：
-
-- 只将返回的 `text` 加入当前上下文。Context Manifest（`manifest` / `<context_manifest>`）只包含摘要、应用原因和固定 ID；需要正文、来源或验证方式时，增加 `--expand-context "<id>"`。路径、操作或阶段变化后，使用同一 `--session` 重新选择适用条目。
-- 用户明确要求长期记住时，调用 `comet memory remember ... --scope global|project`。对于用户未明确要求记忆、但可重复采用且相对稳定的协作方式，才调用 `comet memory observe`；不得保存任务摘要、进展、命令输出或测试结果。
-- 任务结束前，将本次验证过且未来任务仍可复用的项目经验写入项目记忆：`comet knowledge remember <project-root> --title "<简明标题>" --text "<现象、做法、验证结果>" --type <fact|decision|pattern|procedure|constraint|failure-resolution> --workflow classic --change <change-id> --json`。同一标题默认更新已有条目；没有可复用经验时跳过，任务摘要、一次性命令输出和未验证的猜测不得写入项目记忆。
-- 实际使用某条记录、且使用结果已经明确后，取 `applications[].applicationId`（Hook 文本中的 `application_id`），运行 `comet task <project-root> --task "<用户原始请求>" --application "<application-id>" --outcome used-successfully|ignored|overridden|corrected|contributed-to-failure --json`，记录使用结果。
-- 任务结束前完成一次学习检查：有明确后续复用条件的用户纠正、偏好或协作习惯先调用 `comet memory observe`，再在完成命令中传 `--learning-check submitted`；确认没有合格观察时传 `--learning-check no-observation`，没有执行检查时传 `--learning-check not-run`。观察 JSON 的 `learning.result` 和 `status.learning.lastCheck` 用于区分候选、晋级、去重和跳过；不要提交任务摘要或测试结果。
-- 任务结束时，仍须运行带 `--complete --workflow <workflow> --change <change-id> --learning-check submitted|no-observation|not-run` 的 `comet task`。按 `comet-classic/reference/scripts.md` 独立执行项目学习检查，并传 `--project-learning-check submitted|no-observation|not-run`；保存过项目经验时附带 `--memory <返回的 slug>`，核对 `projectLearning.submissionVerified` 和待评审数量。没有 Hook 时，由本 Skill 调用相同接口；`comet memory context` 只作为兼容入口。插件失败不阻断缺陷修复。
-
-### 1. 快速开启（预设 open）
-
-复用 Comet open 创建 change，并采用 hotfix 默认配置：不执行 `openspec-explore` 的完整探索，直接创建修复所需的文档。
-
-**立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
-
-<!-- external-openspec-skill-override -->
-
-**外部 OpenSpec Skill 适配规则：** 加载后，不执行其中直接运行官方 CLI、采用固定 cwd 或读写固定 OpenSpec 目录的指令。所有 OpenSpec 命令改用 `comet classic openspec -- <args...>`，所有 change 与产物路径改用本轮绑定的 `<classic-*>` 逻辑根目录。
-
-开始工作时，先由用户选择工作区隔离方式，不能默认写入 `current`（选 worktree 时必须先决定隔离，再初始化状态——change 目录在初始化后才存在，事后补选 worktree 会因目录不在 worktree 中而失败）。按 `comet-classic/reference/decision-point.md` 暂停，以单选题让用户选择：
-
-- A. 当前分支直接工作（`--isolation current`，如实绑定当前分支）
-- B. 创建分支：先创建并切换到 `hotfix/YYYYMMDD/<change-name>`（`--isolation branch`）
-- C. 创建 worktree：必须先使用 Skill 工具加载 Superpowers `using-git-worktrees` 技能，由该技能创建隔离工作区（`--isolation worktree`）
-
-随后准备工作区并在返回的 `projectRoot` 中初始化与选中 change（中断后恢复亦按此顺序）：
-
-```bash
-comet classic workspace prepare <name> --isolation <selected-isolation> --json
-cd <返回的 projectRoot>
-comet state init <name> hotfix --isolation <selected-isolation>
-comet state select <name>
-comet state check <name> open
-```
-
-若上述 `select` / `check` 输出 `BLOCKED` 或分支绑定 `ERROR`，且原因是 `bound_branch` 与当前分支不一致，立即按 `comet-classic/reference/decision-point.md` 暂停，让用户单选：切回绑定分支后重新运行入口验证，或在用户明确确认当前分支应接管该 change 后运行 `comet state rebind <change-name>` 并重新入口验证。不得自行切换分支，不得自行换绑。
-
-随后按指引创建精简版产物：
-
-- `proposal.md` — 问题描述 + 根因分析 + 修复目标（无需方案对比）
-- `design.md` — 修复方案（1 个即可，无需多方案对比）
-- `tasks.md` — 修复任务清单
-- **无需 delta spec**（除非修复改变了已有 spec 的验收场景）
-
-阶段守卫完成 open → build 过渡：
-
-```bash
-comet guard <change-name> open --apply
-```
-
-检查 `auto_transition` 决定是否继续：
-
-```bash
-comet state next <name>
-```
-
-- `NEXT: auto` → 继续 Step 2
-- `NEXT: manual` → 按 `HINT` 交还控制权并结束当前调用；不要再询问用户是否继续
-
-### 2. 直接构建（预设 build）
-
-使用 hotfix 默认值：`build_mode: direct`、`tdd_mode: direct`、`review_mode: off`。`isolation` 必须沿用 Step 1 中用户已确认的工作区隔离方式，不得自行改回 `current`。
-
-`direct` 表示不采用完整的规划和逐任务 TDD 流程，仍然必须复现问题、运行回归测试并完成验证。跳过 Superpowers `brainstorming` 和 `writing-plans`；**任务数量本身不触发 `/comet-build`**。任务较多时，仍按当前 hotfix 的 tasks.md 顺序执行。只有出现后文列出的升级条件，或文件数超过提示阈值且没有有效授权时，才交给用户决定是否改用 full。
-
-开始或继续修改前，按 `comet-classic/reference/dirty-worktree.md` 处理未提交改动。确认改动归属后，如发现修复涉及下文列出的升级条件，或改动文件数超过提示阈值，按本文件「升级判定」处理。
-
-修改实现前，必须**先复现问题并记录失败证据**：
-
-1. 用最小可重复步骤确认用户报告的旧行为确实失败，并记录命令、输入和实际结果
-2. 能自动化时先新增一个会失败的回归测试并实际运行，确认失败原因对应本 bug，而不是环境或测试本身错误
-3. 暂时无法自动化时，在 proposal/验证报告中记录不可自动化原因和可重复的手工失败证据；不得无证据直接改代码
-
-完成 RED 证据后，按 tasks.md 逐个执行任务：
-
-1. 读取 `<classic-change-dir>/tasks.md`，获取未完成任务列表
-2. 对每个未完成任务：
-   - 根据任务描述修改代码
-   - 运行项目格式化命令（如 `mvn spotless:apply`、`npm run format` 等）
-   - 先运行新增的失败回归测试确认转绿，再运行相关测试确认通过
-   - 将 tasks.md 中对应 `- [ ]` 勾选为 `- [x]`
-   - 提交代码，commit message 格式：`fix: <简述修复>`
-3. 全部任务完成后，显式运行项目相关测试和构建命令
-
-执行 hotfix 期间，只要运行程序、测试、构建或手动验证时出现崩溃、异常行为、测试失败或构建失败，必须使用 Skill 工具加载 Superpowers `systematic-debugging` 技能。在完成根因调查前，不得提出或实施源码修复。
-
-根因调查、最小失败测试、修复后的验证，以及如何在当前 change 中完成这些步骤，均按 `comet-classic/reference/debug-gate.md` 执行。
-
-**如修复影响已有 spec 验收场景**：
-
-- 在 `<classic-change-dir>/specs/<capability>/spec.md` 创建 delta spec
-- 仅包含 `## MODIFIED Requirements` 部分
-
-### 3. 根因消除检查
-
-**在运行 build guard 之前执行**，确保修复确实消除了问题根因：
-
-1. 读取 proposal.md 中的 bug 描述和根因
-2. 搜索相关代码，确认导致该问题的实现已被移除或修正
-3. 如根因未消除，回到 Step 2 继续修复（此时仍在 build 阶段，无需状态回退）
-
-**升级判定信号**：
-
-- 根因消除检查发现深层架构问题：按「升级判定」章节暂停，由用户决定是否改用完整流程
-- 修复需要额外接口变更，例如引入新的公共 API：按「升级判定」章节暂停，由用户决定是否改用完整流程
-
-根因确认消除后，运行阶段守卫完成 build → verify 过渡：
-
-```bash
-comet guard <change-name> build --apply
-```
-
-状态文件自动更新为 `phase: verify`、`verify_result: pending`，然后进入验证。
-
-### 4. 验证（预设 verify）
-
-复用 `/comet-verify`，由 comet-verify 的规模评估决定轻量或完整验证。
-
-**立即执行：** 使用 Skill 工具加载 `comet-verify` 技能。禁止跳过此步骤。
-
-无 delta spec 的小范围 hotfix 通常满足轻量验证条件（≤ 3 tasks、改动文件数低于 scale 阈值），按 comet-verify 的轻量验证清单逐项检查；默认 `review_mode: off` 时，不自动安排代码审查。若用户希望增加审查，可在验证前运行 `comet state set <name> review_mode standard` 或 `thorough`。若 hotfix 创建了 delta spec，则根据 comet-verify 的规模评估规则进入完整验证路径。
-
-验证及报告完成后，由 `/comet-verify` 执行 `comet guard <change-name> verify --apply`；复用它成功返回的 archive 状态和 `agent.continuation`，不再手动设置 `verify_result: pass` 或重复运行 Guard。Guard 未通过时按其原因处理，不能宣告验收通过。进入 `/comet-archive` 后仍须完成归档前最终确认，不得自动运行归档脚本。
-
-### 5. 归档（预设 archive）
-
-复用 `/comet-archive`。归档前必须满足 `.comet.yaml` 中 `verify_result: pass`，并等待 `/comet-archive` 的归档前最终确认。
-
-**立即执行：** 使用 Skill 工具加载 `comet-archive` 技能进行归档。禁止跳过此步骤。
-如有 delta spec，按 comet-archive 规则同步到 main spec，并处理关联 Design Doc 与 Plan 的归档标注。
-
----
-
-## 连续执行模式
-
-<IMPORTANT>
-Hotfix 默认连续执行。调用 `/comet-hotfix` 后，Agent 自动推进 hotfix 的各个步骤，不额外暂停。若 `auto_transition: false`，则在阶段之间（build/verify/archive）结束当前调用，按 `HINT` 提示用户稍后手动运行下一阶段命令，不再追加确认问题。无论 `auto_transition` 取何值，遇到以下情况仍须暂停，请用户决定：
-
-1. 遇到升级判定信号（见「升级判定」章节），**必须暂停、展示选择并等待用户明确选择**：继续 hotfix 流程，还是升级为完整 `/comet-classic` 流程
-2. 验证阶段（comet-verify）需要接受 WARNING/SUGGESTION 偏差、处理 Spec 不一致，或决定达到自动修复上限后如何继续；前 3 次明确可修复的失败自动修复并重新验证
-3. 归档前在一个最终确认中选择是否归档及归档提交的交付方式
-
-执行顺序：快速开启 → 直接构建 → 根因消除检查 → 验证 → 归档 → 完成
-
-每个阶段完成后立即进入下一阶段。阶段内部仍必须按上文要求调用对应 Comet/OpenSpec/Superpowers skill，被调用的 skill 如有自己的用户决策点，按该 skill 规则执行。
-</IMPORTANT>
-
----
-
-## 升级判定
-
-hotfix 的升级判定只决定是否从预设流程转为 full。文件数量不会自动触发升级。`comet state scale` 只建议采用轻量还是完整验证，不写入配置；最终由 Verify 根据实际风险选择。
-
-如果 `/comet-classic` 入口已传入需求意图摘要（intent frame），hotfix 在 build 前只复核 `risk_signal`，以及是否新增功能、引入公共 API、修改结构化数据格式（schema）、需要跨模块协调或涉及深层架构问题。出现这些情况时，按本节请用户决定是否升级，不重新判断入口已经识别的用户意图。
-
-修复过程中，持续检查是否出现以下需要重新评估流程的变化：
-
-- 需要协调修改多个模块
-- 需要新增功能
-- 需要修改数据库 schema
-- 需要引入新的公共 API
-- 涉及深层架构问题；hotfix 中通常会在根因消除检查时发现
-
-出现任一情况时，Agent **不得自行升级，也不得自行决定继续使用 hotfix**。
-
-文件数量只触发范围复核，不等同于实质升级信号。改动文件数超过提示阈值（如 > 4 个文件）时，先统计当前 change 的交付文件，再按下文检查是否存在有效的用户授权；文件多不代表一定需要完整流程。缺陷修复通常集中在 1-3 个文件，超过阈值说明涉及范围偏大，需要复核是否仍适合预设流程。
-
-交付文件只包括源码、测试、用户文档、配置和生成物。统计覆盖确认基线之后已提交的变更、暂存、未暂存和未跟踪文件，并按路径去重；排除当前 change 目录中的 OpenSpec 产物、`.comet` 元数据以及与当前 change 无关的脏文件。不能把 OpenSpec 产物或无关脏文件计入阈值，也不能因为文件数量较少而跳过实质升级信号检查。
-
-### 文件数超限时复用当前 change 的明确授权
-
-只有当前 change 的用户明确授权“范围、风险不变且仅文件数超限时继续”，才能建立或复用授权。普通开始修复、调用 Skill、历史偏好或 Personal Memory 都不是授权。授权记录只写入 `<classic-change-dir>/.comet/rulings.md`，并使用以下稳定结构；change 目录尚未初始化时，先保留待写入状态，不能假定授权已经成立：
-
-```text
-### Preset file-count authorization
-- status: active|invalidated
-- workflow: hotfix
-- decision: continue-on-file-count-only
-- scope: <当前 change 已确认的范围>
-- allowed-file-categories: implementation, tests, user-docs, config, generated
-- authorization-basis: user-explicit
-- reason: <用户授权依据和继续理由>
-```
-
-没有有效 ruling 的首次超过阈值时，仍按 `comet-classic/reference/decision-point.md` 暂停并让用户选择继续 hotfix（选项 A）或升级 full（选项 B）。只有用户明确选择 A，并明确说明范围、风险不变且仅文件数超限，才写入上述 ruling；后续同一范围内的文件增长可以复用 `status: active` 的记录而不重复提问。已有有效授权时不提问，但必须先报告文件总数、分类、与确认范围的对应关系、ruling 记录位置，以及没有命中实质升级信号的依据，然后继续 hotfix；验证深度仍按实际风险和 `comet state scale` 的建议决定。
-
-恢复任务时，先读取当前 change 的 ruling。有效的 `status: active` 记录按同样条件继续；`status: invalidated`、缺失、不可读、含糊或与当前 scope 不匹配时，必须暂停并重新提供继续 hotfix 或升级 full 的选择。
-
-只有同时满足以下条件，`status: active` 才有效：`workflow` 与当前 hotfix 匹配，scope、验收和风险假设没有变化，所有新增交付文件仍在 `allowed-file-categories` 内，且当前触发原因只有文件数超限。用户撤销授权、切换 workflow、范围或验收变化、出现新的模块/API/schema/capability/架构问题（例如新增公共 API、修改结构化数据格式（schema）），或文件落到授权类别之外时，必须把记录标为 `status: invalidated` 并回到暂停流程。`rulings.md` 缺失、不可读、含糊或已失效时，无有效授权时必须暂停；升级到 full 时也将记录标为 `status: invalidated`，之后不得继续复用该授权。
-
-因此，出现任何实质升级信号，或没有有效授权而改动文件数超过提示阈值时，必须按 `comet-classic/reference/decision-point.md` 暂停并等待用户明确选择。不得直接进入 `/comet-design`，也不得自动补充 Design Doc。
-
-用户选择升级（选项 B）后，运行状态机提供的升级命令，将预设流程转为 full，并回到 design 阶段：
-
-```bash
-comet state transition <name> preset-escalate
-```
-
-该命令会原子地将 `workflow`/`classic_profile` 设为 `full`、将 `phase` 改为 `design`、清空 `design_doc`，并清除预设专属的 `build_mode`、`tdd_mode`、`review_mode`、`isolation`、`verify_mode`，同时清空 `bound_branch` 等工作区绑定——升级后必须在进入 build 前按 `comet-classic/reference/decision-point.md` 重新决定隔离方式并重新绑定（`state set <name> isolation ...`），否则 guard 会以 isolation 缺失拦截。然后，**立即使用 Skill 工具加载 `comet-design` skill**，在当前 change 的基础上补充 Design Doc。进入 build 后，必须在同一轮提问中重新确认完整的工作方式配置。
-
-用户选择继续（选项 A）时，只有在用户明确确认范围和风险不变且仅文件数超限时，才继续 hotfix，并按上述结构记录用户授权依据和继续理由；仅说“开始修复”或“继续”而没有这项授权语义时，仍按暂停流程等待澄清。
-
----
-
-## 退出条件
-
-- Bug 已修复，测试通过
-- change 已归档
-- 如有 spec 变更，已同步到 main spec
-- **阶段守卫**：build → verify 前运行 `comet guard <change-name> build --apply`，verify → archive 前按 `/comet-verify` 规则运行 `comet guard <change-name> verify --apply`
-
-## 自动衔接下一阶段
-
-按 `comet-classic/reference/auto-transition.md` 和成功结果中的 `agent.continuation` 继续。已有仍然有效的状态信息时，不重复 next、select 或 check。只有丢失上下文后恢复任务、外部状态变化，或旧结果未提供这些信息时，才运行：
-
-```bash
-comet state next <name>
-```
-
-- `NEXT: auto` → 调用 `SKILL` 指向的 skill 继续 hotfix 流程（`phase: build` 返回 `comet-hotfix`，`verify` 返回 `comet-verify`，`archive` 返回 `comet-archive`）
-- `NEXT: manual` → 不调用下一 skill，按 `HINT` 交还控制权并结束当前调用；不再创建确认点
-- `NEXT: done` → 流程已完成，无需继续
+以下旧 Runtime 步骤仅用于 `runtimeFormat: compat`。必须读取 [Compat 操作](reference/compat.md)，按其中当前阶段继续；SDK 不加载该参考。

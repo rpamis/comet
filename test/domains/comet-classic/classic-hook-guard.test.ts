@@ -90,14 +90,14 @@ describe('Classic non-behavioral Verify edits', () => {
       );
       const denied = await inspectClassicHookGuard(root, 'review-edit', request);
       expect(denied).toMatchObject({ allowed: false, phase: 'verify' });
-      expect(denied.reason).toContain('edit-review prepare');
+      expect(denied.reason).toContain('edit-review show classic');
       const hookInput = JSON.stringify({
         tool_name: 'Write',
         tool_input: { file_path: target, content: after },
       });
       const bundledDenied = run(root, 'hook-guard', [], hookInput);
       expect(bundledDenied.status, bundledDenied.stderr).toBe(2);
-      expect(bundledDenied.stdout + bundledDenied.stderr).toContain('edit-review prepare');
+      expect(bundledDenied.stdout + bundledDenied.stderr).toContain('edit-review show classic');
       const { runClassicEditReviewCommand } =
         await import('../../../domains/comet-classic/classic-edit-review-command.js');
       const shown = await runClassicEditReviewCommand({

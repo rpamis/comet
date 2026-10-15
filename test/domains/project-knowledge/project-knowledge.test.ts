@@ -2393,7 +2393,7 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
           ? 'reference/commands.md'
           : skill === 'comet-classic'
             ? 'reference/scripts.md'
-            : null;
+            : 'reference/compat.md';
       const [chinesePhaseSource, englishPhaseSource] = referencePath
         ? await Promise.all([
             fs.readFile(path.resolve('assets/skills-zh', skill, referencePath), 'utf8'),

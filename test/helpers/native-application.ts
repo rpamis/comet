@@ -12,6 +12,9 @@ import { runtimeDispatchCommand as sourceRuntimeDispatchCommand } from '../../ap
 import { runNativeCli as sourceRunNativeCli } from '../../domains/comet-native/native-cli.js';
 import type { RuntimeAction, RuntimeValue, WorkflowRun } from '../../domains/engine/runtime.js';
 import { fixtureAcceptanceReview } from './native-builder-acceptance-review.js';
+import { ensureCliBuilt } from './ensure-cli-built.js';
+
+const cliBuilds = new Map<string, Promise<void>>();
 
 export async function prepareNativeApplication(
   root: string,
@@ -20,6 +23,12 @@ export async function prepareNativeApplication(
   runtimePackageRoot = process.env.COMET_NATIVE_TEST_PACKAGE_ROOT ?? path.resolve('.'),
 ) {
   const packaged = runtimePackageRoot !== path.resolve('.');
+  // 外部 Skill 读取 dist；在创建应用前完成共享构建，避免长流程中途重建产物。
+  if (!packaged) {
+    if (!cliBuilds.has(runtimePackageRoot))
+      cliBuilds.set(runtimePackageRoot, ensureCliBuilt(runtimePackageRoot));
+    await cliBuilds.get(runtimePackageRoot);
+  }
   const { runtimeDispatchCommand } = packaged
     ? ((await import(
         pathToFileURL(path.join(runtimePackageRoot, 'dist/app/commands/runtime.js')).href

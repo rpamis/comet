@@ -1390,6 +1390,23 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
       const sdkWorkspace =
         localOwner?.format === 'compat' ? null : await findClassicSdkWorkspace(projectRoot, change);
       if (sdkWorkspace) {
+        const sessionIndex = args.indexOf('--session');
+        const sessionSeparator = args.indexOf('--');
+        let sessionId: string | undefined;
+        if (sessionIndex >= 0 && (sessionSeparator < 0 || sessionIndex < sessionSeparator)) {
+          sessionId = args[sessionIndex + 1];
+          if (phase !== 'build' || !sessionId?.trim() || sessionId.startsWith('--'))
+            throw new GuardFailure('--session requires a Builder execution reference');
+          args = args.filter((_, index) => index !== sessionIndex && index !== sessionIndex + 1);
+        }
+        const localIndex = args.indexOf('--local');
+        const commandSeparator = args.indexOf('--');
+        let reusable = localIndex >= 0 && (commandSeparator < 0 || localIndex < commandSeparator);
+        if (reusable) {
+          if (!['build', 'verify'].includes(phase) || !args.includes('--apply'))
+            throw new GuardFailure('--local requires an applied Build or Verify check');
+          args = args.filter((_, index) => index !== localIndex);
+        }
         if (phase === 'open') {
           const apply = args.length === 5 && args[2] === '--apply' && args[3] === '--approval-hash';
           if (args.length !== 2 && !apply) {
@@ -1433,6 +1450,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
           }
           let argv = separator === 3 ? args.slice(separator + 1) : undefined;
           let checkCwd: string | undefined;
+          let checkTimeoutMs: number | undefined;
           if (apply && !argv) {
             const pendingReceipt = sdkWorkspace.run.evidenceWaits?.some(
               (wait) =>
@@ -1444,7 +1462,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
               .reverse()
               .find((action) => action.stepId === `${sdkWorkspace.state.workflow}.build.check`);
             const recorded = previous?.outcome?.output as
-              { argv?: unknown; cwd?: unknown } | undefined;
+              { argv?: unknown; cwd?: unknown; timeoutMs?: number; reusable?: boolean } | undefined;
             if (
               pendingReceipt &&
               Array.isArray(recorded?.argv) &&
@@ -1453,6 +1471,8 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             ) {
               argv = recorded.argv as string[];
               checkCwd = recorded.cwd;
+              checkTimeoutMs = recorded.timeoutMs;
+              reusable = recorded.reusable === true;
             } else if (previous) {
               throw new GuardFailure(
                 `A previous Classic SDK Build check exists; run comet check run ${change} build -- <program> [args...] explicitly`,
@@ -1483,8 +1503,11 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             invocationCwd: classicCommandInvocationCwd(),
             change,
             apply,
+            reusable,
+            sessionId,
             ...(argv ? { argv } : {}),
             ...(checkCwd ? { checkCwd } : {}),
+            ...(checkTimeoutMs === undefined ? {} : { checkTimeoutMs }),
           });
         }
         if (phase === 'verify') {
@@ -1503,6 +1526,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
           }
           let argv = separator === 5 ? args.slice(separator + 1) : undefined;
           let checkCwd: string | undefined;
+          let checkTimeoutMs: number | undefined;
           if (apply && !argv) {
             const pendingReceipt = sdkWorkspace.run.evidenceWaits?.some(
               (wait) =>
@@ -1514,7 +1538,7 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
               .reverse()
               .find((action) => action.stepId === `${sdkWorkspace.state.workflow}.verify.check`);
             const recorded = previous?.outcome?.output as
-              { argv?: unknown; cwd?: unknown } | undefined;
+              { argv?: unknown; cwd?: unknown; timeoutMs?: number; reusable?: boolean } | undefined;
             if (
               pendingReceipt &&
               previous?.status === 'succeeded' &&
@@ -1524,6 +1548,8 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             ) {
               argv = recorded.argv as string[];
               checkCwd = recorded.cwd;
+              checkTimeoutMs = recorded.timeoutMs;
+              reusable = recorded.reusable === true;
             } else {
               throw new GuardFailure(
                 `A literal Verify check command is required; run comet guard ${change} verify --report ${args[3]} --apply -- <program> [args...]`,
@@ -1536,8 +1562,10 @@ export const classicGuardCommand: ClassicCommandHandler = withProjectContext(
             change,
             reportRef: args[3],
             apply,
+            reusable,
             ...(argv ? { argv } : {}),
             ...(checkCwd ? { checkCwd } : {}),
+            ...(checkTimeoutMs === undefined ? {} : { checkTimeoutMs }),
           });
         }
         if (phase === 'archive') {

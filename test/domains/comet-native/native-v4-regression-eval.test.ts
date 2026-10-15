@@ -81,10 +81,9 @@ process.stderr.write('e'.repeat(size));
   }
 
   async function readCounters(): Promise<Record<string, number>> {
-    return JSON.parse(await fs.readFile(path.join(root, 'check-counts.json'), 'utf8')) as Record<
-      string,
-      number
-    >;
+    return JSON.parse(
+      await fs.readFile(path.join(paths.workspaceRuntimeRoot, 'check-counts.json'), 'utf8'),
+    ) as Record<string, number>;
   }
 
   function outputPlan(id: string, bytesPerStream: number) {
@@ -92,7 +91,12 @@ process.stderr.write('e'.repeat(size));
       id,
       name: `${id} output check`,
       executable: process.execPath,
-      argv: ['./check-output.mjs', './check-counts.json', id, String(bytesPerStream)],
+      argv: [
+        './check-output.mjs',
+        path.join(paths.workspaceRuntimeRoot, 'check-counts.json'),
+        id,
+        String(bytesPerStream),
+      ],
       cwdRef: '.',
       timeoutMs: 10_000,
       repeatable: true,
