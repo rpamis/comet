@@ -34,6 +34,43 @@ const page: DashboardPluginPageRegistration = {
 };
 
 describe('DashboardPluginHost', () => {
+  it('keeps a concurrent section failure from replacing another successful result', async () => {
+    let entered!: () => void, release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const paused = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runtime = new PluginRuntime({
+      cometVersion: '0.5.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [
+        {
+          ...descriptor('test.plugin'),
+          create: () => ({
+            dashboard: { id: 'test.plugin', label: 'Test', route: '/plugins/test' },
+            invoke: async (capability) => {
+              if (capability === 'slow-success') {
+                entered();
+                await paused;
+                return { ok: true };
+              }
+              throw new Error('only this section failed');
+            },
+          }),
+        },
+      ],
+    });
+    await runtime.install('test.plugin');
+    const host = new DashboardPluginHost({ runtime, projectId: 'project-1', pages: [page] });
+    const successful = host.invoke('test.plugin', 'slow-success');
+    void successful.catch(() => {});
+    await ready;
+    await expect(host.invoke('test.plugin', 'failure')).rejects.toMatchObject({ statusCode: 400 });
+    release();
+    await expect(successful).resolves.toEqual({ ok: true });
+  });
   it('lists a page and loads its snapshot through the public runtime API', async () => {
     const runtime = new PluginRuntime({
       cometVersion: '0.4.0',

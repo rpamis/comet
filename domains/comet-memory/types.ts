@@ -572,8 +572,11 @@ export interface FileMemoryRepositoryOptions {
 export interface GitMemorySyncOptions {
   readonly remoteName?: string;
   readonly commitMessage?: string;
+  /** Total command budget for one explicit synchronization, including network operations. */
+  readonly timeoutMs?: number;
   readonly run?: (
     args: readonly string[],
+    options?: { readonly timeoutMs: number },
   ) => Promise<{ readonly stdout: string; readonly stderr: string }>;
 }
 
@@ -677,6 +680,12 @@ export interface MemoryProviderConfig {
 }
 
 export interface PersonalMemoryPluginOptions {
+  readonly queryContextApplications?: (
+    query: import('../agent-learning/index.js').AgentContextApplicationQuery,
+  ) => Promise<import('../agent-learning/index.js').AgentContextApplicationPage>;
+  readonly readContextUsage?: (
+    applications: readonly AgentContextApplicationRecord[],
+  ) => Promise<import('../agent-learning/index.js').ContextUsageSnapshot | undefined>;
   readonly language?: MemoryLanguage;
   /** Current repository identity used to authorize project-scoped management mutations. */
   readonly projectId?: string;

@@ -1,12 +1,20 @@
 import path from 'node:path';
-import { collectCometTaskContext, readCometTaskProjectLearning } from './comet-task-context.js';
+import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
+import {
+  submitTaskLearning,
+  type TaskLearningSubmission,
+} from '../../domains/comet-entry/task-learning.js';
+import {
+  collectCometTaskContext,
+  readCometTaskProjectLearning,
+  recordCometTaskWorkflowResult as recordCometWorkflowResult,
+} from './comet-task-context.js';
 import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
 
 import {
   collectCometPluginContext,
   expandCometPluginContext,
   recordCometContextOutcome,
-  recordCometWorkflowResult,
 } from '../../domains/comet-entry/plugin-context.js';
 import {
   readProjectMemoryEntries,
@@ -32,6 +40,7 @@ export interface CometTaskCommandOptions {
   readonly verification?: string;
   readonly verificationResult?: 'passed' | 'failed';
   readonly complete?: boolean;
+  readonly learningFile?: string;
   readonly learningCheck?: 'submitted' | 'no-observation' | 'not-run';
   readonly projectLearningCheck?: ProjectLearningCheck;
   readonly memory?: string;
@@ -48,6 +57,7 @@ export interface CometTaskCommandResult {
   readonly learningCheckVerified?: boolean;
   readonly projectMemory?: ProjectMemoryCompletionStatus;
   readonly projectLearning?: ProjectLearningStatus;
+  readonly learningSubmission?: TaskLearningSubmission;
 }
 
 /**
@@ -67,6 +77,18 @@ async function runCometTaskCommand(
   options: CometTaskCommandOptions,
 ): Promise<CometTaskCommandResult> {
   const projectRoot = path.resolve(targetPath);
+  let learningSubmission: TaskLearningSubmission | undefined;
+  if (options.learningFile) {
+    if (!options.complete) throw new Error('--learning-file requires --complete');
+    if (
+      options.learningCheck !== undefined ||
+      options.projectLearningCheck !== undefined ||
+      options.memory !== undefined
+    )
+      throw new Error(
+        '--learning-file contains learning checks and memory receipts; do not repeat their flags',
+      );
+  }
   if (
     (options.projectLearningCheck !== undefined || options.memory !== undefined) &&
     !options.complete
@@ -81,6 +103,10 @@ async function runCometTaskCommand(
   }
   if (options.memory !== undefined && options.projectLearningCheck !== 'submitted') {
     throw new Error('--memory requires --project-learning-check submitted');
+  }
+  if (options.complete) {
+    requireText(options.workflow, '--workflow');
+    requireText(options.change, '--change');
   }
   const request = {
     task: requireText(options.task, '--task'),
@@ -110,6 +136,27 @@ async function runCometTaskCommand(
     throw new Error(
       'Adoption evidence requires --application, --decision, --verification and --verification-result',
     );
+  }
+  if (options.learningFile) {
+    const file = await readFileRaceSafe(options.learningFile, 256 * 1024, {
+      label: 'Task learning',
+    });
+    learningSubmission = await submitTaskLearning({
+      projectRoot,
+      workflow: options.workflow!,
+      change: options.change!,
+      input: JSON.parse(file.bytes.toString('utf8')),
+    });
+    options = {
+      ...options,
+      learningCheck: learningSubmission.personalCheck,
+      projectLearningCheck: learningSubmission.projectCheck,
+      ...(learningSubmission.memorySlugs.length
+        ? { memory: learningSubmission.memorySlugs.join(',') }
+        : {}),
+    };
+    for (const error of learningSubmission.errors)
+      console.error(`Task learning ${error.section}[${error.index}]: ${error.message}`);
   }
   if (options.application && options.outcome) {
     await recordCometContextOutcome({
@@ -156,7 +203,9 @@ async function runCometTaskCommand(
     learningCheckVerified = learningStatus?.submissionVerified;
     if (learningCheckVerified === false)
       console.error(
-        'Warning: --learning-check submitted, but no observation was recorded for this change; run comet memory observe first, then submit again',
+        options.learningCheck === 'no-observation'
+          ? 'Warning: this change already has personal observations; use --learning-check submitted to verify their receipts'
+          : 'Warning: --learning-check submitted, but no observation was recorded for this change; run comet memory observe first, then submit again',
       );
     try {
       projectMemory = renderProjectMemoryCompletionReminder(
@@ -180,9 +229,13 @@ async function runCometTaskCommand(
           }),
     });
     for (const action of projectLearning.nextActions) console.error(`Project learning: ${action}`);
+    for (const action of learningSubmission?.nextActions ?? []) {
+      if (!projectLearning.nextActions.includes(action)) console.error(`Task learning: ${action}`);
+    }
   }
   const result = {
     context,
+    ...(learningSubmission === undefined ? {} : { learningSubmission }),
     ...(expansion === undefined ? {} : { expansion }),
     ...(options.application === undefined ? {} : { outcomeRecorded: true }),
     ...(options.complete ? { learningCheck: options.learningCheck ?? ('not-run' as const) } : {}),
@@ -214,6 +267,14 @@ async function runCometTaskCommand(
                 .join('、')}`,
             ]),
       ].join('\n'),
+    );
+  } else if (learningSubmission) {
+    console.log(
+      learningSubmission.status === 'applied'
+        ? '任务学习检查已完成。'
+        : learningSubmission.status === 'partial'
+          ? '任务学习部分提交失败。'
+          : '任务学习已接收，仍有待处理项。',
     );
   } else if (context.length > 0) console.log(context.map((entry) => `- ${entry.text}`).join('\n'));
   return result;

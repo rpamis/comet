@@ -11,6 +11,46 @@ import type {
   ProjectLearningRequest,
   ProjectLearningStatus,
 } from '../../domains/project-knowledge/index.js';
+import type { recordCometWorkflowResult } from '../../domains/comet-entry/plugin-context.js';
+
+type WorkflowResult = Parameters<typeof recordCometWorkflowResult>[0];
+type WorkflowLearningStatus = Awaited<ReturnType<typeof recordCometWorkflowResult>>;
+
+/** One process deadline covers the whole checkpoint batch, including Provider I/O. */
+export async function recordCometTaskWorkflowResults(
+  workflowResults: readonly WorkflowResult[],
+): Promise<readonly WorkflowLearningStatus[]> {
+  if (workflowResults.length === 0) return [];
+  try {
+    const output = await runExternalCommandAsync(
+      process.execPath,
+      [fileURLToPath(new URL('./comet-task-context-worker.js', import.meta.url))],
+      {
+        input: JSON.stringify({ workflowResults }),
+        timeoutMs: 5_000,
+        maxBufferBytes: 1024 * 1024,
+        onStderr: (chunk) => process.stderr.write(chunk),
+      },
+    );
+    const results: unknown = JSON.parse(output);
+    if (!Array.isArray(results) || results.length !== workflowResults.length)
+      throw new Error('Invalid workflow learning response');
+    return results.map((result) => result ?? undefined);
+  } catch (error) {
+    process.stderr.write(
+      error instanceof ExternalCommandError && error.timedOut
+        ? 'Workflow learning exceeded 5 seconds and was canceled. The workflow result is unchanged; captured events are retained for later retry with comet memory sync.\n'
+        : 'Workflow learning is unavailable. The workflow result is unchanged; inspect pending learning with comet memory status.\n',
+    );
+    return [];
+  }
+}
+
+export async function recordCometTaskWorkflowResult(
+  result: WorkflowResult,
+): Promise<WorkflowLearningStatus> {
+  return (await recordCometTaskWorkflowResults([result]))[0];
+}
 
 export async function readCometTaskProjectLearning(
   projectRoot: string,

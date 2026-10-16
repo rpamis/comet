@@ -1,5 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { projectPathSelectorMatches } from '../../platform/paths/project-path-selector.js';
+import {
+  contextPathMatches,
+  contextSelectorsMatch,
+  contextTaskMatches as matchesTask,
+  contextValueMatches as includesNormalized,
+} from './context-selectors.js';
 
 import type { AgentContextCandidate, AgentContextOutcomeStatus } from './types.js';
 import { validateAgentContextCandidate } from './types.js';
@@ -36,6 +41,8 @@ export interface AgentContextApplicationRecord {
   readonly owner: string;
   readonly scope: 'user' | 'project';
   readonly projectId?: string;
+  /** Project requesting a user-scoped memory; distinct from the memory's ownership scope. */
+  readonly contextProjectId?: string;
   readonly memoryType: AgentContextCandidate['memoryType'];
   /** Immutable display snapshot so an application stays explainable after its source changes. */
   readonly candidateState?: AgentContextCandidate['state'];
@@ -78,8 +85,14 @@ export interface AgentContextOutcomeUpdate {
 }
 
 export interface AgentContextApplicationStore {
+  query?(query: AgentContextApplicationQuery): Promise<AgentContextApplicationPage>;
+  selectionHistory?(
+    candidates: readonly AgentContextCandidate[],
+    request: AgentContextRequest,
+  ): Promise<AgentContextSelectionHistory>;
   list(candidateId?: string): Promise<readonly AgentContextApplicationRecord[]>;
   append(record: AgentContextApplicationRecord): Promise<void>;
+  appendMany?(records: readonly AgentContextApplicationRecord[]): Promise<void>;
   setOutcome(
     applicationId: string,
     outcome: AgentContextOutcomeStatus,
@@ -92,6 +105,96 @@ export interface AgentContextApplicationStore {
     revision: number,
     dispatchedAt?: string,
   ): Promise<void>;
+  markEventsDispatched?(
+    events: readonly { readonly applicationId: string; readonly outcomeRevision?: number }[],
+    dispatchedAt?: string,
+  ): Promise<void>;
+}
+
+export interface AgentContextApplicationQuery {
+  readonly owner?: string;
+  readonly candidateId?: string;
+  readonly projectId?: string;
+  readonly applicationIds?: readonly string[];
+  readonly contextProjectId?: string;
+  readonly undispatched?: boolean;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+export interface AgentContextApplicationPage {
+  readonly items: readonly AgentContextApplicationRecord[];
+  readonly total: number;
+  readonly nextCursor?: string;
+}
+
+export interface AgentContextSelectionHistory {
+  readonly records: readonly AgentContextApplicationRecord[];
+  readonly feedbackScores: Readonly<Record<string, number>>;
+}
+
+export function pageContextApplications(
+  records: readonly AgentContextApplicationRecord[],
+  query: AgentContextApplicationQuery,
+): AgentContextApplicationPage {
+  const matches = records
+    .filter(
+      (record) =>
+        (query.owner === undefined || record.owner === query.owner) &&
+        (query.candidateId === undefined || record.candidateId === query.candidateId) &&
+        (query.projectId === undefined ||
+          record.scope === 'user' ||
+          record.projectId === query.projectId) &&
+        (query.contextProjectId === undefined ||
+          record.scope === 'project' ||
+          record.contextProjectId === undefined ||
+          record.contextProjectId === query.contextProjectId),
+    )
+    .sort(
+      (a, b) =>
+        b.appliedAt.localeCompare(a.appliedAt) || b.applicationId.localeCompare(a.applicationId),
+    );
+  let after = matches;
+  if (query.cursor) {
+    let cursor: unknown;
+    try {
+      cursor = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8'));
+    } catch {
+      throw new Error('Invalid context application cursor');
+    }
+    if (
+      !Array.isArray(cursor) ||
+      cursor.length !== 2 ||
+      cursor.some((value) => typeof value !== 'string')
+    )
+      throw new Error('Invalid context application cursor');
+    const [at, id] = cursor as string[];
+    after = matches.filter(
+      (record) => record.appliedAt < at || (record.appliedAt === at && record.applicationId < id),
+    );
+  }
+  const limit = Math.min(100, Math.max(1, Number.isSafeInteger(query.limit) ? query.limit! : 20));
+  const items = after.slice(0, limit),
+    last = items.at(-1);
+  return {
+    items,
+    total: matches.length,
+    ...(after.length > limit && last
+      ? {
+          nextCursor: Buffer.from(JSON.stringify([last.appliedAt, last.applicationId])).toString(
+            'base64url',
+          ),
+        }
+      : {}),
+  };
+}
+
+export function validateAgentContextApplicationRecord(
+  value: unknown,
+): AgentContextApplicationRecord {
+  if (!isApplicationRecord(value))
+    throw new Error('Context application state contains an invalid record');
+  return cloneApplicationRecord(value);
 }
 
 export interface AgentContextApplicationStorage {
@@ -110,8 +213,23 @@ export class MemoryAgentContextApplicationStore implements AgentContextApplicati
   }
 
   public async append(record: AgentContextApplicationRecord): Promise<void> {
-    if (this.records.some((entry) => entry.applicationId === record.applicationId)) return;
-    this.records.push({ ...record });
+    await this.appendMany([record]);
+  }
+
+  public async markEventsDispatched(
+    events: readonly { readonly applicationId: string; readonly outcomeRevision?: number }[],
+    dispatchedAt = new Date().toISOString(),
+  ): Promise<void> {
+    this.records = acknowledgeContextEvents(this.records, events, dispatchedAt);
+  }
+
+  public async appendMany(records: readonly AgentContextApplicationRecord[]): Promise<void> {
+    const known = new Set(this.records.map((entry) => entry.applicationId));
+    for (const record of records) {
+      if (known.has(record.applicationId)) continue;
+      known.add(record.applicationId);
+      this.records.push(cloneApplicationRecord(record));
+    }
   }
 
   public async setOutcome(
@@ -176,6 +294,45 @@ export class MemoryAgentContextApplicationStore implements AgentContextApplicati
   }
 }
 
+function acknowledgeContextEvents(
+  records: readonly AgentContextApplicationRecord[],
+  events: readonly { readonly applicationId: string; readonly outcomeRevision?: number }[],
+  dispatchedAt: string,
+): AgentContextApplicationRecord[] {
+  const applied = new Set<string>();
+  const outcomes = new Map<string, Set<number>>();
+  for (const event of events) {
+    if (event.outcomeRevision === undefined) applied.add(event.applicationId);
+    else {
+      const revisions = outcomes.get(event.applicationId) ?? new Set<number>();
+      revisions.add(event.outcomeRevision);
+      outcomes.set(event.applicationId, revisions);
+    }
+  }
+  return records.map((record) => {
+    const markApplied =
+      applied.has(record.applicationId) && record.appliedEventDispatchedAt === undefined;
+    const revisions = outcomes.get(record.applicationId);
+    const markOutcome = record.outcomeEvents?.some(
+      (event) => revisions?.has(event.revision) && event.dispatchedAt === undefined,
+    );
+    if (!markApplied && !markOutcome) return record;
+    return {
+      ...record,
+      ...(markApplied ? { appliedEventDispatchedAt: dispatchedAt } : {}),
+      ...(markOutcome
+        ? {
+            outcomeEvents: record.outcomeEvents!.map((event) =>
+              revisions?.has(event.revision) && event.dispatchedAt === undefined
+                ? { ...event, dispatchedAt }
+                : event,
+            ),
+          }
+        : {}),
+    };
+  });
+}
+
 export class StorageAgentContextApplicationStore implements AgentContextApplicationStore {
   private queue = Promise.resolve();
 
@@ -189,10 +346,33 @@ export class StorageAgentContextApplicationStore implements AgentContextApplicat
   }
 
   public async append(record: AgentContextApplicationRecord): Promise<void> {
+    await this.appendMany([record]);
+  }
+
+  public async markEventsDispatched(
+    events: readonly { readonly applicationId: string; readonly outcomeRevision?: number }[],
+    dispatchedAt = new Date().toISOString(),
+  ): Promise<void> {
+    if (events.length === 0) return;
     await this.serialized(async () => {
       const records = await this.read();
-      if (records.some((entry) => entry.applicationId === record.applicationId)) return;
-      await this.storage.write({ version: 5, records: [...records, record] });
+      const next = acknowledgeContextEvents(records, events, dispatchedAt);
+      if (next.some((record, index) => record !== records[index]))
+        await this.storage.write({ version: 5, records: next });
+    });
+  }
+
+  public async appendMany(additions: readonly AgentContextApplicationRecord[]): Promise<void> {
+    await this.serialized(async () => {
+      const records = await this.read();
+      const known = new Set(records.map((entry) => entry.applicationId));
+      const next = [...records];
+      for (const record of additions) {
+        if (known.has(record.applicationId)) continue;
+        known.add(record.applicationId);
+        next.push(cloneApplicationRecord(record));
+      }
+      if (next.length !== records.length) await this.storage.write({ version: 5, records: next });
     });
   }
 
@@ -363,7 +543,8 @@ export class ContextDirector {
     ]);
     const delivered = this.delivered.get(sessionKey) ?? new Map<string, string>();
     this.delivered.set(sessionKey, delivered);
-    const persisted = await this.applications.list();
+    const indexed = await this.applications.selectionHistory?.(candidates, request);
+    const persisted = indexed?.records ?? (await this.applications.list());
     const candidatesByKey = new Map(
       candidates.map((candidate) => [applicationKey(candidate.owner, candidate.id), candidate]),
     );
@@ -388,12 +569,14 @@ export class ContextDirector {
     const history = new Map<string, AgentContextApplicationRecord[]>();
     for (const application of persisted) {
       const key = applicationKey(application.owner, application.candidateId);
-      history.set(key, [...(history.get(key) ?? []), application]);
+      const entries = history.get(key) ?? [];
+      entries.push(application);
+      history.set(key, entries);
     }
     const ranked: {
       candidate: AgentContextCandidate;
       whyApplied: string;
-      authority: number;
+      deliveryPriority: number;
       score: number;
     }[] = [];
     for (const candidate of candidates) {
@@ -412,13 +595,15 @@ export class ContextDirector {
       ranked.push({
         candidate,
         whyApplied,
-        authority: contextAuthorityRank(candidate),
-        score: this.score(candidate, request, candidateHistory),
+        deliveryPriority: contextDeliveryPriority(candidate),
+        score:
+          this.score(candidate, request, indexed === undefined ? candidateHistory : []) +
+          (indexed?.feedbackScores[applicationKey(candidate.owner, candidate.id)] ?? 0),
       });
     }
     ranked.sort(
       (left, right) =>
-        right.authority - left.authority ||
+        right.deliveryPriority - left.deliveryPriority ||
         right.score - left.score ||
         left.candidate.title.localeCompare(right.candidate.title) ||
         left.candidate.id.localeCompare(right.candidate.id),
@@ -494,10 +679,15 @@ export class ContextDirector {
       if (fullDelivery && attempt('full')) continue;
       if ([320, 160, 80, 32, 0].some((limit) => attempt('manifest', limit))) continue;
     }
+    const knownIds = new Set(persisted.map((record) => record.applicationId));
+    const additions = applications.filter(
+      (application) => !knownIds.has(application.applicationId),
+    );
+    if (additions.length > 0) {
+      if (this.applications.appendMany) await this.applications.appendMany(additions);
+      else for (const application of additions) await this.applications.append(application);
+    }
     for (const application of applications) {
-      if (!persisted.some((record) => record.applicationId === application.applicationId)) {
-        await this.applications.append(application);
-      }
       delivered.set(
         applicationKey(application.owner, application.candidateId),
         application.candidateDigest,
@@ -724,7 +914,7 @@ export function contextOutcomeTargetIds(
   });
 }
 
-function candidateCanBeConsidered(
+export function candidateCanBeConsidered(
   candidate: AgentContextCandidate,
   request: AgentContextRequest,
 ): boolean {
@@ -737,12 +927,7 @@ function candidateCanBeConsidered(
 }
 
 function candidatePathMatches(candidate: AgentContextCandidate, path: string): boolean {
-  return candidate.scope === 'project' &&
-    (candidate.memoryType === 'project-model' || candidate.memoryType === 'project-policy')
-    ? (candidate.selectors.paths ?? []).some((selector) =>
-        projectPathSelectorMatches(selector, path),
-      )
-    : matchesAny(candidate.selectors.paths, path);
+  return contextPathMatches(candidate.selectors.paths, path);
 }
 
 function candidateSelectorsMatch(
@@ -750,30 +935,7 @@ function candidateSelectorsMatch(
   request: AgentContextRequest,
   allowUnknown = false,
 ): boolean {
-  const selectors = candidate.selectors;
-  if (selectors.projectId !== undefined && selectors.projectId !== request.projectId) return false;
-  if (
-    (selectors.paths?.length ?? 0) > 0 &&
-    (request.path === undefined ? !allowUnknown : !candidatePathMatches(candidate, request.path))
-  )
-    return false;
-  if (
-    (selectors.operations?.length ?? 0) > 0 &&
-    (request.operation === undefined
-      ? !allowUnknown
-      : !includesNormalized(selectors.operations, request.operation))
-  )
-    return false;
-  if (
-    (selectors.phases?.length ?? 0) > 0 &&
-    (request.phase === undefined
-      ? !allowUnknown
-      : !includesNormalized(selectors.phases, request.phase))
-  )
-    return false;
-  if ((selectors.tasks?.length ?? 0) > 0 && !matchesTask(selectors.tasks, request.task))
-    return false;
-  return true;
+  return contextSelectorsMatch(candidate.selectors, request, allowUnknown);
 }
 
 function selectorSpecificity(
@@ -790,33 +952,23 @@ function selectorSpecificity(
   ].filter(Boolean).length;
 }
 
-function matchesTask(values: readonly string[] | undefined, task: string): boolean {
-  if (!values || values.length === 0) return false;
-  const normalized = task.toLocaleLowerCase();
-  return values.some((value) => normalized.includes(value.toLocaleLowerCase()));
-}
-
-function includesNormalized(values: readonly string[] | undefined, value: string): boolean {
-  if (!values || values.length === 0) return false;
-  const normalized = value.toLocaleLowerCase();
-  return values.some((entry) => entry.toLocaleLowerCase() === normalized);
-}
-
-function matchesAny(values: readonly string[] | undefined, value: string): boolean {
-  if (!values || values.length === 0) return false;
-  const normalized = value.replaceAll('\\', '/').toLocaleLowerCase();
-  return values.some((entry) => {
-    const pattern = entry.replaceAll('\\', '/').toLocaleLowerCase();
-    const expression = `^${pattern
-      .split('*')
-      .map((part) => part.replace(/[.+?^${}()|[\]\\]/gu, '\\$&'))
-      .join('.*')}$`;
-    return new RegExp(expression, 'u').test(normalized);
-  });
-}
-
-function contextAuthorityRank(candidate: AgentContextCandidate): number {
+function contextDeliveryPriority(candidate: AgentContextCandidate): number {
   if (candidate.state === 'trial') return 0;
+  if (candidate.memoryType === 'project-policy' && candidate.state === 'enforced') return 6;
+  const explicitPersonal = candidate.authority === 'explicit' || candidate.authority === 'user';
+  if (
+    explicitPersonal &&
+    (candidate.memoryType === 'core-profile' ||
+      (candidate.memoryType === 'collaboration-policy' &&
+        (candidate.selectors.projectId !== undefined ||
+          [
+            candidate.selectors.paths,
+            candidate.selectors.phases,
+            candidate.selectors.operations,
+            candidate.selectors.tasks,
+          ].some((values) => values?.length))))
+  )
+    return 5;
   if (candidate.memoryType === 'project-policy') return 4;
   if (candidate.memoryType === 'project-model') return 3;
   if (candidate.memoryType === 'core-profile' || candidate.memoryType === 'collaboration-policy')
@@ -864,6 +1016,9 @@ function contextApplication(options: {
     scope: candidate.scope,
     ...(candidate.scope === 'project'
       ? { projectId: candidate.selectors.projectId ?? request.projectId }
+      : {}),
+    ...(candidate.scope === 'user' && request.projectId !== undefined
+      ? { contextProjectId: request.projectId }
       : {}),
     memoryType: candidate.memoryType,
     candidateState: candidate.state,
@@ -958,6 +1113,8 @@ function isApplicationRecord(value: unknown): value is AgentContextApplicationRe
     typeof record.owner === 'string' &&
     (record.scope === 'user' || record.scope === 'project') &&
     scopedProject &&
+    (record.contextProjectId === undefined ||
+      (typeof record.contextProjectId === 'string' && record.contextProjectId.length > 0)) &&
     typeof record.memoryType === 'string' &&
     (record.candidateState === undefined || typeof record.candidateState === 'string') &&
     (record.candidateTitle === undefined || typeof record.candidateTitle === 'string') &&
@@ -1091,7 +1248,9 @@ function contextDeliveryMatchesRequest(
   request: AgentContextRequest,
 ): boolean {
   return (
-    (application.scope === 'user' || application.projectId === request.projectId) &&
+    (application.scope === 'user'
+      ? application.contextProjectId === request.projectId
+      : application.projectId === request.projectId) &&
     application.task === request.task &&
     application.phase === request.phase &&
     application.path === request.path &&
@@ -1118,7 +1277,9 @@ function applicationIsVisibleFromProject(
 ): boolean {
   return (
     expectedProjectId === undefined ||
-    application.scope === 'user' ||
+    (application.scope === 'user' &&
+      (application.contextProjectId === undefined ||
+        application.contextProjectId === expectedProjectId)) ||
     application.projectId === expectedProjectId
   );
 }

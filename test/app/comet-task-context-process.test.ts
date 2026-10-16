@@ -6,6 +6,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { build } from 'esbuild';
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { SqliteAgentContextApplicationStore } from '../../domains/agent-learning/index.js';
 
 const execFileAsync = promisify(execFile);
 let root: string;
@@ -80,7 +81,12 @@ async function run(home: string, project: string, options = {}) {
     process.execPath,
     [path.join(root, 'runner.mjs'), project, JSON.stringify(options)],
     {
-      env: { ...process.env, USERPROFILE: home, HOME: home },
+      env: {
+        ...process.env,
+        USERPROFILE: home,
+        HOME: home,
+        LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
+      },
       timeout: 18_000,
       killSignal: 'SIGKILL',
       windowsHide: true,
@@ -95,9 +101,58 @@ test('a new project with no memory returns an empty successful response', async 
   expect(result.stderr).not.toMatch(/timed out|exceeded/i);
 });
 
+test('completes a task with one learning file and reuses durable receipts after process restart', async () => {
+  const { home, project } = await fixture('learning-file');
+  await fs.writeFile(path.join(project, 'migration.md'), '# Migration\n\nValidated migration.\n');
+  const learningFile = path.join(root, 'learning.json');
+  await fs.writeFile(
+    learningFile,
+    JSON.stringify({
+      schema: 'comet.task-learning.v1',
+      personal: { check: 'no-observation' },
+      project: {
+        check: 'submitted',
+        memories: [
+          {
+            title: 'Validated migration',
+            text: 'Run the validated migration.',
+            evidence: ['migration.md'],
+          },
+        ],
+      },
+    }),
+  );
+  const options = { complete: true, workflow: 'classic', change: 'learning-file', learningFile };
+  const first = JSON.parse((await run(home, project, options)).stdout);
+  expect(first.learningSubmission, JSON.stringify(first.learningSubmission)).toMatchObject({
+    status: 'applied',
+    errors: [],
+  });
+  expect(first.projectLearning).toMatchObject({
+    submissionVerified: true,
+    pendingReflectionCount: 0,
+    pendingHostReviewCount: 0,
+  });
+  const second = JSON.parse((await run(home, project, options)).stdout);
+  expect(second.learningSubmission).toMatchObject({
+    status: 'applied',
+    memorySlugs: first.learningSubmission.memorySlugs,
+  });
+  const invalid = await run(home, project, { learningFile }).then(
+    () => null,
+    (error) => error,
+  );
+  expect(invalid?.stderr).toContain('--learning-file requires --complete');
+});
+
 test('reports a real waiting lifecycle review and closes only the reviewed change after application', async () => {
   const { home, project } = await fixture('review-lifecycle');
-  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  const env = {
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home,
+    LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
+  };
   await fs.writeFile(path.join(project, 'retry.ts'), 'retry(1);');
   await execFileAsync(process.execPath, ['--check', path.join(project, 'retry.ts')], {
     env,
@@ -206,7 +261,12 @@ test('checks completion receipts in the real helper process and refuses stale-so
     process.execPath,
     [path.join(root, 'remember.mjs'), project],
     {
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
+      },
       timeout: 18_000,
       windowsHide: true,
     },
@@ -247,11 +307,12 @@ test('a new change still recalls user preferences and persists their application
   expect(response.context).toHaveLength(1);
   expect(response.context[0].text).toContain('使用中文回复');
   expect(response.context[0].applications).not.toHaveLength(0);
-  const persisted = await fs.readFile(
-    path.join(home, '.comet/plugins/storage/comet.agent-context-user-global.json'),
-    'utf8',
+  const applicationStore = new SqliteAgentContextApplicationStore(
+    path.join(home, '.comet/plugins/storage/context-applications.sqlite'),
   );
-  expect(persisted).toContain(response.context[0].applications[0].applicationId);
+  expect((await applicationStore.list()).map((application) => application.applicationId)).toContain(
+    response.context[0].applications[0].applicationId,
+  );
   expect(JSON.parse((await run(home, project, request)).stdout).context).toEqual([]);
   const restored = JSON.parse(
     (await run(home, project, { ...request, contextMode: 'snapshot' })).stdout,
@@ -270,13 +331,7 @@ test('a new change still recalls user preferences and persists their application
   expect(independent.context[0].applications[0].applicationId).not.toBe(
     verify.context[0].applications[0].applicationId,
   );
-  const restoredStore = JSON.parse(
-    await fs.readFile(
-      path.join(home, '.comet/plugins/storage/comet.agent-context-user-global.json'),
-      'utf8',
-    ),
-  );
-  expect(restoredStore.records).toHaveLength(3);
+  expect(await applicationStore.list()).toHaveLength(3);
 });
 
 test('an unresponsive memory provider is canceled without blocking a new task or requiring retry', async () => {
@@ -309,4 +364,81 @@ test('an unresponsive memory provider is canceled without blocking a new task or
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
-}, 25_000);
+  // Cancellation and recovery each launch a CLI with its own 18-second harness limit.
+}, 45_000);
+
+test('cancels checkpoint learning after one budget and preserves all queued events', async () => {
+  const { home, project } = await fixture('checkpoint-unavailable');
+  let requests = 0;
+  const server = createServer(() => {
+    requests++;
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+  await fs.writeFile(
+    path.join(home, '.comet/config.yaml'),
+    `personal_memory:\n  provider: remote\n  remote:\n    endpoint: http://127.0.0.1:${port}\n    timeout_ms: 120000\n`,
+  );
+  await build({
+    entryPoints: ['app/commands/comet-task-context.ts'],
+    outfile: path.join(root, 'checkpoint-helper.mjs'),
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+  });
+  await fs.writeFile(
+    path.join(root, 'checkpoint-runner.mjs'),
+    `
+    import { recordCometTaskWorkflowResults } from './checkpoint-helper.mjs';
+    const started = performance.now();
+    const results = await recordCometTaskWorkflowResults(['native', 'classic', 'native'].map((workflow, i) => ({
+      projectRoot: process.argv[2], workflow, changeId: 'checkpoint-' + i, command: 'check', success: true, learningCheck: 'not-run'
+    })));
+    console.log(JSON.stringify({ results, elapsed: performance.now() - started }));
+  `,
+  );
+  try {
+    const result = await execFileAsync(
+      process.execPath,
+      [path.join(root, 'checkpoint-runner.mjs'), project],
+      {
+        env: {
+          ...process.env,
+          USERPROFILE: home,
+          HOME: home,
+          LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
+        },
+        timeout: 15_000,
+        windowsHide: true,
+      },
+    );
+    const response = JSON.parse(result.stdout);
+    expect(response.results).toEqual([]);
+    expect(response.elapsed).toBeLessThan(9_000);
+    expect(result.stderr).toContain('exceeded 5 seconds');
+    expect(requests).toBeGreaterThan(0);
+    const files = await fs.readdir(path.join(home, '.comet/plugins/storage'));
+    const journalFile = files.find(
+      (file) => file.startsWith('comet.agent-learning-project-') && file.endsWith('.json'),
+    )!;
+    const journal = JSON.parse(
+      await fs.readFile(path.join(home, '.comet/plugins/storage', journalFile), 'utf8'),
+    );
+    expect(journal.events).toHaveLength(3);
+    expect(
+      journal.events.map((event: { context: { changeId: string } }) => event.context.changeId),
+    ).toEqual(['checkpoint-0', 'checkpoint-1', 'checkpoint-2']);
+    expect(
+      Object.values(journal.reflections).every(
+        (entry) => (entry as { status: string }).status === 'pending',
+      ),
+    ).toBe(true);
+    const connections = await new Promise<number>((resolve, reject) =>
+      server.getConnections((error, count) => (error ? reject(error) : resolve(count))),
+    );
+    expect(connections).toBe(0);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}, 20_000);

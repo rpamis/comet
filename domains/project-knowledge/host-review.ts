@@ -89,7 +89,10 @@ export class ProjectKnowledgeHostReview implements ProjectKnowledgeSemanticRevie
     await this.submitMany([{ id, actions: value }]);
   }
 
-  public async submitMany(submissions: readonly { id: string; actions: unknown }[]): Promise<void> {
+  public async submitMany(
+    submissions: readonly { id: string; actions: unknown }[],
+    context?: { readonly workflow: string; readonly changeId: string },
+  ): Promise<void> {
     if (
       submissions.length === 0 ||
       submissions.length > 64 ||
@@ -105,6 +108,11 @@ export class ProjectKnowledgeHostReview implements ProjectKnowledgeSemanticRevie
       for (const submission of prepared) {
         const entry = entries.find((candidate) => candidate.id === submission.id);
         if (!entry) throw new Error(`Unknown review request: ${submission.id}`);
+        if (
+          context &&
+          (entry.packet.workflow !== context.workflow || entry.packet.changeId !== context.changeId)
+        )
+          throw new Error('Review request belongs to a different change');
         if (submission.actions.length > 0) {
           for (const source of entry.packet.sources) {
             const current = await hashProtectedProjectFile(this.projectRoot, source.source, {

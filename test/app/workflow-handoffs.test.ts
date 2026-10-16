@@ -236,4 +236,4 @@ it('keeps Verify across a reviewed edit through the built CLI and Router, report
   expect(verified.data.phase).toBe('archive');
   expect(verified.data.reused).toBe(false);
   expect(await fs.readFile(marker, 'utf8')).toBe('checked\nchecked\n');
-}, 90_000);
+});

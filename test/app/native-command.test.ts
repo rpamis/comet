@@ -6,9 +6,11 @@ const recordCometWorkflowResult = vi.fn();
 const collectCometPluginContext = vi.fn();
 
 vi.mock('../../domains/comet-native/native-cli.js', () => ({ runNativeCli, runNativeCliDetailed }));
-vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
-  recordCometWorkflowResult,
-  collectCometPluginContext,
+vi.mock('../../app/commands/comet-task-context.js', () => ({
+  recordCometTaskWorkflowResults: async (results: readonly unknown[]) => {
+    for (const result of results) await recordCometWorkflowResult(result);
+  },
+  collectCometTaskContext: collectCometPluginContext,
 }));
 
 describe('Native command facade', () => {

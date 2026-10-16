@@ -714,13 +714,15 @@ function NativeChangesExplorer({
     const parentKeys = new Set(
       changes.filter((change) => change.children?.length).map((change) => changeKey(change)),
     );
+    // 状态更新可延后执行，先保存更新 ref 之前的父任务集合。
+    const knownParents = knownParentsRef.current;
     setExpandedParents((current) => {
       const next = new Set([...current].filter((key) => parentKeys.has(key)));
       for (const change of changes) {
         const children = change.children ?? [];
         if (children.length === 0) continue;
         const key = changeKey(change);
-        const isNew = !knownParentsRef.current.has(key);
+        const isNew = !knownParents.has(key);
         const selectedChild = children.some((child) => child.locator === selectedKey);
         const matchingChild =
           normalizedQuery &&

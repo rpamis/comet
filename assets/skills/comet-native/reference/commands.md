@@ -60,6 +60,8 @@ If `<active_policies>` includes `<verification command="...">`, include those co
 
 Save memory as follows:
 
+At task completion, prefer [Task learning completion](../../comet/reference/task-learning.md): prepare one learning file and use `comet task --complete --learning-file <file>` to submit personal observations, project lessons, pending review decisions, and actual-use feedback together. The separate save, review, and completion commands below remain available for immediate saves, individual corrections, and older versions; do not repeat them when using a learning file.
+
 - When the user explicitly asks to remember a preference or project convention long term, call `comet memory remember <project-root> --text "<preference or convention>" --scope global|project --json` to save it immediately as explicit user memory. Add repeatable `--phase` only when the user explicitly limits applicability, for example `--phase build --phase verify`. Correct phase applicability with `comet memory correct <project-root> --id <id> --phase <phase> --json`. Preserve the user's wording; do not automatically limit a preference to the current phase.
 - Only when the user has not requested long-term memory, but a collaboration practice is stable and reusable in future tasks, call `comet memory observe <project-root> --text "<collaboration practice>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`.
 - Neither command may save task summaries, implementation progress, command output, or test results.

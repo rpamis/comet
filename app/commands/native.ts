@@ -5,9 +5,10 @@ import {
   parseNativeOutcomeEvidence,
 } from '../../domains/comet-native/native-experience.js';
 import {
-  collectCometPluginContext,
-  recordCometWorkflowResult,
-} from '../../domains/comet-entry/plugin-context.js';
+  collectCometTaskContext as collectCometPluginContext,
+  recordCometTaskWorkflowResults,
+} from './comet-task-context.js';
+import type { recordCometWorkflowResult } from '../../domains/comet-entry/plugin-context.js';
 import path from 'node:path';
 
 export async function runNativeFacade(args: readonly string[]): Promise<number> {
@@ -67,22 +68,23 @@ async function recordNativeResult(
       ...(evidence.changedPaths.length > 0 ? { changedPaths: evidence.changedPaths } : {}),
       ...(evidence.artifactRefs.length > 0 ? { artifactRefs: evidence.artifactRefs } : {}),
     };
-    await recordCometWorkflowResult(base);
+    const results = [base];
     const outcome = detailed?.experience.outcome ?? parseNativeOutcomeEvidence(result.stdout);
     if (result.exitCode === 0 && outcome.reviewResolved) {
-      await recordCometWorkflowResult({
+      results.push({
         ...base,
         eventType: 'review.resolved',
         summary: outcome.summary ?? 'Native verifier accepted the change.',
       });
     }
     if (result.exitCode === 0 && outcome.failureResolved) {
-      await recordCometWorkflowResult({
+      results.push({
         ...base,
         eventType: 'failure.resolved',
         summary: outcome.summary ?? 'A previous Native verification failure was resolved.',
       });
     }
+    await recordCometTaskWorkflowResults(results);
   } catch {
     // Plugin learning must never make a workflow command fail.
   }

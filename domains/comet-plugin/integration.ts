@@ -1,6 +1,11 @@
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import {
+  withOperationBudget,
+  operationSignal,
+  withoutOperationBudget,
+} from '../../platform/process/operation-budget.js';
 
 import {
   createPersonalMemoryPluginDescriptor,
@@ -40,9 +45,12 @@ import {
   AGENT_EXPERIENCE_SCHEMA,
   AgentExperienceJournal,
   ContextDirector,
+  ContextUsageTracker,
+  candidateCanBeConsidered,
+  type ContextQuerySample,
   contextExpansionId,
   parseContextExpansionId,
-  StorageAgentContextApplicationStore,
+  SqliteAgentContextApplicationStore,
   MemoryAgentContextApplicationStore,
   StorageAgentExperienceJournalStore,
   type AgentContextApplicationStore,
@@ -122,6 +130,7 @@ export class CometPluginBridge {
     private readonly contextDirector: ContextDirector = new ContextDirector(),
     private readonly applicationStore?: AgentContextApplicationStore,
     private readonly persistContextApplications = true,
+    private readonly usageTracker?: ContextUsageTracker,
   ) {}
 
   public get pluginRuntime(): PluginRuntime {
@@ -139,12 +148,35 @@ export class CometPluginBridge {
   public async collectContext(
     request: CometPluginContextRequest,
   ): Promise<CometPluginContextContribution[]> {
-    const candidates = await this.collectCandidates(request);
+    const samples: ContextQuerySample[] = [];
+    const candidates = await this.collectCandidates(request, (sample) => samples.push(sample));
     const selection = await this.contextDirector.select(candidates, {
       ...request,
       projectId: this.projectId,
       language: this.language,
     });
+    if (this.usageTracker) {
+      try {
+        await this.usageTracker.record({
+          request: { ...request, projectId: this.projectId },
+          episodeId: selection.episodeId,
+          samples: samples.filter((sample) =>
+            ['comet.personal-memory', 'comet.project-knowledge'].includes(sample.owner),
+          ),
+          candidates: candidates.filter(
+            (candidate) =>
+              candidate.id !== 'project-memory-index' &&
+              candidate.state !== 'superseded' &&
+              candidateCanBeConsidered(candidate, { ...request, projectId: this.projectId }),
+          ),
+          applications: selection.applications.filter(
+            (application) => application.candidateId !== 'project-memory-index',
+          ),
+        });
+      } catch {
+        /* Optional usage statistics must not prevent context delivery. */
+      }
+    }
     if (!selection.text) return [];
     await this.recordContextApplications(selection.applications);
     return [
@@ -187,11 +219,27 @@ export class CometPluginBridge {
         ]),
       ).values(),
     ];
-    return this.contextDirector.expand(candidates, id, {
+    const expansion = this.contextDirector.expand(candidates, id, {
       ...request,
       projectId: this.projectId,
       language: this.language,
     });
+    const candidate = candidates.find(
+      (entry) => contextExpansionId(entry.owner, entry.id) === expansion?.id,
+    );
+    if (expansion && candidate && candidate.id !== 'project-memory-index' && this.usageTracker) {
+      try {
+        await this.usageTracker.recordExpansion(
+          { ...request, projectId: this.projectId },
+          candidate.owner,
+          candidate.id,
+          expansion.title,
+        );
+      } catch {
+        /* Expansion still succeeds if optional telemetry is unavailable. */
+      }
+    }
+    return expansion;
   }
 
   public async recordContextOutcome(
@@ -206,16 +254,27 @@ export class CometPluginBridge {
       evidence,
     );
     if (update === null) throw new Error(`Unknown context application: ${applicationId}`);
-    await this.flushContextApplicationOutbox();
+    if (await this.transferContextApplicationOutbox([applicationId])) {
+      const latest = update.record.outcomeEvents?.at(-1);
+      if (latest) {
+        try {
+          // An explicit feedback write processes its own episode, never the historical queue.
+          await this.runtime.dispatch(contextOutcomeEvent(update.record, latest, this.projectId));
+        } catch {
+          // The captured event remains available to explicit maintenance after a Provider failure.
+        }
+      }
+    }
   }
 
   private async collectCandidates(
     request: CometPluginContextRequest,
+    onQuery?: (sample: ContextQuerySample) => void,
   ): Promise<AgentContextCandidate[]> {
     const target: PluginScopeContext = { scope: 'project', projectId: this.projectId };
     const [global, project] = await Promise.all([
-      this.runtime.collectContext({ ...request, projectId: this.projectId }, 'user'),
-      this.runtime.collectContext({ ...request, projectId: this.projectId }, target),
+      this.runtime.collectContext({ ...request, projectId: this.projectId }, 'user', onQuery),
+      this.runtime.collectContext({ ...request, projectId: this.projectId }, target, onQuery),
     ]);
     const merged = new Map<string, AgentContextCandidate>();
     for (const candidate of [...global, ...project]) {
@@ -226,55 +285,98 @@ export class CometPluginBridge {
   }
 
   private async recordContextApplications(
-    _applications: readonly AgentContextApplicationRecord[],
+    applications: readonly AgentContextApplicationRecord[],
   ): Promise<void> {
     if (!this.persistContextApplications) return;
-    await this.flushContextApplicationOutbox();
+    await this.transferContextApplicationOutbox(
+      applications.map((application) => application.applicationId),
+    );
   }
 
-  /** Replay persisted Context application/outcome events into the idempotent Journal. */
+  /** Transfer the outbox atomically per scope without running Provider reflection. */
   public async flushContextApplicationOutbox(): Promise<void> {
-    if (this.applicationStore === undefined) return;
-    const applications = (await this.applicationStore.list()).filter(
-      (application) => application.scope === 'user' || application.projectId === this.projectId,
+    await withOperationBudget({ timeoutMs: 5000 }, async () => {
+      do {
+        if (operationSignal()?.aborted) return;
+        if (!(await this.transferContextApplicationOutbox())) return;
+      } while (
+        this.applicationStore?.query &&
+        (
+          await this.applicationStore.query({
+            projectId: this.projectId,
+            undispatched: true,
+            limit: 1,
+          })
+        ).total > 0
+      );
+    });
+  }
+
+  private async transferContextApplicationOutbox(
+    applicationIds?: readonly string[],
+  ): Promise<boolean> {
+    if (this.applicationStore === undefined) return true;
+    const applications = (
+      this.applicationStore.query
+        ? (
+            await this.applicationStore.query({
+              projectId: this.projectId,
+              undispatched: true,
+              applicationIds,
+              limit: 100,
+            })
+          ).items
+        : await this.applicationStore.list()
+    ).filter((application) =>
+      application.scope === 'user'
+        ? application.contextProjectId === undefined ||
+          application.contextProjectId === this.projectId
+        : application.projectId === this.projectId,
     );
-    for (const application of applications) {
-      let applicationEventReady = application.appliedEventDispatchedAt !== undefined;
-      if (application.appliedEventDispatchedAt === undefined) {
-        try {
-          await this.runtime.dispatch(contextAppliedEvent(application, this.projectId));
-          await this.applicationStore.markAppliedEventDispatched(application.applicationId);
-          applicationEventReady = true;
-        } catch {
-          // The durable outbox entry remains pending and will be retried on the next bridge use.
+    let captured = true;
+    for (const scope of ['user', 'project'] as const) {
+      const events: AgentExperienceEvent[] = [];
+      const receipts: { applicationId: string; outcomeRevision?: number }[] = [];
+      for (const application of applications) {
+        if (application.scope !== scope) continue;
+        if (application.appliedEventDispatchedAt === undefined) {
+          events.push(contextAppliedEvent(application, this.projectId));
+          receipts.push({ applicationId: application.applicationId });
+        }
+        for (const outcomeEvent of application.outcomeEvents ?? []) {
+          if (outcomeEvent.dispatchedAt !== undefined) continue;
+          events.push(contextOutcomeEvent(application, outcomeEvent, this.projectId));
+          receipts.push({
+            applicationId: application.applicationId,
+            outcomeRevision: outcomeEvent.revision,
+          });
         }
       }
-      if (!applicationEventReady) continue;
-      for (const outcomeEvent of application.outcomeEvents ?? []) {
-        if (outcomeEvent.dispatchedAt !== undefined) continue;
-        try {
-          await this.runtime.dispatch(
-            contextOutcomeEvent(application, outcomeEvent, this.projectId),
-          );
-          await this.applicationStore.markOutcomeEventDispatched(
-            application.applicationId,
-            outcomeEvent.revision,
-          );
-        } catch {
-          // Later revisions stay queued until the missing earlier revision is captured.
-          break;
-        }
+      if (events.length === 0) continue;
+      try {
+        await this.runtime.enqueueEvents(events, { finalizeUnobserved: true });
+        if (this.applicationStore.markEventsDispatched)
+          await this.applicationStore.markEventsDispatched(receipts);
+        else
+          for (const receipt of receipts) {
+            if (receipt.outcomeRevision === undefined)
+              await this.applicationStore.markAppliedEventDispatched(receipt.applicationId);
+            else
+              await this.applicationStore.markOutcomeEventDispatched(
+                receipt.applicationId,
+                receipt.outcomeRevision,
+              );
+          }
+      } catch {
+        captured = false;
+        // Capture precedes acknowledgement. A crash or failed acknowledgement replays the same IDs.
       }
     }
+    return captured;
   }
 
   public async dispatchExperience(event: AgentExperienceEvent): Promise<void> {
     await this.runtime.dispatch(event);
-    try {
-      await this.syncMemory();
-    } catch {
-      // A remote or Git installation failure is a diagnostic, not a workflow failure.
-    }
   }
 
   public async remember(input: MemoryInput): Promise<MemoryRecord | null> {
@@ -386,9 +488,70 @@ export class CometPluginBridge {
     )) as MemoryRecord;
   }
 
-  public async syncMemory(): Promise<unknown> {
-    await this.runtime.replayLearning();
-    return this.runtime.invoke('comet.personal-memory', 'sync', {}, 'user', { throwOnError: true });
+  public async syncMemory(
+    options: {
+      readonly timeoutMs?: number;
+      readonly learningTimeoutMs?: number;
+      readonly signal?: AbortSignal;
+    } = {},
+  ): Promise<unknown> {
+    if (
+      options.learningTimeoutMs !== undefined &&
+      (!Number.isSafeInteger(options.learningTimeoutMs) ||
+        options.learningTimeoutMs < 1 ||
+        options.learningTimeoutMs > 2147483647)
+    )
+      throw new Error('Learning timeout must be a positive integer within the timer limit');
+    return withOperationBudget(
+      { timeoutMs: options.timeoutMs ?? 30000, signal: options.signal },
+      async () => {
+        let learningPartial = false;
+        try {
+          await withOperationBudget(
+            { timeoutMs: options.learningTimeoutMs ?? 5000 },
+            async (signal) => {
+              await this.flushContextApplicationOutbox();
+              await this.runtime.replayLearning();
+              learningPartial = signal.aborted;
+            },
+          );
+        } catch {
+          learningPartial = true;
+        }
+        const learning = await withoutOperationBudget(() => this.runtime.learningStatus('all'));
+        const outboxPending = this.applicationStore?.query
+          ? (
+              await this.applicationStore.query({
+                projectId: this.projectId,
+                undispatched: true,
+                limit: 1,
+              })
+            ).total
+          : 0;
+        const progress = {
+          status:
+            learningPartial ||
+            outboxPending > 0 ||
+            Object.values(learning).some((count) => (count ?? 0) > 0)
+              ? 'partial'
+              : 'complete',
+          ...learning,
+          outboxPending,
+        };
+        if (operationSignal()?.aborted)
+          return {
+            status: 'failed',
+            retryable: true,
+            message:
+              'Memory maintenance reached its time budget; unfinished learning is saved for the next run.',
+            learning: progress,
+          };
+        const sync = await this.runtime.invoke('comet.personal-memory', 'sync', {}, 'user', {
+          throwOnError: true,
+        });
+        return typeof sync === 'object' && sync !== null ? { ...sync, learning: progress } : sync;
+      },
+    );
   }
 
   public async memoryRemote(): Promise<unknown> {
@@ -469,7 +632,49 @@ export async function createDefaultCometPluginBridge(
   );
   const applicationStore: AgentContextApplicationStore = bestEffortContext
     ? new MemoryAgentContextApplicationStore()
-    : new StorageAgentContextApplicationStore(await storage.open('comet.agent-context', 'user'));
+    : new SqliteAgentContextApplicationStore(
+        path.join(stateRoot, 'storage', 'context-applications.sqlite'),
+        await storage.open('comet.agent-context', 'user'),
+      );
+  const usageTracker = bestEffortContext
+    ? undefined
+    : new ContextUsageTracker(
+        // A busy statistics file must not consume the normal context lock budget.
+        await new JsonFilePluginStorageStore(path.join(stateRoot, 'storage'), {
+          ...lockOptions,
+          timeoutMs: Math.min(contextLockTimeoutMs ?? 150, 150),
+        }).open('comet.agent-context', 'project', options.projectId),
+      );
+  const readUsage = async (
+    owner: string,
+    applications: readonly AgentContextApplicationRecord[],
+  ) => {
+    try {
+      return await usageTracker?.snapshot(
+        owner,
+        options.projectId,
+        applicationStore.query
+          ? async (ids) => {
+              const results: AgentContextApplicationRecord[] = [];
+              for (let offset = 0; offset < ids.length; offset += 100)
+                results.push(
+                  ...(
+                    await applicationStore.query!({
+                      owner,
+                      projectId: options.projectId,
+                      applicationIds: ids.slice(offset, offset + 100),
+                      limit: 100,
+                    })
+                  ).items,
+                );
+              return results;
+            }
+          : applications,
+      );
+    } catch {
+      return undefined;
+    }
+  };
   const effectiveMemoryProviderConfig =
     bestEffortContext && memoryProviderConfig.provider === 'remote' && memoryProviderConfig.remote
       ? {
@@ -532,6 +737,15 @@ export async function createDefaultCometPluginBridge(
           : { onReviewNotice: options.onMemoryReviewNotice }),
         getProviderConfig: () => readPersonalMemoryConfig(homeDirectory),
         configureProvider: (config) => writePersonalMemoryConfig(homeDirectory, config),
+        readContextUsage: (applications) => readUsage('comet.personal-memory', applications),
+        queryContextApplications: applicationStore.query
+          ? (query) =>
+              applicationStore.query!({
+                ...query,
+                owner: 'comet.personal-memory',
+                projectId: options.projectId,
+              })
+          : undefined,
         listContextApplications: async (candidateId) =>
           (await applicationStore.list(candidateId)).filter(
             (application) =>
@@ -574,6 +788,15 @@ export async function createDefaultCometPluginBridge(
           await writeWorkflowProjectConfig(projectRoot, { ...current, knowledge });
         },
         language,
+        readContextUsage: (applications) => readUsage('comet.project-knowledge', applications),
+        queryContextApplications: applicationStore.query
+          ? (query) =>
+              applicationStore.query!({
+                ...query,
+                owner: 'comet.project-knowledge',
+                projectId: options.projectId,
+              })
+          : undefined,
         listContextApplications: async (candidateId) =>
           (await applicationStore.list(candidateId)).filter(
             (application) =>
@@ -597,8 +820,8 @@ export async function createDefaultCometPluginBridge(
     contextDirector,
     bestEffortContext ? undefined : applicationStore,
     !bestEffortContext,
+    usageTracker,
   );
-  if (!bestEffortContext) await bridge.flushContextApplicationOutbox();
   return bridge;
 }
 

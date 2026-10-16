@@ -120,8 +120,8 @@ async function recordClassicResult(
   try {
     const { classicChangeId, inferClassicWorkflow, parseClassicLifecycleEvidence } =
       await import('../../domains/comet-classic/classic-experience.js');
-    const { recordCometWorkflowResult } =
-      await import('../../domains/comet-entry/plugin-context.js');
+    const { recordCometTaskWorkflowResult: recordCometWorkflowResult } =
+      await import('./comet-task-context.js');
     const verificationCommand = command === 'guard' ? 'comet classic guard' : undefined;
     const evidence = parseClassicLifecycleEvidence(result.stdout);
     await recordCometWorkflowResult({
@@ -243,8 +243,8 @@ async function emitContext(projectRoot: string, options: ClassicIntegrationArgs)
   if (hasOwnHelp(options.cliArgs)) return;
   if (!options.task?.trim()) return;
   try {
-    const { collectCometPluginContext } =
-      await import('../../domains/comet-entry/plugin-context.js');
+    const { collectCometTaskContext: collectCometPluginContext } =
+      await import('./comet-task-context.js');
     const contributions =
       (await collectCometPluginContext(projectRoot, {
         task: options.task,

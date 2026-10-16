@@ -12,6 +12,7 @@ vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
   recordCometWorkflowResult,
 }));
 vi.mock('../../app/commands/comet-task-context.js', () => ({
+  recordCometTaskWorkflowResult: recordCometWorkflowResult,
   collectCometTaskContext: collectCometPluginContext,
   readCometTaskProjectLearning: async (root: string, request: unknown) => {
     const { readProjectLearningStatus } =

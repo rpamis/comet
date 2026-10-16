@@ -55,6 +55,8 @@ export type { RuntimeErrorCode, RuntimeErrorRecovery } from './runtime-errors.js
 export { hashRuntimeValue } from './runtime-json.js';
 export {
   createPortableRunCheckpoint,
+  encodePortableRunCheckpoint,
+  portableRunCheckpointMatches,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
 } from './portable-run-checkpoint.js';

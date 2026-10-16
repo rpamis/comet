@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import type { AgentExperienceEvidence } from '../agent-learning/index.js';
+import {
+  contextPathMatches,
+  contextSelectorsMatch,
+  contextTaskMatches,
+  contextValueMatches,
+} from '../agent-learning/index.js';
 
 import type {
   MemoryConflict,
@@ -112,7 +118,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
 
   public async get(id: string): Promise<MemoryRecord | null> {
     return this.repository.withLock(async () => {
-      const state = await this.loadAndReconcile();
+      const state = await this.loadAndReconcileRecord(id);
       await this.persist(state);
       const record = state.records.find((entry) => entry.id === id);
       return record === undefined ? null : cloneRecord(record);
@@ -177,7 +183,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
   ): Promise<MemoryRecord> {
     validateCorrection(correction);
     return this.repository.withLock(async () => {
-      const state = await this.loadAndReconcile();
+      const state = await this.loadAndReconcileRecord(id);
       if (options.automaticLearning !== undefined) {
         const reason = automaticLearningPauseReason(
           state,
@@ -244,7 +250,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     } = {},
   ): Promise<void> {
     await this.repository.withLock(async () => {
-      const state = await this.loadAndReconcile();
+      const state = await this.loadAndReconcileRecord(id);
       if (options.automaticLearning !== undefined) {
         const reason = automaticLearningPauseReason(
           state,
@@ -377,7 +383,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
 
   public async rollback(id: string): Promise<MemoryRecord> {
     return this.repository.withLock(async () => {
-      const state = await this.loadAndReconcile();
+      const state = await this.loadAndReconcileRecord(id);
       const current = state.records.find((entry) => entry.id === id) as StoredRecord | undefined;
       const history = state.history[id] ?? [];
       const previous = history.at(-1) as StoredRecord | undefined;
@@ -408,7 +414,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     options: Omit<import('./types.js').MemoryApplicationFeedback, 'id' | 'outcome'> = {},
   ): Promise<MemoryRecord | null> {
     return this.repository.withLock(async () => {
-      const state = await this.loadAndReconcile();
+      const state = await this.loadAndReconcileRecord(id);
       const current = state.records.find((entry) => entry.id === id) as StoredRecord | undefined;
       if (current === undefined) return null;
       if (
@@ -856,9 +862,9 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     reason?: string,
   ): Promise<void> {
     await this.repository.withLock(async () => {
-      const state = await this.loadAndReconcile();
-      const checkedAt = this.timestamp();
       const projectKey = context?.projectKey ?? this.repository.projectFileBinding?.()?.projectKey;
+      const state = mutableState(await this.repository.readState());
+      const checkedAt = this.timestamp();
       const scopedContext = projectKey === undefined ? context : { ...(context ?? {}), projectKey };
       const previousGlobal = state.learning;
       const previousScoped = previousLearningStatus(state, projectKey);
@@ -890,18 +896,21 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     reason?: string,
   ): Promise<MemoryLearningStatus> {
     return this.repository.withLock(async () => {
-      const state = await this.loadAndReconcile();
       const projectKey = context?.projectKey ?? this.repository.projectFileBinding?.()?.projectKey;
+      const state = mutableState(await this.repository.readState());
       const scopedContext = projectKey === undefined ? context : { ...(context ?? {}), projectKey };
       const previousGlobal = state.learning;
       const previousScoped = previousLearningStatus(state, projectKey);
       const submissionVerified =
-        check !== 'submitted' || context?.changeId === undefined
+        check === 'not-run' || context?.changeId === undefined
           ? undefined
-          : state.observations.some(
+          : (check === 'submitted') ===
+            state.observations.some(
               (entry) =>
                 entry.changeId === context.changeId &&
-                (projectKey === undefined || entry.projectKey === projectKey) &&
+                (projectKey === undefined ||
+                  entry.projectKey === projectKey ||
+                  (entry.scope === 'global' && entry.projectIdentity === projectKey)) &&
                 (context.workflow === undefined || entry.source.workflow === context.workflow),
             );
       const checkedAt = this.timestamp();
@@ -1227,14 +1236,14 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
 
   private async mutationWasApplied(idempotencyKey: string): Promise<boolean> {
     return this.repository.withLock(async () => {
-      const state = await this.loadAndReconcile();
+      const state = mutableState(await this.repository.readState());
       return state.appliedMutationIds.includes(idempotencyKey);
     });
   }
 
   private async markMutationApplied(idempotencyKey: string): Promise<void> {
     await this.repository.withLock(async () => {
-      const state = await this.loadAndReconcile();
+      const state = mutableState(await this.repository.readState());
       if (state.appliedMutationIds.includes(idempotencyKey)) return;
       state.appliedMutationIds = appendBoundedMutationId(state.appliedMutationIds, idempotencyKey);
       await this.persist(state);
@@ -1658,7 +1667,7 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     update: (settings: MemorySettings) => MemorySettings,
   ): Promise<void> {
     await this.repository.withLock(async () => {
-      const state = await this.loadAndReconcile();
+      const state = mutableState(await this.repository.readState());
       state.settings = update(state.settings);
       await this.persist(state);
     });
@@ -1667,10 +1676,17 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
   private async loadAndReconcile(
     scope?: 'global' | 'project',
     projectKey?: string,
+    recordId?: string,
   ): Promise<MutableMemoryState> {
     const raw = await this.repository.readState();
     const state = mutableState(raw);
-    await this.flushPendingFileProjections(state);
+    if (recordId !== undefined) {
+      const record = state.records.find((entry) => entry.id === recordId);
+      if (!record) return state;
+      scope = record.scope;
+      projectKey = record.projectKey;
+    }
+    await this.flushPendingFileProjections(state, scope, projectKey);
     await this.prepareProjectFileBinding(state);
     const knownProjectKeys = new Set<string>();
     for (const knownProjectKey of Object.keys(state.projectFiles)) {
@@ -1692,13 +1708,12 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       scope === undefined
         ? [
             { scope: 'global' as const },
-            ...[...knownProjectKeys].map((knownProjectKey) => ({
-              scope: 'project' as const,
-              projectKey: knownProjectKey,
-            })),
-            ...(projectKey !== undefined && !knownProjectKeys.has(projectKey)
-              ? [{ scope: 'project' as const, projectKey }]
-              : []),
+            ...(projectKey === undefined ? [...knownProjectKeys] : [projectKey]).map(
+              (knownProjectKey) => ({
+                scope: 'project' as const,
+                projectKey: knownProjectKey,
+              }),
+            ),
           ]
         : [{ scope, ...(scope === 'project' ? { projectKey } : {}) }];
     for (const target of targets) {
@@ -1725,6 +1740,10 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
       }
     }
     return state;
+  }
+
+  private loadAndReconcileRecord(id: string): Promise<MutableMemoryState> {
+    return this.loadAndReconcile(undefined, undefined, id);
   }
 
   private async persist(state: MutableMemoryState): Promise<void> {
@@ -1810,15 +1829,23 @@ export class PersonalMemoryService implements PersonalMemoryServiceLike, Persona
     }
     await this.persist(state);
     try {
-      await this.flushPendingFileProjections(state);
+      await this.flushPendingFileProjections(state, projection.scope, projection.projectKey);
     } catch {
       // The mutation and its idempotency key are already authoritative. The durable
       // projection remains pending on disk and is replayed before the next reconcile.
     }
   }
 
-  private async flushPendingFileProjections(state: MutableMemoryState): Promise<void> {
-    const pending = Object.entries(state.pendingFileProjections);
+  private async flushPendingFileProjections(
+    state: MutableMemoryState,
+    scope?: 'global' | 'project',
+    projectKey?: string,
+  ): Promise<void> {
+    const pending = Object.entries(state.pendingFileProjections).filter(([, projection]) =>
+      scope === undefined && projectKey === undefined
+        ? true
+        : scopeMatches(projection, { scope, projectKey }),
+    );
     if (pending.length === 0) return;
     for (const [file, projection] of pending) {
       const current = await this.repository.readText(file);
@@ -2020,8 +2047,9 @@ function inferObservationResult(result: MemoryObservationResult): MemoryObservat
 }
 
 function learningContext(observation: MemoryObservation): MemoryLearningCheckContext {
+  const projectKey = observation.projectKey ?? observation.projectIdentity;
   return {
-    ...(observation.projectKey === undefined ? {} : { projectKey: observation.projectKey }),
+    ...(projectKey === undefined ? {} : { projectKey }),
     workflow: observation.workflow,
     changeId: observation.changeId,
   };
@@ -2937,7 +2965,10 @@ function unicodeLength(value: string): number {
   return Array.from(value).length;
 }
 
-function scopeMatches(record: StoredRecord, query: MemoryQuery): boolean {
+function scopeMatches(
+  record: Pick<StoredRecord, 'scope' | 'projectKey'>,
+  query: MemoryQuery,
+): boolean {
   if (query.scope !== undefined && record.scope !== query.scope) return false;
   if (record.scope === 'project' && record.projectKey !== query.projectKey) return false;
   if (record.scope === 'global' && query.scope === 'project') return false;
@@ -2946,26 +2977,16 @@ function scopeMatches(record: StoredRecord, query: MemoryQuery): boolean {
 
 function attributesMatch(record: StoredRecord, query: MemoryQuery, management = false): boolean {
   if (
-    query.task !== undefined &&
-    record.taskTypes.length > 0 &&
-    !matchesAny(record.taskTypes, query.task)
-  )
-    return false;
-  if (
-    query.path !== undefined &&
-    record.pathPatterns.length > 0 &&
-    !matchesAny(record.pathPatterns, query.path)
-  )
-    return false;
-  if (
-    query.operation !== undefined &&
-    record.operations.length > 0 &&
-    !matchesAny(record.operations, query.operation)
-  )
-    return false;
-  if (
-    record.phases.length > 0 &&
-    (query.phase === undefined ? !management : !matchesAny(record.phases, query.phase))
+    !contextSelectorsMatch(
+      {
+        paths: record.pathPatterns,
+        tasks: record.taskTypes,
+        operations: record.operations,
+        phases: record.phases,
+      },
+      query,
+      management,
+    )
   )
     return false;
   if (query.category !== undefined && !matchesAny([record.category], query.category)) return false;
@@ -3002,10 +3023,11 @@ function scoreRecord(record: StoredRecord, query: MemoryQuery): number {
   score += Math.min(record.successCount, 5) * 20;
   score -= Math.min(record.failureCount, 5) * 40;
   if (record.scope === 'project') score += 50;
-  if (query.task !== undefined && matchesAny(record.taskTypes, query.task)) score += 25;
-  if (query.path !== undefined && matchesAny(record.pathPatterns, query.path)) score += 25;
-  if (query.operation !== undefined && matchesAny(record.operations, query.operation)) score += 25;
-  if (query.phase !== undefined && matchesAny(record.phases, query.phase)) score += 25;
+  if (query.task !== undefined && contextTaskMatches(record.taskTypes, query.task)) score += 25;
+  if (query.path !== undefined && contextPathMatches(record.pathPatterns, query.path)) score += 25;
+  if (query.operation !== undefined && contextValueMatches(record.operations, query.operation))
+    score += 25;
+  if (query.phase !== undefined && contextValueMatches(record.phases, query.phase)) score += 25;
   if (query.category !== undefined && matchesAny([record.category], query.category)) score += 20;
   if (query.tags !== undefined) {
     score += query.tags.filter((tag) => matchesAny(record.tags, tag)).length * 15;

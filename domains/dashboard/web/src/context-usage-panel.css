@@ -1,0 +1,135 @@
+.dashboard-context-usage {
+  margin: 0 0 14px;
+  padding: 14px 16px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+}
+.dashboard-context-usage > header,
+.dashboard-context-usage > footer,
+.dashboard-context-usage-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dashboard-context-usage > header,
+.dashboard-context-usage > footer {
+  justify-content: space-between;
+}
+.dashboard-context-usage-heading h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.dashboard-context-usage-heading > span,
+.dashboard-context-usage footer,
+.dashboard-context-usage small,
+.dashboard-context-usage-task > span,
+.dashboard-context-usage-history-note {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.dashboard-context-usage-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin: 16px 0 10px;
+}
+.dashboard-context-usage-metrics > div {
+  min-width: 0;
+}
+.dashboard-context-usage-metrics dt {
+  color: var(--color-fg-2);
+  font-size: 12px;
+}
+.dashboard-context-usage-metrics dt .anticon {
+  color: var(--color-meta);
+  font-size: 10px;
+}
+.dashboard-context-usage-metrics dd {
+  margin: 5px 0;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  font-weight: 600;
+}
+.dashboard-context-usage-metrics small {
+  display: block;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.dashboard-context-usage > footer {
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border-soft);
+}
+.dashboard-context-usage footer .ant-btn {
+  padding-inline: 0;
+  font-size: 11px;
+}
+.dashboard-context-usage-help {
+  max-width: min(340px, 75vw);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.dashboard-context-usage-help p + p {
+  margin-top: 8px;
+}
+.dashboard-context-usage-task {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dashboard-context-usage-items article + article {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border-soft);
+}
+.dashboard-context-usage-items article > div {
+  margin-top: 6px;
+}
+.dashboard-context-usage-items p {
+  margin: 6px 0 0;
+  color: var(--color-fg-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1181px) and (max-height: 760px) {
+  .dashboard-workbench:not(.is-embedded) .dashboard-context-usage {
+    margin-bottom: 8px;
+    padding: 8px 12px 6px;
+  }
+  .dashboard-workbench:not(.is-embedded) .dashboard-context-usage-metrics {
+    margin: 6px 0;
+    gap: 8px;
+  }
+  .dashboard-workbench:not(.is-embedded) .dashboard-context-usage-metrics dd {
+    margin: 2px 0;
+    font-size: 18px;
+  }
+  .dashboard-workbench:not(.is-embedded) .dashboard-context-usage-metrics small {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .dashboard-workbench:not(.is-embedded) .dashboard-context-usage > footer {
+    padding-top: 2px;
+  }
+}
+@media (max-width: 1100px) {
+  .dashboard-context-usage-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .dashboard-context-usage-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-context-usage {
+    padding-inline: 12px;
+  }
+}

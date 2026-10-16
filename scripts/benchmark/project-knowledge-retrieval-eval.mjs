@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { retrievalEvidence } from './project-knowledge-retrieval-metrics.mjs';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const projectRoot = path.resolve(
@@ -195,6 +196,7 @@ async function evaluate(indexEnabled, useRipgrep = true) {
       rows.push({
         id: entry.id,
         category: entry.category,
+        ...retrievalEvidence(entry, results, dataset.topK),
         sources,
         hit: entry.expectedAbstain ? sources.length === 0 : firstGold >= 0,
         reciprocalRank: firstGold >= 0 ? 1 / (firstGold + 1) : 0,
@@ -228,8 +230,18 @@ async function evaluate(indexEnabled, useRipgrep = true) {
     .map((row) => row.elapsedMs)
     .sort((left, right) => left - right);
   const successful = rows.filter((row) => !row.id.startsWith('none-'));
+  const labelledPassages = rows.filter((row) => row.passageHitAt4 !== undefined);
   const p95 = Math.max(0, Math.ceil(sortedLatency.length * 0.95) - 1);
   return {
+    hitRateAt4: gold.filter((row) => row.hit).length / Math.max(1, gold.length),
+    sourceRecallAt4:
+      gold.reduce((sum, row) => sum + row.sourceRecallAt4, 0) / Math.max(1, gold.length),
+    sourcePrecisionAt4:
+      gold.reduce((sum, row) => sum + row.sourcePrecisionAt4, 0) / Math.max(1, gold.length),
+    passageCases: labelledPassages.length,
+    passageHitRateAt4: labelledPassages.length
+      ? labelledPassages.filter((row) => row.passageHitAt4).length / labelledPassages.length
+      : null,
     recallAt4: gold.filter((row) => row.hit).length / Math.max(1, gold.length),
     exactRecallAt4: exact.filter((row) => row.hit).length / Math.max(1, exact.length),
     mrr: gold.reduce((sum, row) => sum + row.reciprocalRank, 0) / Math.max(1, gold.length),
@@ -266,6 +278,15 @@ const report = {
   schema: dataset.schema,
   projectRoot,
   cases: dataset.cases.length,
+  metricDefinitions: {
+    recallAt4: 'Legacy alias of hitRateAt4: any labelled source in the first four results.',
+    precisionAt4: 'Legacy mean precision among the returned first four sources.',
+    sourceRecallAt4:
+      'Mean fraction of labelled relevant sources retrieved in the first four results.',
+    sourcePrecisionAt4: 'Mean relevant-source count divided by four.',
+    passageHitRateAt4:
+      'Fraction of content-labelled cases returning a passage that satisfies its assertions.',
+  },
   ripgrep,
   fts,
   hybrid,

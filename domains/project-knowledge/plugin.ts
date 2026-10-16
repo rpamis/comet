@@ -11,6 +11,7 @@ import {
   compileProjectPolicy,
   contextOutcomeTargetIds,
   reflectionEvents,
+  pageContextApplications,
   type AgentContextCandidate,
   type AgentLearningDelta,
   type ProjectPolicyActivation,
@@ -23,6 +24,7 @@ import {
 import { createProjectKnowledgeDashboardSnapshot } from './dashboard.js';
 import { LocalProjectKnowledgeProvider } from './local-provider.js';
 import { createProjectKnowledgeQuery } from './query.js';
+import { searchProjectKnowledge } from './retrieval.js';
 import {
   createUserProjectKnowledgeRecord,
   type ProjectKnowledgeRecord,
@@ -192,6 +194,15 @@ async function createProjectKnowledgeModule(
   options: ProjectKnowledgePluginOptions,
 ): Promise<PluginModule> {
   const recentDiagnostics = await readRecentDiagnostics(context.storage);
+  const readApplications = async (
+    query: import('../agent-learning/index.js').AgentContextApplicationQuery,
+  ) =>
+    options.queryContextApplications
+      ? options.queryContextApplications(query)
+      : pageContextApplications(
+          (await options.listContextApplications?.(query.candidateId)) ?? [],
+          query,
+        );
   const recentChangedHints = await readRecentChangedHints(context.storage);
   let diagnosticWrite = Promise.resolve();
   const persistDiagnostics = (): void => {
@@ -273,12 +284,16 @@ async function createProjectKnowledgeModule(
       if (learningProvider instanceof LocalProjectKnowledgeProvider) learningProvider.close();
     }
   };
-  const ensureProjectModel = async (provider: ProjectKnowledgeProvider): Promise<void> => {
+  const ensureProjectModel = async (
+    provider: ProjectKnowledgeProvider,
+    queryOnly = false,
+  ): Promise<void> => {
     await ensureProjectKnowledgeReady({
       projectRoot: options.projectRoot,
       provider,
       language: options.language,
       reportDiagnostic,
+      refreshSources: !queryOnly,
     });
   };
   const persistChangedHint = async (hint: ProjectKnowledgeChangedHint): Promise<void> => {
@@ -308,14 +323,21 @@ async function createProjectKnowledgeModule(
         limit: 100,
       });
       const records = recordsResult.kind === 'list' ? recordsResult.records : [];
-      const applications = (await options.listContextApplications?.()) ?? [];
-      const dashboardRecords = records.map((record) => ({
-        ...record,
-        ...contextApplicationProjection(record.id, applications),
-        ...(projectPolicyActivation(record) === undefined
-          ? {}
-          : { activation: projectPolicyActivation(record) }),
-      }));
+      const applications = (await readApplications({ limit: 100 })).items;
+      const dashboardRecords = await Promise.all(
+        records.map(async (record) => {
+          const history = await readApplications({ candidateId: record.id, limit: 6 });
+          return {
+            ...record,
+            ...contextApplicationProjection(record.id, history.items),
+            contextApplicationCount: history.total,
+            ...(history.nextCursor ? { applicationHistoryCursor: history.nextCursor } : {}),
+            ...(projectPolicyActivation(record) === undefined
+              ? {}
+              : { activation: projectPolicyActivation(record) }),
+          };
+        }),
+      );
       const currentManifest = latestApplicationBatch(applications, PROJECT_KNOWLEDGE_PLUGIN_ID);
       const recordsById = new Map(dashboardRecords.map((record) => [record.id, record]));
       const localIndexStatus =
@@ -340,6 +362,17 @@ async function createProjectKnowledgeModule(
           ) === index
         );
       });
+      const sectionErrors = status.healthy
+        ? []
+        : [
+            {
+              section: 'records',
+              message:
+                options.language === 'en'
+                  ? 'Project knowledge is temporarily unavailable.'
+                  : '项目知识暂不可用。',
+            },
+          ];
       let pendingHostReviewCount = 0;
       if (!options.semanticReviewer) {
         try {
@@ -361,7 +394,11 @@ async function createProjectKnowledgeModule(
           options.projectRoot,
           options.cacheRoot,
         );
-        const memoryApplications = applications
+        const memoryPage = await readApplications({
+          candidateId: PROJECT_MEMORY_INDEX_CANDIDATE_ID,
+          limit: 6,
+        });
+        const memoryApplications = memoryPage.items
           .filter(
             (entry) =>
               entry.owner === PROJECT_KNOWLEDGE_PLUGIN_ID &&
@@ -372,11 +409,12 @@ async function createProjectKnowledgeModule(
           directory: resolveProjectMemoryDirectory(options.projectRoot, options.cacheRoot),
           total: memoryEntries.length,
           entries: memoryEntries,
-          applicationCount: memoryApplications.length,
+          applicationCount: memoryPage.total,
           ...(memoryApplications[0] === undefined
             ? {}
             : { lastApplication: memoryApplications[0] }),
           applicationHistory: memoryApplications.slice(0, 10),
+          ...(memoryPage.nextCursor ? { applicationHistoryCursor: memoryPage.nextCursor } : {}),
         };
       } catch (error) {
         const diagnostic = {
@@ -388,6 +426,8 @@ async function createProjectKnowledgeModule(
       }
       const result = {
         ...snapshot,
+        partial: sectionErrors.length > 0,
+        sectionErrors,
         pendingHostReviewCount,
         status,
         ...(projectMemory === undefined ? {} : { projectMemory }),
@@ -420,6 +460,7 @@ async function createProjectKnowledgeModule(
           displayed: records.length,
         },
         truncated: recordsResult.kind === 'list' ? recordsResult.truncated : false,
+        contextUsage: await options.readContextUsage?.(applications),
         manifestPreview: currentManifest.flatMap((application) => {
           const record = recordsById.get(application.candidateId);
           const history = applications.filter(
@@ -575,6 +616,18 @@ async function createProjectKnowledgeModule(
       }
     },
     invoke: async (capability, input) => {
+      if (capability === 'application-history') {
+        const query = input as { candidateId?: unknown; cursor?: unknown } | null;
+        if (typeof query?.candidateId !== 'string' || !query.candidateId.trim())
+          throw new Error('Application history requires a candidate ID');
+        if (query.cursor !== undefined && typeof query.cursor !== 'string')
+          throw new Error('Invalid context application cursor');
+        return readApplications({
+          candidateId: query.candidateId,
+          cursor: query.cursor as string | undefined,
+          limit: 20,
+        });
+      }
       let activeProvider: ProjectKnowledgeProvider | null = null;
       try {
         const rawValue =
@@ -671,7 +724,7 @@ async function createProjectKnowledgeModule(
         }
         activeProvider = await createProvider();
         if (capability === 'list' || capability === 'query')
-          await ensureProjectModel(activeProvider);
+          await ensureProjectModel(activeProvider, capability === 'query');
         if (capability === 'list') {
           const state = value.state;
           return await activeProvider.query({
@@ -694,15 +747,20 @@ async function createProjectKnowledgeModule(
         if (capability === 'query') {
           if (typeof value.task !== 'string' || !value.task.trim())
             throw new Error('query requires task');
-          const response = await activeProvider.query({
-            kind: 'search',
-            query: createProjectKnowledgeQuery({
-              task: value.task,
-              ...(typeof value.path === 'string' ? { path: value.path } : {}),
-              ...(typeof value.phase === 'string' ? { phase: value.phase } : {}),
-              ...(typeof value.operation === 'string' ? { operation: value.operation } : {}),
-            }),
-            limit: 8,
+          const response = await searchProjectKnowledge({
+            projectRoot: options.projectRoot,
+            cacheRoot: options.cacheRoot,
+            provider: activeProvider,
+            request: {
+              kind: 'search',
+              query: createProjectKnowledgeQuery({
+                task: value.task,
+                ...(typeof value.path === 'string' ? { path: value.path } : {}),
+                ...(typeof value.phase === 'string' ? { phase: value.phase } : {}),
+                ...(typeof value.operation === 'string' ? { operation: value.operation } : {}),
+              }),
+              limit: 8,
+            },
           });
           clearRecoveredLocalSearchDiagnostic(response);
           return response;
@@ -806,6 +864,7 @@ async function createProjectKnowledgeModule(
         );
         if (indexCandidate !== null) candidates.push(indexCandidate);
       } catch (error) {
+        request.reportRetrievalIssue?.();
         reportDiagnostic({
           code: 'project-memory-unavailable',
           message: `项目记忆索引暂不可用：${error instanceof Error ? error.message : String(error)}`,
@@ -815,16 +874,25 @@ async function createProjectKnowledgeModule(
       try {
         const query = createProjectKnowledgeQuery(request);
         activeProvider = await createProvider();
-        await ensureProjectModel(activeProvider);
-        const response = await activeProvider.query({ kind: 'search', query, limit: 8 });
+        await ensureProjectModel(activeProvider, true);
+        const response = await searchProjectKnowledge({
+          projectRoot: options.projectRoot,
+          cacheRoot: options.cacheRoot,
+          provider: activeProvider,
+          request: { kind: 'search', query, limit: 8 },
+          allowProviderFailure: true,
+        });
+        if (response.diagnostics.length > 0) request.reportRetrievalIssue?.();
+        for (const diagnostic of response.diagnostics) reportDiagnostic(diagnostic);
         clearRecoveredLocalSearchDiagnostic(response);
         const results = response.kind === 'search' ? response.results : [];
         candidates.push(
-          ...results.map((result) =>
-            projectKnowledgeContextCandidate(result, request.projectId, options.language),
+          ...results.map((result, rank) =>
+            projectKnowledgeContextCandidate(result, request.projectId, options.language, rank),
           ),
         );
       } catch (error) {
+        request.reportRetrievalIssue?.();
         reportDiagnostic({
           code: 'context-provider-unavailable',
           message: `项目知识检索暂不可用：${error instanceof Error ? error.message : String(error)}`,
@@ -841,6 +909,10 @@ async function createProjectKnowledgeModule(
       return candidates;
     },
     resolveContext: async (id, request) => {
+      if (id === PROJECT_MEMORY_INDEX_CANDIDATE_ID) {
+        const entries = await readProjectMemoryIndex(options.projectRoot, options.cacheRoot);
+        return projectMemoryIndexCandidate(entries, request.projectId, options.language, true);
+      }
       if (id.startsWith(PROJECT_MEMORY_EXPANSION_PREFIX)) {
         const slug = id.slice(PROJECT_MEMORY_EXPANSION_PREFIX.length);
         const entry = await readProjectMemory(options.projectRoot, slug, options.cacheRoot);
@@ -954,7 +1026,12 @@ function projectKnowledgeContextCandidate(
   result: ProjectKnowledgeResult,
   projectId: string | undefined,
   language: 'zh-CN' | 'en' | undefined,
+  rank = 0,
 ): AgentContextCandidate {
+  const priority = Math.max(0, 40 - rank * 2);
+  if (result.memory !== undefined) {
+    return { ...projectMemoryEntryCandidate(result.memory, projectId, language), priority };
+  }
   const record = result.record;
   if (record !== undefined) {
     const policy = isProjectPolicyType(record.type);
@@ -995,6 +1072,7 @@ function projectKnowledgeContextCandidate(
         })),
       ),
       verification: record.verification,
+      priority,
       ...(activation?.kind === 'verification'
         ? {
             priority: 120,
@@ -1031,6 +1109,7 @@ function projectKnowledgeContextCandidate(
     selectors: { ...(projectId === undefined ? {} : { projectId }) },
     sources: [{ type: 'repository', source: result.source }],
     verification: [],
+    priority,
   };
 }
 
@@ -1038,8 +1117,9 @@ function projectMemoryIndexCandidate(
   entries: readonly ProjectMemoryIndexEntry[],
   projectId: string | undefined,
   language: 'zh-CN' | 'en' | undefined,
+  complete = false,
 ): AgentContextCandidate | null {
-  const content = renderProjectMemoryIndexContext(entries, language ?? 'zh-CN');
+  const content = renderProjectMemoryIndexContext(entries, language ?? 'zh-CN', { complete });
   if (content === null) return null;
   const titles = entries
     .slice(0, 3)
@@ -1101,7 +1181,7 @@ function projectMemoryEntryCandidate(
     title: entry.title,
     summary: entry.description,
     content: `${entry.description}\n\n${header.join('\n')}\n\n${entry.body}`,
-    selectors: { ...(projectId === undefined ? {} : { projectId }) },
+    selectors: { ...(projectId === undefined ? {} : { projectId }), paths: entry.paths },
     sources:
       entry.source === undefined ? [] : [{ type: 'workflow' as const, source: entry.source }],
     verification: [],

@@ -51,9 +51,11 @@ export interface ProjectKnowledgeResult {
   readonly content: string;
   readonly source: string;
   readonly title?: string;
+  readonly headingPath?: string;
   readonly score?: number;
   readonly document?: ProjectKnowledgeDocument;
   readonly record?: ProjectKnowledgeRecord;
+  readonly memory?: import('./project-memory.js').ProjectMemoryEntry;
 }
 
 export interface ProjectKnowledgeDiagnostic {
@@ -279,6 +281,9 @@ export interface ProjectKnowledgeProviderOptions extends ProjectKnowledgeCorpusO
 }
 
 export interface ProjectKnowledgePluginOptions {
+  readonly readContextUsage?: (
+    applications: readonly AgentContextApplicationRecord[],
+  ) => Promise<import('../agent-learning/index.js').ContextUsageSnapshot | undefined>;
   readonly projectRoot: string;
   readonly knowledgeConfig: WorkflowKnowledgeProjectConfig;
   readonly language?: MemoryLanguage;
@@ -290,6 +295,9 @@ export interface ProjectKnowledgePluginOptions {
   readonly listContextApplications?: (
     candidateId?: string,
   ) => Promise<readonly AgentContextApplicationRecord[]>;
+  readonly queryContextApplications?: (
+    query: import('../agent-learning/index.js').AgentContextApplicationQuery,
+  ) => Promise<import('../agent-learning/index.js').AgentContextApplicationPage>;
 }
 
 export interface ProjectKnowledgeDashboardRemoteSummary {
@@ -312,9 +320,11 @@ export interface ProjectMemoryDashboardSummary {
   readonly applicationCount: number;
   readonly lastApplication?: AgentContextApplicationRecord;
   readonly applicationHistory?: readonly AgentContextApplicationRecord[];
+  readonly applicationHistoryCursor?: string;
 }
 
 export interface ProjectKnowledgeDashboardSnapshot {
+  readonly contextUsage?: import('../agent-learning/index.js').ContextUsageSnapshot;
   readonly provider: WorkflowKnowledgeProvider;
   readonly configured: boolean;
   readonly remote?: ProjectKnowledgeDashboardRemoteSummary;
@@ -347,6 +357,7 @@ export interface ProjectKnowledgeDashboardSnapshot {
     readonly contextApplicationCount?: number;
     readonly lastApplication?: AgentContextApplicationRecord;
     readonly applicationHistory?: readonly AgentContextApplicationRecord[];
+    readonly applicationHistoryCursor?: string;
   })[];
   readonly counts?: {
     readonly active: number;

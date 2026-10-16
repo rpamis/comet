@@ -94,6 +94,13 @@ function terminal(action: RuntimeAction): boolean {
 }
 
 export function createRuntimeAction(options: CreateRuntimeActionOptions): RuntimeAction {
+  return initializeRuntimeAction(options, cloneRuntimeValue(options.input));
+}
+
+function initializeRuntimeAction(
+  options: CreateRuntimeActionOptions,
+  input: RuntimeValue,
+): RuntimeAction {
   for (const field of ['id', 'runId', 'stepId', 'type'] as const) nonEmpty(options[field], field);
   if (options.ref !== undefined) nonEmpty(options.ref, 'ref');
   const attempt = options.attempt ?? 1;
@@ -106,7 +113,6 @@ export function createRuntimeAction(options: CreateRuntimeActionOptions): Runtim
   }
   const capabilities = options.requiredCapabilities ?? [];
   for (const capability of capabilities) nonEmpty(capability, 'requiredCapabilities');
-  const input = cloneRuntimeValue(options.input);
   return {
     protocolVersion: 1,
     id: options.id,
@@ -355,7 +361,11 @@ export function parseRuntimeOutcome(value: unknown): RuntimeOutcome {
 
 /** 在持久化/传输边界恢复记录，不从缺失字段推断执行归属或成功状态。 */
 export function parseRuntimeAction(value: unknown): RuntimeAction {
-  const data = cloneRuntimeValue(value);
+  return validateRuntimeActionSnapshot(cloneRuntimeValue(value));
+}
+
+/** 调用者已完成整个 Run 的 JSON 校验和隔离复制，逐项校验时复用该副本。 */
+export function validateRuntimeActionSnapshot(data: RuntimeValue): RuntimeAction {
   keysOnly(data, [
     'protocolVersion',
     'id',
@@ -388,7 +398,7 @@ export function parseRuntimeAction(value: unknown): RuntimeAction {
     throw new RuntimeProtocolError('INVALID_ACTION', 'Action 缺少能力、结果或核对记录');
   }
   const action = data as unknown as RuntimeAction;
-  const normalized = createRuntimeAction(action);
+  const normalized = initializeRuntimeAction(action, action.input);
   if (
     action.inputHash !== normalized.inputHash ||
     action.retry !== normalized.retry ||

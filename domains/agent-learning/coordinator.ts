@@ -1,4 +1,10 @@
 import { createHash } from 'node:crypto';
+import {
+  operationSignal,
+  OperationBudgetError,
+  throwIfOperationAborted,
+  withoutOperationBudget,
+} from '../../platform/process/operation-budget.js';
 
 import type {
   AgentContextOutcomeStatus,
@@ -129,13 +135,18 @@ export class AgentLearningCoordinator {
     return { ...captured, reflectedSynchronously: synchronous, deltas };
   }
 
-  public async replayPending(limit = 50): Promise<void> {
+  public async replayPending(
+    limit = 50,
+    options: { readonly waitForCompletion?: boolean } = {},
+  ): Promise<void> {
     const pending = await this.journal.pending(limit);
     for (const event of pending) {
+      if (operationSignal()?.aborted) return;
+      throwIfOperationAborted();
       if (this.scheduledEventIds.has(event.eventId)) continue;
       this.scheduledEventIds.add(event.eventId);
       try {
-        await this.schedule(async () => {
+        const work = async () => {
           try {
             await this.processAndRecord(event);
           } catch (error) {
@@ -143,7 +154,9 @@ export class AgentLearningCoordinator {
           } finally {
             this.scheduledEventIds.delete(event.eventId);
           }
-        });
+        };
+        if (options.waitForCompletion) await work();
+        else await this.schedule(work);
       } catch (error) {
         this.scheduledEventIds.delete(event.eventId);
         this.onDiagnostic?.(`Agent Reflection replay scheduling failed: ${errorMessage(error)}`);
@@ -161,9 +174,9 @@ export class AgentLearningCoordinator {
     return count;
   }
 
-  public async replayNow(): Promise<void> {
+  public async replayNow(options: { readonly waitForCompletion?: boolean } = {}): Promise<void> {
     await this.journal.retryPendingNow();
-    await this.replayPending();
+    await this.replayPending(50, options);
   }
 
   public async resumeReview(
@@ -250,6 +263,7 @@ export class AgentLearningCoordinator {
     const waiting: AgentLearningWait[] = [];
     const deltas: AgentLearningDelta[] = [];
     for (const { learner, events: learnerEvents } of byOwner.values()) {
+      throwIfOperationAborted();
       try {
         const requests = chunkReflectionRequests(
           episodeId,
@@ -261,8 +275,10 @@ export class AgentLearningCoordinator {
         let reflectionDeferred = false;
         const ownerWaiting: AgentLearningWait[] = [];
         for (const request of requests) {
+          throwIfOperationAborted();
           await this.journal.renewClaim(claim);
           const reflected = normalizeReflectionResult(await learner.reflect(request));
+          throwIfOperationAborted();
           reflectionDeferred ||= reflected.deferred;
           ownerWaiting.push(...(reflected.waitFor ?? []));
           for (const delta of reflected.deltas) {
@@ -280,6 +296,7 @@ export class AgentLearningCoordinator {
           reflectedDeltas,
         );
         if (consolidationDeltas.length > 0) {
+          throwIfOperationAborted();
           await this.journal.renewClaim(claim);
           await learner.consolidate({ episodeId, eventIds, deltas: consolidationDeltas });
           deltas.push(...consolidationDeltas.map((entry) => entry.delta));
@@ -297,6 +314,7 @@ export class AgentLearningCoordinator {
           learnerEvents.map((entry) => entry.eventId),
         );
       } catch (error) {
+        if (error instanceof OperationBudgetError || operationSignal()?.aborted) throw error;
         const message = `${learner.owner} reflection failed: ${errorMessage(error)}`;
         failures.push(message);
         this.onDiagnostic?.(message);
@@ -310,35 +328,56 @@ export class AgentLearningCoordinator {
   private async processAndRecord(
     event: AgentExperienceEvent,
   ): Promise<readonly AgentLearningDelta[]> {
-    const previous = this.episodeQueues.get(event.episodeId) ?? Promise.resolve();
-    const operation = previous
-      .catch(() => undefined)
-      .then(async () => {
-        const deltas: AgentLearningDelta[] = [];
-        while (true) {
-          const claim = await this.journal.claimEpisode(event.episodeId);
-          if (claim === null) return deltas;
-          try {
-            deltas.push(...(await this.processEpisode(claim)));
-            await this.journal.completeClaim(claim);
-          } catch (error) {
-            if (error instanceof AgentReflectionWaiting) {
-              await this.journal.waitClaim(claim, error.waitFor);
-              let released = false;
-              for (const wait of error.waitFor) {
-                if (await this.isWaitingResolved?.(wait)) {
-                  const ready = await this.journal.releaseWaiting(wait);
-                  released = released || ready.length > 0;
-                }
-              }
-              if (released) continue;
-              return deltas;
-            }
-            await this.journal.failClaim(claim, errorMessage(error));
+    while (this.episodeQueues.has(event.episodeId)) {
+      throwIfOperationAborted();
+      const previous = this.episodeQueues.get(event.episodeId)!;
+      const signal = operationSignal();
+      // 只取消当前排队等待；已有反思继续由原调用管理。
+      await new Promise<void>((resolve, reject) => {
+        const aborted = () => {
+          signal?.removeEventListener('abort', aborted);
+          reject(new OperationBudgetError());
+        };
+        const settled = () => {
+          signal?.removeEventListener('abort', aborted);
+          resolve();
+        };
+        signal?.addEventListener('abort', aborted, { once: true });
+        previous.then(settled, settled);
+      });
+    }
+    throwIfOperationAborted();
+    const operation = Promise.resolve().then(async () => {
+      const deltas: AgentLearningDelta[] = [];
+      while (true) {
+        throwIfOperationAborted();
+        const claim = await this.journal.claimEpisode(event.episodeId, { maxEvents: 64 });
+        if (claim === null) return deltas;
+        try {
+          deltas.push(...(await this.processEpisode(claim)));
+          await this.journal.completeClaim(claim);
+        } catch (error) {
+          if (error instanceof OperationBudgetError || operationSignal()?.aborted) {
+            await withoutOperationBudget(() => this.journal.releaseClaim(claim));
             throw error;
           }
+          if (error instanceof AgentReflectionWaiting) {
+            await this.journal.waitClaim(claim, error.waitFor);
+            let released = false;
+            for (const wait of error.waitFor) {
+              if (await this.isWaitingResolved?.(wait)) {
+                const ready = await this.journal.releaseWaiting(wait);
+                released = released || ready.length > 0;
+              }
+            }
+            if (released) continue;
+            return deltas;
+          }
+          await this.journal.failClaim(claim, errorMessage(error));
+          throw error;
         }
-      });
+      }
+    });
     this.episodeQueues.set(event.episodeId, operation);
     try {
       return await operation;

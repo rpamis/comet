@@ -1246,6 +1246,7 @@ async function runUsefulCase(
     const retrieved = await service.retrieve({
       projectKey: `eval-${language}-${workflow}`,
       task: 'staging',
+      operation: 'commit',
     });
     const record = retrieved.records[0];
     return {
@@ -1268,6 +1269,7 @@ async function runUsefulCase(
           scope: 'project',
           projectKey: `eval-${language}-${workflow}`,
           task: 'staging',
+          operation: 'commit',
         },
         text,
         language,
@@ -1654,7 +1656,7 @@ async function runGlobalEvidenceCase(): Promise<SemanticResult> {
       projectIdentity: 'repo-a',
       changeId: 'global-one',
     });
-    const beforeCrossProject = await service.retrieve({ scope: 'global' });
+    const beforeCrossProject = await service.retrieve({ scope: 'global', task: 'communication' });
     const second = await semanticObserve(service, {
       ...base,
       projectIdentity: 'repo-b',

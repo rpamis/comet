@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { throwIfOperationAborted, remainingOperationMs } from '../process/operation-budget.js';
 import { promises as fs } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
 import os from 'node:os';
@@ -399,13 +400,14 @@ export async function withRecoverableFileLock<T>(
 ): Promise<T> {
   file = path.resolve(file);
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const timeoutMs = options.timeoutMs ?? 30_000;
+  const timeoutMs = remainingOperationMs(options.timeoutMs ?? 30_000);
   const retryMs = options.retryMs ?? 20;
   const deadline = performance.now() + timeoutMs;
   const owner = await newOwner();
   let held: LockSnapshot | null = null;
   for (;;) {
     const acquired = await withCoordinator(file, owner, deadline, retryMs, async () => {
+      throwIfOperationAborted();
       const current = await snapshot(file);
       if (current) {
         if ((await diagnosis(current)).status !== 'stale' || !(await removeBound(file, current)))

@@ -25,6 +25,8 @@ export interface PluginContextRequest {
   readonly sessionId?: string;
   readonly charBudget?: number;
   readonly projectId?: string;
+  /** Mark a best-effort retrieval as incomplete without exposing raw diagnostics to telemetry. */
+  readonly reportRetrievalIssue?: () => void;
 }
 
 export interface PluginDashboardContext {

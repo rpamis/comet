@@ -14,6 +14,8 @@ export interface ProjectKnowledgeReadinessOptions {
   readonly provider: ProjectKnowledgeProvider;
   readonly language?: MemoryLanguage;
   readonly reportDiagnostic?: ProjectKnowledgeDiagnosticReporter;
+  /** Query callers validate selected sources at delivery instead of refreshing all records. */
+  readonly refreshSources?: boolean;
 }
 
 export async function ensureProjectKnowledgeReady(
@@ -38,27 +40,27 @@ async function prepareProjectKnowledge(options: ProjectKnowledgeReadinessOptions
     return;
   }
   const projectId = resolveStableProjectId(options.projectRoot);
-  const refreshed = await options.provider.apply({ kind: 'refresh', projectId });
-  for (const diagnostic of refreshed.diagnostics) options.reportDiagnostic?.(diagnostic);
-  const listed = await options.provider.query({
-    kind: 'list',
-    projectId,
-    state: 'all',
-    limit: 500,
-  });
-  for (const diagnostic of listed.diagnostics) options.reportDiagnostic?.(diagnostic);
-  const activeIds = new Set(
-    listed.kind === 'list'
-      ? listed.records.filter((record) => record.state !== 'superseded').map((record) => record.id)
-      : [],
-  );
+  if (options.refreshSources !== false) {
+    const refreshed = await options.provider.apply({ kind: 'refresh', projectId });
+    for (const diagnostic of refreshed.diagnostics) options.reportDiagnostic?.(diagnostic);
+  }
   const expectedIds = await discoverExpectedProjectModelRecordIds({
     projectRoot: options.projectRoot,
     reportDiagnostic: options.reportDiagnostic,
   });
+  const activeIds = new Set<string>();
+  for (const id of expectedIds) {
+    const response = await options.provider.query({ kind: 'get', projectId, id });
+    for (const diagnostic of response.diagnostics) options.reportDiagnostic?.(diagnostic);
+    if (response.kind === 'get' && response.record && response.record.state !== 'superseded')
+      activeIds.add(id);
+  }
+  const missingIds = expectedIds.filter((id) => !activeIds.has(id));
+  if (missingIds.length === 0) return;
   const candidates = await extractDeterministicProjectRecords({
     projectRoot: options.projectRoot,
-    preferredRecordIds: expectedIds.filter((id) => !activeIds.has(id)),
+    preferredRecordIds: missingIds,
+    recordIds: missingIds,
     language: options.language ?? 'zh-CN',
     reportDiagnostic: options.reportDiagnostic,
   });

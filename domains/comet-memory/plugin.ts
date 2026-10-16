@@ -7,7 +7,11 @@ import type {
   AgentExperienceEvidence,
   AgentLearningDelta,
 } from '../agent-learning/index.js';
-import { contextOutcomeTargetIds, reflectionEvents } from '../agent-learning/index.js';
+import {
+  contextOutcomeTargetIds,
+  reflectionEvents,
+  pageContextApplications,
+} from '../agent-learning/index.js';
 import type {
   MemoryInput,
   MemoryCorrection,
@@ -65,6 +69,15 @@ async function createModule(
   const provider = resolveProvider(service);
   const projectPolicy = options.projectPolicy ?? DEFAULT_PROJECT_POLICY;
   const reviewNotices: string[] = [];
+  const readApplications = async (
+    query: import('../agent-learning/index.js').AgentContextApplicationQuery,
+  ) =>
+    options.queryContextApplications
+      ? options.queryContextApplications(query)
+      : pageContextApplications(
+          (await options.listContextApplications?.(query.candidateId)) ?? [],
+          query,
+        );
   const announcedConflicts = new Set<string>();
   const announcedRetrievals = new Set<string>();
 
@@ -290,28 +303,83 @@ async function createModule(
       label: options.language === 'en' ? 'Personal Memory' : '个人记忆',
       route: '/plugins/personal-memory',
       load: async ({ projectId, invoke }) => {
+        const sectionErrors: { section: string; message: string }[] = [];
+        const section = async <T>(name: string, pending: Promise<T>, fallback: T): Promise<T> => {
+          try {
+            return await pending;
+          } catch {
+            sectionErrors.push({
+              section: name,
+              message:
+                options.language === 'en'
+                  ? 'This section is temporarily unavailable.'
+                  : '此部分暂不可用。',
+            });
+            return fallback;
+          }
+        };
         const [status, providerConfig, retrieval, management, applications] = await Promise.all([
-          invoke('status'),
-          options.getProviderConfig?.(),
-          retrieveWithoutNotice({ view: 'combined', projectKey: projectId }),
-          invoke('manage', { projectKey: projectId }),
-          options.listContextApplications?.(),
+          section('status', invoke('status'), {
+            availability: 'unavailable',
+            learningEnabled: undefined,
+            retrievalEnabled: undefined,
+            pausedProjects: [],
+            pausedLearningProjects: [],
+            pausedRetrievalProjects: [],
+            files: [],
+            remote: null,
+            sync: null,
+          }),
+          section('providerConfig', Promise.resolve(options.getProviderConfig?.()), undefined),
+          section('retrieval', retrieveWithoutNotice({ view: 'combined', projectKey: projectId }), {
+            records: [],
+            text: '',
+            truncated: false,
+            disabled: false,
+          }),
+          section('management', invoke('manage', { projectKey: projectId }), {
+            records: [],
+            conflicts: [],
+            truncated: false,
+          }),
+          section(
+            'applications',
+            readApplications({ contextProjectId: projectId, limit: 100 }).then(
+              (page) => page.items,
+            ),
+            [],
+          ),
         ]);
         const managed = management as MemoryManagementView;
         const dashboardManagement = {
           ...managed,
-          records: managed.records.map((record) => ({
-            ...record,
-            ...contextApplicationProjection(
-              record.id,
-              applications ?? [],
-              PERSONAL_MEMORY_PLUGIN_ID,
-            ),
-          })),
+          records: await Promise.all(
+            managed.records.map(async (record) => {
+              const history = await section(
+                'applicationHistory',
+                readApplications({ candidateId: record.id, limit: 6 }),
+                {
+                  items: [],
+                  total: 0,
+                } as import('../agent-learning/index.js').AgentContextApplicationPage,
+              );
+              return {
+                ...record,
+                ...contextApplicationProjection(
+                  record.id,
+                  history.items,
+                  PERSONAL_MEMORY_PLUGIN_ID,
+                ),
+                contextApplicationCount: history.total,
+                ...(history.nextCursor ? { applicationHistoryCursor: history.nextCursor } : {}),
+              };
+            }),
+          ),
         };
         const currentManifest = latestApplicationBatch(
           applications ?? [],
           PERSONAL_MEMORY_PLUGIN_ID,
+          projectId ?? options.projectId ?? context.projectId,
         );
         const recordsById = new Map(
           dashboardManagement.records
@@ -319,11 +387,14 @@ async function createModule(
             .map((record) => [record.id, record]),
         );
         return {
+          partial: sectionErrors.length > 0,
+          sectionErrors,
           projectKey: projectId,
           policy: projectPolicy,
           status,
           providerConfig,
           retrieval,
+          contextUsage: await options.readContextUsage?.(applications ?? []),
           management: dashboardManagement,
           manifestPreview: currentManifest.flatMap((application) => {
             const record = recordsById.get(application.candidateId);
@@ -347,6 +418,7 @@ async function createModule(
             ];
           }),
           operations: [
+            'application-history',
             'remember',
             'manage',
             'correct',
@@ -503,8 +575,23 @@ async function createModule(
         ? null
         : memoryContextCandidate(record, request);
     },
-    invoke: async (capability, input) =>
-      invokeCapability(
+    invoke: async (capability, input) => {
+      if (capability === 'application-history') {
+        const query = asRecord<{ candidateId?: string; cursor?: string }>(
+          input,
+          'application-history',
+        );
+        if (typeof query.candidateId !== 'string' || !query.candidateId.trim())
+          throw new Error('Application history requires a candidate ID');
+        if (query.cursor !== undefined && typeof query.cursor !== 'string')
+          throw new Error('Invalid context application cursor');
+        return readApplications({
+          candidateId: query.candidateId,
+          cursor: query.cursor,
+          limit: 20,
+        });
+      }
+      return invokeCapability(
         provider,
         service,
         capability,
@@ -516,7 +603,8 @@ async function createModule(
         options.getProviderConfig,
         options.configureProvider,
         context.projectId ?? options.projectId,
-      ),
+      );
+    },
   };
 }
 
@@ -544,9 +632,18 @@ function contextApplicationProjection(
 function latestApplicationBatch(
   applications: readonly import('../agent-learning/index.js').AgentContextApplicationRecord[],
   owner: string,
+  projectId?: string,
 ): readonly import('../agent-learning/index.js').AgentContextApplicationRecord[] {
   const ordered = applications
-    .filter((application) => application.owner === owner)
+    .filter(
+      (application) =>
+        application.owner === owner &&
+        (projectId === undefined ||
+          (application.scope === 'user'
+            ? application.contextProjectId === undefined ||
+              application.contextProjectId === projectId
+            : application.projectId === projectId)),
+    )
     .sort((left, right) => right.appliedAt.localeCompare(left.appliedAt));
   const episodeId = ordered[0]?.episodeId;
   return episodeId === undefined

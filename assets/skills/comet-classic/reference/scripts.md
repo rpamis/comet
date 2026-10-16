@@ -131,6 +131,8 @@ comet archive <change-name>
 
 ## Task Context and Artifact Language
 
+At task completion, prefer [Task learning completion](../../comet/reference/task-learning.md): prepare one learning file and use `comet task --complete --learning-file <file>` to submit personal observations, project lessons, pending review decisions, and actual-use feedback together. The separate save, review, and completion commands later in this section remain available for immediate saves, individual corrections, and older versions; do not repeat them when using a learning file.
+
 Every OpenSpec and Superpowers artifact must use the configured Comet artifact language, a normalized language ID: `en` or `zh-CN`. For an existing change, prefer `configuration.language` from the current valid entry. Only if entry omits it, read `language` in the actual state file through `comet state get <name> language`. When neither state filename exists, read `classic.language` from project `.comet/config.yaml`, then global `~/.comet/config.yaml`. Use the current user request's language only when neither is configured. Explicitly include the resolved language in prompts or ARGUMENTS sent to external OpenSpec/Superpowers Skills.
 
 On first entering a phase, handing work to a new Agent, or restoring context, retrieve task context once using the current `agent.continuation.contextRequest`. For a claimed SDK Action, prefer that Action's `contextRequest` in `data.continuation.current.actions[]`. This protocol covers full, hotfix and tweak in SDK and Compat, including direct stage Skill invocation. Ordinary status reads, waiting for an existing task and uninterrupted work within a phase do not require another retrieval.

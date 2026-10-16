@@ -2,10 +2,40 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createDashboardRequestCoordinator,
+  mergePartialPluginPage,
   resolveDashboardProjectWorkflow,
 } from '../../../domains/dashboard/web/src/dashboard-data.js';
 
 describe('Dashboard data coordination', () => {
+  it('keeps only failed sections from the same plugin cache and clears stale content on recovery', () => {
+    const previous = {
+      pluginId: 'memory',
+      data: {
+        management: { records: [{ id: 'saved' }] },
+        manifestPreview: [{ id: 'saved' }],
+        providerConfig: { provider: 'old' },
+      },
+    };
+    const partial = {
+      pluginId: 'memory',
+      data: {
+        partial: true,
+        sectionErrors: [{ section: 'management' }],
+        management: { records: [] },
+        manifestPreview: [],
+        providerConfig: { provider: 'new' },
+      },
+    };
+    expect(mergePartialPluginPage(previous, partial).data).toMatchObject({
+      management: previous.data.management,
+      manifestPreview: previous.data.manifestPreview,
+      providerConfig: { provider: 'new' },
+      cachedSections: ['management', 'manifestPreview'],
+    });
+    expect(mergePartialPluginPage({ ...previous, pluginId: 'other' }, partial)).toBe(partial);
+    const recovered = { pluginId: 'memory', data: { partial: false, management: { records: [] } } };
+    expect(mergePartialPluginPage(previous, recovered)).toBe(recovered);
+  });
   it('uses configured workflow values and falls back to Classic for unavailable values', () => {
     expect(
       resolveDashboardProjectWorkflow({

@@ -2,6 +2,336 @@ import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import type { Page } from '@playwright/test';
+
+async function stubContextPages(page: Page, load: (pluginId: string) => unknown) {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  await page.route('**/api/dashboard/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: { activeChanges: 0, archivedChanges: 0 },
+          initialChanges: { items: [], total: 0 },
+          git: {},
+          native: null,
+        },
+      });
+    if (pathname.endsWith('/plugins'))
+      return route.fulfill({
+        json: { pages: DEMO_PLUGIN_PAGES.map((entry) => load(entry.pluginId)) },
+      });
+    const plugin = DEMO_PLUGIN_PAGES.find((entry) =>
+      pathname.endsWith('/plugins/' + entry.pluginId),
+    );
+    return route.fulfill({ json: plugin ? load(plugin.pluginId) : { items: [], total: 0 } });
+  });
+}
+
+test('pages application history without rendering or reloading the complete ledger', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const pages = structuredClone(DEMO_PLUGIN_PAGES);
+  const memory = pages[0].data.management.records[0];
+  const history = Array.from({ length: 46 }, (_, index) => ({
+    ...memory.lastApplication,
+    applicationId: `history-${index}`,
+    candidateId: memory.id,
+    task: `History task ${index}`,
+    whyApplied: 'Explicit preference',
+    delivery: 'full',
+    appliedAt: '2026-08-29T08:00:00.000Z',
+  }));
+  Object.assign(memory, {
+    contextApplicationCount: 30000,
+    applicationHistory: history.slice(0, 6),
+    applicationHistoryCursor: '6',
+  });
+  let reads = 0;
+  const cursors: string[] = [];
+  await page.route('**/api/dashboard/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: { activeChanges: 0, archivedChanges: 0 },
+          initialChanges: { items: [], total: 0 },
+          git: {},
+          native: null,
+        },
+      });
+    if (pathname.endsWith('/plugins')) return route.fulfill({ json: { pages } });
+    if (pathname.endsWith('/invoke')) {
+      const body = route.request().postDataJSON();
+      expect(body.capability).toBe('application-history');
+      cursors.push(body.input.cursor);
+      const offset = Number(body.input.cursor);
+      return route.fulfill({
+        json: {
+          result: {
+            items: history.slice(offset, offset + 20),
+            total: 30000,
+            ...(offset + 20 < history.length ? { nextCursor: String(offset + 20) } : {}),
+          },
+        },
+      });
+    }
+    const plugin = pages.find((entry) => pathname.endsWith('/plugins/' + entry.pluginId));
+    if (plugin?.pluginId === 'comet.personal-memory') reads++;
+    return route.fulfill({ json: plugin ?? { items: [], total: 0 } });
+  });
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  const inspector = page.getByLabel('记忆应用详情');
+  const articles = inspector.locator('.dashboard-context-application-history article');
+  await expect(articles).toHaveCount(6);
+  await expect(inspector).toContainText('共 30000 条');
+  const initialReads = reads;
+  await inspector.getByRole('button', { name: '较早记录', exact: true }).click();
+  await expect(articles).toHaveCount(20);
+  await expect(articles.first()).toContainText('History task 6');
+  await inspector.getByRole('button', { name: '较早记录', exact: true }).click();
+  await expect(articles).toHaveCount(20);
+  await expect(articles.first()).toContainText('History task 26');
+  await inspector.getByRole('button', { name: '较新记录', exact: true }).click();
+  await expect(articles.first()).toContainText('History task 6');
+  await inspector.getByRole('button', { name: '较新记录', exact: true }).click();
+  await expect(articles).toHaveCount(6);
+  expect(cursors).toEqual(['6', '26', '6']);
+  expect(reads).toBe(initialReads);
+});
+
+test('shows context usage and honest feedback on both memory pages without writing on preview', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const pages = structuredClone(DEMO_PLUGIN_PAGES);
+  const usage = {
+    available: true,
+    days: 7,
+    sampleLimit: 500,
+    truncated: true,
+    requests: 3,
+    hits: 2,
+    hitRate: 2 / 3,
+    limitedRequests: 1,
+    fullDeliveries: 1,
+    recommendations: 2,
+    feedbackCount: 1,
+    feedbackRate: 0.5,
+    successes: 1,
+    corrections: 0,
+    failures: 0,
+    ignored: 0,
+    overridden: 0,
+    successRate: 1,
+    p95Ms: 42,
+    lastQueryMs: 18,
+    recentTasks: [
+      {
+        episodeId: 'r1',
+        task: '修复登录页面的回归',
+        phase: 'build',
+        occurredAt: '2026-10-16T08:00:00Z',
+        counted: true,
+        elapsedMs: 18,
+        candidateCount: 2,
+        limited: false,
+        items: [
+          {
+            candidateId: 'm1',
+            title: '先验证复现条件',
+            delivery: 'full',
+            whyApplied: '适用于本次修复',
+            outcome: 'used-successfully',
+          },
+          {
+            candidateId: 'm2',
+            title: '运行相关检查',
+            delivery: 'manifest',
+            whyApplied: '阶段匹配',
+          },
+        ],
+      },
+      {
+        episodeId: 'r0',
+        task: '没有结果的任务',
+        occurredAt: '2026-10-16T07:00:00Z',
+        counted: true,
+        elapsedMs: 42,
+        candidateCount: 0,
+        limited: false,
+        items: [],
+      },
+    ],
+  };
+  for (const entry of pages) entry.data.contextUsage = structuredClone(usage);
+  let writes = 0;
+  await page.route('**/api/dashboard/**', async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (route.request().method() === 'POST') writes++;
+    if (pathname === '/api/dashboard/projects')
+      return route.fulfill({
+        json: {
+          currentProjectId: 'fixture',
+          projects: [
+            {
+              id: 'fixture',
+              name: 'Fixture',
+              path: '/fixture',
+              availability: 'available',
+              isCurrent: true,
+            },
+          ],
+        },
+      });
+    if (pathname.endsWith('/overview'))
+      return route.fulfill({
+        json: {
+          project: { name: 'Fixture', path: '/fixture' },
+          summary: { activeChanges: 0, archivedChanges: 0 },
+          initialChanges: { items: [], total: 0 },
+          git: {},
+          native: null,
+        },
+      });
+    if (pathname.endsWith('/plugins')) return route.fulfill({ json: { pages } });
+    const plugin = pages.find((entry) => pathname.endsWith('/plugins/' + entry.pluginId));
+    return route.fulfill({ json: plugin ?? { items: [], total: 0 } });
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/');
+  for (const label of ['个人记忆', '项目知识']) {
+    await page.getByRole('menuitem', { name: label }).click();
+    const panel = page.getByRole('region', { name: `${label}检索与使用` });
+    await expect(panel).toContainText('66.7%');
+    await expect(panel).toContainText('2/3 次请求有适用内容');
+    await expect(panel).toContainText('记录已截断');
+    await expect(panel).toContainText('1/2 条推荐有结果反馈');
+    await panel.getByRole('button', { name: '查看最近任务' }).click();
+    const dialog = page.getByRole('dialog', { name: /最近任务的上下文使用/u });
+    await dialog.getByRole('button', { name: /修复登录页面的回归/u }).click();
+    await expect(dialog).toContainText('已交付全文');
+    await expect(dialog).toContainText('仅推荐摘要');
+    await expect(dialog).toContainText('尚无反馈');
+    await dialog.getByRole('button', { name: /没有结果的任务/u }).click();
+    await expect(dialog).toContainText('本次没有返回适用内容');
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+  }
+  await page.screenshot({ path: path.join(os.tmpdir(), 'comet-context-usage-desktop.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const panel = page.getByRole('region', { name: '项目知识检索与使用' });
+  await expect(panel).toBeVisible();
+  expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(
+    true,
+  );
+  await panel.getByRole('button', { name: '准确性评估：暂无标注结果' }).click();
+  await expect(
+    page.getByText(
+      '真实召回率需要知道本应召回哪些内容。当前没有可用的项目标注评估结果，日常命中率不能替代召回率。',
+    ),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.screenshot({ path: path.join(os.tmpdir(), 'comet-context-usage-mobile.png') });
+  expect(writes).toBe(0);
+});
+
+test('keeps missing context usage unknown and localizes the panel', async ({ page }) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  await stubContextPages(page, (id) => {
+    const entry = DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === id)!;
+    return { ...entry, data: { ...entry.data, contextUsage: undefined } };
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  const panel = page.getByRole('region', { name: '个人记忆检索与使用' });
+  await expect(panel.locator('dd')).toHaveText(['—', '—', '—', '—', '—']);
+  await expect(panel.getByRole('button', { name: '查看最近任务' })).toBeDisabled();
+  await page.locator('.comet-language-switch').getByText('EN', { exact: true }).click();
+  await expect(
+    page.getByRole('region', { name: 'Personal memory retrieval and use' }),
+  ).toContainText('Statistics unavailable');
+  await expect(
+    page.getByRole('button', { name: 'Accuracy: no labelled evaluation' }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Switch to dark mode' }).click();
+  const englishPanel = page.getByRole('region', { name: 'Personal memory retrieval and use' });
+  expect(
+    await englishPanel.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+  ).toBe(true);
+  await page.screenshot({ path: path.join(os.tmpdir(), 'comet-context-usage-english-dark.png') });
+});
+
+test('retains cached memory records during partial reload and replaces them after recovery', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  let partial = false;
+  await stubContextPages(page, (id) => {
+    const entry = structuredClone(DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === id)!);
+    if (id === 'comet.personal-memory' && partial) {
+      return {
+        ...entry,
+        data: {
+          ...entry.data,
+          management: { records: [] },
+          manifestPreview: [],
+          partial: true,
+          sectionErrors: [{ section: 'management', message: 'Provider timed out' }],
+        },
+      };
+    }
+    return entry;
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  const rows = page.locator('.dashboard-memory-table-row');
+  await expect(rows.first()).toContainText('交付语言与结构');
+  partial = true;
+  await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+  await expect(page.getByText('显示上次读取的记录，恢复后刷新即可更新。')).toBeVisible();
+  await expect(rows.first()).toContainText('交付语言与结构');
+  partial = false;
+  await page.getByRole('button', { name: '立即刷新', exact: true }).click();
+  await expect(page.getByText('显示上次读取的记录，恢复后刷新即可更新。')).toHaveCount(0);
+  await expect(rows.first()).toContainText('交付语言与结构');
+});
 
 for (const workflow of ['Classic', 'Native']) {
   test(`${workflow} keeps the center frame when a summary filter has no matches`, async ({
@@ -74,11 +404,11 @@ test('drags the font slider in dark mode and scales Tailwind, code and AntD cont
     );
   const original = await sizes();
   const track = dialog.locator('.ant-slider');
+  await track.hover();
   const bounds = (await track.boundingBox())!;
-  await page.mouse.click(
-    bounds.x + (bounds.width * (125 - 90)) / (150 - 90),
-    bounds.y + bounds.height / 2,
-  );
+  await track.click({
+    position: { x: (bounds.width * (125 - 90)) / (150 - 90), y: bounds.height / 2 },
+  });
   await expect(dialog.getByRole('slider')).toHaveAttribute('aria-valuenow', '125');
   await expect.poll(sizes).toEqual(original.map((size) => size * 1.25));
   const second = await context.newPage();
@@ -1491,9 +1821,9 @@ test('shows Project Knowledge status and project pause transitions', async ({ pa
     .getByRole('complementary', { name: '记录详情' })
     .locator('.dashboard-context-application-history');
   await expect(applicationHistory.locator('article')).toHaveCount(6);
-  await page.getByRole('button', { name: '查看全部 8 条' }).click();
-  await expect(applicationHistory.locator('article')).toHaveCount(8);
-  await page.getByRole('button', { name: '收起', exact: true }).click();
+  await page.getByRole('button', { name: '较早记录', exact: true }).click();
+  await expect(applicationHistory.locator('article')).toHaveCount(2);
+  await page.getByRole('button', { name: '较新记录', exact: true }).click();
   await expect(applicationHistory.locator('article')).toHaveCount(6);
   await expect(page.getByText(/2026-08-22/u).first()).toBeVisible();
   const registryBounds = await page.locator('.dashboard-knowledge-registry').boundingBox();

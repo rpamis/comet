@@ -10,6 +10,7 @@ const roots = {
 };
 
 const markdownFiles = [
+  '../comet/reference/task-learning.md',
   'SKILL.md',
   'reference/artifacts.md',
   'reference/clarification.md',

@@ -335,8 +335,10 @@ export async function discoverProjectKnowledgeCorpusSnapshot(
   options: ProjectKnowledgeCorpusOptions,
 ): Promise<ProjectKnowledgeCorpusSnapshot> {
   const projectRoot = path.resolve(options.projectRoot);
+  const selectionDeadline = Date.now() + MAX_CORPUS_DISCOVERY_MS;
   const budget: DiscoveryBudget = {
-    deadline: Date.now() + MAX_CORPUS_DISCOVERY_MS,
+    // Leave time to inspect discovered sources even when historical traversal is incomplete.
+    deadline: selectionDeadline - 500,
     timedOut: false,
     complete: true,
   };
@@ -363,6 +365,7 @@ export async function discoverProjectKnowledgeCorpusSnapshot(
   const maxTotalBytes = localLimits.maxTotalMb * BYTES_PER_MB;
   const enabledWorkflows = new Set(config.workflows ?? [config.default_workflow]);
   const documents: ProjectKnowledgeDocument[] = [];
+  const historicalRoots: Array<() => Promise<ProjectKnowledgeDocument[]>> = [];
   if (config.native && enabledWorkflows.has('native')) {
     const nativeRoot = path.join(projectRoot, config.native.artifact_root, 'comet');
     documents.push(
@@ -374,14 +377,16 @@ export async function discoverProjectKnowledgeCorpusSnapshot(
         options.reportDiagnostic,
         budget,
       )),
-      ...(await walkMarkdown(
+    );
+    historicalRoots.push(() =>
+      walkMarkdown(
         path.join(nativeRoot, 'archive'),
         projectRoot,
         'native-archive',
         undefined,
         options.reportDiagnostic,
         budget,
-      )),
+      ),
     );
   }
   if (config.classic && enabledWorkflows.has('classic')) {
@@ -396,15 +401,19 @@ export async function discoverProjectKnowledgeCorpusSnapshot(
         options.reportDiagnostic,
         budget,
       )),
-      ...(await walkMarkdown(
+    );
+    historicalRoots.push(() =>
+      walkMarkdown(
         path.join(archiveRoot),
         projectRoot,
         'classic-archive',
         undefined,
         options.reportDiagnostic,
         budget,
-      )),
-      ...(await discoverSuperpowers(projectRoot, archiveRoot, options.reportDiagnostic, budget)),
+      ),
+    );
+    historicalRoots.push(() =>
+      discoverSuperpowers(projectRoot, archiveRoot, options.reportDiagnostic, budget),
     );
   }
   if (config.knowledge?.provider === 'local' && config.knowledge.local?.include.length) {
@@ -417,6 +426,11 @@ export async function discoverProjectKnowledgeCorpusSnapshot(
       )),
     );
   }
+  for (const discover of historicalRoots) {
+    if (budgetExpired(budget)) break;
+    documents.push(...(await discover()));
+  }
+  budgetExpired(budget);
   const unique = new Map<string, ProjectKnowledgeDocument>();
   for (const document of documents) {
     const existing = unique.get(document.source);
@@ -429,10 +443,26 @@ export async function discoverProjectKnowledgeCorpusSnapshot(
   }
   const bounded: ProjectKnowledgeDocument[] = [];
   let totalBytes = 0;
-  for (const document of [...unique.values()].sort((left, right) =>
-    left.source.localeCompare(right.source),
+  for (const document of [...unique.values()].sort(
+    (left, right) =>
+      Number(
+        left.kind === 'native-archive' ||
+          left.kind === 'classic-archive' ||
+          left.kind === 'superpowers',
+      ) -
+        Number(
+          right.kind === 'native-archive' ||
+            right.kind === 'classic-archive' ||
+            right.kind === 'superpowers',
+        ) ||
+      knowledgeDocumentKindRank(left.kind) - knowledgeDocumentKindRank(right.kind) ||
+      left.source.localeCompare(right.source),
   )) {
-    if (budgetExpired(budget)) break;
+    if (Date.now() > selectionDeadline) {
+      budget.complete = false;
+      budget.timedOut = true;
+      break;
+    }
     if (bounded.length >= MAX_CORPUS_FILES) {
       budget.complete = false;
       report(
@@ -478,7 +508,10 @@ export async function discoverProjectKnowledgeCorpusSnapshot(
       '未进入检索：语料发现超过时间预算，尚未发现的文件当前不会参与召回。',
     );
   }
-  return { documents: bounded, complete: budget.complete };
+  return {
+    documents: bounded.sort((left, right) => left.source.localeCompare(right.source)),
+    complete: budget.complete,
+  };
 }
 
 export async function discoverProjectKnowledgeCorpus(

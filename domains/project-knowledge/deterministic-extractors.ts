@@ -76,6 +76,8 @@ export interface DeterministicProjectRecordExtractionOptions {
   /** @deprecated Corpus membership belongs to the index status, not generated records. */
   readonly knowledgeSources?: readonly string[];
   readonly preferredRecordIds?: readonly string[];
+  /** Restrict maintenance to missing or invalid records, while discovering relation targets. */
+  readonly recordIds?: readonly string[];
   readonly language?: MemoryLanguage;
   readonly reportDiagnostic?: ProjectKnowledgeDiagnosticReporter;
 }
@@ -415,6 +417,7 @@ async function moduleRecords(
   language: MemoryLanguage,
   preferredRecordIds: readonly string[] | undefined,
   reportDiagnostic?: ProjectKnowledgeDiagnosticReporter,
+  recordIds?: readonly string[],
 ): Promise<ProjectKnowledgeRecordDraft[]> {
   const modules = await discoverProjectModules(root, deadline, reportDiagnostic);
   const preference = new Map((preferredRecordIds ?? []).map((id, index) => [id, index]));
@@ -427,6 +430,7 @@ async function moduleRecords(
   const scannedModuleIds = new Set<string>();
   let timedOut = false;
   for (const module of scanOrder) {
+    if (recordIds !== undefined && !recordIds.includes(module.id)) continue;
     if (discoveredCodeFiles.length > MAX_SOURCE_FILES) break;
     if (Date.now() > deadline) {
       timedOut = true;
@@ -490,6 +494,7 @@ async function moduleRecords(
 
   const records: ProjectKnowledgeRecordDraft[] = [];
   for (const module of modules) {
+    if (recordIds !== undefined && !recordIds.includes(module.id)) continue;
     if (!scannedModuleIds.has(module.id)) continue;
     if (
       (timedOut || sourceLimitReached) &&
@@ -721,9 +726,15 @@ async function extractDraftRecords(
   const language = options.language ?? 'zh-CN';
   const records: ProjectKnowledgeRecordDraft[] = [];
   try {
-    const projectMap = await projectMapRecord(root, deadline, language);
+    const projectMap =
+      options.recordIds === undefined || options.recordIds.includes('generated-project-map')
+        ? await projectMapRecord(root, deadline, language)
+        : null;
     if (projectMap) records.push(projectMap);
-    const buildTest = await buildTestRecord(root, deadline, language);
+    const buildTest =
+      options.recordIds === undefined || options.recordIds.includes('generated-build-test')
+        ? await buildTestRecord(root, deadline, language)
+        : null;
     if (buildTest) records.push(buildTest);
     records.push(
       ...(await moduleRecords(
@@ -732,6 +743,7 @@ async function extractDraftRecords(
         language,
         options.preferredRecordIds,
         options.reportDiagnostic,
+        options.recordIds,
       )),
     );
   } catch (error) {

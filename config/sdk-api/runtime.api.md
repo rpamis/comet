@@ -55,7 +55,7 @@ export function createMemoryRuntimeStore<T extends RuntimeRecord>(): RuntimeStor
 // @public
 export function createPortableRunCheckpoint(run: WorkflowRun): PortableRunCheckpoint;
 
-// @public
+// @public (undocumented)
 export function createRuntime(options: CreateRuntimeOptions): {
     start: (input: StartRuntimeRun) => Promise<WorkflowRun>;
     dispatchCommand: (command: DispatchRuntimeCommand) => Promise<WorkflowRun>;
@@ -67,7 +67,7 @@ export function createRuntime(options: CreateRuntimeOptions): {
     }) => Promise<WorkflowRun>;
     resolveWait: (command: ResolveRuntimeWait) => Promise<WorkflowRun>;
     recordEvidence: (command: RecordRuntimeEvidence) => Promise<WorkflowRun>;
-    invalidateEvidence: (command: InvalidateRuntimeEvidence) => Promise<WorkflowRun>;
+    invalidateEvidence: (command: RecordRuntimeEvidence) => Promise<WorkflowRun>;
     reviseWait: (command: RunCommand & {
         waitId: string;
         proposalHash: string;
@@ -179,6 +179,17 @@ export interface DispatchRuntimeCommand extends RunCommand {
     name: string;
 }
 
+// @public
+export function encodePortableRunCheckpoint(checkpoint: PortableRunCheckpoint): PortableRunCheckpoint | {
+    schema: string;
+    run: WorkflowRun;
+    pool: JsonValuePool;
+    storageHash: string;
+    hash: string;
+    sourceRevision?: number;
+    sourceHash?: string;
+};
+
 // @public (undocumented)
 export function evidence(options: Omit<EvidenceWorkflowStepOptions, 'type'>): WorkflowStep;
 
@@ -254,6 +265,9 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
 
 // @public (undocumented)
 export const PORTABLE_RUN_CHECKPOINT_KEY = "run_checkpoint";
+
+// @public (undocumented)
+export function portableRunCheckpointMatches(value: unknown, expected: PortableRunCheckpoint): boolean;
 
 // @public (undocumented)
 export function readPortableRunCheckpoint(value: unknown, runId: string, options?: {

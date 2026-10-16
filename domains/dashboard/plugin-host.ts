@@ -4,6 +4,7 @@ import type {
   PluginScopeContext,
 } from '../comet-plugin/sdk.js';
 import { PluginRuntimeError } from '../comet-plugin/sdk.js';
+import { withOperationBudget } from '../../platform/process/operation-budget.js';
 
 export interface DashboardPluginPageRegistration {
   readonly pluginId: string;
@@ -90,10 +91,12 @@ export class DashboardPluginHost {
     let data: unknown = null;
     try {
       if (page.load !== undefined) {
-        data = await page.load({
-          projectId: this.projectId,
-          invoke: (capability, input) => this.invoke(pluginId, capability, input),
-        });
+        data = await withOperationBudget({ timeoutMs: 2000 }, () =>
+          page.load!({
+            projectId: this.projectId,
+            invoke: (capability, input) => this.invoke(pluginId, capability, input),
+          }),
+        );
       }
     } catch (error) {
       throw this.asHostError(pluginId, error);
@@ -112,22 +115,17 @@ export class DashboardPluginHost {
       throw new DashboardPluginHostError('插件已停用，请先重新启用', 409, pluginId);
     }
     try {
-      const diagnosticsBefore = this.runtime.diagnostics().length;
-      const result = await this.runtime.invoke(pluginId, capability, input, this.scope());
-      const invokeFailure = this.runtime
-        .diagnostics()
-        .slice(diagnosticsBefore)
-        .find(
-          (diagnostic) =>
-            diagnostic.pluginId === pluginId &&
-            diagnostic.phase === 'invoke' &&
-            diagnostic.code === 'execution-failed',
-        );
-      if (invokeFailure !== undefined) {
-        throw new DashboardPluginHostError(invokeFailure.message, 400, pluginId);
-      }
+      const result = await withOperationBudget({ timeoutMs: 10000 }, () =>
+        this.runtime.invoke(pluginId, capability, input, this.scope(), { throwOnError: true }),
+      );
       return result;
     } catch (error) {
+      if (!(error instanceof PluginRuntimeError) && !(error instanceof DashboardPluginHostError))
+        throw new DashboardPluginHostError(
+          error instanceof Error ? error.message : String(error),
+          400,
+          pluginId,
+        );
       throw this.asHostError(pluginId, error);
     }
   }

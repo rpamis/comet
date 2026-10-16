@@ -2444,6 +2444,63 @@ const demoProjectKnowledgeRecords = [
   },
 ];
 
+function demoContextUsage(records) {
+  return {
+    demo: true,
+    available: true,
+    days: 7,
+    sampleLimit: 500,
+    truncated: false,
+    trackingStartedAt: '2026-08-23T08:00:00.000Z',
+    requests: 24,
+    hits: 18,
+    hitRate: 0.75,
+    limitedRequests: 1,
+    fullDeliveries: 12,
+    recommendations: 18,
+    feedbackCount: 9,
+    feedbackRate: 0.5,
+    successes: 7,
+    corrections: 1,
+    failures: 0,
+    ignored: 1,
+    overridden: 0,
+    successRate: 0.875,
+    p95Ms: 42,
+    lastQueryMs: 18,
+    recentTasks: [
+      {
+        episodeId: 'demo-recent-task',
+        task: '修复 Dashboard 的历史记录加载',
+        phase: 'build',
+        occurredAt: '2026-08-29T11:30:00.000Z',
+        counted: true,
+        elapsedMs: 18,
+        candidateCount: records.length,
+        limited: false,
+        items: records.slice(0, 2).map((record) => ({
+          candidateId: record.id,
+          title: record.title ?? record.category,
+          delivery: record.lastApplication?.delivery ?? 'full',
+          whyApplied: record.lastApplication?.whyApplied ?? '适用于当前阶段',
+          outcome: 'used-successfully',
+        })),
+      },
+      {
+        episodeId: 'demo-empty-task',
+        task: '检查当前阶段是否有适用记忆',
+        phase: 'verify',
+        occurredAt: '2026-08-29T10:30:00.000Z',
+        counted: true,
+        elapsedMs: 9,
+        candidateCount: 0,
+        limited: false,
+        items: [],
+      },
+    ],
+  };
+}
+
 export const DEMO_PLUGIN_PAGES = [
   {
     pluginId: 'comet.personal-memory',
@@ -2454,6 +2511,7 @@ export const DEMO_PLUGIN_PAGES = [
     projectPaused: false,
     diagnostics: [],
     data: {
+      contextUsage: demoContextUsage(demoMemoryRecords),
       status: {
         learningEnabled: true,
         retrievalEnabled: true,
@@ -2495,6 +2553,7 @@ export const DEMO_PLUGIN_PAGES = [
     projectPaused: false,
     diagnostics: [],
     data: {
+      contextUsage: demoContextUsage(demoProjectKnowledgeRecords),
       provider: 'local',
       configured: true,
       localLimits: { maxFileMb: 1, maxTotalMb: 32 },

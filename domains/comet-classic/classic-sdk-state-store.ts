@@ -17,6 +17,8 @@ import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 import {
   createFileRuntimeStore,
   createPortableRunCheckpoint,
+  encodePortableRunCheckpoint,
+  portableRunCheckpointMatches,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
   type RuntimeStore,
@@ -432,7 +434,10 @@ export function createClassicSdkStateStore(
           !fileState ||
           !equal(fileState, state) ||
           (documentData[PORTABLE_RUN_CHECKPOINT_KEY] !== undefined &&
-            !equal(documentData[PORTABLE_RUN_CHECKPOINT_KEY], createPortableRunCheckpoint(run))) ||
+            !portableRunCheckpointMatches(
+              documentData[PORTABLE_RUN_CHECKPOINT_KEY],
+              createPortableRunCheckpoint(run),
+            )) ||
           (options.identity &&
             documentData.application_checkpoint !== undefined &&
             !equal(documentData.application_checkpoint, options.identity))
@@ -453,8 +458,8 @@ export function createClassicSdkStateStore(
         else document.set(key, value);
       }
       const checkpoint = createPortableRunCheckpoint(run);
-      if (!equal(current[PORTABLE_RUN_CHECKPOINT_KEY], checkpoint)) {
-        document.set(PORTABLE_RUN_CHECKPOINT_KEY, checkpoint);
+      if (!portableRunCheckpointMatches(current[PORTABLE_RUN_CHECKPOINT_KEY], checkpoint)) {
+        document.set(PORTABLE_RUN_CHECKPOINT_KEY, encodePortableRunCheckpoint(checkpoint));
       }
       if (options.identity && !equal(current.application_checkpoint, options.identity))
         document.set('application_checkpoint', options.identity);

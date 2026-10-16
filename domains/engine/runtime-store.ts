@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { types as utilTypes } from 'node:util';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -22,6 +23,8 @@ import {
   validateRuntimeValue,
 } from './runtime-json.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
+import { encodeRuntimeHistory } from './runtime-history-storage.js';
+import { decodeJsonValueMaps } from '../../platform/fs/json-value-pool.js';
 
 export interface RuntimeRecord {
   runId: string;
@@ -56,9 +59,23 @@ function serializeNext<T extends RuntimeRecord>(
   expectedRevision: number | null,
   next: T,
 ): string {
+  return JSON.stringify(snapshotNext(runId, expectedRevision, next));
+}
+
+function snapshotNext<T extends RuntimeRecord>(
+  runId: string,
+  expectedRevision: number | null,
+  next: T,
+): T {
   assertRunId(runId);
+  if (utilTypes.isProxy(next))
+    throw new RuntimeProtocolError(
+      'STORE_INVALID_RUN_ID',
+      'RuntimeStore records must be plain JSON data',
+    );
   if (expectedRevision !== null) assertRevision(expectedRevision);
-  const snapshot = cloneRuntimeValue(next) as unknown as T;
+  validateRuntimeValue(next);
+  const snapshot = structuredClone(next);
   if (
     !snapshot ||
     typeof snapshot !== 'object' ||
@@ -74,7 +91,7 @@ function serializeNext<T extends RuntimeRecord>(
       'next.revision 必须比预期 revision 增加 1',
     );
   }
-  return JSON.stringify(snapshot);
+  return snapshot;
 }
 
 const CHECKPOINT_SCHEMA = 'comet.runtime-store-checkpoint.v1';
@@ -354,25 +371,52 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
         record?: T;
         hash?: unknown;
         legacyRevision?: unknown;
+        pool?: unknown;
       } | null;
-      const record = snapshot?.record;
+      const stored = snapshot?.record;
       const legacyRevision = snapshot?.legacyRevision;
       if (
         !snapshot ||
-        snapshot.schema !== compactSchema ||
-        !record ||
+        ![compactSchema, 'comet.runtime-store-snapshot.v3'].includes(String(snapshot.schema)) ||
+        !stored ||
         Object.keys(snapshot).some(
-          (key) => !['schema', 'record', 'hash', 'legacyRevision'].includes(key),
+          (key) =>
+            ![
+              'schema',
+              'record',
+              'hash',
+              'legacyRevision',
+              ...(snapshot.schema === 'comet.runtime-store-snapshot.v3' ? ['pool'] : []),
+            ].includes(key),
         ) ||
         (legacyRevision !== null &&
           (!Number.isSafeInteger(legacyRevision) ||
             (legacyRevision as number) < 1 ||
-            (legacyRevision as number) > record.revision)) ||
-        snapshot.hash !== hashRuntimeValue({ record, legacyRevision })
+            (legacyRevision as number) > stored.revision)) ||
+        snapshot.hash !==
+          hashRuntimeValue({
+            record: stored,
+            legacyRevision,
+            ...(snapshot.schema === 'comet.runtime-store-snapshot.v3'
+              ? { pool: snapshot.pool }
+              : {}),
+          })
       ) {
         throw new RuntimeProtocolError(
           'STORE_CORRUPT_RECORD',
           'RuntimeStore checkpoint 损坏或校验值不一致',
+        );
+      }
+      let record: T;
+      try {
+        record =
+          snapshot.schema === 'comet.runtime-store-snapshot.v3'
+            ? decodeJsonValueMaps(stored, snapshot.pool)
+            : stored;
+      } catch (error) {
+        throw new RuntimeProtocolError(
+          'STORE_CORRUPT_RECORD',
+          `RuntimeStore history references are invalid: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
       assertRecord(record, runId, record.revision);
@@ -648,13 +692,16 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
   async function publish(runId: string, record: T, state: StoreState): Promise<void> {
     const directory = path.join(rootDir, compactRunDirectory(runId));
     const legacyRevision = state.legacyRevision;
+    const encoded = encodeRuntimeHistory(record);
+    const payload = encoded.pool
+      ? { record: encoded.record, legacyRevision, pool: encoded.pool }
+      : { record, legacyRevision };
     await atomicWriteContainedText(
       path.join(directory, currentName),
       JSON.stringify({
-        schema: compactSchema,
-        record,
-        legacyRevision,
-        hash: hashRuntimeValue({ record, legacyRevision }),
+        schema: encoded.pool ? 'comet.runtime-store-snapshot.v3' : compactSchema,
+        ...payload,
+        hash: hashRuntimeValue(payload),
       }) + '\n',
       { containedRoot: rootDir, exclusive: !state.compacted, requireAtomicPublication: true },
     );
@@ -783,7 +830,7 @@ export function createFileRuntimeStore<T extends RuntimeRecord>(
       });
     },
     async compareAndSwap(runId, expectedRevision, next) {
-      const snapshot = JSON.parse(serializeNext(runId, expectedRevision, next)) as T;
+      const snapshot = snapshotNext(runId, expectedRevision, next);
       assertMirroredRevisions(snapshot);
       return withWriter(runId, async () => {
         const state = await prepareWriter(runId);

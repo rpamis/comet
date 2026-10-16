@@ -5,6 +5,7 @@
     "en": "assets/skills",
     "zh": "assets/skills-zh"
   },
+  "sharedSkillReferences": ["comet/reference/edit-review.md", "comet/reference/task-learning.md"],
   "classicRuntime": {
     "entries": {
       "runtime": "domains/comet-classic/classic-cli.ts",

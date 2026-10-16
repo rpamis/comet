@@ -399,6 +399,10 @@ describe('personal memory experience projection', () => {
         task: '项目 B：所有项目都使用中文',
         sessionId: 'project-b-session',
       });
+      await bridgeA.collectContext({
+        task: '项目 A：随后再次应用全局记忆',
+        sessionId: 'project-a-next-session',
+      });
       const page = (
         await bridgeB.pluginRuntime.dashboardPages({ scope: 'project', projectId: 'project-b' })
       ).find((entry) => entry.pluginId === 'comet.personal-memory');
@@ -410,6 +414,7 @@ describe('personal memory experience projection', () => {
             projectId: 'project-b',
           }),
       })) as {
+        manifestPreview: readonly { lastApplication: { task: string } }[];
         management: {
           records: readonly {
             id: string;
@@ -428,7 +433,8 @@ describe('personal memory experience projection', () => {
       );
       expect(
         loaded.management.records.find((record) => record.id === global!.id)?.applicationHistory,
-      ).toHaveLength(2);
+      ).toHaveLength(3);
+      expect(loaded.manifestPreview[0]?.lastApplication.task).toBe('项目 B：所有项目都使用中文');
       expect(loaded.management.records.map((record) => record.id)).not.toContain(projectOnly!.id);
     } finally {
       await fs.rm(root, { recursive: true, force: true });

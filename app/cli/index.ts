@@ -117,6 +117,10 @@ program
     ]),
   )
   .option('--complete', '记录成功任务')
+  .option(
+    '--learning-file <file>',
+    '任务结束时批量提交个人观察、项目经验、评审和使用反馈的 JSON 文件',
+  )
   .addOption(
     new Option('--learning-check <state>', '任务结束时个人记忆学习检查结果').choices([
       'submitted',
@@ -293,6 +297,11 @@ if (requestedArgs.includes('memory')) {
   memory
     .command('sync [path]')
     .description('同步个人记忆仓库')
+    .option('--timeout-ms <milliseconds>', '本次同步总预算，默认 30000 毫秒')
+    .option(
+      '--learning-timeout-ms <milliseconds>',
+      '补学习预算，默认 5000 毫秒，且不超过本次同步总预算',
+    )
     .option('--json', 'Output as JSON')
     .action(async (targetPath = '.', options) => {
       const { personalMemorySyncCommand } = await import('../commands/personal-memory.js');

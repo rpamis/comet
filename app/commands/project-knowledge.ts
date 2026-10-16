@@ -12,6 +12,7 @@ import {
   closeProjectKnowledgeProvider,
   createProjectKnowledgeProvider,
   createProjectKnowledgeQuery,
+  searchProjectKnowledge,
   ensureProjectKnowledgeReady,
   projectKnowledgeProviderName,
   removeProjectMemory,
@@ -80,16 +81,21 @@ export async function projectKnowledgeQueryCommand(
   const diagnostics: ProjectKnowledgeDiagnostic[] = [];
   const provider = await createProvider(projectRoot, options, diagnostics);
   try {
-    await readyProjectKnowledge(projectRoot, provider, diagnostics);
-    const result = await provider.query({
-      kind: 'search',
-      query: createProjectKnowledgeQuery({
-        task: required(options.task, '--task'),
-        path: options.path,
-        phase: options.phase,
-        operation: options.operation,
-      }),
-      limit: options.limit,
+    await readyProjectKnowledge(projectRoot, provider, diagnostics, true);
+    const result = await searchProjectKnowledge({
+      projectRoot,
+      cacheRoot: options.cacheRoot,
+      provider,
+      request: {
+        kind: 'search',
+        query: createProjectKnowledgeQuery({
+          task: required(options.task, '--task'),
+          path: options.path,
+          phase: options.phase,
+          operation: options.operation,
+        }),
+        limit: options.limit,
+      },
     });
     const output = { provider: providerName(provider), result, diagnostics };
     if (options.json) print(output, options);
@@ -309,11 +315,13 @@ async function readyProjectKnowledge(
   projectRoot: string,
   provider: ProjectKnowledgeProvider,
   diagnostics: ProjectKnowledgeDiagnostic[],
+  queryOnly = false,
 ): Promise<void> {
   await ensureProjectKnowledgeReady({
     projectRoot,
     provider,
     reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    refreshSources: !queryOnly,
   });
 }
 

@@ -6,7 +6,13 @@
       "id": "exact-01",
       "category": "exact",
       "query": "comet.project-knowledge",
-      "goldSources": ["docs/comet/specs/project-knowledge/spec.md"]
+      "goldSources": ["docs/comet/specs/project-knowledge/spec.md"],
+      "goldPassages": [
+        {
+          "source": "docs/comet/specs/project-knowledge/spec.md",
+          "allOf": ["comet.project-knowledge", "project-scope"]
+        }
+      ]
     },
     {
       "id": "exact-02",
@@ -75,7 +81,13 @@
       "id": "exact-12",
       "category": "exact",
       "query": "source_coverage",
-      "goldSources": ["docs/comet/specs/native-source-coverage/spec.md"]
+      "goldSources": ["docs/comet/specs/native-source-coverage/spec.md"],
+      "goldPassages": [
+        {
+          "source": "docs/comet/specs/native-source-coverage/spec.md",
+          "allOf": ["源文档完整覆盖模式", "文件、附件"]
+        }
+      ]
     },
     {
       "id": "exact-13",
@@ -106,7 +118,13 @@
       "id": "zh-02",
       "category": "chinese",
       "query": "个人记忆如何区分全局和项目作用域",
-      "goldSources": ["docs/comet/specs/personal-memory/spec.md"]
+      "goldSources": ["docs/comet/specs/personal-memory/spec.md"],
+      "goldPassages": [
+        {
+          "source": "docs/comet/specs/personal-memory/spec.md",
+          "allOf": ["更具体项目/路径 selector", "全局宽泛 selector"]
+        }
+      ]
     },
     {
       "id": "zh-03",
@@ -124,7 +142,13 @@
       "id": "zh-05",
       "category": "chinese",
       "query": "Dashboard 如何增量读取多个工作区",
-      "goldSources": ["docs/comet/specs/dashboard-sqlite-index/spec.md"]
+      "goldSources": ["docs/comet/specs/dashboard-sqlite-index/spec.md"],
+      "goldPassages": [
+        {
+          "source": "docs/comet/specs/dashboard-sqlite-index/spec.md",
+          "allOf": ["overview", "列表", "缓存"]
+        }
+      ]
     },
     {
       "id": "zh-06",
@@ -175,7 +199,13 @@
       "id": "zh-13",
       "category": "chinese",
       "query": "Native 验收证据如何记录",
-      "goldSources": ["docs/comet/specs/native-verification-evidence/spec.md"]
+      "goldSources": ["docs/comet/specs/native-verification-evidence/spec.md"],
+      "goldPassages": [
+        {
+          "source": "docs/comet/specs/native-verification-evidence/spec.md",
+          "allOf": ["Builder 候选", "Verifier"]
+        }
+      ]
     },
     {
       "id": "zh-14",
@@ -187,7 +217,13 @@
       "id": "zh-15",
       "category": "chinese",
       "query": "上下文注入需要什么安全边界",
-      "goldSources": ["docs/comet/specs/context-injection/spec.md"]
+      "goldSources": ["docs/comet/specs/context-injection/spec.md"],
+      "goldPassages": [
+        {
+          "source": "docs/comet/specs/context-injection/spec.md",
+          "allOf": ["当前系统和用户请求", "当前代码/config/test"]
+        }
+      ]
     },
 
     {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { throwIfOperationAborted, remainingOperationMs } from '../process/operation-budget.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 
@@ -73,7 +74,7 @@ export async function withRecoverableFileLock<T>(
   const resolvedLockPath = path.resolve(lockPath);
   await fs.mkdir(path.dirname(resolvedLockPath), { recursive: true });
   const started = Date.now();
-  const timeoutMs = options.timeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
+  const timeoutMs = remainingOperationMs(options.timeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS);
   const retryMs = options.retryMs ?? DEFAULT_LOCK_RETRY_MS;
   const malformedLockStaleMs = options.malformedLockStaleMs ?? DEFAULT_MALFORMED_LOCK_STALE_MS;
   const processIdentity = await readProcessIdentity(process.pid);
@@ -86,6 +87,7 @@ export async function withRecoverableFileLock<T>(
   };
   let acquired = false;
   while (!acquired) {
+    throwIfOperationAborted();
     let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
     try {
       handle = await fs.open(resolvedLockPath, 'wx');

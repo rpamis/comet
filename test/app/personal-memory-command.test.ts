@@ -20,6 +20,14 @@ import {
 } from '../../app/commands/personal-memory.js';
 
 describe('personal memory commands', () => {
+  it('rejects invalid maintenance budgets before creating or reading a user repository', async () => {
+    await expect(personalMemorySyncCommand('.', { timeoutMs: 'invalid' })).rejects.toThrow(
+      '--timeout-ms',
+    );
+    await expect(personalMemorySyncCommand('.', { learningTimeoutMs: 0 })).rejects.toThrow(
+      '--learning-timeout-ms',
+    );
+  });
   const roots: string[] = [];
   const originalExitCode = process.exitCode;
 

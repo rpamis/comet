@@ -10,9 +10,9 @@ const collectCometPluginContext = vi.fn();
 vi.mock('../../domains/comet-classic/classic-cli.js', () => ({
   runClassicCli,
 }));
-vi.mock('../../domains/comet-entry/plugin-context.js', () => ({
-  recordCometWorkflowResult,
-  collectCometPluginContext,
+vi.mock('../../app/commands/comet-task-context.js', () => ({
+  recordCometTaskWorkflowResult: recordCometWorkflowResult,
+  collectCometTaskContext: collectCometPluginContext,
 }));
 
 describe('Classic command facade', () => {

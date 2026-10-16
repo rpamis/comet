@@ -69,6 +69,154 @@ function service(root: string, git?: MemoryGitSync): PersonalMemoryService {
 }
 
 describe('PersonalMemoryService', () => {
+  it('records global learning receipts without treating repository identity as a memory file path', async () => {
+    await withTempRepository(async (root) => {
+      const service = new PersonalMemoryService({ repository: new FileMemoryRepository(root) });
+      const projectIdentity = 'https://example.invalid/team/project.git';
+      const result = await service.observe({
+        scope: 'global',
+        projectIdentity,
+        category: '沟通偏好',
+        text: '使用中文回复',
+        language: 'zh-CN',
+        candidateKey: 'language',
+        taskTypes: ['communication'],
+        workflow: 'native',
+        changeId: 'receipt-check',
+        success: true,
+      });
+      expect(result.candidate).toBe(true);
+      const check = await service.markLearningCheck('submitted', undefined, {
+        projectKey: projectIdentity,
+        workflow: 'native',
+        changeId: 'receipt-check',
+      });
+      expect(check.submissionVerified).toBe(true);
+    });
+  });
+
+  it('keeps another project pending projection from blocking current reads, writes, and completion', async () => {
+    await withTempRepository(async (root) => {
+      const repository = new FileMemoryRepository(root);
+      const memories = new PersonalMemoryService({ repository });
+      const original = await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: 'workflow',
+        text: 'A uses focused checks.',
+      });
+      const write = repository.writeText.bind(repository);
+      const blocked = vi.spyOn(repository, 'writeText').mockImplementation(async (file, text) => {
+        if (file === 'projects/project-b.md')
+          throw Object.assign(new Error('Project B file is unavailable'), { code: 'EACCES' });
+        return write(file, text);
+      });
+      try {
+        await memories.remember({
+          scope: 'project',
+          projectKey: 'project-b',
+          category: 'workflow',
+          text: 'B retains its pending lesson.',
+        });
+        await expect(memories.retrieve({ projectKey: 'project-a' })).resolves.toMatchObject({
+          records: [expect.objectContaining({ text: 'A uses focused checks.' })],
+        });
+        await expect(memories.get(original.id)).resolves.toMatchObject({ id: original.id });
+        await expect(
+          memories.recordApplicationOutcome(original.id, 'used-successfully', {
+            applicationId: 'a-use',
+            idempotencyKey: 'a-once',
+          }),
+        ).resolves.toMatchObject({ applicationCount: 1 });
+        await memories.correct(original.id, { text: 'A changed its rule.' });
+        await expect(memories.rollback(original.id)).resolves.toMatchObject({
+          text: 'A uses focused checks.',
+        });
+        await memories.remember({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: 'workflow',
+          text: 'A also records evidence.',
+        });
+        expect(await readFile(path.join(root, 'projects/project-a.md'), 'utf8')).toContain(
+          'A also records evidence.',
+        );
+        await expect(
+          memories.markLearningCheck('no-observation', undefined, {
+            projectKey: 'project-a',
+            workflow: 'native',
+            changeId: 'task-a',
+          }),
+        ).resolves.toMatchObject({ submissionVerified: true });
+        expect(Object.keys((await repository.readState()).pendingFileProjections ?? {})).toEqual([
+          'projects/project-b.md',
+        ]);
+      } finally {
+        blocked.mockRestore();
+      }
+      expect((await memories.retrieve({ projectKey: 'project-b' })).records).toEqual([
+        expect.objectContaining({ text: 'B retains its pending lesson.' }),
+      ]);
+      expect((await repository.readState()).pendingFileProjections).toEqual({});
+    });
+  });
+
+  it('retrieves and completes learning for the current project without opening unrelated files', async () => {
+    await withTempRepository(async (root) => {
+      const memories = service(root);
+      await memories.remember({
+        scope: 'project',
+        projectKey: 'project-a',
+        category: '偏好',
+        text: '当前项目优先运行聚焦测试。',
+      });
+      await memories.remember({
+        scope: 'project',
+        projectKey: 'project-b',
+        category: '偏好',
+        text: '其他项目使用另一套检查。',
+      });
+      await rm(path.join(root, 'projects', 'project-b.md'));
+      await mkdir(path.join(root, 'projects', 'project-b.md'));
+      const result = await memories.retrieve({
+        view: 'combined',
+        projectKey: 'project-a',
+        task: '验收当前项目',
+      });
+      expect(result.records.map((entry) => entry.text)).toContain('当前项目优先运行聚焦测试。');
+      await expect(
+        memories.markLearningCheck('no-observation', undefined, {
+          projectKey: 'project-a',
+          workflow: 'native',
+          changeId: 'current-task',
+        }),
+      ).resolves.toMatchObject({ submissionVerified: true });
+      await expect(
+        memories.observe({
+          scope: 'project',
+          projectKey: 'project-a',
+          category: '偏好',
+          text: '每次验收都说明实际运行的检查。',
+          source: { kind: 'user' },
+          workflow: 'native',
+          changeId: 'current-task',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ ignored: false });
+      await expect(
+        memories.observe({
+          scope: 'global',
+          projectIdentity: 'project-a',
+          category: '偏好',
+          text: '所有项目都说明未执行的验证。',
+          source: { kind: 'user' },
+          workflow: 'native',
+          changeId: 'current-task',
+          success: true,
+        }),
+      ).resolves.toMatchObject({ ignored: false });
+    });
+  });
   it('preserves surviving conflicts after permanently removing one of three inferred memories', async () => {
     await withTempRepository(async (root) => {
       const memories = service(root);
@@ -1547,9 +1695,9 @@ describe('PersonalMemoryService', () => {
       });
       const memories = new PersonalMemoryService({ repository });
 
-      expect((await memories.retrieve({ projectKey: 'project-a' })).records).toEqual([
-        expect.objectContaining({ id: 'legacy-workflow-record', state: 'proven' }),
-      ]);
+      expect(
+        (await memories.retrieve({ projectKey: 'project-a', operation: 'task' })).records,
+      ).toEqual([expect.objectContaining({ id: 'legacy-workflow-record', state: 'proven' })]);
       expect((await memories.manage({ projectKey: 'project-a' })).records).toEqual([
         expect.objectContaining({ id: 'legacy-workflow-record', status: 'proven' }),
       ]);
@@ -2117,6 +2265,7 @@ describe('PersonalMemoryService', () => {
         'symbolic-ref',
         'ls-remote',
         'rev-parse',
+        'diff',
         'add',
         'status',
         'commit',

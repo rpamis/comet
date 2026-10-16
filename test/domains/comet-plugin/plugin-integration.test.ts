@@ -19,6 +19,7 @@ import {
   ContextDirector,
   MemoryAgentContextApplicationStore,
   MemoryAgentExperienceJournalStore,
+  StorageAgentContextApplicationStore,
   type AgentExperienceEvent,
 } from '../../../domains/agent-learning/index.js';
 
@@ -321,6 +322,265 @@ async function withBridge(
 }
 
 describe('Comet plugin integration bridge', () => {
+  test.each([
+    { retryScheduled: 1, processing: 0 },
+    { retryScheduled: 0, processing: 1 },
+  ])('reports incomplete maintenance for outstanding work: %j', async (outstanding) => {
+    await withBridge(async (bridge) => {
+      vi.spyOn(bridge.pluginRuntime, 'learningStatus').mockResolvedValue({
+        pending: 0,
+        ...outstanding,
+        waiting: 0,
+        failed: 0,
+      });
+      const result = await bridge.syncMemory();
+      expect(result).toMatchObject({ learning: { status: 'partial', ...outstanding } });
+    });
+  });
+  test.each(['synchronous', 'background'] as const)(
+    'bounds explicit maintenance with a %s scheduler without consuming retries',
+    async (scheduler) => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-maintenance-budget-'));
+      const projectRoot = path.join(root, 'project');
+      await fs.mkdir(projectRoot);
+      const sockets = new Set<import('node:net').Socket>();
+      const server = createServer((request) => {
+        sockets.add(request.socket);
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      try {
+        const bridge = await createProductionCometPluginBridge({
+          projectRoot,
+          projectId: 'project',
+          homeDirectory: root,
+          stateRoot: path.join(root, 'plugins'),
+          memoryRoot: path.join(root, 'memory'),
+          knowledgeCacheRoot: path.join(root, 'knowledge'),
+          ...(scheduler === 'synchronous'
+            ? { scheduleLearning: (task: () => Promise<void>) => task() }
+            : {}),
+          memoryProviderConfig: {
+            provider: 'remote',
+            profileCharLimit: 1000,
+            taskContextCharLimit: 3000,
+            remote: {
+              endpoint: `http://127.0.0.1:${(server.address() as { port: number }).port}`,
+              timeoutMs: 120000,
+            },
+          },
+        });
+        await bridge.pluginRuntime.enqueueEvents(
+          Array.from({ length: 80 }, (_, i) => ({
+            schema: AGENT_EXPERIENCE_SCHEMA,
+            eventId: `event-${i}`,
+            episodeId: 'episode',
+            occurredAt: new Date().toISOString(),
+            type: 'episode.completed',
+            actor: 'workflow',
+            scope: 'project',
+            projectId: 'project',
+            source: {
+              kind: 'workflow',
+              name: 'native',
+              workflow: 'native',
+              changeId: 'change',
+              command: 'archive',
+            },
+            context: { workflow: 'native', changeId: 'change' },
+            evidence: [
+              { id: 'user', kind: 'user', summary: 'Use focused checks in future tasks.' },
+            ],
+          })),
+        );
+        const started = performance.now();
+        const result = await bridge.syncMemory({ timeoutMs: 400 });
+        expect(performance.now() - started).toBeLessThan(1800);
+        expect(result).toMatchObject({
+          status: 'failed',
+          retryable: true,
+          learning: { status: 'partial', pending: 80, failed: 0 },
+        });
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        expect([...sockets].every((socket) => socket.destroyed)).toBe(true);
+        const journal = JSON.parse(
+          await fs.readFile(
+            path.join(root, 'plugins', 'storage', 'comet.agent-learning-project-project.json'),
+            'utf8',
+          ),
+        );
+        expect(
+          Object.values(journal.reflections).every((entry) => {
+            const reflection = entry as { status: string; attempts: number };
+            return reflection.status === 'pending' && reflection.attempts === 0;
+          }),
+        ).toBe(true);
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+  test('retries a captured batch after acknowledgement failure without duplicating events or losing later feedback', async () => {
+    let value: unknown = null;
+    let failAcknowledgement = true;
+    const applications = new StorageAgentContextApplicationStore({
+      read: async () => structuredClone(value),
+      write: async (next) => {
+        if (
+          failAcknowledgement &&
+          (next as { records: { appliedEventDispatchedAt?: string }[] }).records.some(
+            (record) => record.appliedEventDispatchedAt,
+          )
+        )
+          throw new Error('acknowledgement interrupted');
+        value = structuredClone(next);
+      },
+    });
+    await applications.append({
+      applicationId: 'retry',
+      candidateId: 'candidate',
+      candidateDigest: 'digest',
+      owner: 'fixture',
+      scope: 'project',
+      projectId: 'project-1',
+      memoryType: 'project-policy',
+      episodeId: 'episode',
+      task: 'Retry feedback',
+      whyApplied: 'Current project',
+      delivery: 'manifest',
+      appliedAt: '2026-08-24T12:00:00.000Z',
+    });
+    const journal = new AgentExperienceJournal(new MemoryAgentExperienceJournalStore());
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [],
+      journal,
+    });
+    const bridge = new CometPluginBridge(
+      runtime,
+      'project-1',
+      'en',
+      new ContextDirector({ applications }),
+      applications,
+    );
+    await expect(bridge.flushContextApplicationOutbox()).resolves.toBeUndefined();
+    expect(await journal.list()).toHaveLength(1);
+    expect((await applications.list())[0]?.appliedEventDispatchedAt).toBeUndefined();
+    await applications.setOutcome('retry', 'ignored', 'project-1');
+    failAcknowledgement = false;
+    await expect(bridge.flushContextApplicationOutbox()).resolves.toBeUndefined();
+    expect((await journal.list()).map((entry) => entry.type)).toEqual([
+      'context.applied',
+      'context.outcome',
+    ]);
+    await applications.setOutcome('retry', 'overridden', 'project-1');
+    await applications.markEventsDispatched!([{ applicationId: 'retry', outcomeRevision: 1 }]);
+    const outcomes = (await applications.list())[0]!.outcomeEvents!;
+    expect(outcomes[0]?.dispatchedAt).toEqual(expect.any(String));
+    expect(outcomes[1]?.dispatchedAt).toBeUndefined();
+    await bridge.flushContextApplicationOutbox();
+    expect(await journal.list()).toHaveLength(3);
+  });
+
+  test('captures a large context outbox in bounded transactions without running reflection', async () => {
+    let applicationsState: unknown = null;
+    let writes = 0;
+    const applications = new StorageAgentContextApplicationStore({
+      read: async () => structuredClone(applicationsState),
+      write: async (value) => {
+        writes++;
+        applicationsState = structuredClone(value);
+      },
+    });
+    await applications.appendMany(
+      Array.from({ length: 1000 }, (_, index) => ({
+        applicationId: `application-${index}`,
+        candidateId: 'candidate',
+        candidateDigest: 'digest',
+        owner: 'fixture',
+        scope: 'project' as const,
+        projectId: 'project-1',
+        memoryType: 'project-policy' as const,
+        episodeId: `episode-${index}`,
+        task: 'Scale fixture',
+        whyApplied: 'Current project',
+        delivery: 'manifest' as const,
+        appliedAt: '2026-08-24T12:00:00.000Z',
+      })),
+    );
+    const durable = new MemoryAgentExperienceJournalStore();
+    const reflect = vi.fn(async () => []);
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      journal: new AgentExperienceJournal({
+        read: () => durable.read(),
+        write: async (state) => {
+          writes++;
+          await durable.write(state);
+        },
+      }),
+      scheduleLearning: (task) => task(),
+      descriptors: [
+        {
+          id: 'fixture',
+          kind: 'first-party',
+          version: '1.0.0',
+          scopes: ['project'],
+          compatible: () => true,
+          create: () => ({ reflect, consolidate: async () => {} }),
+        },
+      ],
+    });
+    await runtime.reconcileFirstParty();
+    const bridge = new CometPluginBridge(
+      runtime,
+      'project-1',
+      'en',
+      new ContextDirector({ applications }),
+      applications,
+    );
+    writes = 0;
+    await bridge.flushContextApplicationOutbox();
+    expect(writes).toBeLessThanOrEqual(2);
+    expect(reflect).not.toHaveBeenCalled();
+    expect(await durable.read()).toMatchObject({ events: expect.any(Array) });
+    expect((await durable.read()).events).toHaveLength(1000);
+    expect((await applications.list()).every((entry) => entry.appliedEventDispatchedAt)).toBe(true);
+    await bridge.flushContextApplicationOutbox();
+    expect(writes).toBe(2);
+    await runtime.replayLearning();
+    expect(reflect).toHaveBeenCalled();
+  });
+
+  test('does not replay old learning or synchronize a remote while recording a checkpoint', async () => {
+    const runtime = new PluginRuntime({
+      cometVersion: '1.0.0',
+      store: new MemoryPluginStateStore(),
+      descriptors: [],
+    });
+    const bridge = new CometPluginBridge(runtime, 'project-1');
+    const sync = vi.spyOn(bridge, 'syncMemory').mockImplementation(async () => {
+      throw new Error('remote unavailable');
+    });
+    await bridge.dispatchExperience({
+      schema: AGENT_EXPERIENCE_SCHEMA,
+      eventId: 'checkpoint',
+      episodeId: 'checkpoint',
+      occurredAt: '2026-08-24T12:00:00.000Z',
+      type: 'verification.completed',
+      actor: 'workflow',
+      scope: 'project',
+      projectId: 'project-1',
+      source: { kind: 'workflow', name: 'native' },
+      context: {},
+      evidence: [],
+    });
+    expect(sync).not.toHaveBeenCalled();
+  });
+
   test('retries a durable outcome event when Journal capture failed after the ledger update', async () => {
     const durableJournal = new MemoryAgentExperienceJournalStore();
     let remainingFailures = 1;
@@ -977,8 +1237,7 @@ describe('Comet plugin integration bridge', () => {
       await bridge.forget(explicit!.id, true);
       reviewAvailable = true;
       await bridge.syncMemory();
-      expect(queued).toHaveLength(1);
-      await queued.shift()!();
+      expect(queued).toHaveLength(0);
 
       const managed = await bridge.manage({ projectKey: 'learning-recovery-project' });
       expect(managed.records).toEqual([]);
@@ -1326,7 +1585,7 @@ describe('Comet plugin integration bridge', () => {
     }
   });
 
-  test('checkpoints personal memory after a workflow observation', async () => {
+  test('persists workflow observations without synchronizing unrelated memory history', async () => {
     await withBridge(async (bridge) => {
       const sync = vi.spyOn(bridge, 'syncMemory').mockResolvedValue({
         status: 'local-only',
@@ -1343,7 +1602,7 @@ describe('Comet plugin integration bridge', () => {
         text: 'workflow completed',
       });
 
-      expect(sync).toHaveBeenCalledOnce();
+      expect(sync).not.toHaveBeenCalled();
     });
   });
 

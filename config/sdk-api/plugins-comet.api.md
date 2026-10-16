@@ -6,7 +6,7 @@
 
 // @public (undocumented)
 export class CometPluginBridge {
-    constructor(runtime: PluginRuntime, projectId: string, language?: MemoryLanguage, contextDirector?: ContextDirector, applicationStore?: AgentContextApplicationStore | undefined, persistContextApplications?: boolean);
+    constructor(runtime: PluginRuntime, projectId: string, language?: MemoryLanguage, contextDirector?: ContextDirector, applicationStore?: AgentContextApplicationStore | undefined, persistContextApplications?: boolean, usageTracker?: ContextUsageTracker | undefined);
     // (undocumented)
     collectContext(request: CometPluginContextRequest): Promise<CometPluginContextContribution[]>;
     // (undocumented)
@@ -53,7 +53,11 @@ export class CometPluginBridge {
     // (undocumented)
     status(): Promise<unknown>;
     // (undocumented)
-    syncMemory(): Promise<unknown>;
+    syncMemory(options?: {
+        readonly timeoutMs?: number;
+        readonly learningTimeoutMs?: number;
+        readonly signal?: AbortSignal;
+    }): Promise<unknown>;
 }
 
 // @public (undocumented)

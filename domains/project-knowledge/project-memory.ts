@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, open, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 
 import { resolveProjectKnowledgeStorageLocation } from '../../platform/paths/project-knowledge-storage.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
@@ -26,6 +27,7 @@ const MEMORY_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 const MAX_TITLE_CHARS = 120;
 const MAX_DESCRIPTION_CHARS = 200;
 const MAX_BODY_BYTES = 16 * 1024;
+const MAX_MEMORY_FILE_BYTES = MAX_BODY_BYTES + 16 * 1024;
 const MAX_MEMORIES = 200;
 const MAX_PATHS = 8;
 const MAX_CONTEXT_ENTRIES = 120;
@@ -84,6 +86,14 @@ export interface ProjectMemoryStoreOptions {
 
 export function isProjectMemoryType(value: unknown): value is ProjectMemoryType {
   return typeof value === 'string' && (PROJECT_MEMORY_TYPES as readonly string[]).includes(value);
+}
+
+/** Read the bounded file layer for task search without depending on the configured provider. */
+export async function readProjectMemorySearchEntries(
+  projectRoot: string,
+  cacheRoot?: string,
+): Promise<readonly ProjectMemoryEntry[]> {
+  return scanProjectMemoryEntries(resolveProjectMemoryDirectory(projectRoot, cacheRoot));
 }
 
 export function resolveProjectMemoryDirectory(projectRoot: string, cacheRoot?: string): string {
@@ -305,11 +315,14 @@ async function scanProjectMemoryEntries(
     return [];
   }
   const entries: ParsedMemoryDocument[] = [];
-  for (const name of names) {
-    if (!name.endsWith('.md') || name === PROJECT_MEMORY_INDEX_FILE) continue;
+  for (const name of names
+    .filter((name) => name.endsWith('.md') && name !== PROJECT_MEMORY_INDEX_FILE)
+    .slice(0, MAX_MEMORIES)) {
     let raw: string;
     try {
-      raw = await readFile(path.join(directory, name), 'utf8');
+      raw = (
+        await readFileRaceSafe(path.join(directory, name), MAX_MEMORY_FILE_BYTES)
+      ).bytes.toString('utf8');
     } catch {
       continue;
     }
@@ -380,7 +393,9 @@ export async function readProjectMemoryIndex(
   const directory = resolveProjectMemoryDirectory(projectRoot, cacheRoot);
   let raw: string;
   try {
-    raw = await readFile(path.join(directory, PROJECT_MEMORY_INDEX_FILE), 'utf8');
+    raw = (
+      await readFileRaceSafe(path.join(directory, PROJECT_MEMORY_INDEX_FILE), 128 * 1024)
+    ).bytes.toString('utf8');
   } catch {
     return [];
   }
@@ -396,7 +411,9 @@ export async function readProjectMemory(
   const directory = resolveProjectMemoryDirectory(projectRoot, cacheRoot);
   let raw: string;
   try {
-    raw = await readFile(path.join(directory, memoryFileName(slug)), 'utf8');
+    raw = (
+      await readFileRaceSafe(path.join(directory, memoryFileName(slug)), MAX_MEMORY_FILE_BYTES)
+    ).bytes.toString('utf8');
   } catch {
     return null;
   }
@@ -636,6 +653,7 @@ export function renderProjectMemoryCompletionReminder(
 export function renderProjectMemoryIndexContext(
   entries: readonly ProjectMemoryIndexEntry[],
   language: 'zh-CN' | 'en' = 'zh-CN',
+  options: { readonly complete?: boolean } = {},
 ): string | null {
   if (entries.length === 0) return null;
   const heading = language === 'en' ? '## Project memory index' : '## 项目记忆索引';
@@ -644,12 +662,12 @@ export function renderProjectMemoryIndexContext(
       ? 'Each line locates a recorded project lesson. Before applying it, expand the full note with the same task arguments plus --expand-context "project-memory:<slug>" and check its current sources; stale source-bound notes cannot be expanded.'
       : '以下每行用于定位项目经验。采用前，用同一任务参数追加 --expand-context "project-memory:<slug>" 展开并核对当前来源；绑定来源已变化的记忆不会展开。';
   const lines = [heading, hint];
-  for (const entry of entries.slice(0, MAX_CONTEXT_ENTRIES)) {
+  for (const entry of entries.slice(0, options.complete ? MAX_MEMORIES : MAX_CONTEXT_ENTRIES)) {
     const line = `- ${singleLine(entry.title, MAX_TITLE_CHARS)} — ${singleLine(
       entry.description,
       MAX_DESCRIPTION_CHARS,
     )} (${entry.slug})`;
-    if (lines.join('\n').length + line.length >= MAX_CONTEXT_CHARS) break;
+    if (!options.complete && lines.join('\n').length + line.length >= MAX_CONTEXT_CHARS) break;
     lines.push(line);
   }
   const remaining = entries.length - (lines.length - 2);

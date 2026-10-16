@@ -9,6 +9,8 @@ import { readWorkflowProjectConfig } from '../../domains/workflow-contract/proje
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 
 export interface PersonalMemoryCommandOptions {
+  readonly timeoutMs?: number | string;
+  readonly learningTimeoutMs?: number | string;
   readonly json?: boolean;
   readonly task?: string;
   readonly path?: string;
@@ -268,8 +270,17 @@ export async function personalMemorySyncCommand(
   targetPath = '.',
   options: PersonalMemoryCommandOptions = {},
 ): Promise<unknown> {
+  const timeout = (value: number | string | undefined, name: string) => {
+    if (value === undefined) return undefined;
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 2147483647)
+      throw new Error(`${name} 必须是 1 到 2147483647 之间的整数毫秒。`);
+    return parsed;
+  };
+  const timeoutMs = timeout(options.timeoutMs, '--timeout-ms');
+  const learningTimeoutMs = timeout(options.learningTimeoutMs, '--learning-timeout-ms');
   const bridge = await createBridge(targetPath, options);
-  const result = await bridge.syncMemory();
+  const result = await bridge.syncMemory({ timeoutMs, learningTimeoutMs });
   if (
     result !== null &&
     typeof result === 'object' &&
@@ -367,7 +378,19 @@ function printRetrieval(
 }
 
 function printSyncResult(value: unknown, language: MemoryLanguage): void {
-  const result = value as { readonly status?: string; readonly message?: string };
+  const result = value as {
+    readonly status?: string;
+    readonly message?: string;
+    readonly learning?: {
+      readonly status: string;
+      readonly pending: number;
+      readonly processing?: number;
+      readonly retryScheduled?: number;
+      readonly failed: number;
+      readonly waiting: number;
+      readonly outboxPending?: number;
+    };
+  };
   const message =
     result.status === 'synced'
       ? localizedMessage(language, '个人记忆已同步。', 'Personal memory synced.')
@@ -389,6 +412,14 @@ function printSyncResult(value: unknown, language: MemoryLanguage): void {
               'Local memory is available; no remote is configured.',
             );
   console.log(message);
+  if (result.learning?.status === 'partial')
+    console.log(
+      localizedMessage(
+        language,
+        `补学习尚未完成：待投递 ${result.learning.outboxPending ?? 0}，待处理 ${result.learning.pending}，正在处理 ${result.learning.processing ?? 0}，待重试 ${result.learning.retryScheduled ?? 0}，待评审 ${result.learning.waiting}，失败 ${result.learning.failed}。进度已保存，可稍后再次同步。`,
+        `Learning is incomplete: ${result.learning.outboxPending ?? 0} context records queued, ${result.learning.pending} pending, ${result.learning.processing ?? 0} processing, ${result.learning.retryScheduled ?? 0} awaiting retry, ${result.learning.waiting} awaiting review, ${result.learning.failed} failed. Progress is saved; sync again later.`,
+      ),
+    );
 }
 
 function printAction(message: string, value: unknown, options: PersonalMemoryCommandOptions): void {

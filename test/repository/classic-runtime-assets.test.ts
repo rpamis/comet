@@ -95,14 +95,19 @@ describe('Classic runtime release assets', () => {
     expect(manifestReferences).toEqual(
       englishFiles.map((fileName) => `comet-classic/reference/${fileName}`),
     );
-    expect(await fs.readdir(path.resolve('assets', 'skills', 'comet', 'reference'))).toEqual([
-      'edit-review.md',
+    const layout = await readJson<{ sharedSkillReferences: string[] }>(
+      path.resolve('config', 'repository-layout.json'),
+    );
+    expect(layout.sharedSkillReferences).toEqual([
+      'comet/reference/edit-review.md',
+      'comet/reference/task-learning.md',
     ]);
-    expect(manifest.skills).toContain('comet/reference/edit-review.md');
-    expect(await fs.readdir(path.resolve('assets', 'skills-zh', 'comet', 'reference'))).toEqual([
-      'edit-review.md',
-    ]);
-    expect(manifest.skills).toContain('comet/reference/edit-review.md');
+    for (const root of ['skills', 'skills-zh']) {
+      const shared = (await fs.readdir(path.resolve('assets', root, 'comet', 'reference'))).sort();
+      expect(shared.map((file) => `comet/reference/${file}`)).toEqual(layout.sharedSkillReferences);
+    }
+    for (const reference of layout.sharedSkillReferences)
+      expect(manifest.skills).toContain(reference);
   });
 
   it('lists every shipped Classic script in the assets manifest', async () => {

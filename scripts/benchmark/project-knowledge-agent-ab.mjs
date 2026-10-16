@@ -100,7 +100,11 @@ function evidenceSummary(runs) {
   const entries = Array.isArray(runs) ? runs : [];
   const missing = new Set();
   for (const field of REQUIRED_EVIDENCE_FIELDS) {
-    if (entries.some((entry) => entry && entry[field] !== undefined)) continue;
+    if (
+      entries.length > 0 &&
+      entries.every((entry) => entry && entry[field] !== undefined && entry[field] !== null)
+    )
+      continue;
     missing.add(field);
   }
   const snapshots = new Set(entries.map((entry) => entry?.snapshotId).filter(Boolean));

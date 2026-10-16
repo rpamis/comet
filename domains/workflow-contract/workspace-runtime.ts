@@ -13,6 +13,7 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { decodeJsonValueMaps } from '../../platform/fs/json-value-pool.js';
 
 import { hashFileRaceSafe, readFileRaceSafe } from '../../platform/fs/race-safe-read.js';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
@@ -472,21 +473,38 @@ async function inspectRevisionHead(
       record?: unknown;
       hash?: unknown;
       legacyRevision?: unknown;
+      pool?: unknown;
     };
-    validateStoredRecord(current.record, latestValue.runId);
+    const payload = {
+      record: current.record,
+      legacyRevision: current.legacyRevision,
+      ...(current.schema === 'comet.runtime-store-snapshot.v3' ? { pool: current.pool } : {}),
+    };
+    const decoded =
+      current.schema === 'comet.runtime-store-snapshot.v3'
+        ? decodeJsonValueMaps(current.record, current.pool)
+        : current.record;
+    validateStoredRecord(decoded, latestValue.runId);
     if (
-      current.schema !== 'comet.runtime-store-snapshot.v2' ||
-      current.hash !==
-        storedHash({ record: current.record, legacyRevision: current.legacyRevision }) ||
+      !['comet.runtime-store-snapshot.v2', 'comet.runtime-store-snapshot.v3'].includes(
+        String(current.schema),
+      ) ||
+      current.hash !== storedHash(payload) ||
       current.legacyRevision !== latestValue.revision ||
-      current.record.revision < latestValue.revision ||
+      decoded.revision < latestValue.revision ||
       Object.keys(current).some(
-        (key) => !['schema', 'record', 'hash', 'legacyRevision'].includes(key),
+        (key) =>
+          ![
+            'schema',
+            'record',
+            'hash',
+            'legacyRevision',
+            ...(current.schema === 'comet.runtime-store-snapshot.v3' ? ['pool'] : []),
+          ].includes(key),
       )
     )
       throw new Error('Runtime checkpoint 与旧历史不一致');
-    if (unfinishedProcess(current.record, 'sdk-run'))
-      throw new Error(`旧 Runtime 含活跃执行：${compact}`);
+    if (unfinishedProcess(decoded, 'sdk-run')) throw new Error(`旧 Runtime 含活跃执行：${compact}`);
     return '';
   }
   return revisions.at(-1)!;

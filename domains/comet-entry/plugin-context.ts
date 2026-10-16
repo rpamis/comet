@@ -120,6 +120,8 @@ export async function recordCometWorkflowResult(options: {
   readonly summary?: string;
   /** Whether the host performed the task-end learning check. */
   readonly learningCheck?: 'submitted' | 'no-observation' | 'not-run';
+  /** Persist the checkpoint before a worker begins optional Provider maintenance. */
+  readonly captureOnly?: boolean;
 }): Promise<MemoryLearningStatus | undefined> {
   if (!options.changeId.trim()) return;
   try {
@@ -129,18 +131,6 @@ export async function recordCometWorkflowResult(options: {
     });
     const language = bridge.currentLanguage;
     let learningStatus: MemoryLearningStatus | undefined;
-    if (options.learningCheck !== undefined) {
-      try {
-        learningStatus = await bridge.recordMemoryLearningCheck(options.learningCheck, {
-          projectKey: bridge.currentProjectId,
-          workflow: options.workflow,
-          changeId: options.changeId,
-        });
-      } catch {
-        // A Provider may not implement the optional task-end diagnostic yet;
-        // still dispatch the workflow checkpoint and keep the task nonblocking.
-      }
-    }
     const eventType =
       options.eventType ??
       (options.command === 'archive'
@@ -184,7 +174,7 @@ export async function recordCometWorkflowResult(options: {
           digest: digest(command),
         })),
     ];
-    await bridge.dispatchExperience({
+    const event = {
       schema: AGENT_EXPERIENCE_SCHEMA,
       eventId: `workflow:${digest(
         JSON.stringify({
@@ -222,11 +212,28 @@ export async function recordCometWorkflowResult(options: {
           options.summary ??
           (language === 'en' ? 'Workflow checkpoint completed' : '工作流检查点已完成'),
       },
-    });
-    for (const notice of notices) console.log(notice);
+    } satisfies import('../agent-learning/index.js').AgentExperienceEvent;
+    await bridge.pluginRuntime.enqueueEvents([event]);
+    if (options.captureOnly) return undefined;
+    if (options.learningCheck !== undefined) {
+      try {
+        learningStatus = await bridge.recordMemoryLearningCheck(options.learningCheck, {
+          projectKey: bridge.currentProjectId,
+          workflow: options.workflow,
+          changeId: options.changeId,
+        });
+      } catch {
+        // The checkpoint is already durable even if the optional Provider diagnostic fails.
+      }
+    }
+    await bridge.dispatchExperience(event);
+    for (const notice of notices) process.stderr.write(`${notice}\n`);
     return learningStatus;
   } catch {
     // Memory learning is optional and must never block a workflow checkpoint.
+    process.stderr.write(
+      'Workflow learning checkpoint is unavailable; the workflow result is unchanged.\n',
+    );
     return undefined;
   }
 }

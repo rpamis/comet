@@ -23,12 +23,97 @@ export interface RipgrepRunResult {
 }
 
 /**
- * Run one argument-array ripgrep process with bounded output and lifetime.
+ * Search argument-array target batches with a shared output and lifetime budget.
  * The domain supplies only validated project-relative targets and fixed
  * strings; this adapter owns process and platform details.
  */
 export async function runBoundedRipgrep(options: RipgrepRunOptions): Promise<RipgrepRunResult> {
-  const child = spawnCommand(options.command ?? 'rg', options.args, { cwd: options.cwd });
+  const separator = options.args.indexOf('--');
+  const prefix = separator < 0 ? options.args : options.args.slice(0, separator + 1);
+  const argumentSize = (value: string): number => value.length * 2 + 3;
+  const prefixSize =
+    argumentSize(options.command ?? 'rg') +
+    prefix.reduce((sum, arg) => sum + argumentSize(arg), 512);
+  const batches: string[][] = [];
+  let batch = [...prefix];
+  let size = prefixSize;
+  for (const target of separator < 0 ? [] : options.args.slice(separator + 1)) {
+    if (batch.length > prefix.length && size + argumentSize(target) > 24000) {
+      batches.push(batch);
+      batch = [...prefix];
+      size = prefixSize;
+    }
+    batch.push(target);
+    size += argumentSize(target);
+  }
+  batches.push(batch);
+  if (batches.length === 1) return runRipgrepProcess(options);
+
+  const started = performance.now();
+  let stdout = '';
+  let stderr = '';
+  let matches = 0;
+  let found = false;
+  for (const args of batches) {
+    const timeoutMs = options.timeoutMs - (performance.now() - started);
+    const maxOutputBytes =
+      options.maxOutputBytes - Buffer.byteLength(stdout) - Buffer.byteLength(stderr);
+    if (timeoutMs <= 0 || maxOutputBytes <= 0 || matches >= options.maxMatches)
+      return {
+        stdout,
+        stderr,
+        exitCode: null,
+        timedOut: timeoutMs <= 0,
+        truncated: maxOutputBytes <= 0,
+        matchLimitReached: matches >= options.maxMatches,
+      };
+    const result = await runRipgrepProcess({
+      ...options,
+      args,
+      timeoutMs,
+      maxOutputBytes,
+      maxMatches: options.maxMatches - matches,
+    });
+    stdout += result.stdout;
+    stderr += result.stderr;
+    matches += result.stdout
+      .split('\n')
+      .filter((line) => /"type"\s*:\s*"match"/u.test(line)).length;
+    found ||= result.exitCode === 0;
+    if (
+      result.error ||
+      result.timedOut ||
+      result.truncated ||
+      result.matchLimitReached ||
+      (result.exitCode !== null && result.exitCode > 1)
+    )
+      return { ...result, stdout, stderr };
+  }
+  return {
+    stdout,
+    stderr,
+    exitCode: found ? 0 : 1,
+    timedOut: false,
+    truncated: false,
+    matchLimitReached: false,
+  };
+}
+
+async function runRipgrepProcess(options: RipgrepRunOptions): Promise<RipgrepRunResult> {
+  let child: ReturnType<typeof spawnCommand>;
+  try {
+    child = spawnCommand(options.command ?? 'rg', options.args, { cwd: options.cwd });
+  } catch (error) {
+    return {
+      stdout: '',
+      stderr: '',
+      exitCode: null,
+      timedOut: false,
+      truncated: false,
+      matchLimitReached: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
   let stdoutBytes = 0;

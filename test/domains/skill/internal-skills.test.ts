@@ -109,6 +109,7 @@ describe('internal Skill assets', () => {
       getManagedSkillPaths(shipped).filter(
         (skillPath) =>
           skillPath === 'comet/SKILL.md' ||
+          skillPath.startsWith('comet/reference/') ||
           skillPath.startsWith('comet-review/') ||
           skillPath === 'comet/scripts/comet-entry-runtime.mjs' ||
           skillPath === 'comet/scripts/comet-hook-router.mjs' ||
@@ -120,12 +121,14 @@ describe('internal Skill assets', () => {
     );
     expect(native).toContain('comet-any/SKILL.md');
     expect(native).toContain('comet-review/SKILL.md');
+    expect(native).toContain('comet/reference/task-learning.md');
     expect(native).not.toContain('comet-classic/SKILL.md');
     expect(native).not.toContain('comet-classic/reference/scripts.md');
     expect(native).not.toContain('comet-open/SKILL.md');
 
     expect(classic).toContain('comet-any/SKILL.md');
     expect(classic).toContain('comet-review/SKILL.md');
+    expect(classic).toContain('comet/reference/task-learning.md');
     expect(classic).toContain('comet-classic/SKILL.md');
     expect(classic).toContain('comet-classic/reference/scripts.md');
     expect(classic).toContain('comet-open/SKILL.md');

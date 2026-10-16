@@ -5,9 +5,24 @@ import {
   memoizedHookRead,
   memoizedHookReadSync,
   runWithHookReadCache,
+  runWithoutHookReadCache,
 } from '../../platform/process/hook-read-cache.js';
 
 describe('Hook read cache', () => {
+  it('lets source verification bypass a snapshot and restores the caller scope afterwards', async () => {
+    let value = 0;
+    const read = memoizedHookRead('current-source', async () => ++value);
+    await runWithHookReadCache(async () => {
+      expect(await read()).toBe(1);
+      await runWithoutHookReadCache(async () => {
+        expect(await read()).toBe(2);
+        await Promise.resolve();
+        expect(await read()).toBe(3);
+      });
+      expect(await read()).toBe(1);
+    });
+    expect(await read()).toBe(4);
+  });
   it('keeps overlapping requests isolated and shares nested reads only within their request', async () => {
     let value = 0;
     const cached = memoizedHookRead('isolated-value', async () => ++value);

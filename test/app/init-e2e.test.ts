@@ -56,6 +56,7 @@ async function readManifest() {
 function isNativeInstallSkillPath(skillPath: string): boolean {
   return (
     skillPath === 'comet/SKILL.md' ||
+    skillPath.startsWith('comet/reference/') ||
     skillPath.startsWith('comet-review/') ||
     skillPath === 'comet/scripts/comet-entry-runtime.mjs' ||
     skillPath === 'comet/scripts/comet-hook-router.mjs' ||

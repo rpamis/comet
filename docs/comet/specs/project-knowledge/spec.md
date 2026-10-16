@@ -68,6 +68,18 @@ Reflection 输入按 episode、changed paths 和 evidence 分块；来源在写�
 
 ## Readiness, source freshness, and rebuild
 
+普通任务只在交付前核验相关候选的来源，不因一次检索刷新全部历史 Record。Readiness 按稳定的项目模型 ID 补齐缺失或失效内容，不依赖有数量上限的管理列表推断模型是否存在。显式刷新和重建仍处理完整维护范围。
+
+索引扫描只在当前调用内共享目录检查与文件读取，查询不能继承外层调用的旧来源快照。候选 Record 的来源摘要和最终交付片段重新执行受保护读取；达到请求的有效结果数量后停止读取后续候选。缓存不跨查询复用，也不能省略同大小、同修改时间内容变化的校验。
+
+ripgrep 的目标列表按命令行长度分批执行，所有批次共用一次查询的超时、输出量和匹配数预算；不能因批次增加而扩大查询耗时上限。进程启动失败返回诊断，不使任务上下文获取异常退出。
+
+文件层项目经验的标题、摘要和正文参与同一查询入口，独立于 Local/Remote Provider；本地经验不会因检索被上传给 Remote。索引较长时提供完整索引的稳定展开入口，旧经验不因更新时间较早而失去被任务发现的机会。普通查询有可靠的当前资料时不混入历史归档；显式历史查询继续提供归档来源。
+
+本地索引先按文档全文召回，再选择相关正文，避免查询概念分散在不同章节时被章节级候选上限提前淘汰。章节索引保留为补充召回。文档与章节投影同事务更新，按 workspace 隔离；旧版或损坏缓存可以重建，不删除权威知识记录。
+
+文档结果交付包含相关正文的有界片段。仅文件名或章节标题命中时补充可读正文；匹配内容位于长章节后部时围绕匹配处截取，不固定返回开头。最多组合三处补充不同查询概念的正文，总长度不超过 1600 字符。同一文档的候选合并后再读取并核验来源，避免为多个章节重复读取同一文件。文件命中率与正文支持率分别评估。
+
 领域提供统一的 `ensure/refresh` 服务，负责：
 
 - 检查当前 workspace 的索引、当前有效 Project Model 和来源新鲜度；
@@ -126,6 +138,8 @@ Remote 使用版本化固定协议，Local/Remote 严格二选一。Remote 查�
 ## Retrieval and application feedback
 
 检索先按 project、path、operation、phase、kind 和有效 state 过滤，再结合 FTS、有限 ripgrep、关系扩展和 application feedback 排序。proven/enforced 高于 trial；当前代码、配置和测试高于所有 Record。
+
+语料发现先读取两种工作流的当前规范及自定义资料，再补充归档。文件和字节预算先分配给当前资料，避免历史增长挤掉当前规范；发现过程预留已发现文件的校验时间，归档遍历耗尽预算时仍可返回已校验的当前资料。不完整发现必须报告限制，不据此删除未扫描来源的索引。
 
 关键 proven/enforced Project Policy 可以完整注入；Project Model、trial Policy、Procedure 和 Episode 以 `id/title/summary/whyApplied/sourceType` 进入 Context Manifest并按需 expand。相同逻辑 Record 只返回一次，单次注入预算不限制 Provider 总记录数或 Reflection 输入。
 

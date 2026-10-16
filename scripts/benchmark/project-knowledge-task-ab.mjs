@@ -2,9 +2,11 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createDefaultCometPluginBridge } from '../../dist/domains/comet-plugin/integration.js';
 import { seedCometReferences } from './seed-project-knowledge.mjs';
+import { codexEvalHost } from './project-knowledge-eval-host.mjs';
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const output = process.argv.find((arg) => arg.startsWith('--output='))?.slice(9);
@@ -15,12 +17,29 @@ const repetitions = Number(
 );
 if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 5)
   throw new Error('Repetitions must be 1..5');
-const model = process.argv.find((arg) => arg.startsWith('--model='))?.slice(8);
+const host = codexEvalHost(
+  await readFile(
+    path.join(process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex'), 'config.toml'),
+    'utf8',
+  ).catch(() => ''),
+);
+const model = process.argv.find((arg) => arg.startsWith('--model='))?.slice(8) ?? host.model;
 if (!model) throw new Error('Pass --model=<host model> to keep all runs comparable');
 const codexEntry =
   process.env.COMET_EVAL_CODEX_ENTRY ??
   path.join(path.dirname(process.execPath), 'node_modules/@openai/codex/bin/codex.js');
 const tasks = [
+  {
+    id: 'personal-verification-preference',
+    phase: 'verify',
+    preference: '以后验收方案都用 Markdown 表格，表头依次为“场景”“操作”“预期”，再列验证命令。',
+    task: '为项目知识的多工作区来源新鲜度提出验收方案，特别检查同大小、同修改时间的文件内容变化。只做方案，不修改代码。',
+    groups: [
+      ['domains/project-knowledge/local-store.ts'],
+      ['domains/project-knowledge/index-store.ts'],
+      ['test/domains/project-knowledge/project-knowledge-store.test.ts'],
+    ],
+  },
   {
     id: 'feedback-extension',
     task: '为上下文采用反馈增加可选 sourceNote 说明，CLI 提交后，进程重启和日志投递失败重试也要保留，Dashboard 能看到。请调查当前实现，给出最小修改方案和验证方法，特别检查重复反馈是否会重复计数。只做方案，不修改代码。',
@@ -134,33 +153,49 @@ for (const task of tasks) {
           stateRoot: path.join(cacheRoot, 'state'),
           memoryRoot: path.join(cacheRoot, 'memory'),
           language: 'zh-CN',
+          homeDirectory: path.join(cacheRoot, 'home'),
+          scheduleLearning: (task) => task(),
         });
-        const contributions = await bridge.collectContext({ task: task.task, charBudget: 4500 });
+        if (task.preference)
+          await bridge.remember({
+            scope: 'global',
+            category: '验收输出偏好',
+            text: task.preference,
+            phases: [task.phase],
+          });
+        const request = {
+          task: task.task,
+          ...(task.phase ? { phase: task.phase } : {}),
+          charBudget: 4500,
+        };
+        const contributions = await bridge.collectContext(request);
         const manifest = contributions.flatMap((entry) => entry.manifest ?? []);
         candidateIds = manifest.map((entry) => entry.expansionId);
         await mkdir(path.join(worktree, '.knowledge'));
         for (let index = 0; index < manifest.length; index++) {
           const item = manifest[index];
-          const expansion = await bridge.expandContext(item.expansionId, { task: task.task });
+          const expansion = await bridge.expandContext(item.expansionId, request);
           await writeFile(
             path.join(worktree, '.knowledge', `${index}.json`),
             JSON.stringify(expansion, null, 2),
           );
         }
-        context = `\n以下是实际 Comet 任务检索返回的参考候选，按需读取对应 .knowledge/<序号>.json 查看完整内容并复核源码：\n${manifest.map((item, index) => `${index}. ${item.title}: ${item.summary}`).join('\n')}`;
+        context = `\n以下是 Comet 实际交付的上下文。参考候选可按需读取对应 .knowledge/<序号>.json 并复核源码：\n${contributions.map((entry) => entry.text).join('\n')}\n候选文件：\n${manifest.map((item, index) => `${index}. ${item.expansionId}`).join('\n')}`;
       }
-      const prompt = `${task.task}\n仅在当前目录调查，不访问父目录、其他实验或用户记忆。最多使用 6 次 shell 工具调用；允许在一次调用内读取多份相关文件。最终用中文给出不超过 800 字的方案，列出精确仓库相对路径和验证命令。不可联网，不可修改文件，不运行测试。本轮只评价变更方案。${context}`;
+      const prompt = `${task.task}\n仅在当前目录调查，不访问父目录、其他实验、用户记忆、宿主配置、环境变量或凭据。最多使用 6 次 shell 工具调用；允许在一次调用内读取多份相关文件。最终用中文给出不超过 800 字的方案，列出精确仓库相对路径和验证命令。不可联网，不可修改文件，不运行测试。本轮只评价变更方案。${context}`;
       const answerPath = path.join(root, `${runId}.answer.md`);
       const args = [
         codexEntry,
         'exec',
         '--ignore-user-config',
+        '--ignore-rules',
         '--ephemeral',
         '--skip-git-repo-check',
         '--sandbox',
         'read-only',
         '--model',
         model,
+        ...host.args,
         '-c',
         'model_reasoning_effort="low"',
         '-C',
@@ -223,7 +258,14 @@ for (const task of tasks) {
         model,
         snapshotId,
         candidateIds,
+        phase: task.phase,
+        preferenceFollowed: task.preference
+          ? /\|[^\n]*场景[^\n]*操作[^\n]*预期[^\n]*\|/u.test(answer)
+          : undefined,
+        promptVersion: 'task-learning-context-v2',
+        worktreeId: runId,
         toolCalls,
+        withinToolBudget: toolCalls <= 6,
         usage,
         latencyMs: Date.now() - started,
         exitCode: result.exitCode,
@@ -243,6 +285,7 @@ for (const task of tasks) {
             limitation:
               'Read-only planning probe. Path coverage is a checklist, not proof of implemented behavior or causal improvement. Failed and timed-out runs are retained.',
             runs,
+            comparison: summarizeTaskAB(runs),
           },
           null,
           2,
@@ -257,4 +300,33 @@ for (const task of tasks) {
         );
     }
   }
+}
+
+function summarizeTaskAB(runs) {
+  return tasks.map((task) => {
+    const modes = Object.fromEntries(
+      ['none', 'knowledge'].map((mode) => {
+        const entries = runs.filter((run) => run.taskId === task.id && run.mode === mode);
+        const mean = (field) =>
+          entries.length
+            ? entries.reduce((sum, run) => sum + (run[field] ?? 0), 0) / entries.length
+            : null;
+        return [
+          mode,
+          {
+            runs: entries.length,
+            completed: entries.filter(
+              (run) => run.exitCode === 0 && !run.timedOut && run.toolCalls <= 6,
+            ).length,
+            toolBudgetViolations: entries.filter((run) => run.toolCalls > 6).length,
+            coverage: mean('coverage'),
+            toolCalls: mean('toolCalls'),
+            latencyMs: mean('latencyMs'),
+            preferenceFollowed: entries.filter((run) => run.preferenceFollowed === true).length,
+          },
+        ];
+      }),
+    );
+    return { taskId: task.id, modes };
+  });
 }

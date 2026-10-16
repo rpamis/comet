@@ -1,6 +1,11 @@
-import { parseRuntimeAction, type RuntimeAction } from './runtime-action.js';
+import { validateRuntimeActionSnapshot, type RuntimeAction } from './runtime-action.js';
 import { RuntimeProtocolError } from './runtime-errors.js';
-import { cloneRuntimeValue, hashRuntimeValue, type RuntimeValue } from './runtime-json.js';
+import {
+  cloneRuntimeValue,
+  hashRuntimeValue,
+  validateRuntimeValue,
+  type RuntimeValue,
+} from './runtime-json.js';
 import type {
   RuntimeEvidenceWait,
   RuntimeWait,
@@ -276,6 +281,16 @@ function parseEvidenceWait(value: unknown, runId: string, maximum: number): Runt
 /** 在恢复边界完整验证 Run 聚合，并返回与持久化输入隔离的副本。 */
 export function parseWorkflowRun(value: unknown, expectedRunId?: string): WorkflowRun {
   const data = object(cloneRuntimeValue(value), 'WorkflowRun');
+  return validateWorkflowRunSnapshot(data, expectedRunId);
+}
+
+/** Store 边界保留不可变上游值的共享关系；公共返回值另行复制。 */
+export function parseWorkflowRunSnapshot(value: unknown, expectedRunId?: string): WorkflowRun {
+  validateRuntimeValue(value);
+  return validateWorkflowRunSnapshot(object(structuredClone(value), 'WorkflowRun'), expectedRunId);
+}
+
+function validateWorkflowRunSnapshot(data: JsonObject, expectedRunId?: string): WorkflowRun {
   onlyFields(data, RUN_FIELDS, 'WorkflowRun');
   for (const field of RUN_FIELDS.filter(
     (field) =>
@@ -348,7 +363,7 @@ export function parseWorkflowRun(value: unknown, expectedRunId?: string): Workfl
   const actions: RuntimeAction[] = data.actions.map((raw) => {
     let action: RuntimeAction;
     try {
-      action = parseRuntimeAction(raw);
+      action = validateRuntimeActionSnapshot(raw);
     } catch (error) {
       if (error instanceof RuntimeProtocolError && error.code === 'UNSUPPORTED_PROTOCOL')
         throw error;

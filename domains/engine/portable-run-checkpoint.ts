@@ -1,6 +1,9 @@
 import { parseWorkflowRun } from './workflow-run-validation.js';
 import { hashRuntimeValue } from './runtime-json.js';
 import type { WorkflowRun } from './workflow-run.js';
+import { isDeepStrictEqual } from 'node:util';
+import { encodeRuntimeHistory } from './runtime-history-storage.js';
+import { decodeJsonValueMaps } from '../../platform/fs/json-value-pool.js';
 
 export const PORTABLE_RUN_CHECKPOINT_KEY = 'run_checkpoint';
 const SCHEMA = 'comet.workflow-run-checkpoint.v1';
@@ -18,6 +21,30 @@ export interface PortableRunCheckpoint {
   sourceRevision?: number;
   /** 绑定 portable hash 与 sourceRevision，拒绝单独修改恢复版本。 */
   sourceHash?: string;
+}
+
+/** 文件投影压缩历史引用；createPortableRunCheckpoint 的公共 Run 保持完整。 */
+export function encodePortableRunCheckpoint(checkpoint: PortableRunCheckpoint) {
+  const encoded = encodeRuntimeHistory(checkpoint.run);
+  return encoded.pool
+    ? {
+        ...checkpoint,
+        schema: 'comet.workflow-run-checkpoint.v2',
+        run: encoded.record,
+        pool: encoded.pool,
+        storageHash: hashRuntimeValue(encoded),
+      }
+    : checkpoint;
+}
+
+export function portableRunCheckpointMatches(
+  value: unknown,
+  expected: PortableRunCheckpoint,
+): boolean {
+  return (
+    isDeepStrictEqual(value, expected) ||
+    isDeepStrictEqual(value, encodePortableRunCheckpoint(expected))
+  );
 }
 
 /** A copied checkout must never inherit a live executor claim as executable work. */
@@ -82,17 +109,36 @@ export function readPortableRunCheckpoint(
   }
   const checkpoint = value as Record<string, unknown>;
   if (
-    checkpoint.schema !== SCHEMA ||
+    ![SCHEMA, 'comet.workflow-run-checkpoint.v2'].includes(String(checkpoint.schema)) ||
     typeof checkpoint.hash !== 'string' ||
     !/^[a-f0-9]{64}$/u.test(checkpoint.hash) ||
     Object.keys(checkpoint).some(
-      (key) => !['schema', 'hash', 'run', 'sourceRevision', 'sourceHash'].includes(key),
+      (key) =>
+        ![
+          'schema',
+          'hash',
+          'run',
+          'sourceRevision',
+          'sourceHash',
+          ...(checkpoint.schema === 'comet.workflow-run-checkpoint.v2'
+            ? ['pool', 'storageHash']
+            : []),
+        ].includes(key),
     ) ||
-    hashRuntimeValue(checkpoint.run) !== checkpoint.hash
+    (checkpoint.schema === 'comet.workflow-run-checkpoint.v2'
+      ? hashRuntimeValue({ record: checkpoint.run, pool: checkpoint.pool }) !==
+        checkpoint.storageHash
+      : hashRuntimeValue(checkpoint.run) !== checkpoint.hash)
   ) {
     throw new Error(`Portable Run checkpoint for ${runId} is invalid or changed`);
   }
-  const run = parseWorkflowRun(checkpoint.run, runId);
+  const restored =
+    checkpoint.schema === 'comet.workflow-run-checkpoint.v2'
+      ? decodeJsonValueMaps(checkpoint.run, checkpoint.pool)
+      : checkpoint.run;
+  if (hashRuntimeValue(restored) !== checkpoint.hash)
+    throw new Error(`Portable Run checkpoint for ${runId} is invalid or changed`);
+  const run = parseWorkflowRun(restored, runId);
   if (checkpoint.sourceRevision !== undefined || checkpoint.sourceHash !== undefined) {
     if (
       !Number.isSafeInteger(checkpoint.sourceRevision) ||

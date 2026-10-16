@@ -4,11 +4,17 @@ import path from 'node:path';
 
 import { resolveStableProjectId } from '../../platform/paths/project-identity.js';
 import { runBoundedRipgrep, type RipgrepRunResult } from '../../platform/process/ripgrep.js';
+import {
+  runWithHookReadCache,
+  runWithoutHookReadCache,
+} from '../../platform/process/hook-read-cache.js';
 import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 import { knowledgeDocumentKindRank } from './corpus.js';
 import type { ProjectKnowledgeIndexStatus } from './index-store.js';
 import { ProjectKnowledgeLocalStore } from './local-store.js';
+import { selectProjectKnowledgePassage } from './passage.js';
 import { independentQueryTermCount, queryContainsTerm, queryHasStrongMatch } from './query.js';
+import { projectKnowledgeHistoryRequested } from './query.js';
 import {
   parseProjectKnowledgeRecord,
   projectKnowledgeRecordFamily,
@@ -62,8 +68,10 @@ function bundledRipgrepPath(): string | null {
   }
 }
 
-function titleAndSnippet(content: string, lineNumber: number): { title: string; snippet: string } {
-  const lines = content.replaceAll('\r\n', '\n').split('\n');
+function titleAndSnippet(
+  lines: readonly string[],
+  lineNumber: number,
+): { title: string; snippet: string } {
   const index = Math.max(0, Math.min(lines.length - 1, lineNumber - 1));
   let heading = index;
   while (heading >= 0 && !/^\s{0,3}#{1,6}\s+\S/u.test(lines[heading])) heading -= 1;
@@ -101,12 +109,6 @@ function eventLine(event: unknown): number {
   if (!event || typeof event !== 'object') return 1;
   const value = (event as { data?: { line_number?: unknown } }).data?.line_number;
   return typeof value === 'number' && Number.isSafeInteger(value) ? value : 1;
-}
-
-function eventText(event: unknown): string {
-  if (!event || typeof event !== 'object') return '';
-  const value = (event as { data?: { lines?: { text?: unknown } } }).data?.lines?.text;
-  return typeof value === 'string' ? value : '';
 }
 
 function documentForPath(
@@ -215,6 +217,14 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
   }
 
   public async query(request: ProjectKnowledgeQueryRequest): Promise<ProjectKnowledgeQueryResult> {
+    return request.kind === 'search' || request.kind === 'expand'
+      ? runWithoutHookReadCache(() => this.queryInternal(request))
+      : this.queryInternal(request);
+  }
+
+  private async queryInternal(
+    request: ProjectKnowledgeQueryRequest,
+  ): Promise<ProjectKnowledgeQueryResult> {
     const store = this.recordStore();
     if (request.kind === 'manifest') {
       const records =
@@ -311,8 +321,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     }
 
     const diagnostics: Array<{ code: string; message: string }> = [];
-    if (store) await store.apply({ kind: 'refresh' });
-    else {
+    if (!store) {
       diagnostics.push(this.recordStoreError!);
       const indexDiagnostic = {
         code: 'index-unavailable',
@@ -324,13 +333,39 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     let sections: readonly ProjectKnowledgeResult[] = [];
     let refreshedSources: readonly ProjectKnowledgeDocument[] = [];
     let indexSynced = false;
+    const historyRequested = projectKnowledgeHistoryRequested(request.query);
     if (this.options.indexEnabled !== false && store) {
       try {
-        const sync = await store.syncCorpus(this.options.corpus, {
-          complete: this.options.corpusComplete !== false,
-        });
-        refreshedSources = [...sync.refreshedSources, ...sync.changedSources];
+        const hasArchives = this.options.corpus.some((document) =>
+          document.kind.endsWith('-archive'),
+        );
+        const includeArchives =
+          historyRequested ||
+          !this.options.corpus.some((document) => !document.kind.endsWith('-archive'));
+        const deadline = Date.now() + 2000;
+        // Indexing shares one read snapshot; delivered sources and receipt hashes are checked afresh.
+        let sync = await runWithHookReadCache(() =>
+          store.syncCorpus(this.options.corpus, {
+            complete: this.options.corpusComplete !== false,
+            includeArchives,
+            deadline,
+          }),
+        );
         sections = store.searchSections(request.query);
+        if (
+          !includeArchives &&
+          hasArchives &&
+          !sections.some((result) => result.document && !result.document.kind.endsWith('-archive'))
+        ) {
+          sync = await runWithHookReadCache(() =>
+            store.syncCorpus(this.options.corpus, {
+              complete: this.options.corpusComplete !== false,
+              deadline,
+            }),
+          );
+          sections = store.searchSections(request.query);
+        }
+        refreshedSources = sync.changedSources;
         indexSynced = true;
       } catch {
         refreshedSources = [...this.options.corpus];
@@ -343,13 +378,27 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     const exact =
       indexSynced && refreshedSources.length === 0 && this.options.runRipgrep === undefined
         ? []
-        : await this.searchWithRipgrep(request.query, [...refreshedSources]);
-    sections = await this.readCurrentSections(sections, diagnostics);
-    const recordResults = store?.searchRecords(request.query) ?? [];
+        : await runWithHookReadCache(() =>
+            this.searchWithRipgrep(request.query, [...refreshedSources]),
+          );
+    const recordResults: ProjectKnowledgeResult[] = [];
+    let droppedRecords = false;
+    if (store) {
+      // Inspect candidates before delivery; unrelated history is maintained by refresh/rebuild.
+      const candidates = store.searchRecords(request.query);
+      for (const [index, candidate] of candidates.entries()) {
+        if (!candidate.record) continue;
+        await store.apply({ kind: 'refresh', id: candidate.record.id });
+        const current = store.read(candidate.record.id);
+        if (!current || current.state === 'superseded') continue;
+        recordResults.push({ ...candidate, record: current });
+        if (recordResults.length >= 2) {
+          droppedRecords = candidates.length > index + 1;
+          break;
+        }
+      }
+    }
     const channels = [recordResults, sections, exact];
-    const historyRequested =
-      /历史|旧版|以前|当时|\bhistor(?:y|ical)\b|\barchived\b/iu.test(request.query.task) ||
-      /(?:^|\/)archive(?:\/|$)/u.test(request.query.path ?? '');
     const currentBehavior =
       !historyRequested && /当前|现行|现在|最新|\bcurrent\b|\blatest\b/iu.test(request.query.task);
     const queryTerms = [
@@ -378,16 +427,24 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
     }
     const results = new Map<string, ProjectKnowledgeResult>();
     let recordCount = 0;
-    let droppedRecords = false;
+    const hasCurrentDocuments = [...fused.values()].some(
+      ({ result }) => result.document && !result.document.kind.endsWith('-archive'),
+    );
     for (const { result } of [...fused.values()]
       .sort(
         (left, right) =>
+          (historyRequested
+            ? 0
+            : Number(left.result.document?.kind.endsWith('-archive') === true) -
+              Number(right.result.document?.kind.endsWith('-archive') === true)) ||
           right.score - left.score ||
           (left.result.record?.id ?? left.result.source).localeCompare(
             right.result.record?.id ?? right.result.source,
           ),
       )
       .map(({ result, score }) => ({ result: { ...result, score }, score }))) {
+      if (!historyRequested && hasCurrentDocuments && result.document?.kind.endsWith('-archive'))
+        continue;
       const key = result.record ? `record:${result.record.id}` : result.source;
       if (results.has(key)) continue;
       if (result.record) {
@@ -400,14 +457,20 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       results.set(key, result);
     }
     const limit = Math.max(1, Math.min(40, request.limit ?? 8));
-    const bounded = [...results.values()].slice(0, limit);
+    const currentResults = await this.readCurrentSections(
+      [...results.values()],
+      request.query,
+      diagnostics,
+      limit,
+    );
+    const bounded = currentResults.results;
     const records = bounded.flatMap((result) => (result.record ? [result.record] : []));
     return {
       kind: 'search',
       hits: records.map((record) => ({ record })),
       results: bounded,
       records,
-      truncated: droppedRecords || results.size > bounded.length,
+      truncated: droppedRecords || currentResults.truncated,
       diagnostics,
     };
   }
@@ -479,27 +542,48 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
 
   private async readCurrentSections(
     sections: readonly ProjectKnowledgeResult[],
+    query: ProjectKnowledgeQuery,
     diagnostics: Array<{ code: string; message: string }>,
-  ): Promise<readonly ProjectKnowledgeResult[]> {
-    const checked = await Promise.all(
-      sections.map(async (section) => {
-        const source = section.document?.source;
-        if (!source) return section;
-        try {
-          await readProtectedProjectFile(this.options.projectRoot, source, MAX_DOCUMENT_BYTES, {
+    limit: number,
+  ): Promise<{ results: readonly ProjectKnowledgeResult[]; truncated: boolean }> {
+    const reads = new Map<string, Promise<ReturnType<typeof selectProjectKnowledgePassage>>>();
+    const read = async (
+      section: ProjectKnowledgeResult,
+    ): Promise<ProjectKnowledgeResult | null> => {
+      const source = section.document?.source;
+      if (!source) return section;
+      try {
+        let read = reads.get(source);
+        if (!read) {
+          read = readProtectedProjectFile(this.options.projectRoot, source, MAX_DOCUMENT_BYTES, {
             label: source,
-          });
-          return section;
-        } catch {
-          diagnostics.push({
-            code: 'local-document',
-            message: '未进入检索：索引来源当前不可读取，不会参与本次召回。',
-          });
-          return null;
+          }).then((file) =>
+            selectProjectKnowledgePassage(source, file.bytes.toString('utf8'), query),
+          );
+          reads.set(source, read);
         }
-      }),
-    );
-    return checked.filter((section): section is ProjectKnowledgeResult => section !== null);
+        const passage = await read;
+        return passage ? { ...section, ...passage } : section;
+      } catch {
+        diagnostics.push({
+          code: 'local-document',
+          message: '未进入检索：索引来源当前不可读取，不会参与本次召回。',
+        });
+        return null;
+      }
+    };
+    const checked: ProjectKnowledgeResult[] = [];
+    let cursor = 0;
+    while (cursor < sections.length && checked.length < limit) {
+      const count = Math.min(8, limit - checked.length);
+      const batch = sections.slice(cursor, cursor + count);
+      cursor += batch.length;
+      const current = await Promise.all(batch.map(read));
+      checked.push(
+        ...current.filter((section): section is ProjectKnowledgeResult => section !== null),
+      );
+    }
+    return { results: checked, truncated: cursor < sections.length };
   }
 
   private async searchWithRipgrep(
@@ -572,6 +656,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       });
     }
     const candidates = new Map<string, LocalCandidate>();
+    const matches = new Map<string, { document: ProjectKnowledgeDocument; lines: number[] }>();
     let invalidJson = false;
     const outputLines = run.stdout.split(/\r?\n/u);
     for (const [index, line] of outputLines.entries()) {
@@ -600,6 +685,12 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
       if (!relative) continue;
       const document = documentForPath(this.options.projectRoot, relative, documents);
       if (!document) continue;
+      const group = matches.get(document.source) ?? { document, lines: [] };
+      group.lines.push(eventLine(event));
+      matches.set(document.source, group);
+    }
+    if (invalidJson) return [];
+    for (const { document, lines: matchingLines } of matches.values()) {
       let content: string;
       try {
         content = (
@@ -617,39 +708,41 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
         });
         continue;
       }
-      const text = eventText(event);
-      const { title, snippet } = titleAndSnippet(content, eventLine(event));
-      const matched = new Set(
-        query.terms.filter(
-          (term) =>
-            queryContainsTerm(text, term) ||
-            queryContainsTerm(title, term) ||
-            queryContainsTerm(document.source, term),
-        ),
-      );
-      const key = `${document.source}\u0000${title}`;
-      const previous = candidates.get(key);
-      const combined = new Set(previous?.matchedTerms ?? []);
-      for (const term of matched) combined.add(term);
-      const searchable = `${title}\n${document.source}\n${snippet}`;
-      const strong = queryHasStrongMatch(query, searchable);
-      candidates.set(key, {
-        content: previous?.content ?? snippet,
-        source: document.source,
-        title,
-        document,
-        matchedTerms: combined,
-        matchCount: (previous?.matchCount ?? 0) + 1,
-        strong,
-        pathAssociation: Boolean(
-          query.path &&
-          (document.source.toLowerCase().includes(query.path.toLowerCase()) ||
-            title.toLowerCase().includes(query.path.toLowerCase())),
-        ),
-        line: previous?.line ?? eventLine(event),
-      });
+      const lines = content.replaceAll('\r\n', '\n').split('\n');
+      for (const lineNumber of matchingLines) {
+        const text = lines[Math.max(0, lineNumber - 1)] ?? '';
+        const { title, snippet } = titleAndSnippet(lines, lineNumber);
+        const matched = new Set(
+          query.terms.filter(
+            (term) =>
+              queryContainsTerm(text, term) ||
+              queryContainsTerm(title, term) ||
+              queryContainsTerm(document.source, term),
+          ),
+        );
+        const key = `${document.source}\u0000${title}`;
+        const previous = candidates.get(key);
+        const combined = new Set(previous?.matchedTerms ?? []);
+        for (const term of matched) combined.add(term);
+        const searchable = `${title}\n${document.source}\n${snippet}`;
+        const strong = queryHasStrongMatch(query, searchable);
+        candidates.set(key, {
+          content: previous?.content ?? snippet,
+          source: document.source,
+          title,
+          document,
+          matchedTerms: combined,
+          matchCount: (previous?.matchCount ?? 0) + 1,
+          strong,
+          pathAssociation: Boolean(
+            query.path &&
+            (document.source.toLowerCase().includes(query.path.toLowerCase()) ||
+              title.toLowerCase().includes(query.path.toLowerCase())),
+          ),
+          line: previous?.line ?? lineNumber,
+        });
+      }
     }
-    if (invalidJson) return [];
     return [...candidates.values()]
       .filter(
         (candidate) =>
@@ -662,17 +755,7 @@ export class LocalProjectKnowledgeProvider implements ProjectKnowledgeProvider {
   }
 
   private searchTargets(): string[] {
-    const directories = new Set<string>();
-    const files: string[] = [];
-    for (const document of this.options.corpus) {
-      if (document.kind === 'superpowers')
-        files.push(path.relative(this.options.projectRoot, document.absolutePath));
-      else
-        directories.add(
-          path.dirname(path.relative(this.options.projectRoot, document.absolutePath)),
-        );
-    }
-    return [...directories, ...files].map((value) => value.replaceAll(path.sep, '/')).sort();
+    return [...new Set(this.options.corpus.map((document) => document.absolutePath))].sort();
   }
 }
 

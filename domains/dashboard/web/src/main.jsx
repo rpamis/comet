@@ -108,6 +108,7 @@ import {
   useDashboardModalState,
 } from './dashboard-modal.jsx';
 import { useAnimatedNumber } from './use-animated-number.js';
+import { ContextUsagePanel } from './context-usage-panel.jsx';
 import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
 import { useDashboardMotion } from './dashboard-motion.jsx';
 import { useDashboardViewState, useDashboardScrollRestoration } from './dashboard-view-state.js';
@@ -123,6 +124,7 @@ import {
 } from './dashboard-web-state.js';
 import {
   createDashboardRequestCoordinator,
+  mergePartialPluginPage,
   resolveDashboardProjectWorkflow,
 } from './dashboard-data.js';
 import './styles.css';
@@ -874,7 +876,8 @@ function DashboardApp({
     if (!force && cached) return cached;
     return pluginPageCoordinatorRef.current.load(
       cacheKey,
-      (signal) => fetchDashboardPluginPage(projectId, pluginId, signal),
+      async (signal) =>
+        mergePartialPluginPage(cached, await fetchDashboardPluginPage(projectId, pluginId, signal)),
       {
         force,
         owner,
@@ -1184,7 +1187,8 @@ function DashboardApp({
       }
       if (
         (requestedPluginId === 'comet.project-knowledge' && capability === 'read-source') ||
-        capability === 'memory-get'
+        capability === 'memory-get' ||
+        capability === 'application-history'
       ) {
         return result;
       }
@@ -1316,7 +1320,7 @@ function DashboardApp({
                   ? t('来源或验证入口已变化，记录已替代并停止应用')
                   : t('项目知识已刷新'),
           );
-        } else if (capability !== 'read-source' && capability !== 'memory-get') {
+        } else if (!['read-source', 'memory-get', 'application-history'].includes(capability)) {
           toast(capability === 'lifecycle' ? t('插件状态已更新') : t('操作已完成'));
         }
         return result;
@@ -6729,27 +6733,96 @@ function ProjectKnowledgeRegistry({
   );
 }
 
-function ContextApplicationHistory({ applications = [], recordId }) {
+function ContextApplicationHistory({
+  applications = [],
+  recordId,
+  total = applications.length,
+  cursor,
+  onLoadPage,
+}) {
   useDashboardLanguage();
-  const [expanded, setExpanded] = useState(false);
-  useEffect(() => setExpanded(false), [recordId]);
+  const [page, setPage] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const generation = useRef(0);
+  const loader = useRef(onLoadPage);
+  loader.current = onLoadPage;
+  useEffect(() => {
+    generation.current++;
+    setPage(null);
+    setLoading(false);
+    setError(false);
+  }, [recordId, applications, cursor]);
   if (applications.length === 0) return null;
-  const visible = expanded ? applications : applications.slice(0, 6);
+  const visible = page?.items ?? applications.slice(0, 6);
+  const next = page ? page.nextCursor : cursor;
+  const localOffset = page?.offset ?? 0;
+  const localMore = !cursor && !page?.remote && localOffset + (page ? 20 : 6) < applications.length;
+  const history = page?.history ?? [];
+  const load = async (previous = false) => {
+    const token = ++generation.current;
+    setError(false);
+    setLoading(true);
+    try {
+      if (previous && history.length <= 1) {
+        setPage(null);
+        return;
+      }
+      if (!cursor && !page?.remote) {
+        const offset = previous ? Math.max(0, localOffset - 20) : localOffset + (page ? 20 : 6);
+        setPage({
+          items: applications.slice(offset, offset + 20),
+          offset,
+          history: previous ? history.slice(0, -1) : [...history, offset],
+        });
+        return;
+      }
+      const requestedCursor = previous ? history.at(-2) : next;
+      const result = await loader.current?.(requestedCursor);
+      if (token !== generation.current) return;
+      if (!result || !Array.isArray(result.items)) throw new Error('History unavailable');
+      setPage({
+        items: result.items.slice(0, 20),
+        nextCursor: result.nextCursor,
+        remote: true,
+        history: previous ? history.slice(0, -1) : [...history, requestedCursor],
+      });
+    } catch {
+      if (token === generation.current) setError(true);
+    } finally {
+      if (token === generation.current) setLoading(false);
+    }
+  };
   return (
     <section>
       <div className="dashboard-context-application-history-head">
         <h4>{t('应用历史')}</h4>
-        {applications.length > 6 && (
-          <Button
-            type="text"
-            size="small"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((value) => !value)}
-          >
-            {expanded ? t('收起') : t('查看全部 {0} 条', [applications.length])}
-          </Button>
-        )}
+        <span>{t('共 {0} 条', [total])}</span>
       </div>
+      {error && <p role="alert">{t('历史加载失败，请重试。')}</p>}
+      {(page || next || localMore) && (
+        <div className="dashboard-context-application-history-head">
+          <Button
+            aria-label={t('较新记录')}
+            size="small"
+            type="text"
+            disabled={!page || loading}
+            onClick={() => load(true)}
+          >
+            {t('较新记录')}
+          </Button>
+          <Button
+            aria-label={t('较早记录')}
+            size="small"
+            type="text"
+            loading={loading}
+            disabled={(!next && !localMore) || loading}
+            onClick={() => load()}
+          >
+            {t('较早记录')}
+          </Button>
+        </div>
+      )}
       <div className="dashboard-context-application-history">
         {visible.map((application) => (
           <article key={application.applicationId}>
@@ -6913,6 +6986,11 @@ function ProjectKnowledgeInspector({
       <ContextApplicationHistory
         applications={record.applicationHistory ?? []}
         recordId={record.id}
+        total={record.contextApplicationCount}
+        cursor={record.applicationHistoryCursor}
+        onLoadPage={(cursor) =>
+          onInvoke?.('application-history', { candidateId: record.id, cursor })
+        }
       />
       <section>
         <h4>{t('结论证据')}</h4>
@@ -8109,6 +8187,20 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke, viewSc
           }
         />
       )}
+      {snapshot.partial && (
+        <Alert
+          className="mb-3"
+          type="warning"
+          showIcon
+          message={t('部分内容暂不可用，可继续使用已加载的内容。')}
+          description={
+            snapshot.cachedSections?.length
+              ? t('显示上次读取的记录，恢复后刷新即可更新。')
+              : t('请稍后刷新，或检查服务配置。')
+          }
+        />
+      )}
+      <ContextUsagePanel snapshot={snapshot.contextUsage} title={t('项目知识检索与使用')} />
       <ContextManifestPreview
         items={snapshot.manifestPreview}
         emptyLabel={t('最近还没有向 Agent 提供项目知识')}
@@ -8721,6 +8813,20 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
           ))}
         </div>
       )}
+      {data?.partial && (
+        <Alert
+          className="mb-3"
+          type="warning"
+          showIcon
+          message={t('部分内容暂不可用，可继续使用已加载的内容。')}
+          description={
+            data.cachedSections?.length
+              ? t('显示上次读取的记录，恢复后刷新即可更新。')
+              : t('请稍后刷新，或检查服务配置。')
+          }
+        />
+      )}
+      <ContextUsagePanel snapshot={data?.contextUsage} title={t('个人记忆检索与使用')} />
       <ContextManifestPreview
         items={data?.manifestPreview}
         emptyLabel={t('最近还没有向 Agent 提供个人记忆')}
@@ -8979,6 +9085,11 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
               <ContextApplicationHistory
                 applications={selectedRecord.applicationHistory ?? []}
                 recordId={selectedRecord.id}
+                total={selectedRecord.contextApplicationCount}
+                cursor={selectedRecord.applicationHistoryCursor}
+                onLoadPage={(cursor) =>
+                  onInvoke?.('application-history', { candidateId: selectedRecord.id, cursor })
+                }
               />
               <section>
                 <h4>{t('作用范围')}</h4>

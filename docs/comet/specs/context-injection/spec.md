@@ -37,15 +37,25 @@ CLI 提供任务 Context 请求和按 ID expand。JSON 输出同时返回结构�
 
 实际投递生成 `applicationId` 并发送 `context.applied`。任务完成时，宿主/Skill 发送 `context.outcome`，至少表达 used-successfully、ignored、overridden、corrected 或 contributed-to-failure。该反馈进入 Agent Learning Loop，影响后续状态和排序。
 
-普通成功应用保持静默；只有内容第一次改变处理方式、发生冲突、触发确定性检查或用户查看详情时展示 whyApplied。Dashboard 在个人记忆和项目知识中心提供当前 Manifest 预览，可展开完整 application history；普通 Agent 文本不显示内部评分。
+普通成功应用保持静默；只有内容第一次改变处理方式、发生冲突、触发确定性检查或用户查看详情时展示 whyApplied。Dashboard 在个人记忆和项目知识中心提供当前 Manifest 预览，应用历史先显示最近六条，较早记录按游标每页最多读取二十条；普通 Agent 文本不显示内部评分。应用记录使用索引保存，旧 JSON 按可恢复批次导入；历史总数和反馈仍保留，任务选择读取当前候选的反馈汇总及精确会话记录，不扫描全部历史。
 
 ## Priority
 
-Context Director 强制以下优先级：当前系统和用户请求、当前代码/config/test、proven/enforced Project Policy、Project Model、explicit/proven Personal Memory、trial Unit 和历史 Episode。低层内容不能通过数量覆盖高层内容。
+解释冲突时保持以下优先级：当前系统和用户请求、当前代码/config/test、proven/enforced Project Policy、Project Model、explicit/proven Personal Memory、trial Unit 和历史 Episode。低层内容不能通过数量覆盖高层内容。
+
+交付排序用于分配上下文预算，不改变上述约束优先级。已绑定验证的 enforced Project Policy 优先保留；核心用户画像和当前明确适用的个人协作偏好先于一般项目建议占用预算，避免经验索引挤掉阶段偏好。其他候选保持检索相关性顺序，不能在投递时改为按标题排序。预检索、预算选择与展开使用相同适用条件；未提供必要路径、操作或阶段时不激活受这些条件限制的个人记忆。
 
 ## Failure behavior
 
 某个 Provider 查询或 expand 失败时，其他插件 Context 和 workflow 继续；失败项不进入输出并产生有界诊断。Hook 失败时不阻断工具调用；Skill/CLI 仍可手动请求。空 Context 不输出空标签。
+
+普通任务、Native 和 Classic 的可选上下文读取共用隔离进程，整个请求最多等待十秒；超时结束该进程及其子进程，继续当前工作，不要求重复检索。同次 Native 命令的检查点学习事件共用五秒预算；先持久化本批事件，再执行 Provider 诊断和学习。超时或服务不可用不会改变工作流结果，已捕获事件保留供后续重试；正在处理的事件仍遵守租约，不能绕过有效租约重复执行。
+
+上下文投递的事件按作用域批量写入 Journal，再批量确认发送回执；保存失败或进程中断后以同一事件 ID 重试，不能先确认再保存。上下文读取只传递本次投递的记录，不执行历史 Reflection，显式应用反馈只处理自己的 episode。工作流检查点不顺带重放其他历史或同步 Git 远端；`comet memory sync` 的补学习与远端同步共用三十秒预算，其中补学习默认最多五秒，未完成记录与剩余数量保留供下一次继续。取消会终止实际网络请求和子进程，释放学习租约且不消耗失败重试次数。Git 网络传输不占用本地记忆读写锁，提交本地变更和合并远端状态时才加锁。
+
+显式维护可用 `--timeout-ms` 调整总预算、用 `--learning-timeout-ms` 调整补学习预算；补学习仍受总预算限制。需要等待较慢服务时由用户明确增加本次维护预算，不改变普通任务和工作流检查点的等待上限。
+
+Dashboard 的知识和记忆页面读取共用两秒预算，底层 HTTP 与锁等待沿用剩余预算。服务不可用时分别报告缺失部分，继续显示已完成读取的配置、本地内容和标明过期的缓存记录；页面不把服务异常显示成“没有记忆”，也不在超时后继续发起下一次请求。
 
 ## Verification scenarios
 

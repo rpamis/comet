@@ -2,11 +2,55 @@ import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createServer } from 'node:http';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildSync } from 'esbuild';
-import { GitMemorySync } from '../../../domains/comet-memory/repository.js';
+import { FileMemoryRepository, GitMemorySync } from '../../../domains/comet-memory/repository.js';
+import { PersonalMemoryService } from '../../../domains/comet-memory/personal-memory.js';
 
 describe('real memory Git synchronization', () => {
+  it('keeps local reads and edits available while Git waits for the remote', async () => {
+    const directory = path.join(root, 'concurrent-memory');
+    await fs.mkdir(directory);
+    const sync = new GitMemorySync(directory, { timeoutMs: 3000 });
+    const repository = new FileMemoryRepository(directory, { git: sync });
+    const service = new PersonalMemoryService({ repository });
+    await service.remember({ scope: 'global', category: 'workflow', text: 'Run focused checks.' });
+    git(directory, 'init');
+    git(directory, 'config', 'user.name', 'Memory test');
+    git(directory, 'config', 'user.email', 'memory@example.invalid');
+    let received!: () => void;
+    const remoteRequest = new Promise<void>((resolve) => {
+      received = resolve;
+    });
+    const server = createServer(() => received());
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    await sync.configureRemote(
+      `http://127.0.0.1:${(server.address() as { port: number }).port}/memory.git`,
+    );
+    const pending = repository.sync();
+    try {
+      await remoteRequest;
+      const operation = service.remember({
+        scope: 'global',
+        category: 'language',
+        text: 'Reply in Chinese.',
+      });
+      const result = await Promise.race([
+        operation,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 700)),
+      ]);
+      expect(result, 'local edits must not wait for remote Git I/O').not.toBeNull();
+      await operation;
+    } finally {
+      server.closeAllConnections();
+      await pending;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    expect((await service.manage()).records.map((record) => record.text)).toContain(
+      'Reply in Chinese.',
+    );
+  });
   let root: string;
   let remote: string;
   const git = (cwd: string, ...args: string[]) =>
@@ -28,8 +72,62 @@ describe('real memory Git synchronization', () => {
     git(root, 'init', '--bare', '--initial-branch', 'main', remote);
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(root, { recursive: true, force: true });
   });
+
+  it('shares one time budget across commands and stops before another command after expiry', async () => {
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const budgets: number[] = [];
+    const commands: string[][] = [];
+    const sync = new GitMemorySync(root, {
+      timeoutMs: 100,
+      run: async (args, options) => {
+        commands.push([...args]);
+        budgets.push(options?.timeoutMs ?? Infinity);
+        now += 40;
+        if (args[0] === 'rev-parse') return { stdout: root, stderr: '' };
+        if (args[0] === 'remote') return { stdout: remote, stderr: '' };
+        return { stdout: '', stderr: '' };
+      },
+    });
+    expect(await sync.sync()).toMatchObject({ status: 'failed', retryable: true });
+    expect(commands).toHaveLength(3);
+    expect(budgets).toEqual([100, 60, 20]);
+    expect(commands.some((args) => args[0] === 'push')).toBe(false);
+  });
+
+  it('terminates a real Git network request and preserves local memory when synchronization times out', async () => {
+    let requests = 0;
+    const server = createServer(() => {
+      requests++;
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+    const directory = path.join(root, 'unresponsive');
+    await fs.mkdir(directory);
+    git(directory, 'init', '--initial-branch', 'main');
+    const sync = new GitMemorySync(directory, { timeoutMs: 1_500 });
+    await sync.configureRemote(`http://127.0.0.1:${port}/memory.git`);
+    await fs.writeFile(path.join(directory, 'profile.md'), 'Preserve this preference.\n');
+    try {
+      const started = performance.now();
+      expect(await sync.sync()).toMatchObject({ status: 'failed', retryable: true });
+      expect(performance.now() - started).toBeLessThan(5_000);
+      expect(requests).toBeGreaterThan(0);
+      expect(await fs.readFile(path.join(directory, 'profile.md'), 'utf8')).toBe(
+        'Preserve this preference.\n',
+      );
+      const connections = await new Promise<number>((resolve, reject) =>
+        server.getConnections((error, count) => (error ? reject(error) : resolve(count))),
+      );
+      expect(connections).toBe(0);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 10_000);
 
   it('bootstraps an empty remote, connects another client and synchronizes later changes', async () => {
     const first = await client('first', 'personal');

@@ -47,6 +47,33 @@ describe('symlink install mode', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
+  it.each([
+    ['copy', 'skills'],
+    ['copy', 'skills-zh'],
+    ['symlink', 'skills'],
+    ['symlink', 'skills-zh'],
+  ] as const)('installs shared Native references in %s mode from %s', async (mode, language) => {
+    const result = await copyCometSkillsForPlatform(
+      tmpDir,
+      codexPlatform,
+      true,
+      language,
+      'project',
+      mode,
+      'native',
+    );
+    expect(result.failed).toBe(0);
+    for (const name of ['edit-review.md', 'task-learning.md']) {
+      const relative = path.join('comet', 'reference', name);
+      expect(await readFile(path.join(tmpDir, '.agents', 'skills', relative), 'utf8')).toBe(
+        await readFile(path.resolve('assets', language, relative), 'utf8'),
+      );
+    }
+    expect(
+      await fileExists(path.join(tmpDir, '.agents', 'skills', 'comet-classic', 'SKILL.md')),
+    ).toBe(false);
+  });
+
   describe('getCentralSkillsDir', () => {
     it('returns .comet/skills for project scope', () => {
       const result = getCentralSkillsDir(tmpDir, 'project');

@@ -60,6 +60,8 @@ comet task <project-root> --task "<用户原始请求>" --phase "<phase>" --sess
 
 记忆按以下规则保存：
 
+任务结束优先按[任务学习收尾](../../comet/reference/task-learning.md)准备学习文件，用 `comet task --complete --learning-file <file>` 一次提交个人观察、项目经验、待评审动作和实际使用反馈。下面的分步保存、评审与完成命令供即时保存、单项纠正及旧版兼容；采用学习文件时无需重复执行。
+
 - 用户明确要求长期记住偏好或项目约定时，调用 `comet memory remember <project-root> --text "<偏好或约定>" --scope global|project --json`，立即保存为用户明确指定的记忆。用户明确限定阶段时追加可重复的 `--phase`，例如 `--phase build --phase verify`；纠正适用阶段使用 `comet memory correct <project-root> --id <id> --phase <phase> --json`。保留用户原话，不把当前阶段自动当作长期适用条件。
 - 用户没有提出长期记忆要求，但协作方式已经稳定、可供以后任务复用时，才调用 `comet memory observe <project-root> --text "<协作方式>" --workflow <workflow> --change <change-id> --candidate-key <stable-topic-key> --json`。
 - 两者都不得保存任务摘要、实现进展、命令输出或测试结果。

@@ -12,7 +12,7 @@
  * cache dies with the process.
  *
  * The cache is opt-in: Hook decisions and read-only Dashboard discovery
- * scans activate it for one invocation. Runtime mutations and Native
+ * scans and advisory index snapshots activate it for one invocation. Runtime mutations and Native
  * receipt/hash verification do not activate this cache. This module lives
  * in `platform/` so every domain can share it without creating import
  * cycles (no domain dependency on a higher layer).
@@ -61,6 +61,11 @@ export async function runWithHookReadCache<T>(work: () => Promise<T>): Promise<T
       scope.entries.clear();
     }
   });
+}
+
+/** Read current sources without inheriting a caller's cached snapshot. */
+export async function runWithoutHookReadCache<T>(work: () => Promise<T>): Promise<T> {
+  return scopes.run({ entries: new Map(), active: false }, work);
 }
 
 function cacheKey(factoryName: string, args: readonly unknown[]): string {

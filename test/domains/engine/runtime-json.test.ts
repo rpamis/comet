@@ -7,6 +7,18 @@ import {
 } from '../../../domains/engine/runtime-json.js';
 
 describe('Runtime JSON snapshots', () => {
+  it('retains depth checks on shared subtrees and rejects proxy traps before reading data', () => {
+    const shared = { leaf: 1 };
+    let deep: unknown = shared;
+    for (let i = 0; i < 64; i++) deep = { nested: deep };
+    expect(() => cloneRuntimeValue({ first: shared, deep })).toThrow('INVALID_JSON');
+    const trap = vi.fn(() => {
+      throw new Error('trap executed');
+    });
+    const proxy = new Proxy({ safe: true }, { ownKeys: trap });
+    expect(() => cloneRuntimeValue(proxy)).toThrow('INVALID_JSON');
+    expect(trap).not.toHaveBeenCalled();
+  });
   it('validates snapshots without serialization, mutation or executable hooks', () => {
     const value = Object.freeze({ values: Object.freeze([-0, 1, 'text']) });
     const stringify = vi.spyOn(JSON, 'stringify');

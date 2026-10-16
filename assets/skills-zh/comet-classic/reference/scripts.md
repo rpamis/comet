@@ -131,6 +131,8 @@ comet archive <change-name>
 
 ## 任务上下文与产物语言
 
+任务结束优先按[任务学习收尾](../../comet/reference/task-learning.md)准备学习文件，用 `comet task --complete --learning-file <file>` 一次提交个人观察、项目经验、待评审动作和实际使用反馈。本节后面的分步保存、评审与完成命令供即时保存、单项纠正及旧版兼容；采用学习文件时无需重复执行。
+
 所有 OpenSpec 和 Superpowers 产物都必须使用 Comet 配置的产物语言，配置值为规范化语言 ID：`en` 或 `zh-CN`。已有 change 优先使用本次有效入口返回的 `configuration.language`；仅入口未提供该字段时，才通过 `comet state get <name> language` 读取实际状态文件中的 `language`。新旧两种状态文件均不存在时，依次读取项目 `.comet/config.yaml` 和全局 `~/.comet/config.yaml` 的 `classic.language`；两处都没有配置时，才使用当前用户请求的语言。调用外部 OpenSpec/Superpowers Skill 时，必须把最终确定的语言明确写入提示词或 ARGUMENTS。
 
 首次进入阶段、交接给新 Agent 或上下文恢复后，按当前 `agent.continuation.contextRequest` 获取一次任务上下文；SDK 已领取 Action 时，优先使用 `data.continuation.current.actions[]` 中对应 Action 的 `contextRequest`。本协议适用于 full、hotfix、tweak 的 SDK 与 Compat 路径，直接调用阶段 Skill 也要执行。普通状态查询、等待原任务和同一阶段内的连续执行不重复获取。

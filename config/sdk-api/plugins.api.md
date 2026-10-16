@@ -121,9 +121,13 @@ export class AgentExperienceJournal {
     constructor(store: AgentExperienceJournalStore);
     // (undocumented)
     capture(value: AgentExperienceEvent): Promise<AgentExperienceCaptureResult>;
+    captureMany(values: readonly AgentExperienceEvent[], options?: {
+        readonly processedEventIds?: readonly string[];
+    }): Promise<void>;
     claimEpisode(episodeId: string, options?: {
         readonly now?: string;
         readonly leaseMs?: number;
+        readonly maxEvents?: number;
     }): Promise<AgentExperienceReflectionClaim | null>;
     // (undocumented)
     completeClaim(claim: AgentExperienceReflectionClaim, updatedAt?: string): Promise<void>;
@@ -150,6 +154,8 @@ export class AgentExperienceJournal {
     markProcessedMany(eventIds: readonly string[], updatedAt?: string): Promise<void>;
     // (undocumented)
     pending(limit?: number): Promise<readonly AgentExperienceEvent[]>;
+    // (undocumented)
+    releaseClaim(claim: AgentExperienceReflectionClaim): Promise<void>;
     // (undocumented)
     releaseLegacyReview(eventIds: readonly string[]): Promise<readonly AgentExperienceEvent[]>;
     // (undocumented)
@@ -385,6 +391,7 @@ export interface PluginContextRequest {
     readonly phase?: string;
     // (undocumented)
     readonly projectId?: string;
+    readonly reportRetrievalIssue?: () => void;
     // (undocumented)
     readonly sessionId?: string;
     // (undocumented)
@@ -489,7 +496,7 @@ export interface PluginRecord {
 export class PluginRuntime {
     constructor(options: PluginRuntimeOptions);
     // (undocumented)
-    collectContext(request: PluginContextRequest, scope: PluginScopeTarget): Promise<AgentContextCandidate[]>;
+    collectContext(request: PluginContextRequest, scope: PluginScopeTarget, onQuery?: (sample: ContextQuerySample) => void): Promise<AgentContextCandidate[]>;
     // (undocumented)
     configure(id: string, config: Readonly<Record<string, unknown>>): Promise<void>;
     // (undocumented)
@@ -502,6 +509,9 @@ export class PluginRuntime {
     dispatch(value: AgentExperienceEvent): Promise<void>;
     // (undocumented)
     enable(id: string, target?: PluginScopeContext): Promise<void>;
+    enqueueEvents(values: readonly AgentExperienceEvent[], options?: {
+        readonly finalizeUnobserved?: boolean;
+    }): Promise<void>;
     // (undocumented)
     get(id: string): Promise<PluginView | null>;
     // (undocumented)
@@ -513,7 +523,7 @@ export class PluginRuntime {
         readonly throwOnError?: boolean;
     }): Promise<unknown>;
     // (undocumented)
-    learningStatus(): Promise<AgentLearningStatus>;
+    learningStatus(scope?: 'project' | 'all'): Promise<AgentLearningStatus>;
     // (undocumented)
     list(scope?: PluginScope): Promise<PluginView[]>;
     // (undocumented)

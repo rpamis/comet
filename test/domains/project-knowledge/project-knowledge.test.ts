@@ -131,12 +131,8 @@ describe('project knowledge dashboard status', () => {
         resolveStableProjectId(root),
       ),
     );
-    const searchRecords = vi
-      .spyOn(ProjectKnowledgeLocalStore.prototype, 'searchRecords')
-      .mockReturnValue(
-        records.map((record) => ({ record, source: record.id, content: record.summary, score: 1 })),
-      );
     try {
+      for (const record of records) await provider.apply({ kind: 'upsert', record });
       await expect(
         provider.query({
           kind: 'search',
@@ -145,7 +141,6 @@ describe('project knowledge dashboard status', () => {
         }),
       ).resolves.toMatchObject({ records: expect.any(Array), truncated: true });
     } finally {
-      searchRecords.mockRestore();
       provider.close();
       await fs.rm(root, { recursive: true, force: true });
     }
@@ -975,7 +970,7 @@ describe('project knowledge configuration', () => {
         (verificationCandidates as readonly Record<string, unknown>[]).find(
           (candidate) => candidate.kind === 'constraint',
         ),
-      ).not.toHaveProperty('priority');
+      ).toMatchObject({ state: 'proven', priority: 40 });
 
       const procedureBeforeReuse = await module.provideContext?.({
         task: 'release coordination procedure',
@@ -985,7 +980,7 @@ describe('project knowledge configuration', () => {
         (candidate) => candidate.kind === 'procedure',
       );
       expect(procedure).toBeDefined();
-      expect(procedure).not.toHaveProperty('priority');
+      expect(procedure).toMatchObject({ priority: 40 });
       await module.invoke?.('feedback', {
         id: procedure!.id,
         outcome: 'used-successfully',
@@ -1116,6 +1111,71 @@ describe('project knowledge configuration', () => {
 });
 
 describe('project knowledge corpus and local provider', () => {
+  test.each(['native', 'classic'] as const)(
+    'keeps current %s specifications when archives exhaust the corpus limit',
+    async (workflow) => {
+      const root = await tempProject();
+      try {
+        await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+        await fs.writeFile(
+          path.join(root, '.comet/config.yaml'),
+          `schema: comet.project.v1\ndefault_workflow: ${workflow}\n${workflow}:\n  ${workflow === 'native' ? 'artifact_root: docs' : 'artifact_layout: docs'}\n`,
+        );
+        const base = path.join(root, workflow === 'native' ? 'docs/comet' : 'docs/openspec');
+        const specs = path.join(base, 'specs');
+        const archives = path.join(base, workflow === 'native' ? 'archive' : 'changes/archive');
+        await fs.mkdir(specs, { recursive: true });
+        await fs.mkdir(archives, { recursive: true });
+        await fs.writeFile(path.join(specs, 'current.md'), '# Current\nCurrent source of truth.');
+        await Promise.all(
+          Array.from({ length: 600 }, (_, index) =>
+            fs.writeFile(path.join(archives, `${index}.md`), '# Old\nHistorical details.'),
+          ),
+        );
+        const snapshot = await discoverProjectKnowledgeCorpusSnapshot({ projectRoot: root });
+        expect(snapshot.complete).toBe(false);
+        expect(snapshot.documents).toHaveLength(512);
+        expect(snapshot.documents.map((document) => document.source)).toContain(
+          `docs/${workflow === 'native' ? 'comet' : 'openspec'}/specs/current.md`,
+        );
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test('returns discovered current documents when archive traversal uses its time budget', async () => {
+    const root = await tempProject();
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const readdir = fs.readdir;
+    const read = vi
+      .spyOn(fs, 'readdir')
+      .mockImplementation((...args: Parameters<typeof fs.readdir>) => {
+        if (String(args[0]).endsWith(`${path.sep}archive`)) now += 1_600;
+        return readdir(...args);
+      });
+    try {
+      await fs.mkdir(path.join(root, '.comet'), { recursive: true });
+      await fs.writeFile(
+        path.join(root, '.comet/config.yaml'),
+        'schema: comet.project.v1\ndefault_workflow: native\nnative:\n  artifact_root: docs\n',
+      );
+      await fs.mkdir(path.join(root, 'docs/comet/specs'), { recursive: true });
+      await fs.mkdir(path.join(root, 'docs/comet/archive'), { recursive: true });
+      await fs.writeFile(path.join(root, 'docs/comet/specs/current.md'), '# Current');
+      const snapshot = await discoverProjectKnowledgeCorpusSnapshot({ projectRoot: root });
+      expect(snapshot.complete).toBe(false);
+      expect(snapshot.documents.map((document) => document.source)).toContain(
+        'docs/comet/specs/current.md',
+      );
+    } finally {
+      read.mockRestore();
+      clock.mockRestore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('marks corpus discovery incomplete when the file limit truncates results', async () => {
     const root = await tempProject();
     try {
@@ -2293,7 +2353,6 @@ describe('project knowledge failure and bounded retrieval contracts', () => {
       expect(results.map((entry) => entry.source)).toEqual([
         'docs/comet/specs/current.md',
         'docs/openspec/specs/classic.md',
-        'docs/comet/archive/2026-08-01-old.md',
         'docs/superpowers/specs/design.md',
       ]);
     } finally {

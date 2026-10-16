@@ -9,6 +9,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 import {
   createProjectKnowledgeQuery,
+  createUserProjectKnowledgeRecord,
   LocalProjectKnowledgeProvider,
   parseProjectKnowledgeSections,
   ProjectKnowledgeIndexStore,
@@ -61,6 +62,159 @@ describe('project knowledge query planning', () => {
 });
 
 describe('project knowledge section index', () => {
+  test('rebuilds a v3 derived index while retaining authoritative knowledge records', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const document = {
+      absolutePath: path.join(root, 'handbook.md'),
+      source: 'handbook.md',
+      kind: 'native-spec' as const,
+    };
+    const options = { projectRoot: root, cacheRoot, corpus: [document] };
+    let provider = new LocalProjectKnowledgeProvider(options);
+    try {
+      await fs.writeFile(
+        document.absolutePath,
+        '# Guide\n\n## Ownership\n\nUse the workspace.\n\n## Recovery\n\nKeep the receipt.\n',
+      );
+      const record = createUserProjectKnowledgeRecord(
+        {
+          type: 'constraint',
+          title: 'Saved rule',
+          summary: 'Keep this verified project decision.',
+        },
+        'migration-project',
+      );
+      await provider.apply({ kind: 'upsert', record });
+      await provider.refreshIndex();
+      provider.close();
+      const location = new ProjectKnowledgeIndexStore(options);
+      const legacy = new DatabaseSync(location.databasePath);
+      legacy.exec(
+        "DROP TABLE pk_fts_documents; DROP TABLE pk_documents; UPDATE pk_meta SET value = 'comet.project-knowledge.index.v3' WHERE key = 'schema';",
+      );
+      legacy.close();
+      provider = new LocalProjectKnowledgeProvider(options);
+      const response = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'workspace receipt' }),
+      });
+      expect(
+        response.kind === 'search' &&
+          response.results.some((entry) => entry.source === document.source),
+      ).toBe(true);
+      const saved = await provider.query({ kind: 'get', id: record.id });
+      expect(saved.kind === 'get' && saved.record).toEqual(record);
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('retrieves a document whose query concepts are distributed across sections', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const document = {
+      absolutePath: path.join(root, 'handbook.md'),
+      source: 'handbook.md',
+      kind: 'native-spec' as const,
+    };
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus: [document],
+    });
+    try {
+      await fs.writeFile(
+        document.absolutePath,
+        '# Guide\n\n## Ownership\n\nBind each operation to its workspace.\n\n## Recovery\n\nRestore the receipt after restart.\n\n## Deduplication\n\nRetries must retain their identity.\n',
+      );
+      const response = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'workspace receipt identity' }),
+      });
+      expect(response.kind).toBe('search');
+      const result = response.kind === 'search' ? response.results[0] : undefined;
+      expect(result?.source).toBe(document.source);
+      expect(result?.content).toContain('workspace');
+      expect(result?.content).toContain('receipt');
+      expect(result?.content).toContain('identity');
+      expect(result!.content.length).toBeLessThanOrEqual(1600);
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('returns useful document text for a filename-only match instead of a bare heading', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const document = {
+      absolutePath: path.join(root, 'source-coverage.md'),
+      source: 'source-coverage.md',
+      kind: 'native-spec' as const,
+    };
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus: [document],
+    });
+    try {
+      await fs.writeFile(
+        document.absolutePath,
+        '# source-coverage\n\n## Purpose\n\nRead every supplied attachment and preserve its requirements.\n',
+      );
+      const result = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'source_coverage' }),
+      });
+      expect(result.kind === 'search' && result.results[0]?.content).toContain(
+        'Read every supplied attachment',
+      );
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps the matching passage beyond the prefix within the excerpt budget', async () => {
+    const root = await temporaryRoot();
+    const cacheRoot = await temporaryRoot();
+    const document = {
+      absolutePath: path.join(root, 'runtime.md'),
+      source: 'runtime.md',
+      kind: 'native-spec' as const,
+    };
+    const provider = new LocalProjectKnowledgeProvider({
+      projectRoot: root,
+      cacheRoot,
+      corpus: [document],
+    });
+    try {
+      await fs.writeFile(
+        document.absolutePath,
+        `# Runtime\n\n${'General background. '.repeat(300)}\n\nThe RecoveryReceipt must survive process restart.\n`,
+      );
+      const result = await provider.query({
+        kind: 'search',
+        query: createProjectKnowledgeQuery({ task: 'RecoveryReceipt' }),
+      });
+      expect(result.kind === 'search' && result.results[0]?.content).toContain(
+        'The RecoveryReceipt must survive process restart.',
+      );
+      expect(result.kind === 'search' && result.results[0]!.content.length).toBeLessThanOrEqual(
+        1600,
+      );
+    } finally {
+      provider.close();
+      await fs.rm(root, { recursive: true, force: true });
+      await fs.rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
   test('ranks the document topic ahead of repeated incidental mentions in another document', async () => {
     const root = await temporaryRoot();
     const cacheRoot = await temporaryRoot();
@@ -593,7 +747,12 @@ describe('project knowledge section index', () => {
       await store.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
       const results = store.search(createProjectKnowledgeQuery({ task: '工作区项目知识混合召回' }));
       expect(results[0]).toMatchObject({ source, title: '项目知识混合召回' });
-      expect(store.status().channels).toEqual(['fts-terms', 'fts-trigram']);
+      expect(store.status().channels).toEqual([
+        'fts-documents',
+        'fts-coverage',
+        'fts-terms',
+        'fts-trigram',
+      ]);
     } finally {
       store.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -677,6 +836,7 @@ describe('project knowledge section index', () => {
       const damaged = new DatabaseSync(first.databasePath);
       damaged.prepare('DELETE FROM pk_fts_terms WHERE rowid = 1').run();
       damaged.prepare('DELETE FROM pk_fts_trigram WHERE rowid = 1').run();
+      damaged.prepare('DELETE FROM pk_fts_documents WHERE rowid = 1').run();
       damaged.close();
 
       reopened = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
@@ -1022,6 +1182,9 @@ describe('project knowledge section index', () => {
       const damaged = new DatabaseSync(store.databasePath);
       damaged.prepare("UPDATE pk_fts_terms SET body = 'stale projection' WHERE rowid = 1").run();
       damaged.prepare("UPDATE pk_fts_trigram SET body = 'stale projection' WHERE rowid = 1").run();
+      damaged
+        .prepare("UPDATE pk_fts_documents SET body = 'stale projection' WHERE rowid = 1")
+        .run();
       damaged.close();
 
       await store.rebuild([document]);
@@ -1034,9 +1197,13 @@ describe('project knowledge section index', () => {
       const trigram = verified.prepare('SELECT body FROM pk_fts_trigram WHERE rowid = 1').get() as {
         body: string;
       };
+      const documentProjection = verified
+        .prepare('SELECT body FROM pk_fts_documents WHERE rowid = 1')
+        .get() as { body: string };
       verified.close();
       expect(term.body).toContain('Authoritative source content.');
       expect(trigram.body).toContain('Authoritative source content.');
+      expect(documentProjection.body).toContain('Authoritative source content.');
     } finally {
       store.close();
       await fs.rm(root, { recursive: true, force: true });
@@ -1183,41 +1350,53 @@ describe('project knowledge section index', () => {
     }
   });
 
-  test('rebuilds a corrupt derived FTS projection without moving the shared database', async () => {
-    const root = await temporaryRoot();
-    const cacheRoot = await temporaryRoot();
-    const source = 'docs/comet/specs/recovery.md';
-    const file = path.join(root, ...source.split('/'));
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, '# Recovery\n\nProject knowledge recovery.\n');
-    const first = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
-    try {
-      await first.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
-      first.close();
-      const broken = new DatabaseSync(first.databasePath);
-      broken.exec('DROP TABLE pk_fts_terms; CREATE TABLE pk_fts_terms (broken TEXT);');
-      broken.close();
-      const diagnostics: string[] = [];
-      const corrupt = new ProjectKnowledgeIndexStore({
-        projectRoot: root,
-        cacheRoot,
-        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
-      });
-      await expect(
-        corrupt.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
-      ).rejects.toThrow();
-      expect(diagnostics).toContain('index-recovered');
-      expect(await fs.access(first.databasePath)).toBeUndefined();
-      await expect(
-        corrupt.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
-      ).resolves.toMatchObject({ status: { available: true, sourceCount: 1 } });
-      corrupt.close();
-    } finally {
-      first.close();
-      await fs.rm(root, { recursive: true, force: true });
-      await fs.rm(cacheRoot, { recursive: true, force: true });
-    }
-  });
+  test.each([
+    { table: 'pk_fts_terms', columns: 'broken TEXT' },
+    { table: 'pk_fts_documents', columns: 'broken TEXT' },
+    {
+      table: 'pk_fts_documents',
+      columns: 'workspace_id TEXT, source TEXT, title TEXT, body TEXT, lexical_terms TEXT',
+    },
+  ])(
+    'rebuilds corrupt $table ($columns) without moving the shared database',
+    async ({ table, columns }) => {
+      const root = await temporaryRoot();
+      const cacheRoot = await temporaryRoot();
+      const source = 'docs/comet/specs/recovery.md';
+      const file = path.join(root, ...source.split('/'));
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, '# Recovery\n\nProject knowledge recovery.\n');
+      const first = new ProjectKnowledgeIndexStore({ projectRoot: root, cacheRoot });
+      let corrupt: ProjectKnowledgeIndexStore | undefined;
+      try {
+        await first.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]);
+        first.close();
+        const broken = new DatabaseSync(first.databasePath);
+        broken.exec(`DROP TABLE ${table}; CREATE TABLE ${table} (${columns});`);
+        broken.close();
+        const diagnostics: string[] = [];
+        corrupt = new ProjectKnowledgeIndexStore({
+          projectRoot: root,
+          cacheRoot,
+          reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic.code),
+        });
+        await expect(
+          corrupt.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
+        ).rejects.toThrow();
+        expect(diagnostics).toContain('index-recovered');
+        expect(await fs.access(first.databasePath)).toBeUndefined();
+        await expect(
+          corrupt.syncCorpus([{ absolutePath: file, source, kind: 'native-spec' }]),
+        ).resolves.toMatchObject({ status: { available: true, sourceCount: 1 } });
+        corrupt.close();
+      } finally {
+        corrupt?.close();
+        first.close();
+        await fs.rm(root, { recursive: true, force: true });
+        await fs.rm(cacheRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   test('preserves the existing projection when FTS repair encounters a SQLite lock', async () => {
     const root = await temporaryRoot();

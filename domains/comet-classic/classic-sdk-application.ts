@@ -9,6 +9,7 @@ import path from 'node:path';
 import { parseDocument } from 'yaml';
 import {
   createPortableRunCheckpoint,
+  portableRunCheckpointMatches,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
   type DefineWorkflowOptions,
@@ -306,7 +307,10 @@ async function onlyRuntimeCheckpointChanged(
   if (
     !readPortableRunCheckpoint(beforeData[PORTABLE_RUN_CHECKPOINT_KEY], run.runId) ||
     !readPortableRunCheckpoint(afterData[PORTABLE_RUN_CHECKPOINT_KEY], run.runId) ||
-    !isDeepStrictEqual(afterData[PORTABLE_RUN_CHECKPOINT_KEY], createPortableRunCheckpoint(run))
+    !portableRunCheckpointMatches(
+      afterData[PORTABLE_RUN_CHECKPOINT_KEY],
+      createPortableRunCheckpoint(run),
+    )
   ) {
     return false;
   }

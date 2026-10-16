@@ -69,6 +69,28 @@ function candidate(overrides: Partial<AgentContextCandidate> = {}): AgentContext
 }
 
 describe('Agent Experience Journal', () => {
+  it('validates a complete capture batch before writing and preserves retry state for duplicate IDs', async () => {
+    const store = new MemoryAgentExperienceJournalStore();
+    const journal = new AgentExperienceJournal(store);
+    await expect(
+      journal.captureMany([
+        event(),
+        { ...event(), schema: 'invalid' } as unknown as AgentExperienceEvent,
+      ]),
+    ).rejects.toThrow();
+    expect((await store.read()).events).toEqual([]);
+    await journal.captureMany([event(), event(), event({ eventId: 'event-2' })]);
+    await journal.captureMany([event()]);
+    expect((await store.read()).events.map((entry) => entry.eventId)).toEqual([
+      'event-1',
+      'event-2',
+    ]);
+    expect((await store.read()).reflections['event-1']).toMatchObject({
+      status: 'pending',
+      attempts: 0,
+    });
+  });
+
   it('validates the public envelope and requires project identity', () => {
     expect(validateAgentExperienceEvent(event())).toMatchObject({
       schema: AGENT_EXPERIENCE_SCHEMA,
@@ -792,6 +814,64 @@ describe('Agent Learning Coordinator', () => {
 });
 
 describe('Context Director', () => {
+  it('keeps an explicit phase preference visible before spending the budget on project advice', async () => {
+    const director = new ContextDirector({ defaultCharBudget: 2000 });
+    const preference = candidate({
+      id: 'verify-preference',
+      content: 'Use the requested verification Skill. '.repeat(15),
+      selectors: { phases: ['verify'] },
+    });
+    const advice = [1, 2, 3].map((index) =>
+      candidate({
+        id: `advice-${index}`,
+        owner: 'project-knowledge',
+        scope: 'project',
+        memoryType: 'project-policy',
+        authority: 'repository',
+        title: `Advice ${index}`,
+        content: 'Project advice. '.repeat(60),
+      }),
+    );
+    const selected = await director.select([...advice, preference], {
+      task: 'Verify the task',
+      phase: 'verify',
+    });
+    expect(selected.coreMemory.map((entry) => entry.id)).toContain('verify-preference');
+    expect(selected.text.length).toBeLessThanOrEqual(2000);
+  });
+  it('persists one delivery batch atomically and reuses its receipts for a restored session', async () => {
+    let value: unknown = null;
+    const storage = {
+      read: async () => value,
+      write: vi.fn(async (next: unknown) => {
+        value = next;
+      }),
+    };
+    const candidates = [1, 2, 3].map((index) =>
+      candidate({ id: `preference-${index}`, title: `Preference ${index}` }),
+    );
+    const director = new ContextDirector({
+      applications: new StorageAgentContextApplicationStore(storage),
+    });
+    const first = await director.select(candidates, {
+      task: 'Verify delivery',
+      sessionId: 'receiver',
+    });
+    expect(first.applications).toHaveLength(3);
+    expect(storage.write).toHaveBeenCalledTimes(1);
+    const restored = new ContextDirector({
+      applications: new StorageAgentContextApplicationStore(storage),
+    });
+    const snapshot = await restored.select(candidates, {
+      task: 'Verify delivery',
+      sessionId: 'receiver',
+      contextMode: 'snapshot',
+    });
+    expect(snapshot.applications.map((entry) => entry.applicationId)).toEqual(
+      first.applications.map((entry) => entry.applicationId),
+    );
+    expect(storage.write).toHaveBeenCalledTimes(1);
+  });
   it('discovers scoped project references before file selection without activating policies', async () => {
     const director = new ContextDirector();
     const knowledge = candidate({
@@ -951,7 +1031,7 @@ describe('Context Director', () => {
       title: '模块 <边界>',
       summary: 'domains 模块不直接访问文件系统',
       content: '很长'.repeat(100),
-      selectors: { projectId: 'project-1', paths: ['domains/*'] },
+      selectors: { projectId: 'project-1', paths: ['domains/**'] },
       sources: [{ type: 'repository', source: 'AGENTS.md' }],
     });
     const selection = await director.select([candidate(), projectModel], {

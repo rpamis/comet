@@ -12,6 +12,8 @@ const repositoryRoot = path.resolve('.');
 const requiredPackageFiles = [
   'assets/manifest.json',
   'assets/skills/comet/SKILL.md',
+  'assets/skills/comet/reference/task-learning.md',
+  'assets/skills-zh/comet/reference/task-learning.md',
   'assets/skills/comet/scripts/comet-entry-runtime.mjs',
   'assets/skills/comet/scripts/comet-hook-router.mjs',
   'assets/skills/comet/scripts/comet-runtime.mjs',
@@ -39,6 +41,7 @@ const requiredPackageFiles = [
 ];
 const requiredNativeInstallFiles = [
   'comet/SKILL.md',
+  'comet/reference/task-learning.md',
   'comet/scripts/comet-entry-runtime.mjs',
   'comet/scripts/comet-hook-router.mjs',
   'comet-native/SKILL.md',

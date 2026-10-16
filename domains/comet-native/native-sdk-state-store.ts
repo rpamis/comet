@@ -4,7 +4,6 @@ import {
 } from '../workflow-contract/workspace-runtime.js';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import { NATIVE_MANAGED_RUN_MARKER, parseNativeStateDocument } from './native-state-document.js';
@@ -20,6 +19,8 @@ import {
 import {
   createFileRuntimeStore,
   createPortableRunCheckpoint,
+  encodePortableRunCheckpoint,
+  portableRunCheckpointMatches,
   PORTABLE_RUN_CHECKPOINT_KEY,
   readPortableRunCheckpoint,
   type RuntimeStore,
@@ -227,7 +228,9 @@ async function writeNativeManagedRunProjection(
         ...(archiveReceipt === undefined ? {} : { archive_receipt: archiveReceipt }),
         ...(applicationIdentity ? { application_checkpoint: applicationIdentity } : {}),
       }) +
-      (checkpoint ? `${PORTABLE_RUN_CHECKPOINT_KEY}: ${JSON.stringify(checkpoint)}\n` : ''),
+      (checkpoint
+        ? `${PORTABLE_RUN_CHECKPOINT_KEY}: ${JSON.stringify(encodePortableRunCheckpoint(checkpoint))}\n`
+        : ''),
     {
       containedRoot,
     },
@@ -496,7 +499,7 @@ export function createNativeSdkStateStore(
         !current ||
         !sameState(current, state) ||
         !currentSource?.startsWith(NATIVE_MANAGED_RUN_MARKER) ||
-        !isDeepStrictEqual(currentCheckpoint, expectedCheckpoint)
+        !portableRunCheckpointMatches(currentCheckpoint, expectedCheckpoint)
       ) {
         if (options.readOnly)
           throw new Error(

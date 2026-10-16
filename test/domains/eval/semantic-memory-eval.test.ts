@@ -18,7 +18,15 @@ describe('semantic memory eval', () => {
     expect(first.provenance.datasetHash).toMatch(/^sha256:/);
     expect(first.provenance.rubricHash).toMatch(/^sha256:/);
     expect(first.metrics.totalCases).toBeGreaterThanOrEqual(15);
-    expect(first.cases.filter((entry) => !entry.passed)).toEqual([]);
+    expect(
+      first.cases
+        .filter((entry) => !entry.passed)
+        .map((entry) => ({
+          id: entry.id,
+          failures: entry.failureCategories,
+          evidence: entry.scoringEvidence,
+        })),
+    ).toEqual([]);
     expect(first.metrics.passedCases).toBe(first.metrics.totalCases);
     expect(first.metrics.noiseSkipped).toBeGreaterThan(0);
     expect(first.metrics.usefulActivated).toBeGreaterThanOrEqual(2);

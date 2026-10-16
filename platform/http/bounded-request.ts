@@ -1,3 +1,5 @@
+import { operationSignal, throwIfOperationAborted } from '../process/operation-budget.js';
+
 export type BoundedHttpRequestErrorCode = 'request-failed' | 'response-too-large' | 'timeout';
 
 export class BoundedHttpRequestError extends Error {
@@ -61,11 +63,14 @@ export async function runBoundedHttpRequest(
   options: BoundedHttpRequestOptions,
 ): Promise<BoundedHttpResponse> {
   const controller = new AbortController();
+  throwIfOperationAborted();
+  const parent = operationSignal();
+  const signal = parent ? AbortSignal.any([controller.signal, parent]) : controller.signal;
   const timer = setTimeout(() => controller.abort(), options.timeoutMs);
   try {
     const response = await (options.fetch ?? globalThis.fetch)(options.url, {
       ...options.init,
-      signal: controller.signal,
+      signal,
     });
     const bytes = response.ok
       ? await readBoundedResponse(response, options.maxResponseBytes)
@@ -73,7 +78,7 @@ export async function runBoundedHttpRequest(
     return { response, bytes };
   } catch (error) {
     if (error instanceof BoundedHttpRequestError) throw error;
-    if (controller.signal.aborted) {
+    if (signal.aborted) {
       throw new BoundedHttpRequestError('timeout', 'HTTP request timed out', { cause: error });
     }
     throw new BoundedHttpRequestError('request-failed', 'HTTP request failed', { cause: error });

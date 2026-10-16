@@ -230,6 +230,7 @@ export function isManagedSkillPathForSelection(
   if (workflowSelection === 'classic') return !skillPath.startsWith('comet-native/');
   return (
     NATIVE_SHARED_SKILL_PATHS.has(skillPath) ||
+    skillPath.startsWith('comet/reference/') ||
     skillPath.startsWith('comet-native/') ||
     skillPath.startsWith('comet-any/') ||
     skillPath.startsWith('comet-memory/')

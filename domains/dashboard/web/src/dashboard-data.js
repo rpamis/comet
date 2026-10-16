@@ -1,5 +1,29 @@
 const DASHBOARD_WORKFLOWS = new Set(['native', 'classic']);
 
+export function mergePartialPluginPage(previous, next) {
+  if (!previous?.data || previous.pluginId !== next?.pluginId || !next?.data?.partial) return next;
+  const data = { ...next.data };
+  const cachedSections = [];
+  for (const error of data.sectionErrors ?? []) {
+    const fields =
+      error.section === 'records'
+        ? ['records', 'counts']
+        : error.section === 'management'
+          ? ['management', 'manifestPreview']
+          : error.section === 'applications'
+            ? ['manifestPreview']
+            : ['retrieval', 'providerConfig', 'contextUsage'].includes(error.section)
+              ? [error.section]
+              : [];
+    for (const field of fields)
+      if (previous.data[field] !== undefined) {
+        data[field] = previous.data[field];
+        cachedSections.push(field);
+      }
+  }
+  return { ...next, data: { ...data, cachedSections: [...new Set(cachedSections)] } };
+}
+
 export function resolveDashboardProjectWorkflow(project) {
   if (
     project?.workflowSource === 'configured' &&
