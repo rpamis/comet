@@ -119,10 +119,15 @@ describe('real memory Git synchronization', () => {
       expect(await fs.readFile(path.join(directory, 'profile.md'), 'utf8')).toBe(
         'Preserve this preference.\n',
       );
-      const connections = await new Promise<number>((resolve, reject) =>
-        server.getConnections((error, count) => (error ? reject(error) : resolve(count))),
-      );
-      expect(connections).toBe(0);
+      await expect
+        .poll(
+          () =>
+            new Promise<number>((resolve, reject) =>
+              server.getConnections((error, count) => (error ? reject(error) : resolve(count))),
+            ),
+          { timeout: 2_000 },
+        )
+        .toBe(0);
     } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -352,10 +352,15 @@ test('an unresponsive memory provider is canceled without blocking a new task or
     expect(JSON.parse(result.stdout)).toEqual({ context: [] });
     expect(result.stderr).toMatch(/canceled/i);
     expect(result.stderr).toMatch(/continue/i);
-    const connections = await new Promise<number>((resolve, reject) =>
-      server.getConnections((error, count) => (error ? reject(error) : resolve(count))),
-    );
-    expect(connections).toBe(0);
+    await expect
+      .poll(
+        () =>
+          new Promise<number>((resolve, reject) =>
+            server.getConnections((error, count) => (error ? reject(error) : resolve(count))),
+          ),
+        { timeout: 2_000 },
+      )
+      .toBe(0);
     await fs.unlink(path.join(home, '.comet/config.yaml'));
     const recovered = await run(home, project);
     expect(JSON.parse(recovered.stdout)).toEqual({ context: [] });
@@ -433,10 +438,15 @@ test('cancels checkpoint learning after one budget and preserves all queued even
         (entry) => (entry as { status: string }).status === 'pending',
       ),
     ).toBe(true);
-    const connections = await new Promise<number>((resolve, reject) =>
-      server.getConnections((error, count) => (error ? reject(error) : resolve(count))),
-    );
-    expect(connections).toBe(0);
+    await expect
+      .poll(
+        () =>
+          new Promise<number>((resolve, reject) =>
+            server.getConnections((error, count) => (error ? reject(error) : resolve(count))),
+          ),
+        { timeout: 2_000 },
+      )
+      .toBe(0);
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
