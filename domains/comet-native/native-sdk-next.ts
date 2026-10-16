@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
+import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
 
 import { hashRuntimeValue, type RuntimeValue, type WorkflowRun } from '../engine/runtime.js';
 import { NativeUsageError, success, type DispatchResult } from './native-cli-shared.js';
@@ -81,6 +82,9 @@ export async function advanceNativeSdkChange(
   if (run.status === 'cancelled') {
     await settleNativeSdkCancellation({ projectRoot, run });
     return sdkNextResult(projectRoot, name, run, artifactRootRef, application);
+  }
+  if (run.status === 'completed') {
+    await settleNativeSdkCompletion({ projectRoot, run });
   }
   if (
     decision &&

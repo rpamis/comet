@@ -9,6 +9,7 @@ import { stringify } from 'yaml';
 import { NATIVE_MANAGED_RUN_MARKER, parseNativeStateDocument } from './native-state-document.js';
 
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
+import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
 import { readNativeTextFilePrefix } from './native-bounded-file.js';
 import { withRecoverableFileLock } from '../../platform/fs/recoverable-file-lock.js';
 import {
@@ -550,6 +551,9 @@ export function createNativeSdkStateStore(
         await syncStateFile(runId);
         if (next.status === 'cancelled') {
           await settleNativeSdkCancellation({ projectRoot, run: next });
+        }
+        if (next.status === 'completed') {
+          await settleNativeSdkCompletion({ projectRoot, run: next });
         }
       }
       return committed;

@@ -1,6 +1,7 @@
 import { readWorkflowApplicationRun } from '../workflow-application/index.js';
 import type { RuntimeStoppedAction } from '../engine/runtime.js';
 import { settleNativeSdkCancellation } from './native-sdk-cancellation-cleanup.js';
+import { settleNativeSdkCompletion } from './native-sdk-completion-cleanup.js';
 import { promises as fs } from 'node:fs';
 import {
   readChangeRuntimeOwner,
@@ -749,6 +750,8 @@ export async function nativeDoctorCommand(
         const { run } = inspection;
         if (mayRepair && run.status === 'cancelled')
           await settleNativeSdkCancellation({ projectRoot: commandRoot, run });
+        if (mayRepair && run.status === 'completed')
+          await settleNativeSdkCompletion({ projectRoot: commandRoot, run });
         const checks = await inspectNativeSdkCheckExecutions({ projectRoot: commandRoot, run });
         const cancellation = await inspectNativeSdkCancellation({ projectRoot: commandRoot, run });
         const status = await projectNativeSdkStatus({ projectRoot: commandRoot, name }, inspection);
