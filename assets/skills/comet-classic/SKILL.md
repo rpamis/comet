@@ -11,7 +11,7 @@ Classic has five phases: Open → Design → Build → Verify → Archive. OpenS
 
 On a new task or host change, read and perform the [host capability check](../comet/reference/host-check.md) before approving Open. When execution configuration changes, check only capabilities required by the new strategy.
 
-Before starting or recovering, use `comet-classic/reference/classic-layout.md` to resolve logical artifact paths, and read “CLI Bootstrap” in `comet-classic/reference/scripts.md`. Call the public Comet CLI and use its OpenSpec adapter for OpenSpec commands. Read only the reference sections needed for the current action. Reuse instructions already in context that remain valid; a reference to one section does not require reading the rest of the file.
+Before starting or resuming, resolve artifact paths with `comet-classic/reference/classic-layout.md` and follow “CLI Bootstrap” in `comet-classic/reference/scripts.md`. Use the public Comet CLI and its OpenSpec adapter. Read only sections needed for the current action; reuse valid instructions already in context.
 
 - When Classic was not explicitly invoked and existing work may need to resume: read Ambient Resume in `comet-classic/reference/context-recovery.md` and follow `comet resume-probe . --stdin --json`. Only `auto_resume` enters automatically; for `ask_user` ask by `reason` using the Ambient Resume table's question and options; `out_of_scope`/`none` does not enter.
 - When starting a new request or the target change is unclear: read the minimal example and target-selection rules in `comet-classic/reference/intent-frame.md`. List active changes, fill a CometIntentFrame, and run `comet classic intent route --stdin`. The Agent extracts intent fields from evidence; Runtime computes the route. Follow its result without inventing a separate set of prose scoring rules.
@@ -37,7 +37,7 @@ A new full change must have its workspace selected before Open creates artifacts
 
 ## 2. Load the Current Phase
 
-While working on the same set of tasks, reuse state returned by the current commands and context already read. When a state update returns the latest state and `agent.continuation`, continue directly. Query again only when those fields are missing, the workspace changes, session recovery lacks context, or external state changes. Select checks according to the risk of the current changes; Verify still owns one final integrated review of the completed implementation.
+Reuse command results and context for the same tasks. Continue from returned state and `agent.continuation`; query only for missing fields, workspace changes, lost context on recovery, or external changes. Select checks by risk; Verify owns one final integrated review of the completed implementation.
 
 After binding the workspace and phase, and on phase changes, Agent handoffs or context recovery, follow [Task Context and Artifact Language](reference/scripts.md#task-context-and-artifact-language). Use the continuation or claimed Action's `contextRequest` for a snapshot once per entry or recovery. Use the configured artifact language and expand only missing Context Manifest content. Report actual usage outcomes and save a checkpoint at task end.
 

@@ -11,7 +11,7 @@ Classic 分为 Open → Design → Build → Verify → Archive 五个阶段。O
 
 开始新任务或更换宿主时，必须读取并执行[宿主能力核对](../comet/reference/host-check.md)，在批准 Open 前确认当前流程所需的能力。执行配置改变后，只补核对新策略需要的能力。
 
-开始或恢复前，按 `comet-classic/reference/classic-layout.md` 确定各产物目录对应的逻辑路径，并读取 `comet-classic/reference/scripts.md` 的“CLI 引导”章节。调用公开的 Comet CLI，通过 OpenSpec 适配器执行相关命令。所有参考按当前动作读取相关章节；已在上下文中且仍有效的规则不重复读取，也不因引用一个文件而通读其余章节。
+开始或恢复前，按 `comet-classic/reference/classic-layout.md` 解析产物路径，并执行 `comet-classic/reference/scripts.md` 的“CLI 引导”。使用公开 Comet CLI 和 OpenSpec 适配器。只读当前动作所需章节，复用上下文中仍有效的规则。
 
 - 未明确调用 Classic、需要判定是否恢复已有工作时：读取 `comet-classic/reference/context-recovery.md` 的 Ambient Resume，按 `comet resume-probe . --stdin --json` 结果处理；只有 `auto_resume` 自动进入，`ask_user` 按 `reason` 使用 Ambient Resume 表格中的问题与选项提问，`out_of_scope`/`none` 不进入。
 - 启动新需求或目标 change 尚不明确时：读取 `comet-classic/reference/intent-frame.md` 的最小示例与目标选择规则，获取未归档的 change 列表后填写 CometIntentFrame，运行 `comet classic intent route --stdin`。Agent 只负责按证据填写意图字段，路由由 Runtime 计算；以返回结果为准，不另写一套自然语言评分规则。
@@ -37,7 +37,7 @@ comet state select <change-name> --json
 
 ## 2. 载入当前阶段
 
-执行同一组任务时，复用本次命令返回的状态信息和已读取的上下文。命令更新状态且响应已提供最新状态与 `agent.continuation` 时，直接继续；只有这些字段缺失、切换工作区、恢复会话时丢失上下文或发现外部变化，才重新查询。根据当前改动的风险选择检查范围，Verify 仍需完成一次覆盖最终实现的集成审查。
+同一组任务复用命令结果和已有上下文；响应含当前状态与 `agent.continuation` 时直接继续。只有字段缺失、工作区切换、恢复时丢失上下文或外部状态变化时才重新查询。按改动风险选择检查，Verify 负责一次最终集成审查。
 
 绑定工作区并取得 phase 后，以及阶段切换、换 Agent 或上下文恢复时，读取并执行 [任务上下文与产物语言](reference/scripts.md#任务上下文与产物语言)，优先使用当前 continuation 或已领取 Action 的 `contextRequest` 获取快照；同一阶段连续执行不重复获取。按配置确定产物语言；根据 Context Manifest（上下文清单）中的摘要，只展开当前步骤还缺少的内容。实际使用某条内容后如实记录使用结果，任务结束时保存检查点。
 
