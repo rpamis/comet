@@ -1,5 +1,5 @@
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
-import { promises as fs } from 'node:fs';
+import { constants as fsConstants, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -633,7 +633,15 @@ describe('Native SDK read work budgets', () => {
     });
     const output = run.outputs['verify.checks'].value as { checks: Array<{ logRef: string }> };
     const logFile = path.join(resolveWorkspaceRuntimeRootSync(root), output.checks[0].logRef);
-    expect(opens.mock.calls.filter(([file]) => String(file) === logFile)).toHaveLength(1);
+    expect(
+      opens.mock.calls.filter(
+        ([file, flags]) =>
+          String(file) === logFile &&
+          (typeof flags === 'number'
+            ? (flags & (fsConstants.O_WRONLY | fsConstants.O_RDWR)) === 0
+            : flags === 'r' || flags === 'rs'),
+      ),
+    ).toHaveLength(1);
     expect((await fs.stat(logFile)).size).toBe(256 * 1024);
     await fs.appendFile(logFile, 'changed after execution');
     await expect(nativeSdkCurrentCheckSummaries({ run, projectRoot: root })).rejects.toThrow(

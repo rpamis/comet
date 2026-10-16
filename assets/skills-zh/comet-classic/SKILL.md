@@ -11,7 +11,7 @@ Classic 分为 Open → Design → Build → Verify → Archive 五个阶段。O
 
 开始新任务或更换宿主时，必须读取并执行[宿主能力核对](../comet/reference/host-check.md)，在批准 Open 前确认当前流程所需的能力。执行配置改变后，只补核对新策略需要的能力。
 
-开始或恢复前，按 `comet-classic/reference/classic-layout.md` 解析产物路径，并执行 `comet-classic/reference/scripts.md` 的“CLI 引导”。使用公开 Comet CLI 和 OpenSpec 适配器。只读当前动作所需章节，复用上下文中仍有效的规则。
+开始或恢复前，按 `comet-classic/reference/classic-layout.md` 解析产物路径，并执行 `comet-classic/reference/scripts.md` 的“CLI 引导”。使用公开 Comet CLI 和 OpenSpec 适配器。所有参考按当前动作读取相关章节，复用上下文中仍有效的规则。
 
 - 未明确调用 Classic、需要判定是否恢复已有工作时：读取 `comet-classic/reference/context-recovery.md` 的 Ambient Resume，按 `comet resume-probe . --stdin --json` 结果处理；只有 `auto_resume` 自动进入，`ask_user` 按 `reason` 使用 Ambient Resume 表格中的问题与选项提问，`out_of_scope`/`none` 不进入。
 - 启动新需求或目标 change 尚不明确时：读取 `comet-classic/reference/intent-frame.md` 的最小示例与目标选择规则，获取未归档的 change 列表后填写 CometIntentFrame，运行 `comet classic intent route --stdin`。Agent 只负责按证据填写意图字段，路由由 Runtime 计算；以返回结果为准，不另写一套自然语言评分规则。
