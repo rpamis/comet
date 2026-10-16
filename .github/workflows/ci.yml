@@ -274,19 +274,35 @@ jobs:
           - os: windows-latest
             node: '24'
             shard: 1
-            shards: 4
+            shards: 8
           - os: windows-latest
             node: '24'
             shard: 2
-            shards: 4
+            shards: 8
           - os: windows-latest
             node: '24'
             shard: 3
-            shards: 4
+            shards: 8
           - os: windows-latest
             node: '24'
             shard: 4
-            shards: 4
+            shards: 8
+          - os: windows-latest
+            node: '24'
+            shard: 5
+            shards: 8
+          - os: windows-latest
+            node: '24'
+            shard: 6
+            shards: 8
+          - os: windows-latest
+            node: '24'
+            shard: 7
+            shards: 8
+          - os: windows-latest
+            node: '24'
+            shard: 8
+            shards: 8
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

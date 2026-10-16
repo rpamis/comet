@@ -253,6 +253,7 @@ describe('CI workflows', () => {
         string,
         {
           needs?: string[];
+          'timeout-minutes'?: number;
           strategy?: {
             'fail-fast'?: boolean;
             matrix?: {
@@ -274,11 +275,14 @@ describe('CI workflows', () => {
       { os: 'ubuntu-latest', node: '22.16.0', shard: 1, shards: 1 },
       { os: 'ubuntu-latest', node: '24', shard: 1, shards: 1 },
       { os: 'macos-latest', node: '24', shard: 1, shards: 1 },
-      { os: 'windows-latest', node: '24', shard: 1, shards: 4 },
-      { os: 'windows-latest', node: '24', shard: 2, shards: 4 },
-      { os: 'windows-latest', node: '24', shard: 3, shards: 4 },
-      { os: 'windows-latest', node: '24', shard: 4, shards: 4 },
+      ...Array.from({ length: 8 }, (_, index) => ({
+        os: 'windows-latest',
+        node: '24',
+        shard: index + 1,
+        shards: 8,
+      })),
     ]);
+    expect(contracts['timeout-minutes']).toBe(40);
     expect(contracts.strategy?.['fail-fast']).toBe(false);
     const test = contracts.steps?.find((step) => step.id === 'sdk-tests');
     expect(test?.run).toContain('pnpm test:sdk');
