@@ -6,6 +6,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parse, stringify } from 'yaml';
 import { requiredArtifactClosure } from '../../../domains/comet-classic/classic-artifact-requirements.js';
 
+import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
+import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+import { prepareClassicLegacyProject } from '../../helpers/classic-project.js';
+
 const packageRoot = process.env.COMET_TEST_OPENSPEC_PACKAGE;
 if (!packageRoot)
   throw new Error(
@@ -18,6 +22,52 @@ afterEach(async () => {
 });
 
 describe('real external OpenSpec status', () => {
+  it.each(['full', 'hotfix', 'tweak'])(
+    'creates the OpenSpec base before SDK %s initialization and resumes it',
+    async (profile) => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-upstream-create-'));
+      roots.push(root);
+      await prepareClassicLegacyProject(root);
+      const git = spawnSync('git', ['init', '-b', 'main'], { cwd: root, encoding: 'utf8' });
+      expect(git.status, git.stderr).toBe(0);
+      const env = {
+        ...process.env,
+        HOME: root,
+        USERPROFILE: root,
+        XDG_CONFIG_HOME: path.join(root, 'config'),
+        CI: 'true',
+        DO_NOT_TRACK: '1',
+        OPENSPEC_TELEMETRY: '0',
+      };
+      const created = spawnSync(
+        process.execPath,
+        [path.join(packageRoot!, 'bin/openspec.js'), 'new', 'change', 'demo'],
+        { cwd: root, encoding: 'utf8', timeout: 30000, env },
+      );
+      expect(created.status, created.stderr).toBe(0);
+      const metadata = await fs.readFile(
+        path.join(root, 'openspec/changes/demo/.openspec.yaml'),
+        'utf8',
+      );
+      const cli = async (...args: string[]) =>
+        runClassicCli(['state', '--json', ...args], undefined, {
+          projectRoot: root,
+          invocationCwd: root,
+        });
+      const initialized = await cli('init', 'demo', profile, '--isolation', 'current');
+      expect(initialized.exitCode, initialized.stderr).toBe(0);
+      const selected = await cli('select', 'demo');
+      expect(selected.exitCode, selected.stderr).toBe(0);
+      const first = (await inspectClassicSdkRun(root, 'demo', { readOnly: true })).run;
+      expect(first.runId).toBe('demo');
+      const resumed = await cli('next', 'demo');
+      expect(resumed.exitCode, resumed.stderr).toBe(0);
+      expect((await inspectClassicSdkRun(root, 'demo', { readOnly: true })).run).toEqual(first);
+      expect(
+        await fs.readFile(path.join(root, 'openspec/changes/demo/.openspec.yaml'), 'utf8'),
+      ).toBe(metadata);
+    },
+  );
   it('exposes skipped specs, transitive requirements and schema-optional design', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-upstream-'));
     roots.push(root);

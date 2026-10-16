@@ -6,13 +6,20 @@ Use current configuration.language for artifacts and external Skill inputs. At p
 
 ## Entry and artifacts
 
-Before creating a preset change, choose isolation under workspace.md and use its returned projectRoot. To create artifacts:
+For a new full, hotfix, or tweak change, first check required capabilities under [host capability check](../../comet/reference/host-check.md), choose isolation under workspace.md, and enter the returned projectRoot. All three flows use this order:
+
+1. Check the current directory, Runtime ownership, and existing OpenSpec change. If an SDK Run exists, resume its current Action and fill missing artifacts; do not repeat OpenSpec `new change` or `state init`.
+2. For a genuinely new change, create the OpenSpec base directory first; load the creation Skill below only in this case. If that directory exists after interrupted initialization, inspect its actual artifacts with OpenSpec `status --change <name> --json`, confirm ownership, and finish initialization while preserving files.
+3. After base creation succeeds, immediately run `comet state init <name> <full|hotfix|tweak> --isolation <selected-isolation>`, then `comet state select <name>`. Do not initialize Runtime before OpenSpec `new change`, which rejects an existing directory. Preserve the OpenSpec directory on failure and resume only unfinished steps.
+4. Once the SDK Run exists, fill the currently required artifacts through `status` and `instructions`, then preview Open and obtain approval through the phase entry. Stop to establish ownership if unclear; do not overwrite files or create a second Run.
+
+When creating the base directory for a genuinely new change:
 
 **Immediately execute:** Use the Skill tool to load the openspec-new-change skill. Skipping this step is prohibited.
 
 <!-- external-openspec-skill-override -->
 
-After the skill loads, run OpenSpec commands through `comet classic openspec -- <args...>` and use bound `<classic-*>` paths. Hotfix proposals describe the defect, root cause, and repair goal; tweak proposals describe motivation, goal, and scope. Both keep a concise design.md and tasks.md. Create delta specs when acceptance changes; a delta spec alone does not escalate tweak. Stabilize artifacts, preview Open, and obtain approval through the main Skill.
+After the skill loads, run commands through `comet classic openspec -- <args...>` using bound `<classic-*>` paths. After base creation, return to initialization above before filling artifacts. Hotfix proposals describe the defect, root cause, and repair goal; tweak proposals describe motivation, goal, and scope. Both keep a concise design.md and tasks.md. Create delta specs when acceptance changes; a delta spec alone does not escalate tweak.
 
 ## Design
 
@@ -27,6 +34,8 @@ Keep brainstorm-summary.md current, marking candidates separately from confirmed
 After approval, update the single Design Doc: reuse its recorded reference, otherwise prefer the change's design.md. If project convention requires a separate document, the OpenSpec design contains only a summary and link. Frontmatter contains only `comet_change: <change-name>`, `role: technical-design`, and `canonical_spec: openspec`. Cover the solution, tradeoffs, risks, and testing, matching the approved proposal before submission. Resume from saved summaries, sources, and the current Wait; complete only missing work.
 
 ## Build
+
+Before implementing with the chosen strategy, check its planning, implementation, TDD, and review capabilities under [host capability check](../../comet/reference/host-check.md). Reuse known available capabilities; do not defer discovering a missing required method until implementation.
 
 Reuse the workspace bound during Open and valid configuration. Ask only for missing, invalid, or explicitly changed choices, collecting necessary decisions together:
 

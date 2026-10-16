@@ -307,6 +307,7 @@ export function classicSdkContinuation(
   if (action?.status === 'running')
     return result({
       mode: 'wait',
+      waitReason: 'executor',
       commandArgs: null,
       requiredInputs: [],
       instruction: '等待原领取方返回本次执行结果；不要重新派发或把仍在运行的工作判为 unknown。',
@@ -516,6 +517,7 @@ export function classicSdkContinuation(
   }
   return result({
     mode: skill && base.automatic ? 'execute' : 'wait',
+    ...(skill && !base.automatic ? { waitReason: 'manual-transition' as const } : {}),
     commandArgs: null,
     requiredInputs,
     ...(skill ? { skill } : {}),
@@ -529,7 +531,7 @@ export function classicSdkContinuation(
         }
       : {}),
     instruction: skill
-      ? `${base.automatic ? '加载' : '等待用户手动加载'} ${skill}，仅完成 ${action.stepId} 的当前工作，并沿用本次 Run 与工作区。${preparation}`
+      ? `${base.automatic ? '加载' : '等待用户手动加载'} ${skill}，仅完成 ${action.stepId} 的当前工作，并沿用本次 Run 与工作区。${!base.automatic ? '用户已明确调用本 Skill 时，执行当前工作；仅停止自动加载后续 Skill。' : ''}${preparation}`
       : '此 Action 需要应用声明的宿主执行器；不要把工具或子流程引用当作 Skill。',
   });
 }

@@ -18,6 +18,8 @@
 
 仅等待外部输入时，按[等待外部输入与监控](#等待外部输入与监控)处理，独立工作继续。恢复后重新分配 Supervisor 任务前，必须读取[Supervisor 协作](commands.md#supervisor-协作)；重新启动 Verifier 前，必须读取[Verify 协议](commands.md#verify-协议)，核对当前任务标识、待验收的实现版本和执行状态。
 
+SDK 恢复时只读取 commands.md 的 SDK Run 与 SDK Verify 协议；以下 Compat Runner、启动回执和工作区收尾字段不用于 SDK。
+
 ### 工作区
 
 `status` 会在已登记的 worktree 中查找与当前项目和分支关联的 change，并返回实际工作目录 `workspace.projectRoot`。进入该目录并重新执行 `select`。恢复时沿用找到的 change 和工作目录，不复制 change，也不在其他目录重建同名 change。

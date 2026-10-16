@@ -18,6 +18,8 @@ When a command returns a specific error, current state, and recovery action, use
 
 For external-input waits, follow [external input and monitoring](#external-input-and-monitoring) while independent work continues. Before redispatching Supervisor tasks after recovery, read [Supervisor coordination](commands.md#supervisor-coordination). Before relaunching a Verifier, read [Verify protocol](commands.md#verify-protocol) and check current task identifiers, candidate version, and execution state.
 
+SDK recovery reads only the SDK Run and SDK Verify protocol in commands.md. Compat Runner, startup receipts, and workspace-finish fields below do not apply to SDK.
+
 ### Workspace
 
 `status` searches registered worktrees for the change associated with the current project and branch and returns `workspace.projectRoot`. Enter it and run `select` again. Reuse the located change and workspace; do not copy it or recreate the same name elsewhere.

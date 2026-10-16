@@ -4,6 +4,10 @@ Canonical path: `comet-classic/reference/subagent-dispatch.md`
 
 Read for `build_mode: subagent-driven-development`, or when autonomous needs delegation or review. The former loads the matching Superpowers Skill before applying these rules; autonomous applies them directly without an external execution Skill. Classic defines the execution method, task acceptance, recheck limits, and five-phase completion. External Skills return to comet-build after execution, without adding final review or invoking finishing-a-development-branch.
 
+## Runtime and task authority
+
+Task reads, stable IDs, completion, plan synchronization, and coordinator checkpoints support SDK and Compat. These tools update tasks.md, mapped plan progress, and coordination records without advancing an SDK Run or replacing approvals and check receipts. On recovery, identify the current Run first, then reconcile the original platform sessions, tasks, and checkpoints. Finish Build through the current continuation.
+
 ## Check Tasks Before Starting
 
 1. Read the plan, confirmed design, and configuration from `comet state check <name> build --json` once. Refresh relevant material after scope, file, or configuration changes.

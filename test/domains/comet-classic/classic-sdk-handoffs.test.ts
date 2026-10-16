@@ -77,6 +77,82 @@ const cases = (['skills-zh', 'skills'] as const).flatMap((language) =>
 );
 
 describe('Classic SDK profile-aware handoffs', () => {
+  it('records SDK task and coordinator progress without advancing the Run or changing approvals', async () => {
+    const { root, changeDir, cli } = await fixture('tweak');
+    const preview = await cli('guard', 'demo', 'open');
+    const opened = await cli(
+      'guard',
+      'demo',
+      'open',
+      '--apply',
+      '--approval-hash',
+      preview.data.approvalHash,
+    );
+    expect(opened.exitCode, opened.stderr).toBe(0);
+    const before = (await inspectClassicSdkRun(root, 'demo')).run;
+    const assigned = await cli('state', 'tasks', 'demo', '--assign-ids');
+    expect(assigned.exitCode, assigned.stderr).toBe(0);
+    const task = assigned.data.tasks[0];
+    expect(task.id).toBeTruthy();
+    const input = path.join(root, 'coordinator.json');
+    await fs.writeFile(
+      input,
+      JSON.stringify({
+        schemaVersion: 1,
+        taskIds: [task.id],
+        revision: assigned.data.revision,
+        stage: 'implementing',
+        sessionId: 'sdk-coordinator',
+        evidence: [],
+        unresolved: [],
+        reviewRounds: 0,
+      }),
+    );
+    const saved = await cli('state', 'checkpoint', 'demo', '--file', input);
+    expect(saved.exitCode, saved.stderr).toBe(0);
+    const checkpoint = await cli('state', 'checkpoint', 'demo');
+    expect(checkpoint.exitCode, checkpoint.stderr).toBe(0);
+    expect(checkpoint.data.checkpoint.sessionId).toBe('sdk-coordinator');
+    const completed = await cli(
+      'state',
+      'task-complete',
+      'demo',
+      task.id,
+      '--expect',
+      assigned.data.revision,
+    );
+    expect(completed.exitCode, completed.stderr).toBe(0);
+    expect(completed.data.progress.completed).toBe(1);
+    expect(await fs.readFile(path.join(changeDir, 'tasks.md'), 'utf8')).toContain('[x]');
+    expect((await inspectClassicSdkRun(root, 'demo')).run).toEqual(before);
+    const forbidden = await cli(
+      'state',
+      'record-check',
+      'demo',
+      'build',
+      '--command',
+      'fake',
+      '--exit-code',
+      '0',
+    );
+    expect(forbidden.exitCode).not.toBe(0);
+    const built = await cli(
+      'guard',
+      'demo',
+      'build',
+      '--apply',
+      '--local',
+      '--',
+      process.execPath,
+      '-e',
+      'process.exit(0)',
+    );
+    expect(built.exitCode, JSON.stringify(built)).toBe(0);
+    expect(built.data.phase).toBe('verify');
+    const lateProgress = await cli('state', 'checkpoint', 'demo', '--file', input);
+    expect(lateProgress.exitCode).not.toBe(0);
+  });
+
   it.each(cases)(
     'executes $language $profile Open approval and Build without redundant previews',
     async ({ language, profile }) => {

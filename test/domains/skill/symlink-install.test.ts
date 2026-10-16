@@ -63,7 +63,7 @@ describe('symlink install mode', () => {
       'native',
     );
     expect(result.failed).toBe(0);
-    for (const name of ['edit-review.md', 'task-learning.md']) {
+    for (const name of ['edit-review.md', 'host-check.md', 'task-learning.md']) {
       const relative = path.join('comet', 'reference', name);
       expect(await readFile(path.join(tmpDir, '.agents', 'skills', relative), 'utf8')).toBe(
         await readFile(path.resolve('assets', language, relative), 'utf8'),

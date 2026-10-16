@@ -4,7 +4,7 @@
 
 ## SDK Run
 
-仅在 `native status <change> --json` 返回 `data.schema: comet.native.sdk-status.v1` 时使用本节。`data.run.id` 是 Run ID，`run.actions`、`run.waits` 与 `stateVersion` 是当前推进依据；用 `native status <change> --details --json` 读取完整业务状态，需要 Action 输入时再用 SDK `inspect` 请求读取 Run。每次提交后重新读取返回的 Run，不沿用旧 Action ID、尝试次数或输入哈希。以下所有 SDK 请求均保存为临时 UTF-8 JSON 文件，通过 `comet runtime dispatch --application native --project-root <projectRoot> --request <file>` 提交；命令返回 `status: succeeded` 且对应 Run 状态已变化才算提交成功。临时文件不放进 change 产物、提交或报告中。
+响应的 `runtimeFormat` 为 `sdk`，或 `data.schema` 为 `comet.native.sdk-status.v1`、`comet.native.dispatch-result.v1`、`comet.native.run-view.v1` 时使用本节，直接识别当前响应，不额外查询 status。Run ID 使用当前响应的 `data.run.id` 或 `data.runId`；最新 `pendingActions`、`activeActions`、`action` 和 `stateVersion` 决定当前工作。领取响应已经包含当前 Action 输入和回报模板，直接使用；只有缺少实际所需正文时才读取同一响应给出的详情命令。SDK 请求保存为临时 UTF-8 JSON，通过 `comet runtime dispatch --application native --project-root <projectRoot> --request <file>` 提交，不放进 change 产物、提交或报告。命令返回 `status: succeeded` 后，核对同一 Action 的领取或已持久化结果身份；相同领取或结果的幂等确认可以保留原 revision，不要求重复提交产生状态变化。提交后沿用返回的当前身份和 continuation。
 
 ### Shape 与 SDK 自有 Action
 
@@ -18,15 +18,20 @@ Supervisor Child 合并后的集成检查明确失败时，Run 会生成 `superv
 
 Supervisor 父级独立 Verifier 明确判定失败，或用户拒绝当前父级验收结果时，Run 会生成新的 `supervisor.parent.builder`。在原集成 worktree 修复并提交后，Builder 回报须携带新的 `candidateCommit`；Runtime 将该提交绑定到后续检查、独立验收和交付。未改动代码时仍需提交新的 Builder 结果和检查，不复用旧候选的验收。
 
-### 平台 Action：先领取，再工作，再提交
+### SDK Action 领取与回报
 
-Builder 开始本轮实现前、独立 Verifier 开始验收前，取当前待执行 Action 的 `id`、`attempt`、`inputHash`，先提交 `claim`。请求包含 `operation: "claim"`、`runId`、`actionId`、`attempt`、`inputHash`、`executorId: "native-host"`、`sessionId` 和本次唯一且恢复时保持不变的 `claimToken`。`sessionId` 使用平台会话或任务标识；若平台没有可读标识，使用本次工作稳定唯一的执行引用，并明确其只是关联标识，不能据此宣称执行者身份已认证。只有返回的同一 Action 为 `running`、领取标识匹配，才执行或继续本次工作。已由别的执行者领取时，先核对该工作，不能重新领取或另起同一任务。
+Builder 开始本轮实现前、独立 Verifier 开始验收前，复制当前 Action 的 `claimRequest`，填写接收会话与稳定领取标识，先提交 `claim`。独立 Action 的领取按 `actionId`、`attempt` 和 `inputHash` 校验，不自行补入旧的全局 revision；其他任务推进不要求重派本任务。请求包含 `operation: "claim"`、`runId`、`actionId`、`attempt`、`inputHash`、`executorId: "native-host"`、`sessionId` 和本次唯一且恢复时保持不变的 `claimToken`。`sessionId` 使用平台会话或任务标识；若平台没有可读标识，使用本次工作稳定唯一的执行引用，并明确其只是关联标识，不能据此宣称执行者身份已认证。只有返回的同一 Action 为 `running`、领取标识匹配，才执行或继续本次工作。已由别的执行者领取时，先核对该工作，不能重新领取或另起同一任务。
 
 执行者完成后，用同一 `runId` 提交 `record-outcome`：`outcome` 包含原 `actionId`、`attempt`、`inputHash`、`claimToken`，本次唯一的 `outcomeId`、真实的 `status` 和 `output`。不得把尚未完成、未运行或结果未知的工作写成 `succeeded`。SDK 校验结果并保存收据后才按新的 Run 继续。
 
-- `build.builder` 和 `supervisor.parent.builder` 的成功 `output` 包含非空 `summary`、已处理的 `addressedAcceptanceIds`、逐项自检 `acceptanceReview`、开发期 `checks`（每项 `name`、`result`、`note`）、`knownLimits`、ISO 时间 `submittedAt`，以及可选 `review` 和 `verificationChecks`。`acceptanceReview` 对每个确认的验收 ID 提供且只提供一项 `{id,status,evidence,note}`；只有 `status: implemented-with-evidence` 且 `evidence` 非空才可提交，未实现、已知失败或没有证据时继续 Build。`verificationChecks` 是 Runtime 后续实际执行的检查计划；Builder 自报 `checks` 和自检不是独立验收结论。提交后运行 `native next` 执行 `verify.checks`，检查失败时按返回状态修复，不提交虚构的通过结果。
-- `verify.verifier` 必须由与 Builder 不同的只读平台会话领取。先通过平台启动独立 Verifier，传入当前候选 ID、验收项及引用、工作区和 Runtime 检查位置；让 Verifier 的第一个 Runtime 动作领取该 Action。平台仅接受派发、尚无 Verifier 领取回执时，状态是“已派发未确认启动”。等待工具超时继续跟踪同一任务。Verifier 读取全部当前验收项并独立核验后，成功 `output` 包含当前 `candidateId`、与领取时相同的 `verifierExecutionRef`，以及 `response`：完整结论用 `final-result`，需要补充 Runtime 检查用 `request-checks`。后者经 `native next` 执行检查后，由同一 Verifier 会话领取新 Action 并继续；检查收据未变时复用。
-- 只有平台确认 Verifier 任务未启动、执行失败、执行超时、丢失或结束后没有可用结果，才将其 Action 提交为 `status: "failed"`，`output` 写真实的非空 `summary`。SDK 保留候选和已完成检查，限次生成新 Action；达到上限后等待用户决定。缺少独立 Verifier 时停止并报告，不编造验收结论。
+### SDK Builder 交接
+
+`build.builder` 和 `supervisor.parent.builder` 的成功 `output` 包含非空 `summary`、已处理的 `addressedAcceptanceIds`、逐项自检 `acceptanceReview`、开发期 `checks`（每项 `name`、`result`、`note`）、`knownLimits`、ISO 时间 `submittedAt`，以及可选 `review` 和 `verificationChecks`。`acceptanceReview` 对每个确认的验收 ID 提供且只提供一项 `{id,status,evidence,note}`；只有 `status: implemented-with-evidence` 且 `evidence` 非空才可提交，未实现、已知失败或没有证据时继续 Build。`verificationChecks` 是 Runtime 后续实际执行的检查计划；Builder 自报 `checks` 和自检不是独立验收结论。提交后运行 `native next` 执行 `verify.checks`，检查失败时按返回状态修复，不提交虚构的通过结果。
+### SDK Verify 协议
+
+`verify.verifier` 必须由与 Builder 不同的只读平台会话领取。先通过平台启动独立 Verifier，传入当前候选 ID、验收项及引用、工作区和 Runtime 检查位置；让 Verifier 的第一个 Runtime 动作领取该 Action。平台仅接受派发、尚无 Verifier 领取回执时，状态是“已派发未确认启动”。等待工具超时继续跟踪同一任务。Verifier 读取全部当前验收项并独立核验后，成功 `output` 包含当前 `candidateId`、与领取时相同的 `verifierExecutionRef`，以及 `response`：完整结论用 `final-result`，需要补充 Runtime 检查用 `request-checks`。后者经 `native next` 执行检查后，由同一 Verifier 会话领取新 Action 并继续；检查收据未变时复用。
+
+只有平台确认 Verifier 任务未启动、执行失败、执行超时、丢失或结束后没有可用结果，才将其 Action 提交为 `status: "failed"`，`output` 写真实的非空 `summary`。SDK 保留候选和已完成检查，限次生成新 Action；达到上限后等待用户决定。缺少独立 Verifier 时停止并报告，不编造验收结论。
 
 ### 用户决定、Archive 与恢复
 
@@ -112,6 +117,8 @@ Native 正式产物只能由 `comet native new <name> --json` 登记后创建。
 
 ## 填写命令输入
 
+本节的 Runner 模板只用于 Compat。SDK 领取与回报使用上面的平台 Action 协议及当前响应的 `claimRequest`、`outcomeRequest`，不使用 `--runner-input`。
+
 首次填写 Runtime 模板或通过 `returnAction` 回传结果前必须读取本节。
 
 把 `inputOptions.template` 复制到系统临时 JSON 文件，只替换模板要求填写的内容，然后执行 `continuation.commandArgs` 或所选 `commandAlternative.commandArgs`。Runtime 接受输入后删除临时文件；输入被拒绝时保留原文件，按错误修正后重提。模板中已有的验收轮次、Verifier 尝试次数、状态版本和任务标识都原样保留；只填写模板公开的字段。
@@ -140,6 +147,8 @@ Supervisor 子任务在任务包指定的 `projectRoot` 工作。回传结果时
 
 ## Builder 交接
 
+仅用于 Compat。SDK 使用 [SDK Builder 交接](#sdk-builder-交接) 及当前 `outcomeRequest`。
+
 提交 `builder-handoff` 前必须读取本节。
 
 普通 change 和 Supervisor 主任务进入 Verify 前，不需要额外安排一次只读复核。如果已有独立复核结果，可以按 Runtime 模板填写可选的 `review.status=passed`、`review.summary`、`review.reviewer_execution_ref`；复核执行标识不能与 Builder 执行标识相同。
@@ -157,6 +166,8 @@ Builder 的交接摘要必须写明本轮修改、处理的验收项、实际运
 完成标准：实现和相关检查已准备好交给 Verifier，全部验收项已重新核对，Runtime 接受交接摘要并进入 Verify。
 
 ## Verify 协议
+
+仅用于 Compat。SDK 使用 [SDK Verify 协议](#sdk-verify-协议)，领取回执代替下面的 `startupInput`，不提交旧 Runner 响应。
 
 启动、追加检查或等待 Verifier 前必须读取本节；填写输入遵循[填写命令输入](#填写命令输入)。
 
@@ -218,6 +229,8 @@ Verifier 明确请求重跑失败检查时，使用当前 `request-checks` 模�
 
 ## Supervisor 协作
 
+仅用于 Compat 的 `childSummary`、`readyChildren` 和 Runner 任务包。SDK 的 Child、集成与恢复使用 [SDK Run](#sdk-run) 的 Action 协议。
+
 分配任务、接收结果或集成前必须读取本节；首次填写输入或执行 `returnAction` 前必须读取[填写命令输入](#填写命令输入)。
 
 ### 分配任务与核对任务标识
@@ -264,6 +277,8 @@ Runtime 为每个子任务返回 worktree、集成分支的当前提交、角色
 Runtime 可以校验已保存检查记录的内容，以及它对应的实现版本、工作区、机器和输入。普通外部文件的写权限隔离仍由运行平台负责。
 
 ## 命令输入与异常
+
+SDK 按 [SDK Run](#sdk-run) 与当前 continuation 核对同一 Action、领取和结果；以下 Runner 模板、`verifier-unavailable` 及 `--finish` 选项只用于 Compat，不能用于 SDK 恢复。
 
 正常流程直接执行 Runtime 在 `continuation` 中给出的命令。恢复时未提交动作输入的 `next --summary` 会返回当前模板并保留阶段，直接填写该模板继续，无需再查询一次 status。本节解释返回字段，并说明如何处理以下情况：命令输入被拒绝、无法启动 Verifier、Verifier 任务执行出错、Verifier 因缺少外部信息无法判断，或 Runtime 要求用户决定是否接受未完成独立验收的结果。`continuation.disposition` 说明现在应继续、等待用户、处理阻塞还是结束。只有用户明确确认后，才执行含 `--confirmed` 的后续命令。CLI 文本先给出用户可读的 `summary`、唯一 `NEXT:` 和可选的 `RELAY TO USER:`；用 `--json` 读取结构化响应，`--verbose` 仅用于排查本机执行状态。
 

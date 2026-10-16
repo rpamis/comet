@@ -21,6 +21,7 @@ export type CliContinuationMode = 'execute' | 'wait' | 'ask' | 'reconcile' | 'do
 
 export interface CliActionContinuation {
   mode: CliContinuationMode;
+  waitReason?: 'executor' | 'manual-transition';
   commandArgs: readonly string[] | null;
   requiredInputs: readonly string[];
   instruction?: string;

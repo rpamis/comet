@@ -6,13 +6,20 @@
 
 ## 开始与产物
 
-新建预设前按 workspace.md 确定隔离方式并使用返回的 projectRoot。创建产物时：
+新建 full、hotfix 或 tweak 时，先按[宿主能力核对](../../comet/reference/host-check.md)检查当前所需能力，再按 workspace.md 确定隔离方式并进入返回的 projectRoot。三种流程统一使用以下顺序：
+
+1. 先核对当前目录、Runtime 归属和已有 OpenSpec change。已有 SDK Run 时直接恢复其当前 Action，补齐缺失产物，不再执行 OpenSpec `new change` 或 `state init`。
+2. 真正的新 change 先创建 OpenSpec 基础目录；仅在此分支加载下面的新建 Skill。已有基础目录但初始化中断时，用 OpenSpec `status --change <name> --json` 核对实际产物，确认属于当前需求后补做初始化，保留文件。
+3. 基础目录创建成功后，立即运行 `comet state init <name> <full|hotfix|tweak> --isolation <selected-isolation>`，再运行 `comet state select <name>`。不要先初始化 Runtime 再调用 OpenSpec `new change`，后者会拒绝已存在的目录。初始化失败时保留 OpenSpec 目录，恢复时只补未完成步骤。
+4. SDK Run 已存在后，通过 `status` 和 `instructions` 填充当前需要的产物，再按阶段入口预览 Open 并取得用户批准。已有目录无法确认归属时先停止核对，不覆盖或新建第二份 Run。
+
+真正的新 change 创建基础目录时：
 
 **立即执行：** 使用 Skill 工具加载 openspec-new-change 技能。禁止跳过此步骤。
 
 <!-- external-openspec-skill-override -->
 
-技能加载后，通过 `comet classic openspec -- <args...>` 执行命令，使用 `<classic-*>` 路径。hotfix 的 proposal 记录问题、根因和修复目标；tweak 记录动机、目标和范围。两者保存简短 design.md 与 tasks.md；影响已有验收时创建所需 delta spec，tweak 不因 delta spec 升级。产物内容稳定后按主 Skill 预览 Open 并取得用户批准。
+技能加载后，通过 `comet classic openspec -- <args...>` 执行命令，使用 `<classic-*>` 路径。基础目录创建后返回上面的初始化步骤，再填充产物。hotfix 的 proposal 记录问题、根因和修复目标；tweak 记录动机、目标和范围。两者保存简短 design.md 与 tasks.md；影响已有验收时创建所需 delta spec，tweak 不因 delta spec 升级。
 
 ## Design
 
@@ -27,6 +34,8 @@
 批准后完善唯一 Design Doc：已有引用优先沿用，否则使用当前 change 的 design.md；项目明确要求独立文档时，OpenSpec design.md 仅保存摘要和链接。frontmatter 仅含 `comet_change: <change-name>`、`role: technical-design`、`canonical_spec: openspec`。设计覆盖方案、取舍、风险和测试策略，正文与已批准提案一致后提交。中断后读取已保存摘要、源文件与当前 Wait，只补未完成工作。
 
 ## Build
+
+已选配置要求的实施、TDD 或审查能力，按[宿主能力核对](../../comet/reference/host-check.md) 在开始实现前确认；已有仍有效的核对直接复用。
 
 工作区沿用 Open 的绑定；配置有效时直接继续。只询问缺失、无效或用户要求更改的字段，在同一轮收集实际需要的选择：
 

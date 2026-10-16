@@ -12,6 +12,29 @@ async function englishSkill(name: string): Promise<string> {
 
 describe('Classic Chinese Skill SDK routing', () => {
   it.each(['skills', 'skills-zh'])(
+    'shares creation order and early host checks in %s',
+    async (root) => {
+      const reference = await readFile(
+        path.resolve('assets', root, 'comet-classic/reference/sdk-methods.md'),
+        'utf8',
+      );
+      const host = await readFile(
+        path.resolve('assets', root, 'comet/reference/host-check.md'),
+        'utf8',
+      );
+      expect(reference).toContain('../../comet/reference/host-check.md');
+      expect(reference).toContain('OpenSpec `new change`');
+      expect(reference).toContain('comet state init <name> <full|hotfix|tweak>');
+      expect(host).toContain('Runtime');
+      expect(host).toContain('Native');
+      expect(host).toContain('Classic');
+      for (const name of ['comet-open', 'comet-hotfix', 'comet-tweak']) {
+        const source = await readFile(path.resolve('assets', root, name, 'SKILL.md'), 'utf8');
+        expect(source, name).toContain('../comet-classic/reference/sdk-methods.md#');
+      }
+    },
+  );
+  it.each(['skills', 'skills-zh'])(
     'provides stage context at every Classic entry in %s',
     async (root) => {
       for (const name of [

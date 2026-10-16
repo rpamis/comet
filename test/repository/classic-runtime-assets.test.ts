@@ -100,6 +100,7 @@ describe('Classic runtime release assets', () => {
     );
     expect(layout.sharedSkillReferences).toEqual([
       'comet/reference/edit-review.md',
+      'comet/reference/host-check.md',
       'comet/reference/task-learning.md',
     ]);
     for (const root of ['skills', 'skills-zh']) {

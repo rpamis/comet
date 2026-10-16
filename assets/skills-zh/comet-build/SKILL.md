@@ -15,7 +15,7 @@ description: '制定计划、实施并验收 Classic 任务。在用户调用 /c
 
 SDK 新 change 的状态文件为 `comet-state.yaml`；历史 `.comet.yaml` 保持原地读写，compat 初始化仍用旧名。两文件共存时（包括其中一个是失效符号链接）停止并保留现场，不自动改名或覆盖。以 Runtime 返回的归属与路径为准。
 
-响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 等待原任务，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。本节依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
+响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 按 auto-transition.md 区分手动衔接和原任务等待，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。本节依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
 
 优先复用当前有效结果中的 `agent.continuation` / `data.nextAction` 与已绑定状态；只有冷恢复、外部状态变化或缺少必要信息时，才运行 `comet state next <change-name> --json`。`data.runtimeFormat` 为 `sdk` 时，只按本节推进 Run；SDK 方法参考的执行策略选项、计划内容要求、实施与审查方法仍适用，状态和证据通过本节命令提交。`data.phase` 必须为 `build`。已有有效 layout 与当前配置时直接复用；缺少时运行 `comet state check <change-name> build --json`；若 `nextAction.kind` 为 `reconcile`，运行 `comet state check <change-name> build --recover --json` 核对原 Action 的结果，在结果明确前不重发外部工作。
 
@@ -23,7 +23,7 @@ SDK 新 change 的状态文件为 `comet-state.yaml`；历史 `.comet.yaml` 保�
 
 1. `full.build.configure` 待执行时，按 SDK 方法参考的 Build 章节核对已有选择，只补真正缺失的执行方式、TDD 和审查决定。将已确认的 `build_mode`、`tdd_mode`、`review_mode`、`subagent_dispatch` 和需要时的 `direct_override` 写入仓库内的临时 JSON；用户已明确选择这份完整配置时，运行 `comet state propose-build <change-name> --file <configuration-json> --confirmed` 一次保存提案与批准；尚未决定时运行 `comet state propose-build <change-name> --file <configuration-json>`。仅在仍有待决定 Wait 时，从返回的 `data.wait.proposalHash` 保存 `<proposalHash>`，向用户展示实际配置并按 decision-point.md 等待确认。确认或拒绝时运行 `comet state decide-build <change-name> --proposal-hash <proposalHash> --choice <approved|rejected>`；拒绝后从新配置重新提案。恢复已有待决定 Wait 时复用原提案，不重复提问或新建配置 Action。
 2. `full.build.plan` 待执行时，按 SDK 方法参考的 Build 章节创建或核对计划。计划引用当前 Design Doc 和 tasks.md，以 `<!-- comet-task-authority: <classic-task-authority-ref> -->` 及 `<!-- comet-task-ref:<task-id> -->` 映射任务，不能另建 checkbox。运行 `comet state submit-plan <change-name> --plan <plan-ref>` 提交计划及证据。只有用户明确要求写完计划暂停时加 `--pause`；恢复 `plan-ready` Wait 时，必须等用户明确继续，再用该 Wait 的当前哈希运行 `comet state continue-plan <change-name> --proposal-hash <proposalHash>`。计划或任务要求变化后不复用原批准。
-3. `full.build.execute` 待执行时，按 SDK 方法参考的 Build 章节的已选方法实施、做任务级或分段审查并运行相关检查。任务实际完成且审查合格后勾选同一 tasks.md；SDK 分支不调用旧 `state task-complete`、`state checkpoint` 或 `comet handoff --write`。核对计划、任务和工作区后运行 `comet state complete-build <change-name> --session <builder-execution-ref>`，由 Run 进入检查 Action。实现或计划与已接受证据不一致时先解决具体漂移，不绕过 SDK 校验。
+3. `full.build.execute` 待执行时，按 SDK 方法参考的 Build 章节的已选方法实施、做任务级或分段审查并运行相关检查。任务实际完成且审查合格后勾选同一 tasks.md；任务 ID、勾选和协调进度使用共享参考中的 `state tasks`、`state task-complete`、`state checkpoint`；这些命令不推进 SDK Run。SDK 不调用旧 `comet handoff --write`。核对计划、任务和工作区后运行 `comet state complete-build <change-name> --session <builder-execution-ref>`，由 Run 进入检查 Action。实现或计划与已接受证据不一致时先解决具体漂移，不绕过 SDK 校验。
 4. `full.build.check` 待执行时，以当前工作区中明确的完整构建或验收入口运行 `comet guard <change-name> build --apply -- <program> [args...]`。此处没有新的用户决定，`--apply` 会重新校验当前任务、配置、工作区和证据，再执行真实检查并向同一 Run 提交收据；仅在检查成功且证据仍有效时进入 Verify。仅在需要诊断时运行 `comet guard <change-name> build` 只读预检。若收据提交中断，先核对同一 Action 和检查记录，按 Guard 的恢复结果补交，不重新执行已完成的外部检查。失败后按返回的当前 Build Action 修复并重新验证；结果未提供 continuation 时再读 `state next --json`。
 
 每次推进后，优先使用同次结果的 `agent.continuation` / `data.nextAction`；状态仍有效且信息完整时，不重复 next、select 或 check。仅在冷恢复、外部状态变化或缺少必要信息时补读。只有 `action` 且指向下一阶段时才加载下一 Skill。`decision`、`evidence`、`reconcile` 均先完成当前 Run 的恢复或用户决定。

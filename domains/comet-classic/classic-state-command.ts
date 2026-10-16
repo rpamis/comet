@@ -1264,6 +1264,25 @@ async function taskCheckoff(
   output.stdout.push('TASK_CHECKOFF: PASS', `FILE: ${taskFile}`, `TASK: ${taskText}`);
 }
 
+async function taskProgressState(
+  name: string,
+  directory: string,
+  write = false,
+): Promise<ClassicState> {
+  const root = classicCommandProjectRoot();
+  if (await readSdkChangeOwner(root, 'classic', name, { readOnly: true })) {
+    const { run, state } = await inspectClassicSdkRun(root, name, { readOnly: true });
+    if (write && ['completed', 'failed', 'cancelled'].includes(run.status))
+      fail('ERROR: task progress updates require an active SDK Run');
+    return state;
+  }
+  const projection = await readClassicState(directory, { migrate: false });
+  if (!projection.classic) fail('ERROR: Classic state is missing');
+  if (projection.unknownKeys.length)
+    fail(`ERROR: Unknown Classic state fields: ${projection.unknownKeys.join(', ')}`);
+  return projection.classic;
+}
+
 async function taskState(
   output: CommandOutput,
   name: string,
@@ -1273,11 +1292,7 @@ async function taskState(
   validateChangeName(name);
   const { directory } = await stateFile(name);
   const operation = async () => {
-    const projection = await readClassicState(directory, { migrate: false });
-    if (!projection.classic) fail('ERROR: Classic state is missing');
-    if (projection.unknownKeys.length)
-      fail(`ERROR: Unknown Classic state fields: ${projection.unknownKeys.join(', ')}`);
-    const state = projection.classic;
+    const state = await taskProgressState(name, directory, action.kind !== 'list');
     if (action.kind !== 'list') {
       const binding = await resolveBranchBinding(directory, {
         heal: false,
@@ -1394,7 +1409,10 @@ async function progressCommand(
       );
   }
   const operation = async () => {
-    const state = sparseClassicState((await readDocument(file)).toJS() as Record<string, unknown>);
+    const state =
+      kind === 'checkpoint'
+        ? await taskProgressState(args[0], directory, write)
+        : sparseClassicState((await readDocument(file)).toJS() as Record<string, unknown>);
     const input = write
       ? JSON.parse(
           await readClassicProjectFile(root, args[inputIndex], {
@@ -2218,6 +2236,10 @@ async function assertStateChangeNotSdkOwned(
   if (!name) return;
   validateChangeName(name);
   await inspectClassicStateFileCandidates(classicCommandProjectRoot(), name);
+  if (['tasks', 'task-complete', 'sync-plan', 'checkpoint'].includes(subcommand)) {
+    await resolveClassicChangeRuntimeOwner(classicCommandProjectRoot(), name);
+    return;
+  }
   if (
     subcommand === 'next' ||
     subcommand === 'restore' ||

@@ -21,7 +21,7 @@ Every question and artifact-generation request passed to OpenSpec must specify t
 
 ### 0a. Bind the current change
 
-When the response already includes `agent.continuation.mode`, follow `comet-classic/reference/auto-transition.md` first. `wait` means wait for the original task, without running recovery queries merely because the compatibility field says `nextAction.kind: reconcile`. Use the current response’s commands and inputs; submit `completion` only after the Skill’s actual work is complete. Recovery rules below based on `nextAction.kind` apply only to older responses without `mode`.
+When the response already includes `agent.continuation.mode`, follow `comet-classic/reference/auto-transition.md` first. `wait` distinguishes manual handoff from waiting for the original executor under auto-transition.md, without running recovery queries merely because the compatibility field says `nextAction.kind: reconcile`. Use the current response’s commands and inputs; submit `completion` only after the Skill’s actual work is complete. Recovery rules below based on `nextAction.kind` apply only to older responses without `mode`.
 
 When resuming an existing change, reuse the latest valid continuation and ownership for the same workspace and Run. Query `comet state next <name> --json` only on cold recovery, external changes, or missing information:
 
@@ -156,6 +156,8 @@ OpenSpec change names must use English kebab-case: lowercase letters, digits, an
 While the resolved brief or change identity is still unclear, do not run `comet classic openspec -- new change` or create proposal/design/tasks. Resolve the missing information or genuine user decision before Step 2.
 
 ### 2. Create the change structure and initialize state
+
+Follow the shared [creation and recovery order](../comet-classic/reference/sdk-methods.md#entry-and-artifacts): create the OpenSpec base directory before SDK initialization; resume an existing Run instead of creating it again.
 
 **Required now:** Load the `openspec-new-change` skill using the Skill tool. Do not skip this step.
 

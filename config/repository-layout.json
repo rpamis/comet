@@ -5,7 +5,11 @@
     "en": "assets/skills",
     "zh": "assets/skills-zh"
   },
-  "sharedSkillReferences": ["comet/reference/edit-review.md", "comet/reference/task-learning.md"],
+  "sharedSkillReferences": [
+    "comet/reference/edit-review.md",
+    "comet/reference/host-check.md",
+    "comet/reference/task-learning.md"
+  ],
   "classicRuntime": {
     "entries": {
       "runtime": "domains/comet-classic/classic-cli.ts",
@@ -567,6 +571,7 @@
           "domains/comet-native/native-sdk-application.ts",
           "domains/comet-native/native-sdk-create.ts",
           "domains/comet-native/native-sdk-cancellation-cleanup.ts",
+          "domains/comet-native/native-sdk-completion-cleanup.ts",
           "domains/comet-native/native-sdk-disassociate.ts",
           "domains/comet-native/native-selection.ts",
           "domains/comet-native/native-specs.ts",

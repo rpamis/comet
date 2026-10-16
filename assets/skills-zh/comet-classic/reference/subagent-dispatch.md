@@ -4,6 +4,10 @@
 
 在 `build_mode: subagent-driven-development` 下，或 autonomous 需要委派任务、安排审查时，读取本文件。前者先加载同名 Superpowers Skill，再执行这里的规则；autonomous 直接执行，不要求加载外部执行 Skill。执行方式、任务验收、复查次数上限和五阶段收尾仍由 Classic 规定。外部 Skill 完成任务后返回 comet-build，不再自行追加 final review，也不调用 finishing-a-development-branch。
 
+## Runtime 与任务权威
+
+SDK 与 Compat 共用本节的任务读取、稳定 ID、勾选和协调记录命令。它们只操作 `tasks.md`、计划中的任务显示及协调记录，不推进 Run、不提交检查、不批准阶段。SDK 的阶段、Action 和决定始终以当前 Run 为准；进度记录成功不等于 Build 完成，仍须使用当前 continuation 的完成命令。恢复时先读取 Run，再核对任务、平台会话与协调记录。
+
 ## 开始前核对任务
 
 1. 读取一次计划、确认的设计和 `comet state check <name> build --json` 返回的配置。范围、文件或配置变化后刷新相应材料。

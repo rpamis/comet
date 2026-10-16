@@ -4,7 +4,7 @@ Read only the sections needed for the current operation. Supervisor coordination
 
 ## SDK Run
 
-Use this section only when `native status <change> --json` returns `data.schema: comet.native.sdk-status.v1`. `data.run.id` is the Run ID; its Actions, Waits, and `stateVersion` govern progress. Read `native status <change> --details --json` for full business state and use SDK `inspect` when Action input is needed. Refresh the Run after every submission; do not reuse old Action IDs, attempts, or input hashes. Save SDK requests in temporary UTF-8 JSON files and submit them with `comet runtime dispatch --application native --project-root <projectRoot> --request <file>`. A submission succeeds only when the command returns `status: succeeded` and the matching Run state changes. Keep request files out of change artifacts, commits, and reports.
+Use this section when the current response has `runtimeFormat: sdk`, or `data.schema` is `comet.native.sdk-status.v1`, `comet.native.dispatch-result.v1`, or `comet.native.run-view.v1`. Identify the current response directly without another status query. Use its `data.run.id` or `data.runId`; current `pendingActions`, `activeActions`, `action`, and `stateVersion` determine work. Claim responses already include Action input and outcome templates; use them directly, retrieving details only when necessary content is missing. Save SDK requests as temporary UTF-8 JSON and submit through `comet runtime dispatch --application native --project-root <projectRoot> --request <file>`. Keep requests out of artifacts, commits, and reports. After `status: succeeded`, verify the same Action's claim or persisted outcome identity. Idempotent acknowledgment of the same claim or outcome may retain the original revision; success does not require another state change. Continue with the returned identity and continuation.
 
 ### Shape and Runtime Actions
 
@@ -18,15 +18,20 @@ If `supervisor.child.integrate` returns `EXECUTION_UNKNOWN`, inspect its Action,
 
 If independent parent verification definitively fails, or the user rejects the parent result, the Run creates another `supervisor.parent.builder`. Repair in the original integration worktree and report a new `candidateCommit`. Runtime binds later checks, verification, and delivery to that commit. Even if code did not change, submit a new Builder result and checks; do not reuse the old candidate's acceptance.
 
-### Host Actions: claim, work, report
+### SDK Action claims and outcomes
 
-Before Builder starts an iteration or an independent Verifier starts, take the current Action's `id`, `attempt`, and `inputHash` and submit `claim`. Include `operation: "claim"`, `runId`, `actionId`, `attempt`, `inputHash`, `executorId: "native-host"`, `sessionId`, and a unique `claimToken` stable across recovery. Use a platform session or task ID; if unavailable, use a stable execution reference and do not imply that it authenticates the executor. Work only after that Action is returned as `running` with the matching claim. If another executor holds it, investigate that work instead of claiming or starting it again.
+Before Builder starts an iteration or an independent Verifier starts, copy the current Action's `claimRequest`, fill the receiving session and stable claim token, and submit `claim`. Independent claims validate `actionId`, `attempt`, and `inputHash`; do not add an old global revision. Progress by another task does not require redispatching this one. Include `operation: "claim"`, `runId`, `actionId`, `attempt`, `inputHash`, `executorId: "native-host"`, `sessionId`, and a unique `claimToken` stable across recovery. Use a platform session or task ID; if unavailable, use a stable execution reference and do not imply that it authenticates the executor. Work only after that Action is returned as `running` with the matching claim. If another executor holds it, investigate that work instead of claiming or starting it again.
 
 After completion, submit `record-outcome` with the same `runId`. The outcome contains the original `actionId`, `attempt`, `inputHash`, `claimToken`, a unique `outcomeId`, the real `status`, and `output`. Never report unfinished, unexecuted, or unknown work as `succeeded`. Continue only after SDK validates and stores the receipt.
 
-- Successful `build.builder` and `supervisor.parent.builder` output contains nonempty `summary`, `addressedAcceptanceIds`, an item-by-item self-review in `acceptanceReview`, development `checks` (each with `name`, `result`, `note`), `knownLimits`, ISO `submittedAt`, and optional `review` and `verificationChecks`. Provide exactly one `{id,status,evidence,note}` entry in `acceptanceReview` for every confirmed acceptance ID. Submit only when every entry has `status: implemented-with-evidence` and nonempty `evidence`; remain in Build when work is unimplemented, known to fail, or lacks evidence. `verificationChecks` plans real Runtime checks; Builder-reported checks and self-review are not independent verification verdicts. Run `native next` for `verify.checks` after submission. Repair failed checks according to the returned state; do not invent passing results.
-- An independent, read-only platform session must claim `verify.verifier`. Launch it with the current candidate ID, acceptance items and references, workspace, and Runtime check locations; its first Runtime action should claim. Platform dispatch alone means dispatched, not confirmed started. On a wait-tool timeout, continue tracking the same task. The Verifier evaluates every current acceptance item. Successful output includes the current `candidateId`, the same `verifierExecutionRef` used at claim, and a `response`: `final-result` for a complete verdict or `request-checks` for additional Runtime checks. For the latter, execute checks with `native next`, then have the same Verifier session claim the new Action; reuse unchanged check receipts.
-- Submit `status: "failed"` with a truthful nonempty `summary` only when the platform confirms that the Verifier did not start, failed, timed out, was lost, or ended without a usable result. SDK keeps the candidate and completed checks and creates a limited number of replacement Actions. At the limit, await a user decision. If independent verification is unavailable, stop and report; do not invent a verdict.
+### SDK Builder handoff
+
+Successful `build.builder` and `supervisor.parent.builder` output contains nonempty `summary`, `addressedAcceptanceIds`, an item-by-item self-review in `acceptanceReview`, development `checks` (each with `name`, `result`, `note`), `knownLimits`, ISO `submittedAt`, and optional `review` and `verificationChecks`. Provide exactly one `{id,status,evidence,note}` entry in `acceptanceReview` for every confirmed acceptance ID. Submit only when every entry has `status: implemented-with-evidence` and nonempty `evidence`; remain in Build when work is unimplemented, known to fail, or lacks evidence. `verificationChecks` plans real Runtime checks; Builder-reported checks and self-review are not independent verification verdicts. Run `native next` for `verify.checks` after submission. Repair failed checks according to the returned state; do not invent passing results.
+### SDK Verify protocol
+
+An independent, read-only platform session must claim `verify.verifier`. Launch it with the current candidate ID, acceptance items and references, workspace, and Runtime check locations; its first Runtime action should claim. Platform dispatch alone means dispatched, not confirmed started. On a wait-tool timeout, continue tracking the same task. The Verifier evaluates every current acceptance item. Successful output includes the current `candidateId`, the same `verifierExecutionRef` used at claim, and a `response`: `final-result` for a complete verdict or `request-checks` for additional Runtime checks. For the latter, execute checks with `native next`, then have the same Verifier session claim the new Action; reuse unchanged check receipts.
+
+Submit `status: "failed"` with a truthful nonempty `summary` only when the platform confirms that the Verifier did not start, failed, timed out, was lost, or ended without a usable result. SDK keeps the candidate and completed checks and creates a limited number of replacement Actions. At the limit, await a user decision. If independent verification is unavailable, stop and report; do not invent a verdict.
 
 ### User decisions, Archive, and recovery
 
@@ -112,6 +117,8 @@ When the user explicitly wants to revoke a capability association, first run `co
 
 ## Filling command inputs
 
+Runner templates in this section apply only to Compat. SDK uses the Action protocol above and current `claimRequest` / `outcomeRequest`, without `--runner-input`.
+
 Read this section before first filling a Runtime template or returning a result through `returnAction`.
 
 Copy `inputOptions.template` into a system temporary JSON file, replace only the requested values, then execute `continuation.commandArgs` or the selected `commandAlternative.commandArgs`. Delete the temporary file after Runtime accepts the input; retain rejected input, correct it as directed, and resubmit. Preserve all supplied iteration, attempt, state-version, and task identifiers exactly; fill only fields exposed by the template.
@@ -140,6 +147,8 @@ Per-item results and Builder check results use the past tense (`passed`, `failed
 
 ## Builder handoff
 
+Compat only. SDK uses [SDK Builder handoff](#sdk-builder-handoff) and the current `outcomeRequest`.
+
 Read this section before submitting `builder-handoff`.
 
 An ordinary change or Supervisor parent does not need an additional read-only review before Verify. If a separate read-only review already exists, the Runtime template accepts optional `review.status=passed`, `review.summary`, and `review.reviewer_execution_ref`. The review execution identifier must differ from the Builder's.
@@ -157,6 +166,8 @@ Runtime saves the summary in `comet-state.yaml`, not a separate file; it does no
 Complete when implementation and relevant checks are ready for verification, all acceptance items have been rechecked, and Runtime accepts the handoff and enters Verify.
 
 ## Verify protocol
+
+Compat only. SDK uses [SDK Verify protocol](#sdk-verify-protocol); the claim receipt replaces `startupInput`, without a legacy Runner response.
 
 Read before launching, adding checks for, or waiting on a Verifier. Follow [filling command inputs](#filling-command-inputs) for submissions.
 
@@ -218,6 +229,8 @@ Complete when Runtime accepts the complete Verifier result and explicitly enters
 
 ## Supervisor coordination
 
+Compat `childSummary`, `readyChildren`, and Runner packages only. SDK children, integration, and recovery follow the [SDK Run](#sdk-run) Action protocol.
+
 Read before dispatching, receiving results, or integrating. Read [filling command inputs](#filling-command-inputs) before first filling input or executing `returnAction`.
 
 ### Dispatch and task identifiers
@@ -264,6 +277,8 @@ Use `supervisor-integrate` without `runId`. When integration reports a Git confl
 Runtime can validate saved check records and their candidate, workspace, machine, and input associations. The execution platform still owns write-permission isolation for ordinary external files.
 
 ## Command inputs and exceptions
+
+SDK reconciles the same Action, claim, and outcome through [SDK Run](#sdk-run) and the current continuation. Runner templates, `verifier-unavailable`, and `--finish` below apply only to Compat.
 
 For normal flow, execute the commands Runtime supplies in `continuation`. During recovery, `next --summary` without action input returns the current template and preserves the phase; fill that template directly without another status query. This section explains returned fields and handles rejected input, unavailable Verifiers, Verifier execution errors, missing external information, and decisions to accept results without complete independent verification. `continuation.disposition` says whether to continue, wait for the user, address a blocker, or finish. Execute commands containing `--confirmed` only after explicit user confirmation. CLI text begins with a readable `summary`, a single `NEXT:`, and optional `RELAY TO USER:`. Use `--json` for structured responses; use `--verbose` only to diagnose local execution.
 

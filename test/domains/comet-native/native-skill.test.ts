@@ -10,6 +10,7 @@ const roots = {
 };
 
 const markdownFiles = [
+  '../comet/reference/host-check.md',
   '../comet/reference/task-learning.md',
   'SKILL.md',
   'reference/artifacts.md',
@@ -114,6 +115,7 @@ describe('Comet Native Skills', () => {
 
       const links = [...new Set(markdownLinks(source).map((link) => link.split('#')[0]))].sort();
       expect(links).toEqual([
+        '../comet/reference/host-check.md',
         'reference/artifacts.md',
         'reference/clarification.md',
         'reference/commands.md',
@@ -161,8 +163,8 @@ describe('Comet Native Skills', () => {
     const entry = await read('zh', 'SKILL.md');
     const target = 'reference/commands.md#填写命令输入';
     const trigger = entry.split('\n').find((line) => line.includes(`(${target})`));
-    expect(trigger).toContain('首次填写 Runtime 模板或通过 `returnAction` 回传结果前');
-    expect(trigger).toContain('必须读取');
+    expect(trigger).toContain('首次填写 Runner 模板或通过 `returnAction` 回传前');
+    expect(trigger).toContain('读取');
     const input = section(await read('zh', 'reference/commands.md'), '填写命令输入');
     for (const term of [
       '`exclusiveGroup`',
@@ -180,7 +182,7 @@ describe('Comet Native Skills', () => {
     const enTarget = 'reference/commands.md#filling-command-inputs';
     const enTrigger = enEntry.split('\n').find((line) => line.includes('(' + enTarget + ')'));
     expect(enTrigger).toContain(
-      'Before first filling a Runtime template or returning a result through `returnAction`',
+      'Before first filling a Compat Runner template or returning through `returnAction`',
     );
     const enInput = section(await read('en', 'reference/commands.md'), 'filling-command-inputs');
     for (const term of [
@@ -925,9 +927,13 @@ describe('Comet Native Skills', () => {
 
   it('contains no forbidden wording or external prescriptive workflow dependency', async () => {
     for (const language of ['en', 'zh'] as const) {
-      const content = (await Promise.all(markdownFiles.map((file) => read(language, file)))).join(
-        '\n',
-      );
+      const content = (
+        await Promise.all(
+          markdownFiles
+            .filter((file) => file !== '../comet/reference/host-check.md')
+            .map((file) => read(language, file)),
+        )
+      ).join('\n');
       expect(content).not.toMatch(
         /openspec|superpowers|grill-me|grilling|brainstorming|requiredSkillCalls|test-driven-development|code-review/iu,
       );
@@ -938,6 +944,6 @@ describe('Comet Native Skills', () => {
     }
 
     const zh = (await Promise.all(markdownFiles.map((file) => read('zh', file)))).join('\n');
-    expect(zh).not.toMatch(/预演|新鲜验证|宿主/u);
+    expect(zh).not.toMatch(/预演|新鲜验证/u);
   });
 });

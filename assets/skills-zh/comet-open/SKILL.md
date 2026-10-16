@@ -21,7 +21,7 @@ description: '创建 Classic change，整理需求并请用户确认。在用户
 
 ### 0a. 当前 change 绑定
 
-响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 等待原任务，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。下文依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
+响应已有 `agent.continuation.mode` 时，先按 `comet-classic/reference/auto-transition.md` 处理；`wait` 按 auto-transition.md 区分手动衔接和原任务等待，不能因兼容字段 `nextAction.kind: reconcile` 再做恢复查询。使用当前响应的命令与输入；Skill 工作实际完成后才使用 `completion` 提交。下文依据 `nextAction.kind` 的恢复规则仅用于没有 `mode` 的旧响应。
 
 恢复已有 change 时，复用同一工作区和 Run 的最新有效 continuation 与归属；冷恢复、外部状态变化或信息缺失时才运行 `comet state next <name> --json`，再按 `data.runtimeFormat` 处理：
 
@@ -158,6 +158,8 @@ OpenSpec change 名称必须是 kebab-case 英文（小写字母、数字、单�
 resolved brief 或 change 名称仍不明确时不得运行 `comet classic openspec -- new change`，也不得创建 proposal/design/tasks；继续澄清或处理真正的用户决策后再进入 Step 2。
 
 ### 2. 创建 Change 结构 + 初始化状态
+
+本节沿用 [SDK 创建顺序](../comet-classic/reference/sdk-methods.md#开始与产物)：OpenSpec 先创建基础目录，再初始化 SDK Run。已有 Run 时只恢复，不重建目录或状态。
 
 **立即执行：** 使用 Skill 工具加载 `openspec-new-change` 技能。禁止跳过此步骤。
 

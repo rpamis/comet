@@ -670,7 +670,6 @@ export async function projectNativeSdkContinuation(options: {
             claimRequest: {
               operation: 'claim',
               runId: run.runId,
-              expectedRevision: run.revision,
               actionId: action.id,
               attempt: action.attempt,
               inputHash: action.inputHash,

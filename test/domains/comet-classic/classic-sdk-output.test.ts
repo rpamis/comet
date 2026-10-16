@@ -57,6 +57,23 @@ function fixture(stepId = 'full.build.check', ref = 'classic-check'): WorkflowRu
 const root = '/tmp/project with spaces';
 
 describe('Classic next-step source projection', () => {
+  it('distinguishes manual Skill entry from an already running executor', () => {
+    const run = fixture('full.build.execute', 'comet-build');
+    run.state = { ...(run.state as object), autoTransition: false };
+    const manual = classicSdkContinuation(run, root, 'demo');
+    expect(manual).toMatchObject({
+      mode: 'wait',
+      waitReason: 'manual-transition',
+      skill: 'comet-build',
+    });
+    expect(manual.instruction).toContain('已明确调用');
+    run.actions[0].status = 'running';
+    expect(classicSdkContinuation(run, root, 'demo')).toMatchObject({
+      mode: 'wait',
+      waitReason: 'executor',
+    });
+  });
+
   it.each(['full', 'hotfix', 'tweak'])(
     'restores %s stage context without changing the Action or its approval bindings',
     (profile) => {

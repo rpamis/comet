@@ -11,6 +11,32 @@ const englishNativeCommands = path.resolve('assets/skills/comet-native/reference
 const englishNativeRecovery = path.resolve('assets/skills/comet-native/reference/recovery.md');
 
 describe('Chinese Native SDK Skill route', () => {
+  it.each(['skills', 'skills-zh'])(
+    'separates SDK claims, outcomes, and verification in %s',
+    async (root) => {
+      const skill = await fs.readFile(
+        path.resolve('assets', root, 'comet-native/SKILL.md'),
+        'utf8',
+      );
+      const commands = await fs.readFile(
+        path.resolve('assets', root, 'comet-native/reference/commands.md'),
+        'utf8',
+      );
+      expect(skill).toContain('../comet/reference/host-check.md');
+      expect(skill).toContain('reference/commands.md#sdk-');
+      expect(commands).toContain('claimRequest');
+      expect(commands).toContain('outcomeRequest');
+      expect(commands).toContain('data.runId');
+      const sdk = commands.slice(
+        0,
+        commands.indexOf('## Memory integration') >= 0
+          ? commands.indexOf('## Memory integration')
+          : commands.indexOf('## 记忆接入'),
+      );
+      expect(sdk).not.toContain('matching Run state changes');
+      expect(sdk).not.toContain('对应 Run 状态已变化才算提交成功');
+    },
+  );
   it('routes SDK-owned changes by the persisted Run projection and keeps legacy instructions separate', async () => {
     const skill = await fs.readFile(nativeSkill, 'utf8');
     expect(skill).toContain('comet.native.sdk-status.v1');

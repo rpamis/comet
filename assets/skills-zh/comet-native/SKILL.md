@@ -19,6 +19,8 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 
 ## 开始或恢复
 
+首次开始任务或更换宿主时，必须读取并执行[宿主能力核对](../comet/reference/host-check.md)，在确认 Shape 或开始新的实现前核对独立验收和 Runtime 回报能力。
+
 1. 已知名称时运行 `comet native select <change-name> --json`，否则运行 `comet native status --json`。active change 已存在时，进入 `workspace.projectRoot`；工作区有歧义时才让用户选择。若 Run 记录丢失，读取[故障恢复](reference/recovery.md#故障恢复)：有检查点则沿用阶段；否则先诊断并等待恢复决定。
 2. 没有对应 active change 时，按[工作区选择参考](reference/workspace.md#创建-change)确定隔离方式，运行 `native new` 创建，再进入 `preparation.projectRoot`。准备失败时，保留已创建的分支和目录，按返回的原因处理。
 3. 进入工作区并取得 `phase` 后，按[记忆接入](reference/commands.md#记忆接入)获取适用上下文。进入新阶段、交接给新 Agent 或恢复上下文时，由接收方执行 `contextRequest`，重新取得当前适用偏好和项目约束；同一阶段连续执行无需重复获取。任务结束时按该节分别处理项目记忆和个人记忆，再调用 `comet task --complete`。
@@ -39,8 +41,8 @@ Native 在项目中保存需求和验收结论。先确认 change 的运行格�
 
 - Shape：必须读取并执行[澄清](reference/clarification.md#澄清)，按项目配置选择 Sequential 或 Batch 的提问步骤。大型需求在最终确认前，必须按该节链接读取 Supervisor 拆分与确认要求。
 - 编辑 brief/Spec/`children.yaml` 或核对验收报告前，必须读取[正式产物](reference/artifacts.md#正式产物)。文件、附件、链接或本地路径作为需求来源时，必须进入[源文档完整覆盖模式](reference/artifacts.md#源文档完整覆盖)；仅用于排错、取证、审查或实现参考的材料不自动触发。
-- 首次填写 Runtime 模板或通过 `returnAction` 回传结果前，必须读取[填写命令输入](reference/commands.md#填写命令输入)。
-- Builder 提交本轮实现前，必须读取[Builder 交接](reference/commands.md#builder-交接)。启动 Verifier、补充检查或等待结果前，必须读取[Verify 协议](reference/commands.md#verify-协议)。
+- SDK 首次领取和回报前，读取[平台 Action 协议](reference/commands.md#sdk-action-领取与回报)，直接填写当前响应模板。Compat 首次填写 Runner 模板或通过 `returnAction` 回传前，读取[填写命令输入](reference/commands.md#填写命令输入)。
+- SDK Builder 提交前读取[SDK Builder 交接](reference/commands.md#sdk-builder-交接)，SDK 验收读取[SDK Verify 协议](reference/commands.md#sdk-verify-协议)。Compat 对应读取[Builder 交接](reference/commands.md#builder-交接)与[Verify 协议](reference/commands.md#verify-协议)，不混用两套输入。
 - 状态包含 `childSummary` 时，必须在分配任务、接收结果或集成前读取[Supervisor 协作](reference/commands.md#supervisor-协作)，只处理 `readyChildren` 列出的子任务和 Supervisor 统筹动作。
 - 字段含义不清、命令输入被拒绝、Verifier 不可用、执行错误或缺少外部信息：读取[命令输入与异常](reference/commands.md#命令输入与异常)。正常动作直接使用 Runtime 返回的命令和模板。
 - 等待外部输入时，按恢复参考中的[等待外部输入与监控](reference/recovery.md#等待外部输入与监控)处理；独立工作继续。进程中断、换设备、连续无进展、并发冲突、迁移失败或状态损坏时，读取[故障恢复](reference/recovery.md#故障恢复)。
@@ -83,9 +85,13 @@ Build、Verify 和 Archive 会复查正式文件绑定。新确认的 Shape 按 
 
 ## Verify
 
-按 Verify 协议立即启动新的只读 Verifier，原样传递任务包。派发只代表登记：平台接受启动调用、且 Verifier 回报 `verifier-started` 后，才说明它已运行；启动失败立即按异常流程处理。任务包含验收正文时直接使用，否则按分页读取全部 scopeIds。Verifier 独立判断全部验收项，复用与当前实现、工作区和输入匹配的 Runtime 检查，只补缺失或失效证据；文件和日志正文按需读取。
+SDK 按 [SDK Verify 协议](reference/commands.md#sdk-verify-协议) 与当前 continuation 先完成 Runtime 检查，再启动新的只读 Verifier。传入候选 ID、全部验收项及引用、工作区、检查记录和 claimRequest；由 Verifier 用自己的会话领取 Action，并用当前 outcomeRequest 回报。SDK 不提交旧 Runner 的启动回执或结果。
 
-等待工具超时后，继续等待同一个 Verifier。回执未到且子代理无响应时，先核实启动是否成功；只有平台确认执行失败、超时、任务丢失或结束后无结果时才登记错误。Runtime 接受完整结果后，按最新状态继续。只有用户明确接受结果后才执行 `--accept-result`，仅完成自动检查的结果也须明确接受。Compat 隔离工作区可在同一回复中接受结果并选择交付方式，执行带 `--finish` 的备选命令；用户未选择时再询问。
+Compat 按 [Verify 协议](reference/commands.md#verify-协议) 立即启动新的只读 Verifier，原样传递任务包。派发只代表登记：平台接受启动调用、且 Verifier 回报 `verifier-started` 后，才说明它已运行；启动失败立即按异常流程处理。任务包含验收正文时直接使用，否则按分页读取全部 scopeIds。
+
+Verifier 独立判断全部验收项，复用与当前实现、工作区和输入匹配的 Runtime 检查，只补缺失或失效证据；文件和日志正文按需读取。等待工具超时后，继续等待同一个 Verifier。只有平台确认执行失败、超时、任务丢失或结束后无结果时才登记错误。Runtime 接受完整结果后按最新状态继续。
+
+只有用户明确接受当前验收结果，才执行 `--accept-result`。Compat 仅完成自动检查的结果也须明确接受；隔离工作区可在同一回复中接受结果并选择交付方式，执行带 `--finish` 的备选命令。SDK 保留独立验收要求，不套用上述 Compat 选项。
 
 完成标准：Runtime 接受每项验收结论并给出下一步；返回 Build 就继续修复，返回等待或阻塞就处理对应条件，不把阶段结束当任务完成。
 

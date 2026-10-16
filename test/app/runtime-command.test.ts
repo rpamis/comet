@@ -32,6 +32,7 @@ import type { NativePortableState } from '../../domains/comet-native/native-port
 import { parseClassicStateDocument } from '../../domains/comet-classic/classic-state.js';
 import { runClassicCli } from '../../domains/comet-classic/classic-cli.js';
 import { prepareClassicWorkspace } from '../../domains/comet-classic/classic-workspace.js';
+import { ensureCliBuilt } from '../helpers/ensure-cli-built.js';
 import { withRecoverableFileLock } from '../../platform/fs/plugin-store.js';
 import { classicOpenEvidenceReceipt } from '../../domains/comet-classic/classic-sdk-application.js';
 
@@ -1982,23 +1983,17 @@ describe('Runtime through the real CLI', () => {
       path.join(packageRoot, 'node_modules'),
       'junction',
     );
-    execFileSync(
-      process.execPath,
-      [
-        path.join(repositoryRoot, 'node_modules/typescript/bin/tsc'),
-        '--outDir',
-        path.join(packageRoot, 'dist'),
-        '--declaration',
-        'false',
-        '--declarationMap',
-        'false',
-        '--sourceMap',
-        'false',
-      ],
-      { cwd: repositoryRoot, stdio: 'pipe' },
-    );
+    await ensureCliBuilt(repositoryRoot);
+    await fs.cp(path.join(repositoryRoot, 'dist'), path.join(packageRoot, 'dist'), {
+      recursive: true,
+      filter: async (source) => {
+        if (source === path.join(repositoryRoot, 'dist', 'domains', 'dashboard', 'web'))
+          return false;
+        return source.endsWith('.js') || (await fs.stat(source)).isDirectory();
+      },
+    });
     cli = path.join(packageRoot, 'bin/comet.js');
-  }, 60_000);
+  }, 180_000);
 
   afterAll(async () => {
     if (packageRoot) await fs.rm(packageRoot, { recursive: true, force: true });
