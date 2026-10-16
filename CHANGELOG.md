@@ -36,6 +36,8 @@ All notable changes to @rpamis/comet will be documented in this file.
 
 ### Fixed
 
+- **Native check startup**: Open each check log exclusively before creating its execution process. Missing permissions or an existing log now fail before any supervisor or check command starts, preserving existing logs and avoiding unnecessary processes.
+
 - **Memory page responsiveness**: Read application history through an index, show totals with a short preview, and page older records without loading or rendering the full ledger. Import existing history in resumable batches. Bound remote memory and knowledge page reads, retain available sections and cached records during provider failures, and cancel the underlying requests instead of leaving the page waiting for a long provider timeout.
 - **Dashboard refresh performance**: Reuse unchanged Classic summaries and Native directory indexes across polling, share overlapping Classic scans, and avoid repeated path checks for every archived artifact in linked worktrees. Reuse validated Git worktree metadata and request-local path checks for list and detail reads. Keep search typing local to the input, preserve the selected detail while search results load, avoid duplicate detail requests, and paginate long Native acceptance, check, and history lists (#488).
 - **Initialization language**: Inherit the existing project, global, or installed Skill language when no `--language` is supplied, preserving Chinese configuration and managed project instructions when adding a platform (#461).

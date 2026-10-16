@@ -1,7 +1,6 @@
 import {
   accessSync,
   constants as fsConstants,
-  createWriteStream,
   existsSync,
   promises as fs,
   statSync,
@@ -209,8 +208,9 @@ export async function executeNativeCheck(options: {
     throw new Error('Native check log path escaped the Runtime root');
   }
   await fs.mkdir(logDirectory, { recursive: true });
+  const logHandle = await fs.open(logFile, 'wx');
+  const stream = logHandle.createWriteStream();
   const started = (options.now ?? (() => new Date()))();
-  const stream = createWriteStream(logFile, { flags: 'wx' });
   const logHash = createHash('sha256');
 
   return new Promise<NativeExecutedCheck & { logSha256: string }>((resolve, reject) => {
@@ -352,6 +352,7 @@ export async function executeNativeCheck(options: {
       registration = Promise.race([
         Promise.resolve().then(async () => {
           childIdentity = (await readProcessIdentity(pid)) ?? undefined;
+          registrationController.signal.throwIfAborted();
           await options.onSpawn?.({ pid, signal: registrationController.signal });
         }),
         registrationDeadline,
