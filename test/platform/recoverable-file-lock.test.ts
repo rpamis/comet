@@ -152,10 +152,10 @@ describe('recoverable file lock safety', () => {
     expect((await diagnoseRecoverableFileLock(lock)).status).toBe('missing');
   });
 
-  it.for(['changed', 'EPERM'] as const)(
+  it.for(['changed', 'EPERM', 'EBADF'] as const)(
     'recovers a transient coordinator read failure without overlapping writers (%s)',
     async (failure, context) => {
-      if (failure === 'EPERM' && process.platform !== 'win32')
+      if (failure !== 'changed' && process.platform !== 'win32')
         context.skip('Windows sharing-violation recovery');
       const { lock } = await fixture();
       const realpath = fs.realpath.bind(fs);
@@ -164,7 +164,7 @@ describe('recoverable file lock safety', () => {
         if (String(file).endsWith('.ticket') && !injected) {
           injected = true;
           if (failure === 'changed') throw new RaceSafeReadError('changed', 'Changed ticket');
-          throw Object.assign(new Error('Transient sharing violation'), { code: 'EPERM' });
+          throw Object.assign(new Error('Transient coordinator read failure'), { code: failure });
         }
         return realpath(file);
       });
@@ -189,9 +189,10 @@ describe('recoverable file lock safety', () => {
     },
   );
 
-  it.runIf(process.platform === 'win32')(
-    'preserves an unreadable coordinator owner and refuses to enter after the deadline',
-    async () => {
+  it.for(['EPERM', 'EBADF'] as const)(
+    'preserves an unreadable coordinator owner and refuses to enter after the deadline (%s)',
+    async (code, context) => {
+      if (process.platform !== 'win32') context.skip('Windows coordinator read recovery');
       const { lock } = await fixture();
       const directory = `${lock}.contenders`;
       await fs.mkdir(directory);
@@ -201,13 +202,13 @@ describe('recoverable file lock safety', () => {
       const realpath = fs.realpath.bind(fs);
       vi.spyOn(fs, 'realpath').mockImplementation(async (file) => {
         if (String(file) === foreign)
-          throw Object.assign(new Error('Persistent permission failure'), { code: 'EPERM' });
+          throw Object.assign(new Error('Persistent coordinator read failure'), { code });
         return realpath(file);
       });
       const operation = vi.fn();
       await expect(
         withRecoverableFileLock(lock, operation, { timeoutMs: 100, retryMs: 1 }),
-      ).rejects.toMatchObject({ code: 'EPERM' });
+      ).rejects.toMatchObject({ code });
       expect(operation).not.toHaveBeenCalled();
       expect(await fs.readFile(foreign, 'utf8')).toBe(content);
     },

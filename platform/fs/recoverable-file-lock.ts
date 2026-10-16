@@ -230,7 +230,9 @@ async function coordinatorSnapshot(
       const retryable =
         (error instanceof RaceSafeReadError && error.reason === 'changed') ||
         (process.platform === 'win32' &&
-          ['EPERM', 'EACCES', 'EBUSY'].includes((error as NodeJS.ErrnoException).code ?? ''));
+          ['EPERM', 'EACCES', 'EBUSY', 'EBADF'].includes(
+            (error as NodeJS.ErrnoException).code ?? '',
+          ));
       if (!retryable || performance.now() >= deadline) throw error;
       await new Promise((resolve) => setTimeout(resolve, retryMs));
     }

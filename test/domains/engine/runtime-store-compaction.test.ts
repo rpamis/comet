@@ -390,6 +390,8 @@ describe('file RuntimeStore compaction and migration', () => {
 
   it('retries a reader overlapping an atomic checkpoint replacement', async () => {
     await store().compareAndSwap(runId, null, record(1));
+    // 不同大小保证触发变更检查，不依赖 Windows 文件标识和时间戳是否区分两次发布。
+    const replacement = record(2, 'replacement checkpoint with a different size');
     const open = fs.open.bind(fs);
     let replacing = false;
     let readerOpens = 0;
@@ -400,7 +402,7 @@ describe('file RuntimeStore compaction and migration', () => {
           // Replace after lstat but before open, without holding a Windows checkpoint handle.
           replacing = true;
           try {
-            expect(await store().compareAndSwap(runId, 1, record(2))).toBe(true);
+            expect(await store().compareAndSwap(runId, 1, replacement)).toBe(true);
           } finally {
             replacing = false;
           }
@@ -409,7 +411,7 @@ describe('file RuntimeStore compaction and migration', () => {
       return open(...args);
     });
     try {
-      expect(await store().read(runId)).toEqual(record(2));
+      expect(await store().read(runId)).toEqual(replacement);
       expect(readerOpens).toBe(2);
     } finally {
       spy.mockRestore();
