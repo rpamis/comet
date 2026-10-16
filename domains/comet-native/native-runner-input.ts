@@ -1,5 +1,11 @@
 import { assertNativeInputKeys as exactKeys } from './native-input-error.js';
 import {
+  NATIVE_BUILDER_CHECK_RESULTS,
+  NATIVE_RUNNER_INPUT_KINDS,
+  NATIVE_VERIFIER_VERDICTS,
+  nativeEnumText,
+} from './native-input-enum.js';
+import {
   assertNativeBuilderAcceptanceComplete,
   parseNativeBuilderAcceptanceReview,
   type NativeBuilderAcceptanceReview,
@@ -244,15 +250,17 @@ function builderChecks(value: unknown): RunnerBuilderInput['checks'] {
       `Native Builder check ${index}`,
       `/checks/${index}`,
     );
-    if (!['passed', 'failed', 'not-run'].includes(String(input.result))) {
-      throw new Error(`Native Builder check ${index} result is invalid`);
-    }
+    const result = nativeEnumText(
+      input.result,
+      NATIVE_BUILDER_CHECK_RESULTS,
+      `Native Builder check ${index} result`,
+    );
     if (input.note !== null && typeof input.note !== 'string') {
       throw new Error(`Native Builder check ${index} note is invalid`);
     }
     return {
       name: text(input.name, `Native Builder check ${index} name`),
-      result: input.result as RunnerBuilderInput['checks'][number]['result'],
+      result,
       note: input.note as string | null,
     };
   });
@@ -510,14 +518,16 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
       ['kind', 'child', 'runId', 'verdict', 'evidence'],
       'Native Supervisor Verifier input',
     );
-    if (!['pass', 'fail', 'blocked'].includes(String(input.verdict))) {
-      throw new Error('Native Supervisor Verifier verdict is invalid');
-    }
+    const verdict = nativeEnumText(
+      input.verdict,
+      NATIVE_VERIFIER_VERDICTS,
+      'Native Supervisor Verifier verdict',
+    );
     return {
       kind: 'supervisor-verifier-result',
       child: text(input.child, 'Native Supervisor child'),
       runId: text(input.runId, 'Native Supervisor runId'),
-      verdict: input.verdict as RunnerSupervisorVerifierInput['verdict'],
+      verdict,
       evidence: supervisorEvidence(input.evidence),
     };
   }
@@ -569,7 +579,9 @@ export function parseNativeRunnerInput(value: unknown): NativeRunnerInput {
         : { retry_check_ids: strings(input.retry_check_ids, 'Native Supervisor retry IDs') }),
     };
   }
-  throw new Error('Native Runner input kind is invalid');
+  throw new Error(
+    `Native Runner input kind must be one of: ${NATIVE_RUNNER_INPUT_KINDS.join(', ')}`,
+  );
 }
 
 export async function readNativeRunnerInput(

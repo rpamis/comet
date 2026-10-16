@@ -1,4 +1,5 @@
 import { assertNativeInputKeys } from './native-input-error.js';
+import { NATIVE_ACCEPTANCE_REVIEW_STATUSES, nativeEnumText } from './native-input-enum.js';
 
 export interface NativeBuilderAcceptanceReview {
   id: string;
@@ -46,16 +47,7 @@ export function parseNativeBuilderAcceptanceReview(
       label,
       `/acceptance_review/${index}`,
     );
-    const status = row.status as NativeBuilderAcceptanceReview['status'];
-    if (
-      ![
-        'implemented-with-evidence',
-        'implemented-no-evidence',
-        'not-implemented',
-        'known-fail',
-      ].includes(status)
-    )
-      throw new Error(`${label}.status is invalid`);
+    const status = nativeEnumText(row.status, NATIVE_ACCEPTANCE_REVIEW_STATUSES, `${label}.status`);
     if (!Array.isArray(row.evidence)) throw new Error(`${label}.evidence must be an array`);
     return {
       id: text(row.id, `${label}.id`),

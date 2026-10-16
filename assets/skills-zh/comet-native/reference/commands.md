@@ -122,6 +122,22 @@ Supervisor 子任务在任务包指定的 `projectRoot` 工作。回传结果时
 
 按 `inputOptions` 模板填写完整后直接正式提交；Runtime 在提交时校验输入，无需先跑预检。`comet native next <change> --runner-input <file> --validate-only --json` 只在提交被拒且需要区分 JSON 结构错误与业务校验错误时使用；该校验不写入工作流状态（comet-state.yaml）或启动检查。正式提交时，仍要使用当前 `continuation` 指定的状态版本、任务标识和命令参数。
 
+### 枚举字段合法值
+
+模板占位符和校验错误都会列出下列字段的全部合法值。每个字段的取值集合只对该字段有效，不能把一个字段的值套用到另一个字段。
+
+| 输入 | 字段 | 合法值 |
+|------|------|--------|
+| `builder-handoff` | `checks[].result` | `passed` / `failed` / `not-run`：Builder 实际运行或未运行的开发检查 |
+| `builder-handoff` | `acceptance_review[].status` | `implemented-with-evidence` / `implemented-no-evidence` / `not-implemented` / `known-fail` |
+| `builder-handoff` | `review.status` | `passed` |
+| `verifier-response`（`final-result`） | `result.verdict` | `pass` / `fail` / `blocked`：Verifier 总判定 |
+| `verifier-response`（`final-result`） | `result.acceptance[].result` | `passed` / `failed` / `blocked`：逐项验收结论 |
+| `supervisor-verifier-result` | `verdict` | `pass` / `fail` / `blocked` |
+| `supervisor-verifier-result` | `evidence.acceptance[].result` | `passed` / `failed` / `blocked` |
+
+逐项结论和 Builder 检查结果用完成时（`passed`、`failed`），总判定用原形（`pass`、`fail`）。`not-run` 只用于 Builder 的开发检查，`blocked` 只用于 Verifier 字段，`pending` 是 Runtime 内部状态值，不出现在任何输入中。
+
 ## Builder 交接
 
 提交 `builder-handoff` 前必须读取本节。

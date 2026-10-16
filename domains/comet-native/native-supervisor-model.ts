@@ -6,6 +6,11 @@ import {
   validateAndScopeNativeVerifierFinalResult,
   type NativeVerifierAcceptanceResult,
 } from './native-verifier-protocol.js';
+import {
+  NATIVE_VERIFIER_ACCEPTANCE_RESULTS,
+  NATIVE_VERIFIER_VERDICTS,
+  nativeEnumPlaceholder,
+} from './native-input-enum.js';
 
 const COMMIT_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 
@@ -464,13 +469,13 @@ export function projectNativeSupervisorTask(
           {
             kind: 'supervisor-verifier-result',
             ...identity,
-            verdict: 'blocked',
+            verdict: nativeEnumPlaceholder(NATIVE_VERIFIER_VERDICTS),
             evidence: {
               summary: '<verification-summary>',
               checks: [],
               acceptance: (task.acceptance ?? []).map(({ id }) => ({
                 id,
-                result: 'blocked',
+                result: nativeEnumPlaceholder(NATIVE_VERIFIER_ACCEPTANCE_RESULTS),
                 reason: '<evidence>',
               })),
               receiptRef: task.checkExecution?.receiptRef ?? null,

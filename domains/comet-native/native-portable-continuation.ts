@@ -7,6 +7,13 @@ import {
   type NativePortableState,
 } from './native-portable-types.js';
 import { NATIVE_MAX_SUPERVISOR_BUILDER_FAILURES } from './native-supervisor-model.js';
+import {
+  NATIVE_ACCEPTANCE_REVIEW_STATUSES,
+  NATIVE_BUILDER_CHECK_RESULTS,
+  NATIVE_VERIFIER_ACCEPTANCE_RESULTS,
+  NATIVE_VERIFIER_VERDICTS,
+  nativeEnumPlaceholder,
+} from './native-input-enum.js';
 
 type NativePortableContinuationInputOption = {
   name: string;
@@ -1077,11 +1084,17 @@ export function nativePortableContinuation(
                 addressed_acceptance_ids: state.acceptance.map(({ id }) => id),
                 acceptance_review: state.acceptance.map(({ id }) => ({
                   id,
-                  status: 'not-implemented',
+                  status: nativeEnumPlaceholder(NATIVE_ACCEPTANCE_REVIEW_STATUSES),
                   evidence: [],
                   note: '<implementation and evidence summary>',
                 })),
-                checks: [{ name: '<check-name>', result: 'not-run', note: null }],
+                checks: [
+                  {
+                    name: '<check-name>',
+                    result: nativeEnumPlaceholder(NATIVE_BUILDER_CHECK_RESULTS),
+                    note: null,
+                  },
+                ],
                 verification_checks: [nativeCheckPlanTemplate()],
                 known_limits: [],
               },
@@ -1243,12 +1256,18 @@ export function nativePortableContinuation(
                   }
                 : {
                     id,
-                    status: 'not-implemented',
+                    status: nativeEnumPlaceholder(NATIVE_ACCEPTANCE_REVIEW_STATUSES),
                     evidence: [],
                     note: '<implementation and evidence summary>',
                   };
             }),
-            checks: [{ name: '<check-name>', result: 'not-run', note: null }],
+            checks: [
+              {
+                name: '<check-name>',
+                result: nativeEnumPlaceholder(NATIVE_BUILDER_CHECK_RESULTS),
+                note: null,
+              },
+            ],
             verification_checks: [],
             known_limits: [],
           },
@@ -1345,11 +1364,11 @@ export function nativePortableContinuation(
                     result: {
                       iteration: state.loop.iteration,
                       attempt: state.loop.attempt,
-                      verdict: 'blocked',
+                      verdict: nativeEnumPlaceholder(NATIVE_VERIFIER_VERDICTS),
                       acceptance: [
                         {
                           id: '<acceptance-id>',
-                          result: 'blocked',
+                          result: nativeEnumPlaceholder(NATIVE_VERIFIER_ACCEPTANCE_RESULTS),
                           reason: '<reason>',
                         },
                       ],

@@ -7,6 +7,7 @@ import {
   readNativeRunnerInput,
 } from '../../../domains/comet-native/native-runner-input.js';
 import { errorResult } from '../../../domains/comet-native/native-cli-shared.js';
+import { fillNativeEnumPlaceholders } from '../../helpers/native-enum-template.js';
 import { projectNativeSupervisorTask } from '../../../domains/comet-native/native-supervisor.js';
 
 describe('Agent runner input contract', () => {
@@ -66,7 +67,7 @@ describe('Agent runner input contract', () => {
     });
   });
 
-  it('returns directly parsable Verifier templates with a usable controller command', () => {
+  it('returns Verifier templates that parse once enum placeholders are filled', () => {
     const task = projectNativeSupervisorTask(
       {
         role: 'verifier',
@@ -93,7 +94,37 @@ describe('Agent runner input contract', () => {
       ],
     });
     for (const option of task.returnAction.inputOptions) {
-      expect(() => parseNativeRunnerInput(option.template)).not.toThrow();
+      expect(() =>
+        parseNativeRunnerInput(fillNativeEnumPlaceholders(option.template)),
+      ).not.toThrow();
     }
+  });
+
+  it('names every legal enum value when an enumerated input is rejected', () => {
+    expect(() =>
+      parseNativeRunnerInput({
+        kind: 'supervisor-verifier-result',
+        child: 'child-a',
+        runId: 'run-a',
+        verdict: 'passed',
+        evidence: {
+          summary: 'Verified.',
+          checks: [],
+          acceptance: [{ id: 'acceptance-a', result: 'passed', reason: 'Observed.' }],
+          receiptRef: null,
+        },
+      }),
+    ).toThrow('Native Supervisor Verifier verdict must be one of: pass, fail, blocked');
+
+    expect(() =>
+      parseNativeRunnerInput({
+        kind: 'builder-handoff',
+        summary: 'Implemented.',
+        addressed_acceptance_ids: [],
+        acceptance_review: [],
+        checks: [{ name: 'unit', result: 'pass', note: null }],
+        known_limits: [],
+      }),
+    ).toThrow('Native Builder check 0 result must be one of: passed, failed, not-run');
   });
 });

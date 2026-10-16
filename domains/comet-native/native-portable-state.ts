@@ -3,6 +3,7 @@ import {
   assertNativeBuilderAcceptanceComplete,
   parseNativeBuilderAcceptanceReview,
 } from './native-builder-acceptance-review.js';
+import { NATIVE_BUILDER_CHECK_RESULTS, NATIVE_VERIFIER_VERDICTS } from './native-input-enum.js';
 
 import { stringify } from 'yaml';
 import { parseNativeStateDocument } from './native-state-document.js';
@@ -358,7 +359,7 @@ function parseBuilderCheck(value: unknown, index: number): NativeBuilderCheckSum
   rejectUnknown(root, new Set(['name', 'result', 'note']), label);
   return {
     name: parsePortableText(root.name, `${label}.name`),
-    result: enumValue(root.result, ['passed', 'failed', 'not-run'] as const, `${label}.result`),
+    result: enumValue(root.result, NATIVE_BUILDER_CHECK_RESULTS, `${label}.result`),
     note: root.note === null ? null : parsePortableText(root.note, `${label}.note`),
   };
 }
@@ -548,7 +549,7 @@ function parseVerification(value: unknown): NativePortableVerificationState {
             ] as const,
             `${label}.assurance`,
           ),
-    verdict: enumValue(root.verdict, ['pass', 'fail', 'blocked'] as const, `${label}.verdict`),
+    verdict: enumValue(root.verdict, NATIVE_VERIFIER_VERDICTS, `${label}.verdict`),
     checks,
     summary: parsePortableText(root.summary, `${label}.summary`),
     risks: arrayValue(root.risks, `${label}.risks`, (entry, index) =>

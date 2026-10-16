@@ -1,4 +1,5 @@
 import { fixtureAcceptanceReview } from '../../helpers/native-builder-acceptance-review.js';
+import { fillNativeEnumPlaceholders } from '../../helpers/native-enum-template.js';
 import { describe, expect, it } from 'vitest';
 
 import { buildNativePortableAcceptance } from '../../../domains/comet-native/native-portable-acceptance.js';
@@ -17,6 +18,13 @@ import {
   type NativeTrustedVerifierEnvelope,
 } from '../../../domains/comet-native/native-runner-protocol.js';
 import { parseNativeRunnerInput } from '../../../domains/comet-native/native-runner-input.js';
+import {
+  NATIVE_ACCEPTANCE_REVIEW_STATUSES,
+  NATIVE_BUILDER_CHECK_RESULTS,
+  NATIVE_VERIFIER_ACCEPTANCE_RESULTS,
+  NATIVE_VERIFIER_VERDICTS,
+  nativeEnumPlaceholder,
+} from '../../../domains/comet-native/native-input-enum.js';
 import type { NativePortableState } from '../../../domains/comet-native/native-portable-types.js';
 
 function confirmedState(name: string, ids = ['A1', 'A2']): NativePortableState {
@@ -271,7 +279,7 @@ describe('Native flow efficiency plan', () => {
     });
   });
 
-  it('emits a directly parsable final Verifier response template', () => {
+  it('emits a final Verifier response template listing every legal enum value', () => {
     const runner = createNativeRunnerChannel();
     const state = reserveNativeVerifierAttempt(
       builderCandidate(confirmedState('verifier-final-template'), runner),
@@ -284,7 +292,34 @@ describe('Native flow efficiency plan', () => {
     });
 
     expect(option).toBeDefined();
-    expect(() => parseNativeRunnerInput(option!.template)).not.toThrow();
+    const template = option!.template as {
+      response: { result: { verdict: string; acceptance: Array<{ result: string }> } };
+    };
+    expect(template.response.result.verdict).toBe(nativeEnumPlaceholder(NATIVE_VERIFIER_VERDICTS));
+    expect(template.response.result.acceptance[0].result).toBe(
+      nativeEnumPlaceholder(NATIVE_VERIFIER_ACCEPTANCE_RESULTS),
+    );
+    expect(() =>
+      parseNativeRunnerInput(fillNativeEnumPlaceholders(option!.template)),
+    ).not.toThrow();
+  });
+
+  it('emits a Builder handoff template listing every legal enum value', () => {
+    const continuation = nativePortableContinuation(confirmedState('builder-template'));
+    const option = continuation.inputOptions.find((candidate) => {
+      const template = candidate.template as Record<string, unknown> | null;
+      return template?.kind === 'builder-handoff';
+    });
+
+    expect(option).toBeDefined();
+    const template = option!.template as {
+      checks: Array<{ result: string }>;
+      acceptance_review: Array<{ status: string }>;
+    };
+    expect(template.checks[0].result).toBe(nativeEnumPlaceholder(NATIVE_BUILDER_CHECK_RESULTS));
+    expect(template.acceptance_review[0].status).toBe(
+      nativeEnumPlaceholder(NATIVE_ACCEPTANCE_REVIEW_STATUSES),
+    );
   });
 
   it('rejects the same acceptance criterion duplicated across brief and Spec sources', () => {

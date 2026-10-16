@@ -1,5 +1,11 @@
 import { assertNativeInputKeys as exactKeys } from './native-input-error.js';
 import {
+  NATIVE_VERIFIER_ACCEPTANCE_RESULTS,
+  NATIVE_VERIFIER_RESPONSE_KINDS,
+  NATIVE_VERIFIER_VERDICTS,
+  nativeEnumText,
+} from './native-input-enum.js';
+import {
   isNativeTrustedVerifierEnvelope,
   type NativeTrustedVerifierEnvelope,
 } from './native-runner-protocol.js';
@@ -93,12 +99,14 @@ export function parseNativeVerifierAcceptance(
       `${inputPath}/${index}`,
     );
     const id = text(item.id, `Native Verifier acceptance ${index} ID`);
-    if (!['passed', 'failed', 'blocked'].includes(String(item.result))) {
-      throw new Error(`Native Verifier acceptance ${id} result is invalid`);
-    }
+    const result = nativeEnumText(
+      item.result,
+      NATIVE_VERIFIER_ACCEPTANCE_RESULTS,
+      `Native Verifier acceptance ${id} result`,
+    );
     return {
       id,
-      result: item.result as NativeAcceptanceVerdict,
+      result,
       reason: text(item.reason, `Native Verifier acceptance ${id} reason`),
     };
   });
@@ -112,16 +120,18 @@ function parseFinalResult(value: unknown, inputPath: string): NativeVerifierFina
     'Native Verifier final result',
     inputPath,
   );
-  if (!['pass', 'fail', 'blocked'].includes(String(input.verdict))) {
-    throw new Error('Native Verifier verdict is invalid');
-  }
+  const verdict = nativeEnumText(
+    input.verdict,
+    NATIVE_VERIFIER_VERDICTS,
+    'Native Verifier verdict',
+  );
   if (!Array.isArray(input.risks) || !input.risks.every((risk) => typeof risk === 'string')) {
     throw new Error('Native Verifier risks must be text entries');
   }
   return {
     iteration: integer(input.iteration, 'Native Verifier iteration'),
     attempt: integer(input.attempt, 'Native Verifier attempt'),
-    verdict: input.verdict as NativeVerifierFinalResult['verdict'],
+    verdict,
     acceptance: parseNativeVerifierAcceptance(input.acceptance, `${inputPath}/acceptance`),
     risks: input.risks as string[],
     summary: text(input.summary, 'Native Verifier summary'),
@@ -187,7 +197,9 @@ export function parseNativeVerifierResponse(
       ),
     };
   }
-  throw new Error('Native Verifier response kind is invalid');
+  throw new Error(
+    `Native Verifier response kind must be one of: ${NATIVE_VERIFIER_RESPONSE_KINDS.join(', ')}`,
+  );
 }
 
 export function normalizeNativeCheckRequestId(request: NativeVerifierCheckRequest): string {

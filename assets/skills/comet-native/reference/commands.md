@@ -122,6 +122,22 @@ Supervisor children work in the task package's `projectRoot`. Return results thr
 
 Submit directly once the template is filled completely; Runtime validates the input on submission, so no pre-check pass is needed. Use `comet native next <change> --runner-input <file> --validate-only --json` only when a submission was rejected and you need to distinguish a JSON structure error from a business validation error; it does not write workflow state (comet-state.yaml) or start checks. Actual submission must still use the state version, task identifiers, and arguments in the current `continuation`.
 
+### Enumerated input values
+
+Template placeholders and validation errors list every legal value for the fields below. Each set belongs to that field only; never reuse a value from one field for another.
+
+| Input | Field | Legal values |
+|-------|-------|--------------|
+| `builder-handoff` | `checks[].result` | `passed` / `failed` / `not-run` — development checks the Builder ran or did not run |
+| `builder-handoff` | `acceptance_review[].status` | `implemented-with-evidence` / `implemented-no-evidence` / `not-implemented` / `known-fail` |
+| `builder-handoff` | `review.status` | `passed` |
+| `verifier-response` (`final-result`) | `result.verdict` | `pass` / `fail` / `blocked` — the Verifier's overall verdict |
+| `verifier-response` (`final-result`) | `result.acceptance[].result` | `passed` / `failed` / `blocked` — one result per acceptance item |
+| `supervisor-verifier-result` | `verdict` | `pass` / `fail` / `blocked` |
+| `supervisor-verifier-result` | `evidence.acceptance[].result` | `passed` / `failed` / `blocked` |
+
+Per-item results and Builder check results use the past tense (`passed`, `failed`); the overall verdict uses the base form (`pass`, `fail`). `not-run` exists only for Builder development checks, `blocked` only for Verifier fields, and `pending` is an internal Runtime state that never appears in an input.
+
 ## Builder handoff
 
 Read this section before submitting `builder-handoff`.

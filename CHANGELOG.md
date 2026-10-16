@@ -49,6 +49,7 @@ All notable changes to @rpamis/comet will be documented in this file.
 - **Eval user interaction**: Recognize Markdown-formatted approval questions and avoid ending a task when only a child workflow has completed. SDK application evaluations check the fixed application's root Run instead of completion prose.
 - **Eval execution**: Preserve complete task inputs when invoking evaluation Agents, stop timed-out turns and owned containers, and retain generated cases and failure information for recovery.
 - **Classic checks and initialization**: Fail promptly when declared inputs are missing or unreadable, and recognize the Git branch before its first commit so branch-bound initialization can proceed.
+- **Native input enum guidance**: Rejected Native runner inputs now name every legal value for enumerated fields — overall verdicts, per-item acceptance results, Builder check results, and acceptance review statuses — instead of reporting an opaque "is invalid". Builder handoff and Verifier response templates list each field's legal values inline (for example `<pass|fail|blocked>`), and the Native command reference adds an enum quick-reference table so Agents no longer need to read the distributed source to learn the accepted values (#490).
 
 ## What's Changed [0.4.5] - 2026-10-10
 
