@@ -16,7 +16,14 @@ const number = (value) =>
     ? '—'
     : new Intl.NumberFormat(getDashboardLocale(), { maximumFractionDigits: 1 }).format(value);
 
-export function RuntimePerformancePanel({ projectId, demo, refreshToken, timeRange, rangeLabel }) {
+export function RuntimePerformancePanel({
+  projectId,
+  demo,
+  refreshToken,
+  timeRange,
+  rangeLabel,
+  timeSelection,
+}) {
   useDashboardLanguage();
   const scope = `${demo ? 'demo' : projectId}:runtime-performance`;
   const [workflow, setWorkflow] = useDashboardViewState(scope, 'workflow', 'all');
@@ -25,7 +32,8 @@ export function RuntimePerformancePanel({ projectId, demo, refreshToken, timeRan
   const [selected, setSelected] = useState(null);
   const cache = useRef(new Map());
   const rangeQuery = observabilityRangeQuery(timeRange);
-  const requestKey = `${projectId}:${workflow}:${rangeQuery}`;
+  // 滚动时间范围刷新后沿用相同筛选的快照，失败时仍可阅读上次结果。
+  const requestKey = `${projectId}:${workflow}:${timeSelection ? JSON.stringify(timeSelection) : rangeQuery}`;
   useEffect(() => {
     if (demo) return undefined;
     const controller = new AbortController();
@@ -56,7 +64,7 @@ export function RuntimePerformancePanel({ projectId, demo, refreshToken, timeRan
           setState({ key: requestKey, data: cache.current.get(requestKey), error: error.message });
       });
     return () => controller.abort();
-  }, [projectId, demo, workflow, refreshToken, retry, requestKey]);
+  }, [projectId, demo, workflow, refreshToken, retry, requestKey, rangeQuery]);
   useEffect(() => setSelected(null), [requestKey]);
   const current = state?.key === requestKey ? state : null;
   const data = demo ? getDemoRuntimePerformance(workflow, timeRange) : current?.data;

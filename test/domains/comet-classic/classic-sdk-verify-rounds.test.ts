@@ -316,6 +316,9 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
   it('reuses the same successful command across Build and Verify after validating its inputs and log', async () => {
     const f = await fixture(profile, false);
     const argv = f.command('shared');
+    await f.put('source.js', 'export const ready = false;\n');
+    await f.put('.gitignore', 'node_modules/\n');
+    await f.put('node_modules/.modules.yaml', 'layoutVersion: 5\n');
     const probe = vi.spyOn(fs, 'lstat');
     await f.put(
       '.comet/check-policy.json',
@@ -348,7 +351,11 @@ describe.each(['full', 'tweak', 'hotfix'] as const)('Classic SDK %s Verify round
     expect(checks.at(-1)?.outcome?.output).toMatchObject({
       reused: true,
       reusedFrom: checks[0].id,
+      deliveryInputs: { 'source.js': expect.stringMatching(/^(?:git:)?[a-f0-9]{40,64}$/) },
     });
+    expect(
+      Object.keys((checks.at(-1)?.outcome?.output as { deliveryInputs: object }).deliveryInputs),
+    ).not.toContain('node_modules/.modules.yaml');
   });
 
   it('returns the committed Run and original receipt after a real Build failure without replay', async () => {

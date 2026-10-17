@@ -1113,6 +1113,11 @@ class ExperimentPlugin:
                     else:
                         _atomic_write_json(receipt_path, receipt)
 
+    def pytest_runtest_logreport(self, report):
+        """Keep setup/teardown failures distinct from scored case failures."""
+        if self.logger and report.failed and report.when != "call":
+            self.logger.metadata["pytest_errors"] = self.logger.metadata.get("pytest_errors", 0) + 1
+
     def pytest_sessionfinish(self, session, exitstatus):
         """Generate and save summary at session end."""
         if not self.logger:

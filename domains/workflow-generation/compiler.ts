@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { Ajv, type ValidateFunction } from 'ajv';
+import { ensureApplicationRuntimeDependency } from '../../platform/install/application-runtime.js';
 import {
   defineWorkflow,
   hashRuntimeValue,
@@ -529,6 +530,7 @@ async function inspectAssembly(
 ) {
   const parent = path.dirname(path.resolve(options.packageRoot));
   await fs.mkdir(parent, { recursive: true });
+  await ensureApplicationRuntimeDependency(parent);
   const staging = await fs.mkdtemp(path.join(parent, '.comet-compile-'));
   try {
     for (const [ref, bytes] of Object.entries(files)) {

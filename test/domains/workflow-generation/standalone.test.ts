@@ -101,6 +101,14 @@ async function compile(p: WorkflowApplicationProposal, name = 'compiled') {
     loaded: await loadWorkflowApplication({ file: compiled.file, projectRoot: root }),
   };
 }
+it('compiles and loads an application in a new project without a local Comet dependency', async () => {
+  await fs.rm(path.join(root, 'node_modules'), { recursive: true });
+  const candidate = await compile(proposal());
+  expect(candidate.loaded.identity.id).toBe('custom-fork');
+  expect(candidate.loaded.implementation.workflows[0].steps).toHaveProperty('left');
+  expect(await fs.readdir(path.join(root, 'compiled'))).not.toContain('node_modules');
+});
+
 it('assembles custom declared flows and real handlers deterministically, graph changes alter actual execution', async () => {
   const left = await compile(proposal(), 'left');
   const repeated = await compile(proposal(), 'repeated');

@@ -1,4 +1,5 @@
 import { assertClassicEditReviewsComplete } from './classic-edit-review.js';
+import { assertClassicSdkDeliveryInputs } from './classic-sdk-delivery-inputs.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
 import { classicSdkCheckDirectoryRef, classicSdkCheckLogHash } from './classic-sdk-check-record.js';
 import { archivedClassicDocumentRef } from './classic-archive-annotation.js';
@@ -452,7 +453,9 @@ const deliveryOutcomeValidator: RuntimeValidator = {
               stdio: ['ignore', 'pipe', 'pipe'],
             })
           : null;
+      const implementationFiles = await assertClassicSdkDeliveryInputs(root, run);
       const allowed = (file: string) =>
+        implementationFiles.has(file) ||
         file.startsWith(`${activeRef}/`) ||
         file.startsWith(`${archiveRef}/`) ||
         file.startsWith(`${specsRef}/`) ||

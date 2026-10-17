@@ -199,7 +199,7 @@ def write_application_result(logger) -> None:
         failures.append("No SDK workflow step or decision was actually executed")
     clean = all(result.events_summary.get("sample_quality", {}).get("status", "included") == "included" for result in results)
     exitstatus = getattr(logger, "metadata", {}).get("pytest_exitstatus", 0)
-    harness_complete = exitstatus in {0, 1} and not (exitstatus == 1 and all(result.passed for result in results))
+    harness_complete = exitstatus in {0, 1} and not (exitstatus == 1 and all(result.passed for result in results)) and not getattr(logger, "metadata", {}).get("pytest_errors", 0)
     status = "passed" if complete and clean and verified and harness_complete and all(result.passed for result in results) else "failed" if complete and clean and verified and harness_complete else "incomplete"
     if selection is not None:
         status = "incomplete"

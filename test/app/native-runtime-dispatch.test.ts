@@ -148,9 +148,13 @@ describe('Native dispatch CLI presentation', () => {
     expect(compact.data.activeActions[0].contextRequest).not.toHaveProperty('instruction');
     for (const key of ['actions', 'outputs', 'actionContexts', 'waits'])
       expect(compact.data).not.toHaveProperty(key);
-    expect(Buffer.byteLength(JSON.stringify(compact.data))).toBeLessThan(
+    const serialized = (value: unknown) =>
+      JSON.stringify(value, (_key, item) =>
+        typeof item === 'string' ? item.replaceAll(root, '<project-root>') : item,
+      );
+    expect(Buffer.byteLength(serialized(compact.data))).toBeLessThan(
       // 当前 Action 的具体结果契约可增加固定正文，历史仍不得重复返回。
-      Buffer.byteLength(JSON.stringify(committed)) / 2 + 1024,
+      Buffer.byteLength(serialized(committed)) / 2 + 1024,
     );
     const sdk = await runtimeDispatchCommand({
       application: 'native',

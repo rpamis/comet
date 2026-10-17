@@ -352,6 +352,19 @@ export async function readEvalRun(project: string, id: string): Promise<EvalRunD
   }
   if (managed?.config.retrySourceRunId && executionStatus === 'completed' && complete && !excluded)
     conclusion = cases.every((item) => item.passed) ? 'passed' : 'failed';
+  const failedHarnessExit = [metadata?.pytest_exitstatus, managed?.exitCode].find(
+    (code) =>
+      code !== undefined &&
+      code !== null &&
+      code !== 0 &&
+      (code !== 1 || !cases.some((item) => item.passed === false)),
+  );
+  if (failedHarnessExit !== undefined || number(metadata?.pytest_errors)) {
+    conclusion = 'incomplete';
+    diagnostics.push(
+      `Eval 执行异常（退出码 ${failedHarnessExit ?? metadata?.pytest_exitstatus ?? '未知'}），已有用例结果已保留。`,
+    );
+  }
   const baselineScope =
     cases.length && cases.every((item) => item.caseHash && item.validatorHash)
       ? evalValueHash([

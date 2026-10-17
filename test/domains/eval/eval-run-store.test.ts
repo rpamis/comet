@@ -100,6 +100,40 @@ describe('Eval run history and baselines', () => {
     expect(run.conclusion).toBe('incomplete');
     await expect(setEvalBaseline(project, 'broken')).rejects.toThrow(/完整|异常/);
   });
+  it.each([
+    { exit: 1, outcomes: [true], expected: 'incomplete' },
+    { exit: 2, outcomes: [true, false], expected: 'incomplete' },
+    { exit: 3, outcomes: [true], expected: 'incomplete' },
+    { exit: 1, outcomes: [true, false], expected: 'failed' },
+    { exit: 0, outcomes: [true], expected: 'passed' },
+  ])(
+    'keeps harness exit $exit with $outcomes results $expected',
+    async ({ exit, outcomes, expected }) => {
+      const root = await report('harness-exit', outcomes);
+      const metadataFile = path.join(root, 'metadata.json');
+      const metadata = JSON.parse(await fs.readFile(metadataFile, 'utf8'));
+      await fs.writeFile(metadataFile, JSON.stringify({ ...metadata, pytest_exitstatus: exit }));
+      const run = await readEvalRun(project, 'harness-exit');
+      expect(run.conclusion).toBe(expected);
+      expect(run.baselineEligible).toBe(expected !== 'incomplete');
+      if (expected === 'incomplete') {
+        expect(run.diagnostics.join('\n')).toMatch(/pytest|执行|异常/);
+        await expect(setEvalBaseline(project, 'harness-exit')).rejects.toThrow(/完整|异常/);
+      }
+    },
+  );
+  it('keeps mixed case failures and harness errors out of baselines', async () => {
+    const root = await report('mixed-error', [true, false]);
+    const file = path.join(root, 'metadata.json');
+    const metadata = JSON.parse(await fs.readFile(file, 'utf8'));
+    await fs.writeFile(
+      file,
+      JSON.stringify({ ...metadata, pytest_exitstatus: 1, pytest_errors: 1 }),
+    );
+    expect((await readEvalRun(project, 'mixed-error')).conclusion).toBe('incomplete');
+    await expect(setEvalBaseline(project, 'mixed-error')).rejects.toThrow(/完整|异常/);
+  });
+
   it('keeps one baseline per fixed case set and clears only that set', async () => {
     const root = await report('baseline', [true, false]);
     await report('other-cases', [true]);

@@ -17,6 +17,7 @@ import { terminateProcessTree } from '../../platform/process/terminate-process-t
 import { spawnCommand } from '../../platform/process/spawn-command.js';
 import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
+import { collectClassicSdkDeliveryInputs } from './classic-sdk-delivery-inputs.js';
 import { checkEnvironmentFingerprint, collectCheckSnapshot } from './classic-check-snapshot.js';
 import { checkManifestHash, diffCheckManifests } from './classic-check-manifest.js';
 import { readCheckPolicy } from './classic-check-policy.js';
@@ -269,6 +270,12 @@ export async function runClassicSdkCommandCheck(
       output: {
         ...(prior as Record<string, RuntimeValue>),
         scope,
+        ...(scope === 'verify'
+          ? {
+              deliveryInputs:
+                (await collectClassicSdkDeliveryInputs(root, before.manifest, identity)) ?? {},
+            }
+          : {}),
         checkEpoch: state.checkEpoch ?? 0,
         reused: true,
         reusedFrom: previous.id,
@@ -365,6 +372,12 @@ export async function runClassicSdkCommandCheck(
       contentHash,
       manifestRef: after ? manifestRef : null,
       manifestHash: after ? checkManifestHash(after.manifest) : null,
+      ...(scope === 'verify' && after
+        ? {
+            deliveryInputs:
+              (await collectClassicSdkDeliveryInputs(root, after.manifest, identity)) ?? {},
+          }
+        : {}),
       tier: 'full',
       checkEpoch: state.checkEpoch ?? 0,
       reusable: input.reusable === true,

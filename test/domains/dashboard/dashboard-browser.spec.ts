@@ -15,6 +15,7 @@ async function setDashboardTheme(page: Page, theme: 'light' | 'dark') {
     .getByRole('radio', { name: theme === 'dark' ? /^(暗色|Dark)$/ : /^(亮色|Light)$/ })
     .check();
   await dialog.getByRole('button', { name: /^(完成|Done)$/ }).click();
+  await expect(dialog).toBeHidden();
 }
 
 async function stubContextPages(page: Page, load: (pluginId: string) => unknown) {
@@ -731,8 +732,8 @@ test('loads real Runtime statistics on demand and retains cached data after a fa
       : route.fulfill({ json: DEMO_RUNTIME_PERFORMANCE[workflow] });
   });
   await page.goto('/');
-  await page.getByRole('menuitem', { name: '可观测' }).click();
   expect(reads).toBe(0);
+  await page.getByRole('menuitem', { name: '可观测' }).click();
   await page.getByRole('tab', { name: '运行性能', exact: true }).click();
   const panel = page.getByRole('region', { name: '运行性能', exact: true });
   await expect(
@@ -904,6 +905,7 @@ test('shows zero activity honestly and charts a single zero-duration request wit
   });
   await page.goto('/');
   await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
   const panel = page.getByRole('region', { name: '个人记忆检索与使用' });
   await expect(panel.getByRole('group', { name: '最近请求耗时曲线' })).toHaveCount(0);
   await expect(panel).toContainText('统计从后续任务开始，不补造历史数据');
@@ -4663,7 +4665,7 @@ test('uses the reference surface hierarchy across the workbench shell', async ({
   const archivedIcon = page.locator(
     '.dashboard-overview-summary-card.dashboard-summary-tone-2 .dashboard-summary-icon',
   );
-  await expect(archivedIcon).toHaveCSS('color', 'rgb(111, 122, 138)');
+  await expect(archivedIcon).toHaveCSS('color', 'rgb(95, 107, 124)');
   await expect(archivedIcon).toHaveCSS('background-color', 'rgb(238, 241, 245)');
 });
 
@@ -4730,7 +4732,7 @@ test('keeps collapsed sidebar menu icons aligned with their expanded positions',
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/?demo');
-  await expect(page.locator('.dashboard-plugin-menu .ant-menu-item')).toHaveCount(2);
+  await expect(page.locator('.dashboard-plugin-menu .ant-menu-item')).toHaveCount(3);
   for (const viewport of [
     { width: 1280, height: 900 },
     { width: 1024, height: 600 },
@@ -4761,7 +4763,7 @@ test('keeps collapsed sidebar menu icons aligned with their expanded positions',
       const frames = await page.evaluate(
         () => (window as any).sidebarIconFrames as { x: number; y: number }[][],
       );
-      expect(frames[0].length).toBe(7);
+      expect(frames[0].length).toBe(8);
       const drift = frames[0].map((_, index) => {
         const ys = frames.map((frame) => frame[index].y);
         return Math.max(...ys) - Math.min(...ys);

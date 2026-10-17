@@ -267,6 +267,14 @@ def test_two_started_runs_without_execution_cannot_pass_the_application_eval(tmp
     assert any("actually executed" in failure for failure in report["failures"])
 
 
+def test_mixed_case_and_teardown_failures_remain_incomplete(tmp_path, monkeypatch):
+    _, result_root = _context(tmp_path, monkeypatch)
+    results = [TreatmentResult("dynamic", name == "normal", ["SDK Run inspected by actual Runtime: one"], [] if name == "normal" else ["case failed"], {"task": name, "application_executed_steps": ["publish/draft"]}) for name in ("normal", "rejected")]
+    logger = SimpleNamespace(base_dir=result_root, results={"dynamic": results}, metadata={"pytest_exitstatus": 1, "pytest_errors": 1})
+    write_application_result(logger)
+    assert json.loads((result_root / "application-result.json").read_text())["status"] == "incomplete"
+
+
 def test_failed_retry_subset_cannot_pass_full_application_acceptance(tmp_path, monkeypatch):
     _, result_root = _context(tmp_path, monkeypatch)
     monkeypatch.setenv("COMET_EVAL_MANAGED", "1")

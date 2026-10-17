@@ -4908,6 +4908,7 @@ function ContextUsageCenter({
             refreshToken={refreshToken}
             timeRange={timeRange}
             rangeLabel={rangeLabel}
+            timeSelection={timeSelection}
           />
         )}
         {DASHBOARD_PLUGIN_NAV_PLACEHOLDERS.map(({ pluginId, label }) => {

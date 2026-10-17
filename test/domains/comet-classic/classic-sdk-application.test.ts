@@ -36,6 +36,10 @@ import { resolveClassicChangeRuntimeOwner } from '../../../domains/comet-classic
 import { inspectClassicSdkRun } from '../../../domains/comet-classic/classic-sdk-status.js';
 import { recordClassicArchiveRequirements } from '../../../domains/comet-classic/classic-artifact-requirements.js';
 import { withClassicCommandContext } from '../../../domains/comet-classic/classic-command-context.js';
+import {
+  assertClassicSdkDeliveryInputs,
+  collectClassicSdkDeliveryInputs,
+} from '../../../domains/comet-classic/classic-sdk-delivery-inputs.js';
 
 vi.mock('node:child_process', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:child_process')>();
@@ -69,6 +73,65 @@ type ClassicApplication = {
 };
 
 const temporaryRoots: string[] = [];
+it.each(['index', 'raw'] as const)(
+  'accepts verified %s content with Git CRLF conversion',
+  async (mode) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-crlf-delivery-'));
+    temporaryRoots.push(root);
+    execFileSync('git', ['init', '-b', 'main'], { cwd: root });
+    execFileSync('git', ['config', 'core.autocrlf', 'true'], { cwd: root });
+    const content = 'export const ready = true;\n';
+    await fs.writeFile(path.join(root, 'source.js'), content);
+    execFileSync('git', ['add', 'source.js'], { cwd: root });
+    execFileSync(
+      'git',
+      ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'base'],
+      { cwd: root },
+    );
+    const expected =
+      mode === 'index'
+        ? `git:${execFileSync('git', ['rev-parse', 'HEAD:source.js'], { cwd: root, encoding: 'utf8' }).trim()}`
+        : createHash('sha256').update(content).digest('hex');
+    if (mode === 'index')
+      await fs.writeFile(path.join(root, 'source.js'), content.replaceAll('\n', '\r\n'));
+    const run = {
+      state: { workflow: 'full' },
+      actions: [
+        {
+          stepId: 'full.verify.check',
+          status: 'succeeded',
+          outcome: { output: { deliveryInputs: { 'source.js': expected } } },
+        },
+      ],
+    } as unknown as WorkflowRun;
+    expect(await assertClassicSdkDeliveryInputs(root, run)).toEqual(new Set(['source.js']));
+    await fs.appendFile(path.join(root, 'source.js'), '// drift\n');
+    await expect(assertClassicSdkDeliveryInputs(root, run)).rejects.toThrow(
+      'verified implementation changed',
+    );
+  },
+);
+it('captures implementation for the first commit without including installation metadata', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'classic-sdk-unborn-delivery-'));
+  temporaryRoots.push(root);
+  await fs.mkdir(path.join(root, '.comet'));
+  await fs.writeFile(
+    path.join(root, '.comet/config.yaml'),
+    'schema: comet.project.v1\ndefault_workflow: classic\nworkflows: [classic]\nclassic:\n  artifact_layout: docs\n',
+  );
+  await fs.writeFile(path.join(root, 'source.js'), 'export const ready = true;\n');
+  execFileSync('git', ['init', '-b', 'main'], { cwd: root });
+  const manifest = [
+    { p: 'source.js', h: 'a'.repeat(64), s: 27, m: null },
+    { p: 'node_modules/.modules.yaml', h: 'b'.repeat(64), s: 1, m: null },
+  ]
+    .map((entry) => JSON.stringify(entry))
+    .join('\n');
+  expect(
+    await collectClassicSdkDeliveryInputs(root, manifest, { argv: [process.execPath], cwd: '.' }),
+  ).toEqual({ 'source.js': 'a'.repeat(64) });
+});
+
 afterEach(async () => {
   vi.mocked(childProcess.execFileSync)
     .mockReset()
@@ -513,7 +576,12 @@ async function reachFullVerifyCheckAction(
 
 async function reachFullArchivePrepareAction(
   runId: string,
-  options: { fileStore?: boolean; projectedStore?: boolean; withoutGit?: boolean } = {},
+  options: {
+    fileStore?: boolean;
+    projectedStore?: boolean;
+    withoutGit?: boolean;
+    implementationChange?: 'delete' | 'rename';
+  } = {},
 ): Promise<{ runtime: WorkflowRuntime; run: WorkflowRun; projectRoot: string }> {
   const { runtime, run, projectRoot } = await reachFullVerifyCheckAction(runId, {
     gitBranch: options.withoutGit ? undefined : 'sdk-build',
@@ -521,6 +589,25 @@ async function reachFullArchivePrepareAction(
     fileStore: options.fileStore,
     projectedStore: options.projectedStore,
   });
+  if (options.implementationChange) {
+    execFileSync('git', ['add', '--', 'source.js'], { cwd: projectRoot });
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=Comet Test',
+        '-c',
+        'user.email=comet-test@example.invalid',
+        'commit',
+        '-m',
+        'test: initial source',
+      ],
+      { cwd: projectRoot },
+    );
+    if (options.implementationChange === 'delete')
+      execFileSync('git', ['rm', '--', 'source.js'], { cwd: projectRoot });
+    else execFileSync('git', ['mv', '--', 'source.js', 'renamed.js'], { cwd: projectRoot });
+  }
   const checked = await classicDomain.executeClassicSdkCommandCheck(runtime, {
     runId: run.runId,
     projectRoot,
@@ -575,10 +662,12 @@ async function reachFullArchiveExecuteAction(
     remotePath?: string;
     prBaseBranch?: string;
     projectedStore?: boolean;
+    implementationChange?: 'delete' | 'rename';
   } = {},
 ): Promise<{ runtime: WorkflowRuntime; run: WorkflowRun; projectRoot: string }> {
   const { runtime, run, projectRoot } = await reachFullArchivePrepareAction(runId, {
     projectedStore: options.projectedStore,
+    implementationChange: options.implementationChange,
   });
   if (options.remotePath) {
     execFileSync('git', ['remote', 'add', 'origin', options.remotePath], { cwd: projectRoot });
@@ -613,6 +702,7 @@ async function commitValidLocalArchive(
   runtime: WorkflowRuntime,
   run: WorkflowRun,
   projectRoot: string,
+  implementationFiles: string[] = ['source.js'],
 ): Promise<{ pending: WorkflowRun; commit: string }> {
   const active = path.join(projectRoot, 'docs', 'openspec', 'changes', 'example');
   const archivedRef = 'docs/openspec/changes/archive/2026-09-24-example';
@@ -636,7 +726,9 @@ async function commitValidLocalArchive(
     path.join(projectRoot, ...planRef.split('/')),
     '---\narchived-with: 2026-09-24-example\nstatus: final\n---\n# Plan\n',
   );
-  execFileSync('git', ['add', '--', archivedRef, designDocRef, planRef], { cwd: projectRoot });
+  execFileSync('git', ['add', '--', archivedRef, designDocRef, planRef, ...implementationFiles], {
+    cwd: projectRoot,
+  });
   execFileSync(
     'git',
     [
@@ -818,36 +910,14 @@ describe('Classic workflow application through the public Runtime SDK', () => {
     const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction(
       'archive-delivery-unrelated-file',
     );
-    const active = path.join(projectRoot, 'docs', 'openspec', 'changes', 'example');
-    const archivedRef = 'docs/openspec/changes/archive/2026-09-24-example';
-    const archived = path.join(projectRoot, ...archivedRef.split('/'));
-    await fs.mkdir(path.dirname(archived), { recursive: true });
-    await fs.rename(active, archived);
-    const pending = await completeLatestAction(
-      runtime,
-      run,
-      { archiveDirectory: archivedRef },
-      'archive-delivery-unrelated-files',
-      { executorId: 'comet-classic-archive', projectRoot },
+    await fs.writeFile(
+      path.join(projectRoot, 'unrelated.txt'),
+      'Not part of the verified change.\n',
     );
-    execFileSync('git', ['add', '--', archivedRef, 'source.js'], { cwd: projectRoot });
-    execFileSync(
-      'git',
-      [
-        '-c',
-        'user.name=Comet Test',
-        '-c',
-        'user.email=comet-test@example.invalid',
-        'commit',
-        '-m',
-        'chore: archive example',
-      ],
-      { cwd: projectRoot },
-    );
-    const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: projectRoot,
-      encoding: 'utf8',
-    }).trim();
+    const { pending, commit } = await commitValidLocalArchive(runtime, run, projectRoot, [
+      'source.js',
+      'unrelated.txt',
+    ]);
     await expect(
       completeLatestAction(
         runtime,
@@ -963,6 +1033,62 @@ describe('Classic workflow application through the public Runtime SDK', () => {
       ),
     ).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
   });
+
+  it.each([
+    {
+      name: 'includes verified implementation',
+      files: ['source.js'],
+      accepted: true,
+      changed: false,
+    },
+    { name: 'omits verified implementation', files: [], accepted: false, changed: false },
+    {
+      name: 'changes verified implementation',
+      files: ['source.js'],
+      accepted: false,
+      changed: true,
+    },
+  ])('checks archive delivery that $name', async ({ files, accepted, changed }) => {
+    const { runtime, run, projectRoot } =
+      await reachFullArchiveExecuteAction('archive-implementation');
+    if (changed) await fs.writeFile(path.join(projectRoot, 'source.js'), 'const ready = false;\n');
+    const { pending, commit } = await commitValidLocalArchive(runtime, run, projectRoot, files);
+    const delivery = completeLatestAction(
+      runtime,
+      pending,
+      { action: 'local', targetBranch: 'sdk-build', commit },
+      'archive-implementation-outcome',
+      { projectRoot },
+    );
+    if (accepted) expect((await delivery).status).toBe('completed');
+    else await expect(delivery).rejects.toMatchObject({ code: 'OUTCOME_REJECTED' });
+  });
+
+  it.each(['delete', 'rename'] as const)(
+    'delivers verified implementation %s operations',
+    async (implementationChange) => {
+      const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction(
+        'archive-source-operation',
+        { implementationChange },
+      );
+      const files = implementationChange === 'rename' ? ['renamed.js'] : [];
+      const { pending, commit } = await commitValidLocalArchive(runtime, run, projectRoot, files);
+      const delivered = await completeLatestAction(
+        runtime,
+        pending,
+        { action: 'local', targetBranch: 'sdk-build', commit },
+        'source-operation-delivered',
+        { projectRoot },
+      );
+      expect(delivered.status).toBe('completed');
+      expect(
+        execFileSync('git', ['ls-tree', '--name-only', 'HEAD', '--', 'source.js'], {
+          cwd: projectRoot,
+          encoding: 'utf8',
+        }).trim(),
+      ).toBe('');
+    },
+  );
 
   it('completes local delivery only after the scoped archive commit is verified', async () => {
     const { runtime, run, projectRoot } = await reachFullArchiveExecuteAction(
@@ -2955,6 +3081,7 @@ describe('Classic workflow application through the public Runtime SDK', () => {
           'docs/openspec/changes',
           'docs/superpowers/specs/design.md',
           'docs/superpowers/plans/2026-09-24-example.md',
+          'source.js',
         ],
         { cwd: projectRoot },
       );

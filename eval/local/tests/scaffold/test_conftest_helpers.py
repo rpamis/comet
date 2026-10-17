@@ -20,6 +20,16 @@ else:
     msvcrt = None
 
 
+def test_experiment_records_setup_and_teardown_errors_separately_from_case_failures():
+    plugin = conftest.ExperimentPlugin(SimpleNamespace(option=SimpleNamespace(numprocesses=0)))
+    plugin.logger = SimpleNamespace(metadata={})
+    manager = pytest.PytestPluginManager()
+    manager.register(plugin)
+    for phase in ("setup", "call", "teardown"):
+        manager.hook.pytest_runtest_logreport(report=SimpleNamespace(when=phase, failed=True))
+    assert plugin.logger.metadata.get("pytest_errors") == 2
+
+
 @pytest.mark.parametrize(
     ("files", "expected"),
     [
