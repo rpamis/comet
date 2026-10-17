@@ -3,6 +3,8 @@ import { promises as fs } from 'node:fs';
 import * as net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { readFileSync, statSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { withCometRuntimeMetrics } from './runtime-metrics.js';
 
@@ -393,7 +395,6 @@ export async function createCometDaemonServer(
       socket.end(JSON.stringify(invalidRequest('daemon is stopping')) + '\n');
       return;
     }
-    lastActivityAt = Date.now();
     socket.setEncoding('utf8');
     let buffer = '';
     let handled = false;
@@ -483,6 +484,15 @@ export async function createCometDaemonServer(
           JSON.stringify(
             responseFor(request.requestId, { ok: false, error: 'daemon project mismatch' }),
           ) + '\n',
+        );
+        return;
+      }
+      if (
+        request.kind === 'control' &&
+        (request.control === 'status' || request.control === 'ping')
+      ) {
+        socket.end(
+          JSON.stringify(responseFor(request.requestId, { ok: true, status: status() })) + '\n',
         );
         return;
       }
@@ -637,4 +647,58 @@ export async function sendCometDaemonRequest(
       socket.write(JSON.stringify(request) + '\n');
     });
   });
+}
+
+/** 与 CLI 共享构建身份，观测只连接同一版本和环境的常驻进程。 */
+export function resolveCometDaemonBuildId(packageRoot = cometPackageRoot()): string {
+  if (process.env.COMET_DAEMON_BUILD_ID) return process.env.COMET_DAEMON_BUILD_ID;
+  let version = 'unknown';
+  try {
+    version = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8')).version;
+  } catch {
+    /* 使用未知版本身份。 */
+  }
+  try {
+    const stamps = [
+      'dist/app/commands/daemon-server.js',
+      'dist/platform/process/comet-daemon.js',
+      'assets/skills/comet/scripts/comet-runtime.mjs',
+      'assets/skills/comet-native/scripts/comet-native-runtime.mjs',
+    ]
+      .map((file) => Math.trunc(statSync(path.join(packageRoot, file)).mtimeMs))
+      .join('-');
+    return version + ':' + stamps;
+  } catch {
+    return version;
+  }
+}
+function cometPackageRoot(): string {
+  let directory = path.dirname(fileURLToPath(import.meta.url));
+  while (!existsSync(path.join(directory, 'package.json'))) {
+    const parent = path.dirname(directory);
+    if (parent === directory) throw new Error('Comet package root is unavailable');
+    directory = parent;
+  }
+  return directory;
+}
+/** 不启动进程；状态探测不改变空闲生命周期或命令统计。 */
+export async function readCometDaemonStatus(
+  projectRoot: string,
+): Promise<CometDaemonStatus | null> {
+  const buildId = resolveCometDaemonBuildId();
+  try {
+    const response = await sendCometDaemonRequest({
+      endpoint: resolveCometDaemonEndpoint(projectRoot, buildId),
+      buildId,
+      projectRoot,
+      control: 'status',
+      timeoutMs: 500,
+    });
+    if (!response.ok || !response.status) throw new Error('Runtime status is unavailable');
+    return response.status;
+  } catch (error) {
+    if (['ENOENT', 'ECONNREFUSED'].includes((error as NodeJS.ErrnoException).code ?? ''))
+      return null;
+    throw error;
+  }
 }

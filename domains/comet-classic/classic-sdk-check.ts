@@ -16,6 +16,7 @@ import { inspectProtectedProjectPath } from '../workflow-contract/protected-proj
 import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
 import { spawnCommand } from '../../platform/process/spawn-command.js';
 import { reportCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
+import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
 import { checkEnvironmentFingerprint, collectCheckSnapshot } from './classic-check-snapshot.js';
 import { checkManifestHash, diffCheckManifests } from './classic-check-manifest.js';
 import { readCheckPolicy } from './classic-check-policy.js';
@@ -319,7 +320,10 @@ export async function runClassicSdkCommandCheck(
     },
   );
   reportCometRuntimeProgress(`执行 ${scope} 检查：${identity.argv[0]}`);
-  const result = await runCommand(identity.argv, cwd.absolute, timeoutMs);
+  const result = await observeRuntimeOperation(
+    { projectRoot: () => root, workflow: 'classic', kind: 'check', command: 'check' },
+    () => runCommand(identity.argv, cwd.absolute, timeoutMs),
+  );
   const after = await collectCheckSnapshot(root, change.target, identity, snapshotOptions).catch(
     () => null,
   );

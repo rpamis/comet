@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import type { PathLike } from 'node:fs';
 
-const requireModule = createRequire(import.meta.url);
+const requireModule = createRequire(import.meta.url ?? __filename);
 let Database: typeof import('node:sqlite').DatabaseSync | undefined;
 
 /** 延迟加载本地 SQLite，避免未使用数据库的命令加载实验模块。 */

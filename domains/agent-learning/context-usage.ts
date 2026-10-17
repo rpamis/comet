@@ -84,6 +84,7 @@ export interface ContextUsageSnapshot {
       readonly outcome?: AgentContextOutcomeStatus;
     })[];
   }[];
+  readonly samples?: ContextUsageSnapshot['recentTasks'];
 }
 
 /** Bounded observations of actual task requests; Dashboard reads never create samples. */
@@ -263,6 +264,18 @@ export class ContextUsageTracker {
     const successes = count('used-successfully');
     const corrections = count('corrected');
     const failures = count('contributed-to-failure');
+    const samples = rows.map((row) => ({
+      episodeId: row.episodeId,
+      requestKey: row.requestKey,
+      task: row.task,
+      ...(row.phase ? { phase: row.phase } : {}),
+      occurredAt: row.occurredAt,
+      counted: row.counted,
+      elapsedMs: row.elapsedMs,
+      candidateCount: row.candidateCount,
+      limited: row.limited,
+      items: row.items.map(project),
+    }));
     return {
       available: true,
       days: 7,
@@ -290,6 +303,7 @@ export class ContextUsageTracker {
           : null,
       p95Ms: timings.length ? timings[Math.ceil(timings.length * 0.95) - 1] : null,
       lastQueryMs: queries.at(-1)?.elapsedMs ?? null,
+      samples,
       recentTasks: rows
         .slice(-10)
         .reverse()

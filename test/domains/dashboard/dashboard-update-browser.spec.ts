@@ -1,4 +1,18 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+
+async function setDashboardTheme(page: Page, theme: 'light' | 'dark') {
+  const settings = page.getByRole('button', { name: /^(设置|Settings)$/ });
+  if (!(await settings.isVisible()))
+    await page.getByRole('button', { name: /^(展开导航|Open navigation)$/ }).click();
+  await settings.click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('menuitem', { name: /外观|Appearance/ }).click();
+  await dialog
+    .getByRole('radio', { name: theme === 'dark' ? /^(暗色|Dark)$/ : /^(亮色|Light)$/ })
+    .check();
+  await dialog.getByRole('button', { name: /^(完成|Done)$/ }).click();
+}
 
 const info = {
   currentVersion: '0.5.0',
@@ -22,6 +36,7 @@ const running = {
   entries: [entry(1, '$ comet update --all-projects --yes --target-version 0.5.1\n')],
 };
 test.beforeEach(async ({ page }) => {
+  const { DEMO_PROJECT_CONFIG } = await import('../../../domains/dashboard/web/demo.js');
   await page.route('**/api/dashboard/**', (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === '/api/dashboard/update') return route.fulfill({ json: info });
@@ -51,6 +66,7 @@ test.beforeEach(async ({ page }) => {
         },
       });
     if (pathname.endsWith('/plugins')) return route.fulfill({ json: { pages: [] } });
+    if (pathname.endsWith('/config')) return route.fulfill({ json: DEMO_PROJECT_CONFIG });
     return route.fulfill({ json: { items: [], total: 0 } });
   });
 });
@@ -174,7 +190,7 @@ test('streams progress, survives navigation and reload, then shows completion an
   await expect(page.getByText('更新命令执行完成', { exact: true })).toBeVisible();
   await expect(page.getByRole('log')).toContainText('Updated 2 indexed project(s).');
   await page.getByRole('button', { name: '关闭窗口', exact: true }).click();
-  await page.getByRole('button', { name: '切换到暗色模式' }).click();
+  await setDashboardTheme(page, 'dark');
   await page.getByRole('button', { name: 'Comet 版本与更新' }).click();
   await page.screenshot({
     path: test.info().outputPath('update-log-dark.png'),

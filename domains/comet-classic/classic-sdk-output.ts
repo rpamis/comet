@@ -204,7 +204,14 @@ export function classicSdkContinuation(
     actions: summary.actions.map((action) => ({
       ...action,
       ...(action.type === 'invoke_skill'
-        ? { contextRequest: classicTaskContextRequest(state, projectRoot, action.claim?.sessionId) }
+        ? {
+            contextRequest: classicTaskContextRequest(
+              state,
+              projectRoot,
+              action.claim?.sessionId,
+              run.runId,
+            ),
+          }
         : {}),
       ...classicSdkCurrentInput(
         run,
@@ -251,7 +258,7 @@ export function classicSdkContinuation(
     current,
     automatic: state.autoTransition ?? true,
     ...(!['completed', 'cancelled'].includes(run.status) && !state.archived
-      ? { contextRequest: classicTaskContextRequest(state, projectRoot) }
+      ? { contextRequest: classicTaskContextRequest(state, projectRoot, undefined, run.runId) }
       : {}),
     dispatch: { commandArgs: dispatch },
     ...(summary.actions.length

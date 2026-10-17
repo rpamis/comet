@@ -548,6 +548,7 @@ export async function projectNativeSdkContinuation(options: {
     } | null;
     const worktree = input?.activation?.worktree ?? input?.worktree;
     return nativeTaskContextRequest({
+      name: state.name,
       phase: action.ref?.includes('verifier') ? 'verify' : 'build',
       language: state.language,
       projectRoot: typeof worktree === 'string' ? worktree : projectRoot,
@@ -564,6 +565,7 @@ export async function projectNativeSdkContinuation(options: {
     ...(state.status === 'active'
       ? {
           contextRequest: nativeTaskContextRequest({
+            name: state.name,
             phase: state.phase,
             language: state.language,
             projectRoot,

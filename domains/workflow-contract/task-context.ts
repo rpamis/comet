@@ -5,6 +5,8 @@ export function taskContextRequest(options: {
   projectRoot?: string;
   sessionId?: string;
   instruction?: string;
+  workflow?: 'native' | 'classic';
+  change?: string;
 }) {
   return {
     phase: options.phase,
@@ -21,6 +23,9 @@ export function taskContextRequest(options: {
       options.sessionId ?? '<receiving-session-id>',
       '--context-mode',
       'snapshot',
+      ...(options.workflow && options.change
+        ? ['--workflow', options.workflow, '--change', options.change]
+        : []),
       '--json',
     ],
     instruction: [

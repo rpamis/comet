@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { build } from 'esbuild';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { SqliteAgentContextApplicationStore } from '../../domains/agent-learning/index.js';
+import { readRuntimeTraceSpans } from '../../platform/process/runtime-trace.js';
 
 const execFileAsync = promisify(execFile);
 let root: string;
@@ -99,6 +100,26 @@ test('a new project with no memory returns an empty successful response', async 
   const result = await run(home, project);
   expect(JSON.parse(result.stdout)).toEqual({ context: [] });
   expect(result.stderr).not.toMatch(/timed out|exceeded/i);
+});
+test('associates real task-context retrieval with its explicitly selected Change', async () => {
+  const { home, project } = await fixture('trace-retrieval');
+  const result = await run(home, project, {
+    workflow: 'native',
+    change: 'trace-example',
+    phase: 'build',
+  });
+  expect(JSON.parse(result.stdout)).toEqual({ context: [] });
+  const { spans } = await readRuntimeTraceSpans(project);
+  const rootSpan = spans.find((span) => span.parentSpanId === null);
+  expect(rootSpan).toMatchObject({
+    change: 'trace-example',
+    runId: 'trace-example',
+    kind: 'retrieval',
+    status: 'succeeded',
+  });
+  expect(rootSpan!.startedAt).not.toBeNull();
+  expect(rootSpan!.endedAt).not.toBeNull();
+  expect(JSON.stringify(spans)).not.toContain('开启全新的报表功能');
 });
 
 test('completes a task with one learning file and reuses durable receipts after process restart', async () => {

@@ -19,6 +19,7 @@ import {
 import { spawnOwnedCommand } from '../../platform/process/owned-command.js';
 import { terminateProcessTree } from '../../platform/process/terminate-process-tree.js';
 import { redactNativeCredentialText } from './native-redaction.js';
+import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
 
 export interface NativeCheckPlan {
   id: string;
@@ -191,7 +192,7 @@ export function validateNativeCheckPlan(projectRoot: string, plan: NativeCheckPl
   return resolveNativeCheckCwd(projectRoot, plan.cwdRef);
 }
 
-export async function executeNativeCheck(options: {
+async function executeNativeCheckOperation(options: {
   projectRoot: string;
   runtimeDir: string;
   operationId: string;
@@ -371,4 +372,20 @@ export async function executeNativeCheck(options: {
         });
     }
   });
+}
+
+export function executeNativeCheck(
+  options: Parameters<typeof executeNativeCheckOperation>[0],
+): ReturnType<typeof executeNativeCheckOperation> {
+  return observeRuntimeOperation(
+    {
+      projectRoot: () => options.projectRoot,
+      workflow: 'native',
+      kind: 'check',
+      command: 'check',
+      traceName: options.plan.name,
+      exitCode: (result) => (result.status === 'passed' ? 0 : result.exitCode || 1),
+    },
+    () => executeNativeCheckOperation(options),
+  );
 }

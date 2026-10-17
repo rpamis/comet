@@ -25,7 +25,7 @@
   border-radius: 4px;
   background: var(--color-danger-soft);
   color: var(--color-danger);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 20px;
   font-weight: 600;
 }
@@ -121,7 +121,7 @@
   color: var(--color-fg);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font: 12px/1.7 var(--font-mono, Consolas, monospace);
+  font: 13px/1.7 var(--font-mono, Consolas, monospace);
 }
 .dashboard-update-log .is-stderr {
   color: var(--color-danger, #c64848);

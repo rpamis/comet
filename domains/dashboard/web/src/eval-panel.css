@@ -32,7 +32,7 @@
   min-width: 0;
 }
 .dashboard-eval-live-facts .ant-typography:first-child {
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-live-facts .ant-typography {
   overflow-wrap: anywhere;
@@ -49,7 +49,7 @@
   display: flex;
   align-items: baseline;
   gap: 16px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-live-activities time {
   color: var(--color-muted);
@@ -92,7 +92,7 @@
   display: block;
   margin-bottom: 8px;
   color: var(--color-muted);
-  font: 11px/1.5 var(--font-mono);
+  font: 13px/1.5 var(--font-mono);
   letter-spacing: 0.09em;
 }
 .dashboard-eval-masthead .dashboard-eval-title.ant-typography {
@@ -122,7 +122,7 @@
   border-left: 1px solid var(--color-border);
 }
 .dashboard-eval-summary-band .dashboard-eval-metric > .ant-typography:first-child {
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-summary-band .dashboard-eval-metric strong {
   font-size: 20px;
@@ -147,13 +147,13 @@
   display: block;
   padding: 10px 12px 8px;
   border-top: 1px solid var(--color-border-soft);
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-baseline-popover {
   display: grid;
   gap: 10px;
   max-width: min(360px, calc(100vw - 56px));
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-baseline-popover > .ant-btn {
   justify-self: start;
@@ -168,7 +168,7 @@
   gap: 8px;
   margin-block: 16px 0;
   color: var(--color-fg-2);
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-pagination .ant-pagination-total-text {
   margin-inline-end: auto;
@@ -185,7 +185,7 @@
   background: transparent !important;
   box-shadow: none !important;
   color: var(--color-fg-2);
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-pagination .ant-pagination-item-link:disabled {
   color: var(--color-meta);
@@ -201,7 +201,7 @@
 .dashboard-eval-page .ant-table-wrapper .ant-table-thead > tr > th {
   background: var(--color-surface-warm);
   color: var(--color-fg-2);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   border-bottom-color: var(--color-border);
 }
@@ -226,7 +226,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-history-table .dashboard-eval-run-id {
   max-width: 26em;
@@ -249,10 +249,10 @@
 }
 .dashboard-eval-unavailable.ant-btn {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-section-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 .dashboard-eval-page .dashboard-eval-scorecard {
@@ -364,11 +364,11 @@
   gap: 6px;
   line-height: 22px;
   color: var(--color-accent);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .dashboard-eval-target-cta .anticon {
-  font-size: 10px;
+  font-size: 13px;
 }
 .dashboard-eval-page .ant-btn-link,
 .dashboard-eval-drawer .ant-btn-link {
@@ -388,7 +388,7 @@
   outline-offset: 3px;
 }
 .dashboard-eval-secondary {
-  font-size: 12px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 .dashboard-eval-page .ant-table-cell {
@@ -424,7 +424,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   margin: 0;
-  font: 12px/1.7 var(--font-mono);
+  font: 13px/1.7 var(--font-mono);
 }
 .dashboard-eval-report-frame {
   display: block;
@@ -487,7 +487,7 @@
   padding-block: 0;
 }
 .dashboard-eval-detail .dashboard-eval-title.ant-typography {
-  font-size: 26px;
+  font-size: 20px;
 }
 .dashboard-eval-section-heading {
   display: flex;
@@ -499,12 +499,12 @@
   margin: 0;
 }
 .dashboard-eval-section-heading h5.ant-typography {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   margin-bottom: 4px;
 }
 .dashboard-eval-section-heading span.ant-typography {
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-overview-grid,
 .dashboard-eval-detail-grid {
@@ -531,7 +531,7 @@
   margin-block: 16px 8px;
 }
 .dashboard-eval-result-hero .ant-card-body > .ant-typography {
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-result-counts {
   display: grid;
@@ -545,7 +545,7 @@
   font-size: 24px;
 }
 .dashboard-eval-result-counts .dashboard-eval-metric > .ant-typography:last-child:not(strong) {
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-resource-grid {
   display: grid;
@@ -557,7 +557,7 @@
   overflow-wrap: anywhere;
 }
 .dashboard-eval-resource-grid .dashboard-eval-metric > .ant-typography:last-child:not(strong) {
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-evidence-strip {
   display: grid;
@@ -565,7 +565,7 @@
   gap: 20px;
   padding: 16px 0;
   border-block: 1px solid var(--color-border-soft);
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-evidence-strip > div {
   display: grid;
@@ -594,11 +594,11 @@
   gap: 10px;
 }
 .dashboard-eval-score-tile .ant-typography:first-child {
-  font-size: 12px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 .dashboard-eval-score-tile .ant-typography:last-child {
-  font-size: 11px;
+  font-size: 13px;
 }
 .dashboard-eval-score-tile .dashboard-eval-numeric.ant-typography {
   font-size: 16px;
@@ -637,7 +637,7 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
   max-width: 44em;
 }
@@ -653,7 +653,7 @@
 }
 .dashboard-eval-facts dt {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-facts dd {
   margin: 0;
@@ -664,7 +664,7 @@
 }
 .dashboard-eval-hash code {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
 }
 .dashboard-eval-coverage-summary,
 .dashboard-eval-comparison-summary {
@@ -687,7 +687,7 @@
   gap: 20px;
 }
 .dashboard-eval-coverage-pair .dashboard-eval-section-heading h5.ant-typography {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .dashboard-eval-coverage-list,
@@ -738,7 +738,7 @@
   overflow-wrap: anywhere;
 }
 .dashboard-eval-step-path > div > span:first-child {
-  font: 11px var(--font-mono);
+  font: 13px var(--font-mono);
   color: var(--color-muted);
 }
 .dashboard-eval-file-list {
@@ -776,7 +776,7 @@
 }
 .dashboard-eval-file-name .ant-typography,
 .dashboard-eval-footnote.ant-typography {
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-file-name .ant-btn {
   max-width: 100%;
@@ -825,7 +825,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-drawer .dashboard-eval-facts {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -864,7 +864,7 @@
   align-self: start;
 }
 .dashboard-eval-checks .ant-typography {
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-eval-create-footer {
   border-top: 1px solid var(--color-border);
@@ -908,7 +908,7 @@
   margin-bottom: 0;
 }
 .dashboard-eval-settings-path.ant-typography {
-  font-size: 12px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 @media (max-width: 1000px) {
@@ -921,7 +921,7 @@
 }
 @media (max-width: 700px) {
   .dashboard-eval-detail .ant-tabs-tab {
-    font-size: 12px;
+    font-size: 13px;
   }
   .dashboard-eval-form-grid {
     grid-template-columns: 1fr;

@@ -4,6 +4,19 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Page } from '@playwright/test';
 
+async function setDashboardTheme(page: Page, theme: 'light' | 'dark') {
+  const settings = page.getByRole('button', { name: /^(设置|Settings)$/ });
+  if (!(await settings.isVisible()))
+    await page.getByRole('button', { name: /^(展开导航|Open navigation)$/ }).click();
+  await settings.click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('menuitem', { name: /外观|Appearance/ }).click();
+  await dialog
+    .getByRole('radio', { name: theme === 'dark' ? /^(暗色|Dark)$/ : /^(亮色|Light)$/ })
+    .check();
+  await dialog.getByRole('button', { name: /^(完成|Done)$/ }).click();
+}
+
 async function stubContextPages(page: Page, load: (pluginId: string) => unknown) {
   const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
   await page.route('**/api/dashboard/**', async (route) => {
@@ -135,9 +148,206 @@ test('pages application history without rendering or reloading the complete ledg
   expect(reads).toBe(initialReads);
 });
 
-test('shows context usage and honest feedback on both memory pages without writing on preview', async ({
+test('explores a change trace tree, retries and filters without writing, including narrow screens', async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const writes: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/dashboard/') && request.method() === 'POST')
+      writes.push(request.url());
+  });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: 'Change 链路', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Change 链路', exact: true });
+  await expect(
+    panel.getByRole('heading', { name: 'repair-session-expiry', exact: true }),
+  ).toBeVisible();
+  await expect(panel.locator('.change-trace-metrics')).toContainText('1.1 min');
+  const checks = panel.getByRole('button', { name: '查看节点 build.checks', exact: true });
+  await checks.first().click();
+  const inspector = panel.getByRole('complementary', { name: '链路节点详情' });
+  await expect(inspector).toContainText('会话到期边界用例未通过');
+  await checks.nth(1).click();
+  await expect(inspector).toContainText('修复到期边界后');
+  await expect(checks.nth(1)).toHaveAttribute('aria-pressed', 'true');
+  await panel.getByRole('button', { name: '折叠节点 构建', exact: true }).click();
+  await expect(checks).toHaveCount(0);
+  await panel.getByRole('button', { name: '展开节点 构建', exact: true }).click();
+  await expect(checks).toHaveCount(2);
+  await panel.getByRole('combobox', { name: '链路工作流' }).click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: 'Classic' })
+    .click();
+  await expect(
+    panel.getByRole('heading', { name: 'add-api-rate-limiting', exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByRole('complementary', { name: 'Change 执行记录' })).not.toContainText(
+    'repair-session-expiry',
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(panel.locator('.change-trace-waterfall')).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
+    .toBe(true);
+  await panel.getByRole('button', { name: '查看节点 build.implement', exact: true }).click();
+  const mobileDetails = page.getByRole('dialog', { name: /链路节点详情/u });
+  await expect(mobileDetails).toContainText('build.implement');
+  await mobileDetails.getByRole('button', { name: '关闭窗口', exact: true }).click();
+  await expect(mobileDetails).toBeHidden();
+  expect(writes).toEqual([]);
+});
+
+test('retains the selected trace node and cached data during a failed refresh', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const { DEMO_CHANGE_TRACE_INDEX, DEMO_CHANGE_TRACES } =
+    await import('../../../domains/dashboard/web/src/change-trace-demo.js');
+  await stubContextPages(page, (id) => DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === id));
+  let fail = false;
+  await page.route('**/change-traces?*', (route) =>
+    fail
+      ? route.fulfill({ status: 503, json: { error: 'unavailable' } })
+      : route.fulfill({ json: DEMO_CHANGE_TRACE_INDEX }),
+  );
+  await page.route('**/change-trace?*', (route) =>
+    fail
+      ? route.fulfill({ status: 503, json: { error: 'unavailable' } })
+      : route.fulfill({
+          json: DEMO_CHANGE_TRACES[new URL(route.request().url()).searchParams.get('traceId')!],
+        }),
+  );
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: 'Change 链路', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Change 链路', exact: true });
+  const node = panel.getByRole('button', { name: '查看节点 build.implement', exact: true });
+  await node.click();
+  fail = true;
+  await panel.getByRole('button', { name: /刷新链路/u }).click();
+  await expect(panel).toContainText('最新数据同步失败，当前显示缓存');
+  await expect(node).toHaveAttribute('aria-pressed', 'true');
+  await expect(panel.getByRole('complementary', { name: '链路节点详情' })).toContainText(
+    '完成会话校验',
+  );
+});
+
+test('opens a linked child run even when the current change and search exclude it', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const { DEMO_CHANGE_TRACE_INDEX, DEMO_CHANGE_TRACES } =
+    await import('../../../domains/dashboard/web/src/change-trace-demo.js');
+  const parent = DEMO_CHANGE_TRACE_INDEX.traces.find(
+    (trace) => trace.workflow === 'native' && trace.kind === 'workflow',
+  )!;
+  const child = DEMO_CHANGE_TRACE_INDEX.traces.find((trace) => trace.workflow === 'classic')!;
+  const details = structuredClone(DEMO_CHANGE_TRACES);
+  details[parent.traceId].nodes.find((node) => !node.parentSpanId)!.attributes = {
+    childRunIds: [child.runId],
+  };
+  await stubContextPages(page, (id) => DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === id));
+  await page.route('**/change-traces?*', (route) =>
+    route.fulfill({ json: DEMO_CHANGE_TRACE_INDEX }),
+  );
+  await page.route('**/change-trace?*', (route) =>
+    route.fulfill({ json: details[new URL(route.request().url()).searchParams.get('traceId')!] }),
+  );
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: 'Change 链路', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Change 链路', exact: true });
+  await panel.getByRole('combobox', { name: '选择 Change' }).click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: parent.change })
+    .click();
+  await panel.getByRole('textbox', { name: '搜索执行链路' }).fill(parent.change);
+  await panel.getByRole('button', { name: child.runId, exact: true }).click();
+  await expect(panel.getByRole('heading', { name: child.change, exact: true })).toBeVisible();
+  await expect(panel.getByRole('textbox', { name: '搜索执行链路' })).toHaveValue('');
+});
+
+test('chooses persistent theme cards in Appearance instead of the header', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/?demo');
+  await expect(
+    page.locator('.comet-header-actions').getByRole('button', { name: /切换到.*模式/ }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  let dialog = page.getByRole('dialog');
+  await dialog.getByRole('menuitem', { name: '外观' }).click();
+  await expect(dialog.getByRole('radio', { name: '亮色', exact: true })).toBeChecked();
+  await dialog.getByRole('radio', { name: '亮色', exact: true }).press('ArrowRight');
+  await expect(dialog.getByRole('radio', { name: '暗色', exact: true })).toBeChecked();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await dialog.getByRole('button', { name: '完成', exact: true }).click();
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('.comet-language-switch').getByText('EN', { exact: true }).click();
+  await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.getByRole('menuitem', { name: 'Appearance' }).click();
+  await expect(dialog.getByRole('radio', { name: 'Dark', exact: true })).toBeChecked();
+  await dialog.getByRole('radio', { name: 'Light', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
+});
+
+test('animates trace bars once and respects reduced motion without replaying refresh', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: 'Change 链路', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Change 链路', exact: true });
+  const bar = panel.locator('.change-trace-bar').first();
+  await expect(bar).toHaveCSS('animation-name', 'change-trace-bar-enter');
+  await bar.evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => animation.finished.catch(() => {})),
+    );
+  });
+  await panel.getByRole('button', { name: /刷新链路/ }).click();
+  expect(
+    await bar.evaluate((element) =>
+      element.getAnimations().some((animation) => animation.playState === 'running'),
+    ),
+  ).toBe(false);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(bar).toHaveCSS('animation-name', 'none');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await panel.getByRole('button', { name: '查看节点 build.implement', exact: true }).click();
+  await expect(page.getByRole('dialog').locator('.change-trace-inspector')).toHaveCSS(
+    'animation-name',
+    'none',
+  );
+});
+
+test('uses the shared tooltip for the feedback help icon on hover and focus', async ({ page }) => {
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
+  const help = page.getByRole('button', { name: '了解使用反馈', exact: true });
+  await help.hover();
+  await expect(page.getByRole('tooltip')).toContainText('没有反馈保持未知，不计为失败。');
+  await page.mouse.move(0, 0);
+  await help.focus();
+  await expect(page.getByRole('tooltip')).toContainText('没有反馈保持未知，不计为失败。');
+  await expect(help).not.toHaveAttribute('title');
+});
+
+test('shows context usage on its own sidebar page without writing on preview', async ({ page }) => {
   const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
   const pages = structuredClone(DEMO_PLUGIN_PAGES);
   const usage = {
@@ -237,11 +447,37 @@ test('shows context usage and honest feedback on both memory pages without writi
   await page.goto('/');
   for (const label of ['个人记忆', '项目知识']) {
     await page.getByRole('menuitem', { name: label }).click();
+    await expect(page.getByRole('region', { name: `${label}检索与使用` })).toHaveCount(0);
+  }
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await expect(page.getByRole('menuitem', { name: '可观测' })).toHaveClass(
+    /ant-menu-item-selected/u,
+  );
+  await page.reload();
+  for (const label of ['个人记忆', '项目知识']) {
+    await page.getByRole('tab', { name: label, exact: true }).click();
     const panel = page.getByRole('region', { name: `${label}检索与使用` });
     await expect(panel).toContainText('66.7%');
     await expect(panel).toContainText('2/3 次请求有适用内容');
-    await expect(panel).toContainText('记录已截断');
+    await expect(page.getByText('记录已截断', { exact: true })).toBeVisible();
     await expect(panel).toContainText('1/2 条推荐有结果反馈');
+    await expect(panel.getByRole('group', { name: '最近请求耗时曲线' })).toBeVisible();
+    await expect(
+      panel.getByText('仅展示最近 2 条有耗时记录的检索请求，按时间排序。'),
+    ).toBeVisible();
+    await panel.getByRole('button', { name: /^查看检索请求：修复登录页面的回归/u }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog')).toContainText('适用于本次修复');
+    await page.keyboard.press('Escape');
+    await panel
+      .locator('.dashboard-context-usage-recent')
+      .getByRole('button', { name: /修复登录页面的回归/u })
+      .click();
+    const selectedTaskDialog = page.getByRole('dialog', { name: /最近任务的上下文使用/u });
+    await expect(selectedTaskDialog).toContainText('已交付全文');
+    await expect(selectedTaskDialog).toContainText('适用于本次修复');
+    await page.keyboard.press('Escape');
+    await expect(selectedTaskDialog).not.toBeVisible();
     await panel.getByRole('button', { name: '查看最近任务' }).click();
     const dialog = page.getByRole('dialog', { name: /最近任务的上下文使用/u });
     await dialog.getByRole('button', { name: /修复登录页面的回归/u }).click();
@@ -254,6 +490,12 @@ test('shows context usage and honest feedback on both memory pages without writi
     await expect(dialog).not.toBeVisible();
   }
   await page.screenshot({ path: path.join(os.tmpdir(), 'comet-context-usage-desktop.png') });
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.goBack();
+  await expect(page.getByRole('tab', { name: '项目知识', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   const panel = page.getByRole('region', { name: '项目知识检索与使用' });
   await expect(panel).toBeVisible();
@@ -271,6 +513,333 @@ test('shows context usage and honest feedback on both memory pages without writi
   expect(writes).toBe(0);
 });
 
+test('plays usage chart entry once, rolls interwoven mini chart strands and respects reduced motion', async ({
+  page,
+}) => {
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
+  const panel = page.getByRole('region', { name: '个人记忆检索与使用' });
+  await expect(panel.getByRole('group', { name: '最近请求耗时曲线' })).toBeVisible();
+  const animationCount = await panel.evaluate((element) => {
+    const animations = element.getAnimations({ subtree: true });
+    (window as unknown as { usageChartEntryAnimations: Animation[] }).usageChartEntryAnimations =
+      animations;
+    return animations.length;
+  });
+  expect(animationCount).toBeGreaterThan(0);
+  const braid = panel.locator('canvas.usage-mini-latency-braid');
+  await expect(braid).toBeVisible();
+  const firstFrame = await braid.evaluate((element: HTMLCanvasElement) => element.toDataURL());
+  await expect
+    .poll(() => braid.evaluate((element: HTMLCanvasElement) => element.toDataURL()))
+    .not.toBe(firstFrame);
+  await expect
+    .poll(() =>
+      panel.evaluate((element) =>
+        element
+          .getAnimations({ subtree: true })
+          .every((animation) => animation.playState === 'finished'),
+      ),
+    )
+    .toBe(true);
+  await page.getByRole('button', { name: '立即刷新' }).click();
+  expect(
+    await panel.evaluate((element) => {
+      const previous: Animation[] = (
+        window as unknown as { usageChartEntryAnimations: Animation[] }
+      ).usageChartEntryAnimations;
+      return element
+        .getAnimations({ subtree: true })
+        .every((animation) => previous.includes(animation) && animation.playState === 'finished');
+    }),
+  ).toBe(true);
+  await panel.locator('.usage-summary-stat-4').screenshot({
+    path: path.join(os.tmpdir(), 'comet-mini-latency-braid.png'),
+  });
+  const refreshedFrame = await braid.evaluate((element: HTMLCanvasElement) => element.toDataURL());
+  await expect
+    .poll(() => braid.evaluate((element: HTMLCanvasElement) => element.toDataURL()))
+    .not.toBe(refreshedFrame);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(braid).not.toBeVisible();
+  await expect(panel.locator('.usage-mini-latency-static')).toBeVisible();
+  await expect
+    .poll(() => panel.evaluate((element) => element.getAnimations({ subtree: true }).length))
+    .toBe(0);
+  await page.getByRole('tab', { name: '项目知识', exact: true }).click();
+  const knowledge = page.getByRole('region', { name: '项目知识检索与使用' });
+  await expect(knowledge).toContainText('80%');
+  expect(
+    await knowledge.evaluate((element) => element.getAnimations({ subtree: true }).length),
+  ).toBe(0);
+  await expect(knowledge.getByRole('button', { name: '查看当前图表请求' })).toBeVisible();
+});
+
+test('shows Runtime performance as a separate tab with filters, details and narrow layouts', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1100 });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: '运行性能', exact: true }).click();
+  const panel = page.getByRole('region', { name: '运行性能', exact: true });
+  await expect(
+    panel.locator('.runtime-performance-metrics').getByText('27', { exact: true }),
+  ).toBeVisible();
+  await expect(panel.getByRole('group', { name: '最近命令耗时曲线' })).toBeVisible();
+  await panel
+    .getByRole('radiogroup', { name: '运行工作流' })
+    .getByText('Native', { exact: true })
+    .click();
+  await expect(panel.locator('.runtime-slowest tbody')).not.toContainText('Classic');
+  await panel.getByRole('button', { name: '查看当前运行记录', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: /运行记录详情/ })).toContainText('Native');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: /运行记录详情/ })).not.toBeVisible();
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
+  await expect(page.getByRole('region', { name: '个人记忆检索与使用' })).toBeVisible();
+  await page.getByRole('tab', { name: '运行性能', exact: true }).click();
+  await expect(panel.getByRole('radio', { name: 'Native', exact: true })).toBeChecked();
+  await expect
+    .poll(() =>
+      panel.evaluate((el) =>
+        el
+          .getAnimations({ subtree: true })
+          .every((animation) => animation.playState === 'finished'),
+      ),
+    )
+    .toBe(true);
+  await page.screenshot({
+    path: path.join(os.tmpdir(), 'comet-runtime-performance-desktop.png'),
+    fullPage: true,
+  });
+  await page.locator('.comet-language-switch').getByText('EN', { exact: true }).click();
+  await setDashboardTheme(page, 'dark');
+  await page.setViewportSize({ width: 390, height: 844 });
+  const english = page.getByRole('region', { name: 'Runtime performance', exact: true });
+  await expect(english).toContainText('Command latency P95');
+  expect(await english.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await page.screenshot({ path: path.join(os.tmpdir(), 'comet-runtime-performance-mobile.png') });
+});
+
+test('shows measurable efficiency and independent Runtime health with honest missing states', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1100 });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: '运行性能', exact: true }).click();
+  const panel = page.getByRole('region', { name: '运行性能', exact: true });
+  await expect(panel.locator('.runtime-performance-metrics')).toContainText('命令成功率');
+  await expect(panel.locator('.runtime-performance-metrics')).toContainText('一秒内成功响应');
+  const hotspots = panel.getByRole('region', { name: '命令热点', exact: true });
+  await expect(hotspots).toContainText('Git');
+  await hotspots.getByText('调用次数', { exact: true }).click();
+  await expect(hotspots.locator('.runtime-hotspot-row')).toHaveCount(5);
+  await expect(panel.getByRole('region', { name: '命令结果分布', exact: true })).toContainText(
+    '退出码',
+  );
+  await expect(panel.getByRole('region', { name: 'Runtime 健康', exact: true })).toContainText(
+    '常驻处理请求',
+  );
+  await expect(panel.getByRole('region', { name: 'SDK 执行质量', exact: true })).toContainText(
+    '动作首轮成功率',
+  );
+  await panel.getByRole('region', { name: 'Runtime 健康', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(os.tmpdir(), 'comet-observability-insights.png') });
+  await page.locator('.comet-language-switch').getByText('EN', { exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('region', { name: 'Runtime health', exact: true })).toContainText(
+    'Resident requests',
+  );
+  expect(
+    await page
+      .getByRole('region', { name: 'Runtime performance', exact: true })
+      .evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+  ).toBe(true);
+});
+
+test('retries independent health reads and retains the previous Runtime snapshot on refresh failure', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const { DEMO_RUNTIME_PERFORMANCE, DEMO_RUNTIME_INSIGHTS } =
+    await import('../../../domains/dashboard/web/src/runtime-performance-demo.js');
+  await stubContextPages(page, (id) => DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === id));
+  await page.route('**/runtime-performance?*', (route) =>
+    route.fulfill({ json: DEMO_RUNTIME_PERFORMANCE.all }),
+  );
+  let fail = true;
+  await page.route('**/runtime-insights', (route) =>
+    fail ? route.fulfill({ status: 503 }) : route.fulfill({ json: DEMO_RUNTIME_INSIGHTS }),
+  );
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: '运行性能', exact: true }).click();
+  const panel = page.getByRole('region', { name: '运行性能', exact: true });
+  await expect(panel).toContainText('健康与执行质量暂不可用');
+  await expect(panel.locator('.runtime-performance-metrics')).toContainText('92.6');
+  await expect(
+    panel.getByRole('region', { name: 'Runtime 健康', exact: true }).locator('.ant-skeleton'),
+  ).toHaveCount(0);
+  fail = false;
+  await panel.getByRole('button', { name: /重\s*试/u }).click();
+  await expect(panel.getByRole('region', { name: 'Runtime 健康', exact: true })).toContainText(
+    '常驻服务已连接',
+  );
+  fail = true;
+  await page.getByRole('button', { name: '立即刷新' }).click();
+  await expect(panel).toContainText('观测读取失败，保留上次快照');
+  await expect(panel.getByRole('region', { name: 'Runtime 健康', exact: true })).toContainText(
+    '186',
+  );
+});
+
+test('keeps Runtime charts full width when the website scales the dashboard', async ({ page }) => {
+  await page.goto('/?demo');
+  await page.addStyleTag({
+    content: '.dashboard-workbench { transform: scale(0.5); transform-origin: top left; }',
+  });
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: '运行性能', exact: true }).click();
+  const chart = page.getByRole('group', { name: '最近命令耗时曲线' });
+  await expect
+    .poll(() =>
+      chart.evaluate((element) => {
+        const right = Number(element.querySelector('.usage-chart-grid-line')?.getAttribute('x2'));
+        return Math.abs(right - (element.clientWidth - 14));
+      }),
+    )
+    .toBeLessThan(2);
+});
+
+test('loads real Runtime statistics on demand and retains cached data after a failed refresh', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  const { DEMO_RUNTIME_PERFORMANCE } =
+    await import('../../../domains/dashboard/web/src/runtime-performance-demo.js');
+  await stubContextPages(page, (id) => DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === id));
+  let fail = false;
+  let reads = 0;
+  await page.route('**/runtime-performance?*', (route) => {
+    reads++;
+    const workflow = new URL(route.request().url()).searchParams.get('workflow') ?? 'all';
+    return fail
+      ? route.fulfill({ status: 503, json: { error: 'unavailable' } })
+      : route.fulfill({ json: DEMO_RUNTIME_PERFORMANCE[workflow] });
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  expect(reads).toBe(0);
+  await page.getByRole('tab', { name: '运行性能', exact: true }).click();
+  const panel = page.getByRole('region', { name: '运行性能', exact: true });
+  await expect(
+    panel.locator('.runtime-performance-metrics').getByText('27', { exact: true }),
+  ).toBeVisible();
+  fail = true;
+  await page.getByRole('button', { name: '立即刷新' }).click();
+  await expect(panel).toContainText('读取失败，保留上次统计');
+  await expect(
+    panel.locator('.runtime-performance-metrics').getByText('27', { exact: true }),
+  ).toBeVisible();
+  await panel
+    .getByRole('radiogroup', { name: '运行工作流' })
+    .getByText('Classic', { exact: true })
+    .click();
+  await expect(panel).toContainText('运行性能读取失败');
+  await expect(panel.locator('.runtime-performance-metrics')).toHaveCount(0);
+  fail = false;
+  await panel.getByRole('button', { name: /重\s*试/u }).click();
+  await expect(panel.locator('.runtime-slowest tbody')).toContainText('Classic');
+  await expect(panel.locator('.runtime-slowest tbody')).not.toContainText('Native');
+});
+
+test('refreshes context usage, retains cached statistics on failure, and isolates projects', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  await stubContextPages(page, (id) => DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === id));
+  await page.route('**/api/dashboard/projects', (route) =>
+    route.fulfill({
+      json: {
+        currentProjectId: 'one',
+        projects: ['one', 'two'].map((id) => ({
+          id,
+          name: id,
+          path: `/${id}`,
+          availability: 'available',
+        })),
+      },
+    }),
+  );
+  let deliveries = 11;
+  let failMemory = false;
+  await page.route('**/api/dashboard/projects/*/plugins/*', (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    const pluginId = pathname.split('/').at(-1);
+    if (pluginId === 'comet.personal-memory' && failMemory)
+      return route.fulfill({ status: 503, json: { error: 'Statistics service unavailable' } });
+    const entry = DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === pluginId)!;
+    return route.fulfill({
+      json: {
+        ...entry,
+        data: {
+          ...entry.data,
+          contextUsage: {
+            ...entry.data.contextUsage,
+            available: true,
+            fullDeliveries: pathname.includes('/projects/two/') ? 22 : deliveries,
+          },
+        },
+      },
+    });
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
+  const memory = page.getByRole('region', { name: '个人记忆检索与使用' });
+  const knowledge = page.getByRole('region', { name: '项目知识检索与使用' });
+  const fullDelivery = (panel: ReturnType<Page['getByRole']>) =>
+    panel.locator('dl > div').filter({ hasText: '全文交付' }).locator('dd');
+  await expect(fullDelivery(memory)).toHaveText('11');
+  deliveries = 12;
+  await page.getByRole('button', { name: '立即刷新' }).click();
+  await expect(fullDelivery(memory)).toHaveText('12');
+  failMemory = true;
+  deliveries = 13;
+  await page.getByRole('button', { name: '立即刷新' }).click();
+  await expect(page.getByText('个人记忆 · 最新数据同步失败，当前显示缓存')).toBeVisible();
+  await expect(fullDelivery(memory)).toHaveText('12');
+  await page.getByRole('tab', { name: '项目知识', exact: true }).click();
+  await expect(fullDelivery(knowledge)).toHaveText('13');
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
+  failMemory = false;
+  await page.getByRole('button', { name: /重\s*试/u }).click();
+  await expect(fullDelivery(memory)).toHaveText('13');
+  await page.locator('.comet-project-select').click();
+  await page
+    .locator('.comet-project-select-dropdown .comet-project-option')
+    .filter({ hasText: '/two' })
+    .click();
+  await expect(page.getByRole('tab', { name: '运行性能', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
+  await expect(fullDelivery(memory)).toHaveText('22');
+  await page.getByRole('tab', { name: '项目知识', exact: true }).click();
+  await expect(fullDelivery(knowledge)).toHaveText('22');
+  await page.reload();
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
+  await expect(fullDelivery(memory)).toHaveText('22');
+  await expect(page.getByRole('menuitem', { name: '可观测' })).toHaveClass(
+    /ant-menu-item-selected/u,
+  );
+});
+
 test('keeps missing context usage unknown and localizes the panel', async ({ page }) => {
   const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
   await stubContextPages(page, (id) => {
@@ -278,24 +847,107 @@ test('keeps missing context usage unknown and localizes the panel', async ({ pag
     return { ...entry, data: { ...entry.data, contextUsage: undefined } };
   });
   await page.goto('/');
-  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
   const panel = page.getByRole('region', { name: '个人记忆检索与使用' });
   await expect(panel.locator('dd')).toHaveText(['—', '—', '—', '—', '—']);
   await expect(panel.getByRole('button', { name: '查看最近任务' })).toBeDisabled();
+  await expect(panel.getByRole('group', { name: '最近请求耗时曲线' })).toHaveCount(0);
+  await expect(panel.getByRole('region', { name: '最近检索耗时' })).toContainText('尚无耗时记录');
   await page.locator('.comet-language-switch').getByText('EN', { exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Personal memory retrieval and use' }),
   ).toContainText('Statistics unavailable');
+  const englishPanel = page.getByRole('region', { name: 'Personal memory retrieval and use' });
   await expect(
-    page.getByRole('button', { name: 'Accuracy: no labelled evaluation' }),
+    englishPanel.getByRole('button', { name: 'Accuracy: no labelled evaluation' }),
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Switch to dark mode' }).click();
-  const englishPanel = page.getByRole('region', { name: 'Personal memory retrieval and use' });
+  await setDashboardTheme(page, 'dark');
   expect(
     await englishPanel.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
   ).toBe(true);
   await page.screenshot({ path: path.join(os.tmpdir(), 'comet-context-usage-english-dark.png') });
+});
+
+test('shows zero activity honestly and charts a single zero-duration request without expansions', async ({
+  page,
+}) => {
+  const { DEMO_PLUGIN_PAGES } = await import('../../../domains/dashboard/web/demo.js');
+  let usage = {
+    available: true,
+    demo: false,
+    days: 7,
+    sampleLimit: 500,
+    truncated: false,
+    requests: 0,
+    hits: 0,
+    hitRate: null as number | null,
+    limitedRequests: 0,
+    fullDeliveries: 0,
+    recommendations: 0,
+    feedbackCount: 0,
+    feedbackRate: null as number | null,
+    successes: 0,
+    corrections: 0,
+    failures: 0,
+    ignored: 0,
+    overridden: 0,
+    successRate: null,
+    p95Ms: null as number | null,
+    lastQueryMs: null as number | null,
+    recentTasks: [] as Array<Record<string, unknown>>,
+  };
+  await stubContextPages(page, (id) => {
+    const entry = DEMO_PLUGIN_PAGES.find((entry) => entry.pluginId === id)!;
+    return { ...entry, data: { ...entry.data, contextUsage: usage } };
+  });
+  await page.goto('/');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  const panel = page.getByRole('region', { name: '个人记忆检索与使用' });
+  await expect(panel.getByRole('group', { name: '最近请求耗时曲线' })).toHaveCount(0);
+  await expect(panel).toContainText('统计从后续任务开始，不补造历史数据');
+  await expect(panel.locator('dd')).toHaveText(['—', '0', '—', '—', '—']);
+  usage = {
+    ...usage,
+    requests: 1,
+    hits: 1,
+    hitRate: 1,
+    recommendations: 1,
+    feedbackRate: 0,
+    p95Ms: 0,
+    lastQueryMs: 0,
+    recentTasks: [
+      {
+        episodeId: 'single-query',
+        task: '孤立检索',
+        occurredAt: '2026-10-16T08:00:00Z',
+        counted: true,
+        elapsedMs: 0,
+        candidateCount: 1,
+        limited: false,
+        items: [],
+      },
+      {
+        episodeId: 'expansion',
+        task: '按需读取全文',
+        occurredAt: '2026-10-16T08:01:00Z',
+        counted: false,
+        elapsedMs: 1000,
+        candidateCount: 1,
+        limited: false,
+        items: [],
+      },
+    ],
+  };
+  await page.getByRole('button', { name: '立即刷新' }).click();
+  const chart = panel.getByRole('group', { name: '最近请求耗时曲线' });
+  await expect(chart.getByRole('button')).toHaveCount(1);
+  await expect(chart.getByRole('button', { name: '查看检索请求：孤立检索，0 ms' })).toBeVisible();
+  await expect(panel).toContainText('仅展示最近 1 条有耗时记录的检索请求，按时间排序。');
+  await expect(panel.locator('dd')).toHaveText(['100%', '0', '0 ms', '—', '0%']);
+  await expect(panel).not.toContainText('NaN');
+  await expect(panel).not.toContainText('undefined');
 });
 
 test('retains cached memory records during partial reload and replaces them after recovery', async ({
@@ -333,6 +985,90 @@ test('retains cached memory records during partial reload and replaces them afte
   await expect(rows.first()).toContainText('交付语言与结构');
 });
 
+test('defaults Observability to Runtime performance and retains a later tab selection', async ({
+  page,
+}) => {
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await expect(page.getByRole('tab', { name: '运行性能', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.getByRole('region', { name: '运行性能', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Native 工作流' }).click();
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await expect(page.getByRole('tab', { name: '个人记忆', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.reload();
+  await expect(page.getByRole('tab', { name: '运行性能', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
+
+test('filters observability metrics and traces with one shared time range', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto('/?demo');
+  await page.getByRole('menuitem', { name: '可观测' }).click();
+  await page.getByRole('tab', { name: '运行性能', exact: true }).click();
+  const calls = page.locator('.runtime-performance-metrics > div').first().locator('dd');
+  const allCalls = await calls.innerText();
+  const choose = async (label: string) => {
+    await page.getByRole('button', { name: /^时间范围：/ }).click();
+    await page.getByRole('menuitem', { name: label, exact: true }).click();
+  };
+  await choose('最近 1 小时');
+  await expect(calls).not.toHaveText(allCalls);
+  await page.getByRole('tab', { name: 'Change 链路', exact: true }).click();
+  await expect(page.locator('.change-trace-list > button')).toHaveCount(2);
+  const metrics = page.locator('.change-trace-metrics > div');
+  expect(await metrics.first().evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(
+    await metrics.nth(1).evaluate((e) => getComputedStyle(e).backgroundColor),
+  );
+  await choose('最近 7 天');
+  await expect(page.locator('.change-trace-list > button')).toHaveCount(3);
+  await page.getByRole('tab', { name: '个人记忆', exact: true }).click();
+  const hitDetail = page.locator('.usage-summary-stat-0 > small');
+  await expect(hitDetail).toContainText('/24');
+  await choose('最近 1 小时');
+  await expect(hitDetail).toContainText('1/1');
+  await page.getByRole('tab', { name: '项目知识', exact: true }).click();
+  await expect(hitDetail).toContainText('1/1');
+  await page.getByRole('button', { name: /^时间范围：/ }).click();
+  await page.getByRole('menuitem', { name: '自定义时间范围', exact: true }).click();
+  await expect(page.getByRole('button', { name: '应用时间范围', exact: true })).toBeDisabled();
+  const custom = page.getByRole('dialog');
+  const format = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  await custom
+    .locator('.ant-picker-input input')
+    .nth(0)
+    .fill(format(new Date(Date.now() - 1800000)));
+  await custom.locator('.ant-picker-input input').nth(0).press('Tab');
+  await custom
+    .locator('.ant-picker-input input')
+    .nth(1)
+    .fill(format(new Date(Date.now() - 300000)));
+  await custom.locator('.ant-picker-input input').nth(1).press('Tab');
+  await custom.getByRole('button', { name: '应用时间范围', exact: true }).click();
+  await expect(hitDetail).toContainText('0/0');
+  await choose('最近 1 小时');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: /^时间范围：最近 1 小时/ })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
+    .toBe(true);
+  await page.getByRole('button', { name: /^时间范围：/ }).click();
+  await page.getByRole('menuitem', { name: '自定义时间范围', exact: true }).click();
+  await page.getByRole('dialog').locator('.ant-picker-input input').first().click();
+  const picker = page.locator('.observability-time-picker-popup .ant-picker-panel-container');
+  await expect(picker).toBeVisible();
+  await expect.poll(async () => (await picker.boundingBox())!.width).toBeLessThanOrEqual(366);
+});
+
 for (const workflow of ['Classic', 'Native']) {
   test(`${workflow} keeps the center frame when a summary filter has no matches`, async ({
     page,
@@ -361,7 +1097,7 @@ for (const workflow of ['Classic', 'Native']) {
     const expected = await right.evaluate(style);
     expect(await center.evaluate(style)).toEqual(expected);
     expect((await center.boundingBox())!.height).toBeGreaterThanOrEqual(320);
-    await page.getByRole('button', { name: '切换到暗色模式', exact: true }).click();
+    await setDashboardTheme(page, 'dark');
     expect(await center.evaluate(style)).toEqual(await right.evaluate(style));
     await page.screenshot({
       path: path.join(os.tmpdir(), `comet-${workflow.toLowerCase()}-empty-frame.png`),
@@ -385,7 +1121,7 @@ test('drags the font slider in dark mode and scales Tailwind, code and AntD cont
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/?demo');
-  await page.getByRole('button', { name: '切换到暗色模式', exact: true }).click();
+  await setDashboardTheme(page, 'dark');
   await page.getByRole('button', { name: '设置', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('menuitem', { name: '外观' }).click();
@@ -710,10 +1446,10 @@ test('keeps the language switch accessible in both themes and on narrow screens'
     await page.screenshot({ path: test.info().outputPath(`dashboard-english-${width}.png`) });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.getByRole('button', { name: 'Switch to dark mode' }).click();
+  await setDashboardTheme(page, 'dark');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.locator('.comet-language-switch').getByText('中文', { exact: true }).click();
-  await expect(page.getByRole('button', { name: '切换到亮色模式' })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
 test.describe('Dashboard project selection', () => {
@@ -3200,11 +3936,73 @@ test('keeps change summaries single-line and explains Native workflow state', as
     .toBe(true);
 });
 
+test('keeps shared typography and memory reading space at medium and mobile widths', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/?demo');
+  await expect(page.locator('.dashboard-section-heading').first()).toHaveCSS('font-size', '24px');
+  await expect(page.getByRole('heading', { name: '下一步建议', exact: true })).toHaveCSS(
+    'font-size',
+    '16px',
+  );
+  const bannerContrast = () =>
+    page.locator('.dashboard-priority-banner p').evaluate((element) => {
+      const luminance = (color: string) => {
+        const channels = color
+          .match(/[\d.]+/g)!
+          .slice(0, 3)
+          .map((value) => {
+            const channel = Number(value) / 255;
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+          });
+        return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+      };
+      const foreground = luminance(getComputedStyle(element).color);
+      const background = luminance(getComputedStyle(element.parentElement!).backgroundColor);
+      return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+    });
+  expect(await bannerContrast()).toBeGreaterThanOrEqual(4.5);
+  await setDashboardTheme(page, 'dark');
+  expect(await bannerContrast()).toBeGreaterThanOrEqual(4.5);
+  await setDashboardTheme(page, 'light');
+
+  await page.getByRole('menuitem', { name: '个人记忆' }).click();
+  const copy = page.locator('.dashboard-memory-table-copy > p').first();
+  await expect(copy).toHaveCSS('font-size', '14px');
+  expect((await copy.boundingBox())!.width).toBeGreaterThanOrEqual(220);
+  await expect(page.locator('.dashboard-memory-why').first()).toHaveCSS('font-size', '13px');
+  const controlFont = await page
+    .locator('.dashboard-plugin-context-bar .ant-btn')
+    .first()
+    .evaluate((element) => getComputedStyle(element).fontFamily);
+  expect(controlFont).toBe(await copy.evaluate((element) => getComputedStyle(element).fontFamily));
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const status = await page.locator('.dashboard-plugin-context-meta').boundingBox();
+  const actions = await page
+    .locator('.dashboard-plugin-context-bar .dashboard-tool-actions')
+    .boundingBox();
+  expect(status).not.toBeNull();
+  expect(actions).not.toBeNull();
+  expect(actions!.y).toBeGreaterThanOrEqual(status!.y + status!.height);
+  expect(actions!.x + actions!.width).toBeLessThanOrEqual(390);
+  expect((await copy.boundingBox())!.width).toBeGreaterThanOrEqual(200);
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.getByRole('menuitem', { name: '项目知识' }).click();
+  await expect(page.locator('.dashboard-knowledge-ledger-toolbar strong')).toHaveCSS(
+    'white-space',
+    'nowrap',
+  );
+  await expect(page.locator('.dashboard-knowledge-inspector h3')).toHaveCSS('font-size', '20px');
+});
+
 test('keeps personal memory and project knowledge text readable at desktop density', async ({
   page,
 }) => {
-  const supportingText = /^(1[2-9]|[2-9]\\d)px$/u;
-  const bodyText = /^(1[3-9]|[2-9]\\d)px$/u;
+  const supportingText = /^(1[3-9]|[2-9]\d)px$/u;
+  const bodyText = /^(1[4-9]|[2-9]\d)px$/u;
 
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto('/?demo');
@@ -3258,7 +4056,7 @@ test('keeps personal memory and project knowledge text readable at desktop densi
     'font-size',
     supportingText,
   );
-  await expect(projectInspector.locator('h4').first()).toHaveCSS('font-size', bodyText);
+  await expect(projectInspector.locator('h4').first()).toHaveCSS('font-size', '16px');
   await expect(projectInspector.locator('dt').first()).toHaveCSS('font-size', supportingText);
   await expect(projectInspector.locator('dd').first()).toHaveCSS('font-size', bodyText);
 
@@ -3295,7 +4093,7 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
   );
   await expect(memoryDialog.locator('.dashboard-settings-modal-title-row > strong')).toHaveCSS(
     'font-size',
-    '18px',
+    '20px',
   );
   const memoryField = memoryDialog
     .locator('.dashboard-project-knowledge-detail > dl > div')
@@ -3322,7 +4120,7 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
   );
   await expect(sourceDialog.locator('.dashboard-settings-modal-title-row > strong')).toHaveCSS(
     'font-size',
-    '18px',
+    '20px',
   );
   await expect(
     sourceDialog.getByRole('heading', { name: 'Dashboard 检索语料', level: 1 }),
@@ -3333,7 +4131,7 @@ test('keeps context detail previews flat and readable', async ({ page }) => {
   await expect(sourceDialog).not.toContainText('# Dashboard Web App');
   await expect(sourceDialog.locator('.dashboard-knowledge-source-detail dt').first()).toHaveCSS(
     'font-size',
-    '12px',
+    '13px',
   );
   await expect(sourceDialog.locator('.dashboard-knowledge-source-detail dd').first()).toHaveCSS(
     'font-size',
@@ -3590,12 +4388,12 @@ test('keeps personal memory context and application history easy to scan', async
   );
   await expect(
     historyEntry.getByText('需要先给出可见结果，再说明响应式实现和验证范围', { exact: true }),
-  ).toHaveCSS('font-size', '12px');
+  ).toHaveCSS('font-size', '13px');
   const historyMeta = historyEntry.locator('footer');
   await expect(historyMeta).toContainText('2026-08-29 02:16');
   await expect(historyMeta).toContainText('应用成功');
-  await expect(historyMeta.locator('time')).toHaveCSS('font-size', '12px');
-  await expect(historyMeta.locator('span')).toHaveCSS('font-size', '12px');
+  await expect(historyMeta.locator('time')).toHaveCSS('font-size', '13px');
+  await expect(historyMeta.locator('span')).toHaveCSS('font-size', '13px');
 
   const memoryInspector = page.getByLabel('记忆应用详情');
   await expect(memoryInspector.locator('strong').first()).toHaveText('交付语言与结构');
@@ -3666,7 +4464,7 @@ test('gives the workbench restrained surface depth and interactive card feedback
   await expect(workbench).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(workbench).toHaveCSS('border-radius', '24px');
 
-  await page.getByRole('button', { name: '切换到暗色模式' }).click();
+  await setDashboardTheme(page, 'dark');
   await expect(page.locator('.ant-alert-info')).toHaveCSS('background-color', 'rgb(20, 36, 58)');
   await expect(page.locator('.ant-alert-title')).toHaveCSS('color', 'rgb(228, 232, 239)');
 });
@@ -3730,7 +4528,7 @@ test('uses restrained corners for the two Header search controls', async ({ page
 
 test('fully applies dark surfaces without page-wide color-transition jank', async ({ page }) => {
   await page.goto('/?demo');
-  await page.getByRole('button', { name: '切换到暗色模式' }).click();
+  await setDashboardTheme(page, 'dark');
 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(page.locator('.dashboard-overview-summary-card').nth(1)).toHaveCSS(
@@ -3997,7 +4795,7 @@ test('sidebar labels reveal after expansion and rapid reversals respect reduced 
     'aria-expanded',
     'true',
   );
-  await page.getByRole('button', { name: '切换到暗色模式' }).click();
+  await setDashboardTheme(page, 'dark');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByRole('button', { name: '收起侧边栏', exact: true }).click();
   await expect(workbench).toHaveCSS('transition-duration', '0s');
@@ -4061,7 +4859,7 @@ test('keeps Classic and Native overview metrics visually aligned and selectable'
 test('balances heading scale and change-row density for dashboard scanning', async ({ page }) => {
   await page.goto('/?demo');
 
-  await expect(page.getByRole('heading', { name: '项目概览' })).toHaveCSS('font-size', '18px');
+  await expect(page.getByRole('heading', { name: '项目概览' })).toHaveCSS('font-size', '24px');
   await expect(page.locator('.dashboard-section-hint').first()).toHaveCSS('font-size', '13px');
   await expect(page.locator('.dashboard-summary-card .dashboard-summary-metric').first()).toHaveCSS(
     'font-size',
@@ -4081,11 +4879,11 @@ test('keeps workbench detail text comfortably readable without enlarging the ove
 
   await expect(page.locator('.dashboard-change-list .text-xs').first()).toHaveCSS(
     'font-size',
-    '12px',
+    '13px',
   );
-  await expect(page.locator('.dashboard-workspace-region .text-\\[11px\\]').first()).toHaveCSS(
+  await expect(page.locator('.dashboard-workspace-region .text-\\[13px\\]').first()).toHaveCSS(
     'font-size',
-    '12px',
+    '13px',
   );
 });
 
@@ -6169,7 +6967,7 @@ test('workflow summary cards filter changes, open pending items and respect dark
   await dialog.getByRole('button', { name: '定位到变更详情', exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator('.native-change-detail h3')).toHaveText(targetName);
-  await page.getByRole('button', { name: '切换到暗色模式', exact: true }).click();
+  await setDashboardTheme(page, 'dark');
   const memory = page.getByRole('menuitem', { name: '个人记忆' });
   await memory.hover();
   await expect
@@ -6304,8 +7102,7 @@ test('uses the same Eval selection style for memory and knowledge in both themes
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/?demo');
   for (const theme of ['light', 'dark']) {
-    if (theme === 'dark')
-      await page.getByRole('button', { name: '切换到暗色模式', exact: true }).click();
+    if (theme === 'dark') await setDashboardTheme(page, 'dark');
     const style = async (name: string) => {
       const item = page.getByRole('menuitem', { name, exact: false });
       await item.click();

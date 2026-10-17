@@ -1,0 +1,251 @@
+.runtime-performance-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+.runtime-performance-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+}
+.runtime-performance-metrics > div {
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg);
+}
+.runtime-performance-metrics dd {
+  font-size: 36px;
+}
+.runtime-performance-notice {
+  margin-top: 16px;
+}
+.runtime-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.runtime-insight-body {
+  padding: 20px;
+  min-width: 0;
+}
+.runtime-insight-body > .usage-chart-caption {
+  margin: 12px 0 0;
+}
+.runtime-hotspot-row + .runtime-hotspot-row {
+  margin-top: 17px;
+}
+.runtime-hotspot-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+  font-size: 14px;
+}
+.runtime-hotspot-row strong {
+  font-weight: 500;
+}
+.runtime-hotspot-row code {
+  margin-left: 6px;
+  color: var(--color-fg-2);
+}
+.runtime-hotspot-row > small {
+  display: block;
+  margin-top: 5px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.runtime-insight-headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+.runtime-insight-headline > strong {
+  font-size: 38px;
+  line-height: 1.15;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+}
+.runtime-insight-headline > span {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.runtime-result-track {
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--color-border-soft);
+}
+.runtime-result-track > span,
+.runtime-result-track > i {
+  height: 100%;
+  transition: width 400ms var(--usage-motion-ease);
+}
+.runtime-result-track > span {
+  background: var(--color-accent);
+}
+.runtime-result-track > i,
+.usage-chart-key i.runtime-warning-key {
+  background: var(--color-warn);
+}
+.runtime-failure-list {
+  padding: 0;
+  margin: 22px 0 0;
+  list-style: none;
+  max-height: 210px;
+  overflow: auto;
+}
+.runtime-failure-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-border-soft);
+  padding: 12px 0;
+  font-size: 14px;
+}
+.runtime-failure-list small {
+  display: block;
+  color: var(--color-muted);
+  margin-top: 4px;
+  font-size: 13px;
+}
+.runtime-compact-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px 16px;
+  margin: 24px 0 0;
+}
+.runtime-compact-metrics dt {
+  font-size: 14px;
+  color: var(--color-muted);
+}
+.runtime-compact-metrics dd {
+  margin: 7px 0 0;
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.runtime-compact-metrics dd > small {
+  font-size: 13px;
+  font-weight: 400;
+  margin-left: 4px;
+  color: var(--color-muted);
+}
+.runtime-health-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+}
+.runtime-health-status > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-muted);
+}
+.runtime-health-status.is-running > i {
+  background: var(--color-accent);
+  box-shadow: 0 0 0 4px var(--color-accent-softer);
+}
+.runtime-health-status.is-unavailable > i {
+  background: var(--color-warn);
+}
+.runtime-workflow-bars {
+  display: grid;
+  gap: 22px;
+  padding: 24px 20px 12px;
+}
+.runtime-workflow-bars > div > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+  font-size: 14px;
+}
+.runtime-workflow-bars > div:nth-child(2) .usage-hit-track > span {
+  background: color-mix(in oklab, var(--color-accent) 45%, var(--color-bg));
+}
+.runtime-workflow-bars small {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.runtime-workflow-comparison > .usage-chart-caption {
+  padding-inline: 20px;
+}
+.runtime-check-summary {
+  margin: 18px 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-soft);
+}
+.runtime-check-summary > strong {
+  font-size: 14px;
+}
+.runtime-check-summary dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-block: 12px;
+}
+.runtime-check-summary dt {
+  color: var(--color-muted);
+  font-size: 14px;
+}
+.runtime-check-summary dd {
+  margin: 6px 0 0;
+  color: var(--color-fg);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.runtime-slowest {
+  margin-top: 16px;
+  overflow: hidden;
+}
+.runtime-slowest > header {
+  margin-bottom: 14px;
+}
+.runtime-record-link.ant-btn {
+  height: auto;
+  padding: 0;
+  font-size: 14px;
+}
+.runtime-performance-footnote {
+  margin: 12px 2px 0;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+@media (max-width: 800px) {
+  .runtime-insight-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .runtime-compact-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .runtime-performance-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .runtime-performance-metrics > div {
+    padding: 16px 14px;
+  }
+  .runtime-performance-metrics dd {
+    font-size: 30px;
+  }
+}
+@media (max-width: 480px) {
+  .runtime-performance-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -481,8 +481,12 @@ describe('dashboard web source contracts', () => {
     );
 
     expect(source).toContain('readOnly={embedded}');
-    expect(source).toContain('themeToggleDisabled={embedded}');
-    expect(source).toContain('disabled={themeToggleDisabled}');
+    const appearanceSource = await fs.readFile(
+      path.resolve('domains/dashboard/web/src/dashboard-appearance.jsx'),
+      'utf8',
+    );
+    expect(appearanceSource).toContain('disabled={embedded}');
+    expect(appearanceSource).toContain('dashboard-theme-options');
     expect(source).toContain("embedded ? ' is-embedded' : ''");
     expect(pluginPage?.[0]).toContain('readOnly = false');
     expect(pluginPage?.[0]).toContain('readOnly={readOnly}');

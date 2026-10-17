@@ -1133,6 +1133,7 @@ children:
     });
   });
 
+  // 完整 Supervisor 场景包含多个真实 worktree；Windows 独立执行已测得超过两分钟。
   it('repairs failed Supervisor Children and serializes integration after a definition upgrade', async () => {
     const upgradeDefinition = true;
     const { root, paths, changeDir } = await fixture();
@@ -1895,7 +1896,7 @@ children:
     });
     expect(run.actions.find((action) => action.id === uiArchive.id)?.status).toBe('succeeded');
     expect(run.actions.at(-1)?.stepId).toBe('supervisor.parent.builder');
-  });
+  }, 240_000);
 
   it.each([
     'normal',
@@ -3250,6 +3251,7 @@ children:
         code: 'ENOENT',
       });
     },
+    240_000,
   );
 
   it('rejects an incomplete formal brief before proposing Shape confirmation', async () => {

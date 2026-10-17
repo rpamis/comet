@@ -1,3 +1,4 @@
+import { observeWorkflowRunStore } from '../workflow-application/run-trace.js';
 import {
   resolveWorkspaceRuntimeRoot,
   resolveWorkspaceRuntimeRootSync,
@@ -248,11 +249,14 @@ export function createNativeSdkStateStore(
   } = {},
 ): RuntimeStore<WorkflowRun> {
   const workspaceRuntimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
-  const store =
+  const store = observeWorkflowRunStore(
+    projectRoot,
+    'native',
     options.store ??
-    createFileRuntimeStore<WorkflowRun>({
-      rootDir: path.join(workspaceRuntimeRoot, 'sdk-runs', 'native'),
-    });
+      createFileRuntimeStore<WorkflowRun>({
+        rootDir: path.join(workspaceRuntimeRoot, 'sdk-runs', 'native'),
+      }),
+  );
   async function assertWorkspaceRuntimeCurrent(): Promise<void> {
     const rejectChangedRoot = (currentRoot: string) => {
       if (currentRoot !== workspaceRuntimeRoot) {

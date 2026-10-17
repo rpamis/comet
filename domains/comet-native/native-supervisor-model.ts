@@ -486,6 +486,7 @@ export function projectNativeSupervisorTask(
     ...task,
     controlProjectRoot,
     contextRequest: nativeTaskContextRequest({
+      name: task.child,
       phase: task.role === 'verifier' ? 'verify' : 'build',
       language: 'en',
       projectRoot: task.projectRoot,

@@ -177,13 +177,13 @@
 }
 .any-app-state .ant-tag {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 19px;
 }
 .any-version-hint {
   display: block;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
   margin-top: 12px;
   border-top: 1px solid var(--color-border);
@@ -200,7 +200,7 @@
   color: var(--color-muted);
 }
 .any-explorer-foot small {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
 }
 .any-explorer > .ant-alert {
@@ -285,7 +285,7 @@
   overflow: hidden;
 }
 .any-workspace .ant-tag {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 20px;
   font-weight: 400;
   margin: 0;
@@ -363,7 +363,7 @@
   padding: 5px 0 7px;
 }
 .any-run-context small {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   overflow-wrap: anywhere;
 }
@@ -378,7 +378,7 @@
   flex-wrap: wrap;
   gap: 6px;
   margin: 0 20px 9px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
   color: var(--color-muted);
 }
@@ -415,7 +415,7 @@
   font-weight: 600;
 }
 .any-current-heading > span {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-current-counts {
@@ -452,7 +452,7 @@
   overflow-wrap: anywhere;
 }
 .any-active-list button > .anticon:last-child {
-  font-size: 8px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-active-list button:hover,
@@ -463,7 +463,7 @@
 .any-current > p {
   display: block;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.9;
   margin-top: 10px;
 }
@@ -474,7 +474,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 13px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
   color: var(--color-muted);
 }
@@ -488,7 +488,7 @@
   gap: 8px;
   flex-wrap: wrap;
   margin: 10px 19px 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   min-height: 30px;
 }
@@ -550,7 +550,7 @@
   font-weight: 500;
 }
 .any-phase-title small {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
   color: var(--color-muted);
 }
@@ -576,7 +576,7 @@
   font-size: 16px;
 }
 .any-step-row > .anticon:last-child {
-  font-size: 8px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-step-copy {
@@ -593,7 +593,7 @@
 .any-step-copy small {
   display: block;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
   margin-top: 4px;
   overflow-wrap: anywhere;
@@ -601,7 +601,7 @@
 .any-step-copy em {
   margin-left: 6px;
   font-style: normal;
-  font-size: 12px;
+  font-size: 13px;
   border: 1px solid var(--color-border);
   padding: 1px 4px;
   border-radius: 3px;
@@ -650,7 +650,7 @@
   min-width: 0;
 }
 .any-detail-content h3 {
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1.8;
   font-weight: 600;
   margin-bottom: 11px;
@@ -672,7 +672,7 @@
   overflow-wrap: anywhere;
 }
 .any-detail-content h4 {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   margin: 23px 0 12px;
 }
@@ -756,7 +756,7 @@
   align-items: center;
 }
 .any-detail-content .ant-collapse-header-text .ant-tag {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 18px;
 }
 .any-detail-content .ant-collapse-body > .ant-btn {
@@ -815,12 +815,12 @@
   font-weight: 500;
 }
 .any-evidence-card .ant-tag {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 18px;
 }
 .any-evidence-card small {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   line-height: 1.8;
   margin-top: 7px;
@@ -828,7 +828,7 @@
 }
 .any-evidence-card em {
   font-style: normal;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   display: block;
   margin-top: 6px;
@@ -838,7 +838,7 @@
   padding: 23px 20px;
 }
 .any-evidence-page h3 {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
 }
 .any-evidence-page > p {
@@ -891,14 +891,14 @@
   color: var(--color-accent);
 }
 .any-artifact-link > .anticon:last-child {
-  font-size: 8px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-inspector-foot {
   padding: 14px 18px;
   border-top: 1px solid var(--color-border);
   margin-top: auto;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   line-height: 1.8;
 }
@@ -919,7 +919,7 @@
   min-width: 0;
 }
 .any-history .any-sequence {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   min-width: 32px;
 }
@@ -930,13 +930,13 @@
   overflow-wrap: anywhere;
 }
 .any-history small {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   display: block;
   margin-top: 5px;
 }
 .any-history > button > .anticon {
-  font-size: 8px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-artifact-list {
@@ -968,7 +968,7 @@
   font-size: 18px;
 }
 .any-artifact-list > button > .anticon:last-child {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .any-artifact-list b {
@@ -987,7 +987,7 @@
 }
 .any-muted,
 .any-footnote {
-  font-size: 12px !important;
+  font-size: 13px !important;
   color: var(--color-muted);
   line-height: 1.9;
   margin: 15px 8px;
@@ -998,7 +998,7 @@
   justify-content: center;
   gap: 7px;
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   line-height: 1.8;
   margin-top: 23px;
@@ -1120,11 +1120,11 @@
     padding: 8px 6px;
   }
   .any-current-counts {
-    font-size: 12px;
+    font-size: 13px;
     gap: 6px 12px;
   }
   .any-phase-title small {
-    font-size: 12px;
+    font-size: 13px;
   }
 }
 @media (max-width: 760px) {
@@ -1152,7 +1152,7 @@
     position: absolute;
     top: 0;
     padding: 4px;
-    font-size: 12px;
+    font-size: 13px;
     gap: 9px;
   }
   .any-app-row {
@@ -1166,11 +1166,11 @@
   }
   .any-app-description {
     margin: 7px 0 8px;
-    font-size: 12px;
+    font-size: 13px;
   }
   .any-explorer-foot {
     padding: 12px 14px;
-    font-size: 12px;
+    font-size: 13px;
   }
   .any-explorer-foot small {
     display: none;
@@ -1203,28 +1203,28 @@
   }
   .any-sync-line {
     margin: 0 16px 12px;
-    font-size: 12px;
+    font-size: 13px;
   }
   .any-current-heading b {
     font-size: 14px;
   }
   .any-current-heading > span {
-    font-size: 12px;
+    font-size: 13px;
   }
   .any-active-list button {
     font-size: 13px;
   }
   .any-active-list .ant-tag {
-    font-size: 12px;
+    font-size: 13px;
   }
   .any-current-counts {
-    font-size: 12px;
+    font-size: 13px;
   }
   .any-follow-bar {
-    font-size: 12px;
+    font-size: 13px;
   }
   .any-follow-bar .ant-btn {
-    font-size: 12px;
+    font-size: 13px;
   }
   .any-step-list {
     padding: 5px 10px 14px;
@@ -1237,13 +1237,13 @@
     display: none;
   }
   .any-step-row .ant-tag {
-    font-size: 12px;
+    font-size: 13px;
   }
   .any-step-copy b {
     font-size: 14px;
   }
   .any-phase-title small {
-    font-size: 12px;
+    font-size: 13px;
   }
   .any-history > button {
     padding: 15px 12px;
@@ -1262,7 +1262,7 @@
     padding: 14px 0;
   }
   .any-page-foot {
-    font-size: 12px;
+    font-size: 13px;
     align-items: flex-start;
   }
   .any-evidence-page {

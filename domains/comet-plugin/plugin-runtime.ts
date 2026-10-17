@@ -1,3 +1,4 @@
+import { observeRuntimeChildSpan } from '../../platform/process/runtime-trace.js';
 import {
   AgentExperienceJournal,
   AgentLearningCoordinator,
@@ -523,12 +524,17 @@ export class PluginRuntime {
       let limited = false;
       let returned = 0;
       try {
-        const contribution = await active.module.provideContext({
-          ...request,
-          reportRetrievalIssue: () => {
-            limited = true;
-          },
-        });
+        const contribution = await observeRuntimeChildSpan(
+          active.descriptor.id,
+          async () =>
+            active.module.provideContext!({
+              ...request,
+              reportRetrievalIssue: () => {
+                limited = true;
+              },
+            }),
+          () => (limited ? 'unknown' : 'succeeded'),
+        );
         if (contribution === null) continue;
         for (const value of Array.isArray(contribution) ? contribution : [contribution]) {
           candidates.push(

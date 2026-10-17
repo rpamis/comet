@@ -6,7 +6,9 @@ import React, {
   useLayoutEffect,
   useState,
 } from 'react';
-import { Button, Slider } from 'antd';
+import { Button, Radio, Slider } from 'antd';
+import { MoonOutlined, SunOutlined } from '@ant-design/icons';
+import './dashboard-appearance.css';
 import { t } from './dashboard-i18n.js';
 import { useDashboardLanguage } from './dashboard-language.jsx';
 import {
@@ -39,7 +41,9 @@ export function useDashboardFontScale({ embedded = false, themeRoot = null } = {
 
 export function DashboardAppearanceSettings() {
   useDashboardLanguage();
-  const { fontScale, updateFontScale, embedded } = useContext(DashboardAppearanceContext);
+  const { fontScale, updateFontScale, embedded, theme, updateTheme } = useContext(
+    DashboardAppearanceContext,
+  );
   return (
     <div className="dashboard-settings-stack dashboard-appearance-settings">
       <div className="dashboard-settings-section-head">
@@ -48,10 +52,70 @@ export function DashboardAppearanceSettings() {
           {t(
             embedded
               ? '调整当前预览的文字大小，重新加载后恢复默认。'
-              : '调整 Dashboard 的文字大小，所有项目沿用此浏览器的偏好。',
+              : '调整主题和文字大小，所有项目沿用此浏览器的偏好。',
           )}
         </p>
       </div>
+      <section
+        className="dashboard-settings-panel dashboard-theme-panel"
+        aria-labelledby="dashboard-theme-label"
+      >
+        <div className="dashboard-theme-heading">
+          <h4 id="dashboard-theme-label">{t('主题模式')}</h4>
+          <p>{t(embedded ? '官网预览固定为亮色模式' : '选择适合你的工作环境，即时生效。')}</p>
+        </div>
+        <Radio.Group
+          name="dashboard-theme"
+          role="radiogroup"
+          aria-labelledby="dashboard-theme-label"
+          className="dashboard-theme-options"
+          value={theme}
+          onChange={(event) => updateTheme(event.target.value)}
+          disabled={embedded}
+        >
+          {[
+            {
+              value: 'light',
+              label: '亮色',
+              description: '明亮、清晰的工作界面',
+              Icon: SunOutlined,
+            },
+            { value: 'dark', label: '暗色', description: '适合低光环境', Icon: MoonOutlined },
+          ].map(({ value, label, description, Icon }) => (
+            <Radio key={value} value={value} aria-label={t(label)} className="dashboard-theme-card">
+              <span className={`dashboard-theme-preview is-${value}`} aria-hidden="true">
+                <span className="theme-preview-sidebar">
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <span className="theme-preview-content">
+                  <span className="theme-preview-toolbar" />
+                  <span className="theme-preview-cards">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="theme-preview-chart">
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                </span>
+              </span>
+              <span className="dashboard-theme-card-copy">
+                <strong>
+                  <Icon />
+                  {t(label)}
+                </strong>
+                <span>{t(description)}</span>
+              </span>
+            </Radio>
+          ))}
+        </Radio.Group>
+      </section>
       <section className="dashboard-settings-panel" aria-labelledby="dashboard-font-size-label">
         <div className="dashboard-font-size-heading">
           <h4 id="dashboard-font-size-label">{t('字体大小')}</h4>

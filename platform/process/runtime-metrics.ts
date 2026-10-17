@@ -8,7 +8,7 @@ export interface CometRuntimeMetricsSnapshot {
 
 let gitCommands = 0;
 let gitDurationMs = 0;
-const requestMetrics = new AsyncLocalStorage<CometRuntimeMetricsSnapshot>();
+const requestMetrics = new AsyncLocalStorage<CometRuntimeMetricsSnapshot[]>();
 
 export interface CometRuntimeProgress {
   label: string;
@@ -77,8 +77,7 @@ export async function withCometRuntimeProgress<T>(
 export function recordCometGitCommand(durationMs = 0): void {
   gitCommands += 1;
   gitDurationMs += durationMs;
-  const active = requestMetrics.getStore();
-  if (active) {
+  for (const active of requestMetrics.getStore() ?? []) {
     active.gitCommands += 1;
     active.gitDurationMs += durationMs;
   }
@@ -93,7 +92,10 @@ export async function withCometRuntimeMetrics<T>(
   operation: () => Promise<T>,
 ): Promise<{ result: T; metrics: CometRuntimeMetricsSnapshot }> {
   const metrics = { gitCommands: 0, gitDurationMs: 0 };
-  const result = await requestMetrics.run(metrics, operation);
+  const result = await requestMetrics.run(
+    [...(requestMetrics.getStore() ?? []), metrics],
+    operation,
+  );
   return { result, metrics };
 }
 

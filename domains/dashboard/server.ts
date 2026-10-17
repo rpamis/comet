@@ -32,6 +32,10 @@ import { handleDashboardEvalRequest } from './eval-routes.js';
 import { handleDashboardApplicationRequest } from './application-routes.js';
 import { handleDashboardApplicationDeliveryRequest } from './application-delivery.js';
 import { DashboardApplicationQueryError } from './application-collector.js';
+import { collectRuntimePerformance } from './runtime-performance.js';
+import { collectRuntimeInsights } from './runtime-insights.js';
+import { collectChangeTraceIndex, collectChangeTrace } from './change-traces.js';
+import { readObservabilityRange } from './observability-range.js';
 import {
   readUserEvalSettings,
   saveUserEvalSettings,
@@ -364,6 +368,82 @@ async function handleRequest(
       return;
     }
 
+    if (subpath === '/change-traces' || subpath === '/change-trace') {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        respondError(res, 405, 'Method not allowed');
+        return;
+      }
+      const workflow = url.searchParams.get('workflow') ?? 'all';
+      if (!['all', 'native', 'classic'].includes(workflow)) {
+        respondError(res, 400, 'Invalid trace workflow filter');
+        return;
+      }
+      if (subpath === '/change-traces') {
+        let range;
+        try {
+          range = readObservabilityRange(url.searchParams);
+        } catch {
+          respondError(res, 400, 'Invalid observation time range');
+          return;
+        }
+        respondJson(
+          res,
+          req.method,
+          200,
+          await collectChangeTraceIndex(
+            project.path,
+            workflow as 'all' | 'native' | 'classic',
+            range,
+          ),
+        );
+      } else {
+        const traceId = url.searchParams.get('traceId');
+        if (!traceId || traceId.length > 512) {
+          respondError(res, 400, 'Invalid trace identity');
+          return;
+        }
+        const trace = await collectChangeTrace(project.path, traceId);
+        respondJson(res, req.method, trace ? 200 : 404, trace ?? { error: 'Trace unavailable' });
+      }
+      return;
+    }
+    if (subpath === '/runtime-insights') {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        respondError(res, 405, 'Method not allowed');
+        return;
+      }
+      respondJson(res, req.method, 200, await collectRuntimeInsights(project.path));
+      return;
+    }
+    if (subpath === '/runtime-performance') {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        respondError(res, 405, 'Method not allowed');
+        return;
+      }
+      const workflow = url.searchParams.get('workflow') ?? 'all';
+      if (!['all', 'native', 'classic'].includes(workflow)) {
+        respondJson(res, req.method, 400, { error: 'Invalid runtime workflow filter' });
+        return;
+      }
+      let range;
+      try {
+        range = readObservabilityRange(url.searchParams);
+      } catch {
+        respondError(res, 400, 'Invalid observation time range');
+        return;
+      }
+      respondJson(
+        res,
+        req.method,
+        200,
+        await collectRuntimePerformance(
+          project.path,
+          workflow as 'all' | 'native' | 'classic',
+          range,
+        ),
+      );
+      return;
+    }
     if (subpath === '/overview') {
       const overview = await collectDashboardOverview(project.path, {
         projectName: project.name,

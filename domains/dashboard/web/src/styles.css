@@ -1,13 +1,20 @@
 @import 'tailwindcss';
 
 @theme {
+  /* UI sizes are pixels: the rem baseline also controls spacing. */
+  --text-xs: 13px;
+  --text-sm: 14px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
   --color-bg: #ffffff;
   --color-surface: #eef1f5;
   --color-surface-warm: #f7f9fc;
   --color-fg: #101827;
   --color-fg-2: #4d596b;
-  --color-muted: #6f7a8a;
-  --color-meta: #929baa;
+  --color-muted: #5f6b7c;
+  --color-meta: #626d80;
   --color-border: #e2e7ee;
   --color-border-soft: #edf0f4;
   --color-accent: #255ed8;
@@ -518,15 +525,14 @@ body {
   letter-spacing: -0.02em;
 }
 
-/* Keep emphasis deliberate but calm, matching the homepage's editorial rhythm
-   without returning to the default 600/700 CJK-heavy treatment. */
+/* Use the same emphasis weights in utility classes and component tokens. */
 .dashboard-workbench .font-semibold,
 .dashboard-workbench strong {
-  font-weight: 560;
+  font-weight: 600;
 }
 
 .dashboard-workbench .font-bold {
-  font-weight: 620;
+  font-weight: 700;
 }
 
 .dashboard-section-heading {
@@ -564,7 +570,7 @@ body {
   margin: 0;
   padding: 10px 13px 8px;
   color: var(--color-fg-2);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
 }
 
@@ -612,8 +618,8 @@ body {
   border: 0 !important;
   border-radius: 5px !important;
   color: var(--color-fg-2);
-  font-size: 11px;
-  font-weight: 540;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -674,8 +680,8 @@ body {
 }
 
 .ant-card .ant-card-head-title {
-  font-size: 14px;
-  font-weight: 560;
+  font-size: 16px;
+  font-weight: 600;
   letter-spacing: -0.014em;
 }
 
@@ -791,7 +797,7 @@ body {
 .comet-project-select .ant-select-selection-item,
 .comet-project-select .ant-select-selection-placeholder {
   font-size: 13px;
-  font-weight: 560;
+  font-weight: 600;
   line-height: 34px !important;
 }
 
@@ -851,7 +857,7 @@ body {
 .comet-language-switch .ant-segmented-item {
   min-width: 32px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .comet-language-switch .ant-segmented-item-label {
@@ -950,8 +956,8 @@ body {
 .dashboard-sidebar-label {
   margin: 6px 10px 6px;
   color: var(--color-meta);
-  font-size: 11px;
-  font-weight: 560;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-plugin-menu-item {
@@ -1097,8 +1103,8 @@ body {
   display: block;
   margin-bottom: 3px;
   color: var(--color-meta);
-  font-size: 10px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0.08em;
   line-height: 1.2;
   text-transform: uppercase;
@@ -1115,7 +1121,7 @@ body {
   margin: 0 3px 0 0;
   color: var(--color-fg);
   font-size: 20px;
-  font-weight: 660;
+  font-weight: 600;
   letter-spacing: -0.022em;
   line-height: 1.25;
 }
@@ -1123,7 +1129,7 @@ body {
 .dashboard-tool-heading-copy > p {
   margin: 5px 0 0;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -1138,14 +1144,14 @@ body {
   border-radius: 6px;
   background: var(--color-surface-warm);
   color: var(--color-fg-2);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 17px;
 }
 
 .dashboard-tool-chip-label {
   color: var(--color-meta);
-  font-weight: 520;
+  font-weight: 600;
 }
 
 .dashboard-tool-chip-accent {
@@ -1256,8 +1262,8 @@ body {
 .dashboard-settings-navigation-label {
   padding: 7px 10px 5px;
   color: var(--color-meta);
-  font-size: 10px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0.075em;
   text-transform: uppercase;
 }
@@ -1272,7 +1278,7 @@ body {
   margin: 3px 0;
   padding-inline: 10px !important;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-settings-main {
@@ -1290,7 +1296,7 @@ body {
 
 .dashboard-font-size-heading h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .dashboard-font-size-heading output {
@@ -1308,7 +1314,7 @@ body {
 }
 
 .dashboard-font-size-small {
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-font-size-large {
   font-size: 22px;
@@ -1318,7 +1324,7 @@ body {
 }
 .dashboard-font-size-actions {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .dashboard-font-size-actions .ant-btn {
   white-space: normal;
@@ -1352,14 +1358,14 @@ body {
   margin: 0;
   color: var(--color-fg);
   font-size: 17px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.018em;
 }
 
 .dashboard-settings-section-head p {
   margin: 3px 0 0;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-settings-panel {
@@ -1385,14 +1391,14 @@ body {
 .dashboard-settings-panel-head h4 {
   margin: 0;
   color: var(--color-fg);
-  font-size: 14px;
-  font-weight: 620;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .dashboard-settings-panel-head p {
   margin: 3px 0 0;
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-settings-danger {
@@ -1422,12 +1428,12 @@ body {
 
 .dashboard-settings-facts span {
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-settings-facts strong {
   color: var(--color-fg-2);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-memory-content {
@@ -1449,7 +1455,7 @@ body {
 
 .dashboard-knowledge-overview-metrics span {
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-overview-metrics strong {
@@ -1490,8 +1496,8 @@ body {
 
 .dashboard-memory-status-label {
   color: var(--color-muted);
-  font-size: 12px;
-  font-weight: 560;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-memory-status-value {
@@ -1502,7 +1508,7 @@ body {
   overflow: hidden;
   color: var(--color-fg);
   font-size: 13px;
-  font-weight: 560;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1512,7 +1518,7 @@ body {
   margin-top: 3px;
   overflow: hidden;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1547,15 +1553,15 @@ body {
 .dashboard-memory-panel-head h3 {
   margin: 0;
   color: var(--color-fg);
-  font-size: 14px;
-  font-weight: 620;
+  font-size: 16px;
+  font-weight: 600;
   line-height: 1.35;
 }
 
 .dashboard-memory-panel-head p {
   margin: 2px 0 0;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-memory-panel-head-actions {
@@ -1616,7 +1622,7 @@ body {
   border-radius: 7px;
   background: var(--color-accent-softer);
   color: var(--color-accent);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-memory-record-kicker {
@@ -1625,7 +1631,7 @@ body {
   flex-wrap: wrap;
   gap: 7px;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-memory-record-kicker .ant-tag {
@@ -1634,7 +1640,7 @@ body {
   border-radius: 5px;
   background: var(--color-surface-warm);
   color: var(--color-fg-2);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-memory-record-text {
@@ -1655,14 +1661,14 @@ body {
 .dashboard-memory-record-application {
   margin-top: 7px;
   color: var(--color-accent);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
 .dashboard-memory-record-note {
   margin-top: 3px;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -1670,7 +1676,7 @@ body {
   height: auto;
   margin-top: 2px;
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-memory-record-meta {
@@ -1679,7 +1685,7 @@ body {
   gap: 12px;
   margin-top: 8px;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-memory-record-actions {
@@ -1755,15 +1761,15 @@ body {
   display: block;
   margin-top: 10px;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
 .dashboard-settings-value {
   max-width: min(48%, 320px);
   color: var(--color-fg-2);
-  font-size: 12px;
-  font-weight: 560;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.45;
   overflow-wrap: anywhere;
   text-align: right;
@@ -1776,8 +1782,8 @@ body {
 .dashboard-memory-setting-copy strong {
   display: block;
   color: var(--color-fg-2);
-  font-size: 12px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-memory-setting-copy span {
@@ -1785,7 +1791,7 @@ body {
   margin-top: 3px;
   overflow-wrap: anywhere;
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -1804,14 +1810,14 @@ body {
 
 .dashboard-memory-budget-field label {
   color: var(--color-fg-2);
-  font-size: 12px;
-  font-weight: 580;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-memory-budget-field > span,
 .dashboard-memory-budget-note {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -1831,7 +1837,7 @@ body {
   gap: 12px;
   margin-top: 10px;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-memory-setting-danger {
@@ -1845,8 +1851,8 @@ body {
 .dashboard-memory-settings-group-label {
   padding: 12px 16px 6px;
   color: var(--color-meta);
-  font-size: 10px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0.075em;
   line-height: 1.2;
   text-transform: uppercase;
@@ -1879,8 +1885,8 @@ body {
 
 .dashboard-knowledge-status-label {
   color: var(--color-muted);
-  font-size: 12px;
-  font-weight: 560;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-status-value {
@@ -1891,7 +1897,7 @@ body {
   overflow: hidden;
   color: var(--color-fg);
   font-size: 13px;
-  font-weight: 560;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1901,7 +1907,7 @@ body {
   margin-top: 3px;
   overflow: hidden;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1938,14 +1944,14 @@ body {
 
 .dashboard-context-manifest-summary-copy strong {
   color: var(--color-fg-2);
-  font-size: 12px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-context-manifest-summary-copy span {
   overflow: hidden;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1957,14 +1963,14 @@ body {
   align-items: center;
   gap: 10px;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
 .dashboard-context-manifest-summary-meta time {
   color: var(--color-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .dashboard-context-manifest-summary-action {
@@ -1973,8 +1979,8 @@ body {
   border: 0;
   border-radius: 6px;
   color: var(--color-accent);
-  font-size: 12px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
   background: transparent;
   cursor: pointer;
   transition:
@@ -1999,7 +2005,7 @@ body {
   justify-content: space-between;
   gap: 16px;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-context-manifest > header div {
@@ -2009,14 +2015,14 @@ body {
 
 .dashboard-context-manifest > header strong {
   color: var(--color-fg-2);
-  font-size: 12px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-context-manifest > p {
   margin: 0;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-context-manifest-items {
@@ -2081,20 +2087,20 @@ body {
 
 .dashboard-context-manifest-item-toggle > span:first-child strong {
   color: var(--color-fg-2);
-  font-size: 12px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-context-manifest-item-toggle > span:first-child span {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-context-manifest-item-toggle > span:last-child {
   flex: 0 0 auto;
   color: var(--color-accent);
-  font-size: 12px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -2103,7 +2109,7 @@ body {
   margin: 0;
   overflow: hidden;
   color: var(--color-fg-2);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.55;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2122,7 +2128,7 @@ body {
   min-width: 0;
   gap: 4px;
   color: var(--color-meta);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .dashboard-context-manifest-items dt,
@@ -2152,13 +2158,13 @@ body {
 
 .dashboard-context-manifest-item-detail > div > span {
   color: var(--color-meta);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .dashboard-context-manifest-item-detail > div > p {
   margin: 0;
   color: var(--color-fg-2);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.65;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -2178,14 +2184,14 @@ body {
 
 .dashboard-context-manifest-item-detail dt {
   color: var(--color-meta);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .dashboard-context-manifest-item-detail dd {
   max-width: none;
   overflow: visible;
   color: var(--color-fg-2);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
   text-overflow: clip;
   white-space: normal;
@@ -2223,15 +2229,15 @@ body {
 .dashboard-knowledge-panel-head h3 {
   margin: 0;
   color: var(--color-fg);
-  font-size: 14px;
-  font-weight: 620;
+  font-size: 16px;
+  font-weight: 600;
   line-height: 1.35;
 }
 
 .dashboard-knowledge-panel-head p {
   margin: 2px 0 0;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-summary-body {
@@ -2262,7 +2268,7 @@ body {
 
 .dashboard-knowledge-fields dt {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-fields dd {
@@ -2271,7 +2277,7 @@ body {
   overflow-wrap: anywhere;
   color: var(--color-fg-2);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-diagnostics-list {
@@ -2285,7 +2291,7 @@ body {
   padding: 13px 0;
   border-bottom: 1px solid var(--color-border-soft);
   color: var(--color-fg-2);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -2298,7 +2304,7 @@ body {
   margin-inline-end: 0;
   background: var(--color-warn-soft);
   color: var(--color-warn);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-actions {
@@ -2570,8 +2576,8 @@ body {
   margin: 0;
   color: var(--color-fg);
   font-family: var(--font-display);
-  font-size: 23px;
-  font-weight: 680;
+  font-size: 24px;
+  font-weight: 600;
   letter-spacing: -0.025em;
   line-height: 1.25;
 }
@@ -2579,7 +2585,7 @@ body {
 .dashboard-knowledge-workspace-head p {
   margin: 4px 0 0;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -2588,8 +2594,8 @@ body {
   align-items: center;
   gap: 6px;
   color: var(--color-muted);
-  font-size: 12px;
-  font-weight: 560;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-service-state .dashboard-tool-state-dot {
@@ -2604,7 +2610,7 @@ body {
 
 .dashboard-knowledge-workspace-meta {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -2621,6 +2627,7 @@ body {
 
 .dashboard-knowledge-tabs {
   display: flex;
+  overflow-x: auto;
   gap: 28px;
   min-height: 39px;
   border-bottom: 1px solid var(--color-border-soft);
@@ -2628,6 +2635,8 @@ body {
 
 .dashboard-knowledge-tabs button {
   position: relative;
+  flex: 0 0 auto;
+  white-space: nowrap;
   appearance: none;
   padding: 0 0 11px;
   border: 0;
@@ -2636,7 +2645,7 @@ body {
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  font-weight: 560;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-tabs button::after {
@@ -2712,14 +2721,14 @@ body {
   margin: 0;
   padding: 9px 14px 5px;
   color: var(--color-meta);
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0.025em;
 }
 
 .dashboard-knowledge-category-groups h3 small {
   color: var(--color-meta);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -2739,14 +2748,14 @@ body {
   color: var(--color-fg-2);
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
 }
 
 .dashboard-knowledge-category > span:last-child {
   color: var(--color-meta);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-category:hover,
@@ -2763,7 +2772,7 @@ body {
   border-left-color: var(--knowledge-accent);
   background: var(--knowledge-accent-soft);
   color: #145fca;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-explorer > .dashboard-knowledge-category {
@@ -2779,12 +2788,12 @@ body {
   padding: 11px 14px;
   border-top: 1px solid var(--color-border-soft);
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-explorer-foot strong {
   color: var(--color-fg-2);
-  font-weight: 580;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-ledger {
@@ -2798,6 +2807,7 @@ body {
 
 .dashboard-knowledge-ledger-toolbar {
   display: flex;
+  flex-wrap: wrap;
   min-height: 54px;
   align-items: center;
   justify-content: space-between;
@@ -2808,19 +2818,22 @@ body {
 
 .dashboard-knowledge-ledger-toolbar > div {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
 
 .dashboard-knowledge-ledger-toolbar strong {
+  white-space: nowrap;
   color: var(--color-fg-2);
-  font-size: 12px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-ledger-toolbar-meta {
+  white-space: nowrap;
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-ledger-toolbar .ant-btn {
@@ -2851,7 +2864,7 @@ body {
   border-radius: 6px;
   background: var(--knowledge-warning-soft);
   color: #9a5c05;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -2882,8 +2895,8 @@ body {
   border-bottom: 1px solid var(--color-border-soft);
   background: color-mix(in oklab, var(--color-surface-warm) 32%, var(--color-bg));
   color: var(--color-meta);
-  font-size: 10px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-ledger-rows {
@@ -2938,15 +2951,15 @@ body {
 
 .dashboard-knowledge-record-copy > strong {
   color: var(--color-fg);
-  font-size: 12px;
-  font-weight: 640;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.45;
 }
 
 .dashboard-knowledge-record-copy > span {
   margin-top: 2px;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -2960,7 +2973,7 @@ body {
   overflow: hidden;
   color: var(--color-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2971,8 +2984,8 @@ body {
   align-items: center;
   gap: 6px;
   color: var(--color-muted);
-  font-size: 10px;
-  font-weight: 570;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -3032,14 +3045,14 @@ body {
   margin: 0;
   color: var(--color-fg);
   font-size: 14px;
-  font-weight: 660;
+  font-weight: 600;
   line-height: 1.4;
 }
 
 .dashboard-knowledge-inspector > header p {
   margin: 7px 0 0;
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -3051,8 +3064,8 @@ body {
 .dashboard-knowledge-inspector h4 {
   margin: 0 0 10px;
   color: var(--color-fg);
-  font-size: 11px;
-  font-weight: 660;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-inspector dl {
@@ -3072,7 +3085,7 @@ body {
 .dashboard-knowledge-inspector-muted {
   margin: 0;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -3103,7 +3116,7 @@ body {
   height: 26px;
   padding-inline: 7px;
   color: var(--color-accent);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-context-application-history article {
@@ -3126,7 +3139,7 @@ body {
 .dashboard-context-application-history time,
 .dashboard-context-application-history p,
 .dashboard-context-application-history span {
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -3150,7 +3163,7 @@ body {
   border-radius: 6px;
   background: var(--knowledge-warning-soft);
   color: #9a5c05;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -3175,7 +3188,7 @@ body {
   align-items: flex-start;
   gap: 8px;
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-source-list li > span {
@@ -3188,7 +3201,7 @@ body {
 .dashboard-knowledge-source-list li em,
 .dashboard-knowledge-verification-list li span {
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 13px;
   font-style: normal;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -3208,7 +3221,7 @@ body {
   overflow-wrap: anywhere;
   color: var(--color-fg-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-inspector > footer {
@@ -3233,7 +3246,7 @@ body {
 .dashboard-knowledge-inspector-actions .ant-btn {
   min-height: 32px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-inspector-actions .ant-btn-dangerous {
@@ -3280,7 +3293,7 @@ body {
 
 .dashboard-knowledge-source-toolbar-meta > span {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-source-view {
@@ -3312,8 +3325,8 @@ body {
   border-bottom: 1px solid var(--color-border-soft);
   background: color-mix(in oklab, var(--color-surface-warm) 32%, var(--color-bg));
   color: var(--color-meta);
-  font-size: 10px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-source-row {
@@ -3327,7 +3340,7 @@ body {
   font: inherit;
   border-bottom: 1px solid var(--color-border-soft);
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
@@ -3359,21 +3372,21 @@ body {
   overflow: hidden;
   color: var(--color-fg-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .dashboard-knowledge-source-row strong {
   color: var(--color-fg-2);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
 }
 
 .dashboard-knowledge-source-row time {
   color: var(--color-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-preview-modal .ant-modal-body {
@@ -3413,13 +3426,13 @@ body {
 
 .dashboard-project-knowledge-detail-nav-head strong {
   color: var(--color-fg-2);
-  font-size: 12px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-project-knowledge-detail-nav-head span {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-project-knowledge-detail-nav-items {
@@ -3463,13 +3476,13 @@ body {
 }
 
 .dashboard-project-knowledge-detail-nav-items strong {
-  font-size: 12px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-project-knowledge-detail-nav-items span {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-preview-scroll {
@@ -3497,8 +3510,8 @@ body {
 .dashboard-knowledge-preview-toc p {
   margin: 0 8px 8px;
   color: var(--color-muted);
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-preview-toc ul {
@@ -3514,7 +3527,7 @@ body {
   padding: 7px 8px;
   border-radius: 6px;
   color: var(--color-fg-2);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
   text-decoration: none;
 }
@@ -3540,8 +3553,8 @@ body {
 .dashboard-project-knowledge-detail h3 {
   margin: 0;
   color: var(--color-fg);
-  font-size: 15px;
-  font-weight: 650;
+  font-size: 20px;
+  font-weight: 600;
 }
 
 .dashboard-project-knowledge-detail-content {
@@ -3592,13 +3605,13 @@ body {
 
 .dashboard-project-knowledge-detail dt {
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-project-knowledge-detail dd {
   margin: 5px 0 0;
   color: var(--color-fg-2);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -3618,14 +3631,14 @@ body {
   color: var(--color-fg);
   font-family: var(--font-mono);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-source-detail > header span,
 .dashboard-knowledge-source-detail-meta,
 .dashboard-knowledge-source-detail-state {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-source-detail > dl {
@@ -3643,7 +3656,7 @@ body {
 
 .dashboard-knowledge-source-detail dt {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-source-detail dd {
@@ -3661,8 +3674,8 @@ body {
 .dashboard-knowledge-source-detail h4 {
   margin: 0;
   color: var(--color-fg);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-source-related {
@@ -3692,7 +3705,7 @@ body {
   display: grid;
   gap: 4px;
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -3722,7 +3735,7 @@ body {
 .dashboard-knowledge-source-related-versions small,
 .dashboard-knowledge-source-related-versions em {
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 13px;
   font-style: normal;
 }
 
@@ -3752,7 +3765,7 @@ body {
 .dashboard-knowledge-source-related span {
   overflow: hidden;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3767,7 +3780,7 @@ body {
   display: flex;
   gap: 14px;
   margin-bottom: 8px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-source-detail pre {
@@ -3808,7 +3821,7 @@ body {
   border-bottom: 1px solid var(--color-border-soft);
   color: var(--color-fg);
   font-size: 20px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -3858,7 +3871,7 @@ body {
   min-width: 0;
   flex: 1 1 auto;
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
   text-align: left;
 }
@@ -3866,7 +3879,7 @@ body {
 .dashboard-knowledge-query-note {
   margin: 0 20px 14px;
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -3889,13 +3902,13 @@ body {
 
 .dashboard-knowledge-query-results article strong {
   color: var(--color-fg);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-knowledge-query-results article code {
   color: var(--color-meta);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 13px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -3911,7 +3924,7 @@ body {
   overflow: hidden;
   margin: 6px 0 0;
   color: var(--color-fg-2);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -3922,7 +3935,7 @@ body {
 
 .dashboard-project-knowledge-modal-root .dashboard-create-modal-content .ant-modal-title {
   font-size: 18px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .dashboard-project-knowledge-modal-root .dashboard-create-modal-content .ant-input,
@@ -4165,7 +4178,7 @@ body {
   color: var(--color-fg);
   font-family: var(--font-display);
   font-size: 20px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.025em;
 }
 
@@ -4201,7 +4214,7 @@ body {
 .dashboard-create-modal-content .ant-form-item-extra {
   padding-top: 5px;
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-create-modal-content .ant-input,
@@ -4500,7 +4513,7 @@ body {
 .ant-menu-light .ant-menu-item-selected {
   background: #f1f1f3 !important;
   color: var(--color-accent-active) !important;
-  font-weight: 560;
+  font-weight: 600;
 }
 
 .ant-menu-light .ant-menu-item:hover {
@@ -4638,7 +4651,7 @@ input {
 .md-github h4,
 .md-github h5,
 .md-github h6 {
-  font-weight: 560;
+  font-weight: 600;
   line-height: 1.35;
   margin-top: 28px;
   margin-bottom: 10px;
@@ -4748,7 +4761,7 @@ p.artifact-preview-path {
 }
 
 .md-github strong {
-  font-weight: 560;
+  font-weight: 600;
   color: #0969da;
 }
 
@@ -4788,7 +4801,7 @@ p.artifact-preview-path {
 
 .md-github th {
   background: #f6f8fa;
-  font-weight: 560;
+  font-weight: 600;
   color: #1f2328;
   white-space: nowrap;
 }
@@ -5269,7 +5282,7 @@ body {
   overflow: hidden;
   color: var(--color-fg);
   font-size: 13px;
-  font-weight: 620;
+  font-weight: 600;
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5279,7 +5292,7 @@ body {
   overflow: hidden;
   color: var(--color-meta);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 450;
   line-height: 15px;
   text-overflow: ellipsis;
@@ -5451,7 +5464,7 @@ body {
   margin-block: 2px;
   border-radius: 7px;
   color: var(--color-fg-2);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-sidebar .ant-menu-item::after {
@@ -5502,13 +5515,13 @@ body {
   margin: 0 9px 3px;
   padding-inline: 10px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-section-heading {
   color: #111827;
-  font-size: 18px !important;
-  font-weight: 620 !important;
+  font-size: 24px !important;
+  font-weight: 600 !important;
   letter-spacing: -0.025em !important;
 }
 
@@ -5540,13 +5553,13 @@ body {
 
 .dashboard-summary-card .ant-statistic-title {
   color: #687385;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-summary-card .ant-statistic-content {
   color: #101827;
   font-size: 25px;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .dashboard-summary-metric-cell .ant-tag,
@@ -5554,7 +5567,7 @@ body {
   min-height: 23px;
   margin-top: 11px;
   border-radius: 6px !important;
-  font-weight: 520;
+  font-weight: 600;
 }
 
 .dashboard-summary-tone-1 .ant-tag,
@@ -5607,7 +5620,7 @@ body {
   padding: 0;
   background: transparent;
   color: #1e5fd5;
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .dashboard-priority-title svg {
@@ -5622,8 +5635,8 @@ body {
   min-width: 0;
   padding: 0 0 0 16px;
   border-left: 1px solid #e9eef5;
-  color: #66758b;
-  font-size: 12px;
+  color: var(--color-muted);
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -5682,7 +5695,7 @@ body {
 .dashboard-overview-summary-card .dashboard-summary-metric {
   color: #172238;
   font-size: 30px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.04em;
 }
 
@@ -5733,7 +5746,7 @@ body {
 
 .dashboard-overview-summary-card.dashboard-summary-tone-2 .dashboard-summary-icon {
   background: #eef1f5;
-  color: #6f7a8a;
+  color: var(--color-muted);
 }
 
 .dashboard-overview-summary-card.dashboard-summary-tone-3 .dashboard-summary-icon {
@@ -5953,25 +5966,18 @@ body {
   justify-items: center;
 }
 
-.dashboard-workspace-side-empty .native-workspace-empty-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 13px;
-  font-size: 17px;
-}
-
 .dashboard-workspace-side-empty h3 {
   margin: 16px 0 0;
   color: var(--color-fg);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 20px;
 }
 
 .dashboard-workspace-side-empty p {
   margin: 8px 0 0;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.65;
 }
 
@@ -6003,7 +6009,7 @@ body {
   margin: 0;
   color: var(--color-fg);
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 22px;
 }
 
@@ -6038,7 +6044,7 @@ body {
 
 .native-workspace-tab-count {
   color: var(--color-meta);
-  font-size: 12px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
@@ -6056,16 +6062,61 @@ body {
   padding: 48px 24px 64px;
 }
 
-.native-workspace-empty-icon {
-  display: grid;
-  width: 52px;
-  height: 52px;
-  place-items: center;
-  border: 1px solid rgba(47, 133, 255, 0.14);
-  border-radius: 16px;
-  background: var(--color-accent-softer);
+.workflow-empty-illustration {
+  display: block;
+  width: 120px;
+  height: 96px;
+  flex: none;
   color: var(--color-accent);
-  font-size: 21px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.workflow-empty-illustration.is-compact {
+  width: 88px;
+  height: 70px;
+}
+
+.workflow-empty-shadow {
+  fill: var(--color-accent);
+  opacity: 0.05;
+}
+
+.workflow-empty-back {
+  fill: var(--color-accent-soft);
+  stroke: color-mix(in srgb, var(--color-accent) 18%, var(--color-bg));
+}
+
+.workflow-empty-card {
+  fill: var(--color-bg);
+  stroke: color-mix(in srgb, var(--color-accent) 30%, var(--color-bg));
+  stroke-width: 1.25;
+}
+
+.workflow-empty-divider {
+  stroke: color-mix(in srgb, var(--color-accent) 18%, var(--color-bg));
+  stroke-width: 1.5;
+}
+
+.workflow-empty-line {
+  stroke: color-mix(in srgb, var(--color-accent) 45%, var(--color-bg));
+  stroke-width: 2;
+}
+
+.workflow-empty-accent {
+  fill: currentColor;
+}
+
+.workflow-empty-route {
+  stroke: currentColor;
+  stroke-width: 1.75;
+}
+
+.workflow-empty-node,
+.workflow-empty-badge {
+  fill: var(--color-accent-softer);
+  stroke: color-mix(in srgb, var(--color-accent) 55%, var(--color-bg));
+  stroke-width: 1.25;
 }
 
 .native-changes-explorer {
@@ -6086,7 +6137,7 @@ body {
 
 .native-changes-explorer-header h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 16px;
   line-height: 20px;
 }
 
@@ -6173,7 +6224,7 @@ body {
   background: transparent;
   color: var(--color-meta);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .native-change-disclosure:hover,
@@ -6229,7 +6280,7 @@ body {
   border-radius: 999px;
   background: var(--color-surface);
   color: var(--color-meta);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 16px;
 }
 
@@ -6359,11 +6410,11 @@ body {
 
 .dashboard-workspace-region .text-xs,
 .dashboard-workspace-region .text-\[11px\] {
-  font-size: 12px !important;
+  font-size: 13px !important;
 }
 
 .dashboard-workspace-region .text-\[10px\] {
-  font-size: 11px !important;
+  font-size: 13px !important;
 }
 
 .dashboard-workspace-region .ant-card-head-title,
@@ -6394,10 +6445,8 @@ body {
   box-shadow: none;
 }
 
-/* Keep the workflow workspaces at their established type scale while making
-   the application shell and plugin-management surfaces readable at desktop
-   resolutions. The smallest persistent UI copy is now 12px, with 14px as the
-   default navigation and plugin body size. */
+/* Shared UI hierarchy: 24px page, 20px object, 16px section, 14px body,
+   and 13px supporting copy. Keep the root rem baseline for spacing. */
 .dashboard-sidebar {
   --dashboard-navigation-font-size: 14px;
 }
@@ -6424,18 +6473,18 @@ body {
 
 .dashboard-sidebar-brand strong {
   font-size: 13px;
-  font-weight: 620;
+  font-weight: 600;
   line-height: 22px;
 }
 
 .dashboard-sidebar-brand-copy > div {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 18px;
 }
 
 .dashboard-sidebar-label,
 .dashboard-sidebar-footer-label {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 18px;
 }
 
@@ -6502,7 +6551,7 @@ body {
 .dashboard-settings-page,
 .dashboard-tool-page-memory,
 .dashboard-tool-page-knowledge {
-  --dashboard-plugin-caption-size: 12px;
+  --dashboard-plugin-caption-size: 13px;
   --dashboard-plugin-supporting-size: 13px;
   --dashboard-plugin-body-size: 14px;
   --dashboard-plugin-section-size: 16px;
@@ -6560,7 +6609,7 @@ body {
 }
 
 .dashboard-settings-panel-head h4 {
-  font-size: var(--dashboard-plugin-section-size);
+  font-size: 16px;
   line-height: 1.4;
 }
 
@@ -6595,7 +6644,7 @@ body {
 }
 
 .dashboard-memory-panel-head h3 {
-  font-size: var(--dashboard-plugin-section-size);
+  font-size: 16px;
 }
 
 .dashboard-memory-panel-head p {
@@ -6621,7 +6670,7 @@ body {
 }
 
 .dashboard-knowledge-title-row h2 {
-  font-size: 26px;
+  font-size: 24px;
   line-height: 1.28;
 }
 
@@ -7323,12 +7372,12 @@ body {
 .dashboard-memory-filter-rail nav button.is-active {
   background: var(--color-accent-soft);
   color: var(--color-accent-active);
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .dashboard-memory-filter-rail nav button strong {
   color: var(--color-meta);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -7339,7 +7388,7 @@ body {
   padding: 14px 16px;
   border-top: 1px solid var(--color-border-soft);
   color: var(--color-meta);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -7359,20 +7408,20 @@ body {
 
 .dashboard-memory-learning-diagnostic > span:first-child {
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-memory-learning-diagnostic strong {
   color: var(--color-fg-2);
   font-size: 13px;
-  font-weight: 620;
+  font-weight: 600;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
 .dashboard-memory-learning-diagnostic small {
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -7390,6 +7439,8 @@ body {
 
 .dashboard-memory-registry {
   display: flex;
+  container-type: inline-size;
+  container-name: memory-registry;
   min-width: 0;
   flex-direction: column;
   background: var(--color-bg);
@@ -7413,13 +7464,13 @@ body {
 
 .dashboard-memory-registry-toolbar strong {
   color: var(--color-fg);
-  font-size: 15px;
-  font-weight: 650;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .dashboard-memory-registry-toolbar span {
   color: var(--color-meta);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-memory-registry-toolbar .ant-select {
@@ -7440,7 +7491,7 @@ body {
   border-bottom: 1px solid var(--color-border-soft);
   background: color-mix(in oklab, var(--color-surface-warm) 34%, var(--color-bg));
   color: var(--color-meta);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-memory-table-body {
@@ -7465,13 +7516,13 @@ body {
 
 .dashboard-memory-group-title strong {
   color: var(--color-fg-2);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .dashboard-memory-group-title span {
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-memory-table-row {
@@ -7506,6 +7557,7 @@ body {
 
 .dashboard-memory-table-title-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   min-width: 0;
   gap: 8px;
@@ -7515,7 +7567,7 @@ body {
   overflow: hidden;
   color: var(--color-fg);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -7526,14 +7578,14 @@ body {
   border-radius: 5px;
   background: var(--color-surface-warm);
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-memory-table-copy > p {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
   color: var(--color-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -7554,7 +7606,7 @@ body {
   background: transparent;
   color: var(--color-accent);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
   text-align: left;
   text-overflow: ellipsis;
@@ -7566,7 +7618,7 @@ body {
 .dashboard-memory-table-status,
 .dashboard-memory-table-time {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-memory-table-status {
@@ -7611,7 +7663,7 @@ body {
 .dashboard-tool-page-knowledge .ant-btn:not(.ant-btn-link):not(.ant-btn-text) {
   min-height: 34px;
   padding-inline: 12px;
-  font-weight: 590;
+  font-weight: 600;
 }
 
 .dashboard-plugin-primary-action,
@@ -7619,7 +7671,7 @@ body {
   min-height: 36px !important;
   padding-inline: 14px !important;
   border-radius: 8px !important;
-  font-weight: 620 !important;
+  font-weight: 600 !important;
 }
 
 .dashboard-workbench.is-embedded
@@ -7667,14 +7719,14 @@ body {
   border-radius: 5px;
   background: var(--color-accent-soft);
   color: var(--color-accent-active);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-memory-inspector-head strong {
   display: block;
   color: var(--color-fg);
-  font-size: 16px;
-  font-weight: 670;
+  font-size: 20px;
+  font-weight: 600;
   line-height: 1.4;
 }
 
@@ -7690,8 +7742,8 @@ body {
 .dashboard-memory-inspector h4 {
   margin: 0 0 10px;
   color: var(--color-fg-2);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .dashboard-memory-inspector-list {
@@ -7706,13 +7758,13 @@ body {
 
 .dashboard-memory-inspector-list span {
   color: var(--color-meta);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-memory-inspector-list strong {
   color: var(--color-muted);
-  font-size: 12px;
-  font-weight: 560;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -7744,7 +7796,7 @@ body {
   border-radius: 0;
   background: transparent;
   color: var(--color-muted);
-  font-weight: 540;
+  font-weight: 600;
 }
 
 .dashboard-tool-page-memory .dashboard-tool-chip-label {
@@ -7783,7 +7835,7 @@ body {
 
 .dashboard-memory-filter-rail nav button.is-active,
 .dashboard-knowledge-category.is-active {
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .dashboard-knowledge-category.is-active {
@@ -7904,7 +7956,7 @@ body {
   min-height: 34px;
   padding-inline: 12px;
   border-radius: 8px;
-  font-weight: 590;
+  font-weight: 600;
 }
 
 .dashboard-settings-modal-footer .ant-btn-primary {
@@ -7923,7 +7975,7 @@ body {
 .dashboard-settings-modal-title-row > .dashboard-tool-counter {
   flex: 0 0 auto;
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 20px;
   white-space: nowrap;
@@ -7931,8 +7983,8 @@ body {
 
 .dashboard-settings-modal-title-row > strong {
   color: var(--color-fg);
-  font-size: 21px;
-  font-weight: 680;
+  font-size: 20px;
+  font-weight: 600;
 }
 
 .dashboard-artifact-preview-expand,
@@ -8071,7 +8123,7 @@ body {
 .dashboard-settings-modal .dashboard-config-save-row code {
   color: var(--color-fg-2);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-settings-modal .dashboard-settings-danger {
@@ -8098,7 +8150,7 @@ body {
 
 .dashboard-settings-modal-footer > span {
   color: var(--color-meta);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-settings-modal-footer > div {
@@ -8340,6 +8392,7 @@ body {
 .dashboard-plugin-context-bar,
 .dashboard-knowledge-workspace-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   min-height: 58px;
@@ -8423,7 +8476,7 @@ body {
 
 .dashboard-compact-help-content dt {
   color: var(--color-fg);
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .dashboard-compact-help-content dd {
@@ -8439,8 +8492,8 @@ body {
   border-radius: 4px;
   background: color-mix(in oklab, var(--color-accent-soft) 70%, var(--color-bg));
   color: var(--color-accent-active);
-  font-size: 11px;
-  font-weight: 560;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.45;
   white-space: nowrap;
 }
@@ -8459,8 +8512,8 @@ body {
   min-width: 0;
   overflow: hidden;
   color: var(--color-fg);
-  font-size: 12px;
-  font-weight: 640;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8469,12 +8522,12 @@ body {
 .dashboard-record-title-line > .dashboard-record-origin {
   display: inline-flex;
   color: var(--knowledge-accent);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 /* 设置沿用工作区的正文字号，以标题与说明区分层级。 */
 .dashboard-settings-modal .dashboard-settings-page {
-  --dashboard-plugin-caption-size: 12px;
+  --dashboard-plugin-caption-size: 13px;
   --dashboard-plugin-supporting-size: 13px;
   --dashboard-plugin-body-size: 14px;
   --dashboard-plugin-section-size: 16px;
@@ -8483,8 +8536,8 @@ body {
 }
 
 .dashboard-settings-modal-title-row > strong {
-  font-size: 18px;
-  font-weight: 650;
+  font-size: 20px;
+  font-weight: 600;
 }
 
 .dashboard-settings-modal-title p {
@@ -8499,8 +8552,8 @@ body {
 }
 
 .dashboard-knowledge-preview-modal .dashboard-settings-modal-title-row > strong {
-  font-size: 18px;
-  font-weight: 650;
+  font-size: 20px;
+  font-weight: 600;
   line-height: 26px;
 }
 
@@ -8861,7 +8914,7 @@ body {
 .dashboard-tool-page-memory .dashboard-tool-counter,
 .dashboard-tool-page-knowledge .dashboard-tool-chip,
 .dashboard-tool-page-knowledge .dashboard-tool-counter {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 18px;
 }
 
@@ -8877,7 +8930,7 @@ body {
 .dashboard-tool-page-knowledge .dashboard-context-manifest-summary-copy span,
 .dashboard-tool-page-knowledge .dashboard-context-manifest-summary-meta,
 .dashboard-tool-page-knowledge .dashboard-context-manifest-summary-meta time {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -8890,17 +8943,17 @@ body {
 .dashboard-tool-page-memory .dashboard-memory-table-title-row span,
 .dashboard-tool-page-memory .dashboard-memory-inspector-head > span,
 .dashboard-tool-page-memory .dashboard-memory-inspector-list span {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-tool-page-memory .dashboard-memory-table-title-row .dashboard-record-origin {
   background: color-mix(in oklab, var(--color-accent-soft) 72%, var(--color-bg));
   color: var(--color-accent-active);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-tool-page-memory .dashboard-memory-inspector-list strong {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -8916,15 +8969,15 @@ body {
 .dashboard-tool-page-knowledge .dashboard-knowledge-category-groups h3 small,
 .dashboard-tool-page-knowledge .dashboard-knowledge-category > span:last-child,
 .dashboard-tool-page-knowledge .dashboard-knowledge-explorer-foot {
-  font-size: 12px;
-}
-
-.dashboard-tool-page-knowledge .dashboard-knowledge-category {
   font-size: 13px;
 }
 
-.dashboard-tool-page-knowledge .dashboard-knowledge-ledger-toolbar strong {
+.dashboard-tool-page-knowledge .dashboard-knowledge-category {
   font-size: 14px;
+}
+
+.dashboard-tool-page-knowledge .dashboard-knowledge-ledger-toolbar strong {
+  font-size: 16px;
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-ledger-toolbar-meta {
@@ -8933,7 +8986,7 @@ body {
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-inline-warning,
 .dashboard-tool-page-knowledge .dashboard-knowledge-ledger-head {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-ledger-row {
@@ -8949,19 +9002,19 @@ body {
 }
 
 .dashboard-tool-page-knowledge .dashboard-record-title-line > .dashboard-record-origin {
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-record-copy > span,
 .dashboard-tool-page-knowledge .dashboard-knowledge-record-source,
 .dashboard-tool-page-knowledge .dashboard-knowledge-ledger-row time,
 .dashboard-tool-page-knowledge .dashboard-knowledge-record-state {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-inspector h3 {
-  font-size: 16px;
+  font-size: 20px;
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-inspector > header p,
@@ -8970,15 +9023,15 @@ body {
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-inspector h4 {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-inspector dt {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-inspector dd {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.55;
 }
 
@@ -8992,7 +9045,7 @@ body {
     .dashboard-knowledge-verification-list code,
     .dashboard-knowledge-record-id
   ) {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -9006,7 +9059,7 @@ body {
 .dashboard-tool-page-knowledge .dashboard-knowledge-source-row time,
 .dashboard-tool-page-knowledge .dashboard-knowledge-query-hint,
 .dashboard-tool-page-knowledge .dashboard-knowledge-query-note {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-source-row {
@@ -9015,7 +9068,7 @@ body {
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-source-row strong {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-query-results article strong {
@@ -9023,11 +9076,11 @@ body {
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-query-results article code {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .dashboard-tool-page-knowledge .dashboard-knowledge-query-results article p {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
 }
 
@@ -9048,7 +9101,7 @@ body {
   padding: 0 12px;
   color: var(--color-fg-2);
   font-size: 13px;
-  font-weight: 590;
+  font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -9079,13 +9132,13 @@ body {
 .dashboard-tool-page-memory .dashboard-context-application-history-title strong {
   color: var(--color-fg-2);
   font-size: 13px;
-  font-weight: 640;
+  font-weight: 600;
   line-height: 1.45;
 }
 
 .dashboard-tool-page-memory .dashboard-context-application-history-reason {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -9099,13 +9152,13 @@ body {
 
 .dashboard-tool-page-memory .dashboard-context-application-history-meta time,
 .dashboard-tool-page-memory .dashboard-context-application-history-meta span {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
 .dashboard-tool-page-memory .dashboard-context-application-history-meta span {
   color: var(--color-fg-2);
-  font-weight: 620;
+  font-weight: 600;
 }
 
 .dashboard-tool-page-memory .dashboard-context-application-history-meta span.is-used-successfully {
@@ -9224,7 +9277,7 @@ body {
   padding: 7px 12px;
   border-top: 1px solid var(--color-border-soft);
   color: var(--color-meta);
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -9237,7 +9290,7 @@ body {
   border-radius: 10px;
   background: var(--color-bg);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
@@ -9513,4 +9566,60 @@ body {
   outline: 2px solid var(--color-accent);
   outline-offset: 3px;
   border-radius: 3px;
+}
+
+/* Base reading space on the actual pane width, including enlarged text and
+   the embedded website canvas. Metadata moves below copy before it squeezes it. */
+@container memory-registry (max-width: 700px) {
+  .dashboard-memory-table-head {
+    display: none;
+  }
+  .dashboard-memory-table-row,
+  .dashboard-project-memory-row.dashboard-memory-table-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px 12px;
+  }
+  .dashboard-memory-table-copy {
+    grid-column: 1 / -1;
+  }
+  .dashboard-memory-table-scope,
+  .dashboard-memory-table-status,
+  .dashboard-memory-table-time,
+  .dashboard-project-memory-type {
+    display: block;
+  }
+  .dashboard-memory-table-status {
+    display: flex;
+  }
+  .dashboard-memory-record-actions {
+    justify-self: end;
+  }
+  .dashboard-memory-workspace .dashboard-memory-record-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-plugin-context-bar,
+  .dashboard-knowledge-workspace-head {
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .dashboard-plugin-context-meta {
+    flex-basis: 100%;
+  }
+  .dashboard-plugin-context-bar .dashboard-tool-actions,
+  .dashboard-plugin-context-bar .dashboard-tool-actions > div {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+  .dashboard-memory-registry-toolbar,
+  .dashboard-memory-registry-toolbar > div {
+    flex-wrap: wrap;
+  }
+  .dashboard-project-memory-search {
+    width: 100%;
+  }
 }

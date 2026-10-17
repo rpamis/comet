@@ -15,3 +15,4 @@ paths:
 - 数据和状态转换留在 Dashboard domain 的明确边界，不把 Runtime 业务规则复制进前端。
 - 修改后运行相关 Dashboard 测试和 `pnpm build:dashboard`；交互、响应式或浏览器行为变化再运行 Playwright E2E。
 - 浏览器验证以真实渲染结果为准，不只根据 JSX/CSS 源码推断视觉和交互已经正确。
+- 修改字体、字号、主题文字颜色、响应式阅读布局或官网演示时，先读取 `../../website/AGENTS.md` 的“Dashboard 与官网内嵌演示的字体规则”，按其中的统一层级与验收范围执行。

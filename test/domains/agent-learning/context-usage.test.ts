@@ -154,6 +154,7 @@ describe('task context usage', () => {
     expect(snapshot.requests).toBe(500);
     expect(snapshot.truncated).toBe(true);
     expect(snapshot.recentTasks.length).toBeLessThanOrEqual(10);
+    expect(snapshot.samples).toHaveLength(500);
   });
 
   test('dates expansion at actual delivery rather than the old collection request', async () => {

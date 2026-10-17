@@ -2444,7 +2444,71 @@ const demoProjectKnowledgeRecords = [
   },
 ];
 
-function demoContextUsage(records) {
+function demoContextUsage(records, source) {
+  const projectKnowledge = source === 'project-knowledge';
+  const tasks = projectKnowledge
+    ? [
+        ['核对 Dashboard 数据读取链路', 32],
+        ['检查新模块是否已有架构约定', 36],
+        ['复用文件预览的路径边界约束', 29],
+        ['查阅项目构建与测试入口', 41],
+        ['补充知识来源与验证记录', 34],
+        ['验证项目配置的兼容行为', 52],
+        ['梳理详情读取的缓存策略', 45],
+        ['核对归档文档中的接口约定', 68],
+      ]
+    : [
+        ['修复 Dashboard 的历史记录加载', 18],
+        ['检查当前阶段是否有适用记忆', 9],
+        ['更新项目测试约定', 12],
+        ['检查构建阶段的适用偏好', 26],
+        ['整理模块接口文档', 17],
+        ['验证命令行输出', 38],
+        ['修复工作区选择', 24],
+        ['补充任务验收记录', 42],
+      ];
+  const requests = projectKnowledge ? 30 : 24;
+  const hits = projectKnowledge ? 24 : 18;
+  const feedbackCount = projectKnowledge ? 15 : 9;
+  const successes = projectKnowledge ? 12 : 7;
+  const observedAt = Date.now() - 1000;
+  const samples = Array.from({ length: requests }, (_, index) => {
+    const hitIndex = index === 1 ? -1 : index === 0 ? 0 : index - 1;
+    const hit = hitIndex >= 0 && hitIndex < hits;
+    const [task, elapsedMs] = tasks[index % tasks.length];
+    const outcome =
+      hitIndex < successes
+        ? 'used-successfully'
+        : hitIndex === successes
+          ? 'corrected'
+          : hitIndex === successes + 1
+            ? 'ignored'
+            : projectKnowledge && hitIndex === successes + 2
+              ? 'overridden'
+              : undefined;
+    return {
+      episodeId: `demo-${source}-sample-${index}`,
+      task,
+      counted: true,
+      elapsedMs,
+      limited: false,
+      occurredAt: new Date(
+        observedAt - (index < 8 ? index * 3600000 : 86400000 + (index - 8) * 10800000),
+      ).toISOString(),
+      candidateCount: hit ? 1 : 0,
+      items: hit
+        ? [
+            {
+              applicationId: `demo-${source}-application-${index}`,
+              candidateId: records[index % records.length].id,
+              title: records[index % records.length].title ?? task,
+              delivery: hitIndex < (projectKnowledge ? 16 : 12) ? 'full' : 'manifest',
+              outcome,
+            },
+          ]
+        : [],
+    };
+  });
   return {
     demo: true,
     available: true,
@@ -2452,52 +2516,49 @@ function demoContextUsage(records) {
     sampleLimit: 500,
     truncated: false,
     trackingStartedAt: '2026-08-23T08:00:00.000Z',
-    requests: 24,
-    hits: 18,
-    hitRate: 0.75,
-    limitedRequests: 1,
-    fullDeliveries: 12,
-    recommendations: 18,
-    feedbackCount: 9,
-    feedbackRate: 0.5,
-    successes: 7,
+    requests,
+    hits,
+    hitRate: hits / requests,
+    limitedRequests: projectKnowledge ? 0 : 1,
+    fullDeliveries: projectKnowledge ? 16 : 12,
+    recommendations: hits,
+    feedbackCount,
+    feedbackRate: feedbackCount / hits,
+    successes,
     corrections: 1,
     failures: 0,
     ignored: 1,
-    overridden: 0,
-    successRate: 0.875,
-    p95Ms: 42,
-    lastQueryMs: 18,
-    recentTasks: [
-      {
-        episodeId: 'demo-recent-task',
-        task: '修复 Dashboard 的历史记录加载',
-        phase: 'build',
-        occurredAt: '2026-08-29T11:30:00.000Z',
-        counted: true,
-        elapsedMs: 18,
-        candidateCount: records.length,
-        limited: false,
-        items: records.slice(0, 2).map((record) => ({
-          candidateId: record.id,
-          title: record.title ?? record.category,
-          delivery: record.lastApplication?.delivery ?? 'full',
-          whyApplied: record.lastApplication?.whyApplied ?? '适用于当前阶段',
-          outcome: 'used-successfully',
-        })),
-      },
-      {
-        episodeId: 'demo-empty-task',
-        task: '检查当前阶段是否有适用记忆',
-        phase: 'verify',
-        occurredAt: '2026-08-29T10:30:00.000Z',
-        counted: true,
-        elapsedMs: 9,
-        candidateCount: 0,
-        limited: false,
-        items: [],
-      },
-    ],
+    overridden: projectKnowledge ? 1 : 0,
+    successRate: successes / (successes + 1),
+    p95Ms: projectKnowledge ? 68 : 42,
+    lastQueryMs: tasks[0][1],
+    samples,
+    recentTasks: tasks.map(([task, elapsedMs], index) => ({
+      episodeId: `demo-${source}-task-${index}`,
+      task,
+      phase: index % 2 ? 'verify' : 'build',
+      occurredAt: new Date(observedAt - index * 3600000).toISOString(),
+      counted: true,
+      elapsedMs,
+      candidateCount: index === 1 ? 0 : index === 0 ? records.length : 1,
+      limited: false,
+      items: records.slice(0, index === 1 ? 0 : index === 0 ? 2 : 1).map((record) => ({
+        candidateId: record.id,
+        title: record.title ?? record.category,
+        delivery: index % 2 ? 'manifest' : (record.lastApplication?.delivery ?? 'full'),
+        whyApplied: record.lastApplication?.whyApplied ?? '适用于当前阶段',
+        outcome: [
+          'used-successfully',
+          undefined,
+          'used-successfully',
+          'corrected',
+          'used-successfully',
+          projectKnowledge ? 'overridden' : undefined,
+          'used-successfully',
+          'ignored',
+        ][index],
+      })),
+    })),
   };
 }
 
@@ -2511,7 +2572,7 @@ export const DEMO_PLUGIN_PAGES = [
     projectPaused: false,
     diagnostics: [],
     data: {
-      contextUsage: demoContextUsage(demoMemoryRecords),
+      contextUsage: demoContextUsage(demoMemoryRecords, 'personal-memory'),
       status: {
         learningEnabled: true,
         retrievalEnabled: true,
@@ -2553,7 +2614,7 @@ export const DEMO_PLUGIN_PAGES = [
     projectPaused: false,
     diagnostics: [],
     data: {
-      contextUsage: demoContextUsage(demoProjectKnowledgeRecords),
+      contextUsage: demoContextUsage(demoProjectKnowledgeRecords, 'project-knowledge'),
       provider: 'local',
       configured: true,
       localLimits: { maxFileMb: 1, maxTotalMb: 32 },

@@ -16,6 +16,13 @@ function browser(url = 'http://localhost:4399/') {
 }
 
 describe('Dashboard navigation without URL suffixes', () => {
+  it('restores the context usage page for its selected project', () => {
+    const page = browser();
+    navigateDashboard({ view: 'context-usage', projectId: 'one' }, {}, page);
+    expect(readDashboardNavigation(page)).toEqual({ view: 'context-usage', projectId: 'one' });
+    navigateDashboard({ view: 'context-usage', projectId: 'two' }, {}, page);
+    expect(readDashboardNavigation(page)).toEqual({ view: 'context-usage', projectId: 'two' });
+  });
   it('resumes each project workspace without replacing explicit list navigation', () => {
     const page = browser();
     navigateDashboard({ view: 'eval', projectId: 'one', runId: 'run-one' }, {}, page);

@@ -135,6 +135,10 @@ describe('Native flow efficiency plan', () => {
       '<receiving-session-id>',
       '--context-mode',
       'snapshot',
+      '--workflow',
+      'native',
+      '--change',
+      'stage-context',
       '--json',
     ]);
     expect(state).toEqual(before);

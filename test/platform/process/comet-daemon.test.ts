@@ -122,7 +122,17 @@ describe('Comet daemon protocol', () => {
       ok: true,
       status: { buildId: 'test-build' },
     });
-    expect(status.status?.activeRequests).toBeGreaterThanOrEqual(1);
+    expect(status.status?.activeRequests).toBe(0);
+    expect(status.status?.requestCount).toBe(1);
+    const metrics = server.status().lastRequest;
+    await sendCometDaemonRequest({
+      endpoint,
+      buildId: 'test-build',
+      projectRoot,
+      control: 'status',
+    });
+    expect(server.status().requestCount).toBe(1);
+    expect(server.status().lastRequest).toEqual(metrics);
   });
 
   it('rejects a request from another build before invoking the handler', async () => {
@@ -149,6 +159,27 @@ describe('Comet daemon protocol', () => {
     });
     expect(response).toMatchObject({ ok: false, error: 'daemon build mismatch' });
     expect(calls).toBe(0);
+  });
+  it('lets an idle process exit while status observations continue', async () => {
+    const projectRoot = process.cwd();
+    const buildId = 'idle-observations';
+    const endpoint = resolveCometDaemonEndpoint(projectRoot, buildId);
+    const server = await createCometDaemonServer({
+      endpoint,
+      buildId,
+      projectRoot,
+      idleTimeoutMs: 250,
+      handler: async () => ({ exitCode: 0 }),
+    });
+    servers.push(server);
+    for (let index = 0; index < 3; index++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await sendCometDaemonRequest({ endpoint, buildId, projectRoot, control: 'status' });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    await expect(
+      sendCometDaemonRequest({ endpoint, buildId, projectRoot, control: 'status', timeoutMs: 500 }),
+    ).rejects.toThrow();
   });
 
   it('stops through the control channel', async () => {

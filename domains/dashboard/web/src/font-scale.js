@@ -32,10 +32,17 @@ export function dashboardFontScaleCss() {
   return {
     postcssPlugin: 'comet-dashboard-font-scale',
     Declaration(declaration) {
-      if (declaration.prop !== 'font-size' || declaration.value.includes('--dashboard-font-scale'))
-        return;
+      if (declaration.value.includes('--dashboard-font-scale')) return;
       const selector = declaration.parent?.selector ?? '';
       if (selector.split(',').some((part) => /^(?:html|:root|:host)$/u.test(part.trim()))) return;
+      if (declaration.prop === 'font') {
+        declaration.value = declaration.value.replace(
+          /(^|\s)([\d.]+(?:px|rem))(?=\s|\/)/u,
+          '$1calc($2 * var(--dashboard-font-scale, 1))',
+        );
+        return;
+      }
+      if (declaration.prop !== 'font-size') return;
       if (
         /^(?:inherit|initial|unset|revert(?:-layer)?|(?:xx?-)?(?:small|large)|medium|smaller|larger|0|[\d.]+(?:em|%))$/u.test(
           declaration.value.trim(),

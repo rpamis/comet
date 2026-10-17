@@ -262,7 +262,16 @@ export async function classicRecoveryContext(
     continuation: {
       ...nextAction,
       cwd: root,
-      ...(!state.archived ? { contextRequest: classicTaskContextRequest(state, root) } : {}),
+      ...(!state.archived
+        ? {
+            contextRequest: classicTaskContextRequest(
+              state,
+              root,
+              undefined,
+              path.basename(directory),
+            ),
+          }
+        : {}),
       skill:
         state.phase === 'build' && ['hotfix', 'tweak'].includes(state.workflow)
           ? `comet-${state.workflow}`

@@ -1,5 +1,19 @@
+import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+
+async function setDashboardTheme(page: Page, theme: 'light' | 'dark') {
+  const settings = page.getByRole('button', { name: /^(设置|Settings)$/ });
+  if (!(await settings.isVisible()))
+    await page.getByRole('button', { name: /^(展开导航|Open navigation)$/ }).click();
+  await settings.click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('menuitem', { name: /外观|Appearance/ }).click();
+  await dialog
+    .getByRole('radio', { name: theme === 'dark' ? /^(暗色|Dark)$/ : /^(亮色|Light)$/ })
+    .check();
+  await dialog.getByRole('button', { name: /^(完成|Done)$/ }).click();
+}
 
 const run = {
   id: 'eval-one',
@@ -643,7 +657,7 @@ test.describe('Dashboard Eval', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole('button', { name: 'writer', exact: true }).click();
     for (const mode of ['light', 'dark', 'narrow']) {
-      if (mode === 'dark') await page.getByRole('button', { name: '切换到暗色模式' }).click();
+      if (mode === 'dark') await setDashboardTheme(page, 'dark');
       if (mode === 'narrow') await page.setViewportSize({ width: 390, height: 844 });
       for (const [tab, file, content] of [
         ['结果概览', 'overview', '适用评分维度（0–1）'],
@@ -1378,10 +1392,10 @@ test.describe('Dashboard Eval', () => {
     await expect(nextPage).toBeDisabled();
     await expect(page.getByText('16–16 / 共 16 条', { exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('eval-pagination-desktop.png') });
-    await page.getByRole('button', { name: '切换到暗色模式' }).click();
+    await setDashboardTheme(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.screenshot({ path: test.info().outputPath('eval-list-dark.png'), fullPage: true });
-    await page.getByRole('button', { name: '切换到亮色模式' }).click();
+    await setDashboardTheme(page, 'light');
     await page.setViewportSize({ width: 390, height: 844 });
     await expect
       .poll(() =>
@@ -1405,7 +1419,7 @@ test.describe('Dashboard Eval', () => {
       '1',
     );
     await page.screenshot({ path: test.info().outputPath('eval-desktop.png'), fullPage: true });
-    await page.getByRole('button', { name: '切换到暗色模式' }).click();
+    await setDashboardTheme(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.screenshot({ path: test.info().outputPath('eval-dark.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });

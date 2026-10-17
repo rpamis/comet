@@ -104,13 +104,14 @@ export async function readCometTaskProjectLearning(
 export async function collectCometTaskContext(
   projectRoot: string,
   request: CometPluginContextRequest,
+  trace?: { workflow: 'native' | 'classic'; change: string },
 ): Promise<readonly CometPluginContextContribution[]> {
   try {
     const output = await runExternalCommandAsync(
       process.execPath,
       [fileURLToPath(new URL('./comet-task-context-worker.js', import.meta.url))],
       {
-        input: JSON.stringify({ projectRoot, request }),
+        input: JSON.stringify({ projectRoot, request, ...(trace ? { trace } : {}) }),
         timeoutMs: 10_000,
         maxBufferBytes: 1024 * 1024,
         onStderr: (chunk) => {

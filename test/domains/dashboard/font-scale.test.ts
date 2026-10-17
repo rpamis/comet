@@ -40,4 +40,15 @@ describe('dashboard font size preference', () => {
     const again = await postcss([dashboardFontScaleCss()]).process(result.css, { from: undefined });
     expect(again.css).toBe(result.css);
   });
+  it('scales code and metric font shorthands once without changing line height', async () => {
+    const result = await postcss([dashboardFontScaleCss()]).process(
+      '.code{font:13px/1.7 var(--font-mono)}.metric{font:600 36px/1.3 var(--font-display)}.child{font:inherit}',
+      { from: undefined },
+    );
+    expect(result.css).toContain('font:calc(13px * var(--dashboard-font-scale, 1))/1.7');
+    expect(result.css).toContain('font:600 calc(36px * var(--dashboard-font-scale, 1))/1.3');
+    expect(result.css).toContain('font:inherit');
+    const again = await postcss([dashboardFontScaleCss()]).process(result.css, { from: undefined });
+    expect(again.css).toBe(result.css);
+  });
 });

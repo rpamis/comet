@@ -1,5 +1,6 @@
 import { nativeArchiveCommand } from './native-archive-command.js';
 import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
+import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
 import { nativeCancelCommand } from './native-cancel-command.js';
 import { nativeCheckCommand } from './native-check-command.js';
 import { nativeDoctorCommand } from './native-doctor-command.js';
@@ -91,7 +92,20 @@ async function dispatch(
   if (!handler) {
     throw new NativeUsageError(`Unknown Native command: ${command}`);
   }
-  return { executionCwd: projectRoot, ...(await handler(rawArgs, projectRoot)) };
+  const invoke = () => handler(rawArgs, projectRoot);
+  const result =
+    command === 'hook-guard'
+      ? await invoke()
+      : await observeRuntimeOperation(
+          {
+            projectRoot: () => projectRoot,
+            workflow: 'native',
+            command,
+            errorExitCode: (error) => errorResult(command, error).exitCode,
+          },
+          invoke,
+        );
+  return { executionCwd: projectRoot, ...result };
 }
 
 export async function runNativeCliDetailed(

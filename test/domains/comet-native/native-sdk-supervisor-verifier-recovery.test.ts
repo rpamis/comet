@@ -140,6 +140,7 @@ async function decide(
 }
 
 describe('Supervisor Child Verifier execution failure', () => {
+  // 包含真实 Git worktree 与固定应用的完整恢复链路，沿用 Supervisor 集成测试预算。
   it('preserves a real custom application failure and receipts, advances its sibling, and retries only its review', async () => {
     const f = await fixture();
     const identity = (await loadOwnedNativeSdkRuntime(f.projectRoot, f.name)).application!.identity;
@@ -220,7 +221,7 @@ describe('Supervisor Child Verifier execution failure', () => {
     });
     expect(f.pending(run, 'supervisor.child.integrate')).toBeTruthy();
     expect(run.actions.find((action) => action.id === original.id)).toEqual(original);
-  });
+  }, 240_000);
 
   it('uses the same recovery Wait for the built-in Native Supervisor', async () => {
     const f = await fixture('native');

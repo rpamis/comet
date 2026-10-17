@@ -10,6 +10,8 @@ import { classicCommandHelp } from './classic-cli-help.js';
 import { projectCliAgentObservation } from '../workflow-contract/output-envelope.js';
 import { classicIssue } from './classic-issues.js';
 import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
+import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
+import { discoverClassicProject } from './classic-layout.js';
 
 function jsonResult(
   command: ClassicCommandName,
@@ -62,7 +64,19 @@ async function executeClassicScript(
       ? { exitCode: 0, stdout: help }
       : command === 'hook-guard'
         ? await invoke()
-        : await withCometRuntimeProgress(invoke);
+        : await withCometRuntimeProgress(() =>
+            observeRuntimeOperation(
+              {
+                projectRoot: () =>
+                  runOptions.projectRoot ??
+                  discoverClassicProject(runOptions.invocationCwd ?? process.cwd()),
+                workflow: 'classic',
+                command,
+                errorExitCode: () => 70,
+              },
+              invoke,
+            ),
+          );
   } catch (error) {
     result = {
       exitCode: 70,

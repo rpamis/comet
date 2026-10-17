@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
 import { Button, Collapse, Empty, Popover, Tag, Tooltip } from 'antd';
-import { InfoCircleOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { t, getDashboardLocale, systemText } from './dashboard-i18n.js';
 import { DashboardModal } from './dashboard-modal.jsx';
+import {
+  UsageDeliveryChart,
+  UsageFeedbackChart,
+  UsageHitBreakdown,
+  UsageLatencyChart,
+  UsageMiniLatency,
+  UsageOutcomeChart,
+} from './context-usage-charts.jsx';
 import './context-usage-panel.css';
 
 const outcomeLabel = (outcome) =>
@@ -14,21 +22,22 @@ const outcomeLabel = (outcome) =>
     overridden: t('已覆盖'),
   })[outcome] ?? t('尚无反馈');
 
-export function ContextUsagePanel({ snapshot, title }) {
+export function ContextUsagePanel({ snapshot, title, rangeLabel = t('最近 7 天') }) {
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState([]);
   const known = snapshot?.available === true;
   const percent = (value) =>
     value == null
       ? '—'
       : new Intl.NumberFormat(getDashboardLocale(), {
-          style: 'percent',
           maximumFractionDigits: 1,
-        }).format(value);
+        }).format(value * 100);
   const count = (value) => (known ? (value ?? 0) : '—');
   const metrics = [
     {
       label: t('上下文命中率'),
       value: percent(known ? snapshot.hitRate : null),
+      unit: known && snapshot.hitRate != null ? '%' : '',
       detail: known
         ? t('{0}/{1} 次请求有适用内容', [snapshot.hits, snapshot.requests])
         : t('暂无可用统计'),
@@ -45,6 +54,7 @@ export function ContextUsagePanel({ snapshot, title }) {
     {
       label: t('使用成功率'),
       value: percent(known ? snapshot.successRate : null),
+      unit: known && snapshot.successRate != null ? '%' : '',
       detail: known
         ? t('{0}/{1} 次实际使用反馈成功', [
             snapshot.successes,
@@ -62,6 +72,7 @@ export function ContextUsagePanel({ snapshot, title }) {
     {
       label: t('反馈覆盖率'),
       value: percent(known ? snapshot.feedbackRate : null),
+      unit: known && snapshot.feedbackRate != null ? '%' : '',
       detail: known
         ? t('{0}/{1} 条推荐有结果反馈', [snapshot.feedbackCount, snapshot.recommendations])
         : t('尚无使用反馈'),
@@ -69,7 +80,8 @@ export function ContextUsagePanel({ snapshot, title }) {
     },
     {
       label: t('检索耗时 P95'),
-      value: known && snapshot.p95Ms != null ? `${Math.round(snapshot.p95Ms)} ms` : '—',
+      value: known && snapshot.p95Ms != null ? Math.round(snapshot.p95Ms) : '—',
+      unit: known && snapshot.p95Ms != null ? ' ms' : '',
       detail:
         known && snapshot.lastQueryMs != null
           ? t('最近一次 {0} ms', [Math.round(snapshot.lastQueryMs)])
@@ -78,39 +90,129 @@ export function ContextUsagePanel({ snapshot, title }) {
     },
   ];
   const recent = known ? (snapshot.recentTasks ?? []) : [];
+  const openHistory = (index = null) => {
+    setSelectedTask(index === null ? [] : [`${recent[index].episodeId}:${index}`]);
+    setHistoryOpen(true);
+  };
+  const renderMetric = (index, chart = null) => {
+    const metric = metrics[index];
+    return (
+      <div key={metric.label} className={`usage-summary-stat usage-summary-stat-${index}`}>
+        <dt>
+          <Tooltip title={metric.help}>
+            <span tabIndex={0}>
+              {metric.label} <InfoCircleOutlined />
+            </span>
+          </Tooltip>
+        </dt>
+        <dd title={metric.detail}>
+          {metric.value}
+          <span className="dashboard-context-usage-unit">{metric.unit}</span>
+        </dd>
+        <small>{metric.detail}</small>
+        {chart}
+      </div>
+    );
+  };
   return (
     <section className="dashboard-context-usage" aria-label={title}>
-      <header>
-        <div className="dashboard-context-usage-heading">
-          <h3>{title}</h3>
-          <span>{t('最近 7 天')}</span>
-          {snapshot?.demo && <Tag>{t('演示数据')}</Tag>}
-          {known && snapshot.truncated && <Tag color="warning">{t('记录已截断')}</Tag>}
-        </div>
-        <Button
-          size="small"
-          type="text"
-          disabled={!recent.length}
-          onClick={() => setHistoryOpen(true)}
-        >
-          {t('查看最近任务')}
-        </Button>
-      </header>
-      <dl className="dashboard-context-usage-metrics">
-        {metrics.map((metric) => (
-          <div key={metric.label}>
-            <dt>
-              <Tooltip title={metric.help}>
-                <span tabIndex={0}>
-                  {metric.label} <InfoCircleOutlined />
-                </span>
-              </Tooltip>
-            </dt>
-            <dd title={metric.detail}>{metric.value}</dd>
-            <small>{metric.detail}</small>
-          </div>
-        ))}
+      <dl className="usage-overview-grid">
+        {renderMetric(0, <UsageHitBreakdown snapshot={snapshot} />)}
+        {renderMetric(1, <UsageDeliveryChart snapshot={snapshot} />)}
+        {renderMetric(4, <UsageMiniLatency recent={recent} />)}
       </dl>
+      <div className="usage-analysis-grid">
+        <section className="usage-card usage-latency-card" aria-label={t('最近检索耗时')}>
+          <header>
+            <h4>{t('最近检索耗时')}</h4>
+            <span>
+              {known && snapshot.lastQueryMs != null
+                ? t('最近一次 {0} ms', [Math.round(snapshot.lastQueryMs)])
+                : t('尚无耗时记录')}
+            </span>
+          </header>
+          <UsageLatencyChart recent={recent} demo={snapshot?.demo} onSelect={openHistory} />
+        </section>
+        <section className="usage-card usage-feedback-card" aria-label={t('使用反馈')}>
+          <header>
+            <h4>{t('使用反馈')}</h4>
+            <Tooltip title={t('没有反馈保持未知，不计为失败。')} trigger={['hover', 'focus']}>
+              <Button
+                type="text"
+                size="small"
+                className="usage-help-button"
+                aria-label={t('了解使用反馈')}
+                icon={<InfoCircleOutlined />}
+              />
+            </Tooltip>
+          </header>
+          <UsageFeedbackChart snapshot={snapshot}>
+            <dl className="usage-feedback-metrics">
+              {renderMetric(2)}
+              {renderMetric(3)}
+            </dl>
+          </UsageFeedbackChart>
+        </section>
+      </div>
+      <div className="usage-details-grid">
+        <section className="usage-card usage-outcome-card" aria-label={t('反馈结果分布')}>
+          <header>
+            <h4>{t('反馈结果分布')}</h4>
+            <span>{rangeLabel}</span>
+          </header>
+          <UsageOutcomeChart snapshot={snapshot} />
+        </section>
+        <div className="dashboard-context-usage-recent">
+          <div className="dashboard-context-usage-recent-heading">
+            <h4>{t('最近检索记录')}</h4>
+            <Button
+              size="small"
+              type="text"
+              disabled={!recent.length}
+              onClick={() => openHistory()}
+            >
+              {t('查看最近任务')}
+              <ArrowRightOutlined />
+            </Button>
+          </div>
+          {recent.length ? (
+            <div className="dashboard-context-usage-recent-list">
+              {recent.slice(0, 3).map((row, index) => (
+                <button
+                  type="button"
+                  key={`${row.episodeId}:${index}`}
+                  className="dashboard-context-usage-recent-row"
+                  onClick={() => openHistory(index)}
+                >
+                  <span className="dashboard-context-usage-recent-copy">
+                    <strong>{snapshot.demo ? t(row.task) : row.task}</strong>
+                    <span>
+                      {new Date(row.occurredAt).toLocaleString(getDashboardLocale())}
+                      {row.elapsedMs != null ? ` · ${Math.round(row.elapsedMs)} ms` : ''}
+                    </span>
+                  </span>
+                  <Tag color={row.limited ? 'warning' : undefined}>
+                    {row.limited
+                      ? t('结果受限')
+                      : row.counted
+                        ? t('{0} 个适用候选', [row.candidateCount])
+                        : t('按需展开')}
+                  </Tag>
+                  <ArrowRightOutlined
+                    className="dashboard-context-usage-row-arrow"
+                    aria-hidden="true"
+                  />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="dashboard-context-usage-empty">
+              <strong>{known ? t('等待下一次任务检索') : t('暂无可用统计')}</strong>
+              <p>{t('Agent 执行任务后，可在这里查看检索内容与使用反馈。')}</p>
+            </div>
+          )}
+        </div>
+      </div>
       <footer>
         <span>
           {!known
@@ -163,6 +265,8 @@ export function ContextUsagePanel({ snapshot, title }) {
         </p>
         {recent.length ? (
           <Collapse
+            activeKey={selectedTask}
+            onChange={setSelectedTask}
             items={recent.map((row, index) => ({
               key: `${row.episodeId}:${index}`,
               label: (

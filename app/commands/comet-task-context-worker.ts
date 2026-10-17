@@ -4,6 +4,7 @@ import {
 } from '../../domains/comet-entry/plugin-context.js';
 import { withProjectIdentityScope } from '../../platform/paths/project-identity.js';
 import { readStdinTextWithTimeoutAsync } from '../../platform/process/stdin-read.js';
+import { observeRuntimeSpan } from '../../platform/process/runtime-trace.js';
 import type { CometPluginContextRequest } from '../../domains/comet-plugin/comet.js';
 import {
   readProjectLearningStatus,
@@ -13,11 +14,14 @@ import {
 try {
   const input = await readStdinTextWithTimeoutAsync();
   if (!input.text) throw new Error('Task context input is unavailable');
-  const { projectRoot, request, projectLearning, workflowResults } = JSON.parse(input.text) as {
+  const { projectRoot, request, projectLearning, workflowResults, trace } = JSON.parse(
+    input.text,
+  ) as {
     projectRoot: string;
     request: CometPluginContextRequest;
     projectLearning?: ProjectLearningRequest;
     workflowResults?: readonly Parameters<typeof recordCometWorkflowResult>[0][];
+    trace?: { workflow: 'native' | 'classic'; change: string };
   };
   const context = await withProjectIdentityScope(async () => {
     if (workflowResults !== undefined) {
@@ -30,7 +34,23 @@ try {
       return results;
     }
     return projectLearning === undefined
-      ? collectCometPluginContext(projectRoot, request)
+      ? trace &&
+        ['native', 'classic'].includes(trace.workflow) &&
+        typeof trace.change === 'string' &&
+        trace.change.length > 0 &&
+        trace.change.length <= 240
+        ? observeRuntimeSpan(
+            {
+              projectRoot: () => projectRoot,
+              workflow: trace.workflow,
+              change: trace.change,
+              runId: trace.change,
+              kind: 'retrieval',
+              name: '任务上下文检索',
+            },
+            () => collectCometPluginContext(projectRoot, request),
+          )
+        : collectCometPluginContext(projectRoot, request)
       : readProjectLearningStatus(projectRoot, projectLearning);
   });
   // All context persistence has completed. Exit after flushing the response so

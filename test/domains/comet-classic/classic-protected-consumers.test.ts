@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 
 import { runClassicCli } from '../../../domains/comet-classic/classic-cli.js';
+import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 
 const CLASSIC_CONFIG = [
   'schema: comet.project.v1',
@@ -119,6 +120,13 @@ describe.sequential('Classic protected path consumers', () => {
       if (!(await linkDirectory(outsideRoot, path.join(projectRoot, 'linked-artifacts')))) return;
       const stateFile = path.join(projectRoot, 'openspec', 'changes', 'demo', '.comet.yaml');
       const before = await fs.readFile(stateFile, 'utf8');
+      const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+      const workspaceRoot = path.dirname(runtimeRoot);
+      const diagnosticDirectories = [
+        path.dirname(workspaceRoot),
+        workspaceRoot,
+        path.join(workspaceRoot, 'observability'),
+      ];
       const writes = [
         vi.spyOn(fs, 'mkdir'),
         vi.spyOn(fs, 'writeFile'),
@@ -129,7 +137,10 @@ describe.sequential('Classic protected path consumers', () => {
         kind === 'junction' ? ['design_doc', 'linked-artifacts/design.md'] : ['base_ref', '['];
       const result = await runClassicCli(['state', 'set', 'demo', 'language', 'zh-CN', ...invalid]);
       expect(result.exitCode).not.toBe(0);
-      for (const write of writes) expect(write).not.toHaveBeenCalled();
+      for (const [target] of writes[0].mock.calls)
+        expect(diagnosticDirectories).toContain(path.resolve(String(target)));
+      for (const write of writes.slice(1)) expect(write).not.toHaveBeenCalled();
+      await expect(fs.lstat(runtimeRoot)).rejects.toMatchObject({ code: 'ENOENT' });
       expect(await fs.readFile(stateFile, 'utf8')).toBe(before);
     },
   );

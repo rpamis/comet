@@ -1,0 +1,185 @@
+.dashboard-theme-heading {
+  margin-bottom: 16px;
+}
+.dashboard-theme-heading h4 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.dashboard-theme-heading p {
+  margin: 6px 0 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.dashboard-theme-options.ant-radio-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  width: 100%;
+}
+.dashboard-theme-card.ant-radio-wrapper {
+  position: relative;
+  display: block;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+.dashboard-theme-card.ant-radio-wrapper:hover {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-card);
+  transform: translateY(-1px);
+}
+.dashboard-theme-card.ant-radio-wrapper-checked {
+  border-color: var(--color-accent);
+  background: var(--color-accent-softer);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+.dashboard-theme-card:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+.dashboard-theme-card.ant-radio-wrapper-disabled {
+  cursor: default;
+  transform: none;
+}
+.dashboard-theme-card > .ant-radio {
+  position: absolute;
+  right: 14px;
+  top: 138px;
+}
+.dashboard-theme-card > .ant-radio + span {
+  display: block;
+  padding: 0;
+  width: 100%;
+}
+.dashboard-theme-preview {
+  --preview-bg: #f7f9fc;
+  --preview-panel: #ffffff;
+  --preview-line: #dce4ef;
+  display: flex;
+  height: 112px;
+  overflow: hidden;
+  border: 1px solid var(--preview-line);
+  border-radius: 7px;
+  background: var(--preview-bg);
+}
+.dashboard-theme-preview.is-dark {
+  --preview-bg: #0e1420;
+  --preview-panel: #1a202b;
+  --preview-line: #354259;
+}
+.theme-preview-sidebar {
+  display: flex;
+  flex: 0 0 22%;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 7px;
+  background: var(--preview-panel);
+  border-right: 1px solid var(--preview-line);
+}
+.theme-preview-sidebar i {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--preview-line);
+}
+.theme-preview-sidebar i:first-child {
+  width: 50%;
+  height: 7px;
+  margin-bottom: 8px;
+  background: #3f74df;
+}
+.theme-preview-content {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px;
+}
+.theme-preview-toolbar {
+  width: 42%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--preview-line);
+}
+.theme-preview-cards {
+  display: flex;
+  gap: 5px;
+  height: 24px;
+}
+.theme-preview-cards i {
+  flex: 1;
+  border: 1px solid var(--preview-line);
+  border-radius: 4px;
+  background: var(--preview-panel);
+}
+.theme-preview-chart {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  gap: 7px;
+  padding: 6px 12px 0;
+  border: 1px solid var(--preview-line);
+  border-radius: 4px;
+  background: var(--preview-panel);
+}
+.theme-preview-chart i {
+  flex: 1;
+  height: 55%;
+  border-radius: 2px 2px 0 0;
+  background: #3f74df;
+  opacity: 0.65;
+}
+.theme-preview-chart i:nth-child(2) {
+  height: 85%;
+  opacity: 1;
+}
+.theme-preview-chart i:nth-child(3) {
+  height: 65%;
+}
+.theme-preview-chart i:nth-child(4) {
+  height: 100%;
+  opacity: 0.4;
+}
+.dashboard-theme-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 4px 4px;
+}
+.dashboard-theme-card-copy strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 28px;
+  color: var(--color-fg);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.dashboard-theme-card-copy > span {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-theme-card.ant-radio-wrapper {
+    transition: none;
+    transform: none;
+  }
+}
+.dashboard-appearance-settings .dashboard-theme-panel {
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+}

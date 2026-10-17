@@ -1,3 +1,4 @@
+import { observeWorkflowRunStore } from '../workflow-application/run-trace.js';
 import { resolveClassicStateFile } from './classic-state-file.js';
 import {
   resolveWorkspaceRuntimeRoot,
@@ -117,11 +118,14 @@ export function createClassicSdkStateStore(
       throw stale();
     return current;
   };
-  const store =
+  const store = observeWorkflowRunStore(
+    projectRoot,
+    'classic',
     options.store ??
-    createFileRuntimeStore<WorkflowRun>({
-      rootDir: path.join(initialRuntimeRoot, 'sdk-runs', 'classic'),
-    });
+      createFileRuntimeStore<WorkflowRun>({
+        rootDir: path.join(initialRuntimeRoot, 'sdk-runs', 'classic'),
+      }),
+  );
   const projectionDir = 'state-projections/classic';
 
   function recoveryRequired(runId: string, reason: string): never {

@@ -161,6 +161,27 @@ describe('dashboard demo data', () => {
         expect.objectContaining({ source: 'domains/dashboard/collector.ts' }),
       ]),
     );
+
+    const memoryUsage = personalMemory!.data.contextUsage;
+    const knowledgeUsage = projectKnowledge!.data.contextUsage;
+    expect(knowledgeUsage.hitRate).not.toBe(memoryUsage.hitRate);
+    expect(knowledgeUsage.feedbackRate).not.toBe(memoryUsage.feedbackRate);
+    expect(knowledgeUsage.recentTasks.map((task) => task.elapsedMs)).not.toEqual(
+      memoryUsage.recentTasks.map((task) => task.elapsedMs),
+    );
+    expect(knowledgeUsage.recentTasks[0].task).not.toBe(memoryUsage.recentTasks[0].task);
+    for (const usage of [memoryUsage, knowledgeUsage]) {
+      expect(usage.hitRate).toBeCloseTo(usage.hits / usage.requests);
+      expect(usage.feedbackRate).toBeCloseTo(usage.feedbackCount / usage.recommendations);
+      expect(usage.successRate).toBeCloseTo(
+        usage.successes / (usage.successes + usage.corrections + usage.failures),
+      );
+      expect(usage.feedbackCount).toBe(
+        usage.successes + usage.corrections + usage.failures + usage.ignored + usage.overridden,
+      );
+      expect(usage.fullDeliveries).toBeLessThanOrEqual(usage.recommendations);
+      expect(usage.lastQueryMs).toBe(usage.recentTasks[0].elapsedMs);
+    }
   });
 
   it('keeps website preview data free from Demo-labelled user copy', async () => {

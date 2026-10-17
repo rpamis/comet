@@ -9,10 +9,8 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
-  readFileSync,
   readSync,
   renameSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -24,31 +22,6 @@ export { resolveCometDaemonRoute, shouldAutoStartCometDaemon } from './comet-dae
 
 const AUTO_DAEMON_PROBE_TIMEOUT_MS = 100;
 const AUTO_DAEMON_RETRY_DELAY_MS = 15_000;
-
-function packageVersion() {
-  try {
-    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
-  } catch {
-    return 'unknown';
-  }
-}
-
-function daemonBuildId(serverPath) {
-  try {
-    const assetPaths = [
-      serverPath,
-      fileURLToPath(new URL('../dist/platform/process/comet-daemon.js', import.meta.url)),
-      fileURLToPath(new URL('../assets/skills/comet/scripts/comet-runtime.mjs', import.meta.url)),
-      fileURLToPath(
-        new URL('../assets/skills/comet-native/scripts/comet-native-runtime.mjs', import.meta.url),
-      ),
-    ];
-    const stamps = assetPaths.map((file) => Math.trunc(statSync(file).mtimeMs)).join('-');
-    return `${packageVersion()}:${stamps}`;
-  } catch {
-    return packageVersion();
-  }
-}
 
 function projectRootFromArgs(args) {
   const index = args.indexOf('--project-root');
@@ -301,8 +274,7 @@ export async function tryRunCometDaemon(argv = process.argv.slice(2)) {
   const module = await daemonModule();
   if (!module) return false;
   const root = projectRootFromArgs(argv);
-  const entry = serverPath();
-  const buildId = process.env.COMET_DAEMON_BUILD_ID ?? daemonBuildId(entry);
+  const buildId = process.env.COMET_DAEMON_BUILD_ID ?? module.resolveCometDaemonBuildId();
   const endpoint = module.resolveCometDaemonEndpoint(root, buildId);
   const options = {
     endpoint,
@@ -368,13 +340,12 @@ export async function runCometDaemonCommand(argv = process.argv.slice(2)) {
     return true;
   }
   const module = await daemonModule();
-  const entry = serverPath();
   if (!module) {
     process.stderr.write('Comet daemon runtime is not built; run pnpm build first.\n');
     process.exitCode = 70;
     return true;
   }
-  const buildId = process.env.COMET_DAEMON_BUILD_ID ?? daemonBuildId(entry);
+  const buildId = process.env.COMET_DAEMON_BUILD_ID ?? module.resolveCometDaemonBuildId();
   const endpoint = module.resolveCometDaemonEndpoint(parsed.root, buildId);
   if (parsed.action === 'start') {
     const response = await requestWithLaunch(

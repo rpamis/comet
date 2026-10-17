@@ -536,6 +536,7 @@
       "domains/workflow-contract/protected-project-path.ts",
       "domains/workflow-contract/types.ts",
       "domains/workflow-application/index.ts",
+      "domains/workflow-application/run-trace.ts",
       "domains/workflow-creation/index.ts",
       "domains/workflow-application/application.ts",
       "domains/workflow-application/skill-adapter.ts",

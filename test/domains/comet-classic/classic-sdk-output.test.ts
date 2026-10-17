@@ -95,6 +95,10 @@ describe('Classic next-step source projection', () => {
         '<receiving-session-id>',
         '--context-mode',
         'snapshot',
+        '--workflow',
+        'classic',
+        '--change',
+        'demo',
         '--json',
       ]);
       expect(build.current.actions[0].contextRequest).toEqual(build.contextRequest);

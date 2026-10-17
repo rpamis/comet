@@ -24,6 +24,7 @@ const id = (value) =>
 
 function normalize(value) {
   const projectId = id(value?.projectId);
+  if (value?.view === 'context-usage') return { view: 'context-usage', projectId };
   if (value?.view === 'eval') {
     const route = {
       view: 'eval',

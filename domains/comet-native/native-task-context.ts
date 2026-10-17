@@ -7,9 +7,12 @@ export function nativeTaskContextRequest(options: {
   language: NativePortableState['language'];
   projectRoot?: string;
   sessionId?: string;
+  name?: string;
 }) {
   return taskContextRequest({
     ...options,
+    workflow: 'native',
+    change: options.name,
     instruction:
       options.language === 'zh-CN'
         ? '原始请求缺失时从当前 brief 恢复目标。向 Builder、Verifier 或子任务交接时不转交 Builder 的自评结论，保留独立只读验收要求。'

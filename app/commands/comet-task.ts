@@ -185,7 +185,12 @@ async function runCometTaskCommand(
   const context =
     options.expandContext || options.application || options.complete
       ? []
-      : await collectCometTaskContext(projectRoot, request);
+      : (options.workflow === 'native' || options.workflow === 'classic') && options.change
+        ? await collectCometTaskContext(projectRoot, request, {
+            workflow: options.workflow,
+            change: options.change,
+          })
+        : await collectCometTaskContext(projectRoot, request);
   let learningCheckVerified: boolean | undefined;
   let projectMemory: ProjectMemoryCompletionStatus | undefined;
   let projectLearning: ProjectLearningStatus | undefined;

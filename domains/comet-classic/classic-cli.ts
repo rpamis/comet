@@ -1,5 +1,7 @@
 import { pathToFileURL } from 'url';
 import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
+import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
+import { discoverClassicProject } from './classic-layout.js';
 import { classicCommandHelp } from './classic-cli-help.js';
 import type { CliOutputEnvelope } from '../workflow-contract/output-envelope.js';
 import {
@@ -120,7 +122,22 @@ async function dispatch(
   }
 
   try {
-    return await withSdkErrorContext(command, args, options, await handler(args, options));
+    const invoke = () => handler(args, options);
+    const result =
+      command === 'hook-guard'
+        ? await invoke()
+        : await observeRuntimeOperation(
+            {
+              projectRoot: () =>
+                options.projectRoot ??
+                discoverClassicProject(options.invocationCwd ?? process.cwd()),
+              workflow: 'classic',
+              command,
+              errorExitCode: () => 70,
+            },
+            invoke,
+          );
+    return await withSdkErrorContext(command, args, options, result);
   } catch (error) {
     return withSdkErrorContext(command, args, options, {
       exitCode: 70,
@@ -148,7 +165,6 @@ async function withSdkErrorContext(
   try {
     const { classicSdkErrorData, classicSdkGuardAttempt, classicSdkBlockedContinuation } =
       await import('./classic-sdk-output.js');
-    const { discoverClassicProject } = await import('./classic-layout.js');
     const root =
       options.projectRoot ?? (await discoverClassicProject(options.invocationCwd ?? process.cwd()));
     const current = await classicSdkErrorData(root, change);

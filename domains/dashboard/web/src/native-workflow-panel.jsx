@@ -22,7 +22,7 @@ import {
 } from './native-status-presentation.js';
 import { useAnimatedNumber } from './use-animated-number.js';
 import { WorkflowPhaseTrack } from './phase-progress-indicator.jsx';
-import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
+import { DashboardWorkspaceRegion, WorkflowEmptyIllustration } from './workspace-layout.jsx';
 
 const PHASES = [
   ['shape', 'Shape'],
@@ -500,9 +500,7 @@ function NativeEmptyChangeDetail({ native, tab, query = '', onTab, emptyProject 
   return (
     <section className="native-change-detail native-change-detail-empty min-w-0 rounded-lg border border-border bg-bg shadow-raised">
       <div className="dashboard-workspace-empty-detail text-center">
-        <span className="native-workspace-empty-icon" aria-hidden="true">
-          <FlagOutlined />
-        </span>
+        <WorkflowEmptyIllustration />
         <h3 className="mt-5 text-lg font-semibold tracking-tight">{title}</h3>
         <p className="mt-2 max-w-md text-sm leading-relaxed text-muted">{description}</p>
         {showArchiveShortcut ? (
@@ -524,9 +522,7 @@ function NativeEmptySidePanel() {
   return (
     <aside className="dashboard-workspace-side-empty" aria-label={t('Native 变更状态')}>
       <div>
-        <span className="native-workspace-empty-icon" aria-hidden="true">
-          <FlagOutlined />
-        </span>
+        <WorkflowEmptyIllustration compact />
         <h3>{t('暂无变更数据')}</h3>
         <p>{t('选择或创建 Native change 后，这里会显示恢复状态、阻塞信息和 Git 摘要。')}</p>
       </div>
@@ -673,7 +669,7 @@ function NativeSummaryCard({ label, value, note, tag, icon: Icon, tone, selected
         </span>
       </div>
       <span className="dashboard-summary-status">{tag}</span>
-      <div className="mt-2 truncate text-[11px] text-meta">{note}</div>
+      <div className="mt-2 truncate text-[13px] text-meta">{note}</div>
     </button>
   );
 }
@@ -895,7 +891,7 @@ function NativeChangesExplorer({
                             />
                             <span className="min-w-0 flex-1 text-left">
                               <strong className="block truncate font-medium">{child.name}</strong>
-                              <span className="mt-0.5 block truncate text-[11px] text-meta">
+                              <span className="mt-0.5 block truncate text-[13px] text-meta">
                                 {child.phase
                                   ? (PHASE_LABELS[child.phase] ?? child.phase)
                                   : (CHILD_STATUS_DESCRIPTIONS[child.status] ??
@@ -963,7 +959,7 @@ const NativeChangeDetail = React.memo(function NativeChangeDetail({
       <div className="flex items-start gap-4 border-b border-border-soft px-5 py-4">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <h3 className="truncate text-base font-semibold">{change.name}</h3>
+            <h3 className="truncate text-xl font-semibold">{change.name}</h3>
             <Tooltip title={t('复制 Change 名称')}>
               <Button
                 type="text"
@@ -1047,7 +1043,7 @@ function NativeLoopRecoveryCard({ change }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">{t('循环与恢复')}</h4>
+        <h4 className="text-lg font-semibold tracking-tight">{t('循环与恢复')}</h4>
         <Pill
           tone={
             local?.status === 'running'
@@ -1076,7 +1072,7 @@ function NativeLoopRecoveryCard({ change }) {
         </p>
       )}
       <div className="mt-4 rounded-lg bg-surface-warm px-3 py-3">
-        <div className="text-[11px] font-medium text-meta">{t('恢复依据与下一步')}</div>
+        <div className="text-[13px] font-medium text-meta">{t('恢复依据与下一步')}</div>
         <div className="mt-1 text-xs font-medium leading-relaxed text-fg-2">
           {local?.recoverableFromStage
             ? t('可从 YAML 的 {0} 阶段恢复。', [
@@ -1118,7 +1114,7 @@ function NativeScopeCard({ change }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">{t('变更范围')}</h4>
+        <h4 className="text-lg font-semibold tracking-tight">{t('变更范围')}</h4>
         <span className="rounded-full bg-surface px-3 py-1 font-mono text-xs text-fg-2">
           {specs?.total ?? 0}
           {t(' 个 capability')}
@@ -1143,7 +1139,7 @@ function NativeScopeCard({ change }) {
               <span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-2">
                 {item.capability}
               </span>
-              <span className="text-[11px] text-meta">{operationLabel(item.operation)}</span>
+              <span className="text-[13px] text-meta">{operationLabel(item.operation)}</span>
             </div>
           ))
         )}
@@ -1164,7 +1160,7 @@ function ScopeMetric({ label, value, tone }) {
       <div className={`text-lg font-bold tabular-nums ${value ? toneClass : 'text-fg-2'}`}>
         {value}
       </div>
-      <div className="mt-1 text-[11px] text-meta">{label}</div>
+      <div className="mt-1 text-[13px] text-meta">{label}</div>
     </div>
   );
 }
@@ -1197,7 +1193,7 @@ function NativeAcceptanceCard({ change }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">{t('验收状态')}</h4>
+        <h4 className="text-lg font-semibold tracking-tight">{t('验收状态')}</h4>
         <Pill tone={acceptanceTone(acceptance)}>
           {progress ? t('{0}% 已处理', [progress.percent]) : t('无可移植验收数据')}
         </Pill>
@@ -1242,7 +1238,7 @@ function AcceptanceMetric({ label, value }) {
   return (
     <div>
       <div className="text-xl font-bold tabular-nums">{value}</div>
-      <div className="mt-1 text-[11px] text-meta">{label}</div>
+      <div className="mt-1 text-[13px] text-meta">{label}</div>
     </div>
   );
 }
@@ -1255,7 +1251,7 @@ function NativeVerificationCard({ change }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">{t('检查结果')}</h4>
+        <h4 className="text-lg font-semibold tracking-tight">{t('检查结果')}</h4>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {assurance && (
             <Tooltip title={assurance.description}>
@@ -1316,7 +1312,7 @@ function NativeBlockersCard({ blockers }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">{t('阻塞项')}</h4>
+        <h4 className="text-lg font-semibold tracking-tight">{t('阻塞项')}</h4>
         <Pill tone={blockers.length ? 'danger' : 'ok'}>
           {blockers.length ? t('{0} 项', [blockers.length]) : t('无阻塞')}
         </Pill>
@@ -1354,7 +1350,7 @@ function NativeHistoryCard({ history, overflow }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold tracking-tight">{t('执行历史')}</h4>
+        <h4 className="text-lg font-semibold tracking-tight">{t('执行历史')}</h4>
         <span className="font-mono text-xs text-meta">
           {t('保留 ')}
           {history.length}
@@ -1405,14 +1401,14 @@ function NativeArtifactList({ artifacts, onPreview }) {
   return (
     <article className="rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-baseline justify-between">
-        <h4 className="text-sm font-semibold tracking-tight">{t('关键产物')}</h4>
-        <span className="font-mono text-[12px] text-meta">
+        <h4 className="text-lg font-semibold tracking-tight">{t('关键产物')}</h4>
+        <span className="font-mono text-[13px] text-meta">
           {ready}/{source.length}
         </span>
       </div>
       <div>
         <div className="mb-1.5 flex items-center gap-2">
-          <span className="text-[12px] font-medium uppercase tracking-wider text-muted">
+          <span className="text-[13px] font-medium uppercase tracking-wider text-muted">
             Comet Native
           </span>
         </div>
@@ -1433,7 +1429,7 @@ function NativeArtifactList({ artifacts, onPreview }) {
                 />
               </span>
               <span className="min-w-0 truncate text-[13px] text-fg">{artifact.key}</span>
-              <span className="whitespace-nowrap pl-4 text-right text-[12px] text-muted">
+              <span className="whitespace-nowrap pl-4 text-right text-[13px] text-muted">
                 {artifact.exists ? t(artifact.label) : t('未生成')}
               </span>
             </button>
@@ -1457,7 +1453,7 @@ function NativePhaseStepper({ change }) {
   return (
     <article>
       <div className="mb-4 flex items-center gap-2">
-        <h4 className="text-sm font-semibold">{t('生命周期阶段')}</h4>
+        <h4 className="text-lg font-semibold">{t('生命周期阶段')}</h4>
         <span className="ml-auto rounded-full bg-surface px-3 py-1 font-mono text-xs text-fg-2">
           {archived ? t('已归档') : t('当前 {0}', [PHASE_LABELS[change.phase] ?? t('状态异常')])}
         </span>
@@ -1490,7 +1486,7 @@ function NativeSidePanel({ change, git }) {
     <aside className="space-y-5">
       <section className="rounded-lg bg-bg p-5 shadow-raised">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">{t('恢复状态')}</h3>
+          <h3 className="text-lg font-semibold">{t('恢复状态')}</h3>
           <Pill tone={local?.status === 'running' ? 'info' : 'neutral'}>
             {local?.status === 'running' ? t('执行中') : t('YAML 稳定边界')}
           </Pill>
@@ -1517,7 +1513,7 @@ function NativeSidePanel({ change, git }) {
       </section>
       <section className="rounded-lg bg-bg p-5 shadow-raised">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">{t('当前阻塞')}</h3>
+          <h3 className="text-lg font-semibold">{t('当前阻塞')}</h3>
           <Pill tone={blockers.length ? 'danger' : 'ok'}>
             {blockers.length ? t('{0} 项', [blockers.length]) : t('无')}
           </Pill>
@@ -1528,7 +1524,7 @@ function NativeSidePanel({ change, git }) {
       </section>
       {git && (
         <section className="rounded-lg bg-bg p-5 shadow-raised">
-          <h3 className="text-sm font-semibold">{t('Git 摘要')}</h3>
+          <h3 className="text-lg font-semibold">{t('Git 摘要')}</h3>
           <dl className="mt-4 space-y-3 text-sm">
             <SideFact label={t('分支')} value={git.branch ?? '—'} />
             <SideFact label="HEAD" value={git.head ?? '—'} />

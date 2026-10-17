@@ -52,6 +52,7 @@ import {
 import {
   BranchesOutlined,
   AppstoreOutlined,
+  BarChartOutlined,
   BulbOutlined,
   CheckCircleOutlined,
   CheckOutlined,
@@ -66,7 +67,6 @@ import {
   MenuFoldOutlined,
   MenuOutlined,
   MenuUnfoldOutlined,
-  MoonOutlined,
   PlusOutlined,
   ReloadOutlined,
   SafetyCertificateOutlined,
@@ -109,7 +109,11 @@ import {
 } from './dashboard-modal.jsx';
 import { useAnimatedNumber } from './use-animated-number.js';
 import { ContextUsagePanel } from './context-usage-panel.jsx';
-import { DashboardWorkspaceRegion } from './workspace-layout.jsx';
+import { RuntimePerformancePanel } from './runtime-performance-panel.jsx';
+import { ChangeTracePanel } from './change-trace-panel.jsx';
+import { ObservabilityTimeFilter, observabilityRangeLabel } from './observability-time-filter.jsx';
+import { filterContextUsage, resolveObservabilityRange } from './observability-time-range.js';
+import { DashboardWorkspaceRegion, WorkflowEmptyIllustration } from './workspace-layout.jsx';
 import { useDashboardMotion } from './dashboard-motion.jsx';
 import { useDashboardViewState, useDashboardScrollRestoration } from './dashboard-view-state.js';
 import {
@@ -131,9 +135,18 @@ import './styles.css';
 
 const AUTO_REFRESH_MS = 30_000;
 const MEMORY_COLLAPSE_THRESHOLD = 240;
-const DASHBOARD_FONT_FAMILY =
-  "'Segoe UI Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif";
-const DASHBOARD_MONO_FONT_FAMILY = "Bahnschrift, 'Cascadia Mono', Consolas, monospace";
+const DASHBOARD_FONT_FAMILY = 'var(--font-ui)';
+const DASHBOARD_MONO_FONT_FAMILY = 'var(--font-mono)';
+const DASHBOARD_FONT_TOKENS = {
+  fontSize: 14,
+  fontSizeSM: 13,
+  fontSizeHeading1: 28,
+  fontSizeHeading2: 24,
+  fontSizeHeading3: 20,
+  fontSizeHeading4: 16,
+  fontSizeHeading5: 14,
+  fontWeightStrong: 600,
+};
 const DASHBOARD_PLUGIN_NAV_PLACEHOLDERS = localized(
   Object.freeze([
     {
@@ -223,9 +236,14 @@ function useTheme({ embedded = false, themeRoot = null } = {}) {
     return () => window.cancelAnimationFrame(frame);
   }, [embedded, theme, themeRoot]);
 
-  const toggle = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), []);
+  const updateTheme = useCallback(
+    (value) => {
+      if (!embedded && (value === 'dark' || value === 'light')) setTheme(value);
+    },
+    [embedded],
+  );
 
-  return { theme, toggle };
+  return { theme, updateTheme };
 }
 
 const PHASES = localized([
@@ -452,12 +470,12 @@ export function App({
   portalContainer = null,
 }) {
   const language = useDashboardLanguage();
-  const { theme, toggle: toggleTheme } = useTheme({ embedded, themeRoot });
+  const { theme, updateTheme } = useTheme({ embedded, themeRoot });
   const appearance = useDashboardFontScale({ embedded, themeRoot });
   const scaledFontTokens = useMemo(() => {
     if (appearance.fontScale === 100) return {};
     const original = antdTheme.getDesignToken({
-      token: { fontSize: 14, fontSizeHeading2: 26, fontSizeHeading3: 18, fontSizeHeading4: 15 },
+      token: DASHBOARD_FONT_TOKENS,
     });
     return Object.fromEntries(
       Object.entries(original)
@@ -493,7 +511,7 @@ export function App({
           colorBgLayout: theme === 'dark' ? '#0e1420' : '#eef1f5',
           colorText: theme === 'dark' ? '#edf2fb' : '#101827',
           colorTextSecondary: theme === 'dark' ? '#aab5c8' : '#5f6979',
-          colorTextPlaceholder: theme === 'dark' ? '#8791a2' : '#6f7a8a',
+          colorTextPlaceholder: theme === 'dark' ? '#8791a2' : '#5f6b7c',
           colorTextDisabled: theme === 'dark' ? '#8791a2' : '#929baa',
           colorBorder: theme === 'dark' ? '#293345' : '#e3e8ef',
           colorSplit: theme === 'dark' ? '#293345' : '#edf0f4',
@@ -503,20 +521,15 @@ export function App({
           borderRadius: 12,
           fontFamily: DASHBOARD_FONT_FAMILY,
           fontFamilyCode: DASHBOARD_MONO_FONT_FAMILY,
-          fontSize: 14,
-          fontSizeHeading2: 26,
-          fontSizeHeading3: 18,
-          fontSizeHeading4: 15,
+          ...DASHBOARD_FONT_TOKENS,
           ...scaledFontTokens,
         },
       }}
     >
-      <DashboardAppearanceContext.Provider value={appearance}>
+      <DashboardAppearanceContext.Provider value={{ ...appearance, theme, updateTheme }}>
         <DashboardPortalProvider container={portalContainer}>
           <AntApp>
             <DashboardApp
-              theme={theme}
-              onToggleTheme={toggleTheme}
               forceDemo={forceDemo}
               demoPluginPages={demoPluginPages}
               embedded={embedded}
@@ -530,8 +543,6 @@ export function App({
 }
 
 function DashboardApp({
-  theme,
-  onToggleTheme,
   forceDemo = false,
   demoPluginPages = null,
   embedded = false,
@@ -550,6 +561,11 @@ function DashboardApp({
     !embedded && navigation.view === 'plugin' ? navigation.pluginId : null,
   );
   const [evalOpen, setEvalOpen] = useState(() => !embedded && navigation.view === 'eval');
+  const [contextUsageOpen, setContextUsageOpen] = useState(
+    () => !embedded && navigation.view === 'context-usage',
+  );
+  const contextUsageOpenRef = useRef(contextUsageOpen);
+  contextUsageOpenRef.current = contextUsageOpen;
   const [evalRefreshToken, setEvalRefreshToken] = useState(0);
   const [applicationRefreshToken, setApplicationRefreshToken] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -601,7 +617,11 @@ function DashboardApp({
     workflow,
     snapshot,
     demo: useDemo,
-    enabled: !evalOpen && !pluginSelection && ['classic', 'native'].includes(workflow),
+    enabled:
+      !evalOpen &&
+      !contextUsageOpen &&
+      !pluginSelection &&
+      ['classic', 'native'].includes(workflow),
   });
   useEffect(() => {
     setSummaryFilter(null);
@@ -633,7 +653,7 @@ function DashboardApp({
     },
     [activeProjectId, workflow, useDemo],
   );
-  const workspaceScope = `${useDemo ? 'demo' : 'project'}:${activeProjectId ?? ''}:${evalOpen ? 'eval' : (pluginSelection ?? workflow ?? 'default')}`;
+  const workspaceScope = `${useDemo ? 'demo' : 'project'}:${activeProjectId ?? ''}:${contextUsageOpen ? 'context-usage' : evalOpen ? 'eval' : (pluginSelection ?? workflow ?? 'default')}`;
   const [query, setQuery] = useDashboardViewState(workspaceScope, 'query', '');
   const [searchResetToken, setSearchResetToken] = useState(0);
   const clearSearch = () => {
@@ -813,7 +833,10 @@ function DashboardApp({
 
     const timer = window.setInterval(() => {
       void refresh(false);
-      if (!useDemo && (pluginSelectionRef.current || settingsOpenRef.current)) {
+      if (
+        !useDemo &&
+        (pluginSelectionRef.current || contextUsageOpenRef.current || settingsOpenRef.current)
+      ) {
         setPluginRefreshToken((value) => value + 1);
       }
     }, AUTO_REFRESH_MS);
@@ -1649,6 +1672,7 @@ function DashboardApp({
       resetSelectedProject(navigation.projectId);
     }
     setEvalOpen(navigation.view === 'eval');
+    setContextUsageOpen(navigation.view === 'context-usage');
     setPluginSelection(navigation.view === 'plugin' ? navigation.pluginId : null);
     if (navigation.workflow) setWorkflow(navigation.workflow);
     setSettingsOpen(false);
@@ -1671,7 +1695,16 @@ function DashboardApp({
         collapsed={sidebarCollapsed}
         workflow={workflow}
         evalSelected={evalOpen}
+        contextUsageSelected={contextUsageOpen}
+        onContextUsageSelect={() => {
+          setContextUsageOpen(true);
+          setEvalOpen(false);
+          setPluginSelection(null);
+          setSettingsOpen(false);
+          if (!embedded) navigateDashboard({ view: 'context-usage', projectId: activeProjectId });
+        }}
         onEvalSelect={() => {
+          setContextUsageOpen(false);
           setEvalOpen(true);
           setSettingsOpen(false);
           setPluginSelection(null);
@@ -1679,6 +1712,7 @@ function DashboardApp({
             navigateDashboard({ view: 'eval', projectId: activeProjectId }, { restore: true });
         }}
         onWorkflow={(nextWorkflow) => {
+          setContextUsageOpen(false);
           setEvalOpen(false);
           if (!embedded)
             navigateDashboard(
@@ -1723,6 +1757,7 @@ function DashboardApp({
           setSettingsError(null);
         }}
         onPluginSelect={(pluginId) => {
+          setContextUsageOpen(false);
           setEvalOpen(false);
           if (!embedded && pluginId)
             navigateDashboard(
@@ -1776,18 +1811,20 @@ function DashboardApp({
             if (!embedded) {
               const routeProject = projects.find((project) => project.id === nextProjectId);
               navigateDashboard(
-                evalOpen
-                  ? { view: 'eval', projectId: nextProjectId }
-                  : pluginSelection
-                    ? { view: 'plugin', pluginId: pluginSelection, projectId: nextProjectId }
-                    : {
-                        view: 'workflow',
-                        projectId: nextProjectId,
-                        workflow:
-                          workflow === 'any'
-                            ? 'any'
-                            : resolveDashboardProjectWorkflow(routeProject).workflow,
-                      },
+                contextUsageOpen
+                  ? { view: 'context-usage', projectId: nextProjectId }
+                  : evalOpen
+                    ? { view: 'eval', projectId: nextProjectId }
+                    : pluginSelection
+                      ? { view: 'plugin', pluginId: pluginSelection, projectId: nextProjectId }
+                      : {
+                          view: 'workflow',
+                          projectId: nextProjectId,
+                          workflow:
+                            workflow === 'any'
+                              ? 'any'
+                              : resolveDashboardProjectWorkflow(routeProject).workflow,
+                        },
                 { restore: true },
               );
             }
@@ -1801,7 +1838,7 @@ function DashboardApp({
           query={query}
           onQuery={setQuery}
           searchKey={`${workspaceScope}:${searchResetToken}`}
-          showSearch={!pluginSelection && (evalOpen || workflow !== 'any')}
+          showSearch={!contextUsageOpen && !pluginSelection && (evalOpen || workflow !== 'any')}
           searchPlaceholder={
             evalOpen
               ? t('搜索评估目标或运行记录…')
@@ -1811,6 +1848,10 @@ function DashboardApp({
           }
           onMenu={() => setRailOpen(true)}
           onRefresh={async () => {
+            if (contextUsageOpen) {
+              setPluginRefreshToken((value) => value + 1);
+              return;
+            }
             if (workflow === 'any' && !evalOpen && !pluginSelection) {
               setApplicationRefreshToken((value) => value + 1);
               return;
@@ -1823,9 +1864,6 @@ function DashboardApp({
             await reloadPluginPages();
             if (activePluginPageId || settingsOpen) setPluginRefreshToken((value) => value + 1);
           }}
-          theme={theme}
-          onToggleTheme={onToggleTheme}
-          themeToggleDisabled={embedded}
         />
         <div
           ref={workspaceScrollRef}
@@ -1836,7 +1874,7 @@ function DashboardApp({
         >
           <div
             className={`dashboard-content-inner${
-              !pluginSelection && (evalOpen || workflow === 'any')
+              !contextUsageOpen && !pluginSelection && (evalOpen || workflow === 'any')
                 ? ' dashboard-content-inner-workspace'
                 : ''
             }${pluginSelection ? ' dashboard-content-inner-plugin-center' : ''}${
@@ -1845,7 +1883,18 @@ function DashboardApp({
                 : ''
             }`}
           >
-            {evalOpen && (activeProjectId || useDemo) ? (
+            {contextUsageOpen && (activeProjectId || useDemo) ? (
+              <ContextUsageCenter
+                key={activeProjectId ?? 'demo'}
+                projectId={activeProjectId}
+                demo={useDemo}
+                demoPages={pluginPages}
+                refreshToken={pluginRefreshToken}
+                loadPage={loadCachedPluginPage}
+                readCachedPage={readCachedPluginPage}
+                coordinator={pluginPageCoordinatorRef.current}
+              />
+            ) : evalOpen && (activeProjectId || useDemo) ? (
               <EvalPanel
                 key={activeProjectId ?? 'demo'}
                 projectId={activeProjectId ?? 'demo'}
@@ -2167,9 +2216,6 @@ function Topbar({
   onProjectForget,
   onMenu,
   onRefresh,
-  theme,
-  onToggleTheme,
-  themeToggleDisabled = false,
 }) {
   useDashboardLanguage();
   const { modal } = AntApp.useApp();
@@ -2291,24 +2337,6 @@ function Topbar({
             loading={loading}
             onClick={onRefresh}
             aria-label={t('立即刷新')}
-          />
-        </Tooltip>
-        <Tooltip
-          title={
-            themeToggleDisabled
-              ? t('官网预览固定为亮色模式')
-              : theme === 'dark'
-                ? t('切换到亮色模式')
-                : t('切换到暗色模式')
-          }
-        >
-          <Button
-            className="hidden sm:inline-flex"
-            type="text"
-            icon={theme === 'dark' ? <SunOutlined /> : <MoonOutlined />}
-            disabled={themeToggleDisabled}
-            onClick={onToggleTheme}
-            aria-label={theme === 'dark' ? t('切换到亮色模式') : t('切换到暗色模式')}
           />
         </Tooltip>
         <DashboardLanguageSwitch />
@@ -2548,7 +2576,7 @@ function PhaseStepper({ phase, archived, next }) {
   return (
     <article>
       <div className="mb-4 flex items-center gap-2">
-        <h4 className="text-sm font-semibold">{t('生命周期阶段')}</h4>
+        <h4 className="text-lg font-semibold">{t('生命周期阶段')}</h4>
         <span className="ml-auto rounded-full bg-surface px-3 py-1 font-mono text-xs text-fg-2">
           {archived ? t('归档 {0}', [phase]) : t('下一步 {0}', [next?.command ?? '—'])}
         </span>
@@ -2582,8 +2610,8 @@ function ArtifactList({ change, onPreview }) {
   return (
     <article className="min-w-0 rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-baseline justify-between">
-        <h4 className="text-sm font-semibold tracking-tight">{t('关键产物')}</h4>
-        <span className="font-mono text-[12px] text-meta">
+        <h4 className="text-lg font-semibold tracking-tight">{t('关键产物')}</h4>
+        <span className="font-mono text-[13px] text-meta">
           {ready}/{total}
         </span>
       </div>
@@ -2617,7 +2645,7 @@ function ArtifactGroup({ title, artifacts, previewByKey, onPreview }) {
   return (
     <div>
       <div className="mb-1.5 flex items-center gap-2">
-        <span className="text-[12px] font-medium uppercase tracking-wider text-muted">{title}</span>
+        <span className="text-[13px] font-medium uppercase tracking-wider text-muted">{title}</span>
         <span className="h-px flex-1 bg-border-soft" />
       </div>
       <div className="space-y-px">
@@ -2662,7 +2690,7 @@ function ArtifactRow({ artifact, preview, onPreview }) {
         )}
       </span>
       <span className="min-w-0 truncate text-[13px] text-fg">{artifact.key}</span>
-      <span className="whitespace-nowrap pl-4 text-right text-[12px] text-muted">
+      <span className="whitespace-nowrap pl-4 text-right text-[13px] text-muted">
         {statusLabel}
       </span>
     </button>
@@ -2703,9 +2731,9 @@ function TaskProgress({ change }) {
   return (
     <article className="min-w-0 rounded-xl border border-border-soft bg-bg px-5 py-4">
       <div className="mb-4 flex items-baseline justify-between">
-        <h4 className="text-sm font-semibold tracking-tight">{t('任务进度')}</h4>
+        <h4 className="text-lg font-semibold tracking-tight">{t('任务进度')}</h4>
         <span
-          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${isComplete ? 'bg-ok-soft text-success' : 'bg-accent-soft text-accent'}`}
+          className={`rounded-full px-2 py-0.5 text-[13px] font-medium ${isComplete ? 'bg-ok-soft text-success' : 'bg-accent-soft text-accent'}`}
         >
           {isComplete ? t('全部完成') : t('{0} 项待办', [animatedRemainingValue])}
         </span>
@@ -2744,7 +2772,7 @@ function TaskProgress({ change }) {
             <span className="text-[26px] font-bold leading-none tabular-nums">
               {Math.round(animatedPercent)}%
             </span>
-            <span className="mt-0.5 text-[10px] text-muted">{t('完成度')}</span>
+            <span className="mt-0.5 text-[13px] text-muted">{t('完成度')}</span>
           </div>
         </div>
       </div>
@@ -2755,21 +2783,21 @@ function TaskProgress({ change }) {
           <div className="text-[18px] font-bold leading-none tabular-nums">
             {Math.round(animatedCompleted)}
           </div>
-          <div className="mt-1 text-[11px] text-muted">{t('已完成')}</div>
+          <div className="mt-1 text-[13px] text-muted">{t('已完成')}</div>
         </div>
         <div className="h-6 w-px bg-border-soft" />
         <div>
           <div className="text-[18px] font-bold leading-none tabular-nums">
             {animatedRemainingValue}
           </div>
-          <div className="mt-1 text-[11px] text-muted">{t('剩余')}</div>
+          <div className="mt-1 text-[13px] text-muted">{t('剩余')}</div>
         </div>
         <div className="h-6 w-px bg-border-soft" />
         <div>
           <div className="text-[18px] font-bold leading-none tabular-nums">
             {Math.round(animatedDoneSections)}/{totalSections}
           </div>
-          <div className="mt-1 text-[11px] text-muted">{t('分组')}</div>
+          <div className="mt-1 text-[13px] text-muted">{t('分组')}</div>
         </div>
       </div>
 
@@ -2782,8 +2810,8 @@ function TaskProgress({ change }) {
             return (
               <div key={section.title}>
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="truncate text-[11px] text-fg-2">{section.title}</span>
-                  <span className="shrink-0 pl-2 font-mono text-[10px] text-muted">
+                  <span className="truncate text-[13px] text-fg-2">{section.title}</span>
+                  <span className="shrink-0 pl-2 font-mono text-[13px] text-muted">
                     {section.completed}/{section.total}
                   </span>
                 </div>
@@ -2800,7 +2828,7 @@ function TaskProgress({ change }) {
       )}
 
       {/* Next hint */}
-      <div className={`mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] ${hintTone}`}>
+      <div className={`mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] ${hintTone}`}>
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotTone}`} />
         <span>{hintText}</span>
       </div>
@@ -2905,7 +2933,7 @@ function GitSnapshot({ git }) {
     <Card title={t('Git 快照')} tag={t('{0} 个未提交', [git.dirtyFiles])}>
       <KeyValue k={t('分支')} v={git.branch ?? '—'} />
       <KeyValue k="HEAD" v={git.head ?? '—'} />
-      <div className="pt-2 text-[11px] font-semibold uppercase text-meta">{t('最近提交')}</div>
+      <div className="pt-2 text-[13px] font-semibold uppercase text-meta">{t('最近提交')}</div>
       <ul className="space-y-1">
         {git.recentCommits.map((commit) => (
           <li key={commit} className="truncate text-sm text-fg-2">
@@ -2913,7 +2941,7 @@ function GitSnapshot({ git }) {
           </li>
         ))}
       </ul>
-      <div className="pt-2 text-[11px] font-semibold uppercase text-meta">{t('未提交文件')}</div>
+      <div className="pt-2 text-[13px] font-semibold uppercase text-meta">{t('未提交文件')}</div>
       <ul className="space-y-1">
         {git.dirtyFileList.slice(0, 5).map((file) => (
           <li key={file} className="break-all font-mono text-xs text-warn">
@@ -2930,7 +2958,7 @@ function Card({ title, tag, children }) {
   return (
     <article className="rounded-lg bg-bg p-5 shadow-card">
       <div className="mb-4 flex items-center gap-2">
-        <h4 className="font-semibold">{title}</h4>
+        <h4 className="text-lg font-semibold">{title}</h4>
         {tag && (
           <span className="ml-auto rounded-full bg-surface px-3 py-1 text-xs text-fg-2">{tag}</span>
         )}
@@ -3170,7 +3198,7 @@ function ArtifactDrawer({ artifact, embedded = false, onClose }) {
               </p>
             </div>
             {(preview?.size != null || preview?.updatedAt) && (
-              <div className="mt-1.5 flex flex-wrap gap-3 text-[11px] text-muted">
+              <div className="mt-1.5 flex flex-wrap gap-3 text-[13px] text-muted">
                 {preview?.size != null && <span>{formatFileSize(preview.size)}</span>}
                 {preview?.updatedAt && (
                   <span>
@@ -3865,12 +3893,10 @@ function ClassicWorkspaceEmptyDetail({ snapshot, tab, onTab }) {
   return (
     <AntCard
       className="change-detail classic-change-detail-empty min-w-0"
-      title={<h3 className="m-0 text-sm font-semibold">{title}</h3>}
+      title={<h3 className="m-0 text-lg font-semibold">{title}</h3>}
     >
       <div className="dashboard-workspace-empty-detail text-center">
-        <span className="native-workspace-empty-icon" aria-hidden="true">
-          <FlagOutlined />
-        </span>
+        <WorkflowEmptyIllustration />
         <p>{description}</p>
         {showArchiveShortcut ? (
           <Button className="mt-5" type="primary" onClick={() => onTab('archived')}>
@@ -3891,9 +3917,7 @@ function ClassicWorkspaceEmptySidePanel() {
   return (
     <aside className="dashboard-workspace-side-empty" aria-label={t('Classic 变更状态')}>
       <div>
-        <span className="native-workspace-empty-icon" aria-hidden="true">
-          <FlagOutlined />
-        </span>
+        <WorkflowEmptyIllustration compact />
         <h3>{t('暂无变更数据')}</h3>
         <p>{t('选择或创建 Classic change 后，这里会显示执行状态、验证结果和 Git 摘要。')}</p>
       </div>
@@ -4551,6 +4575,8 @@ function AntSidebar({
   collapsed,
   workflow,
   evalSelected = false,
+  contextUsageSelected = false,
+  onContextUsageSelect,
   onEvalSelect,
   workflowSource,
   onWorkflow,
@@ -4583,7 +4609,9 @@ function AntSidebar({
           mode="inline"
           inlineCollapsed={collapsed}
           inlineIndent={12}
-          selectedKeys={evalSelected || pluginSelection || !workflow ? [] : [workflow]}
+          selectedKeys={
+            evalSelected || contextUsageSelected || pluginSelection || !workflow ? [] : [workflow]
+          }
           items={[
             { key: 'classic', icon: <BranchesOutlined />, label: t('Classic 工作流') },
             { key: 'native', icon: <FileTextOutlined />, label: t('Native 工作流') },
@@ -4618,36 +4646,44 @@ function AntSidebar({
           mode="inline"
           inlineCollapsed={collapsed}
           inlineIndent={12}
-          selectedKeys={pluginSelection ? [pluginSelection] : []}
-          items={pluginPages.map((page) => {
-            const statusLabel = page.globallyDisabled
-              ? t('停用')
-              : page.projectPaused
-                ? t('暂停')
-                : page.status === 'disabled'
-                  ? t('停用')
-                  : null;
-            return {
-              key: page.pluginId,
-              disabled: Boolean(page.pending),
-              icon:
-                page.pluginId === 'comet.personal-memory' ? (
-                  <BulbOutlined />
-                ) : page.pluginId === 'comet.project-knowledge' ? (
-                  <DatabaseOutlined />
-                ) : (
-                  <SafetyCertificateOutlined />
+          selectedKeys={
+            contextUsageSelected ? ['context-usage'] : pluginSelection ? [pluginSelection] : []
+          }
+          items={[
+            ...pluginPages.map((page) => {
+              const statusLabel = page.globallyDisabled
+                ? t('停用')
+                : page.projectPaused
+                  ? t('暂停')
+                  : page.status === 'disabled'
+                    ? t('停用')
+                    : null;
+              return {
+                key: page.pluginId,
+                disabled: Boolean(page.pending),
+                icon:
+                  page.pluginId === 'comet.personal-memory' ? (
+                    <BulbOutlined />
+                  ) : page.pluginId === 'comet.project-knowledge' ? (
+                    <DatabaseOutlined />
+                  ) : (
+                    <SafetyCertificateOutlined />
+                  ),
+                label: (
+                  <span
+                    className={`dashboard-plugin-menu-item${page.pending ? ' is-loading' : ''}`}
+                  >
+                    <span>{t(page.label)}</span>
+                    {statusLabel ? <Badge status="default" text={statusLabel} /> : null}
+                  </span>
                 ),
-              label: (
-                <span className={`dashboard-plugin-menu-item${page.pending ? ' is-loading' : ''}`}>
-                  <span>{t(page.label)}</span>
-                  {statusLabel ? <Badge status="default" text={statusLabel} /> : null}
-                </span>
-              ),
-            };
-          })}
+              };
+            }),
+            { key: 'context-usage', icon: <BarChartOutlined />, label: t('可观测') },
+          ]}
           onClick={({ key }) => {
-            onPluginSelect(key);
+            if (key === 'context-usage') onContextUsageSelect();
+            else onPluginSelect(key);
             onClose();
           }}
         />
@@ -4756,6 +4792,169 @@ function PluginWorkspaceSkeleton() {
             <DashboardLineSkeleton label={t('正在加载 Dashboard')} rows={rows} titleWidth="40%" />
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ContextUsageCenter({
+  projectId,
+  demo,
+  demoPages,
+  refreshToken,
+  loadPage,
+  readCachedPage,
+  coordinator,
+}) {
+  useDashboardLanguage();
+  const [timeSelection, setTimeSelection] = useDashboardViewState(
+    `${demo ? 'demo' : projectId}:context-usage`,
+    'timeRange',
+    { preset: '7d' },
+  );
+  const timeRange = useMemo(
+    () => resolveObservabilityRange(timeSelection),
+    [timeSelection, refreshToken],
+  );
+  const rangeLabel = observabilityRangeLabel(timeSelection);
+  const [selectedSource, setSelectedSource] = useDashboardViewState(
+    `${demo ? 'demo' : projectId}:context-usage`,
+    'source',
+    'runtime-performance',
+  );
+  const [sections, setSections] = useState({});
+  const [retryToken, setRetryToken] = useState(0);
+  useEffect(() => {
+    if (demo) {
+      setSections(Object.fromEntries(demoPages.map((page) => [page.pluginId, { page }])));
+      return undefined;
+    }
+    let cancelled = false;
+    const owner = `context-usage:${projectId}`;
+    const pluginIds = DASHBOARD_PLUGIN_NAV_PLACEHOLDERS.map((page) => page.pluginId);
+    setSections(
+      Object.fromEntries(
+        pluginIds.map((pluginId) => [
+          pluginId,
+          { page: readCachedPage(projectId, pluginId), loading: true },
+        ]),
+      ),
+    );
+    void Promise.allSettled(
+      pluginIds.map(async (pluginId) => {
+        try {
+          const page = await loadPage(projectId, pluginId, true, owner);
+          if (!cancelled) setSections((previous) => ({ ...previous, [pluginId]: { page } }));
+        } catch (error) {
+          if (!cancelled)
+            setSections((previous) => ({
+              ...previous,
+              [pluginId]: { page: previous[pluginId]?.page, error: error.message },
+            }));
+        }
+      }),
+    );
+    return () => {
+      cancelled = true;
+      for (const pluginId of pluginIds) coordinator.release(`${projectId}:${pluginId}`, owner);
+    };
+  }, [projectId, demo, demoPages, refreshToken, retryToken, loadPage, readCachedPage, coordinator]);
+  const usageSnapshot = sections[selectedSource]?.page?.data?.contextUsage;
+  return (
+    <div className="dashboard-context-usage-page min-w-0" aria-label={t('可观测')}>
+      <header className="dashboard-context-usage-page-heading">
+        <div>
+          <h2>{t('可观测')}</h2>
+        </div>
+        <ObservabilityTimeFilter value={timeSelection} onChange={setTimeSelection} />
+      </header>
+      <Tabs
+        className="usage-source-tabs"
+        activeKey={selectedSource}
+        onChange={setSelectedSource}
+        tabBarExtraContent={
+          <div className="dashboard-context-usage-heading">
+            {usageSnapshot?.demo && <Tag>{t('演示数据')}</Tag>}
+            {usageSnapshot?.available && usageSnapshot.truncated && (
+              <Tag color="warning">{t('记录已截断')}</Tag>
+            )}
+          </div>
+        }
+        items={[
+          { key: 'runtime-performance', label: t('运行性能') },
+          { key: 'change-trace', label: t('Change 链路') },
+          ...DASHBOARD_PLUGIN_NAV_PLACEHOLDERS.map(({ pluginId, label }) => ({
+            key: pluginId,
+            label: t(label),
+          })),
+        ]}
+        aria-label={t('统计来源')}
+      />
+      <div className="dashboard-context-usage-grid">
+        {selectedSource === 'change-trace' && (
+          <ChangeTracePanel
+            key={projectId ?? 'demo'}
+            projectId={projectId}
+            demo={demo}
+            refreshToken={refreshToken}
+            timeRange={timeRange}
+          />
+        )}
+        {selectedSource === 'runtime-performance' && (
+          <RuntimePerformancePanel
+            key={projectId ?? 'demo'}
+            projectId={projectId}
+            demo={demo}
+            refreshToken={refreshToken}
+            timeRange={timeRange}
+            rangeLabel={rangeLabel}
+          />
+        )}
+        {DASHBOARD_PLUGIN_NAV_PLACEHOLDERS.map(({ pluginId, label }) => {
+          if (pluginId !== selectedSource) return null;
+          const section = sections[pluginId];
+          const page = section?.page;
+          return (
+            <div className="dashboard-context-usage-column" key={pluginId}>
+              {section?.error && (
+                <Alert
+                  className="mb-3"
+                  type="warning"
+                  showIcon
+                  message={`${t(label)} · ${t(page ? '最新数据同步失败，当前显示缓存' : '插件页面加载失败')}`}
+                  description={t(section.error)}
+                  action={
+                    <Button onClick={() => setRetryToken((value) => value + 1)}>{t('重试')}</Button>
+                  }
+                />
+              )}
+              {page?.data?.sectionErrors?.some((error) => error.section === 'contextUsage') && (
+                <Alert
+                  className="mb-3"
+                  type="warning"
+                  showIcon
+                  message={`${t(label)} · ${t('部分内容暂不可用，可继续使用已加载的内容。')}`}
+                />
+              )}
+              {!section || (section.loading && !page) ? (
+                <Skeleton active paragraph={{ rows: 3 }} />
+              ) : (
+                <ContextUsagePanel
+                  snapshot={filterContextUsage(
+                    page?.data?.contextUsage,
+                    timeSelection.preset === '7d' ? undefined : timeRange,
+                  )}
+                  rangeLabel={rangeLabel}
+                  title={t(
+                    pluginId === 'comet.personal-memory'
+                      ? '个人记忆检索与使用'
+                      : '项目知识检索与使用',
+                  )}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -8200,7 +8399,6 @@ function ProjectKnowledgeCenter({ page, data, readOnly = false, onInvoke, viewSc
           }
         />
       )}
-      <ContextUsagePanel snapshot={snapshot.contextUsage} title={t('项目知识检索与使用')} />
       <ContextManifestPreview
         items={snapshot.manifestPreview}
         emptyLabel={t('最近还没有向 Agent 提供项目知识')}
@@ -8826,7 +9024,6 @@ function PersonalMemoryCenter({ data, readOnly = false, onInvoke, viewScope }) {
           }
         />
       )}
-      <ContextUsagePanel snapshot={data?.contextUsage} title={t('个人记忆检索与使用')} />
       <ContextManifestPreview
         items={data?.manifestPreview}
         emptyLabel={t('最近还没有向 Agent 提供个人记忆')}
@@ -9464,7 +9661,7 @@ function AntSummaryCard({ title, value, note, status, icon: Icon, tone, selected
         </span>
       </div>
       <span className="dashboard-summary-status">{status}</span>
-      <div className="mt-2 truncate text-[11px] text-meta">{note}</div>
+      <div className="mt-2 truncate text-[13px] text-meta">{note}</div>
     </button>
   );
 }

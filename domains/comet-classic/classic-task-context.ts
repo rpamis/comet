@@ -5,8 +5,11 @@ export function classicTaskContextRequest(
   state: ClassicState,
   projectRoot: string,
   sessionId?: string,
+  change?: string,
 ) {
   return taskContextRequest({
+    workflow: 'classic',
+    change,
     phase: state.phase,
     language: state.language ?? 'en',
     projectRoot,
