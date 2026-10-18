@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { createFileRuntimeStore, type WorkflowRun } from '../../../domains/engine/runtime.js';
+import { recoverSdkChangeOwnerToActive } from '../../../domains/workflow-contract/change-runtime-owner.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
@@ -63,9 +65,12 @@ describe('Native v4 registered-worktree status discovery', () => {
     await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
   });
 
-  it('omits completed cancellations but rejects corrupted authoritative Runs', async () => {
+  it('omits unpartitioned completed cancellations but rejects corrupted authoritative Runs', async () => {
     const repository = await createRepository();
     roots.push(repository.root);
+    const store = createFileRuntimeStore<WorkflowRun>({
+      rootDir: path.join(resolveWorkspaceRuntimeRootSync(repository.root), 'sdk-runs/native'),
+    });
     for (const name of ['cancelled-first', 'cancelled-second']) {
       const created = await runNativeCli([
         'new',
@@ -83,6 +88,21 @@ describe('Native v4 registered-worktree status discovery', () => {
         '--json',
       ]);
       expect(cancelled.exitCode, cancelled.stderr).toBe(0);
+      // Keep the original pre-migration active-storage corruption boundary under test.
+      const run = (await store.read(name))!;
+      expect(await store.readDisposition(name)).toBe('closed');
+      await recoverSdkChangeOwnerToActive(repository.root, 'native', name);
+      expect(await store.reopenRun(name, run.revision)).toBe(true);
+      expect(await store.readDisposition(name)).toBe('active');
+      await expect(
+        fs.access(
+          path.join(
+            resolveWorkspaceRuntimeRootSync(repository.root),
+            'change-owners/native',
+            `${name}.json`,
+          ),
+        ),
+      ).resolves.toBeUndefined();
     }
     const reads = vi.spyOn(fs, 'readFile');
     expect((await listDiscoveredNativeStatusPage({ projectRoot: repository.root })).items).toEqual(
