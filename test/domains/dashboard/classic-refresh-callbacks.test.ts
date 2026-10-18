@@ -88,6 +88,81 @@ function refreshContext(tab = 'active') {
 }
 
 describe('Classic refresh callbacks', () => {
+  it.each([0, 1, 2, 3, 4])(
+    'uses a complete overview page with %i rows without a summary request',
+    async (count) => {
+      const context = refreshContext();
+      const items = Array.from({ length: count }, (_, index) => ({
+        id: `change-${index}`,
+        status: 'active',
+        tasks: { total: 1, completed: 0 },
+      }));
+      context.fetchDashboardOverview.mockResolvedValue({
+        initialChanges: { items, total: count, nextCursor: null },
+      });
+      context.fetchDashboardChangePage.mockRejectedValue(new Error('Summary unavailable'));
+      const refresh = await dashboardCallback('refresh', context);
+      await refresh(true);
+      expect(context.fetchDashboardChangePage).not.toHaveBeenCalled();
+      expect(context.setSnapshot).toHaveBeenCalledTimes(1);
+      expect(context.pagesRef.current.active.items).toEqual(items);
+      expect(context.fetchDashboardChangeDetail).toHaveBeenCalledTimes(count > 0 ? 1 : 0);
+      expect(context.toast).toHaveBeenCalledWith('状态已刷新');
+    },
+  );
+
+  it('publishes overview independently and retains an expanded Classic page when its refresh fails', async () => {
+    const context = refreshContext();
+    const previousPage = context.pagesRef.current.active;
+    context.fetchDashboardChangePage.mockRejectedValue(new Error('Summary unavailable'));
+    const refresh = await dashboardCallback('refresh', context);
+    await refresh(true);
+    expect(context.setSnapshot).toHaveBeenCalledTimes(1);
+    expect(context.pagesRef.current.active).toBe(previousPage);
+    expect(context.setPages).not.toHaveBeenCalled();
+    expect(context.setSelectedDetail).not.toHaveBeenCalled();
+    expect(context.toast).toHaveBeenCalledWith('刷新失败：{0}', 'error');
+    expect(context.toast).not.toHaveBeenCalledWith('状态已刷新');
+    expect(context.setLoading).toHaveBeenLastCalledWith(false);
+  });
+
+  it('refreshes Native independently without querying Classic or caching active rows under archived', async () => {
+    const context = refreshContext('archived');
+    context.workflowRef.current = 'native';
+    const selected = { name: 'native-selected', status: 'archived' };
+    const nativePage = { items: [selected], total: 1, nextCursor: null };
+    const fetchDashboardNativeChangePage = vi.fn(async () => nativePage);
+    const fetchDashboardNativeChangeDetail = vi.fn(async () => ({
+      ...selected,
+      revision: 'fresh',
+    }));
+    const setNativeSelectedDetail = vi.fn();
+    context.nativePagesRef.current = { archived: nativePage };
+    context.fetchDashboardOverview.mockResolvedValue({
+      initialChanges: { items: [], total: 0, nextCursor: null },
+      native: {},
+    });
+    context.fetchDashboardChangePage.mockRejectedValue(new Error('Classic unavailable'));
+    const refresh = await dashboardCallback('refresh', {
+      ...context,
+      nativeSelectedDetailRef: { current: selected },
+      nativeDashboardChangeKey: (value: typeof selected) => value.name,
+      refreshNativeDashboardPage: (_previous: unknown, fresh: unknown) => fresh,
+      fetchDashboardNativeChangePage,
+      fetchDashboardNativeChangeDetail,
+      setNativeSelectedDetail,
+    });
+    await refresh(true);
+    expect(context.setSnapshot).toHaveBeenCalledTimes(1);
+    expect(context.fetchDashboardChangePage).not.toHaveBeenCalled();
+    expect(context.fetchDashboardChangeDetail).not.toHaveBeenCalled();
+    expect(fetchDashboardNativeChangePage).toHaveBeenCalledTimes(1);
+    expect(fetchDashboardNativeChangeDetail).toHaveBeenCalledTimes(1);
+    expect(setNativeSelectedDetail).toHaveBeenCalledWith({ ...selected, revision: 'fresh' });
+    expect(context.pagesRef.current.archived).toBeNull();
+    expect(context.toast).toHaveBeenCalledWith('状态已刷新');
+  });
+
   it.each(['active', 'archived', 'all'])(
     'refreshes the expanded %s page and selected detail without changing selection',
     async (tab) => {

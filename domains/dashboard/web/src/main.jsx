@@ -735,11 +735,17 @@ function DashboardApp({
           const currentTab = tabRef.current;
           const currentQuery = queryRef.current;
           const queryChanged = currentQuery !== lastLoadedQueryRef.current;
+          if (queryRef.current !== refreshQuery || tabRef.current !== refreshTab) return;
+          // overview 已成功，补齐已展开的 Classic 页不能阻断其他面板。
+          setSnapshot(materializeOverview(next, initialPage));
           const loadedCount = queryChanged
             ? 5
             : Math.max(5, pagesRef.current[currentTab]?.items.length ?? 0);
+          const refreshingClassic = workflowRef.current === 'classic';
           const freshPage =
-            currentTab === 'active' && loadedCount <= initialPage.items.length
+            !refreshingClassic ||
+            (currentTab === 'active' &&
+              (!initialPage.nextCursor || loadedCount <= initialPage.items.length))
               ? initialPage
               : await fetchDashboardChangePage(activeProjectId, currentTab, {
                   query: refreshQuery,
@@ -760,10 +766,9 @@ function DashboardApp({
             active: initialPage,
             archived: null,
             all: null,
-            [currentTab]: freshPage,
+            ...(refreshingClassic ? { [currentTab]: freshPage } : {}),
           };
           const currentPage = freshPage;
-          setSnapshot(materializeOverview(next, initialPage));
           pagesRef.current = nextPages;
           setPages(nextPages);
           const nextNativePages = queryChanged
@@ -828,43 +833,48 @@ function DashboardApp({
             tabRef.current !== refreshTab
           )
             return;
-          const nextId = pickSelectedFromPage(
-            queryChanged && currentTab !== 'active' ? nextPages[currentTab] : currentPage,
-            selectedIdRef.current,
-          );
-          const previousSelectedId = selectedIdRef.current;
-          setSelectedId(nextId);
-          selectedIdRef.current = nextId;
-          detailRequestRef.current?.abort();
-          detailRequestRef.current = null;
-          setDetailError(null);
-          if (nextId !== previousSelectedId || !nextId) setSelectedDetail(null);
-          setDetailLoading(Boolean(nextId));
-          if (nextId) {
-            const detailController = new AbortController();
-            detailRequestRef.current = detailController;
-            const abortDetail = () => detailController.abort();
-            controller.signal.addEventListener('abort', abortDetail, { once: true });
-            try {
-              const freshDetail = await fetchDashboardChangeDetail(
-                activeProjectId,
-                nextId,
-                detailController.signal,
-              );
-              if (
-                detailRequestRef.current === detailController &&
-                !detailController.signal.aborted &&
-                selectedIdRef.current === nextId
-              )
-                setSelectedDetail(freshDetail);
-            } catch (error) {
-              if (detailRequestRef.current === detailController && !detailController.signal.aborted)
-                setDetailError({ id: nextId, message: error.message });
-            } finally {
-              controller.signal.removeEventListener('abort', abortDetail);
-              if (detailRequestRef.current === detailController) {
-                detailRequestRef.current = null;
-                setDetailLoading(false);
+          if (refreshingClassic) {
+            const nextId = pickSelectedFromPage(
+              queryChanged && currentTab !== 'active' ? nextPages[currentTab] : currentPage,
+              selectedIdRef.current,
+            );
+            const previousSelectedId = selectedIdRef.current;
+            setSelectedId(nextId);
+            selectedIdRef.current = nextId;
+            detailRequestRef.current?.abort();
+            detailRequestRef.current = null;
+            setDetailError(null);
+            if (nextId !== previousSelectedId || !nextId) setSelectedDetail(null);
+            setDetailLoading(Boolean(nextId));
+            if (nextId) {
+              const detailController = new AbortController();
+              detailRequestRef.current = detailController;
+              const abortDetail = () => detailController.abort();
+              controller.signal.addEventListener('abort', abortDetail, { once: true });
+              try {
+                const freshDetail = await fetchDashboardChangeDetail(
+                  activeProjectId,
+                  nextId,
+                  detailController.signal,
+                );
+                if (
+                  detailRequestRef.current === detailController &&
+                  !detailController.signal.aborted &&
+                  selectedIdRef.current === nextId
+                )
+                  setSelectedDetail(freshDetail);
+              } catch (error) {
+                if (
+                  detailRequestRef.current === detailController &&
+                  !detailController.signal.aborted
+                )
+                  setDetailError({ id: nextId, message: error.message });
+              } finally {
+                controller.signal.removeEventListener('abort', abortDetail);
+                if (detailRequestRef.current === detailController) {
+                  detailRequestRef.current = null;
+                  setDetailLoading(false);
+                }
               }
             }
           }
