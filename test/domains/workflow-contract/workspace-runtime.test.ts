@@ -270,6 +270,29 @@ describe('workspace runtime resolution and migration', () => {
     ).toContain('committed');
   });
 
+  it.each(['prepared', 'committed', 'rolled-back'])(
+    'checks repeated journal names while preserving %s transaction evidence',
+    async (status) => {
+      const relative = path.join('native', `prefix-${'journal'.repeat(20)}.json`);
+      const content = JSON.stringify({ status });
+      await write(path.join(legacy, relative), content);
+      if (status === 'prepared') {
+        await expect(resolveWorkspaceRuntimeRoot(project)).rejects.toThrow('未完成事务');
+        expect(await fs.readFile(path.join(legacy, relative), 'utf8')).toBe(content);
+      } else {
+        const migrated = await resolveWorkspaceRuntimeRoot(project);
+        expect(await fs.readFile(path.join(migrated, relative), 'utf8')).toBe(content);
+      }
+    },
+  );
+
+  it('does not interpret journal-like evidence with another suffix as transaction state', async () => {
+    const name = `${'journal'.repeat(20)}.json.log`;
+    await write(path.join(legacy, name), 'unstructured evidence');
+    const migrated = await resolveWorkspaceRuntimeRoot(project);
+    expect(await fs.readFile(path.join(migrated, name), 'utf8')).toBe('unstructured evidence');
+  });
+
   it('rejects a symlink inside the source and a symlinked data subtree', async () => {
     await fs.mkdir(legacy, { recursive: true });
     await fs.symlink(temporary, path.join(legacy, 'escape'), 'junction');

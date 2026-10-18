@@ -93,7 +93,8 @@ it('keeps Verify across a reviewed edit through the built CLI and Router, report
   const argv = [
     node,
     '-e',
-    `setTimeout(()=>require('node:fs').appendFileSync(${JSON.stringify(marker)},${JSON.stringify('checked\n')}),8000)`,
+    "setTimeout(()=>require('node:fs').appendFileSync(process.argv[1],'checked\\n'),8000)",
+    marker,
   ];
   await fs.writeFile(
     path.join(root, '.comet/check-policy.json'),

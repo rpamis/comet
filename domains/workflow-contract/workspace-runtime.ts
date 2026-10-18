@@ -323,7 +323,7 @@ async function inspectQuiescence(file: string, relative: string): Promise<void> 
   const transactionIndex = normalized.findIndex((part) => /^transactions?$/iu.test(part));
   const transactionTail = transactionIndex < 0 ? [] : normalized.slice(transactionIndex + 1);
   const transaction =
-    /(?:transaction|journal)[^/]*\.json$/iu.test(path.basename(relative)) ||
+    (/(?:transaction|journal)/iu.test(path.basename(relative)) && /\.json$/iu.test(relative)) ||
     (transactionTail.length === 1 && relative.endsWith('.json'));
   // 已完成事务的 staged/backups 是历史证据，不是当前执行记录。
   if (transactionIndex >= 0 && !transaction) return;
