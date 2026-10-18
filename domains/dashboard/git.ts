@@ -1,10 +1,11 @@
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import type { GitSnapshot } from './types.js';
 
 const execFileAsync = promisify(execFile);
 
 const DIRTY_LIMIT = 20;
+const DIRTY_ENTRY_LIMIT = 200;
 const RECENT_COMMIT_LIMIT = 3;
 const RUN_OPTS = { timeout: 10_000, maxBuffer: 1024 * 1024 };
 
@@ -25,16 +26,18 @@ export async function collectGitSnapshot(projectPath: string): Promise<GitSnapsh
     // NUL-terminated porcelain keeps paths verbatim: git never quotes or
     // octal-escapes them, so non-ASCII filenames stay readable regardless of
     // the user's core.quotePath setting.
-    runGit(projectPath, ['status', '--porcelain=v1', '-z']),
+    collectGitStatus(projectPath),
     runGit(projectPath, ['log', `-${RECENT_COMMIT_LIMIT}`, '--pretty=format:%h %s']),
   ]);
 
-  const dirtyEntries = parsePorcelainRecords(statusOut);
+  const dirtyEntries = statusOut.entries;
 
   return {
     branch,
     head,
-    dirtyFiles: dirtyEntries.length,
+    dirtyFiles: statusOut.count,
+    status: statusOut.count === null ? 'error' : 'available',
+    dirtyEntriesTruncated: statusOut.count !== null && statusOut.count > dirtyEntries.length,
     dirtyFileList: dirtyEntries.slice(0, DIRTY_LIMIT).map((entry) => entry.path),
     dirtyEntries,
     recentCommits: log
@@ -48,7 +51,8 @@ function emptySnapshot(): GitSnapshot {
   return {
     branch: null,
     head: null,
-    dirtyFiles: 0,
+    dirtyFiles: null,
+    status: 'unavailable',
     dirtyFileList: [],
     dirtyEntries: [],
     recentCommits: [],
@@ -69,25 +73,70 @@ function emptyToNull(value: string): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
-/**
- * Parse dirty paths from NUL-terminated porcelain v1 status output.
- *
- * Each record is "XY PATH". Renames and copies store the new path in the
- * entry and the original path in the following NUL record; the snapshot
- * keeps showing the new path. XY is two status characters and the third
- * byte is always a separator, so shorter entries are malformed and skipped
- * to keep the snapshot best-effort.
- */
-function parsePorcelainRecords(raw: string): { path: string; status: string }[] {
-  const records = raw.split('\0');
-  const paths: { path: string; status: string }[] = [];
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index];
-    if (record.length < 4) continue;
-    paths.push({ path: record.slice(3), status: record.slice(0, 2) });
-    if (record[0] === 'R' || record[0] === 'C' || record[1] === 'R' || record[1] === 'C') {
-      index += 1;
-    }
-  }
-  return paths;
+/** 流式消费完整状态，只保留有界展示条目；失败不能解释成干净工作区。 */
+async function collectGitStatus(cwd: string): Promise<{
+  count: number | null;
+  entries: { path: string; status: string }[];
+}> {
+  return new Promise((resolve) => {
+    const entries: { path: string; status: string }[] = [];
+    let count = 0;
+    let pending = '';
+    let skipSource = false;
+    let settled = false;
+    const child = spawn('git', ['status', '--porcelain=v1', '-z'], {
+      cwd,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(ok ? { count, entries } : { count: null, entries: [] });
+    };
+    const fail = () => {
+      child.kill('SIGKILL');
+      child.stdout.destroy();
+      child.unref();
+      finish(false);
+    };
+    const timer = setTimeout(fail, RUN_OPTS.timeout);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      if (settled) return;
+      pending += chunk;
+      let end: number;
+      while ((end = pending.indexOf('\0')) >= 0) {
+        if (end > 1024 * 1024) {
+          fail();
+          return;
+        }
+        const record = pending.slice(0, end);
+        pending = pending.slice(end + 1);
+        if (skipSource) {
+          if (!record) {
+            fail();
+            return;
+          }
+          skipSource = false;
+          continue;
+        }
+        if (record.length < 4 || record[2] !== ' ') {
+          fail();
+          return;
+        }
+        count += 1;
+        if (entries.length < DIRTY_ENTRY_LIMIT)
+          entries.push({ path: record.slice(3), status: record.slice(0, 2) });
+        skipSource = /^[RC]|^.[RC]/u.test(record);
+      }
+      // 单一路径异常长时也必须有界，不能无限积累未结束的记录。
+      if (pending.length > 1024 * 1024) fail();
+    });
+    child.once('error', () => finish(false));
+    child.once('close', (code, signal) =>
+      finish(code === 0 && signal === null && pending.length === 0 && !skipSource),
+    );
+  });
 }

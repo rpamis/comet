@@ -3112,6 +3112,19 @@ test('adds global or project memory, explains application, and permanently delet
       ],
     },
   };
+  const memoryCounts = () => {
+    const active = managedRecords.filter((record) => record.status !== 'superseded');
+    return {
+      all: active.length,
+      active: active.length,
+      profile: active.filter((record) => record.memoryType === 'core-profile').length,
+      policy: active.filter((record) => record.memoryType === 'collaboration-policy').length,
+      episode: active.filter((record) => record.memoryType === 'personal-episode').length,
+      history: managedRecords.length - active.length,
+      tombstones: 0,
+    };
+  };
+  const managementRequests: unknown[] = [];
   let rememberRequest: unknown;
   let removeRequest: unknown;
 
@@ -3168,6 +3181,9 @@ test('adds global or project memory, explains application, and permanently delet
         capability: string;
         input: {
           id?: string;
+          query?: string;
+          managementFilter?: string;
+          offset?: number;
           permanent?: boolean;
           scope?: string;
           memoryClass: string;
@@ -3175,6 +3191,36 @@ test('adds global or project memory, explains application, and permanently delet
           text: string;
         };
       };
+      if (body.capability === 'manage') {
+        managementRequests.push(body.input);
+        const types: Record<string, string> = {
+          profile: 'core-profile',
+          policy: 'collaboration-policy',
+          episode: 'personal-episode',
+        };
+        const records = managedRecords.filter((record) => {
+          const filter = body.input.managementFilter;
+          if (filter === 'history') return record.status === 'superseded';
+          if (record.status === 'superseded') return false;
+          if (filter && filter !== 'all' && record.memoryType !== types[filter]) return false;
+          return String(record.text).includes(body.input.query ?? '');
+        });
+        const offset = body.input.offset ?? 0;
+        await route.fulfill({
+          json: {
+            result: {
+              records: records.slice(offset, offset + 50),
+              conflicts: [],
+              counts: memoryCounts(),
+              total: records.length,
+              offset,
+              nextOffset: offset + 50 < records.length ? offset + 50 : null,
+              truncated: false,
+            },
+          },
+        });
+        return;
+      }
       rememberRequest = body;
       const existingRecord = managedRecords.find((record) => record.id === body.input.id);
       const targetRecords =
@@ -3209,7 +3255,16 @@ test('adds global or project memory, explains application, and permanently delet
       return;
     }
     if (url.pathname.endsWith('/plugins/comet.personal-memory')) {
-      await route.fulfill({ json: personalMemoryPage });
+      await route.fulfill({
+        json: {
+          ...personalMemoryPage,
+          data: {
+            ...personalMemoryPage.data,
+            status: { ...personalMemoryPage.data.status, counts: memoryCounts() },
+            management: { ...personalMemoryPage.data.management, counts: memoryCounts() },
+          },
+        },
+      });
       return;
     }
     if (url.pathname.endsWith('/plugins')) {
@@ -3261,12 +3316,36 @@ test('adds global or project memory, explains application, and permanently delet
       .getByRole('region', { name: '个人记忆列表' })
       .getByText('希望 Agent 持续采用的沟通和工作方式', { exact: true }),
   ).toBeVisible();
+  await expect
+    .poll(() => managementRequests)
+    .toContainEqual({
+      managementFilter: 'policy',
+      offset: 0,
+    });
+  expect(managedRecords).toHaveLength(1);
   await page.getByRole('button', { name: '个人偏好与事实 1' }).click();
   const profileHelp = page.getByRole('button', { name: '了解个人偏好与事实' });
   await profileHelp.click();
   await expect(page.getByText('例如：语言、角色和表达方式。')).toBeVisible();
   await profileHelp.click();
   await page.getByRole('button', { name: '全部记忆 1' }).click();
+  const memorySearch = page.getByRole('textbox', { name: '搜索个人记忆' });
+  await memorySearch.fill('默认使用中文');
+  await expect
+    .poll(() => managementRequests)
+    .toContainEqual({
+      query: '默认使用中文',
+      managementFilter: 'all',
+      offset: 0,
+    });
+  await expect(
+    page
+      .getByRole('region', { name: '个人记忆列表' })
+      .getByText('默认使用中文回复', { exact: true }),
+  ).toBeVisible();
+  expect(managedRecords).toHaveLength(1);
+  expect(rememberRequest).toBeUndefined();
+  await memorySearch.clear();
   const memorySort = page.getByRole('combobox', { name: '记忆排序方式' });
   const memorySortControl = memorySort.locator(
     "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-select ')][1]",

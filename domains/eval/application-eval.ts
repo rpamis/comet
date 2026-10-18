@@ -8,6 +8,7 @@ import {
   loadWorkflowApplication,
   exportWorkflowApplication,
   recordApplicationEvaluationEvidence,
+  validateApplicationEvaluationCompletion,
 } from '../workflow-application/index.js';
 import {
   applicationFilesHash,
@@ -15,6 +16,7 @@ import {
 } from '../workflow-application/skill-adapter.js';
 import { runExternalCommandAsync } from '../../platform/process/external-command.js';
 import { isPathWithin } from './standalone-context.js';
+import { readProtectedProjectFile } from '../workflow-contract/protected-project-path.js';
 
 export interface ApplicationEvalSettings {
   agent: string;
@@ -81,6 +83,7 @@ async function assertPreviousEvaluationStopped(projectRoot: string, experimentId
   if (containers.trim()) throw new Error('原评估容器仍在运行；先核对并停止原实验，不重复启动');
 }
 export interface PreparedApplicationEval {
+  projectRoot: string;
   preview: ApplicationEvalPreview;
   experimentId: string;
   skillRoot: string;
@@ -559,6 +562,7 @@ export async function prepareWorkflowApplicationEval(
     )
       throw new Error('固定评估快照发生漂移；保留原现场后修复');
     return {
+      projectRoot: await fs.realpath(options.projectRoot),
       preview,
       experimentId: options.experimentId,
       skillRoot,
@@ -638,16 +642,56 @@ export async function prepareWorkflowApplicationEval(
     JSON.stringify({ confirmationHash: preview.confirmationHash, snapshotHash }),
     { flag: 'wx' },
   );
-  return { preview, experimentId: options.experimentId, skillRoot, snapshotHash, resultFile };
+  return {
+    projectRoot: await fs.realpath(options.projectRoot),
+    preview,
+    experimentId: options.experimentId,
+    skillRoot,
+    snapshotHash,
+    resultFile,
+  };
 }
 
 export async function readWorkflowApplicationEvalResult(
   prepared: PreparedApplicationEval,
 ): Promise<ApplicationEvalResult | null> {
-  const text = await fs.readFile(prepared.resultFile, 'utf8').catch((error) => {
+  if (
+    !prepared.projectRoot ||
+    !/^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/u.test(prepared.experimentId) ||
+    !/^[a-f0-9]{64}$/u.test(prepared.preview.confirmationHash) ||
+    !/^[a-f0-9]{64}$/u.test(prepared.snapshotHash)
+  )
+    throw new Error('评估结果缺少可信项目根或实验身份');
+  const expectedFile = await artifactPath(
+    prepared.projectRoot,
+    'runs',
+    prepared.experimentId,
+    'application-result.json',
+  );
+  const expectedSkill = await artifactPath(
+    prepared.projectRoot,
+    'cache',
+    `application-${prepared.preview.confirmationHash}`,
+    'skill',
+  );
+  if (
+    path.resolve(prepared.resultFile) !== expectedFile ||
+    path.resolve(prepared.skillRoot) !== expectedSkill
+  )
+    throw new Error('评估结果或快照不属于当前项目的固定实验路径');
+  const exists = await fs.lstat(expectedFile).catch((error) => {
     if (error.code !== 'ENOENT') throw error;
     return null;
   });
+  if (!exists) return null;
+  const text = (
+    await readProtectedProjectFile(
+      prepared.projectRoot,
+      `.comet/eval/runs/${prepared.experimentId}/application-result.json`,
+      8 * 1024 * 1024,
+      { label: '应用 Eval 结果' },
+    )
+  ).bytes.toString('utf8');
   if (!text) return null;
   const result = JSON.parse(text) as ApplicationEvalResult;
   if (
@@ -682,11 +726,13 @@ export async function readWorkflowApplicationEvalResult(
   )
     throw new Error('评估快照发生变化；原结果失效');
   if (result.status === 'passed' && !result.taskSet) throw new Error('通过结果缺少固定用例集');
-  if (result.taskSet)
-    await reusableTasks(
-      path.resolve(path.dirname(prepared.resultFile), '../../../..'),
-      result.taskSet,
-    );
+  if (
+    prepared.preview.taskSet &&
+    hashRuntimeValue(prepared.preview.taskSet) !== hashRuntimeValue(result.taskSet)
+  )
+    throw new Error('评估结果固定用例与已确认预览不匹配');
+  if (result.taskSet) await reusableTasks(prepared.projectRoot, result.taskSet);
+  await validateApplicationEvaluationCompletion(prepared.projectRoot, prepared.resultFile, result);
   return result;
 }
 

@@ -2387,5 +2387,7 @@
   "当前显示 {0}–{1} 条，共 {2} 条": "Showing {0}–{1} of {2} entries",
   "已加载 {0} 条": "Loaded {0} entries",
   "本页受条数或字节预算限制，后续记录可继续查看": "This page is limited by its entry or byte budget. Continue to view more entries.",
-  "读取大记录（{0} KB）": "Load large entry ({0} KB)"
+  "读取大记录（{0} KB）": "Load large entry ({0} KB)",
+  "Git 状态未知": "Git status unavailable",
+  "仅显示前 {0} 项，共 {1} 个未提交文件": "Showing the first {0} of {1} uncommitted files"
 }

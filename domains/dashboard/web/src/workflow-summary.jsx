@@ -222,7 +222,12 @@ export function SummaryDetails({ kind, rows, summary, git, loadDetail, onClose, 
       <div className="dashboard-summary-details">
         {kind === 'git' ? (
           <>
-            {files.length ? (
+            {git?.dirtyEntriesTruncated && (
+              <p>{t('仅显示前 {0} 项，共 {1} 个未提交文件', [files.length, git.dirtyFiles])}</p>
+            )}
+            {git?.dirtyFiles === null ? (
+              <Empty description={t('Git 状态未知')} />
+            ) : files.length ? (
               <ul className="dashboard-summary-items dashboard-summary-git">
                 {files.map((file, i) => (
                   <li key={i}>

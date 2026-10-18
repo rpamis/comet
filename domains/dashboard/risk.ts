@@ -113,7 +113,14 @@ interface ProjectRiskInput {
 export function buildProjectRisks(input: ProjectRiskInput): DashboardRisk[] {
   const risks: DashboardRisk[] = [];
 
-  if (input.git.dirtyFiles > 0) {
+  if (input.git.dirtyFiles === null) {
+    risks.push({
+      level: 'warning',
+      code: 'GIT_STATUS_UNAVAILABLE',
+      message: '无法读取 Git 工作区状态，未提交文件数未知。',
+      suggestion: '检查仓库是否可用，并运行 git status 后重试。',
+    });
+  } else if (input.git.dirtyFiles > 0) {
     risks.push({
       level: 'warning',
       code: 'GIT_DIRTY',

@@ -1,3 +1,4 @@
+import { runWithHookReadCache } from '../../../platform/process/hook-read-cache.js';
 import { resolveWorkspaceRuntimeRootSync } from '../../../domains/workflow-contract/workspace-runtime.js';
 import { constants as fsConstants, promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -16,6 +17,7 @@ import {
 import { createNativePortableState } from '../../../domains/comet-native/native-portable-state.js';
 import {
   createNativeSdkRuntime,
+  loadOwnedNativeSdkRuntime,
   inspectNativeSdkRun,
 } from '../../../domains/comet-native/native-runtime-ownership.js';
 import { advanceNativeSdkChange } from '../../../domains/comet-native/native-sdk-next.js';
@@ -104,6 +106,41 @@ async function preparedChange(name = 'read-budget', existingRoot?: string) {
 }
 
 describe('Native SDK read work budgets', () => {
+  it('shares only normalized definitions within one read scope and keeps Run state independent', async () => {
+    const { root, name, stateFile } = await preparedChange();
+    const peer = await preparedChange('independent-peer', root);
+    const definitions = vi.spyOn(sdkApplication, 'defineNativeWorkflowApplication');
+    await runWithHookReadCache(async () => {
+      const first = await loadOwnedNativeSdkRuntime(root, name, { readOnly: true });
+      const second = await loadOwnedNativeSdkRuntime(root, peer.name, { readOnly: true });
+      expect(definitions).toHaveBeenCalledTimes(1);
+      expect(first.executors).not.toBe(second.executors);
+      expect(first.executors[0]).not.toBe(second.executors[0]);
+      const run = await first.runtime.inspect(name);
+      const other = await second.runtime.inspect(peer.name);
+      expect(run.runId).toBe(name);
+      expect(other.runId).toBe(peer.name);
+      expect(run.state).not.toBe(other.state);
+    });
+    await runWithHookReadCache(() => inspectNativeSdkRun(root, name, { readOnly: true }));
+    expect(definitions).toHaveBeenCalledTimes(2);
+    await runWithHookReadCache(async () => {
+      await inspectNativeSdkRun(root, name, { readOnly: true });
+      const source = await fs.readFile(stateFile, 'utf8');
+      const edited = source.replace('language: en', 'language: zh-CN');
+      expect(edited).not.toBe(source);
+      await fs.writeFile(stateFile, edited);
+      // 既有 protected read 在同次决策内保持快照；新 scope 必须重读磁盘。
+      expect((await inspectNativeSdkRun(root, name, { readOnly: true })).state.language).toBe('en');
+      expect((await inspectNativeSdkRun(root, peer.name, { readOnly: true })).run.runId).toBe(
+        peer.name,
+      );
+    });
+    await expect(
+      runWithHookReadCache(() => inspectNativeSdkRun(root, name, { readOnly: true })),
+    ).rejects.toThrow(/differs from SDK Run/u);
+  });
+
   it('returns the first executable continuation when creating an SDK change', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-native-new-contract-'));
     roots.push(root);
@@ -437,7 +474,7 @@ describe('Native SDK read work budgets', () => {
     const timestamp = new Date('2020-01-01T00:00:00.000Z');
     await fs.utimes(stateFile, timestamp, timestamp);
     await fs.utimes(markerFile, timestamp, timestamp);
-    const reads = vi.spyOn(fs, 'readFile');
+    const reads = vi.spyOn(fs, 'open');
     const renames = vi.spyOn(fs, 'rename');
     const result = await advanceNativeSdkChange(root, name);
     expect(result.exitCode).toBe(0);
@@ -471,7 +508,7 @@ describe('Native SDK read work budgets', () => {
       run: { revision: committed.run.revision },
       pendingAction: { stepId: 'build.builder' },
     });
-    const reads = vi.spyOn(fs, 'readFile');
+    const reads = vi.spyOn(fs, 'open');
     const renames = vi.spyOn(fs, 'rename');
     const pending = await advanceNativeSdkChange(root, name);
     expect(pending.data).toEqual(result.data);
@@ -509,7 +546,7 @@ describe('Native SDK read work budgets', () => {
     const { root, name, stateFile } = await preparedChange();
     const store = createNativeSdkStateStore(root);
     const parse = vi.mocked(yaml.parseDocument);
-    const reads = vi.spyOn(fs, 'readFile');
+    const reads = vi.spyOn(fs, 'open');
     parse.mockClear();
     const first = await store.read(name);
     const source = await fs.readFile(stateFile, 'utf8');
@@ -526,6 +563,120 @@ describe('Native SDK read work budgets', () => {
     await createNativeSdkStateStore(root).read(name);
     expect(projectionParses()).toBe(2);
   });
+
+  it('reuses only complete canonical bytes on read-only inspections across fresh stores', async () => {
+    const { root, name, stateFile } = await preparedChange();
+    const source = await fs.readFile(stateFile, 'utf8');
+    const parse = vi.mocked(yaml.parseDocument);
+    const opens = vi.spyOn(fs, 'open');
+    parse.mockClear();
+    const first = await createNativeSdkStateStore(root, { readOnly: true }).read(name);
+    expect(await createNativeSdkStateStore(root, { readOnly: true }).read(name)).toEqual(first);
+    expect(
+      parse.mock.calls.some(([text]) => String(text).includes('schema: comet.native.v4')),
+    ).toBe(false);
+    expect(opens.mock.calls.filter(([file]) => String(file) === stateFile)).toHaveLength(2);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(source);
+
+    const equivalent = source.replace('language: en', 'language: "en"');
+    await fs.writeFile(stateFile, equivalent);
+    expect(await createNativeSdkStateStore(root, { readOnly: true }).read(name)).toEqual(first);
+    expect(parse.mock.calls.some(([text]) => String(text).includes('language: "en"'))).toBe(true);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(equivalent);
+    await fs.writeFile(stateFile, source.replace('language: en', 'language: zh-CN'));
+    await expect(createNativeSdkStateStore(root, { readOnly: true }).read(name)).rejects.toThrow(
+      /differs from SDK Run/u,
+    );
+    await fs.writeFile(stateFile, source + '\nlanguage: en\n');
+    await expect(createNativeSdkStateStore(root, { readOnly: true }).read(name)).rejects.toThrow(
+      /invalid YAML/u,
+    );
+  });
+
+  it('falls back to full parsing for receipt-bearing portable documents without losing their bytes', async () => {
+    const { root, name, stateFile } = await preparedChange();
+    const expected = await createNativeSdkStateStore(root, { readOnly: true }).read(name);
+    const source = await fs.readFile(stateFile, 'utf8');
+    const withReceipt = source.replace(
+      '\nrun_checkpoint: ',
+      '\narchive_receipt: { pending: true }\nrun_checkpoint: ',
+    );
+    await fs.writeFile(stateFile, withReceipt);
+    const parse = vi.mocked(yaml.parseDocument);
+    parse.mockClear();
+    expect(await createNativeSdkStateStore(root, { readOnly: true }).read(name)).toEqual(expected);
+    expect(parse.mock.calls.some(([text]) => String(text).includes('archive_receipt:'))).toBe(true);
+    expect(await fs.readFile(stateFile, 'utf8')).toBe(withReceipt);
+  });
+
+  it.skipIf(process.platform === 'win32').for([true, false])(
+    'rejects an equal-content portable state symlink (readOnly=%s)',
+    async (readOnly) => {
+      const { root, name, stateFile } = await preparedChange();
+      const source = await fs.readFile(stateFile, 'utf8');
+      const target = path.join(root, 'copied-state.yaml');
+      await fs.writeFile(target, source);
+      await fs.rm(stateFile);
+      await fs.symlink(target, stateFile);
+      await expect(createNativeSdkStateStore(root, { readOnly }).read(name)).rejects.toThrow(
+        /symbolic link/u,
+      );
+      expect(await fs.readFile(target, 'utf8')).toBe(source);
+    },
+  );
+
+  it.for([true, false])(
+    'rejects an equal-content state replacement after open (readOnly=%s)',
+    async (readOnly) => {
+      const { root, name, stateFile } = await preparedChange();
+      const source = await fs.readFile(stateFile, 'utf8');
+      const open = fs.open.bind(fs);
+      let replaced = false;
+      vi.spyOn(fs, 'open').mockImplementation(async (...args) => {
+        const handle = await open(...args);
+        if (!replaced && String(args[0]) === stateFile) {
+          replaced = true;
+          await fs.rename(stateFile, stateFile + '.original');
+          await fs.writeFile(stateFile, source);
+        }
+        return handle;
+      });
+      await expect(createNativeSdkStateStore(root, { readOnly }).read(name)).rejects.toThrow(
+        /changed while opening/u,
+      );
+      expect(replaced).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === 'win32').for(['active', 'archive'] as const)(
+    'refuses recovery through an external %s portable-state symlink',
+    async (location) => {
+      const { root, name, stateFile } = await preparedChange();
+      const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'native-external-checkpoint-'));
+      roots.push(outside);
+      const source = await fs.readFile(stateFile, 'utf8');
+      const target = path.join(outside, 'checkpoint.yaml');
+      await fs.writeFile(target, source);
+      await fs.rm(stateFile);
+      let link = stateFile;
+      if (location === 'archive') {
+        link = path.join(root, 'docs/comet/archive', '2026-10-18-' + name, 'comet-state.yaml');
+        await fs.mkdir(path.dirname(link), { recursive: true });
+      }
+      await fs.symlink(target, link);
+      const runtimeDir = path.join(resolveWorkspaceRuntimeRootSync(root), 'sdk-runs/native');
+      await fs.rm(runtimeDir, { recursive: true, force: true });
+      for (const readOnly of [true, false]) {
+        await expect(createNativeSdkStateStore(root, { readOnly }).read(name)).rejects.toThrow(
+          /symbolic link/u,
+        );
+      }
+      // Failed recovery must not publish the checkpoint as a new authority.
+      const { createFileRuntimeStore } = await import('../../../domains/engine/runtime.js');
+      expect(await createFileRuntimeStore({ rootDir: runtimeDir }).read(name)).toBeNull();
+      expect(await fs.readFile(target, 'utf8')).toBe(source);
+    },
+  );
 
   it('enumerates SDK owners once when discovering an otherwise unconfigured workspace', async () => {
     const { root, name } = await preparedChange();

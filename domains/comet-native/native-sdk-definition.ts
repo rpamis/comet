@@ -2,6 +2,7 @@ import {
   defineWorkflow,
   hashRuntimeValue,
   type DefineWorkflowOptions,
+  type WorkflowDefinition,
   type WorkflowRun,
   type WorkflowTransitionHandler,
 } from '../engine/runtime.js';
@@ -126,9 +127,17 @@ export function nativeSdkLegacyTransitionHandler(
   };
 }
 
+const normalizedDefinitionHashes = new WeakMap<WorkflowDefinition, string>();
+
 export function nativeSdkMatchesRun(
   workflow: DefineWorkflowOptions,
   run: Pick<WorkflowRun, 'workflow'> | null | undefined,
 ) {
-  return run?.workflow.hash === hashRuntimeValue(defineWorkflow(workflow));
+  const definition = defineWorkflow(workflow);
+  let hash = normalizedDefinitionHashes.get(definition);
+  if (hash === undefined) {
+    hash = hashRuntimeValue(definition);
+    normalizedDefinitionHashes.set(definition, hash);
+  }
+  return run?.workflow.hash === hash;
 }

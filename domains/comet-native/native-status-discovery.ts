@@ -1,3 +1,5 @@
+import { readNativeTextFilePrefix } from './native-bounded-file.js';
+import { NATIVE_MANAGED_RUN_MARKER } from './native-state-document.js';
 import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
 import { isNativeSdkChangeCancellationComplete } from './native-sdk-cancellation.js';
 import { mapWithConcurrency } from './native-concurrency.js';
@@ -210,14 +212,58 @@ function displayCommandArgs(args: readonly string[]): string {
 async function discoverChanges(
   paths: NativeProjectPaths,
   targetName?: string,
+  sdkNames?: ReadonlySet<string>,
 ): Promise<NativeWorkspaceSource['changes']> {
-  const changes: NativeWorkspaceSource['changes'] = [];
-  for (const name of await listNativeChangeNames(paths)) {
-    if (targetName !== undefined && name !== targetName) continue;
-    changes.push({
+  const names = (await listNativeChangeNames(paths)).filter(
+    (name) => targetName === undefined || name === targetName,
+  );
+  const results = await mapWithConcurrency(
+    names,
+    4,
+    async (
       name,
-      kind: (await isNativePortableChange(paths, name)) ? 'portable' : 'legacy',
-    });
+    ): Promise<PromiseSettledResult<NativeWorkspaceSource['changes'][number] | null>> => {
+      try {
+        // 同工作区 SDK 投影先核对 marker 和本地执行冲突，不再为分类读取整个 YAML。
+        if (sdkNames?.has(name)) {
+          const prefix = await readNativeTextFilePrefix({
+            root: path.dirname(nativePortableStateFile(paths, name)),
+            ref: path.basename(nativePortableStateFile(paths, name)),
+            maxBytes: 512,
+          }).catch((error: NodeJS.ErrnoException) => {
+            if (error.code === 'ENOENT') return { text: '' };
+            throw error;
+          });
+          const marked = prefix.text.startsWith(NATIVE_MANAGED_RUN_MARKER);
+          const local = await inspectProtectedProjectPath(
+            paths.workspaceRuntimeRoot,
+            path.relative(paths.workspaceRuntimeRoot, nativeLocalExecutionFile(paths, name)),
+            { label: 'Native local execution state', expected: 'file' },
+          );
+          if (marked && !local.exists) {
+            // 非规范/旧 header 仍回退全文件分类；只省略已经证明是 v4 的投影。
+            const portable =
+              /^schema:\s*comet\.native\.v4[^\S\r\n]*\r?\n/mu.test(prefix.text) ||
+              (await isNativePortableChange(paths, name));
+            if (portable) return { status: 'fulfilled', value: null };
+          }
+        }
+        return {
+          status: 'fulfilled',
+          value: {
+            name,
+            kind: (await isNativePortableChange(paths, name)) ? 'portable' : 'legacy',
+          },
+        };
+      } catch (reason) {
+        return { status: 'rejected', reason };
+      }
+    },
+  );
+  const changes: NativeWorkspaceSource['changes'] = [];
+  for (const result of results) {
+    if (result.status === 'rejected') throw result.reason;
+    if (result.value) changes.push(result.value);
   }
   return changes;
 }
@@ -225,6 +271,7 @@ async function discoverChanges(
 async function discoverSources(
   projectRoot: string,
   targetName?: string,
+  omitSdkProjections = false,
 ): Promise<NativeWorkspaceSource[]> {
   const requestedRoot = path.resolve(projectRoot);
   const worktrees = listGitWorktrees(projectRoot);
@@ -242,9 +289,10 @@ async function discoverSources(
     if (seen.has(key)) continue;
     seen.add(key);
     const configured = await readProjectConfig(candidate);
-    const sdkNames = !configured
-      ? await listNativeSdkChangeNames(candidate, { readOnly: true })
-      : undefined;
+    const sdkNames =
+      !configured || omitSdkProjections
+        ? await listNativeSdkChangeNames(candidate, { readOnly: true })
+        : undefined;
     if (!configured && sdkNames?.length === 0) continue;
     const config = configured ?? defaultProjectConfig();
     const paths = await nativeProjectPaths(candidate, config.native.artifact_root, {
@@ -257,7 +305,11 @@ async function discoverSources(
       sdkNames,
       gitContext:
         gitWorktreeContextFromEntries(candidate, worktrees) ?? inspectGitWorktree(candidate),
-      changes: await discoverChanges(paths, targetName),
+      changes: await discoverChanges(
+        paths,
+        targetName,
+        omitSdkProjections ? new Set(sdkNames) : undefined,
+      ),
     });
   }
   if (sources.length === 0) {
@@ -920,7 +972,7 @@ async function listDiscoveredNativeStatusPageWithinScope(options: {
   projectRoot: string;
   cursor?: string | null;
 }): Promise<NativeDiscoveredStatusPageProjection> {
-  const sources = await discoverSources(options.projectRoot);
+  const sources = await discoverSources(options.projectRoot, undefined, true);
 
   // Check authoritative cancellation before portable discovery. Unknown or
   // incomplete cancellation remains visible; the complete owner name set is
@@ -941,32 +993,6 @@ async function listDiscoveredNativeStatusPageWithinScope(options: {
   );
   for (const [index, { discovery, name }] of cancellationCandidates.entries()) {
     if (!completed[index]) discovery.kept.push(name);
-  }
-  // A same-workspace SDK projection is not a second legacy Run. Check its
-  // ownership boundary before expensive portable discovery, retaining every
-  // other workspace copy for the conflict checks below.
-  for (const { source, names } of sdkDiscoveries) {
-    const owned = new Set(names);
-    const retained: NativeWorkspaceSource['changes'] = [];
-    for (const change of source.changes) {
-      if (!owned.has(change.name) || change.kind !== 'portable') {
-        retained.push(change);
-        continue;
-      }
-      const stateFile = nativePortableStateFile(source.paths, change.name);
-      const marked = await hasNativeManagedRunMarker(stateFile);
-      const localFile = nativeLocalExecutionFile(source.paths, change.name);
-      const local = await inspectProtectedProjectPath(
-        source.paths.workspaceRuntimeRoot,
-        path.relative(source.paths.workspaceRuntimeRoot, localFile),
-        {
-          label: 'Native local execution state',
-          expected: 'file',
-        },
-      );
-      if (!marked || local.exists) retained.push(change);
-    }
-    source.changes = retained;
   }
   const legacyCandidates = await discoverCandidates(options.projectRoot, sources);
   const sdkCandidates = sdkDiscoveries.flatMap(({ source, kept }) =>

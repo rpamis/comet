@@ -41,6 +41,23 @@ function classifyIssue(
 }
 
 describe('CI workflows', () => {
+  it('uploads Dashboard browser reports and traces from the configured root coverage directory', async () => {
+    const ci = parse(await readWorkflow('ci.yml'));
+    const report = ci.jobs['dashboard-e2e'].steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(report.if).toBe('always()');
+    expect(report.with.path.trim().split('\n')).toEqual([
+      'coverage/playwright-report/',
+      'coverage/playwright-results/',
+    ]);
+    expect(report.with['if-no-files-found']).toBe('warn');
+    const config = await fs.readFile('test/domains/dashboard/playwright.config.ts', 'utf8');
+    expect(config).toContain("new URL('../../../coverage/playwright-results', import.meta.url)");
+    expect(config).toContain("new URL('../../../coverage/playwright-report', import.meta.url)");
+    expect(config).toContain("trace: 'retain-on-failure'");
+  });
+
   it('finishes the complete Node 22 suite in independent shards with retained failure reports', async () => {
     const ci = parse(await readWorkflow('ci.yml'));
     const node = ci.jobs['node-compatibility'];

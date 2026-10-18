@@ -214,6 +214,25 @@ export async function writeNativeManagedRunState(
   );
 }
 
+function serializeNativeManagedRunProjection(
+  state: NativePortableState,
+  checkpoint?: PortableRunCheckpoint,
+  archiveReceipt?: unknown,
+  applicationIdentity?: ApplicationIdentity,
+): string {
+  return (
+    NATIVE_MANAGED_RUN_MARKER +
+    stringify({
+      ...parseNativePortableState(state),
+      ...(archiveReceipt === undefined ? {} : { archive_receipt: archiveReceipt }),
+      ...(applicationIdentity ? { application_checkpoint: applicationIdentity } : {}),
+    }) +
+    (checkpoint
+      ? `${PORTABLE_RUN_CHECKPOINT_KEY}: ${JSON.stringify(encodePortableRunCheckpoint(checkpoint))}\n`
+      : '')
+  );
+}
+
 async function writeNativeManagedRunProjection(
   file: string,
   state: NativePortableState,
@@ -224,18 +243,8 @@ async function writeNativeManagedRunProjection(
 ): Promise<void> {
   await atomicWriteText(
     file,
-    NATIVE_MANAGED_RUN_MARKER +
-      stringify({
-        ...parseNativePortableState(state),
-        ...(archiveReceipt === undefined ? {} : { archive_receipt: archiveReceipt }),
-        ...(applicationIdentity ? { application_checkpoint: applicationIdentity } : {}),
-      }) +
-      (checkpoint
-        ? `${PORTABLE_RUN_CHECKPOINT_KEY}: ${JSON.stringify(encodePortableRunCheckpoint(checkpoint))}\n`
-        : ''),
-    {
-      containedRoot,
-    },
+    serializeNativeManagedRunProjection(state, checkpoint, archiveReceipt, applicationIdentity),
+    { containedRoot },
   );
 }
 
@@ -288,6 +297,18 @@ export function createNativeSdkStateStore(
     return value;
   }
 
+  async function readPortableSource(file: string): Promise<string> {
+    // 既有 portable 读取不设大小上限；保留完整内容并在恢复与普通读取中校验路径竞态。
+    return (
+      await readProtectedProjectFile(
+        projectRoot,
+        path.relative(projectRoot, file),
+        Number.MAX_SAFE_INTEGER,
+        { label: 'Native portable state' },
+      )
+    ).bytes.toString('utf8');
+  }
+
   async function recoverFromPortableFile(
     runId: string,
     marker: ProjectionMarker | null,
@@ -300,13 +321,13 @@ export function createNativeSdkStateStore(
     let file = activeFile;
     let source: string;
     try {
-      source = await fs.readFile(file, 'utf8');
+      source = await readPortableSource(file);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       const archivedFile = await findNativeSdkArchivedStateFile(paths, runId);
       if (!archivedFile) return null;
       file = archivedFile;
-      source = await fs.readFile(file, 'utf8');
+      source = await readPortableSource(file);
     }
     if (!source.startsWith(NATIVE_MANAGED_RUN_MARKER)) return null;
     const data = parseNativeStateDocument(source, 'Native state file') as Record<string, unknown>;
@@ -463,12 +484,24 @@ export function createNativeSdkStateStore(
         }
         file = archivedFile;
       }
+      const expectedCheckpoint = createPortableRunCheckpoint(run);
       let current: NativePortableState | null = null;
       let currentSource: string | null = null;
       let currentDocument: Record<string, unknown> | null = null;
       try {
-        currentSource = await fs.readFile(file, 'utf8');
-        currentDocument = parseProjection(file, currentSource);
+        currentSource = await readPortableSource(file);
+        // 只对完整字节相等的内置活动投影复用权威状态；任何编辑或额外字段仍严格解析。
+        const canonical =
+          options.readOnly &&
+          !options.identity &&
+          !state.archived &&
+          currentSource === serializeNativeManagedRunProjection(state, expectedCheckpoint);
+        currentDocument = canonical
+          ? {
+              ...state,
+              [PORTABLE_RUN_CHECKPOINT_KEY]: encodePortableRunCheckpoint(expectedCheckpoint),
+            }
+          : parseProjection(file, currentSource);
         current = parseNativePortableState(currentDocument);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -492,7 +525,6 @@ export function createNativeSdkStateStore(
           throw new Error(`Native state file ${file} differs from SDK Run ${runId}`);
         }
       }
-      const expectedCheckpoint = createPortableRunCheckpoint(run);
       const currentCheckpoint = currentDocument?.[PORTABLE_RUN_CHECKPOINT_KEY];
       const archiveReceipt = currentDocument?.['archive_receipt'];
       const unresolvedFinalization = run.actions.some(

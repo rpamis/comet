@@ -1,10 +1,10 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
-import { isAlias, isMap, isScalar, parseDocument } from 'yaml';
 
 import { fileExists } from '../../platform/fs/file-system.js';
 import {
+  declaresWorkflowProjectConfig,
   parseWorkflowProjectConfigDocument,
   renderStructuredProjectConfig,
   WORKFLOW_PROJECT_CONFIG_MAX_BYTES,
@@ -51,6 +51,14 @@ export class ClassicLayoutUnavailableError extends Error {
   constructor(message = 'Classic artifact layout is unavailable from .comet/config.yaml') {
     super(message);
     this.name = 'ClassicLayoutUnavailableError';
+  }
+}
+
+/** 项目发现阶段的配置校验失败，保留原诊断并与文件系统错误区分。 */
+export class ClassicProjectConfigError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = 'ClassicProjectConfigError';
   }
 }
 
@@ -310,7 +318,10 @@ export async function discoverClassicProject(startPath: string): Promise<string>
     }
     if (source !== null) {
       try {
-        const value = parseWorkflowProjectConfigDocument(source).value;
+        const value = parseWorkflowProjectConfigDocument(source, {
+          allowPartialProject: true,
+          allowMissingNativeFields: true,
+        }).value;
         projectConfig =
           Boolean(value) &&
           typeof value === 'object' &&
@@ -321,20 +332,9 @@ export async function discoverClassicProject(startPath: string): Promise<string>
       } catch (error) {
         // 起点配置与明确声明的项目不能因配置损坏而归到父项目。
         // 其他祖先的全局配置仍不足以声明项目边界。
-        if (cursor === invocationRoot) throw error;
-        const document = parseDocument(source);
-        const scalarValue = (node: unknown): unknown => {
-          const resolved = isAlias(node) ? node.resolve(document) : node;
-          return isScalar(resolved) ? resolved.value : undefined;
-        };
-        if (
-          isMap(document.contents) &&
-          document.contents.items.some(
-            ({ key, value }) =>
-              scalarValue(key) === 'schema' && scalarValue(value) === 'comet.project.v1',
-          )
-        ) {
-          throw error;
+        if (cursor === invocationRoot) throw new ClassicProjectConfigError(error);
+        if (declaresWorkflowProjectConfig(source)) {
+          throw new ClassicProjectConfigError(error);
         }
       }
     }

@@ -2959,7 +2959,10 @@ function RiskCard({ change }) {
 function GitSnapshot({ git }) {
   useDashboardLanguage();
   return (
-    <Card title={t('Git 快照')} tag={t('{0} 个未提交', [git.dirtyFiles])}>
+    <Card
+      title={t('Git 快照')}
+      tag={git.dirtyFiles === null ? t('Git 状态未知') : t('{0} 个未提交', [git.dirtyFiles])}
+    >
       <KeyValue k={t('分支')} v={git.branch ?? '—'} />
       <KeyValue k="HEAD" v={git.head ?? '—'} />
       <div className="pt-2 text-[13px] font-semibold uppercase text-meta">{t('最近提交')}</div>
@@ -9802,7 +9805,11 @@ function AntSummaryCards({ snapshot, summaryData, selectedKey, onAction }) {
       t('Git 未提交'),
       snapshot.summary.dirtyFiles,
       t('工作区状态'),
-      snapshot.summary.dirtyFiles ? t('未提交') : t('干净'),
+      snapshot.summary.dirtyFiles === null
+        ? t('Git 状态未知')
+        : snapshot.summary.dirtyFiles
+          ? t('未提交')
+          : t('干净'),
       BranchesOutlined,
     ],
   ];

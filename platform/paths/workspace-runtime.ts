@@ -95,13 +95,16 @@ function canonicalParent(target: string): string {
   }
 }
 
+// 仅共享当前只读请求中同一显式目标的父目录解析；数据根自身仍由调用方校验。
+const cachedCanonicalParent = memoizedHookReadSync('workspaceRuntimeParent', canonicalParent);
+
 /** 纯路径解析，不创建目录；COMET_DATA_DIR 替代整个用户级 .comet 数据根。 */
 export function resolveWorkspaceRuntimeLocation(projectRoot: string): WorkspaceRuntimeLocation {
   const identity = resolveWorkspaceIdentity(projectRoot);
   const configured = process.env.COMET_DATA_DIR;
   if (configured !== undefined && (!configured.trim() || !path.isAbsolute(configured)))
     throw new Error('COMET_DATA_DIR 必须是非空绝对路径');
-  const dataRoot = canonicalParent(configured ?? path.join(os.homedir(), '.comet'));
+  const dataRoot = cachedCanonicalParent(configured ?? path.join(os.homedir(), '.comet'));
   const relativeData = path.relative(identity.projectRoot, dataRoot);
   if (
     relativeData === '' ||

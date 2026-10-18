@@ -1,3 +1,4 @@
+import { writeApplicationCaseEvidence } from '../../helpers/application-evaluation-evidence.js';
 import { getCurrentVersion } from '../../../platform/version/version.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -278,6 +279,7 @@ it('accepts only the matching immutable evaluation result and retains failures a
     failures: ['approval bypass'],
   };
   await fs.mkdir(path.dirname(prepared.resultFile), { recursive: true });
+  await writeApplicationCaseEvidence(prepared.resultFile, result);
   await fs.writeFile(prepared.resultFile, JSON.stringify(result));
   expect(await readWorkflowApplicationEvalResult(prepared)).toMatchObject({
     status: 'failed',

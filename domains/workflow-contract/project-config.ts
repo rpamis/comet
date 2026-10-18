@@ -1,5 +1,5 @@
 import path from 'path';
-import { stringify, parseDocument } from 'yaml';
+import { stringify, parseDocument, isAlias, isMap, isScalar } from 'yaml';
 
 import type {
   ClassicArtifactLayout,
@@ -1016,6 +1016,22 @@ function normalizeWorkflowProjectConfig(
     ...(native ? { native } : {}),
     ...(classic ? { classic } : {}),
   };
+}
+
+/** 在校验失败后识别明确的项目声明；只检查顶层 schema，不把正文中的文本当作声明。 */
+export function declaresWorkflowProjectConfig(source: string): boolean {
+  const document = parseDocument(source);
+  const scalarValue = (node: unknown): unknown => {
+    const resolved = isAlias(node) ? node.resolve(document) : node;
+    return isScalar(resolved) ? resolved.value : undefined;
+  };
+  return (
+    isMap(document.contents) &&
+    document.contents.items.some(
+      ({ key, value }) =>
+        scalarValue(key) === 'schema' && scalarValue(value) === 'comet.project.v1',
+    )
+  );
 }
 
 /**

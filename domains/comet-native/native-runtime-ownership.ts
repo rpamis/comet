@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { memoizedHookReadSync } from '../../platform/process/hook-read-cache.js';
 import { promises as fs } from 'node:fs';
 import { parseNativeStateDocument } from './native-state-document.js';
 
@@ -425,6 +426,24 @@ async function readNativeApplicationCheckpoint(
   return (data as { application_checkpoint?: ApplicationIdentity }).application_checkpoint ?? null;
 }
 
+// 仅在同次只读发现中复用规范化定义；每个 Runtime 的可变注册对象独立创建。
+const readOnlyNativeApplication = memoizedHookReadSync('nativeBuiltinDefinition', () => {
+  const application = defineNativeWorkflowApplication();
+  return { ...application, workflow: defineWorkflow(application.workflow) };
+});
+
+function nativeApplicationForRead() {
+  const application = readOnlyNativeApplication();
+  return {
+    ...application,
+    transitionHandler: { ...application.transitionHandler },
+    validators: application.validators.map((value) => ({ ...value })),
+    stateValidators: application.stateValidators.map((value) => ({ ...value })),
+    commandValidators: application.commandValidators.map((value) => ({ ...value })),
+    executors: application.executors.map((value) => ({ ...value })),
+  };
+}
+
 /** 每个公开 Native 入口都恢复 owner 绑定的同一固定应用。 */
 export async function loadOwnedNativeSdkRuntime(
   projectRoot: string,
@@ -444,7 +463,10 @@ export async function loadOwnedNativeSdkRuntime(
   if (id === 'native') {
     const store = createNativeSdkStateStore(projectRoot, options);
     let snapshot = await store.read(name);
-    const defined = nativeSdkApplicationForRun(snapshot, defineNativeWorkflowApplication());
+    const defined = nativeSdkApplicationForRun(
+      snapshot,
+      options.readOnly ? nativeApplicationForRead() : defineNativeWorkflowApplication(),
+    );
     return {
       runtime: createRuntime({
         ...defined,

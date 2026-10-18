@@ -1,3 +1,4 @@
+import { writeApplicationCaseEvidence } from '../../helpers/application-evaluation-evidence.js';
 import { getCurrentVersion } from '../../../platform/version/version.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -163,6 +164,7 @@ function fakeEval(status: 'passed' | 'failed' | 'incomplete') {
         manifestHash: `sha256:${createHash('sha256').update(manifest).digest('hex')}`,
       },
     };
+    await writeApplicationCaseEvidence(prepared.resultFile, result);
     await fs.writeFile(prepared.resultFile, JSON.stringify(result));
     await fs.writeFile(
       path.join(path.dirname(prepared.resultFile), 'summary.md'),

@@ -30,6 +30,27 @@ function editorialOptions(): DefineWorkflowOptions {
 }
 
 describe('workflow definition contract', () => {
+  it('reuses only internally normalized definitions and deeply freezes their values', () => {
+    const raw = editorialOptions();
+    raw.initialState = { nested: { values: [1] } };
+    raw.stateSchema = { type: 'object' };
+    const definition = defineWorkflow(raw);
+    expect(defineWorkflow(definition)).toBe(definition);
+    expect(() => defineWorkflow(new Proxy(definition, {}))).toThrow();
+    expect(Object.isFrozen(definition.initialState)).toBe(true);
+    expect(
+      Object.isFrozen((definition.initialState as { nested: { values: number[] } }).nested.values),
+    ).toBe(true);
+    const external = Object.freeze(structuredClone(definition));
+    expect(defineWorkflow(external)).not.toBe(external);
+    external.steps.draft.ref = '';
+    expect(() => defineWorkflow(external)).toThrow();
+    raw.steps.draft.ref = 'another-writer';
+    expect(defineWorkflow(raw).steps.draft.ref).toBe('another-writer');
+    expect(definition.steps.draft.ref).toBe('writer');
+    expect(() => defineWorkflow(Object.freeze({ ...raw, entry: 'missing' }))).toThrow();
+  });
+
   it('exposes a tool builder for call_tool steps', () => {
     expect(workflowDefinition).toHaveProperty('tool');
   });
