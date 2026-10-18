@@ -11,7 +11,7 @@ import { projectCliAgentObservation } from '../workflow-contract/output-envelope
 import { classicIssue } from './classic-issues.js';
 import { withCometRuntimeProgress } from '../../platform/process/runtime-metrics.js';
 import { observeRuntimeOperation } from '../../platform/process/runtime-performance.js';
-import { discoverClassicProject } from './classic-layout.js';
+import { ClassicProjectConfigError, discoverClassicProject } from './classic-layout.js';
 
 function jsonResult(
   command: ClassicCommandName,
@@ -72,14 +72,14 @@ async function executeClassicScript(
                   discoverClassicProject(runOptions.invocationCwd ?? process.cwd()),
                 workflow: 'classic',
                 command,
-                errorExitCode: () => 70,
+                errorExitCode: (error) => (error instanceof ClassicProjectConfigError ? 1 : 70),
               },
               invoke,
             ),
           );
   } catch (error) {
     result = {
-      exitCode: 70,
+      exitCode: error instanceof ClassicProjectConfigError ? 1 : 70,
       stderr: error instanceof Error ? error.message : String(error),
       data: { issues: [classicIssue(error)] },
     };

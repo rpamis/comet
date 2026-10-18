@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { vi } from 'vitest';
+import { declaresWorkflowProjectConfig } from '../../../domains/workflow-contract/project-config.js';
 import {
   assertProjectConfigDocumentValid,
   builtinCometFivePhaseWorkflow,
@@ -36,6 +37,22 @@ import {
 } from '../../../domains/workflow-contract/current-selection.js';
 
 describe('workflow contract normalization', () => {
+  it.each([
+    ['schema: comet.project.v1\nclassic: [', true],
+    ['"schema": "comet.project.v1" # project\nclassic: [', true],
+    ['version: &version comet.project.v1\nschema: *version\nclassic: [', true],
+    ['key: &key schema\n*key : comet.project.v1\nclassic: [', true],
+    ['description: |\n  schema: comet.project.v1\nclassic: [', false],
+    ['schema: *missing\n', false],
+    ['value: &version [comet.project.v1]\nschema: *version\n', false],
+  ])(
+    'recognizes a top-level project declaration without accepting invalid YAML: %s',
+    (source, declared) => {
+      expect(declaresWorkflowProjectConfig(source)).toBe(declared);
+      expect(() => parseWorkflowProjectConfigDocument(source)).toThrow();
+    },
+  );
+
   it('owns the shared current selection contract independently of Entry', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'comet-selection-contract-'));
     try {

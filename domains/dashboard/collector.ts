@@ -331,6 +331,20 @@ const classicCandidateCache = new Map<
   }
 >();
 
+// active/archived 与 candidates 共享对象；估算驻留内容时只计算一次正文。
+function classicCollectionCacheBytes(collection: ClassicCandidateCollection): number {
+  const seen = new Set<object>();
+  return Buffer.byteLength(
+    JSON.stringify(collection, (_key, value: unknown) => {
+      if (value !== null && typeof value === 'object') {
+        if (seen.has(value)) return null;
+        seen.add(value);
+      }
+      return value;
+    }),
+  );
+}
+
 async function collectCachedClassicCandidates(root: string): Promise<ClassicCandidateCollection> {
   const sources = collectDashboardWorkspaceSources(root);
   const identity = JSON.stringify({
@@ -381,7 +395,7 @@ async function collectCachedClassicCandidates(root: string): Promise<ClassicCand
     collection.refreshStable &&
     collection.errors.length === 0 &&
     before === (await fingerprintDashboardFiles(discoveryPaths, identity)) &&
-    Buffer.byteLength(JSON.stringify(collection)) <= 16 * 1024 * 1024
+    classicCollectionCacheBytes(collection) <= 16 * 1024 * 1024
   ) {
     classicCandidateCache.delete(root);
     classicCandidateCache.set(root, {

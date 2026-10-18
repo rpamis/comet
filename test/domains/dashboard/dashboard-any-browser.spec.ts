@@ -392,9 +392,21 @@ test('Any preserves pinned runs, child navigation and historical selection throu
     .click();
   await workspaceScroll.evaluate((element) => element.scrollTo({ top: 160, behavior: 'instant' }));
   await page.getByRole('button', { name: '进入子流程' }).scrollIntoViewIfNeeded();
-  const parentScroll = await workspaceScroll.evaluate((element) => element.scrollTop);
+  const enterChild = page.getByRole('button', { name: '进入子流程' });
+  // click 可能为按钮自动滚动；在 React 导航前记录用户实际离开的位置。
+  await enterChild.evaluate((button) => {
+    button.addEventListener(
+      'click',
+      () => {
+        const workspace = document.querySelector('[data-dashboard-scroll="workspace"]')!;
+        workspace.setAttribute('data-parent-scroll', String(workspace.scrollTop));
+      },
+      { capture: true, once: true },
+    );
+  });
+  await enterChild.click();
+  const parentScroll = Number(await workspaceScroll.getAttribute('data-parent-scroll'));
   expect(parentScroll).toBeGreaterThan(0);
-  await page.getByRole('button', { name: '进入子流程' }).click();
   await expect(page.locator('.any-current')).toContainText('1 项等待证据');
   await page.getByRole('button', { name: '返回父运行' }).click();
   await expect(page.locator('.any-inspector h3')).toHaveText('独立审查子流程');

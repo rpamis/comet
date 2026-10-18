@@ -1462,6 +1462,9 @@ export function validateApplicationArtifactContracts(value: unknown): asserts va
 // @public (undocumented)
 export function validateApplicationArtifactOutcome(projectRoot: string, contract: ApplicationArtifactContract, outcome: Readonly<RuntimeOutcome>): Promise<void>;
 
+// @public
+export function validateApplicationEvaluationCompletion(projectRoot: string, resultFile: string, result: unknown): Promise<void>;
+
 // @public (undocumented)
 export interface WorkflowApplicationFactoryContext {
     // (undocumented)

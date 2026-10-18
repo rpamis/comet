@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
@@ -11,9 +12,20 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  outputDir: 'coverage/playwright-results',
+  outputDir: fileURLToPath(new URL('../../../coverage/playwright-results', import.meta.url)),
   reporter: process.env.CI
-    ? [['line'], ['html', { open: 'never', outputFolder: 'coverage/playwright-report' }]]
+    ? [
+        ['line'],
+        [
+          'html',
+          {
+            open: 'never',
+            outputFolder: fileURLToPath(
+              new URL('../../../coverage/playwright-report', import.meta.url),
+            ),
+          },
+        ],
+      ]
     : 'list',
   use: {
     baseURL: 'http://127.0.0.1:4173',

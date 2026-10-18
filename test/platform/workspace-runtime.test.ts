@@ -12,6 +12,8 @@ import {
   resolveWorkspaceRuntimeRootSync,
 } from '../../platform/paths/workspace-runtime.js';
 
+import { runWithHookReadCache } from '../../platform/process/hook-read-cache.js';
+
 let temporary: string;
 let project: string;
 
@@ -37,6 +39,40 @@ describe('workspace runtime identity', () => {
     expect(resolveWorkspaceRuntimeRootSync(project)).toBe(location.runtimeRoot);
     await expect(fs.stat(path.join(temporary, 'home-data'))).rejects.toMatchObject({
       code: 'ENOENT',
+    });
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'refreshes a replaced data-root parent in the next read scope',
+    async () => {
+      const parent = path.join(temporary, 'data-parent');
+      const replacement = path.join(temporary, 'replacement');
+      await fs.mkdir(parent);
+      await fs.mkdir(replacement);
+      vi.stubEnv('COMET_DATA_DIR', path.join(parent, 'data'));
+      const original = await runWithHookReadCache(async () => {
+        const first = resolveWorkspaceRuntimeLocation(project);
+        await fs.rename(parent, parent + '-old');
+        await fs.symlink(replacement, parent);
+        expect(resolveWorkspaceRuntimeLocation(project)).toEqual(first);
+        return first;
+      });
+      const next = await runWithHookReadCache(async () => resolveWorkspaceRuntimeLocation(project));
+      expect(next.dataRoot).toBe(path.join(replacement, 'data'));
+      expect(next.runtimeRoot).not.toBe(original.runtimeRoot);
+      expect(resolveWorkspaceRuntimeLocation(project)).toEqual(next);
+    },
+  );
+
+  it('keys data-root parent observations by the current explicit target', async () => {
+    await runWithHookReadCache(async () => {
+      const original = resolveWorkspaceRuntimeLocation(project);
+      vi.stubEnv('COMET_DATA_DIR', path.join(temporary, 'other-data'));
+      const changed = resolveWorkspaceRuntimeLocation(project);
+      expect(changed.dataRoot).toBe(path.join(temporary, 'other-data'));
+      expect(changed.runtimeRoot).not.toBe(original.runtimeRoot);
+      vi.stubEnv('COMET_DATA_DIR', 'relative-invalid');
+      expect(() => resolveWorkspaceRuntimeLocation(project)).toThrow(/COMET_DATA_DIR/u);
     });
   });
 

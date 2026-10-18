@@ -84,9 +84,14 @@ describe('Native v4 registered-worktree status discovery', () => {
       ]);
       expect(cancelled.exitCode, cancelled.stderr).toBe(0);
     }
+    const reads = vi.spyOn(fs, 'readFile');
     expect((await listDiscoveredNativeStatusPage({ projectRoot: repository.root })).items).toEqual(
       [],
     );
+    expect(reads.mock.calls.filter(([file]) => String(file).endsWith('comet-state.yaml'))).toEqual(
+      [],
+    );
+    reads.mockRestore();
     const id = createHash('sha256').update(JSON.stringify('cancelled-second')).digest('hex');
     const checkpoint = path.join(
       resolveWorkspaceRuntimeRootSync(repository.root),

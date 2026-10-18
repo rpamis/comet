@@ -9,12 +9,7 @@ import {
   readProtectedProjectFile,
 } from './protected-project-path.js';
 import type { CometProjectWorkflow } from './types.js';
-import {
-  resolveWorkspaceRuntimeRoot,
-  readWorkspaceRuntimeRoots,
-  resolveWorkspaceRuntimeRootSync,
-  isWorkspaceRuntimeMigrationFence,
-} from './workspace-runtime.js';
+import { resolveWorkspaceRuntimeRoot, readWorkspaceRuntimeRoots } from './workspace-runtime.js';
 
 export const COMET_CHANGE_OWNER_SCHEMA = 'comet.change-owner.v1' as const;
 
@@ -43,6 +38,11 @@ export interface CompatChangeOwner {
 }
 
 export type ChangeRuntimeOwner = SdkChangeOwner | CompatChangeOwner;
+
+// 只读请求共享一次 Runtime/fence 发现；写入路径仍执行原迁移检查，下一请求重新读取。
+const readOnlyRuntimeRoots = memoizedHookRead('changeOwnerRuntimeRoots', (projectRoot: string) =>
+  readWorkspaceRuntimeRoots(projectRoot),
+);
 
 const NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
 
@@ -120,7 +120,7 @@ export async function readChangeRuntimeOwner(
   if (!options.readOnly) {
     return readOwnerFile(await resolveWorkspaceRuntimeRoot(projectRoot), ref, workflow, change);
   }
-  const runtimeRoot = resolveWorkspaceRuntimeRootSync(projectRoot);
+  const [runtimeRoot, legacyRoot] = await readOnlyRuntimeRoots(projectRoot);
   const volume = path.parse(runtimeRoot).root;
   const home = await inspectProtectedProjectPath(
     volume,
@@ -131,19 +131,7 @@ export async function readChangeRuntimeOwner(
     },
   );
   const current = home.exists ? await readOwnerFile(runtimeRoot, ref, workflow, change) : null;
-  const legacyRoot = await inspectProtectedProjectPath(projectRoot, '.comet/runtime', {
-    label: 'read-only legacy Runtime',
-    expected: 'any',
-  });
-  let legacy: ChangeRuntimeOwner | null = null;
-  if (legacyRoot.kind === 'directory') {
-    legacy = await readOwnerFile(projectRoot, `.comet/runtime/${ref}`, workflow, change);
-  } else if (
-    legacyRoot.kind === 'file' &&
-    !(await isWorkspaceRuntimeMigrationFence(legacyRoot.target))
-  ) {
-    throw new Error('Legacy Runtime path is not a valid migration fence');
-  }
+  const legacy = legacyRoot ? await readOwnerFile(legacyRoot, ref, workflow, change) : null;
   // fence 只用于阻断旧路径；绝不跟随其中记录的外部工作区或目标目录。
   if (
     current &&
@@ -181,7 +169,9 @@ export async function readSdkChangeOwner(
   change: string,
   options: { readOnly?: boolean } = {},
 ): Promise<SdkChangeOwner | null> {
-  return cachedReadSdkChangeOwner(projectRoot, workflow, change, options);
+  return options.readOnly
+    ? cachedReadSdkChangeOwner(projectRoot, workflow, change, options)
+    : readSdkChangeOwnerUncached(projectRoot, workflow, change, options);
 }
 
 export async function listSdkChangeNames(
@@ -190,7 +180,7 @@ export async function listSdkChangeNames(
   options: { readOnly?: boolean } = {},
 ): Promise<string[]> {
   const roots = options.readOnly
-    ? await readWorkspaceRuntimeRoots(projectRoot)
+    ? await readOnlyRuntimeRoots(projectRoot)
     : [await resolveWorkspaceRuntimeRoot(projectRoot)];
   const discovered = new Set<string>();
   for (const runtimeRoot of roots) {
@@ -213,12 +203,31 @@ export async function listSdkChangeNames(
       discovered.add(name);
     }
   }
+  const candidates = [...discovered];
+  const results = new Array<PromiseSettledResult<string | null>>(candidates.length);
+  let next = 0;
+  // 每条 owner 仍完整读取并校验；收齐结果后按原枚举顺序抛错。
+  await Promise.all(
+    Array.from({ length: Math.min(options.readOnly ? 8 : 1, candidates.length) }, async () => {
+      for (;;) {
+        const index = next++;
+        if (index >= candidates.length) return;
+        const name = candidates[index];
+        try {
+          const owner = await readSdkChangeOwner(projectRoot, workflow, name, options);
+          if (!owner && !(await readChangeRuntimeOwner(projectRoot, workflow, name, options)))
+            throw new Error(`${workflow} change runtime owner disappeared: ${name}`);
+          results[index] = { status: 'fulfilled', value: owner ? name : null };
+        } catch (reason) {
+          results[index] = { status: 'rejected', reason };
+        }
+      }
+    }),
+  );
   const names: string[] = [];
-  for (const name of discovered) {
-    const owner = await readSdkChangeOwner(projectRoot, workflow, name, options);
-    if (owner) names.push(name);
-    else if (!(await readChangeRuntimeOwner(projectRoot, workflow, name, options)))
-      throw new Error(`${workflow} change runtime owner disappeared: ${name}`);
+  for (const result of results) {
+    if (result.status === 'rejected') throw result.reason;
+    if (result.value) names.push(result.value);
   }
   return names.sort((left, right) => left.localeCompare(right, 'en'));
 }

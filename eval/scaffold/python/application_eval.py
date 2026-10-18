@@ -177,6 +177,150 @@ def application_runs_validator(test_dir: Path, outputs: dict) -> tuple[list[str]
     return passed, failed
 
 
+def _application_completeness(logger, context, results):
+    """核对固定用例、收集矩阵和持久化报告，缺失证据不能证明完整执行。"""
+    import hashlib
+    from collections import Counter
+
+    import yaml
+
+    from scaffold.python.aligned_comparison import _report_identity, load_expected_case_matrix
+    from scaffold.python.evidence import stable_treatment_name
+
+    def unlinked_path(value):
+        path = Path(os.path.abspath(value))
+        if any(part.is_symlink() for part in (path, *path.parents)):
+            raise ValueError("evidence path contains a symbolic link")
+        return path
+
+    failures = []
+    loaded = load_expected_case_matrix(logger.base_dir)
+    if loaded.matrix is None:
+        return ["Expected case matrix unavailable: " + (loaded.error or "missing")], None
+    matrix = loaded.matrix
+    metadata = getattr(logger, "metadata", {}).get("expected_case_matrix")
+    if metadata is not None and metadata != {
+        "schema": "comet.eval.expected-case-matrix.v1",
+        "matrix_hash": matrix.matrix_hash,
+        "case_count": len(matrix.cases),
+        "path": "expected-case-matrix.json",
+    }:
+        failures.append("Expected case matrix metadata does not match its persisted evidence")
+    expected = {(case.task, case.treatment, case.rep) for case in matrix.cases}
+    names = sorted(case.task for case in matrix.cases)
+    if not 2 <= len(names) <= 4 or len(set(names)) != len(names):
+        failures.append("Expected case matrix must contain 2–4 distinct application tasks")
+
+    task_set = getattr(logger, "metadata", {}).get("application_task_set")
+    receipt_path = logger.base_dir / "application-task-set.json"
+    try:
+        unlinked_path(receipt_path)
+        if receipt_path.exists():
+            if not receipt_path.is_file():
+                raise ValueError("collection receipt is not a regular file")
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            if (
+                receipt.get("schema") != "comet.workflow.application.eval.task-set.v1"
+                or receipt.get("experimentId") != context["experimentId"]
+                or receipt.get("confirmationHash") != context["preview"]["confirmationHash"]
+                or receipt.get("snapshotHash") != context["snapshotHash"]
+                or receipt.get("matrixHash") != matrix.matrix_hash
+                or (task_set is not None and receipt.get("taskSet") != task_set)
+            ):
+                raise ValueError("collection receipt identity does not match")
+            task_set = receipt.get("taskSet")
+        frozen = context["preview"].get("taskSet")
+        if frozen is not None:
+            if task_set is not None and task_set != frozen:
+                raise ValueError("task set differs from the confirmed preview")
+            task_set = frozen
+        if not isinstance(task_set, dict):
+            raise ValueError("fixed task set is missing")
+        generated_root = unlinked_path(Path(context["projectRoot"]) / ".comet/eval/generated")
+        manifest_path = unlinked_path(task_set["manifestPath"])
+        manifest_path.relative_to(generated_root)
+        if not manifest_path.is_file():
+            raise ValueError("fixed manifest is not a regular file")
+        manifest_bytes = manifest_path.read_bytes()
+        if task_set.get("manifestHash") != "sha256:" + hashlib.sha256(manifest_bytes).hexdigest():
+            raise ValueError("fixed manifest hash does not match")
+        manifest = yaml.safe_load(manifest_bytes)
+        tasks = manifest["evaluation"]["tasks"]
+        if not isinstance(tasks, list) or sorted(task["name"] for task in tasks) != names:
+            raise ValueError("fixed manifest tasks do not match the complete matrix")
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, yaml.YAMLError) as error:
+        failures.append("Application task set rejected: " + str(error))
+
+    def identity(name, events, rep):
+        task = events.get("task")
+        treatment = events.get("treatment")
+        if (
+            not isinstance(task, str) or not isinstance(treatment, str)
+            or isinstance(rep, bool) or not isinstance(rep, int) or rep < 1
+            or type(events.get("sample")) is not int or events["sample"] != rep
+        ):
+            raise ValueError("missing or invalid task/treatment/repetition")
+        parsed = _report_identity({"name": name, "rep": rep}, treatment)
+        if parsed is None or parsed[0] != task or parsed[1] != rep:
+            raise ValueError("report name does not match its task/treatment")
+        return task, treatment, parsed[1]
+
+    observed = []
+    result_payloads = Counter()
+    for result in results:
+        try:
+            key = identity(result.name, result.events_summary, result.events_summary.get("sample"))
+            observed.append(key)
+            result_payloads[json.dumps({"name": result.name, "passed": result.passed,
+                "checks_passed": result.checks_passed, "checks_failed": result.checks_failed,
+                "events_summary": result.events_summary}, sort_keys=True)] += 1
+        except (ValueError, TypeError, AttributeError) as error:
+            failures.append("Application result identity rejected: " + str(error))
+    if len(observed) != len(set(observed)):
+        failures.append("Application results contain duplicate cases")
+    missing, extra = expected - set(observed), set(observed) - expected
+    if missing:
+        failures.append("Missing application cases: " + repr(sorted(missing)))
+    if extra:
+        failures.append("Unexpected application cases: " + repr(sorted(extra)))
+
+    persisted = []
+    report_payloads = Counter()
+    try:
+        reports_root = unlinked_path(logger.base_dir / "reports")
+        if not reports_root.is_dir():
+            raise ValueError("reports directory is missing or invalid")
+        report_paths = sorted(reports_root.glob("*.json"))
+    except (OSError, ValueError) as error:
+        failures.append("Application reports directory rejected: " + str(error))
+        report_paths = []
+    for path in report_paths:
+        try:
+            unlinked_path(path)
+            if not path.is_file():
+                raise ValueError("report is not a regular file")
+            report = json.loads(path.read_text(encoding="utf-8"))
+            key = identity(report["name"], report["events_summary"], report["rep"])
+            if path.name != f"{stable_treatment_name(report['name'])}_rep{report['rep']}_report.json":
+                raise ValueError("report filename does not match its identity")
+            if type(report["passed"]) is not bool:
+                raise ValueError("report passed must be a boolean")
+            quality = report.get("sample_quality", report["events_summary"].get("sample_quality"))
+            if not isinstance(quality, dict) or quality.get("status") != "included":
+                raise ValueError("report sample quality is not included")
+            persisted.append(key)
+            report_payloads[json.dumps({field: report[field] for field in (
+                "name", "passed", "checks_passed", "checks_failed", "events_summary"
+            )}, sort_keys=True)] += 1
+        except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
+            failures.append(f"Application report rejected ({path.name}): {error}")
+    if len(persisted) != len(set(persisted)) or set(persisted) != expected:
+        failures.append("Persisted application reports do not match the complete case matrix")
+    if report_payloads != result_payloads:
+        failures.append("Persisted application reports do not match the aggregated results")
+    return failures, task_set
+
+
 def write_application_result(logger) -> None:
     context = application_eval_context()
     if context is None:
@@ -192,7 +336,9 @@ def write_application_result(logger) -> None:
     declared_choices = {workflow["id"] + "/" + step + "/" + choice for workflow in preview["workflows"] for step, spec in workflow.get("definition", {}).get("steps", {}).items() for choice in spec.get("choices", [])}
     declared = {workflow["id"] + "/" + step for workflow in preview["workflows"] for step in workflow["steps"]}
     failures = [check for result in results for check in result.checks_failed]
-    complete = 2 <= len(names) <= 4 and len(results) == len(names)
+    completeness_failures, task_set = _application_completeness(logger, context, results)
+    failures.extend(completeness_failures)
+    complete = not completeness_failures
     verified = all(any(check.startswith("SDK Run inspected by actual Runtime:") for check in result.checks_passed) for result in results)
     if not executed:
         verified = False
@@ -241,7 +387,7 @@ def write_application_result(logger) -> None:
         "knownCaseCostUsd": known_cost if any(cost is not None for cost in costs) else None,
         "costUsd": None,
         "costStatus": "case-costs-only" if costs and all(cost is not None for cost in costs) else "partial" if any(cost is not None for cost in costs) else "unavailable",
-        **({"taskSet": logger.metadata["application_task_set"]} if getattr(logger, "metadata", {}).get("application_task_set") else {}),
+        **({"taskSet": task_set} if task_set else {}),
     }
     # The output location is selected by the same controller-owned experiment identity.
     target = logger.base_dir / "application-result.json"

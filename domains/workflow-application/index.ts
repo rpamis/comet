@@ -37,6 +37,7 @@ export type {
 export {
   readApplicationEvaluationEvidence,
   recordApplicationEvaluationEvidence,
+  validateApplicationEvaluationCompletion,
 } from './evaluation-evidence.js';
 export type { ApplicationEvaluationEvidence } from './evaluation-evidence.js';
 export type { StandaloneApplicationOptions } from './standalone-application.js';

@@ -724,12 +724,32 @@ describe('dashboard web source contracts', () => {
     expect(styles).toContain('margin: 0;');
   });
 
+  it('keeps unknown Git status distinct from clean and labels bounded file previews', async () => {
+    const source = await readDashboardSource();
+    const summary = await fs.readFile('domains/dashboard/web/src/workflow-summary.jsx', 'utf8');
+    expect(source).toContain("git.dirtyFiles === null ? t('Git 状态未知')");
+    expect(source).toMatch(/snapshot.summary.dirtyFiles === null\s*\? t\('Git 状态未知'\)/u);
+    expect(summary).toContain('git?.dirtyFiles === null');
+    expect(summary).toContain('git?.dirtyEntriesTruncated');
+    expect(summary).toContain(
+      "t('仅显示前 {0} 项，共 {1} 个未提交文件', [files.length, git.dirtyFiles])",
+    );
+  });
+
   it('wraps artifact paths and exposes a copy control beside them', async () => {
     const source = await readDashboardSource();
 
     expect(source).toContain('break-all font-mono text-xs text-meta');
     expect(source).toContain("aria-label={t('复制文件路径')}");
-    expect(source).toContain("toast(t('路径已复制'))");
+    const drawer = source.slice(
+      source.indexOf('function ArtifactDrawer('),
+      source.indexOf('function ProjectKnowledgePreviewModal('),
+    );
+    expect(drawer).toContain('const { message: messageApi } = AntApp.useApp();');
+    expect(drawer).toContain('await navigator.clipboard.writeText(preview.path);');
+    expect(drawer).toContain("messageApi.success(t('路径已复制'))");
+    expect(drawer).toContain("messageApi.error(t('复制失败'))");
+    expect(drawer).not.toMatch(/\btoast\(/u);
     expect(source).not.toContain('truncate font-mono text-xs text-meta');
   });
 

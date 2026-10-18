@@ -186,6 +186,59 @@ describe('collectDashboardSnapshot', () => {
     }
   });
 
+  it('counts shared large task candidates once and still invalidates changed task files', async () => {
+    for (let index = 0; index < 5; index += 1) {
+      await writeChange(root, {
+        name: `large-${index}`,
+        yaml: { workflow: 'comet', phase: 'build' },
+        tasks: '- [ ] ' + 'x'.repeat(1_900_000) + '\n',
+      });
+    }
+    const open = vi.spyOn(fs, 'open');
+    const taskReads = () =>
+      open.mock.calls.filter(([file]) => String(file).endsWith('tasks.md')).length;
+    try {
+      const cold = await collectDashboardChangePage(root, { status: 'active', limit: 50 });
+      expect(cold.total).toBe(5);
+      expect(taskReads()).toBe(5);
+      open.mockClear();
+      const warm = await collectDashboardChangePage(root, { status: 'active', limit: 50 });
+      expect(warm).toEqual(cold);
+      expect(taskReads()).toBe(0);
+      await fs.writeFile(path.join(root, 'openspec/changes/large-0/tasks.md'), '- [x] complete\n');
+      open.mockClear();
+      const updated = await collectDashboardChangePage(root, { status: 'active', limit: 50 });
+      expect(taskReads()).toBe(1);
+      expect(updated.items.find((item) => item.name === 'large-0')?.tasks.completed).toBe(1);
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  it('retains the unique-content cache size limit without truncating large tasks', async () => {
+    for (let index = 0; index < 9; index += 1) {
+      await writeChange(root, {
+        name: `over-budget-${index}`,
+        yaml: { workflow: 'comet', phase: 'build' },
+        tasks: '- [ ] ' + 'x'.repeat(1_900_000) + '\n',
+      });
+    }
+    const open = vi.spyOn(fs, 'open');
+    try {
+      for (let round = 0; round < 2; round += 1) {
+        open.mockClear();
+        const page = await collectDashboardChangePage(root, { status: 'active', limit: 50 });
+        expect(page.total).toBe(9);
+        expect(page.items.every((item) => item.tasks.total === 1)).toBe(true);
+        expect(open.mock.calls.filter(([file]) => String(file).endsWith('tasks.md'))).toHaveLength(
+          9,
+        );
+      }
+    } finally {
+      open.mockRestore();
+    }
+  });
+
   it('refreshes cached Classic summaries after active files and external report changes', async () => {
     await writeChange(root, {
       name: 'cached',
