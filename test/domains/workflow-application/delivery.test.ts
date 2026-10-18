@@ -1,8 +1,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { afterEach, beforeEach, expect, it } from 'vitest';
-import { createRuntime } from '../../../domains/engine/runtime.js';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { createRuntime, hashRuntimeValue } from '../../../domains/engine/runtime.js';
 import {
   exportWorkflowApplication,
   installWorkflowApplication,
@@ -43,7 +43,192 @@ beforeEach(async () => {
   await fs.writeFile(source.file, JSON.stringify(source.manifest));
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await fs.rm(root, { recursive: true, force: true });
+});
+
+it.each(['second-entry', 'entry-directory', 'record', 'intent-cleanup'])(
+  'resumes the original confirmed uninstall after interruption at %s',
+  async (stage) => {
+    const options = {
+      file: source.file,
+      projectRoot: root,
+      scope: 'project' as const,
+      platforms: ['cursor', 'workbuddy'],
+    };
+    const preview = await previewWorkflowApplicationInstall(options);
+    const installed = await installWorkflowApplication({
+      ...options,
+      confirmationHash: preview.confirmationHash,
+    });
+    const request = { ...options, id: 'editorial' };
+    const removal = await uninstallWorkflowApplication(request);
+    const pending = path.join(preview.target, 'editorial/pending-uninstall.json');
+    const failurePath =
+      stage === 'second-entry'
+        ? path.join(removal.removedEntries[1].root, 'SKILL.md')
+        : stage === 'record'
+          ? path.join(preview.target, 'editorial/current.json')
+          : stage === 'intent-cleanup'
+            ? pending
+            : removal.removedEntries[0].root;
+    let interrupted = false;
+    const operation = stage === 'entry-directory' ? 'rmdir' : 'unlink';
+    const original = fs[operation].bind(fs);
+    const failure = vi.spyOn(fs, operation).mockImplementation(async (file) => {
+      if (!interrupted && String(file) === failurePath) {
+        interrupted = true;
+        throw Object.assign(new Error('simulated uninstall interruption'), { code: 'EIO' });
+      }
+      return original(file);
+    });
+    await expect(
+      uninstallWorkflowApplication({ ...request, confirmationHash: removal.confirmationHash }),
+    ).rejects.toThrow('simulated uninstall interruption');
+    failure.mockRestore();
+    expect(interrupted).toBe(true);
+    await expect(fs.stat(pending)).resolves.toBeDefined();
+    await expect(previewWorkflowApplicationInstall(options)).rejects.toThrow('卸载尚未完成');
+    const resumed = await uninstallWorkflowApplication(request);
+    expect(resumed.confirmationHash).toBe(removal.confirmationHash);
+    await expect(
+      uninstallWorkflowApplication({ ...request, confirmationHash: 'stale' }),
+    ).rejects.toThrow('卸载预览已变化');
+    await expect(
+      uninstallWorkflowApplication({ ...request, confirmationHash: removal.confirmationHash }),
+    ).resolves.toMatchObject({ uninstalled: true });
+    await expect(fs.stat(pending)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await resolveInstalledWorkflowApplication(options, 'editorial')).toBeNull();
+    for (const entry of removal.removedEntries) {
+      await expect(fs.stat(entry.root)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(
+        fs.stat(path.join(path.dirname(entry.root), 'writer/SKILL.md')),
+      ).resolves.toBeDefined();
+    }
+    await expect(fs.stat(installed.file)).resolves.toBeDefined();
+    await expect(previewWorkflowApplicationInstall(options)).resolves.toMatchObject({
+      operation: 'install',
+    });
+  },
+);
+
+it('resumes selective uninstall after the final record write fails without broadening its approved scope', async () => {
+  const options = {
+    file: source.file,
+    projectRoot: root,
+    scope: 'project' as const,
+    platforms: ['cursor', 'workbuddy'],
+  };
+  const preview = await previewWorkflowApplicationInstall(options);
+  const installed = await installWorkflowApplication({
+    ...options,
+    confirmationHash: preview.confirmationHash,
+  });
+  const request = { ...options, id: 'editorial', platforms: ['cursor'] };
+  const removal = await uninstallWorkflowApplication(request);
+  const record = path.join(preview.target, 'editorial/current.json');
+  const rename = fs.rename.bind(fs);
+  const failure = vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+    if (String(to) === record)
+      throw Object.assign(new Error('interrupted record update'), { code: 'EIO' });
+    return rename(from, to);
+  });
+  await expect(
+    uninstallWorkflowApplication({ ...request, confirmationHash: removal.confirmationHash }),
+  ).rejects.toThrow('interrupted record update');
+  failure.mockRestore();
+  await expect(uninstallWorkflowApplication({ ...options, id: 'editorial' })).rejects.toThrow(
+    /原卸载|未完成卸载/,
+  );
+  await expect(
+    uninstallWorkflowApplication({ ...request, confirmationHash: removal.confirmationHash }),
+  ).resolves.toMatchObject({ uninstalled: true });
+  const current = JSON.parse(await fs.readFile(record, 'utf8'));
+  expect(current.entries.map((entry: { platforms: string[] }) => entry.platforms)).toEqual([
+    ['workbuddy'],
+  ]);
+  await expect(
+    fs.stat(path.join(root, '.workbuddy/skills/editorial/SKILL.md')),
+  ).resolves.toBeDefined();
+  expect(await resolveInstalledWorkflowApplication(options, 'editorial')).toBe(installed.file);
+});
+
+it('preserves replacement files when an interrupted uninstall is resumed', async () => {
+  const options = {
+    file: source.file,
+    projectRoot: root,
+    scope: 'project' as const,
+    platforms: ['cursor', 'workbuddy'],
+  };
+  const preview = await previewWorkflowApplicationInstall(options);
+  await installWorkflowApplication({ ...options, confirmationHash: preview.confirmationHash });
+  const request = { ...options, id: 'editorial' };
+  const removal = await uninstallWorkflowApplication(request);
+  const [first, second] = removal.removedEntries;
+  const unlink = fs.unlink.bind(fs);
+  const failure = vi.spyOn(fs, 'unlink').mockImplementation(async (file) => {
+    if (String(file) === path.join(second.root, 'SKILL.md'))
+      throw new Error('interrupted deletion');
+    return unlink(file);
+  });
+  await expect(
+    uninstallWorkflowApplication({ ...request, confirmationHash: removal.confirmationHash }),
+  ).rejects.toThrow('interrupted deletion');
+  failure.mockRestore();
+  await fs.mkdir(first.root);
+  await fs.writeFile(path.join(first.root, 'SKILL.md'), '# Personal replacement\n');
+  const retained = await fs.readFile(path.join(second.root, 'SKILL.md'), 'utf8');
+  await expect(
+    uninstallWorkflowApplication({ ...request, confirmationHash: removal.confirmationHash }),
+  ).rejects.toThrow(/入口.*修改|入口.*变化/);
+  expect(await fs.readFile(path.join(first.root, 'SKILL.md'), 'utf8')).toBe(
+    '# Personal replacement\n',
+  );
+  expect(await fs.readFile(path.join(second.root, 'SKILL.md'), 'utf8')).toBe(retained);
+});
+
+it('rejects forged interrupted uninstall plans before touching files outside the approved entries', async () => {
+  const options = {
+    file: source.file,
+    projectRoot: root,
+    scope: 'project' as const,
+    platforms: ['cursor'],
+  };
+  const preview = await previewWorkflowApplicationInstall(options);
+  await installWorkflowApplication({ ...options, confirmationHash: preview.confirmationHash });
+  const request = { ...options, id: 'editorial' };
+  const removal = await uninstallWorkflowApplication(request);
+  const pending = path.join(preview.target, 'editorial/pending-uninstall.json');
+  const rmdir = fs.rmdir.bind(fs);
+  const failure = vi.spyOn(fs, 'rmdir').mockImplementation(async (directory) => {
+    if (String(directory) === removal.removedEntries[0].root)
+      throw new Error('interrupted deletion');
+    return rmdir(directory);
+  });
+  await expect(
+    uninstallWorkflowApplication({ ...request, confirmationHash: removal.confirmationHash }),
+  ).rejects.toThrow('interrupted deletion');
+  failure.mockRestore();
+  const original = await fs.readFile(pending, 'utf8');
+  const outside = path.join(root, 'personal');
+  await fs.mkdir(outside);
+  await fs.writeFile(path.join(outside, 'SKILL.md'), '# Personal workflow\n');
+  for (const change of ['digest', 'package', 'entry']) {
+    const intent = JSON.parse(original);
+    if (change === 'package') intent.preview.previous.packageRef = '../../personal';
+    if (change === 'entry') intent.preview.removedEntries[0].root = outside;
+    intent.confirmationHash =
+      change === 'digest' ? '0'.repeat(64) : hashRuntimeValue(intent.preview);
+    await fs.writeFile(pending, JSON.stringify(intent));
+    await expect(
+      uninstallWorkflowApplication({ ...request, confirmationHash: intent.confirmationHash }),
+    ).rejects.toThrow(/卸载意图|原卸载/);
+    expect(await fs.readFile(path.join(outside, 'SKILL.md'), 'utf8')).toBe('# Personal workflow\n');
+  }
+  await fs.writeFile(pending, original);
+  await expect(
+    uninstallWorkflowApplication({ ...request, confirmationHash: removal.confirmationHash }),
+  ).resolves.toMatchObject({ uninstalled: true });
 });
 
 it('completes a partially copied host Skill only with its sealed install intent', async () => {

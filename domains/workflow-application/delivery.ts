@@ -195,6 +195,8 @@ export async function previewWorkflowApplicationInstall(
     options.projectRoot,
   );
   const root = workflowApplicationStorageRoot(options.projectRoot, options.scope, options.userRoot);
+  if ((await inspectStorage(root, `${manifest.id}/pending-uninstall.json`, 'file')).exists)
+    applicationError('应用卸载尚未完成；请按原卸载预览继续后重新安装');
   const intent = await readInstallIntent(root, manifest.id);
   if (
     intent &&
@@ -542,12 +544,11 @@ export async function exportWorkflowApplication(options: {
   };
 }
 
-/** 卸载取消新 Run 的默认入口，明确保留版本；任意项目的在途 Run 可继续读取原包。 */
-export async function uninstallWorkflowApplication(
-  options: ApplicationDeliveryOptions & { id: string; confirmationHash?: string },
+async function prepareUninstall(
+  root: string,
+  options: ApplicationDeliveryOptions & { id: string },
+  previous: InstalledApplication | null,
 ) {
-  const root = workflowApplicationStorageRoot(options.projectRoot, options.scope, options.userRoot);
-  const previous = await readInstalled(root, options.id);
   const entries = await validateApplicationInstallEntries(root, previous, options.scope);
   const requested = options.platforms?.length
     ? workflowApplicationPlatforms(options.platforms)
@@ -559,10 +560,7 @@ export async function uninstallWorkflowApplication(
     }))
     .filter(({ platforms }) => platforms.length);
   const removed = entries.filter((entry) => !remaining.some((keep) => keep.root === entry.root));
-  for (const entry of entries)
-    if (applicationFilesHash(await readApplicationFiles(entry.root)) !== entry.contentHash)
-      applicationError('宿主入口被修改；保留用户文件，不能取消该入口');
-  const preview = {
+  return {
     id: options.id,
     scope: options.scope,
     target: root,
@@ -574,33 +572,137 @@ export async function uninstallWorkflowApplication(
     removedEntries: removed,
     retainedEntries: remaining,
   };
+}
+
+type UninstallPreview = Awaited<ReturnType<typeof prepareUninstall>>;
+
+async function readUninstallIntent(root: string, id: string) {
+  const ref = `${safeId(id)}/pending-uninstall.json`;
+  if (!(await inspectStorage(root, ref, 'file')).exists) return null;
+  const data = JSON.parse(
+    (
+      await readProtectedProjectFile(root, ref, 4 * 1024 * 1024, { label: '应用卸载意图' })
+    ).bytes.toString('utf8'),
+  );
+  const previous = data?.preview?.previous;
+  if (
+    data?.schema !== 'comet.workflow.application.uninstall.intent.v1' ||
+    data.preview?.id !== id ||
+    data.preview?.target !== root ||
+    !['project', 'user'].includes(data.preview?.scope) ||
+    hashRuntimeValue(data.preview) !== data.confirmationHash ||
+    (previous !== null &&
+      (!previous ||
+        previous.schema !== 'comet.workflow.application.install.v1' ||
+        previous.id !== id ||
+        typeof previous.version !== 'string' ||
+        !previous.version.trim() ||
+        !/^[a-f\d]{64}$/u.test(previous.contentHash) ||
+        previous.packageRef !== `${id}/versions/${previous.contentHash}`))
+  )
+    applicationError('原卸载意图身份或摘要不匹配；保留现场');
+  return data as { preview: UninstallPreview; confirmationHash: string };
+}
+
+function uninstallRecord(preview: UninstallPreview): InstalledApplication | null {
+  if (!preview.previous || !preview.retainedEntries.length) return null;
+  const record = { ...preview.previous, scope: preview.scope, entries: preview.retainedEntries };
+  delete record.entry;
+  return record;
+}
+
+async function validateUninstallEntry(
+  entry: UninstallPreview['removedEntries'][number],
+  allowRemoved: boolean,
+): Promise<boolean> {
+  if (!(await inspectStorage(entry.root, '.', 'directory')).exists) {
+    if (allowRemoved) return false;
+    applicationError('宿主入口缺失；保留现场并核对原安装');
+  }
+  const names = await fs.readdir(entry.root);
+  if (names.some((name) => name !== 'SKILL.md'))
+    applicationError('宿主入口含额外内容；保留用户文件');
+  if (!names.length && allowRemoved) return true;
+  if (applicationFilesHash(await readApplicationFiles(entry.root)) !== entry.contentHash)
+    applicationError('宿主入口被修改；保留用户文件，不能取消该入口');
+  return true;
+}
+
+function validateUninstallRecord(
+  current: InstalledApplication | null,
+  preview: UninstallPreview,
+  recovery: boolean,
+) {
+  const hash = hashRuntimeValue(current);
+  if (
+    hash !== hashRuntimeValue(preview.previous) &&
+    !(recovery && hash === hashRuntimeValue(uninstallRecord(preview)))
+  )
+    applicationError('卸载预览已变化；重新预览并确认');
+}
+
+/** 卸载保留固定版本和原确认计划；中断后只继续删除该计划内未变更的入口。 */
+export async function uninstallWorkflowApplication(
+  options: ApplicationDeliveryOptions & { id: string; confirmationHash?: string },
+) {
+  const root = workflowApplicationStorageRoot(options.projectRoot, options.scope, options.userRoot);
+  const intent = await readUninstallIntent(root, options.id);
+  const current = await readInstalled(root, options.id);
+  const preview = await prepareUninstall(root, options, intent ? intent.preview.previous : current);
   const confirmationHash = hashRuntimeValue(preview);
+  if (intent && confirmationHash !== intent.confirmationHash)
+    applicationError('存在未完成卸载；请按原卸载的平台选择和确认继续');
+  validateUninstallRecord(current, preview, !!intent);
+  const entries = [...preview.removedEntries, ...preview.retainedEntries];
+  const removable = new Set(preview.removedEntries.map((entry) => entry.root));
+  for (const entry of entries)
+    await validateUninstallEntry(entry, !!intent && removable.has(entry.root));
   if (!options.confirmationHash) return { ...preview, confirmationHash, noFilesWritten: true };
   if (options.confirmationHash !== confirmationHash)
     applicationError('卸载预览已变化；重新预览并确认');
   return withInstallLock(root, options.id, async () => {
-    if (hashRuntimeValue(await readInstalled(root, options.id)) !== hashRuntimeValue(previous))
-      applicationError('卸载预览已变化；重新预览并确认');
+    const pending = await readUninstallIntent(root, options.id);
+    if (pending && pending.confirmationHash !== confirmationHash)
+      applicationError('存在另一未完成卸载；请按原卸载预览继续');
+    validateUninstallRecord(await readInstalled(root, options.id), preview, !!pending);
     // 删除前重验全部入口，避免后面的冲突导致只卸载一部分平台。
-    for (const entry of entries) {
-      if (applicationFilesHash(await readApplicationFiles(entry.root)) !== entry.contentHash)
-        applicationError('宿主入口已变化；保留文件');
-    }
-    for (const entry of removed) {
-      await fs.unlink(path.join(entry.root, 'SKILL.md'));
-      await fs.rmdir(entry.root);
-    }
-    if (previous && remaining.length)
+    for (const entry of entries)
+      await validateUninstallEntry(entry, !!pending && removable.has(entry.root));
+    const pendingFile = path.join(root, options.id, 'pending-uninstall.json');
+    if (!pending)
       await atomicWriteContainedText(
-        path.join(root, options.id, 'current.json'),
+        pendingFile,
         JSON.stringify(
-          { ...previous, entry: undefined, scope: options.scope, entries: remaining },
+          {
+            schema: 'comet.workflow.application.uninstall.intent.v1',
+            preview,
+            confirmationHash,
+          },
           null,
           2,
         ) + '\n',
         { containedRoot: root },
       );
-    else if (previous) await fs.unlink(path.join(root, options.id, 'current.json'));
+    for (const entry of preview.removedEntries) {
+      if (!(await validateUninstallEntry(entry, true))) continue;
+      try {
+        await fs.unlink(path.join(entry.root, 'SKILL.md'));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      await fs.rmdir(entry.root);
+    }
+    const next = uninstallRecord(preview);
+    const latest = await readInstalled(root, options.id);
+    validateUninstallRecord(latest, preview, true);
+    if (next)
+      await atomicWriteContainedText(
+        path.join(root, options.id, 'current.json'),
+        JSON.stringify(next, null, 2) + '\n',
+        { containedRoot: root },
+      );
+    else if (latest) await fs.unlink(path.join(root, options.id, 'current.json'));
+    await fs.unlink(pendingFile);
     return { ...preview, uninstalled: true, noFilesWritten: false };
   });
 }

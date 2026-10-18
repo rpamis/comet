@@ -21,6 +21,65 @@ const parent = {
 };
 
 describe('durable child workflows', () => {
+  it.each(['failed', 'unknown'] as const)(
+    'rejects generic retry of a managed %s child Action before changing the parent',
+    async (status) => {
+      const store = createMemoryRuntimeStore<WorkflowRun>();
+      const runtime = createRuntime({ store, workflows: [parent, child] });
+      await runtime.start({ runId: 'parent', workflow: parent, input: 'topic' });
+      const advanced = await runtime.next({ runId: 'parent' });
+      const childId = advanced.children[0].runId;
+      if (status === 'failed') {
+        const action = (await runtime.inspect(childId)).actions[0];
+        await runtime.claim({
+          runId: childId,
+          actionId: action.id,
+          attempt: action.attempt,
+          inputHash: action.inputHash,
+          executorId: 'host',
+          claimToken: 'child-claim',
+        });
+        await runtime.recordOutcome({
+          runId: childId,
+          outcome: {
+            actionId: action.id,
+            attempt: action.attempt,
+            inputHash: action.inputHash,
+            claimToken: 'child-claim',
+            outcomeId: 'failed-child',
+            status: 'failed',
+            output: null,
+          },
+        });
+        await runtime.next({ runId: 'parent' });
+      } else {
+        const action = advanced.actions[0];
+        await runtime.markUnknown({
+          runId: 'parent',
+          actionId: action.id,
+          attempt: action.attempt,
+          reason: 'parent disconnected',
+        });
+      }
+      const before = await runtime.inspect('parent');
+      const childBefore = await runtime.inspect(childId);
+      const action = before.actions[0];
+      expect(action.status).toBe(status);
+      const restarted = createRuntime({ store, workflows: [parent, child] });
+      await expect(
+        restarted.retry({
+          runId: 'parent',
+          actionId: action.id,
+          attempt: action.attempt,
+          expectedRevision: before.revision,
+          reconciliation: { resolution: 'not-executed', evidence: 'isolated fixture' },
+        }),
+      ).rejects.toThrow(/CHILD_MANAGED/);
+      expect(await restarted.inspect('parent')).toEqual(before);
+      expect(await restarted.inspect(childId)).toEqual(childBefore);
+    },
+  );
+
   it('starts a deterministic child once and resumes its completed output after a Runtime restart', async () => {
     const store = createMemoryRuntimeStore<WorkflowRun>();
     const runtime = createRuntime({ store, workflows: [parent, child] });

@@ -1346,6 +1346,11 @@ export function createRuntime(options: CreateRuntimeOptions) {
       const action = requiredAction(run, command.actionId);
       if (action.attempt !== command.attempt)
         throw new RuntimeProtocolError('STALE_ACTION', 'Action 执行尝试已经改变');
+      if (action.type === 'child_workflow')
+        throw new RuntimeProtocolError(
+          'CHILD_MANAGED',
+          '子工作流由 Runtime 管理，不支持通过通用 retry 重置父 Action；保留原有子 Run 和执行记录',
+        );
       if (action.status === 'succeeded' && options.validateRecovery) {
         if (command.expectedRevision === undefined)
           throw new RuntimeProtocolError(
